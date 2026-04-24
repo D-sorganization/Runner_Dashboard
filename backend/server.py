@@ -1086,11 +1086,16 @@ def _sync_runner_scheduler_state(config: dict) -> dict:
 
 
 def _unit_active_sync(unit: str) -> bool:
-    result = subprocess.run(
-        ["systemctl", "is-active", "--quiet", unit],
-        timeout=5,
-        check=False,
-    )
+    if os.name == "nt":
+        return False
+    try:
+        result = subprocess.run(
+            [SYSTEMCTL_BIN, "is-active", "--quiet", unit],
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
     return result.returncode == 0
 
 
@@ -1162,12 +1167,18 @@ def _candidate_wslconfig_paths() -> list[Path]:
 
     profile = os.environ.get("USERPROFILE")
     if profile:
+        profile_path = Path(profile).expanduser()
+        if os.name == "nt":
+            candidates.append(profile_path / ".wslconfig")
         candidates.append(_windows_path_to_wsl(profile) / ".wslconfig")
 
     home_drive = os.environ.get("HOMEDRIVE")
     home_path = os.environ.get("HOMEPATH")
     if home_drive and home_path:
-        candidates.append(_windows_path_to_wsl(f"{home_drive}{home_path}") / ".wslconfig")
+        windows_home = f"{home_drive}{home_path}"
+        if os.name == "nt":
+            candidates.append(Path(windows_home).expanduser() / ".wslconfig")
+        candidates.append(_windows_path_to_wsl(windows_home) / ".wslconfig")
 
     users_root = Path("/mnt/c/Users")
     try:
@@ -1306,6 +1317,19 @@ def _detect_legacy_keepalive(actions: list[dict], startup_vbs_files: list[str]) 
 
 async def _inspect_systemd_keepalive() -> dict:
     """Inspect the in-WSL systemd keepalive service."""
+    if os.name == "nt":
+        return {
+            "status": "unsupported",
+            "service": WSL_KEEPALIVE_SERVICE,
+            "configured": False,
+            "active": False,
+            "enabled": False,
+            "detail": (
+                "systemd keepalive is checked inside WSL; "
+                "this Windows fallback process cannot query systemctl directly."
+            ),
+        }
+
     code, stdout, stderr = await run_cmd(
         [
             "systemctl",
@@ -1395,7 +1419,7 @@ async def _inspect_windows_keepalive() -> dict:
         " -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)"
     )
     _ps_get_actions = (
-        "@($task.Actions | ForEach-Object {{ [pscustomobject]@{{ Execute = $_.Execute; Arguments = $_.Arguments }} }})"
+        "@($task.Actions | ForEach-Object { [pscustomobject]@{ Execute = $_.Execute; Arguments = $_.Arguments } })"
     )
     script = f"""
 $ErrorActionPreference = 'Stop'
@@ -1667,6 +1691,73 @@ async def get_system_metrics():
     disk_free_gb = round(disk.free / (1024**3), 1)
     disk_percent = round(disk.used / disk.total * 100, 1)
 
+    if os.name == "nt":
+        net = psutil.net_io_counters()
+        per_cpu = psutil.cpu_percent(interval=0, percpu=True)
+        current_cpu = psutil.cpu_percent(interval=0)
+        _cpu_history.append(current_cpu)
+        cpu_avg_1m = round(sum(_cpu_history) / len(_cpu_history), 1) if _cpu_history else current_cpu
+        uptime_seconds = time.time() - psutil.boot_time()
+        dashboard_uptime = time.time() - BOOT_TIME
+        disk_pressure = _disk_pressure_snapshot(
+            path=disk_path,
+            total_gb=disk_total_gb,
+            used_gb=disk_used_gb,
+            free_gb=disk_free_gb,
+            percent=disk_percent,
+        )
+        hardware_specs = _local_hardware_specs(None)
+        return {
+            "hostname": HOSTNAME,
+            "platform": platform.platform(),
+            "timestamp": datetime.now(UTC).isoformat(),
+            "uptime_seconds": int(uptime_seconds),
+            "dashboard_uptime_seconds": int(dashboard_uptime),
+            "cpu": {
+                "cores_physical": psutil.cpu_count(logical=False),
+                "cores_logical": psutil.cpu_count(logical=True),
+                "percent": current_cpu,
+                "percent_1m_avg": cpu_avg_1m,
+                "per_cpu_percent": per_cpu,
+                "freq_current_mhz": round(cpu_freq.current, 0) if cpu_freq else None,
+                "freq_max_mhz": round(cpu_freq.max, 0) if cpu_freq else None,
+                "load_avg_1m": 0,
+                "load_avg_5m": 0,
+                "load_avg_15m": 0,
+            },
+            "memory": {
+                "host_total_gb": round(mem.total / (1024**3), 1),
+                "wsl_total_gb": None,
+                "total_gb": round(mem.total / (1024**3), 1),
+                "used_gb": round(mem.used / (1024**3), 1),
+                "available_gb": round(mem.available / (1024**3), 1),
+                "percent": mem.percent,
+                "swap_total_gb": round(swap.total / (1024**3), 1),
+                "swap_used_gb": round(swap.used / (1024**3), 1),
+                "swap_percent": swap.percent,
+            },
+            "disk": {
+                "path": disk_path,
+                "total_gb": disk_total_gb,
+                "used_gb": disk_used_gb,
+                "free_gb": disk_free_gb,
+                "percent": disk_percent,
+                "pressure": disk_pressure,
+                "windows_host": None,
+            },
+            "network": {
+                "bytes_sent": net.bytes_sent,
+                "bytes_recv": net.bytes_recv,
+                "packets_sent": net.packets_sent,
+                "packets_recv": net.packets_recv,
+            },
+            "gpu": None,
+            "hardware_specs": hardware_specs,
+            "workload_capacity": _workload_capacity_from_specs(hardware_specs),
+            "runner_processes": [],
+            "runner_capacity": {},
+        }
+
     # On WSL, also report the Windows host disk (/mnt/c) where the VHDX lives.
     # The host disk is the binding constraint — if it fills up, WSL itself breaks.
     windows_disk = None
@@ -1708,7 +1799,7 @@ async def get_system_metrics():
 
     # Load averages (1, 5, 15 min)
     try:
-        load_avg = os.getloadavg()
+        load_avg = os.getloadavg() if hasattr(os, "getloadavg") else (0, 0, 0)
     except OSError:
         load_avg = (0, 0, 0)
 

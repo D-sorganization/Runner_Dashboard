@@ -2,7 +2,7 @@
 
 **Spec Version:** 2.0.0
 **Application Version:** 4.0.1 (see `VERSION`)
-**Last Updated:** 2026-04-23
+**Last Updated:** 2026-04-24
 **Status:** Active
 
 ---
@@ -48,12 +48,20 @@ The backend is a single-process FastAPI application that:
 1. Proxies the GitHub REST API (runners, workflows, runs, repos) using an
    authenticated `httpx.AsyncClient` with the `GITHUB_TOKEN` environment variable.
 2. Controls local systemd runner services (`systemctl start/stop`) via
-   subprocess calls.
+   subprocess calls when running in WSL/Linux.
 3. Collects real-time system metrics (CPU, RAM, disk, GPU/VRAM) using `psutil`
    and vendor-specific CLI tools.
 4. Reads and writes runtime configuration files (YAML/JSON) from `config/` and
    `~/.config/runner-dashboard/`.
 5. Serves the frontend SPA (`frontend/index.html`) as a static file at `GET /`.
+
+When the backend runs as a Windows fallback process, Linux-only probes must not
+raise request-time exceptions. `/api/system` returns Windows-safe `psutil`
+metrics, systemd keepalive checks report `unsupported` with an explanatory
+detail, scheduler timers report inactive instead of shelling out to
+`systemctl`, and `.wslconfig` discovery checks native Windows profile paths.
+The Windows Scheduled Task keepalive probe must execute valid PowerShell and
+surface task action details without exposing secrets.
 
 **Supporting modules (all in `backend/`):**
 
