@@ -33,6 +33,7 @@ import tempfile
 import time
 from collections import deque
 from pathlib import Path
+from typing import Any
 
 import httpx
 import psutil
@@ -82,36 +83,20 @@ DISK_MIN_FREE_GB = float(os.environ.get("DASHBOARD_DISK_MIN_FREE_GB", "25"))
 PORT = int(os.environ.get("DASHBOARD_PORT", "8321"))
 HOSTNAME = os.environ.get("DISPLAY_NAME") or platform.node()
 RUN_JOB_ENRICHMENT_LIMIT = int(os.environ.get("RUN_JOB_ENRICHMENT_LIMIT", "50"))
-RUNNER_ALIASES = [
-    item.strip()
-    for item in os.environ.get("RUNNER_ALIASES", "").split(",")
-    if item.strip()
-]
+RUNNER_ALIASES = [item.strip() for item in os.environ.get("RUNNER_ALIASES", "").split(",") if item.strip()]
 RUNNER_SCHEDULE_CONFIG = Path(
     os.environ.get(
         "RUNNER_SCHEDULE_CONFIG",
         str(Path.home() / ".config" / "runner-dashboard" / "runner-schedule.json"),
     )
 ).expanduser()
-RUNNER_SCHEDULER_BIN = os.environ.get(
-    "RUNNER_SCHEDULER_BIN", "/usr/local/bin/runner-scheduler"
-)
-RUNNER_SCHEDULER_SERVICE = os.environ.get(
-    "RUNNER_SCHEDULER_SERVICE", "runner-scheduler.service"
-)
+RUNNER_SCHEDULER_BIN = os.environ.get("RUNNER_SCHEDULER_BIN", "/usr/local/bin/runner-scheduler")
+RUNNER_SCHEDULER_SERVICE = os.environ.get("RUNNER_SCHEDULER_SERVICE", "runner-scheduler.service")
 RUNNER_SCHEDULER_APPLY_CMD = os.environ.get("RUNNER_SCHEDULER_APPLY_CMD", "")
-SYSTEMCTL_BIN = (
-    os.environ.get("SYSTEMCTL_BIN") or shutil.which("systemctl") or "/usr/bin/systemctl"
-)
-RUNNER_SCHEDULER_STATE = Path(
-    os.environ.get("RUNNER_SCHEDULER_STATE", "/var/lib/runner-scheduler/state.json")
-)
-WSL_KEEPALIVE_SERVICE = os.environ.get(
-    "WSL_KEEPALIVE_SERVICE", "wsl-runner-keepalive.service"
-)
-WSL_KEEPALIVE_TASK_NAME = os.environ.get(
-    "WSL_KEEPALIVE_TASK_NAME", "WSL-Runner-KeepAlive"
-)
+SYSTEMCTL_BIN = os.environ.get("SYSTEMCTL_BIN") or shutil.which("systemctl") or "/usr/bin/systemctl"
+RUNNER_SCHEDULER_STATE = Path(os.environ.get("RUNNER_SCHEDULER_STATE", "/var/lib/runner-scheduler/state.json"))
+WSL_KEEPALIVE_SERVICE = os.environ.get("WSL_KEEPALIVE_SERVICE", "wsl-runner-keepalive.service")
+WSL_KEEPALIVE_TASK_NAME = os.environ.get("WSL_KEEPALIVE_TASK_NAME", "WSL-Runner-KeepAlive")
 DEPLOYMENT_FILE = Path(
     os.environ.get(
         "RUNNER_DASHBOARD_DEPLOYMENT_FILE",
@@ -171,19 +156,14 @@ REPORTS_DIR = Path(
 HEAVY_TEST_REPOS = {
     "Repository_Management": {
         "workflow_file": "ci-heavy-integration-tests.yml",
-        "description": (
-            "Heavy Integration Suite — Self-hosted Runner Control Tower tests"
-        ),
+        "description": ("Heavy Integration Suite — Self-hosted Runner Control Tower tests"),
         "docker_compose": "docker-compose.yml",
         "python_versions": ["3.11", "3.12"],
         "default_python": "3.12",
     },
     "UpstreamDrift": {
         "workflow_file": "heavy-tests-opt-in.yml",
-        "description": (
-            "Heavy Integration Tests (live_simulation marker)"
-            " — MuJoCo, Drake, Pinocchio, Biomechanics"
-        ),
+        "description": ("Heavy Integration Tests (live_simulation marker) — MuJoCo, Drake, Pinocchio, Biomechanics"),
         "docker_compose": "docker-compose.yml",
         "python_versions": ["3.10", "3.11", "3.12"],
         "default_python": "3.11",
@@ -219,10 +199,10 @@ BOOT_TIME = time.time()
 #   stats             → 60 s   (aggregate counts; no need to be instant)
 #   repos             → 120 s  (repo list / metadata changes rarely)
 #   diagnose          → 60 s   (expensive multi-call; used for troubleshooting)
-_cache: dict[str, tuple[object, float]] = {}
+_cache: dict[str, tuple[Any, float]] = {}
 
 
-def _cache_get(key: str, ttl: float) -> object | None:
+def _cache_get(key: str, ttl: float) -> Any | None:
     """Return cached value if within TTL, else None."""
     entry = _cache.get(key)
     if entry is not None:
@@ -232,8 +212,8 @@ def _cache_get(key: str, ttl: float) -> object | None:
     return None
 
 
-def _cache_set(key: str, data: object) -> None:
-    """Store value with the current timestamp."""
+def _cache_set(key: str, data: Any, _ttl: float | None = None) -> None:
+    """Store value with the current timestamp. _ttl is accepted but ignored (TTL is per-read)."""
     _cache[key] = (data, time.time())
 
 
@@ -276,9 +256,7 @@ def _local_hardware_specs(gpu: dict | None = None) -> dict:
         "wsl_memory_gb": round(mem.total / (1024**3), 1),
         "gpu_count": len(gpu_devices),
         "gpu_vram_gb": max(gpu_vram_values) if gpu_vram_values else None,
-        "accelerators": [
-            device.get("name") for device in gpu_devices if device.get("name")
-        ],
+        "accelerators": [device.get("name") for device in gpu_devices if device.get("name")],
         "platform": platform.platform(),
     }
 
@@ -322,9 +300,7 @@ def _disk_pressure_snapshot(
         status = "warning"
         reasons.append(f"disk usage >= {DISK_WARN_PERCENT:g}%")
     if free_gb <= DISK_MIN_FREE_GB:
-        free_space_status = (
-            "critical" if free_gb <= max(5.0, DISK_MIN_FREE_GB / 2) else "warning"
-        )
+        free_space_status = "critical" if free_gb <= max(5.0, DISK_MIN_FREE_GB / 2) else "warning"
         if status != "critical":
             status = free_space_status
         reasons.append(f"free space <= {DISK_MIN_FREE_GB:g} GB")
@@ -391,11 +367,7 @@ async def proxy_to_hub(request: Request):
             req = client.build_request(
                 request.method,
                 url,
-                headers={
-                    k: v
-                    for k, v in request.headers.items()
-                    if k.lower() not in ("host", "content-length")
-                },
+                headers={k: v for k, v in request.headers.items() if k.lower() not in ("host", "content-length")},
                 content=await request.body(),
             )
             resp = await client.send(req)
@@ -404,9 +376,7 @@ async def proxy_to_hub(request: Request):
                 return {}
             return resp.json()
         except Exception as e:
-            raise HTTPException(
-                status_code=502, detail=f"Hub Proxy Error: {str(e)}"
-            ) from e
+            raise HTTPException(status_code=502, detail=f"Hub Proxy Error: {str(e)}") from e
 
 
 def _should_proxy_fleet_to_hub(request: Request) -> bool:
@@ -423,9 +393,7 @@ def _should_proxy_fleet_to_hub(request: Request) -> bool:
     return local_value not in {"1", "true", "yes", "local"} and scope_value != "local"
 
 
-async def run_cmd(
-    cmd: list[str], timeout: int = 30, cwd: Path | None = None
-) -> tuple[int, str, str]:
+async def run_cmd(cmd: list[str], timeout: int = 30, cwd: Path | None = None) -> tuple[int, str, str]:
     """Run a shell command asynchronously."""
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -463,9 +431,7 @@ gh_api_admin = gh_api
 
 async def gh_api_raw(endpoint: str) -> str:
     """Call the GitHub API via gh CLI and return the raw body text."""
-    code, stdout, stderr = await run_cmd(
-        ["gh", "api", "-H", "Accept: application/vnd.github.raw", endpoint]
-    )
+    code, stdout, stderr = await run_cmd(["gh", "api", "-H", "Accept: application/vnd.github.raw", endpoint])
     if code != 0:
         raise HTTPException(status_code=502, detail=f"GitHub API error: {stderr}")
     return stdout
@@ -491,10 +457,7 @@ async def _expected_dashboard_version_from_hub() -> str | None:
 
 async def _read_expected_dashboard_version() -> str:
     """Return the hub expected VERSION, falling back to this checkout."""
-    return (
-        await _expected_dashboard_version_from_hub()
-        or deployment_drift.read_expected_version(EXPECTED_VERSION_FILE)
-    )
+    return await _expected_dashboard_version_from_hub() or deployment_drift.read_expected_version(EXPECTED_VERSION_FILE)
 
 
 def _node_deployment_info(node: dict) -> dict:
@@ -530,9 +493,7 @@ def _machine_deployment_state(node: dict, expected_version: str) -> dict:
     if not node.get("online"):
         rollout_state = "offline"
         rollout_label = "Offline"
-        rollout_detail = (
-            node.get("offline_detail") or node.get("error") or "Node is offline."
-        )
+        rollout_detail = node.get("offline_detail") or node.get("error") or "Node is offline."
     elif status.dirty:
         rollout_state = "dirty"
         rollout_label = "Dirty"
@@ -544,10 +505,7 @@ def _machine_deployment_state(node: dict, expected_version: str) -> dict:
     elif node.get("offline_reason") == "resource_monitoring":
         rollout_state = "degraded"
         rollout_label = "Degraded"
-        rollout_detail = (
-            node.get("offline_detail")
-            or "Resource pressure is blocking the usual rollout cadence."
-        )
+        rollout_detail = node.get("offline_detail") or "Resource pressure is blocking the usual rollout cadence."
     elif status.current == "unknown":
         rollout_state = "unknown"
         rollout_label = "Unknown"
@@ -581,9 +539,7 @@ def _build_deployment_state(nodes: list[dict], expected_version: str) -> dict:
     local_drift = deployment_drift.evaluate_drift(deployment, expected_version)
     machines = [_machine_deployment_state(node, expected_version) for node in nodes]
     attention_states = {"offline", "dirty", "drifted", "degraded", "unknown"}
-    alerting = [
-        machine for machine in machines if machine["rollout_state"] in attention_states
-    ]
+    alerting = [machine for machine in machines if machine["rollout_state"] in attention_states]
     online = sum(1 for machine in machines if machine["online"])
     steady = sum(1 for machine in machines if machine["rollout_state"] == "steady")
     dirty = sum(1 for machine in machines if machine["rollout_state"] == "dirty")
@@ -607,10 +563,7 @@ def _build_deployment_state(nodes: list[dict], expected_version: str) -> dict:
         else "No fleet machines reported deployment metadata."
     )
     if alerting:
-        summary += (
-            f" {offline} offline, {drifted} drifting, {dirty} dirty, "
-            f"{degraded} degraded, {unknown} unknown."
-        )
+        summary += f" {offline} offline, {drifted} drifting, {dirty} dirty, {degraded} degraded, {unknown} unknown."
     return {
         "timestamp": datetime.now(UTC).isoformat(),
         "deployment": deployment,
@@ -810,9 +763,7 @@ async def _enrich_run_with_job_placement(run: dict) -> dict:
     return item
 
 
-def _classify_node_offline(
-    exc: Exception | None = None, *, status_code: int | None = None
-) -> dict:
+def _classify_node_offline(exc: Exception | None = None, *, status_code: int | None = None) -> dict:
     """Classify why a fleet node is not fully reachable."""
     message = str(exc) if exc else ""
     lower = message.lower()
@@ -896,8 +847,7 @@ def _node_visibility_snapshot(node: dict) -> dict:
             "visibility_state": "degraded",
             "visibility_label": "Degraded",
             "visibility_tone": "yellow",
-            "visibility_detail": node.get("offline_detail")
-            or "Resource pressure is high enough to warrant attention.",
+            "visibility_detail": node.get("offline_detail") or "Resource pressure is high enough to warrant attention.",
         }
 
     if online and dashboard_reachable and has_system_metrics:
@@ -905,9 +855,7 @@ def _node_visibility_snapshot(node: dict) -> dict:
             "visibility_state": "full_telemetry",
             "visibility_label": "Full telemetry",
             "visibility_tone": "green",
-            "visibility_detail": (
-                "Runner status and system metrics are both available."
-            ),
+            "visibility_detail": ("Runner status and system metrics are both available."),
         }
 
     if online:
@@ -915,10 +863,7 @@ def _node_visibility_snapshot(node: dict) -> dict:
             "visibility_state": "runners_only",
             "visibility_label": "Runners only",
             "visibility_tone": "orange",
-            "visibility_detail": (
-                "Runner registrations are healthy, but dashboard telemetry is"
-                " unavailable."
-            ),
+            "visibility_detail": ("Runner registrations are healthy, but dashboard telemetry is unavailable."),
         }
 
     if dashboard_reachable:
@@ -926,18 +871,14 @@ def _node_visibility_snapshot(node: dict) -> dict:
             "visibility_state": "dashboard_only",
             "visibility_label": "Dashboard only",
             "visibility_tone": "blue",
-            "visibility_detail": (
-                "Dashboard is reachable, but runner registrations are offline."
-            ),
+            "visibility_detail": ("Dashboard is reachable, but runner registrations are offline."),
         }
 
     return {
         "visibility_state": "offline",
         "visibility_label": "Offline",
         "visibility_tone": "red",
-        "visibility_detail": node.get("offline_detail")
-        or node.get("error")
-        or "No live telemetry from this machine.",
+        "visibility_detail": node.get("offline_detail") or node.get("error") or "No live telemetry from this machine.",
     }
 
 
@@ -945,14 +886,10 @@ def runner_svc_path(runner_num: int) -> Path:
     return RUNNER_BASE_DIR / f"runner-{runner_num}" / "svc.sh"
 
 
-async def run_runner_svc(
-    runner_num: int, action: str, timeout: int = 30
-) -> tuple[int, str, str]:
+async def run_runner_svc(runner_num: int, action: str, timeout: int = 30) -> tuple[int, str, str]:
     """Run a generated GitHub runner svc.sh from its own runner directory."""
     svc_path = runner_svc_path(runner_num)
-    return await run_cmd(
-        ["sudo", str(svc_path), action], timeout=timeout, cwd=svc_path.parent
-    )
+    return await run_cmd(["sudo", str(svc_path), action], timeout=timeout, cwd=svc_path.parent)
 
 
 def runner_num_from_id(runner_id: int, runners: list[dict]) -> int | None:
@@ -997,9 +934,7 @@ def get_runner_service_name(runner_num: int) -> str | None:
 DEFAULT_RUNNER_SCHEDULE = {
     "enabled": True,
     "timezone": os.environ.get("RUNNER_SCHEDULE_TIMEZONE", "America/Los_Angeles"),
-    "default_count": min(
-        NUM_RUNNERS, int(os.environ.get("RUNNER_SCHEDULE_DEFAULT", "4"))
-    ),
+    "default_count": min(NUM_RUNNERS, int(os.environ.get("RUNNER_SCHEDULE_DEFAULT", "4"))),
     "schedules": [
         {
             "name": "day",
@@ -1039,12 +974,10 @@ def _validate_runner_schedule(config: dict) -> dict:
     if not isinstance(config, dict):
         raise ValueError("schedule config must be an object")
     days_allowed = {"mon", "tue", "wed", "thu", "fri", "sat", "sun"}
-    sanitized = {
+    sanitized: dict[str, Any] = {
         "enabled": bool(config.get("enabled", True)),
         "timezone": str(config.get("timezone") or "America/Los_Angeles"),
-        "default_count": max(
-            0, min(_runner_limit(), int(config.get("default_count", 1)))
-        ),
+        "default_count": max(0, min(_runner_limit(), int(config.get("default_count", 1)))),
         "schedules": [],
     }
     schedules = config.get("schedules", [])
@@ -1074,17 +1007,13 @@ def _validate_runner_schedule(config: dict) -> dict:
 
 def _load_runner_schedule_config() -> dict:
     if RUNNER_SCHEDULE_CONFIG.exists():
-        return _validate_runner_schedule(
-            json.loads(RUNNER_SCHEDULE_CONFIG.read_text(encoding="utf-8"))
-        )
+        return _validate_runner_schedule(json.loads(RUNNER_SCHEDULE_CONFIG.read_text(encoding="utf-8")))
     return _validate_runner_schedule(DEFAULT_RUNNER_SCHEDULE)
 
 
 def _write_runner_schedule_config(config: dict) -> None:
     RUNNER_SCHEDULE_CONFIG.parent.mkdir(parents=True, exist_ok=True)
-    RUNNER_SCHEDULE_CONFIG.write_text(
-        json.dumps(config, indent=2) + "\n", encoding="utf-8"
-    )
+    RUNNER_SCHEDULE_CONFIG.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
 
 
 def _sync_runner_scheduler_state(config: dict) -> dict:
@@ -1157,9 +1086,7 @@ def get_runner_capacity_snapshot() -> dict:
         "aliases": RUNNER_ALIASES,
         "configured_runners": NUM_RUNNERS,
         "default_runners": DEFAULT_NUM_RUNNERS,
-        "installed_runners": sum(
-            1 for path in RUNNER_BASE_DIR.glob("runner-*") if path.is_dir()
-        ),
+        "installed_runners": sum(1 for path in RUNNER_BASE_DIR.glob("runner-*") if path.is_dir()),
         "max_runners": _runner_limit(),
         "config_path": str(RUNNER_SCHEDULE_CONFIG),
         "state_path": str(RUNNER_SCHEDULER_STATE),
@@ -1211,9 +1138,7 @@ def _candidate_wslconfig_paths() -> list[Path]:
     home_drive = os.environ.get("HOMEDRIVE")
     home_path = os.environ.get("HOMEPATH")
     if home_drive and home_path:
-        candidates.append(
-            _windows_path_to_wsl(f"{home_drive}{home_path}") / ".wslconfig"
-        )
+        candidates.append(_windows_path_to_wsl(f"{home_drive}{home_path}") / ".wslconfig")
 
     users_root = Path("/mnt/c/Users")
     try:
@@ -1334,9 +1259,7 @@ def _probe_detail(probe: dict, fallback: str) -> str:
     return str(probe.get("detail") or probe.get("error") or fallback)
 
 
-def _detect_legacy_keepalive(
-    actions: list[dict], startup_vbs_files: list[str]
-) -> tuple[bool, str | None]:
+def _detect_legacy_keepalive(actions: list[dict], startup_vbs_files: list[str]) -> tuple[bool, str | None]:
     """Detect the old VBS/fire-and-forget keepalive pattern."""
     if startup_vbs_files:
         return True, f"Legacy VBS file(s) still present: {', '.join(startup_vbs_files)}"
@@ -1367,10 +1290,7 @@ async def _inspect_systemd_keepalive() -> dict:
 
     if code != 0:
         lower = f"{stdout}\n{stderr}".lower()
-        if (
-            "system has not been booted with systemd" in lower
-            or "failed to connect to bus" in lower
-        ):
+        if "system has not been booted with systemd" in lower or "failed to connect to bus" in lower:
             return {
                 "status": "unsupported",
                 "service": WSL_KEEPALIVE_SERVICE,
@@ -1405,10 +1325,7 @@ async def _inspect_systemd_keepalive() -> dict:
         detail = f"{WSL_KEEPALIVE_SERVICE} is active and enabled."
         status = "healthy"
     elif configured:
-        detail = (
-            f"{WSL_KEEPALIVE_SERVICE} is {active_state or 'unknown'} "
-            f"and {unit_file_state or 'unknown'}."
-        )
+        detail = f"{WSL_KEEPALIVE_SERVICE} is {active_state or 'unknown'} and {unit_file_state or 'unknown'}."
         status = "misconfigured"
     else:
         detail = f"{WSL_KEEPALIVE_SERVICE} is not installed."
@@ -1444,14 +1361,21 @@ async def _inspect_windows_keepalive() -> dict:
             "detail": "PowerShell was not found; Windows Scheduled Task cannot be queried from this WSL session.",
         }
 
+    _ps_get_legacy = (
+        "@(Get-ChildItem -Path $startup -Filter 'wsl-keepalive.vbs'"
+        " -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)"
+    )
+    _ps_get_actions = (
+        "@($task.Actions | ForEach-Object {{ [pscustomobject]@{{ Execute = $_.Execute; Arguments = $_.Arguments }} }})"
+    )
     script = f"""
 $ErrorActionPreference = 'Stop'
 $startup = [Environment]::GetFolderPath('Startup')
-$legacy = @(Get-ChildItem -Path $startup -Filter 'wsl-keepalive.vbs' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
+$legacy = {_ps_get_legacy}
 $task = $null
 try {{
     $task = Get-ScheduledTask -TaskName '{WSL_KEEPALIVE_TASK_NAME}' -ErrorAction Stop
-    $actions = @($task.Actions | ForEach-Object {{ [pscustomobject]@{{ Execute = $_.Execute; Arguments = $_.Arguments }} }})
+    $actions = {_ps_get_actions}
     $result = [pscustomobject]@{{
         task_found = $true
         task_name = $task.TaskName
@@ -1485,9 +1409,7 @@ $result | ConvertTo-Json -Depth 5
             "actions": [],
             "startup_vbs_files": [],
             "legacy_vbs_detected": False,
-            "detail": stderr.strip()
-            or stdout.strip()
-            or "Scheduled task query failed.",
+            "detail": stderr.strip() or stdout.strip() or "Scheduled task query failed.",
         }
 
     try:
@@ -1571,36 +1493,22 @@ async def _watchdog_status_impl() -> dict:
             "machine": HOSTNAME,
             "layer": "Windows scheduled task",
             "status": windows["status"],
-            "detail": _probe_detail(
-                windows, "Windows scheduled task status unavailable."
-            ),
+            "detail": _probe_detail(windows, "Windows scheduled task status unavailable."),
         },
     ]
-    issue_details = [
-        check for check in checks if check["status"] not in {"healthy", "unsupported"}
-    ]
+    issue_details = [check for check in checks if check["status"] not in {"healthy", "unsupported"}]
     issues: list[str] = []
     for check in issue_details:
-        issues.append(
-            f"{check['machine']} {check['layer']} "
-            f"({check['status']}): {check['detail']}"
-        )
+        issues.append(f"{check['machine']} {check['layer']} ({check['status']}): {check['detail']}")
 
     for check in (wslconfig, systemd, windows):
         if check["status"] not in {"healthy", "unsupported"}:
             check["machine"] = HOSTNAME
 
-    if (
-        wslconfig["status"] == "healthy"
-        and systemd["status"] == "healthy"
-        and windows["status"] == "healthy"
-    ):
+    if wslconfig["status"] == "healthy" and systemd["status"] == "healthy" and windows["status"] == "healthy":
         overall = "healthy"
         summary = f"{HOSTNAME}: all WSL keepalive layers are in place."
-    elif all(
-        check["status"] in {"missing", "unknown", "unsupported"}
-        for check in (wslconfig, systemd, windows)
-    ):
+    elif all(check["status"] in {"missing", "unknown", "unsupported"} for check in (wslconfig, systemd, windows)):
         overall = "unknown"
         summary = f"{HOSTNAME}: WSL keepalive status could not be fully verified."
     elif not issue_details:
@@ -1608,9 +1516,7 @@ async def _watchdog_status_impl() -> dict:
         summary = f"{HOSTNAME}: WSL keepalive checks are healthy or unsupported."
     else:
         overall = "degraded"
-        summary = (
-            f"{HOSTNAME}: {len(issue_details)} WSL keepalive check(s) need attention."
-        )
+        summary = f"{HOSTNAME}: {len(issue_details)} WSL keepalive check(s) need attention."
 
     result = {
         "status": overall,
@@ -1667,12 +1573,8 @@ def get_gpu_info() -> dict:
                         "vram_percent": vram_pct,
                         "gpu_util_percent": float(parts[4]),
                         "temp_c": float(parts[5]),
-                        "power_draw_w": (
-                            float(parts[6]) if parts[6] != "[N/A]" else None
-                        ),
-                        "power_limit_w": (
-                            float(parts[7]) if parts[7] != "[N/A]" else None
-                        ),
+                        "power_draw_w": (float(parts[6]) if parts[6] != "[N/A]" else None),
+                        "power_limit_w": (float(parts[7]) if parts[7] != "[N/A]" else None),
                     }
                 )
         return {"gpus": gpus, "count": len(gpus)}
@@ -1685,7 +1587,7 @@ def get_per_runner_resources() -> list[dict]:
     runner_procs = []
     for i in range(1, _runner_limit() + 1):
         _ = get_runner_service_name(i)
-        runner_info = {
+        runner_info: dict[str, Any] = {
             "runner_num": i,
             "cpu_percent": 0.0,
             "memory_mb": 0.0,
@@ -1705,9 +1607,7 @@ def get_per_runner_resources() -> list[dict]:
         for proc in psutil.process_iter(proc_fields):
             try:
                 cmdline = " ".join(proc.info.get("cmdline") or [])
-                is_runner = runner_dir in cmdline or (
-                    "Runner.Listener" in cmdline and f"runner-{i}" in cmdline
-                )
+                is_runner = runner_dir in cmdline or ("Runner.Listener" in cmdline and f"runner-{i}" in cmdline)
                 if is_runner:
                     runner_info["cpu_percent"] += proc.info.get("cpu_percent", 0) or 0
                     mem = proc.info.get("memory_info")
@@ -1790,9 +1690,7 @@ async def get_system_metrics():
     per_cpu = psutil.cpu_percent(interval=0, percpu=True)
     current_cpu = psutil.cpu_percent(interval=0)
     _cpu_history.append(current_cpu)
-    cpu_avg_1m = (
-        round(sum(_cpu_history) / len(_cpu_history), 1) if _cpu_history else current_cpu
-    )
+    cpu_avg_1m = round(sum(_cpu_history) / len(_cpu_history), 1) if _cpu_history else current_cpu
 
     # Uptime
     uptime_seconds = time.time() - psutil.boot_time()
@@ -1863,11 +1761,7 @@ async def _collect_live_fleet_nodes() -> list[dict]:
                     client.get(f"{url}/api/health"),
                 )
             if sys_r.status_code != 200 or health_r.status_code != 200:
-                status_code = (
-                    sys_r.status_code
-                    if sys_r.status_code != 200
-                    else health_r.status_code
-                )
+                status_code = sys_r.status_code if sys_r.status_code != 200 else health_r.status_code
                 reason = _classify_node_offline(status_code=status_code)
                 return {
                     "name": name,
@@ -1897,12 +1791,8 @@ async def _collect_live_fleet_nodes() -> list[dict]:
                 "health": health_r.json(),
                 "last_seen": datetime.now(UTC).isoformat(),
                 "error": None,
-                "offline_reason": (
-                    resource_reason["offline_reason"] if resource_reason else None
-                ),
-                "offline_detail": (
-                    resource_reason["offline_detail"] if resource_reason else None
-                ),
+                "offline_reason": (resource_reason["offline_reason"] if resource_reason else None),
+                "offline_detail": (resource_reason["offline_detail"] if resource_reason else None),
             }
         except Exception as exc:
             reason = _classify_node_offline(exc)
@@ -1937,23 +1827,13 @@ async def _collect_live_fleet_nodes() -> list[dict]:
             "health": local_health,
             "last_seen": datetime.now(UTC).isoformat(),
             "error": None,
-            "offline_reason": (
-                local_resource_reason["offline_reason"]
-                if local_resource_reason
-                else None
-            ),
-            "offline_detail": (
-                local_resource_reason["offline_detail"]
-                if local_resource_reason
-                else None
-            ),
+            "offline_reason": (local_resource_reason["offline_reason"] if local_resource_reason else None),
+            "offline_detail": (local_resource_reason["offline_detail"] if local_resource_reason else None),
         }
     ]
 
     if FLEET_NODES:
-        remote = await asyncio.gather(
-            *[fetch_node(name, url) for name, url in FLEET_NODES.items()]
-        )
+        remote = await asyncio.gather(*[fetch_node(name, url) for name, url in FLEET_NODES.items()])
         nodes.extend(remote)
 
     return nodes
@@ -1996,9 +1876,7 @@ async def get_fleet_status(request: Request):
             }
 
     if FLEET_NODES:
-        results = await asyncio.gather(
-            *[fetch_node(n, u) for n, u in FLEET_NODES.items()]
-        )
+        results = await asyncio.gather(*[fetch_node(n, u) for n, u in FLEET_NODES.items()])
         for name, data in results:
             responses[name] = data
 
@@ -2172,26 +2050,15 @@ def _is_matlab_runner(runner: dict) -> bool:
     if "matlab" in name:
         return True
     for label in runner.get("labels", []) or []:
-        lname = (
-            str(label.get("name", "")).lower()
-            if isinstance(label, dict)
-            else str(label).lower()
-        )
-        if (
-            lname == "matlab"
-            or lname.startswith("windows-matlab")
-            or lname.startswith("d-sorg-matlab")
-        ):
+        lname = str(label.get("name", "")).lower() if isinstance(label, dict) else str(label).lower()
+        if lname == "matlab" or lname.startswith("windows-matlab") or lname.startswith("d-sorg-matlab"):
             return True
     return False
 
 
 def _matlab_runner_summary(runner: dict) -> dict:
     """Project a GitHub runner record into the MATLAB health shape."""
-    labels = [
-        lbl.get("name") if isinstance(lbl, dict) else str(lbl)
-        for lbl in (runner.get("labels") or [])
-    ]
+    labels = [lbl.get("name") if isinstance(lbl, dict) else str(lbl) for lbl in (runner.get("labels") or [])]
     status = str(runner.get("status", "unknown")).lower()
     busy = bool(runner.get("busy"))
     # Persistence hint: the ControlTower Windows runner is registered as a
@@ -2229,9 +2096,7 @@ async def _recent_matlab_workflow_runs(limit: int = 5) -> list[dict]:
 
     async def _runs_for_repo(repo_name: str) -> list[dict]:
         try:
-            data = await gh_api_admin(
-                f"/repos/{ORG}/{repo_name}/actions/runs?per_page=10"
-            )
+            data = await gh_api_admin(f"/repos/{ORG}/{repo_name}/actions/runs?per_page=10")
         except Exception:
             return []
         out = []
@@ -2325,10 +2190,7 @@ async def get_matlab_runner_health(request: Request) -> dict:
             "on the ControlTower host to restore MATLAB lint capacity."
         )
     elif idle_online == 0:
-        warning = (
-            "All MATLAB runners are currently busy. New MATLAB lint jobs will "
-            "queue until one frees up."
-        )
+        warning = "All MATLAB runners are currently busy. New MATLAB lint jobs will queue until one frees up."
 
     recent = await _recent_matlab_workflow_runs(limit=5)
 
@@ -2372,9 +2234,7 @@ async def get_runs(request: Request, per_page: int = 30) -> dict:
     runs_per_repo = max(3, per_page // max(len(repos[:10]), 1))
 
     sample = repos[:10]
-    all_runs_nested = await asyncio.gather(
-        *[_fetch_repo_runs(r["name"], per_page=runs_per_repo) for r in sample]
-    )
+    all_runs_nested = await asyncio.gather(*[_fetch_repo_runs(r["name"], per_page=runs_per_repo) for r in sample])
     all_runs: list[dict] = [run for sublist in all_runs_nested for run in sublist]
 
     # Sort newest-first and cap at per_page
@@ -2493,9 +2353,7 @@ async def list_workflows() -> dict:
                 if code2 == 0:
                     try:
                         content_data = json.loads(out2)
-                        content = base64.b64decode(
-                            content_data.get("content", "")
-                        ).decode("utf-8", errors="replace")
+                        content = base64.b64decode(content_data.get("content", "")).decode("utf-8", errors="replace")
                         if "workflow_dispatch" in content:
                             triggers.append("manual")
                         if "schedule" in content:
@@ -2578,15 +2436,11 @@ async def dispatch_workflow(request: Request) -> dict:
     approved_by = str(body.get("approved_by", "dashboard-operator")).strip()
 
     if not repo or not workflow_id:
-        raise HTTPException(
-            status_code=422, detail="repository and workflow_id required"
-        )
+        raise HTTPException(status_code=422, detail="repository and workflow_id required")
 
     endpoint = f"/repos/{ORG}/{repo}/actions/workflows/{workflow_id}/dispatches"
     payload = {"ref": ref, "inputs": inputs}
-    with tempfile.NamedTemporaryFile(
-        mode="w", encoding="utf-8", suffix=".json", delete=False
-    ) as f:
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".json", delete=False) as f:
         json.dump(payload, f)
         pf = f.name
     try:
@@ -2599,9 +2453,7 @@ async def dispatch_workflow(request: Request) -> dict:
         with contextlib.suppress(OSError):
             Path(pf).unlink()
     if code != 0:
-        raise HTTPException(
-            status_code=502, detail=f"Dispatch failed: {stderr.strip()[:300]}"
-        )
+        raise HTTPException(status_code=502, detail=f"Dispatch failed: {stderr.strip()[:300]}")
 
     log.info(
         "workflow_dispatch audit: repo=%s workflow_id=%s ref=%s approved_by=%s",
@@ -2631,9 +2483,7 @@ async def get_enriched_runs(request: Request, per_page: int = 50) -> dict:
     data = await get_runs(request, per_page=per_page)
     runs = data.get("workflow_runs", [])
     enrichable = runs[:RUN_JOB_ENRICHMENT_LIMIT]
-    enriched = await asyncio.gather(
-        *[_enrich_run_with_job_placement(run) for run in enrichable]
-    )
+    enriched = await asyncio.gather(*[_enrich_run_with_job_placement(run) for run in enrichable])
     enriched.extend(dict(run) for run in runs[RUN_JOB_ENRICHMENT_LIMIT:])
     result = {"workflow_runs": enriched, "total_count": len(enriched)}
     _cache_set(cache_key, result)
@@ -2828,12 +2678,7 @@ async def fleet_control(action: str, request: Request):
     node_results = [local_node_result]
 
     if should_fan_out:
-        remotes = await asyncio.gather(
-            *[
-                _remote_fleet_control(name, url, action)
-                for name, url in FLEET_NODES.items()
-            ]
-        )
+        remotes = await asyncio.gather(*[_remote_fleet_control(name, url, action) for name, url in FLEET_NODES.items()])
         node_results.extend(remotes)
 
     return {
@@ -2862,9 +2707,7 @@ async def update_runner_schedule(request: Request) -> dict:
     """Update this machine's local runner capacity schedule."""
     body = await request.json()
     if not isinstance(body, dict):
-        raise HTTPException(
-            status_code=400, detail="schedule payload must be an object"
-        )
+        raise HTTPException(status_code=400, detail="schedule payload must be an object")
     try:
         config = _validate_runner_schedule(body.get("schedule", body))
     except (TypeError, ValueError) as exc:
@@ -3035,15 +2878,9 @@ async def list_reports():
                     "filename": f.name,
                     "date": date_str,
                     "size_kb": round(stat.st_size / 1024, 1),
-                    "modified": datetime.fromtimestamp(
-                        stat.st_mtime, tz=UTC
-                    ).isoformat(),
+                    "modified": datetime.fromtimestamp(stat.st_mtime, tz=UTC).isoformat(),
                     "has_chart": chart_path.exists(),
-                    "chart_filename": (
-                        f"assessment_scores_{date_str}.png"
-                        if chart_path.exists()
-                        else None
-                    ),
+                    "chart_filename": (f"assessment_scores_{date_str}.png" if chart_path.exists() else None),
                 }
             )
     return {"reports": reports, "reports_dir": str(REPORTS_DIR), "total": len(reports)}
@@ -3119,9 +2956,7 @@ async def get_heavy_test_repos():
                             "html_url": run.get("html_url"),
                             "head_branch": run.get("head_branch"),
                             "run_number": run.get("run_number"),
-                            "triggering_actor": run.get("triggering_actor", {}).get(
-                                "login"
-                            ),
+                            "triggering_actor": run.get("triggering_actor", {}).get("login"),
                         }
                     )
             except (json.JSONDecodeError, ValueError):
@@ -3194,10 +3029,7 @@ async def dispatch_heavy_test(request: Request):
         "workflow": workflow_file,
         "python_version": python_version,
         "ref": ref,
-        "message": (
-            f"Heavy test workflow dispatched for {repo_name}."
-            " Check the Actions tab for progress."
-        ),
+        "message": (f"Heavy test workflow dispatched for {repo_name}. Check the Actions tab for progress."),
     }
 
 
@@ -3223,7 +3055,7 @@ async def run_docker_heavy_test(request: Request):
             detail=f"Repo not found at {repo_path}",
         )
 
-    docker_compose_file = config.get("docker_compose", "docker-compose.yml")
+    docker_compose_file = str(config.get("docker_compose", "docker-compose.yml"))
     compose_path = repo_path / docker_compose_file
     if not compose_path.exists():
         raise HTTPException(
@@ -3274,6 +3106,101 @@ async def run_docker_heavy_test(request: Request):
     }
 
 
+# ---------------------------------------------------------------------------
+# CI Tests endpoints — standard ci-standard workflow runs + manual rerun
+# ---------------------------------------------------------------------------
+
+_CI_FLEET_REPOS = [
+    "Repository_Management",
+    "AffineDrift",
+    "Controls",
+    "Drake_Models",
+    "Games",
+    "Gasification_Model",
+    "MEB_Conversion",
+    "MLProjects",
+    "Movement_Optimizer",
+    "MuJoCo_Models",
+    "OpenSim_Models",
+    "Pinocchio_Models",
+    "Playground",
+    "QuatEngine",
+    "Tools",
+    "UpstreamDrift",
+    "Worksheet-Workshop",
+]
+
+
+@app.get("/api/tests/ci-results")
+async def get_tests_ci_results() -> dict:
+    """Return recent ci-standard workflow runs for key fleet repos."""
+    cached = _cache_get("ci_test_results", 120.0)
+    if cached is not None:
+        return cached
+
+    results = []
+    for repo_name in _CI_FLEET_REPOS:
+        try:
+            data = await gh_api_admin(
+                f"/repos/{ORG}/{repo_name}/actions/workflows/ci-standard.yml/runs?per_page=3&branch=main"
+            )
+            runs = data.get("workflow_runs", []) if data else []
+            if runs:
+                latest = runs[0]
+                results.append(
+                    {
+                        "repo": repo_name,
+                        "run_id": latest.get("id"),
+                        "run_number": latest.get("run_number"),
+                        "status": latest.get("status"),
+                        "conclusion": latest.get("conclusion"),
+                        "head_branch": latest.get("head_branch"),
+                        "html_url": latest.get("html_url"),
+                        "created_at": latest.get("created_at"),
+                        "updated_at": latest.get("updated_at"),
+                    }
+                )
+            else:
+                results.append({"repo": repo_name, "run_id": None, "conclusion": None})
+        except Exception:
+            results.append({"repo": repo_name, "run_id": None, "conclusion": "error"})
+
+    out: dict = {"results": results}
+    _cache_set("ci_test_results", out)
+    return out
+
+
+@app.post("/api/tests/rerun")
+async def rerun_ci_test(request: Request) -> dict:
+    """Re-run a failed GitHub Actions workflow run (failed jobs only)."""
+    body = await request.json()
+    repo_name = body.get("repo", "")
+    run_id = body.get("run_id")
+
+    if not repo_name or not run_id:
+        raise HTTPException(status_code=400, detail="repo and run_id are required")
+
+    try:
+        code, stdout, stderr = await run_cmd(
+            [
+                "gh",
+                "api",
+                f"/repos/{ORG}/{repo_name}/actions/runs/{run_id}/rerun-failed-jobs",
+                "--method",
+                "POST",
+            ]
+        )
+        if code != 0:
+            raise HTTPException(status_code=502, detail=f"GitHub API error: {stderr}")
+        _cache.pop("ci_test_results", None)
+        return {"status": "triggered", "repo": repo_name, "run_id": run_id}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log.exception("Failed to rerun run %s in %s", run_id, repo_name)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @app.get("/api/stats")
 async def get_stats(request: Request):
     """Aggregate organization, runner, queue, and workflow statistics."""
@@ -3291,9 +3218,7 @@ async def get_stats(request: Request):
     runners = runners_data.get("runners", [])
 
     repos = await _get_recent_org_repos(limit=30)
-    all_runs_nested = await asyncio.gather(
-        *[_fetch_repo_runs(repo["name"], per_page=10) for repo in repos[:20]]
-    )
+    all_runs_nested = await asyncio.gather(*[_fetch_repo_runs(repo["name"], per_page=10) for repo in repos[:20]])
     runs = [run for repo_runs in all_runs_nested for run in repo_runs]
     runs.sort(key=lambda r: r.get("created_at", ""), reverse=True)
     runs = runs[:100]
@@ -3329,9 +3254,7 @@ async def get_stats(request: Request):
         "org_open_prs": org_open_prs,
         "machines_total": fleet_data.get("count", 0),
         "machines_online": fleet_data.get("online_count", 0),
-        "machines_offline": max(
-            0, fleet_data.get("count", 0) - fleet_data.get("online_count", 0)
-        ),
+        "machines_offline": max(0, fleet_data.get("count", 0) - fleet_data.get("online_count", 0)),
         "repos_sampled": len(repos[:20]),
     }
     _cache_set("stats", result)
@@ -3348,9 +3271,7 @@ async def get_usage_monitoring(request: Request) -> dict:
     if cached is not None:
         return cached
 
-    summary = usage_monitoring.normalize_usage_summary(
-        usage_monitoring.load_usage_sources_config()
-    )
+    summary = usage_monitoring.normalize_usage_summary(usage_monitoring.load_usage_sources_config())
     _cache_set("usage_monitoring", summary)
     return summary
 
@@ -3363,14 +3284,8 @@ async def get_agent_remediation_config() -> dict:
     return {
         "schema_version": agent_remediation.SCHEMA_VERSION,
         "policy": policy.to_dict(),
-        "providers": {
-            provider_id: provider.to_dict()
-            for provider_id, provider in agent_remediation.PROVIDERS.items()
-        },
-        "availability": {
-            provider_id: status.to_dict()
-            for provider_id, status in availability.items()
-        },
+        "providers": {provider_id: provider.to_dict() for provider_id, provider in agent_remediation.PROVIDERS.items()},
+        "availability": {provider_id: status.to_dict() for provider_id, status in availability.items()},
     }
 
 
@@ -3389,33 +3304,23 @@ async def update_agent_remediation_config(request: Request) -> dict:
         payload.get("workflow_type_rules")
     )
     policy = agent_remediation.RemediationPolicy(
-        auto_dispatch_on_failure=bool(
-            payload.get("auto_dispatch_on_failure", current.auto_dispatch_on_failure)
-        ),
-        require_failure_summary=bool(
-            payload.get("require_failure_summary", current.require_failure_summary)
-        ),
+        auto_dispatch_on_failure=bool(payload.get("auto_dispatch_on_failure", current.auto_dispatch_on_failure)),
+        require_failure_summary=bool(payload.get("require_failure_summary", current.require_failure_summary)),
         require_non_protected_branch=bool(
             payload.get(
                 "require_non_protected_branch",
                 current.require_non_protected_branch,
             )
         ),
-        max_same_failure_attempts=int(
-            payload.get("max_same_failure_attempts", current.max_same_failure_attempts)
-        ),
-        attempt_window_hours=int(
-            payload.get("attempt_window_hours", current.attempt_window_hours)
-        ),
+        max_same_failure_attempts=int(payload.get("max_same_failure_attempts", current.max_same_failure_attempts)),
+        attempt_window_hours=int(payload.get("attempt_window_hours", current.attempt_window_hours)),
         provider_order=agent_remediation._as_tuple_strings(  # noqa: SLF001
             payload.get("provider_order"), fallback=current.provider_order
         ),
         enabled_providers=agent_remediation._as_tuple_strings(  # noqa: SLF001
             payload.get("enabled_providers"), fallback=current.enabled_providers
         ),
-        default_provider=str(
-            payload.get("default_provider") or current.default_provider
-        ),
+        default_provider=str(payload.get("default_provider") or current.default_provider),
         workflow_type_rules=workflow_type_rules,
     )
     agent_remediation.save_policy(policy)
@@ -3423,14 +3328,8 @@ async def update_agent_remediation_config(request: Request) -> dict:
     return {
         "schema_version": agent_remediation.SCHEMA_VERSION,
         "policy": policy.to_dict(),
-        "providers": {
-            provider_id: provider.to_dict()
-            for provider_id, provider in agent_remediation.PROVIDERS.items()
-        },
-        "availability": {
-            provider_id: status.to_dict()
-            for provider_id, status in availability.items()
-        },
+        "providers": {provider_id: provider.to_dict() for provider_id, provider in agent_remediation.PROVIDERS.items()},
+        "availability": {provider_id: status.to_dict() for provider_id, status in availability.items()},
     }
 
 
@@ -3489,31 +3388,20 @@ async def plan_agent_remediation(request: Request) -> dict:
         attempts_payload = []
     if not isinstance(attempts_payload, list):
         raise HTTPException(status_code=422, detail="attempts must be a list")
-    attempts = [
-        agent_remediation.AttemptRecord.from_dict(item)
-        for item in attempts_payload
-        if isinstance(item, dict)
-    ]
+    attempts = [agent_remediation.AttemptRecord.from_dict(item) for item in attempts_payload if isinstance(item, dict)]
     availability = agent_remediation.probe_provider_availability()
     decision = agent_remediation.plan_dispatch(
         context,
         policy=agent_remediation.load_policy(),
         availability=availability,
         attempts=attempts,
-        provider_override=(
-            str(body.get("provider_override")).strip()
-            if body.get("provider_override")
-            else None
-        ),
+        provider_override=(str(body.get("provider_override")).strip() if body.get("provider_override") else None),
         dispatch_origin="manual",
     )
     return {
         "context": {**context.to_dict(), "full_repository": full_repository},
         "decision": decision.to_dict(),
-        "availability": {
-            provider_id: status.to_dict()
-            for provider_id, status in availability.items()
-        },
+        "availability": {provider_id: status.to_dict() for provider_id, status in availability.items()},
     }
 
 
@@ -3538,18 +3426,12 @@ async def dispatch_agent_remediation(request: Request) -> dict:
         source=context.source,
     )
     provider_id = str(
-        body.get("provider")
-        or body.get("provider_override")
-        or agent_remediation.load_policy().default_provider
+        body.get("provider") or body.get("provider_override") or agent_remediation.load_policy().default_provider
     ).strip()
     attempts_payload = body.get("attempts", [])
     if attempts_payload is None:
         attempts_payload = []
-    attempts = [
-        agent_remediation.AttemptRecord.from_dict(item)
-        for item in attempts_payload
-        if isinstance(item, dict)
-    ]
+    attempts = [agent_remediation.AttemptRecord.from_dict(item) for item in attempts_payload if isinstance(item, dict)]
 
     if context.run_id and not context.log_excerpt.strip():
         log_excerpt = await _fetch_failed_log_excerpt(repo_name, context.run_id)
@@ -3580,10 +3462,7 @@ async def dispatch_agent_remediation(request: Request) -> dict:
     dispatch_ref = str(body.get("ref") or "main")
     failure_reason = re.sub(r"\s+", " ", context.failure_reason).strip()[:1000]
     log_excerpt = re.sub(r"\s+", " ", context.log_excerpt).strip()[:8000]
-    endpoint = (
-        f"/repos/{ORG}/Repository_Management/actions/workflows/"
-        "Agent-CI-Remediation.yml/dispatches"
-    )
+    endpoint = f"/repos/{ORG}/Repository_Management/actions/workflows/Agent-CI-Remediation.yml/dispatches"
     payload = {
         "ref": dispatch_ref,
         "inputs": {
@@ -3668,16 +3547,12 @@ def _append_remediation_history(entry: dict) -> None:
         history: list[dict] = []
         if _REMEDIATION_HISTORY_PATH.exists():
             try:
-                history = json.loads(
-                    _REMEDIATION_HISTORY_PATH.read_text(encoding="utf-8")
-                )
+                history = json.loads(_REMEDIATION_HISTORY_PATH.read_text(encoding="utf-8"))
             except Exception:
                 history = []
         history.append(entry)
         history = history[-200:]  # keep last 200 entries
-        _REMEDIATION_HISTORY_PATH.write_text(
-            json.dumps(history, indent=2), encoding="utf-8"
-        )
+        _REMEDIATION_HISTORY_PATH.write_text(json.dumps(history, indent=2), encoding="utf-8")
     except Exception:
         pass  # history is best-effort
 
@@ -3693,9 +3568,7 @@ async def dispatch_jules_workflow(request: Request) -> dict:
         raise HTTPException(status_code=422, detail="workflow_file required")
     endpoint = f"/repos/{ORG}/Repository_Management/actions/workflows/{workflow_file}/dispatches"
     payload = {"ref": ref, "inputs": inputs}
-    with tempfile.NamedTemporaryFile(
-        mode="w", encoding="utf-8", suffix=".json", delete=False
-    ) as f:
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".json", delete=False) as f:
         json.dump(payload, f)
         pf = f.name
     try:
@@ -3708,9 +3581,7 @@ async def dispatch_jules_workflow(request: Request) -> dict:
         with contextlib.suppress(OSError):
             Path(pf).unlink()
     if code != 0:
-        raise HTTPException(
-            status_code=502, detail=f"Jules dispatch failed: {stderr.strip()[:300]}"
-        )
+        raise HTTPException(status_code=502, detail=f"Jules dispatch failed: {stderr.strip()[:300]}")
     return {"status": "dispatched", "workflow_file": workflow_file}
 
 
@@ -3743,15 +3614,11 @@ async def _queue_impl() -> dict:
     async def fetch_active_runs(repo_name: str) -> list[dict]:
         results: list[dict] = []
         for status in ("queued", "in_progress"):
-            results.extend(
-                await _fetch_repo_runs(repo_name, per_page=10, status=status)
-            )
+            results.extend(await _fetch_repo_runs(repo_name, per_page=10, status=status))
         return results
 
     sample = repos[:15]
-    all_runs_nested = await asyncio.gather(
-        *[fetch_active_runs(r["name"]) for r in sample]
-    )
+    all_runs_nested = await asyncio.gather(*[fetch_active_runs(r["name"]) for r in sample])
     all_runs: list[dict] = [run for sublist in all_runs_nested for run in sublist]
 
     queued = sorted(
@@ -3847,10 +3714,7 @@ async def cancel_workflow_runs(request: Request) -> dict:
         r
         for r in queue_data["queued"]
         if r.get("name") == workflow_name
-        and (
-            target_repo is None
-            or (r.get("repository") or {}).get("name") == target_repo
-        )  # noqa: E501
+        and (target_repo is None or (r.get("repository") or {}).get("name") == target_repo)  # noqa: E501
     ]
 
     cancelled: list[dict] = []
@@ -4004,9 +3868,7 @@ async def diagnose_queue() -> dict:
                 label_counts[lbl] = label_counts.get(lbl, 0) + 1
 
             is_fleet = any(lbl.startswith("d-sorg") for lbl in labels)
-            is_generic_sh = not is_fleet and any(
-                lbl in GENERIC_SELF_HOSTED for lbl in labels
-            )
+            is_generic_sh = not is_fleet and any(lbl in GENERIC_SELF_HOSTED for lbl in labels)
             is_github = any(lbl in GITHUB_HOSTED for lbl in labels)
 
             if is_fleet:
@@ -4048,18 +3910,14 @@ async def diagnose_queue() -> dict:
 
     async def fetch_group_runners(gid: int) -> list[str]:
         try:
-            d = await gh_api_admin(
-                f"/orgs/{ORG}/actions/runner-groups/{gid}/runners?per_page=100"
-            )
+            d = await gh_api_admin(f"/orgs/{ORG}/actions/runner-groups/{gid}/runners?per_page=100")
             return [r.get("name", "") for r in d.get("runners", [])]
         except Exception:
             return []
 
     async def fetch_group_repos(gid: int) -> list[str]:
         try:
-            d = await gh_api_admin(
-                f"/orgs/{ORG}/actions/runner-groups/{gid}/repositories?per_page=100"
-            )
+            d = await gh_api_admin(f"/orgs/{ORG}/actions/runner-groups/{gid}/repositories?per_page=100")
             return [r.get("name", "") for r in d.get("repositories", [])]
         except Exception:
             return []
@@ -4069,20 +3927,15 @@ async def diagnose_queue() -> dict:
         raw_groups = rg_data.get("runner_groups", [])
 
         # Fetch runners for every group concurrently
-        group_runner_lists = await asyncio.gather(
-            *[fetch_group_runners(g["id"]) for g in raw_groups]
-        )
+        group_runner_lists = await asyncio.gather(*[fetch_group_runners(g["id"]) for g in raw_groups])
         for grp, grp_runners in zip(raw_groups, group_runner_lists, strict=False):
             runners_by_group[grp["id"]] = grp_runners
 
         # Fetch allowed repos for restricted groups
         restricted_groups = [g for g in raw_groups if g.get("visibility") != "all"]
-        group_repo_lists = await asyncio.gather(
-            *[fetch_group_repos(g["id"]) for g in restricted_groups]
-        )
+        group_repo_lists = await asyncio.gather(*[fetch_group_repos(g["id"]) for g in restricted_groups])
         allowed_repos_by_group: dict[int, list[str]] = {
-            g["id"]: repos
-            for g, repos in zip(restricted_groups, group_repo_lists, strict=False)
+            g["id"]: repos for g, repos in zip(restricted_groups, group_repo_lists, strict=False)
         }
 
         # Collect repos with waiting jobs
@@ -4095,11 +3948,7 @@ async def diagnose_queue() -> dict:
             allowed_repos = allowed_repos_by_group.get(gid, []) if restricted else []
 
             # Which waiting repos are blocked by this group's restrictions?
-            blocked = (
-                [r for r in waiting_repos if r not in allowed_repos]
-                if restricted
-                else []
-            )
+            blocked = [r for r in waiting_repos if r not in allowed_repos] if restricted else []
 
             runner_groups_info.append(
                 {
@@ -4119,11 +3968,7 @@ async def diagnose_queue() -> dict:
 
             # Flag restriction if any group containing our idle runners is restricted
             # and is blocking at least one waiting repo
-            if (
-                restricted
-                and blocked
-                and any(r in online_runner_names for r in grp_runners)
-            ):
+            if restricted and blocked and any(r in online_runner_names for r in grp_runners):
                 runner_groups_restricted = True
 
     except Exception:
@@ -4134,8 +3979,7 @@ async def diagnose_queue() -> dict:
     pick_runner_misconfig = [
         j
         for j in sampled_jobs
-        if (j.get("job") or "").lower()
-        in ("pick-runner", "pick runner", "select runner")  # noqa: E501
+        if (j.get("job") or "").lower() in ("pick-runner", "pick runner", "select runner")  # noqa: E501
         and "self-hosted" in j.get("target", "")
     ]
 
@@ -4196,10 +4040,7 @@ async def diagnose_queue() -> dict:
             "runners were busy when the dispatcher ran."
         )
     elif not sampled_jobs:
-        bottleneck = (
-            "Could not sample job details — runs may have just started or "
-            "GitHub API rate limit may be close."
-        )
+        bottleneck = "Could not sample job details — runs may have just started or GitHub API rate limit may be close."
     else:
         bottleneck = "Unknown — job labels did not match known runner targets."
 
@@ -4247,12 +4088,8 @@ async def get_fleet_hardware(request: Request) -> dict:
     machines = []
     for node in fleet.get("nodes", []):
         registry = node.get("registry") or {}
-        specs = node.get("hardware_specs") or node.get("system", {}).get(
-            "hardware_specs", {}
-        )
-        capacity = node.get("workload_capacity") or node.get("system", {}).get(
-            "workload_capacity", {}
-        )
+        specs = node.get("hardware_specs") or node.get("system", {}).get("hardware_specs", {})
+        capacity = node.get("workload_capacity") or node.get("system", {}).get("workload_capacity", {})
         machines.append(
             {
                 "name": node.get("name"),
@@ -4414,9 +4251,7 @@ async def serve_icon():
 @app.get("/api/fleet/dispatch/actions")
 async def list_dispatch_actions() -> dict:
     """Return every allowlisted action with its access level and description."""
-    return {
-        "actions": [a.to_dict() for a in dispatch_contract.ALLOWLISTED_ACTIONS.values()]
-    }
+    return {"actions": [a.to_dict() for a in dispatch_contract.ALLOWLISTED_ACTIONS.values()]}
 
 
 async def _parse_dispatch_envelope(
@@ -4424,15 +4259,11 @@ async def _parse_dispatch_envelope(
 ) -> dispatch_contract.CommandEnvelope:
     body = await request.json()
     if not isinstance(body, dict):
-        raise HTTPException(
-            status_code=422, detail="Malformed envelope: expected object"
-        )
+        raise HTTPException(status_code=422, detail="Malformed envelope: expected object")
     try:
         return dispatch_contract.CommandEnvelope.from_dict(body)
     except (KeyError, TypeError, ValueError) as exc:
-        raise HTTPException(
-            status_code=422, detail=f"Malformed envelope: {exc}"
-        ) from exc
+        raise HTTPException(status_code=422, detail=f"Malformed envelope: {exc}") from exc
 
 
 @app.post("/api/fleet/dispatch/validate")
@@ -4523,9 +4354,7 @@ async def get_credentials() -> dict:
     gh_auth_detail = "gh not found"
     if gh_binary:
         try:
-            result = subprocess.run(
-                ["gh", "auth", "status"], capture_output=True, text=True, timeout=10
-            )
+            result = subprocess.run(["gh", "auth", "status"], capture_output=True, text=True, timeout=10)
             gh_auth_ok = result.returncode == 0
             gh_auth_detail = "authenticated" if gh_auth_ok else "not logged in"
         except Exception:
@@ -4540,9 +4369,7 @@ async def get_credentials() -> dict:
             "authenticated": gh_auth_ok,
             "reachable": gh_auth_ok,
             "usable": gh_auth_ok,
-            "status": "ready"
-            if gh_auth_ok
-            else ("not_authed" if gh_binary else "not_installed"),
+            "status": "ready" if gh_auth_ok else ("not_authed" if gh_binary else "not_installed"),
             "detail": gh_auth_detail,
             "config_source": "system" if gh_binary else "unavailable",
             "docs_url": "https://cli.github.com/",
@@ -4562,9 +4389,7 @@ async def get_credentials() -> dict:
             "reachable": jules_binary is not None,
             "usable": jules_binary is not None,
             "status": "ready" if jules_binary else "not_installed",
-            "detail": f"Found at {jules_binary}"
-            if jules_binary
-            else "jules not found on PATH",
+            "detail": f"Found at {jules_binary}" if jules_binary else "jules not found on PATH",
             "config_source": "system" if jules_binary else "unavailable",
             "docs_url": "https://jules.google/docs/",
             "setup_hint": "Install Jules CLI from jules.google",
@@ -4583,12 +4408,8 @@ async def get_credentials() -> dict:
             "reachable": jules_api_key,
             "usable": jules_api_key,
             "status": "ready" if jules_api_key else "missing_key",
-            "detail": "API key present"
-            if jules_api_key
-            else "JULES_API_KEY or GOOGLE_API_KEY not set",
-            "config_source": env_source("JULES_API_KEY")
-            if jules_api_key
-            else "unavailable",
+            "detail": "API key present" if jules_api_key else "JULES_API_KEY or GOOGLE_API_KEY not set",
+            "config_source": env_source("JULES_API_KEY") if jules_api_key else "unavailable",
             "docs_url": "https://jules.google/docs/api/",
             "setup_hint": "Set JULES_API_KEY environment variable",
         }
@@ -4612,16 +4433,10 @@ async def get_credentials() -> dict:
             "detail": (
                 "Ready"
                 if (codex_binary and openai_key)
-                else (
-                    "OPENAI_API_KEY not set"
-                    if codex_binary
-                    else "codex not found on PATH"
-                )
+                else ("OPENAI_API_KEY not set" if codex_binary else "codex not found on PATH")
             ),
             "config_source": (
-                env_source("OPENAI_API_KEY")
-                if openai_key
-                else ("system" if codex_binary else "unavailable")
+                env_source("OPENAI_API_KEY") if openai_key else ("system" if codex_binary else "unavailable")
             ),
             "docs_url": "https://github.com/openai/codex",
             "setup_hint": "npm install -g @openai/codex && set OPENAI_API_KEY",
@@ -4646,16 +4461,10 @@ async def get_credentials() -> dict:
             "detail": (
                 "Ready"
                 if (claude_binary and anthropic_key)
-                else (
-                    "ANTHROPIC_API_KEY not set"
-                    if claude_binary
-                    else "claude not found on PATH"
-                )
+                else ("ANTHROPIC_API_KEY not set" if claude_binary else "claude not found on PATH")
             ),
             "config_source": (
-                env_source("ANTHROPIC_API_KEY")
-                if anthropic_key
-                else ("system" if claude_binary else "unavailable")
+                env_source("ANTHROPIC_API_KEY") if anthropic_key else ("system" if claude_binary else "unavailable")
             ),
             "docs_url": "https://docs.anthropic.com/claude-code",
             "setup_hint": "npm install -g @anthropic-ai/claude-code && set ANTHROPIC_API_KEY",
@@ -4663,14 +4472,7 @@ async def get_credentials() -> dict:
     )
 
     # Cline (VS Code extension - check if config exists)
-    cline_config = (
-        Path.home()
-        / ".config"
-        / "Code"
-        / "User"
-        / "globalStorage"
-        / "saoudrizwan.claude-dev"
-    )
+    cline_config = Path.home() / ".config" / "Code" / "User" / "globalStorage" / "saoudrizwan.claude-dev"
     cline_installed = cline_config.exists()
     probes.append(
         {
@@ -4682,11 +4484,7 @@ async def get_credentials() -> dict:
             "reachable": cline_installed,
             "usable": cline_installed,
             "status": "ready" if cline_installed else "not_installed",
-            "detail": (
-                "VS Code extension data found"
-                if cline_installed
-                else "Cline VS Code extension not found"
-            ),
+            "detail": ("VS Code extension data found" if cline_installed else "Cline VS Code extension not found"),
             "config_source": "vscode" if cline_installed else "unavailable",
             "docs_url": "https://marketplace.visualstudio.com/items?itemName=saoudrizwan.claude-dev",
             "setup_hint": "Install Cline extension in VS Code",
@@ -4705,9 +4503,7 @@ async def get_credentials() -> dict:
             "reachable": ollama_binary is not None,
             "usable": ollama_binary is not None,
             "status": "ready" if ollama_binary else "not_installed",
-            "detail": f"Found at {ollama_binary}"
-            if ollama_binary
-            else "ollama not found on PATH",
+            "detail": f"Found at {ollama_binary}" if ollama_binary else "ollama not found on PATH",
             "config_source": "system" if ollama_binary else "unavailable",
             "docs_url": "https://ollama.com/",
             "setup_hint": "Install from ollama.com",
@@ -4730,20 +4526,43 @@ async def get_credentials() -> dict:
 
 DASHBOARD_FAQ: dict[str, str] = {
     "fleet": "The Fleet tab shows all runners in your fleet. Use it to start/stop runners and see hardware metrics.",
-    "remediation": "The Remediation tab lets you dispatch AI agents (Jules, Codex, Claude) to fix failing CI. Move to top: Manual Dispatch is the primary control.",
-    "workflows": "The Workflows tab lists all GitHub Actions workflows across repos. Click a workflow to see run history and dispatch it manually.",
-    "credentials": "The Credentials tab shows provider connection state. No secrets are shown - only whether tools are installed and authenticated.",
-    "assessments": "The Assessments tab lets you trigger code quality assessments for any repo and view score history.",
-    "feature-requests": "The Feature Requests tab dispatches AI agents to implement new features with standards injection (TDD, DbC, DRY, LoD).",
-    "maxwell": "The Maxwell tab shows Maxwell-Daemon status and lets you start/stop the service with confirmation.",
+    "remediation": (
+        "The Remediation tab lets you dispatch AI agents (Jules, Codex, Claude) to fix failing CI."
+        " Move to top: Manual Dispatch is the primary control."
+    ),
+    "workflows": (
+        "The Workflows tab lists all GitHub Actions workflows across repos."
+        " Click a workflow to see run history and dispatch it manually."
+    ),
+    "credentials": (
+        "The Credentials tab shows provider connection state."
+        " No secrets are shown - only whether tools are installed and authenticated."
+    ),
+    "assessments": (
+        "The Assessments tab lets you trigger code quality assessments for any repo and view score history."
+    ),
+    "feature-requests": (
+        "The Feature Requests tab dispatches AI agents to implement new features"
+        " with standards injection (TDD, DbC, DRY, LoD)."
+    ),
+    "maxwell": ("The Maxwell tab shows Maxwell-Daemon status and lets you start/stop the service with confirmation."),
     "queue": "The Queue tab shows live queued and in-progress workflows with auto-refresh every 15 seconds.",
     "history": "The History tab shows recent workflow runs across all repos, filterable by status.",
     "machines": "The Machines tab shows hardware telemetry for each fleet node.",
     "stats": "The Stats tab shows P50/P95 duration analytics and success rates across workflows.",
     "runner-plan": "The Runner Plan tab manages day/night runner capacity scheduling.",
-    "dispatch": "To dispatch a remediation agent: go to Remediation tab, select a failed run, choose a provider, preview the plan, then dispatch.",
-    "provider": "Providers are AI agents: Jules API (cloud, Google), Codex CLI (OpenAI), Claude Code CLI (Anthropic), Ollama (local).",
-    "loop guard": "Loop guard prevents infinite retry loops. When the same failure repeats more than max_same_failure_attempts times, dispatch is blocked.",
+    "dispatch": (
+        "To dispatch a remediation agent: go to Remediation tab, select a failed run,"
+        " choose a provider, preview the plan, then dispatch."
+    ),
+    "provider": (
+        "Providers are AI agents: Jules API (cloud, Google), Codex CLI (OpenAI),"
+        " Claude Code CLI (Anthropic), Ollama (local)."
+    ),
+    "loop guard": (
+        "Loop guard prevents infinite retry loops. When the same failure repeats more than"
+        " max_same_failure_attempts times, dispatch is blocked."
+    ),
 }
 
 
@@ -4817,17 +4636,11 @@ async def maxwell_control(request: Request) -> dict:
     action = str(body.get("action", "")).strip()
     approved_by = str(body.get("approved_by", "")).strip()
     if action not in ("start", "stop", "restart"):
-        raise HTTPException(
-            status_code=422, detail="action must be start, stop, or restart"
-        )
+        raise HTTPException(status_code=422, detail="action must be start, stop, or restart")
     if not approved_by:
-        raise HTTPException(
-            status_code=422, detail="approved_by required for privileged action"
-        )
+        raise HTTPException(status_code=422, detail="approved_by required for privileged action")
 
-    code, out, stderr = await run_cmd(
-        ["systemctl", action, "maxwell-daemon"], timeout=15, cwd=REPO_ROOT
-    )
+    code, out, stderr = await run_cmd(["systemctl", action, "maxwell-daemon"], timeout=15, cwd=REPO_ROOT)
     log.info(
         "maxwell_control: action=%s approved_by=%s exit_code=%d",
         action,
@@ -4904,7 +4717,10 @@ async def help_chat(request: Request) -> dict:
     if tab_help:
         return {"answer": f"For the {current_tab} tab: {tab_help}", "source": "faq"}
     return {
-        "answer": "Try the Remediation tab to dispatch agents for failing CI, or the Workflows tab to manually trigger workflows.",
+        "answer": (
+            "Try the Remediation tab to dispatch agents for failing CI,"
+            " or the Workflows tab to manually trigger workflows."
+        ),
         "source": "fallback",
     }
 
@@ -4926,11 +4742,8 @@ async def get_assessment_scores() -> dict:
                         "file": str(score_file.relative_to(REPO_ROOT)),
                         "repo": data.get("repository") or score_file.parent.name,
                         "score": data.get("score") or data.get("overall_score"),
-                        "date": data.get("date")
-                        or data.get("timestamp")
-                        or score_file.stat().st_mtime,
-                        "summary": data.get("summary")
-                        or data.get("description", "")[:200],
+                        "date": data.get("date") or data.get("timestamp") or score_file.stat().st_mtime,
+                        "summary": data.get("summary") or data.get("description", "")[:200],
                         "provider": data.get("provider") or data.get("agent", ""),
                     }
                 )
@@ -4955,9 +4768,7 @@ async def dispatch_assessment(request: Request) -> dict:
         "ref": "main",
         "inputs": {"target_repository": f"{ORG}/{repo}", "provider": provider},
     }
-    with tempfile.NamedTemporaryFile(
-        mode="w", encoding="utf-8", suffix=".json", delete=False
-    ) as f:
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".json", delete=False) as f:
         json.dump(payload, f)
         pf = f.name
     try:
@@ -4980,20 +4791,34 @@ async def dispatch_assessment(request: Request) -> dict:
 
 # ─── Feature Requests ─────────────────────────────────────────────────────────
 
-_FEATURE_REQUESTS_PATH = (
-    Path.home() / "actions-runners" / "dashboard" / "feature_requests.json"
-)
-_PROMPT_TEMPLATES_PATH = (
-    Path.home() / "actions-runners" / "dashboard" / "prompt_templates.json"
-)
+_FEATURE_REQUESTS_PATH = Path.home() / "actions-runners" / "dashboard" / "feature_requests.json"
+_PROMPT_TEMPLATES_PATH = Path.home() / "actions-runners" / "dashboard" / "prompt_templates.json"
 
 STANDARDS_INJECTION: dict[str, str] = {
-    "tdd": "Use Test-Driven Development: write failing tests first (RED), then minimal code to pass (GREEN), then refactor. Tests must pass before any PR.",
-    "dbc": "Apply Design by Contract: validate inputs at boundaries, assert internal invariants, document pre/postconditions in docstrings.",
-    "dry": "Apply DRY: extract shared logic into modules, eliminate duplication. Three similar code blocks should become one shared function.",
-    "lod": "Apply Law of Demeter: components talk to immediate neighbors only. UI receives view models, not raw nested payloads.",
-    "security": "Apply security-first: validate all inputs, avoid injection vulnerabilities, use parameterized queries, never log secrets.",
-    "docs": "Document public APIs, non-obvious decisions, and architecture choices. Prefer short clear docstrings over multi-paragraph ones.",
+    "tdd": (
+        "Use Test-Driven Development: write failing tests first (RED), then minimal code to pass (GREEN),"
+        " then refactor. Tests must pass before any PR."
+    ),
+    "dbc": (
+        "Apply Design by Contract: validate inputs at boundaries, assert internal invariants,"
+        " document pre/postconditions in docstrings."
+    ),
+    "dry": (
+        "Apply DRY: extract shared logic into modules, eliminate duplication."
+        " Three similar code blocks should become one shared function."
+    ),
+    "lod": (
+        "Apply Law of Demeter: components talk to immediate neighbors only."
+        " UI receives view models, not raw nested payloads."
+    ),
+    "security": (
+        "Apply security-first: validate all inputs, avoid injection vulnerabilities,"
+        " use parameterized queries, never log secrets."
+    ),
+    "docs": (
+        "Document public APIs, non-obvious decisions, and architecture choices."
+        " Prefer short clear docstrings over multi-paragraph ones."
+    ),
 }
 
 
@@ -5036,9 +4861,7 @@ async def save_prompt_template(request: Request) -> dict:
         templates: list[dict] = []
         if _PROMPT_TEMPLATES_PATH.exists():
             templates = json.loads(_PROMPT_TEMPLATES_PATH.read_text(encoding="utf-8"))
-        existing_idx = next(
-            (i for i, t in enumerate(templates) if t.get("name") == name), None
-        )
+        existing_idx = next((i for i, t in enumerate(templates) if t.get("name") == name), None)
         template = {
             "name": name,
             "content": content,
@@ -5048,9 +4871,7 @@ async def save_prompt_template(request: Request) -> dict:
             templates[existing_idx] = template
         else:
             templates.append(template)
-        _PROMPT_TEMPLATES_PATH.write_text(
-            json.dumps(templates, indent=2), encoding="utf-8"
-        )
+        _PROMPT_TEMPLATES_PATH.write_text(json.dumps(templates, indent=2), encoding="utf-8")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
     return {"status": "saved", "name": name}
@@ -5070,9 +4891,7 @@ async def dispatch_feature_request(request: Request) -> dict:
 
     # Build full prompt with standards injection
     injected_standards = "\n\n".join(
-        f"[{s.upper()}] {STANDARDS_INJECTION[s]}"
-        for s in standards
-        if s in STANDARDS_INJECTION
+        f"[{s.upper()}] {STANDARDS_INJECTION[s]}" for s in standards if s in STANDARDS_INJECTION
     )
     full_prompt = prompt
     if injected_standards:
@@ -5096,17 +4915,12 @@ async def dispatch_feature_request(request: Request) -> dict:
             "created_at": datetime.now(UTC).isoformat(),
         }
         history.append(entry)
-        _FEATURE_REQUESTS_PATH.write_text(
-            json.dumps(history[-200:], indent=2), encoding="utf-8"
-        )
+        _FEATURE_REQUESTS_PATH.write_text(json.dumps(history[-200:], indent=2), encoding="utf-8")
     except Exception:
         pass
 
     # Dispatch via feature-request workflow
-    endpoint = (
-        f"/repos/{ORG}/Repository_Management/actions/workflows"
-        "/Jules-Feature-Request.yml/dispatches"
-    )
+    endpoint = f"/repos/{ORG}/Repository_Management/actions/workflows/Jules-Feature-Request.yml/dispatches"
     payload = {
         "ref": "main",
         "inputs": {
@@ -5116,9 +4930,7 @@ async def dispatch_feature_request(request: Request) -> dict:
             "prompt": full_prompt[:10000],
         },
     }
-    with tempfile.NamedTemporaryFile(
-        mode="w", encoding="utf-8", suffix=".json", delete=False
-    ) as f:
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".json", delete=False) as f:
         json.dump(payload, f)
         pf = f.name
     try:
@@ -5143,9 +4955,7 @@ async def dispatch_feature_request(request: Request) -> dict:
 
 # ─── Fleet Orchestration Control Plane ───────────────────────────────────────
 
-_ORCHESTRATION_AUDIT_PATH = (
-    Path.home() / "actions-runners" / "dashboard" / "orchestration_audit.json"
-)
+_ORCHESTRATION_AUDIT_PATH = Path.home() / "actions-runners" / "dashboard" / "orchestration_audit.json"
 _DEPLOY_ACTIONS = {"sync_workflows", "restart_runner", "update_config"}
 
 
@@ -5171,9 +4981,7 @@ def _append_orchestration_audit(entry: dict) -> None:
     existing = _load_orchestration_audit(limit=1000)
     existing.append(entry)
     try:
-        _ORCHESTRATION_AUDIT_PATH.write_text(
-            json.dumps(existing, indent=2), encoding="utf-8"
-        )
+        _ORCHESTRATION_AUDIT_PATH.write_text(json.dumps(existing, indent=2), encoding="utf-8")
     except OSError as exc:
         log.warning("orchestration audit write failed: %s", exc)
 
@@ -5199,9 +5007,7 @@ async def get_fleet_orchestration(request: Request) -> dict:
         system_info = live.get("system", {}) if live else {}
         runners_info = live.get("runners", []) if live else []
         runner_count = len(runners_info) if isinstance(runners_info, list) else 0
-        busy_count = (
-            sum(1 for r in runners_info if r.get("busy")) if runner_count else 0
-        )
+        busy_count = sum(1 for r in runners_info if r.get("busy")) if runner_count else 0
         machines.append(
             {
                 "name": name,
@@ -5242,9 +5048,7 @@ async def fleet_orchestration_dispatch(request: Request) -> dict:
     ref = str(body.get("ref", "main")).strip() or "main"
     machine_target = str(body.get("machine_target", "")).strip()
     inputs = body.get("inputs") or {}
-    approved_by = (
-        str(body.get("approved_by", "dashboard-user")).strip() or "dashboard-user"
-    )
+    approved_by = str(body.get("approved_by", "dashboard-user")).strip() or "dashboard-user"
 
     if not repo or not workflow:
         raise HTTPException(status_code=422, detail="repo and workflow are required")
@@ -5308,9 +5112,7 @@ async def fleet_orchestration_dispatch(request: Request) -> dict:
         dispatch_payload: dict = {"ref": ref}
         if inputs:
             dispatch_payload["inputs"] = inputs
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False
-        ) as pf_obj:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as pf_obj:
             json.dump(dispatch_payload, pf_obj)
             pf = pf_obj.name
         try:
@@ -5348,9 +5150,7 @@ async def fleet_orchestration_deploy(request: Request) -> dict:
     machine = str(body.get("machine", "")).strip()
     action = str(body.get("action", "")).strip()
     confirmed = bool(body.get("confirmed", False))
-    requested_by = (
-        str(body.get("requested_by", "dashboard-user")).strip() or "dashboard-user"
-    )
+    requested_by = str(body.get("requested_by", "dashboard-user")).strip() or "dashboard-user"
 
     if not machine:
         raise HTTPException(status_code=422, detail="machine is required")

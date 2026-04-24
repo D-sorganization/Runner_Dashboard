@@ -118,10 +118,16 @@ fleet nodes API. Supports drilling into individual node system status.
 Org-level runner and repository summary. Shows runner group assignments,
 available label sets, and aggregate health across all repos.
 
-### 3.6 Tests Tab (Heavy Tests)
-Dispatches and monitors CI heavy integration test runs. Lists repos eligible
-for heavy testing, dispatches parameterized test workflows, and optionally
-triggers Docker-based test environments.
+### 3.6 Tests Tab
+Unified testing hub with two sections:
+1. **CI Tests** — table of the latest `ci-standard` workflow run for each of
+   the 17 fleet repos, showing conclusion badge, branch, run number, and
+   timestamp. Failed or cancelled runs show a **Re-run Failed** button that
+   calls GitHub's `rerun-failed-jobs` API.
+2. **Integration Tests** — dispatches and monitors heavy integration test runs
+   (MuJoCo, Drake, Pinocchio physics stacks). Lists repos eligible for heavy
+   testing, dispatches parameterized workflows, and optionally triggers
+   Docker-based test environments.
 
 ### 3.7 Stats Tab
 Aggregate workflow statistics: success rates, average duration, failure
@@ -270,13 +276,15 @@ All endpoints are served under `http://localhost:8321/api/`.
 | GET | `/api/reports/{date}` | Report content for a specific date |
 | GET | `/api/reports/{date}/chart` | Chart data from a dated report |
 
-### Heavy Tests
+### Tests
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/api/heavy-tests/repos` | Repos eligible for heavy testing |
-| POST | `/api/heavy-tests/dispatch` | Dispatch a heavy test workflow |
-| POST | `/api/heavy-tests/docker` | Dispatch a Docker-based test run |
+| GET | `/api/tests/ci-results` | Latest `ci-standard` run per fleet repo (17 repos, cached 120 s) |
+| POST | `/api/tests/rerun` | Re-run failed jobs on a given workflow run (`{repo, run_id}`) |
+| GET | `/api/heavy-tests/repos` | Repos eligible for heavy integration testing |
+| POST | `/api/heavy-tests/dispatch` | Dispatch a heavy test workflow via GitHub Actions |
+| POST | `/api/heavy-tests/docker` | Dispatch a Docker-based heavy test run |
 
 ### Stats and Usage
 

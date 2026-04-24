@@ -117,24 +117,18 @@ def evaluate_drift(
     if dirty:
         severity = "dirty"
         drift = True
-        message = (
-            f"Deployed tree is dirty (uncommitted changes) at {current}; "
-            f"redeploy from a clean checkout."
-        )
+        message = f"Deployed tree is dirty (uncommitted changes) at {current}; redeploy from a clean checkout."
     elif severity == "none":
         drift = False
         message = f"Node is up to date at {current}."
     elif severity == "unknown":
         drift = True
         message = (
-            f"Unable to compare versions (current={current}, "
-            f"expected={expected_version}); manual check recommended."
+            f"Unable to compare versions (current={current}, expected={expected_version}); manual check recommended."
         )
     else:
         drift = True
-        message = (
-            f"Update available: {current} → {expected_version} ({severity} drift)."
-        )
+        message = f"Update available: {current} → {expected_version} ({severity} drift)."
 
     return DriftStatus(
         current=current,

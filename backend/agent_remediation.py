@@ -29,9 +29,7 @@ UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 datetime = _dt_mod.datetime
 
 SCHEMA_VERSION = "agent-remediation.v1"
-DEFAULT_CONFIG_PATH = (
-    Path(__file__).resolve().parents[1] / "config" / "agent_remediation.json"
-)
+DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "agent_remediation.json"
 DEFAULT_PROVIDER_ORDER = (
     "jules_cli",
     "jules_api",
@@ -254,8 +252,7 @@ class RemediationPolicy:
         data["provider_order"] = list(self.provider_order)
         data["enabled_providers"] = list(self.enabled_providers)
         data["workflow_type_rules"] = {
-            workflow_type: rule.to_dict()
-            for workflow_type, rule in self.workflow_type_rules.items()
+            workflow_type: rule.to_dict() for workflow_type, rule in self.workflow_type_rules.items()
         }
         return data
 
@@ -289,9 +286,7 @@ class WorkflowTypeRule:
     fallback_providers: tuple[str, ...] = field(default_factory=tuple)
 
     @classmethod
-    def from_dict(
-        cls, workflow_type: str, data: dict[str, Any] | None
-    ) -> WorkflowTypeRule:
+    def from_dict(cls, workflow_type: str, data: dict[str, Any] | None) -> WorkflowTypeRule:
         payload = data or {}
         return cls(
             workflow_type=workflow_type,
@@ -300,9 +295,7 @@ class WorkflowTypeRule:
             dispatch_mode=str(payload.get("dispatch_mode") or "manual"),
             provider_id=str(payload.get("provider_id") or ""),
             notes=str(payload.get("notes") or ""),
-            fallback_providers=_as_tuple_strings(
-                payload.get("fallback_providers"), fallback=()
-            ),
+            fallback_providers=_as_tuple_strings(payload.get("fallback_providers"), fallback=()),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -390,7 +383,10 @@ PROVIDERS: dict[str, AgentProvider] = {
         availability_probe=("ollama",),
         editable=False,
         experimental=True,
-        notes="Useful as a low-cost analyzer or triage assistant; code-edit execution should stay gated until a stronger local agent loop is selected.",
+        notes=(
+            "Useful as a low-cost analyzer or triage assistant; code-edit execution should stay gated"
+            " until a stronger local agent loop is selected."
+        ),
     ),
     "cline": AgentProvider(
         provider_id="cline",
@@ -473,9 +469,7 @@ def _load_workflow_type_rules(
 
 
 def load_policy(path: Path | str | None = None) -> RemediationPolicy:
-    resolved = Path(
-        path or os.environ.get("AGENT_REMEDIATION_CONFIG", DEFAULT_CONFIG_PATH)
-    )
+    resolved = Path(path or os.environ.get("AGENT_REMEDIATION_CONFIG", DEFAULT_CONFIG_PATH))
     if not resolved.exists():
         return RemediationPolicy(
             auto_dispatch_on_failure=True,
@@ -492,21 +486,13 @@ def load_policy(path: Path | str | None = None) -> RemediationPolicy:
     return RemediationPolicy(
         auto_dispatch_on_failure=bool(payload.get("auto_dispatch_on_failure", True)),
         require_failure_summary=bool(payload.get("require_failure_summary", True)),
-        require_non_protected_branch=bool(
-            payload.get("require_non_protected_branch", True)
-        ),
+        require_non_protected_branch=bool(payload.get("require_non_protected_branch", True)),
         max_same_failure_attempts=int(payload.get("max_same_failure_attempts", 3)),
         attempt_window_hours=int(payload.get("attempt_window_hours", 24)),
-        provider_order=_as_tuple_strings(
-            payload.get("provider_order"), fallback=DEFAULT_PROVIDER_ORDER
-        ),
-        enabled_providers=_as_tuple_strings(
-            payload.get("enabled_providers"), fallback=DEFAULT_PROVIDER_ORDER
-        ),
+        provider_order=_as_tuple_strings(payload.get("provider_order"), fallback=DEFAULT_PROVIDER_ORDER),
+        enabled_providers=_as_tuple_strings(payload.get("enabled_providers"), fallback=DEFAULT_PROVIDER_ORDER),
         default_provider=str(payload.get("default_provider") or "jules_api"),
-        workflow_type_rules=_load_workflow_type_rules(
-            payload.get("workflow_type_rules")
-        ),
+        workflow_type_rules=_load_workflow_type_rules(payload.get("workflow_type_rules")),
     )
 
 
@@ -514,9 +500,7 @@ def save_policy(
     policy: RemediationPolicy,
     path: Path | str | None = None,
 ) -> Path:
-    resolved = Path(
-        path or os.environ.get("AGENT_REMEDIATION_CONFIG", DEFAULT_CONFIG_PATH)
-    )
+    resolved = Path(path or os.environ.get("AGENT_REMEDIATION_CONFIG", DEFAULT_CONFIG_PATH))
     resolved.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "schema_version": SCHEMA_VERSION,
@@ -541,11 +525,7 @@ def classify_workflow_type(
     for index, (workflow_type, rule) in enumerate(policy.workflow_type_rules.items()):
         if workflow_type == "unknown":
             continue
-        matched_lengths = [
-            len(term.strip())
-            for term in rule.match_terms
-            if term.strip() and term.lower() in haystack
-        ]
+        matched_lengths = [len(term.strip()) for term in rule.match_terms if term.strip() and term.lower() in haystack]
         if not matched_lengths:
             continue
         score = max(matched_lengths)
@@ -604,9 +584,7 @@ def _attempts_for_fingerprint(
 
 
 def provider_prompt(provider_id: str, context: FailureContext) -> str:
-    summary = (
-        context.failure_reason.strip() or "No concise failure summary was provided."
-    )
+    summary = context.failure_reason.strip() or "No concise failure summary was provided."
     log_excerpt = context.log_excerpt.strip() or "(no log excerpt provided)"
     branch_line = f"Repository: {context.repository}\nBranch: {context.branch}\nWorkflow: {context.workflow_name}"
     repair_goal = (
@@ -689,9 +667,7 @@ def plan_dispatch(
             workflow_label=workflow_rule.label,
             dispatch_mode=workflow_rule.dispatch_mode,
         )
-    if policy.require_failure_summary and not (
-        context.failure_reason.strip() or context.log_excerpt.strip()
-    ):
+    if policy.require_failure_summary and not (context.failure_reason.strip() or context.log_excerpt.strip()):
         return DispatchDecision(
             accepted=False,
             reason="A failure summary or failed-log excerpt is required before dispatch.",
@@ -720,10 +696,7 @@ def plan_dispatch(
     if dispatch_origin == "automatic" and workflow_rule.dispatch_mode != "auto":
         return DispatchDecision(
             accepted=False,
-            reason=(
-                f"{workflow_rule.label} failures require manual review before agent "
-                "dispatch."
-            ),
+            reason=(f"{workflow_rule.label} failures require manual review before agent dispatch."),
             fingerprint=fingerprint,
             attempt_count=attempt_count,
             remaining_attempts=remaining_attempts,
@@ -732,13 +705,12 @@ def plan_dispatch(
             dispatch_mode=workflow_rule.dispatch_mode,
         )
 
+    candidate_ids: tuple[str, ...]
     if provider_override:
         candidate_ids = (provider_override,)
     else:
         preferred = [workflow_rule.provider_id] if workflow_rule.provider_id else []
-        candidate_ids = tuple(
-            dict.fromkeys(preferred + list(policy.provider_order)).keys()
-        )
+        candidate_ids = tuple(dict.fromkeys(preferred + list(policy.provider_order)).keys())
     for provider_id in candidate_ids:
         if not provider_id:
             continue
@@ -827,11 +799,13 @@ def inspect_jules_workflows(repo_root: Path) -> WorkflowHealthReport:
             cron_count = len(re.findall(r"-\s+cron:\s+", raw))
             if cron_count <= 1:
                 control_tower_issues.append(
-                    "Control Tower currently has only one scheduled cron entry, so low Jules activity is expected unless manual or workflow_run triggers fire."
+                    "Control Tower currently has only one scheduled cron entry, so low Jules activity"
+                    " is expected unless manual or workflow_run triggers fire."
                 )
             if 'target = "auto-repair"' in raw and "call-repair:" in raw:
                 control_tower_issues.append(
-                    "Control Tower still routes CI failures through the legacy repair worker unless explicitly migrated."
+                    "Control Tower still routes CI failures through the legacy repair worker"
+                    " unless explicitly migrated."
                 )
         entries.append(
             WorkflowHealthEntry(
@@ -846,9 +820,7 @@ def inspect_jules_workflows(repo_root: Path) -> WorkflowHealthReport:
             )
         )
     if not control_tower_issues:
-        control_tower_summary = (
-            "No obvious local Control Tower health issue was detected."
-        )
+        control_tower_summary = "No obvious local Control Tower health issue was detected."
     else:
         control_tower_summary = " ".join(control_tower_issues)
     return WorkflowHealthReport(

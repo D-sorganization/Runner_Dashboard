@@ -29,9 +29,7 @@ UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 datetime = _dt_mod.datetime
 
 SCHEMA_VERSION = "usage-monitoring.v1"
-DEFAULT_USAGE_SOURCES_PATH = (
-    Path(__file__).resolve().parents[1] / "config" / "usage_sources.json"
-)
+DEFAULT_USAGE_SOURCES_PATH = Path(__file__).resolve().parents[1] / "config" / "usage_sources.json"
 
 
 def _ensure_mapping(data: Any) -> dict[str, Any]:
@@ -68,12 +66,7 @@ def _normalize_timestamp(value: Any) -> str | None:
         return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
     if isinstance(value, str):
         normalized = value.strip().replace("Z", "+00:00")
-        return (
-            datetime.fromisoformat(normalized)
-            .astimezone(UTC)
-            .isoformat()
-            .replace("+00:00", "Z")
-        )
+        return datetime.fromisoformat(normalized).astimezone(UTC).isoformat().replace("+00:00", "Z")
     raise TypeError("timestamps must be ISO strings or datetime objects")
 
 
@@ -151,9 +144,7 @@ def load_usage_sources_config(
 ) -> list[UsageSourceConfig]:
     """Load usage-source definitions from JSON config or return an empty list."""
 
-    resolved = Path(
-        path or os.environ.get("USAGE_SOURCES_PATH", DEFAULT_USAGE_SOURCES_PATH)
-    )
+    resolved = Path(path or os.environ.get("USAGE_SOURCES_PATH", DEFAULT_USAGE_SOURCES_PATH))
     if not resolved.exists():
         return []
     data = json.loads(resolved.read_text())
@@ -169,12 +160,7 @@ def parse_usage_sources_config(data: Any) -> list[UsageSourceConfig]:
         sources = data
     if not isinstance(sources, list):
         raise TypeError("usage_sources must be a list")
-    return [
-        item
-        if isinstance(item, UsageSourceConfig)
-        else UsageSourceConfig.from_dict(item)
-        for item in sources
-    ]
+    return [item if isinstance(item, UsageSourceConfig) else UsageSourceConfig.from_dict(item) for item in sources]
 
 
 def normalize_usage_source(
@@ -211,9 +197,7 @@ def normalize_usage_source(
         "notes": source.notes,
     }
     if observed_at is not None:
-        summary["observed_at"] = (
-            observed_at.astimezone(UTC).isoformat().replace("+00:00", "Z")
-        )
+        summary["observed_at"] = observed_at.astimezone(UTC).isoformat().replace("+00:00", "Z")
     return summary
 
 
@@ -225,13 +209,9 @@ def normalize_usage_summary(
     """Normalize a usage config payload into an aggregate dashboard summary."""
 
     sources = parse_usage_sources_config(config)
-    normalized_sources = [
-        normalize_usage_source(source, observed_at=observed_at) for source in sources
-    ]
+    normalized_sources = [normalize_usage_source(source, observed_at=observed_at) for source in sources]
     current_period_labels = [
-        item["current_period_label"]
-        for item in normalized_sources
-        if item.get("current_period_label")
+        item["current_period_label"] for item in normalized_sources if item.get("current_period_label")
     ]
     if current_period_labels and len(set(current_period_labels)) == 1:
         summary_period = current_period_labels[0]
@@ -240,34 +220,14 @@ def normalize_usage_summary(
     else:
         summary_period = None
 
-    last_refresh_values = [
-        item["last_refresh"] for item in normalized_sources if item.get("last_refresh")
-    ]
-    confidence_values = [
-        item["confidence"]
-        for item in normalized_sources
-        if item.get("confidence") is not None
-    ]
+    last_refresh_values = [item["last_refresh"] for item in normalized_sources if item.get("last_refresh")]
+    confidence_values = [item["confidence"] for item in normalized_sources if item.get("confidence") is not None]
 
-    current_usage_values = [
-        item["current_usage"]
-        for item in normalized_sources
-        if item["current_usage"] is not None
-    ]
-    limit_values = [
-        item["usage_limit"]
-        for item in normalized_sources
-        if item["usage_limit"] is not None
-    ]
-    remaining_values = [
-        item["remaining"]
-        for item in normalized_sources
-        if item["remaining"] is not None
-    ]
+    current_usage_values = [item["current_usage"] for item in normalized_sources if item["current_usage"] is not None]
+    limit_values = [item["usage_limit"] for item in normalized_sources if item["usage_limit"] is not None]
+    remaining_values = [item["remaining"] for item in normalized_sources if item["remaining"] is not None]
     projected_burn_values = [
-        item["projected_burn"]
-        for item in normalized_sources
-        if item["projected_burn"] is not None
+        item["projected_burn"] for item in normalized_sources if item["projected_burn"] is not None
     ]
 
     def _sum_or_none(values: list[float]) -> float | None:
@@ -282,9 +242,7 @@ def normalize_usage_summary(
             "remaining": _sum_or_none(remaining_values),
             "projected_burn": _sum_or_none(projected_burn_values),
             "last_refresh": max(last_refresh_values) if last_refresh_values else None,
-            "confidence": (
-                round(fmean(confidence_values), 2) if confidence_values else 0.0
-            ),
+            "confidence": (round(fmean(confidence_values), 2) if confidence_values else 0.0),
         },
         "usage_sources": normalized_sources,
     }

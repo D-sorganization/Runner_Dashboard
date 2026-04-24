@@ -16,16 +16,7 @@ from __future__ import annotations
 
 import datetime as _dt_mod
 from dataclasses import asdict, dataclass, field
-
-try:
-    from enum import StrEnum
-except ImportError:  # Python 3.10 compatibility
-    from enum import Enum
-
-    class StrEnum(str, Enum):
-        pass
-
-
+from enum import StrEnum
 from typing import Any
 from uuid import uuid4
 
@@ -64,14 +55,10 @@ def _required_string(data: dict[str, Any], key: str) -> str:
     return text
 
 
-def _confirmation_state(
-    validation: DispatchValidationResult, confirmation: DispatchConfirmation | None
-) -> str:
+def _confirmation_state(validation: DispatchValidationResult, confirmation: DispatchConfirmation | None) -> str:
     if confirmation is None:
         return "missing" if validation.confirmation_required else "not-required"
-    if validation.confirmation_required and validation.reason.startswith(
-        "confirmation must "
-    ):
+    if validation.confirmation_required and validation.reason.startswith("confirmation must "):
         return "invalid"
     return "approved"
 
@@ -140,11 +127,7 @@ class CommandEnvelope:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> CommandEnvelope:
         confirmation_data = data.get("confirmation")
-        confirmation = (
-            DispatchConfirmation.from_dict(confirmation_data)
-            if confirmation_data is not None
-            else None
-        )
+        confirmation = DispatchConfirmation.from_dict(confirmation_data) if confirmation_data is not None else None
         return cls(
             action=_required_string(data, "action"),
             source=_required_string(data, "source"),
@@ -241,10 +224,7 @@ ALLOWLISTED_ACTIONS: dict[str, DispatchAction] = {
     "runner.stop": DispatchAction(
         name="runner.stop",
         access=DispatchAccess.PRIVILEGED,
-        description=(
-            "Stop one or all GitHub Actions runner services. "
-            "Destructive: in-flight jobs will be abandoned."
-        ),
+        description=("Stop one or all GitHub Actions runner services. Destructive: in-flight jobs will be abandoned."),
         prototype_command=("sudo", "systemctl", "stop", "actions.runner.*"),
         requires_confirmation=True,
     ),
@@ -261,10 +241,7 @@ ALLOWLISTED_ACTIONS: dict[str, DispatchAction] = {
     "scheduler.modify": DispatchAction(
         name="scheduler.modify",
         access=DispatchAccess.PRIVILEGED,
-        description=(
-            "Enable or disable a scheduled maintenance job. "
-            "Affects recurring fleet maintenance windows."
-        ),
+        description=("Enable or disable a scheduled maintenance job. Affects recurring fleet maintenance windows."),
         prototype_command=("sudo", "systemctl", "enable|disable", "<unit>"),
         requires_confirmation=True,
     ),
@@ -284,10 +261,7 @@ def _scheduler_modify_command(payload: dict[str, Any]) -> tuple[str, ...]:
         raise ValueError("scheduler.modify payload must request enable or disable")
 
     unit = str(
-        payload.get("unit")
-        or payload.get("timer")
-        or payload.get("service")
-        or "runner-scheduler.timer"
+        payload.get("unit") or payload.get("timer") or payload.get("service") or "runner-scheduler.timer"
     ).strip()
     if not unit:
         raise ValueError("scheduler.modify payload must include a systemd unit")
@@ -384,10 +358,8 @@ def validate_envelope(envelope: CommandEnvelope) -> DispatchValidationResult:
             confirmation_required=True,
         )
 
-    if (
-        action.access is DispatchAccess.PRIVILEGED
-        and not confirmation.approved_by.strip()
-    ):
+    assert confirmation is not None  # narrowed by guard above
+    if action.access is DispatchAccess.PRIVILEGED and not confirmation.approved_by.strip():
         return DispatchValidationResult(
             accepted=False,
             reason="confirmation must record approved_by",
@@ -395,10 +367,7 @@ def validate_envelope(envelope: CommandEnvelope) -> DispatchValidationResult:
             confirmation_required=True,
         )
 
-    if (
-        action.access is DispatchAccess.PRIVILEGED
-        and not confirmation.approved_at.strip()
-    ):
+    if action.access is DispatchAccess.PRIVILEGED and not confirmation.approved_at.strip():
         return DispatchValidationResult(
             accepted=False,
             reason="confirmation must record approved_at",
@@ -450,9 +419,7 @@ def build_audit_log_entry(
     )
 
 
-def command_preview(
-    action_name: str, payload: dict[str, Any] | None = None
-) -> tuple[str, ...]:
+def command_preview(action_name: str, payload: dict[str, Any] | None = None) -> tuple[str, ...]:
     action = get_action(action_name)
     if action is None:
         raise KeyError(action_name)

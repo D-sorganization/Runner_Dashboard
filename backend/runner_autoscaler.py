@@ -76,18 +76,14 @@ POLL_SECONDS = _env_int("AUTOSCALER_POLL_SECONDS", 15)
 MIN_ONLINE = _env_int("AUTOSCALER_MIN_ONLINE", 1)
 MAX_STEP = _env_int("AUTOSCALER_MAX_SCALE_STEP", 1)
 DRY_RUN = bool(_env_int("AUTOSCALER_DRY_RUN", 0))
-RUNNER_SCHEDULER_BIN = os.environ.get(
-    "RUNNER_SCHEDULER_BIN", "/usr/local/bin/runner-scheduler"
-)
+RUNNER_SCHEDULER_BIN = os.environ.get("RUNNER_SCHEDULER_BIN", "/usr/local/bin/runner-scheduler")
 RUNNER_SCHEDULE_CONFIG = os.path.expanduser(
     os.environ.get(
         "RUNNER_SCHEDULE_CONFIG",
         "~/.config/runner-dashboard/runner-schedule.json",
     )
 )
-RUNNER_BASE_DIR = os.path.expanduser(
-    os.environ.get("RUNNER_BASE_DIR", "~/actions-runners")
-)
+RUNNER_BASE_DIR = os.path.expanduser(os.environ.get("RUNNER_BASE_DIR", "~/actions-runners"))
 
 HOSTNAME = platform.node()
 
@@ -114,9 +110,7 @@ def _list_runner_units() -> list[str]:
 
 
 def _unit_is_active(unit: str) -> bool:
-    r = subprocess.run(
-        ["systemctl", "is-active", "--quiet", unit], check=False, timeout=5
-    )
+    r = subprocess.run(["systemctl", "is-active", "--quiet", unit], check=False, timeout=5)
     return r.returncode == 0
 
 
@@ -148,9 +142,7 @@ def _runner_is_busy(unit: str) -> bool:
         proc = psutil.Process(main_pid)
         for child in proc.children(recursive=True):
             try:
-                if "Runner.Worker" in child.name() or "Runner.Worker" in " ".join(
-                    child.cmdline()
-                ):
+                if "Runner.Worker" in child.name() or "Runner.Worker" in " ".join(child.cmdline()):
                     return True
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
@@ -307,7 +299,8 @@ def main() -> None:
             scheduled_desired = _scheduled_desired_count(len(units))
 
             log.info(
-                "sample cpu=%.1f%% mem=%.1f%% load/core=%.2f disk=%.1f%% free=%.1fGB active=%d busy=%d idle=%d inactive=%d scheduled=%d",
+                "sample cpu=%.1f%% mem=%.1f%% load/core=%.2f disk=%.1f%% free=%.1fGB"
+                " active=%d busy=%d idle=%d inactive=%d scheduled=%d",
                 avg_cpu,
                 avg_mem,
                 avg_load,
