@@ -3,21 +3,13 @@
 from __future__ import annotations
 
 import datetime as _dt_mod
-import enum
 import ipaddress
 import re
 from dataclasses import asdict, dataclass, field
+from enum import StrEnum
 from typing import Any
 from urllib.parse import urlparse
 from uuid import uuid4
-
-try:
-    from enum import StrEnum
-except ImportError:  # Python 3.10 compatibility
-
-    class StrEnum(enum.StrEnum):
-        pass
-
 
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 datetime = _dt_mod.datetime
@@ -94,7 +86,8 @@ def _host_is_private(hostname: str) -> bool:
 
 def _url_is_private(url: str) -> bool:
     parsed = urlparse(url)
-    return parsed.scheme in {"http", "https"} and bool(parsed.hostname) and _host_is_private(parsed.hostname)
+    hostname = parsed.hostname
+    return parsed.scheme in {"http", "https"} and hostname is not None and _host_is_private(hostname)
 
 
 def _inventory_index(registry: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
@@ -365,6 +358,7 @@ def validate_envelope(
             target,
             True,
         )
+    assert envelope.confirmation is not None  # narrowed by guard above
     if action.access is RemoteExecutionAccess.PRIVILEGED and not envelope.confirmation.approved_by.strip():
         return RemoteExecutionValidationResult(False, "confirmation must record approved_by", action, target, True)
     if action.access is RemoteExecutionAccess.PRIVILEGED and not envelope.confirmation.approved_at.strip():

@@ -705,6 +705,7 @@ def plan_dispatch(
             dispatch_mode=workflow_rule.dispatch_mode,
         )
 
+    candidate_ids: tuple[str, ...]
     if provider_override:
         candidate_ids = (provider_override,)
     else:

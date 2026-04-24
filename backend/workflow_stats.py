@@ -283,10 +283,10 @@ def get_summary(days: int = 14, group_by: str = "workflow") -> dict[str, Any]:
             sql, (cutoff,)
         ).fetchall()
 
-    groups: dict[tuple[str, ...], dict[str, list[float]]] = {}
+    groups: dict[tuple[str, ...], dict[str, Any]] = {}
     for r in rows:
         if group_by == "workflow":
-            key = (r["repo"], r["workflow_name"])
+            key: tuple[str, ...] = (r["repo"], r["workflow_name"])
         else:
             key = (r["repo"],)
         g = groups.setdefault(key, {"dur": [], "q": [], "success": 0, "fail": 0, "total": 0})

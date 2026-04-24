@@ -33,6 +33,7 @@ import tempfile
 import time
 from collections import deque
 from pathlib import Path
+from typing import Any
 
 import httpx
 import psutil
@@ -198,10 +199,10 @@ BOOT_TIME = time.time()
 #   stats             → 60 s   (aggregate counts; no need to be instant)
 #   repos             → 120 s  (repo list / metadata changes rarely)
 #   diagnose          → 60 s   (expensive multi-call; used for troubleshooting)
-_cache: dict[str, tuple[object, float]] = {}
+_cache: dict[str, tuple[Any, float]] = {}
 
 
-def _cache_get(key: str, ttl: float) -> object | None:
+def _cache_get(key: str, ttl: float) -> Any | None:
     """Return cached value if within TTL, else None."""
     entry = _cache.get(key)
     if entry is not None:
@@ -211,8 +212,8 @@ def _cache_get(key: str, ttl: float) -> object | None:
     return None
 
 
-def _cache_set(key: str, data: object) -> None:
-    """Store value with the current timestamp."""
+def _cache_set(key: str, data: Any, _ttl: float | None = None) -> None:
+    """Store value with the current timestamp. _ttl is accepted but ignored (TTL is per-read)."""
     _cache[key] = (data, time.time())
 
 
@@ -973,7 +974,7 @@ def _validate_runner_schedule(config: dict) -> dict:
     if not isinstance(config, dict):
         raise ValueError("schedule config must be an object")
     days_allowed = {"mon", "tue", "wed", "thu", "fri", "sat", "sun"}
-    sanitized = {
+    sanitized: dict[str, Any] = {
         "enabled": bool(config.get("enabled", True)),
         "timezone": str(config.get("timezone") or "America/Los_Angeles"),
         "default_count": max(0, min(_runner_limit(), int(config.get("default_count", 1)))),
@@ -1586,7 +1587,7 @@ def get_per_runner_resources() -> list[dict]:
     runner_procs = []
     for i in range(1, _runner_limit() + 1):
         _ = get_runner_service_name(i)
-        runner_info = {
+        runner_info: dict[str, Any] = {
             "runner_num": i,
             "cpu_percent": 0.0,
             "memory_mb": 0.0,
@@ -3054,7 +3055,7 @@ async def run_docker_heavy_test(request: Request):
             detail=f"Repo not found at {repo_path}",
         )
 
-    docker_compose_file = config.get("docker_compose", "docker-compose.yml")
+    docker_compose_file = str(config.get("docker_compose", "docker-compose.yml"))
     compose_path = repo_path / docker_compose_file
     if not compose_path.exists():
         raise HTTPException(

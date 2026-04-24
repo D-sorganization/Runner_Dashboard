@@ -15,17 +15,8 @@ without touching the running dashboard service.
 from __future__ import annotations
 
 import datetime as _dt_mod
-import enum
 from dataclasses import asdict, dataclass, field
-
-try:
-    from enum import StrEnum
-except ImportError:  # Python 3.10 compatibility
-
-    class StrEnum(enum.StrEnum):
-        pass
-
-
+from enum import StrEnum
 from typing import Any
 from uuid import uuid4
 
@@ -367,6 +358,7 @@ def validate_envelope(envelope: CommandEnvelope) -> DispatchValidationResult:
             confirmation_required=True,
         )
 
+    assert confirmation is not None  # narrowed by guard above
     if action.access is DispatchAccess.PRIVILEGED and not confirmation.approved_by.strip():
         return DispatchValidationResult(
             accepted=False,
