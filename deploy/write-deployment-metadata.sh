@@ -6,9 +6,17 @@ set -euo pipefail
 DEPLOYED_DIR="${1:-$HOME/actions-runners/dashboard}"
 REPO_DIR="${2:-.}"
 
+if [[ -f "$REPO_DIR/VERSION" ]]; then
+  SOURCE_DIR="$REPO_DIR"
+elif [[ -f "$REPO_DIR/runner-dashboard/VERSION" ]]; then
+  SOURCE_DIR="$REPO_DIR/runner-dashboard"
+else
+  SOURCE_DIR="$REPO_DIR"
+fi
+
 # Read the first non-comment version line from the repo VERSION file
 VERSION=$(
-  python3 - "$REPO_DIR/runner-dashboard/VERSION" <<'PY'
+  python3 - "$SOURCE_DIR/VERSION" <<'PY'
 from pathlib import Path
 import sys
 
@@ -25,9 +33,9 @@ except OSError:
     print("unknown")
 PY
 )
-GIT_SHA=$(git -C "$REPO_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")
-GIT_BRANCH=$(git -C "$REPO_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
-GIT_DIRTY=$([ -z "$(git -C "$REPO_DIR" status --porcelain)" ] && echo "false" || echo "true")
+GIT_SHA=$(git -C "$SOURCE_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")
+GIT_BRANCH=$(git -C "$SOURCE_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+GIT_DIRTY=$([ -z "$(git -C "$SOURCE_DIR" status --porcelain)" ] && echo "false" || echo "true")
 DEPLOYED_AT=$(date -Iseconds)
 HOSTNAME=$(hostname)
 ARTIFACT_SCHEMA="${RUNNER_DASHBOARD_ARTIFACT_SCHEMA:-runner-dashboard-artifact-v1}"
@@ -43,7 +51,7 @@ cat > "$DEPLOYED_DIR/deployment.json" <<EOF
   "git_branch": "$GIT_BRANCH",
   "git_dirty": $GIT_DIRTY,
   "deployed_at": "$DEPLOYED_AT",
-  "deployed_from": "$REPO_DIR",
+  "deployed_from": "$SOURCE_DIR",
   "hostname": "$HOSTNAME",
   "app": "runner-dashboard",
   "compatibility": {

@@ -3318,7 +3318,7 @@ async def get_agent_remediation_config() -> dict:
     }
 
 
-@app.put("/api/agent-remediation/config")
+@app.put("/api/agent-remediation/config", response_model=None)
 async def update_agent_remediation_config(request: Request) -> dict | JSONResponse:
     """Persist the remediation policy so the dashboard can tune auto-routing."""
     body = await request.json()

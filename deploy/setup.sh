@@ -111,6 +111,8 @@ else
     mkdir -p "${DEPLOY_DIR}/config"
     cp -r "${SCRIPT_DIR}/config/." "${DEPLOY_DIR}/config/"
     cp "${SCRIPT_DIR}/local_apps.json" "${DEPLOY_DIR}/local_apps.json"
+    cp "${SCRIPT_DIR}/VERSION" "${DEPLOY_DIR}/VERSION"
+    "${SCRIPT_DIR}/deploy/write-deployment-metadata.sh" "${DEPLOY_DIR}" "${SCRIPT_DIR}"
 
     # Deploy and configure the token refresh script
     REFRESH_SCRIPT="${HOME}/actions-runners/dashboard/refresh-token.sh"

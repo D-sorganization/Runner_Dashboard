@@ -8,10 +8,10 @@
 # The repo lives on the Windows side; this script bridges it to WSL2.
 #
 # Usage (from any WSL2 terminal):
-#   bash /mnt/c/Users/diete/Repositories/Repository_Management/runner-dashboard/deploy/update-deployed.sh
+#   bash /mnt/c/Users/diete/Repositories/runner-dashboard/deploy/update-deployed.sh
 #
 # Or add a shell alias for convenience:
-#   alias update-dashboard='bash /mnt/c/Users/diete/Repositories/Repository_Management/runner-dashboard/deploy/update-deployed.sh'
+#   alias update-dashboard='bash /mnt/c/Users/diete/Repositories/runner-dashboard/deploy/update-deployed.sh'
 #
 # Options:
 #   --repo <path>        Override the REPO path
@@ -24,7 +24,7 @@ set -euo pipefail
 # shellcheck source=deploy/lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-REPO="${REPO:-/mnt/c/Users/diete/Repositories/Repository_Management}"
+REPO="${REPO:-/mnt/c/Users/diete/Repositories/runner-dashboard}"
 DEPLOY_DIR="${DEPLOY_DIR:-$HOME/actions-runners/dashboard}"
 SERVICE="runner-dashboard"
 ARTIFACT_SOURCE=""
@@ -41,7 +41,7 @@ done
 
 [[ -d "$DEPLOY_DIR" ]]           || fail "Deployed dashboard not found at $DEPLOY_DIR — run setup.sh first."
 if [[ -z "$ARTIFACT_SOURCE" ]]; then
-    [[ -d "$REPO/runner-dashboard" ]] || fail "Repo not found at $REPO — check the path."
+    [[ -d "$REPO/backend" && -d "$REPO/frontend" ]] || fail "Dashboard repo not found at $REPO — check the path."
 fi
 
 info "Installing/updating backend dependencies..."
@@ -64,26 +64,27 @@ if [[ -n "$ARTIFACT_SOURCE" ]]; then
 else
     info "Copying backend..."
     if ! dry_run "sync_dir $REPO/runner-dashboard/backend $DEPLOY_DIR/backend"; then
-        sync_dir "$REPO/runner-dashboard/backend" "$DEPLOY_DIR/backend"
+        sync_dir "$REPO/backend" "$DEPLOY_DIR/backend"
         ok  "backend deployed"
     fi
 
     info "Copying deploy scripts..."
     if ! dry_run "cp refresh-token.sh -> $DEPLOY_DIR/refresh-token.sh"; then
-        cp "$REPO/runner-dashboard/deploy/refresh-token.sh"   "$DEPLOY_DIR/refresh-token.sh"
+        cp "$REPO/deploy/refresh-token.sh"   "$DEPLOY_DIR/refresh-token.sh"
         chmod +x "$DEPLOY_DIR/refresh-token.sh"
         ok  "refresh-token.sh deployed"
     fi
 
     info "Copying frontend..."
     if ! dry_run "sync_dir $REPO/runner-dashboard/frontend $DEPLOY_DIR/frontend"; then
-        sync_dir "$REPO/runner-dashboard/frontend" "$DEPLOY_DIR/frontend"
+        sync_dir "$REPO/frontend" "$DEPLOY_DIR/frontend"
         ok  "frontend deployed"
     fi
 
     info "Copying local app manifest..."
     if ! dry_run "cp local_apps.json -> $DEPLOY_DIR/local_apps.json"; then
-        cp "$REPO/runner-dashboard/local_apps.json"           "$DEPLOY_DIR/local_apps.json"
+        cp "$REPO/local_apps.json"           "$DEPLOY_DIR/local_apps.json"
+        cp "$REPO/VERSION"                   "$DEPLOY_DIR/VERSION"
         ok  "local_apps.json deployed"
     fi
 
