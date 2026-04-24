@@ -69,6 +69,21 @@ The backend is a single-process FastAPI application that:
 | `workflow_stats.py` | Aggregate workflow success/failure statistics |
 | `report_files.py` | Parse dated report files for the Reports tab |
 | `runner_autoscaler.py` | Dynamic runner count scaling logic |
+| `config_schema.py` | Config validation and atomic JSON writes |
+
+**Bounded domain routers (`backend/routers/`):**
+
+Well-bounded API domains with no cross-domain shared state are extracted into
+`APIRouter` modules and registered with `app.include_router()`. This reduces
+coupling and makes each domain independently testable.
+
+| Router | Prefix | Responsibility |
+|---|---|---|
+| `routers/dispatch.py` | `/api/fleet/dispatch` | Fleet agent dispatcher — allowlisted hub-to-node commands |
+| `routers/credentials.py` | `/api` | Credential probe — tool/key presence without exposing values |
+
+The migration from inline `@app.*` endpoints to bounded routers is ongoing.
+Remaining endpoint domains in `server.py` are tracked for extraction under issue #4.
 
 ### 2.2 Frontend
 
