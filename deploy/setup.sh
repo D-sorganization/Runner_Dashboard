@@ -57,6 +57,7 @@ FLEET_NODES_VAL=""
 HUB_URL_VAL=""
 ARTIFACT_SOURCE=""
 SCHEDULE_CONFIG_VAL="${RUNNER_SCHEDULE_CONFIG:-$HOME/.config/runner-dashboard/runner-schedule.json}"
+PYTHON_BIN="${RUNNER_DASHBOARD_PYTHON:-$(command -v python3.11 || command -v python3)}"
 
 # Parse flags
 while [[ $# -gt 0 ]]; do
@@ -88,12 +89,17 @@ echo "Display:      ${DISPLAY_NAME_VAL}"
 echo "Role:         ${MACHINE_ROLE}"
 echo "Runners:      ${NUM_RUNNERS}"
 echo "Schedule:     ${SCHEDULE_CONFIG_VAL}"
+echo "Python:       ${PYTHON_BIN}"
 [[ -n "$FLEET_NODES_VAL" ]] && echo "Fleet nodes:  ${FLEET_NODES_VAL}"
 echo ""
 
 # ── Step 1: Install Python deps ──────────────────────────────────────────────
 header "Step 1/5: Python Dependencies"
-pip3 install --break-system-packages --quiet fastapi uvicorn psutil httpx PyYAML
+PIP_ARGS=(install --quiet fastapi uvicorn psutil httpx PyYAML)
+if "${PYTHON_BIN}" -m pip install --help 2>/dev/null | grep -q -- '--break-system-packages'; then
+    PIP_ARGS=(install --break-system-packages --quiet fastapi uvicorn psutil httpx PyYAML)
+fi
+"${PYTHON_BIN}" -m pip "${PIP_ARGS[@]}"
 ok "fastapi, uvicorn, psutil, httpx, PyYAML installed"
 
 # ── Step 2: Deploy dashboard files ───────────────────────────────────────────
@@ -149,6 +155,9 @@ if not hosts.exists(): sys.exit(0)
 m = re.search(r'oauth_token:\s*(\S+)', hosts.read_text())
 print(m.group(1) if m else '', end='')
 " 2>/dev/null || true)
+fi
+if [[ ! "${AUTO_TOKEN}" =~ ^(gho_|ghp_|ghu_|ghs_|ghr_|github_pat_)[A-Za-z0-9_]{30,}$ ]]; then
+    AUTO_TOKEN=""
 fi
 if [[ -n "${AUTO_TOKEN}" ]]; then
     sed -i '/^GH_TOKEN=/d' "${SECRETS_FILE}"
@@ -221,7 +230,7 @@ Type=simple
 User=${USER}
 WorkingDirectory=${DEPLOY_DIR}
 ExecStartPre=${DEPLOY_DIR}/refresh-token.sh
-ExecStart=/usr/bin/python3 ${DEPLOY_DIR}/backend/server.py
+ExecStart=${PYTHON_BIN} ${DEPLOY_DIR}/backend/server.py
 Restart=always
 RestartSec=5
 Environment=GITHUB_ORG=D-sorganization

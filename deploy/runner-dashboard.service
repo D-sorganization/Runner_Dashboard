@@ -8,7 +8,7 @@ Type=simple
 User=dieterolson
 WorkingDirectory=/home/dieterolson/actions-runners/dashboard
 ExecStartPre=/home/dieterolson/actions-runners/dashboard/refresh-token.sh
-ExecStart=/usr/bin/python3 /home/dieterolson/actions-runners/dashboard/backend/server.py
+ExecStart=/usr/bin/python3.11 /home/dieterolson/actions-runners/dashboard/backend/server.py
 Restart=always
 RestartSec=5
 Environment=GITHUB_ORG=D-sorganization

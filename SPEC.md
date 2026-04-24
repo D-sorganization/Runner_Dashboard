@@ -547,7 +547,7 @@ adjusts the active runner count based on the policy defined in
 
 - Terminal colours and `ok`/`info`/`warn`/`fail` log helpers
 - Guard assertions: `require_dir`, `require_file`, `require_cmd`
-- `pip_install <pkg...>` — pip3 with `--break-system-packages` when supported
+- `pip_install <pkg...>` — Python 3.11-preferring pip with `--break-system-packages` when supported
 - `sync_dir <src> <dest>` — rsync with rm/cp fallback
 - `backup_dir <path>` — timestamped `cp -a` backup
 - `dry_run "<description>"` — no-op gate when `DRY_RUN=true`

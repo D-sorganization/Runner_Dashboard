@@ -78,6 +78,7 @@ set_env_var() {
     local value="$2"
     local tmp
     tmp="$(mktemp)"
+    trap 'rm -f "${tmp}"' RETURN
     python3 - "${ENV_FILE}" "${key}" "${value}" >"${tmp}" <<'PY'
 from pathlib import Path
 import sys
@@ -96,6 +97,7 @@ sys.stdout.write("\n".join(filtered) + "\n")
 PY
     cat "${tmp}" > "${ENV_FILE}"
     rm -f "${tmp}"
+    trap - RETURN
 }
 
 require_npm() {

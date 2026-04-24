@@ -39,7 +39,7 @@ GIT_DIRTY=$([ -z "$(git -C "$SOURCE_DIR" status --porcelain)" ] && echo "false" 
 DEPLOYED_AT=$(date -Iseconds)
 HOSTNAME=$(hostname)
 ARTIFACT_SCHEMA="${RUNNER_DASHBOARD_ARTIFACT_SCHEMA:-runner-dashboard-artifact-v1}"
-PYTHON_REQUIRES="${RUNNER_DASHBOARD_PYTHON_REQUIRES:->=3.10}"
+PYTHON_REQUIRES="${RUNNER_DASHBOARD_PYTHON_REQUIRES:->=3.11}"
 SERVICE_NAME="${RUNNER_DASHBOARD_SERVICE_NAME:-runner-dashboard.service}"
 
 # Create metadata file

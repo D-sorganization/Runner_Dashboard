@@ -23,7 +23,7 @@ TOKEN=$(gh auth token 2>/dev/null || echo "")
 # Older gh (<2.40) prints its usage/error to stdout, so `2>/dev/null` doesn't
 # silence it. Treat anything that doesn't look like a GitHub token
 # (gho_/ghp_/ghu_/ghs_/ghr_) as empty so the fallback kicks in.
-if [[ ! "${TOKEN}" =~ ^(gho_|ghp_|ghu_|ghs_|ghr_|github_pat_) ]]; then
+if [[ ! "${TOKEN}" =~ ^(gho_|ghp_|ghu_|ghs_|ghr_|github_pat_)[A-Za-z0-9_]{30,}$ ]]; then
     TOKEN=""
 fi
 
@@ -36,6 +36,10 @@ if not hosts.exists(): sys.exit(0)
 m = re.search(r'oauth_token:\s*(\S+)', hosts.read_text())
 print(m.group(1) if m else '', end='')
 " 2>/dev/null || echo "")
+fi
+
+if [[ ! "${TOKEN}" =~ ^(gho_|ghp_|ghu_|ghs_|ghr_|github_pat_)[A-Za-z0-9_]{30,}$ ]]; then
+    TOKEN=""
 fi
 
 if [[ -z "${TOKEN}" ]]; then

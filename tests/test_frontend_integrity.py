@@ -86,6 +86,27 @@ def test_tests_tab_function_present() -> None:
     assert "function TestsTab" in content
 
 
+def test_tests_tab_rerun_checks_response_ok_before_triggered_state() -> None:
+    content = _read_index()
+    rerun_start = content.index('fetch("/api/tests/rerun"')
+    triggered_state = content.index('n[repo] = "triggered";', rerun_start)
+    rerun_block = content[rerun_start:triggered_state]
+
+    assert "if (!r.ok)" in rerun_block
+    assert 'throw new Error("rerun failed")' in rerun_block
+
+
+def test_runner_facing_tables_use_sortable_headers() -> None:
+    content = _read_index()
+
+    assert "function SortTh" in content
+    assert "function sortRows" in content
+    assert 'sortKey: "runner"' in content
+    assert 'sortKey: "waiting"' in content
+    assert 'sortKey: "machine"' in content
+    assert 'sortKey: "when"' in content
+
+
 # ---------------------------------------------------------------------------
 # dangerouslySetInnerHTML safety check
 # ---------------------------------------------------------------------------
@@ -108,7 +129,8 @@ def test_dangerous_set_inner_html_sanitized() -> None:
         if not (has_sanitize or has_safe_wrapper or has_safe_comment):
             violations.append(lineno + 1)
     assert not violations, (
-        f"dangerouslySetInnerHTML at line(s) {violations} has no DOMPurify.sanitize, renderMarkdown wrapper, or safety comment"
+        f"dangerouslySetInnerHTML at line(s) {violations} has no DOMPurify.sanitize, "
+        "renderMarkdown wrapper, or safety comment"
     )
 
 

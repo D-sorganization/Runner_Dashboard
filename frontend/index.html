@@ -533,6 +533,34 @@
         font-size: 12px;
         border-bottom: 1px solid var(--border);
       }
+      .data-table th.sortable {
+        cursor: pointer;
+        user-select: none;
+        white-space: nowrap;
+      }
+      .data-table th.sortable:hover {
+        color: var(--text-primary);
+        background: rgba(88, 166, 255, 0.08);
+      }
+      .sort-heading {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .sort-indicator {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 14px;
+        height: 14px;
+        border-radius: 4px;
+        color: var(--text-muted);
+        font-size: 10px;
+      }
+      th.sortable.active .sort-indicator {
+        color: var(--accent-blue);
+        background: rgba(88, 166, 255, 0.12);
+      }
       .data-table td {
         padding: 8px 12px;
         border-bottom: 1px solid var(--border);
@@ -1210,7 +1238,32 @@
     ></script>
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.5/dist/purify.min.js"></script>
     <script>
+      window.__dashboardRenderFailed = function (message) {
+        var root = document.getElementById("root");
+        if (!root || root.childElementCount > 0) return;
+        root.innerHTML =
+          '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:#0f1117;color:#e6edf3;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif">' +
+          '<div style="max-width:560px;border:1px solid #30363d;border-radius:8px;background:#161b22;padding:20px;box-shadow:0 12px 40px rgba(0,0,0,.24)">' +
+          '<h1 style="font-size:18px;margin:0 0 8px">Dashboard failed to render</h1>' +
+          '<p style="margin:0 0 12px;color:#8b949e;line-height:1.5">The backend is reachable, but the browser could not start the frontend. Hard-refresh this page, then check whether the CDN scripts are blocked.</p>' +
+          '<code style="display:block;white-space:pre-wrap;color:#f85149;font-size:12px">' +
+          String(message || "Unknown frontend error").replace(/[<>&]/g, function (c) {
+            return { "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c];
+          }) +
+          "</code></div></div>";
+      };
+      window.addEventListener("error", function (event) {
+        window.__dashboardRenderFailed(event.message);
+      });
+    </script>
+    <script>
       "use strict";
+      if (typeof React === "undefined" || typeof ReactDOM === "undefined") {
+        window.__dashboardRenderFailed(
+          "React or ReactDOM did not load. Check network access to cdnjs.cloudflare.com.",
+        );
+        throw new Error("Dashboard dependencies failed to load");
+      }
       var h = React.createElement;
 
       // Configure marked with safe options (issue #7)
@@ -1639,6 +1692,91 @@
         return pa.number - pb.number;
       }
 
+      function sortStateNext(current, key) {
+        if (current && current.key === key) {
+          return { key: key, dir: current.dir === "asc" ? "desc" : "asc" };
+        }
+        return { key: key, dir: "asc" };
+      }
+
+      function normalizeSortValue(value) {
+        if (value == null) return "";
+        if (typeof value === "number") return value;
+        if (typeof value === "boolean") return value ? 1 : 0;
+        var text = String(value);
+        var asDate = Date.parse(text);
+        if (
+          !Number.isNaN(asDate) &&
+          /\d{4}-\d{2}-\d{2}|T\d{2}:/.test(text)
+        ) {
+          return asDate;
+        }
+        var numeric = Number(text.replace(/[^0-9.-]/g, ""));
+        if (text.trim() && !Number.isNaN(numeric) && /[0-9]/.test(text)) {
+          return numeric;
+        }
+        return text.toLowerCase();
+      }
+
+      function sortRows(rows, sort, accessors) {
+        if (!sort || !sort.key || !accessors || !accessors[sort.key]) {
+          return rows.slice();
+        }
+        var dir = sort.dir === "desc" ? -1 : 1;
+        return rows
+          .map(function (row, index) {
+            return { row: row, index: index };
+          })
+          .sort(function (a, b) {
+            var av = normalizeSortValue(accessors[sort.key](a.row));
+            var bv = normalizeSortValue(accessors[sort.key](b.row));
+            if (av < bv) return -1 * dir;
+            if (av > bv) return 1 * dir;
+            return a.index - b.index;
+          })
+          .map(function (entry) {
+            return entry.row;
+          });
+      }
+
+      function SortTh(p) {
+        var active = p.sort && p.sort.key === p.sortKey;
+        var dir = active ? p.sort.dir : "";
+        var props = Object.assign({}, p.thProps || {}, {
+          className:
+            ((p.thProps && p.thProps.className) || "") +
+            " sortable" +
+            (active ? " active" : ""),
+          role: "button",
+          tabIndex: 0,
+          "aria-sort": active
+            ? dir === "desc"
+              ? "descending"
+              : "ascending"
+            : "none",
+          title: "Sort by " + p.label,
+          onClick: function () {
+            p.setSort(sortStateNext(p.sort, p.sortKey));
+          },
+          onKeyDown: function (e) {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              p.setSort(sortStateNext(p.sort, p.sortKey));
+            }
+          },
+        });
+        return h(
+          "th",
+          props,
+          h(
+            "span",
+            { className: "sort-heading" },
+            p.label,
+            h("span", { className: "sort-indicator" }, active ? (dir === "desc" ? "↓" : "↑") : "↕"),
+          ),
+        );
+      }
+
       function shortSha(sha) {
         return sha ? String(sha).slice(0, 7) : "unknown";
       }
@@ -1741,6 +1879,12 @@
         var expandedState = React.useState({});
         var expanded = expandedState[0],
           setExpanded = expandedState[1];
+        var machineSortState = React.useState({ key: "machine", dir: "asc" });
+        var machineSort = machineSortState[0],
+          setMachineSort = machineSortState[1];
+        var runnerTableSortState = React.useState({ key: "number", dir: "asc" });
+        var runnerTableSort = runnerTableSortState[0],
+          setRunnerTableSort = runnerTableSortState[1];
         var on = runners.filter(function (r) {
           return r.status === "online";
         }).length;
@@ -1798,6 +1942,51 @@
           });
           if (!known) machineNodes.push(n);
         });
+        var machineAccessors = {
+          machine: function (n) {
+            return n.name;
+          },
+          reachability: function (n) {
+            return n.online ? 1 : 0;
+          },
+          runners: function (n) {
+            return (runnersByMachine[n.name] || []).filter(function (r) {
+              return r.status === "online";
+            }).length;
+          },
+          detail: function (n) {
+            return offlineReasonLabel(n.offline_reason || (n.online ? "" : "unknown"));
+          },
+          resources: function (n) {
+            return ((n.system || {}).cpu || {}).percent_1m_avg || ((n.system || {}).cpu || {}).percent || 0;
+          },
+          lastSeen: function (n) {
+            return n.last_seen || "";
+          },
+        };
+        var sortedMachineNodes = sortRows(
+          machineNodes,
+          machineSort,
+          machineAccessors,
+        );
+        var runnerAccessors = {
+          number: function (r) {
+            return parseRunnerName(r.name).number;
+          },
+          runner: function (r) {
+            return r.name;
+          },
+          state: function (r) {
+            return r.busy ? "busy" : r.status;
+          },
+          labels: function (r) {
+            return (r.labels || [])
+              .map(function (l) {
+                return l.name || l;
+              })
+              .join(", ");
+          },
+        };
         var machineCount = machineNodes.length;
         var machineOnline = machineNodes.filter(function (n) {
           return n.online;
@@ -2018,18 +2207,48 @@
                 h(
                   "tr",
                   null,
-                  h("th", null, "Machine"),
-                  h("th", null, "Reachability"),
-                  h("th", null, "Runners"),
-                  h("th", null, "Offline Detail"),
-                  h("th", null, "Resources"),
-                  h("th", null, "Last Seen"),
+                  h(SortTh, {
+                    label: "Machine",
+                    sortKey: "machine",
+                    sort: machineSort,
+                    setSort: setMachineSort,
+                  }),
+                  h(SortTh, {
+                    label: "Reachability",
+                    sortKey: "reachability",
+                    sort: machineSort,
+                    setSort: setMachineSort,
+                  }),
+                  h(SortTh, {
+                    label: "Runners",
+                    sortKey: "runners",
+                    sort: machineSort,
+                    setSort: setMachineSort,
+                  }),
+                  h(SortTh, {
+                    label: "Offline Detail",
+                    sortKey: "detail",
+                    sort: machineSort,
+                    setSort: setMachineSort,
+                  }),
+                  h(SortTh, {
+                    label: "Resources",
+                    sortKey: "resources",
+                    sort: machineSort,
+                    setSort: setMachineSort,
+                  }),
+                  h(SortTh, {
+                    label: "Last Seen",
+                    sortKey: "lastSeen",
+                    sort: machineSort,
+                    setSort: setMachineSort,
+                  }),
                 ),
               ),
               h(
                 "tbody",
                 null,
-                machineNodes.map(function (n) {
+                sortedMachineNodes.map(function (n) {
                   var mrs = runnersByMachine[n.name] || [];
                   var onlineRunners = mrs.filter(function (r) {
                     return r.status === "online";
@@ -2206,6 +2425,11 @@
                   },
                 );
                 if (!machineRunners.length) return null;
+                var sortedMachineRunners = sortRows(
+                  machineRunners,
+                  runnerTableSort,
+                  runnerAccessors,
+                );
                 var node = nodesByName[machine.toLowerCase()] || {};
                 var sys = node.system || {};
                 var cpu = sys.cpu || {};
@@ -2295,17 +2519,38 @@
                           h(
                             "tr",
                             null,
-                            h("th", { style: { width: 54 } }, "#"),
-                            h("th", null, "Runner"),
-                            h("th", null, "State"),
-                            h("th", null, "Labels"),
+                            h(SortTh, {
+                              label: "#",
+                              sortKey: "number",
+                              sort: runnerTableSort,
+                              setSort: setRunnerTableSort,
+                              thProps: { style: { width: 54 } },
+                            }),
+                            h(SortTh, {
+                              label: "Runner",
+                              sortKey: "runner",
+                              sort: runnerTableSort,
+                              setSort: setRunnerTableSort,
+                            }),
+                            h(SortTh, {
+                              label: "State",
+                              sortKey: "state",
+                              sort: runnerTableSort,
+                              setSort: setRunnerTableSort,
+                            }),
+                            h(SortTh, {
+                              label: "Labels",
+                              sortKey: "labels",
+                              sort: runnerTableSort,
+                              setSort: setRunnerTableSort,
+                            }),
                             h("th", { style: { width: 90 } }, ""),
                           ),
                         ),
                         h(
                           "tbody",
                           null,
-                          machineRunners.map(function (r) {
+                          sortedMachineRunners.map(function (r) {
                             var parsed = parseRunnerName(r.name);
                             var st = r.busy ? "busy" : r.status;
                             var customLabels = (r.labels || [])
@@ -2726,7 +2971,10 @@
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ repo: repo, run_id: runId }),
           })
-            .then(function (r) { return r.json(); })
+            .then(function (r) {
+              if (!r.ok) throw new Error("rerun failed");
+              return r.json();
+            })
             .then(function () {
               setRerunState(function (prev) {
                 var n = Object.assign({}, prev);
@@ -5088,6 +5336,12 @@
         var crcs = React.useState(null);
         var confirmRun = crcs[0],
           setConfirmRun = crcs[1];
+        var ipSortState = React.useState({ key: "runningFor", dir: "desc" });
+        var ipSort = ipSortState[0],
+          setIpSort = ipSortState[1];
+        var queueSortState = React.useState({ key: "waiting", dir: "desc" });
+        var queueSort = queueSortState[0],
+          setQueueSort = queueSortState[1];
         function elapsed(r) {
           var start = r.run_started_at || r.created_at;
           if (!start) return "-";
@@ -5112,6 +5366,37 @@
               ? "var(--accent-yellow)"
               : "inherit";
         }
+        function runRepo(r) {
+          return (r.repository && r.repository.name) || "";
+        }
+        function runRunner(r) {
+          return r.runner_name || (r.runner && r.runner.name) || "-";
+        }
+        function elapsedSeconds(r) {
+          var start = r.run_started_at || r.created_at;
+          return start
+            ? Math.round((Date.now() - new Date(start).getTime()) / 1000)
+            : 0;
+        }
+        function waitingSeconds(r) {
+          return r.created_at
+            ? Math.round((Date.now() - new Date(r.created_at).getTime()) / 1000)
+            : 0;
+        }
+        var runAccessors = {
+          workflow: function (r) {
+            return r.name;
+          },
+          repo: runRepo,
+          branch: function (r) {
+            return r.head_branch;
+          },
+          runner: runRunner,
+          runningFor: elapsedSeconds,
+          waiting: waitingSeconds,
+        };
+        var sortedIp = sortRows(ip, ipSort, runAccessors);
+        var sortedQu = sortRows(qu, queueSort, runAccessors);
         function runDiagnose() {
           setDiagLoading(true);
           setDiag(null);
@@ -5623,18 +5908,43 @@
                         "tr",
                         null,
                         h("th", null, ""),
-                        h("th", null, "Workflow"),
-                        h("th", null, "Repo"),
-                        h("th", null, "Branch"),
-                        h("th", null, "Runner"),
-                        h("th", null, "Running for"),
+                        h(SortTh, {
+                          label: "Workflow",
+                          sortKey: "workflow",
+                          sort: ipSort,
+                          setSort: setIpSort,
+                        }),
+                        h(SortTh, {
+                          label: "Repo",
+                          sortKey: "repo",
+                          sort: ipSort,
+                          setSort: setIpSort,
+                        }),
+                        h(SortTh, {
+                          label: "Branch",
+                          sortKey: "branch",
+                          sort: ipSort,
+                          setSort: setIpSort,
+                        }),
+                        h(SortTh, {
+                          label: "Runner",
+                          sortKey: "runner",
+                          sort: ipSort,
+                          setSort: setIpSort,
+                        }),
+                        h(SortTh, {
+                          label: "Running for",
+                          sortKey: "runningFor",
+                          sort: ipSort,
+                          setSort: setIpSort,
+                        }),
                         h("th", null, ""),
                       ),
                     ),
                     h(
                       "tbody",
                       null,
-                      ip.map(function (r) {
+                      sortedIp.map(function (r) {
                         var repo = (r.repository && r.repository.name) || "";
                         var key = repo + "/" + r.id;
                         var cstate = cancelling[key];
@@ -5847,17 +6157,37 @@
                           "tr",
                           null,
                           h("th", null, "#"),
-                          h("th", null, "Workflow"),
-                          h("th", null, "Repo"),
-                          h("th", null, "Branch"),
-                          h("th", null, "Waiting"),
+                          h(SortTh, {
+                            label: "Workflow",
+                            sortKey: "workflow",
+                            sort: queueSort,
+                            setSort: setQueueSort,
+                          }),
+                          h(SortTh, {
+                            label: "Repo",
+                            sortKey: "repo",
+                            sort: queueSort,
+                            setSort: setQueueSort,
+                          }),
+                          h(SortTh, {
+                            label: "Branch",
+                            sortKey: "branch",
+                            sort: queueSort,
+                            setSort: setQueueSort,
+                          }),
+                          h(SortTh, {
+                            label: "Waiting",
+                            sortKey: "waiting",
+                            sort: queueSort,
+                            setSort: setQueueSort,
+                          }),
                           h("th", null, ""),
                         ),
                       ),
                       h(
                         "tbody",
                         null,
-                        qu.map(function (r, idx) {
+                        sortedQu.map(function (r, idx) {
                           var repo = (r.repository && r.repository.name) || "";
                           var key = repo + "/" + r.id;
                           var cstate = cancelling[key];
@@ -5977,6 +6307,27 @@
         var net = sys.network || {};
         var gpus = (sys.gpu && sys.gpu.gpus) || [];
         var rprocs = sys.runner_processes || [];
+        var procSortState = React.useState({ key: "runner", dir: "asc" });
+        var procSort = procSortState[0],
+          setProcSort = procSortState[1];
+        var procAccessors = {
+          runner: function (rp) {
+            return rp.runner_num || 0;
+          },
+          status: function (rp) {
+            return rp.status || "";
+          },
+          cpu: function (rp) {
+            return rp.cpu_percent || 0;
+          },
+          memory: function (rp) {
+            return rp.memory_mb || 0;
+          },
+          procs: function (rp) {
+            return rp.process_count || 0;
+          },
+        };
+        var sortedRprocs = sortRows(rprocs, procSort, procAccessors);
         if (!cpu.percent && !mem.percent)
           return h(
             "div",
@@ -6248,17 +6599,42 @@
                     h(
                       "tr",
                       null,
-                      h("th", null, "Runner"),
-                      h("th", null, "Status"),
-                      h("th", null, "CPU %"),
-                      h("th", null, "Memory"),
-                      h("th", null, "Procs"),
+                      h(SortTh, {
+                        label: "Runner",
+                        sortKey: "runner",
+                        sort: procSort,
+                        setSort: setProcSort,
+                      }),
+                      h(SortTh, {
+                        label: "Status",
+                        sortKey: "status",
+                        sort: procSort,
+                        setSort: setProcSort,
+                      }),
+                      h(SortTh, {
+                        label: "CPU %",
+                        sortKey: "cpu",
+                        sort: procSort,
+                        setSort: setProcSort,
+                      }),
+                      h(SortTh, {
+                        label: "Memory",
+                        sortKey: "memory",
+                        sort: procSort,
+                        setSort: setProcSort,
+                      }),
+                      h(SortTh, {
+                        label: "Procs",
+                        sortKey: "procs",
+                        sort: procSort,
+                        setSort: setProcSort,
+                      }),
                     ),
                   ),
                   h(
                     "tbody",
                     null,
-                    rprocs.map(function (rp) {
+                    sortedRprocs.map(function (rp) {
                       return h(
                         "tr",
                         { key: rp.runner_num },
@@ -6304,6 +6680,9 @@
         var fs = React.useState("all");
         var filter = fs[0],
           setFilter = fs[1];
+        var sortState = React.useState({ key: "when", dir: "desc" });
+        var historySort = sortState[0],
+          setHistorySort = sortState[1];
         var filtered = runs.filter(function (r) {
           if (filter === "all") return true;
           if (filter === "success") return r.conclusion === "success";
@@ -6358,6 +6737,31 @@
             );
           return h("span", { style: { color: "var(--text-muted)" } }, "\u2022");
         }
+        var historyAccessors = {
+          status: function (r) {
+            return r.status === "in_progress" ? "running" : r.conclusion || "";
+          },
+          workflow: function (r) {
+            return r.name;
+          },
+          repository: function (r) {
+            return (r.repository || {}).name || "";
+          },
+          branch: function (r) {
+            return r.head_branch;
+          },
+          machine: function (r) {
+            return r.machine_name || "";
+          },
+          duration: function (r) {
+            if (!r.run_started_at || !r.updated_at) return 0;
+            return new Date(r.updated_at) - new Date(r.run_started_at);
+          },
+          when: function (r) {
+            return r.created_at || r.updated_at || "";
+          },
+        };
+        var sortedFiltered = sortRows(filtered, historySort, historyAccessors);
         var counts = {
           all: runs.length,
           success: runs.filter(function (r) {
@@ -6423,19 +6827,55 @@
               h(
                 "tr",
                 null,
-                h("th", { style: { width: 30 } }, ""),
-                h("th", null, "Workflow"),
-                h("th", null, "Repository"),
-                h("th", null, "Branch"),
-                h("th", null, "Machine"),
-                h("th", null, "Duration"),
-                h("th", null, "When"),
+                h(SortTh, {
+                  label: "",
+                  sortKey: "status",
+                  sort: historySort,
+                  setSort: setHistorySort,
+                  thProps: { style: { width: 30 } },
+                }),
+                h(SortTh, {
+                  label: "Workflow",
+                  sortKey: "workflow",
+                  sort: historySort,
+                  setSort: setHistorySort,
+                }),
+                h(SortTh, {
+                  label: "Repository",
+                  sortKey: "repository",
+                  sort: historySort,
+                  setSort: setHistorySort,
+                }),
+                h(SortTh, {
+                  label: "Branch",
+                  sortKey: "branch",
+                  sort: historySort,
+                  setSort: setHistorySort,
+                }),
+                h(SortTh, {
+                  label: "Machine",
+                  sortKey: "machine",
+                  sort: historySort,
+                  setSort: setHistorySort,
+                }),
+                h(SortTh, {
+                  label: "Duration",
+                  sortKey: "duration",
+                  sort: historySort,
+                  setSort: setHistorySort,
+                }),
+                h(SortTh, {
+                  label: "When",
+                  sortKey: "when",
+                  sort: historySort,
+                  setSort: setHistorySort,
+                }),
               ),
             ),
             h(
               "tbody",
               null,
-              filtered.slice(0, 50).map(function (r) {
+              sortedFiltered.slice(0, 50).map(function (r) {
                 var machine = r.machine_name || "-";
                 var mColor = MACHINE_COLORS[machine] || "var(--text-muted)";
                 var repo = (r.repository || {}).name || "?";
@@ -10141,6 +10581,36 @@
         var dpss = React.useState(null);
         var deploySuccess = dpss[0],
           setDeploySuccess = dpss[1];
+        var machineSortState = React.useState({ key: "machine", dir: "asc" });
+        var machineSort = machineSortState[0],
+          setMachineSort = machineSortState[1];
+        var machineAccessors = {
+          machine: function (m) {
+            return m.display_name || m.name;
+          },
+          role: function (m) {
+            return m.role || "node";
+          },
+          status: function (m) {
+            return m.online ? 1 : 0;
+          },
+          runners: function (m) {
+            return m.runner_count || 0;
+          },
+          busy: function (m) {
+            return m.busy_runners || 0;
+          },
+          cpu: function (m) {
+            return m.cpu_percent || 0;
+          },
+          memory: function (m) {
+            return m.memory_percent || 0;
+          },
+          lastPing: function (m) {
+            return m.last_ping || "";
+          },
+        };
+        var sortedMachines = sortRows(machines, machineSort, machineAccessors);
 
         function machineStatusColor(online) {
           return online ? "var(--accent-green)" : "var(--accent-red)";
@@ -10318,14 +10788,54 @@
                 h(
                   "tr",
                   null,
-                  h("th", null, "Machine"),
-                  h("th", null, "Role"),
-                  h("th", null, "Status"),
-                  h("th", null, "Runners"),
-                  h("th", null, "Busy"),
-                  h("th", null, "CPU %"),
-                  h("th", null, "Mem %"),
-                  h("th", null, "Last Ping"),
+                  h(SortTh, {
+                    label: "Machine",
+                    sortKey: "machine",
+                    sort: machineSort,
+                    setSort: setMachineSort,
+                  }),
+                  h(SortTh, {
+                    label: "Role",
+                    sortKey: "role",
+                    sort: machineSort,
+                    setSort: setMachineSort,
+                  }),
+                  h(SortTh, {
+                    label: "Status",
+                    sortKey: "status",
+                    sort: machineSort,
+                    setSort: setMachineSort,
+                  }),
+                  h(SortTh, {
+                    label: "Runners",
+                    sortKey: "runners",
+                    sort: machineSort,
+                    setSort: setMachineSort,
+                  }),
+                  h(SortTh, {
+                    label: "Busy",
+                    sortKey: "busy",
+                    sort: machineSort,
+                    setSort: setMachineSort,
+                  }),
+                  h(SortTh, {
+                    label: "CPU %",
+                    sortKey: "cpu",
+                    sort: machineSort,
+                    setSort: setMachineSort,
+                  }),
+                  h(SortTh, {
+                    label: "Mem %",
+                    sortKey: "memory",
+                    sort: machineSort,
+                    setSort: setMachineSort,
+                  }),
+                  h(SortTh, {
+                    label: "Last Ping",
+                    sortKey: "lastPing",
+                    sort: machineSort,
+                    setSort: setMachineSort,
+                  }),
                 ),
               ),
               h(
@@ -10348,7 +10858,7 @@
                         loading ? "Loading machines…" : "No machines found.",
                       ),
                     )
-                  : machines.map(function (m) {
+                  : sortedMachines.map(function (m) {
                       return h(
                         "tr",
                         { key: m.name },

@@ -4,14 +4,27 @@ import asyncio
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 
 import server  # noqa: E402
 
 
+def _patch_server_windows_os(monkeypatch) -> None:
+    real_os = server.os
+
+    class WindowsOs(SimpleNamespace):
+        name = "nt"
+
+        def __getattr__(self, key: str):  # noqa: ANN202
+            return getattr(real_os, key)
+
+    monkeypatch.setattr(server, "os", WindowsOs())
+
+
 def test_windows_wslconfig_path_is_checked_directly(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setattr(server.os, "name", "nt")
+    _patch_server_windows_os(monkeypatch)
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
     monkeypatch.delenv("HOMEDRIVE", raising=False)
     monkeypatch.delenv("HOMEPATH", raising=False)
@@ -22,7 +35,7 @@ def test_windows_wslconfig_path_is_checked_directly(monkeypatch, tmp_path: Path)
 
 
 def test_systemd_keepalive_probe_is_windows_safe(monkeypatch) -> None:
-    monkeypatch.setattr(server.os, "name", "nt")
+    _patch_server_windows_os(monkeypatch)
 
     result = asyncio.run(server._inspect_systemd_keepalive())
 
@@ -31,7 +44,7 @@ def test_systemd_keepalive_probe_is_windows_safe(monkeypatch) -> None:
 
 
 def test_systemd_timer_check_is_windows_safe(monkeypatch) -> None:
-    monkeypatch.setattr(server.os, "name", "nt")
+    _patch_server_windows_os(monkeypatch)
 
     assert server._unit_active_sync("runner-scheduler.timer") is False
 

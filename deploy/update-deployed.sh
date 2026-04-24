@@ -50,8 +50,9 @@ ok "backend dependencies installed"
 
 if ! dry_run "backup $DEPLOY_DIR"; then
     info "Creating backup snapshot..."
-    _BACKUP=$(backup_dir "$DEPLOY_DIR")
-    [[ -n "$_BACKUP" ]] && ok "Backup: $_BACKUP"
+    _BACKUP=$(backup_dir "$DEPLOY_DIR") || fail "Backup failed; aborting update"
+    [[ -n "$_BACKUP" ]] || fail "Backup returned empty path; aborting update"
+    ok "Backup: $_BACKUP"
 fi
 
 if [[ -n "$ARTIFACT_SOURCE" ]]; then

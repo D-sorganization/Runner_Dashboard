@@ -58,8 +58,22 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Check Jules app credentials
+        id: app-creds
+        env:
+          JULES_APP_ID: ${{ secrets.JULES_APP_ID }}
+          JULES_APP_PRIVATE_KEY: ${{ secrets.JULES_APP_PRIVATE_KEY }}
+        run: |
+          if [ -n "$JULES_APP_ID" ] && [ -n "$JULES_APP_PRIVATE_KEY" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::JULES_APP_ID/JULES_APP_PRIVATE_KEY are not configured; skipping redundant PR closer."
+          fi
+
       - name: Generate Jules app token
         id: app-token
+        if: steps.app-creds.outputs.configured == 'true'
         uses: actions/create-github-app-token@v1
         with:
           app-id: ${{ secrets.JULES_APP_ID }}
@@ -67,6 +81,7 @@ jobs:
           owner: ${{ github.repository_owner }}
 
       - name: Checkout Repository_Management (for scripts)
+        if: steps.app-creds.outputs.configured == 'true'
         uses: actions/checkout@v4
         with:
           repository: D-sorganization/Repository_Management
@@ -75,11 +90,13 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
 
       - name: Setup Python
+        if: steps.app-creds.outputs.configured == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Close redundant agent PRs
+        if: steps.app-creds.outputs.configured == 'true'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -122,4 +139,5 @@ jobs:
             echo "- **Trigger:** ${{ github.event_name }}"
             echo "- **Dry run:** ${{ inputs.dry_run || 'false' }}"
             echo "- **Agent filter:** ${{ inputs.agent_filter || 'all non-user' }}"
+            echo "- **App credentials configured:** ${{ steps.app-creds.outputs.configured || 'false' }}"
           } >> "$GITHUB_STEP_SUMMARY"

@@ -3,6 +3,8 @@
 # Source with: source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 # Do NOT execute directly.
 
+set -euo pipefail
+
 # Terminal colours
 GREEN='\033[0;32m'; CYAN='\033[0;36m'; RED='\033[0;31m'; YELLOW='\033[1;33m'; NC='\033[0m'
 ok()   { echo -e "${GREEN}[ OK ]${NC} $*"; }
@@ -18,9 +20,14 @@ require_cmd()  { command -v "$1" >/dev/null 2>&1 || fail "Required command not f
 # pip install with --break-system-packages when supported
 pip_install() {
     local -a pkgs=("$@")
-    local -a cmd=(pip3 install --quiet "${pkgs[@]}")
-    if pip3 install --help 2>/dev/null | grep -q -- '--break-system-packages'; then
-        cmd=(pip3 install --break-system-packages --quiet "${pkgs[@]}")
+    local python_bin="${RUNNER_DASHBOARD_PYTHON:-}"
+    if [[ -z "$python_bin" ]]; then
+        python_bin="$(command -v python3.11 || command -v python3)"
+    fi
+
+    local -a cmd=("$python_bin" -m pip install --quiet "${pkgs[@]}")
+    if "$python_bin" -m pip install --help 2>/dev/null | grep -q -- '--break-system-packages'; then
+        cmd=("$python_bin" -m pip install --break-system-packages --quiet "${pkgs[@]}")
     fi
     "${cmd[@]}"
 }
