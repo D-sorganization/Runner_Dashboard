@@ -1208,9 +1208,15 @@
       crossorigin
       src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js"
     ></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.5/dist/purify.min.js"></script>
     <script>
       "use strict";
       var h = React.createElement;
+
+      // Configure marked with safe options (issue #7)
+      if (typeof marked !== "undefined") {
+        marked.use({ mangle: false, headerIds: false, gfm: true });
+      }
 
       var LANG_COLORS = {
         JavaScript: "#f1e05a",
@@ -3753,9 +3759,15 @@
 
         function renderMarkdown(md) {
           if (typeof marked !== "undefined" && marked.parse) {
-            return { __html: marked.parse(md) };
+            var raw = marked.parse(md);
+            // Sanitize via DOMPurify to prevent XSS (issue #7)
+            var clean =
+              typeof DOMPurify !== "undefined"
+                ? DOMPurify.sanitize(raw)
+                : raw;
+            return { __html: clean };
           }
-          // Fallback: just show raw text
+          // Fallback: just show raw text (HTML-escaped, inherently safe)
           return { __html: "<pre>" + md.replace(/</g, "&lt;") + "</pre>" };
         }
 
@@ -5069,6 +5081,13 @@
         var cs = React.useState({});
         var cancelling = cs[0],
           setCancelling = cs[1];
+        // Two-step inline confirmation state for destructive actions (issue #7)
+        var cwcs = React.useState(null);
+        var confirmWorkflow = cwcs[0],
+          setConfirmWorkflow = cwcs[1];
+        var crcs = React.useState(null);
+        var confirmRun = crcs[0],
+          setConfirmRun = crcs[1];
         function elapsed(r) {
           var start = r.run_started_at || r.created_at;
           if (!start) return "-";
@@ -5136,16 +5155,18 @@
             });
         }
         function cancelWorkflow(workflowName, repo) {
-          if (
-            !confirm(
-              "Cancel all queued '" +
-                workflowName +
-                "' runs" +
-                (repo ? " in " + repo : "") +
-                "?",
-            )
-          )
+          // Two-step inline confirmation: first call arms, second call fires (issue #7)
+          var key = workflowName + (repo ? "/" + repo : "");
+          if (confirmWorkflow !== key) {
+            setConfirmWorkflow(key);
+            setTimeout(function () {
+              setConfirmWorkflow(function (cur) {
+                return cur === key ? null : cur;
+              });
+            }, 5000);
             return;
+          }
+          setConfirmWorkflow(null);
           fetch("/api/queue/cancel-workflow", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -5676,20 +5697,38 @@
                               h(
                                 "button",
                                 {
-                                  onClick: function () {
-                                    if (confirm("Cancel this run?"))
-                                      cancelRun(repo, r.id);
-                                  },
+                                  // Two-step inline confirmation for destructive run cancel (issue #7)
+                                  onClick: (function (runId) {
+                                    return function () {
+                                      var rkey = repo + "/" + runId;
+                                      if (confirmRun !== rkey) {
+                                        setConfirmRun(rkey);
+                                        setTimeout(function () {
+                                          setConfirmRun(function (cur) {
+                                            return cur === rkey ? null : cur;
+                                          });
+                                        }, 5000);
+                                      } else {
+                                        setConfirmRun(null);
+                                        cancelRun(repo, runId);
+                                      }
+                                    };
+                                  })(r.id),
                                   disabled: !!cstate,
                                   style: {
                                     fontSize: 11,
                                     padding: "2px 7px",
-                                    background: "none",
+                                    background:
+                                      confirmRun === repo + "/" + r.id
+                                        ? "var(--accent-red)"
+                                        : "none",
                                     border: "1px solid var(--accent-red)",
                                     color:
                                       cstate === "done"
                                         ? "var(--text-muted)"
-                                        : "var(--accent-red)",
+                                        : confirmRun === repo + "/" + r.id
+                                          ? "#fff"
+                                          : "var(--accent-red)",
                                     borderRadius: 4,
                                     cursor: cstate ? "default" : "pointer",
                                   },
@@ -5698,7 +5737,9 @@
                                   ? h("span", { className: "spinner" })
                                   : cstate === "done"
                                     ? "cancelled"
-                                    : "Cancel",
+                                    : confirmRun === repo + "/" + r.id
+                                      ? "Click again to confirm"
+                                      : "Cancel",
                               ),
                           ),
                         );
@@ -5753,6 +5794,8 @@
                           "Bulk cancel:",
                         ),
                         bulkTargets.map(function (name) {
+                          // Two-step inline confirmation for bulk workflow cancel (issue #7)
+                          var isPending = confirmWorkflow === name;
                           return h(
                             "button",
                             {
@@ -5763,18 +5806,30 @@
                               style: {
                                 fontSize: 11,
                                 padding: "3px 10px",
-                                background: "none",
-                                border: "1px solid var(--accent-orange)",
-                                color: "var(--accent-orange)",
+                                background: isPending
+                                  ? "var(--accent-red)"
+                                  : "none",
+                                border: isPending
+                                  ? "1px solid var(--accent-red)"
+                                  : "1px solid var(--accent-orange)",
+                                color: isPending
+                                  ? "#fff"
+                                  : "var(--accent-orange)",
                                 borderRadius: 4,
                                 cursor: "pointer",
                               },
                             },
-                            "Cancel all '",
-                            name,
-                            "' (",
-                            workflowGroups[name].length,
-                            ")",
+                            isPending
+                              ? "Click again to confirm"
+                              : h(
+                                  React.Fragment,
+                                  null,
+                                  "Cancel all '",
+                                  name,
+                                  "' (",
+                                  workflowGroups[name].length,
+                                  ")",
+                                ),
                           );
                         }),
                       )
