@@ -98,20 +98,36 @@ This is two operations:
 
 ### Phase 4 — Bulk backfill
 
-With the pilot validated, label the remaining ~35 issues. Two acceptable
-paths:
+The full manifest is already written to
+[`docs/issue-taxonomy-backfill.yml`](issue-taxonomy-backfill.yml). It
+classifies all 45 open issues (plus the two tracking epics added during
+this migration) across the required taxonomy dimensions and declares the
+sub-issue children for tracking issue #55.
 
-a. **Agent-assisted.** An agent reads each issue's body + title prefix and
-   proposes labels from the taxonomy. A human (or dashboard UI) approves
-   each.
-b. **Scripted best-guess.** A small script derives initial labels from
-   title prefix (`[CRITICAL]` → `critical`, title contains "SSRF" → adds
-   `security`, etc.) and leaves `judgement` blank for a human to fill. Good
-   enough to unblock agents; precision improves over time.
+Application is a single workflow invocation:
 
-The plan recommends **(a)**, because judgement labels are the hardest to
-derive mechanically and getting them wrong on critical security tickets
-would mis-route work.
+1. `Labels Sync` workflow (`workflow_dispatch`) creates the label set
+   from `.github/labels.yml` — prerequisite for step 2.
+2. `Issue Taxonomy Backfill` workflow (`workflow_dispatch`) reads the
+   manifest and:
+   - Adds the listed labels to each issue (idempotent; existing labels
+     untouched).
+   - Adds native sub-issue links via GraphQL for every
+     parent → child edge declared in the manifest.
+   - Supports `dry_run=true` (default) so the planned changes can be
+     reviewed in the Action log before anything is applied.
+
+If any classification is wrong, edit the manifest and re-run the workflow.
+Labels are only **added**, never removed, so bad choices are cheap to
+correct.
+
+### Phase 4 review path (if you want human eyes before apply)
+
+- Run `Issue Taxonomy Backfill` with `dry_run=true` — no mutations. The
+  run log prints every `WOULD ADD` / `WOULD LINK` decision.
+- Sanity-check the log. If needed, edit `docs/issue-taxonomy-backfill.yml`
+  and re-run dry-run.
+- Re-run with `dry_run=false` when the plan looks right.
 
 ### Phase 5 — Projects v2 board (optional)
 

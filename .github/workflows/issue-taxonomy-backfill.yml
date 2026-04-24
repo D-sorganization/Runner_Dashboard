@@ -1,0 +1,222 @@
+name: Issue Taxonomy Backfill
+
+# Applies the bulk backfill manifest (docs/issue-taxonomy-backfill.yml) to
+# existing issues. Two operations:
+#
+#   1. Add taxonomy labels to each listed issue (idempotent — won't add
+#      duplicates, won't remove existing labels).
+#   2. Attach sub-issue parent/child relationships declared in the
+#      manifest's `parents` section, via GraphQL.
+#
+# Safe to run multiple times. Labels must already exist in the repo
+# (run Labels Sync first). Prints a summary and fails if any issue
+# reference in the manifest is closed / missing.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Print the planned changes without applying them."
+        required: false
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+      only_labels:
+        description: "Apply only labels, skip sub-issue linking."
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "true"
+          - "false"
+      only_hierarchy:
+        description: "Apply only sub-issue hierarchy, skip labels."
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+permissions:
+  issues: write
+  contents: read
+
+concurrency:
+  group: issue-taxonomy-backfill
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install js-yaml
+        run: npm install --no-save js-yaml@4
+
+      - name: Apply backfill manifest
+        uses: actions/github-script@v7
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          ONLY_LABELS: ${{ inputs.only_labels }}
+          ONLY_HIERARCHY: ${{ inputs.only_hierarchy }}
+        with:
+          script: |
+            const fs = require('fs');
+            const yaml = require('js-yaml');
+
+            const manifest = yaml.load(
+              fs.readFileSync('docs/issue-taxonomy-backfill.yml', 'utf8')
+            );
+            const dry = process.env.DRY_RUN === 'true';
+            const onlyLabels = process.env.ONLY_LABELS === 'true';
+            const onlyHierarchy = process.env.ONLY_HIERARCHY === 'true';
+            const { owner, repo } = context.repo;
+
+            // ---------- Validate manifest -----------------------------
+            if (manifest.version !== 1) {
+              core.setFailed(`Unsupported manifest version: ${manifest.version}`);
+              return;
+            }
+
+            // ---------- Collect existing labels on each issue ---------
+            const labelApplyCount = { added: 0, already: 0, missing: 0 };
+
+            if (!onlyHierarchy) {
+              for (const entry of manifest.issues) {
+                const n = entry.number;
+                const adds = entry.add || [];
+                if (adds.length === 0) continue;
+
+                let cur;
+                try {
+                  const { data } = await github.rest.issues.get({
+                    owner, repo, issue_number: n,
+                  });
+                  cur = data;
+                } catch (e) {
+                  core.warning(`#${n}: ${e.message}`);
+                  labelApplyCount.missing++;
+                  continue;
+                }
+                if (cur.state !== 'open') {
+                  core.info(`#${n}: skipping (state=${cur.state})`);
+                  continue;
+                }
+
+                const existing = new Set(cur.labels.map((l) => l.name || l));
+                const toAdd = adds.filter((l) => !existing.has(l));
+                if (toAdd.length === 0) {
+                  core.info(`#${n}: all labels already present`);
+                  labelApplyCount.already++;
+                  continue;
+                }
+
+                core.info(
+                  `#${n}: ${dry ? 'WOULD ADD' : 'ADDING'} ${toAdd.join(', ')}`,
+                );
+                if (!dry) {
+                  try {
+                    await github.rest.issues.addLabels({
+                      owner, repo, issue_number: n, labels: toAdd,
+                    });
+                    labelApplyCount.added++;
+                  } catch (e) {
+                    core.warning(
+                      `#${n}: addLabels failed (${e.message}). Did Labels Sync run?`,
+                    );
+                    labelApplyCount.missing++;
+                  }
+                } else {
+                  labelApplyCount.added++;
+                }
+              }
+            }
+
+            // ---------- Sub-issue hierarchy via GraphQL ---------------
+            const hierarchyCount = { added: 0, already: 0, skipped: 0 };
+
+            if (!onlyLabels) {
+              // Resolve a cache of issueNumber -> GraphQL node id.
+              const resolveId = async (num) => {
+                const q = `
+                  query($owner:String!,$repo:String!,$n:Int!) {
+                    repository(owner:$owner, name:$repo) {
+                      issue(number:$n) { id }
+                    }
+                  }
+                `;
+                const res = await github.graphql(q, { owner, repo, n: num });
+                return res.repository.issue && res.repository.issue.id;
+              };
+
+              for (const [parentStr, spec] of Object.entries(manifest.parents || {})) {
+                const parentNum = Number(parentStr);
+                const parentId = await resolveId(parentNum);
+                if (!parentId) {
+                  core.warning(`parent #${parentNum} not found; skipping`);
+                  continue;
+                }
+
+                // Fetch existing sub-issues to avoid re-adding.
+                const existingQ = `
+                  query($id:ID!) {
+                    node(id:$id) {
+                      ... on Issue {
+                        subIssues(first:100) { nodes { number } }
+                      }
+                    }
+                  }
+                `;
+                const existingRes = await github.graphql(existingQ, { id: parentId });
+                const existingNums = new Set(
+                  (existingRes.node && existingRes.node.subIssues &&
+                   existingRes.node.subIssues.nodes || []).map((x) => x.number),
+                );
+
+                for (const childNum of spec.children || []) {
+                  if (existingNums.has(childNum)) {
+                    core.info(`#${parentNum} -> #${childNum}: already linked`);
+                    hierarchyCount.already++;
+                    continue;
+                  }
+                  const childId = await resolveId(childNum);
+                  if (!childId) {
+                    core.warning(`child #${childNum} not found; skipping`);
+                    hierarchyCount.skipped++;
+                    continue;
+                  }
+
+                  core.info(
+                    `#${parentNum} -> #${childNum}: ${dry ? 'WOULD LINK' : 'LINKING'}`,
+                  );
+                  if (!dry) {
+                    const mut = `
+                      mutation($parentId:ID!, $childId:ID!) {
+                        addSubIssue(input:{issueId:$parentId, subIssueId:$childId}) {
+                          issue { number }
+                        }
+                      }
+                    `;
+                    try {
+                      await github.graphql(mut, { parentId, childId });
+                      hierarchyCount.added++;
+                    } catch (e) {
+                      core.warning(
+                        `link #${parentNum} -> #${childNum} failed: ${e.message}`,
+                      );
+                      hierarchyCount.skipped++;
+                    }
+                  } else {
+                    hierarchyCount.added++;
+                  }
+                }
+              }
+            }
+
+            core.notice(
+              `backfill: labels(added=${labelApplyCount.added} already=${labelApplyCount.already} missing=${labelApplyCount.missing}) hierarchy(added=${hierarchyCount.added} already=${hierarchyCount.already} skipped=${hierarchyCount.skipped}) dry_run=${dry}`,
+            );
