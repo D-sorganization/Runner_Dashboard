@@ -1,0 +1,38 @@
+[Unit]
+Description=D-sorganization Runner Dashboard (ControlTower)
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dieterolson
+WorkingDirectory=/home/dieterolson/actions-runners/dashboard
+ExecStartPre=/home/dieterolson/actions-runners/dashboard/refresh-token.sh
+ExecStart=/usr/bin/python3 /home/dieterolson/actions-runners/dashboard/backend/server.py
+Restart=always
+RestartSec=5
+Environment=GITHUB_ORG=D-sorganization
+Environment=NUM_RUNNERS=12
+Environment=MAX_RUNNERS=16
+Environment=DASHBOARD_PORT=8321
+Environment=DISPLAY_NAME=ControlTower
+Environment=RUNNER_ALIASES=controltower,control-tower-runner-monitoring
+Environment=RUNNER_SCHEDULE_CONFIG=/home/dieterolson/.config/runner-dashboard/runner-schedule.json
+Environment=RUNNER_SCHEDULER_BIN=/usr/local/bin/runner-scheduler
+Environment=MACHINE_ROLE=hub
+Environment=HOME=/home/dieterolson
+Environment=PATH=/usr/lib/wsl/lib:/home/dieterolson/.local/bin:/home/dieterolson/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# Secrets loaded from a file readable only by dieterolson (chmod 600).
+# NOT stored in this world-readable unit file.
+# File: /home/dieterolson/.config/runner-dashboard/env
+# Contents:
+#   GH_TOKEN=ghp_<classic PAT with scopes: repo, admin:org>
+#   FLEET_NODES=Linux-Brick:http://100.x.x.a:8321,...   (once nodes are live)
+EnvironmentFile=-/home/dieterolson/.config/runner-dashboard/env
+
+# Hardening
+NoNewPrivileges=false
+ProtectSystem=false
+
+[Install]
+WantedBy=multi-user.target

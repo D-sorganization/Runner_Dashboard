@@ -1,0 +1,74 @@
+name: Spec Check (Enhanced)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  spec-freshness:
+    name: Verify SPEC.md freshness
+    runs-on: d-sorg-fleet
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'spec-exempt') }}
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Analyze changes and detect patterns
+        id: analyze
+        shell: bash
+        run: |
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+          SOURCE_CHANGED=false
+          SPEC_CHANGED=false
+
+          while IFS= read -r file; do
+            if [[ "$file" == "SPEC.md" ]]; then
+              SPEC_CHANGED=true
+            fi
+            if [[ "$file" == src/* ]] || [[ "$file" == tests/* ]] || \
+               [[ "$file" == config/* ]] || [[ "$file" == pyproject.toml ]] || \
+               [[ "$file" == Cargo.toml ]] || [[ "$file" == package.json ]] || \
+               [[ "$file" == requirements.txt ]]; then
+              SOURCE_CHANGED=true
+            fi
+          done <<< "$CHANGED_FILES"
+
+          echo "source_changed=$SOURCE_CHANGED" >> "$GITHUB_OUTPUT"
+          echo "spec_changed=$SPEC_CHANGED" >> "$GITHUB_OUTPUT"
+
+          if [[ "$SOURCE_CHANGED" == "true" ]] && [[ "$SPEC_CHANGED" == "false" ]]; then
+            echo "needs_update=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "needs_update=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Fail if spec is stale
+        if: steps.analyze.outputs.needs_update == 'true'
+        shell: bash
+        run: |
+          echo "::error::Source files changed but SPEC.md was not updated."
+          echo "Update SPEC.md with the relevant section(s), OR"
+          echo "Add the 'spec-exempt' label if this is purely refactoring/testing."
+          echo ""
+          echo "For guidance, see:"
+          echo "  - SPEC_UPDATE_RULES.md"
+          echo "  - SPEC_MAINTENANCE_GUIDE.md"
+          exit 1
+
+      - name: Spec check passed
+        if: steps.analyze.outputs.needs_update == 'false'
+        shell: bash
+        run: |
+          echo "Spec check passed."
+          if [[ "${{ steps.analyze.outputs.spec_changed }}" == "true" ]]; then
+            echo "SPEC.md was updated alongside source changes."
+          elif [[ "${{ steps.analyze.outputs.source_changed }}" == "false" ]]; then
+            echo "No source files changed."
+          fi

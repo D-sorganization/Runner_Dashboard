@@ -1,0 +1,357 @@
+name: Jules Control Tower
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, closed]
+  workflow_run:
+    # GitHub Actions requires explicit workflow names here; there is no wildcard
+    # "all workflows" trigger for workflow_run. Keep this list limited to
+    # failure-producing CI and verification workflows that are safe to remediate.
+    workflows:
+      - "CI Standard"
+      - "Spec Check"
+      - "Spec Check (Enhanced)"
+      - "GAAI — Self-Hosted Test Runner"
+      - "MATLAB Lint (Windows Self-Hosted)"
+      - "Fleet Dispatch CI Verify"
+    types: [completed]
+  schedule:
+    # COST OPTIMIZED: Runs Monday only (1x weekly for stable repos)
+    # Time-based routing in triage step handles worker selection
+    - cron: "0 8 * * 1" # Monday at 08:00 UTC
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Worker to dispatch (auto uses schedule routing)"
+        required: false
+        default: "auto"
+        type: choice
+        options:
+          - auto
+          - assessment-generator
+          - code-quality-reviewer
+          - completist
+          - documentation-auditor
+          - sentinel
+          - auto-refactor
+          - auto-rebase
+          - issue-resolver
+          - pr-compiler
+          - ci-remediation
+
+# SAFEGUARD: Maximum iterations to prevent infinite repair loops
+env:
+  MAX_REPAIR_ITERATIONS: 3
+  MAX_ITERATIONS_WINDOW_HOURS: 1
+  DEFAULT_CI_REMEDIATION_PROVIDER: jules_api
+
+concurrency:
+  group: jules-control-tower-${{ github.repository }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+  issues: write
+  security-events: write
+  checks: read
+
+jobs:
+  triage:
+    runs-on: d-sorg-fleet
+    # Removed global actor check to allow scheduled runs even if file modified by bot
+    outputs:
+      target: ${{ steps.decide.outputs.target }}
+      remediation_provider: ${{ steps.remediation-policy.outputs.provider_id }}
+      remediation_dispatch_mode: ${{ steps.remediation-policy.outputs.dispatch_mode }}
+      remediation_workflow_type: ${{ steps.remediation-policy.outputs.workflow_type }}
+    steps:
+      - name: Generate Jules app token
+        id: app-token
+        if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'failure'
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.JULES_APP_ID }}
+          private-key: ${{ secrets.JULES_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+      - name: Checkout Repository_Management
+        if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'failure'
+        uses: actions/checkout@v4
+      # SAFEGUARD: Check if we've exceeded max repair iterations in the time window
+      - name: Check Iteration Limits
+        id: check-limits
+        if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'failure'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          MAX_ITERATIONS_WINDOW_HOURS: ${{ env.MAX_ITERATIONS_WINDOW_HOURS }}
+          MAX_REPAIR_ITERATIONS: ${{ env.MAX_REPAIR_ITERATIONS }}
+        run: |
+          echo "Checking repair iteration limits..."
+          BRANCH="${{ github.event.workflow_run.head_branch }}"
+          FAILED_WORKFLOW="${{ github.event.workflow_run.name || 'CI Standard' }}"
+          HOURS_AGO=$(date -u -d "$MAX_ITERATIONS_WINDOW_HOURS hours ago" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-"$MAX_ITERATIONS_WINDOW_HOURS"H +%Y-%m-%dT%H:%M:%SZ)
+
+          FAILURE_COUNT=$(gh run list \
+            --workflow="$FAILED_WORKFLOW" \
+            --branch="$BRANCH" \
+            --limit=20 \
+            --json conclusion,createdAt,status \
+            --jq "[.[] | select(.conclusion == \"failure\" and .createdAt > \"$HOURS_AGO\")] | length" \
+            2>/dev/null || echo "0")
+
+          if [ "$FAILURE_COUNT" -ge "$MAX_REPAIR_ITERATIONS" ]; then
+            echo "::error::Max repair iterations reached. Manual intervention required."
+            echo "exceeded=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exceeded=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Resolve remediation routing policy
+        id: remediation-policy
+        if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'failure'
+        run: |
+          RESULT=$(python3 scripts/resolve_agent_remediation_rule.py \
+            --repository "${{ github.event.repository.name || github.event.repository.full_name }}" \
+            --workflow-name "${{ github.event.workflow_run.name || 'CI Standard' }}" \
+            --failure-reason "${{ github.event.workflow_run.display_title || github.event.workflow_run.name || 'CI failure' }}" \
+            --branch "${{ github.event.workflow_run.head_branch || '' }}")
+          echo "$RESULT"
+          echo "workflow_type=$(echo "$RESULT" | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"workflow_type\"])')" >> "$GITHUB_OUTPUT"
+          echo "workflow_label=$(echo "$RESULT" | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"workflow_label\"])')" >> "$GITHUB_OUTPUT"
+          echo "dispatch_mode=$(echo "$RESULT" | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"dispatch_mode\"])')" >> "$GITHUB_OUTPUT"
+          echo "provider_id=$(echo "$RESULT" | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"provider_id\"])')" >> "$GITHUB_OUTPUT"
+
+      - name: Analyze Event Context
+        id: decide
+        if: steps.check-limits.outcome == 'skipped' || steps.check-limits.outputs.exceeded != 'true'
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const event = context.eventName;
+            const actor = context.actor;
+            const schedule = context.payload.schedule;
+            const manualTarget = context.payload.inputs?.target;
+            let target = "none";
+
+            console.log(`Event: ${event}, Actor: ${actor}, Schedule: ${schedule}`);
+
+            // 0. MANUAL DISPATCH - Honor explicit target selection
+            if (event === "workflow_dispatch" && manualTarget && manualTarget !== "auto") {
+              target = manualTarget;
+              console.log(`Manual dispatch: ${target}`);
+            }
+            // 1. CI FAILURE -> provider-agnostic remediation or hotfix creator
+            else if (event === "workflow_run" && context.payload.workflow_run.conclusion === "failure") {
+               // Allow bot to trigger repair (handled by check-limits loop protection)
+               const failedBranch = context.payload.workflow_run.head_branch;
+               const dispatchMode = "${{ steps.remediation-policy.outputs.dispatch_mode }}";
+               if (failedBranch === "main" || failedBranch === "master") {
+                  target = "hotfix-creator";
+               } else if (dispatchMode && dispatchMode !== "auto") {
+                  console.log(`Skipping automatic remediation because workflow type requires manual review (${dispatchMode}).`);
+                  target = "none";
+               } else {
+                  target = "ci-remediation";
+               }
+            }
+            // 2. SCHEDULED RUNS - Route by cron pattern (deterministic) with UTC time fallback
+            else if (event === "schedule" || (event === "workflow_dispatch" && (!manualTarget || manualTarget === "auto"))) {
+              // Always run schedules regardless of actor
+              // Primary: Match exact cron pattern for deterministic routing
+              if (schedule) {
+                switch (schedule) {
+                  case "0 8 */3 * *":
+                    target = "assessment-generator";
+                    break;
+                  case "30 8 */3 * *":
+                    target = "code-quality-reviewer";
+                    break;
+                  case "0 9 */3 * *":
+                    target = "completist";
+                    break;
+                  case "30 9 */3 * *":
+                    target = "documentation-auditor";
+                    break;
+                  case "30 10 */3 * *":
+                    target = "sentinel";
+                    break;
+                  case "0 11 */3 * *":
+                    target = "auto-refactor";
+                    break;
+                  case "30 11 */3 * *":
+                    target = "none";
+                    break;
+                  case "0 12 */3 * *":
+                    target = "pr-compiler";
+                    break;
+                  case "0 13 */3 * *":
+                    target = "auto-rebase";
+                    break;
+                  default:
+                    target = "none";
+                }
+              }
+
+              // Fallback: UTC time-based routing (for workflow_dispatch with auto or edge cases)
+              if (target === "none") {
+                const now = new Date();
+                const hour = now.getUTCHours();
+                const minute = now.getUTCMinutes();
+
+                if (hour === 8 && minute < 30) {
+                  target = "assessment-generator";
+                } else if (hour === 8 && minute >= 30) {
+                  target = "code-quality-reviewer";
+                } else if (hour === 9 && minute < 30) {
+                  target = "completist";
+                } else if (hour === 9 && minute >= 30) {
+                  target = "documentation-auditor";
+                } else if (hour === 10 && minute >= 30) {
+                  target = "sentinel";
+                } else if (hour === 11 && minute < 30) {
+                  target = "auto-refactor";
+                } else if (hour === 11 && minute >= 30) {
+                  target = "none";
+                } else if (hour === 12) {
+                  target = "pr-compiler";
+                } else if (hour === 13) {
+                  target = "auto-rebase";
+                } else {
+                  target = "none";
+                }
+              }
+            }
+            // 3. PUSH TO MAIN -> DOCS
+            else if (event === "push" && context.ref === "refs/heads/main") {
+              if (actor === 'jules-bot' || actor === 'jules-ai[bot]') {
+                 console.log("Ignoring push by bot to prevent doc-scribe loops.");
+                 target = "none";
+              } else {
+                 target = "doc-scribe";
+              }
+            }
+            // 4. NEW PR -> TEST GENERATOR
+            else if (event === "pull_request" && context.payload.action === 'opened') {
+               if (actor === 'jules-bot' || actor === 'jules-ai[bot]') {
+                  console.log("Ignoring PR open by bot.");
+                  target = "none";
+               } else {
+                  target = "test-generator";
+               }
+            }
+            // 5. PR CLOSED -> ARCHIVIST
+            else if (event === "pull_request" && context.payload.action === 'closed' && context.payload.pull_request.merged) {
+               target = "archivist";
+            }
+
+            console.log(`Decision: Dispatching [${target}]`);
+            core.setOutput("target", target);
+
+  # --- WORKER DISPATCH ---
+
+  call-repair:
+    needs: triage
+    if: needs.triage.outputs.target == 'auto-repair'
+    uses: ./.github/workflows/Jules-Auto-Repair.yml
+    with:
+      run_id: ${{ format('{0}', github.event.workflow_run.id) }}
+      branch: ${{ github.event.workflow_run.head_branch || '' }}
+    secrets: inherit
+
+  call-ci-remediation:
+    needs: triage
+    if: needs.triage.outputs.target == 'ci-remediation'
+    uses: ./.github/workflows/Agent-CI-Remediation.yml
+    with:
+      target_repository: ${{ github.repository }}
+      provider: ${{ needs.triage.outputs.remediation_provider || env.DEFAULT_CI_REMEDIATION_PROVIDER }}
+      run_id: ${{ format('{0}', github.event.workflow_run.id) }}
+      branch: ${{ github.event.workflow_run.head_branch || '' }}
+      workflow_name: ${{ github.event.workflow_run.name || 'CI Standard' }}
+      failure_reason: ${{ github.event.workflow_run.display_title || github.event.workflow_run.name || 'CI failure' }}
+      max_same_failure_attempts: ${{ env.MAX_REPAIR_ITERATIONS }}
+    secrets: inherit
+
+  call-hotfix-creator:
+    needs: triage
+    if: needs.triage.outputs.target == 'hotfix-creator'
+    uses: ./.github/workflows/Jules-Hotfix-Creator.yml
+    with:
+      run_id: ${{ format('{0}', github.event.workflow_run.id) }}
+      failed_branch: ${{ github.event.workflow_run.head_branch || '' }}
+    secrets: inherit
+
+  call-scribe:
+    needs: triage
+    if: needs.triage.outputs.target == 'doc-scribe'
+    uses: ./.github/workflows/Jules-Documentation-Scribe.yml
+    secrets: inherit
+
+  call-tests:
+    needs: triage
+    if: needs.triage.outputs.target == 'test-generator'
+    uses: ./.github/workflows/Jules-Test-Generator.yml
+    secrets: inherit
+
+  call-auto-refactor:
+    needs: triage
+    if: needs.triage.outputs.target == 'auto-refactor'
+    uses: ./.github/workflows/Jules-Auto-Refactor.yml
+    secrets: inherit
+
+  call-auto-rebase:
+    needs: triage
+    if: needs.triage.outputs.target == 'auto-rebase'
+    uses: ./.github/workflows/Jules-Auto-Rebase.yml
+    secrets: inherit
+
+  call-archivist:
+    needs: triage
+    if: needs.triage.outputs.target == 'archivist'
+    uses: ./.github/workflows/Jules-Archivist.yml
+    secrets: inherit
+
+  call-sentinel:
+    needs: triage
+    if: needs.triage.outputs.target == 'sentinel'
+    uses: ./.github/workflows/Jules-Sentinel.yml
+    secrets: inherit
+
+  call-code-quality-reviewer:
+    needs: triage
+    if: needs.triage.outputs.target == 'code-quality-reviewer'
+    uses: ./.github/workflows/Jules-Code-Quality-Reviewer.yml
+    secrets: inherit
+
+  call-assessment-generator:
+    needs: triage
+    if: needs.triage.outputs.target == 'assessment-generator'
+    uses: ./.github/workflows/Jules-Assessment-Generator.yml
+    secrets: inherit
+
+  call-issue-resolver:
+    needs: triage
+    if: needs.triage.outputs.target == 'issue-resolver'
+    uses: ./.github/workflows/Jules-Issue-Resolver.yml
+    secrets: inherit
+
+  call-completist:
+    needs: triage
+    if: needs.triage.outputs.target == 'completist'
+    uses: ./.github/workflows/Jules-Completist.yml
+    secrets: inherit
+
+  call-documentation-auditor:
+    needs: triage
+    if: needs.triage.outputs.target == 'documentation-auditor'
+    uses: ./.github/workflows/Jules-Documentation-Auditor.yml
+    secrets: inherit
+
+  call-pr-compiler:
+    needs: triage
+    if: needs.triage.outputs.target == 'pr-compiler'
+    uses: ./.github/workflows/Jules-PR-Compiler.yml
+    secrets: inherit

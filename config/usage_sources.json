@@ -1,0 +1,71 @@
+{
+  "schema_version": "usage-monitoring.v1",
+  "usage_sources": [
+    {
+      "name": "claude_code_sessions",
+      "kind": "subscription",
+      "label": "Claude Code sessions",
+      "usage_unit": "tokens",
+      "usage_limit": 20000000,
+      "current_usage": 7200000,
+      "projected_burn": 19200000,
+      "current_period": {
+        "label": "2026-04",
+        "start": "2026-04-01T00:00:00Z",
+        "end": "2026-04-30T23:59:59Z"
+      },
+      "last_refresh": "2026-04-16T12:00:00Z",
+      "confidence": 0.74,
+      "secret_handling": {
+        "requires_secret": false,
+        "secret_env_vars": [],
+        "notes": "Keep raw prompts, API keys, and transcripts out of this file. Log only normalized usage data."
+      },
+      "notes": "Local session usage is estimated from dashboard-side logs and should be treated as directional."
+    },
+    {
+      "name": "local_dev_tool_usage",
+      "kind": "local_tool",
+      "label": "Local development tool usage",
+      "usage_unit": "minutes",
+      "usage_limit": 1800,
+      "current_usage": 480,
+      "projected_burn": 960,
+      "current_period": {
+        "label": "2026-04",
+        "start": "2026-04-01T00:00:00Z",
+        "end": "2026-04-30T23:59:59Z"
+      },
+      "last_refresh": "2026-04-16T12:00:00Z",
+      "confidence": 0.58,
+      "secret_handling": {
+        "requires_secret": false,
+        "secret_env_vars": [],
+        "notes": "Derived from local activity counters only; never write raw shell history or command output here."
+      }
+    },
+    {
+      "name": "github_actions_minutes",
+      "kind": "metered_service",
+      "label": "GitHub Actions minutes",
+      "usage_unit": "minutes",
+      "usage_limit": 3000,
+      "current_usage": 910,
+      "projected_burn": 2100,
+      "current_period": {
+        "label": "2026-04",
+        "start": "2026-04-01T00:00:00Z",
+        "end": "2026-04-30T23:59:59Z"
+      },
+      "last_refresh": "2026-04-16T12:05:00Z",
+      "confidence": 0.86,
+      "secret_handling": {
+        "requires_secret": true,
+        "secret_env_vars": [
+          "GH_TOKEN"
+        ],
+        "notes": "Store credentials in the service environment or secret manager; do not place tokens in the config file."
+      }
+    }
+  ]
+}

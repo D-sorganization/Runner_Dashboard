@@ -1,0 +1,14 @@
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+select = ["E", "F", "W", "I", "B", "UP"]
+exclude = ["frontend/", "deploy/", "docs/"]
+
+[tool.ruff.format]
+line-length = 88
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+disallow_untyped_defs = true
+exclude = ["frontend/", "deploy/"]

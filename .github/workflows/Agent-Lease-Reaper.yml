@@ -1,0 +1,90 @@
+name: Agent Lease Reaper
+
+# Sweeps expired coordination leases across the fleet every 30 minutes.
+# See docs/agent-lease-protocol.md.
+#
+# For each issue carrying a claim:<agent> label:
+# - If an open PR covers the issue, keep the claim (implicit extension).
+# - If the most-recent lease comment is not yet expired, keep the claim.
+# - Otherwise, remove the claim:* label and post an audit comment.
+#
+# Fail-open: per-issue errors log and continue. A reaper outage only
+# means stale claims linger for another 30 minutes — not a halt.
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Detect only, don't sweep"
+        required: false
+        default: "false"
+        type: choice
+        options: ["true", "false"]
+      repos:
+        description: "Space-separated repo names (default: all non-archived)"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-lease-reaper
+  cancel-in-progress: false
+
+jobs:
+  reap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Generate Jules app token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.JULES_APP_ID }}
+          private-key: ${{ secrets.JULES_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - uses: actions/checkout@v4
+        with:
+          repository: D-sorganization/Repository_Management
+          ref: main
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Reap expired leases
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          REPOS_INPUT: ${{ inputs.repos }}
+        run: |
+          set -uo pipefail
+          MODE="--apply"
+          if [ "$DRY_RUN" = "true" ]; then
+            MODE="--dry-run"
+          fi
+          REPOS_ARG=""
+          if [ -n "$REPOS_INPUT" ]; then
+            # shellcheck disable=SC2086
+            REPOS_ARG="--repos $REPOS_INPUT"
+          fi
+          python -m scripts.agent_lease_reaper $MODE $REPOS_ARG || {
+            echo "::warning::lease reaper exited non-zero; continuing"
+            exit 0
+          }
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Agent Lease Reaper"
+            echo ""
+            echo "- **Dry run:** ${{ inputs.dry_run || 'false' }}"
+            echo "- **Repos override:** ${{ inputs.repos || '(all)' }}"
+          } >> "$GITHUB_STEP_SUMMARY"

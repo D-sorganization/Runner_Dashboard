@@ -1,0 +1,73 @@
+name: Agent Fleet Dashboard
+
+# Regenerates docs/fleet-in-flight.md every 15 minutes. Only commits if
+# the file changed.
+#
+# Fail-open: if generation fails, a placeholder is written and the
+# workflow completes successfully. Next run retries.
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agent-fleet-dashboard
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Generate Jules app token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.JULES_APP_ID }}
+          private-key: ${{ secrets.JULES_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Generate dashboard
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          python -m scripts.generate_fleet_dashboard \
+            --output docs/fleet-in-flight.md \
+            || echo "::warning::dashboard generation failed; continuing"
+
+      - name: Commit if changed
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain docs/fleet-in-flight.md)" ]; then
+            git add docs/fleet-in-flight.md
+            git commit -m "chore(dashboard): refresh fleet-in-flight.md"
+            git push origin HEAD:main || \
+              echo "::warning::could not push dashboard update; next run retries"
+          else
+            echo "No change to dashboard; skipping commit."
+          fi
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Agent Fleet Dashboard"
+            echo ""
+            echo "- **Generated:** $(date -Iseconds)"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,39 @@
+[Unit]
+Description=D-sorganization Runner Auto-scaler (performance-aware)
+Documentation=https://github.com/D-sorganization/Repository_Management/blob/main/runner-dashboard/README.md#performance-aware-auto-scaling
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dieterolson
+Group=dieterolson
+WorkingDirectory=/home/dieterolson/actions-runners/dashboard/backend
+ExecStart=/usr/bin/python3 /home/dieterolson/actions-runners/dashboard/backend/runner_autoscaler.py
+Restart=on-failure
+RestartSec=15
+
+# Tunables — override per-machine with a drop-in at
+#   /etc/systemd/system/runner-autoscaler.service.d/override.conf
+Environment=AUTOSCALER_CPU_HIGH=85
+Environment=AUTOSCALER_CPU_LOW=40
+Environment=AUTOSCALER_MEM_HIGH=85
+Environment=AUTOSCALER_DISK_HIGH=92
+Environment=AUTOSCALER_DISK_MIN_FREE_GB=25
+Environment=AUTOSCALER_LOAD_PER_CORE=1.5
+Environment=AUTOSCALER_SUSTAIN_SECS=120
+Environment=AUTOSCALER_POLL_SECONDS=15
+Environment=AUTOSCALER_MIN_ONLINE=1
+Environment=AUTOSCALER_MAX_SCALE_STEP=1
+Environment=AUTOSCALER_DRY_RUN=0
+Environment=AUTOSCALER_LOG_LEVEL=INFO
+Environment=RUNNER_SCHEDULE_CONFIG=/home/dieterolson/.config/runner-dashboard/runner-schedule.json
+Environment=RUNNER_SCHEDULER_BIN=/usr/local/bin/runner-scheduler
+
+# Needs passwordless sudo for `systemctl start/stop actions.runner.*.service`.
+# Install this sudoers drop-in when deploying (see deploy/install-autoscaler.sh):
+#   %dieterolson ALL=(root) NOPASSWD: /usr/bin/systemctl start actions.runner.*, \
+#                                      /usr/bin/systemctl stop actions.runner.*
+
+[Install]
+WantedBy=multi-user.target

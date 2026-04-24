@@ -1,0 +1,146 @@
+# =============================================================================
+# Runner Dashboard Pre-commit Configuration
+# =============================================================================
+# Fast checks on every commit (<15 seconds)
+# Slower checks (mypy, bandit, pytest) on pre-push only
+#
+# Installation:
+#   pip install pre-commit
+#   pre-commit install
+#   pre-commit install --hook-type pre-push
+# =============================================================================
+
+repos:
+  # Ruff - Fast Python linter with auto-fix
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.10
+    hooks:
+      - id: ruff
+        name: "ruff (Python lint + fix)"
+        args: ["--fix", "--exit-non-zero-on-fix"]
+        types: [python]
+        exclude: ^(\.github/|docs/|frontend/|deploy/)
+
+      - id: ruff-format
+        name: "ruff format (Python)"
+        types: [python]
+        exclude: ^(\.github/|docs/|frontend/|deploy/)
+
+  # Prettier - Format YAML, JSON, Markdown
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v3.1.0
+    hooks:
+      - id: prettier
+        name: "prettier (yaml/json/md)"
+        types_or: [yaml, markdown, json]
+        exclude: '(package-lock\.json|\.ipynb|node_modules/)$'
+        args: ["--write"]
+
+  # ===========================================================================
+  # QUALITY CHECKS
+  # ===========================================================================
+
+  - repo: local
+    hooks:
+      # Prevent wildcard imports (Python)
+      - id: no-wildcard-imports
+        name: "no wildcard imports (Python)"
+        entry: "from .* import \\*"
+        language: pygrep
+        types: [python]
+        exclude: ^(tests/|\.github/|frontend/|deploy/)
+
+  # ===========================================================================
+  # PRE-PUSH HOOKS (Slower - run before push only)
+  # ===========================================================================
+
+  # MyPy - Python type checking (pre-push only)
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.13.0
+    hooks:
+      - id: mypy
+        name: "mypy (Python type check)"
+        stages: [pre-push]
+        additional_dependencies:
+          - types-requests
+          - types-PyYAML
+          - pydantic
+          - fastapi
+          - uvicorn
+          - psutil-stubs
+        args: [--ignore-missing-imports]
+        types: [python]
+        files: ^backend/
+        exclude: ^(frontend/|deploy/|docs/)
+
+  # Bandit - Python security scanning (pre-push only)
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.7
+    hooks:
+      - id: bandit
+        name: "bandit (Python security)"
+        stages: [pre-push]
+        args:
+          [
+            "-r",
+            "backend/",
+            "-ll",
+            "-ii",
+            "-x",
+            "tests/,.github/",
+          ]
+        pass_filenames: false
+        types: [python]
+
+  # Pytest - Python unit tests (pre-push only)
+  - repo: local
+    hooks:
+      - id: pytest-unit
+        name: "pytest (Python tests)"
+        stages: [pre-push]
+        entry: pytest
+        args:
+          [
+            "tests/",
+            "-x",
+            "-q",
+            "--tb=short",
+            "-m",
+            "not slow and not integration",
+          ]
+        language: python
+        additional_dependencies: [pytest, pytest-cov]
+        pass_filenames: false
+        types: [python]
+
+# =============================================================================
+# Global Settings
+# =============================================================================
+
+default_language_version:
+  python: python3.11
+  node: "24.14.1"
+
+exclude: |
+  (?x)^(
+    \.git/|
+    __pycache__/|
+    \.mypy_cache/|
+    \.ruff_cache/|
+    \.pytest_cache/|
+    node_modules/|
+    \.venv/|
+    venv/|
+    build/|
+    dist/|
+    .*\.egg-info/
+  )
+
+fail_fast: false
+
+ci:
+  autofix_commit_msg: "style: auto-fix from pre-commit hooks"
+  autofix_prs: true
+  autoupdate_branch: "main"
+  autoupdate_commit_msg: "chore: update pre-commit hooks"
+  skip: [pytest-unit, bandit, mypy]

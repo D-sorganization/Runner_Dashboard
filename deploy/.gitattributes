@@ -1,0 +1,4 @@
+# Force LF line endings for shell scripts in this directory.
+# Prevents CRLF→LF sed-strip from showing as a local modification
+# when the repo is cloned on Windows and then used from WSL2.
+*.sh text eol=lf

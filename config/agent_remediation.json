@@ -1,0 +1,120 @@
+{
+  "schema_version": "agent-remediation.v1",
+  "auto_dispatch_on_failure": true,
+  "require_failure_summary": true,
+  "require_non_protected_branch": true,
+  "max_same_failure_attempts": 3,
+  "attempt_window_hours": 24,
+  "default_provider": "jules_api",
+  "provider_order": [
+    "jules_cli",
+    "jules_api",
+    "codex_cli",
+    "claude_code_cli",
+    "ollama_local",
+    "cline"
+  ],
+  "enabled_providers": [
+    "jules_cli",
+    "jules_api",
+    "codex_cli",
+    "claude_code_cli",
+    "ollama_local",
+    "cline"
+  ],
+  "workflow_type_rules": {
+    "lint": {
+      "label": "Lint / Formatting",
+      "match_terms": [
+        "lint",
+        "format",
+        "ruff",
+        "eslint",
+        "prettier",
+        "black",
+        "matlab lint"
+      ],
+      "dispatch_mode": "auto",
+      "provider_id": "codex_cli",
+      "notes": "Cheap, narrow fixes can auto-dispatch by default."
+    },
+    "spec": {
+      "label": "Spec / Contract Checks",
+      "match_terms": [
+        "spec check",
+        "spec.md",
+        "contract"
+      ],
+      "dispatch_mode": "manual",
+      "provider_id": "jules_api",
+      "notes": "Spec and contract failures usually need review."
+    },
+    "test": {
+      "label": "Unit / Standard Tests",
+      "match_terms": [
+        "ci standard",
+        "test",
+        "pytest",
+        "unit"
+      ],
+      "dispatch_mode": "auto",
+      "provider_id": "jules_api",
+      "notes": "Normal test failures can auto-dispatch through the default CI lane."
+    },
+    "integration": {
+      "label": "Integration / Heavy Tests",
+      "match_terms": [
+        "integration",
+        "heavy",
+        "e2e",
+        "system test"
+      ],
+      "dispatch_mode": "manual",
+      "provider_id": "claude_code_cli",
+      "notes": "Broad or stateful failures should stay reviewed by default."
+    },
+    "security": {
+      "label": "Security / Audit",
+      "match_terms": [
+        "security",
+        "audit",
+        "pip-audit",
+        "sast"
+      ],
+      "dispatch_mode": "manual",
+      "provider_id": "jules_api",
+      "notes": "Security findings should require review before agent action."
+    },
+    "docs": {
+      "label": "Docs / Content",
+      "match_terms": [
+        "docs",
+        "documentation",
+        "quarto",
+        "scribe"
+      ],
+      "dispatch_mode": "manual",
+      "provider_id": "jules_cli",
+      "notes": "Docs changes are often better reviewed before dispatch."
+    },
+    "deployment": {
+      "label": "Build / Deployment",
+      "match_terms": [
+        "deploy",
+        "build",
+        "artifact",
+        "release"
+      ],
+      "dispatch_mode": "manual",
+      "provider_id": "claude_code_cli",
+      "notes": "Build and deployment failures can have broader blast radius."
+    },
+    "unknown": {
+      "label": "Unclassified",
+      "match_terms": [],
+      "dispatch_mode": "manual",
+      "provider_id": "jules_api",
+      "notes": "Fallback bucket for anything not matched more specifically."
+    }
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "schema_version": 2,
+  "tools": [
+    {
+      "name": "runner-dashboard",
+      "artifact_source": {
+        "type": "repo",
+        "repository": "D-sorganization/Repository_Management",
+        "subpath": "runner-dashboard",
+        "ref": "origin/main"
+      },
+      "install_path": "~/actions-runners/dashboard",
+      "service": {
+        "name": "runner-dashboard",
+        "state_command": ["systemctl", "is-active", "runner-dashboard"]
+      },
+      "health_url": "http://127.0.0.1:8321/api/health",
+      "health_command": ["curl", "-fsS", "http://127.0.0.1:8321/api/health"],
+      "rollback_strategy": "reinstall the previously published dashboard artifact and restart runner-dashboard.service",
+      "owner": "fleet-ops",
+      "drift_ref": "origin/main"
+    }
+  ]
+}

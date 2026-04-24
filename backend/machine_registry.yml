@@ -1,0 +1,155 @@
+version: 1
+updated_at: 2026-04-17
+machines:
+  - name: ControlTower
+    aliases:
+      - controltower
+      - control-tower-runner-monitoring
+    display_name: ControlTower
+    role: hub
+    dashboard_url: http://100.95.177.68:8321
+    tailscale_nodes:
+      - name: control-tower-runner-monitoring
+        ip: 100.95.177.68
+        transport: wsl2
+        preferred: true
+      - name: controltower
+        ip: 100.69.12.6
+        transport: windows
+    runner_labels:
+      - self-hosted
+      - Linux
+      - X64
+      - d-sorg-fleet
+    hardware:
+      cpu_model: null
+      cpu_physical_cores: null
+      cpu_logical_cores: null
+      memory_gb: null
+      disk_total_gb: null
+      gpu_vram_gb: null
+      accelerators: []
+      workload_tags:
+        - hub
+        - control-plane
+    maintenance:
+      owner: fleet-ops
+      allow_auto_stop: false
+      preferred_window: Saturdays 10:00-12:00 UTC
+      notes: Keep the hub online; maintenance jobs should treat this as read-mostly.
+  - name: Brick
+    aliases:
+      - brick
+      - brick-linux
+      - brick-windows
+    display_name: Brick
+    role: node
+    dashboard_url: http://100.96.15.94:8321
+    tailscale_nodes:
+      - name: brick-linux
+        ip: 100.96.15.94
+        transport: wsl2
+        preferred: true
+      - name: brick-windows
+        ip: 100.109.127.61
+        transport: windows
+    runner_labels:
+      - self-hosted
+      - Linux
+      - X64
+      - d-sorg-fleet
+      - d-sorg-fleet-2core
+    hardware:
+      cpu_model: null
+      cpu_physical_cores: null
+      cpu_logical_cores: null
+      memory_gb: null
+      disk_total_gb: null
+      gpu_vram_gb: null
+      accelerators: []
+      workload_tags:
+        - small-ci
+        - node
+    maintenance:
+      owner: fleet-ops
+      allow_auto_stop: true
+      preferred_window: Sundays 10:00-14:00 UTC
+      notes: Use the WSL2 node as the stable dashboard target.
+  - name: OGLaptop
+    aliases:
+      - og-laptop
+      - oglaptop
+    display_name: OGLaptop
+    role: node
+    dashboard_url: http://100.125.64.108:8321
+    tailscale_nodes:
+      - name: oglaptop
+        ip: 100.125.64.108
+        transport: wsl2
+        preferred: true
+    runner_labels:
+      - self-hosted
+      - Linux
+      - X64
+      - d-sorg-fleet
+      - d-sorg-fleet-4core
+    runners:
+      default: 4
+      max: 8
+    hardware:
+      cpu_model: Intel Core i7-10750H
+      cpu_physical_cores: 10
+      cpu_logical_cores: 20
+      memory_gb: 31
+      disk_total_gb: 1007
+      disk_windows_host_gb: 804
+      gpu_vram_gb: null
+      accelerators: []
+      workload_tags:
+        - parallel-ci
+        - node
+    maintenance:
+      owner: fleet-ops
+      allow_auto_stop: true
+      preferred_window: Sundays 12:00-16:00 UTC
+      notes: >
+        WSL2 Ubuntu on Windows laptop. 10-core/20-thread CPU.
+        Default 4 runners, auto-scalable to 8. Windows C: disk at ~96% —
+        monitor disk pressure before scaling up. Runner labels use d-sorg-fleet-4core.
+  - name: DeskComputer
+    aliases:
+      - deskcomputer
+      - desktop
+      - Desktop
+      - desk-computer
+    display_name: DeskComputer
+    role: node
+    dashboard_url: http://100.122.254.109:8321
+    tailscale_nodes:
+      - name: deskcomputer
+        ip: 100.122.254.109
+        transport: windows
+        preferred: true
+    runner_labels:
+      - self-hosted
+      - Linux
+      - X64
+      - d-sorg-fleet
+      - d-sorg-fleet-4core
+      - d-sorg-fleet-6core
+    hardware:
+      cpu_model: null
+      cpu_physical_cores: null
+      cpu_logical_cores: null
+      memory_gb: null
+      disk_total_gb: null
+      gpu_vram_gb: null
+      accelerators: []
+      workload_tags:
+        - parallel-ci
+        - node
+    maintenance:
+      owner: fleet-ops
+      allow_auto_stop: true
+      preferred_window: Daily 05:00-07:00 America/Los_Angeles
+      notes: HP Envy laptop running WSL2 Ubuntu. Canonical machine name is DeskComputer; desktop is retained only as a legacy alias for older runner names.
