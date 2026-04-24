@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import re
 
-_REPORT_TABLE_ROW = re.compile(
-    r"\|\s*(.+?)\s*\|\s*([^\|]+?)\s*\|\s*([^\|]+?)\s*\|\s*([^\|]*?)\s*\|"
-)
+_REPORT_TABLE_ROW = re.compile(r"\|\s*(.+?)\s*\|\s*([^\|]+?)\s*\|\s*([^\|]+?)\s*\|\s*([^\|]*?)\s*\|")
 
 
 def sanitize_report_date(raw_date: str) -> str:

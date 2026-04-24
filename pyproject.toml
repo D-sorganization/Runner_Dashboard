@@ -1,11 +1,10 @@
 [tool.ruff]
 target-version = "py311"
-line-length = 88
-select = ["E", "F", "W", "I", "B", "UP"]
+line-length = 120
 exclude = ["frontend/", "deploy/", "docs/"]
 
-[tool.ruff.format]
-line-length = 88
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
 
 [tool.mypy]
 python_version = "3.11"
