@@ -2698,10 +2698,200 @@
         );
       }
 
-      // ════════════════════════ HEAVY TESTS TAB ════════════════════════
-      function HeavyTestsTab(p) {
+      // ════════════════════════ TESTS TAB ════════════════════════
+      function TestsTab(p) {
         var testRepos = p.testRepos;
         var loading = p.loading;
+        var ciResults = p.ciResults || [];
+
+        // CI rerun state per repo
+        var rrs = React.useState({});
+        var rerunState = rrs[0],
+          setRerunState = rrs[1];
+
+        function rerunFailed(repo, runId) {
+          setRerunState(function (prev) {
+            var n = Object.assign({}, prev);
+            n[repo] = "running";
+            return n;
+          });
+          fetch("/api/tests/rerun", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ repo: repo, run_id: runId }),
+          })
+            .then(function (r) { return r.json(); })
+            .then(function () {
+              setRerunState(function (prev) {
+                var n = Object.assign({}, prev);
+                n[repo] = "triggered";
+                return n;
+              });
+            })
+            .catch(function () {
+              setRerunState(function (prev) {
+                var n = Object.assign({}, prev);
+                n[repo] = "error";
+                return n;
+              });
+            });
+        }
+
+        var conclusionColor = {
+          success: "var(--accent-green)",
+          failure: "var(--accent-red)",
+          cancelled: "var(--text-secondary)",
+          skipped: "var(--text-secondary)",
+          in_progress: "var(--accent-yellow)",
+          queued: "var(--accent-yellow)",
+        };
+
+        var ciSection = h(
+          "div",
+          { style: { marginBottom: 24 } },
+          h(
+            "div",
+            {
+              style: {
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                marginBottom: 12,
+              },
+            },
+            h(
+              "span",
+              {
+                style: {
+                  fontWeight: 700,
+                  fontSize: 16,
+                  color: "var(--text-primary)",
+                },
+              },
+              I.activity(16),
+              " CI Tests — Fleet Repos",
+            ),
+          ),
+          ciResults.length === 0
+            ? h(
+                "div",
+                {
+                  style: {
+                    color: "var(--text-secondary)",
+                    fontSize: 13,
+                    padding: "12px 0",
+                  },
+                },
+                "Loading CI results…",
+              )
+            : h(
+                "div",
+                { style: { overflowX: "auto" } },
+                h(
+                  "table",
+                  { className: "data-table" },
+                  h(
+                    "thead",
+                    null,
+                    h(
+                      "tr",
+                      null,
+                      h("th", null, "Repo"),
+                      h("th", null, "Status"),
+                      h("th", null, "Branch"),
+                      h("th", null, "Run #"),
+                      h("th", null, "Updated"),
+                      h("th", null, "Actions"),
+                    ),
+                  ),
+                  h(
+                    "tbody",
+                    null,
+                    ciResults.map(function (r) {
+                      var concl = r.conclusion || r.status || "unknown";
+                      var color = conclusionColor[concl] || "var(--text-secondary)";
+                      var rerunSt = rerunState[r.repo];
+                      var canRerun =
+                        r.run_id &&
+                        (r.conclusion === "failure" || r.conclusion === "cancelled");
+                      return h(
+                        "tr",
+                        { key: r.repo },
+                        h(
+                          "td",
+                          null,
+                          r.html_url
+                            ? h(
+                                "a",
+                                {
+                                  href: r.html_url,
+                                  target: "_blank",
+                                  style: { color: "var(--accent-blue)" },
+                                },
+                                r.repo,
+                              )
+                            : r.repo,
+                        ),
+                        h(
+                          "td",
+                          null,
+                          h(
+                            "span",
+                            {
+                              className: "conclusion-badge " + concl,
+                              style: { color: color },
+                            },
+                            concl,
+                          ),
+                        ),
+                        h("td", null, r.head_branch || "main"),
+                        h("td", null, r.run_number ? "#" + r.run_number : "—"),
+                        h(
+                          "td",
+                          null,
+                          r.updated_at
+                            ? new Date(r.updated_at).toLocaleString()
+                            : "—",
+                        ),
+                        h(
+                          "td",
+                          null,
+                          canRerun
+                            ? h(
+                                "button",
+                                {
+                                  className: "btn btn-sm btn-blue",
+                                  disabled: rerunSt === "running",
+                                  onClick: function () {
+                                    rerunFailed(r.repo, r.run_id);
+                                  },
+                                },
+                                rerunSt === "running"
+                                  ? h("span", { className: "spinner" })
+                                  : I.play(12),
+                                rerunSt === "triggered"
+                                  ? " Triggered"
+                                  : " Re-run Failed",
+                              )
+                            : r.run_id
+                              ? h(
+                                  "a",
+                                  {
+                                    href: r.html_url,
+                                    target: "_blank",
+                                    className: "btn btn-sm",
+                                    style: { textDecoration: "none" },
+                                  },
+                                  "View",
+                                )
+                              : "—",
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+              ),
+        );
         var ds = React.useState({});
         var dispatchState = ds[0],
           setDispatchState = ds[1];
@@ -2754,6 +2944,30 @@
         return h(
           "div",
           null,
+          ciSection,
+          h(
+            "div",
+            {
+              style: {
+                borderTop: "1px solid var(--border)",
+                margin: "0 0 20px 0",
+                paddingTop: 20,
+              },
+            },
+            h(
+              "div",
+              {
+                style: {
+                  fontWeight: 700,
+                  fontSize: 16,
+                  color: "var(--text-primary)",
+                  marginBottom: 12,
+                },
+              },
+              I.flask(16),
+              " Integration Tests — Heavy Test Suite",
+            ),
+          ),
           h(
             "div",
             { className: "stat-row" },
@@ -11533,6 +11747,9 @@
         var tl = React.useState(false);
         var testsLoading = tl[0],
           setTestsLoading = tl[1];
+        var cr = React.useState([]);
+        var ciResults = cr[0],
+          setCiResults = cr[1];
         var rp = React.useState([]);
         var reports = rp[0],
           setReports = rp[1];
@@ -11909,6 +12126,14 @@
             .catch(function () {
               setTestsLoading(false);
             });
+        }
+        function fetchCiResults() {
+          fetch("/api/tests/ci-results")
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+              if (d && d.results) setCiResults(d.results);
+            })
+            .catch(function () {});
         }
         function fetchReports() {
           setReportsLoading(true);
@@ -12405,6 +12630,14 @@
               setTestsLoading(false);
             });
         }
+        function fetchCiResults() {
+          fetch("/api/tests/ci-results")
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+              if (d && d.results) setCiResults(d.results);
+            })
+            .catch(function () {});
+        }
         function fetchReports() {
           setReportsLoading(true);
           fetch("/api/reports")
@@ -12713,6 +12946,7 @@
           fetchFleet();
           fetchRepos();
           fetchTests();
+          fetchCiResults();
           fetchReports();
           fetchQueue();
           fetchMachines();
@@ -12726,6 +12960,7 @@
           var t1 = setInterval(fetchFleet, 30000);
           var t2 = setInterval(fetchRepos, 120000);
           var t3 = setInterval(fetchTests, 120000);
+          var t3b = setInterval(fetchCiResults, 120000);
           var t4 = setInterval(fetchReports, 300000);
           var t5 = setInterval(fetchQueue, 60000);
           var t6 = setInterval(fetchMachines, 60000);
@@ -12740,6 +12975,7 @@
             clearInterval(t1);
             clearInterval(t2);
             clearInterval(t3);
+            clearInterval(t3b);
             clearInterval(t4);
             clearInterval(t5);
             clearInterval(t6);
@@ -12922,7 +13158,7 @@
                   },
                 },
                 I.flask(14),
-                "Heavy Tests",
+                "Tests",
               ),
               h(
                 "button",
@@ -13376,9 +13612,10 @@
                               stats: stats,
                             })
                           : tab === "tests"
-                            ? h(HeavyTestsTab, {
+                            ? h(TestsTab, {
                                 testRepos: testRepos,
                                 loading: testsLoading,
+                                ciResults: ciResults,
                               })
                             : tab === "stats"
                               ? h(StatsTab, null)

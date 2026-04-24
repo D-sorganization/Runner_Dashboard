@@ -3274,6 +3274,102 @@ async def run_docker_heavy_test(request: Request):
     }
 
 
+# ---------------------------------------------------------------------------
+# CI Tests endpoints — standard ci-standard workflow runs + manual rerun
+# ---------------------------------------------------------------------------
+
+_CI_FLEET_REPOS = [
+    "Repository_Management",
+    "AffineDrift",
+    "Controls",
+    "Drake_Models",
+    "Games",
+    "Gasification_Model",
+    "MEB_Conversion",
+    "MLProjects",
+    "Movement_Optimizer",
+    "MuJoCo_Models",
+    "OpenSim_Models",
+    "Pinocchio_Models",
+    "Playground",
+    "QuatEngine",
+    "Tools",
+    "UpstreamDrift",
+    "Worksheet-Workshop",
+]
+
+
+@app.get("/api/tests/ci-results")
+async def get_tests_ci_results() -> dict:
+    """Return recent ci-standard workflow runs for key fleet repos."""
+    cached = _cache_get("ci_test_results", 120.0)
+    if cached is not None:
+        return cached
+
+    results = []
+    for repo_name in _CI_FLEET_REPOS:
+        try:
+            data = await gh_api_admin(
+                f"/repos/{ORG}/{repo_name}/actions/workflows/ci-standard.yml/runs"
+                "?per_page=3&branch=main"
+            )
+            runs = data.get("workflow_runs", []) if data else []
+            if runs:
+                latest = runs[0]
+                results.append(
+                    {
+                        "repo": repo_name,
+                        "run_id": latest.get("id"),
+                        "run_number": latest.get("run_number"),
+                        "status": latest.get("status"),
+                        "conclusion": latest.get("conclusion"),
+                        "head_branch": latest.get("head_branch"),
+                        "html_url": latest.get("html_url"),
+                        "created_at": latest.get("created_at"),
+                        "updated_at": latest.get("updated_at"),
+                    }
+                )
+            else:
+                results.append({"repo": repo_name, "run_id": None, "conclusion": None})
+        except Exception:
+            results.append({"repo": repo_name, "run_id": None, "conclusion": "error"})
+
+    out: dict = {"results": results}
+    _cache_set("ci_test_results", out)
+    return out
+
+
+@app.post("/api/tests/rerun")
+async def rerun_ci_test(request: Request) -> dict:
+    """Re-run a failed GitHub Actions workflow run (failed jobs only)."""
+    body = await request.json()
+    repo_name = body.get("repo", "")
+    run_id = body.get("run_id")
+
+    if not repo_name or not run_id:
+        raise HTTPException(status_code=400, detail="repo and run_id are required")
+
+    try:
+        code, stdout, stderr = await run_cmd(
+            [
+                "gh",
+                "api",
+                f"/repos/{ORG}/{repo_name}/actions/runs/{run_id}/rerun-failed-jobs",
+                "--method",
+                "POST",
+            ]
+        )
+        if code != 0:
+            raise HTTPException(status_code=502, detail=f"GitHub API error: {stderr}")
+        _cache.pop("ci_test_results", None)
+        return {"status": "triggered", "repo": repo_name, "run_id": run_id}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log.exception("Failed to rerun run %s in %s", run_id, repo_name)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @app.get("/api/stats")
 async def get_stats(request: Request):
     """Aggregate organization, runner, queue, and workflow statistics."""
