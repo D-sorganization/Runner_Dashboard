@@ -83,8 +83,12 @@ All application logic is contained within `frontend/index.html`. There is no
 npm project, no `package.json`, and no build toolchain. The file is served
 directly by the FastAPI backend.
 
-`frontend/RunnerDashboard.jsx` is a reference/archive copy of the component
-and is not loaded at runtime.
+`frontend/index.html` is the **sole canonical frontend source**. No other
+frontend implementation exists in the repository. The previously present
+`RunnerDashboard.jsx` was an unused JSX archive that violated DRY; it was
+removed in issue #3 to enforce a single source of truth. A CI test
+(`test_jsx_archive_removed`) prevents re-introduction of a parallel
+implementation.
 
 ### 2.3 Deployment
 

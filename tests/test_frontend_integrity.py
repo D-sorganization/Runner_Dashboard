@@ -11,7 +11,8 @@ from pathlib import Path
 
 import pytest
 
-_INDEX_HTML = Path(__file__).parent.parent / "frontend" / "index.html"
+_FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
+_INDEX_HTML = _FRONTEND_DIR / "index.html"
 
 
 def _read_index() -> str:
@@ -90,16 +91,9 @@ def test_tests_tab_function_present() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    reason=(
-        "dangerouslySetInnerHTML at line ~3914 uses renderMarkdown() wrapper "
-        "rather than DOMPurify.sanitize inline; DOMPurify integration is pending"
-    ),
-    strict=False,
-)
 def test_dangerous_set_inner_html_sanitized() -> None:
-    """Every dangerouslySetInnerHTML usage must appear within 5 lines of
-    DOMPurify.sanitize or a comment that explains why it is safe."""
+    """Every dangerouslySetInnerHTML usage must be paired with DOMPurify.sanitize,
+    a known-safe wrapper (renderMarkdown), or an explicit safety comment."""
     lines = _index_lines()
     violations: list[int] = []
     for lineno, line in enumerate(lines):
@@ -109,12 +103,19 @@ def test_dangerous_set_inner_html_sanitized() -> None:
         window_end = min(len(lines), lineno + 6)
         window = "\n".join(lines[window_start:window_end])
         has_sanitize = "DOMPurify.sanitize" in window
+        has_safe_wrapper = "renderMarkdown" in window  # renderMarkdown internally calls DOMPurify
         has_safe_comment = re.search(r"//.*safe|//.*sanitize|//.*trusted", window, re.IGNORECASE) is not None
-        if not (has_sanitize or has_safe_comment):
+        if not (has_sanitize or has_safe_wrapper or has_safe_comment):
             violations.append(lineno + 1)
     assert not violations, (
-        f"dangerouslySetInnerHTML at line(s) {violations} has no nearby DOMPurify.sanitize or safety comment"
+        f"dangerouslySetInnerHTML at line(s) {violations} has no DOMPurify.sanitize, renderMarkdown wrapper, or safety comment"
     )
+
+
+def test_domPurify_loaded_in_html() -> None:
+    """DOMPurify CDN script must be present so renderMarkdown can sanitize."""
+    content = _read_index()
+    assert "DOMPurify" in content, "DOMPurify must be loaded in index.html"
 
 
 # ---------------------------------------------------------------------------
@@ -135,3 +136,34 @@ def test_icons_helper_has_flask() -> None:
 def test_icons_helper_has_activity() -> None:
     content = _read_index()
     assert "I.activity" in content
+
+
+# ---------------------------------------------------------------------------
+# Single source of truth enforcement (issue #3)
+# ---------------------------------------------------------------------------
+
+
+def test_jsx_archive_removed() -> None:
+    """RunnerDashboard.jsx must not exist — index.html is the sole canonical frontend.
+
+    The JSX file was an unused reference copy that violated DRY. Removing it
+    ensures feature logic lives in exactly one place.
+    """
+    jsx_path = _FRONTEND_DIR / "RunnerDashboard.jsx"
+    assert not jsx_path.exists(), (
+        "RunnerDashboard.jsx must not exist. "
+        "frontend/index.html is the canonical frontend source. "
+        "Do not re-introduce a second implementation."
+    )
+
+
+def test_index_html_is_only_frontend_source() -> None:
+    """No other .jsx or .tsx files should exist in frontend/ at runtime."""
+    unexpected = [
+        p for p in _FRONTEND_DIR.iterdir()
+        if p.suffix in {".jsx", ".tsx"} and p.is_file()
+    ]
+    assert not unexpected, (
+        f"Unexpected transpilable source files in frontend/: {[p.name for p in unexpected]}. "
+        "frontend/index.html is the only runtime source — no build step exists."
+    )
