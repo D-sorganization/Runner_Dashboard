@@ -574,3 +574,23 @@ Test coverage areas:
   required tab function markers, absence of deprecated `HeavyTestsTab`, icon helper symbols.
 
 `pytest>=8.0` and `pytest-asyncio>=0.23` are listed in `requirements.txt`.
+
+---
+
+## 9. Security
+
+### 9.1 Markdown Rendering
+All user-supplied content rendered as Markdown is passed through
+`DOMPurify.sanitize()` before `dangerouslySetInnerHTML`. Marked.js is
+configured with `{ mangle: false, headerIds: false, gfm: true }`.
+
+### 9.2 HTTP Security Headers
+The backend injects the following headers on all responses:
+- `X-Content-Type-Options: nosniff`
+- `X-Frame-Options: SAMEORIGIN`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+- `Content-Security-Policy` — allows self, CDN scripts (jsdelivr, cdnjs, unpkg)
+
+### 9.3 Destructive Action Confirmation
+Critical fleet operations (runner stop, fleet restart) use a two-step
+inline confirmation UI instead of `window.confirm()`.
