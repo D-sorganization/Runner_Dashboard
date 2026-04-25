@@ -13,7 +13,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, Request
 
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 datetime = _dt_mod.datetime
@@ -32,9 +32,17 @@ def _env_source(key: str) -> str:
     return "env_var" if os.environ.get(key, "") else "unavailable"
 
 
+def _require_local_request(request: Request) -> None:
+    """Enforce that the request originates from localhost (issue #45)."""
+    client_host = request.client.host if request.client else ""
+    if client_host not in ("127.0.0.1", "::1", "localhost"):
+        raise HTTPException(status_code=403, detail="This endpoint is only accessible locally")
+
+
 @router.get("/credentials")
-async def get_credentials() -> dict:
+async def get_credentials(request: Request) -> dict:
     """Probe provider credential and connectivity state. Never exposes secret values."""
+    _require_local_request(request)
     probes: list[dict] = []
 
     # GitHub CLI
@@ -43,7 +51,9 @@ async def get_credentials() -> dict:
     gh_auth_detail = "gh not found"
     if gh_binary:
         try:
-            result = subprocess.run(["gh", "auth", "status"], capture_output=True, text=True, timeout=10)
+            _excluded = {"SECRET", "PASSWORD", "ANTHROPIC_API_KEY", "DASHBOARD_API_KEY"}
+            _safe_env = {k: v for k, v in os.environ.items() if not any(exc in k.upper() for exc in _excluded)}
+            result = subprocess.run(["gh", "auth", "status"], capture_output=True, text=True, timeout=10, env=_safe_env)
             gh_auth_ok = result.returncode == 0
             gh_auth_detail = "authenticated" if gh_auth_ok else "not logged in"
         except Exception:

@@ -1224,19 +1224,26 @@
   <body>
     <div id="root"></div>
 
+    <!-- CDN scripts – crossorigin="anonymous" required for SRI enforcement.       -->
+    <!-- SRI integrity hashes should be added per library once versions are       -->
+    <!-- pinned and hashes are computed; remove 'strict-dynamic' after that step. -->
+    <!-- from the CSP script-src directive in backend/server.py.                  -->
     <script
-      crossorigin
+      crossorigin="anonymous"
       src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"
     ></script>
     <script
-      crossorigin
+      crossorigin="anonymous"
       src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"
     ></script>
     <script
-      crossorigin
+      crossorigin="anonymous"
       src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js"
     ></script>
-    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.5/dist/purify.min.js"></script>
+    <script
+      crossorigin="anonymous"
+      src="https://cdn.jsdelivr.net/npm/dompurify@3.2.5/dist/purify.min.js"
+    ></script>
     <script>
       window.__dashboardRenderFailed = function (message) {
         var root = document.getElementById("root");
@@ -1266,9 +1273,72 @@
       }
       var h = React.createElement;
 
+      // ── API Key Auth (issue #16) ─────────────────────────────────────────────
+      var _apiKey = localStorage.getItem("apiKey") || "";
+
+      /** Fetch the key from /api/setup-key when running on localhost. */
+      async function _autoFetchApiKey() {
+        if (_apiKey) return;
+        try {
+          var resp = await fetch("/api/setup-key");
+          if (resp.ok) {
+            var data = await resp.json();
+            _apiKey = data.api_key || "";
+            if (_apiKey) localStorage.setItem("apiKey", _apiKey);
+          }
+        } catch (e) {
+          // Not on localhost or endpoint unavailable — ignore
+        }
+      }
+
+      /** Wrap fetch() to inject Authorization header and handle 401. */
+      async function apiFetch(url, opts) {
+        opts = opts || {};
+        opts.headers = opts.headers || {};
+        if (_apiKey) {
+          opts.headers["Authorization"] = "Bearer " + _apiKey;
+        }
+        var resp = await fetch(url, opts);
+        if (resp.status === 401) {
+          var keyPath = "~/.config/runner-dashboard/api_key.txt";
+          var msg =
+            "Authentication required. Add your API key:\n\n" +
+            "  localStorage.setItem('apiKey', '<key from " + keyPath + ">')\n\n" +
+            "Or set the Authorization header: Bearer <key>";
+          console.warn("[auth] 401 from", url, "-", msg);
+          // Show a toast/overlay if a notifier is available
+          if (typeof window._showAuthError === "function") {
+            window._showAuthError(keyPath);
+          }
+        }
+        return resp;
+      }
+
+      // Auto-fetch key on load (works only from localhost)
+      _autoFetchApiKey();
+      // ────────────────────────────────────────────────────────────────────────
+
       // Configure marked with safe options (issue #7)
       if (typeof marked !== "undefined") {
         marked.use({ mangle: false, headerIds: false, gfm: true });
+      }
+
+      /**
+       * safeOpen – open a URL in a new tab only when it belongs to a trusted
+       * origin (issue #30).  Blocks arbitrary URLs that could be injected via
+       * API responses.
+       * @param {string} url
+       */
+      function safeOpen(url) {
+        if (
+          !url.startsWith("http://localhost") &&
+          !url.startsWith("https://github.com/") &&
+          !url.startsWith("https://api.github.com/")
+        ) {
+          console.error("Blocked unsafe URL:", url);
+          return;
+        }
+        window.open(url, "_blank", "noopener,noreferrer");
       }
 
       var LANG_COLORS = {
@@ -1873,6 +1943,14 @@
         var machinesData = p.machinesData || {};
         var deployment = p.deployment || {};
         var onOpenDeployment = p.onOpenDeployment || function () {};
+        var driftState = React.useState(null);
+        var driftInfo = driftState[0], setDriftInfo = driftState[1];
+        React.useEffect(function () {
+          fetch("/api/deployment/git-drift")
+            .then(function (r) { return r.json(); })
+            .then(function (d) { setDriftInfo(d); })
+            .catch(function () {});
+        }, []);
         var filterState = React.useState("all");
         var filter = filterState[0],
           setFilter = filterState[1];
@@ -2147,6 +2225,31 @@
               sub: "in progress now",
             }),
           ),
+          driftInfo && driftInfo.is_drifted
+            ? h(
+                "div",
+                {
+                  style: {
+                    background: "rgba(210,153,34,0.12)",
+                    border: "1px solid var(--accent-yellow)",
+                    borderRadius: 6,
+                    padding: "8px 14px",
+                    marginBottom: 10,
+                    fontSize: 12,
+                    color: "var(--accent-yellow)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                  },
+                },
+                "⚠️ Deployed version is behind origin/main. Run update-deployed.sh to update.",
+                h(
+                  "span",
+                  { style: { opacity: 0.8, marginLeft: 4 } },
+                  "(local: " + (driftInfo.source_commit || "?") + " → remote: " + (driftInfo.remote_commit || "?") + ")",
+                ),
+              )
+            : null,
           h(
             "div",
             { className: "deployment-note" },
@@ -2968,7 +3071,7 @@
           });
           fetch("/api/tests/rerun", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify({ repo: repo, run_id: runId }),
           })
             .then(function (r) {
@@ -3164,7 +3267,7 @@
               : "/api/heavy-tests/dispatch";
           fetch(url, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify({
               repo: repoName,
               python_version: pyVer,
@@ -3514,7 +3617,8 @@
 
         function refresh() {
           setLoading(true);
-          fetch("/api/stats/workflows?days=" + days + "&group_by=" + groupBy)
+          var wfParams = new URLSearchParams({ days: days, group_by: groupBy });
+          fetch("/api/stats/workflows?" + wfParams)
             .then(function (r) {
               return r.json();
             })
@@ -3531,17 +3635,14 @@
             setTimeseries({ series: [] });
             return;
           }
-          var params = "days=" + Math.max(days, 30) + "&bucket_hours=24";
+          var tsParamObj = { days: Math.max(days, 30), bucket_hours: 24 };
           if (groupBy === "workflow") {
-            params +=
-              "&repo=" +
-              encodeURIComponent(row.repo) +
-              "&workflow_name=" +
-              encodeURIComponent(row.workflow_name);
+            tsParamObj.repo = row.repo;
+            tsParamObj.workflow_name = row.workflow_name;
           } else {
-            params += "&repo=" + encodeURIComponent(row.repo);
+            tsParamObj.repo = row.repo;
           }
-          fetch("/api/stats/workflows/timeseries?" + params)
+          fetch("/api/stats/workflows/timeseries?" + new URLSearchParams(tsParamObj))
             .then(function (r) {
               return r.json();
             })
@@ -3551,7 +3652,7 @@
         }
         function collectNow() {
           setLoading(true);
-          fetch("/api/stats/workflows/collect", { method: "POST" })
+          fetch("/api/stats/workflows/collect", { method: "POST", headers: { "X-Requested-With": "XMLHttpRequest" } })
             .then(function (r) {
               return r.json();
             })
@@ -4453,7 +4554,7 @@
           });
           fetch("/api/deployment/update-signal", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify({
               node: machine.name,
               reason: "dashboard-ui",
@@ -4492,7 +4593,7 @@
           );
           fetch("/api/deployment/update-signal", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify({
               node: machine.name,
               reason: "dashboard-ui",
@@ -5336,6 +5437,10 @@
         var crcs = React.useState(null);
         var confirmRun = crcs[0],
           setConfirmRun = crcs[1];
+        // Inline status message replaces alert() (issue #51)
+        var cms = React.useState(null);
+        var cancelMsg = cms[0],
+          setCancelMsg = cms[1];
         var ipSortState = React.useState({ key: "runningFor", dir: "desc" });
         var ipSort = ipSortState[0],
           setIpSort = ipSortState[1];
@@ -5419,7 +5524,7 @@
             n[key] = "pending";
             return n;
           });
-          fetch("/api/runs/" + repo + "/cancel/" + runId, { method: "POST" })
+          fetch("/api/runs/" + repo + "/cancel/" + runId, { method: "POST", headers: { "X-Requested-With": "XMLHttpRequest" } })
             .then(function (r) {
               return r.json();
             })
@@ -5454,7 +5559,7 @@
           setConfirmWorkflow(null);
           fetch("/api/queue/cancel-workflow", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify({
               workflow_name: workflowName,
               repo: repo || null,
@@ -5464,18 +5569,20 @@
               return r.json();
             })
             .then(function (d) {
-              alert(
+              var msg =
                 "Cancelled " +
-                  d.cancelled_count +
-                  " run(s)" +
-                  (d.errors && d.errors.length > 0
-                    ? "\nErrors: " + d.errors.join(", ")
-                    : ""),
-              );
+                d.cancelled_count +
+                " run(s)" +
+                (d.errors && d.errors.length > 0
+                  ? " — Errors: " + d.errors.join(", ")
+                  : "");
+              setCancelMsg({ type: "success", text: msg });
+              setTimeout(function () { setCancelMsg(null); }, 6000);
               if (onRefresh) setTimeout(onRefresh, 1500);
             })
             .catch(function () {
-              alert("Cancel request failed");
+              setCancelMsg({ type: "error", text: "Cancel request failed" });
+              setTimeout(function () { setCancelMsg(null); }, 6000);
             });
         }
         // Group queued runs by workflow name for bulk-cancel
@@ -5491,6 +5598,34 @@
         return h(
           "div",
           null,
+          cancelMsg
+            ? h(
+                "div",
+                {
+                  role: "alert",
+                  style: {
+                    margin: "0 0 12px",
+                    padding: "10px 16px",
+                    borderRadius: 6,
+                    background:
+                      cancelMsg.type === "error"
+                        ? "rgba(248,81,73,0.15)"
+                        : "rgba(63,185,80,0.15)",
+                    color:
+                      cancelMsg.type === "error"
+                        ? "var(--accent-red)"
+                        : "var(--accent-green)",
+                    border:
+                      "1px solid " +
+                      (cancelMsg.type === "error"
+                        ? "var(--accent-red)"
+                        : "var(--accent-green)"),
+                    fontSize: 13,
+                  },
+                },
+                cancelMsg.text,
+              )
+            : null,
           h(
             "div",
             { className: "stat-row" },
@@ -6885,7 +7020,7 @@
                     key: r.id,
                     style: { cursor: "pointer" },
                     onClick: function () {
-                      if (r.html_url) window.open(r.html_url, "_blank");
+                      if (r.html_url) safeOpen(r.html_url);
                     },
                   },
                   h("td", null, statusIcon(r)),
@@ -7753,6 +7888,10 @@
         var dpe = React.useState(false);
         var editingDefaultProvider = dpe[0],
           setEditingDefaultProvider = dpe[1];
+        // Inline status for Jules dispatch – replaces alert() (issue #51)
+        var jdm = React.useState(null);
+        var julesDispatchMsg = jdm[0],
+          setJulesDispatchMsg = jdm[1];
         React.useEffect(
           function () {
             setDraftRules(
@@ -8729,6 +8868,34 @@
                       ],
                 ),
               ),
+              julesDispatchMsg
+                ? h(
+                    "div",
+                    {
+                      role: "alert",
+                      style: {
+                        margin: "12px 0 0",
+                        padding: "10px 16px",
+                        borderRadius: 6,
+                        background:
+                          julesDispatchMsg.type === "error"
+                            ? "rgba(248,81,73,0.15)"
+                            : "rgba(63,185,80,0.15)",
+                        color:
+                          julesDispatchMsg.type === "error"
+                            ? "var(--accent-red)"
+                            : "var(--accent-green)",
+                        border:
+                          "1px solid " +
+                          (julesDispatchMsg.type === "error"
+                            ? "var(--accent-red)"
+                            : "var(--accent-green)"),
+                        fontSize: 13,
+                      },
+                    },
+                    julesDispatchMsg.text,
+                  )
+                : null,
               h(
                 "div",
                 { className: "section", style: { marginTop: 16 } },
@@ -8925,6 +9092,7 @@
                                           method: "POST",
                                           headers: {
                                             "Content-Type": "application/json",
+                                            "X-Requested-With": "XMLHttpRequest",
                                           },
                                           body: JSON.stringify({
                                             workflow_file: entry.workflow_file,
@@ -8936,18 +9104,16 @@
                                         .then(function (r) {
                                           if (!r.ok) {
                                             return r.json().then(function (e) {
-                                              alert(
-                                                "Dispatch failed: " +
-                                                  (e.detail || r.status),
-                                              );
+                                              setJulesDispatchMsg({ type: "error", text: "Dispatch failed: " + (e.detail || r.status) });
+                                              setTimeout(function () { setJulesDispatchMsg(null); }, 6000);
                                             });
                                           }
-                                          alert(
-                                            "Dispatched " + entry.workflow_file,
-                                          );
+                                          setJulesDispatchMsg({ type: "success", text: "Dispatched " + entry.workflow_file });
+                                          setTimeout(function () { setJulesDispatchMsg(null); }, 6000);
                                         })
                                         .catch(function (err) {
-                                          alert("Dispatch error: " + err);
+                                          setJulesDispatchMsg({ type: "error", text: "Dispatch error: " + err });
+                                          setTimeout(function () { setJulesDispatchMsg(null); }, 6000);
                                         });
                                     },
                                   },
@@ -10206,7 +10372,7 @@
           setIsLoading(true);
           fetch("/api/help/chat", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify({ question: q, current_tab: currentTab }),
           })
             .then(function (r) {
@@ -12565,6 +12731,235 @@
       }
 
 
+      function DiagnosticsTab() {
+        var ds = React.useState(null);
+        var data = ds[0], setData = ds[1];
+        var ls = React.useState(true);
+        var loading = ls[0], setLoading = ls[1];
+        var es = React.useState(null);
+        var error = es[0], setError = es[1];
+        var drs = React.useState(null);
+        var driftData = drs[0], setDriftData = drs[1];
+        var rs2 = React.useState(null);
+        var restartResult = rs2[0], setRestartResult = rs2[1];
+        var rcs = React.useState(false);
+        var restartConfirm = rcs[0], setRestartConfirm = rcs[1];
+        var rls = React.useState(false);
+        var restartLoading = rls[0], setRestartLoading = rls[1];
+        var lrs = React.useState(null);
+        var launcherResult = lrs[0], setLauncherResult = lrs[1];
+        var lls = React.useState(false);
+        var launcherLoading = lls[0], setLauncherLoading = lls[1];
+
+        function fetchDiagnostics() {
+          setLoading(true);
+          Promise.all([
+            fetch("/api/diagnostics/summary").then(function (r) { return r.json(); }),
+            fetch("/api/deployment/git-drift").then(function (r) { return r.json(); }),
+          ])
+            .then(function (results) {
+              setData(results[0] || {});
+              setDriftData(results[1] || {});
+              setError(null);
+              setLoading(false);
+            })
+            .catch(function (e) {
+              setError(e.message || "Failed to load diagnostics");
+              setLoading(false);
+            });
+        }
+
+        React.useEffect(function () { fetchDiagnostics(); }, []);
+
+        function doRestartService() {
+          setRestartLoading(true);
+          setRestartResult(null);
+          fetch("/api/diagnostics/restart-service", { method: "POST" })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+              setRestartResult(d);
+              setRestartConfirm(false);
+              setRestartLoading(false);
+            })
+            .catch(function (e) {
+              setRestartResult({ success: false, output: e.message || "Request failed" });
+              setRestartConfirm(false);
+              setRestartLoading(false);
+            });
+        }
+
+        function doGenerateLaunchers() {
+          setLauncherLoading(true);
+          setLauncherResult(null);
+          fetch("/api/launchers/generate", { method: "POST" })
+            .then(function (r) { return r.json(); })
+            .then(function (d) { setLauncherResult(d); setLauncherLoading(false); })
+            .catch(function (e) {
+              setLauncherResult({ message: "Error: " + (e.message || "Request failed") });
+              setLauncherLoading(false);
+            });
+        }
+
+        var cardStyle = {
+          background: "var(--card-bg)",
+          border: "1px solid var(--border)",
+          borderRadius: 8,
+          padding: "16px 20px",
+          marginBottom: 16,
+        };
+        var sectionHeadStyle = {
+          fontSize: 13,
+          fontWeight: 600,
+          color: "var(--text-muted)",
+          textTransform: "uppercase",
+          letterSpacing: "0.05em",
+          marginBottom: 12,
+        };
+        var kvStyle = { display: "flex", gap: 8, marginBottom: 6, fontSize: 13 };
+        var keyStyle = { color: "var(--text-muted)", minWidth: 140 };
+        var valStyle = { color: "var(--text-primary)", fontFamily: "monospace" };
+        var btnStyle = {
+          background: "var(--accent-blue)",
+          color: "#fff",
+          border: "none",
+          borderRadius: 6,
+          padding: "6px 14px",
+          cursor: "pointer",
+          fontSize: 13,
+          marginRight: 8,
+        };
+        var dangerBtnStyle = Object.assign({}, btnStyle, { background: "var(--accent-red)" });
+        var warnBannerStyle = {
+          background: "rgba(210,153,34,0.15)",
+          border: "1px solid var(--accent-yellow)",
+          borderRadius: 6,
+          padding: "10px 14px",
+          marginBottom: 16,
+          fontSize: 13,
+          color: "var(--accent-yellow)",
+        };
+
+        if (loading) return h("div", { style: { padding: 24 } }, "Loading diagnostics…");
+        if (error) return h("div", { style: { padding: 24, color: "var(--accent-red)" } }, "Error: ", error);
+
+        var isDrifted = (driftData && driftData.is_drifted) || (data && data.is_drifted);
+
+        return h("div", { style: { padding: 20, maxWidth: 860 } },
+          h("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 } },
+            h("h2", { style: { margin: 0, fontSize: 20, fontWeight: 700 } }, "Diagnostics"),
+            h("button", { style: btnStyle, onClick: fetchDiagnostics }, I.refresh(12), " Refresh"),
+          ),
+
+          isDrifted
+            ? h("div", { style: warnBannerStyle },
+                "⚠️ Deployed version is behind origin/main. Run update-deployed.sh to update.",
+                h("div", { style: { marginTop: 6, fontSize: 12, opacity: 0.85 } },
+                  "Local: ", (driftData && driftData.source_commit) || (data && data.source_commit) || "?",
+                  " → Remote: ", (driftData && driftData.remote_commit) || (data && data.remote_commit) || "?",
+                ),
+              )
+            : null,
+
+          h("div", { style: cardStyle },
+            h("div", { style: sectionHeadStyle }, "System Overview"),
+            data
+              ? h("div", null,
+                  h("div", { style: kvStyle }, h("span", { style: keyStyle }, "Dashboard PID"), h("span", { style: valStyle }, data.dashboard_pid || "—")),
+                  h("div", { style: kvStyle }, h("span", { style: keyStyle }, "Memory"), h("span", { style: valStyle }, (data.dashboard_memory_mb || 0) + " MB")),
+                  h("div", { style: kvStyle }, h("span", { style: keyStyle }, "Port"), h("span", { style: valStyle }, data.dashboard_port || 8321)),
+                  h("div", { style: kvStyle }, h("span", { style: keyStyle }, "Git Commit"), h("span", { style: valStyle }, data.git_commit || "unknown")),
+                  h("div", { style: kvStyle }, h("span", { style: keyStyle }, "Drift Status"), h("span", { style: valStyle }, isDrifted ? "Behind origin/main" : "Up to date")),
+                )
+              : h("div", null, "No data"),
+          ),
+
+          h("div", { style: cardStyle },
+            h("div", { style: sectionHeadStyle }, "WSL Status"),
+            data
+              ? h("div", null,
+                  h("div", { style: { fontSize: 12, marginBottom: 8, color: (data.wsl_available ? "var(--accent-green)" : "var(--accent-red)") } },
+                    data.wsl_available ? "WSL available" : "WSL not available"),
+                  data.wsl_status
+                    ? h("pre", { style: { background: "var(--bg-secondary)", borderRadius: 4, padding: 10, fontSize: 11, margin: 0, overflowX: "auto", color: "var(--text-primary)", whiteSpace: "pre-wrap" } },
+                        data.wsl_status)
+                    : null,
+                )
+              : h("div", null, "No WSL data"),
+          ),
+
+          h("div", { style: cardStyle },
+            h("div", { style: sectionHeadStyle }, "Recovery Actions"),
+            h("div", { style: { marginBottom: 12 } },
+              restartConfirm
+                ? h("div", null,
+                    h("span", { style: { fontSize: 13, marginRight: 8, color: "var(--accent-yellow)" } }, "Restart the runner-dashboard systemd service?"),
+                    h("button", {
+                      style: dangerBtnStyle,
+                      onClick: doRestartService,
+                      disabled: restartLoading,
+                    }, restartLoading ? "Restarting…" : "Confirm Restart"),
+                    h("button", { style: Object.assign({}, btnStyle, { background: "var(--card-bg)", color: "var(--text-primary)", border: "1px solid var(--border)" }), onClick: function () { setRestartConfirm(false); } }, "Cancel"),
+                  )
+                : h("button", {
+                    style: dangerBtnStyle,
+                    onClick: function () { setRestartConfirm(true); setRestartResult(null); },
+                  }, "Restart Dashboard Service"),
+              restartResult
+                ? h("div", {
+                    style: {
+                      marginTop: 8,
+                      padding: "8px 12px",
+                      background: restartResult.success ? "rgba(63,185,80,0.1)" : "rgba(248,81,73,0.1)",
+                      borderRadius: 4,
+                      fontSize: 12,
+                      color: restartResult.success ? "var(--accent-green)" : "var(--accent-red)",
+                    }
+                  },
+                    restartResult.success ? "Service restarted successfully." : "Restart failed.",
+                    restartResult.output ? h("pre", { style: { margin: "4px 0 0", fontSize: 11, whiteSpace: "pre-wrap" } }, restartResult.output) : null,
+                  )
+                : null,
+            ),
+          ),
+
+          h("div", { style: cardStyle },
+            h("div", { style: sectionHeadStyle }, "Windows Launchers"),
+            h("p", { style: { fontSize: 13, color: "var(--text-muted)", marginBottom: 12 } },
+              "Generate PowerShell scripts on your Windows Desktop for quick access."),
+            h("button", {
+              style: btnStyle,
+              onClick: doGenerateLaunchers,
+              disabled: launcherLoading,
+            }, launcherLoading ? "Generating…" : "Generate Launchers"),
+            launcherResult
+              ? h("div", { style: { marginTop: 12, fontSize: 12 } },
+                  h("div", { style: { color: "var(--accent-green)", marginBottom: 6 } }, launcherResult.message || "Done"),
+                  launcherResult.output_dir
+                    ? h("div", { style: { color: "var(--text-muted)", marginBottom: 6 } }, "Output: ", h("code", null, launcherResult.output_dir))
+                    : null,
+                  launcherResult.launchers && launcherResult.launchers.length > 0
+                    ? h("ul", { style: { margin: "4px 0", paddingLeft: 20 } },
+                        launcherResult.launchers.map(function (f) {
+                          return h("li", { key: f, style: { fontFamily: "monospace", fontSize: 11 } }, f.split(/[\\/]/).pop());
+                        }),
+                      )
+                    : null,
+                )
+              : null,
+          ),
+
+          h("div", { style: cardStyle },
+            h("div", { style: sectionHeadStyle }, "Quick API Links"),
+            h("div", { style: { display: "flex", flexWrap: "wrap", gap: 8 } },
+              ["/api/health", "/api/system", "/api/runners", "/api/diagnostics/summary", "/api/deployment/drift"].map(function (url) {
+                return h("a", { key: url, href: url, target: "_blank", rel: "noopener noreferrer", style: { fontSize: 12, color: "var(--accent-blue)", textDecoration: "none", padding: "4px 8px", background: "var(--bg-secondary)", borderRadius: 4 } }, url);
+              }),
+            ),
+          ),
+        );
+      }
+
+
       function App() {
         var ts = React.useState("overview");
         var tab = ts[0],
@@ -12756,7 +13151,7 @@
         function orchDispatch(params) {
           return fetch("/api/fleet/orchestration/dispatch", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify(params),
           }).then(function (r) {
             return r.json().then(function (d) {
@@ -12769,7 +13164,7 @@
         function orchDeploy(params) {
           return fetch("/api/fleet/orchestration/deploy", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify(params),
           }).then(function (r) {
             return r.json().then(function (d) {
@@ -12815,7 +13210,7 @@
         function dispatchWorkflow(params) {
           return fetch("/api/workflows/dispatch", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify(params),
           }).then(function (r) {
             return r.json().then(function (d) {
@@ -12853,7 +13248,7 @@
         function maxwellControl(params) {
           return fetch("/api/maxwell/control", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify(params),
           }).then(function (r) {
             return r.json().then(function (d) {
@@ -13102,7 +13497,7 @@
           setRemediationLoading(true);
           return fetch("/api/agent-remediation/config", {
             method: "PUT",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify({ policy: policy }),
           })
             .then(function (r) {
@@ -13155,7 +13550,7 @@
           setRemediationDispatchState(null);
           fetch("/api/agent-remediation/plan", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify(
               Object.assign({}, payload, {
                 provider_override: remediationProvider,
@@ -13190,7 +13585,7 @@
           setRemediationLoading(true);
           fetch("/api/agent-remediation/dispatch", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify(
               Object.assign({}, payload, {
                 provider: remediationProvider,
@@ -13260,7 +13655,7 @@
           setRunnerCapacityLoading(true);
           fetch("/api/fleet/schedule", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify({ schedule: schedule, apply: apply }),
           })
             .then(function (r) {
@@ -13298,7 +13693,7 @@
         function dispatchAssessment(params) {
           return fetch("/api/assessments/dispatch", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify(params),
           }).then(function (r) {
             if (!r.ok)
@@ -13339,7 +13734,7 @@
         function dispatchFeatureRequest(params) {
           return fetch("/api/feature-requests/dispatch", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify(params),
           }).then(function (r) {
             if (!r.ok)
@@ -13353,7 +13748,7 @@
         function savePromptTemplate(params) {
           return fetch("/api/prompt-templates", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify(params),
           })
             .then(function (r) {
@@ -13614,7 +14009,7 @@
           setRemediationLoading(true);
           return fetch("/api/agent-remediation/config", {
             method: "PUT",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify({ policy: policy }),
           })
             .then(function (r) {
@@ -13672,7 +14067,7 @@
           setRemediationDispatchState(null);
           fetch("/api/agent-remediation/plan", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify(
               Object.assign({}, payload, {
                 provider_override: remediationProvider,
@@ -13707,7 +14102,7 @@
           setRemediationLoading(true);
           fetch("/api/agent-remediation/dispatch", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify(
               Object.assign({}, payload, {
                 provider: remediationProvider,
@@ -13768,7 +14163,7 @@
           setRunnerCapacityLoading(true);
           fetch("/api/fleet/schedule", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify({ schedule: schedule, apply: apply }),
           })
             .then(function (r) {
@@ -13834,7 +14229,7 @@
 
         function onFleet(a) {
           setActionLoading(true);
-          fetch("/api/fleet/control/" + a, { method: "POST" })
+          fetch("/api/fleet/control/" + a, { method: "POST", headers: { "X-Requested-With": "XMLHttpRequest" } })
             .then(function () {
               setTimeout(fetchFleet, 2000);
             })
@@ -13846,7 +14241,7 @@
         }
         function onRunner(id, a) {
           setActionLoading(true);
-          fetch("/api/runners/" + id + "/" + a, { method: "POST" })
+          fetch("/api/runners/" + id + "/" + a, { method: "POST", headers: { "X-Requested-With": "XMLHttpRequest" } })
             .then(function () {
               setTimeout(fetchFleet, 2000);
             })
@@ -13886,11 +14281,13 @@
             ),
             h(
               "div",
-              { className: "tab-bar" },
+              { className: "tab-bar", role: "tablist", "aria-label": "Dashboard sections" },
               h(
                 "button",
                 {
                   className: "tab-btn" + (tab === "overview" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "overview",
                   onClick: function () {
                     setTab("overview");
                   },
@@ -13903,6 +14300,8 @@
                 {
                   className:
                     "tab-btn" + (tab === "remediation" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "remediation",
                   onClick: function () {
                     setTab("remediation");
                     fetchRemediationConfig();
@@ -13933,6 +14332,8 @@
                 "button",
                 {
                   className: "tab-btn" + (tab === "queue" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "queue",
                   onClick: function () {
                     setTab("queue");
                     fetchQueue();
@@ -13959,6 +14360,8 @@
                 "button",
                 {
                   className: "tab-btn" + (tab === "machines" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "machines",
                   onClick: function () {
                     setTab("machines");
                     fetchMachines();
@@ -13985,6 +14388,8 @@
                 "button",
                 {
                   className: "tab-btn" + (tab === "org" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "org",
                   onClick: function () {
                     setTab("org");
                   },
@@ -13996,6 +14401,8 @@
                 "button",
                 {
                   className: "tab-btn" + (tab === "tests" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "tests",
                   onClick: function () {
                     setTab("tests");
                   },
@@ -14007,6 +14414,8 @@
                 "button",
                 {
                   className: "tab-btn" + (tab === "stats" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "stats",
                   onClick: function () {
                     setTab("stats");
                   },
@@ -14018,6 +14427,8 @@
                 "button",
                 {
                   className: "tab-btn" + (tab === "reports" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "reports",
                   onClick: function () {
                     setTab("reports");
                   },
@@ -14030,6 +14441,8 @@
                 {
                   className:
                     "tab-btn" + (tab === "scheduled-jobs" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "scheduled-jobs",
                   onClick: function () {
                     setTab("scheduled-jobs");
                     fetchScheduledJobs();
@@ -14056,6 +14469,8 @@
                 "button",
                 {
                   className: "tab-btn" + (tab === "workflows" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "workflows",
                   onClick: function () {
                     setTab("workflows");
                     fetchWorkflowsList();
@@ -14083,6 +14498,8 @@
                 {
                   className:
                     "tab-btn" + (tab === "runner-schedule" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "runner-schedule",
                   onClick: function () {
                     setTab("runner-schedule");
                     fetchRunnerCapacity();
@@ -14110,6 +14527,8 @@
                 {
                   className:
                     "tab-btn" + (tab === "deployment" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "deployment",
                   onClick: function () {
                     setTab("deployment");
                     fetchDeploymentState();
@@ -14141,6 +14560,8 @@
                 "button",
                 {
                   className: "tab-btn" + (tab === "history" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "history",
                   onClick: function () {
                     setTab("history");
                     fetchEnrichedRuns();
@@ -14168,6 +14589,8 @@
                 {
                   className:
                     "tab-btn" + (tab === "local-apps" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "local-apps",
                   onClick: function () {
                     setTab("local-apps");
                     fetchLocalApps();
@@ -14199,6 +14622,8 @@
                 {
                   className:
                     "tab-btn" + (tab === "credentials" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "credentials",
                   onClick: function () {
                     setTab("credentials");
                     fetchCredentials();
@@ -14227,6 +14652,8 @@
                   className:
                     "tab-btn" +
                     (tab === "fleet-orchestration" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "fleet-orchestration",
                   onClick: function () {
                     setTab("fleet-orchestration");
                     fetchFleetOrchestration();
@@ -14240,6 +14667,8 @@
                 {
                   className:
                     "tab-btn" + (tab === "assessments" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "assessments",
                   onClick: function () {
                     setTab("assessments");
                     fetchAssessments();
@@ -14253,6 +14682,8 @@
                 {
                   className:
                     "tab-btn" + (tab === "feature-requests" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "feature-requests",
                   onClick: function () {
                     setTab("feature-requests");
                     fetchFeatureRequests();
@@ -14279,6 +14710,8 @@
                 "button",
                 {
                   className: "tab-btn" + (tab === "maxwell" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "maxwell",
                   onClick: function () {
                     setTab("maxwell");
                     fetchMaxwellStatus();
@@ -14313,6 +14746,18 @@
                         "off",
                       )
                     : null,
+              ),
+              h(
+                "button",
+                {
+                  className:
+                    "tab-btn" + (tab === "diagnostics" ? " active" : ""),
+                  onClick: function () {
+                    setTab("diagnostics");
+                  },
+                },
+                I.settings(14),
+                "Diagnostics",
               ),
             ),
             h(
@@ -14386,7 +14831,7 @@
           ),
           h(
             "div",
-            { className: "main-content" },
+            { className: "main-content", role: "main" },
             tab === "overview"
               ? h(FleetTab, {
                   runners: runners,
@@ -14545,7 +14990,9 @@
                                                       fetchMaxwellStatus,
                                                     onControl: maxwellControl,
                                                   })
-                                                : null,
+                                                : tab === "diagnostics"
+                                                  ? h(DiagnosticsTab, null)
+                                                  : null,
           ),
           h(DashboardHelp, { currentTab: tab }),
         );

@@ -72,14 +72,14 @@ jobs:
       - name: Generate Jules app token
         id: app-token
         if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'failure'
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@df432ceedc7162793a195dd1713ff69aefc7379e # v1
         with:
           app-id: ${{ secrets.JULES_APP_ID }}
           private-key: ${{ secrets.JULES_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
       - name: Checkout Repository_Management
         if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'failure'
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
       # SAFEGUARD: Check if we've exceeded max repair iterations in the time window
       - name: Check Iteration Limits
         id: check-limits
@@ -88,10 +88,12 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           MAX_ITERATIONS_WINDOW_HOURS: ${{ env.MAX_ITERATIONS_WINDOW_HOURS }}
           MAX_REPAIR_ITERATIONS: ${{ env.MAX_REPAIR_ITERATIONS }}
+          WF_RUN_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          WF_RUN_NAME: ${{ github.event.workflow_run.name }}
         run: |
           echo "Checking repair iteration limits..."
-          BRANCH="${{ github.event.workflow_run.head_branch }}"
-          FAILED_WORKFLOW="${{ github.event.workflow_run.name || 'CI Standard' }}"
+          BRANCH="$WF_RUN_BRANCH"
+          FAILED_WORKFLOW="${WF_RUN_NAME:-CI Standard}"
           HOURS_AGO=$(date -u -d "$MAX_ITERATIONS_WINDOW_HOURS hours ago" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-"$MAX_ITERATIONS_WINDOW_HOURS"H +%Y-%m-%dT%H:%M:%SZ)
 
           FAILURE_COUNT=$(gh run list \
@@ -112,12 +114,17 @@ jobs:
       - name: Resolve remediation routing policy
         id: remediation-policy
         if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'failure'
+        env:
+          WF_REPO_NAME: ${{ github.event.repository.name || github.event.repository.full_name }}
+          WF_RUN_NAME: ${{ github.event.workflow_run.name }}
+          WF_RUN_DISPLAY_TITLE: ${{ github.event.workflow_run.display_title }}
+          WF_RUN_BRANCH: ${{ github.event.workflow_run.head_branch }}
         run: |
           RESULT=$(python3 scripts/resolve_agent_remediation_rule.py \
-            --repository "${{ github.event.repository.name || github.event.repository.full_name }}" \
-            --workflow-name "${{ github.event.workflow_run.name || 'CI Standard' }}" \
-            --failure-reason "${{ github.event.workflow_run.display_title || github.event.workflow_run.name || 'CI failure' }}" \
-            --branch "${{ github.event.workflow_run.head_branch || '' }}")
+            --repository "$WF_REPO_NAME" \
+            --workflow-name "${WF_RUN_NAME:-CI Standard}" \
+            --failure-reason "${WF_RUN_DISPLAY_TITLE:-${WF_RUN_NAME:-CI failure}}" \
+            --branch "${WF_RUN_BRANCH:-}")
           echo "$RESULT"
           echo "workflow_type=$(echo "$RESULT" | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"workflow_type\"])')" >> "$GITHUB_OUTPUT"
           echo "workflow_label=$(echo "$RESULT" | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"workflow_label\"])')" >> "$GITHUB_OUTPUT"
@@ -127,7 +134,7 @@ jobs:
       - name: Analyze Event Context
         id: decide
         if: steps.check-limits.outcome == 'skipped' || steps.check-limits.outputs.exceeded != 'true'
-        uses: actions/github-script@v9
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v9
         with:
           script: |
             const event = context.eventName;
@@ -259,7 +266,10 @@ jobs:
     with:
       run_id: ${{ format('{0}', github.event.workflow_run.id) }}
       branch: ${{ github.event.workflow_run.head_branch || '' }}
-    secrets: inherit
+    secrets:
+      JULES_APP_ID: ${{ secrets.JULES_APP_ID }}
+      JULES_APP_PRIVATE_KEY: ${{ secrets.JULES_APP_PRIVATE_KEY }}
+      JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
 
   call-ci-remediation:
     needs: triage
@@ -273,7 +283,10 @@ jobs:
       workflow_name: ${{ github.event.workflow_run.name || 'CI Standard' }}
       failure_reason: ${{ github.event.workflow_run.display_title || github.event.workflow_run.name || 'CI failure' }}
       max_same_failure_attempts: ${{ env.MAX_REPAIR_ITERATIONS }}
-    secrets: inherit
+    secrets:
+      JULES_APP_ID: ${{ secrets.JULES_APP_ID }}
+      JULES_APP_PRIVATE_KEY: ${{ secrets.JULES_APP_PRIVATE_KEY }}
+      JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
 
   call-hotfix-creator:
     needs: triage
@@ -282,76 +295,102 @@ jobs:
     with:
       run_id: ${{ format('{0}', github.event.workflow_run.id) }}
       failed_branch: ${{ github.event.workflow_run.head_branch || '' }}
-    secrets: inherit
+    secrets:
+      JULES_APP_ID: ${{ secrets.JULES_APP_ID }}
+      JULES_APP_PRIVATE_KEY: ${{ secrets.JULES_APP_PRIVATE_KEY }}
 
   call-scribe:
     needs: triage
     if: needs.triage.outputs.target == 'doc-scribe'
     uses: ./.github/workflows/Jules-Documentation-Scribe.yml
-    secrets: inherit
+    secrets:
+      JULES_APP_ID: ${{ secrets.JULES_APP_ID }}
+      JULES_APP_PRIVATE_KEY: ${{ secrets.JULES_APP_PRIVATE_KEY }}
 
   call-tests:
     needs: triage
     if: needs.triage.outputs.target == 'test-generator'
     uses: ./.github/workflows/Jules-Test-Generator.yml
-    secrets: inherit
+    secrets:
+      JULES_APP_ID: ${{ secrets.JULES_APP_ID }}
+      JULES_APP_PRIVATE_KEY: ${{ secrets.JULES_APP_PRIVATE_KEY }}
 
   call-auto-refactor:
     needs: triage
     if: needs.triage.outputs.target == 'auto-refactor'
     uses: ./.github/workflows/Jules-Auto-Refactor.yml
-    secrets: inherit
+    secrets:
+      JULES_APP_ID: ${{ secrets.JULES_APP_ID }}
+      JULES_APP_PRIVATE_KEY: ${{ secrets.JULES_APP_PRIVATE_KEY }}
 
   call-auto-rebase:
     needs: triage
     if: needs.triage.outputs.target == 'auto-rebase'
     uses: ./.github/workflows/Jules-Auto-Rebase.yml
-    secrets: inherit
+    secrets:
+      JULES_APP_ID: ${{ secrets.JULES_APP_ID }}
+      JULES_APP_PRIVATE_KEY: ${{ secrets.JULES_APP_PRIVATE_KEY }}
 
   call-archivist:
     needs: triage
     if: needs.triage.outputs.target == 'archivist'
     uses: ./.github/workflows/Jules-Archivist.yml
-    secrets: inherit
+    secrets:
+      JULES_APP_ID: ${{ secrets.JULES_APP_ID }}
+      JULES_APP_PRIVATE_KEY: ${{ secrets.JULES_APP_PRIVATE_KEY }}
 
   call-sentinel:
     needs: triage
     if: needs.triage.outputs.target == 'sentinel'
     uses: ./.github/workflows/Jules-Sentinel.yml
-    secrets: inherit
+    secrets:
+      JULES_APP_ID: ${{ secrets.JULES_APP_ID }}
+      JULES_APP_PRIVATE_KEY: ${{ secrets.JULES_APP_PRIVATE_KEY }}
 
   call-code-quality-reviewer:
     needs: triage
     if: needs.triage.outputs.target == 'code-quality-reviewer'
     uses: ./.github/workflows/Jules-Code-Quality-Reviewer.yml
-    secrets: inherit
+    secrets:
+      JULES_APP_ID: ${{ secrets.JULES_APP_ID }}
+      JULES_APP_PRIVATE_KEY: ${{ secrets.JULES_APP_PRIVATE_KEY }}
 
   call-assessment-generator:
     needs: triage
     if: needs.triage.outputs.target == 'assessment-generator'
     uses: ./.github/workflows/Jules-Assessment-Generator.yml
-    secrets: inherit
+    secrets:
+      JULES_APP_ID: ${{ secrets.JULES_APP_ID }}
+      JULES_APP_PRIVATE_KEY: ${{ secrets.JULES_APP_PRIVATE_KEY }}
 
   call-issue-resolver:
     needs: triage
     if: needs.triage.outputs.target == 'issue-resolver'
     uses: ./.github/workflows/Jules-Issue-Resolver.yml
-    secrets: inherit
+    secrets:
+      JULES_APP_ID: ${{ secrets.JULES_APP_ID }}
+      JULES_APP_PRIVATE_KEY: ${{ secrets.JULES_APP_PRIVATE_KEY }}
 
   call-completist:
     needs: triage
     if: needs.triage.outputs.target == 'completist'
     uses: ./.github/workflows/Jules-Completist.yml
-    secrets: inherit
+    secrets:
+      JULES_APP_ID: ${{ secrets.JULES_APP_ID }}
+      JULES_APP_PRIVATE_KEY: ${{ secrets.JULES_APP_PRIVATE_KEY }}
 
   call-documentation-auditor:
     needs: triage
     if: needs.triage.outputs.target == 'documentation-auditor'
     uses: ./.github/workflows/Jules-Documentation-Auditor.yml
-    secrets: inherit
+    secrets:
+      JULES_APP_ID: ${{ secrets.JULES_APP_ID }}
+      JULES_APP_PRIVATE_KEY: ${{ secrets.JULES_APP_PRIVATE_KEY }}
 
   call-pr-compiler:
     needs: triage
     if: needs.triage.outputs.target == 'pr-compiler'
     uses: ./.github/workflows/Jules-PR-Compiler.yml
-    secrets: inherit
+    secrets:
+      JULES_APP_ID: ${{ secrets.JULES_APP_ID }}
+      JULES_APP_PRIVATE_KEY: ${{ secrets.JULES_APP_PRIVATE_KEY }}
