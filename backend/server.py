@@ -4334,7 +4334,7 @@ async def _dispatch_to_ai_provider_for_chat(
         return response
     except Exception as e:
         log.error(f"AI provider error: {e}")
-        raise HTTPException(status_code=502, detail=f"AI provider error: {str(e)}")
+        raise HTTPException(status_code=502, detail=f"AI provider error: {str(e)}") from e
 
 
 @app.post("/api/assistant/chat", tags=["assistant"])
@@ -4448,7 +4448,7 @@ async def propose_action(request: Request) -> dict:
         }
     except Exception as e:
         log.error(f"Action proposal error: {e}")
-        raise HTTPException(status_code=502, detail=f"AI provider error: {str(e)}")
+        raise HTTPException(status_code=502, detail=f"AI provider error: {str(e)}") from e
 
 
 @app.post("/api/assistant/execute-action", tags=["assistant"])
