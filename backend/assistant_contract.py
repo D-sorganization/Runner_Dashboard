@@ -6,11 +6,10 @@ Defines request/response models for:
 - Assistant action proposals (tool-use and confirmation flows)
 """
 
-from pydantic import BaseModel, Field
-from typing import Optional, Any, Dict
-from datetime import datetime
 import enum
+from typing import Any
 
+from pydantic import BaseModel, Field
 
 # ─── Chat Endpoint Contracts (Issue #88) ────────────────────────────────────────
 
@@ -19,9 +18,9 @@ class AssistantContext(BaseModel):
     """Dashboard state context for assistant prompts."""
 
     current_tab: str = Field(..., description="Active tab: overview, remediation, etc")
-    selected_run_id: Optional[int] = None
-    selected_items: Optional[list[dict]] = None
-    dashboard_state: Optional[dict[str, Any]] = None
+    selected_run_id: int | None = None
+    selected_items: list[dict] | None = None
+    dashboard_state: dict[str, Any] | None = None
 
 
 class AssistantChatRequest(BaseModel):
@@ -29,7 +28,7 @@ class AssistantChatRequest(BaseModel):
 
     prompt: str = Field(..., min_length=1, max_length=5000)
     context: AssistantContext
-    provider: Optional[str] = None  # Override default provider
+    provider: str | None = None  # Override default provider
 
 
 class AssistantChatResponse(BaseModel):
@@ -62,7 +61,7 @@ class ActionProposal(BaseModel):
     description: str  # Human-readable summary
     risk_level: ActionRiskLevel
     rationale: str  # Why the AI thinks this helps
-    estimated_duration_seconds: Optional[int] = None
+    estimated_duration_seconds: int | None = None
 
 
 class ActionProposeRequest(BaseModel):
@@ -70,7 +69,7 @@ class ActionProposeRequest(BaseModel):
 
     user_request: str = Field(..., min_length=1, max_length=5000)
     context: AssistantContext
-    provider: Optional[str] = None
+    provider: str | None = None
 
 
 class ActionProposeResponse(BaseModel):
@@ -82,7 +81,7 @@ class ActionProposeResponse(BaseModel):
     description: str
     risk_level: ActionRiskLevel
     rationale: str
-    estimated_duration_seconds: Optional[int] = None
+    estimated_duration_seconds: int | None = None
 
 
 class ActionExecuteRequest(BaseModel):
@@ -90,7 +89,7 @@ class ActionExecuteRequest(BaseModel):
 
     action_id: str
     approved: bool
-    operator_notes: Optional[str] = None
+    operator_notes: str | None = None
 
 
 class ActionExecuteResponse(BaseModel):
