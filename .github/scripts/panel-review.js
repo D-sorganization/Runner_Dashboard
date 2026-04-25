@@ -36,6 +36,21 @@ async function postBrief({ github, context, core, issue }) {
     return;
   }
 
+  // Extract complexity label to suggest tier(s)
+  const complexityLabel = issue.labels
+    .map((l) => l.name)
+    .find((name) => name.startsWith("complexity:"));
+  const complexity = complexityLabel
+    ? complexityLabel.replace("complexity:", "")
+    : "unknown";
+  const recommendedTiers = selectTiers(complexity);
+  const recommendedAgents = getAgentsForTiers(recommendedTiers);
+
+  const tierInfo =
+    recommendedTiers.length > 0
+      ? `**Complexity:** \`${complexity}\` → Recommended reviewers: ${recommendedAgents.map((a) => `\`${a}\``).join(", ")}`
+      : "**Complexity:** unknown (no complexity label found)";
+
   const brief = [
     BRIEF_MARKER,
     "## Panel review requested",
@@ -45,6 +60,8 @@ async function postBrief({ github, context, core, issue }) {
     "a human removes the `panel-review` label and sets a non-`design` /",
     "non-`contested` judgement label.",
     "",
+    tierInfo,
+    "",
     "### How to respond",
     "",
     "Post **one** comment in this format:",
@@ -52,15 +69,17 @@ async function postBrief({ github, context, core, issue }) {
     "````",
     "<!-- panel-opinion:v1 agent=<tier> stance=support|oppose|modify -->",
     "## Opinion",
-    "…",
+    "<2-3 sentence summary>",
+    "",
     "## Suggested approach",
-    "…",
+    "<specific recommendation>",
+    "",
     "## Risks",
-    "…",
+    "<identified risks or concerns>",
     "````",
     "",
-    "`tier` is the agent's skill tier (`tier-1`, `tier-2`, `tier-3`, or",
-    "`research`). `stance` is one of `support`, `oppose`, `modify`.",
+    "`agent` is your agent tier (`tier-1`, `tier-2`, `tier-3`, or `research`).",
+    "`stance` is one of `support`, `oppose`, `modify`.",
     "",
     "See [docs/issue-taxonomy.md](../blob/main/docs/issue-taxonomy.md#panel-review)",
     "for the full contract.",
@@ -69,7 +88,9 @@ async function postBrief({ github, context, core, issue }) {
   await github.rest.issues.createComment({
     owner, repo, issue_number: issue.number, body: brief,
   });
-  core.info(`Posted brief on #${issue.number}`);
+  core.info(
+    `Posted brief on #${issue.number} (recommended tiers: ${recommendedTiers.join(", ")})`,
+  );
 }
 
 function parseOpinion(body) {
@@ -81,6 +102,16 @@ function parseOpinion(body) {
     const eq = pair.indexOf("=");
     if (eq > 0) attrs[pair.slice(0, eq)] = pair.slice(eq + 1);
   }
+
+  // Extract opinion sections: Suggested approach and Risks
+  const opinionMatch = body.match(
+    /##\s+Suggested approach\s*\n([\s\S]*?)(?=##\s+Risks|$)/i,
+  );
+  const risksMatch = body.match(/##\s+Risks\s*\n([\s\S]*?)$/i);
+
+  attrs.approach = opinionMatch ? opinionMatch[1].trim() : null;
+  attrs.risks = risksMatch ? risksMatch[1].trim() : null;
+
   return attrs;
 }
 
@@ -122,6 +153,30 @@ async function summarize({ github, context, core, issue }) {
     return acc;
   }, {});
 
+  // Aggregate approaches and risks
+  const approaches = {};
+  const risksList = [];
+
+  for (const o of opinions) {
+    if (o.parsed.approach) {
+      const key = o.parsed.approach.substring(0, 80); // Group similar approaches
+      approaches[key] = (approaches[key] || []).concat(o.author || "unknown");
+    }
+    if (o.parsed.risks) {
+      risksList.push({
+        author: o.author || "unknown",
+        text: o.parsed.risks,
+      });
+    }
+  }
+
+  // Calculate consensus percentage
+  const totalOpinions = opinions.length;
+  const supportCount = tally.support || 0;
+  const consensusPercent = totalOpinions > 0
+    ? Math.round((supportCount / totalOpinions) * 100)
+    : 0;
+
   const lines = [
     SUMMARY_MARKER,
     `## Panel summary (opinions=${opinions.length})`,
@@ -132,6 +187,34 @@ async function summarize({ github, context, core, issue }) {
       .sort((a, b) => b[1] - a[1])
       .map(([stance, n]) => `| \`${stance}\` | ${n} |`),
     "",
+    supportCount > 0 && totalOpinions > 1
+      ? `**Consensus:** ${consensusPercent}% support`
+      : supportCount === 1 ? "**Consensus:** Single support (pending more opinions)" : "**Consensus:** Undecided",
+    "",
+  ];
+
+  // Add approaches if any were extracted
+  if (Object.keys(approaches).length > 0) {
+    lines.push("### Suggested Approaches");
+    let approachNum = 1;
+    for (const [approach, authors] of Object.entries(approaches)) {
+      lines.push(`${approachNum}. ${approach}`);
+      lines.push(`   - Suggested by: ${authors.join(", ")}`);
+      approachNum++;
+    }
+    lines.push("");
+  }
+
+  // Add risks if any were extracted
+  if (risksList.length > 0) {
+    lines.push("### Identified Risks");
+    for (const risk of risksList) {
+      lines.push(`- **@${risk.author}**: ${risk.text}`);
+    }
+    lines.push("");
+  }
+
+  lines.push(
     "### Panelists",
     ...opinions.map(
       (o) =>
@@ -141,7 +224,7 @@ async function summarize({ github, context, core, issue }) {
     "Once the team has picked a direction, remove the `panel-review` label",
     "and set `judgement:objective` / `judgement:preference` to unblock",
     "implementation.",
-  ];
+  );
 
   await github.rest.issues.createComment({
     owner, repo, issue_number: issue.number, body: lines.join("\n"),
@@ -178,4 +261,56 @@ async function sweep({ github, context, core, specificIssueNumber, mode }) {
   }
 }
 
-module.exports = { postBrief, summarize, sweep };
+// Agent roster configuration for Phase 2 automated dispatch.
+// Maps agent tier to available agents and their domains.
+const AGENT_ROSTER = {
+  "tier-1": {
+    agents: ["claude", "codex"],
+    complexity: ["trivial", "routine"],
+    domains: ["backend", "frontend", "tests", "ci", "code-quality"],
+  },
+  "tier-2": {
+    agents: ["claude", "maxwell-daemon", "codex"],
+    complexity: ["complex"],
+    domains: ["backend", "frontend", "architecture", "security", "agent-safety"],
+  },
+  "tier-3": {
+    agents: ["claude", "maxwell-daemon", "jules"],
+    complexity: ["deep"],
+    domains: ["security", "architecture", "supply-chain", "governance"],
+  },
+  research: {
+    agents: ["claude"],
+    complexity: ["research"],
+    domains: ["research", "spike", "feasibility"],
+  },
+};
+
+// Determine which tier(s) should review based on issue complexity.
+function selectTiers(issueComplexity) {
+  const tiers = [];
+  if (
+    ["trivial", "routine"].includes(issueComplexity)
+  ) tiers.push("tier-1");
+  if (
+    ["trivial", "routine", "complex"].includes(issueComplexity)
+  ) tiers.push("tier-2");
+  if (
+    ["trivial", "routine", "complex", "deep"].includes(issueComplexity)
+  ) tiers.push("tier-3");
+  if (issueComplexity === "research") tiers.push("research");
+  return [...new Set(tiers)];
+}
+
+// Get all unique agents for the selected tiers.
+function getAgentsForTiers(tiers) {
+  const agents = new Set();
+  for (const tier of tiers) {
+    if (AGENT_ROSTER[tier]) {
+      AGENT_ROSTER[tier].agents.forEach((a) => agents.add(a));
+    }
+  }
+  return Array.from(agents);
+}
+
+module.exports = { postBrief, summarize, sweep, AGENT_ROSTER, selectTiers, getAgentsForTiers };
