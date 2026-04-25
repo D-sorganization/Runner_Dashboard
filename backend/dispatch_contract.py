@@ -15,8 +15,12 @@ without touching the running dashboard service.
 from __future__ import annotations
 
 import datetime as _dt_mod
+import hashlib
+import hmac
+import json
+import os
 from dataclasses import asdict, dataclass, field
-from enum import StrEnum
+from enum import Enum
 from typing import Any
 from uuid import uuid4
 
@@ -24,9 +28,111 @@ UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 datetime = _dt_mod.datetime
 
 SCHEMA_VERSION = "dispatch-envelope.v1"
+ENVELOPE_VERSION = 1
 
 
-class DispatchAccess(StrEnum):
+def _load_signing_secret() -> str:
+    """Load DISPATCH_SIGNING_SECRET from environment or generate/save it."""
+    secret = os.environ.get("DISPATCH_SIGNING_SECRET", "").strip()
+    if secret:
+        return secret
+
+    config_base = os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config"))
+    config_dir = os.path.join(config_base, "runner-dashboard")
+    key_file = os.path.join(config_dir, "dispatch_signing_key")
+
+    if os.path.exists(key_file):
+        with open(key_file) as f:
+            return f.read().strip()
+
+    import secrets
+
+    secret = secrets.token_hex(24)
+    os.makedirs(config_dir, exist_ok=True)
+    with open(key_file, "w") as f:
+        f.write(secret)
+    os.chmod(key_file, 0o600)
+    return secret
+
+
+class _StrEnum(str, Enum):
+    """Python 3.10 compatible StrEnum."""
+
+    pass
+
+
+class TimestampValidationResult(_StrEnum):
+    """Result of timestamp freshness validation."""
+
+    VALID = "valid"
+    TOO_OLD = "too_old"
+    TOO_NEW = "too_new"
+    INVALID_FORMAT = "invalid_format"
+
+
+def _validate_timestamp_freshness(timestamp_str: str, ttl_seconds: int = 300) -> TimestampValidationResult:
+    """Validate that timestamp is within ±ttl_seconds of current time."""
+    try:
+        if timestamp_str.endswith("Z"):
+            ts = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
+        else:
+            ts = datetime.fromisoformat(timestamp_str)
+
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=UTC)
+
+        now = datetime.now(UTC)
+        delta = abs((now - ts).total_seconds())
+
+        if delta > ttl_seconds:
+            return TimestampValidationResult.TOO_OLD if ts < now else TimestampValidationResult.TOO_NEW
+        return TimestampValidationResult.VALID
+    except (ValueError, AttributeError):
+        return TimestampValidationResult.INVALID_FORMAT
+
+
+def _sign_envelope_payload(
+    action: str,
+    source: str,
+    target: str,
+    requested_by: str,
+    issued_at: str,
+    envelope_version: int,
+    secret: str,
+) -> str:
+    """Generate HMAC-SHA256 signature over envelope payload."""
+    canonical = json.dumps(
+        {
+            "action": action,
+            "source": source,
+            "target": target,
+            "requested_by": requested_by,
+            "issued_at": issued_at,
+            "envelope_version": envelope_version,
+        },
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+
+    return hmac.new(secret.encode(), canonical.encode(), hashlib.sha256).hexdigest()
+
+
+def _verify_envelope_signature(
+    action: str,
+    source: str,
+    target: str,
+    requested_by: str,
+    issued_at: str,
+    envelope_version: int,
+    signature: str,
+    secret: str,
+) -> bool:
+    """Verify HMAC-SHA256 signature over envelope payload."""
+    expected = _sign_envelope_payload(action, source, target, requested_by, issued_at, envelope_version, secret)
+    return hmac.compare_digest(expected, signature)
+
+
+class DispatchAccess(_StrEnum):
     """Access level for an allowlisted dispatch action."""
 
     READ_ONLY = "read_only"
@@ -69,6 +175,8 @@ class DispatchConfirmation:
 
     approved_by: str
     approved_at: str
+    envelope_id: str = ""
+    approval_hmac: str = ""
     note: str = ""
 
     def to_dict(self) -> dict[str, Any]:
@@ -79,6 +187,8 @@ class DispatchConfirmation:
         return cls(
             approved_by=_required_string(data, "approved_by"),
             approved_at=_required_string(data, "approved_at"),
+            envelope_id=str(data.get("envelope_id", "")),
+            approval_hmac=str(data.get("approval_hmac", "")),
             note="" if data.get("note") is None else str(data.get("note", "")),
         )
 
@@ -116,7 +226,23 @@ class CommandEnvelope:
     confirmation: DispatchConfirmation | None = None
     envelope_id: str = field(default_factory=lambda: uuid4().hex)
     schema_version: str = SCHEMA_VERSION
+    envelope_version: int = ENVELOPE_VERSION
     issued_at: str = field(default_factory=_utc_now)
+    signature: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.signature:
+            secret = _load_signing_secret()
+            sig = _sign_envelope_payload(
+                self.action,
+                self.source,
+                self.target,
+                self.requested_by,
+                self.issued_at,
+                self.envelope_version,
+                secret,
+            )
+            object.__setattr__(self, "signature", sig)
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -128,7 +254,7 @@ class CommandEnvelope:
     def from_dict(cls, data: dict[str, Any]) -> CommandEnvelope:
         confirmation_data = data.get("confirmation")
         confirmation = DispatchConfirmation.from_dict(confirmation_data) if confirmation_data is not None else None
-        return cls(
+        envelope = cls(
             action=_required_string(data, "action"),
             source=_required_string(data, "source"),
             target=_required_string(data, "target"),
@@ -138,8 +264,30 @@ class CommandEnvelope:
             confirmation=confirmation,
             envelope_id=str(data.get("envelope_id", uuid4().hex)),
             schema_version=str(data.get("schema_version", SCHEMA_VERSION)),
+            envelope_version=int(data.get("envelope_version", ENVELOPE_VERSION)),
             issued_at=str(data.get("issued_at", _utc_now())),
+            signature=str(data.get("signature", "")),
         )
+        return envelope
+
+    def verify_signature(self) -> bool:
+        """Verify that envelope signature is valid."""
+        if not self.signature:
+            return False
+        try:
+            secret = _load_signing_secret()
+            return _verify_envelope_signature(
+                self.action,
+                self.source,
+                self.target,
+                self.requested_by,
+                self.issued_at,
+                self.envelope_version,
+                self.signature,
+                secret,
+            )
+        except Exception:
+            return False
 
 
 @dataclass(frozen=True, slots=True)
@@ -184,6 +332,52 @@ class DispatchValidationResult:
     reason: str
     action: DispatchAction | None
     confirmation_required: bool
+
+
+@dataclass(frozen=True, slots=True)
+class CryptoValidationResult:
+    """Cryptographic validation outcome for an envelope signature and timestamps."""
+
+    valid: bool
+    reason: str
+
+
+def validate_envelope_crypto(envelope: CommandEnvelope) -> CryptoValidationResult:
+    """Validate envelope signature and timestamp freshness.
+
+    Returns CryptoValidationResult with valid=True only if all checks pass:
+    - Signature is valid (matches HMAC of canonical JSON)
+    - Timestamp is fresh (issued_at within ±5 minutes)
+    - Confirmation timestamp is fresh if confirmation is present (approved_at within ±5 minutes)
+    """
+    if not envelope.signature:
+        return CryptoValidationResult(valid=False, reason="envelope signature missing")
+
+    if not envelope.verify_signature():
+        return CryptoValidationResult(valid=False, reason="envelope signature invalid")
+
+    issued_at_result = _validate_timestamp_freshness(envelope.issued_at, ttl_seconds=300)
+    if issued_at_result != TimestampValidationResult.VALID:
+        reason_map = {
+            TimestampValidationResult.TOO_OLD: "envelope issued_at timestamp too old",
+            TimestampValidationResult.TOO_NEW: "envelope issued_at timestamp in future",
+            TimestampValidationResult.INVALID_FORMAT: "envelope issued_at timestamp invalid format",
+        }
+        return CryptoValidationResult(valid=False, reason=reason_map.get(issued_at_result, "unknown timestamp error"))
+
+    if envelope.confirmation is not None:
+        approved_at_result = _validate_timestamp_freshness(envelope.confirmation.approved_at, ttl_seconds=300)
+        if approved_at_result != TimestampValidationResult.VALID:
+            reason_map = {
+                TimestampValidationResult.TOO_OLD: "confirmation approved_at timestamp too old",
+                TimestampValidationResult.TOO_NEW: "confirmation approved_at timestamp in future",
+                TimestampValidationResult.INVALID_FORMAT: "confirmation approved_at timestamp invalid format",
+            }
+            reason = reason_map.get(approved_at_result, "unknown timestamp error")
+            return CryptoValidationResult(valid=False, reason=reason)
+
+    final_reason = "signature and timestamps valid"
+    return CryptoValidationResult(valid=True, reason=final_reason)
 
 
 ALLOWLISTED_ACTIONS: dict[str, DispatchAction] = {
@@ -243,6 +437,28 @@ ALLOWLISTED_ACTIONS: dict[str, DispatchAction] = {
         access=DispatchAccess.PRIVILEGED,
         description=("Enable or disable a scheduled maintenance job. Affects recurring fleet maintenance windows."),
         prototype_command=("sudo", "systemctl", "enable|disable", "<unit>"),
+        requires_confirmation=True,
+    ),
+    # ── Agent dispatch actions ────────────────────────────────────────────────
+    "agents.dispatch.adhoc": DispatchAction(
+        name="agents.dispatch.adhoc",
+        access=DispatchAccess.PRIVILEGED,
+        description="Dispatch an agent for an ad-hoc task via the quick-dispatch workflow.",
+        prototype_command=("gh", "workflow", "run", "Agent-Quick-Dispatch.yml"),
+        requires_confirmation=True,
+    ),
+    "agents.dispatch.pr": DispatchAction(
+        name="agents.dispatch.pr",
+        access=DispatchAccess.PRIVILEGED,
+        description="Dispatch agents to one or more pull requests via the Agent-PR-Action workflow.",
+        prototype_command=("gh", "workflow", "run", "Agent-PR-Action.yml"),
+        requires_confirmation=True,
+    ),
+    "agents.dispatch.issue": DispatchAction(
+        name="agents.dispatch.issue",
+        access=DispatchAccess.PRIVILEGED,
+        description="Dispatch agents to one or more issues via the Agent-Issue-Action workflow.",
+        prototype_command=("gh", "workflow", "run", "Agent-Issue-Action.yml"),
         requires_confirmation=True,
     ),
 }

@@ -1,0 +1,251 @@
+# Bulk backfill manifest for the issue taxonomy.
+#
+# Maps every currently-open issue to its proposed taxonomy labels and
+# (where applicable) a parent epic. Applied by
+# `.github/workflows/issue-taxonomy-backfill.yml` after `.github/labels.yml`
+# has been synced and the labels exist in the repo.
+#
+# Classification rules followed (see docs/issue-taxonomy.md):
+#   - type/complexity/effort/judgement labels are required on every non-
+#     epic issue.
+#   - `quick-win` is only applied when effort is xs/s AND complexity is
+#     trivial/routine AND judgement is objective/preference.
+#   - `panel-review` is applied to judgement:design and to any issue with
+#     live architectural trade-offs (auth strategy, mTLS vs signed
+#     envelopes, cost-cap policy, prompt-injection defense, etc.).
+#   - `wave:*` mirrors the execution order documented in tracking issue
+#     #55. Security findings under #55 keep the wave they were assigned.
+#   - Existing labels (severity, domain) are preserved; this manifest only
+#     **adds** labels.
+#
+# Safety:
+#   - The apply workflow is idempotent. Re-running does not add duplicate
+#     labels. Existing taxonomy labels (if any) are not removed.
+#   - `dry_run` input is provided so the manifest can be reviewed before
+#     any change lands.
+
+version: 1
+generated: "2026-04-24"
+
+# Parent/child relationships expressed as sub-issue links. The apply
+# workflow turns these into native sub-issue edges using GraphQL after
+# resolving issue numbers to GraphQL node IDs.
+parents:
+  55: # [TRACKING] Adversarial security review
+    children:
+      [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29,
+       30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43,
+       44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54]
+  63: # [EPIC] Multi-user identity, authorization, and attribution
+    # Children for #63 will be filed as part of Wave 1 of the epic; listed
+    # here for traceability but not yet created as issues.
+    children: []
+  65: # [EPIC] Migrate to label-based issue taxonomy
+    children: []
+
+issues:
+  # ---------------------------------------------------------------------
+  # Epics — no complexity/effort; wave only if applicable.
+  # ---------------------------------------------------------------------
+  - number: 55
+    title_hint: "[TRACKING] Adversarial security & quality review"
+    add: ["type:epic"]
+  - number: 63
+    title_hint: "[EPIC] Multi-user identity, authorization, and attribution"
+    add: ["type:epic", "judgement:design", "panel-review"]
+  - number: 65
+    title_hint: "[EPIC] Migrate to label-based issue taxonomy"
+    add: ["type:epic"]
+
+  # ---------------------------------------------------------------------
+  # Wave 1 — reachable-from-any-untrusted-host blockers
+  # ---------------------------------------------------------------------
+  - number: 16
+    title_hint: "No authentication on any /api/* endpoint"
+    add: ["type:security", "complexity:complex", "effort:l", "judgement:design",
+          "panel-review", "wave:1"]
+    rationale: "OAuth vs session vs token vs mTLS is a real design choice; blocks every other CORS/CSRF/SSRF exploit's preconditions."
+  - number: 17
+    title_hint: "CORS allow_origins=[*] with allow_credentials=True"
+    add: ["type:security", "complexity:routine", "effort:s", "judgement:objective",
+          "wave:1"]
+  - number: 19
+    title_hint: "Shell injection in Agent workflows via workflow_dispatch"
+    add: ["type:security", "complexity:routine", "effort:m", "judgement:objective",
+          "wave:1"]
+  - number: 20
+    title_hint: "Self-hosted runner d-sorg-fleet reacts to pull_request_target"
+    add: ["type:security", "complexity:complex", "effort:m", "judgement:design",
+          "panel-review", "wave:1"]
+  - number: 21
+    title_hint: "secrets: inherit passes every secret to 15+ reusable workflow calls"
+    add: ["type:security", "complexity:routine", "effort:m", "judgement:design",
+          "wave:1"]
+  - number: 26
+    title_hint: "Deploy scripts: curl | sh, sudoers, hardcoded username"
+    add: ["type:security", "complexity:complex", "effort:m", "judgement:design",
+          "panel-review", "wave:1"]
+
+  # ---------------------------------------------------------------------
+  # Wave 2 — remaining critical paths
+  # ---------------------------------------------------------------------
+  - number: 18
+    title_hint: "CSP unsafe-inline + CDN scripts no SRI"
+    add: ["type:security", "complexity:routine", "effort:m", "judgement:objective",
+          "wave:2"]
+  - number: 22
+    title_hint: "Command injection via local_apps.json health_command"
+    add: ["type:security", "complexity:routine", "effort:s", "judgement:objective",
+          "wave:2"]
+  - number: 23
+    title_hint: "Path traversal + SSRF via local_apps.json"
+    add: ["type:security", "complexity:routine", "effort:s", "judgement:objective",
+          "wave:2"]
+  - number: 24
+    title_hint: "Prompt injection: user-controlled failure text -> LLM agent"
+    add: ["type:security", "complexity:complex", "effort:m", "judgement:design",
+          "panel-review", "wave:2"]
+  - number: 25
+    title_hint: "assert used as a security gate"
+    add: ["type:security", "complexity:trivial", "effort:xs", "judgement:objective",
+          "quick-win", "wave:2"]
+  - number: 27
+    title_hint: "API endpoints echo subprocess stderr / raw exceptions"
+    add: ["type:security", "complexity:routine", "effort:s", "judgement:objective",
+          "quick-win", "wave:2"]
+  - number: 28
+    title_hint: "SSRF via FLEET_NODES URLs"
+    add: ["type:security", "complexity:routine", "effort:s", "judgement:objective",
+          "wave:2"]
+  - number: 29
+    title_hint: "GH_TOKEN and ANTHROPIC_API_KEY exposure"
+    add: ["type:security", "complexity:complex", "effort:m", "judgement:design",
+          "panel-review", "wave:2"]
+
+  # ---------------------------------------------------------------------
+  # Wave 3 — high-severity hardening
+  # ---------------------------------------------------------------------
+  - number: 30
+    title_hint: "CSRF, unencoded params, window.open, DOMPurify bypass"
+    add: ["type:security", "complexity:complex", "effort:m", "judgement:objective",
+          "wave:3"]
+  - number: 31
+    title_hint: "No rate limiting -> financial DoS on agent dispatch"
+    add: ["type:security", "complexity:complex", "effort:m", "judgement:design",
+          "panel-review", "wave:3"]
+  - number: 32
+    title_hint: "Missing input validation on state-changing POST/PUT"
+    add: ["type:security", "complexity:routine", "effort:m", "judgement:objective",
+          "wave:3"]
+  - number: 33
+    title_hint: "Bare except Exception; no structured audit logging"
+    add: ["type:task", "complexity:routine", "effort:m", "judgement:preference",
+          "wave:3"]
+  - number: 34
+    title_hint: "systemd units ship with hardening off"
+    add: ["type:security", "complexity:routine", "effort:s", "judgement:objective",
+          "wave:3"]
+  - number: 35
+    title_hint: "Bandit skipped in CI, mypy non-strict, missing hooks"
+    add: ["type:chore", "complexity:routine", "effort:m", "judgement:preference",
+          "wave:3"]
+  - number: 36
+    title_hint: "Floating deps + third-party actions pinned to @v1/@v6"
+    add: ["type:chore", "complexity:routine", "effort:s", "judgement:objective",
+          "quick-win", "wave:3"]
+  - number: 37
+    title_hint: "Agent auto-fix loops: no approval gate, no $ cap"
+    add: ["type:security", "complexity:complex", "effort:m", "judgement:design",
+          "panel-review", "wave:3"]
+  - number: 38
+    title_hint: "Race conditions in autoscaler/remediation/attempt counter"
+    add: ["type:bug", "complexity:complex", "effort:m", "judgement:objective",
+          "wave:3"]
+  - number: 39
+    title_hint: "Plain HTTP between fleet nodes; no mTLS"
+    add: ["type:security", "complexity:complex", "effort:l", "judgement:design",
+          "panel-review", "wave:3"]
+  - number: 40
+    title_hint: "Missing LICENSE, SECURITY.md, CONTRIBUTING.md"
+    add: ["type:docs", "complexity:trivial", "effort:s", "judgement:preference",
+          "quick-win", "wave:3"]
+  - number: 41
+    title_hint: "Deploy scripts: lib.sh lacks set -euo pipefail, weak token regex"
+    add: ["type:chore", "complexity:routine", "effort:m", "judgement:objective",
+          "wave:3"]
+  - number: 42
+    title_hint: "SQL nosemgrep suppressions — audit parameterization"
+    add: ["type:security", "complexity:complex", "effort:m", "judgement:design",
+          "panel-review", "wave:3"]
+  - number: 43
+    title_hint: "Integration-test coverage missing for mutating routes"
+    add: ["type:task", "complexity:complex", "effort:l", "judgement:preference",
+          "wave:3"]
+  - number: 44
+    title_hint: "config files loaded without schema validation"
+    add: ["type:task", "complexity:routine", "effort:m", "judgement:objective",
+          "wave:3"]
+  - number: 45
+    title_hint: "routers/credentials.py enumerates installed tools without auth"
+    add: ["type:security", "complexity:routine", "effort:s", "judgement:objective",
+          "wave:3"]
+
+  # ---------------------------------------------------------------------
+  # Wave 4 — medium-severity polish
+  # ---------------------------------------------------------------------
+  - number: 46
+    title_hint: "Log injection: unescaped requested_by in audit log"
+    add: ["type:security", "complexity:routine", "effort:s", "judgement:objective",
+          "wave:4"]
+  - number: 47
+    title_hint: "GitHub API calls lack rate-limit handling"
+    add: ["type:task", "complexity:routine", "effort:s", "judgement:objective",
+          "wave:4"]
+  - number: 48
+    title_hint: "Unbounded in-memory cache; inconsistent subprocess timeouts"
+    add: ["type:bug", "complexity:routine", "effort:m", "judgement:objective",
+          "wave:4"]
+  - number: 49
+    title_hint: "Hardcoded model name, embedded PowerShell, duplicated validation"
+    add: ["type:chore", "complexity:routine", "effort:m", "judgement:preference",
+          "wave:4"]
+  - number: 50
+    title_hint: "SPEC.md security section incomplete; no operator warnings"
+    add: ["type:docs", "complexity:trivial", "effort:s", "judgement:preference",
+          "wave:4"]
+  - number: 51
+    title_hint: "Frontend SPA: no a11y, alert(), 486KB monolith"
+    add: ["type:task", "complexity:complex", "effort:l", "judgement:preference",
+          "wave:4"]
+  - number: 52
+    title_hint: "GHA: missing concurrency, cron stampede, continue-on-error"
+    add: ["type:chore", "complexity:routine", "effort:m", "judgement:objective",
+          "wave:4"]
+  - number: 53
+    title_hint: "CI logs dumped to /tmp on shared self-hosted runner"
+    add: ["type:security", "complexity:routine", "effort:s", "judgement:objective",
+          "wave:4"]
+
+  # ---------------------------------------------------------------------
+  # Wave 5 — low severity / ongoing polish
+  # ---------------------------------------------------------------------
+  - number: 54
+    title_hint: "Assorted low-severity: hardcoded paths, log rotation, type Any"
+    add: ["type:chore", "complexity:trivial", "effort:s", "judgement:objective",
+          "quick-win", "wave:5"]
+
+  # ---------------------------------------------------------------------
+  # Non-security product work
+  # ---------------------------------------------------------------------
+  - number: 58
+    title_hint: "Fix deployed keepalive diagnostics drift"
+    add: ["type:bug", "complexity:routine", "effort:m", "judgement:objective"]
+  - number: 59
+    title_hint: "Add dedicated Diagnostics tab"
+    add: ["type:task", "complexity:routine", "effort:l", "judgement:preference"]
+  - number: 60
+    title_hint: "Generate Windows desktop launchers"
+    add: ["type:task", "complexity:routine", "effort:m", "judgement:preference"]
+  - number: 61
+    title_hint: "Design PWA/native launcher path"
+    add: ["type:research", "complexity:research", "effort:s", "judgement:design"]

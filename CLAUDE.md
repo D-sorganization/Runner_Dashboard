@@ -2,6 +2,33 @@
 
 Quick-reference for developers and AI agents working in this repository.
 
+## Sibling repos & boundaries (read first)
+
+`runner-dashboard` is the **operator console** in a three-repo fleet. The
+canonical contract lives in
+[`Repository_Management/docs/sibling-repos.md`](https://github.com/D-sorganization/Repository_Management/blob/main/docs/sibling-repos.md).
+Read it before adding any cross-repo surface.
+
+| Repo                      | Role                                                   |
+| ------------------------- | ------------------------------------------------------ |
+| [`Repository_Management`](https://github.com/D-sorganization/Repository_Management) | Fleet orchestrator (workflows, skills, templates, agent coordination). |
+| `runner-dashboard` (here) | Operator console — backend, frontend, deploy, every dashboard tab and `/api/*` endpoint. |
+| [`Maxwell-Daemon`](https://github.com/D-sorganization/Maxwell-Daemon) | Autonomous local AI control plane consumed by the Maxwell tab over HTTP. |
+
+**Owned here:** every dashboard tab (Fleet, Org, Heavy, Workflows,
+Remediation, Maxwell, Assessments, Feature Requests, Credentials, Reports),
+every `/api/*` endpoint, dispatch envelope/contract, deployment + rollout
+machinery, the frontend bundle, dashboard-only docs.
+
+**Not owned here:** fleet-wide CI workflows (live in `Repository_Management`),
+agent claim/lease protocol (lives in `Repository_Management`), the Maxwell AI
+pipeline (lives in `Maxwell-Daemon`). The dashboard never imports from a
+sibling repo at runtime — all cross-repo traffic is HTTP.
+
+**Routing rule:** issues about the Maxwell pipeline → `Maxwell-Daemon`;
+issues about fleet workflows / templates / skills → `Repository_Management`;
+everything else dashboard-shaped → here.
+
 ## Multi-Agent Coordination
 
 Before starting work on any issue, agents must acquire a coordination lease to
@@ -23,6 +50,38 @@ open PR.
 
 **Agent priority order** (highest wins redundancy conflicts):
 `user > maxwell-daemon > claude > codex > jules > local > gaai`
+
+## Issue Taxonomy and Dispatch
+
+Before picking up an issue, agents must:
+
+1. Read [`docs/issue-taxonomy.md`](docs/issue-taxonomy.md) — the canonical
+   label taxonomy and dispatch contract.
+2. Confirm the issue is **pickable** per the rules in that doc: state is
+   `open`, no open PR references it, no active `claim:*` lease, and the
+   issue's `complexity:*` label falls within the agent's skill tier.
+3. Respect `judgement:design` and `judgement:contested` — **do not
+   implement** from those issues without design consensus. See panel review
+   rules below.
+4. **Panel Review Rules:**
+   - Issues with `panel-review` label: Post design opinion (structured format in
+     taxonomy doc), do not open PR.
+   - Issues with `judgement:design` or `judgement:contested`: Can proceed to
+     implementation once design consensus is reached via:
+     - **Phase 1 (current):** At least 2 qualified agents post design opinions
+       in structured format, opinions converge, maintainer approves and relabels
+       to `judgement:objective`.
+     - **Phase 2 (automated):** Once `.github/workflows/agent-panel-review.yml`
+       is configured with agent panels, formal workflow kicks in automatically.
+   - Always post opinions before implementing from design issues.
+   - Maintainer responsibility: Review opinions, relabel to `judgement:objective`
+     once consensus is clear.
+
+**Quick-win lane:** filter `label:quick-win label:complexity:trivial
+label:judgement:objective` for low-risk warmup work.
+
+Migration of existing issues to this taxonomy is tracked in
+[`docs/issue-migration-plan.md`](docs/issue-migration-plan.md).
 
 ## Project Overview
 
@@ -192,3 +251,28 @@ Agent workflows:
 - Commit messages follow Conventional Commits (`feat:`, `fix:`, `chore:`, etc.).
 - Update `SPEC.md` when adding or changing documented behavior.
 - Update `VERSION` (semver) on meaningful releases.
+
+## Engineering principles (mandatory)
+
+Every PR must demonstrably preserve all of these. They are checked at review:
+
+- **TDD** — failing test first; backend route tests in `tests/api/`,
+  frontend behaviour tests in `tests/frontend/`. New feature without a test
+  is reverted, not "followed up".
+- **DbC (Design by Contract)** — pre/postconditions documented as `assert`
+  blocks or pydantic models at every boundary; mandatory on dispatch envelopes
+  and any `POST` route. See `backend/dispatch_contract.py` for the pattern.
+- **DRY** — if a helper would benefit `Repository_Management` or
+  `Maxwell-Daemon`, lift it to `Repository_Management/shared_scripts/` and
+  consume from there. Do not fork.
+- **LoD (Law of Demeter)** — handlers receive flat, typed payloads. No
+  reaching through nested objects across module boundaries.
+- **Orthogonality** — tabs are independent: Maxwell tab failing must not
+  break the Fleet tab; one `/api/*` 5xx must not cascade into others.
+- **Decoupled** — never import from a sibling repo at runtime. All
+  cross-repo traffic is HTTP, with versioned contracts at
+  `GET /api/version`.
+- **Reversible** — every deploy ships a rollback marker. Schema changes are
+  two-step (additive ship → removal in next release).
+- **Reusable** — payload models defined once and reused across handlers,
+  tests, and frontend type generation.

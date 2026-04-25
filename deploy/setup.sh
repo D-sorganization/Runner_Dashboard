@@ -129,6 +129,13 @@ else
     cp "${SCRIPT_DIR}/VERSION" "${DEPLOY_DIR}/VERSION"
     "${SCRIPT_DIR}/deploy/write-deployment-metadata.sh" "${DEPLOY_DIR}" "${SCRIPT_DIR}"
 
+    # Deploy launcher scripts for PWA recovery
+    cp "${SCRIPT_DIR}/deploy/launcher.sh" "${DEPLOY_DIR}/launcher.sh"
+    sed -i 's/\r$//' "${DEPLOY_DIR}/launcher.sh"
+    chmod +x "${DEPLOY_DIR}/launcher.sh"
+    cp "${SCRIPT_DIR}/deploy/launcher.ps1" "${DEPLOY_DIR}/launcher.ps1"
+    cp "${SCRIPT_DIR}/deploy/register-protocol.ps1" "${DEPLOY_DIR}/register-protocol.ps1"
+
     # Deploy and configure the token refresh script
     REFRESH_SCRIPT="${HOME}/actions-runners/dashboard/refresh-token.sh"
     cp "${SCRIPT_DIR}/deploy/refresh-token.sh" "${REFRESH_SCRIPT}"
@@ -299,8 +306,39 @@ else
     warn "Service may still be starting. Check: sudo systemctl status runner-dashboard"
 fi
 
-# ── Step 5: Windows port forwarding instructions ─────────────────────────────
-header "Step 5/5: Remote Access"
+# ── Step 5a: Register PWA launcher protocol (Windows only) ─────────────────
+if [[ -n "${WSL_DISTRO_NAME:-}" ]] || grep -qi microsoft /proc/version 2>/dev/null; then
+    header "Step 5a/5: Register PWA Launcher (Windows)"
+    info "Registering runner-dashboard:// protocol handler for PWA recovery..."
+
+    # Make scripts executable
+    chmod +x "${DEPLOY_DIR}/launcher.sh" 2>/dev/null || true
+
+    # Call PowerShell script from Windows to register protocol
+    if command -v powershell.exe &>/dev/null; then
+        powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${DEPLOY_DIR}/register-protocol.ps1" 2>/dev/null || {
+            warn "Protocol registration requires Windows PowerShell (Admin mode)"
+            warn "Run this in Windows PowerShell as Administrator:"
+            echo ""
+            echo "    ${BOLD}powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"$(wslpath -w "${DEPLOY_DIR}")\register-protocol.ps1\"${NC}"
+            echo ""
+        }
+    else
+        warn "PowerShell not found; protocol registration skipped"
+        warn "To register later, run in Windows PowerShell as Administrator:"
+        echo ""
+        echo "    ${BOLD}powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"$(wslpath -w "${DEPLOY_DIR}")\register-protocol.ps1\"${NC}"
+        echo ""
+    fi
+else
+    header "Step 5a/5: Register PWA Launcher (macOS/Linux)"
+    info "Making launcher script executable..."
+    chmod +x "${DEPLOY_DIR}/launcher.sh"
+    ok "Launcher ready at: ${DEPLOY_DIR}/launcher.sh"
+fi
+
+# ── Step 5b: Windows port forwarding instructions ─────────────────────────────
+header "Step 5b/5: Remote Access"
 
 WSL_IP=$(hostname -I | awk '{print $1}')
 info "WSL2 IP: ${WSL_IP}"

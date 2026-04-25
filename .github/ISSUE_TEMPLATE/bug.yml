@@ -1,0 +1,102 @@
+name: Bug
+description: Defect in existing behavior.
+title: "[BUG] "
+labels: ["type:bug"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: What is broken
+      description: Current behavior, expected behavior, and a clear repro.
+      placeholder: |
+        **Current:** ...
+        **Expected:** ...
+        **Repro:**
+        1. ...
+        2. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Logs, stack traces, file:line citations.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: complexity
+    attributes:
+      label: Complexity (agent skill tier required)
+      options:
+        - trivial
+        - routine
+        - complex
+        - deep
+        - research
+    validations:
+      required: true
+
+  - type: dropdown
+    id: effort
+    attributes:
+      label: Effort
+      options:
+        - "xs (< 1 hour)"
+        - "s (< 4 hours)"
+        - "m (< 1 day)"
+        - "l (1–3 days)"
+        - "xl (> 3 days)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: judgement
+    attributes:
+      label: Judgement
+      description: Most bugs are `objective`. Flag `design` if the fix implies a behavior change.
+      options:
+        - objective
+        - preference
+        - design
+        - contested
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: flags
+    attributes:
+      label: Flags
+      options:
+        - label: "Quick win"
+          required: false
+        - label: "Panel review requested"
+          required: false
+
+  - type: input
+    id: domains
+    attributes:
+      label: Skill domains
+      placeholder: "backend"
+    validations:
+      required: true
+
+  - type: textarea
+    id: dispatch_metadata
+    attributes:
+      label: "dispatch-metadata (do not edit — agents read this)"
+      value: |
+        <!-- dispatch-metadata:v1
+        type: bug
+        complexity:
+        effort:
+        judgement: objective
+        quick_win: false
+        panel_review: false
+        domains: []
+        wave:
+        depends_on: []
+        blocks: []
+        -->
+      render: markdown

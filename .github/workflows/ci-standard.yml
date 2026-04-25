@@ -38,8 +38,8 @@ jobs:
     env:
       PIP_CACHE_DIR: /home/dieterolson/actions-runners/.shared-tool-cache/pip
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: "3.11"
       - name: Install quality tools in isolated venv
@@ -68,7 +68,20 @@ jobs:
       - name: Install backend dependencies
         run: pip install -r requirements.txt types-PyYAML types-requests
       - name: Type Check
-        run: mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__'
+        run: mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional
+      - name: Run bandit security scan
+        run: bandit -r backend/ -ll -ii --exclude backend/__pycache__ -f json -o bandit-report.json || true
+        continue-on-error: true  # non-blocking, report only
+
+      - name: Upload bandit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-security-report
+          path: bandit-report.json
+          retention-days: 14
+          if-no-files-found: ignore
+
       - name: Verify No Placeholders
         run: |
           if grep -rE "TODO|FIXME" backend/ --include="*.py"; then
@@ -90,8 +103,8 @@ jobs:
     env:
       PIP_CACHE_DIR: /home/dieterolson/actions-runners/.shared-tool-cache/pip
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: "3.11"
       - name: Audit Python Dependencies
@@ -115,7 +128,7 @@ jobs:
         python:
           - "3.11"
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - name: Bootstrap Python venv
         run: |
           for py in python3.11 python3.12 python3.10 python3; do

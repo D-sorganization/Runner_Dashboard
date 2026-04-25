@@ -20,35 +20,44 @@ import asyncio
 import contextlib
 import datetime as _dt_mod
 import errno
+import ipaddress
 import json
 import logging
+import logging.handlers
 import os
 import platform
 import re
+import secrets
 import shlex
 import shutil
 import subprocess
 import sys
 import tempfile
 import time
-from collections import deque
+from collections import OrderedDict, defaultdict, deque
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 import psutil
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from pydantic import BaseModel, Field
 
 BACKEND_DIR = Path(__file__).resolve().parent
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
+import agent_dispatch_router  # noqa: E402
 import agent_remediation  # noqa: E402
 import config_schema  # noqa: E402
 import deployment_drift  # noqa: E402
 import dispatch_contract  # noqa: E402
+import issue_inventory  # noqa: E402
+import pr_inventory  # noqa: E402
+import quick_dispatch as _quick_dispatch  # noqa: E402
 import scheduled_workflows as scheduled_workflow_inventory  # noqa: E402
 import usage_monitoring  # noqa: E402
 from local_app_monitoring import collect_local_apps  # noqa: E402
@@ -72,6 +81,177 @@ logging.basicConfig(
 )
 log = logging.getLogger("dashboard")
 
+# ─── Constants ────────────────────────────────────────────────────────────────
+DEFAULT_LLM_MODEL = os.environ.get("DASHBOARD_LLM_MODEL", "claude-haiku-4-5-20251001")
+
+# ─── API Key Authentication ───────────────────────────────────────────────────
+
+
+def _load_or_generate_api_key() -> str:
+    """Return the dashboard API key, generating one if not set."""
+    key_from_env = os.environ.get("DASHBOARD_API_KEY", "").strip()
+    if key_from_env:
+        return key_from_env
+    # Try to read from persistent file
+    key_file = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "runner-dashboard" / "api_key.txt"
+    try:
+        if key_file.exists():
+            stored = key_file.read_text(encoding="utf-8").strip()
+            if stored:
+                return stored
+    except OSError:
+        pass
+    # Generate a new key and persist it
+    new_key = secrets.token_urlsafe(32)
+    try:
+        key_file.parent.mkdir(parents=True, exist_ok=True)
+        key_file.write_text(new_key, encoding="utf-8")
+        key_file.chmod(0o600)
+        log.warning("Generated new API key; saved to %s", key_file)
+        log.warning("Add header 'Authorization: Bearer %s' to all API requests.", new_key)
+    except OSError as exc:
+        log.warning("Could not persist API key to %s: %s", key_file, exc)
+    return new_key
+
+
+DASHBOARD_API_KEY: str = ""  # populated in _post_app_init()
+
+
+def _setup_api_key() -> None:
+    """Called after logging is configured to load/generate the API key."""
+    global DASHBOARD_API_KEY  # noqa: PLW0603
+    DASHBOARD_API_KEY = _load_or_generate_api_key()
+
+
+# ─── Security Utilities ───────────────────────────────────────────────────────
+
+
+def sanitize_log_value(value: str) -> str:
+    """Strip log-injection characters from user-controlled strings."""
+    return value.replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")[:200]
+
+
+def safe_subprocess_env() -> dict[str, str]:
+    """Return os.environ with secrets stripped out for subprocess calls."""
+    excluded = {"GH_TOKEN", "GITHUB_TOKEN", "ANTHROPIC_API_KEY", "DASHBOARD_API_KEY", "SECRET", "PASSWORD", "TOKEN"}
+    return {k: v for k, v in os.environ.items() if not any(exc in k.upper() for exc in excluded)}
+
+
+def validate_fleet_node_url(url: str) -> str:
+    """Validate a fleet node URL to prevent SSRF (issue #28)."""
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(f"Fleet node URL must use http or https: {url}")
+    host = parsed.hostname or ""
+    try:
+        addr = ipaddress.ip_address(host)
+        if not (addr.is_private or addr.is_loopback):
+            raise ValueError(f"Fleet node URL must be a private/local address: {url}")
+    except ValueError as exc:
+        # If it's not an IP address check it's a hostname we trust
+        if "must be" in str(exc):
+            raise
+        # hostname — allow localhost, .local, .internal
+        if not (host == "localhost" or host.endswith(".local") or host.endswith(".internal")):
+            raise ValueError(f"Fleet node hostname not allowed: {host}") from exc
+    return url
+
+
+def validate_local_url(url: str, field: str = "url") -> str:
+    """Validate that a URL has http/https scheme and a local host (issue #23)."""
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(f"{field} must use http or https")
+    return validate_fleet_node_url(url)
+
+
+def validate_local_path(path_str: str, allowed_root: Path) -> Path:
+    """Resolve path and ensure it stays within allowed_root (issue #23)."""
+    resolved = Path(path_str).expanduser().resolve()
+    try:
+        resolved.relative_to(allowed_root)
+    except ValueError as exc:
+        raise ValueError(f"Path escapes allowed root: {path_str}") from exc
+    return resolved
+
+
+def validate_health_command(cmd: str) -> list[str]:
+    """Parse health command safely, rejecting shell metacharacters (issue #22)."""
+    dangerous = set(";|&`$()<>")
+    if any(c in cmd for c in dangerous):
+        raise ValueError(f"health_command contains disallowed characters: {cmd!r}")
+    return shlex.split(cmd)
+
+
+# ─── Rate Limiting ────────────────────────────────────────────────────────────
+
+_dispatch_rate: dict[str, list[float]] = defaultdict(list)
+DISPATCH_LIMIT_PER_MINUTE = 10
+
+
+def check_dispatch_rate(client_ip: str) -> None:
+    """Enforce rate limiting for AI agent dispatch endpoints (issue #31)."""
+    now = time.monotonic()
+    window = [t for t in _dispatch_rate[client_ip] if now - t < 60]
+    if len(window) >= DISPATCH_LIMIT_PER_MINUTE:
+        raise HTTPException(status_code=429, detail="Rate limit exceeded for agent dispatch")
+    window.append(now)
+    _dispatch_rate[client_ip] = window
+
+
+# ─── Pydantic Input Models ────────────────────────────────────────────────────
+
+
+class WorkflowDispatchBody(BaseModel):
+    repository: str = Field(..., max_length=200)
+    workflow_id: Any = None
+    ref: str = Field(default="main", max_length=200)
+    inputs: dict[str, Any] = Field(default_factory=dict)
+    approved_by: str = Field(default="dashboard-operator", max_length=200)
+
+
+class HeavyTestDispatchBody(BaseModel):
+    repo: str = Field(..., max_length=200)
+    python_version: str = Field(default="3.11", max_length=20)
+    ref: str = Field(default="main", max_length=200)
+
+
+class FeatureRequestDispatchBody(BaseModel):
+    repository: str = Field(..., max_length=200)
+    branch: str = Field(default="main", max_length=200)
+    provider: str = Field(default="jules_api", max_length=100)
+    prompt: str = Field(..., max_length=10000)
+    standards: list[str] = Field(default_factory=list)
+
+
+class AssessmentDispatchBody(BaseModel):
+    repository: str = Field(..., max_length=200)
+    provider: str = Field(default="jules_api", max_length=100)
+    ref: str = Field(default="main", max_length=200)
+
+
+class MaxwellControlBody(BaseModel):
+    action: str = Field(..., max_length=20)
+    approved_by: str = Field(..., max_length=200)
+
+
+class HelpChatBody(BaseModel):
+    question: str = Field(..., max_length=2000)
+    current_tab: str = Field(default="", max_length=100)
+
+
+# ─── Bounded Cache ────────────────────────────────────────────────────────────
+
+MAX_CACHE_SIZE = 500
+_CACHE_EVICT_BATCH = 50
+
+# ─── Shared State Locks ───────────────────────────────────────────────────────
+_remediation_history_lock: asyncio.Lock = asyncio.Lock()
+_orchestration_audit_lock: asyncio.Lock = asyncio.Lock()
+_feature_requests_lock: asyncio.Lock = asyncio.Lock()
+_prompt_templates_lock: asyncio.Lock = asyncio.Lock()
+_prompt_notes_lock: asyncio.Lock = asyncio.Lock()
+
 # ─── Configuration ────────────────────────────────────────────────────────────
 ORG = os.environ.get("GITHUB_ORG", "D-sorganization")
 REPO_ROOT = Path(os.environ.get("RUNNER_DASHBOARD_REPO_ROOT", BACKEND_DIR.parents[1]))
@@ -84,6 +264,7 @@ DISK_WARN_PERCENT = float(os.environ.get("DASHBOARD_DISK_WARN_PERCENT", "85"))
 DISK_CRITICAL_PERCENT = float(os.environ.get("DASHBOARD_DISK_CRITICAL_PERCENT", "92"))
 DISK_MIN_FREE_GB = float(os.environ.get("DASHBOARD_DISK_MIN_FREE_GB", "25"))
 PORT = int(os.environ.get("DASHBOARD_PORT", "8321"))
+_DASHBOARD_CONFIG_DIR = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "runner-dashboard"
 HOSTNAME = os.environ.get("DISPLAY_NAME") or platform.node()
 RUN_JOB_ENRICHMENT_LIMIT = int(os.environ.get("RUN_JOB_ENRICHMENT_LIMIT", "50"))
 RUNNER_ALIASES = [item.strip() for item in os.environ.get("RUNNER_ALIASES", "").split(",") if item.strip()]
@@ -140,6 +321,7 @@ try:
             capture_output=True,
             text=True,
             timeout=5,
+            env=safe_subprocess_env(),
         )
         if result.returncode == 0:
             HOST_MEMORY_GB = round(int(result.stdout.strip()) / (1024**3), 1)
@@ -148,12 +330,16 @@ except Exception:
 
 
 # Path to daily progress reports (on Windows mount from WSL2)
-REPORTS_DIR = Path(
-    os.environ.get(
-        "REPORTS_DIR",
-        "/mnt/c/Users/diete/Repositories/Repository_Management/docs/progress-tracking",
-    )
+_default_reports_dir = (
+    Path("/mnt/c")
+    / "Users"
+    / os.environ.get("USER", "diete")
+    / "Repositories"
+    / "Repository_Management"
+    / "docs"
+    / "progress-tracking"
 )
+REPORTS_DIR = Path(os.environ.get("REPORTS_DIR", str(_default_reports_dir)))
 
 # Repos with heavy-test workflows (workflow_dispatch capable)
 HEAVY_TEST_REPOS = {
@@ -179,30 +365,145 @@ app = FastAPI(
     description="Monitor and control self-hosted GitHub Actions runners",
 )
 
+_PROCESSED_ENVELOPES_PATH = Path.home() / "actions-runners" / "dashboard" / "processed_envelopes.json"
+_processed_envelopes_lock: asyncio.Lock = asyncio.Lock()
+
+
+def _load_processed_envelopes() -> dict[str, float]:
+    """Load processed envelope IDs and expiration times from disk."""
+    if not _PROCESSED_ENVELOPES_PATH.exists():
+        return {}
+    try:
+        data = json.loads(_PROCESSED_ENVELOPES_PATH.read_text())
+        return {k: float(v) for k, v in data.items() if isinstance(v, (int, float))}
+    except (OSError, json.JSONDecodeError, ValueError):
+        return {}
+
+
+async def _is_envelope_replay(envelope_id: str) -> bool:
+    """Check if envelope_id has already been processed (replay detection)."""
+    async with _processed_envelopes_lock:
+        processed = _load_processed_envelopes()
+        now = datetime.now(UTC).timestamp()
+
+        if envelope_id in processed:
+            expires_at = processed[envelope_id]
+            return expires_at > now
+
+        return False
+
+
+async def _record_processed_envelope(envelope_id: str, ttl_seconds: int = 86400) -> None:
+    """Record that envelope_id has been processed (for replay detection)."""
+    async with _processed_envelopes_lock:
+        processed = _load_processed_envelopes()
+        now = datetime.now(UTC).timestamp()
+        expires_at = now + ttl_seconds
+
+        processed[envelope_id] = expires_at
+
+        cleaned = {k: v for k, v in processed.items() if v > now}
+        try:
+            _PROCESSED_ENVELOPES_PATH.parent.mkdir(parents=True, exist_ok=True)
+            config_schema.atomic_write_json(_PROCESSED_ENVELOPES_PATH, cleaned)
+        except OSError as exc:
+            log.warning("failed to record processed envelope: %s", exc)
+
+
 # ── Bounded domain routers ────────────────────────────────────────────────────
 app.include_router(_dispatch_router.router)
+_dispatch_router.set_replay_functions(_is_envelope_replay, _record_processed_envelope)
 app.include_router(_credentials_router.router)
 
 app.add_middleware(
     CORSMiddleware,
-    # nosemgrep: python.fastapi.security.wildcard-cors.wildcard-cors
-    allow_origins=["*"],  # local-only dashboard; Tailscale-secured
-    allow_credentials=True,
+    allow_origins=[
+        "http://localhost:8321",
+        "http://127.0.0.1:8321",
+        f"http://localhost:{os.environ.get('DASHBOARD_PORT', '8321')}",
+    ],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
+_AUTH_EXEMPT_PATHS = {"/", "/health", "/api/health", "/api/setup-key", "/manifest.webmanifest", "/icon.svg"}
+_AUTH_EXEMPT_PREFIXES = ("/docs", "/openapi", "/redoc")
+
+
+@app.middleware("http")
+async def _auth_middleware(request: Request, call_next: Any) -> Any:
+    """Check API key for all /api/* requests (issue #16)."""
+    path = request.url.path
+    # Exempt non-API and whitelisted paths
+    if path in _AUTH_EXEMPT_PATHS or any(path.startswith(p) for p in _AUTH_EXEMPT_PREFIXES):
+        return await call_next(request)
+    if not path.startswith("/api/"):
+        return await call_next(request)
+    # Extract key from header
+    auth_header = request.headers.get("Authorization", "")
+    api_key_header = request.headers.get("X-API-Key", "")
+    provided_key = ""
+    if auth_header.startswith("Bearer "):
+        provided_key = auth_header[7:].strip()
+    elif api_key_header:
+        provided_key = api_key_header.strip()
+    if not DASHBOARD_API_KEY or secrets.compare_digest(provided_key, DASHBOARD_API_KEY):
+        return await call_next(request)
+    return JSONResponse(
+        {"error": "Authentication required"},
+        status_code=401,
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+@app.get("/api/setup-key")
+async def get_setup_key(request: Request) -> dict:
+    """Return the API key only when called from localhost (issue #16)."""
+    client_host = request.client.host if request.client else ""
+    if client_host not in ("127.0.0.1", "::1", "localhost"):
+        raise HTTPException(status_code=403, detail="This endpoint is only accessible locally")
+    return {"api_key": DASHBOARD_API_KEY, "hint": "Add 'Authorization: Bearer <key>' to all API requests."}
+
+
+@app.middleware("http")
+async def _csrf_check(request: Request, call_next: Any) -> Any:
+    """Reject state-changing requests that lack the CSRF sentinel header (issue #30).
+
+    Browsers never send X-Requested-With cross-origin without an explicit CORS
+    pre-flight, so requiring it is a lightweight CSRF mitigation suitable for a
+    local-only dashboard.  The frontend must include the header on every
+    POST / PUT / DELETE / PATCH request.
+    """
+    if request.method in ("POST", "PUT", "DELETE", "PATCH"):
+        # Allow health / static routes without the header so monitoring tools
+        # (e.g. curl health checks) still work.  Only enforce on /api/* paths.
+        if request.url.path.startswith("/api/"):
+            if request.headers.get("X-Requested-With") != "XMLHttpRequest":
+                return JSONResponse(
+                    {"error": "CSRF check failed: missing X-Requested-With header"},
+                    status_code=403,
+                )
+    return await call_next(request)
+
+
 @app.middleware("http")
 async def _add_security_headers(request: Request, call_next: Any) -> Any:
-    """Inject standard security headers on every response (issue #7)."""
+    """Inject standard security headers on every response (issue #7, #18)."""
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    # 'unsafe-inline' removed from script-src (issue #18).
+    # 'strict-dynamic' lets scripts loaded from trusted CDN origins load further
+    # dependencies without needing individual allow-list entries.
+    # 'unsafe-inline' is retained for style-src because React's CSS-in-JS and
+    # the dashboard's own <style> block rely on inline styles. A build step
+    # would allow switching to nonce or hash-based CSP for style-src.
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' "
+        "script-src 'self' 'strict-dynamic' "
         "https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; "
         "style-src 'self' 'unsafe-inline'; "
         "img-src 'self' data:; "
@@ -214,6 +515,7 @@ async def _add_security_headers(request: Request, call_next: Any) -> Any:
 
 # ─── Startup timestamp ───────────────────────────────────────────────────────
 BOOT_TIME = time.time()
+_setup_api_key()
 
 # ─── Response cache ───────────────────────────────────────────────────────────
 # The frontend polls every 10-15 s; without caching, each poll spawns dozens of
@@ -226,7 +528,7 @@ BOOT_TIME = time.time()
 #   stats             → 60 s   (aggregate counts; no need to be instant)
 #   repos             → 120 s  (repo list / metadata changes rarely)
 #   diagnose          → 60 s   (expensive multi-call; used for troubleshooting)
-_cache: dict[str, tuple[Any, float]] = {}
+_cache: OrderedDict[str, tuple[Any, float]] = OrderedDict()
 
 
 def _cache_get(key: str, ttl: float) -> Any | None:
@@ -240,7 +542,13 @@ def _cache_get(key: str, ttl: float) -> Any | None:
 
 
 def _cache_set(key: str, data: Any, _ttl: float | None = None) -> None:
-    """Store value with the current timestamp. _ttl is accepted but ignored (TTL is per-read)."""
+    """Store value with current timestamp. Evicts oldest entries when full (issue #48)."""
+    if key in _cache:
+        _cache.move_to_end(key)
+    elif len(_cache) >= MAX_CACHE_SIZE:
+        for _ in range(_CACHE_EVICT_BATCH):
+            if _cache:
+                _cache.popitem(last=False)
     _cache[key] = (data, time.time())
 
 
@@ -370,10 +678,29 @@ MACHINE_ROLE = os.environ.get("MACHINE_ROLE", "node")
 _fleet_raw = os.environ.get("FLEET_NODES", "")
 FLEET_NODES: dict[str, str] = {}
 for _entry in _fleet_raw.split(","):
-    if ":" in _entry:
-        _label, _, _url = _entry.strip().partition(":")
-        if _label and _url:
-            FLEET_NODES[_label.strip()] = _url.strip()
+    _entry = _entry.strip()
+    if not _entry:
+        continue
+    # Format: name:http://host:port  — the URL part begins after the first colon
+    # but URLs also contain colons, so we require the URL to start with http
+    _colon_idx = _entry.find(":http")
+    if _colon_idx == -1:
+        _colon_idx = _entry.find(":https")
+    if _colon_idx > 0:
+        _label = _entry[:_colon_idx].strip()
+        _url = _entry[_colon_idx + 1 :].strip()
+    elif ":" in _entry:
+        _label, _, _url = _entry.partition(":")
+        _label = _label.strip()
+        _url = _url.strip()
+    else:
+        continue
+    if _label and _url:
+        try:
+            validate_fleet_node_url(_url)
+            FLEET_NODES[_label] = _url
+        except ValueError as _e:
+            log.warning("Skipping invalid FLEET_NODES entry %r: %s", _entry, _e)
 
 HUB_URL = os.environ.get("HUB_URL")
 if HUB_URL:
@@ -403,7 +730,8 @@ async def proxy_to_hub(request: Request):
                 return {}
             return resp.json()
         except Exception as e:
-            raise HTTPException(status_code=502, detail=f"Hub Proxy Error: {str(e)}") from e
+            log.warning("Hub proxy error for %s: %s", request.url.path, e)
+            raise HTTPException(status_code=502, detail="Hub proxy error") from e
 
 
 def _should_proxy_fleet_to_hub(request: Request) -> bool:
@@ -1052,7 +1380,7 @@ def _sync_runner_scheduler_state(config: dict) -> dict:
             "error": f"{RUNNER_SCHEDULER_BIN} is not installed",
             "config": config,
         }
-    env = os.environ.copy()
+    env = safe_subprocess_env()
     env["RUNNER_ROOT"] = str(RUNNER_BASE_DIR)
     env["RUNNER_SCHEDULE_CONFIG"] = str(RUNNER_SCHEDULE_CONFIG)
     env["RUNNER_SCHEDULER_STATE"] = str(RUNNER_SCHEDULER_STATE)
@@ -1093,6 +1421,7 @@ def _unit_active_sync(unit: str) -> bool:
             [SYSTEMCTL_BIN, "is-active", "--quiet", unit],
             timeout=5,
             check=False,
+            env=safe_subprocess_env(),
         )
     except (OSError, subprocess.TimeoutExpired):
         return False
@@ -1606,6 +1935,7 @@ def get_gpu_info() -> dict:
             capture_output=True,
             text=True,
             timeout=5,
+            env=safe_subprocess_env(),
         )
         if result.returncode != 0:
             return {}
@@ -2071,6 +2401,19 @@ async def get_deployment_state(request: Request) -> dict:
     fleet = await _get_fleet_nodes_impl()
     expected = await _read_expected_dashboard_version()
     return _build_deployment_state(fleet.get("nodes", []), expected)
+
+
+@app.get("/health", tags=["diagnostics"])
+async def launcher_health_check() -> dict:
+    """Minimal health check for launcher recovery detection.
+
+    Returns 200 if backend is ready. Used by PWA recovery modal for
+    polling before triggering custom URL protocol.
+    """
+    return {
+        "status": "ready",
+        "timestamp": datetime.now(UTC).isoformat(),
+    }
 
 
 @app.post("/api/deployment/update-signal")
@@ -2573,14 +2916,20 @@ async def dispatch_workflow(request: Request) -> dict:
         with contextlib.suppress(OSError):
             Path(pf).unlink()
     if code != 0:
-        raise HTTPException(status_code=502, detail=f"Dispatch failed: {stderr.strip()[:300]}")
+        log.warning(
+            "workflow_dispatch failed: repo=%s workflow_id=%s stderr=%s",
+            repo,
+            workflow_id,
+            stderr.strip()[:300],
+        )
+        raise HTTPException(status_code=502, detail="Workflow dispatch failed")
 
     log.info(
         "workflow_dispatch audit: repo=%s workflow_id=%s ref=%s approved_by=%s",
         repo,
         workflow_id,
         ref,
-        approved_by,
+        sanitize_log_value(approved_by),
     )
     return {
         "status": "dispatched",
@@ -2634,11 +2983,11 @@ async def stop_runner(runner_id: int):
     if not svc_path.exists():
         raise HTTPException(status_code=404, detail=f"Runner {num} svc.sh not found")
 
-    log.info(f"Stopping runner {num} (GitHub ID: {runner_id})")
+    log.info("Stopping runner %d (GitHub ID: %d)", num, runner_id)
     code, stdout, stderr = await run_runner_svc(num, "stop")
     if code != 0:
-        msg = f"Failed to stop runner {num}: {stderr}"
-        raise HTTPException(status_code=500, detail=msg)
+        log.warning("Failed to stop runner %d: %s", num, stderr[:200])
+        raise HTTPException(status_code=500, detail=f"Failed to stop runner {num}")
 
     return {"status": "stopped", "runner": num, "output": stdout.strip()}
 
@@ -2658,11 +3007,11 @@ async def start_runner(runner_id: int):
     if not svc_path.exists():
         raise HTTPException(status_code=404, detail=f"Runner {num} svc.sh not found")
 
-    log.info(f"Starting runner {num} (GitHub ID: {runner_id})")
+    log.info("Starting runner %d (GitHub ID: %d)", num, runner_id)
     code, stdout, stderr = await run_runner_svc(num, "start")
     if code != 0:
-        msg = f"Failed to start runner {num}: {stderr}"
-        raise HTTPException(status_code=500, detail=msg)
+        log.warning("Failed to start runner %d: %s", num, stderr[:200])
+        raise HTTPException(status_code=500, detail=f"Failed to start runner {num}")
 
     return {"status": "started", "runner": num, "output": stdout.strip()}
 
@@ -2836,7 +3185,7 @@ async def update_runner_schedule(request: Request) -> dict:
     apply_now = bool(body.get("apply", False))
     apply_result: dict[str, object] | None = None
     if apply_now and Path(RUNNER_SCHEDULER_BIN).exists():
-        env = os.environ.copy()
+        env = safe_subprocess_env()
         env["RUNNER_ROOT"] = str(RUNNER_BASE_DIR)
         env["RUNNER_SCHEDULE_CONFIG"] = str(RUNNER_SCHEDULE_CONFIG)
         env["RUNNER_SCHEDULER_STATE"] = str(RUNNER_SCHEDULER_STATE)
@@ -2977,6 +3326,116 @@ async def get_repos(request: Request):
     result = {"repos": results, "total_count": len(results), "org": ORG}
     _cache_set("repos", result)
     return result
+
+
+# ─── PR Inventory API ────────────────────────────────────────────────────────
+
+
+@app.get("/api/prs")
+async def get_prs(
+    repo: list[str] | None = None,
+    include_drafts: bool = True,
+    author: str | None = None,
+    label: list[str] | None = None,
+    limit: int = 500,
+) -> dict:
+    """Aggregate open pull-requests across organisation repositories.
+
+    Query parameters
+    ----------------
+    repo:
+        Repeatable ``owner/repo`` slug filter; defaults to all repos returned
+        by ``_get_recent_org_repos()``.
+    include_drafts:
+        Include draft PRs (default ``true``).
+    author:
+        Filter to a specific author login.
+    label:
+        Repeatable; match any of the listed labels.
+    limit:
+        Maximum items returned (default 500, max 2000).
+    """
+    if repo:
+        repos = list(repo)
+    else:
+        org_repos = await _get_recent_org_repos(limit=50)
+        repos = [r["full_name"] for r in org_repos]
+
+    return await pr_inventory.fetch_all_prs(
+        repos,
+        include_drafts=include_drafts,
+        author=author,
+        labels=list(label) if label else None,
+        limit=limit,
+    )
+
+
+@app.get("/api/prs/{owner}/{repo_name}/{number}")
+async def get_pr_detail(owner: str, repo_name: str, number: int) -> dict:
+    """Return detailed information for a single pull-request.
+
+    Extra fields compared to the list endpoint: ``body_excerpt`` (first 2 KB),
+    ``checks`` (list of ``{name, conclusion, url}``), ``files_changed``,
+    ``additions``, ``deletions``.
+    """
+    try:
+        return await pr_inventory.fetch_pr_detail(owner, repo_name, number)
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+# ─── Issue Inventory API ──────────────────────────────────────────────────────
+
+
+@app.get("/api/issues")
+async def get_issues(
+    repo: list[str] | None = None,
+    state: str = "open",
+    label: list[str] | None = None,
+    assignee: str | None = None,
+    pickable_only: bool = False,
+    complexity: list[str] | None = None,
+    effort: list[str] | None = None,
+    judgement: list[str] | None = None,
+    limit: int = 500,
+) -> dict:
+    """Aggregate open issues across organisation repositories.
+
+    Query parameters
+    ----------------
+    repo:
+        Repeatable ``owner/repo`` slug filter; defaults to all repos returned
+        by ``_get_recent_org_repos()``.
+    state:
+        ``open`` (default) or ``all``.
+    label:
+        Repeatable; match any of the listed labels.
+    assignee:
+        Filter by assignee login.
+    pickable_only:
+        When ``true``, only issues available for agent pickup are returned.
+    complexity / effort / judgement:
+        Repeatable taxonomy dimension filters (match any provided value).
+    limit:
+        Maximum items returned (default 500, max 2000).
+    """
+    if repo:
+        repos = list(repo)
+    else:
+        org_repos = await _get_recent_org_repos(limit=50)
+        repos = [r["full_name"] for r in org_repos]
+
+    return await issue_inventory.fetch_all_issues(
+        repos,
+        state=state,
+        labels=list(label) if label else None,
+        assignee=assignee,
+        pickable_only=pickable_only,
+        complexity=list(complexity) if complexity else None,
+        effort=list(effort) if effort else None,
+        judgement=list(judgement) if judgement else None,
+        limit=limit,
+    )
 
 
 # ─── Daily Reports API ──────────────────────────────────────────────────────
@@ -3138,9 +3597,10 @@ async def dispatch_heavy_test(request: Request):
     )
 
     if code != 0:
+        log.warning("heavy_test dispatch failed: repo=%s workflow=%s stderr=%s", repo_name, workflow_file, stderr[:200])
         raise HTTPException(
             status_code=502,
-            detail=f"Failed to dispatch workflow: {stderr}",
+            detail="Failed to dispatch workflow",
         )
 
     return {
@@ -3167,7 +3627,9 @@ async def run_docker_heavy_test(request: Request):
         )
 
     config = HEAVY_TEST_REPOS[repo_name]
-    repo_path = Path(f"/mnt/c/Users/diete/Repositories/{repo_name}")
+    _default_repos_base = str(Path("/mnt/c") / "Users" / os.environ.get("USER", "diete") / "Repositories")
+    _repos_base = Path(os.environ.get("HEAVY_TEST_REPOS_BASE", _default_repos_base))
+    repo_path = _repos_base / repo_name
 
     if not repo_path.exists():
         raise HTTPException(
@@ -3316,9 +3778,9 @@ async def rerun_ci_test(request: Request) -> dict:
         return {"status": "triggered", "repo": repo_name, "run_id": run_id}
     except HTTPException:
         raise
-    except Exception as exc:
+    except Exception:
         log.exception("Failed to rerun run %s in %s", run_id, repo_name)
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail="Internal server error") from None
 
 
 @app.get("/api/stats")
@@ -3532,6 +3994,8 @@ async def plan_agent_remediation(request: Request) -> dict:
 @app.post("/api/agent-remediation/dispatch")
 async def dispatch_agent_remediation(request: Request) -> dict:
     """Dispatch the central CI remediation workflow in Repository_Management."""
+    client_ip = request.client.host if request.client else "unknown"
+    check_dispatch_rate(client_ip)
     body = await request.json()
     if not isinstance(body, dict):
         raise HTTPException(status_code=422, detail="expected object body")
@@ -3628,9 +4092,10 @@ async def dispatch_agent_remediation(request: Request) -> dict:
         with contextlib.suppress(OSError):
             Path(payload_path).unlink()
     if code != 0:
+        log.warning("remediation dispatch failed: target=%s stderr=%s", full_repository, stderr.strip()[:300])
         raise HTTPException(
             status_code=502,
-            detail=f"Failed to dispatch remediation workflow: {stderr.strip()[:500]}",
+            detail="Failed to dispatch remediation workflow",
         )
     result = {
         "status": "dispatched",
@@ -3641,7 +4106,7 @@ async def dispatch_agent_remediation(request: Request) -> dict:
         "reason": decision.reason,
         "note": "Central remediation workflow dispatch recorded in Repository_Management.",
     }
-    _append_remediation_history(
+    await _append_remediation_history(
         {
             "timestamp": _dt_mod.datetime.now(_dt_mod.UTC).isoformat(),
             "repository": full_repository,
@@ -3657,6 +4122,107 @@ async def dispatch_agent_remediation(request: Request) -> dict:
     return result
 
 
+# ─── Quick Dispatch ───────────────────────────────────────────────────────────
+
+
+@app.post("/api/agents/quick-dispatch")
+async def api_quick_dispatch(request: Request) -> dict:
+    """Dispatch an ad-hoc agent task via Agent-Quick-Dispatch.yml."""
+    body = await request.json()
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=422, detail="expected object body")
+    try:
+        req = _quick_dispatch.QuickDispatchRequest(**body)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    if len(req.prompt.strip()) < 10:
+        raise HTTPException(status_code=400, detail="prompt must be at least 10 characters")
+
+    resp = await _quick_dispatch.quick_dispatch(
+        req,
+        run_cmd_fn=run_cmd,
+        org=ORG,
+        repo_root=REPO_ROOT,
+        normalize_repository_fn=_normalize_repository_input,
+    )
+    if not resp.accepted:
+        reason = resp.reason or "rejected"
+        if reason.startswith("rate_limited"):
+            retry_after = 1
+            for part in reason.split("="):
+                try:
+                    retry_after = int(part)
+                except ValueError:
+                    pass
+            raise HTTPException(
+                status_code=429,
+                detail={"reason": "rate_limited", "retry_after_seconds": retry_after},
+            )
+        if reason.startswith("workflow_not_configured"):
+            raise HTTPException(
+                status_code=501,
+                detail={"reason": "workflow_not_configured", "suggested_workflow": "Agent-Quick-Dispatch.yml"},
+            )
+        if reason.startswith("prompt_too_short"):
+            raise HTTPException(status_code=400, detail=reason)
+        raise HTTPException(status_code=409, detail={"accepted": False, "reason": reason})
+    return resp.model_dump()
+
+
+# ─── Bulk PR / Issue Agent Dispatch ──────────────────────────────────────────
+
+
+@app.post("/api/prs/dispatch")
+async def api_dispatch_to_prs(request: Request) -> dict:
+    """Dispatch agents to one or more pull requests."""
+    body = await request.json()
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=422, detail="expected object body")
+    try:
+        req = agent_dispatch_router.PRDispatchRequest(**body)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    result = await agent_dispatch_router.dispatch_to_prs(
+        req,
+        run_cmd_fn=run_cmd,
+        org=ORG,
+        repo_root=REPO_ROOT,
+        normalize_repository_fn=_normalize_repository_input,
+    )
+    if isinstance(result, dict) and "error" in result:
+        raise HTTPException(status_code=result.get("status_code", 400), detail=result["error"])
+    if isinstance(result, agent_dispatch_router.BulkDispatchResponse):
+        return result.model_dump()
+    return dict(result)
+
+
+@app.post("/api/issues/dispatch")
+async def api_dispatch_to_issues(request: Request) -> dict:
+    """Dispatch agents to one or more issues."""
+    body = await request.json()
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=422, detail="expected object body")
+    try:
+        req = agent_dispatch_router.IssueDispatchRequest(**body)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    result = await agent_dispatch_router.dispatch_to_issues(
+        req,
+        run_cmd_fn=run_cmd,
+        org=ORG,
+        repo_root=REPO_ROOT,
+        normalize_repository_fn=_normalize_repository_input,
+    )
+    if isinstance(result, dict) and "error" in result:
+        raise HTTPException(status_code=result.get("status_code", 400), detail=result["error"])
+    if isinstance(result, agent_dispatch_router.BulkDispatchResponse):
+        return result.model_dump()
+    return dict(result)
+
+
 # ─── Remediation History ──────────────────────────────────────────────────────
 
 _REMEDIATION_HISTORY_PATH = Path(os.environ.get("REMEDIATION_HISTORY_PATH", "")) or (
@@ -3664,21 +4230,21 @@ _REMEDIATION_HISTORY_PATH = Path(os.environ.get("REMEDIATION_HISTORY_PATH", ""))
 )
 
 
-def _append_remediation_history(entry: dict) -> None:
-    """Append a dispatch record to the local history file."""
-    try:
-        _REMEDIATION_HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
-        history: list[dict] = []
-        if _REMEDIATION_HISTORY_PATH.exists():
-            try:
-                history = json.loads(_REMEDIATION_HISTORY_PATH.read_text(encoding="utf-8"))
-            except Exception:
-                history = []
-        history.append(entry)
-        history = history[-200:]  # keep last 200 entries
-        _REMEDIATION_HISTORY_PATH.write_text(json.dumps(history, indent=2), encoding="utf-8")
-    except Exception:
-        pass  # history is best-effort
+async def _append_remediation_history(entry: dict) -> None:
+    """Append a dispatch record to the local history file (thread-safe)."""
+    async with _remediation_history_lock:
+        try:
+            history: list[dict] = []
+            if _REMEDIATION_HISTORY_PATH.exists():
+                try:
+                    history = json.loads(_REMEDIATION_HISTORY_PATH.read_text(encoding="utf-8"))
+                except Exception:
+                    history = []
+            history.append(entry)
+            history = history[-200:]  # keep last 200 entries
+            config_schema.atomic_write_json(_REMEDIATION_HISTORY_PATH, history)
+        except Exception:
+            pass  # history is best-effort
 
 
 @app.post("/api/agent-remediation/dispatch-jules")
@@ -3705,7 +4271,8 @@ async def dispatch_jules_workflow(request: Request) -> dict:
         with contextlib.suppress(OSError):
             Path(pf).unlink()
     if code != 0:
-        raise HTTPException(status_code=502, detail=f"Jules dispatch failed: {stderr.strip()[:300]}")
+        log.warning("jules dispatch failed: workflow=%s stderr=%s", workflow_file, stderr.strip()[:300])
+        raise HTTPException(status_code=502, detail="Jules dispatch failed")
     return {"status": "dispatched", "workflow_file": workflow_file}
 
 
@@ -3720,6 +4287,20 @@ async def get_remediation_history() -> dict:
     except Exception:
         history = []
     return {"history": list(reversed(history[-100:]))}  # newest first
+
+
+_PROVIDERS_WITH_MODEL_SELECTION: frozenset[str] = frozenset({"claude_code_cli", "codex_cli"})
+
+
+@app.get("/api/agents/providers")
+async def get_agent_providers() -> dict:
+    """Return available agent providers and their availability status."""
+    availability = agent_remediation.probe_provider_availability()
+    return {
+        "providers": {pid: p.to_dict() for pid, p in agent_remediation.PROVIDERS.items()},
+        "availability": {pid: s.to_dict() for pid, s in availability.items()},
+        "providers_with_model_selection": sorted(_PROVIDERS_WITH_MODEL_SELECTION),
+    }
 
 
 # ─── Job Queue API ───────────────────────────────────────────────────────────
@@ -4283,9 +4864,8 @@ async def proxy_node_system(node_name: str) -> dict:
     except httpx.TimeoutException as exc:
         raise HTTPException(status_code=504, detail=f"{node_name} timed out") from exc
     except httpx.RequestError as exc:
-        raise HTTPException(  # noqa: E501 (exc in detail string makes it long)
-            status_code=502, detail=f"{node_name} unreachable: {exc}"
-        ) from exc
+        log.warning("Node %s unreachable: %s", node_name, exc)
+        raise HTTPException(status_code=502, detail=f"{node_name} unreachable") from exc
 
 
 # ─── Request logging middleware ───────────────────────────────────────────────
@@ -4431,6 +5011,7 @@ async def get_maxwell_status() -> dict:
             capture_output=True,
             text=True,
             timeout=5,
+            env=safe_subprocess_env(),
         )
         if r.returncode == 0 and r.stdout.strip() == "active":
             service_running = True
@@ -4488,16 +5069,130 @@ async def maxwell_control(request: Request) -> dict:
     code, out, stderr = await run_cmd(["systemctl", action, "maxwell-daemon"], timeout=15, cwd=REPO_ROOT)
     log.info(
         "maxwell_control: action=%s approved_by=%s exit_code=%d",
-        action,
-        approved_by,
+        sanitize_log_value(action),
+        sanitize_log_value(approved_by),
         code,
     )
     if code != 0:
+        log.warning("maxwell %s failed: %s", action, stderr.strip()[:200])
         raise HTTPException(
             status_code=502,
-            detail=f"maxwell {action} failed: {stderr.strip()[:200]}",
+            detail=f"maxwell {action} failed",
         )
     return {"status": action + "ed", "action": action, "approved_by": approved_by}
+
+
+# ─── Maxwell-Daemon Proxy Routes ──────────────────────────────────────────────
+
+
+def _maxwell_base_url() -> str:
+    """Return the Maxwell-Daemon base URL from env."""
+    return os.environ.get("MAXWELL_URL", "") or f"http://localhost:{int(os.environ.get('MAXWELL_PORT', 8322))}"
+
+
+@app.get("/api/maxwell/version")
+async def get_maxwell_version() -> dict:
+    """Proxy GET /api/version from Maxwell-Daemon."""
+    path = "/api/version"
+    resp = None
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get(f"{_maxwell_base_url()}{path}")
+            log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
+            return resp.json()
+    except Exception as e:
+        log.info("maxwell_proxy: path=%s status=%s", path, "error")
+        return {"error": str(e)[:120], "daemon_available": False}
+
+
+@app.get("/api/maxwell/daemon-status")
+async def get_maxwell_daemon_status_detail() -> dict:
+    """Proxy GET /api/status from Maxwell-Daemon (pipeline state)."""
+    path = "/api/status"
+    resp = None
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get(f"{_maxwell_base_url()}{path}")
+            log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
+            return resp.json()
+    except Exception as e:
+        log.info("maxwell_proxy: path=%s status=%s", path, "error")
+        return {"error": str(e)[:120], "daemon_available": False}
+
+
+@app.get("/api/maxwell/tasks")
+async def get_maxwell_tasks(limit: int = 20, cursor: str | None = None) -> dict:
+    """Proxy GET /api/tasks from Maxwell-Daemon."""
+    path = "/api/tasks"
+    resp = None
+    try:
+        params: dict = {"limit": limit}
+        if cursor is not None:
+            params["cursor"] = cursor
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get(f"{_maxwell_base_url()}{path}", params=params)
+            log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
+            return resp.json()
+    except Exception as e:
+        log.info("maxwell_proxy: path=%s status=%s", path, "error")
+        return {"error": str(e)[:120], "daemon_available": False}
+
+
+@app.get("/api/maxwell/tasks/{task_id}")
+async def get_maxwell_task_detail(task_id: str) -> dict:
+    """Proxy GET /api/tasks/{task_id} from Maxwell-Daemon."""
+    path = f"/api/tasks/{task_id}"
+    resp = None
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get(f"{_maxwell_base_url()}{path}")
+            log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
+            return resp.json()
+    except Exception as e:
+        log.info("maxwell_proxy: path=%s status=%s", path, "error")
+        return {"error": str(e)[:120], "daemon_available": False}
+
+
+@app.post("/api/maxwell/dispatch")
+async def maxwell_dispatch_task(request: Request) -> dict:
+    """Proxy POST /api/dispatch to Maxwell-Daemon (forwards body as-is)."""
+    path = "/api/dispatch"
+    resp = None
+    try:
+        body = await request.body()
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.post(
+                f"{_maxwell_base_url()}{path}",
+                content=body,
+                headers={"Content-Type": "application/json"},
+            )
+            log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
+            return resp.json()
+    except Exception as e:
+        log.info("maxwell_proxy: path=%s status=%s", path, "error")
+        return {"error": str(e)[:120], "daemon_available": False}
+
+
+@app.post("/api/maxwell/pipeline-control/{action}")
+async def maxwell_pipeline_control(action: str, request: Request) -> dict:
+    """Proxy POST /api/control/{action} to Maxwell-Daemon."""
+    if action not in ("pause", "resume", "abort"):
+        raise HTTPException(status_code=422, detail="action must be pause, resume, or abort")
+    path = f"/api/control/{action}"
+    resp = None
+    try:
+        body = await request.body()
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.post(
+                f"{_maxwell_base_url()}{path}",
+                content=body,
+                headers={"Content-Type": "application/json"},
+            )
+            log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
+            return resp.json()
+    except Exception as e:
+        log.info("maxwell_proxy: path=%s status=%s", path, "error")
+        return {"error": str(e)[:120], "daemon_available": False}
 
 
 @app.post("/api/help/chat")
@@ -4543,7 +5238,7 @@ async def help_chat(request: Request) -> dict:
                         "content-type": "application/json",
                     },
                     json={
-                        "model": "claude-haiku-4-5-20251001",
+                        "model": DEFAULT_LLM_MODEL,
                         "max_tokens": 200,
                         "system": system_prompt,
                         "messages": [{"role": "user", "content": question}],
@@ -4606,6 +5301,15 @@ async def dispatch_assessment(request: Request) -> dict:
     ref = str(body.get("ref", "main")).strip()
     if not repo:
         raise HTTPException(status_code=422, detail="repository required")
+    if not provider:
+        raise HTTPException(status_code=422, detail="provider required")
+
+    log.info(
+        "audit: assessments_dispatch repo=%s provider=%s ref=%s",
+        sanitize_log_value(repo),
+        sanitize_log_value(provider),
+        sanitize_log_value(ref),
+    )
 
     # Try to dispatch via GitHub Actions assessment workflow
     endpoint = f"/repos/{ORG}/Repository_Management/actions/workflows/Jules-Assess-Repo.yml/dispatches"
@@ -4626,11 +5330,11 @@ async def dispatch_assessment(request: Request) -> dict:
         with contextlib.suppress(OSError):
             Path(pf).unlink()
     if code != 0:
+        log.warning("assessment dispatch failed: repo=%s stderr=%s", repo, stderr.strip()[:300])
         raise HTTPException(
             status_code=502,
-            detail=f"Assessment dispatch failed: {stderr.strip()[:300]}",
+            detail="Assessment dispatch failed",
         )
-    log.info("assessment_dispatch: repo=%s provider=%s ref=%s", repo, provider, ref)
     return {"status": "dispatched", "repository": repo, "provider": provider}
 
 
@@ -4638,6 +5342,7 @@ async def dispatch_assessment(request: Request) -> dict:
 
 _FEATURE_REQUESTS_PATH = Path.home() / "actions-runners" / "dashboard" / "feature_requests.json"
 _PROMPT_TEMPLATES_PATH = Path.home() / "actions-runners" / "dashboard" / "prompt_templates.json"
+_PROMPT_NOTES_PATH = Path.home() / "actions-runners" / "dashboard" / "prompt_notes.json"
 
 STANDARDS_INJECTION: dict[str, str] = {
     "tdd": (
@@ -4682,15 +5387,26 @@ async def list_feature_requests() -> dict:
 
 @app.get("/api/feature-requests/templates")
 async def list_prompt_templates() -> dict:
-    """List saved prompt templates."""
+    """List saved prompt templates and global prompt notes."""
+    templates_data = []
     try:
         if _PROMPT_TEMPLATES_PATH.exists():
-            data = json.loads(_PROMPT_TEMPLATES_PATH.read_text(encoding="utf-8"))
-        else:
-            data = []
+            templates_data = json.loads(_PROMPT_TEMPLATES_PATH.read_text(encoding="utf-8"))
     except Exception:
-        data = []
-    return {"templates": data, "standards": STANDARDS_INJECTION}
+        pass
+
+    prompt_notes_data = {"notes": "", "enabled": True}
+    try:
+        if _PROMPT_NOTES_PATH.exists():
+            prompt_notes_data = json.loads(_PROMPT_NOTES_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+
+    return {
+        "templates": templates_data,
+        "standards": STANDARDS_INJECTION,
+        "promptNotes": prompt_notes_data,
+    }
 
 
 @app.post("/api/feature-requests/templates")
@@ -4701,68 +5417,124 @@ async def save_prompt_template(request: Request) -> dict:
     content = str(body.get("content", "")).strip()
     if not name or not content:
         raise HTTPException(status_code=422, detail="name and content required")
-    try:
-        _PROMPT_TEMPLATES_PATH.parent.mkdir(parents=True, exist_ok=True)
-        templates: list[dict] = []
-        if _PROMPT_TEMPLATES_PATH.exists():
-            templates = json.loads(_PROMPT_TEMPLATES_PATH.read_text(encoding="utf-8"))
-        existing_idx = next((i for i, t in enumerate(templates) if t.get("name") == name), None)
-        template = {
-            "name": name,
-            "content": content,
-            "updated_at": datetime.now(UTC).isoformat(),
-        }
-        if existing_idx is not None:
-            templates[existing_idx] = template
-        else:
-            templates.append(template)
-        _PROMPT_TEMPLATES_PATH.write_text(json.dumps(templates, indent=2), encoding="utf-8")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+    async with _prompt_templates_lock:
+        try:
+            templates: list[dict] = []
+            if _PROMPT_TEMPLATES_PATH.exists():
+                templates = json.loads(_PROMPT_TEMPLATES_PATH.read_text(encoding="utf-8"))
+            existing_idx = next((i for i, t in enumerate(templates) if t.get("name") == name), None)
+            template = {
+                "name": name,
+                "content": content,
+                "updated_at": datetime.now(UTC).isoformat(),
+            }
+            if existing_idx is not None:
+                templates[existing_idx] = template
+            else:
+                templates.append(template)
+            config_schema.atomic_write_json(_PROMPT_TEMPLATES_PATH, templates)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e)) from e
     return {"status": "saved", "name": name}
+
+
+@app.get("/api/settings/prompt-notes")
+async def get_prompt_notes() -> dict:
+    """Get the global prompt notes that are automatically injected into every prompt."""
+    try:
+        if _PROMPT_NOTES_PATH.exists():
+            data = json.loads(_PROMPT_NOTES_PATH.read_text(encoding="utf-8"))
+        else:
+            data = {"notes": "", "enabled": True}
+    except Exception:
+        data = {"notes": "", "enabled": True}
+    return data
+
+
+@app.put("/api/settings/prompt-notes")
+async def update_prompt_notes(request: Request) -> dict:
+    """Update the global prompt notes."""
+    body = await request.json()
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=422, detail="expected object body")
+
+    notes = str(body.get("notes", "")).strip()
+    enabled = bool(body.get("enabled", True))
+
+    async with _prompt_notes_lock:
+        try:
+            data = {"notes": notes, "enabled": enabled}
+            config_schema.atomic_write_json(_PROMPT_NOTES_PATH, data)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e)) from e
+    return {"status": "saved", "notes_length": len(notes), "enabled": enabled}
 
 
 @app.post("/api/feature-requests/dispatch")
 async def dispatch_feature_request(request: Request) -> dict:
     """Dispatch a feature implementation request via CI remediation workflow."""
+    client_ip = request.client.host if request.client else "unknown"
+    check_dispatch_rate(client_ip)
     body = await request.json()
     repo = str(body.get("repository", "")).strip()
     branch = str(body.get("branch", "main")).strip()
     provider = str(body.get("provider", "jules_api")).strip()
     prompt = str(body.get("prompt", "")).strip()
     standards = body.get("standards", []) or []
-    if not repo or not prompt:
-        raise HTTPException(status_code=422, detail="repository and prompt required")
+    template_id = str(body.get("template_id", "")).strip()
+    if not repo:
+        raise HTTPException(status_code=422, detail="repository required")
+    if not prompt and not template_id:
+        raise HTTPException(status_code=422, detail="prompt or template_id required")
 
-    # Build full prompt with standards injection
+    log.info(
+        "audit: feature_request_dispatch repo=%s provider=%s branch=%s",
+        sanitize_log_value(repo),
+        sanitize_log_value(provider),
+        sanitize_log_value(branch),
+    )
+
+    # Load and apply prompt notes if enabled
+    prompt_notes_data: dict[str, object] = {"notes": "", "enabled": True}
+    try:
+        if _PROMPT_NOTES_PATH.exists():
+            prompt_notes_data = json.loads(_PROMPT_NOTES_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+
+    # Build full prompt with notes and standards injection
+    full_prompt = prompt
+    notes_val = str(prompt_notes_data.get("notes", ""))
+    if prompt_notes_data.get("enabled", True) and notes_val.strip():
+        full_prompt = f"{notes_val}\n\n{prompt}"
+
     injected_standards = "\n\n".join(
         f"[{s.upper()}] {STANDARDS_INJECTION[s]}" for s in standards if s in STANDARDS_INJECTION
     )
-    full_prompt = prompt
     if injected_standards:
-        full_prompt = f"{prompt}\n\n## Engineering Standards\n{injected_standards}"
+        full_prompt = f"{full_prompt}\n\n## Engineering Standards\n{injected_standards}"
 
     # Save to history
     entry: dict = {}
-    try:
-        _FEATURE_REQUESTS_PATH.parent.mkdir(parents=True, exist_ok=True)
-        history: list[dict] = []
-        if _FEATURE_REQUESTS_PATH.exists():
-            history = json.loads(_FEATURE_REQUESTS_PATH.read_text(encoding="utf-8"))
-        entry = {
-            "id": str(int(datetime.now(UTC).timestamp())),
-            "repository": repo,
-            "branch": branch,
-            "provider": provider,
-            "prompt": prompt[:500],
-            "standards": list(standards),
-            "status": "dispatched",
-            "created_at": datetime.now(UTC).isoformat(),
-        }
-        history.append(entry)
-        _FEATURE_REQUESTS_PATH.write_text(json.dumps(history[-200:], indent=2), encoding="utf-8")
-    except Exception:
-        pass
+    async with _feature_requests_lock:
+        try:
+            history: list[dict] = []
+            if _FEATURE_REQUESTS_PATH.exists():
+                history = json.loads(_FEATURE_REQUESTS_PATH.read_text(encoding="utf-8"))
+            entry = {
+                "id": str(int(datetime.now(UTC).timestamp())),
+                "repository": repo,
+                "branch": branch,
+                "provider": provider,
+                "prompt": prompt[:500],
+                "standards": list(standards),
+                "status": "dispatched",
+                "created_at": datetime.now(UTC).isoformat(),
+            }
+            history.append(entry)
+            config_schema.atomic_write_json(_FEATURE_REQUESTS_PATH, history[-200:])
+        except Exception:
+            pass
 
     # Dispatch via feature-request workflow
     endpoint = f"/repos/{ORG}/Repository_Management/actions/workflows/Jules-Feature-Request.yml/dispatches"
@@ -4820,15 +5592,15 @@ def _load_orchestration_audit(limit: int = 50) -> list[dict]:
         return []
 
 
-def _append_orchestration_audit(entry: dict) -> None:
-    """Append a single audit entry to the orchestration audit log."""
-    _ORCHESTRATION_AUDIT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    existing = _load_orchestration_audit(limit=1000)
-    existing.append(entry)
-    try:
-        _ORCHESTRATION_AUDIT_PATH.write_text(json.dumps(existing, indent=2), encoding="utf-8")
-    except OSError as exc:
-        log.warning("orchestration audit write failed: %s", exc)
+async def _append_orchestration_audit(entry: dict) -> None:
+    """Append a single audit entry to the orchestration audit log (thread-safe)."""
+    async with _orchestration_audit_lock:
+        existing = _load_orchestration_audit(limit=1000)
+        existing.append(entry)
+        try:
+            config_schema.atomic_write_json(_ORCHESTRATION_AUDIT_PATH, existing)
+        except OSError as exc:
+            log.warning("orchestration audit write failed: %s", exc)
 
 
 @app.get("/api/fleet/orchestration")
@@ -4898,6 +5670,15 @@ async def fleet_orchestration_dispatch(request: Request) -> dict:
     if not repo or not workflow:
         raise HTTPException(status_code=422, detail="repo and workflow are required")
 
+    log.info(
+        "audit: fleet_orchestration_dispatch repo=%s workflow=%s ref=%s target=%s by=%s",
+        sanitize_log_value(repo),
+        sanitize_log_value(workflow),
+        sanitize_log_value(ref),
+        sanitize_log_value(machine_target),
+        sanitize_log_value(approved_by),
+    )
+
     from uuid import uuid4  # noqa: PLC0415
 
     audit_id = uuid4().hex
@@ -4939,15 +5720,15 @@ async def fleet_orchestration_dispatch(request: Request) -> dict:
     audit_entry["ref"] = ref
     audit_entry["machine_target"] = machine_target
     audit_entry["audit_id"] = audit_id
-    _append_orchestration_audit(audit_entry)
+    await _append_orchestration_audit(audit_entry)
 
     log.info(
         "fleet-orchestration dispatch repo=%s workflow=%s ref=%s target=%s by=%s",
-        repo,
-        workflow,
-        ref,
-        machine_target,
-        approved_by,
+        sanitize_log_value(repo),
+        sanitize_log_value(workflow),
+        sanitize_log_value(ref),
+        sanitize_log_value(machine_target),
+        sanitize_log_value(approved_by),
     )
 
     # Attempt actual workflow dispatch via gh CLI
@@ -5010,6 +5791,13 @@ async def fleet_orchestration_deploy(request: Request) -> dict:
             detail="confirmed=true is required to deploy to a fleet machine",
         )
 
+    log.info(
+        "audit: fleet_orchestration_deploy machine=%s action=%s by=%s",
+        sanitize_log_value(machine),
+        sanitize_log_value(action),
+        sanitize_log_value(requested_by),
+    )
+
     from uuid import uuid4  # noqa: PLC0415
 
     audit_id = uuid4().hex
@@ -5056,13 +5844,13 @@ async def fleet_orchestration_deploy(request: Request) -> dict:
     audit_entry["deploy_action"] = action
     audit_entry["machine"] = machine
     audit_entry["audit_id"] = audit_id
-    _append_orchestration_audit(audit_entry)
+    await _append_orchestration_audit(audit_entry)
 
     log.info(
         "fleet-orchestration deploy machine=%s action=%s by=%s",
-        machine,
-        action,
-        requested_by,
+        sanitize_log_value(machine),
+        sanitize_log_value(action),
+        sanitize_log_value(requested_by),
     )
 
     action_labels = {
@@ -5076,6 +5864,177 @@ async def fleet_orchestration_deploy(request: Request) -> dict:
         "action": action,
         "message": f"{action_labels.get(action, action)} dispatched to {machine}",
         "audit_id": audit_id,
+    }
+
+
+# ─── Diagnostics & Launchers ──────────────────────────────────────────────────
+
+
+@app.get("/api/deployment/git-drift")
+async def get_git_drift() -> dict:
+    """Return git-commit-based drift: compares HEAD against origin/main."""
+    repo_root = Path(__file__).parent.parent
+    result: dict[str, object] = {}
+
+    source = "unknown"
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            cwd=repo_root,
+        )
+        source = out.stdout.strip()
+        result["source_commit"] = source[:12]
+    except Exception:
+        result["source_commit"] = "unknown"
+
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", "origin/main"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            cwd=repo_root,
+        )
+        remote = out.stdout.strip()
+        result["remote_commit"] = remote[:12]
+        result["is_drifted"] = bool(source and remote and source != remote)
+        if result["is_drifted"]:
+            result["drift_details"] = "deployed version differs from origin/main"
+        else:
+            result["drift_details"] = "up to date"
+    except Exception:
+        result["is_drifted"] = False
+        result["remote_commit"] = "unknown"
+        result["drift_details"] = "could not reach origin/main"
+
+    result["process_pid"] = os.getpid()
+    return result
+
+
+@app.get("/api/diagnostics/summary")
+async def get_diagnostics_summary() -> dict:
+    """Consolidated diagnostics for the Diagnostics tab."""
+    summary: dict[str, object] = {}
+
+    # WSL status
+    try:
+        wsl_result = subprocess.run(
+            ["wsl", "-l", "-v"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            encoding="utf-16-le",
+            errors="replace",
+        )
+        summary["wsl_status"] = wsl_result.stdout.strip()
+        summary["wsl_available"] = wsl_result.returncode == 0
+    except Exception:
+        try:
+            wsl_result_raw = subprocess.run(
+                ["wsl", "-l", "-v"],
+                capture_output=True,
+                timeout=10,
+            )
+            summary["wsl_status"] = wsl_result_raw.stdout.decode("utf-16-le", errors="replace").strip()
+            summary["wsl_available"] = wsl_result_raw.returncode == 0
+        except Exception:
+            summary["wsl_status"] = "WSL not available"
+            summary["wsl_available"] = False
+
+    # Dashboard process info
+    proc = psutil.Process(os.getpid())
+    summary["dashboard_pid"] = proc.pid
+    summary["dashboard_memory_mb"] = round(proc.memory_info().rss / 1024 / 1024, 1)
+    summary["dashboard_port"] = PORT
+
+    # Git commit
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            cwd=Path(__file__).parent.parent,
+        )
+        summary["git_commit"] = out.stdout.strip() or "unknown"
+    except Exception:
+        summary["git_commit"] = "unknown"
+
+    # Drift info
+    try:
+        drift = await get_git_drift()
+        summary["is_drifted"] = drift.get("is_drifted", False)
+        summary["source_commit"] = drift.get("source_commit", "unknown")
+        summary["remote_commit"] = drift.get("remote_commit", "unknown")
+        summary["drift_details"] = drift.get("drift_details", "")
+    except Exception:
+        summary["is_drifted"] = False
+
+    return summary
+
+
+@app.post("/api/diagnostics/restart-service")
+async def restart_dashboard_service(request: Request) -> dict:
+    """Restart the dashboard systemd service (WSL/Linux only, localhost only)."""
+    client = request.client
+    if not client or client.host not in ("127.0.0.1", "::1"):
+        raise HTTPException(status_code=403, detail="Local access only")
+
+    try:
+        result = subprocess.run(
+            [SYSTEMCTL_BIN, "--user", "restart", "runner-dashboard"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        return {
+            "success": result.returncode == 0,
+            "output": (result.stdout + result.stderr).strip(),
+        }
+    except Exception as exc:
+        log.exception("Failed to restart runner-dashboard service")
+        raise HTTPException(status_code=500, detail="Restart failed") from exc
+
+
+@app.post("/api/launchers/generate")
+async def generate_launchers() -> dict:
+    """Generate Windows PowerShell launcher scripts on the Desktop."""
+    output_dir = Path.home() / "Desktop" / "RunnerDashboard"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    launchers_created: list[str] = []
+
+    script = output_dir / "Open-Dashboard.ps1"
+    script.write_text('Start-Process "http://localhost:8321"\n', encoding="utf-8")
+    launchers_created.append(str(script))
+
+    keepalive = output_dir / "Start-WSL-Keepalive.ps1"
+    keepalive.write_text(
+        'Start-ScheduledTask -TaskName "WSL-Dashboard-Keepalive" -ErrorAction SilentlyContinue\n'
+        'Write-Host "Keepalive task started"\n',
+        encoding="utf-8",
+    )
+    launchers_created.append(str(keepalive))
+
+    restart = output_dir / "Restart-Dashboard-Service.ps1"
+    restart.write_text(
+        'wsl -e bash -c "systemctl --user restart runner-dashboard && echo Service restarted"\n',
+        encoding="utf-8",
+    )
+    launchers_created.append(str(restart))
+
+    diag = output_dir / "Open-Diagnostics.ps1"
+    diag.write_text('Start-Process "http://localhost:8321/#diagnostics"\n', encoding="utf-8")
+    launchers_created.append(str(diag))
+
+    log.info("Generated %d launcher scripts in %s", len(launchers_created), output_dir)
+    return {
+        "output_dir": str(output_dir),
+        "launchers": launchers_created,
+        "message": f"Created {len(launchers_created)} launcher scripts in {output_dir}",
     }
 
 

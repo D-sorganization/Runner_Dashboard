@@ -1,0 +1,75 @@
+name: Epic
+description: Parent tracking issue. Work happens on sub-issues.
+title: "[EPIC] "
+labels: ["type:epic", "tracking"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for multi-issue initiatives. Children are linked as
+        sub-issues (not markdown checklists). Do **not** set `complexity` or
+        `effort` on an epic — those belong on the children.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+    validations:
+      required: true
+
+  - type: textarea
+    id: utility
+    attributes:
+      label: Why this matters (utility evaluation)
+      description: Concrete problems this epic solves. What we get, what we don't.
+    validations:
+      required: true
+
+  - type: textarea
+    id: design_sketch
+    attributes:
+      label: Design sketch
+      description: Non-binding. Enough for reviewers to agree on direction.
+    validations:
+      required: false
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria for the epic
+      description: What "done" looks like at the epic level.
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: children
+    attributes:
+      label: Proposed children (to file as sub-issues)
+      description: Freeform list. Each becomes a real sub-issue once the epic is accepted.
+    validations:
+      required: false
+
+  - type: input
+    id: domains
+    attributes:
+      label: Skill domains (roll-up)
+      placeholder: "backend, frontend, security"
+    validations:
+      required: true
+
+  - type: textarea
+    id: dispatch_metadata
+    attributes:
+      label: "dispatch-metadata (do not edit)"
+      value: |
+        <!-- dispatch-metadata:v1
+        type: epic
+        judgement: design
+        panel_review: false
+        domains: []
+        wave:
+        -->
+      render: markdown

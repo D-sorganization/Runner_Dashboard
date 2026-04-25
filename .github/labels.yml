@@ -1,0 +1,134 @@
+# Label manifest for runner-dashboard.
+#
+# Source of truth for all labels. Apply with the `Labels Sync` workflow
+# (.github/workflows/labels-sync.yml). Existing labels not listed here are
+# left alone.
+#
+# See docs/issue-taxonomy.md for semantics.
+
+# ---------------------------------------------------------------------------
+# Type — what kind of issue this is.
+# ---------------------------------------------------------------------------
+- name: "type:epic"
+  color: "3E4B9E"
+  description: "Parent tracking issue. Children linked as sub-issues."
+- name: "type:task"
+  color: "5B7FFF"
+  description: "Ordinary unit of work."
+- name: "type:bug"
+  color: "D73A4A"
+  description: "Defect in existing behavior."
+- name: "type:security"
+  color: "B60205"
+  description: "Security finding."
+- name: "type:research"
+  color: "8B5CF6"
+  description: "Investigation or spike — answer unknown."
+- name: "type:docs"
+  color: "0E8A16"
+  description: "Documentation-only change."
+- name: "type:chore"
+  color: "C5DEF5"
+  description: "Housekeeping: deps, CI, lint, formatting."
+
+# ---------------------------------------------------------------------------
+# Complexity — the skill tier required of the agent.
+# ---------------------------------------------------------------------------
+- name: "complexity:trivial"
+  color: "C2E0C6"
+  description: "Single-file mechanical change. No judgement, no architectural awareness."
+- name: "complexity:routine"
+  color: "A2D8A2"
+  description: "Well-scoped, multi-file within one subsystem."
+- name: "complexity:complex"
+  color: "FEF2C0"
+  description: "Cross-cutting, architectural awareness needed."
+- name: "complexity:deep"
+  color: "F9A825"
+  description: "Deep codebase knowledge or novel design."
+- name: "complexity:research"
+  color: "BA68C8"
+  description: "Answer unknown; investigate and write up options first."
+
+# ---------------------------------------------------------------------------
+# Effort — size of the work, independent of complexity.
+# ---------------------------------------------------------------------------
+- name: "effort:xs"
+  color: "E6F4EA"
+  description: "< 1 hour. Typically single-PR."
+- name: "effort:s"
+  color: "CEE7D1"
+  description: "< 4 hours."
+- name: "effort:m"
+  color: "FFF2B7"
+  description: "< 1 day."
+- name: "effort:l"
+  color: "FAD1A1"
+  description: "1–3 days."
+- name: "effort:xl"
+  color: "F1948A"
+  description: "> 3 days. Should be an epic with children."
+
+# ---------------------------------------------------------------------------
+# Flags — booleans that surface specific lanes.
+# ---------------------------------------------------------------------------
+- name: "quick-win"
+  color: "2EA043"
+  description: "Low effort, high value. Safe pool for fast agents and new contributors."
+
+- name: "panel-review"
+  color: "9333EA"
+  description: "Agent panel is reviewing / should review. Do not implement from this issue."
+
+# ---------------------------------------------------------------------------
+# Judgement — dispatch gating.
+# ---------------------------------------------------------------------------
+- name: "judgement:objective"
+  color: "0366D6"
+  description: "Competent agents would agree on the correct implementation."
+- name: "judgement:preference"
+  color: "5BC0DE"
+  description: "Multiple valid approaches; style/ergonomics matter but diffs are small."
+- name: "judgement:design"
+  color: "F0AD4E"
+  description: "Architectural decision. Do not dispatch implementation until decided."
+- name: "judgement:contested"
+  color: "D9534F"
+  description: "Active disagreement. Hold — panel review required."
+
+# ---------------------------------------------------------------------------
+# Rollout — label-triggered execution of migration workflows. Apply one of
+# these labels to an epic to run the corresponding workflow end-to-end.
+# See docs/issue-migration-plan.md "Label-triggered rollout" section.
+# ---------------------------------------------------------------------------
+- name: "rollout:taxonomy"
+  color: "6F42C1"
+  description: "Applying this label to the taxonomy migration epic fires the Taxonomy Rollout workflow (creates labels, previews backfill, applies if confirmed)."
+- name: "rollout:taxonomy-apply"
+  color: "22863A"
+  description: "Authorizes the Taxonomy Rollout to execute the backfill for real (not just dry-run). Apply only after reviewing the preview comment."
+- name: "rollout:in-progress"
+  color: "FBCA04"
+  description: "Automation has started executing a rollout on this issue. Do not apply manually — managed by the workflow."
+- name: "rollout:done"
+  color: "2EA043"
+  description: "A rollout workflow completed successfully against this issue. Managed by the workflow."
+
+# ---------------------------------------------------------------------------
+# Wave — execution-order buckets, used by tracking issues.
+# ---------------------------------------------------------------------------
+- name: "wave:1"
+  color: "EDEDED"
+  description: "Execution wave 1 (highest-priority remediation)."
+- name: "wave:2"
+  color: "EDEDED"
+  description: "Execution wave 2."
+- name: "wave:3"
+  color: "EDEDED"
+  description: "Execution wave 3."
+- name: "wave:4"
+  color: "EDEDED"
+  description: "Execution wave 4."
+- name: "wave:5"
+  color: "EDEDED"
+  description: "Execution wave 5 (normal cadence polish)."

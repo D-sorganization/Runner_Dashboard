@@ -1,0 +1,72 @@
+name: Research / spike
+description: Investigation where the answer is unknown. Produces a decision, not a PR.
+title: "[RESEARCH] "
+labels: ["type:research", "complexity:research"]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: The specific thing we are trying to answer.
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: Why we need an answer
+      description: What downstream work this unblocks.
+    validations:
+      required: true
+
+  - type: textarea
+    id: deliverable
+    attributes:
+      label: Deliverable
+      description: What shape the answer takes. Usually a short doc or a comment on this issue.
+      placeholder: "A recommendation with tradeoffs, posted as a comment on this issue."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: effort
+    attributes:
+      label: Effort
+      options:
+        - "xs (< 1 hour)"
+        - "s (< 4 hours)"
+        - "m (< 1 day)"
+        - "l (1–3 days)"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: flags
+    attributes:
+      label: Flags
+      options:
+        - label: "Panel review (multi-agent opinions requested)"
+          required: false
+
+  - type: input
+    id: domains
+    attributes:
+      label: Skill domains
+      placeholder: "backend, security"
+    validations:
+      required: true
+
+  - type: textarea
+    id: dispatch_metadata
+    attributes:
+      label: "dispatch-metadata (do not edit)"
+      value: |
+        <!-- dispatch-metadata:v1
+        type: research
+        complexity: research
+        effort:
+        judgement: design
+        panel_review: false
+        domains: []
+        -->
+      render: markdown

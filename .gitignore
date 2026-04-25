@@ -12,3 +12,21 @@ build/
 node_modules/
 deployment.json
 .DS_Store
+
+# Secrets and credentials
+*.pem
+*.key
+*.p12
+*.pfx
+.env.*
+!.env.example
+*.token
+*_token.txt
+secrets.json
+credentials.json
+
+# Runtime state
+backend/.venv/
+*.pyc
+*.pyo
+.claude/worktrees/

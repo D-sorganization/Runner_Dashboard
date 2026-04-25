@@ -1,0 +1,62 @@
+name: Labels Sync
+
+# Applies the label manifest in .github/labels.yml to the repository.
+#
+# Idempotent: creates missing labels, updates color/description of existing
+# ones, and leaves labels not listed in the manifest alone (so the
+# existing `security`, `backend`, `critical`, etc. labels are preserved).
+#
+# This workflow exists as a stand-alone admin tool (workflow_dispatch) and
+# as a callable building block (workflow_call) used by taxonomy-rollout.yml.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Print the diff without applying changes."
+        required: false
+        default: "false"
+        type: choice
+        options: ["true", "false"]
+  workflow_call:
+    inputs:
+      dry_run:
+        required: false
+        default: "false"
+        type: string
+  # Auto-sync on changes to the manifest itself. Keeps the repo's labels
+  # in lock-step with .github/labels.yml without manual workflow_dispatch.
+  push:
+    branches: [main]
+    paths:
+      - .github/labels.yml
+      - .github/scripts/labels-sync.js
+
+permissions:
+  issues: write
+  contents: read
+
+concurrency:
+  group: labels-sync-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: d-sorg-fleet
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - name: Install js-yaml
+        run: npm install --no-save js-yaml@4
+
+      - name: Sync labels
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+        with:
+          script: |
+            const { sync } = require('./.github/scripts/labels-sync.js');
+            await sync({
+              github, context, core,
+              dryRun: process.env.DRY_RUN === 'true',
+            });

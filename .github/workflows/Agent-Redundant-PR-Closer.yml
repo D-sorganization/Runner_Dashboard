@@ -26,7 +26,7 @@ name: Agent Redundant PR Closer
 # history.
 
 on:
-  pull_request_target:
+  pull_request:
     types: [opened, reopened, ready_for_review, synchronize, closed]
   schedule:
     - cron: "0 */3 * * *" # every 3 hours
@@ -50,12 +50,12 @@ permissions:
   issues: write
 
 concurrency:
-  group: jules-redundant-pr-closer-${{ github.repository }}
+  group: jules-redundant-pr-closer-${{ github.workflow }}-${{ github.repository }}
   cancel-in-progress: false
 
 jobs:
   close-redundant:
-    runs-on: ubuntu-latest
+    runs-on: d-sorg-fleet
     timeout-minutes: 10
     steps:
       - name: Check Jules app credentials
@@ -99,7 +99,6 @@ jobs:
         if: steps.app-creds.outputs.configured == 'true'
         # Fail-open: a failure here only defers redundancy cleanup; it never blocks agent work.
         # Error handling done inline via the || { exit 0 } block below.
-        continue-on-error: true
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           REPO_NAME: ${{ github.event.repository.name }}

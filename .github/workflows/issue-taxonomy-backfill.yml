@@ -1,0 +1,83 @@
+name: Issue Taxonomy Backfill
+
+# Applies the bulk backfill manifest (docs/issue-taxonomy-backfill.yml) to
+# existing issues:
+#   - adds taxonomy labels (REST)
+#   - adds native sub-issue edges (GraphQL)
+#
+# Idempotent. Safe to run multiple times. Labels must already exist in
+# the repo (run Labels Sync first, or use the Taxonomy Rollout workflow
+# which chains both).
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Print the planned changes without applying them."
+        required: false
+        default: "true"
+        type: choice
+        options: ["true", "false"]
+      only_labels:
+        description: "Apply only labels, skip sub-issue linking."
+        required: false
+        default: "false"
+        type: choice
+        options: ["true", "false"]
+      only_hierarchy:
+        description: "Apply only sub-issue hierarchy, skip labels."
+        required: false
+        default: "false"
+        type: choice
+        options: ["true", "false"]
+  workflow_call:
+    inputs:
+      dry_run:
+        required: false
+        default: "true"
+        type: string
+      only_labels:
+        required: false
+        default: "false"
+        type: string
+      only_hierarchy:
+        required: false
+        default: "false"
+        type: string
+
+permissions:
+  issues: write
+  contents: read
+
+concurrency:
+  group: issue-taxonomy-backfill
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: d-sorg-fleet
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - name: Install js-yaml
+        run: npm install --no-save js-yaml@4
+
+      - name: Apply backfill manifest
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          ONLY_LABELS: ${{ inputs.only_labels }}
+          ONLY_HIERARCHY: ${{ inputs.only_hierarchy }}
+        with:
+          script: |
+            const backfill = require('./.github/scripts/issue-backfill.js');
+            const dry = process.env.DRY_RUN === 'true';
+            const onlyLabels = process.env.ONLY_LABELS === 'true';
+            const onlyHierarchy = process.env.ONLY_HIERARCHY === 'true';
+
+            if (!onlyHierarchy) {
+              await backfill.applyLabels({ github, context, core, dryRun: dry });
+            }
+            if (!onlyLabels) {
+              await backfill.applyHierarchy({ github, context, core, dryRun: dry });
+            }

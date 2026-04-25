@@ -1,0 +1,93 @@
+name: Agent Panel Review
+
+# Collects multi-agent opinions on judgement-heavy issues before anyone
+# implements them.
+#
+# An issue becomes a candidate when it carries the `panel-review` label.
+# Typical triggers are `judgement:design` or `judgement:contested`, but the
+# author can add `panel-review` to any issue where they want multi-agent
+# input.
+#
+# The workflow itself does not invoke the panelists — it prepares a dispatch
+# brief and posts it to the issue. The actual panelists are the agent
+# workflows configured per-repo (Jules worker personas, Claude Code runs,
+# Codex, etc.). Each panelist responds by posting a comment in the format
+# documented in docs/issue-taxonomy.md ("Panel review" section).
+#
+# When the scheduled sweep finds a panel-review issue with enough opinions,
+# it posts a summary tally and leaves the label in place until a human (or
+# the author) removes it.
+
+on:
+  schedule:
+    # Weekly sweep. Panelists are slow; daily creates noise.
+    - cron: "0 14 * * 1" # Monday 14:00 UTC
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: "Specific issue to review. Leave blank to sweep all panel-review issues."
+        required: false
+        type: string
+      mode:
+        description: "brief = post dispatch brief; summarize = tally existing opinions; both."
+        required: false
+        default: "both"
+        type: choice
+        options:
+          - brief
+          - summarize
+          - both
+  issues:
+    # When someone adds the panel-review label, post a brief immediately.
+    types: [labeled]
+
+permissions:
+  issues: write
+  contents: read
+
+concurrency:
+  group: agent-panel-review
+  cancel-in-progress: false
+
+jobs:
+  on-demand-label:
+    # Fast path: someone just applied `panel-review` to an issue.
+    if: >-
+      github.event_name == 'issues' &&
+      github.event.label.name == 'panel-review'
+    runs-on: d-sorg-fleet
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+        with:
+          script: |
+            const script = require('./.github/scripts/panel-review.js');
+            const { data: issue } = await github.rest.issues.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+            });
+            await script.postBrief({
+              github, context, core,
+              issue,
+            });
+
+  sweep:
+    if: github.event_name != 'issues'
+    runs-on: d-sorg-fleet
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+        env:
+          ISSUE_NUMBER: ${{ inputs.issue_number }}
+          MODE: ${{ inputs.mode || 'both' }}
+        with:
+          script: |
+            const script = require('./.github/scripts/panel-review.js');
+            await script.sweep({
+              github, context, core,
+              specificIssueNumber: process.env.ISSUE_NUMBER
+                ? Number(process.env.ISSUE_NUMBER)
+                : null,
+              mode: process.env.MODE || 'both',
+            });

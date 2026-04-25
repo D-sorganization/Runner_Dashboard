@@ -11,6 +11,7 @@ execution is done by the caller after receiving an accepted envelope back.
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 
 import dispatch_contract
 from fastapi import APIRouter, HTTPException, Request
@@ -18,6 +19,16 @@ from fastapi import APIRouter, HTTPException, Request
 router = APIRouter(prefix="/api/fleet/dispatch", tags=["dispatch"])
 
 log = logging.getLogger("dashboard.dispatch")
+
+_is_envelope_replay: Callable[[str], Awaitable[bool]] | None = None
+_record_processed_envelope: Callable[[str], Awaitable[None]] | None = None
+
+
+def set_replay_functions(is_replay_fn, record_fn) -> None:
+    """Set replay detection functions (called from server.py after they're defined)."""
+    global _is_envelope_replay, _record_processed_envelope
+    _is_envelope_replay = is_replay_fn
+    _record_processed_envelope = record_fn
 
 
 @router.get("/actions")
@@ -72,6 +83,16 @@ async def submit_dispatch_command(request: Request) -> dict:
     outside the dashboard process boundary for safety.
     """
     envelope = await _parse_envelope(request)
+
+    crypto_result = dispatch_contract.validate_envelope_crypto(envelope)
+    if not crypto_result.valid:
+        log.warning("crypto validation failed: envelope_id=%s reason=%s", envelope.envelope_id, crypto_result.reason)
+        raise HTTPException(status_code=400, detail=f"Envelope validation failed: {crypto_result.reason}")
+
+    if _is_envelope_replay and await _is_envelope_replay(envelope.envelope_id):
+        log.warning("replay detected: envelope_id=%s", envelope.envelope_id)
+        raise HTTPException(status_code=400, detail="Envelope has already been processed (replay detected)")
+
     result = dispatch_contract.validate_envelope(envelope)
     audit = dispatch_contract.build_audit_log_entry(envelope, result)
 
@@ -85,6 +106,9 @@ async def submit_dispatch_command(request: Request) -> dict:
 
     if not result.accepted:
         raise HTTPException(status_code=403, detail=result.reason)
+
+    if _record_processed_envelope:
+        await _record_processed_envelope(envelope.envelope_id)
 
     prototype_cmd = dispatch_contract.command_preview(envelope.action, envelope.payload)
     return {

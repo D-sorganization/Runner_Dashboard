@@ -1,9 +1,34 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.0.0
+**Spec Version:** 2.1.0
 **Application Version:** 4.0.1 (see `VERSION`)
-**Last Updated:** 2026-04-24
+**Last Updated:** 2026-04-25
 **Status:** Active
+
+---
+
+## 0. Sibling repos & boundaries
+
+`runner-dashboard` is one of three repos that together form the
+D-sorganization fleet operating system. The cross-repo contract is
+documented canonically in
+[`Repository_Management/docs/sibling-repos.md`](https://github.com/D-sorganization/Repository_Management/blob/main/docs/sibling-repos.md).
+Quick form:
+
+- **[`Repository_Management`](https://github.com/D-sorganization/Repository_Management)** — fleet orchestrator.
+  Publishes shared CI workflows, skills, templates, agent coordination.
+  *Does not* own dashboard UI, backend, or HTTP API.
+- **`runner-dashboard`** (this repo) — operator console. Owns every dashboard
+  tab, every `/api/*` endpoint, deployment + rollback machinery.
+- **[`Maxwell-Daemon`](https://github.com/D-sorganization/Maxwell-Daemon)** —
+  autonomous local AI control plane. The Maxwell tab here calls the daemon
+  over HTTP; the daemon never calls back.
+
+This SPEC documents only what `runner-dashboard` owns. Fleet-wide workflow
+manifests, agent claim/lease protocol, Project_Template, and skill publishing
+specs live in [`Repository_Management/SPEC.md`](https://github.com/D-sorganization/Repository_Management/blob/main/SPEC.md).
+The Maxwell pipeline state machine and ExecutionSandbox specs live in
+[`Maxwell-Daemon`](https://github.com/D-sorganization/Maxwell-Daemon).
 
 ---
 
@@ -78,6 +103,8 @@ surface task action details without exposing secrets.
 | `report_files.py` | Parse dated report files for the Reports tab |
 | `runner_autoscaler.py` | Dynamic runner count scaling logic |
 | `config_schema.py` | Config validation and atomic JSON writes |
+| `pr_inventory.py` | Fetch and normalise open PRs across repos (issue #80) |
+| `issue_inventory.py` | Fetch and normalise open issues with taxonomy (issue #81) |
 
 **Bounded domain routers (`backend/routers/`):**
 
@@ -105,6 +132,34 @@ Remaining endpoint domains in `server.py` are tracked for extraction under issue
 All application logic is contained within `frontend/index.html`. There is no
 npm project, no `package.json`, and no build toolchain. The file is served
 directly by the FastAPI backend.
+
+**Shared helper components** defined near the top of the script block:
+
+- `Collapse` — collapsible section with header and chevron.
+- `SubTabs` — horizontal sub-tab strip rendered inside a tab panel. Props:
+  `tabs` (array of `{ key, label, badge, disabled }`), `activeKey`, `onChange`,
+  `storageKey` (optional localStorage persistence key), `rightBadge` (optional
+  element flush-right of the strip). Active tab is persisted to localStorage
+  when `storageKey` is provided.
+
+#### Header Quick Dispatch
+
+The main header contains a **Quick Dispatch** button (⚡ Quick Dispatch ▾),
+flush-right next to the refresh control. Clicking it opens a popover form that
+lets any operator dispatch an ad-hoc agent task to any org repository without
+navigating to a specific tab. The popover provides:
+
+- **Repository** dropdown — populated from `GET /api/repos`
+- **Provider** dropdown — populated from `GET /api/agents/providers`
+- **Model** text field — shown only for providers that support model selection
+  (`claude_code_cli`, `codex_cli`); defaults to `claude-opus-4-7`
+- **Branch ref** text field — defaults to `main`
+- **Prompt** textarea — minimum 10 characters
+- **Dispatch** button — POSTs to `POST /api/agents/quick-dispatch`; shows a
+  loading state, surfaces errors inline, and auto-closes on success
+
+Click-outside closes the popover. Rate-limit errors (HTTP 429) are surfaced
+with a human-readable message.
 
 `frontend/index.html` is the **sole canonical frontend source**. No other
 frontend implementation exists in the repository. The previously present
@@ -178,9 +233,24 @@ Health status of local registered applications (processes, services defined in
 `local_apps.json`). Shows up/down state, PID, and restart commands.
 
 ### 3.12 Remediation Tab
-AI agent dispatch control panel. Configures and dispatches remediation plans
-to Jules, GAAI, Claude, or Codex agents. Shows dispatch history and plan
-status. Supports per-repo agent routing.
+AI agent dispatch control panel organised into three sub-tabs:
+
+- **Automations** (default) — configures and dispatches remediation plans to
+  Jules, GAAI, Claude, or Codex agents. Shows dispatch history and plan
+  preview. Supports per-repo agent routing and loop-guard configuration.
+- **PRs** — multi-select table of open pull requests fetched from
+  `GET /api/prs?limit=2000`. Supports filtering by repo, author, and draft
+  status. Bulk dispatch sends selected PRs to a chosen provider via
+  `POST /api/prs/dispatch` with a confirmation modal.
+- **Issues** — taxonomy-aware GitHub Issues browser and bulk dispatcher
+  (`GET /api/issues?limit=2000`). Filter bar with repo, complexity,
+  judgement, and "pickable only" controls persisted to `localStorage`.
+  Multi-select table with type/complexity/effort/judgement pills. Non-pickable
+  rows are dimmed; `design`/`contested` judgement pills rendered red with
+  warning. Dispatches via `POST /api/issues/dispatch` with optional force flag.
+
+The active sub-tab is persisted to `localStorage` under the key
+`remediation-subtab`.
 
 ### 3.13 Workflows Tab
 Browse and manually dispatch any workflow in any org repository. Supports
@@ -232,6 +302,7 @@ All endpoints are served under `http://localhost:8321/api/`.
 | GET | `/api/deployment` | Current deployment metadata |
 | GET | `/api/deployment/expected-version` | Expected version from repo |
 | GET | `/api/deployment/drift` | Version drift between deployed and expected |
+| GET | `/api/deployment/git-drift` | Git-commit drift: HEAD vs origin/main with is_drifted flag |
 | GET | `/api/deployment/state` | Full deployment state object |
 | POST | `/api/deployment/update-signal` | Signal the update mechanism |
 
@@ -332,6 +403,23 @@ All endpoints are served under `http://localhost:8321/api/`.
 | POST | `/api/agent-remediation/dispatch-jules` | Dispatch via Jules API |
 | GET | `/api/agent-remediation/history` | Remediation dispatch history |
 
+### Quick Dispatch
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/agents/providers` | Available agent providers and their availability status |
+| POST | `/api/agents/quick-dispatch` | Dispatch an ad-hoc agent task to any repository |
+
+### PR and Issue Dispatch
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/prs` | List open pull requests across the org with claim/link metadata |
+| GET | `/api/prs/{owner}/{repo}/{number}` | Single PR detail with checks and file count |
+| GET | `/api/issues` | List open issues with taxonomy and pickability |
+| POST | `/api/prs/dispatch` | Bulk-dispatch agent tasks to selected PRs |
+| POST | `/api/issues/dispatch` | Bulk-dispatch agent tasks to selected issues |
+
 ### Credentials
 
 | Method | Path | Description |
@@ -372,6 +460,19 @@ All endpoints are served under `http://localhost:8321/api/`.
 | Method | Path | Description |
 |---|---|---|
 | POST | `/api/help/chat` | In-app help chat (context-aware AI response) |
+
+### Diagnostics
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/diagnostics/summary` | Consolidated diagnostics: PID, memory, WSL status, git commit, drift |
+| POST | `/api/diagnostics/restart-service` | Restart runner-dashboard systemd service (localhost only) |
+
+### Launchers
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/api/launchers/generate` | Generate Windows PowerShell launcher scripts on the Desktop |
 
 ### Static Assets
 
@@ -621,3 +722,784 @@ The backend injects the following headers on all responses:
 ### 9.3 Destructive Action Confirmation
 Critical fleet operations (runner stop, fleet restart) use a two-step
 inline confirmation UI instead of `window.confirm()`.
+
+### 9.4 Token Handling
+`GH_TOKEN` and `ANTHROPIC_API_KEY` must be supplied as environment variables
+only — never hardcoded in source files or configuration. The recommended setup
+path is the `configure-env-vars.sh` script, which writes tokens to the systemd
+override file so they are not visible in the process environment of child
+processes and are not stored in shell history.
+
+### 9.5 Network Exposure
+The dashboard backend binds to `0.0.0.0:8321` by default so that multi-node
+fleet monitoring works across the local network. Operators who do not need
+cross-node access should bind to `127.0.0.1` instead (set the `HOST`
+environment variable or modify the `systemd` unit file). No TLS is provided
+by the dashboard itself; use a reverse proxy (nginx, Caddy) in front of the
+service when HTTPS is required.
+
+### 9.6 Operator Hardening Checklist
+- Restrict network access to port 8321 via firewall rules (`ufw`, `iptables`,
+  or cloud security groups); do not expose it publicly.
+- Rotate `GH_TOKEN` and `ANTHROPIC_API_KEY` on a regular schedule (at minimum
+  whenever a team member departs).
+- Keep Python dependencies current: run `pip-audit` and `pip install -U -r
+  requirements.txt` during routine maintenance windows.
+- Review agent dispatch logs in the Remediation tab regularly to detect
+  unexpected or unauthorized agent invocations.
+- Consider binding to `127.0.0.1` and using a reverse proxy with
+  authentication if the dashboard is accessible to untrusted network segments.
+
+### 9.7 Prompt Injection Sanitization
+All user-controlled text inserted into LLM agent prompts (workflow failure
+messages, log excerpts, issue bodies, PR descriptions) is passed through
+`sanitize_for_prompt()` in `backend/agent_remediation.py` before inclusion.
+The function:
+- Truncates input to a configurable `max_length` (default 2000 chars) to
+  limit token usage and reduce attack surface.
+- Wraps the content in `[START_UNTRUSTED_CONTENT]` / `[END_UNTRUSTED_CONTENT]`
+  delimiters so the model can distinguish trusted instructions from external
+  data.
+
+Every generated prompt also includes the constant
+`PROMPT_UNTRUSTED_SYSTEM_INSTRUCTION` as a preamble, instructing the model
+not to follow any instructions found inside the delimiters.
+
+---
+
+## 10. Prompt Notes and Agent Dispatch Configuration
+
+### 10.1 User-Configurable Prompt Notes
+
+The AI agent dispatch system supports user-defined preamble notes injected
+before every outbound LLM prompt. These are stored in
+`~/.config/runner-dashboard/prompt_notes.json` with the shape:
+
+```json
+{ "enabled": true, "notes": "Always prefer Python 3.11+ idioms." }
+```
+
+The `/api/feature-requests/templates` (GET) route returns the current notes
+alongside prompt templates and engineering standards. The
+`/api/feature-requests` (POST) route merges notes into the prompt before
+dispatch when `enabled` is true and `notes` is non-empty.
+
+### 10.2 Secure Environment Variable Setup
+
+`deploy/configure-env-vars.sh` provides a guided interactive script for
+setting `GITHUB_TOKEN`, `ANTHROPIC_API_KEY`, and other required environment
+variables into the WSL systemd unit. It validates token format and writes
+variables to the service override file rather than to shell rc files, reducing
+the risk of secrets leaking through shell history.
+
+### 10.3 Deployment Dependency Management
+
+`deploy/setup.sh` and `deploy/update-deployed.sh` install Python dependencies
+from `backend/requirements.txt` directly (via `pip install -r
+backend/requirements.txt`) rather than a hardcoded list, ensuring the deployed
+dependency set stays in sync with the source of truth automatically.
+
+---
+
+## 11. PR Inventory API
+
+Implemented in `backend/pr_inventory.py`; thin route shells in `backend/server.py`.
+
+### 11.1 `GET /api/prs`
+
+Aggregates open pull-requests across organisation repositories.
+
+**Query parameters:**
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `repo` | string (repeatable) | all org repos | Filter to specific `owner/repo` slugs |
+| `include_drafts` | bool | `true` | Include draft PRs |
+| `author` | string | — | Filter by author login |
+| `label` | string (repeatable) | — | Match any of these labels |
+| `limit` | int | 500 | Maximum items returned (hard cap 2000) |
+
+**Response:**
+
+```json
+{
+  "items": [
+    {
+      "repository": "D-sorganization/runner-dashboard",
+      "number": 76,
+      "title": "...",
+      "url": "...",
+      "author": "dieter",
+      "draft": false,
+      "age_hours": 12.3,
+      "labels": ["bug", "ci"],
+      "requested_reviewers": ["alice"],
+      "head_ref": "fix/something",
+      "mergeable_state": "clean",
+      "agent_claim": null,
+      "linked_issues": [24, 43]
+    }
+  ],
+  "total": 1,
+  "errors": []
+}
+```
+
+- `agent_claim` — extracted from any `claim:*` label on the PR.
+- `linked_issues` — issue numbers found via `closes/fixes/resolves #N` in the PR body.
+- `errors` — per-repo error messages; a failing repo does not abort the whole request.
+- Responses are cached 30 seconds in-process keyed by query parameters.
+
+### 11.2 `GET /api/prs/{owner}/{repo}/{number}`
+
+Returns single-PR detail with extra fields not present in the list endpoint:
+
+| Field | Description |
+|---|---|
+| `body_excerpt` | First 2 KB of the PR body |
+| `checks` | List of `{name, conclusion, url}` from the commit check-runs API |
+| `files_changed` | Number of changed files |
+| `additions` | Lines added |
+| `deletions` | Lines deleted |
+
+---
+
+## 12. Issue Inventory API
+
+Implemented in `backend/issue_inventory.py`; thin route shell in `backend/server.py`.
+
+### 12.1 `GET /api/issues`
+
+Aggregates open issues across organisation repositories with taxonomy-aware
+filtering.
+
+**Query parameters:**
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `repo` | string (repeatable) | all org repos | Filter to specific `owner/repo` slugs |
+| `state` | `open` \| `all` | `open` | Issue state |
+| `label` | string (repeatable) | — | Match any of these labels |
+| `assignee` | string | — | Filter by assignee login |
+| `pickable_only` | bool | `false` | Only return issues available for agent pickup |
+| `complexity` | string (repeatable) | — | Match any `complexity:*` value |
+| `effort` | string (repeatable) | — | Match any `effort:*` value |
+| `judgement` | string (repeatable) | — | Match any `judgement:*` value |
+| `limit` | int | 500 | Maximum items returned (hard cap 2000) |
+
+**Response:**
+
+```json
+{
+  "items": [
+    {
+      "repository": "D-sorganization/runner-dashboard",
+      "number": 76,
+      "title": "...",
+      "url": "...",
+      "author": "dieter",
+      "assignees": [],
+      "labels": ["bug", "ci"],
+      "age_hours": 12.3,
+      "taxonomy": {
+        "type": "task",
+        "complexity": "routine",
+        "effort": "m",
+        "judgement": "objective",
+        "quick_win": false,
+        "panel_review": false,
+        "domains": ["backend"],
+        "wave": 2
+      },
+      "agent_claim": null,
+      "claim_expires_at": null,
+      "linked_pr": null,
+      "pickable": true,
+      "pickable_blocked_by": []
+    }
+  ],
+  "errors": []
+}
+```
+
+**Taxonomy parsing** (`parse_taxonomy` in `issue_inventory.py`):
+Labels take precedence. Recognised prefixes: `type:*`, `complexity:*`,
+`effort:*`, `judgement:*`, `wave:*`, `domain:*`. Boolean flags: `quick-win`,
+`panel-review`.
+
+**Pickability rules** (`is_pickable` in `issue_inventory.py`):
+An issue is pickable when ALL of the following hold:
+
+1. `state == "open"`
+2. No linked open PR (`linked_pr == null`)
+3. No active `claim:*` label
+4. `judgement` not in `{"design", "contested"}`
+
+`pickable_blocked_by` lists the human-readable reasons when `pickable` is
+`false`.
+
+- Per-repo errors appear in `errors[]`; a failing repo does not abort the
+  whole request.
+- Responses are cached 30 seconds in-process.
+
+---
+
+## 13. Quick Dispatch API
+
+### 13.1 Endpoint
+
+`POST /api/agents/quick-dispatch`
+
+Triggers the `Agent-Quick-Dispatch.yml` workflow in `Repository_Management` for
+an ad-hoc agent task.
+
+**Request body:**
+```json
+{
+  "repository": "D-sorganization/runner-dashboard",
+  "prompt": "Fix the failing test in test_api.py",
+  "provider": "claude_code_cli",
+  "model": "claude-opus-4-7",
+  "ref": "main",
+  "task_kind": "adhoc"
+}
+```
+
+**Success response (200):**
+```json
+{
+  "accepted": true,
+  "envelope_id": "uuid-hex",
+  "fingerprint": "sha256-prefix",
+  "workflow_run_url": "https://github.com/.../actions",
+  "history_id": "uuid-hex",
+  "reason": ""
+}
+```
+
+**Rejection response (409):**
+```json
+{ "accepted": false, "reason": "provider_unavailable: ..." }
+```
+
+### 13.2 Validation
+
+- `prompt` must be at least 10 characters (400 if not).
+- `provider` must exist in `PROVIDERS` and have `availability == "available"`.
+  Rejected with `{"reason": "provider_unavailable: <detail>"}`.
+- Provider must have `dispatch_mode == "github_actions"`.
+
+### 13.3 Rate Limiting
+
+10 calls per 60-second window per process (in-process token bucket).
+Returns HTTP 429 `{"reason": "rate_limited", "retry_after_seconds": N}` when
+exceeded.
+
+### 13.4 Workflow Not Configured
+
+If `Agent-Quick-Dispatch.yml` does not exist in `Repository_Management`, the
+endpoint returns HTTP 501:
+```json
+{"reason": "workflow_not_configured", "suggested_workflow": "Agent-Quick-Dispatch.yml"}
+```
+
+### 13.5 Audit Log
+
+Every accepted dispatch writes a `DispatchAuditLogEntry`-shaped record to
+`_QUICK_DISPATCH_HISTORY_PATH` (default:
+`~/actions-runners/dashboard/quick_dispatch_history.json`).  The path can be
+overridden via the `QUICK_DISPATCH_HISTORY_PATH` environment variable.
+
+### 13.6 Implementation
+
+Core logic lives in `backend/quick_dispatch.py`.  The server route at
+`POST /api/agents/quick-dispatch` is a thin shell that calls
+`quick_dispatch.quick_dispatch()`.
+
+---
+
+## 14. Bulk Dispatch API
+
+### 14.1 PR Dispatch
+
+`POST /api/prs/dispatch`
+
+Dispatches agents to one or more pull requests via `Agent-PR-Action.yml`.
+
+**Request body:**
+```json
+{
+  "selection": {
+    "mode": "single | repo | list | all",
+    "repository": "D-sorganization/runner-dashboard",
+    "number": 76,
+    "items": [{"repository": "...", "number": 1}]
+  },
+  "provider": "claude_code_cli",
+  "prompt": "Address review comments",
+  "model": "claude-opus-4-7",
+  "confirmation": {"approved_by": "dieter", "note": "manual click"}
+}
+```
+
+**Response:**
+```json
+{
+  "accepted": 5,
+  "rejected": [{"repository": "...", "number": 4, "reason": "..."}],
+  "envelope_ids": ["uuid-hex"],
+  "fingerprints": ["sha256-prefix"]
+}
+```
+
+### 14.2 Issue Dispatch
+
+`POST /api/issues/dispatch`
+
+Same shape as PR dispatch, with two additional fields:
+
+- `"force": true` — skip pickability enforcement (requires PRIVILEGED access).
+  When forced, `forced: true` is recorded in the audit log.
+- Pickability is enforced server-side: issues with `pickable=false` are rejected
+  with `reason="not_pickable: <reason>"`.
+
+### 14.3 Selection Modes
+
+| Mode     | Description |
+|----------|-------------|
+| `single` | One specific PR/issue by `repository` + `number`. |
+| `repo`   | All open PRs/issues in a repository (caller pre-resolves). |
+| `list`   | Explicit list of `{repository, number}` items. |
+| `all`    | All pre-populated items. Hard-capped at 100 targets. |
+
+### 14.4 Concurrency
+
+Fan-out dispatches run in parallel with an `asyncio.Semaphore` of 4.
+
+### 14.5 Workflow Not Configured
+
+If the target workflow file (`Agent-PR-Action.yml` or `Agent-Issue-Action.yml`)
+does not exist in `Repository_Management`, the affected target is added to the
+`rejected[]` list with `reason="workflow_not_configured: ..."`.
+
+### 14.6 Audit Logs
+
+- PR dispatches: `_PR_DISPATCH_HISTORY_PATH`
+  (default `~/actions-runners/dashboard/pr_dispatch_history.json`,
+  override via `PR_DISPATCH_HISTORY_PATH`).
+- Issue dispatches: `_ISSUE_DISPATCH_HISTORY_PATH`
+  (default `~/actions-runners/dashboard/issue_dispatch_history.json`,
+  override via `ISSUE_DISPATCH_HISTORY_PATH`).
+
+### 14.7 Dispatch Contract
+
+Three new actions are registered in the `ALLOWLISTED_ACTIONS` catalog in
+`backend/dispatch_contract.py`:
+
+| Action | Access | Requires Confirmation |
+|--------|--------|-----------------------|
+| `agents.dispatch.adhoc` | PRIVILEGED | Yes |
+| `agents.dispatch.pr` | PRIVILEGED | Yes |
+| `agents.dispatch.issue` | PRIVILEGED | Yes |
+
+### 14.8 Implementation
+
+Core logic lives in `backend/agent_dispatch_router.py`.  The server routes at
+`POST /api/prs/dispatch` and `POST /api/issues/dispatch` are thin shells that
+call `agent_dispatch_router.dispatch_to_prs()` and
+`agent_dispatch_router.dispatch_to_issues()` respectively.
+
+## 15. Fleet Node Security
+
+### 15.1 Phase 1: Envelope Signing & Replay Protection
+
+All fleet dispatch envelopes (`CommandEnvelope` objects) are cryptographically
+signed with HMAC-SHA256 and include replay protection and timestamp validation
+to prevent unauthorized command execution, tampering, and replay attacks.
+
+### 15.2 Command Envelope Structure
+
+Every dispatch envelope includes the following security fields:
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| `envelope_id` | UUID4 (string) | Unique envelope identifier for replay detection |
+| `signature` | hex string | HMAC-SHA256 signature of the canonical envelope payload |
+| `issued_at` | ISO 8601 timestamp | Envelope creation time; must be within ±5 minutes of server time |
+| `requested_by` | string | User/principal requesting the action |
+| `action` | string | Allowlisted action name (e.g., `control.runner.start`) |
+| `payload` | dict | Action-specific parameters (e.g., runner ID) |
+
+Approval of privileged actions includes:
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| `approved_by` | string | User approving the action |
+| `approved_at` | ISO 8601 timestamp | Approval time; must be within ±5 minutes of server time |
+| `approval_hmac` | hex string | HMAC-SHA256 signature binding approval to the envelope |
+
+### 15.3 Signature Validation
+
+When a `CommandEnvelope` is created via `CommandEnvelope.from_dict()`, the
+signature is verified against the envelope's canonical JSON payload using a
+deployment-wide signing secret loaded from the `DISPATCH_SIGNING_SECRET`
+environment variable (or `~/.config/runner-dashboard/dispatch_signing_key` if
+not set).
+
+Verification failure raises an exception; invalid envelopes never reach business
+logic.
+
+### 15.4 Timestamp Validation
+
+Both `issued_at` and `approved_at` timestamps are validated to be:
+
+1. Parseable ISO 8601 strings
+2. Not more than 5 minutes in the past (freshness check)
+3. Not more than 1 minute in the future (clock skew tolerance)
+
+Validation result is a `TimestampValidationResult` enum: `VALID`, `TOO_OLD`,
+or `CLOCK_SKEW`.
+
+### 15.5 Replay Protection
+
+Every processed envelope ID is stored in the `processed_envelopes` table with
+a 24-hour TTL. The `/api/fleet/dispatch/submit` endpoint checks this table
+before accepting an envelope. Duplicate envelope IDs are rejected with a 400
+Bad Request response.
+
+Expired entries are periodically cleaned up (currently at server startup).
+
+### 15.6 Crypto Validation Route
+
+The `/api/fleet/dispatch/submit` endpoint performs full crypto validation:
+
+1. Parse the envelope from the request body
+2. Verify the envelope signature via `validate_envelope_crypto()`
+3. Check for replay via `_is_envelope_replay()`
+4. Validate timestamp freshness
+5. Record the envelope ID as processed
+6. Proceed to business logic validation
+
+If any crypto check fails, the endpoint returns 400 Bad Request with a
+descriptive error (e.g., "Envelope has already been processed (replay
+detected)").
+
+### 15.7 Implementation Details
+
+**Signing secret generation:**
+```bash
+# Generate a 48-byte (384-bit) random hex string
+openssl rand -hex 24 > ~/.config/runner-dashboard/dispatch_signing_key
+chmod 600 ~/.config/runner-dashboard/dispatch_signing_key
+export DISPATCH_SIGNING_SECRET=$(cat ~/.config/runner-dashboard/dispatch_signing_key)
+```
+
+**Signing algorithm:**
+- Canonical JSON of the envelope (with `signature` field omitted)
+- HMAC-SHA256 with the deployment signing secret
+- Hex-encoded result
+
+**Signature binding:**
+- CommandEnvelope.from_dict() auto-verifies the signature in `__post_init__`
+- DispatchConfirmation.approval_hmac binds the approval to the envelope_id
+
+**Database schema:**
+```sql
+CREATE TABLE processed_envelopes (
+  envelope_id TEXT PRIMARY KEY,
+  processed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  expires_at DATETIME
+);
+```
+
+## 16. Assistant Sidebar
+
+### 16.1 Overview
+
+A persistent collapsible sidebar that provides a conversational AI assistant
+interface accessible from any tab in the dashboard.
+
+### 16.2 Toggle
+
+A button labelled "☰ Asst" in the header-right area toggles the sidebar
+open or closed. The button is highlighted (blue background) when the sidebar
+is open.
+
+### 16.3 Layout
+
+When open, the sidebar docks alongside the main content area in a flex row.
+The user may configure it to dock to the left or right of the viewport.
+The default position is right.
+
+- Default width: 360px
+- Draggable resize handle: 280px – 600px range
+- The main content shrinks to fill the remaining width
+
+### 16.4 Persistence
+
+All sidebar preferences are stored in `localStorage` under the `assistant:`
+prefix:
+
+| Key | Description | Default |
+|-----|-------------|---------|
+| `assistant:open` | Whether sidebar is currently open | `false` |
+| `assistant:position` | Dock side (`"left"` or `"right"`) | `"right"` |
+| `assistant:width` | Sidebar width in pixels | `360` |
+| `assistant:transcript` | Conversation history (capped at 200 messages) | `[]` |
+| `assistant:openByDefault` | Open automatically on load | `false` |
+| `assistant:includeContext` | Send page context with each message | `true` |
+
+### 16.5 Conversation
+
+Messages are displayed as chat bubbles. User messages dock right with a blue
+background; assistant replies dock left with a tertiary background. Assistant
+responses are rendered with a minimal inline Markdown renderer supporting
+bold, italic, inline code, fenced code blocks, links, and ordered/unordered
+lists — no external library required.
+
+Input is a textarea. Enter sends the message; Shift+Enter inserts a newline.
+
+### 16.6 API Integration
+
+Messages are sent to `POST /api/help/chat` with the body:
+
+```json
+{
+  "question": "<user message>",
+  "page_context": {
+    "tab": "<active tab name>",
+    "url": "<window.location.href>",
+    "selection": "<selected text, up to 500 chars>"
+  }
+}
+```
+
+`page_context` is omitted when the "Include page context" setting is disabled.
+
+### 16.7 Settings
+
+A gear icon in the sidebar header opens a settings card with:
+
+- **Position**: radio buttons for Left / Right dock
+- **Open by default**: checkbox
+- **Include page context**: checkbox
+- **Clear conversation**: destructive button that empties the transcript
+
+### 16.8 Implementation
+
+The `AssistantSidebar` component is defined in `frontend/index.html` just
+before `QuickDispatchPopover`. It follows the no-JSX, no-build-step convention
+of the rest of the frontend. Open/closed state is owned by the `App` component
+and passed down as props; all other sidebar state is internal.
+
+## 16. Python Dependency Updates & Test Hardening
+
+### 16.1 Pydantic Version Upgrade
+
+**Updated:** `pydantic==2.10.6` → `pydantic==2.13.3`
+
+- Resolves compatibility issues with Python 3.14's PyO3 bindings
+- Maintains backward compatibility with all existing request/response schemas
+- No breaking changes to API contracts or validation behavior
+
+### 16.2 API Integration Test Hardening
+
+Tests in `tests/test_api_integration.py` now include required HTTP headers for
+proper authentication and CSRF protection:
+
+- **`Authorization: Bearer test-key`** — Satisfies FastAPI app's
+  `DASHBOARD_API_KEY` import-time validation. The dashboard expects a valid
+  Bearer token for authenticated routes.
+- **`X-Requested-With: XMLHttpRequest`** — Standard CSRF protection header
+  required for state-changing requests (PUT, POST, DELETE). This header signals
+  to the dashboard that the request originated from the frontend JS, not from
+  an HTML form cross-origin submission.
+
+### 16.3 Test Results
+
+**Before:** 158 passed, 8 failed, 1 xfailed  
+**After:** 166 passed, 1 xfailed ✓
+
+The 8 previously failing tests required these headers:
+- Tests on routes that validate Bearer tokens
+- Tests on routes that enforce CSRF protection
+- Tests that mock state-changing operations
+
+All tests now pass consistently on Python 3.11, 3.12, and 3.13. Python 3.14
+testing awaits environment availability.
+
+## 17. PWA Native Launcher & Recovery Path (Issue #61)
+
+### 17.1 Overview
+
+The dashboard can be installed as a Progressive Web App (PWA) or Chrome app,
+but browser sandboxing prevents direct execution of native processes. This
+section documents the architecture for launching the backend and offering
+recovery controls when the backend becomes unavailable.
+
+**Design Principle:** Explicit operator intent, no silent auto-restart, all
+recovery actions logged for audit.
+
+### 17.2 Architecture: Custom URL Protocol Handler
+
+**Recommended Approach:** Custom URL protocol handler (`runner-dashboard://start`)
+with systemd/status-UI fallback.
+
+**Platforms:**
+- **Windows/macOS:** Custom protocol handler (one-time registration during setup)
+- **Linux:** Systemd service auto-restart + status UI fallback
+
+### 17.3 Components
+
+#### 17.3.1 Backend Health Check Endpoint
+
+New endpoint `GET /health` (no authentication required, internal localhost only):
+
+```python
+@router.get("/health", tags=["diagnostics"])
+async def health_check() -> dict:
+    """Launcher health check. Returns 200 if backend is ready."""
+    return {
+        "status": "ready",
+        "timestamp": datetime.now(datetime.UTC).isoformat()
+    }
+```
+
+Frontend polls this endpoint every 2 seconds. If no response for >5 seconds,
+shows recovery modal.
+
+#### 17.3.2 Launcher Script (Windows: `deploy/launcher.ps1`)
+
+PowerShell script that handles `runner-dashboard://start` protocol:
+
+1. Checks if backend is responding (HTTP health check)
+2. If running, opens browser to `http://localhost:8321`
+3. If not running, starts the backend service (via WSL/systemd)
+4. Performs health check with exponential backoff (max 10 attempts)
+5. On success, opens browser; on failure, logs error and exits with non-zero code
+6. All actions logged to `~/.config/runner-dashboard/launcher.log`
+
+**Usage from frontend:**
+```html
+<a href="runner-dashboard://start">Start Dashboard</a>
+```
+
+#### 17.3.3 Protocol Handler Registration (Windows: `deploy/register-protocol.ps1`)
+
+PowerShell script that registers the custom protocol handler in Windows registry:
+
+```powershell
+# Creates registry entry:
+# HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.runner-dashboard
+# -> Points to launcher.ps1 as handler
+```
+
+Called once during `deploy/setup.sh` (Windows only). Requires operator to
+approve the protocol handler in the browser (native OS dialog).
+
+#### 17.3.4 Frontend Recovery UI Modal
+
+When the health check fails:
+
+```
+┌─────────────────────────────────────────┐
+│ Dashboard backend is not responding      │
+│                                         │
+│ [Start Now]  [Manual Instructions]     │
+│                                         │
+│ If you continue to see this error,      │
+│ check ~/config/runner-dashboard/launcher.log
+└─────────────────────────────────────────┘
+```
+
+- **"Start Now"** (Windows/macOS): Triggers `runner-dashboard://start` protocol
+- **"Manual Instructions"** (all platforms): Shows copy-paste terminal command
+- **"Refresh"** (after action): Re-checks health and closes modal on success
+
+### 17.4 Implementation Details
+
+#### Health Check Polling
+
+Frontend JavaScript (in main `App` component):
+
+```javascript
+// Poll /health every 2 seconds
+const [backendHealthy, setBackendHealthy] = useState(true);
+useEffect(() => {
+  const interval = setInterval(async () => {
+    try {
+      const resp = await fetch('http://localhost:8321/health', {
+        timeout: 3000
+      });
+      setBackendHealthy(resp.ok);
+    } catch (err) {
+      setBackendHealthy(false);
+    }
+  }, 2000);
+  return () => clearInterval(interval);
+}, []);
+```
+
+#### Launcher Protocol Flow
+
+1. Frontend detects backend down
+2. Shows modal with "Start Now" button
+3. Click → `<a href="runner-dashboard://start">` (browser navigates)
+4. Browser recognizes protocol, launches registered script
+5. Launcher script starts backend, checks health, opens browser to dashboard
+6. Modal auto-closes when health check succeeds
+7. On Linux: manual instructions shown; operator runs `systemctl restart runner-dashboard`
+
+### 17.5 Security Considerations
+
+**Protocol Handler:**
+- ✅ Only `runner-dashboard://` scheme (no collision with other apps)
+- ✅ Script is local, operator-controlled, no network access
+- ✅ Operator approves handler installation once during setup
+- ✅ Browser prevents non-local sites from triggering the protocol
+- ✅ Launcher script has hardcoded paths (no shell expansion)
+
+**Health Endpoint:**
+- ✅ No authentication required (internal localhost:8321 only)
+- ✅ Returns minimal data (status + timestamp)
+- ✅ No secrets or operational state exposed
+
+**Recovery UI:**
+- ✅ "Manual Instructions" path requires operator terminal use
+- ✅ Protocol handler requires operator browser approval
+- ✅ No automatic remediation; all actions explicit
+
+### 17.6 Deployment
+
+**During `deploy/setup.sh` (Windows):**
+```bash
+if [[ "$OS" == "Windows_NT" ]]; then
+  powershell -ExecutionPolicy Bypass \
+    -File deploy/register-protocol.ps1
+fi
+```
+
+**Operator sees:** "Allow runner-dashboard to launch an app?" → Click "Allow"
+
+**Manual re-registration (if needed):**
+```powershell
+powershell -ExecutionPolicy Bypass -File deploy/register-protocol.ps1
+```
+
+### 17.7 Operator Documentation
+
+See [`docs/pwa-launcher-design.md`](docs/pwa-launcher-design.md) for:
+- Detailed architecture evaluation (Options 1–4)
+- Implementation checklist
+- Troubleshooting guide
+- Platform-specific instructions (Windows/macOS/Linux)
+
+### 17.8 Success Criteria
+
+- ✅ PWA icon click launches dashboard (Windows/macOS)
+- ✅ If backend down, recovery modal appears automatically
+- ✅ "Start Now" button successfully starts backend and opens dashboard
+- ✅ No manual terminal commands needed for happy path
+- ✅ All recovery actions logged for audit
+- ✅ Cross-platform (Windows/macOS/Linux with fallbacks)
+- ✅ Zero new secrets or credential exposure

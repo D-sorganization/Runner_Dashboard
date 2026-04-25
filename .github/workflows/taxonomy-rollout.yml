@@ -1,0 +1,299 @@
+name: Taxonomy Rollout
+
+# Label-triggered, end-to-end rollout of the issue taxonomy migration.
+#
+# Normal flow:
+#
+#   1. Apply the `rollout:taxonomy` label to the migration tracking epic
+#      (issue #65).
+#   2. This workflow fires. It:
+#      - swaps the trigger label for `rollout:in-progress` (prevents
+#        double-fires)
+#      - creates / updates the label set from .github/labels.yml
+#      - runs the backfill manifest in dry-run mode
+#      - posts the preview as a comment on the epic
+#   3. A human reviews the preview. If it looks right, they apply
+#      `rollout:taxonomy-apply` to the same epic.
+#   4. This workflow fires again on that label. It:
+#      - runs the backfill for real
+#      - posts a completion summary
+#      - sets `rollout:done` and removes the in-progress/apply labels
+#
+# Manual overrides exist via workflow_dispatch. The whole chain is
+# idempotent and reversible.
+
+on:
+  issues:
+    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      epic_number:
+        description: "Issue number of the rollout epic (default 65)."
+        required: false
+        default: "65"
+        type: string
+      stage:
+        description: "Which stage to run."
+        required: false
+        default: "preview"
+        type: choice
+        options:
+          - "preview"
+          - "apply"
+
+permissions:
+  issues: write
+  contents: read
+
+concurrency:
+  group: taxonomy-rollout
+  cancel-in-progress: false
+
+jobs:
+  route:
+    # Decide what stage to run based on the triggering label (or dispatch
+    # input). Exposed as outputs for downstream jobs.
+    runs-on: d-sorg-fleet
+    outputs:
+      epic: ${{ steps.decide.outputs.epic }}
+      stage: ${{ steps.decide.outputs.stage }}
+      should_run: ${{ steps.decide.outputs.should_run }}
+    steps:
+      - id: decide
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+        env:
+          DISPATCH_EPIC: ${{ inputs.epic_number }}
+          DISPATCH_STAGE: ${{ inputs.stage }}
+        with:
+          script: |
+            const ev = context.eventName;
+            let epic = null, stage = null, should = false;
+
+            if (ev === 'workflow_dispatch') {
+              epic = Number(process.env.DISPATCH_EPIC || 65);
+              stage = process.env.DISPATCH_STAGE || 'preview';
+              should = true;
+            } else if (ev === 'issues') {
+              const label = context.payload.label && context.payload.label.name;
+              epic = context.payload.issue && context.payload.issue.number;
+              if (label === 'rollout:taxonomy') { stage = 'preview'; should = true; }
+              else if (label === 'rollout:taxonomy-apply') { stage = 'apply'; should = true; }
+              else { should = false; }
+            }
+
+            core.setOutput('epic', epic || '');
+            core.setOutput('stage', stage || '');
+            core.setOutput('should_run', should ? 'true' : 'false');
+            core.info(`route: event=${ev} epic=${epic} stage=${stage} should=${should}`);
+
+  preview:
+    needs: route
+    if: needs.route.outputs.should_run == 'true' && needs.route.outputs.stage == 'preview'
+    runs-on: d-sorg-fleet
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - name: Install js-yaml
+        run: npm install --no-save js-yaml@4
+
+      # Bootstrap: create / update all labels FIRST so subsequent
+      # `rollout:in-progress` add and the backfill apply have everything
+      # they need. Idempotent.
+      - name: Sync labels
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+        with:
+          script: |
+            const { sync } = require('./.github/scripts/labels-sync.js');
+            await sync({ github, context, core, dryRun: false });
+
+      - name: Mark in-progress, announce start
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+        env:
+          EPIC: ${{ needs.route.outputs.epic }}
+        with:
+          script: |
+            const n = Number(process.env.EPIC);
+            const { owner, repo } = context.repo;
+            // Swap trigger label → in-progress.
+            try {
+              await github.rest.issues.removeLabel({
+                owner, repo, issue_number: n, name: 'rollout:taxonomy',
+              });
+            } catch (e) { core.info(`remove rollout:taxonomy: ${e.message}`); }
+            try {
+              await github.rest.issues.addLabels({
+                owner, repo, issue_number: n, labels: ['rollout:in-progress'],
+              });
+            } catch (e) { core.warning(`add rollout:in-progress: ${e.message}`); }
+            await github.rest.issues.createComment({
+              owner, repo, issue_number: n,
+              body: [
+                '<!-- rollout:taxonomy:start -->',
+                '## Rollout started — preview stage',
+                '',
+                'Labels synced. Running `Issue Taxonomy Backfill` (dry-run).',
+                'Preview diff will follow in the next comment.',
+                '',
+                `Run: ${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`,
+              ].join('\n'),
+            });
+
+      - name: Backfill (dry-run) and collect preview
+        id: bf
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+        with:
+          script: |
+            const backfill = require('./.github/scripts/issue-backfill.js');
+            const labelsRes = await backfill.applyLabels({
+              github, context, core, dryRun: true, collectPreview: true,
+            });
+            const hierRes = await backfill.applyHierarchy({
+              github, context, core, dryRun: true, collectPreview: true,
+            });
+            core.setOutput('labels_preview', labelsRes.preview.join('\n') || '(no label changes)');
+            core.setOutput('hierarchy_preview', hierRes.preview.join('\n') || '(no sub-issue edges to add)');
+            core.setOutput('labels_count', labelsRes.preview.length);
+            core.setOutput('hierarchy_count', hierRes.preview.length);
+
+      - name: Post preview to epic
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+        env:
+          EPIC: ${{ needs.route.outputs.epic }}
+          LABELS_PREVIEW: ${{ steps.bf.outputs.labels_preview }}
+          HIERARCHY_PREVIEW: ${{ steps.bf.outputs.hierarchy_preview }}
+          LABELS_COUNT: ${{ steps.bf.outputs.labels_count }}
+          HIERARCHY_COUNT: ${{ steps.bf.outputs.hierarchy_count }}
+        with:
+          script: |
+            const n = Number(process.env.EPIC);
+            const { owner, repo } = context.repo;
+            const labelsPreview = process.env.LABELS_PREVIEW;
+            const hierPreview = process.env.HIERARCHY_PREVIEW;
+            const body = [
+              '<!-- rollout:taxonomy:preview -->',
+              '## Rollout preview (dry-run)',
+              '',
+              `- **Labels**: ${process.env.LABELS_COUNT} change(s) planned`,
+              `- **Sub-issue edges**: ${process.env.HIERARCHY_COUNT} link(s) planned`,
+              '',
+              '### Label diff',
+              '```',
+              labelsPreview,
+              '```',
+              '',
+              '### Sub-issue edges',
+              '```',
+              hierPreview,
+              '```',
+              '',
+              '---',
+              '',
+              'To apply these changes, add the **`rollout:taxonomy-apply`**',
+              'label to this issue. To cancel, remove the',
+              '`rollout:in-progress` label.',
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner, repo, issue_number: n, body,
+            });
+
+  apply:
+    needs: route
+    if: needs.route.outputs.should_run == 'true' && needs.route.outputs.stage == 'apply'
+    runs-on: d-sorg-fleet
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - name: Install js-yaml
+        run: npm install --no-save js-yaml@4
+
+      - name: Announce apply start
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+        env:
+          EPIC: ${{ needs.route.outputs.epic }}
+        with:
+          script: |
+            const n = Number(process.env.EPIC);
+            const { owner, repo } = context.repo;
+            await github.rest.issues.createComment({
+              owner, repo, issue_number: n,
+              body: [
+                '<!-- rollout:taxonomy:apply:start -->',
+                '## Rollout — apply stage',
+                '',
+                'Applying labels and sub-issue edges for real.',
+                `Run: ${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`,
+              ].join('\n'),
+            });
+
+      - name: Backfill (apply for real)
+        id: bf
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+        with:
+          script: |
+            const backfill = require('./.github/scripts/issue-backfill.js');
+            const labelsRes = await backfill.applyLabels({
+              github, context, core, dryRun: false, collectPreview: false,
+            });
+            const hierRes = await backfill.applyHierarchy({
+              github, context, core, dryRun: false, collectPreview: false,
+            });
+            core.setOutput('labels_added', labelsRes.added);
+            core.setOutput('labels_already', labelsRes.already);
+            core.setOutput('labels_missing', labelsRes.missing);
+            core.setOutput('hier_added', hierRes.added);
+            core.setOutput('hier_already', hierRes.already);
+            core.setOutput('hier_skipped', hierRes.skipped);
+
+      - name: Finalize labels and post summary
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+        env:
+          EPIC: ${{ needs.route.outputs.epic }}
+          LABELS_ADDED: ${{ steps.bf.outputs.labels_added }}
+          LABELS_ALREADY: ${{ steps.bf.outputs.labels_already }}
+          LABELS_MISSING: ${{ steps.bf.outputs.labels_missing }}
+          HIER_ADDED: ${{ steps.bf.outputs.hier_added }}
+          HIER_ALREADY: ${{ steps.bf.outputs.hier_already }}
+          HIER_SKIPPED: ${{ steps.bf.outputs.hier_skipped }}
+        with:
+          script: |
+            const n = Number(process.env.EPIC);
+            const { owner, repo } = context.repo;
+
+            // Clean up trigger / in-progress labels; set done.
+            for (const name of ['rollout:taxonomy-apply', 'rollout:in-progress']) {
+              try {
+                await github.rest.issues.removeLabel({
+                  owner, repo, issue_number: n, name,
+                });
+              } catch (e) { core.info(`remove ${name}: ${e.message}`); }
+            }
+            try {
+              await github.rest.issues.addLabels({
+                owner, repo, issue_number: n, labels: ['rollout:done'],
+              });
+            } catch (e) { core.warning(`add rollout:done: ${e.message}`); }
+
+            const body = [
+              '<!-- rollout:taxonomy:apply:done -->',
+              '## Rollout complete',
+              '',
+              '| Metric | Count |',
+              '|---|---|',
+              `| Labels added | ${process.env.LABELS_ADDED} |`,
+              `| Labels already present | ${process.env.LABELS_ALREADY} |`,
+              `| Labels missing (manifest needs Labels Sync) | ${process.env.LABELS_MISSING} |`,
+              `| Sub-issue edges added | ${process.env.HIER_ADDED} |`,
+              `| Sub-issue edges already present | ${process.env.HIER_ALREADY} |`,
+              `| Sub-issue edges skipped | ${process.env.HIER_SKIPPED} |`,
+              '',
+              'Taxonomy migration rolled out. Issues are now machine-legible',
+              'across `type / complexity / effort / judgement` and the',
+              'tracking-issue body-checklists are now native sub-issue edges.',
+              '',
+              'Re-runnable: editing `docs/issue-taxonomy-backfill.yml` and',
+              're-applying `rollout:taxonomy` + `rollout:taxonomy-apply`',
+              'will pick up the new classifications idempotently.',
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner, repo, issue_number: n, body,
+            });

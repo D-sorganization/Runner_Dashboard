@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Issue taxonomy reference
+    url: https://github.com/d-sorganization/runner-dashboard/blob/main/docs/issue-taxonomy.md
+    about: How issues are labeled and how agents pick work from them.
+  - name: Migration plan
+    url: https://github.com/d-sorganization/runner-dashboard/blob/main/docs/issue-migration-plan.md
+    about: Current migration status and what's coming.

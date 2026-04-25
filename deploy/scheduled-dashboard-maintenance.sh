@@ -136,8 +136,7 @@ detect_windows_user() {
     if [[ -n "${WINDOWS_USER}" ]]; then
         return
     fi
-    if [[ -d "/mnt/c/Users/diete" ]]; then
-        WINDOWS_USER="diete"
+    if [[ -n "${WINDOWS_USER:-}" ]]; then
         return
     fi
     if command -v powershell.exe >/dev/null 2>&1; then

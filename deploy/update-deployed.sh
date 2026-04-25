@@ -8,10 +8,10 @@
 # The repo lives on the Windows side; this script bridges it to WSL2.
 #
 # Usage (from any WSL2 terminal):
-#   bash /mnt/c/Users/diete/Repositories/runner-dashboard/deploy/update-deployed.sh
+#   bash /mnt/c/Users/<username>/Repositories/runner-dashboard/deploy/update-deployed.sh
 #
 # Or add a shell alias for convenience:
-#   alias update-dashboard='bash /mnt/c/Users/diete/Repositories/runner-dashboard/deploy/update-deployed.sh'
+#   alias update-dashboard='bash /mnt/c/Users/<username>/Repositories/runner-dashboard/deploy/update-deployed.sh'
 #
 # Options:
 #   --repo <path>        Override the REPO path
@@ -24,7 +24,9 @@ set -euo pipefail
 # shellcheck source=deploy/lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-REPO="${REPO:-/mnt/c/Users/diete/Repositories/runner-dashboard}"
+DASHBOARD_USER="${DASHBOARD_USER:-$(whoami)}"
+DASHBOARD_HOME="${DASHBOARD_HOME:-$HOME}"
+REPO="${REPO:-/mnt/c/Users/${DASHBOARD_USER}/Repositories/runner-dashboard}"
 DEPLOY_DIR="${DEPLOY_DIR:-$HOME/actions-runners/dashboard}"
 SERVICE="runner-dashboard"
 ARTIFACT_SOURCE=""
@@ -45,7 +47,12 @@ if [[ -z "$ARTIFACT_SOURCE" ]]; then
 fi
 
 info "Installing/updating backend dependencies..."
-pip_install fastapi uvicorn psutil httpx PyYAML
+if [[ -f "$REPO/backend/requirements.txt" ]]; then
+    pip_install -r "$REPO/backend/requirements.txt"
+else
+    # Fallback: install known packages if requirements.txt is absent (e.g. artifact deploy)
+    pip_install fastapi pydantic uvicorn psutil httpx PyYAML
+fi
 ok "backend dependencies installed"
 
 if ! dry_run "backup $DEPLOY_DIR"; then

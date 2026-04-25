@@ -1,0 +1,132 @@
+name: Task
+description: Ordinary unit of work. Use this for most feature/fix issues.
+title: "[TASK] "
+labels: ["type:task"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Fill in every required field. These map directly to labels and the
+        `dispatch-metadata` block at the top of the issue, which controls
+        which agents may pick up the work. See
+        [the taxonomy doc](../blob/main/docs/issue-taxonomy.md) for what
+        each field means.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What are we doing, and why.
+      placeholder: One or two paragraphs.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: How we know this is done.
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: complexity
+    attributes:
+      label: Complexity (agent skill tier required)
+      description: |
+        `trivial` = single-file mechanical. `routine` = well-scoped, multi-file.
+        `complex` = cross-cutting, architectural awareness. `deep` = deep
+        codebase knowledge / novel design. `research` = answer unknown.
+      options:
+        - trivial
+        - routine
+        - complex
+        - deep
+        - research
+    validations:
+      required: true
+
+  - type: dropdown
+    id: effort
+    attributes:
+      label: Effort (size of the work)
+      description: Independent of complexity.
+      options:
+        - "xs (< 1 hour)"
+        - "s (< 4 hours)"
+        - "m (< 1 day)"
+        - "l (1–3 days)"
+        - "xl (> 3 days)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: judgement
+    attributes:
+      label: Judgement (how much opinion is involved)
+      description: |
+        `objective` = most agents would agree on the fix. `preference` = style
+        matters but diffs are small. `design` = architectural decision —
+        panel-review before implementation. `contested` = active disagreement.
+      options:
+        - objective
+        - preference
+        - design
+        - contested
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: flags
+    attributes:
+      label: Flags
+      options:
+        - label: "Quick win (low effort, high value)"
+          required: false
+        - label: "Panel review requested before implementation"
+          required: false
+
+  - type: input
+    id: domains
+    attributes:
+      label: Skill domains
+      description: Comma-separated. E.g. `backend, security`. See taxonomy doc for the vocabulary.
+      placeholder: "backend, security"
+    validations:
+      required: true
+
+  - type: input
+    id: wave
+    attributes:
+      label: Wave (optional)
+      description: 1–5, or blank.
+      placeholder: "2"
+
+  - type: input
+    id: depends_on
+    attributes:
+      label: Depends on (optional)
+      description: Issue references, comma-separated. E.g. `#16, #17`.
+      placeholder: "#16"
+
+  - type: textarea
+    id: dispatch_metadata
+    attributes:
+      label: "dispatch-metadata (do not edit — agents read this)"
+      value: |
+        <!-- dispatch-metadata:v1
+        type: task
+        complexity:
+        effort:
+        judgement:
+        quick_win: false
+        panel_review: false
+        domains: []
+        wave:
+        depends_on: []
+        blocks: []
+        -->
+      render: markdown
