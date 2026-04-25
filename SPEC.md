@@ -78,6 +78,8 @@ surface task action details without exposing secrets.
 | `report_files.py` | Parse dated report files for the Reports tab |
 | `runner_autoscaler.py` | Dynamic runner count scaling logic |
 | `config_schema.py` | Config validation and atomic JSON writes |
+| `pr_inventory.py` | Fetch and normalise open PRs across repos (issue #80) |
+| `issue_inventory.py` | Fetch and normalise open issues with taxonomy (issue #81) |
 
 **Bounded domain routers (`backend/routers/`):**
 
@@ -711,3 +713,146 @@ the risk of secrets leaking through shell history.
 from `backend/requirements.txt` directly (via `pip install -r
 backend/requirements.txt`) rather than a hardcoded list, ensuring the deployed
 dependency set stays in sync with the source of truth automatically.
+
+---
+
+## 11. PR Inventory API
+
+Implemented in `backend/pr_inventory.py`; thin route shells in `backend/server.py`.
+
+### 11.1 `GET /api/prs`
+
+Aggregates open pull-requests across organisation repositories.
+
+**Query parameters:**
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `repo` | string (repeatable) | all org repos | Filter to specific `owner/repo` slugs |
+| `include_drafts` | bool | `true` | Include draft PRs |
+| `author` | string | — | Filter by author login |
+| `label` | string (repeatable) | — | Match any of these labels |
+| `limit` | int | 500 | Maximum items returned (hard cap 2000) |
+
+**Response:**
+
+```json
+{
+  "items": [
+    {
+      "repository": "D-sorganization/runner-dashboard",
+      "number": 76,
+      "title": "...",
+      "url": "...",
+      "author": "dieter",
+      "draft": false,
+      "age_hours": 12.3,
+      "labels": ["bug", "ci"],
+      "requested_reviewers": ["alice"],
+      "head_ref": "fix/something",
+      "mergeable_state": "clean",
+      "agent_claim": null,
+      "linked_issues": [24, 43]
+    }
+  ],
+  "total": 1,
+  "errors": []
+}
+```
+
+- `agent_claim` — extracted from any `claim:*` label on the PR.
+- `linked_issues` — issue numbers found via `closes/fixes/resolves #N` in the PR body.
+- `errors` — per-repo error messages; a failing repo does not abort the whole request.
+- Responses are cached 30 seconds in-process keyed by query parameters.
+
+### 11.2 `GET /api/prs/{owner}/{repo}/{number}`
+
+Returns single-PR detail with extra fields not present in the list endpoint:
+
+| Field | Description |
+|---|---|
+| `body_excerpt` | First 2 KB of the PR body |
+| `checks` | List of `{name, conclusion, url}` from the commit check-runs API |
+| `files_changed` | Number of changed files |
+| `additions` | Lines added |
+| `deletions` | Lines deleted |
+
+---
+
+## 12. Issue Inventory API
+
+Implemented in `backend/issue_inventory.py`; thin route shell in `backend/server.py`.
+
+### 12.1 `GET /api/issues`
+
+Aggregates open issues across organisation repositories with taxonomy-aware
+filtering.
+
+**Query parameters:**
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `repo` | string (repeatable) | all org repos | Filter to specific `owner/repo` slugs |
+| `state` | `open` \| `all` | `open` | Issue state |
+| `label` | string (repeatable) | — | Match any of these labels |
+| `assignee` | string | — | Filter by assignee login |
+| `pickable_only` | bool | `false` | Only return issues available for agent pickup |
+| `complexity` | string (repeatable) | — | Match any `complexity:*` value |
+| `effort` | string (repeatable) | — | Match any `effort:*` value |
+| `judgement` | string (repeatable) | — | Match any `judgement:*` value |
+| `limit` | int | 500 | Maximum items returned (hard cap 2000) |
+
+**Response:**
+
+```json
+{
+  "items": [
+    {
+      "repository": "D-sorganization/runner-dashboard",
+      "number": 76,
+      "title": "...",
+      "url": "...",
+      "author": "dieter",
+      "assignees": [],
+      "labels": ["bug", "ci"],
+      "age_hours": 12.3,
+      "taxonomy": {
+        "type": "task",
+        "complexity": "routine",
+        "effort": "m",
+        "judgement": "objective",
+        "quick_win": false,
+        "panel_review": false,
+        "domains": ["backend"],
+        "wave": 2
+      },
+      "agent_claim": null,
+      "claim_expires_at": null,
+      "linked_pr": null,
+      "pickable": true,
+      "pickable_blocked_by": []
+    }
+  ],
+  "errors": []
+}
+```
+
+**Taxonomy parsing** (`parse_taxonomy` in `issue_inventory.py`):
+Labels take precedence. Recognised prefixes: `type:*`, `complexity:*`,
+`effort:*`, `judgement:*`, `wave:*`, `domain:*`. Boolean flags: `quick-win`,
+`panel-review`.
+
+**Pickability rules** (`is_pickable` in `issue_inventory.py`):
+An issue is pickable when ALL of the following hold:
+
+1. `state == "open"`
+2. No linked open PR (`linked_pr == null`)
+3. No active `claim:*` label
+4. `judgement` not in `{"design", "contested"}`
+
+`pickable_blocked_by` lists the human-readable reasons when `pickable` is
+`false`.
+
+- Per-repo errors appear in `errors[]`; a failing repo does not abort the
+  whole request.
+- Responses are cached 30 seconds in-process.

@@ -54,6 +54,8 @@ import agent_remediation  # noqa: E402
 import config_schema  # noqa: E402
 import deployment_drift  # noqa: E402
 import dispatch_contract  # noqa: E402
+import issue_inventory  # noqa: E402
+import pr_inventory  # noqa: E402
 import scheduled_workflows as scheduled_workflow_inventory  # noqa: E402
 import usage_monitoring  # noqa: E402
 from local_app_monitoring import collect_local_apps  # noqa: E402
@@ -3263,6 +3265,116 @@ async def get_repos(request: Request):
     result = {"repos": results, "total_count": len(results), "org": ORG}
     _cache_set("repos", result)
     return result
+
+
+# ─── PR Inventory API ────────────────────────────────────────────────────────
+
+
+@app.get("/api/prs")
+async def get_prs(
+    repo: list[str] | None = None,
+    include_drafts: bool = True,
+    author: str | None = None,
+    label: list[str] | None = None,
+    limit: int = 500,
+) -> dict:
+    """Aggregate open pull-requests across organisation repositories.
+
+    Query parameters
+    ----------------
+    repo:
+        Repeatable ``owner/repo`` slug filter; defaults to all repos returned
+        by ``_get_recent_org_repos()``.
+    include_drafts:
+        Include draft PRs (default ``true``).
+    author:
+        Filter to a specific author login.
+    label:
+        Repeatable; match any of the listed labels.
+    limit:
+        Maximum items returned (default 500, max 2000).
+    """
+    if repo:
+        repos = list(repo)
+    else:
+        org_repos = await _get_recent_org_repos(limit=50)
+        repos = [r["full_name"] for r in org_repos]
+
+    return await pr_inventory.fetch_all_prs(
+        repos,
+        include_drafts=include_drafts,
+        author=author,
+        labels=list(label) if label else None,
+        limit=limit,
+    )
+
+
+@app.get("/api/prs/{owner}/{repo_name}/{number}")
+async def get_pr_detail(owner: str, repo_name: str, number: int) -> dict:
+    """Return detailed information for a single pull-request.
+
+    Extra fields compared to the list endpoint: ``body_excerpt`` (first 2 KB),
+    ``checks`` (list of ``{name, conclusion, url}``), ``files_changed``,
+    ``additions``, ``deletions``.
+    """
+    try:
+        return await pr_inventory.fetch_pr_detail(owner, repo_name, number)
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+# ─── Issue Inventory API ──────────────────────────────────────────────────────
+
+
+@app.get("/api/issues")
+async def get_issues(
+    repo: list[str] | None = None,
+    state: str = "open",
+    label: list[str] | None = None,
+    assignee: str | None = None,
+    pickable_only: bool = False,
+    complexity: list[str] | None = None,
+    effort: list[str] | None = None,
+    judgement: list[str] | None = None,
+    limit: int = 500,
+) -> dict:
+    """Aggregate open issues across organisation repositories.
+
+    Query parameters
+    ----------------
+    repo:
+        Repeatable ``owner/repo`` slug filter; defaults to all repos returned
+        by ``_get_recent_org_repos()``.
+    state:
+        ``open`` (default) or ``all``.
+    label:
+        Repeatable; match any of the listed labels.
+    assignee:
+        Filter by assignee login.
+    pickable_only:
+        When ``true``, only issues available for agent pickup are returned.
+    complexity / effort / judgement:
+        Repeatable taxonomy dimension filters (match any provided value).
+    limit:
+        Maximum items returned (default 500, max 2000).
+    """
+    if repo:
+        repos = list(repo)
+    else:
+        org_repos = await _get_recent_org_repos(limit=50)
+        repos = [r["full_name"] for r in org_repos]
+
+    return await issue_inventory.fetch_all_issues(
+        repos,
+        state=state,
+        labels=list(label) if label else None,
+        assignee=assignee,
+        pickable_only=pickable_only,
+        complexity=list(complexity) if complexity else None,
+        effort=list(effort) if effort else None,
+        judgement=list(judgement) if judgement else None,
+        limit=limit,
+    )
 
 
 # ─── Daily Reports API ──────────────────────────────────────────────────────
