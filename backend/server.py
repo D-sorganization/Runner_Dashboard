@@ -4230,6 +4230,20 @@ async def get_remediation_history() -> dict:
     return {"history": list(reversed(history[-100:]))}  # newest first
 
 
+_PROVIDERS_WITH_MODEL_SELECTION: frozenset[str] = frozenset({"claude_code_cli", "codex_cli"})
+
+
+@app.get("/api/agents/providers")
+async def get_agent_providers() -> dict:
+    """Return available agent providers and their availability status."""
+    availability = agent_remediation.probe_provider_availability()
+    return {
+        "providers": {pid: p.to_dict() for pid, p in agent_remediation.PROVIDERS.items()},
+        "availability": {pid: s.to_dict() for pid, s in availability.items()},
+        "providers_with_model_selection": sorted(_PROVIDERS_WITH_MODEL_SELECTION),
+    }
+
+
 # ─── Job Queue API ───────────────────────────────────────────────────────────
 
 

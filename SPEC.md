@@ -117,6 +117,25 @@ directly by the FastAPI backend.
   element flush-right of the strip). Active tab is persisted to localStorage
   when `storageKey` is provided.
 
+#### Header Quick Dispatch
+
+The main header contains a **Quick Dispatch** button (⚡ Quick Dispatch ▾),
+flush-right next to the refresh control. Clicking it opens a popover form that
+lets any operator dispatch an ad-hoc agent task to any org repository without
+navigating to a specific tab. The popover provides:
+
+- **Repository** dropdown — populated from `GET /api/repos`
+- **Provider** dropdown — populated from `GET /api/agents/providers`
+- **Model** text field — shown only for providers that support model selection
+  (`claude_code_cli`, `codex_cli`); defaults to `claude-opus-4-7`
+- **Branch ref** text field — defaults to `main`
+- **Prompt** textarea — minimum 10 characters
+- **Dispatch** button — POSTs to `POST /api/agents/quick-dispatch`; shows a
+  loading state, surfaces errors inline, and auto-closes on success
+
+Click-outside closes the popover. Rate-limit errors (HTTP 429) are surfaced
+with a human-readable message.
+
 `frontend/index.html` is the **sole canonical frontend source**. No other
 frontend implementation exists in the repository. The previously present
 `RunnerDashboard.jsx` was an unused JSX archive that violated DRY; it was
@@ -189,16 +208,21 @@ Health status of local registered applications (processes, services defined in
 `local_apps.json`). Shows up/down state, PID, and restart commands.
 
 ### 3.12 Remediation Tab
-AI agent dispatch control panel. Configures and dispatches remediation plans
-to Jules, GAAI, Claude, or Codex agents. Shows dispatch history and plan
-status. Supports per-repo agent routing.
+AI agent dispatch control panel organised into three sub-tabs:
 
-The Remediation tab uses the `SubTabs` component to expose three sub-tabs:
-
-- **Automations** (default) — all existing agent dispatch and policy
-  configuration UI.
-- **PRs** — placeholder for future PR dispatch (issue #83).
-- **Issues** — placeholder for future issue dispatch (issue #84).
+- **Automations** (default) — configures and dispatches remediation plans to
+  Jules, GAAI, Claude, or Codex agents. Shows dispatch history and plan
+  preview. Supports per-repo agent routing and loop-guard configuration.
+- **PRs** — multi-select table of open pull requests fetched from
+  `GET /api/prs?limit=2000`. Supports filtering by repo, author, and draft
+  status. Bulk dispatch sends selected PRs to a chosen provider via
+  `POST /api/prs/dispatch` with a confirmation modal.
+- **Issues** — taxonomy-aware GitHub Issues browser and bulk dispatcher
+  (`GET /api/issues?limit=2000`). Filter bar with repo, complexity,
+  judgement, and "pickable only" controls persisted to `localStorage`.
+  Multi-select table with type/complexity/effort/judgement pills. Non-pickable
+  rows are dimmed; `design`/`contested` judgement pills rendered red with
+  warning. Dispatches via `POST /api/issues/dispatch` with optional force flag.
 
 The active sub-tab is persisted to `localStorage` under the key
 `remediation-subtab`.
@@ -353,6 +377,23 @@ All endpoints are served under `http://localhost:8321/api/`.
 | POST | `/api/agent-remediation/dispatch` | Dispatch a remediation plan (GAAI/Claude/Codex) |
 | POST | `/api/agent-remediation/dispatch-jules` | Dispatch via Jules API |
 | GET | `/api/agent-remediation/history` | Remediation dispatch history |
+
+### Quick Dispatch
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/agents/providers` | Available agent providers and their availability status |
+| POST | `/api/agents/quick-dispatch` | Dispatch an ad-hoc agent task to any repository |
+
+### PR and Issue Dispatch
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/prs` | List open pull requests across the org with claim/link metadata |
+| GET | `/api/prs/{owner}/{repo}/{number}` | Single PR detail with checks and file count |
+| GET | `/api/issues` | List open issues with taxonomy and pickability |
+| POST | `/api/prs/dispatch` | Bulk-dispatch agent tasks to selected PRs |
+| POST | `/api/issues/dispatch` | Bulk-dispatch agent tasks to selected issues |
 
 ### Credentials
 
