@@ -120,4 +120,3 @@ async def submit_dispatch_command(request: Request) -> dict:
         "prototype_command": list(prototype_cmd),
         "audit": audit.to_dict(),
     }
-

@@ -46,6 +46,7 @@ def _load_signing_secret() -> str:
             return f.read().strip()
 
     import secrets
+
     secret = secrets.token_hex(24)
     os.makedirs(config_dir, exist_ok=True)
     with open(key_file, "w") as f:
@@ -56,6 +57,7 @@ def _load_signing_secret() -> str:
 
 class TimestampValidationResult(StrEnum):
     """Result of timestamp freshness validation."""
+
     VALID = "valid"
     TOO_OLD = "too_old"
     TOO_NEW = "too_new"
@@ -93,14 +95,18 @@ def _sign_envelope_payload(
     secret: str,
 ) -> str:
     """Generate HMAC-SHA256 signature over envelope payload."""
-    canonical = json.dumps({
-        "action": action,
-        "source": source,
-        "target": target,
-        "requested_by": requested_by,
-        "issued_at": issued_at,
-        "envelope_version": envelope_version,
-    }, separators=(",", ":"), sort_keys=True)
+    canonical = json.dumps(
+        {
+            "action": action,
+            "source": source,
+            "target": target,
+            "requested_by": requested_by,
+            "issued_at": issued_at,
+            "envelope_version": envelope_version,
+        },
+        separators=(",", ":"),
+        sort_keys=True,
+    )
 
     return hmac.new(secret.encode(), canonical.encode(), hashlib.sha256).hexdigest()
 
@@ -116,9 +122,7 @@ def _verify_envelope_signature(
     secret: str,
 ) -> bool:
     """Verify HMAC-SHA256 signature over envelope payload."""
-    expected = _sign_envelope_payload(
-        action, source, target, requested_by, issued_at, envelope_version, secret
-    )
+    expected = _sign_envelope_payload(action, source, target, requested_by, issued_at, envelope_version, secret)
     return hmac.compare_digest(expected, signature)
 
 
