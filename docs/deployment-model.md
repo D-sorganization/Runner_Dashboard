@@ -309,6 +309,31 @@ sudo systemctl status runner-dashboard
 3. Roll back: `bash deploy/rollback.sh`
 4. Investigate the change that broke the service, fix, and redeploy.
 
+### PWA Launcher Recovery (One-Click Service Restart)
+
+The dashboard can be installed as a Progressive Web App (PWA). If the backend service crashes or stops, the PWA shows a recovery modal with platform-specific recovery options.
+
+**Windows/macOS:**
+- Click "Start Now" to trigger the custom URL protocol handler (`runner-dashboard://start`)
+- The launcher script will start the backend service and open the dashboard
+
+**Linux:**
+- Use the "Refresh" button and run the systemctl command shown in the modal:
+  ```bash
+  systemctl --user restart runner-dashboard
+  ```
+- Or start the system service:
+  ```bash
+  sudo systemctl restart runner-dashboard
+  ```
+
+**Launcher logs** (all platforms):
+```bash
+cat ~/.config/runner-dashboard/launcher.log
+```
+
+These logs record all recovery attempts, including timestamps, health check results, and success/failure status. Useful for troubleshooting repeated service failures.
+
 ### GitHub API Rate Limit
 
 The dashboard shows `github_api: rate_limited` when the 5000 req/hr limit is
