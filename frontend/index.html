@@ -14289,6 +14289,401 @@
 
 
 
+      // ════════════════════════ ASSISTANT SIDEBAR ════════════════════════
+
+      /** Minimal Markdown renderer — bold, italic, inline code, code blocks, links, lists */
+      function renderMarkdown(text) {
+        if (!text) return [];
+        var out = [];
+        var lines = text.split("\n");
+        var i = 0;
+        while (i < lines.length) {
+          var line = lines[i];
+          // Fenced code block
+          if (line.startsWith("```")) {
+            var codeLines = [];
+            i++;
+            while (i < lines.length && !lines[i].startsWith("```")) {
+              codeLines.push(lines[i]);
+              i++;
+            }
+            out.push(h("pre", { key: out.length, style: { background: "var(--bg-tertiary)", borderRadius: 6, padding: "10px 12px", overflowX: "auto", fontSize: 12, margin: "6px 0" } },
+              h("code", null, codeLines.join("\n"))
+            ));
+            i++;
+            continue;
+          }
+          // Unordered list item
+          if (/^[-*] /.test(line)) {
+            var listItems = [];
+            while (i < lines.length && /^[-*] /.test(lines[i])) {
+              listItems.push(h("li", { key: i }, inlineMarkdown(lines[i].slice(2))));
+              i++;
+            }
+            out.push(h("ul", { key: out.length, style: { paddingLeft: 18, margin: "4px 0" } }, listItems));
+            continue;
+          }
+          // Ordered list item
+          if (/^\d+\. /.test(line)) {
+            var olItems = [];
+            while (i < lines.length && /^\d+\. /.test(lines[i])) {
+              olItems.push(h("li", { key: i }, inlineMarkdown(lines[i].replace(/^\d+\. /, ""))));
+              i++;
+            }
+            out.push(h("ol", { key: out.length, style: { paddingLeft: 18, margin: "4px 0" } }, olItems));
+            continue;
+          }
+          // Heading
+          var hm = line.match(/^(#{1,3}) (.+)/);
+          if (hm) {
+            var lvl = hm[1].length;
+            var tag = "h" + (lvl + 3);
+            out.push(h(tag, { key: out.length, style: { margin: "8px 0 4px", fontWeight: 600, fontSize: lvl === 1 ? 15 : lvl === 2 ? 13 : 12 } }, inlineMarkdown(hm[2])));
+            i++;
+            continue;
+          }
+          // Blank line
+          if (line.trim() === "") {
+            out.push(h("br", { key: out.length }));
+            i++;
+            continue;
+          }
+          // Paragraph
+          out.push(h("p", { key: out.length, style: { margin: "2px 0" } }, inlineMarkdown(line)));
+          i++;
+        }
+        return out;
+      }
+
+      function inlineMarkdown(text) {
+        // Split on inline code, bold, italic, links
+        var parts = [];
+        var re = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|\[([^\]]+)\]\(([^)]+)\))/g;
+        var last = 0, m;
+        while ((m = re.exec(text)) !== null) {
+          if (m.index > last) parts.push(text.slice(last, m.index));
+          var tok = m[0];
+          if (tok.startsWith("`")) {
+            parts.push(h("code", { key: parts.length, style: { background: "var(--bg-tertiary)", borderRadius: 3, padding: "1px 5px", fontSize: "0.9em", fontFamily: "monospace" } }, tok.slice(1, -1)));
+          } else if (tok.startsWith("**")) {
+            parts.push(h("strong", { key: parts.length }, tok.slice(2, -2)));
+          } else if (tok.startsWith("*")) {
+            parts.push(h("em", { key: parts.length }, tok.slice(1, -1)));
+          } else {
+            parts.push(h("a", { key: parts.length, href: m[3], target: "_blank", rel: "noopener noreferrer", style: { color: "var(--accent-blue)" } }, m[2]));
+          }
+          last = re.lastIndex;
+        }
+        if (last < text.length) parts.push(text.slice(last));
+        return parts;
+      }
+
+      var ASST_LS = {
+        open: "assistant:open",
+        position: "assistant:position",
+        width: "assistant:width",
+        transcript: "assistant:transcript",
+        openByDefault: "assistant:openByDefault",
+        includeContext: "assistant:includeContext",
+      };
+
+      function lsGet(key, fallback) {
+        try { var v = localStorage.getItem(key); return v === null ? fallback : JSON.parse(v); } catch (e) { return fallback; }
+      }
+      function lsSet(key, val) {
+        try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {}
+      }
+
+      function AssistantSidebar(props) {
+        var currentTab = props.currentTab || "";
+        var open = props.open;
+        var toggle = props.onToggle;
+
+        var ps2 = React.useState(lsGet(ASST_LS.position, "right"));
+        var position = ps2[0], setPosition = ps2[1];
+
+        var ws2 = React.useState(lsGet(ASST_LS.width, 360));
+        var width = ws2[0], setWidth = ws2[1];
+
+        var ts2 = React.useState(lsGet(ASST_LS.transcript, []));
+        var transcript = ts2[0], setTranscript = ts2[1];
+
+        var ic2 = React.useState(lsGet(ASST_LS.includeContext, true));
+        var includeCtx = ic2[0], setIncludeCtx = ic2[1];
+
+        var obds = React.useState(lsGet(ASST_LS.openByDefault, false));
+        var openByDefault = obds[0], setOpenByDefault = obds[1];
+
+        var inputS = React.useState("");
+        var inputVal = inputS[0], setInputVal = inputS[1];
+
+        var loadS = React.useState(false);
+        var loading = loadS[0], setLoading = loadS[1];
+
+        var showSettingsS = React.useState(false);
+        var showSettings = showSettingsS[0], setShowSettings = showSettingsS[1];
+
+        var transcriptRef = React.useRef(null);
+        var dragStartX = React.useRef(null);
+        var dragStartW = React.useRef(null);
+
+        // Scroll to bottom when transcript changes
+        React.useEffect(function () {
+          if (transcriptRef.current) {
+            transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight;
+          }
+        }, [transcript, open]);
+
+        // Persist state changes
+        React.useEffect(function () { lsSet(ASST_LS.position, position); }, [position]);
+        React.useEffect(function () { lsSet(ASST_LS.width, width); }, [width]);
+        React.useEffect(function () { lsSet(ASST_LS.includeContext, includeCtx); }, [includeCtx]);
+        React.useEffect(function () { lsSet(ASST_LS.openByDefault, openByDefault); }, [openByDefault]);
+        React.useEffect(function () {
+          var capped = transcript.length > 200 ? transcript.slice(-200) : transcript;
+          lsSet(ASST_LS.transcript, capped);
+        }, [transcript]);
+
+        function getPageContext() {
+          return {
+            tab: currentTab,
+            url: window.location.href,
+            selection: window.getSelection ? window.getSelection().toString().slice(0, 500) : "",
+          };
+        }
+
+        function sendMessage() {
+          var msg = inputVal.trim();
+          if (!msg || loading) return;
+          setInputVal("");
+          var userMsg = { role: "user", content: msg, id: Date.now() };
+          setTranscript(function (t) { return t.concat([userMsg]); });
+          setLoading(true);
+          var body = { question: msg };
+          if (includeCtx) body.page_context = getPageContext();
+          fetch("/api/help/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+              var reply = data.answer || data.response || data.message || JSON.stringify(data);
+              var asstMsg = { role: "assistant", content: reply, id: Date.now() + 1 };
+              setTranscript(function (t) { return t.concat([asstMsg]); });
+            })
+            .catch(function (err) {
+              var errMsg = { role: "assistant", content: "Error: " + (err.message || "request failed"), id: Date.now() + 1 };
+              setTranscript(function (t) { return t.concat([errMsg]); });
+            })
+            .finally(function () { setLoading(false); });
+        }
+
+        function onKeyDown(e) {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+          }
+        }
+
+        function startDrag(e) {
+          dragStartX.current = e.clientX;
+          dragStartW.current = width;
+          e.preventDefault();
+          function onMove(ev) {
+            var delta = position === "right" ? dragStartX.current - ev.clientX : ev.clientX - dragStartX.current;
+            var newW = Math.min(600, Math.max(280, dragStartW.current + delta));
+            setWidth(newW);
+          }
+          function onUp() {
+            document.removeEventListener("mousemove", onMove);
+            document.removeEventListener("mouseup", onUp);
+          }
+          document.addEventListener("mousemove", onMove);
+          document.addEventListener("mouseup", onUp);
+        }
+
+        // Sidebar container
+        var sidebarStyle = {
+          width: open ? width : 0,
+          minWidth: open ? width : 0,
+          maxWidth: open ? width : 0,
+          overflow: "hidden",
+          transition: "width 0.2s, min-width 0.2s, max-width 0.2s",
+          flexShrink: 0,
+          position: "relative",
+          background: "var(--bg-secondary)",
+          borderLeft: position === "right" ? "1px solid var(--border)" : "none",
+          borderRight: position === "left" ? "1px solid var(--border)" : "none",
+          display: "flex",
+          flexDirection: "column",
+          height: "calc(100vh - 56px)",
+          top: 0,
+        };
+
+        var dragHandleStyle = {
+          position: "absolute",
+          top: 0,
+          bottom: 0,
+          width: 5,
+          cursor: "col-resize",
+          background: "transparent",
+          zIndex: 10,
+          left: position === "right" ? 0 : "auto",
+          right: position === "left" ? 0 : "auto",
+        };
+
+        var headerStyle = {
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "10px 12px",
+          borderBottom: "1px solid var(--border)",
+          flexShrink: 0,
+          background: "var(--bg-tertiary)",
+        };
+
+        var transcriptStyle = {
+          flex: 1,
+          overflowY: "auto",
+          padding: "12px",
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+        };
+
+        var inputAreaStyle = {
+          borderTop: "1px solid var(--border)",
+          padding: "8px",
+          flexShrink: 0,
+          display: "flex",
+          flexDirection: "column",
+          gap: 6,
+        };
+
+        var settingsPanel = showSettings
+          ? h("div", { style: { padding: "12px", display: "flex", flexDirection: "column", gap: 12, overflowY: "auto", flex: 1 } },
+              h("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+                h("button", { onClick: function () { setShowSettings(false); }, style: { background: "none", border: "none", color: "var(--accent-blue)", cursor: "pointer", fontSize: 13 } }, "← Back"),
+                h("span", { style: { fontWeight: 600, fontSize: 13 } }, "Settings"),
+              ),
+              h("label", { style: { fontSize: 12, display: "flex", flexDirection: "column", gap: 4 } },
+                "Position",
+                h("div", { style: { display: "flex", gap: 12, marginTop: 4 } },
+                  h("label", { style: { display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontSize: 12 } },
+                    h("input", { type: "radio", name: "asst-pos", checked: position === "right", onChange: function () { setPosition("right"); }, style: { accentColor: "var(--accent-blue)" } }),
+                    "Right"
+                  ),
+                  h("label", { style: { display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontSize: 12 } },
+                    h("input", { type: "radio", name: "asst-pos", checked: position === "left", onChange: function () { setPosition("left"); }, style: { accentColor: "var(--accent-blue)" } }),
+                    "Left"
+                  ),
+                ),
+              ),
+              h("label", { style: { fontSize: 12, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" } },
+                h("input", { type: "checkbox", checked: openByDefault, onChange: function (e) { setOpenByDefault(e.target.checked); }, style: { accentColor: "var(--accent-blue)" } }),
+                "Open by default"
+              ),
+              h("label", { style: { fontSize: 12, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" } },
+                h("input", { type: "checkbox", checked: includeCtx, onChange: function (e) { setIncludeCtx(e.target.checked); }, style: { accentColor: "var(--accent-blue)" } }),
+                "Include page context with messages"
+              ),
+              h("button", {
+                onClick: function () { setTranscript([]); setShowSettings(false); },
+                style: { background: "var(--accent-red)", color: "#fff", border: "none", borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontSize: 12, width: "100%", marginTop: 8 },
+              }, "Clear conversation"),
+            )
+          : null;
+
+        var chatPanel = !showSettings
+          ? h(React.Fragment, null,
+              h("div", { ref: transcriptRef, style: transcriptStyle },
+                transcript.length === 0
+                  ? h("div", { style: { color: "var(--text-muted)", fontSize: 12, textAlign: "center", marginTop: 24 } }, "Ask anything about the dashboard…")
+                  : transcript.map(function (msg) {
+                      var isUser = msg.role === "user";
+                      var bubbleStyle = {
+                        alignSelf: isUser ? "flex-end" : "flex-start",
+                        background: isUser ? "var(--accent-blue)" : "var(--bg-tertiary)",
+                        color: isUser ? "#fff" : "var(--text-primary)",
+                        borderRadius: isUser ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
+                        padding: "8px 12px",
+                        maxWidth: "92%",
+                        fontSize: 13,
+                        lineHeight: 1.5,
+                        wordBreak: "break-word",
+                      };
+                      return h("div", { key: msg.id, style: bubbleStyle },
+                        isUser ? msg.content : renderMarkdown(msg.content)
+                      );
+                    }),
+                loading ? h("div", { style: { alignSelf: "flex-start", color: "var(--text-muted)", fontSize: 12, fontStyle: "italic" } }, "Thinking…") : null,
+              ),
+              h("div", { style: inputAreaStyle },
+                h("textarea", {
+                  value: inputVal,
+                  onChange: function (e) { setInputVal(e.target.value); },
+                  onKeyDown: onKeyDown,
+                  placeholder: "Ask a question… (Enter to send)",
+                  rows: 3,
+                  style: {
+                    width: "100%",
+                    background: "var(--bg-tertiary)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 8,
+                    color: "var(--text-primary)",
+                    padding: "8px",
+                    fontSize: 13,
+                    resize: "none",
+                    fontFamily: "inherit",
+                    outline: "none",
+                  },
+                }),
+                h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
+                  h("span", { style: { fontSize: 11, color: "var(--text-muted)" } }, "Shift+Enter for newline"),
+                  h("button", {
+                    onClick: sendMessage,
+                    disabled: loading || !inputVal.trim(),
+                    style: {
+                      background: "var(--accent-blue)",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: 6,
+                      padding: "5px 14px",
+                      cursor: loading || !inputVal.trim() ? "default" : "pointer",
+                      fontSize: 13,
+                      opacity: loading || !inputVal.trim() ? 0.5 : 1,
+                    },
+                  }, "Send"),
+                ),
+              ),
+            )
+          : null;
+
+        return h("div", { style: sidebarStyle, "aria-label": "Assistant sidebar" },
+          open ? h("div", { style: dragHandleStyle, onMouseDown: startDrag }) : null,
+          open ? h(React.Fragment, null,
+            h("div", { style: headerStyle },
+              h("span", { style: { fontWeight: 600, fontSize: 13 } }, "✨ Assistant"),
+              h("div", { style: { display: "flex", gap: 6 } },
+                h("button", {
+                  onClick: function () { setShowSettings(function (s) { return !s; }); },
+                  title: "Settings",
+                  style: { background: "none", border: "none", color: showSettings ? "var(--accent-blue)" : "var(--text-muted)", cursor: "pointer", fontSize: 15, lineHeight: 1 },
+                }, "⚙️"),
+                h("button", {
+                  onClick: toggle,
+                  title: "Close",
+                  style: { background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 16, lineHeight: 1 },
+                }, "×"),
+              ),
+            ),
+            settingsPanel,
+            chatPanel,
+          ) : null,
+        );
+      }
+
       // ════════════════════════ QUICK DISPATCH POPOVER ════════════════════════
       function QuickDispatchPopover() {
         var os = React.useState(false);
@@ -14802,6 +15197,9 @@
         var pns = React.useState({ notes: "", enabled: true });
         var promptNotes = pns[0],
           setPromptNotes = pns[1];
+        var asstS = React.useState(lsGet(ASST_LS.open, lsGet(ASST_LS.openByDefault, false)));
+        var asstOpen = asstS[0], setAsstOpen = asstS[1];
+        function toggleAsst() { setAsstOpen(function (o) { var n = !o; lsSet(ASST_LS.open, n); return n; }); }
 
         function fetchFleetOrchestration() {
           setFleetOrchLoading(true);
@@ -15924,6 +16322,8 @@
             });
         }
 
+        var asstPosition = lsGet(ASST_LS.position, "right");
+
         return h(
           "div",
           null,
@@ -16475,6 +16875,12 @@
                 },
                 "Build " + shortSha(deployment.git_sha),
               ),
+              h("button", {
+                className: "btn",
+                style: { marginLeft: 4, background: asstOpen ? "var(--accent-blue)" : undefined, color: asstOpen ? "#fff" : undefined },
+                onClick: toggleAsst,
+                title: "Toggle Assistant sidebar",
+              }, "☰ Asst"),
               h(QuickDispatchPopover, null),
               h(
                 "button",
@@ -16504,8 +16910,11 @@
           ),
           h(
             "div",
-            { className: "main-content", role: "main" },
-            tab === "overview"
+            { style: { display: "flex", flexDirection: asstPosition === "left" ? "row-reverse" : "row", alignItems: "flex-start", minHeight: "calc(100vh - 56px)" } },
+            h(
+              "div",
+              { className: "main-content", role: "main", style: { flex: 1, minWidth: 0 } },
+              tab === "overview"
               ? h(FleetTab, {
                   runners: runners,
                   runs: runs,
@@ -16666,6 +17075,8 @@
                                                 : tab === "diagnostics"
                                                   ? h(DiagnosticsTab, null)
                                                   : null,
+            ),
+            h(AssistantSidebar, { currentTab: tab, open: asstOpen, onToggle: toggleAsst }),
           ),
           h(DashboardHelp, { currentTab: tab }),
         );

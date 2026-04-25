@@ -1083,3 +1083,83 @@ Core logic lives in `backend/agent_dispatch_router.py`.  The server routes at
 `POST /api/prs/dispatch` and `POST /api/issues/dispatch` are thin shells that
 call `agent_dispatch_router.dispatch_to_prs()` and
 `agent_dispatch_router.dispatch_to_issues()` respectively.
+
+## 15. Assistant Sidebar
+
+### 15.1 Overview
+
+A persistent collapsible sidebar that provides a conversational AI assistant
+interface accessible from any tab in the dashboard.
+
+### 15.2 Toggle
+
+A button labelled "☰ Asst" in the header-right area toggles the sidebar
+open or closed. The button is highlighted (blue background) when the sidebar
+is open.
+
+### 15.3 Layout
+
+When open, the sidebar docks alongside the main content area in a flex row.
+The user may configure it to dock to the left or right of the viewport.
+The default position is right.
+
+- Default width: 360px
+- Draggable resize handle: 280px – 600px range
+- The main content shrinks to fill the remaining width
+
+### 15.4 Persistence
+
+All sidebar preferences are stored in `localStorage` under the `assistant:`
+prefix:
+
+| Key | Description | Default |
+|-----|-------------|---------|
+| `assistant:open` | Whether sidebar is currently open | `false` |
+| `assistant:position` | Dock side (`"left"` or `"right"`) | `"right"` |
+| `assistant:width` | Sidebar width in pixels | `360` |
+| `assistant:transcript` | Conversation history (capped at 200 messages) | `[]` |
+| `assistant:openByDefault` | Open automatically on load | `false` |
+| `assistant:includeContext` | Send page context with each message | `true` |
+
+### 15.5 Conversation
+
+Messages are displayed as chat bubbles. User messages dock right with a blue
+background; assistant replies dock left with a tertiary background. Assistant
+responses are rendered with a minimal inline Markdown renderer supporting
+bold, italic, inline code, fenced code blocks, links, and ordered/unordered
+lists — no external library required.
+
+Input is a textarea. Enter sends the message; Shift+Enter inserts a newline.
+
+### 15.6 API Integration
+
+Messages are sent to `POST /api/help/chat` with the body:
+
+```json
+{
+  "question": "<user message>",
+  "page_context": {
+    "tab": "<active tab name>",
+    "url": "<window.location.href>",
+    "selection": "<selected text, up to 500 chars>"
+  }
+}
+```
+
+`page_context` is omitted when the "Include page context" setting is disabled.
+
+### 15.7 Settings
+
+A gear icon in the sidebar header opens a settings card with:
+
+- **Position**: radio buttons for Left / Right dock
+- **Open by default**: checkbox
+- **Include page context**: checkbox
+- **Clear conversation**: destructive button that empties the transcript
+
+### 15.8 Implementation
+
+The `AssistantSidebar` component is defined in `frontend/index.html` just
+before `QuickDispatchPopover`. It follows the no-JSX, no-build-step convention
+of the rest of the frontend. Open/closed state is owned by the `App` component
+and passed down as props; all other sidebar state is internal.
