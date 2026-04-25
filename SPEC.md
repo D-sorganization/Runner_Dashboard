@@ -1,9 +1,34 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.0.0
+**Spec Version:** 2.1.0
 **Application Version:** 4.0.1 (see `VERSION`)
-**Last Updated:** 2026-04-24
+**Last Updated:** 2026-04-25
 **Status:** Active
+
+---
+
+## 0. Sibling repos & boundaries
+
+`runner-dashboard` is one of three repos that together form the
+D-sorganization fleet operating system. The cross-repo contract is
+documented canonically in
+[`Repository_Management/docs/sibling-repos.md`](https://github.com/D-sorganization/Repository_Management/blob/main/docs/sibling-repos.md).
+Quick form:
+
+- **[`Repository_Management`](https://github.com/D-sorganization/Repository_Management)** — fleet orchestrator.
+  Publishes shared CI workflows, skills, templates, agent coordination.
+  *Does not* own dashboard UI, backend, or HTTP API.
+- **`runner-dashboard`** (this repo) — operator console. Owns every dashboard
+  tab, every `/api/*` endpoint, deployment + rollback machinery.
+- **[`Maxwell-Daemon`](https://github.com/D-sorganization/Maxwell-Daemon)** —
+  autonomous local AI control plane. The Maxwell tab here calls the daemon
+  over HTTP; the daemon never calls back.
+
+This SPEC documents only what `runner-dashboard` owns. Fleet-wide workflow
+manifests, agent claim/lease protocol, Project_Template, and skill publishing
+specs live in [`Repository_Management/SPEC.md`](https://github.com/D-sorganization/Repository_Management/blob/main/SPEC.md).
+The Maxwell pipeline state machine and ExecutionSandbox specs live in
+[`Maxwell-Daemon`](https://github.com/D-sorganization/Maxwell-Daemon).
 
 ---
 

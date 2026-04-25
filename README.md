@@ -5,6 +5,24 @@ runner fleet. Monitor runner health in real-time, control runner lifecycle,
 dispatch AI agents, manage workflows, and orchestrate multi-node deployments —
 all from a single browser tab.
 
+## Sibling repos
+
+This is the **operator console** in a three-repo fleet. The cross-repo
+contract is in
+[`Repository_Management/docs/sibling-repos.md`](https://github.com/D-sorganization/Repository_Management/blob/main/docs/sibling-repos.md).
+
+| Repo | Role |
+| --- | --- |
+| [`Repository_Management`](https://github.com/D-sorganization/Repository_Management) | Fleet orchestrator — CI workflows, skills, templates, agent coordination. |
+| `runner-dashboard` (here) | Operator console — every dashboard tab and `/api/*` endpoint. |
+| [`Maxwell-Daemon`](https://github.com/D-sorganization/Maxwell-Daemon) | Autonomous AI control plane consumed by the Maxwell tab over HTTP. |
+
+The Maxwell tab calls Maxwell-Daemon over HTTP using the contract documented
+in the sibling-repos doc. Maxwell-Daemon never calls back into the dashboard.
+
+---
+
+
 The dashboard is a local FastAPI server that proxies the GitHub API and exposes
 system metrics. The frontend is a self-contained React SPA served directly as
 a static HTML file — no build step, no npm, no node_modules.
