@@ -182,6 +182,31 @@ AI agent dispatch control panel. Configures and dispatches remediation plans
 to Jules, GAAI, Claude, or Codex agents. Shows dispatch history and plan
 status. Supports per-repo agent routing.
 
+Contains two sub-tabs:
+
+**PRs sub-tab** — the existing manual dispatch UI: failed run list, provider
+selection, plan preview, dispatch history, policy configuration, and Jules
+workflow health.
+
+**Issues sub-tab** — taxonomy-aware GitHub Issues browser and bulk dispatcher
+(`GET /api/issues?limit=2000`). Features:
+- Filter bar: repo, complexity (trivial/routine/complex/deep/research),
+  judgement (objective/preference/design/contested), and "pickable only" toggle.
+  Filter state persisted to `localStorage` with `issues:` prefix.
+- Multi-select table with columns: checkbox, repo, number, title (80-char
+  truncate + star for quick-win), type pill, complexity pill, effort, judgement
+  pill, pickable indicator.
+- Non-pickable rows are dimmed (opacity 0.6, red tint background); their
+  checkboxes are disabled with a `title` tooltip listing `pickable_blocked_by`.
+- `design` and `contested` judgement pills rendered red with a warning prefix.
+- Dispatch action bar (visible when items selected): provider dropdown, prompt
+  textarea, "Dispatch to selected" button.
+- Confirmation modal lists selected issues, shows a red warning banner for
+  `design`/`contested` judgements, and offers a "Force dispatch" checkbox when
+  non-pickable items are selected.
+- On confirm, POSTs to `POST /api/issues/dispatch` with `selection`,
+  `provider`, `prompt`, `force`, and `confirmation` fields.
+
 ### 3.13 Workflows Tab
 Browse and manually dispatch any workflow in any org repository. Supports
 input parameter forms generated from workflow `workflow_dispatch` definitions.
