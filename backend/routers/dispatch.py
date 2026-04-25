@@ -11,7 +11,7 @@ execution is done by the caller after receiving an accepted envelope back.
 from __future__ import annotations
 
 import logging
-from typing import Awaitable, Callable
+from collections.abc import Awaitable, Callable
 
 import dispatch_contract
 from fastapi import APIRouter, HTTPException, Request
