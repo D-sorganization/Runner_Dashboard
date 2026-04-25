@@ -24,6 +24,208 @@ const SUMMARY_MARKER = "<!-- panel-review:summary:v1 -->";
 const OPINION_MARKER_RE = /<!--\s*panel-opinion:v1\s+([^>]+?)\s*-->/;
 const MIN_OPINIONS_FOR_SUMMARY = 2;
 
+/**
+ * Parse an opinion comment body into structured data.
+ * Handles malformed opinions gracefully by returning null.
+ *
+ * @param {string} body - Comment body
+ * @returns {object|null} Parsed attributes or null if not an opinion
+ */
+function parseOpinion(body) {
+  if (!body) return null;
+  const m = body.match(OPINION_MARKER_RE);
+  if (!m) return null;
+
+  const attrs = {};
+  for (const pair of m[1].split(/\s+/)) {
+    const eq = pair.indexOf("=");
+    if (eq > 0) attrs[pair.slice(0, eq)] = pair.slice(eq + 1);
+  }
+
+  // Extract opinion sections: Opinion, Suggested approach and Risks
+  const opinionMatch = body.match(
+    /##\s+Opinion\s*\n([\s\S]*?)(?=##\s+(Suggested approach|Risks)|$)/i,
+  );
+  const approachMatch = body.match(
+    /##\s+Suggested approach\s*\n([\s\S]*?)(?=##\s+Risks|$)/i,
+  );
+  const risksMatch = body.match(/##\s+Risks\s*\n([\s\S]*?)$/i);
+
+  attrs.opinion = opinionMatch ? opinionMatch[1].trim() : null;
+  attrs.approach = approachMatch ? approachMatch[1].trim() : null;
+  attrs.risks = risksMatch ? risksMatch[1].trim() : null;
+
+  return attrs;
+}
+
+/**
+ * Calculate consensus level from tally and total opinions.
+ *
+ * @param {object} tally - Stance counts {support, oppose, modify, ...}
+ * @param {number} totalOpinions - Total number of opinions
+ * @returns {object} Consensus metadata {level, percent, label, dominantStance}
+ */
+function calculateConsensus(tally, totalOpinions) {
+  if (totalOpinions < MIN_OPINIONS_FOR_SUMMARY) {
+    return {
+      level: "insufficient",
+      percent: 0,
+      label: "Insufficient consensus",
+      dominantStance: "undecided",
+    };
+  }
+
+  const support = tally.support || 0;
+  const oppose = tally.oppose || 0;
+  const modify = tally.modify || 0;
+
+  const max = Math.max(support, oppose, modify);
+  const percent = totalOpinions > 0 ? Math.round((max / totalOpinions) * 100) : 0;
+
+  let level;
+  if (percent === 100) {
+    level = "unanimous";
+  } else if (percent > 75) {
+    level = "strong";
+  } else if (percent >= 50) {
+    level = "moderate";
+  } else {
+    level = "weak";
+  }
+
+  let dominantStance = "undecided";
+  if (support > oppose && support > modify) {
+    dominantStance = "support";
+  } else if (oppose > support && oppose > modify) {
+    dominantStance = "oppose";
+  } else if (modify > support && modify > oppose) {
+    dominantStance = "modify";
+  } else if (support > 0 && oppose > 0 && support === oppose) {
+    dominantStance = "contested";
+  } else if (max > 0) {
+    // Tie resolution: prefer support > oppose > modify
+    if (support === max) dominantStance = "support";
+    else if (oppose === max) dominantStance = "oppose";
+    else dominantStance = "modify";
+  }
+
+  let label;
+  if (support === 0 && oppose === 0 && modify === 0) {
+    label = "No consensus";
+  } else if (level === "unanimous") {
+    label = "Unanimous consensus";
+  } else if (level === "insufficient") {
+    label = "Insufficient consensus";
+  } else {
+    label = `${level.charAt(0).toUpperCase() + level.slice(1)} consensus (${percent}%)`;
+  }
+
+  return { level, percent, label, dominantStance };
+}
+
+/**
+ * Generate a structured summary markdown from panel opinions.
+ *
+ * @param {object} options
+ * @param {Array} options.opinions - Array of {parsed, author} objects
+ * @returns {string} Summary markdown
+ */
+function generateSummary({ opinions }) {
+  const tally = opinions.reduce((acc, o) => {
+    const s = (o.parsed.stance || "unknown").toLowerCase();
+    acc[s] = (acc[s] || 0) + 1;
+    return acc;
+  }, {});
+
+  // Group and rank approaches by number of supporters
+  const approachGroups = {};
+  for (const o of opinions) {
+    if (o.parsed.approach) {
+      const key = o.parsed.approach.trim();
+      if (!approachGroups[key]) approachGroups[key] = [];
+      approachGroups[key].push(o.author || "unknown");
+    }
+  }
+
+  const rankedApproaches = Object.entries(approachGroups)
+    .sort((a, b) => b[1].length - a[1].length)
+    .map(([approach, authors]) => ({ approach, authors }));
+
+  // Compile risks with counts (deduplicate by exact text)
+  const riskMap = new Map();
+  for (const o of opinions) {
+    if (o.parsed.risks) {
+      const key = o.parsed.risks.trim();
+      const existing = riskMap.get(key) || [];
+      existing.push(o.author || "unknown");
+      riskMap.set(key, existing);
+    }
+  }
+
+  const compiledRisks = Array.from(riskMap.entries()).map(([text, authors]) => ({
+    text,
+    count: authors.length,
+    authors,
+  }));
+
+  const totalOpinions = opinions.length;
+  const consensus = calculateConsensus(tally, totalOpinions);
+  const timestamp = new Date().toISOString();
+
+  const lines = [
+    `<!-- panel-summary:v1 dominant_stance=${consensus.dominantStance} consensus=${(consensus.percent / 100).toFixed(2)} -->`,
+    `## Panel Review Summary`,
+    "",
+    `**Dominant Stance:** ${consensus.dominantStance.toUpperCase()} (${consensus.label})`,
+    "",
+    "### Tally",
+    `- Support: ${tally.support || 0} agent${(tally.support || 0) !== 1 ? "s" : ""}`,
+    `- Oppose: ${tally.oppose || 0} agent${(tally.oppose || 0) !== 1 ? "s" : ""}`,
+    `- Modify: ${tally.modify || 0} agent${(tally.modify || 0) !== 1 ? "s" : ""}`,
+    "",
+    "### Suggested Approaches",
+  ];
+
+  if (rankedApproaches.length > 0) {
+    for (let i = 0; i < rankedApproaches.length; i++) {
+      const { approach, authors } = rankedApproaches[i];
+      const label = i === 0 ? "Recommended" : "Alternative";
+      lines.push(`${i + 1}. **${label}:** ${approach}`);
+      lines.push(`   - Supported by: ${authors.join(", ")}`);
+    }
+  } else {
+    lines.push("_No approaches suggested._");
+  }
+
+  lines.push("");
+  lines.push("### Risk Consensus");
+
+  if (compiledRisks.length > 0) {
+    for (const risk of compiledRisks) {
+      lines.push(`- ${risk.text}`);
+      lines.push(
+        `  - Identified by ${risk.count} panelist${risk.count !== 1 ? "s" : ""}${risk.count < totalOpinions ? ` (${risk.authors.join(", ")})` : ""}`,
+      );
+    }
+  } else {
+    lines.push("_No risks identified._");
+  }
+
+  lines.push("");
+  lines.push("---");
+  lines.push("");
+  lines.push(
+    "**Next Step:** Maintainer review and label adjustment. Once consensus is clear, relabel to `judgement:objective` to unblock implementation.",
+  );
+  lines.push("");
+  const panelistList = opinions.map((o) => `@${o.author || "unknown"}`).join(", ");
+  lines.push(
+    `*Panel review completed: ${timestamp} — Panelists responded: ${panelistList}*`,
+  );
+
+  return lines.join("\n");
+}
+
 async function postBrief({ github, context, core, issue }) {
   const { owner, repo } = context.repo;
   const comments = await github.paginate(
@@ -93,28 +295,6 @@ async function postBrief({ github, context, core, issue }) {
   );
 }
 
-function parseOpinion(body) {
-  if (!body) return null;
-  const m = body.match(OPINION_MARKER_RE);
-  if (!m) return null;
-  const attrs = {};
-  for (const pair of m[1].split(/\s+/)) {
-    const eq = pair.indexOf("=");
-    if (eq > 0) attrs[pair.slice(0, eq)] = pair.slice(eq + 1);
-  }
-
-  // Extract opinion sections: Suggested approach and Risks
-  const opinionMatch = body.match(
-    /##\s+Suggested approach\s*\n([\s\S]*?)(?=##\s+Risks|$)/i,
-  );
-  const risksMatch = body.match(/##\s+Risks\s*\n([\s\S]*?)$/i);
-
-  attrs.approach = opinionMatch ? opinionMatch[1].trim() : null;
-  attrs.risks = risksMatch ? risksMatch[1].trim() : null;
-
-  return attrs;
-}
-
 async function summarize({ github, context, core, issue }) {
   const { owner, repo } = context.repo;
   const comments = await github.paginate(
@@ -122,11 +302,18 @@ async function summarize({ github, context, core, issue }) {
     { owner, repo, issue_number: issue.number, per_page: 100 },
   );
 
-  const opinions = [];
+  // Collect opinions, deduplicating by author (most recent wins)
+  const opinionsByAuthor = new Map();
   for (const c of comments) {
     const parsed = parseOpinion(c.body);
-    if (parsed) opinions.push({ parsed, author: c.user && c.user.login });
+    if (!parsed) continue;
+
+    const author = c.user && c.user.login ? c.user.login : "unknown";
+    // Overwrite with most recent opinion from this author
+    opinionsByAuthor.set(author, { parsed, author });
   }
+
+  const opinions = Array.from(opinionsByAuthor.values());
 
   if (opinions.length < MIN_OPINIONS_FOR_SUMMARY) {
     core.info(
@@ -147,87 +334,10 @@ async function summarize({ github, context, core, issue }) {
     }
   }
 
-  const tally = opinions.reduce((acc, o) => {
-    const s = (o.parsed.stance || "unknown").toLowerCase();
-    acc[s] = (acc[s] || 0) + 1;
-    return acc;
-  }, {});
-
-  // Aggregate approaches and risks
-  const approaches = {};
-  const risksList = [];
-
-  for (const o of opinions) {
-    if (o.parsed.approach) {
-      const key = o.parsed.approach.substring(0, 80); // Group similar approaches
-      approaches[key] = (approaches[key] || []).concat(o.author || "unknown");
-    }
-    if (o.parsed.risks) {
-      risksList.push({
-        author: o.author || "unknown",
-        text: o.parsed.risks,
-      });
-    }
-  }
-
-  // Calculate consensus percentage
-  const totalOpinions = opinions.length;
-  const supportCount = tally.support || 0;
-  const consensusPercent = totalOpinions > 0
-    ? Math.round((supportCount / totalOpinions) * 100)
-    : 0;
-
-  const lines = [
-    SUMMARY_MARKER,
-    `## Panel summary (opinions=${opinions.length})`,
-    "",
-    "| Stance | Count |",
-    "|---|---|",
-    ...Object.entries(tally)
-      .sort((a, b) => b[1] - a[1])
-      .map(([stance, n]) => `| \`${stance}\` | ${n} |`),
-    "",
-    supportCount > 0 && totalOpinions > 1
-      ? `**Consensus:** ${consensusPercent}% support`
-      : supportCount === 1 ? "**Consensus:** Single support (pending more opinions)" : "**Consensus:** Undecided",
-    "",
-  ];
-
-  // Add approaches if any were extracted
-  if (Object.keys(approaches).length > 0) {
-    lines.push("### Suggested Approaches");
-    let approachNum = 1;
-    for (const [approach, authors] of Object.entries(approaches)) {
-      lines.push(`${approachNum}. ${approach}`);
-      lines.push(`   - Suggested by: ${authors.join(", ")}`);
-      approachNum++;
-    }
-    lines.push("");
-  }
-
-  // Add risks if any were extracted
-  if (risksList.length > 0) {
-    lines.push("### Identified Risks");
-    for (const risk of risksList) {
-      lines.push(`- **@${risk.author}**: ${risk.text}`);
-    }
-    lines.push("");
-  }
-
-  lines.push(
-    "### Panelists",
-    ...opinions.map(
-      (o) =>
-        `- @${o.author || "unknown"} — \`${o.parsed.agent || "?"}\`, stance \`${o.parsed.stance || "?"}\``,
-    ),
-    "",
-    "Once the team has picked a direction, remove the `panel-review` label",
-    "and set `judgement:objective` / `judgement:preference` to unblock",
-    "implementation.",
-  );
+  const summaryBody = generateSummary({ opinions });
 
   await github.rest.issues.createComment({
-    owner, repo, issue_number: issue.number, body: lines.join("\n"),
+    owner, repo, issue_number: issue.number, body: summaryBody,
   });
   core.info(`Posted summary on #${issue.number}`);
 }
@@ -313,4 +423,14 @@ function getAgentsForTiers(tiers) {
   return Array.from(agents);
 }
 
-module.exports = { postBrief, summarize, sweep, AGENT_ROSTER, selectTiers, getAgentsForTiers };
+module.exports = {
+  postBrief,
+  summarize,
+  sweep,
+  parseOpinion,
+  calculateConsensus,
+  generateSummary,
+  AGENT_ROSTER,
+  selectTiers,
+  getAgentsForTiers,
+};
