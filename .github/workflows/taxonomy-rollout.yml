@@ -53,7 +53,7 @@ jobs:
   route:
     # Decide what stage to run based on the triggering label (or dispatch
     # input). Exposed as outputs for downstream jobs.
-    runs-on: ubuntu-latest
+    runs-on: d-sorg-fleet
     outputs:
       epic: ${{ steps.decide.outputs.epic }}
       stage: ${{ steps.decide.outputs.stage }}
@@ -89,7 +89,7 @@ jobs:
   preview:
     needs: route
     if: needs.route.outputs.should_run == 'true' && needs.route.outputs.stage == 'preview'
-    runs-on: ubuntu-latest
+    runs-on: d-sorg-fleet
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
 
@@ -199,7 +199,7 @@ jobs:
   apply:
     needs: route
     if: needs.route.outputs.should_run == 'true' && needs.route.outputs.stage == 'apply'
-    runs-on: ubuntu-latest
+    runs-on: d-sorg-fleet
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
 
