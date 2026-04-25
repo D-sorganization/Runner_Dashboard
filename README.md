@@ -9,6 +9,13 @@ The dashboard is a local FastAPI server that proxies the GitHub API and exposes
 system metrics. The frontend is a self-contained React SPA served directly as
 a static HTML file — no build step, no npm, no node_modules.
 
+## Security
+
+> **Security Notice**: This dashboard provides full control over your GitHub
+> Actions runner fleet. It has no built-in authentication. Restrict network
+> access to trusted operators only. See [SECURITY.md](SECURITY.md) for the
+> vulnerability disclosure policy.
+
 ## Features
 
 - **Fleet Tab** — Real-time runner status (idle/active/offline), per-runner
