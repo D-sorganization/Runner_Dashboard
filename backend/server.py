@@ -50,12 +50,14 @@ BACKEND_DIR = Path(__file__).resolve().parent
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
+import agent_dispatch_router  # noqa: E402
 import agent_remediation  # noqa: E402
 import config_schema  # noqa: E402
 import deployment_drift  # noqa: E402
 import dispatch_contract  # noqa: E402
 import issue_inventory  # noqa: E402
 import pr_inventory  # noqa: E402
+import quick_dispatch as _quick_dispatch  # noqa: E402
 import scheduled_workflows as scheduled_workflow_inventory  # noqa: E402
 import usage_monitoring  # noqa: E402
 from local_app_monitoring import collect_local_apps  # noqa: E402
@@ -4059,6 +4061,107 @@ async def dispatch_agent_remediation(request: Request) -> dict:
         }
     )
     return result
+
+
+# ─── Quick Dispatch ───────────────────────────────────────────────────────────
+
+
+@app.post("/api/agents/quick-dispatch")
+async def api_quick_dispatch(request: Request) -> dict:
+    """Dispatch an ad-hoc agent task via Agent-Quick-Dispatch.yml."""
+    body = await request.json()
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=422, detail="expected object body")
+    try:
+        req = _quick_dispatch.QuickDispatchRequest(**body)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    if len(req.prompt.strip()) < 10:
+        raise HTTPException(status_code=400, detail="prompt must be at least 10 characters")
+
+    resp = await _quick_dispatch.quick_dispatch(
+        req,
+        run_cmd_fn=run_cmd,
+        org=ORG,
+        repo_root=REPO_ROOT,
+        normalize_repository_fn=_normalize_repository_input,
+    )
+    if not resp.accepted:
+        reason = resp.reason or "rejected"
+        if reason.startswith("rate_limited"):
+            retry_after = 1
+            for part in reason.split("="):
+                try:
+                    retry_after = int(part)
+                except ValueError:
+                    pass
+            raise HTTPException(
+                status_code=429,
+                detail={"reason": "rate_limited", "retry_after_seconds": retry_after},
+            )
+        if reason.startswith("workflow_not_configured"):
+            raise HTTPException(
+                status_code=501,
+                detail={"reason": "workflow_not_configured", "suggested_workflow": "Agent-Quick-Dispatch.yml"},
+            )
+        if reason.startswith("prompt_too_short"):
+            raise HTTPException(status_code=400, detail=reason)
+        raise HTTPException(status_code=409, detail={"accepted": False, "reason": reason})
+    return resp.model_dump()
+
+
+# ─── Bulk PR / Issue Agent Dispatch ──────────────────────────────────────────
+
+
+@app.post("/api/prs/dispatch")
+async def api_dispatch_to_prs(request: Request) -> dict:
+    """Dispatch agents to one or more pull requests."""
+    body = await request.json()
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=422, detail="expected object body")
+    try:
+        req = agent_dispatch_router.PRDispatchRequest(**body)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    result = await agent_dispatch_router.dispatch_to_prs(
+        req,
+        run_cmd_fn=run_cmd,
+        org=ORG,
+        repo_root=REPO_ROOT,
+        normalize_repository_fn=_normalize_repository_input,
+    )
+    if isinstance(result, dict) and "error" in result:
+        raise HTTPException(status_code=result.get("status_code", 400), detail=result["error"])
+    if isinstance(result, agent_dispatch_router.BulkDispatchResponse):
+        return result.model_dump()
+    return dict(result)
+
+
+@app.post("/api/issues/dispatch")
+async def api_dispatch_to_issues(request: Request) -> dict:
+    """Dispatch agents to one or more issues."""
+    body = await request.json()
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=422, detail="expected object body")
+    try:
+        req = agent_dispatch_router.IssueDispatchRequest(**body)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    result = await agent_dispatch_router.dispatch_to_issues(
+        req,
+        run_cmd_fn=run_cmd,
+        org=ORG,
+        repo_root=REPO_ROOT,
+        normalize_repository_fn=_normalize_repository_input,
+    )
+    if isinstance(result, dict) and "error" in result:
+        raise HTTPException(status_code=result.get("status_code", 400), detail=result["error"])
+    if isinstance(result, agent_dispatch_router.BulkDispatchResponse):
+        return result.model_dump()
+    return dict(result)
 
 
 # ─── Remediation History ──────────────────────────────────────────────────────

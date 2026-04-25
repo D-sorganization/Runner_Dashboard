@@ -245,6 +245,28 @@ ALLOWLISTED_ACTIONS: dict[str, DispatchAction] = {
         prototype_command=("sudo", "systemctl", "enable|disable", "<unit>"),
         requires_confirmation=True,
     ),
+    # ── Agent dispatch actions ────────────────────────────────────────────────
+    "agents.dispatch.adhoc": DispatchAction(
+        name="agents.dispatch.adhoc",
+        access=DispatchAccess.PRIVILEGED,
+        description="Dispatch an agent for an ad-hoc task via the quick-dispatch workflow.",
+        prototype_command=("gh", "workflow", "run", "Agent-Quick-Dispatch.yml"),
+        requires_confirmation=True,
+    ),
+    "agents.dispatch.pr": DispatchAction(
+        name="agents.dispatch.pr",
+        access=DispatchAccess.PRIVILEGED,
+        description="Dispatch agents to one or more pull requests via the Agent-PR-Action workflow.",
+        prototype_command=("gh", "workflow", "run", "Agent-PR-Action.yml"),
+        requires_confirmation=True,
+    ),
+    "agents.dispatch.issue": DispatchAction(
+        name="agents.dispatch.issue",
+        access=DispatchAccess.PRIVILEGED,
+        description="Dispatch agents to one or more issues via the Agent-Issue-Action workflow.",
+        prototype_command=("gh", "workflow", "run", "Agent-Issue-Action.yml"),
+        requires_confirmation=True,
+    ),
 }
 
 

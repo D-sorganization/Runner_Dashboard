@@ -916,3 +916,170 @@ An issue is pickable when ALL of the following hold:
 - Per-repo errors appear in `errors[]`; a failing repo does not abort the
   whole request.
 - Responses are cached 30 seconds in-process.
+
+---
+
+## 13. Quick Dispatch API
+
+### 13.1 Endpoint
+
+`POST /api/agents/quick-dispatch`
+
+Triggers the `Agent-Quick-Dispatch.yml` workflow in `Repository_Management` for
+an ad-hoc agent task.
+
+**Request body:**
+```json
+{
+  "repository": "D-sorganization/runner-dashboard",
+  "prompt": "Fix the failing test in test_api.py",
+  "provider": "claude_code_cli",
+  "model": "claude-opus-4-7",
+  "ref": "main",
+  "task_kind": "adhoc"
+}
+```
+
+**Success response (200):**
+```json
+{
+  "accepted": true,
+  "envelope_id": "uuid-hex",
+  "fingerprint": "sha256-prefix",
+  "workflow_run_url": "https://github.com/.../actions",
+  "history_id": "uuid-hex",
+  "reason": ""
+}
+```
+
+**Rejection response (409):**
+```json
+{ "accepted": false, "reason": "provider_unavailable: ..." }
+```
+
+### 13.2 Validation
+
+- `prompt` must be at least 10 characters (400 if not).
+- `provider` must exist in `PROVIDERS` and have `availability == "available"`.
+  Rejected with `{"reason": "provider_unavailable: <detail>"}`.
+- Provider must have `dispatch_mode == "github_actions"`.
+
+### 13.3 Rate Limiting
+
+10 calls per 60-second window per process (in-process token bucket).
+Returns HTTP 429 `{"reason": "rate_limited", "retry_after_seconds": N}` when
+exceeded.
+
+### 13.4 Workflow Not Configured
+
+If `Agent-Quick-Dispatch.yml` does not exist in `Repository_Management`, the
+endpoint returns HTTP 501:
+```json
+{"reason": "workflow_not_configured", "suggested_workflow": "Agent-Quick-Dispatch.yml"}
+```
+
+### 13.5 Audit Log
+
+Every accepted dispatch writes a `DispatchAuditLogEntry`-shaped record to
+`_QUICK_DISPATCH_HISTORY_PATH` (default:
+`~/actions-runners/dashboard/quick_dispatch_history.json`).  The path can be
+overridden via the `QUICK_DISPATCH_HISTORY_PATH` environment variable.
+
+### 13.6 Implementation
+
+Core logic lives in `backend/quick_dispatch.py`.  The server route at
+`POST /api/agents/quick-dispatch` is a thin shell that calls
+`quick_dispatch.quick_dispatch()`.
+
+---
+
+## 14. Bulk Dispatch API
+
+### 14.1 PR Dispatch
+
+`POST /api/prs/dispatch`
+
+Dispatches agents to one or more pull requests via `Agent-PR-Action.yml`.
+
+**Request body:**
+```json
+{
+  "selection": {
+    "mode": "single | repo | list | all",
+    "repository": "D-sorganization/runner-dashboard",
+    "number": 76,
+    "items": [{"repository": "...", "number": 1}]
+  },
+  "provider": "claude_code_cli",
+  "prompt": "Address review comments",
+  "model": "claude-opus-4-7",
+  "confirmation": {"approved_by": "dieter", "note": "manual click"}
+}
+```
+
+**Response:**
+```json
+{
+  "accepted": 5,
+  "rejected": [{"repository": "...", "number": 4, "reason": "..."}],
+  "envelope_ids": ["uuid-hex"],
+  "fingerprints": ["sha256-prefix"]
+}
+```
+
+### 14.2 Issue Dispatch
+
+`POST /api/issues/dispatch`
+
+Same shape as PR dispatch, with two additional fields:
+
+- `"force": true` — skip pickability enforcement (requires PRIVILEGED access).
+  When forced, `forced: true` is recorded in the audit log.
+- Pickability is enforced server-side: issues with `pickable=false` are rejected
+  with `reason="not_pickable: <reason>"`.
+
+### 14.3 Selection Modes
+
+| Mode     | Description |
+|----------|-------------|
+| `single` | One specific PR/issue by `repository` + `number`. |
+| `repo`   | All open PRs/issues in a repository (caller pre-resolves). |
+| `list`   | Explicit list of `{repository, number}` items. |
+| `all`    | All pre-populated items. Hard-capped at 100 targets. |
+
+### 14.4 Concurrency
+
+Fan-out dispatches run in parallel with an `asyncio.Semaphore` of 4.
+
+### 14.5 Workflow Not Configured
+
+If the target workflow file (`Agent-PR-Action.yml` or `Agent-Issue-Action.yml`)
+does not exist in `Repository_Management`, the affected target is added to the
+`rejected[]` list with `reason="workflow_not_configured: ..."`.
+
+### 14.6 Audit Logs
+
+- PR dispatches: `_PR_DISPATCH_HISTORY_PATH`
+  (default `~/actions-runners/dashboard/pr_dispatch_history.json`,
+  override via `PR_DISPATCH_HISTORY_PATH`).
+- Issue dispatches: `_ISSUE_DISPATCH_HISTORY_PATH`
+  (default `~/actions-runners/dashboard/issue_dispatch_history.json`,
+  override via `ISSUE_DISPATCH_HISTORY_PATH`).
+
+### 14.7 Dispatch Contract
+
+Three new actions are registered in the `ALLOWLISTED_ACTIONS` catalog in
+`backend/dispatch_contract.py`:
+
+| Action | Access | Requires Confirmation |
+|--------|--------|-----------------------|
+| `agents.dispatch.adhoc` | PRIVILEGED | Yes |
+| `agents.dispatch.pr` | PRIVILEGED | Yes |
+| `agents.dispatch.issue` | PRIVILEGED | Yes |
+
+### 14.8 Implementation
+
+Core logic lives in `backend/agent_dispatch_router.py`.  The server routes at
+`POST /api/prs/dispatch` and `POST /api/issues/dispatch` are thin shells that
+call `agent_dispatch_router.dispatch_to_prs()` and
+`agent_dispatch_router.dispatch_to_issues()` respectively.
