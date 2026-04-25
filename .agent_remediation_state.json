@@ -1,0 +1,16 @@
+{
+  "pr_number": 112,
+  "branch": "fix/issue-6-config-contracts",
+  "repo": "D-sorganization/runner-dashboard",
+  "failure_job": "close-redundant",
+  "root_cause": "Missing JULES_APP_ID/JULES_APP_PRIVATE_KEY secrets cause actions/create-github-app-token@v1 to fail with 'Input required and not supplied: app-id'",
+  "fix_strategy": "Added credential guard step to all workflows using create-github-app-token@v1. When secrets are absent, the workflow skips gracefully instead of failing.",
+  "retry_count": 1,
+  "max_retries": 3,
+  "last_attempt": "2026-04-25T18:59:00Z",
+  "files_modified": [
+    ".github/workflows/Agent-Redundant-PR-Closer.yml",
+    ".github/workflows/Agent-Fleet-Dashboard.yml",
+    ".github/workflows/Agent-Lease-Reaper.yml"
+  ]
+}

@@ -40,8 +40,22 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      - name: Check Jules app credentials
+        id: app-creds
+        env:
+          JULES_APP_ID: ${{ secrets.JULES_APP_ID }}
+          JULES_APP_PRIVATE_KEY: ${{ secrets.JULES_APP_PRIVATE_KEY }}
+        run: |
+          if [ -n "$JULES_APP_ID" ] && [ -n "$JULES_APP_PRIVATE_KEY" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::JULES_APP_ID/JULES_APP_PRIVATE_KEY are not configured; skipping lease reaper."
+          fi
+
       - name: Generate Jules app token
         id: app-token
+        if: steps.app-creds.outputs.configured == 'true'
         uses: actions/create-github-app-token@v1
         with:
           app-id: ${{ secrets.JULES_APP_ID }}
@@ -49,15 +63,18 @@ jobs:
           owner: ${{ github.repository_owner }}
 
       - uses: actions/checkout@v4
+        if: steps.app-creds.outputs.configured == 'true'
         with:
           repository: D-sorganization/Repository_Management
           ref: main
 
       - uses: actions/setup-python@v5
+        if: steps.app-creds.outputs.configured == 'true'
         with:
           python-version: "3.11"
 
       - name: Reap expired leases
+        if: steps.app-creds.outputs.configured == 'true'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -81,10 +98,15 @@ jobs:
 
       - name: Summary
         if: always()
+        env:
+          DRY_RUN_DISPLAY: ${{ inputs.dry_run || 'false' }}
+          REPOS_DISPLAY: ${{ inputs.repos || '(all)' }}
+          APP_CREDS_CONFIGURED: ${{ steps.app-creds.outputs.configured || 'false' }}
         run: |
           {
             echo "## Agent Lease Reaper"
             echo ""
-            echo "- **Dry run:** ${{ inputs.dry_run || 'false' }}"
-            echo "- **Repos override:** ${{ inputs.repos || '(all)' }}"
+            echo "- **Dry run:** $DRY_RUN_DISPLAY"
+            echo "- **Repos override:** $REPOS_DISPLAY"
+            echo "- **App credentials configured:** $APP_CREDS_CONFIGURED"
           } >> "$GITHUB_STEP_SUMMARY"
