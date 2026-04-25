@@ -622,6 +622,33 @@ The backend injects the following headers on all responses:
 Critical fleet operations (runner stop, fleet restart) use a two-step
 inline confirmation UI instead of `window.confirm()`.
 
+### 9.4 Token Handling
+`GH_TOKEN` and `ANTHROPIC_API_KEY` must be supplied as environment variables
+only — never hardcoded in source files or configuration. The recommended setup
+path is the `configure-env-vars.sh` script, which writes tokens to the systemd
+override file so they are not visible in the process environment of child
+processes and are not stored in shell history.
+
+### 9.5 Network Exposure
+The dashboard backend binds to `0.0.0.0:8321` by default so that multi-node
+fleet monitoring works across the local network. Operators who do not need
+cross-node access should bind to `127.0.0.1` instead (set the `HOST`
+environment variable or modify the `systemd` unit file). No TLS is provided
+by the dashboard itself; use a reverse proxy (nginx, Caddy) in front of the
+service when HTTPS is required.
+
+### 9.6 Operator Hardening Checklist
+- Restrict network access to port 8321 via firewall rules (`ufw`, `iptables`,
+  or cloud security groups); do not expose it publicly.
+- Rotate `GH_TOKEN` and `ANTHROPIC_API_KEY` on a regular schedule (at minimum
+  whenever a team member departs).
+- Keep Python dependencies current: run `pip-audit` and `pip install -U -r
+  requirements.txt` during routine maintenance windows.
+- Review agent dispatch logs in the Remediation tab regularly to detect
+  unexpected or unauthorized agent invocations.
+- Consider binding to `127.0.0.1` and using a reverse proxy with
+  authentication if the dashboard is accessible to untrusted network segments.
+
 ---
 
 ## 10. Prompt Notes and Agent Dispatch Configuration
