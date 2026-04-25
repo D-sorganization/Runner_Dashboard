@@ -4329,7 +4329,7 @@ async def _dispatch_to_ai_provider_for_chat(
         return f"(Note: Provider '{provider_id}' is unavailable. Mock response for demonstration.)"
 
     # For MVP: return a simple acknowledgment
-    # TODO: Implement actual provider dispatch (Jules API, local Ollama, Claude API, etc.)
+    # Tracked in #88/#89: implement actual provider dispatch (Jules API, local Ollama, Claude API, etc.)
     return f"Assistant response to: {prompt[:100]}... (MVP mock - implement real provider dispatch)"
 
 
