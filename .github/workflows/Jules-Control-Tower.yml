@@ -72,14 +72,14 @@ jobs:
       - name: Generate Jules app token
         id: app-token
         if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'failure'
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@df432ceedc7162793a195dd1713ff69aefc7379e # v1
         with:
           app-id: ${{ secrets.JULES_APP_ID }}
           private-key: ${{ secrets.JULES_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
       - name: Checkout Repository_Management
         if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'failure'
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
       # SAFEGUARD: Check if we've exceeded max repair iterations in the time window
       - name: Check Iteration Limits
         id: check-limits
@@ -127,7 +127,7 @@ jobs:
       - name: Analyze Event Context
         id: decide
         if: steps.check-limits.outcome == 'skipped' || steps.check-limits.outputs.exceeded != 'true'
-        uses: actions/github-script@v9
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v9
         with:
           script: |
             const event = context.eventName;

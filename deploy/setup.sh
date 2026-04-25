@@ -257,8 +257,18 @@ Environment=PATH=/usr/lib/wsl/lib:${HOME}/.local/bin:${HOME}/.cargo/bin:/usr/loc
 EnvironmentFile=-${HOME}/.config/runner-dashboard/env
 
 # Hardening
-NoNewPrivileges=false
-ProtectSystem=false
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=read-only
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RemoveIPC=true
+# Allow the dashboard to read/write runner secrets and config from HOME.
+ReadWritePaths=${HOME}/.config/runner-dashboard
 
 [Install]
 WantedBy=multi-user.target
