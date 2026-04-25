@@ -663,6 +663,21 @@ service when HTTPS is required.
 - Consider binding to `127.0.0.1` and using a reverse proxy with
   authentication if the dashboard is accessible to untrusted network segments.
 
+### 9.7 Prompt Injection Sanitization
+All user-controlled text inserted into LLM agent prompts (workflow failure
+messages, log excerpts, issue bodies, PR descriptions) is passed through
+`sanitize_for_prompt()` in `backend/agent_remediation.py` before inclusion.
+The function:
+- Truncates input to a configurable `max_length` (default 2000 chars) to
+  limit token usage and reduce attack surface.
+- Wraps the content in `[START_UNTRUSTED_CONTENT]` / `[END_UNTRUSTED_CONTENT]`
+  delimiters so the model can distinguish trusted instructions from external
+  data.
+
+Every generated prompt also includes the constant
+`PROMPT_UNTRUSTED_SYSTEM_INSTRUCTION` as a preamble, instructing the model
+not to follow any instructions found inside the delimiters.
+
 ---
 
 ## 10. Prompt Notes and Agent Dispatch Configuration
