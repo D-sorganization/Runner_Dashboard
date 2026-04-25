@@ -241,6 +241,12 @@ class HelpChatBody(BaseModel):
 MAX_CACHE_SIZE = 500
 _CACHE_EVICT_BATCH = 50
 
+# ─── Shared State Locks ───────────────────────────────────────────────────────
+_remediation_history_lock: asyncio.Lock = asyncio.Lock()
+_orchestration_audit_lock: asyncio.Lock = asyncio.Lock()
+_feature_requests_lock: asyncio.Lock = asyncio.Lock()
+_prompt_templates_lock: asyncio.Lock = asyncio.Lock()
+_prompt_notes_lock: asyncio.Lock = asyncio.Lock()
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 ORG = os.environ.get("GITHUB_ORG", "D-sorganization")
@@ -3927,7 +3933,7 @@ async def dispatch_agent_remediation(request: Request) -> dict:
         "reason": decision.reason,
         "note": "Central remediation workflow dispatch recorded in Repository_Management.",
     }
-    _append_remediation_history(
+    await _append_remediation_history(
         {
             "timestamp": _dt_mod.datetime.now(_dt_mod.UTC).isoformat(),
             "repository": full_repository,
@@ -3950,21 +3956,21 @@ _REMEDIATION_HISTORY_PATH = Path(os.environ.get("REMEDIATION_HISTORY_PATH", ""))
 )
 
 
-def _append_remediation_history(entry: dict) -> None:
-    """Append a dispatch record to the local history file."""
-    try:
-        _REMEDIATION_HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
-        history: list[dict] = []
-        if _REMEDIATION_HISTORY_PATH.exists():
-            try:
-                history = json.loads(_REMEDIATION_HISTORY_PATH.read_text(encoding="utf-8"))
-            except Exception:
-                history = []
-        history.append(entry)
-        history = history[-200:]  # keep last 200 entries
-        _REMEDIATION_HISTORY_PATH.write_text(json.dumps(history, indent=2), encoding="utf-8")
-    except Exception:
-        pass  # history is best-effort
+async def _append_remediation_history(entry: dict) -> None:
+    """Append a dispatch record to the local history file (thread-safe)."""
+    async with _remediation_history_lock:
+        try:
+            history: list[dict] = []
+            if _REMEDIATION_HISTORY_PATH.exists():
+                try:
+                    history = json.loads(_REMEDIATION_HISTORY_PATH.read_text(encoding="utf-8"))
+                except Exception:
+                    history = []
+            history.append(entry)
+            history = history[-200:]  # keep last 200 entries
+            config_schema.atomic_write_json(_REMEDIATION_HISTORY_PATH, history)
+        except Exception:
+            pass  # history is best-effort
 
 
 @app.post("/api/agent-remediation/dispatch-jules")
@@ -5002,25 +5008,24 @@ async def save_prompt_template(request: Request) -> dict:
     content = str(body.get("content", "")).strip()
     if not name or not content:
         raise HTTPException(status_code=422, detail="name and content required")
-    try:
-        _PROMPT_TEMPLATES_PATH.parent.mkdir(parents=True, exist_ok=True)
-        templates: list[dict] = []
-        if _PROMPT_TEMPLATES_PATH.exists():
-            templates = json.loads(_PROMPT_TEMPLATES_PATH.read_text(encoding="utf-8"))
-        existing_idx = next((i for i, t in enumerate(templates) if t.get("name") == name), None)
-        template = {
-            "name": name,
-            "content": content,
-            "updated_at": datetime.now(UTC).isoformat(),
-        }
-        if existing_idx is not None:
-            templates[existing_idx] = template
-        else:
-            templates.append(template)
-        _PROMPT_TEMPLATES_PATH.write_text(json.dumps(templates, indent=2), encoding="utf-8")
-    except Exception:
-        log.exception("Failed to save prompt template %r", name)
-        raise HTTPException(status_code=500, detail="Internal server error") from None
+    async with _prompt_templates_lock:
+        try:
+            templates: list[dict] = []
+            if _PROMPT_TEMPLATES_PATH.exists():
+                templates = json.loads(_PROMPT_TEMPLATES_PATH.read_text(encoding="utf-8"))
+            existing_idx = next((i for i, t in enumerate(templates) if t.get("name") == name), None)
+            template = {
+                "name": name,
+                "content": content,
+                "updated_at": datetime.now(UTC).isoformat(),
+            }
+            if existing_idx is not None:
+                templates[existing_idx] = template
+            else:
+                templates.append(template)
+            config_schema.atomic_write_json(_PROMPT_TEMPLATES_PATH, templates)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e)) from e
     return {"status": "saved", "name": name}
 
 
@@ -5047,12 +5052,12 @@ async def update_prompt_notes(request: Request) -> dict:
     notes = str(body.get("notes", "")).strip()
     enabled = bool(body.get("enabled", True))
 
-    try:
-        _PROMPT_NOTES_PATH.parent.mkdir(parents=True, exist_ok=True)
-        data = {"notes": notes, "enabled": enabled}
-        _PROMPT_NOTES_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+    async with _prompt_notes_lock:
+        try:
+            data = {"notes": notes, "enabled": enabled}
+            config_schema.atomic_write_json(_PROMPT_NOTES_PATH, data)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e)) from e
     return {"status": "saved", "notes_length": len(notes), "enabled": enabled}
 
 
@@ -5092,25 +5097,25 @@ async def dispatch_feature_request(request: Request) -> dict:
 
     # Save to history
     entry: dict = {}
-    try:
-        _FEATURE_REQUESTS_PATH.parent.mkdir(parents=True, exist_ok=True)
-        history: list[dict] = []
-        if _FEATURE_REQUESTS_PATH.exists():
-            history = json.loads(_FEATURE_REQUESTS_PATH.read_text(encoding="utf-8"))
-        entry = {
-            "id": str(int(datetime.now(UTC).timestamp())),
-            "repository": repo,
-            "branch": branch,
-            "provider": provider,
-            "prompt": prompt[:500],
-            "standards": list(standards),
-            "status": "dispatched",
-            "created_at": datetime.now(UTC).isoformat(),
-        }
-        history.append(entry)
-        _FEATURE_REQUESTS_PATH.write_text(json.dumps(history[-200:], indent=2), encoding="utf-8")
-    except Exception:
-        pass
+    async with _feature_requests_lock:
+        try:
+            history: list[dict] = []
+            if _FEATURE_REQUESTS_PATH.exists():
+                history = json.loads(_FEATURE_REQUESTS_PATH.read_text(encoding="utf-8"))
+            entry = {
+                "id": str(int(datetime.now(UTC).timestamp())),
+                "repository": repo,
+                "branch": branch,
+                "provider": provider,
+                "prompt": prompt[:500],
+                "standards": list(standards),
+                "status": "dispatched",
+                "created_at": datetime.now(UTC).isoformat(),
+            }
+            history.append(entry)
+            config_schema.atomic_write_json(_FEATURE_REQUESTS_PATH, history[-200:])
+        except Exception:
+            pass
 
     # Dispatch via feature-request workflow
     endpoint = f"/repos/{ORG}/Repository_Management/actions/workflows/Jules-Feature-Request.yml/dispatches"
@@ -5168,15 +5173,15 @@ def _load_orchestration_audit(limit: int = 50) -> list[dict]:
         return []
 
 
-def _append_orchestration_audit(entry: dict) -> None:
-    """Append a single audit entry to the orchestration audit log."""
-    _ORCHESTRATION_AUDIT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    existing = _load_orchestration_audit(limit=1000)
-    existing.append(entry)
-    try:
-        _ORCHESTRATION_AUDIT_PATH.write_text(json.dumps(existing, indent=2), encoding="utf-8")
-    except OSError as exc:
-        log.warning("orchestration audit write failed: %s", exc)
+async def _append_orchestration_audit(entry: dict) -> None:
+    """Append a single audit entry to the orchestration audit log (thread-safe)."""
+    async with _orchestration_audit_lock:
+        existing = _load_orchestration_audit(limit=1000)
+        existing.append(entry)
+        try:
+            config_schema.atomic_write_json(_ORCHESTRATION_AUDIT_PATH, existing)
+        except OSError as exc:
+            log.warning("orchestration audit write failed: %s", exc)
 
 
 @app.get("/api/fleet/orchestration")
@@ -5287,7 +5292,7 @@ async def fleet_orchestration_dispatch(request: Request) -> dict:
     audit_entry["ref"] = ref
     audit_entry["machine_target"] = machine_target
     audit_entry["audit_id"] = audit_id
-    _append_orchestration_audit(audit_entry)
+    await _append_orchestration_audit(audit_entry)
 
     log.info(
         "fleet-orchestration dispatch repo=%s workflow=%s ref=%s target=%s by=%s",
@@ -5404,7 +5409,7 @@ async def fleet_orchestration_deploy(request: Request) -> dict:
     audit_entry["deploy_action"] = action
     audit_entry["machine"] = machine
     audit_entry["audit_id"] = audit_id
-    _append_orchestration_audit(audit_entry)
+    await _append_orchestration_audit(audit_entry)
 
     log.info(
         "fleet-orchestration deploy machine=%s action=%s by=%s",

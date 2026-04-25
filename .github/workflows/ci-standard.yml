@@ -68,7 +68,20 @@ jobs:
       - name: Install backend dependencies
         run: pip install -r requirements.txt types-PyYAML types-requests
       - name: Type Check
-        run: mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__'
+        run: mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional
+      - name: Run bandit security scan
+        run: bandit -r backend/ -ll -ii --exclude backend/__pycache__ -f json -o bandit-report.json || true
+        continue-on-error: true  # non-blocking, report only
+
+      - name: Upload bandit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-security-report
+          path: bandit-report.json
+          retention-days: 14
+          if-no-files-found: ignore
+
       - name: Verify No Placeholders
         run: |
           if grep -rE "TODO|FIXME" backend/ --include="*.py"; then
