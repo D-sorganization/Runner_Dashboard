@@ -11875,8 +11875,10 @@
         var requests = props.requests || [];
         var templates = props.templates || [];
         var loading = props.loading;
+        var promptNotes = props.promptNotes || { notes: "", enabled: true };
         var onDispatch = props.onDispatch;
         var onSaveTemplate = props.onSaveTemplate;
+        var onSavePromptNotes = props.onSavePromptNotes;
         var onRefresh = props.onRefresh;
         var frs = React.useState("");
         var selRepo = frs[0],
@@ -11902,6 +11904,15 @@
         var svs = React.useState(null);
         var saveStatus = svs[0],
           setSaveStatus = svs[1];
+        var pns = React.useState(promptNotes.notes);
+        var editingPromptNotes = pns[0],
+          setEditingPromptNotes = pns[1];
+        var pnse = React.useState(promptNotes.enabled);
+        var promptNotesEnabled = pnse[0],
+          setPromptNotesEnabled = pnse[1];
+        var pnss = React.useState(null);
+        var promptNotesSaveStatus = pnss[0],
+          setPromptNotesSaveStatus = pnss[1];
         var ALL_STANDARDS = ["tdd", "dbc", "dry", "lod", "security", "docs"];
         function toggleStd(s) {
           setSelStds(function (prev) {
@@ -11917,11 +11928,15 @@
         function doDispatch() {
           if (!selRepo || !promptText.trim()) return;
           setDispatchStatus("dispatching");
+          var finalPrompt = promptText;
+          if (promptNotesEnabled && editingPromptNotes.trim()) {
+            finalPrompt = editingPromptNotes + "\n\n" + promptText;
+          }
           onDispatch({
             repository: selRepo,
             branch: selBranch,
             provider: selProvider,
-            prompt: promptText,
+            prompt: finalPrompt,
             standards: Object.keys(selStds).filter(function (k) {
               return selStds[k];
             }),
@@ -11948,6 +11963,19 @@
         function loadTemplate(t) {
           setPromptText(t.prompt);
         }
+        function doSavePromptNotes() {
+          setPromptNotesSaveStatus("saving");
+          onSavePromptNotes({ notes: editingPromptNotes, enabled: promptNotesEnabled })
+            .then(function () {
+              setPromptNotesSaveStatus("ok");
+              setTimeout(function () {
+                setPromptNotesSaveStatus(null);
+              }, 2000);
+            })
+            .catch(function () {
+              setPromptNotesSaveStatus("error");
+            });
+        }
         return h(
           "div",
           { style: { padding: 20 } },
@@ -11956,6 +11984,106 @@
             { className: "section-header" },
             I.issue(14),
             "Feature Requests",
+          ),
+          h(
+            "div",
+            {
+              style: {
+                background: "var(--bg-secondary)",
+                border: "1px solid var(--border)",
+                borderRadius: 6,
+                padding: 12,
+                marginBottom: 20,
+              },
+            },
+            h(
+              "div",
+              { style: { marginBottom: 10 } },
+              h(
+                "div",
+                {
+                  style: {
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    marginBottom: 8,
+                  },
+                },
+                h("input", {
+                  type: "checkbox",
+                  checked: promptNotesEnabled,
+                  onChange: function (e) {
+                    setPromptNotesEnabled(e.target.checked);
+                  },
+                  style: { cursor: "pointer" },
+                }),
+                h(
+                  "label",
+                  {
+                    style: {
+                      fontWeight: 600,
+                      fontSize: 13,
+                      cursor: "pointer",
+                      userSelect: "none",
+                    },
+                  },
+                  "Auto-inject Prompt Notes",
+                ),
+              ),
+              h(
+                "div",
+                { style: { fontSize: 11, color: "var(--text-muted)", marginBottom: 8 } },
+                "These notes will be automatically prepended to every prompt dispatch",
+              ),
+            ),
+            h("textarea", {
+              value: editingPromptNotes,
+              onChange: function (e) {
+                setEditingPromptNotes(e.target.value);
+              },
+              placeholder:
+                "Enter global prompt notes that will be auto-added to every dispatch…",
+              rows: 6,
+              style: {
+                width: "100%",
+                background: "var(--bg-primary)",
+                border: "1px solid var(--border)",
+                color: "var(--text-primary)",
+                borderRadius: 4,
+                padding: 8,
+                fontSize: 12,
+                resize: "vertical",
+                boxSizing: "border-box",
+                fontFamily: "monospace",
+              },
+            }),
+            h(
+              "div",
+              { style: { marginTop: 8, display: "flex", gap: 8, alignItems: "center" } },
+              h(
+                "button",
+                {
+                  className: "action-btn secondary",
+                  onClick: doSavePromptNotes,
+                  style: { padding: "4px 12px", fontSize: 12 },
+                },
+                "Save Notes",
+              ),
+              promptNotesSaveStatus === "ok"
+                ? h(
+                    "div",
+                    { style: { color: "var(--accent-green)", fontSize: 11 } },
+                    "✓ Saved",
+                  )
+                : null,
+              promptNotesSaveStatus === "error"
+                ? h(
+                    "div",
+                    { style: { color: "var(--accent-red)", fontSize: 11 } },
+                    "✗ Failed",
+                  )
+                : null,
+            ),
           ),
           h(
             "div",
@@ -12604,7 +12732,9 @@
         var frl = React.useState(false);
         var featureRequestsLoading = frl[0],
           setFeatureRequestsLoading = frl[1];
-
+        var pns = React.useState({ notes: "", enabled: true });
+        var promptNotes = pns[0],
+          setPromptNotes = pns[1];
 
         function fetchFleetOrchestration() {
           setFleetOrchLoading(true);
@@ -13189,16 +13319,19 @@
               .catch(function () {
                 return { requests: [] };
               }),
-            fetch("/api/prompt-templates")
+            fetch("/api/feature-requests/templates")
               .then(function (r) {
                 return r.json();
               })
               .catch(function () {
-                return { templates: [] };
+                return { templates: [], promptNotes: { notes: "", enabled: true } };
               }),
           ]).then(function (results) {
             setFeatureRequests(results[0].requests || []);
             setPromptTemplates(results[1].templates || []);
+            if (results[1].promptNotes) {
+              setPromptNotes(results[1].promptNotes);
+            }
             setFeatureRequestsLoading(false);
           });
         }
@@ -13234,6 +13367,20 @@
               fetchFeatureRequests();
               return d;
             });
+        }
+
+        function updatePromptNotes(params) {
+          return fetch("/api/settings/prompt-notes", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(params),
+          }).then(function (r) {
+            if (!r.ok)
+              return r.json().then(function (e) {
+                throw new Error(e.detail || "save failed");
+              });
+            return r.json();
+          });
         }
 
         function fetchOptionalStats() {
@@ -14383,8 +14530,10 @@
                                                   templates: promptTemplates,
                                                   standards: featureStandards,
                                                   loading: featureRequestsLoading,
+                                                  promptNotes: promptNotes,
                                                   onDispatch: dispatchFeatureRequest,
                                                   onSaveTemplate: savePromptTemplate,
+                                                  onSavePromptNotes: updatePromptNotes,
                                                   onRefresh: fetchFeatureRequests,
                                                 })
                                               : tab === "maxwell"

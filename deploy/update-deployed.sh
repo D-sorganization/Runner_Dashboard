@@ -45,7 +45,12 @@ if [[ -z "$ARTIFACT_SOURCE" ]]; then
 fi
 
 info "Installing/updating backend dependencies..."
-pip_install fastapi uvicorn psutil httpx PyYAML
+if [[ -f "$REPO/backend/requirements.txt" ]]; then
+    pip_install -r "$REPO/backend/requirements.txt"
+else
+    # Fallback: install known packages if requirements.txt is absent (e.g. artifact deploy)
+    pip_install fastapi pydantic uvicorn psutil httpx PyYAML
+fi
 ok "backend dependencies installed"
 
 if ! dry_run "backup $DEPLOY_DIR"; then
