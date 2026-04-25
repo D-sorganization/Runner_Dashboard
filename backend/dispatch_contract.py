@@ -20,7 +20,7 @@ import hmac
 import json
 import os
 from dataclasses import asdict, dataclass, field
-from enum import StrEnum
+from enum import Enum
 from typing import Any
 from uuid import uuid4
 
@@ -55,7 +55,13 @@ def _load_signing_secret() -> str:
     return secret
 
 
-class TimestampValidationResult(StrEnum):
+class _StrEnum(str, Enum):
+    """Python 3.10 compatible StrEnum."""
+
+    pass
+
+
+class TimestampValidationResult(_StrEnum):
     """Result of timestamp freshness validation."""
 
     VALID = "valid"
@@ -126,7 +132,7 @@ def _verify_envelope_signature(
     return hmac.compare_digest(expected, signature)
 
 
-class DispatchAccess(StrEnum):
+class DispatchAccess(_StrEnum):
     """Access level for an allowlisted dispatch action."""
 
     READ_ONLY = "read_only"

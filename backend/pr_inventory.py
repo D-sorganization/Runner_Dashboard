@@ -9,12 +9,15 @@ the backend) so no extra credentials are required.
 from __future__ import annotations
 
 import asyncio
+import datetime as _dt_mod
 import json
 import logging
 import re
 import time
-from datetime import UTC, datetime
 from typing import Any
+
+UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
+datetime = _dt_mod.datetime
 
 log = logging.getLogger("dashboard")
 

@@ -6,7 +6,7 @@ import datetime as _dt_mod
 import ipaddress
 import re
 from dataclasses import asdict, dataclass, field
-from enum import StrEnum
+from enum import Enum
 from typing import Any
 from urllib.parse import urlparse
 from uuid import uuid4
@@ -28,7 +28,13 @@ PRIVATE_NETWORKS = (
 )
 
 
-class RemoteExecutionAccess(StrEnum):
+class _StrEnum(str, Enum):
+    """Python 3.10 compatible StrEnum."""
+
+    pass
+
+
+class RemoteExecutionAccess(_StrEnum):
     READ_ONLY = "read_only"
     PRIVILEGED = "privileged"
 
