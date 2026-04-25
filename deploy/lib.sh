@@ -54,6 +54,18 @@ backup_dir() {
     fi
 }
 
+# GitHub token validation. Returns 0 if the token matches any known GitHub
+# token format; exits non-zero with an error message otherwise.
+# Accepted prefixes: ghp_ (classic PAT), github_pat_ (fine-grained PAT),
+#                    ghs_ (GitHub Apps installation), gho_ (OAuth)
+validate_gh_token() {
+    local token="$1"
+    if [[ ! "$token" =~ ^(ghp_|github_pat_|ghs_|gho_)[A-Za-z0-9_]{20,}$ ]]; then
+        echo "ERROR: GH_TOKEN does not match expected GitHub token format" >&2
+        return 1
+    fi
+}
+
 # Dry-run support. Set DRY_RUN=true to enable.
 # Usage: dry_run "description" || { actual_command; }
 DRY_RUN="${DRY_RUN:-false}"

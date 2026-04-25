@@ -16,7 +16,7 @@
 #   - The Runner Dashboard already running (via systemd or start-dashboard.sh)
 #
 # Usage:
-#   cd /mnt/c/Users/diete/Repositories/Repository_Management/runner-dashboard
+#   cd /mnt/c/Users/<username>/Repositories/runner-dashboard
 #   sed -i 's/\r$//' deploy/setup-tailscale.sh
 #   chmod +x deploy/setup-tailscale.sh
 #   ./deploy/setup-tailscale.sh
@@ -50,8 +50,13 @@ if command -v tailscale &>/dev/null; then
     ok "Tailscale is already installed"
     tailscale version
 else
-    info "Installing Tailscale..."
-    curl -fsSL https://tailscale.com/install.sh | sh
+    info "Installing Tailscale via official apt repo (safer than curl|sh)..."
+    curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/jammy.noarmor.gpg \
+        | sudo tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null
+    curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/jammy.tailscale-keyring.list \
+        | sudo tee /etc/apt/sources.list.d/tailscale.list
+    sudo apt-get update -qq
+    sudo apt-get install -y tailscale
     ok "Tailscale installed"
 fi
 

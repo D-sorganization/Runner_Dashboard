@@ -4,12 +4,15 @@ Documentation=https://github.com/D-sorganization/Repository_Management/blob/main
 After=network-online.target
 Wants=network-online.target
 
+# This file is a reference template. User, Group, WorkingDirectory, ExecStart,
+# and RUNNER_SCHEDULE_CONFIG are set to per-machine values by install-autoscaler.sh.
 [Service]
 Type=simple
-User=dieterolson
-Group=dieterolson
-WorkingDirectory=/home/dieterolson/actions-runners/dashboard/backend
-ExecStart=/usr/bin/python3 /home/dieterolson/actions-runners/dashboard/backend/runner_autoscaler.py
+# User and Group are set by install-autoscaler.sh at deploy time.
+User=YOUR_USER
+Group=YOUR_USER
+WorkingDirectory=/home/YOUR_USER/actions-runners/dashboard/backend
+ExecStart=/usr/bin/python3 /home/YOUR_USER/actions-runners/dashboard/backend/runner_autoscaler.py
 Restart=on-failure
 RestartSec=15
 
@@ -27,13 +30,27 @@ Environment=AUTOSCALER_MIN_ONLINE=1
 Environment=AUTOSCALER_MAX_SCALE_STEP=1
 Environment=AUTOSCALER_DRY_RUN=0
 Environment=AUTOSCALER_LOG_LEVEL=INFO
-Environment=RUNNER_SCHEDULE_CONFIG=/home/dieterolson/.config/runner-dashboard/runner-schedule.json
+Environment=RUNNER_SCHEDULE_CONFIG=/home/YOUR_USER/.config/runner-dashboard/runner-schedule.json
 Environment=RUNNER_SCHEDULER_BIN=/usr/local/bin/runner-scheduler
 
 # Needs passwordless sudo for `systemctl start/stop actions.runner.*.service`.
 # Install this sudoers drop-in when deploying (see deploy/install-autoscaler.sh):
-#   %dieterolson ALL=(root) NOPASSWD: /usr/bin/systemctl start actions.runner.*, \
-#                                      /usr/bin/systemctl stop actions.runner.*
+#   YOUR_USER ALL=(root) NOPASSWD: /usr/bin/systemctl start actions.runner.*, \
+#                                   /usr/bin/systemctl stop actions.runner.*
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=read-only
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RemoveIPC=true
+# Allow autoscaler to read runner schedule config from the service user HOME.
+ReadWritePaths=/home/YOUR_USER/.config/runner-dashboard
 
 [Install]
 WantedBy=multi-user.target
