@@ -60,7 +60,7 @@ jobs:
       should_run: ${{ steps.decide.outputs.should_run }}
     steps:
       - id: decide
-        uses: actions/github-script@v7
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
         env:
           DISPATCH_EPIC: ${{ inputs.epic_number }}
           DISPATCH_STAGE: ${{ inputs.stage }}
@@ -91,7 +91,7 @@ jobs:
     if: needs.route.outputs.should_run == 'true' && needs.route.outputs.stage == 'preview'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
 
       - name: Install js-yaml
         run: npm install --no-save js-yaml@4
@@ -100,14 +100,14 @@ jobs:
       # `rollout:in-progress` add and the backfill apply have everything
       # they need. Idempotent.
       - name: Sync labels
-        uses: actions/github-script@v7
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
         with:
           script: |
             const { sync } = require('./.github/scripts/labels-sync.js');
             await sync({ github, context, core, dryRun: false });
 
       - name: Mark in-progress, announce start
-        uses: actions/github-script@v7
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
         env:
           EPIC: ${{ needs.route.outputs.epic }}
         with:
@@ -140,7 +140,7 @@ jobs:
 
       - name: Backfill (dry-run) and collect preview
         id: bf
-        uses: actions/github-script@v7
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
         with:
           script: |
             const backfill = require('./.github/scripts/issue-backfill.js');
@@ -156,7 +156,7 @@ jobs:
             core.setOutput('hierarchy_count', hierRes.preview.length);
 
       - name: Post preview to epic
-        uses: actions/github-script@v7
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
         env:
           EPIC: ${{ needs.route.outputs.epic }}
           LABELS_PREVIEW: ${{ steps.bf.outputs.labels_preview }}
@@ -201,13 +201,13 @@ jobs:
     if: needs.route.outputs.should_run == 'true' && needs.route.outputs.stage == 'apply'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
 
       - name: Install js-yaml
         run: npm install --no-save js-yaml@4
 
       - name: Announce apply start
-        uses: actions/github-script@v7
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
         env:
           EPIC: ${{ needs.route.outputs.epic }}
         with:
@@ -227,7 +227,7 @@ jobs:
 
       - name: Backfill (apply for real)
         id: bf
-        uses: actions/github-script@v7
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
         with:
           script: |
             const backfill = require('./.github/scripts/issue-backfill.js');
@@ -245,7 +245,7 @@ jobs:
             core.setOutput('hier_skipped', hierRes.skipped);
 
       - name: Finalize labels and post summary
-        uses: actions/github-script@v7
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
         env:
           EPIC: ${{ needs.route.outputs.epic }}
           LABELS_ADDED: ${{ steps.bf.outputs.labels_added }}
