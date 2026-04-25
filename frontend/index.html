@@ -15255,7 +15255,6 @@
         var asstS = React.useState(lsGet(ASST_LS.open, lsGet(ASST_LS.openByDefault, false)));
         var asstOpen = asstS[0], setAsstOpen = asstS[1];
         function toggleAsst() { setAsstOpen(function (o) { var n = !o; lsSet(ASST_LS.open, n); return n; }); }
-
         var rmS = React.useState(null);
         var recoveryModal = rmS[0], setRecoveryModal = rmS[1];
 
