@@ -9,6 +9,11 @@ const {
   selectTiers,
   getAgentsForTiers,
   AGENT_ROSTER,
+  withRetry,
+  hasExistingConsensus,
+  STATUS_MARKER,
+  MAX_RETRIES,
+  INITIAL_RETRY_DELAY_MS,
 } = require("./panel-review");
 
 // ---------------------------------------------------------------------------
@@ -302,5 +307,89 @@ describe("AGENT_ROSTER", () => {
     assert.ok(AGENT_ROSTER["tier-2"]);
     assert.ok(AGENT_ROSTER["tier-3"]);
     assert.ok(AGENT_ROSTER.research);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// withRetry
+// ---------------------------------------------------------------------------
+describe("withRetry", () => {
+  it("returns result on first success", async () => {
+    let calls = 0;
+    const fn = async () => {
+      calls++;
+      return "ok";
+    };
+    const result = await withRetry(fn, { label: "test" }, { info() {}, warning() {}, error() {} });
+    assert.strictEqual(result, "ok");
+    assert.strictEqual(calls, 1);
+  });
+
+  it("retries on failure and then succeeds", async () => {
+    let calls = 0;
+    const fn = async () => {
+      calls++;
+      if (calls < 3) throw new Error("fail");
+      return "ok";
+    };
+    const result = await withRetry(fn, { label: "test", initialDelay: 10 }, { info() {}, warning() {}, error() {} });
+    assert.strictEqual(result, "ok");
+    assert.strictEqual(calls, 3);
+  });
+
+  it("throws after max retries exhausted", async () => {
+    let calls = 0;
+    const fn = async () => {
+      calls++;
+      throw new Error("always fails");
+    };
+    try {
+      await withRetry(fn, { label: "test", initialDelay: 1, maxRetries: 2 }, { info() {}, warning() {}, error() {} });
+      assert.fail("Expected withRetry to throw");
+    } catch (err) {
+      assert.strictEqual(err.message, "always fails");
+      assert.strictEqual(calls, 2);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// hasExistingConsensus
+// ---------------------------------------------------------------------------
+describe("hasExistingConsensus", () => {
+  it("returns true when summary marker exists", () => {
+    const comments = [{ body: "some text\n<!-- panel-review:summary:v1 -->\nmore text" }];
+    assert.strictEqual(hasExistingConsensus(comments), true);
+  });
+
+  it("returns false when no summary marker", () => {
+    const comments = [{ body: "some text\n<!-- panel-review:brief:v1 -->\nmore text" }];
+    assert.strictEqual(hasExistingConsensus(comments), false);
+  });
+
+  it("returns false for empty comments", () => {
+    assert.strictEqual(hasExistingConsensus([]), false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// STATUS_MARKER export
+// ---------------------------------------------------------------------------
+describe("STATUS_MARKER", () => {
+  it("is defined", () => {
+    assert.strictEqual(STATUS_MARKER, "<!-- panel-review:status:v1 -->");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// MAX_RETRIES and INITIAL_RETRY_DELAY_MS
+// ---------------------------------------------------------------------------
+describe("retry constants", () => {
+  it("has expected MAX_RETRIES", () => {
+    assert.strictEqual(MAX_RETRIES, 3);
+  });
+
+  it("has expected INITIAL_RETRY_DELAY_MS", () => {
+    assert.strictEqual(INITIAL_RETRY_DELAY_MS, 1000);
   });
 });

@@ -21,7 +21,7 @@ name: Agent Panel Review
 on:
   schedule:
     # Weekly sweep. Panelists are slow; daily creates noise.
-    - cron: "0 14 * * 1" # Monday 14:00 UTC
+    - cron: "0 9 * * 1" # Monday 9:00 UTC
   workflow_dispatch:
     inputs:
       issue_number:
@@ -56,6 +56,7 @@ jobs:
       github.event_name == 'issues' &&
       github.event.label.name == 'panel-review'
     runs-on: d-sorg-fleet
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
       - uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
@@ -75,6 +76,7 @@ jobs:
   sweep:
     if: github.event_name != 'issues'
     runs-on: d-sorg-fleet
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
       - uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7

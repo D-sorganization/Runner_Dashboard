@@ -21,8 +21,11 @@
 
 const BRIEF_MARKER = "<!-- panel-review:brief:v1 -->";
 const SUMMARY_MARKER = "<!-- panel-review:summary:v1 -->";
+const STATUS_MARKER = "<!-- panel-review:status:v1 -->";
 const OPINION_MARKER_RE = /<!--\s*panel-opinion:v1\s+([^>]+?)\s*-->/;
 const MIN_OPINIONS_FOR_SUMMARY = 2;
+const MAX_RETRIES = 3;
+const INITIAL_RETRY_DELAY_MS = 1000;
 
 /**
  * Parse an opinion comment body into structured data.
@@ -342,6 +345,91 @@ async function summarize({ github, context, core, issue }) {
   core.info(`Posted summary on #${issue.number}`);
 }
 
+/**
+ * Sleep helper for retry delays.
+ * @param {number} ms - Milliseconds to sleep
+ */
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Retry a function with exponential backoff.
+ *
+ * @param {Function} fn - Async function to retry
+ * @param {object} options
+ * @param {number} options.maxRetries - Max retry attempts
+ * @param {number} options.initialDelay - Initial delay in ms
+ * @param {string} options.label - Label for logging
+ * @param {object} core - GitHub Actions core for logging
+ * @returns {Promise} Result of fn
+ */
+async function withRetry(fn, { maxRetries = MAX_RETRIES, initialDelay = INITIAL_RETRY_DELAY_MS, label = "operation" }, core) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const isLast = attempt === maxRetries;
+      core.warning(
+        `${label} attempt ${attempt}/${maxRetries} failed: ${err.message}${isLast ? " (giving up)" : ""}`,
+      );
+      if (isLast) throw err;
+      const delay = initialDelay * Math.pow(2, attempt - 1);
+      core.info(`Retrying ${label} in ${delay}ms...`);
+      await sleep(delay);
+    }
+  }
+}
+
+/**
+ * Check if an issue already has a panel consensus summary posted.
+ *
+ * @param {Array} comments - Issue comments
+ * @returns {boolean}
+ */
+function hasExistingConsensus(comments) {
+  return comments.some((c) => c.body && c.body.includes(SUMMARY_MARKER));
+}
+
+/**
+ * Post a status comment on an issue indicating panel review is in progress.
+ * Idempotent: skips if a status comment already exists.
+ *
+ * @param {object} options
+ * @param {object} options.github - GitHub API client
+ * @param {object} options.context - GitHub Actions context
+ * @param {object} options.core - GitHub Actions core
+ * @param {object} options.issue - Issue object
+ */
+async function postStatusComment({ github, context, core, issue }) {
+  const { owner, repo } = context.repo;
+  const comments = await github.paginate(
+    github.rest.issues.listComments,
+    { owner, repo, issue_number: issue.number, per_page: 100 },
+  );
+
+  if (comments.some((c) => c.body && c.body.includes(STATUS_MARKER))) {
+    core.info(`Status comment already exists on #${issue.number}`);
+    return;
+  }
+
+  const body = [
+    STATUS_MARKER,
+    "## Panel review in progress",
+    "",
+    `A panel review has been initiated for this issue. Agents from the relevant tier(s) have been invited to weigh in.`,
+    "",
+    "- **Status:** Awaiting panelist opinions...",
+    "",
+    "_This comment will remain as a log of the panel review initiation._",
+  ].join("\n");
+
+  await github.rest.issues.createComment({
+    owner, repo, issue_number: issue.number, body,
+  });
+  core.info(`Posted status comment on #${issue.number}`);
+}
+
 async function sweep({ github, context, core, specificIssueNumber, mode }) {
   const { owner, repo } = context.repo;
 
@@ -357,17 +445,62 @@ async function sweep({ github, context, core, specificIssueNumber, mode }) {
     });
   }
 
+  // Sort by age (oldest first) to ensure fair rotation
+  issues.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
   core.info(`Sweeping ${issues.length} panel-review issue(s) in mode=${mode}`);
+
+  const failures = [];
 
   for (const issue of issues) {
     if (issue.pull_request) continue; // listForRepo mixes in PRs
 
-    if (mode === "brief" || mode === "both") {
-      await postBrief({ github, context, core, issue });
+    try {
+      // Check for existing consensus (optimization: skip brief/summarize if done)
+      const comments = await github.paginate(
+        github.rest.issues.listComments,
+        { owner, repo, issue_number: issue.number, per_page: 100 },
+      );
+
+      if (hasExistingConsensus(comments)) {
+        core.info(`#${issue.number} already has a consensus summary; skipping`);
+        continue;
+      }
+
+      // Post status comment for tracking
+      await withRetry(
+        () => postStatusComment({ github, context, core, issue }),
+        { label: `postStatusComment(#${issue.number})` },
+        core,
+      );
+
+      if (mode === "brief" || mode === "both") {
+        await withRetry(
+          () => postBrief({ github, context, core, issue }),
+          { label: `postBrief(#${issue.number})` },
+          core,
+        );
+      }
+      if (mode === "summarize" || mode === "both") {
+        await withRetry(
+          () => summarize({ github, context, core, issue }),
+          { label: `summarize(#${issue.number})` },
+          core,
+        );
+      }
+    } catch (err) {
+      core.error(`Failed to process #${issue.number}: ${err.message}`);
+      failures.push({ number: issue.number, error: err.message });
     }
-    if (mode === "summarize" || mode === "both") {
-      await summarize({ github, context, core, issue });
+  }
+
+  if (failures.length > 0) {
+    core.warning(`Panel review sweep completed with ${failures.length} failure(s):`);
+    for (const f of failures) {
+      core.warning(`  - #${f.number}: ${f.error}`);
     }
+  } else {
+    core.info("Panel review sweep completed successfully.");
   }
 }
 
@@ -427,10 +560,16 @@ module.exports = {
   postBrief,
   summarize,
   sweep,
+  postStatusComment,
+  withRetry,
+  hasExistingConsensus,
   parseOpinion,
   calculateConsensus,
   generateSummary,
   AGENT_ROSTER,
   selectTiers,
   getAgentsForTiers,
+  STATUS_MARKER,
+  MAX_RETRIES,
+  INITIAL_RETRY_DELAY_MS,
 };
