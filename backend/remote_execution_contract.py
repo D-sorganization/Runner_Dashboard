@@ -364,10 +364,25 @@ def validate_envelope(
             target,
             True,
         )
-    assert envelope.confirmation is not None  # narrowed by guard above
-    if action.access is RemoteExecutionAccess.PRIVILEGED and not envelope.confirmation.approved_by.strip():
+
+    # Explicit narrowing for type checker and runtime safety.
+    # The guard above only fires for PRIVILEGED actions; read-only actions may
+    # legally omit confirmation. We narrow here so the remaining code can
+    # safely access confirmation fields without runtime errors or assert
+    # statements (which are stripped in optimised Python mode).
+    confirmation = envelope.confirmation
+    if confirmation is None:
+        return RemoteExecutionValidationResult(
+            False,
+            "confirmation is required but missing",
+            action,
+            target,
+            True,
+        )
+
+    if action.access is RemoteExecutionAccess.PRIVILEGED and not confirmation.approved_by.strip():
         return RemoteExecutionValidationResult(False, "confirmation must record approved_by", action, target, True)
-    if action.access is RemoteExecutionAccess.PRIVILEGED and not envelope.confirmation.approved_at.strip():
+    if action.access is RemoteExecutionAccess.PRIVILEGED and not confirmation.approved_at.strip():
         return RemoteExecutionValidationResult(False, "confirmation must record approved_at", action, target, True)
     if action.name == "node.deploy_artifact" and not envelope.artifact_ref.strip():
         return RemoteExecutionValidationResult(
