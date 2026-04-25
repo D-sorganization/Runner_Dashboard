@@ -58,7 +58,8 @@ jobs:
           python-version: "3.11"
 
       - name: Reap expired leases
-        continue-on-error: true
+        # Fail-open by design: reaper errors only delay cleanup, never block agents.
+        # Error handling is done inline; the step always exits 0.
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           DRY_RUN: ${{ inputs.dry_run }}
@@ -81,10 +82,13 @@ jobs:
 
       - name: Summary
         if: always()
+        env:
+          DRY_RUN_DISPLAY: ${{ inputs.dry_run || 'false' }}
+          REPOS_DISPLAY: ${{ inputs.repos || '(all)' }}
         run: |
           {
             echo "## Agent Lease Reaper"
             echo ""
-            echo "- **Dry run:** ${{ inputs.dry_run || 'false' }}"
-            echo "- **Repos override:** ${{ inputs.repos || '(all)' }}"
+            echo "- **Dry run:** $DRY_RUN_DISPLAY"
+            echo "- **Repos override:** $REPOS_DISPLAY"
           } >> "$GITHUB_STEP_SUMMARY"
