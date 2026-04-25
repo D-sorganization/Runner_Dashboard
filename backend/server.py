@@ -4779,7 +4779,7 @@ async def dispatch_feature_request(request: Request) -> dict:
         raise HTTPException(status_code=422, detail="repository and prompt required")
 
     # Load and apply prompt notes if enabled
-    prompt_notes_data = {"notes": "", "enabled": True}
+    prompt_notes_data: dict[str, object] = {"notes": "", "enabled": True}
     try:
         if _PROMPT_NOTES_PATH.exists():
             prompt_notes_data = json.loads(_PROMPT_NOTES_PATH.read_text(encoding="utf-8"))
@@ -4788,8 +4788,9 @@ async def dispatch_feature_request(request: Request) -> dict:
 
     # Build full prompt with notes and standards injection
     full_prompt = prompt
-    if prompt_notes_data.get("enabled", True) and prompt_notes_data.get("notes", "").strip():
-        full_prompt = f"{prompt_notes_data['notes']}\n\n{prompt}"
+    notes_val = str(prompt_notes_data.get("notes", ""))
+    if prompt_notes_data.get("enabled", True) and notes_val.strip():
+        full_prompt = f"{notes_val}\n\n{prompt}"
 
     injected_standards = "\n\n".join(
         f"[{s.upper()}] {STANDARDS_INJECTION[s]}" for s in standards if s in STANDARDS_INJECTION
