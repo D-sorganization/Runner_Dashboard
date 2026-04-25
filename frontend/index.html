@@ -1224,19 +1224,26 @@
   <body>
     <div id="root"></div>
 
+    <!-- CDN scripts – crossorigin="anonymous" required for SRI enforcement.       -->
+    <!-- TODO(#18): compute and add integrity="sha256-…" hashes for each library  -->
+    <!-- once a pinned-hash workflow is in place, then remove 'strict-dynamic'    -->
+    <!-- from the CSP script-src directive in backend/server.py.                  -->
     <script
-      crossorigin
+      crossorigin="anonymous"
       src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"
     ></script>
     <script
-      crossorigin
+      crossorigin="anonymous"
       src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"
     ></script>
     <script
-      crossorigin
+      crossorigin="anonymous"
       src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js"
     ></script>
-    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.5/dist/purify.min.js"></script>
+    <script
+      crossorigin="anonymous"
+      src="https://cdn.jsdelivr.net/npm/dompurify@3.2.5/dist/purify.min.js"
+    ></script>
     <script>
       window.__dashboardRenderFailed = function (message) {
         var root = document.getElementById("root");
@@ -1269,6 +1276,24 @@
       // Configure marked with safe options (issue #7)
       if (typeof marked !== "undefined") {
         marked.use({ mangle: false, headerIds: false, gfm: true });
+      }
+
+      /**
+       * safeOpen – open a URL in a new tab only when it belongs to a trusted
+       * origin (issue #30).  Blocks arbitrary URLs that could be injected via
+       * API responses.
+       * @param {string} url
+       */
+      function safeOpen(url) {
+        if (
+          !url.startsWith("http://localhost") &&
+          !url.startsWith("https://github.com/") &&
+          !url.startsWith("https://api.github.com/")
+        ) {
+          console.error("Blocked unsafe URL:", url);
+          return;
+        }
+        window.open(url, "_blank", "noopener,noreferrer");
       }
 
       var LANG_COLORS = {
@@ -2968,7 +2993,7 @@
           });
           fetch("/api/tests/rerun", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify({ repo: repo, run_id: runId }),
           })
             .then(function (r) {
@@ -3164,7 +3189,7 @@
               : "/api/heavy-tests/dispatch";
           fetch(url, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify({
               repo: repoName,
               python_version: pyVer,
@@ -3514,7 +3539,8 @@
 
         function refresh() {
           setLoading(true);
-          fetch("/api/stats/workflows?days=" + days + "&group_by=" + groupBy)
+          var wfParams = new URLSearchParams({ days: days, group_by: groupBy });
+          fetch("/api/stats/workflows?" + wfParams)
             .then(function (r) {
               return r.json();
             })
@@ -3531,17 +3557,14 @@
             setTimeseries({ series: [] });
             return;
           }
-          var params = "days=" + Math.max(days, 30) + "&bucket_hours=24";
+          var tsParamObj = { days: Math.max(days, 30), bucket_hours: 24 };
           if (groupBy === "workflow") {
-            params +=
-              "&repo=" +
-              encodeURIComponent(row.repo) +
-              "&workflow_name=" +
-              encodeURIComponent(row.workflow_name);
+            tsParamObj.repo = row.repo;
+            tsParamObj.workflow_name = row.workflow_name;
           } else {
-            params += "&repo=" + encodeURIComponent(row.repo);
+            tsParamObj.repo = row.repo;
           }
-          fetch("/api/stats/workflows/timeseries?" + params)
+          fetch("/api/stats/workflows/timeseries?" + new URLSearchParams(tsParamObj))
             .then(function (r) {
               return r.json();
             })
@@ -3551,7 +3574,7 @@
         }
         function collectNow() {
           setLoading(true);
-          fetch("/api/stats/workflows/collect", { method: "POST" })
+          fetch("/api/stats/workflows/collect", { method: "POST", headers: { "X-Requested-With": "XMLHttpRequest" } })
             .then(function (r) {
               return r.json();
             })
@@ -4453,7 +4476,7 @@
           });
           fetch("/api/deployment/update-signal", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify({
               node: machine.name,
               reason: "dashboard-ui",
@@ -4492,7 +4515,7 @@
           );
           fetch("/api/deployment/update-signal", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify({
               node: machine.name,
               reason: "dashboard-ui",
@@ -5336,6 +5359,10 @@
         var crcs = React.useState(null);
         var confirmRun = crcs[0],
           setConfirmRun = crcs[1];
+        // Inline status message replaces alert() (issue #51)
+        var cms = React.useState(null);
+        var cancelMsg = cms[0],
+          setCancelMsg = cms[1];
         var ipSortState = React.useState({ key: "runningFor", dir: "desc" });
         var ipSort = ipSortState[0],
           setIpSort = ipSortState[1];
@@ -5419,7 +5446,7 @@
             n[key] = "pending";
             return n;
           });
-          fetch("/api/runs/" + repo + "/cancel/" + runId, { method: "POST" })
+          fetch("/api/runs/" + repo + "/cancel/" + runId, { method: "POST", headers: { "X-Requested-With": "XMLHttpRequest" } })
             .then(function (r) {
               return r.json();
             })
@@ -5454,7 +5481,7 @@
           setConfirmWorkflow(null);
           fetch("/api/queue/cancel-workflow", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify({
               workflow_name: workflowName,
               repo: repo || null,
@@ -5464,18 +5491,20 @@
               return r.json();
             })
             .then(function (d) {
-              alert(
+              var msg =
                 "Cancelled " +
-                  d.cancelled_count +
-                  " run(s)" +
-                  (d.errors && d.errors.length > 0
-                    ? "\nErrors: " + d.errors.join(", ")
-                    : ""),
-              );
+                d.cancelled_count +
+                " run(s)" +
+                (d.errors && d.errors.length > 0
+                  ? " — Errors: " + d.errors.join(", ")
+                  : "");
+              setCancelMsg({ type: "success", text: msg });
+              setTimeout(function () { setCancelMsg(null); }, 6000);
               if (onRefresh) setTimeout(onRefresh, 1500);
             })
             .catch(function () {
-              alert("Cancel request failed");
+              setCancelMsg({ type: "error", text: "Cancel request failed" });
+              setTimeout(function () { setCancelMsg(null); }, 6000);
             });
         }
         // Group queued runs by workflow name for bulk-cancel
@@ -5491,6 +5520,34 @@
         return h(
           "div",
           null,
+          cancelMsg
+            ? h(
+                "div",
+                {
+                  role: "alert",
+                  style: {
+                    margin: "0 0 12px",
+                    padding: "10px 16px",
+                    borderRadius: 6,
+                    background:
+                      cancelMsg.type === "error"
+                        ? "rgba(248,81,73,0.15)"
+                        : "rgba(63,185,80,0.15)",
+                    color:
+                      cancelMsg.type === "error"
+                        ? "var(--accent-red)"
+                        : "var(--accent-green)",
+                    border:
+                      "1px solid " +
+                      (cancelMsg.type === "error"
+                        ? "var(--accent-red)"
+                        : "var(--accent-green)"),
+                    fontSize: 13,
+                  },
+                },
+                cancelMsg.text,
+              )
+            : null,
           h(
             "div",
             { className: "stat-row" },
@@ -6885,7 +6942,7 @@
                     key: r.id,
                     style: { cursor: "pointer" },
                     onClick: function () {
-                      if (r.html_url) window.open(r.html_url, "_blank");
+                      if (r.html_url) safeOpen(r.html_url);
                     },
                   },
                   h("td", null, statusIcon(r)),
@@ -7753,6 +7810,10 @@
         var dpe = React.useState(false);
         var editingDefaultProvider = dpe[0],
           setEditingDefaultProvider = dpe[1];
+        // Inline status for Jules dispatch – replaces alert() (issue #51)
+        var jdm = React.useState(null);
+        var julesDispatchMsg = jdm[0],
+          setJulesDispatchMsg = jdm[1];
         React.useEffect(
           function () {
             setDraftRules(
@@ -8729,6 +8790,34 @@
                       ],
                 ),
               ),
+              julesDispatchMsg
+                ? h(
+                    "div",
+                    {
+                      role: "alert",
+                      style: {
+                        margin: "12px 0 0",
+                        padding: "10px 16px",
+                        borderRadius: 6,
+                        background:
+                          julesDispatchMsg.type === "error"
+                            ? "rgba(248,81,73,0.15)"
+                            : "rgba(63,185,80,0.15)",
+                        color:
+                          julesDispatchMsg.type === "error"
+                            ? "var(--accent-red)"
+                            : "var(--accent-green)",
+                        border:
+                          "1px solid " +
+                          (julesDispatchMsg.type === "error"
+                            ? "var(--accent-red)"
+                            : "var(--accent-green)"),
+                        fontSize: 13,
+                      },
+                    },
+                    julesDispatchMsg.text,
+                  )
+                : null,
               h(
                 "div",
                 { className: "section", style: { marginTop: 16 } },
@@ -8925,6 +9014,7 @@
                                           method: "POST",
                                           headers: {
                                             "Content-Type": "application/json",
+                                            "X-Requested-With": "XMLHttpRequest",
                                           },
                                           body: JSON.stringify({
                                             workflow_file: entry.workflow_file,
@@ -8936,18 +9026,16 @@
                                         .then(function (r) {
                                           if (!r.ok) {
                                             return r.json().then(function (e) {
-                                              alert(
-                                                "Dispatch failed: " +
-                                                  (e.detail || r.status),
-                                              );
+                                              setJulesDispatchMsg({ type: "error", text: "Dispatch failed: " + (e.detail || r.status) });
+                                              setTimeout(function () { setJulesDispatchMsg(null); }, 6000);
                                             });
                                           }
-                                          alert(
-                                            "Dispatched " + entry.workflow_file,
-                                          );
+                                          setJulesDispatchMsg({ type: "success", text: "Dispatched " + entry.workflow_file });
+                                          setTimeout(function () { setJulesDispatchMsg(null); }, 6000);
                                         })
                                         .catch(function (err) {
-                                          alert("Dispatch error: " + err);
+                                          setJulesDispatchMsg({ type: "error", text: "Dispatch error: " + err });
+                                          setTimeout(function () { setJulesDispatchMsg(null); }, 6000);
                                         });
                                     },
                                   },
@@ -10206,7 +10294,7 @@
           setIsLoading(true);
           fetch("/api/help/chat", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify({ question: q, current_tab: currentTab }),
           })
             .then(function (r) {
@@ -12626,7 +12714,7 @@
         function orchDispatch(params) {
           return fetch("/api/fleet/orchestration/dispatch", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify(params),
           }).then(function (r) {
             return r.json().then(function (d) {
@@ -12639,7 +12727,7 @@
         function orchDeploy(params) {
           return fetch("/api/fleet/orchestration/deploy", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify(params),
           }).then(function (r) {
             return r.json().then(function (d) {
@@ -12685,7 +12773,7 @@
         function dispatchWorkflow(params) {
           return fetch("/api/workflows/dispatch", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify(params),
           }).then(function (r) {
             return r.json().then(function (d) {
@@ -12723,7 +12811,7 @@
         function maxwellControl(params) {
           return fetch("/api/maxwell/control", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify(params),
           }).then(function (r) {
             return r.json().then(function (d) {
@@ -12972,7 +13060,7 @@
           setRemediationLoading(true);
           return fetch("/api/agent-remediation/config", {
             method: "PUT",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify({ policy: policy }),
           })
             .then(function (r) {
@@ -13025,7 +13113,7 @@
           setRemediationDispatchState(null);
           fetch("/api/agent-remediation/plan", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify(
               Object.assign({}, payload, {
                 provider_override: remediationProvider,
@@ -13060,7 +13148,7 @@
           setRemediationLoading(true);
           fetch("/api/agent-remediation/dispatch", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify(
               Object.assign({}, payload, {
                 provider: remediationProvider,
@@ -13130,7 +13218,7 @@
           setRunnerCapacityLoading(true);
           fetch("/api/fleet/schedule", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify({ schedule: schedule, apply: apply }),
           })
             .then(function (r) {
@@ -13168,7 +13256,7 @@
         function dispatchAssessment(params) {
           return fetch("/api/assessments/dispatch", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify(params),
           }).then(function (r) {
             if (!r.ok)
@@ -13206,7 +13294,7 @@
         function dispatchFeatureRequest(params) {
           return fetch("/api/feature-requests/dispatch", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify(params),
           }).then(function (r) {
             if (!r.ok)
@@ -13220,7 +13308,7 @@
         function savePromptTemplate(params) {
           return fetch("/api/prompt-templates", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify(params),
           })
             .then(function (r) {
@@ -13467,7 +13555,7 @@
           setRemediationLoading(true);
           return fetch("/api/agent-remediation/config", {
             method: "PUT",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify({ policy: policy }),
           })
             .then(function (r) {
@@ -13525,7 +13613,7 @@
           setRemediationDispatchState(null);
           fetch("/api/agent-remediation/plan", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify(
               Object.assign({}, payload, {
                 provider_override: remediationProvider,
@@ -13560,7 +13648,7 @@
           setRemediationLoading(true);
           fetch("/api/agent-remediation/dispatch", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify(
               Object.assign({}, payload, {
                 provider: remediationProvider,
@@ -13621,7 +13709,7 @@
           setRunnerCapacityLoading(true);
           fetch("/api/fleet/schedule", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify({ schedule: schedule, apply: apply }),
           })
             .then(function (r) {
@@ -13687,7 +13775,7 @@
 
         function onFleet(a) {
           setActionLoading(true);
-          fetch("/api/fleet/control/" + a, { method: "POST" })
+          fetch("/api/fleet/control/" + a, { method: "POST", headers: { "X-Requested-With": "XMLHttpRequest" } })
             .then(function () {
               setTimeout(fetchFleet, 2000);
             })
@@ -13699,7 +13787,7 @@
         }
         function onRunner(id, a) {
           setActionLoading(true);
-          fetch("/api/runners/" + id + "/" + a, { method: "POST" })
+          fetch("/api/runners/" + id + "/" + a, { method: "POST", headers: { "X-Requested-With": "XMLHttpRequest" } })
             .then(function () {
               setTimeout(fetchFleet, 2000);
             })
@@ -13739,11 +13827,13 @@
             ),
             h(
               "div",
-              { className: "tab-bar" },
+              { className: "tab-bar", role: "tablist", "aria-label": "Dashboard sections" },
               h(
                 "button",
                 {
                   className: "tab-btn" + (tab === "overview" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "overview",
                   onClick: function () {
                     setTab("overview");
                   },
@@ -13756,6 +13846,8 @@
                 {
                   className:
                     "tab-btn" + (tab === "remediation" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "remediation",
                   onClick: function () {
                     setTab("remediation");
                     fetchRemediationConfig();
@@ -13786,6 +13878,8 @@
                 "button",
                 {
                   className: "tab-btn" + (tab === "queue" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "queue",
                   onClick: function () {
                     setTab("queue");
                     fetchQueue();
@@ -13812,6 +13906,8 @@
                 "button",
                 {
                   className: "tab-btn" + (tab === "machines" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "machines",
                   onClick: function () {
                     setTab("machines");
                     fetchMachines();
@@ -13838,6 +13934,8 @@
                 "button",
                 {
                   className: "tab-btn" + (tab === "org" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "org",
                   onClick: function () {
                     setTab("org");
                   },
@@ -13849,6 +13947,8 @@
                 "button",
                 {
                   className: "tab-btn" + (tab === "tests" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "tests",
                   onClick: function () {
                     setTab("tests");
                   },
@@ -13860,6 +13960,8 @@
                 "button",
                 {
                   className: "tab-btn" + (tab === "stats" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "stats",
                   onClick: function () {
                     setTab("stats");
                   },
@@ -13871,6 +13973,8 @@
                 "button",
                 {
                   className: "tab-btn" + (tab === "reports" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "reports",
                   onClick: function () {
                     setTab("reports");
                   },
@@ -13883,6 +13987,8 @@
                 {
                   className:
                     "tab-btn" + (tab === "scheduled-jobs" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "scheduled-jobs",
                   onClick: function () {
                     setTab("scheduled-jobs");
                     fetchScheduledJobs();
@@ -13909,6 +14015,8 @@
                 "button",
                 {
                   className: "tab-btn" + (tab === "workflows" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "workflows",
                   onClick: function () {
                     setTab("workflows");
                     fetchWorkflowsList();
@@ -13936,6 +14044,8 @@
                 {
                   className:
                     "tab-btn" + (tab === "runner-schedule" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "runner-schedule",
                   onClick: function () {
                     setTab("runner-schedule");
                     fetchRunnerCapacity();
@@ -13963,6 +14073,8 @@
                 {
                   className:
                     "tab-btn" + (tab === "deployment" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "deployment",
                   onClick: function () {
                     setTab("deployment");
                     fetchDeploymentState();
@@ -13994,6 +14106,8 @@
                 "button",
                 {
                   className: "tab-btn" + (tab === "history" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "history",
                   onClick: function () {
                     setTab("history");
                     fetchEnrichedRuns();
@@ -14021,6 +14135,8 @@
                 {
                   className:
                     "tab-btn" + (tab === "local-apps" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "local-apps",
                   onClick: function () {
                     setTab("local-apps");
                     fetchLocalApps();
@@ -14052,6 +14168,8 @@
                 {
                   className:
                     "tab-btn" + (tab === "credentials" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "credentials",
                   onClick: function () {
                     setTab("credentials");
                     fetchCredentials();
@@ -14080,6 +14198,8 @@
                   className:
                     "tab-btn" +
                     (tab === "fleet-orchestration" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "fleet-orchestration",
                   onClick: function () {
                     setTab("fleet-orchestration");
                     fetchFleetOrchestration();
@@ -14093,6 +14213,8 @@
                 {
                   className:
                     "tab-btn" + (tab === "assessments" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "assessments",
                   onClick: function () {
                     setTab("assessments");
                     fetchAssessments();
@@ -14106,6 +14228,8 @@
                 {
                   className:
                     "tab-btn" + (tab === "feature-requests" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "feature-requests",
                   onClick: function () {
                     setTab("feature-requests");
                     fetchFeatureRequests();
@@ -14132,6 +14256,8 @@
                 "button",
                 {
                   className: "tab-btn" + (tab === "maxwell" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "maxwell",
                   onClick: function () {
                     setTab("maxwell");
                     fetchMaxwellStatus();
@@ -14239,7 +14365,7 @@
           ),
           h(
             "div",
-            { className: "main-content" },
+            { className: "main-content", role: "main" },
             tab === "overview"
               ? h(FleetTab, {
                   runners: runners,
