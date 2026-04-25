@@ -440,6 +440,87 @@ All endpoints are served under `http://localhost:8321/api/`.
 | GET | `/api/assessments/scores` | Per-repo assessment quality scores |
 | POST | `/api/assessments/dispatch` | Dispatch an assessment workflow |
 
+### Assistant (Issues #88, #89)
+
+#### Context-Aware Chat (Issue #88)
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/api/assistant/chat` | Query assistant about dashboard state with context |
+
+**Request body:**
+```json
+{
+  "prompt": "Why did this workflow fail?",
+  "context": {
+    "current_tab": "remediation",
+    "selected_run_id": 12345,
+    "selected_items": [],
+    "dashboard_state": {"...": "..."}
+  },
+  "provider": "claude_code_cli"
+}
+```
+
+**Response:**
+```json
+{
+  "response": "Based on the logs, the failure was...",
+  "provider": "claude_code_cli",
+  "context_used": {...},
+  "timestamp": "2026-04-25T11:30:00+00:00"
+}
+```
+
+#### Action Proposals (Issue #89)
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/api/assistant/propose-action` | Propose an action based on user request (awaiting approval) |
+| POST | `/api/assistant/execute-action` | Execute an approved action with full details |
+
+**Propose request:**
+```json
+{
+  "user_request": "Restart runner-5",
+  "context": {...},
+  "provider": "claude_code_cli"
+}
+```
+
+**Propose response:**
+```json
+{
+  "action_id": "a1b2c3d4",
+  "action_type": "restart_runner",
+  "description": "Restart runner-5 (will be offline ~30s)",
+  "parameters": {"runner_name": "runner-5", "timeout_seconds": 300},
+  "risk_level": "medium",
+  "rationale": "User requested restart for debugging",
+  "estimated_duration_seconds": 30
+}
+```
+
+**Execute request:**
+```json
+{
+  "action_id": "a1b2c3d4",
+  "approved": true,
+  "operator_notes": "ok, proceed"
+}
+```
+
+**Execute response:**
+```json
+{
+  "success": true,
+  "action_id": "a1b2c3d4",
+  "result": "Runner 'runner-5' restart initiated",
+  "execution_time_ms": 245
+}
+```
+
+
 ### Feature Requests
 
 | Method | Path | Description |

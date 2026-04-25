@@ -14514,16 +14514,32 @@
           var userMsg = { role: "user", content: msg, id: Date.now() };
           setTranscript(function (t) { return t.concat([userMsg]); });
           setLoading(true);
-          var body = { question: msg };
-          if (includeCtx) body.page_context = getPageContext();
-          fetch("/api/help/chat", {
+
+          // Build request with context
+          var body = {
+            prompt: msg,
+            context: {
+              current_tab: currentTab,
+              selected_run_id: null,
+              selected_items: [],
+            },
+          };
+          if (includeCtx) {
+            var ctx = getPageContext();
+            body.context.dashboard_state = ctx;
+          }
+
+          fetch("/api/assistant/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),
           })
-            .then(function (r) { return r.json(); })
+            .then(function (r) {
+              if (!r.ok) throw new Error("HTTP " + r.status);
+              return r.json();
+            })
             .then(function (data) {
-              var reply = data.answer || data.response || data.message || JSON.stringify(data);
+              var reply = data.response || data.message || JSON.stringify(data);
               var asstMsg = { role: "assistant", content: reply, id: Date.now() + 1 };
               setTranscript(function (t) { return t.concat([asstMsg]); });
             })

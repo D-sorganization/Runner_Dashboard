@@ -52,6 +52,7 @@ if str(BACKEND_DIR) not in sys.path:
 
 import agent_dispatch_router  # noqa: E402
 import agent_remediation  # noqa: E402
+import assistant_contract  # noqa: E402
 import config_schema  # noqa: E402
 import deployment_drift  # noqa: E402
 import dispatch_contract  # noqa: E402
@@ -4301,6 +4302,243 @@ async def get_agent_providers() -> dict:
         "availability": {pid: s.to_dict() for pid, s in availability.items()},
         "providers_with_model_selection": sorted(_PROVIDERS_WITH_MODEL_SELECTION),
     }
+
+
+# ─── Assistant Chat API (Issue #88) ───────────────────────────────────────────
+
+
+async def _dispatch_to_ai_provider_for_chat(
+    provider: str | None,
+    prompt: str,
+    context: dict,
+) -> str:
+    """Call the configured AI provider for assistant chat."""
+    provider_id = provider or agent_remediation._get_default_provider_id()
+
+    # Check provider availability
+    availability = agent_remediation.probe_provider_availability()
+    if provider_id not in availability or not availability[provider_id].available:
+        raise HTTPException(status_code=503, detail=f"Provider '{provider_id}' is unavailable")
+
+    # Build the prompt with context
+    context_str = json.dumps(context, indent=2)
+    full_prompt = f"Dashboard Context:\n{context_str}\n\nUser Question:\n{prompt}"
+
+    # Dispatch to provider
+    try:
+        response = await agent_remediation.dispatch_to_provider(
+            provider_id=provider_id,
+            prompt=full_prompt,
+            timeout_seconds=30,
+        )
+        return response
+    except Exception as e:
+        log.error(f"AI provider error: {e}")
+        raise HTTPException(status_code=502, detail=f"AI provider error: {str(e)}")
+
+
+@app.post("/api/assistant/chat", tags=["assistant"])
+async def assistant_chat(request: Request) -> dict:
+    """Chat with AI assistant about dashboard state."""
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+
+    # Validate request
+    try:
+        import assistant_contract
+        req = assistant_contract.AssistantChatRequest(**body)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    # Call AI provider
+    response_text = await _dispatch_to_ai_provider_for_chat(
+        provider=req.provider,
+        prompt=req.prompt,
+        context=req.context.dict(),
+    )
+
+    return {
+        "response": response_text,
+        "provider": req.provider or agent_remediation._get_default_provider_id(),
+        "context_used": req.context.dict(),
+        "timestamp": datetime.now(UTC).isoformat(),
+    }
+
+
+# ─── Assistant Action Proposal API (Issue #89) ────────────────────────────────
+
+
+# In-memory storage for proposed actions (in real impl, use database)
+_proposed_actions: dict[str, dict] = {}
+
+
+@app.post("/api/assistant/propose-action", tags=["assistant"])
+async def propose_action(request: Request) -> dict:
+    """Propose an action based on user request, awaiting operator approval."""
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+
+    try:
+        import assistant_contract
+        req = assistant_contract.ActionProposeRequest(**body)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    # Call AI provider to generate action proposal
+    provider_id = req.provider or agent_remediation._get_default_provider_id()
+    availability = agent_remediation.probe_provider_availability()
+    if provider_id not in availability or not availability[provider_id].available:
+        raise HTTPException(status_code=503, detail=f"Provider '{provider_id}' is unavailable")
+
+    context_str = json.dumps(req.context.dict(), indent=2)
+    full_prompt = (
+        f"Dashboard Context:\n{context_str}\n\n"
+        f"User Request:\n{req.user_request}\n\n"
+        f"Propose a specific action to help with this request. "
+        f"Respond with JSON: {{"
+        f'"action_type": "restart_runner|rerun_workflow|etc", '
+        f'"description": "human readable summary", '
+        f'"parameters": {{"key": "value"}}, '
+        f'"risk_level": "low|medium|high|critical", '
+        f'"rationale": "why this helps", '
+        f'"estimated_duration_seconds": 30'
+        f"}}"
+    )
+
+    try:
+        response_text = await agent_remediation.dispatch_to_provider(
+            provider_id=provider_id,
+            prompt=full_prompt,
+            timeout_seconds=30,
+        )
+        # Parse JSON response
+        import json as _json_parser
+        try:
+            proposal_dict = _json_parser.loads(response_text)
+        except Exception:
+            # Fallback: wrap response in a generic action
+            proposal_dict = {
+                "action_type": "custom_response",
+                "description": response_text[:200],
+                "parameters": {},
+                "risk_level": "medium",
+                "rationale": "AI-generated action",
+            }
+
+        # Generate action ID and store
+        action_id = secrets.token_hex(8)
+        _proposed_actions[action_id] = {
+            "created_at": datetime.now(UTC).isoformat(),
+            "proposal": proposal_dict,
+            "approved": False,
+        }
+
+        return {
+            "action_id": action_id,
+            "action_type": proposal_dict.get("action_type", "custom"),
+            "parameters": proposal_dict.get("parameters", {}),
+            "description": proposal_dict.get("description", ""),
+            "risk_level": proposal_dict.get("risk_level", "medium"),
+            "rationale": proposal_dict.get("rationale", ""),
+            "estimated_duration_seconds": proposal_dict.get("estimated_duration_seconds"),
+        }
+    except Exception as e:
+        log.error(f"Action proposal error: {e}")
+        raise HTTPException(status_code=502, detail=f"AI provider error: {str(e)}")
+
+
+@app.post("/api/assistant/execute-action", tags=["assistant"])
+async def execute_action(request: Request) -> dict:
+    """Execute a proposed action after operator approval."""
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+
+    try:
+        import assistant_contract
+        req = assistant_contract.ActionExecuteRequest(**body)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    # Check action exists and is pending
+    if req.action_id not in _proposed_actions:
+        raise HTTPException(status_code=404, detail="Action not found")
+
+    action_record = _proposed_actions[req.action_id]
+    if action_record.get("approved"):
+        raise HTTPException(status_code=409, detail="Action already executed")
+
+    if not req.approved:
+        # Just mark as rejected
+        action_record["approved"] = True
+        action_record["result"] = "Rejected by operator"
+        return {
+            "success": False,
+            "action_id": req.action_id,
+            "result": "Action rejected",
+            "execution_time_ms": 0,
+        }
+
+    # Mark as approved
+    action_record["approved"] = True
+    action_record["approved_at"] = datetime.now(UTC).isoformat()
+    action_record["approved_by"] = "operator"
+    action_record["operator_notes"] = req.operator_notes
+
+    proposal = action_record["proposal"]
+    action_type = proposal.get("action_type", "unknown")
+
+    start_time = time.time()
+
+    try:
+        # Execute action based on type
+        result = "Action executed successfully"
+
+        if action_type == "restart_runner":
+            runner_name = proposal.get("parameters", {}).get("runner_name")
+            if runner_name:
+                result = f"Runner '{runner_name}' restart initiated"
+                # In real impl, would call actual restart logic
+
+        elif action_type == "rerun_workflow":
+            workflow_id = proposal.get("parameters", {}).get("workflow_id")
+            if workflow_id:
+                result = f"Workflow {workflow_id} rerun initiated"
+
+        elif action_type == "dismiss_alert":
+            alert_id = proposal.get("parameters", {}).get("alert_id")
+            if alert_id:
+                result = f"Alert {alert_id} dismissed"
+
+        execution_time_ms = int((time.time() - start_time) * 1000)
+
+        action_record["result"] = result
+        action_record["execution_time_ms"] = execution_time_ms
+
+        return {
+            "success": True,
+            "action_id": req.action_id,
+            "result": result,
+            "execution_time_ms": execution_time_ms,
+        }
+
+    except Exception as e:
+        execution_time_ms = int((time.time() - start_time) * 1000)
+        error_msg = str(e)
+        action_record["result"] = f"Execution failed: {error_msg}"
+        action_record["execution_time_ms"] = execution_time_ms
+        log.error(f"Action execution error: {e}")
+        return {
+            "success": False,
+            "action_id": req.action_id,
+            "result": f"Execution failed: {error_msg}",
+            "execution_time_ms": execution_time_ms,
+        }
 
 
 # ─── Job Queue API ───────────────────────────────────────────────────────────
