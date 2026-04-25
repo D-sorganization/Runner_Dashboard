@@ -96,6 +96,16 @@ jobs:
       - name: Install js-yaml
         run: npm install --no-save js-yaml@4
 
+      # Bootstrap: create / update all labels FIRST so subsequent
+      # `rollout:in-progress` add and the backfill apply have everything
+      # they need. Idempotent.
+      - name: Sync labels
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { sync } = require('./.github/scripts/labels-sync.js');
+            await sync({ github, context, core, dryRun: false });
+
       - name: Mark in-progress, announce start
         uses: actions/github-script@v7
         env:
@@ -121,19 +131,12 @@ jobs:
                 '<!-- rollout:taxonomy:start -->',
                 '## Rollout started — preview stage',
                 '',
-                'Running `Labels Sync` and `Issue Taxonomy Backfill` (dry-run).',
+                'Labels synced. Running `Issue Taxonomy Backfill` (dry-run).',
                 'Preview diff will follow in the next comment.',
                 '',
                 `Run: ${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`,
               ].join('\n'),
             });
-
-      - name: Sync labels (create real labels)
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const { sync } = require('./.github/scripts/labels-sync.js');
-            await sync({ github, context, core, dryRun: false });
 
       - name: Backfill (dry-run) and collect preview
         id: bf

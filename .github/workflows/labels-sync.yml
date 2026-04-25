@@ -24,6 +24,13 @@ on:
         required: false
         default: "false"
         type: string
+  # Auto-sync on changes to the manifest itself. Keeps the repo's labels
+  # in lock-step with .github/labels.yml without manual workflow_dispatch.
+  push:
+    branches: [main]
+    paths:
+      - .github/labels.yml
+      - .github/scripts/labels-sync.js
 
 permissions:
   issues: write

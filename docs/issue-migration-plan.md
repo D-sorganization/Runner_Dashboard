@@ -129,6 +129,18 @@ correct.
   and re-run dry-run.
 - Re-run with `dry_run=false` when the plan looks right.
 
+### Bootstrap (first run only)
+
+When PR #64 merges, `Labels Sync` auto-runs because `.github/labels.yml`
+is in its `paths` filter — every taxonomy label including the
+`rollout:*` family is created within ~30s of the merge. After that, the
+label-triggered rollout works as documented.
+
+If you want to be paranoid (or run before the auto-sync completes),
+trigger `Taxonomy Rollout` via `workflow_dispatch` with `stage=preview`
+— its first step is a labels sync, so it bootstraps itself even if no
+labels exist yet.
+
 ### Label-triggered rollout (recommended)
 
 For humans who would rather flip a switch than click through
