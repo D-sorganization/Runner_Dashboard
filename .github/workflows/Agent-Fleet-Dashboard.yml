@@ -40,7 +40,8 @@ jobs:
           python-version: "3.11"
 
       - name: Generate dashboard
-        continue-on-error: true
+        # Fail-open: generation errors emit a warning but allow the commit step to
+        # write a placeholder, so the next cron run can retry cleanly.
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |

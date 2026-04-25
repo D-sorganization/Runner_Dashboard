@@ -45,6 +45,7 @@ concurrency:
 
 env:
   # Maximum fix attempts per window (reduced from 10 for cost control)
+  # Safety cap: never auto-fix more than MAX_FIX_ATTEMPTS iterations per run
   MAX_FIX_ATTEMPTS: 5
   FIX_WINDOW_HOURS: 4
   # Time to wait for CI to complete (in seconds) - 10 min max
@@ -77,11 +78,13 @@ jobs:
         id: branch
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          INPUT_BRANCH: ${{ github.event.inputs.branch }}
+          WF_RUN_BRANCH: ${{ github.event.workflow_run.head_branch }}
         run: |
-          if [ -n "${{ github.event.inputs.branch }}" ]; then
-            BRANCH="${{ github.event.inputs.branch }}"
+          if [ -n "$INPUT_BRANCH" ]; then
+            BRANCH="$INPUT_BRANCH"
           else
-            BRANCH="${{ github.event.workflow_run.head_branch }}"
+            BRANCH="$WF_RUN_BRANCH"
           fi
 
           echo "Target branch: $BRANCH"
@@ -115,17 +118,19 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           BRANCH: ${{ steps.branch.outputs.branch }}
+          INPUT_MAX_ITERATIONS: ${{ inputs.max_iterations }}
+          REPO: ${{ github.repository }}
         run: |
           # Count recent autofix commits on this branch to prevent loops
-          HOURS_AGO=$(date -u -d "${{ env.FIX_WINDOW_HOURS }} hours ago" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-${{ env.FIX_WINDOW_HOURS }}H +%Y-%m-%dT%H:%M:%SZ)
+          HOURS_AGO=$(date -u -d "$FIX_WINDOW_HOURS hours ago" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-"${FIX_WINDOW_HOURS}H" +%Y-%m-%dT%H:%M:%SZ)
 
           # Count commits with autofix signature in the time window
-          FIX_COUNT=$(gh api "repos/${{ github.repository }}/commits?sha=$BRANCH&since=$HOURS_AGO" \
+          FIX_COUNT=$(gh api "repos/$REPO/commits?sha=$BRANCH&since=$HOURS_AGO" \
             --jq '[.[] | select(.commit.message | test("\\[AutoFix\\]|Jules PR AutoFix"))] | length' 2>/dev/null || echo "0")
 
-          echo "Found $FIX_COUNT autofix commits in last ${{ env.FIX_WINDOW_HOURS }} hours"
+          echo "Found $FIX_COUNT autofix commits in last $FIX_WINDOW_HOURS hours"
 
-          MAX_ATTEMPTS="${{ github.event.inputs.max_iterations || env.MAX_FIX_ATTEMPTS }}"
+          MAX_ATTEMPTS="${INPUT_MAX_ITERATIONS:-$MAX_FIX_ATTEMPTS}"
 
           if [ "$FIX_COUNT" -ge "$MAX_ATTEMPTS" ]; then
             echo "::warning::Max fix attempts ($MAX_ATTEMPTS) reached for branch $BRANCH. Manual intervention required."
@@ -290,9 +295,9 @@ jobs:
               sleep 30
 
               # Wait for CI to complete
-              echo ">>> Waiting for CI to complete (timeout: ${{ env.CI_WAIT_TIMEOUT }}s)..."
+              echo ">>> Waiting for CI to complete (timeout: ${CI_WAIT_TIMEOUT}s)..."
               wait_time=0
-              while [ $wait_time -lt ${{ env.CI_WAIT_TIMEOUT }} ]; do
+              while [ $wait_time -lt "$CI_WAIT_TIMEOUT" ]; do
                 # Get the latest check run status
                 CHECK_STATUS=$(gh pr checks "$PR_NUMBER" --json name,state,conclusion \
                   --jq '.[] | select(.name == "quality-gate" or .name == "tests") | .state' 2>/dev/null | head -1)
@@ -303,21 +308,21 @@ jobs:
                     --jq '.[] | select(.name == "quality-gate") | .conclusion' 2>/dev/null | head -1)
 
                   if [ "$CONCLUSION" == "SUCCESS" ]; then
-                    echo "✅ CI PASSED after iteration $iteration!"
+                    echo "CI PASSED after iteration $iteration!"
                     ci_passed=true
                     break 2  # Exit both loops
                   else
-                    echo "❌ CI still failing after iteration $iteration (conclusion: $CONCLUSION)"
+                    echo "CI still failing after iteration $iteration (conclusion: $CONCLUSION)"
                     break  # Exit wait loop, continue fix loop
                   fi
                 fi
 
-                sleep ${{ env.CI_POLL_INTERVAL }}
-                wait_time=$((wait_time + ${{ env.CI_POLL_INTERVAL }}))
-                echo "  ... waiting ($wait_time/${{ env.CI_WAIT_TIMEOUT }}s)"
+                sleep "$CI_POLL_INTERVAL"
+                wait_time=$((wait_time + CI_POLL_INTERVAL))
+                echo "  ... waiting ($wait_time/${CI_WAIT_TIMEOUT}s)"
               done
 
-              if [ $wait_time -ge ${{ env.CI_WAIT_TIMEOUT }} ]; then
+              if [ $wait_time -ge "$CI_WAIT_TIMEOUT" ]; then
                 echo "⚠️ CI wait timeout reached, continuing with next iteration"
               fi
 
