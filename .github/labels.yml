@@ -109,7 +109,7 @@
   description: "Authorizes the Taxonomy Rollout to execute the backfill for real."
 - name: "rollout:in-progress"
   color: "FBCA04"
-  description: "Automation has started executing a rollout on this issue. Do not apply manually — managed by the workflow."
+  description: "Rollout executing. Managed by workflow."
 - name: "rollout:done"
   color: "2EA043"
   description: "A rollout workflow completed successfully against this issue. Managed by the workflow."
