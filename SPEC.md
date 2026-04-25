@@ -232,6 +232,7 @@ All endpoints are served under `http://localhost:8321/api/`.
 | GET | `/api/deployment` | Current deployment metadata |
 | GET | `/api/deployment/expected-version` | Expected version from repo |
 | GET | `/api/deployment/drift` | Version drift between deployed and expected |
+| GET | `/api/deployment/git-drift` | Git-commit drift: HEAD vs origin/main with is_drifted flag |
 | GET | `/api/deployment/state` | Full deployment state object |
 | POST | `/api/deployment/update-signal` | Signal the update mechanism |
 
@@ -372,6 +373,19 @@ All endpoints are served under `http://localhost:8321/api/`.
 | Method | Path | Description |
 |---|---|---|
 | POST | `/api/help/chat` | In-app help chat (context-aware AI response) |
+
+### Diagnostics
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/diagnostics/summary` | Consolidated diagnostics: PID, memory, WSL status, git commit, drift |
+| POST | `/api/diagnostics/restart-service` | Restart runner-dashboard systemd service (localhost only) |
+
+### Launchers
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/api/launchers/generate` | Generate Windows PowerShell launcher scripts on the Desktop |
 
 ### Static Assets
 

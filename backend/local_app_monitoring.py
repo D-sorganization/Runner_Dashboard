@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import os
 import shlex
 import subprocess
 from dataclasses import dataclass
@@ -9,9 +11,36 @@ from typing import Any
 
 import httpx
 
+log = logging.getLogger("dashboard.local_app_monitoring")
+
+_DANGEROUS_SHELL_CHARS = set(";|&`$()<>")
+
 MANIFEST_FILENAME = "local_apps.json"
 DEFAULT_DEPLOYMENT_FILENAME = "deployment.json"
 DEFAULT_DRIFT_REF = "origin/main"
+
+_EXCLUDED_ENV_KEYS = {
+    "GH_TOKEN",
+    "GITHUB_TOKEN",
+    "ANTHROPIC_API_KEY",
+    "DASHBOARD_API_KEY",
+    "SECRET",
+    "PASSWORD",
+    "TOKEN",
+}
+
+
+def _safe_subprocess_env() -> dict[str, str]:
+    """Return env dict with secrets stripped (issue #29)."""
+    return {k: v for k, v in os.environ.items() if not any(exc in k.upper() for exc in _EXCLUDED_ENV_KEYS)}
+
+
+def _validate_health_command(cmd: list[str]) -> list[str]:
+    """Reject health commands containing shell metacharacters (issue #22)."""
+    for part in cmd:
+        if any(c in part for c in _DANGEROUS_SHELL_CHARS):
+            raise ValueError(f"health_command part contains disallowed characters: {part!r}")
+    return cmd
 
 
 @dataclass(frozen=True)
@@ -64,6 +93,9 @@ def _first_manifest_entries(payload: Any) -> list[dict[str, Any]]:
 
 def _coerce_command(value: Any, *, field: str, index: int) -> list[str]:
     if isinstance(value, str):
+        # Validate raw string before splitting (issue #22)
+        if any(c in value for c in _DANGEROUS_SHELL_CHARS):
+            raise ValueError(f"local tools manifest entry {index} {field} contains disallowed characters")
         command = shlex.split(value)
     elif isinstance(value, (list, tuple)):
         command = []
@@ -73,6 +105,7 @@ def _coerce_command(value: Any, *, field: str, index: int) -> list[str]:
             text = item.strip()
             if text:
                 command.append(text)
+        _validate_health_command(command)
     else:
         raise ValueError(f"local tools manifest entry {index} has invalid {field}")
     if not command:
@@ -112,11 +145,23 @@ def _version_file_for(raw_entry: dict[str, Any], install_path: Path) -> Path | N
     return _coerce_path(version_file, base=install_path)
 
 
+def _validate_local_app_entry(entry: dict[str, Any], index: int) -> None:
+    """Validate required fields in a local app manifest entry (issue #44)."""
+    required = {"name"}
+    missing = required - set(entry.keys())
+    if missing:
+        raise ValueError(f"local_app entry {index} missing required fields: {missing}")
+
+
 def load_manifest(path: Path | None = None) -> list[LocalAppSpec]:
     """Load and validate the local tools manifest."""
 
     manifest = path or manifest_path()
-    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    try:
+        payload = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        log.warning("Failed to load local apps manifest at %s: %s", manifest, exc)
+        raise
     entries = _first_manifest_entries(payload)
 
     apps: list[LocalAppSpec] = []
@@ -124,6 +169,7 @@ def load_manifest(path: Path | None = None) -> list[LocalAppSpec]:
     for index, raw_entry in enumerate(entries):
         if not isinstance(raw_entry, dict):
             raise ValueError(f"local tools manifest entry {index} is not an object")
+        _validate_local_app_entry(raw_entry, index)
         name = raw_entry.get("name")
         if not isinstance(name, str) or not name.strip():
             raise ValueError(f"local tools manifest entry {index} is missing name")
@@ -304,6 +350,7 @@ def run_command(command: list[str], timeout: int = 10) -> subprocess.CompletedPr
             errors="replace",
             check=False,
             timeout=timeout,
+            env=_safe_subprocess_env(),
         )
     except FileNotFoundError as exc:
         return subprocess.CompletedProcess(command, 127, "", str(exc))
