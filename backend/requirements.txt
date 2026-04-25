@@ -1,5 +1,5 @@
 fastapi==0.130.0
-pydantic==2.10.6
+pydantic==2.13.3
 uvicorn[standard]==0.34.0
 psutil==6.1.1
 httpx==0.28.1

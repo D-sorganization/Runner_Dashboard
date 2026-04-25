@@ -305,6 +305,61 @@ class DispatchValidationResult:
     confirmation_required: bool
 
 
+@dataclass(frozen=True, slots=True)
+class CryptoValidationResult:
+    """Cryptographic validation outcome for an envelope signature and timestamps."""
+
+    valid: bool
+    reason: str
+
+
+def validate_envelope_crypto(envelope: CommandEnvelope) -> CryptoValidationResult:
+    """Validate envelope signature and timestamp freshness.
+
+    Returns CryptoValidationResult with valid=True only if all checks pass:
+    - Signature is valid (matches HMAC of canonical JSON)
+    - Timestamp is fresh (issued_at within ±5 minutes)
+    - Confirmation timestamp is fresh if confirmation is present (approved_at within ±5 minutes)
+    """
+    print(f"DEBUG: validate_envelope_crypto called")
+    print(f"DEBUG: envelope.signature = '{envelope.signature}'")
+    if not envelope.signature:
+        print(f"DEBUG: Returning due to no signature")
+        return CryptoValidationResult(valid=False, reason="envelope signature missing")
+
+    print(f"DEBUG: Calling envelope.verify_signature()")
+    if not envelope.verify_signature():
+        print(f"DEBUG: Returning due to signature verification failure")
+        return CryptoValidationResult(valid=False, reason="envelope signature invalid")
+
+    issued_at_result = _validate_timestamp_freshness(envelope.issued_at, ttl_seconds=300)
+    if issued_at_result != TimestampValidationResult.VALID:
+        reason_map = {
+            TimestampValidationResult.TOO_OLD: "envelope issued_at timestamp too old",
+            TimestampValidationResult.TOO_NEW: "envelope issued_at timestamp in future",
+            TimestampValidationResult.INVALID_FORMAT: "envelope issued_at timestamp invalid format",
+        }
+        return CryptoValidationResult(valid=False, reason=reason_map.get(issued_at_result, "unknown timestamp error"))
+
+    if envelope.confirmation is not None:
+        approved_at_result = _validate_timestamp_freshness(envelope.confirmation.approved_at, ttl_seconds=300)
+        if approved_at_result != TimestampValidationResult.VALID:
+            reason_map = {
+                TimestampValidationResult.TOO_OLD: "confirmation approved_at timestamp too old",
+                TimestampValidationResult.TOO_NEW: "confirmation approved_at timestamp in future",
+                TimestampValidationResult.INVALID_FORMAT: "confirmation approved_at timestamp invalid format",
+            }
+            return CryptoValidationResult(valid=False, reason=reason_map.get(approved_at_result, "unknown timestamp error"))
+
+    final_reason = "signature and timestamps valid"
+    result = CryptoValidationResult(valid=True, reason=final_reason)
+    # DEBUG
+    print(f"DEBUG: Creating CryptoValidationResult with reason='{final_reason}'")
+    print(f"DEBUG: Result object: {result}")
+    print(f"DEBUG: Result.reason = '{result.reason}'")
+    return result
+
+
 ALLOWLISTED_ACTIONS: dict[str, DispatchAction] = {
     # ── Read-only actions ────────────────────────────────────────────────────
     "dashboard.status": DispatchAction(
