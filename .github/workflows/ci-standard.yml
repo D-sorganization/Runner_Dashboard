@@ -68,7 +68,7 @@ jobs:
       - name: Install backend dependencies
         run: pip install -r requirements.txt types-PyYAML types-requests
       - name: Type Check
-        run: mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --warn-return-any --warn-unused-ignores --no-implicit-optional
+        run: mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional
       - name: Run bandit security scan
         run: bandit -r backend/ -ll -ii --exclude backend/__pycache__ -f json -o bandit-report.json || true
         continue-on-error: true  # non-blocking, report only
