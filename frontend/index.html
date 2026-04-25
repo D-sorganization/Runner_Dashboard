@@ -1266,6 +1266,51 @@
       }
       var h = React.createElement;
 
+      // ── API Key Auth (issue #16) ─────────────────────────────────────────────
+      var _apiKey = localStorage.getItem("apiKey") || "";
+
+      /** Fetch the key from /api/setup-key when running on localhost. */
+      async function _autoFetchApiKey() {
+        if (_apiKey) return;
+        try {
+          var resp = await fetch("/api/setup-key");
+          if (resp.ok) {
+            var data = await resp.json();
+            _apiKey = data.api_key || "";
+            if (_apiKey) localStorage.setItem("apiKey", _apiKey);
+          }
+        } catch (e) {
+          // Not on localhost or endpoint unavailable — ignore
+        }
+      }
+
+      /** Wrap fetch() to inject Authorization header and handle 401. */
+      async function apiFetch(url, opts) {
+        opts = opts || {};
+        opts.headers = opts.headers || {};
+        if (_apiKey) {
+          opts.headers["Authorization"] = "Bearer " + _apiKey;
+        }
+        var resp = await fetch(url, opts);
+        if (resp.status === 401) {
+          var keyPath = "~/.config/runner-dashboard/api_key.txt";
+          var msg =
+            "Authentication required. Add your API key:\n\n" +
+            "  localStorage.setItem('apiKey', '<key from " + keyPath + ">')\n\n" +
+            "Or set the Authorization header: Bearer <key>";
+          console.warn("[auth] 401 from", url, "-", msg);
+          // Show a toast/overlay if a notifier is available
+          if (typeof window._showAuthError === "function") {
+            window._showAuthError(keyPath);
+          }
+        }
+        return resp;
+      }
+
+      // Auto-fetch key on load (works only from localhost)
+      _autoFetchApiKey();
+      // ────────────────────────────────────────────────────────────────────────
+
       // Configure marked with safe options (issue #7)
       if (typeof marked !== "undefined") {
         marked.use({ mangle: false, headerIds: false, gfm: true });
