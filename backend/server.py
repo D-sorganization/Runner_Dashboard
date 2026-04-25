@@ -735,6 +735,10 @@ async def proxy_to_hub(request: Request):
             raise HTTPException(status_code=502, detail="Hub proxy error") from e
 
 
+            log.warning("Hub proxy error for %s: %s", request.url.path, e)
+            raise HTTPException(status_code=502, detail="Hub proxy error") from e
+
+
 def _should_proxy_fleet_to_hub(request: Request) -> bool:
     """Return True when this node should use the hub's fleet-wide view.
 
@@ -803,6 +807,14 @@ async def _expected_dashboard_version_from_hub() -> str | None:
             response.raise_for_status()
             payload = response.json()
     except Exception as exc:  # noqa: BLE001
+        log.warning("hub expected-version fetch failed: %s", exc)
+        return None
+    expected = str(payload.get("expected") or "").strip()
+    if not expected or expected == "unknown":
+        return None
+    return expected
+
+
         log.warning("hub expected-version fetch failed: %s", exc)
         return None
     expected = str(payload.get("expected") or "").strip()
@@ -3111,6 +3123,9 @@ async def _remote_fleet_control(name: str, url: str, action: str) -> dict:
         return {"machine": name, "url": url, "success": False, "error": str(exc)}
 
 
+        return {"machine": name, "url": url, "success": False, "error": str(exc)}
+
+
 @app.post("/api/fleet/control/{action}")
 async def fleet_control(action: str, request: Request):
     """Scale runners from any dashboard.
@@ -4337,6 +4352,10 @@ async def _dispatch_to_ai_provider_for_chat(
         raise HTTPException(status_code=502, detail=f"AI provider error: {str(e)}") from e
 
 
+        log.error(f"AI provider error: {e}")
+        raise HTTPException(status_code=502, detail=f"AI provider error: {str(e)}") from e
+
+
 @app.post("/api/assistant/chat", tags=["assistant"])
 async def assistant_chat(request: Request) -> dict:
     """Chat with AI assistant about dashboard state."""
@@ -4447,6 +4466,10 @@ async def propose_action(request: Request) -> dict:
             "estimated_duration_seconds": proposal_dict.get("estimated_duration_seconds"),
         }
     except Exception as e:  # noqa: BLE001
+        log.error(f"Action proposal error: {e}")
+        raise HTTPException(status_code=502, detail=f"AI provider error: {str(e)}") from e
+
+
         log.error(f"Action proposal error: {e}")
         raise HTTPException(status_code=502, detail=f"AI provider error: {str(e)}") from e
 
@@ -5343,6 +5366,10 @@ async def get_maxwell_version() -> dict:
         return {"error": str(e)[:120], "daemon_available": False}
 
 
+        log.info("maxwell_proxy: path=%s status=%s", path, "error")
+        return {"error": str(e)[:120], "daemon_available": False}
+
+
 @app.get("/api/maxwell/daemon-status")
 async def get_maxwell_daemon_status_detail() -> dict:
     """Proxy GET /api/status from Maxwell-Daemon (pipeline state)."""
@@ -5354,6 +5381,10 @@ async def get_maxwell_daemon_status_detail() -> dict:
             log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
             return resp.json()
     except Exception as e:  # noqa: BLE001
+        log.info("maxwell_proxy: path=%s status=%s", path, "error")
+        return {"error": str(e)[:120], "daemon_available": False}
+
+
         log.info("maxwell_proxy: path=%s status=%s", path, "error")
         return {"error": str(e)[:120], "daemon_available": False}
 
@@ -5376,6 +5407,10 @@ async def get_maxwell_tasks(limit: int = 20, cursor: str | None = None) -> dict:
         return {"error": str(e)[:120], "daemon_available": False}
 
 
+        log.info("maxwell_proxy: path=%s status=%s", path, "error")
+        return {"error": str(e)[:120], "daemon_available": False}
+
+
 @app.get("/api/maxwell/tasks/{task_id}")
 async def get_maxwell_task_detail(task_id: str) -> dict:
     """Proxy GET /api/tasks/{task_id} from Maxwell-Daemon."""
@@ -5387,6 +5422,10 @@ async def get_maxwell_task_detail(task_id: str) -> dict:
             log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
             return resp.json()
     except Exception as e:  # noqa: BLE001
+        log.info("maxwell_proxy: path=%s status=%s", path, "error")
+        return {"error": str(e)[:120], "daemon_available": False}
+
+
         log.info("maxwell_proxy: path=%s status=%s", path, "error")
         return {"error": str(e)[:120], "daemon_available": False}
 
@@ -5411,6 +5450,10 @@ async def maxwell_dispatch_task(request: Request) -> dict:
         return {"error": str(e)[:120], "daemon_available": False}
 
 
+        log.info("maxwell_proxy: path=%s status=%s", path, "error")
+        return {"error": str(e)[:120], "daemon_available": False}
+
+
 @app.post("/api/maxwell/pipeline-control/{action}")
 async def maxwell_pipeline_control(action: str, request: Request) -> dict:
     """Proxy POST /api/control/{action} to Maxwell-Daemon."""
@@ -5429,6 +5472,10 @@ async def maxwell_pipeline_control(action: str, request: Request) -> dict:
             log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
             return resp.json()
     except Exception as e:  # noqa: BLE001
+        log.info("maxwell_proxy: path=%s status=%s", path, "error")
+        return {"error": str(e)[:120], "daemon_available": False}
+
+
         log.info("maxwell_proxy: path=%s status=%s", path, "error")
         return {"error": str(e)[:120], "daemon_available": False}
 
@@ -5676,6 +5723,10 @@ async def save_prompt_template(request: Request) -> dict:
     return {"status": "saved", "name": name}
 
 
+            raise HTTPException(status_code=500, detail=str(e)) from e
+    return {"status": "saved", "name": name}
+
+
 @app.get("/api/settings/prompt-notes")
 async def get_prompt_notes() -> dict:
     """Get the global prompt notes that are automatically injected into every prompt."""
@@ -5704,6 +5755,10 @@ async def update_prompt_notes(request: Request) -> dict:
             data = {"notes": notes, "enabled": enabled}
             config_schema.atomic_write_json(_PROMPT_NOTES_PATH, data)
         except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=str(e)) from e
+    return {"status": "saved", "notes_length": len(notes), "enabled": enabled}
+
+
             raise HTTPException(status_code=500, detail=str(e)) from e
     return {"status": "saved", "notes_length": len(notes), "enabled": enabled}
 
@@ -6233,6 +6288,10 @@ async def restart_dashboard_service(request: Request) -> dict:
             "output": (result.stdout + result.stderr).strip(),
         }
     except Exception as exc:  # noqa: BLE001
+        log.exception("Failed to restart runner-dashboard service")
+        raise HTTPException(status_code=500, detail="Restart failed") from exc
+
+
         log.exception("Failed to restart runner-dashboard service")
         raise HTTPException(status_code=500, detail="Restart failed") from exc
 
