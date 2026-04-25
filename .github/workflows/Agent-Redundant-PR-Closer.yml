@@ -26,7 +26,7 @@ name: Agent Redundant PR Closer
 # history.
 
 on:
-  pull_request_target:
+  pull_request:
     types: [opened, reopened, ready_for_review, synchronize, closed]
   schedule:
     - cron: "0 */3 * * *" # every 3 hours
@@ -50,7 +50,7 @@ permissions:
   issues: write
 
 concurrency:
-  group: jules-redundant-pr-closer-${{ github.repository }}
+  group: jules-redundant-pr-closer-${{ github.workflow }}-${{ github.repository }}
   cancel-in-progress: false
 
 jobs:
@@ -97,7 +97,8 @@ jobs:
 
       - name: Close redundant agent PRs
         if: steps.app-creds.outputs.configured == 'true'
-        continue-on-error: true
+        # Fail-open: a failure here only defers redundancy cleanup; it never blocks agent work.
+        # Error handling done inline via the || { exit 0 } block below.
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           REPO_NAME: ${{ github.event.repository.name }}
@@ -131,13 +132,19 @@ jobs:
 
       - name: Summary
         if: always()
+        env:
+          REPO: ${{ github.repository }}
+          TRIGGER: ${{ github.event_name }}
+          DRY_RUN_DISPLAY: ${{ inputs.dry_run || 'false' }}
+          AGENT_FILTER_DISPLAY: ${{ inputs.agent_filter || 'all non-user' }}
+          APP_CREDS_CONFIGURED: ${{ steps.app-creds.outputs.configured || 'false' }}
         run: |
           {
             echo "## Agent Redundant PR Closer"
             echo ""
-            echo "- **Repo:** ${{ github.repository }}"
-            echo "- **Trigger:** ${{ github.event_name }}"
-            echo "- **Dry run:** ${{ inputs.dry_run || 'false' }}"
-            echo "- **Agent filter:** ${{ inputs.agent_filter || 'all non-user' }}"
-            echo "- **App credentials configured:** ${{ steps.app-creds.outputs.configured || 'false' }}"
+            echo "- **Repo:** $REPO"
+            echo "- **Trigger:** $TRIGGER"
+            echo "- **Dry run:** $DRY_RUN_DISPLAY"
+            echo "- **Agent filter:** $AGENT_FILTER_DISPLAY"
+            echo "- **App credentials configured:** $APP_CREDS_CONFIGURED"
           } >> "$GITHUB_STEP_SUMMARY"

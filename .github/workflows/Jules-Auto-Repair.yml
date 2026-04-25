@@ -69,11 +69,12 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           TARGET_RUN_ID: ${{ inputs.run_id }}
           INPUT_BRANCH: ${{ inputs.branch }}
+          REPO: ${{ github.repository }}
         run: |
           if [ -n "$INPUT_BRANCH" ]; then
             BRANCH="$INPUT_BRANCH"
           elif [ -n "$TARGET_RUN_ID" ]; then
-            BRANCH=$(gh run view $TARGET_RUN_ID --json headBranch --jq '.headBranch' 2>/dev/null || echo "")
+            BRANCH=$(gh run view "$TARGET_RUN_ID" --json headBranch --jq '.headBranch' 2>/dev/null || echo "")
           fi
 
           if [ -z "$BRANCH" ]; then
@@ -99,7 +100,7 @@ jobs:
           fi
 
           # Check for associated PR
-          PR_INFO=$(gh pr list --repo "${{ github.repository }}" --head "$BRANCH" --state open --json number --jq '.[0].number // empty' 2>/dev/null || echo "")
+          PR_INFO=$(gh pr list --repo "$REPO" --head "$BRANCH" --state open --json number --jq '.[0].number // empty' 2>/dev/null || echo "")
 
           echo "branch=$BRANCH" >> $GITHUB_OUTPUT
           echo "pr_number=$PR_INFO" >> $GITHUB_OUTPUT
@@ -111,15 +112,17 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           BRANCH: ${{ steps.branch.outputs.branch }}
+          INPUT_MAX_ITERATIONS: ${{ inputs.max_iterations }}
+          REPO: ${{ github.repository }}
         run: |
-          HOURS_AGO=$(date -u -d "${{ env.REPAIR_WINDOW_HOURS }} hours ago" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-${{ env.REPAIR_WINDOW_HOURS }}H +%Y-%m-%dT%H:%M:%SZ)
+          HOURS_AGO=$(date -u -d "$REPAIR_WINDOW_HOURS hours ago" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-"${REPAIR_WINDOW_HOURS}H" +%Y-%m-%dT%H:%M:%SZ)
 
-          REPAIR_COUNT=$(gh api "repos/${{ github.repository }}/commits?sha=$BRANCH&since=$HOURS_AGO" \
+          REPAIR_COUNT=$(gh api "repos/$REPO/commits?sha=$BRANCH&since=$HOURS_AGO" \
             --jq '[.[] | select(.commit.message | test("\\[Jules-Repair\\]|Jules Auto-Repair"))] | length' 2>/dev/null || echo "0")
 
-          echo "Found $REPAIR_COUNT repair commits in last ${{ env.REPAIR_WINDOW_HOURS }} hours"
+          echo "Found $REPAIR_COUNT repair commits in last $REPAIR_WINDOW_HOURS hours"
 
-          MAX_ATTEMPTS="${{ inputs.max_iterations || env.MAX_REPAIR_ATTEMPTS }}"
+          MAX_ATTEMPTS="${INPUT_MAX_ITERATIONS:-$MAX_REPAIR_ATTEMPTS}"
 
           if [ "$REPAIR_COUNT" -ge "$MAX_ATTEMPTS" ]; then
             echo "::warning::Max repair attempts ($MAX_ATTEMPTS) reached. Manual intervention required."
@@ -153,25 +156,27 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           TARGET_RUN_ID: ${{ inputs.run_id }}
+          BRANCH: ${{ steps.branch.outputs.branch }}
         run: |
+          CI_LOG_FILE="$RUNNER_TEMP/ci_logs.txt"
           if [ -n "$TARGET_RUN_ID" ]; then
-            gh run view $TARGET_RUN_ID --log-failed > /tmp/ci_logs.txt 2>/dev/null || echo "No logs available" > /tmp/ci_logs.txt
+            gh run view "$TARGET_RUN_ID" --log-failed > "$CI_LOG_FILE" 2>/dev/null || echo "No logs available" > "$CI_LOG_FILE"
           else
             # Get latest failed run for this branch
-            BRANCH="${{ steps.branch.outputs.branch }}"
             LATEST_RUN=$(gh run list --branch "$BRANCH" --status failure --limit 1 --json databaseId --jq '.[0].databaseId' 2>/dev/null || echo "")
             if [ -n "$LATEST_RUN" ]; then
-              gh run view $LATEST_RUN --log-failed > /tmp/ci_logs.txt 2>/dev/null || echo "No logs available" > /tmp/ci_logs.txt
+              gh run view "$LATEST_RUN" --log-failed > "$CI_LOG_FILE" 2>/dev/null || echo "No logs available" > "$CI_LOG_FILE"
             else
-              echo "No failed runs found" > /tmp/ci_logs.txt
+              echo "No failed runs found" > "$CI_LOG_FILE"
             fi
           fi
 
           # Truncate if too long
-          head -c 50000 /tmp/ci_logs.txt > /tmp/ci_logs_truncated.txt
-          mv /tmp/ci_logs_truncated.txt /tmp/ci_logs.txt
+          head -c 50000 "$CI_LOG_FILE" > "$RUNNER_TEMP/ci_logs_truncated.txt"
+          mv "$RUNNER_TEMP/ci_logs_truncated.txt" "$CI_LOG_FILE"
+          echo "ci_log_file=$CI_LOG_FILE" >> "$GITHUB_OUTPUT"
 
-          echo "Fetched $(wc -l < /tmp/ci_logs.txt) lines of CI logs"
+          echo "Fetched $(wc -l < "$CI_LOG_FILE") lines of CI logs"
 
       - name: Iterative Repair Loop
         id: repair
@@ -182,6 +187,10 @@ jobs:
           BRANCH: ${{ steps.branch.outputs.branch }}
           PR_NUMBER: ${{ steps.branch.outputs.pr_number }}
           MAX_ITERATIONS: ${{ steps.limits.outputs.remaining }}
+          CI_LOG_FILE: ${{ steps.logs.outputs.ci_log_file }}
+          REPO: ${{ github.repository }}
+          CI_WAIT_TIMEOUT: ${{ env.CI_WAIT_TIMEOUT }}
+          CI_POLL_INTERVAL: ${{ env.CI_POLL_INTERVAL }}
         run: |
           iteration=0
           ci_passed=false
@@ -241,7 +250,7 @@ jobs:
             # PHASE 2: Analyze CI logs for specific errors
             echo ">>> Phase 2: Analyzing CI logs for specific fixes..."
 
-            LOG_CONTENT=$(cat /tmp/ci_logs.txt)
+            LOG_CONTENT=$(cat "$CI_LOG_FILE")
 
             # Check for mypy errors
             if echo "$LOG_CONTENT" | grep -q "error:.*\["; then
@@ -266,7 +275,6 @@ jobs:
             if [ -n "$JULES_API_KEY" ] && [ -z "$CHANGES_MADE" ]; then
               echo ">>> Phase 3: Jules AI-assisted repair..."
 
-              REPO="${{ github.repository }}"
               API_BASE="https://jules.googleapis.com/v1alpha"
 
               # Look up repository source
@@ -297,14 +305,14 @@ jobs:
                     automationMode: "AUTO_CREATE_PR"
                   }')
 
-                HTTP_CODE=$(curl -s -o /tmp/jules_response.json -w "%{http_code}" -X POST \
+                HTTP_CODE=$(curl -s -o "$RUNNER_TEMP/jules_response.json" -w "%{http_code}" -X POST \
                   -H "X-Goog-Api-Key: $JULES_API_KEY" \
                   -H "Content-Type: application/json" \
                   -d "$REQUEST_JSON" \
                   "$API_BASE/sessions" 2>/dev/null || echo "000")
 
                 if [ "$HTTP_CODE" == "200" ]; then
-                  SESSION_ID=$(jq -r '.name' /tmp/jules_response.json)
+                  SESSION_ID=$(jq -r '.name' "$RUNNER_TEMP/jules_response.json")
                   echo "Jules session created: $SESSION_ID"
                   CHANGES_MADE="$CHANGES_MADE jules-ai"
                   # Wait for Jules to push changes
@@ -345,7 +353,7 @@ jobs:
               sleep 30
 
               wait_time=0
-              while [ $wait_time -lt ${{ env.CI_WAIT_TIMEOUT }} ]; do
+              while [ $wait_time -lt "$CI_WAIT_TIMEOUT" ]; do
                 if [ -n "$PR_NUMBER" ]; then
                   CHECK_STATUS=$(gh pr checks "$PR_NUMBER" --json name,state \
                     --jq '.[] | select(.name == "quality-gate" or .name == "tests") | .state' 2>/dev/null | head -1)
@@ -355,17 +363,17 @@ jobs:
                       --jq '.[] | select(.name == "quality-gate") | .conclusion' 2>/dev/null | head -1)
 
                     if [ "$CONCLUSION" == "SUCCESS" ]; then
-                      echo "✅ CI PASSED!"
+                      echo "CI PASSED!"
                       ci_passed=true
                       break 2
                     else
-                      echo "❌ CI still failing"
+                      echo "CI still failing"
                       # Refresh logs for next iteration
                       LATEST_RUN=$(gh run list --branch "$BRANCH" --status failure --limit 1 --json databaseId --jq '.[0].databaseId' 2>/dev/null || echo "")
                       if [ -n "$LATEST_RUN" ]; then
-                        gh run view $LATEST_RUN --log-failed > /tmp/ci_logs.txt 2>/dev/null || true
-                        head -c 50000 /tmp/ci_logs.txt > /tmp/ci_logs_truncated.txt
-                        mv /tmp/ci_logs_truncated.txt /tmp/ci_logs.txt
+                        gh run view "$LATEST_RUN" --log-failed > "$CI_LOG_FILE" 2>/dev/null || true
+                        head -c 50000 "$CI_LOG_FILE" > "$RUNNER_TEMP/ci_logs_truncated.txt"
+                        mv "$RUNNER_TEMP/ci_logs_truncated.txt" "$CI_LOG_FILE"
                       fi
                       break
                     fi
@@ -377,19 +385,19 @@ jobs:
                   if [ "$STATUS" == "completed" ]; then
                     CONCLUSION=$(echo "$LATEST_STATUS" | jq -r '.conclusion')
                     if [ "$CONCLUSION" == "success" ]; then
-                      echo "✅ CI PASSED!"
+                      echo "CI PASSED!"
                       ci_passed=true
                       break 2
                     else
-                      echo "❌ CI still failing"
+                      echo "CI still failing"
                       break
                     fi
                   fi
                 fi
 
-                sleep ${{ env.CI_POLL_INTERVAL }}
-                wait_time=$((wait_time + ${{ env.CI_POLL_INTERVAL }}))
-                echo "  ... waiting ($wait_time/${{ env.CI_WAIT_TIMEOUT }}s)"
+                sleep "$CI_POLL_INTERVAL"
+                wait_time=$((wait_time + CI_POLL_INTERVAL))
+                echo "  ... waiting ($wait_time/${CI_WAIT_TIMEOUT}s)"
               done
 
               git pull origin "$BRANCH" --rebase 2>/dev/null || true
