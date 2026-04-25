@@ -108,6 +108,15 @@ All application logic is contained within `frontend/index.html`. There is no
 npm project, no `package.json`, and no build toolchain. The file is served
 directly by the FastAPI backend.
 
+**Shared helper components** defined near the top of the script block:
+
+- `Collapse` — collapsible section with header and chevron.
+- `SubTabs` — horizontal sub-tab strip rendered inside a tab panel. Props:
+  `tabs` (array of `{ key, label, badge, disabled }`), `activeKey`, `onChange`,
+  `storageKey` (optional localStorage persistence key), `rightBadge` (optional
+  element flush-right of the strip). Active tab is persisted to localStorage
+  when `storageKey` is provided.
+
 `frontend/index.html` is the **sole canonical frontend source**. No other
 frontend implementation exists in the repository. The previously present
 `RunnerDashboard.jsx` was an unused JSX archive that violated DRY; it was
@@ -183,6 +192,16 @@ Health status of local registered applications (processes, services defined in
 AI agent dispatch control panel. Configures and dispatches remediation plans
 to Jules, GAAI, Claude, or Codex agents. Shows dispatch history and plan
 status. Supports per-repo agent routing.
+
+The Remediation tab uses the `SubTabs` component to expose three sub-tabs:
+
+- **Automations** (default) — all existing agent dispatch and policy
+  configuration UI.
+- **PRs** — placeholder for future PR dispatch (issue #83).
+- **Issues** — placeholder for future issue dispatch (issue #84).
+
+The active sub-tab is persisted to `localStorage` under the key
+`remediation-subtab`.
 
 ### 3.13 Workflows Tab
 Browse and manually dispatch any workflow in any org repository. Supports
