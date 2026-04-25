@@ -245,29 +245,60 @@ Some issues are opinion-driven (`judgement:design`, `judgement:contested`, or
 manually flagged `panel-review`). For those we want multiple agents to weigh
 in **before** anyone implements.
 
-The `Agent Panel Review` workflow runs on a schedule (weekly) and on-demand.
-For every open issue labeled `panel-review`, it:
+### Two Phases: Manual → Automated
 
-1. Collects the issue body, dispatch-metadata block, and the last N comments.
-2. Dispatches the panel — the actual agent pool is orchestrator-configured
-   (see the workflow file).
-3. Each panelist posts exactly one comment in a structured format:
-   ```
-   <!-- panel-opinion:v1 agent=<tier> stance=support|oppose|modify -->
-   ## Opinion
-   ...
-   ## Suggested approach
-   ...
-   ## Risks
-   ...
-   ```
-4. After all panelists post (or after a timeout), the workflow posts a
-   summary comment with a tally and the dominant stance. A human removes
-   the `panel-review` label and sets `judgement:objective` (or closes the
-   issue as `not planned`) to unblock implementation.
+**Phase 1 (Current):** Manual design consensus via agent opinions
 
-Panelists **never** open PRs from panel-review issues. Implementation happens
-only after the judgement label is changed away from `design`/`contested`.
+Until `.github/workflows/agent-panel-review.yml` is fully configured with agent
+panels, design consensus happens manually:
+
+1. Any agent can post a design opinion in the structured format (see below)
+2. At least 2 qualified agents should post opinions on design issues
+3. Opinions converge on an approach
+4. A human maintainer reviews opinions and relabels issue:
+   - `judgement:design` → `judgement:objective` (approved, ready to implement)
+   - `judgement:design` → `judgement:contested` (disagreement; needs escalation)
+5. Once relabeled to `judgement:objective`, agents can implement
+
+**Phase 2 (Automated):** Formal panel workflow
+
+Once the `Agent Panel Review` workflow is fully configured:
+
+1. Issues labeled `panel-review` trigger automatic panel dispatch on schedule
+   (weekly) or on-demand
+2. For every panel-review issue, the workflow:
+   - Collects issue body, dispatch-metadata block, recent comments
+   - Dispatches the configured agent panels
+   - Each panelist posts exactly one comment in structured format (below)
+   - Workflow posts summary with tally and dominant stance
+3. Maintainer reviews and relabels to unblock implementation
+
+### Opinion Format (Both Phases)
+
+```
+<!-- panel-opinion:v1 agent=<agent-id> stance=support|oppose|modify -->
+## Opinion
+<2-3 sentence summary>
+
+## Suggested approach
+<specific recommendation>
+
+## Risks
+<identified risks or concerns>
+```
+
+**Rules:**
+- Post exactly one opinion per agent per issue
+- Opinions are advisory; maintainer makes final call
+- `stance` is your position: `support` (go ahead), `oppose` (don't), `modify` (approve with changes)
+- Agents **never** open PRs from design/panel-review issues — only post opinions
+
+### Relabeling to Unblock Implementation
+
+Maintainer's responsibility once opinions converge:
+- Change `judgement:design` → `judgement:objective` to unblock implementation
+- Or escalate to `judgement:contested` if there's genuine disagreement
+- Or close as `not planned` if consensus is "don't do this"
 
 ---
 

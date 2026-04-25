@@ -1327,3 +1327,179 @@ The 8 previously failing tests required these headers:
 
 All tests now pass consistently on Python 3.11, 3.12, and 3.13. Python 3.14
 testing awaits environment availability.
+
+## 17. PWA Native Launcher & Recovery Path (Issue #61)
+
+### 17.1 Overview
+
+The dashboard can be installed as a Progressive Web App (PWA) or Chrome app,
+but browser sandboxing prevents direct execution of native processes. This
+section documents the architecture for launching the backend and offering
+recovery controls when the backend becomes unavailable.
+
+**Design Principle:** Explicit operator intent, no silent auto-restart, all
+recovery actions logged for audit.
+
+### 17.2 Architecture: Custom URL Protocol Handler
+
+**Recommended Approach:** Custom URL protocol handler (`runner-dashboard://start`)
+with systemd/status-UI fallback.
+
+**Platforms:**
+- **Windows/macOS:** Custom protocol handler (one-time registration during setup)
+- **Linux:** Systemd service auto-restart + status UI fallback
+
+### 17.3 Components
+
+#### 17.3.1 Backend Health Check Endpoint
+
+New endpoint `GET /health` (no authentication required, internal localhost only):
+
+```python
+@router.get("/health", tags=["diagnostics"])
+async def health_check() -> dict:
+    """Launcher health check. Returns 200 if backend is ready."""
+    return {
+        "status": "ready",
+        "timestamp": datetime.now(datetime.UTC).isoformat()
+    }
+```
+
+Frontend polls this endpoint every 2 seconds. If no response for >5 seconds,
+shows recovery modal.
+
+#### 17.3.2 Launcher Script (Windows: `deploy/launcher.ps1`)
+
+PowerShell script that handles `runner-dashboard://start` protocol:
+
+1. Checks if backend is responding (HTTP health check)
+2. If running, opens browser to `http://localhost:8321`
+3. If not running, starts the backend service (via WSL/systemd)
+4. Performs health check with exponential backoff (max 10 attempts)
+5. On success, opens browser; on failure, logs error and exits with non-zero code
+6. All actions logged to `~/.config/runner-dashboard/launcher.log`
+
+**Usage from frontend:**
+```html
+<a href="runner-dashboard://start">Start Dashboard</a>
+```
+
+#### 17.3.3 Protocol Handler Registration (Windows: `deploy/register-protocol.ps1`)
+
+PowerShell script that registers the custom protocol handler in Windows registry:
+
+```powershell
+# Creates registry entry:
+# HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.runner-dashboard
+# -> Points to launcher.ps1 as handler
+```
+
+Called once during `deploy/setup.sh` (Windows only). Requires operator to
+approve the protocol handler in the browser (native OS dialog).
+
+#### 17.3.4 Frontend Recovery UI Modal
+
+When the health check fails:
+
+```
+┌─────────────────────────────────────────┐
+│ Dashboard backend is not responding      │
+│                                         │
+│ [Start Now]  [Manual Instructions]     │
+│                                         │
+│ If you continue to see this error,      │
+│ check ~/config/runner-dashboard/launcher.log
+└─────────────────────────────────────────┘
+```
+
+- **"Start Now"** (Windows/macOS): Triggers `runner-dashboard://start` protocol
+- **"Manual Instructions"** (all platforms): Shows copy-paste terminal command
+- **"Refresh"** (after action): Re-checks health and closes modal on success
+
+### 17.4 Implementation Details
+
+#### Health Check Polling
+
+Frontend JavaScript (in main `App` component):
+
+```javascript
+// Poll /health every 2 seconds
+const [backendHealthy, setBackendHealthy] = useState(true);
+useEffect(() => {
+  const interval = setInterval(async () => {
+    try {
+      const resp = await fetch('http://localhost:8321/health', {
+        timeout: 3000
+      });
+      setBackendHealthy(resp.ok);
+    } catch (err) {
+      setBackendHealthy(false);
+    }
+  }, 2000);
+  return () => clearInterval(interval);
+}, []);
+```
+
+#### Launcher Protocol Flow
+
+1. Frontend detects backend down
+2. Shows modal with "Start Now" button
+3. Click → `<a href="runner-dashboard://start">` (browser navigates)
+4. Browser recognizes protocol, launches registered script
+5. Launcher script starts backend, checks health, opens browser to dashboard
+6. Modal auto-closes when health check succeeds
+7. On Linux: manual instructions shown; operator runs `systemctl restart runner-dashboard`
+
+### 17.5 Security Considerations
+
+**Protocol Handler:**
+- ✅ Only `runner-dashboard://` scheme (no collision with other apps)
+- ✅ Script is local, operator-controlled, no network access
+- ✅ Operator approves handler installation once during setup
+- ✅ Browser prevents non-local sites from triggering the protocol
+- ✅ Launcher script has hardcoded paths (no shell expansion)
+
+**Health Endpoint:**
+- ✅ No authentication required (internal localhost:8321 only)
+- ✅ Returns minimal data (status + timestamp)
+- ✅ No secrets or operational state exposed
+
+**Recovery UI:**
+- ✅ "Manual Instructions" path requires operator terminal use
+- ✅ Protocol handler requires operator browser approval
+- ✅ No automatic remediation; all actions explicit
+
+### 17.6 Deployment
+
+**During `deploy/setup.sh` (Windows):**
+```bash
+if [[ "$OS" == "Windows_NT" ]]; then
+  powershell -ExecutionPolicy Bypass \
+    -File deploy/register-protocol.ps1
+fi
+```
+
+**Operator sees:** "Allow runner-dashboard to launch an app?" → Click "Allow"
+
+**Manual re-registration (if needed):**
+```powershell
+powershell -ExecutionPolicy Bypass -File deploy/register-protocol.ps1
+```
+
+### 17.7 Operator Documentation
+
+See [`docs/pwa-launcher-design.md`](docs/pwa-launcher-design.md) for:
+- Detailed architecture evaluation (Options 1–4)
+- Implementation checklist
+- Troubleshooting guide
+- Platform-specific instructions (Windows/macOS/Linux)
+
+### 17.8 Success Criteria
+
+- ✅ PWA icon click launches dashboard (Windows/macOS)
+- ✅ If backend down, recovery modal appears automatically
+- ✅ "Start Now" button successfully starts backend and opens dashboard
+- ✅ No manual terminal commands needed for happy path
+- ✅ All recovery actions logged for audit
+- ✅ Cross-platform (Windows/macOS/Linux with fallbacks)
+- ✅ Zero new secrets or credential exposure

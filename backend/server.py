@@ -2403,6 +2403,19 @@ async def get_deployment_state(request: Request) -> dict:
     return _build_deployment_state(fleet.get("nodes", []), expected)
 
 
+@app.get("/health", tags=["diagnostics"])
+async def launcher_health_check() -> dict:
+    """Minimal health check for launcher recovery detection.
+
+    Returns 200 if backend is ready. Used by PWA recovery modal for
+    polling before triggering custom URL protocol.
+    """
+    return {
+        "status": "ready",
+        "timestamp": datetime.now(UTC).isoformat(),
+    }
+
+
 @app.post("/api/deployment/update-signal")
 async def post_deployment_update_signal(request: Request) -> dict:
     """Emit a structured "update requested" event for a node.

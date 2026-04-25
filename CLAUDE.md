@@ -61,10 +61,21 @@ Before picking up an issue, agents must:
    `open`, no open PR references it, no active `claim:*` lease, and the
    issue's `complexity:*` label falls within the agent's skill tier.
 3. Respect `judgement:design` and `judgement:contested` — **do not
-   implement** from those issues. They require panel review first (see
-   `.github/workflows/agent-panel-review.yml`).
-4. Respect `panel-review` — on those issues, post an opinion comment in the
-   documented format; do **not** open a PR from them.
+   implement** from those issues without design consensus. See panel review
+   rules below.
+4. **Panel Review Rules:**
+   - Issues with `panel-review` label: Post design opinion (structured format in
+     taxonomy doc), do not open PR.
+   - Issues with `judgement:design` or `judgement:contested`: Can proceed to
+     implementation once design consensus is reached via:
+     - **Phase 1 (current):** At least 2 qualified agents post design opinions
+       in structured format, opinions converge, maintainer approves and relabels
+       to `judgement:objective`.
+     - **Phase 2 (automated):** Once `.github/workflows/agent-panel-review.yml`
+       is configured with agent panels, formal workflow kicks in automatically.
+   - Always post opinions before implementing from design issues.
+   - Maintainer responsibility: Review opinions, relabel to `judgement:objective`
+     once consensus is clear.
 
 **Quick-win lane:** filter `label:quick-win label:complexity:trivial
 label:judgement:objective` for low-risk warmup work.
