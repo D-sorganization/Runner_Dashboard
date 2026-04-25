@@ -7825,6 +7825,797 @@
         );
       }
 
+      // ════════════════════════ SUB-TAB HELPERS ════════════════════════
+
+      // SubTabs — renders a horizontal nav bar + content area for sub-tabs.
+      // Props: tabs [{id, label}], active, onSelect, children (array indexed by tab id)
+      function SubTabs(p) {
+        var tabs = p.tabs || [];
+        var active = p.active;
+        var onSelect = p.onSelect;
+        return h(
+          "div",
+          null,
+          h(
+            "div",
+            {
+              style: {
+                display: "flex",
+                gap: 0,
+                borderBottom: "1px solid var(--border)",
+                marginBottom: 16,
+              },
+            },
+            tabs.map(function (tab) {
+              var isActive = tab.id === active;
+              return h(
+                "button",
+                {
+                  key: tab.id,
+                  onClick: function () { onSelect(tab.id); },
+                  style: {
+                    background: "none",
+                    border: "none",
+                    borderBottom: isActive
+                      ? "2px solid var(--accent-blue)"
+                      : "2px solid transparent",
+                    color: isActive ? "var(--accent-blue)" : "var(--text-muted)",
+                    cursor: "pointer",
+                    fontSize: 13,
+                    fontWeight: isActive ? 600 : 400,
+                    padding: "8px 16px",
+                    marginBottom: -1,
+                    transition: "color 0.15s, border-color 0.15s",
+                  },
+                },
+                tab.label,
+              );
+            }),
+          ),
+          p.children,
+        );
+      }
+
+      // PRsSubTab — multi-select PR table with filters and bulk dispatch.
+      function PRsSubTab() {
+        // ── State ─────────────────────────────────────────────────────────────
+        var prs_s = React.useState([]);
+        var prs = prs_s[0], setPrs = prs_s[1];
+        var loading_s = React.useState(false);
+        var loading = loading_s[0], setLoading = loading_s[1];
+        var error_s = React.useState(null);
+        var fetchError = error_s[0], setFetchError = error_s[1];
+
+        // Filters
+        var rf = React.useState("");
+        var repoFilter = rf[0], setRepoFilter = rf[1];
+        var af = React.useState("");
+        var authorFilter = af[0], setAuthorFilter = af[1];
+        var df = React.useState(true);
+        var showDrafts = df[0], setShowDrafts = df[1];
+
+        // Selection
+        var sel_s = React.useState({});
+        var selected = sel_s[0], setSelected = sel_s[1];
+
+        // Sort
+        var sort_s = React.useState({ key: "age", dir: "asc" });
+        var sort = sort_s[0], setSort = sort_s[1];
+
+        // Dispatch modal
+        var modal_s = React.useState(null);
+        var dispatchModal = modal_s[0], setDispatchModal = modal_s[1];
+        var dispatching_s = React.useState(false);
+        var dispatching = dispatching_s[0], setDispatching = dispatching_s[1];
+        var dispatchMsg_s = React.useState(null);
+        var dispatchMsg = dispatchMsg_s[0], setDispatchMsg = dispatchMsg_s[1];
+
+        // Modal fields
+        var modalProvider_s = React.useState("jules_api");
+        var modalProvider = modalProvider_s[0], setModalProvider = modalProvider_s[1];
+        var modalPrompt_s = React.useState("");
+        var modalPrompt = modalPrompt_s[0], setModalPrompt = modalPrompt_s[1];
+
+        // ── Data fetch ────────────────────────────────────────────────────────
+        function fetchPRs() {
+          setLoading(true);
+          setFetchError(null);
+          fetch("/api/prs?limit=2000")
+            .then(function (r) {
+              if (!r.ok) throw new Error("HTTP " + r.status);
+              return r.json();
+            })
+            .then(function (data) {
+              var list = Array.isArray(data) ? data : (data.prs || data.items || []);
+              setPrs(list);
+              setSelected({});
+            })
+            .catch(function (err) {
+              setFetchError("Failed to load PRs: " + err.message);
+            })
+            .finally(function () {
+              setLoading(false);
+            });
+        }
+
+        React.useEffect(function () { fetchPRs(); }, []);
+
+        // ── Derived / filtered list ───────────────────────────────────────────
+        var filtered = prs.filter(function (pr) {
+          if (!showDrafts && pr.draft) return false;
+          if (repoFilter) {
+            var repo = (pr.repo || pr.repository || pr.full_name || "").toLowerCase();
+            if (!repo.includes(repoFilter.toLowerCase())) return false;
+          }
+          if (authorFilter) {
+            var author = (pr.author || (pr.user && pr.user.login) || pr.login || "").toLowerCase();
+            if (!author.includes(authorFilter.toLowerCase())) return false;
+          }
+          return true;
+        });
+
+        // Sort
+        var sortAccessors = {
+          repo: function (pr) { return pr.repo || pr.repository || pr.full_name || ""; },
+          number: function (pr) { return pr.number || pr.pr_number || 0; },
+          title: function (pr) { return pr.title || ""; },
+          author: function (pr) { return pr.author || (pr.user && pr.user.login) || ""; },
+          age: function (pr) { return pr.age_hours != null ? pr.age_hours : (pr.created_at ? (Date.now() - new Date(pr.created_at).getTime()) / 3600000 : 0); },
+        };
+        var sortedPRs = sortRows(filtered, sort, sortAccessors);
+
+        // ── Selection helpers ─────────────────────────────────────────────────
+        var visibleIds = sortedPRs.map(function (pr) { return String(pr.number || pr.pr_number || pr.id); });
+        var selectedIds = Object.keys(selected).filter(function (id) { return selected[id]; });
+        var allVisible = visibleIds.length > 0 && visibleIds.every(function (id) { return selected[id]; });
+
+        function toggleAll() {
+          if (allVisible) {
+            var next = Object.assign({}, selected);
+            visibleIds.forEach(function (id) { delete next[id]; });
+            setSelected(next);
+          } else {
+            var next = Object.assign({}, selected);
+            visibleIds.forEach(function (id) { next[id] = true; });
+            setSelected(next);
+          }
+        }
+
+        function toggleRow(id) {
+          setSelected(function (prev) {
+            var next = Object.assign({}, prev);
+            if (next[id]) delete next[id]; else next[id] = true;
+            return next;
+          });
+        }
+
+        // ── Age display ───────────────────────────────────────────────────────
+        function ageLabel(pr) {
+          var hours = pr.age_hours != null
+            ? pr.age_hours
+            : (pr.created_at ? (Date.now() - new Date(pr.created_at).getTime()) / 3600000 : null);
+          if (hours == null) return "-";
+          if (hours < 48) return hours.toFixed(0) + "h";
+          return (hours / 24).toFixed(0) + "d";
+        }
+
+        // ── Dispatch helpers ──────────────────────────────────────────────────
+        function openDispatchSelected() {
+          var items = sortedPRs.filter(function (pr) {
+            return selected[String(pr.number || pr.pr_number || pr.id)];
+          });
+          setDispatchModal({ items: items, mode: "selected" });
+          setModalPrompt("");
+        }
+
+        function openDispatchAll() {
+          if (!window.confirm("Dispatch to all " + sortedPRs.length + " visible PRs?")) return;
+          setDispatchModal({ items: sortedPRs, mode: "all" });
+          setModalPrompt("");
+        }
+
+        function doDispatch() {
+          if (!dispatchModal || !dispatchModal.items.length) return;
+          setDispatching(true);
+          var payload = {
+            selection: {
+              mode: "list",
+              items: dispatchModal.items.map(function (pr) {
+                return {
+                  repo: pr.repo || pr.repository || pr.full_name,
+                  number: pr.number || pr.pr_number,
+                  title: pr.title,
+                };
+              }),
+            },
+            provider: modalProvider,
+            prompt: modalPrompt,
+            confirmation: { approved_by: "dashboard-user" },
+          };
+          fetch("/api/prs/dispatch", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          })
+            .then(function (r) {
+              if (!r.ok) return r.json().then(function (e) { throw new Error(e.detail || r.status); });
+              return r.json();
+            })
+            .then(function () {
+              setDispatchMsg({ type: "success", text: "Dispatched " + dispatchModal.items.length + " PR(s) to " + modalProvider });
+              setDispatchModal(null);
+              setSelected({});
+              setTimeout(function () { setDispatchMsg(null); }, 6000);
+            })
+            .catch(function (err) {
+              setDispatchMsg({ type: "error", text: "Dispatch failed: " + err.message });
+              setTimeout(function () { setDispatchMsg(null); }, 8000);
+            })
+            .finally(function () {
+              setDispatching(false);
+            });
+        }
+
+        var PROVIDERS = [
+          ["jules_api", "Jules API"],
+          ["codex_cli", "Codex CLI"],
+          ["claude_code_cli", "Claude Code CLI"],
+          ["ollama_local", "Ollama (local)"],
+          ["cline", "Cline"],
+        ];
+
+        // ── Render ────────────────────────────────────────────────────────────
+        return h(
+          "div",
+          null,
+
+          // Dispatch status message
+          dispatchMsg
+            ? h(
+                "div",
+                {
+                  role: "alert",
+                  style: {
+                    marginBottom: 12,
+                    padding: "10px 16px",
+                    borderRadius: 6,
+                    background: dispatchMsg.type === "error"
+                      ? "rgba(248,81,73,0.15)"
+                      : "rgba(63,185,80,0.15)",
+                    color: dispatchMsg.type === "error"
+                      ? "var(--accent-red)"
+                      : "var(--accent-green)",
+                    border: "1px solid " + (dispatchMsg.type === "error"
+                      ? "var(--accent-red)"
+                      : "var(--accent-green)"),
+                    fontSize: 13,
+                  },
+                },
+                dispatchMsg.text,
+              )
+            : null,
+
+          // ── Filter bar ──────────────────────────────────────────────────────
+          h(
+            "div",
+            {
+              style: {
+                display: "flex",
+                gap: 8,
+                marginBottom: 12,
+                alignItems: "center",
+                flexWrap: "wrap",
+              },
+            },
+            h("input", {
+              type: "text",
+              placeholder: "Filter by repo (org/repo)…",
+              value: repoFilter,
+              onChange: function (e) { setRepoFilter(e.target.value); },
+              style: {
+                flex: "1 1 160px",
+                minWidth: 140,
+                background: "var(--bg-secondary)",
+                color: "var(--text-primary)",
+                border: "1px solid var(--border)",
+                borderRadius: 6,
+                padding: "6px 10px",
+                fontSize: 12,
+              },
+            }),
+            h("input", {
+              type: "text",
+              placeholder: "Filter by author…",
+              value: authorFilter,
+              onChange: function (e) { setAuthorFilter(e.target.value); },
+              style: {
+                flex: "1 1 120px",
+                minWidth: 100,
+                background: "var(--bg-secondary)",
+                color: "var(--text-primary)",
+                border: "1px solid var(--border)",
+                borderRadius: 6,
+                padding: "6px 10px",
+                fontSize: 12,
+              },
+            }),
+            h(
+              "label",
+              {
+                style: {
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 5,
+                  fontSize: 12,
+                  color: "var(--text-secondary)",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                },
+              },
+              h("input", {
+                type: "checkbox",
+                checked: showDrafts,
+                onChange: function (e) { setShowDrafts(e.target.checked); },
+              }),
+              "Show drafts",
+            ),
+            h(
+              "button",
+              {
+                className: "btn",
+                onClick: fetchPRs,
+                disabled: loading,
+                style: { marginLeft: "auto", whiteSpace: "nowrap" },
+              },
+              loading ? h("span", { className: "spinner" }) : I.refresh(12),
+              " Refresh",
+            ),
+          ),
+
+          // ── Table ──────────────────────────────────────────────────────────
+          loading && prs.length === 0
+            ? h(
+                "div",
+                {
+                  style: {
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    padding: "24px",
+                    color: "var(--text-muted)",
+                    fontSize: 13,
+                  },
+                },
+                h("span", { className: "spinner" }),
+                "Loading PRs…",
+              )
+            : fetchError
+            ? h(
+                "div",
+                {
+                  style: {
+                    padding: "12px 16px",
+                    borderRadius: 8,
+                    background: "rgba(248,81,73,0.12)",
+                    color: "var(--accent-red)",
+                    fontSize: 12,
+                  },
+                },
+                fetchError,
+              )
+            : sortedPRs.length === 0
+            ? h(
+                "div",
+                {
+                  style: {
+                    textAlign: "center",
+                    padding: "32px 24px",
+                    color: "var(--text-muted)",
+                    fontSize: 13,
+                  },
+                },
+                "No open PRs found.",
+              )
+            : h(
+                "div",
+                { style: { overflowX: "auto" } },
+                h(
+                  "table",
+                  { className: "data-table", style: { width: "100%" } },
+                  h(
+                    "thead",
+                    null,
+                    h(
+                      "tr",
+                      null,
+                      h(
+                        "th",
+                        { style: { width: 32, padding: "8px 10px" } },
+                        h("input", {
+                          type: "checkbox",
+                          checked: allVisible,
+                          onChange: toggleAll,
+                          title: allVisible ? "Deselect all" : "Select all",
+                        }),
+                      ),
+                      h(SortTh, { label: "Repo", sortKey: "repo", sort: sort, setSort: setSort }),
+                      h(SortTh, { label: "#", sortKey: "number", sort: sort, setSort: setSort, thProps: { style: { width: 60 } } }),
+                      h(SortTh, { label: "Title", sortKey: "title", sort: sort, setSort: setSort }),
+                      h(SortTh, { label: "Author", sortKey: "author", sort: sort, setSort: setSort }),
+                      h(SortTh, { label: "Age", sortKey: "age", sort: sort, setSort: setSort, thProps: { style: { width: 60 } } }),
+                      h("th", null, "Draft"),
+                      h("th", null, "Labels"),
+                      h("th", null, "Claim"),
+                    ),
+                  ),
+                  h(
+                    "tbody",
+                    null,
+                    sortedPRs.map(function (pr) {
+                      var id = String(pr.number || pr.pr_number || pr.id);
+                      var isChecked = !!selected[id];
+                      var repo = pr.repo || pr.repository || pr.full_name || "-";
+                      var prNum = pr.number || pr.pr_number || "-";
+                      var repoUrl = pr.repo_url || pr.repository_url || ("https://github.com/" + repo);
+                      var prUrl = pr.html_url || pr.url || (repoUrl + "/pull/" + prNum);
+                      var author = pr.author || (pr.user && pr.user.login) || "-";
+                      var labels = pr.labels || [];
+                      var labelNames = labels.map(function (l) { return l.name || l; });
+                      var shownLabels = labelNames.slice(0, 3);
+                      var extraLabels = labelNames.length - 3;
+                      var titleFull = pr.title || "-";
+                      var titleShort = titleFull.length > 80 ? titleFull.slice(0, 77) + "…" : titleFull;
+                      var claim = pr.agent_claim || "";
+
+                      return h(
+                        "tr",
+                        {
+                          key: id,
+                          style: {
+                            background: isChecked ? "rgba(88,166,255,0.06)" : undefined,
+                          },
+                        },
+                        h(
+                          "td",
+                          { style: { width: 32, padding: "8px 10px" } },
+                          h("input", {
+                            type: "checkbox",
+                            checked: isChecked,
+                            onChange: function () { toggleRow(id); },
+                          }),
+                        ),
+                        h(
+                          "td",
+                          null,
+                          h(
+                            "a",
+                            {
+                              href: repoUrl,
+                              target: "_blank",
+                              rel: "noopener noreferrer",
+                              style: { color: "var(--accent-blue)", textDecoration: "none", fontSize: 12 },
+                            },
+                            repo,
+                          ),
+                        ),
+                        h(
+                          "td",
+                          null,
+                          h(
+                            "a",
+                            {
+                              href: prUrl,
+                              target: "_blank",
+                              rel: "noopener noreferrer",
+                              style: { color: "var(--accent-blue)", textDecoration: "none", fontSize: 12 },
+                            },
+                            "#" + prNum,
+                          ),
+                        ),
+                        h(
+                          "td",
+                          { title: titleFull, style: { maxWidth: 320, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } },
+                          titleShort,
+                        ),
+                        h("td", { style: { fontSize: 12, color: "var(--text-secondary)" } }, author),
+                        h("td", { style: { fontSize: 12, whiteSpace: "nowrap" } }, ageLabel(pr)),
+                        h(
+                          "td",
+                          null,
+                          pr.draft
+                            ? h(
+                                "span",
+                                {
+                                  style: {
+                                    fontSize: 11,
+                                    padding: "2px 7px",
+                                    borderRadius: 10,
+                                    background: "rgba(139,148,158,0.18)",
+                                    color: "var(--text-muted)",
+                                    fontWeight: 500,
+                                  },
+                                },
+                                "Draft",
+                              )
+                            : null,
+                        ),
+                        h(
+                          "td",
+                          { style: { fontSize: 11 } },
+                          shownLabels.map(function (lbl) {
+                            return h(
+                              "span",
+                              {
+                                key: lbl,
+                                style: {
+                                  display: "inline-block",
+                                  marginRight: 3,
+                                  padding: "2px 6px",
+                                  borderRadius: 10,
+                                  background: "rgba(88,166,255,0.12)",
+                                  color: "var(--accent-blue)",
+                                  fontSize: 11,
+                                  fontWeight: 500,
+                                  whiteSpace: "nowrap",
+                                },
+                              },
+                              lbl,
+                            );
+                          }),
+                          extraLabels > 0
+                            ? h(
+                                "span",
+                                { style: { fontSize: 11, color: "var(--text-muted)", marginLeft: 2 } },
+                                "+" + extraLabels,
+                              )
+                            : null,
+                        ),
+                        h(
+                          "td",
+                          { style: { fontSize: 12, color: "var(--text-muted)" } },
+                          claim,
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+              ),
+
+          // ── Bulk action bar ────────────────────────────────────────────────
+          selectedIds.length > 0
+            ? h(
+                "div",
+                {
+                  style: {
+                    marginTop: 12,
+                    padding: "10px 14px",
+                    background: "var(--bg-secondary)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 8,
+                    display: "flex",
+                    gap: 10,
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                  },
+                },
+                h(
+                  "span",
+                  { style: { fontSize: 12, color: "var(--text-secondary)", marginRight: 4 } },
+                  selectedIds.length + " PR(s) selected",
+                ),
+                h(
+                  "button",
+                  {
+                    className: "btn",
+                    onClick: openDispatchSelected,
+                  },
+                  "Dispatch to selected (" + selectedIds.length + ")",
+                ),
+                h(
+                  "button",
+                  {
+                    className: "btn",
+                    style: { opacity: 0.8 },
+                    onClick: openDispatchAll,
+                  },
+                  "Dispatch to all (" + sortedPRs.length + ")",
+                ),
+              )
+            : sortedPRs.length > 0
+            ? h(
+                "div",
+                {
+                  style: {
+                    marginTop: 10,
+                    display: "flex",
+                    gap: 8,
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                  },
+                },
+                h(
+                  "button",
+                  {
+                    className: "btn",
+                    style: { opacity: 0.7 },
+                    onClick: openDispatchAll,
+                  },
+                  "Dispatch to all (" + sortedPRs.length + ")",
+                ),
+              )
+            : null,
+
+          // ── Dispatch modal ─────────────────────────────────────────────────
+          dispatchModal
+            ? h(
+                "div",
+                {
+                  style: {
+                    position: "fixed",
+                    inset: 0,
+                    background: "rgba(0,0,0,0.55)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    zIndex: 1000,
+                  },
+                  onClick: function (e) {
+                    if (e.target === e.currentTarget) setDispatchModal(null);
+                  },
+                },
+                h(
+                  "div",
+                  {
+                    style: {
+                      background: "var(--bg-primary)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 12,
+                      padding: 24,
+                      minWidth: 400,
+                      maxWidth: 560,
+                      maxHeight: "80vh",
+                      overflowY: "auto",
+                    },
+                  },
+                  h(
+                    "div",
+                    { style: { fontSize: 15, fontWeight: 600, marginBottom: 12 } },
+                    "Dispatch to " + dispatchModal.items.length + " PR(s)",
+                  ),
+
+                  // PR list
+                  h(
+                    "div",
+                    {
+                      style: {
+                        maxHeight: 180,
+                        overflowY: "auto",
+                        marginBottom: 14,
+                        border: "1px solid var(--border)",
+                        borderRadius: 6,
+                        background: "var(--bg-secondary)",
+                        padding: "6px 10px",
+                      },
+                    },
+                    dispatchModal.items.map(function (pr) {
+                      var repo = pr.repo || pr.repository || pr.full_name || "-";
+                      var num = pr.number || pr.pr_number || "-";
+                      return h(
+                        "div",
+                        {
+                          key: String(num),
+                          style: {
+                            fontSize: 12,
+                            padding: "3px 0",
+                            borderBottom: "1px solid var(--border)",
+                            color: "var(--text-secondary)",
+                          },
+                        },
+                        repo + " #" + num + " — " + (pr.title || ""),
+                      );
+                    }),
+                  ),
+
+                  // Provider selector
+                  h(
+                    "label",
+                    {
+                      style: {
+                        display: "block",
+                        fontSize: 12,
+                        color: "var(--text-secondary)",
+                        marginBottom: 8,
+                      },
+                    },
+                    "Provider",
+                    h(
+                      "select",
+                      {
+                        value: modalProvider,
+                        onChange: function (e) { setModalProvider(e.target.value); },
+                        style: {
+                          display: "block",
+                          width: "100%",
+                          marginTop: 4,
+                          background: "var(--bg-secondary)",
+                          color: "var(--text-primary)",
+                          border: "1px solid var(--border)",
+                          borderRadius: 6,
+                          padding: "6px 10px",
+                          boxSizing: "border-box",
+                        },
+                      },
+                      PROVIDERS.map(function (entry) {
+                        return h("option", { key: entry[0], value: entry[0] }, entry[1]);
+                      }),
+                    ),
+                  ),
+
+                  // Prompt textarea
+                  h(
+                    "label",
+                    {
+                      style: {
+                        display: "block",
+                        fontSize: 12,
+                        color: "var(--text-secondary)",
+                        marginBottom: 14,
+                      },
+                    },
+                    "Prompt (optional)",
+                    h("textarea", {
+                      value: modalPrompt,
+                      onChange: function (e) { setModalPrompt(e.target.value); },
+                      rows: 4,
+                      placeholder: "Describe what the agent should do with each PR…",
+                      style: {
+                        display: "block",
+                        width: "100%",
+                        marginTop: 4,
+                        background: "var(--bg-secondary)",
+                        color: "var(--text-primary)",
+                        border: "1px solid var(--border)",
+                        borderRadius: 6,
+                        padding: "6px 10px",
+                        fontSize: 12,
+                        fontFamily: "inherit",
+                        resize: "vertical",
+                        boxSizing: "border-box",
+                      },
+                    }),
+                  ),
+
+                  // Actions
+                  h(
+                    "div",
+                    { style: { display: "flex", gap: 8 } },
+                    h(
+                      "button",
+                      {
+                        className: "btn",
+                        onClick: doDispatch,
+                        disabled: dispatching,
+                      },
+                      dispatching ? h("span", { className: "spinner" }) : null,
+                      dispatching ? " Dispatching…" : "Confirm dispatch",
+                    ),
+                    h(
+                      "button",
+                      {
+                        className: "btn",
+                        style: { opacity: 0.7 },
+                        onClick: function () { setDispatchModal(null); },
+                        disabled: dispatching,
+                      },
+                      "Cancel",
+                    ),
+                  ),
+                ),
+              )
+            : null,
+        );
+      }
+
       // ════════════════════════ MAIN APP ════════════════════════
       function RemediationTab(p) {
         var config = p.config || {};
@@ -7939,9 +8730,37 @@
         }
         var accepted = !!(plan && plan.decision && plan.decision.accepted);
 
+        var ast = React.useState("automations");
+        var activeSubTab = ast[0], setActiveSubTab = ast[1];
+
+        var SUB_TABS = [
+          { id: "automations", label: "Automations" },
+          { id: "prs", label: "PRs" },
+          { id: "issues", label: "Issues" },
+        ];
+
         return h(
           "div",
           null,
+          h(SubTabs, {
+            tabs: SUB_TABS,
+            active: activeSubTab,
+            onSelect: setActiveSubTab,
+            children: activeSubTab === "prs"
+              ? h(PRsSubTab, {})
+              : activeSubTab === "issues"
+              ? h(
+                  "div",
+                  { style: { padding: "24px", color: "var(--text-muted)", fontSize: 13 } },
+                  "Issues dispatch coming soon.",
+                )
+              : null,
+          }),
+          activeSubTab !== "automations"
+            ? null
+            : h(
+                "div",
+                null,
           // ── Manual Dispatch section (TOP) ────────────────────────────────
           h(
             "div",
@@ -9144,7 +9963,8 @@
               ),
             ),
           ),
-        );
+        ), // end automations h("div")
+        ); // end return h("div")
       }
 
       function WorkflowsTab(p) {

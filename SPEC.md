@@ -178,9 +178,16 @@ Health status of local registered applications (processes, services defined in
 `local_apps.json`). Shows up/down state, PID, and restart commands.
 
 ### 3.12 Remediation Tab
-AI agent dispatch control panel. Configures and dispatches remediation plans
-to Jules, GAAI, Claude, or Codex agents. Shows dispatch history and plan
-status. Supports per-repo agent routing.
+AI agent dispatch control panel organised into three sub-tabs:
+
+- **Automations** — configures and dispatches remediation plans to Jules,
+  GAAI, Claude, or Codex agents. Shows dispatch history and plan preview.
+  Supports per-repo agent routing and loop-guard configuration.
+- **PRs** — multi-select table of open pull requests fetched from
+  `GET /api/prs?limit=2000`. Supports filtering by repo, author, and draft
+  status. Bulk dispatch sends selected PRs to a chosen provider via
+  `POST /api/prs/dispatch` with a confirmation modal.
+- **Issues** — placeholder for future issues dispatch UI.
 
 ### 3.13 Workflows Tab
 Browse and manually dispatch any workflow in any org repository. Supports
@@ -332,6 +339,13 @@ All endpoints are served under `http://localhost:8321/api/`.
 | POST | `/api/agent-remediation/dispatch` | Dispatch a remediation plan (GAAI/Claude/Codex) |
 | POST | `/api/agent-remediation/dispatch-jules` | Dispatch via Jules API |
 | GET | `/api/agent-remediation/history` | Remediation dispatch history |
+
+### PR Dispatch
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/prs` | List open pull requests across the org (supports `?limit=N`) |
+| POST | `/api/prs/dispatch` | Bulk-dispatch agent tasks to selected PRs |
 
 ### Credentials
 
