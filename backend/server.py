@@ -4638,6 +4638,7 @@ async def dispatch_assessment(request: Request) -> dict:
 
 _FEATURE_REQUESTS_PATH = Path.home() / "actions-runners" / "dashboard" / "feature_requests.json"
 _PROMPT_TEMPLATES_PATH = Path.home() / "actions-runners" / "dashboard" / "prompt_templates.json"
+_PROMPT_NOTES_PATH = Path.home() / "actions-runners" / "dashboard" / "prompt_notes.json"
 
 STANDARDS_INJECTION: dict[str, str] = {
     "tdd": (
@@ -4682,15 +4683,26 @@ async def list_feature_requests() -> dict:
 
 @app.get("/api/feature-requests/templates")
 async def list_prompt_templates() -> dict:
-    """List saved prompt templates."""
+    """List saved prompt templates and global prompt notes."""
+    templates_data = []
     try:
         if _PROMPT_TEMPLATES_PATH.exists():
-            data = json.loads(_PROMPT_TEMPLATES_PATH.read_text(encoding="utf-8"))
-        else:
-            data = []
+            templates_data = json.loads(_PROMPT_TEMPLATES_PATH.read_text(encoding="utf-8"))
     except Exception:
-        data = []
-    return {"templates": data, "standards": STANDARDS_INJECTION}
+        pass
+
+    prompt_notes_data = {"notes": "", "enabled": True}
+    try:
+        if _PROMPT_NOTES_PATH.exists():
+            prompt_notes_data = json.loads(_PROMPT_NOTES_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+
+    return {
+        "templates": templates_data,
+        "standards": STANDARDS_INJECTION,
+        "promptNotes": prompt_notes_data,
+    }
 
 
 @app.post("/api/feature-requests/templates")
@@ -4722,6 +4734,38 @@ async def save_prompt_template(request: Request) -> dict:
     return {"status": "saved", "name": name}
 
 
+@app.get("/api/settings/prompt-notes")
+async def get_prompt_notes() -> dict:
+    """Get the global prompt notes that are automatically injected into every prompt."""
+    try:
+        if _PROMPT_NOTES_PATH.exists():
+            data = json.loads(_PROMPT_NOTES_PATH.read_text(encoding="utf-8"))
+        else:
+            data = {"notes": "", "enabled": True}
+    except Exception:
+        data = {"notes": "", "enabled": True}
+    return data
+
+
+@app.put("/api/settings/prompt-notes")
+async def update_prompt_notes(request: Request) -> dict:
+    """Update the global prompt notes."""
+    body = await request.json()
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=422, detail="expected object body")
+
+    notes = str(body.get("notes", "")).strip()
+    enabled = bool(body.get("enabled", True))
+
+    try:
+        _PROMPT_NOTES_PATH.parent.mkdir(parents=True, exist_ok=True)
+        data = {"notes": notes, "enabled": enabled}
+        _PROMPT_NOTES_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+    return {"status": "saved", "notes_length": len(notes), "enabled": enabled}
+
+
 @app.post("/api/feature-requests/dispatch")
 async def dispatch_feature_request(request: Request) -> dict:
     """Dispatch a feature implementation request via CI remediation workflow."""
@@ -4734,13 +4778,25 @@ async def dispatch_feature_request(request: Request) -> dict:
     if not repo or not prompt:
         raise HTTPException(status_code=422, detail="repository and prompt required")
 
-    # Build full prompt with standards injection
+    # Load and apply prompt notes if enabled
+    prompt_notes_data: dict[str, object] = {"notes": "", "enabled": True}
+    try:
+        if _PROMPT_NOTES_PATH.exists():
+            prompt_notes_data = json.loads(_PROMPT_NOTES_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+
+    # Build full prompt with notes and standards injection
+    full_prompt = prompt
+    notes_val = str(prompt_notes_data.get("notes", ""))
+    if prompt_notes_data.get("enabled", True) and notes_val.strip():
+        full_prompt = f"{notes_val}\n\n{prompt}"
+
     injected_standards = "\n\n".join(
         f"[{s.upper()}] {STANDARDS_INJECTION[s]}" for s in standards if s in STANDARDS_INJECTION
     )
-    full_prompt = prompt
     if injected_standards:
-        full_prompt = f"{prompt}\n\n## Engineering Standards\n{injected_standards}"
+        full_prompt = f"{full_prompt}\n\n## Engineering Standards\n{injected_standards}"
 
     # Save to history
     entry: dict = {}

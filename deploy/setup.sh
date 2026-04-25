@@ -95,12 +95,21 @@ echo ""
 
 # ── Step 1: Install Python deps ──────────────────────────────────────────────
 header "Step 1/5: Python Dependencies"
-PIP_ARGS=(install --quiet fastapi uvicorn psutil httpx PyYAML)
-if "${PYTHON_BIN}" -m pip install --help 2>/dev/null | grep -q -- '--break-system-packages'; then
-    PIP_ARGS=(install --break-system-packages --quiet fastapi uvicorn psutil httpx PyYAML)
+REQUIREMENTS_FILE="${SCRIPT_DIR}/backend/requirements.txt"
+if [[ -f "$REQUIREMENTS_FILE" ]]; then
+    PIP_ARGS=(install --quiet -r "$REQUIREMENTS_FILE")
+    if "${PYTHON_BIN}" -m pip install --help 2>/dev/null | grep -q -- '--break-system-packages'; then
+        PIP_ARGS=(install --break-system-packages --quiet -r "$REQUIREMENTS_FILE")
+    fi
+else
+    # Fallback if requirements.txt is somehow absent
+    PIP_ARGS=(install --quiet fastapi pydantic uvicorn psutil httpx PyYAML)
+    if "${PYTHON_BIN}" -m pip install --help 2>/dev/null | grep -q -- '--break-system-packages'; then
+        PIP_ARGS=(install --break-system-packages --quiet fastapi pydantic uvicorn psutil httpx PyYAML)
+    fi
 fi
 "${PYTHON_BIN}" -m pip "${PIP_ARGS[@]}"
-ok "fastapi, uvicorn, psutil, httpx, PyYAML installed"
+ok "backend dependencies installed from requirements.txt"
 
 # ── Step 2: Deploy dashboard files ───────────────────────────────────────────
 header "Step 2/5: Deploy Dashboard"
