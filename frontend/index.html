@@ -1219,24 +1219,42 @@
           font-size: 10px;
         }
       }
+
+      /* ── SubTabs ── */
+      .subtabs { display: flex; flex-direction: row; justify-content: space-between; border-bottom: 1px solid var(--border); padding: 0 8px; }
+      .subtabs-strip { display: flex; flex-direction: row; gap: 4px; }
+      .subtab { background: none; border: none; border-bottom: 2px solid transparent; padding: 8px 14px; color: var(--text-muted); cursor: pointer; font-size: 13px; font-weight: 500; }
+      .subtab:hover { color: var(--text-primary); }
+      .subtab.active { color: var(--text-primary); border-bottom-color: var(--accent-blue); }
+      .subtab-badge { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 10px; font-size: 11px; background: var(--bg-tertiary); color: var(--text-muted); }
+      .subtab.active .subtab-badge { background: rgba(88,166,255,0.15); color: var(--accent-blue); }
+      .subtab:disabled { opacity: 0.5; cursor: not-allowed; }
+      .subtabs-right { display: flex; align-items: center; }
     </style>
   </head>
   <body>
     <div id="root"></div>
 
+    <!-- CDN scripts – crossorigin="anonymous" required for SRI enforcement.       -->
+    <!-- SRI integrity hashes should be added per library once versions are       -->
+    <!-- pinned and hashes are computed; remove 'strict-dynamic' after that step. -->
+    <!-- from the CSP script-src directive in backend/server.py.                  -->
     <script
-      crossorigin
+      crossorigin="anonymous"
       src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"
     ></script>
     <script
-      crossorigin
+      crossorigin="anonymous"
       src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"
     ></script>
     <script
-      crossorigin
+      crossorigin="anonymous"
       src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js"
     ></script>
-    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.5/dist/purify.min.js"></script>
+    <script
+      crossorigin="anonymous"
+      src="https://cdn.jsdelivr.net/npm/dompurify@3.2.5/dist/purify.min.js"
+    ></script>
     <script>
       window.__dashboardRenderFailed = function (message) {
         var root = document.getElementById("root");
@@ -1266,9 +1284,72 @@
       }
       var h = React.createElement;
 
+      // ── API Key Auth (issue #16) ─────────────────────────────────────────────
+      var _apiKey = localStorage.getItem("apiKey") || "";
+
+      /** Fetch the key from /api/setup-key when running on localhost. */
+      async function _autoFetchApiKey() {
+        if (_apiKey) return;
+        try {
+          var resp = await fetch("/api/setup-key");
+          if (resp.ok) {
+            var data = await resp.json();
+            _apiKey = data.api_key || "";
+            if (_apiKey) localStorage.setItem("apiKey", _apiKey);
+          }
+        } catch (e) {
+          // Not on localhost or endpoint unavailable — ignore
+        }
+      }
+
+      /** Wrap fetch() to inject Authorization header and handle 401. */
+      async function apiFetch(url, opts) {
+        opts = opts || {};
+        opts.headers = opts.headers || {};
+        if (_apiKey) {
+          opts.headers["Authorization"] = "Bearer " + _apiKey;
+        }
+        var resp = await fetch(url, opts);
+        if (resp.status === 401) {
+          var keyPath = "~/.config/runner-dashboard/api_key.txt";
+          var msg =
+            "Authentication required. Add your API key:\n\n" +
+            "  localStorage.setItem('apiKey', '<key from " + keyPath + ">')\n\n" +
+            "Or set the Authorization header: Bearer <key>";
+          console.warn("[auth] 401 from", url, "-", msg);
+          // Show a toast/overlay if a notifier is available
+          if (typeof window._showAuthError === "function") {
+            window._showAuthError(keyPath);
+          }
+        }
+        return resp;
+      }
+
+      // Auto-fetch key on load (works only from localhost)
+      _autoFetchApiKey();
+      // ────────────────────────────────────────────────────────────────────────
+
       // Configure marked with safe options (issue #7)
       if (typeof marked !== "undefined") {
         marked.use({ mangle: false, headerIds: false, gfm: true });
+      }
+
+      /**
+       * safeOpen – open a URL in a new tab only when it belongs to a trusted
+       * origin (issue #30).  Blocks arbitrary URLs that could be injected via
+       * API responses.
+       * @param {string} url
+       */
+      function safeOpen(url) {
+        if (
+          !url.startsWith("http://localhost") &&
+          !url.startsWith("https://github.com/") &&
+          !url.startsWith("https://api.github.com/")
+        ) {
+          console.error("Blocked unsafe URL:", url);
+          return;
+        }
+        window.open(url, "_blank", "noopener,noreferrer");
       }
 
       var LANG_COLORS = {
@@ -1641,6 +1722,51 @@
         );
       }
 
+      function SubTabs(p) {
+        var tabs = p.tabs || [];
+        var storageKey = p.storageKey;
+        var initialKey = storageKey
+          ? (localStorage.getItem(storageKey) || tabs[0] && tabs[0].key)
+          : (tabs[0] && tabs[0].key);
+        var ia = React.useState(initialKey);
+        var internalActive = ia[0],
+          setInternalActive = ia[1];
+        var activeKey = p.activeKey !== undefined ? p.activeKey : internalActive;
+        function handleChange(key) {
+          if (p.activeKey === undefined) {
+            setInternalActive(key);
+          }
+          if (storageKey) {
+            try { localStorage.setItem(storageKey, key); } catch (e) {}
+          }
+          if (p.onChange) p.onChange(key);
+        }
+        return h(
+          "div",
+          { className: "subtabs" },
+          h(
+            "div",
+            { className: "subtabs-strip" },
+            tabs.map(function (tab) {
+              return h(
+                "button",
+                {
+                  key: tab.key,
+                  className: "subtab" + (activeKey === tab.key ? " active" : ""),
+                  disabled: tab.disabled || false,
+                  onClick: function () { if (!tab.disabled) handleChange(tab.key); },
+                },
+                tab.label,
+                tab.badge != null
+                  ? h("span", { className: "subtab-badge" }, tab.badge)
+                  : null,
+              );
+            }),
+          ),
+          p.rightBadge ? h("div", { className: "subtabs-right" }, p.rightBadge) : null,
+        );
+      }
+
       function Stat(p) {
         return h(
           "div",
@@ -1873,6 +1999,14 @@
         var machinesData = p.machinesData || {};
         var deployment = p.deployment || {};
         var onOpenDeployment = p.onOpenDeployment || function () {};
+        var driftState = React.useState(null);
+        var driftInfo = driftState[0], setDriftInfo = driftState[1];
+        React.useEffect(function () {
+          fetch("/api/deployment/git-drift")
+            .then(function (r) { return r.json(); })
+            .then(function (d) { setDriftInfo(d); })
+            .catch(function () {});
+        }, []);
         var filterState = React.useState("all");
         var filter = filterState[0],
           setFilter = filterState[1];
@@ -2147,6 +2281,31 @@
               sub: "in progress now",
             }),
           ),
+          driftInfo && driftInfo.is_drifted
+            ? h(
+                "div",
+                {
+                  style: {
+                    background: "rgba(210,153,34,0.12)",
+                    border: "1px solid var(--accent-yellow)",
+                    borderRadius: 6,
+                    padding: "8px 14px",
+                    marginBottom: 10,
+                    fontSize: 12,
+                    color: "var(--accent-yellow)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                  },
+                },
+                "⚠️ Deployed version is behind origin/main. Run update-deployed.sh to update.",
+                h(
+                  "span",
+                  { style: { opacity: 0.8, marginLeft: 4 } },
+                  "(local: " + (driftInfo.source_commit || "?") + " → remote: " + (driftInfo.remote_commit || "?") + ")",
+                ),
+              )
+            : null,
           h(
             "div",
             { className: "deployment-note" },
@@ -2968,7 +3127,7 @@
           });
           fetch("/api/tests/rerun", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify({ repo: repo, run_id: runId }),
           })
             .then(function (r) {
@@ -3164,7 +3323,7 @@
               : "/api/heavy-tests/dispatch";
           fetch(url, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify({
               repo: repoName,
               python_version: pyVer,
@@ -3514,7 +3673,8 @@
 
         function refresh() {
           setLoading(true);
-          fetch("/api/stats/workflows?days=" + days + "&group_by=" + groupBy)
+          var wfParams = new URLSearchParams({ days: days, group_by: groupBy });
+          fetch("/api/stats/workflows?" + wfParams)
             .then(function (r) {
               return r.json();
             })
@@ -3531,17 +3691,14 @@
             setTimeseries({ series: [] });
             return;
           }
-          var params = "days=" + Math.max(days, 30) + "&bucket_hours=24";
+          var tsParamObj = { days: Math.max(days, 30), bucket_hours: 24 };
           if (groupBy === "workflow") {
-            params +=
-              "&repo=" +
-              encodeURIComponent(row.repo) +
-              "&workflow_name=" +
-              encodeURIComponent(row.workflow_name);
+            tsParamObj.repo = row.repo;
+            tsParamObj.workflow_name = row.workflow_name;
           } else {
-            params += "&repo=" + encodeURIComponent(row.repo);
+            tsParamObj.repo = row.repo;
           }
-          fetch("/api/stats/workflows/timeseries?" + params)
+          fetch("/api/stats/workflows/timeseries?" + new URLSearchParams(tsParamObj))
             .then(function (r) {
               return r.json();
             })
@@ -3551,7 +3708,7 @@
         }
         function collectNow() {
           setLoading(true);
-          fetch("/api/stats/workflows/collect", { method: "POST" })
+          fetch("/api/stats/workflows/collect", { method: "POST", headers: { "X-Requested-With": "XMLHttpRequest" } })
             .then(function (r) {
               return r.json();
             })
@@ -4453,7 +4610,7 @@
           });
           fetch("/api/deployment/update-signal", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify({
               node: machine.name,
               reason: "dashboard-ui",
@@ -4492,7 +4649,7 @@
           );
           fetch("/api/deployment/update-signal", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify({
               node: machine.name,
               reason: "dashboard-ui",
@@ -5336,6 +5493,10 @@
         var crcs = React.useState(null);
         var confirmRun = crcs[0],
           setConfirmRun = crcs[1];
+        // Inline status message replaces alert() (issue #51)
+        var cms = React.useState(null);
+        var cancelMsg = cms[0],
+          setCancelMsg = cms[1];
         var ipSortState = React.useState({ key: "runningFor", dir: "desc" });
         var ipSort = ipSortState[0],
           setIpSort = ipSortState[1];
@@ -5419,7 +5580,7 @@
             n[key] = "pending";
             return n;
           });
-          fetch("/api/runs/" + repo + "/cancel/" + runId, { method: "POST" })
+          fetch("/api/runs/" + repo + "/cancel/" + runId, { method: "POST", headers: { "X-Requested-With": "XMLHttpRequest" } })
             .then(function (r) {
               return r.json();
             })
@@ -5454,7 +5615,7 @@
           setConfirmWorkflow(null);
           fetch("/api/queue/cancel-workflow", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify({
               workflow_name: workflowName,
               repo: repo || null,
@@ -5464,18 +5625,20 @@
               return r.json();
             })
             .then(function (d) {
-              alert(
+              var msg =
                 "Cancelled " +
-                  d.cancelled_count +
-                  " run(s)" +
-                  (d.errors && d.errors.length > 0
-                    ? "\nErrors: " + d.errors.join(", ")
-                    : ""),
-              );
+                d.cancelled_count +
+                " run(s)" +
+                (d.errors && d.errors.length > 0
+                  ? " — Errors: " + d.errors.join(", ")
+                  : "");
+              setCancelMsg({ type: "success", text: msg });
+              setTimeout(function () { setCancelMsg(null); }, 6000);
               if (onRefresh) setTimeout(onRefresh, 1500);
             })
             .catch(function () {
-              alert("Cancel request failed");
+              setCancelMsg({ type: "error", text: "Cancel request failed" });
+              setTimeout(function () { setCancelMsg(null); }, 6000);
             });
         }
         // Group queued runs by workflow name for bulk-cancel
@@ -5491,6 +5654,34 @@
         return h(
           "div",
           null,
+          cancelMsg
+            ? h(
+                "div",
+                {
+                  role: "alert",
+                  style: {
+                    margin: "0 0 12px",
+                    padding: "10px 16px",
+                    borderRadius: 6,
+                    background:
+                      cancelMsg.type === "error"
+                        ? "rgba(248,81,73,0.15)"
+                        : "rgba(63,185,80,0.15)",
+                    color:
+                      cancelMsg.type === "error"
+                        ? "var(--accent-red)"
+                        : "var(--accent-green)",
+                    border:
+                      "1px solid " +
+                      (cancelMsg.type === "error"
+                        ? "var(--accent-red)"
+                        : "var(--accent-green)"),
+                    fontSize: 13,
+                  },
+                },
+                cancelMsg.text,
+              )
+            : null,
           h(
             "div",
             { className: "stat-row" },
@@ -6885,7 +7076,7 @@
                     key: r.id,
                     style: { cursor: "pointer" },
                     onClick: function () {
-                      if (r.html_url) window.open(r.html_url, "_blank");
+                      if (r.html_url) safeOpen(r.html_url);
                     },
                   },
                   h("td", null, statusIcon(r)),
@@ -7690,6 +7881,1255 @@
         );
       }
 
+
+      // ════════════════════════ PRs SUB-TAB ════════════════════════
+      function PRsSubTab() {
+        // ── State ─────────────────────────────────────────────────────────────
+        var prs_s = React.useState([]);
+        var prs = prs_s[0], setPrs = prs_s[1];
+        var loading_s = React.useState(false);
+        var loading = loading_s[0], setLoading = loading_s[1];
+        var error_s = React.useState(null);
+        var fetchError = error_s[0], setFetchError = error_s[1];
+
+        // Filters
+        var rf = React.useState("");
+        var repoFilter = rf[0], setRepoFilter = rf[1];
+        var af = React.useState("");
+        var authorFilter = af[0], setAuthorFilter = af[1];
+        var df = React.useState(true);
+        var showDrafts = df[0], setShowDrafts = df[1];
+
+        // Selection
+        var sel_s = React.useState({});
+        var selected = sel_s[0], setSelected = sel_s[1];
+
+        // Sort
+        var sort_s = React.useState({ key: "age", dir: "asc" });
+        var sort = sort_s[0], setSort = sort_s[1];
+
+        // Dispatch modal
+        var modal_s = React.useState(null);
+        var dispatchModal = modal_s[0], setDispatchModal = modal_s[1];
+        var dispatching_s = React.useState(false);
+        var dispatching = dispatching_s[0], setDispatching = dispatching_s[1];
+        var dispatchMsg_s = React.useState(null);
+        var dispatchMsg = dispatchMsg_s[0], setDispatchMsg = dispatchMsg_s[1];
+
+        // Modal fields
+        var modalProvider_s = React.useState("jules_api");
+        var modalProvider = modalProvider_s[0], setModalProvider = modalProvider_s[1];
+        var modalPrompt_s = React.useState("");
+        var modalPrompt = modalPrompt_s[0], setModalPrompt = modalPrompt_s[1];
+
+        // ── Data fetch ────────────────────────────────────────────────────────
+        function fetchPRs() {
+          setLoading(true);
+          setFetchError(null);
+          fetch("/api/prs?limit=2000")
+            .then(function (r) {
+              if (!r.ok) throw new Error("HTTP " + r.status);
+              return r.json();
+            })
+            .then(function (data) {
+              var list = Array.isArray(data) ? data : (data.prs || data.items || []);
+              setPrs(list);
+              setSelected({});
+            })
+            .catch(function (err) {
+              setFetchError("Failed to load PRs: " + err.message);
+            })
+            .finally(function () {
+              setLoading(false);
+            });
+        }
+
+        React.useEffect(function () { fetchPRs(); }, []);
+
+        // ── Derived / filtered list ───────────────────────────────────────────
+        var filtered = prs.filter(function (pr) {
+          if (!showDrafts && pr.draft) return false;
+          if (repoFilter) {
+            var repo = (pr.repo || pr.repository || pr.full_name || "").toLowerCase();
+            if (!repo.includes(repoFilter.toLowerCase())) return false;
+          }
+          if (authorFilter) {
+            var author = (pr.author || (pr.user && pr.user.login) || pr.login || "").toLowerCase();
+            if (!author.includes(authorFilter.toLowerCase())) return false;
+          }
+          return true;
+        });
+
+        // Sort
+        var sortAccessors = {
+          repo: function (pr) { return pr.repo || pr.repository || pr.full_name || ""; },
+          number: function (pr) { return pr.number || pr.pr_number || 0; },
+          title: function (pr) { return pr.title || ""; },
+          author: function (pr) { return pr.author || (pr.user && pr.user.login) || ""; },
+          age: function (pr) { return pr.age_hours != null ? pr.age_hours : (pr.created_at ? (Date.now() - new Date(pr.created_at).getTime()) / 3600000 : 0); },
+        };
+        var sortedPRs = sortRows(filtered, sort, sortAccessors);
+
+        // ── Selection helpers ─────────────────────────────────────────────────
+        var visibleIds = sortedPRs.map(function (pr) { return String(pr.number || pr.pr_number || pr.id); });
+        var selectedIds = Object.keys(selected).filter(function (id) { return selected[id]; });
+        var allVisible = visibleIds.length > 0 && visibleIds.every(function (id) { return selected[id]; });
+
+        function toggleAll() {
+          if (allVisible) {
+            var next = Object.assign({}, selected);
+            visibleIds.forEach(function (id) { delete next[id]; });
+            setSelected(next);
+          } else {
+            var next = Object.assign({}, selected);
+            visibleIds.forEach(function (id) { next[id] = true; });
+            setSelected(next);
+          }
+        }
+
+        function toggleRow(id) {
+          setSelected(function (prev) {
+            var next = Object.assign({}, prev);
+            if (next[id]) delete next[id]; else next[id] = true;
+            return next;
+          });
+        }
+
+        // ── Age display ───────────────────────────────────────────────────────
+        function ageLabel(pr) {
+          var hours = pr.age_hours != null
+            ? pr.age_hours
+            : (pr.created_at ? (Date.now() - new Date(pr.created_at).getTime()) / 3600000 : null);
+          if (hours == null) return "-";
+          if (hours < 48) return hours.toFixed(0) + "h";
+          return (hours / 24).toFixed(0) + "d";
+        }
+
+        // ── Dispatch helpers ──────────────────────────────────────────────────
+        function openDispatchSelected() {
+          var items = sortedPRs.filter(function (pr) {
+            return selected[String(pr.number || pr.pr_number || pr.id)];
+          });
+          setDispatchModal({ items: items, mode: "selected" });
+          setModalPrompt("");
+        }
+
+        function openDispatchAll() {
+          if (!window.confirm("Dispatch to all " + sortedPRs.length + " visible PRs?")) return;
+          setDispatchModal({ items: sortedPRs, mode: "all" });
+          setModalPrompt("");
+        }
+
+        function doDispatch() {
+          if (!dispatchModal || !dispatchModal.items.length) return;
+          setDispatching(true);
+          var payload = {
+            selection: {
+              mode: "list",
+              items: dispatchModal.items.map(function (pr) {
+                return {
+                  repo: pr.repo || pr.repository || pr.full_name,
+                  number: pr.number || pr.pr_number,
+                  title: pr.title,
+                };
+              }),
+            },
+            provider: modalProvider,
+            prompt: modalPrompt,
+            confirmation: { approved_by: "dashboard-user" },
+          };
+          fetch("/api/prs/dispatch", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          })
+            .then(function (r) {
+              if (!r.ok) return r.json().then(function (e) { throw new Error(e.detail || r.status); });
+              return r.json();
+            })
+            .then(function () {
+              setDispatchMsg({ type: "success", text: "Dispatched " + dispatchModal.items.length + " PR(s) to " + modalProvider });
+              setDispatchModal(null);
+              setSelected({});
+              setTimeout(function () { setDispatchMsg(null); }, 6000);
+            })
+            .catch(function (err) {
+              setDispatchMsg({ type: "error", text: "Dispatch failed: " + err.message });
+              setTimeout(function () { setDispatchMsg(null); }, 8000);
+            })
+            .finally(function () {
+              setDispatching(false);
+            });
+        }
+
+        var PROVIDERS = [
+          ["jules_api", "Jules API"],
+          ["codex_cli", "Codex CLI"],
+          ["claude_code_cli", "Claude Code CLI"],
+          ["ollama_local", "Ollama (local)"],
+          ["cline", "Cline"],
+        ];
+
+        // ── Render ────────────────────────────────────────────────────────────
+        return h(
+          "div",
+          null,
+
+          // Dispatch status message
+          dispatchMsg
+            ? h(
+                "div",
+                {
+                  role: "alert",
+                  style: {
+                    marginBottom: 12,
+                    padding: "10px 16px",
+                    borderRadius: 6,
+                    background: dispatchMsg.type === "error"
+                      ? "rgba(248,81,73,0.15)"
+                      : "rgba(63,185,80,0.15)",
+                    color: dispatchMsg.type === "error"
+                      ? "var(--accent-red)"
+                      : "var(--accent-green)",
+                    border: "1px solid " + (dispatchMsg.type === "error"
+                      ? "var(--accent-red)"
+                      : "var(--accent-green)"),
+                    fontSize: 13,
+                  },
+                },
+                dispatchMsg.text,
+              )
+            : null,
+
+          // ── Filter bar ──────────────────────────────────────────────────────
+          h(
+            "div",
+            {
+              style: {
+                display: "flex",
+                gap: 8,
+                marginBottom: 12,
+                alignItems: "center",
+                flexWrap: "wrap",
+              },
+            },
+            h("input", {
+              type: "text",
+              placeholder: "Filter by repo (org/repo)…",
+              value: repoFilter,
+              onChange: function (e) { setRepoFilter(e.target.value); },
+              style: {
+                flex: "1 1 160px",
+                minWidth: 140,
+                background: "var(--bg-secondary)",
+                color: "var(--text-primary)",
+                border: "1px solid var(--border)",
+                borderRadius: 6,
+                padding: "6px 10px",
+                fontSize: 12,
+              },
+            }),
+            h("input", {
+              type: "text",
+              placeholder: "Filter by author…",
+              value: authorFilter,
+              onChange: function (e) { setAuthorFilter(e.target.value); },
+              style: {
+                flex: "1 1 120px",
+                minWidth: 100,
+                background: "var(--bg-secondary)",
+                color: "var(--text-primary)",
+                border: "1px solid var(--border)",
+                borderRadius: 6,
+                padding: "6px 10px",
+                fontSize: 12,
+              },
+            }),
+            h(
+              "label",
+              {
+                style: {
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 5,
+                  fontSize: 12,
+                  color: "var(--text-secondary)",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                },
+              },
+              h("input", {
+                type: "checkbox",
+                checked: showDrafts,
+                onChange: function (e) { setShowDrafts(e.target.checked); },
+              }),
+              "Show drafts",
+            ),
+            h(
+              "button",
+              {
+                className: "btn",
+                onClick: fetchPRs,
+                disabled: loading,
+                style: { marginLeft: "auto", whiteSpace: "nowrap" },
+              },
+              loading ? h("span", { className: "spinner" }) : I.refresh(12),
+              " Refresh",
+            ),
+          ),
+
+          // ── Table ──────────────────────────────────────────────────────────
+          loading && prs.length === 0
+            ? h(
+                "div",
+                {
+                  style: {
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    padding: "24px",
+                    color: "var(--text-muted)",
+                    fontSize: 13,
+                  },
+                },
+                h("span", { className: "spinner" }),
+                "Loading PRs…",
+              )
+            : fetchError
+            ? h(
+                "div",
+                {
+                  style: {
+                    padding: "12px 16px",
+                    borderRadius: 8,
+                    background: "rgba(248,81,73,0.12)",
+                    color: "var(--accent-red)",
+                    fontSize: 12,
+                  },
+                },
+                fetchError,
+              )
+            : sortedPRs.length === 0
+            ? h(
+                "div",
+                {
+                  style: {
+                    textAlign: "center",
+                    padding: "32px 24px",
+                    color: "var(--text-muted)",
+                    fontSize: 13,
+                  },
+                },
+                "No open PRs found.",
+              )
+            : h(
+                "div",
+                { style: { overflowX: "auto" } },
+                h(
+                  "table",
+                  { className: "data-table", style: { width: "100%" } },
+                  h(
+                    "thead",
+                    null,
+                    h(
+                      "tr",
+                      null,
+                      h(
+                        "th",
+                        { style: { width: 32, padding: "8px 10px" } },
+                        h("input", {
+                          type: "checkbox",
+                          checked: allVisible,
+                          onChange: toggleAll,
+                          title: allVisible ? "Deselect all" : "Select all",
+                        }),
+                      ),
+                      h(SortTh, { label: "Repo", sortKey: "repo", sort: sort, setSort: setSort }),
+                      h(SortTh, { label: "#", sortKey: "number", sort: sort, setSort: setSort, thProps: { style: { width: 60 } } }),
+                      h(SortTh, { label: "Title", sortKey: "title", sort: sort, setSort: setSort }),
+                      h(SortTh, { label: "Author", sortKey: "author", sort: sort, setSort: setSort }),
+                      h(SortTh, { label: "Age", sortKey: "age", sort: sort, setSort: setSort, thProps: { style: { width: 60 } } }),
+                      h("th", null, "Draft"),
+                      h("th", null, "Labels"),
+                      h("th", null, "Claim"),
+                    ),
+                  ),
+                  h(
+                    "tbody",
+                    null,
+                    sortedPRs.map(function (pr) {
+                      var id = String(pr.number || pr.pr_number || pr.id);
+                      var isChecked = !!selected[id];
+                      var repo = pr.repo || pr.repository || pr.full_name || "-";
+                      var prNum = pr.number || pr.pr_number || "-";
+                      var repoUrl = pr.repo_url || pr.repository_url || ("https://github.com/" + repo);
+                      var prUrl = pr.html_url || pr.url || (repoUrl + "/pull/" + prNum);
+                      var author = pr.author || (pr.user && pr.user.login) || "-";
+                      var labels = pr.labels || [];
+                      var labelNames = labels.map(function (l) { return l.name || l; });
+                      var shownLabels = labelNames.slice(0, 3);
+                      var extraLabels = labelNames.length - 3;
+                      var titleFull = pr.title || "-";
+                      var titleShort = titleFull.length > 80 ? titleFull.slice(0, 77) + "…" : titleFull;
+                      var claim = pr.agent_claim || "";
+
+                      return h(
+                        "tr",
+                        {
+                          key: id,
+                          style: {
+                            background: isChecked ? "rgba(88,166,255,0.06)" : undefined,
+                          },
+                        },
+                        h(
+                          "td",
+                          { style: { width: 32, padding: "8px 10px" } },
+                          h("input", {
+                            type: "checkbox",
+                            checked: isChecked,
+                            onChange: function () { toggleRow(id); },
+                          }),
+                        ),
+                        h(
+                          "td",
+                          null,
+                          h(
+                            "a",
+                            {
+                              href: repoUrl,
+                              target: "_blank",
+                              rel: "noopener noreferrer",
+                              style: { color: "var(--accent-blue)", textDecoration: "none", fontSize: 12 },
+                            },
+                            repo,
+                          ),
+                        ),
+                        h(
+                          "td",
+                          null,
+                          h(
+                            "a",
+                            {
+                              href: prUrl,
+                              target: "_blank",
+                              rel: "noopener noreferrer",
+                              style: { color: "var(--accent-blue)", textDecoration: "none", fontSize: 12 },
+                            },
+                            "#" + prNum,
+                          ),
+                        ),
+                        h(
+                          "td",
+                          { title: titleFull, style: { maxWidth: 320, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } },
+                          titleShort,
+                        ),
+                        h("td", { style: { fontSize: 12, color: "var(--text-secondary)" } }, author),
+                        h("td", { style: { fontSize: 12, whiteSpace: "nowrap" } }, ageLabel(pr)),
+                        h(
+                          "td",
+                          null,
+                          pr.draft
+                            ? h(
+                                "span",
+                                {
+                                  style: {
+                                    fontSize: 11,
+                                    padding: "2px 7px",
+                                    borderRadius: 10,
+                                    background: "rgba(139,148,158,0.18)",
+                                    color: "var(--text-muted)",
+                                    fontWeight: 500,
+                                  },
+                                },
+                                "Draft",
+                              )
+                            : null,
+                        ),
+                        h(
+                          "td",
+                          { style: { fontSize: 11 } },
+                          shownLabels.map(function (lbl) {
+                            return h(
+                              "span",
+                              {
+                                key: lbl,
+                                style: {
+                                  display: "inline-block",
+                                  marginRight: 3,
+                                  padding: "2px 6px",
+                                  borderRadius: 10,
+                                  background: "rgba(88,166,255,0.12)",
+                                  color: "var(--accent-blue)",
+                                  fontSize: 11,
+                                  fontWeight: 500,
+                                  whiteSpace: "nowrap",
+                                },
+                              },
+                              lbl,
+                            );
+                          }),
+                          extraLabels > 0
+                            ? h(
+                                "span",
+                                { style: { fontSize: 11, color: "var(--text-muted)", marginLeft: 2 } },
+                                "+" + extraLabels,
+                              )
+                            : null,
+                        ),
+                        h(
+                          "td",
+                          { style: { fontSize: 12, color: "var(--text-muted)" } },
+                          claim,
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+              ),
+
+          // ── Bulk action bar ────────────────────────────────────────────────
+          selectedIds.length > 0
+            ? h(
+                "div",
+                {
+                  style: {
+                    marginTop: 12,
+                    padding: "10px 14px",
+                    background: "var(--bg-secondary)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 8,
+                    display: "flex",
+                    gap: 10,
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                  },
+                },
+                h(
+                  "span",
+                  { style: { fontSize: 12, color: "var(--text-secondary)", marginRight: 4 } },
+                  selectedIds.length + " PR(s) selected",
+                ),
+                h(
+                  "button",
+                  {
+                    className: "btn",
+                    onClick: openDispatchSelected,
+                  },
+                  "Dispatch to selected (" + selectedIds.length + ")",
+                ),
+                h(
+                  "button",
+                  {
+                    className: "btn",
+                    style: { opacity: 0.8 },
+                    onClick: openDispatchAll,
+                  },
+                  "Dispatch to all (" + sortedPRs.length + ")",
+                ),
+              )
+            : sortedPRs.length > 0
+            ? h(
+                "div",
+                {
+                  style: {
+                    marginTop: 10,
+                    display: "flex",
+                    gap: 8,
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                  },
+                },
+                h(
+                  "button",
+                  {
+                    className: "btn",
+                    style: { opacity: 0.7 },
+                    onClick: openDispatchAll,
+                  },
+                  "Dispatch to all (" + sortedPRs.length + ")",
+                ),
+              )
+            : null,
+
+          // ── Dispatch modal ─────────────────────────────────────────────────
+          dispatchModal
+            ? h(
+                "div",
+                {
+                  style: {
+                    position: "fixed",
+                    inset: 0,
+                    background: "rgba(0,0,0,0.55)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    zIndex: 1000,
+                  },
+                  onClick: function (e) {
+                    if (e.target === e.currentTarget) setDispatchModal(null);
+                  },
+                },
+                h(
+                  "div",
+                  {
+                    style: {
+                      background: "var(--bg-primary)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 12,
+                      padding: 24,
+                      minWidth: 400,
+                      maxWidth: 560,
+                      maxHeight: "80vh",
+                      overflowY: "auto",
+                    },
+                  },
+                  h(
+                    "div",
+                    { style: { fontSize: 15, fontWeight: 600, marginBottom: 12 } },
+                    "Dispatch to " + dispatchModal.items.length + " PR(s)",
+                  ),
+
+                  // PR list
+                  h(
+                    "div",
+                    {
+                      style: {
+                        maxHeight: 180,
+                        overflowY: "auto",
+                        marginBottom: 14,
+                        border: "1px solid var(--border)",
+                        borderRadius: 6,
+                        background: "var(--bg-secondary)",
+                        padding: "6px 10px",
+                      },
+                    },
+                    dispatchModal.items.map(function (pr) {
+                      var repo = pr.repo || pr.repository || pr.full_name || "-";
+                      var num = pr.number || pr.pr_number || "-";
+                      return h(
+                        "div",
+                        {
+                          key: String(num),
+                          style: {
+                            fontSize: 12,
+                            padding: "3px 0",
+                            borderBottom: "1px solid var(--border)",
+                            color: "var(--text-secondary)",
+                          },
+                        },
+                        repo + " #" + num + " — " + (pr.title || ""),
+                      );
+                    }),
+                  ),
+
+                  // Provider selector
+                  h(
+                    "label",
+                    {
+                      style: {
+                        display: "block",
+                        fontSize: 12,
+                        color: "var(--text-secondary)",
+                        marginBottom: 8,
+                      },
+                    },
+                    "Provider",
+                    h(
+                      "select",
+                      {
+                        value: modalProvider,
+                        onChange: function (e) { setModalProvider(e.target.value); },
+                        style: {
+                          display: "block",
+                          width: "100%",
+                          marginTop: 4,
+                          background: "var(--bg-secondary)",
+                          color: "var(--text-primary)",
+                          border: "1px solid var(--border)",
+                          borderRadius: 6,
+                          padding: "6px 10px",
+                          boxSizing: "border-box",
+                        },
+                      },
+                      PROVIDERS.map(function (entry) {
+                        return h("option", { key: entry[0], value: entry[0] }, entry[1]);
+                      }),
+                    ),
+                  ),
+
+                  // Prompt textarea
+                  h(
+                    "label",
+                    {
+                      style: {
+                        display: "block",
+                        fontSize: 12,
+                        color: "var(--text-secondary)",
+                        marginBottom: 14,
+                      },
+                    },
+                    "Prompt (optional)",
+                    h("textarea", {
+                      value: modalPrompt,
+                      onChange: function (e) { setModalPrompt(e.target.value); },
+                      rows: 4,
+                      placeholder: "Describe what the agent should do with each PR…",
+                      style: {
+                        display: "block",
+                        width: "100%",
+                        marginTop: 4,
+                        background: "var(--bg-secondary)",
+                        color: "var(--text-primary)",
+                        border: "1px solid var(--border)",
+                        borderRadius: 6,
+                        padding: "6px 10px",
+                        fontSize: 12,
+                        fontFamily: "inherit",
+                        resize: "vertical",
+                        boxSizing: "border-box",
+                      },
+                    }),
+                  ),
+
+                  // Actions
+                  h(
+                    "div",
+                    { style: { display: "flex", gap: 8 } },
+                    h(
+                      "button",
+                      {
+                        className: "btn",
+                        onClick: doDispatch,
+                        disabled: dispatching,
+                      },
+                      dispatching ? h("span", { className: "spinner" }) : null,
+                      dispatching ? " Dispatching…" : "Confirm dispatch",
+                    ),
+                    h(
+                      "button",
+                      {
+                        className: "btn",
+                        style: { opacity: 0.7 },
+                        onClick: function () { setDispatchModal(null); },
+                        disabled: dispatching,
+                      },
+                      "Cancel",
+                    ),
+                  ),
+                ),
+              )
+            : null,
+        );
+      }
+
+      // ════════════════════════ ISSUES SUB-TAB ════════════════════════
+      function IssuesSubTab() {
+        var issuesState = React.useState([]);
+        var issues = issuesState[0], setIssues = issuesState[1];
+        var loadingState = React.useState(false);
+        var loading = loadingState[0], setLoading = loadingState[1];
+        var errorState = React.useState(null);
+        var fetchError = errorState[0], setFetchError = errorState[1];
+
+        // Filters
+        var repoFState = React.useState(function () { return localStorage.getItem('issues:filter_repo') || ''; });
+        var repoFilter = repoFState[0], setRepoFilter = repoFState[1];
+        var complexFState = React.useState(function () { return localStorage.getItem('issues:filter_complexity') || ''; });
+        var complexFilter = complexFState[0], setComplexFilter = complexFState[1];
+        var judgeFState = React.useState(function () { return localStorage.getItem('issues:filter_judgement') || ''; });
+        var judgeFilter = judgeFState[0], setJudgeFilter = judgeFState[1];
+        var pickableFState = React.useState(function () { return localStorage.getItem('issues:filter_pickable') === '1'; });
+        var pickableOnly = pickableFState[0], setPickableOnly = pickableFState[1];
+
+        // Selection
+        var selectedState = React.useState({});
+        var selected = selectedState[0], setSelected = selectedState[1];
+
+        // Dispatch action bar
+        var providerState = React.useState('jules_api');
+        var dispatchProvider = providerState[0], setDispatchProvider = providerState[1];
+        var promptState = React.useState('');
+        var dispatchPrompt = promptState[0], setDispatchPrompt = promptState[1];
+
+        // Modal
+        var modalState = React.useState(false);
+        var showModal = modalState[0], setShowModal = modalState[1];
+        var forceState = React.useState(false);
+        var forceDispatch = forceState[0], setForceDispatch = forceState[1];
+        var dispatchResultState = React.useState(null);
+        var dispatchResult = dispatchResultState[0], setDispatchResult = dispatchResultState[1];
+
+        function fetchIssues() {
+          setLoading(true);
+          setFetchError(null);
+          fetch('/api/issues?limit=2000')
+            .then(function (r) {
+              if (!r.ok) { throw new Error('HTTP ' + r.status); }
+              return r.json();
+            })
+            .then(function (data) {
+              setIssues(Array.isArray(data) ? data : (data.issues || []));
+              setLoading(false);
+            })
+            .catch(function (err) {
+              setFetchError(err.message || 'Failed to load issues');
+              setLoading(false);
+            });
+        }
+
+        React.useEffect(function () { fetchIssues(); }, []);
+
+        // Persist filters
+        React.useEffect(function () { localStorage.setItem('issues:filter_repo', repoFilter); }, [repoFilter]);
+        React.useEffect(function () { localStorage.setItem('issues:filter_complexity', complexFilter); }, [complexFilter]);
+        React.useEffect(function () { localStorage.setItem('issues:filter_judgement', judgeFilter); }, [judgeFilter]);
+        React.useEffect(function () { localStorage.setItem('issues:filter_pickable', pickableOnly ? '1' : '0'); }, [pickableOnly]);
+
+        var repos = Array.from(new Set(issues.map(function (i) { return i.repo || i.repository || ''; }).filter(Boolean))).sort();
+
+        var filtered = issues.filter(function (issue) {
+          var taxonomy = issue.taxonomy || {};
+          var repo = issue.repo || issue.repository || '';
+          if (repoFilter && repo !== repoFilter) return false;
+          if (complexFilter && taxonomy.complexity !== complexFilter) return false;
+          if (judgeFilter && taxonomy.judgement !== judgeFilter) return false;
+          if (pickableOnly && !issue.pickable) return false;
+          return true;
+        });
+
+        var selectedItems = filtered.filter(function (issue) {
+          return selected[issue.number + ':' + (issue.repo || issue.repository || '')];
+        });
+        var selectedCount = selectedItems.length;
+        var hasNonPickable = selectedItems.some(function (i) { return !i.pickable; });
+        var hasDangerous = selectedItems.some(function (i) {
+          var j = (i.taxonomy || {}).judgement;
+          return j === 'design' || j === 'contested';
+        });
+
+        function toggleSelect(issue) {
+          var key = issue.number + ':' + (issue.repo || issue.repository || '');
+          setSelected(function (prev) {
+            var next = Object.assign({}, prev);
+            if (next[key]) { delete next[key]; } else { next[key] = true; }
+            return next;
+          });
+        }
+
+        function toggleAll(checked) {
+          if (!checked) { setSelected({}); return; }
+          var next = {};
+          filtered.forEach(function (issue) {
+            if (issue.pickable !== false) {
+              next[issue.number + ':' + (issue.repo || issue.repository || '')] = true;
+            }
+          });
+          setSelected(next);
+        }
+
+        function getTypeStyle(type) {
+          var map = {
+            epic: { background: 'rgba(110,118,129,0.2)', color: '#8b949e' },
+            task: { background: 'rgba(88,166,255,0.2)', color: '#58a6ff' },
+            bug: { background: 'rgba(248,81,73,0.2)', color: '#f85149' },
+            security: { background: 'rgba(248,81,73,0.2)', color: '#f85149' },
+            research: { background: 'rgba(188,140,255,0.2)', color: '#bc8cff' },
+            docs: { background: 'rgba(56,189,248,0.2)', color: '#38bdf8' },
+            chore: { background: 'rgba(110,118,129,0.2)', color: '#8b949e' },
+          };
+          return map[type] || { background: 'rgba(110,118,129,0.15)', color: '#8b949e' };
+        }
+
+        function getComplexityStyle(complexity) {
+          var map = {
+            trivial: { background: 'rgba(63,185,80,0.2)', color: '#3fb950' },
+            routine: { background: 'rgba(88,166,255,0.2)', color: '#58a6ff' },
+            complex: { background: 'rgba(210,153,34,0.2)', color: '#d2993a' },
+            deep: { background: 'rgba(248,81,73,0.2)', color: '#f85149' },
+            research: { background: 'rgba(188,140,255,0.2)', color: '#bc8cff' },
+          };
+          return map[complexity] || { background: 'rgba(110,118,129,0.15)', color: '#8b949e' };
+        }
+
+        function getJudgementStyle(judgement) {
+          if (judgement === 'design' || judgement === 'contested') {
+            return { background: 'rgba(220,38,38,0.2)', color: '#ef4444' };
+          }
+          var map = {
+            objective: { background: 'rgba(63,185,80,0.15)', color: '#3fb950' },
+            preference: { background: 'rgba(210,153,34,0.15)', color: '#d2993a' },
+          };
+          return map[judgement] || { background: 'rgba(110,118,129,0.15)', color: '#8b949e' };
+        }
+
+        function pillStyle(style) {
+          return Object.assign({
+            display: 'inline-block',
+            padding: '1px 7px',
+            borderRadius: 10,
+            fontSize: 11,
+            fontWeight: 600,
+            whiteSpace: 'nowrap',
+          }, style);
+        }
+
+        function doDispatch() {
+          var items = selectedItems.map(function (i) {
+            return { repo: i.repo || i.repository || '', number: i.number };
+          });
+          setDispatchResult(null);
+          fetch('/api/issues/dispatch', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: JSON.stringify({
+              selection: { mode: 'list', items: items },
+              provider: dispatchProvider,
+              prompt: dispatchPrompt,
+              force: forceDispatch,
+              confirmation: { approved_by: 'dashboard-user' },
+            }),
+          })
+            .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+            .then(function (result) {
+              if (result.ok) {
+                setDispatchResult({ type: 'success', text: 'Dispatched ' + items.length + ' issue(s) successfully.' });
+                setSelected({});
+              } else {
+                setDispatchResult({ type: 'error', text: 'Dispatch failed: ' + (result.data.detail || JSON.stringify(result.data)) });
+              }
+              setShowModal(false);
+              setForceDispatch(false);
+            })
+            .catch(function (err) {
+              setDispatchResult({ type: 'error', text: 'Dispatch error: ' + err.message });
+              setShowModal(false);
+            });
+        }
+
+        var providerOptions = ['jules_api', 'codex_cli', 'claude_code_cli', 'ollama_local', 'cline'];
+
+        return h('div', { style: { padding: '0 0 16px 0' } },
+          // Filter bar
+          h('div', {
+            style: {
+              display: 'flex',
+              gap: 8,
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              marginBottom: 12,
+              padding: '10px 12px',
+              background: 'var(--bg-secondary)',
+              borderRadius: 8,
+              border: '1px solid var(--border)',
+            }
+          },
+            h('select', {
+              value: repoFilter,
+              onChange: function (e) { setRepoFilter(e.target.value); setSelected({}); },
+              style: { fontSize: 12, padding: '3px 6px', background: 'var(--bg-input)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 4 },
+            },
+              h('option', { value: '' }, 'All repos'),
+              repos.map(function (r) { return h('option', { key: r, value: r }, r); })
+            ),
+            h('select', {
+              value: complexFilter,
+              onChange: function (e) { setComplexFilter(e.target.value); setSelected({}); },
+              style: { fontSize: 12, padding: '3px 6px', background: 'var(--bg-input)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 4 },
+            },
+              h('option', { value: '' }, 'All complexity'),
+              ['trivial', 'routine', 'complex', 'deep', 'research'].map(function (c) { return h('option', { key: c, value: c }, c); })
+            ),
+            h('select', {
+              value: judgeFilter,
+              onChange: function (e) { setJudgeFilter(e.target.value); setSelected({}); },
+              style: { fontSize: 12, padding: '3px 6px', background: 'var(--bg-input)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 4 },
+            },
+              h('option', { value: '' }, 'All judgement'),
+              ['objective', 'preference', 'design', 'contested'].map(function (j) { return h('option', { key: j, value: j }, j); })
+            ),
+            h('label', { style: { display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, cursor: 'pointer', userSelect: 'none' } },
+              h('input', {
+                type: 'checkbox',
+                checked: pickableOnly,
+                onChange: function (e) { setPickableOnly(e.target.checked); setSelected({}); },
+              }),
+              'Pickable only'
+            ),
+            h('button', {
+              className: 'btn',
+              onClick: fetchIssues,
+              style: { marginLeft: 'auto' },
+            }, I.refresh(12), 'Refresh'),
+          ),
+
+          // Dispatch result banner
+          dispatchResult ? h('div', {
+            style: {
+              marginBottom: 10,
+              padding: '8px 12px',
+              borderRadius: 6,
+              fontSize: 12,
+              background: dispatchResult.type === 'success' ? 'rgba(63,185,80,0.12)' : 'rgba(248,81,73,0.12)',
+              color: dispatchResult.type === 'success' ? 'var(--accent-green)' : 'var(--accent-red)',
+            }
+          }, dispatchResult.text) : null,
+
+          // Loading / error
+          loading ? h('div', { style: { color: 'var(--text-muted)', fontSize: 12, padding: '12px 0' } }, 'Loading issues...') : null,
+          fetchError ? h('div', {
+            style: {
+              padding: '10px 12px', borderRadius: 8,
+              background: 'rgba(248,81,73,0.12)', color: 'var(--accent-red)', fontSize: 12,
+            }
+          }, fetchError) : null,
+
+          // Table
+          !loading && !fetchError ? h('div', { style: { overflowX: 'auto' } },
+            filtered.length === 0
+              ? h('div', { style: { color: 'var(--text-muted)', fontSize: 13, padding: '24px 0', textAlign: 'center' } }, 'No issues match the current filters.')
+              : h('table', {
+                  style: {
+                    width: '100%',
+                    borderCollapse: 'collapse',
+                    fontSize: 12,
+                  }
+                },
+                h('thead', null,
+                  h('tr', { style: { borderBottom: '1px solid var(--border)' } },
+                    h('th', { style: { padding: '6px 8px', textAlign: 'center', width: 28 } },
+                      h('input', {
+                        type: 'checkbox',
+                        onChange: function (e) { toggleAll(e.target.checked); },
+                        checked: filtered.length > 0 && filtered.filter(function (i) { return i.pickable !== false; }).every(function (i) {
+                          return selected[i.number + ':' + (i.repo || i.repository || '')];
+                        }),
+                      })
+                    ),
+                    h('th', { style: { padding: '6px 8px', textAlign: 'left' } }, 'Repo'),
+                    h('th', { style: { padding: '6px 8px', textAlign: 'left' } }, '#'),
+                    h('th', { style: { padding: '6px 8px', textAlign: 'left' } }, 'Title'),
+                    h('th', { style: { padding: '6px 8px', textAlign: 'left' } }, 'Type'),
+                    h('th', { style: { padding: '6px 8px', textAlign: 'left' } }, 'Complexity'),
+                    h('th', { style: { padding: '6px 8px', textAlign: 'left' } }, 'Effort'),
+                    h('th', { style: { padding: '6px 8px', textAlign: 'left' } }, 'Judgement'),
+                    h('th', { style: { padding: '6px 8px', textAlign: 'center' } }, 'Pickable'),
+                  )
+                ),
+                h('tbody', null,
+                  filtered.map(function (issue) {
+                    var taxonomy = issue.taxonomy || {};
+                    var repo = issue.repo || issue.repository || '';
+                    var key = issue.number + ':' + repo;
+                    var isSelected = !!selected[key];
+                    var pickable = issue.pickable !== false;
+                    var blockedBy = issue.pickable_blocked_by || [];
+                    var title = (issue.title || '');
+                    var truncTitle = title.length > 80 ? title.slice(0, 80) + '…' : title;
+                    var issueUrl = issue.html_url || ('https://github.com/' + repo + '/issues/' + issue.number);
+                    var repoUrl = 'https://github.com/' + repo;
+                    var typeStyle = getTypeStyle(taxonomy.type || taxonomy.issue_type);
+                    var complexityStyle = getComplexityStyle(taxonomy.complexity);
+                    var judgementStyle = getJudgementStyle(taxonomy.judgement);
+                    var isDangerous = taxonomy.judgement === 'design' || taxonomy.judgement === 'contested';
+                    return h('tr', {
+                      key: key,
+                      style: {
+                        borderBottom: '1px solid var(--border)',
+                        opacity: pickable ? 1 : 0.6,
+                        background: pickable ? 'transparent' : 'rgba(255,0,0,0.04)',
+                      }
+                    },
+                      h('td', { style: { padding: '6px 8px', textAlign: 'center' } },
+                        h('input', {
+                          type: 'checkbox',
+                          checked: isSelected,
+                          disabled: !pickable,
+                          title: !pickable && blockedBy.length ? blockedBy.join(', ') : undefined,
+                          style: pickable ? {} : { cursor: 'not-allowed', opacity: 0.5 },
+                          onChange: function () { if (pickable) toggleSelect(issue); },
+                        })
+                      ),
+                      h('td', { style: { padding: '6px 8px', whiteSpace: 'nowrap' } },
+                        h('a', { href: repoUrl, target: '_blank', rel: 'noreferrer', style: { color: 'var(--text-secondary)', textDecoration: 'none' } }, repo)
+                      ),
+                      h('td', { style: { padding: '6px 8px', whiteSpace: 'nowrap' } },
+                        h('a', { href: issueUrl, target: '_blank', rel: 'noreferrer', style: { color: 'var(--accent-blue)', textDecoration: 'none' } }, '#' + issue.number)
+                      ),
+                      h('td', { style: { padding: '6px 8px', maxWidth: 300 } },
+                        taxonomy.quick_win ? h('span', { style: { color: '#f0c040', marginRight: 4 } }, '★') : null,
+                        h('span', { title: title }, truncTitle)
+                      ),
+                      h('td', { style: { padding: '6px 8px' } },
+                        taxonomy.type || taxonomy.issue_type
+                          ? h('span', { style: pillStyle(typeStyle) }, taxonomy.type || taxonomy.issue_type)
+                          : h('span', { style: { color: 'var(--text-muted)' } }, '—')
+                      ),
+                      h('td', { style: { padding: '6px 8px' } },
+                        taxonomy.complexity
+                          ? h('span', { style: pillStyle(complexityStyle) }, taxonomy.complexity)
+                          : h('span', { style: { color: 'var(--text-muted)' } }, '—')
+                      ),
+                      h('td', { style: { padding: '6px 8px', whiteSpace: 'nowrap' } }, taxonomy.effort || '—'),
+                      h('td', { style: { padding: '6px 8px' } },
+                        taxonomy.judgement
+                          ? h('span', { style: pillStyle(judgementStyle) },
+                              isDangerous ? '🛑 ' : '',
+                              taxonomy.judgement
+                            )
+                          : h('span', { style: { color: 'var(--text-muted)' } }, '—')
+                      ),
+                      h('td', { style: { padding: '6px 8px', textAlign: 'center' } },
+                        pickable
+                          ? h('span', { style: { color: '#3fb950', fontSize: 14 } }, '✓')
+                          : h('span', { title: blockedBy.join(', '), style: { color: '#f85149', fontSize: 14, cursor: 'help' } }, '✗')
+                      )
+                    );
+                  })
+                )
+              )
+          ) : null,
+
+          // Action bar
+          selectedCount > 0 ? h('div', {
+            style: {
+              marginTop: 16,
+              padding: '12px 16px',
+              background: 'var(--bg-secondary)',
+              border: '1px solid var(--border)',
+              borderRadius: 8,
+              display: 'flex',
+              gap: 12,
+              alignItems: 'flex-start',
+              flexWrap: 'wrap',
+            }
+          },
+            h('div', { style: { fontSize: 12, color: 'var(--text-secondary)', alignSelf: 'center' } },
+              selectedCount + ' issue' + (selectedCount !== 1 ? 's' : '') + ' selected'
+            ),
+            h('select', {
+              value: dispatchProvider,
+              onChange: function (e) { setDispatchProvider(e.target.value); },
+              style: { fontSize: 12, padding: '4px 8px', background: 'var(--bg-input)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 4 },
+            },
+              providerOptions.map(function (p) { return h('option', { key: p, value: p }, p); })
+            ),
+            h('textarea', {
+              value: dispatchPrompt,
+              onChange: function (e) { setDispatchPrompt(e.target.value); },
+              placeholder: 'Optional prompt / instructions for agent…',
+              rows: 2,
+              style: {
+                flex: '1 1 200px',
+                fontSize: 12,
+                padding: '4px 8px',
+                background: 'var(--bg-input)',
+                color: 'var(--text-primary)',
+                border: '1px solid var(--border)',
+                borderRadius: 4,
+                resize: 'vertical',
+                minWidth: 150,
+              },
+            }),
+            h('button', {
+              className: 'btn btn-primary',
+              onClick: function () { setShowModal(true); setForceDispatch(false); },
+            }, 'Dispatch to selected'),
+          ) : null,
+
+          // Confirmation modal
+          showModal ? h('div', {
+            style: {
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(0,0,0,0.6)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 1000,
+            },
+            onClick: function (e) { if (e.target === e.currentTarget) { setShowModal(false); } },
+          },
+            h('div', {
+              style: {
+                background: 'var(--bg-primary)',
+                border: '1px solid var(--border)',
+                borderRadius: 10,
+                padding: 24,
+                maxWidth: 540,
+                width: '90vw',
+                maxHeight: '80vh',
+                overflowY: 'auto',
+              }
+            },
+              h('h3', { style: { margin: '0 0 12px 0', fontSize: 15 } }, 'Confirm Dispatch'),
+
+              hasDangerous ? h('div', {
+                style: {
+                  marginBottom: 12,
+                  padding: '8px 12px',
+                  borderRadius: 6,
+                  background: 'rgba(220,38,38,0.15)',
+                  color: '#ef4444',
+                  fontSize: 12,
+                  fontWeight: 600,
+                }
+              }, '🛑 Warning: one or more selected issues have judgement:design or judgement:contested. These require panel review and should not be auto-dispatched.') : null,
+
+              h('div', { style: { fontSize: 12, marginBottom: 10, color: 'var(--text-secondary)' } },
+                'Dispatching ' + selectedCount + ' issue' + (selectedCount !== 1 ? 's' : '') + ' to provider: ',
+                h('strong', null, dispatchProvider)
+              ),
+
+              h('div', { style: { maxHeight: 200, overflowY: 'auto', marginBottom: 12 } },
+                selectedItems.map(function (issue) {
+                  var repo = issue.repo || issue.repository || '';
+                  return h('div', {
+                    key: issue.number + ':' + repo,
+                    style: {
+                      padding: '4px 8px',
+                      fontSize: 12,
+                      borderBottom: '1px solid var(--border)',
+                      opacity: issue.pickable === false ? 0.6 : 1,
+                    }
+                  },
+                    h('span', { style: { color: 'var(--text-muted)' } }, repo + ' '),
+                    h('strong', null, '#' + issue.number),
+                    ' — ',
+                    h('span', null, (issue.title || '').slice(0, 80)),
+                    issue.pickable === false ? h('span', { style: { color: '#f85149', marginLeft: 6 } }, '(non-pickable)') : null
+                  );
+                })
+              ),
+
+              hasNonPickable ? h('label', {
+                style: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, marginBottom: 12, cursor: 'pointer' }
+              },
+                h('input', {
+                  type: 'checkbox',
+                  checked: forceDispatch,
+                  onChange: function (e) { setForceDispatch(e.target.checked); },
+                }),
+                h('span', { style: { color: '#f85149', fontWeight: 600 } }, 'Force dispatch (include non-pickable issues)')
+              ) : null,
+
+              h('div', { style: { display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 } },
+                h('button', {
+                  className: 'btn',
+                  onClick: function () { setShowModal(false); },
+                }, 'Cancel'),
+                h('button', {
+                  className: 'btn btn-primary',
+                  onClick: doDispatch,
+                }, 'Confirm Dispatch'),
+              )
+            )
+          ) : null,
+        );
+      }
+
       // ════════════════════════ MAIN APP ════════════════════════
       function RemediationTab(p) {
         var config = p.config || {};
@@ -7753,6 +9193,10 @@
         var dpe = React.useState(false);
         var editingDefaultProvider = dpe[0],
           setEditingDefaultProvider = dpe[1];
+        // Inline status for Jules dispatch – replaces alert() (issue #51)
+        var jdm = React.useState(null);
+        var julesDispatchMsg = jdm[0],
+          setJulesDispatchMsg = jdm[1];
         React.useEffect(
           function () {
             setDraftRules(
@@ -7799,10 +9243,30 @@
           setEditingDefaultProvider(false);
         }
         var accepted = !!(plan && plan.decision && plan.decision.accepted);
+        var sta = React.useState(
+          (function () {
+            try { return localStorage.getItem("remediation-subtab") || "automations"; } catch (e) { return "automations"; }
+          })()
+        );
+        var subTab = sta[0],
+          setSubTab = sta[1];
 
         return h(
           "div",
           null,
+          h(SubTabs, {
+            tabs: [
+              { key: "automations", label: "Automations" },
+              { key: "prs", label: "PRs" },
+              { key: "issues", label: "Issues" },
+            ],
+            activeKey: subTab,
+            onChange: setSubTab,
+            storageKey: "remediation-subtab",
+          }),
+          subTab === "automations" && h(
+            "div",
+            null,
           // ── Manual Dispatch section (TOP) ────────────────────────────────
           h(
             "div",
@@ -8729,6 +10193,34 @@
                       ],
                 ),
               ),
+              julesDispatchMsg
+                ? h(
+                    "div",
+                    {
+                      role: "alert",
+                      style: {
+                        margin: "12px 0 0",
+                        padding: "10px 16px",
+                        borderRadius: 6,
+                        background:
+                          julesDispatchMsg.type === "error"
+                            ? "rgba(248,81,73,0.15)"
+                            : "rgba(63,185,80,0.15)",
+                        color:
+                          julesDispatchMsg.type === "error"
+                            ? "var(--accent-red)"
+                            : "var(--accent-green)",
+                        border:
+                          "1px solid " +
+                          (julesDispatchMsg.type === "error"
+                            ? "var(--accent-red)"
+                            : "var(--accent-green)"),
+                        fontSize: 13,
+                      },
+                    },
+                    julesDispatchMsg.text,
+                  )
+                : null,
               h(
                 "div",
                 { className: "section", style: { marginTop: 16 } },
@@ -8925,6 +10417,7 @@
                                           method: "POST",
                                           headers: {
                                             "Content-Type": "application/json",
+                                            "X-Requested-With": "XMLHttpRequest",
                                           },
                                           body: JSON.stringify({
                                             workflow_file: entry.workflow_file,
@@ -8936,18 +10429,16 @@
                                         .then(function (r) {
                                           if (!r.ok) {
                                             return r.json().then(function (e) {
-                                              alert(
-                                                "Dispatch failed: " +
-                                                  (e.detail || r.status),
-                                              );
+                                              setJulesDispatchMsg({ type: "error", text: "Dispatch failed: " + (e.detail || r.status) });
+                                              setTimeout(function () { setJulesDispatchMsg(null); }, 6000);
                                             });
                                           }
-                                          alert(
-                                            "Dispatched " + entry.workflow_file,
-                                          );
+                                          setJulesDispatchMsg({ type: "success", text: "Dispatched " + entry.workflow_file });
+                                          setTimeout(function () { setJulesDispatchMsg(null); }, 6000);
                                         })
                                         .catch(function (err) {
-                                          alert("Dispatch error: " + err);
+                                          setJulesDispatchMsg({ type: "error", text: "Dispatch error: " + err });
+                                          setTimeout(function () { setJulesDispatchMsg(null); }, 6000);
                                         });
                                     },
                                   },
@@ -8978,6 +10469,9 @@
               ),
             ),
           ),
+          ),
+          subTab === "prs" && h(PRsSubTab, {}),
+          subTab === "issues" && h(IssuesSubTab, {}),
         );
       }
 
@@ -9666,7 +11160,38 @@
         var pending = React.useState("");
         var pendingAction = pending[0],
           setPendingAction = pending[1];
+        var ts = React.useState([]);
+        var tasks = ts[0],
+          setTasks = ts[1];
+        var tl = React.useState(false);
+        var tasksLoading = tl[0],
+          setTasksLoading = tl[1];
+        var dv = React.useState("");
+        var daemonVersion = dv[0],
+          setDaemonVersion = dv[1];
         var isRunning = status.status === "running";
+
+        function fetchTasks() {
+          setTasksLoading(true);
+          fetch("/api/maxwell/tasks?limit=10")
+            .then(function (r) { return r.json(); })
+            .then(function (data) { setTasks(data.tasks || []); })
+            .catch(function () { setTasks([]); })
+            .finally(function () { setTasksLoading(false); });
+        }
+
+        function fetchVersion() {
+          fetch("/api/maxwell/version")
+            .then(function (r) { return r.json(); })
+            .then(function (data) { setDaemonVersion(data.contract || data.daemon || ""); })
+            .catch(function () { setDaemonVersion(""); });
+        }
+
+        React.useEffect(function () {
+          fetchTasks();
+          fetchVersion();
+        }, []);
+
         function doControl(action) {
           setPendingAction(action);
           setControlling(true);
@@ -9691,6 +11216,7 @@
             h(Stat, { label: "Status", value: status.status || "unknown", sub: status.service_detail || "" }),
             h(Stat, { label: "HTTP", value: status.http_reachable ? "reachable" : "offline", sub: status.http_detail || "" }),
             h(Stat, { label: "Binary", value: status.binary_found ? "found" : "missing", sub: status.binary_path || "not on PATH" }),
+            h(Stat, { label: "Contract", value: daemonVersion || "unknown" }),
           ),
           h("div", { style: { display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" } },
             h("button", { className: "btn", onClick: onRefresh, disabled: loading }, I.refresh(12), loading ? "Refreshing..." : "Refresh"),
@@ -9709,6 +11235,29 @@
                 ? h("div", { style: { marginTop: 12, fontSize: 12, color: "var(--text-muted)" } }, "Maxwell-Daemon is not detected on this machine.")
                 : null,
             ),
+          ),
+          h("div", { className: "section" },
+            h("div", { className: "section-header" },
+              h("span", { className: "section-title" }, I.list ? I.list(14) : null, "Recent Tasks")
+            ),
+            h("div", { className: "section-body" },
+              tasksLoading ? h("div", { style: { color: "var(--text-muted)", fontSize: 12 } }, "Loading tasks…") :
+              !status.http_reachable ? h("div", { style: { fontSize: 12, color: "var(--text-muted)" } }, "Maxwell-Daemon offline — no task history") :
+              tasks.length === 0 ? h("div", { style: { fontSize: 12, color: "var(--text-muted)" } }, "No tasks yet") :
+              h("table", { className: "data-table" },
+                h("thead", null, h("tr", null,
+                  h("th", null, "ID"), h("th", null, "Status"), h("th", null, "Repo"), h("th", null, "Created")
+                )),
+                h("tbody", null, tasks.map(function(t) {
+                  return h("tr", { key: t.id },
+                    h("td", null, (t.id||"").slice(0,8)),
+                    h("td", null, t.status || "—"),
+                    h("td", null, t.repo || "—"),
+                    h("td", null, t.created_at ? t.created_at.slice(0,16).replace("T"," ") : "—")
+                  );
+                }))
+              )
+            )
           ),
         );
       }
@@ -10206,7 +11755,7 @@
           setIsLoading(true);
           fetch("/api/help/chat", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify({ question: q, current_tab: currentTab }),
           })
             .then(function (r) {
@@ -11875,8 +13424,10 @@
         var requests = props.requests || [];
         var templates = props.templates || [];
         var loading = props.loading;
+        var promptNotes = props.promptNotes || { notes: "", enabled: true };
         var onDispatch = props.onDispatch;
         var onSaveTemplate = props.onSaveTemplate;
+        var onSavePromptNotes = props.onSavePromptNotes;
         var onRefresh = props.onRefresh;
         var frs = React.useState("");
         var selRepo = frs[0],
@@ -11902,6 +13453,15 @@
         var svs = React.useState(null);
         var saveStatus = svs[0],
           setSaveStatus = svs[1];
+        var pns = React.useState(promptNotes.notes);
+        var editingPromptNotes = pns[0],
+          setEditingPromptNotes = pns[1];
+        var pnse = React.useState(promptNotes.enabled);
+        var promptNotesEnabled = pnse[0],
+          setPromptNotesEnabled = pnse[1];
+        var pnss = React.useState(null);
+        var promptNotesSaveStatus = pnss[0],
+          setPromptNotesSaveStatus = pnss[1];
         var ALL_STANDARDS = ["tdd", "dbc", "dry", "lod", "security", "docs"];
         function toggleStd(s) {
           setSelStds(function (prev) {
@@ -11917,11 +13477,15 @@
         function doDispatch() {
           if (!selRepo || !promptText.trim()) return;
           setDispatchStatus("dispatching");
+          var finalPrompt = promptText;
+          if (promptNotesEnabled && editingPromptNotes.trim()) {
+            finalPrompt = editingPromptNotes + "\n\n" + promptText;
+          }
           onDispatch({
             repository: selRepo,
             branch: selBranch,
             provider: selProvider,
-            prompt: promptText,
+            prompt: finalPrompt,
             standards: Object.keys(selStds).filter(function (k) {
               return selStds[k];
             }),
@@ -11948,6 +13512,19 @@
         function loadTemplate(t) {
           setPromptText(t.prompt);
         }
+        function doSavePromptNotes() {
+          setPromptNotesSaveStatus("saving");
+          onSavePromptNotes({ notes: editingPromptNotes, enabled: promptNotesEnabled })
+            .then(function () {
+              setPromptNotesSaveStatus("ok");
+              setTimeout(function () {
+                setPromptNotesSaveStatus(null);
+              }, 2000);
+            })
+            .catch(function () {
+              setPromptNotesSaveStatus("error");
+            });
+        }
         return h(
           "div",
           { style: { padding: 20 } },
@@ -11956,6 +13533,106 @@
             { className: "section-header" },
             I.issue(14),
             "Feature Requests",
+          ),
+          h(
+            "div",
+            {
+              style: {
+                background: "var(--bg-secondary)",
+                border: "1px solid var(--border)",
+                borderRadius: 6,
+                padding: 12,
+                marginBottom: 20,
+              },
+            },
+            h(
+              "div",
+              { style: { marginBottom: 10 } },
+              h(
+                "div",
+                {
+                  style: {
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    marginBottom: 8,
+                  },
+                },
+                h("input", {
+                  type: "checkbox",
+                  checked: promptNotesEnabled,
+                  onChange: function (e) {
+                    setPromptNotesEnabled(e.target.checked);
+                  },
+                  style: { cursor: "pointer" },
+                }),
+                h(
+                  "label",
+                  {
+                    style: {
+                      fontWeight: 600,
+                      fontSize: 13,
+                      cursor: "pointer",
+                      userSelect: "none",
+                    },
+                  },
+                  "Auto-inject Prompt Notes",
+                ),
+              ),
+              h(
+                "div",
+                { style: { fontSize: 11, color: "var(--text-muted)", marginBottom: 8 } },
+                "These notes will be automatically prepended to every prompt dispatch",
+              ),
+            ),
+            h("textarea", {
+              value: editingPromptNotes,
+              onChange: function (e) {
+                setEditingPromptNotes(e.target.value);
+              },
+              placeholder:
+                "Enter global prompt notes that will be auto-added to every dispatch…",
+              rows: 6,
+              style: {
+                width: "100%",
+                background: "var(--bg-primary)",
+                border: "1px solid var(--border)",
+                color: "var(--text-primary)",
+                borderRadius: 4,
+                padding: 8,
+                fontSize: 12,
+                resize: "vertical",
+                boxSizing: "border-box",
+                fontFamily: "monospace",
+              },
+            }),
+            h(
+              "div",
+              { style: { marginTop: 8, display: "flex", gap: 8, alignItems: "center" } },
+              h(
+                "button",
+                {
+                  className: "action-btn secondary",
+                  onClick: doSavePromptNotes,
+                  style: { padding: "4px 12px", fontSize: 12 },
+                },
+                "Save Notes",
+              ),
+              promptNotesSaveStatus === "ok"
+                ? h(
+                    "div",
+                    { style: { color: "var(--accent-green)", fontSize: 11 } },
+                    "✓ Saved",
+                  )
+                : null,
+              promptNotesSaveStatus === "error"
+                ? h(
+                    "div",
+                    { style: { color: "var(--accent-red)", fontSize: 11 } },
+                    "✗ Failed",
+                  )
+                : null,
+            ),
           ),
           h(
             "div",
@@ -12437,6 +14114,974 @@
       }
 
 
+      function DiagnosticsTab() {
+        var ds = React.useState(null);
+        var data = ds[0], setData = ds[1];
+        var ls = React.useState(true);
+        var loading = ls[0], setLoading = ls[1];
+        var es = React.useState(null);
+        var error = es[0], setError = es[1];
+        var drs = React.useState(null);
+        var driftData = drs[0], setDriftData = drs[1];
+        var rs2 = React.useState(null);
+        var restartResult = rs2[0], setRestartResult = rs2[1];
+        var rcs = React.useState(false);
+        var restartConfirm = rcs[0], setRestartConfirm = rcs[1];
+        var rls = React.useState(false);
+        var restartLoading = rls[0], setRestartLoading = rls[1];
+        var lrs = React.useState(null);
+        var launcherResult = lrs[0], setLauncherResult = lrs[1];
+        var lls = React.useState(false);
+        var launcherLoading = lls[0], setLauncherLoading = lls[1];
+
+        function fetchDiagnostics() {
+          setLoading(true);
+          Promise.all([
+            fetch("/api/diagnostics/summary").then(function (r) { return r.json(); }),
+            fetch("/api/deployment/git-drift").then(function (r) { return r.json(); }),
+          ])
+            .then(function (results) {
+              setData(results[0] || {});
+              setDriftData(results[1] || {});
+              setError(null);
+              setLoading(false);
+            })
+            .catch(function (e) {
+              setError(e.message || "Failed to load diagnostics");
+              setLoading(false);
+            });
+        }
+
+        React.useEffect(function () { fetchDiagnostics(); }, []);
+
+        function doRestartService() {
+          setRestartLoading(true);
+          setRestartResult(null);
+          fetch("/api/diagnostics/restart-service", { method: "POST" })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+              setRestartResult(d);
+              setRestartConfirm(false);
+              setRestartLoading(false);
+            })
+            .catch(function (e) {
+              setRestartResult({ success: false, output: e.message || "Request failed" });
+              setRestartConfirm(false);
+              setRestartLoading(false);
+            });
+        }
+
+        function doGenerateLaunchers() {
+          setLauncherLoading(true);
+          setLauncherResult(null);
+          fetch("/api/launchers/generate", { method: "POST" })
+            .then(function (r) { return r.json(); })
+            .then(function (d) { setLauncherResult(d); setLauncherLoading(false); })
+            .catch(function (e) {
+              setLauncherResult({ message: "Error: " + (e.message || "Request failed") });
+              setLauncherLoading(false);
+            });
+        }
+
+        var cardStyle = {
+          background: "var(--card-bg)",
+          border: "1px solid var(--border)",
+          borderRadius: 8,
+          padding: "16px 20px",
+          marginBottom: 16,
+        };
+        var sectionHeadStyle = {
+          fontSize: 13,
+          fontWeight: 600,
+          color: "var(--text-muted)",
+          textTransform: "uppercase",
+          letterSpacing: "0.05em",
+          marginBottom: 12,
+        };
+        var kvStyle = { display: "flex", gap: 8, marginBottom: 6, fontSize: 13 };
+        var keyStyle = { color: "var(--text-muted)", minWidth: 140 };
+        var valStyle = { color: "var(--text-primary)", fontFamily: "monospace" };
+        var btnStyle = {
+          background: "var(--accent-blue)",
+          color: "#fff",
+          border: "none",
+          borderRadius: 6,
+          padding: "6px 14px",
+          cursor: "pointer",
+          fontSize: 13,
+          marginRight: 8,
+        };
+        var dangerBtnStyle = Object.assign({}, btnStyle, { background: "var(--accent-red)" });
+        var warnBannerStyle = {
+          background: "rgba(210,153,34,0.15)",
+          border: "1px solid var(--accent-yellow)",
+          borderRadius: 6,
+          padding: "10px 14px",
+          marginBottom: 16,
+          fontSize: 13,
+          color: "var(--accent-yellow)",
+        };
+
+        if (loading) return h("div", { style: { padding: 24 } }, "Loading diagnostics…");
+        if (error) return h("div", { style: { padding: 24, color: "var(--accent-red)" } }, "Error: ", error);
+
+        var isDrifted = (driftData && driftData.is_drifted) || (data && data.is_drifted);
+
+        return h("div", { style: { padding: 20, maxWidth: 860 } },
+          h("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 } },
+            h("h2", { style: { margin: 0, fontSize: 20, fontWeight: 700 } }, "Diagnostics"),
+            h("button", { style: btnStyle, onClick: fetchDiagnostics }, I.refresh(12), " Refresh"),
+          ),
+
+          isDrifted
+            ? h("div", { style: warnBannerStyle },
+                "⚠️ Deployed version is behind origin/main. Run update-deployed.sh to update.",
+                h("div", { style: { marginTop: 6, fontSize: 12, opacity: 0.85 } },
+                  "Local: ", (driftData && driftData.source_commit) || (data && data.source_commit) || "?",
+                  " → Remote: ", (driftData && driftData.remote_commit) || (data && data.remote_commit) || "?",
+                ),
+              )
+            : null,
+
+          h("div", { style: cardStyle },
+            h("div", { style: sectionHeadStyle }, "System Overview"),
+            data
+              ? h("div", null,
+                  h("div", { style: kvStyle }, h("span", { style: keyStyle }, "Dashboard PID"), h("span", { style: valStyle }, data.dashboard_pid || "—")),
+                  h("div", { style: kvStyle }, h("span", { style: keyStyle }, "Memory"), h("span", { style: valStyle }, (data.dashboard_memory_mb || 0) + " MB")),
+                  h("div", { style: kvStyle }, h("span", { style: keyStyle }, "Port"), h("span", { style: valStyle }, data.dashboard_port || 8321)),
+                  h("div", { style: kvStyle }, h("span", { style: keyStyle }, "Git Commit"), h("span", { style: valStyle }, data.git_commit || "unknown")),
+                  h("div", { style: kvStyle }, h("span", { style: keyStyle }, "Drift Status"), h("span", { style: valStyle }, isDrifted ? "Behind origin/main" : "Up to date")),
+                )
+              : h("div", null, "No data"),
+          ),
+
+          h("div", { style: cardStyle },
+            h("div", { style: sectionHeadStyle }, "WSL Status"),
+            data
+              ? h("div", null,
+                  h("div", { style: { fontSize: 12, marginBottom: 8, color: (data.wsl_available ? "var(--accent-green)" : "var(--accent-red)") } },
+                    data.wsl_available ? "WSL available" : "WSL not available"),
+                  data.wsl_status
+                    ? h("pre", { style: { background: "var(--bg-secondary)", borderRadius: 4, padding: 10, fontSize: 11, margin: 0, overflowX: "auto", color: "var(--text-primary)", whiteSpace: "pre-wrap" } },
+                        data.wsl_status)
+                    : null,
+                )
+              : h("div", null, "No WSL data"),
+          ),
+
+          h("div", { style: cardStyle },
+            h("div", { style: sectionHeadStyle }, "Recovery Actions"),
+            h("div", { style: { marginBottom: 12 } },
+              restartConfirm
+                ? h("div", null,
+                    h("span", { style: { fontSize: 13, marginRight: 8, color: "var(--accent-yellow)" } }, "Restart the runner-dashboard systemd service?"),
+                    h("button", {
+                      style: dangerBtnStyle,
+                      onClick: doRestartService,
+                      disabled: restartLoading,
+                    }, restartLoading ? "Restarting…" : "Confirm Restart"),
+                    h("button", { style: Object.assign({}, btnStyle, { background: "var(--card-bg)", color: "var(--text-primary)", border: "1px solid var(--border)" }), onClick: function () { setRestartConfirm(false); } }, "Cancel"),
+                  )
+                : h("button", {
+                    style: dangerBtnStyle,
+                    onClick: function () { setRestartConfirm(true); setRestartResult(null); },
+                  }, "Restart Dashboard Service"),
+              restartResult
+                ? h("div", {
+                    style: {
+                      marginTop: 8,
+                      padding: "8px 12px",
+                      background: restartResult.success ? "rgba(63,185,80,0.1)" : "rgba(248,81,73,0.1)",
+                      borderRadius: 4,
+                      fontSize: 12,
+                      color: restartResult.success ? "var(--accent-green)" : "var(--accent-red)",
+                    }
+                  },
+                    restartResult.success ? "Service restarted successfully." : "Restart failed.",
+                    restartResult.output ? h("pre", { style: { margin: "4px 0 0", fontSize: 11, whiteSpace: "pre-wrap" } }, restartResult.output) : null,
+                  )
+                : null,
+            ),
+          ),
+
+          h("div", { style: cardStyle },
+            h("div", { style: sectionHeadStyle }, "Windows Launchers"),
+            h("p", { style: { fontSize: 13, color: "var(--text-muted)", marginBottom: 12 } },
+              "Generate PowerShell scripts on your Windows Desktop for quick access."),
+            h("button", {
+              style: btnStyle,
+              onClick: doGenerateLaunchers,
+              disabled: launcherLoading,
+            }, launcherLoading ? "Generating…" : "Generate Launchers"),
+            launcherResult
+              ? h("div", { style: { marginTop: 12, fontSize: 12 } },
+                  h("div", { style: { color: "var(--accent-green)", marginBottom: 6 } }, launcherResult.message || "Done"),
+                  launcherResult.output_dir
+                    ? h("div", { style: { color: "var(--text-muted)", marginBottom: 6 } }, "Output: ", h("code", null, launcherResult.output_dir))
+                    : null,
+                  launcherResult.launchers && launcherResult.launchers.length > 0
+                    ? h("ul", { style: { margin: "4px 0", paddingLeft: 20 } },
+                        launcherResult.launchers.map(function (f) {
+                          return h("li", { key: f, style: { fontFamily: "monospace", fontSize: 11 } }, f.split(/[\\/]/).pop());
+                        }),
+                      )
+                    : null,
+                )
+              : null,
+          ),
+
+          h("div", { style: cardStyle },
+            h("div", { style: sectionHeadStyle }, "Quick API Links"),
+            h("div", { style: { display: "flex", flexWrap: "wrap", gap: 8 } },
+              ["/api/health", "/api/system", "/api/runners", "/api/diagnostics/summary", "/api/deployment/drift"].map(function (url) {
+                return h("a", { key: url, href: url, target: "_blank", rel: "noopener noreferrer", style: { fontSize: 12, color: "var(--accent-blue)", textDecoration: "none", padding: "4px 8px", background: "var(--bg-secondary)", borderRadius: 4 } }, url);
+              }),
+            ),
+          ),
+        );
+      }
+
+
+
+      // ════════════════════════ ASSISTANT SIDEBAR ════════════════════════
+
+      /** Minimal Markdown renderer — bold, italic, inline code, code blocks, links, lists */
+      function renderMarkdown(text) {
+        if (!text) return [];
+        var out = [];
+        var lines = text.split("\n");
+        var i = 0;
+        while (i < lines.length) {
+          var line = lines[i];
+          // Fenced code block
+          if (line.startsWith("```")) {
+            var codeLines = [];
+            i++;
+            while (i < lines.length && !lines[i].startsWith("```")) {
+              codeLines.push(lines[i]);
+              i++;
+            }
+            out.push(h("pre", { key: out.length, style: { background: "var(--bg-tertiary)", borderRadius: 6, padding: "10px 12px", overflowX: "auto", fontSize: 12, margin: "6px 0" } },
+              h("code", null, codeLines.join("\n"))
+            ));
+            i++;
+            continue;
+          }
+          // Unordered list item
+          if (/^[-*] /.test(line)) {
+            var listItems = [];
+            while (i < lines.length && /^[-*] /.test(lines[i])) {
+              listItems.push(h("li", { key: i }, inlineMarkdown(lines[i].slice(2))));
+              i++;
+            }
+            out.push(h("ul", { key: out.length, style: { paddingLeft: 18, margin: "4px 0" } }, listItems));
+            continue;
+          }
+          // Ordered list item
+          if (/^\d+\. /.test(line)) {
+            var olItems = [];
+            while (i < lines.length && /^\d+\. /.test(lines[i])) {
+              olItems.push(h("li", { key: i }, inlineMarkdown(lines[i].replace(/^\d+\. /, ""))));
+              i++;
+            }
+            out.push(h("ol", { key: out.length, style: { paddingLeft: 18, margin: "4px 0" } }, olItems));
+            continue;
+          }
+          // Heading
+          var hm = line.match(/^(#{1,3}) (.+)/);
+          if (hm) {
+            var lvl = hm[1].length;
+            var tag = "h" + (lvl + 3);
+            out.push(h(tag, { key: out.length, style: { margin: "8px 0 4px", fontWeight: 600, fontSize: lvl === 1 ? 15 : lvl === 2 ? 13 : 12 } }, inlineMarkdown(hm[2])));
+            i++;
+            continue;
+          }
+          // Blank line
+          if (line.trim() === "") {
+            out.push(h("br", { key: out.length }));
+            i++;
+            continue;
+          }
+          // Paragraph
+          out.push(h("p", { key: out.length, style: { margin: "2px 0" } }, inlineMarkdown(line)));
+          i++;
+        }
+        return out;
+      }
+
+      function inlineMarkdown(text) {
+        // Split on inline code, bold, italic, links
+        var parts = [];
+        var re = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|\[([^\]]+)\]\(([^)]+)\))/g;
+        var last = 0, m;
+        while ((m = re.exec(text)) !== null) {
+          if (m.index > last) parts.push(text.slice(last, m.index));
+          var tok = m[0];
+          if (tok.startsWith("`")) {
+            parts.push(h("code", { key: parts.length, style: { background: "var(--bg-tertiary)", borderRadius: 3, padding: "1px 5px", fontSize: "0.9em", fontFamily: "monospace" } }, tok.slice(1, -1)));
+          } else if (tok.startsWith("**")) {
+            parts.push(h("strong", { key: parts.length }, tok.slice(2, -2)));
+          } else if (tok.startsWith("*")) {
+            parts.push(h("em", { key: parts.length }, tok.slice(1, -1)));
+          } else {
+            parts.push(h("a", { key: parts.length, href: m[3], target: "_blank", rel: "noopener noreferrer", style: { color: "var(--accent-blue)" } }, m[2]));
+          }
+          last = re.lastIndex;
+        }
+        if (last < text.length) parts.push(text.slice(last));
+        return parts;
+      }
+
+      var ASST_LS = {
+        open: "assistant:open",
+        position: "assistant:position",
+        width: "assistant:width",
+        transcript: "assistant:transcript",
+        openByDefault: "assistant:openByDefault",
+        includeContext: "assistant:includeContext",
+      };
+
+      function lsGet(key, fallback) {
+        try { var v = localStorage.getItem(key); return v === null ? fallback : JSON.parse(v); } catch (e) { return fallback; }
+      }
+      function lsSet(key, val) {
+        try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {}
+      }
+
+      function AssistantSidebar(props) {
+        var currentTab = props.currentTab || "";
+        var open = props.open;
+        var toggle = props.onToggle;
+
+        var ps2 = React.useState(lsGet(ASST_LS.position, "right"));
+        var position = ps2[0], setPosition = ps2[1];
+
+        var ws2 = React.useState(lsGet(ASST_LS.width, 360));
+        var width = ws2[0], setWidth = ws2[1];
+
+        var ts2 = React.useState(lsGet(ASST_LS.transcript, []));
+        var transcript = ts2[0], setTranscript = ts2[1];
+
+        var ic2 = React.useState(lsGet(ASST_LS.includeContext, true));
+        var includeCtx = ic2[0], setIncludeCtx = ic2[1];
+
+        var obds = React.useState(lsGet(ASST_LS.openByDefault, false));
+        var openByDefault = obds[0], setOpenByDefault = obds[1];
+
+        var inputS = React.useState("");
+        var inputVal = inputS[0], setInputVal = inputS[1];
+
+        var loadS = React.useState(false);
+        var loading = loadS[0], setLoading = loadS[1];
+
+        var showSettingsS = React.useState(false);
+        var showSettings = showSettingsS[0], setShowSettings = showSettingsS[1];
+
+        var transcriptRef = React.useRef(null);
+        var dragStartX = React.useRef(null);
+        var dragStartW = React.useRef(null);
+
+        // Scroll to bottom when transcript changes
+        React.useEffect(function () {
+          if (transcriptRef.current) {
+            transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight;
+          }
+        }, [transcript, open]);
+
+        // Persist state changes
+        React.useEffect(function () { lsSet(ASST_LS.position, position); }, [position]);
+        React.useEffect(function () { lsSet(ASST_LS.width, width); }, [width]);
+        React.useEffect(function () { lsSet(ASST_LS.includeContext, includeCtx); }, [includeCtx]);
+        React.useEffect(function () { lsSet(ASST_LS.openByDefault, openByDefault); }, [openByDefault]);
+        React.useEffect(function () {
+          var capped = transcript.length > 200 ? transcript.slice(-200) : transcript;
+          lsSet(ASST_LS.transcript, capped);
+        }, [transcript]);
+
+        function getPageContext() {
+          return {
+            tab: currentTab,
+            url: window.location.href,
+            selection: window.getSelection ? window.getSelection().toString().slice(0, 500) : "",
+          };
+        }
+
+        function sendMessage() {
+          var msg = inputVal.trim();
+          if (!msg || loading) return;
+          setInputVal("");
+          var userMsg = { role: "user", content: msg, id: Date.now() };
+          setTranscript(function (t) { return t.concat([userMsg]); });
+          setLoading(true);
+          var body = { question: msg };
+          if (includeCtx) body.page_context = getPageContext();
+          fetch("/api/help/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+              var reply = data.answer || data.response || data.message || JSON.stringify(data);
+              var asstMsg = { role: "assistant", content: reply, id: Date.now() + 1 };
+              setTranscript(function (t) { return t.concat([asstMsg]); });
+            })
+            .catch(function (err) {
+              var errMsg = { role: "assistant", content: "Error: " + (err.message || "request failed"), id: Date.now() + 1 };
+              setTranscript(function (t) { return t.concat([errMsg]); });
+            })
+            .finally(function () { setLoading(false); });
+        }
+
+        function onKeyDown(e) {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+          }
+        }
+
+        function startDrag(e) {
+          dragStartX.current = e.clientX;
+          dragStartW.current = width;
+          e.preventDefault();
+          function onMove(ev) {
+            var delta = position === "right" ? dragStartX.current - ev.clientX : ev.clientX - dragStartX.current;
+            var newW = Math.min(600, Math.max(280, dragStartW.current + delta));
+            setWidth(newW);
+          }
+          function onUp() {
+            document.removeEventListener("mousemove", onMove);
+            document.removeEventListener("mouseup", onUp);
+          }
+          document.addEventListener("mousemove", onMove);
+          document.addEventListener("mouseup", onUp);
+        }
+
+        // Sidebar container
+        var sidebarStyle = {
+          width: open ? width : 0,
+          minWidth: open ? width : 0,
+          maxWidth: open ? width : 0,
+          overflow: "hidden",
+          transition: "width 0.2s, min-width 0.2s, max-width 0.2s",
+          flexShrink: 0,
+          position: "relative",
+          background: "var(--bg-secondary)",
+          borderLeft: position === "right" ? "1px solid var(--border)" : "none",
+          borderRight: position === "left" ? "1px solid var(--border)" : "none",
+          display: "flex",
+          flexDirection: "column",
+          height: "calc(100vh - 56px)",
+          top: 0,
+        };
+
+        var dragHandleStyle = {
+          position: "absolute",
+          top: 0,
+          bottom: 0,
+          width: 5,
+          cursor: "col-resize",
+          background: "transparent",
+          zIndex: 10,
+          left: position === "right" ? 0 : "auto",
+          right: position === "left" ? 0 : "auto",
+        };
+
+        var headerStyle = {
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "10px 12px",
+          borderBottom: "1px solid var(--border)",
+          flexShrink: 0,
+          background: "var(--bg-tertiary)",
+        };
+
+        var transcriptStyle = {
+          flex: 1,
+          overflowY: "auto",
+          padding: "12px",
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+        };
+
+        var inputAreaStyle = {
+          borderTop: "1px solid var(--border)",
+          padding: "8px",
+          flexShrink: 0,
+          display: "flex",
+          flexDirection: "column",
+          gap: 6,
+        };
+
+        var settingsPanel = showSettings
+          ? h("div", { style: { padding: "12px", display: "flex", flexDirection: "column", gap: 12, overflowY: "auto", flex: 1 } },
+              h("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+                h("button", { onClick: function () { setShowSettings(false); }, style: { background: "none", border: "none", color: "var(--accent-blue)", cursor: "pointer", fontSize: 13 } }, "← Back"),
+                h("span", { style: { fontWeight: 600, fontSize: 13 } }, "Settings"),
+              ),
+              h("label", { style: { fontSize: 12, display: "flex", flexDirection: "column", gap: 4 } },
+                "Position",
+                h("div", { style: { display: "flex", gap: 12, marginTop: 4 } },
+                  h("label", { style: { display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontSize: 12 } },
+                    h("input", { type: "radio", name: "asst-pos", checked: position === "right", onChange: function () { setPosition("right"); }, style: { accentColor: "var(--accent-blue)" } }),
+                    "Right"
+                  ),
+                  h("label", { style: { display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontSize: 12 } },
+                    h("input", { type: "radio", name: "asst-pos", checked: position === "left", onChange: function () { setPosition("left"); }, style: { accentColor: "var(--accent-blue)" } }),
+                    "Left"
+                  ),
+                ),
+              ),
+              h("label", { style: { fontSize: 12, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" } },
+                h("input", { type: "checkbox", checked: openByDefault, onChange: function (e) { setOpenByDefault(e.target.checked); }, style: { accentColor: "var(--accent-blue)" } }),
+                "Open by default"
+              ),
+              h("label", { style: { fontSize: 12, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" } },
+                h("input", { type: "checkbox", checked: includeCtx, onChange: function (e) { setIncludeCtx(e.target.checked); }, style: { accentColor: "var(--accent-blue)" } }),
+                "Include page context with messages"
+              ),
+              h("button", {
+                onClick: function () { setTranscript([]); setShowSettings(false); },
+                style: { background: "var(--accent-red)", color: "#fff", border: "none", borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontSize: 12, width: "100%", marginTop: 8 },
+              }, "Clear conversation"),
+            )
+          : null;
+
+        var chatPanel = !showSettings
+          ? h(React.Fragment, null,
+              h("div", { ref: transcriptRef, style: transcriptStyle },
+                transcript.length === 0
+                  ? h("div", { style: { color: "var(--text-muted)", fontSize: 12, textAlign: "center", marginTop: 24 } }, "Ask anything about the dashboard…")
+                  : transcript.map(function (msg) {
+                      var isUser = msg.role === "user";
+                      var bubbleStyle = {
+                        alignSelf: isUser ? "flex-end" : "flex-start",
+                        background: isUser ? "var(--accent-blue)" : "var(--bg-tertiary)",
+                        color: isUser ? "#fff" : "var(--text-primary)",
+                        borderRadius: isUser ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
+                        padding: "8px 12px",
+                        maxWidth: "92%",
+                        fontSize: 13,
+                        lineHeight: 1.5,
+                        wordBreak: "break-word",
+                      };
+                      return h("div", { key: msg.id, style: bubbleStyle },
+                        isUser ? msg.content : renderMarkdown(msg.content)
+                      );
+                    }),
+                loading ? h("div", { style: { alignSelf: "flex-start", color: "var(--text-muted)", fontSize: 12, fontStyle: "italic" } }, "Thinking…") : null,
+              ),
+              h("div", { style: inputAreaStyle },
+                h("textarea", {
+                  value: inputVal,
+                  onChange: function (e) { setInputVal(e.target.value); },
+                  onKeyDown: onKeyDown,
+                  placeholder: "Ask a question… (Enter to send)",
+                  rows: 3,
+                  style: {
+                    width: "100%",
+                    background: "var(--bg-tertiary)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 8,
+                    color: "var(--text-primary)",
+                    padding: "8px",
+                    fontSize: 13,
+                    resize: "none",
+                    fontFamily: "inherit",
+                    outline: "none",
+                  },
+                }),
+                h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
+                  h("span", { style: { fontSize: 11, color: "var(--text-muted)" } }, "Shift+Enter for newline"),
+                  h("button", {
+                    onClick: sendMessage,
+                    disabled: loading || !inputVal.trim(),
+                    style: {
+                      background: "var(--accent-blue)",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: 6,
+                      padding: "5px 14px",
+                      cursor: loading || !inputVal.trim() ? "default" : "pointer",
+                      fontSize: 13,
+                      opacity: loading || !inputVal.trim() ? 0.5 : 1,
+                    },
+                  }, "Send"),
+                ),
+              ),
+            )
+          : null;
+
+        return h("div", { style: sidebarStyle, "aria-label": "Assistant sidebar" },
+          open ? h("div", { style: dragHandleStyle, onMouseDown: startDrag }) : null,
+          open ? h(React.Fragment, null,
+            h("div", { style: headerStyle },
+              h("span", { style: { fontWeight: 600, fontSize: 13 } }, "✨ Assistant"),
+              h("div", { style: { display: "flex", gap: 6 } },
+                h("button", {
+                  onClick: function () { setShowSettings(function (s) { return !s; }); },
+                  title: "Settings",
+                  style: { background: "none", border: "none", color: showSettings ? "var(--accent-blue)" : "var(--text-muted)", cursor: "pointer", fontSize: 15, lineHeight: 1 },
+                }, "⚙️"),
+                h("button", {
+                  onClick: toggle,
+                  title: "Close",
+                  style: { background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 16, lineHeight: 1 },
+                }, "×"),
+              ),
+            ),
+            settingsPanel,
+            chatPanel,
+          ) : null,
+        );
+      }
+
+      // ════════════════════════ QUICK DISPATCH POPOVER ════════════════════════
+      function QuickDispatchPopover() {
+        var os = React.useState(false);
+        var open = os[0], setOpen = os[1];
+
+        var rs = React.useState([]);
+        var repoList = rs[0], setRepoList = rs[1];
+
+        var ps = React.useState([]);
+        var providerList = ps[0], setProviderList = ps[1];
+
+        var fms = React.useState({
+          repository: "",
+          provider: "claude_code_cli",
+          model: "claude-opus-4-7",
+          ref: "main",
+          prompt: "",
+        });
+        var form = fms[0], setForm = fms[1];
+
+        var ls = React.useState(false);
+        var loading = ls[0], setLoading = ls[1];
+
+        var es = React.useState(null);
+        var error = es[0], setError = es[1];
+
+        var ss = React.useState(null);
+        var successMsg = ss[0], setSuccessMsg = ss[1];
+
+        var popoverRef = React.useRef(null);
+        var triggerRef = React.useRef(null);
+
+        // Close on outside click
+        React.useEffect(function () {
+          if (!open) return;
+          function onMouseDown(e) {
+            if (
+              popoverRef.current && !popoverRef.current.contains(e.target) &&
+              triggerRef.current && !triggerRef.current.contains(e.target)
+            ) {
+              setOpen(false);
+            }
+          }
+          document.addEventListener("mousedown", onMouseDown);
+          return function () { document.removeEventListener("mousedown", onMouseDown); };
+        }, [open]);
+
+        // Fetch repos and providers when popover opens
+        React.useEffect(function () {
+          if (!open) return;
+          if (repoList.length === 0) {
+            fetch("/api/repos")
+              .then(function (r) { return r.json(); })
+              .then(function (d) {
+                var repos = (d && d.repos) ? d.repos : [];
+                setRepoList(repos);
+                if (repos.length > 0 && !form.repository) {
+                  setForm(function (prev) {
+                    return Object.assign({}, prev, { repository: repos[0].full_name || repos[0].name || "" });
+                  });
+                }
+              })
+              .catch(function () {});
+          }
+          if (providerList.length === 0) {
+            fetch("/api/agents/providers")
+              .then(function (r) { return r.json(); })
+              .then(function (d) {
+                var providers = d && d.providers ? Object.keys(d.providers) : ["claude_code_cli"];
+                setProviderList(providers);
+              })
+              .catch(function () {
+                setProviderList(["claude_code_cli", "jules_api", "codex_cli"]);
+              });
+          }
+        }, [open]);
+
+        function handleToggle() {
+          setOpen(function (prev) { return !prev; });
+          setError(null);
+          setSuccessMsg(null);
+        }
+
+        function handleFormChange(field, value) {
+          setForm(function (prev) { return Object.assign({}, prev, { [field]: value }); });
+        }
+
+        function handleCancel() {
+          setOpen(false);
+          setError(null);
+          setSuccessMsg(null);
+        }
+
+        function handleDispatch() {
+          setError(null);
+          if (!form.repository) {
+            setError("Please select a repository.");
+            return;
+          }
+          if (!form.prompt || form.prompt.trim().length < 10) {
+            setError("Prompt must be at least 10 characters.");
+            return;
+          }
+          setLoading(true);
+          var body = {
+            repository: form.repository,
+            prompt: form.prompt.trim(),
+            provider: form.provider,
+            ref: form.ref || "main",
+            task_kind: "adhoc",
+          };
+          if (PROVIDERS_WITH_MODEL.indexOf(form.provider) !== -1 && form.model.trim()) {
+            body.model = form.model.trim();
+          }
+          fetch("/api/agents/quick-dispatch", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+            body: JSON.stringify(body),
+          })
+            .then(function (r) {
+              return r.json().then(function (d) { return { ok: r.ok, status: r.status, data: d }; });
+            })
+            .then(function (result) {
+              setLoading(false);
+              if (!result.ok) {
+                if (result.status === 429) {
+                  setError("Rate limited. Try again in a moment.");
+                } else {
+                  setError((result.data && result.data.detail) || "Dispatch failed.");
+                }
+                return;
+              }
+              setSuccessMsg("✓ Dispatched!");
+              setForm(function (prev) {
+                return Object.assign({}, prev, { prompt: "" });
+              });
+              setTimeout(function () {
+                setOpen(false);
+                setSuccessMsg(null);
+              }, 1800);
+            })
+            .catch(function () {
+              setLoading(false);
+              setError("Network error. Please try again.");
+            });
+        }
+
+        var showModel = PROVIDERS_WITH_MODEL.indexOf(form.provider) !== -1;
+
+        var labelStyle = {
+          fontSize: 12,
+          color: "var(--text-muted)",
+          marginBottom: 3,
+          display: "block",
+        };
+        var inputStyle = {
+          width: "100%",
+          background: "var(--bg-primary)",
+          border: "1px solid var(--border)",
+          borderRadius: 6,
+          padding: "5px 10px",
+          color: "var(--text-primary)",
+          fontSize: 13,
+          outline: "none",
+          boxSizing: "border-box",
+        };
+        var rowStyle = { marginBottom: 10 };
+
+        return h(
+          "div",
+          { style: { position: "relative", display: "inline-block" } },
+          h(
+            "button",
+            {
+              ref: triggerRef,
+              className: "btn btn-blue",
+              style: {
+                fontSize: 13,
+                padding: "6px 12px",
+                fontWeight: 600,
+                background: "rgba(88,166,255,0.15)",
+              },
+              onClick: handleToggle,
+              title: "Open Quick Dispatch",
+            },
+            "⚡ Quick Dispatch ▾",
+          ),
+          open
+            ? h(
+                "div",
+                {
+                  ref: popoverRef,
+                  style: {
+                    position: "fixed",
+                    right: 16,
+                    top: 64,
+                    width: 320,
+                    background: "var(--bg-secondary)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 8,
+                    boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+                    zIndex: 9000,
+                    padding: 16,
+                  },
+                },
+                h(
+                  "div",
+                  { style: { fontWeight: 700, fontSize: 14, marginBottom: 14, color: "var(--text-primary)" } },
+                  "⚡ Quick Dispatch",
+                ),
+                h(
+                  "div",
+                  { style: rowStyle },
+                  h("label", { style: labelStyle }, "Repository"),
+                  h(
+                    "select",
+                    {
+                      style: inputStyle,
+                      value: form.repository,
+                      onChange: function (e) { handleFormChange("repository", e.target.value); },
+                    },
+                    repoList.length === 0
+                      ? h("option", { value: "" }, "Loading…")
+                      : repoList.map(function (repo) {
+                          var name = repo.full_name || repo.name || repo;
+                          return h("option", { key: name, value: name }, name);
+                        }),
+                  ),
+                ),
+                h(
+                  "div",
+                  { style: rowStyle },
+                  h("label", { style: labelStyle }, "Provider"),
+                  h(
+                    "select",
+                    {
+                      style: inputStyle,
+                      value: form.provider,
+                      onChange: function (e) { handleFormChange("provider", e.target.value); },
+                    },
+                    providerList.length === 0
+                      ? h("option", { value: "claude_code_cli" }, "claude_code_cli")
+                      : providerList.map(function (pid) {
+                          return h("option", { key: pid, value: pid }, pid);
+                        }),
+                  ),
+                ),
+                showModel
+                  ? h(
+                      "div",
+                      { style: rowStyle },
+                      h("label", { style: labelStyle }, "Model"),
+                      h("input", {
+                        type: "text",
+                        style: inputStyle,
+                        value: form.model,
+                        placeholder: "claude-opus-4-7",
+                        onChange: function (e) { handleFormChange("model", e.target.value); },
+                      }),
+                    )
+                  : null,
+                h(
+                  "div",
+                  { style: rowStyle },
+                  h("label", { style: labelStyle }, "Branch ref"),
+                  h("input", {
+                    type: "text",
+                    style: inputStyle,
+                    value: form.ref,
+                    placeholder: "main",
+                    onChange: function (e) { handleFormChange("ref", e.target.value); },
+                  }),
+                ),
+                h(
+                  "div",
+                  { style: rowStyle },
+                  h("label", { style: labelStyle }, "Prompt"),
+                  h("textarea", {
+                    rows: 4,
+                    style: Object.assign({}, inputStyle, { resize: "vertical", fontFamily: "inherit" }),
+                    value: form.prompt,
+                    placeholder: "Describe the task for the agent…",
+                    onChange: function (e) { handleFormChange("prompt", e.target.value); },
+                  }),
+                ),
+                error
+                  ? h(
+                      "div",
+                      {
+                        style: {
+                          fontSize: 12,
+                          color: "var(--accent-red)",
+                          marginBottom: 10,
+                          padding: "6px 10px",
+                          background: "rgba(248,81,73,0.1)",
+                          borderRadius: 4,
+                          border: "1px solid rgba(248,81,73,0.3)",
+                        },
+                      },
+                      error,
+                    )
+                  : null,
+                successMsg
+                  ? h(
+                      "div",
+                      {
+                        style: {
+                          fontSize: 12,
+                          color: "var(--accent-green)",
+                          marginBottom: 10,
+                          padding: "6px 10px",
+                          background: "rgba(63,185,80,0.1)",
+                          borderRadius: 4,
+                          border: "1px solid rgba(63,185,80,0.3)",
+                        },
+                      },
+                      successMsg,
+                    )
+                  : null,
+                h(
+                  "div",
+                  { style: { display: "flex", justifyContent: "flex-end", gap: 8 } },
+                  h(
+                    "button",
+                    { className: "btn", onClick: handleCancel, disabled: loading },
+                    "Cancel",
+                  ),
+                  h(
+                    "button",
+                    {
+                      className: "btn btn-blue",
+                      style: { background: "rgba(88,166,255,0.2)", fontWeight: 600 },
+                      onClick: handleDispatch,
+                      disabled: loading,
+                    },
+                    loading ? "Dispatching…" : "⚡ Dispatch",
+                  ),
+                ),
+              )
+            : null,
+        );
+      }
+
       function App() {
         var ts = React.useState("overview");
         var tab = ts[0],
@@ -12604,7 +15249,12 @@
         var frl = React.useState(false);
         var featureRequestsLoading = frl[0],
           setFeatureRequestsLoading = frl[1];
-
+        var pns = React.useState({ notes: "", enabled: true });
+        var promptNotes = pns[0],
+          setPromptNotes = pns[1];
+        var asstS = React.useState(lsGet(ASST_LS.open, lsGet(ASST_LS.openByDefault, false)));
+        var asstOpen = asstS[0], setAsstOpen = asstS[1];
+        function toggleAsst() { setAsstOpen(function (o) { var n = !o; lsSet(ASST_LS.open, n); return n; }); }
 
         function fetchFleetOrchestration() {
           setFleetOrchLoading(true);
@@ -12626,7 +15276,7 @@
         function orchDispatch(params) {
           return fetch("/api/fleet/orchestration/dispatch", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify(params),
           }).then(function (r) {
             return r.json().then(function (d) {
@@ -12639,7 +15289,7 @@
         function orchDeploy(params) {
           return fetch("/api/fleet/orchestration/deploy", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify(params),
           }).then(function (r) {
             return r.json().then(function (d) {
@@ -12685,7 +15335,7 @@
         function dispatchWorkflow(params) {
           return fetch("/api/workflows/dispatch", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify(params),
           }).then(function (r) {
             return r.json().then(function (d) {
@@ -12723,7 +15373,7 @@
         function maxwellControl(params) {
           return fetch("/api/maxwell/control", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify(params),
           }).then(function (r) {
             return r.json().then(function (d) {
@@ -12972,7 +15622,7 @@
           setRemediationLoading(true);
           return fetch("/api/agent-remediation/config", {
             method: "PUT",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify({ policy: policy }),
           })
             .then(function (r) {
@@ -13025,7 +15675,7 @@
           setRemediationDispatchState(null);
           fetch("/api/agent-remediation/plan", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify(
               Object.assign({}, payload, {
                 provider_override: remediationProvider,
@@ -13060,7 +15710,7 @@
           setRemediationLoading(true);
           fetch("/api/agent-remediation/dispatch", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify(
               Object.assign({}, payload, {
                 provider: remediationProvider,
@@ -13130,7 +15780,7 @@
           setRunnerCapacityLoading(true);
           fetch("/api/fleet/schedule", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify({ schedule: schedule, apply: apply }),
           })
             .then(function (r) {
@@ -13168,7 +15818,7 @@
         function dispatchAssessment(params) {
           return fetch("/api/assessments/dispatch", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify(params),
           }).then(function (r) {
             if (!r.ok)
@@ -13189,16 +15839,19 @@
               .catch(function () {
                 return { requests: [] };
               }),
-            fetch("/api/prompt-templates")
+            fetch("/api/feature-requests/templates")
               .then(function (r) {
                 return r.json();
               })
               .catch(function () {
-                return { templates: [] };
+                return { templates: [], promptNotes: { notes: "", enabled: true } };
               }),
           ]).then(function (results) {
             setFeatureRequests(results[0].requests || []);
             setPromptTemplates(results[1].templates || []);
+            if (results[1].promptNotes) {
+              setPromptNotes(results[1].promptNotes);
+            }
             setFeatureRequestsLoading(false);
           });
         }
@@ -13206,7 +15859,7 @@
         function dispatchFeatureRequest(params) {
           return fetch("/api/feature-requests/dispatch", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify(params),
           }).then(function (r) {
             if (!r.ok)
@@ -13220,7 +15873,7 @@
         function savePromptTemplate(params) {
           return fetch("/api/prompt-templates", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify(params),
           })
             .then(function (r) {
@@ -13234,6 +15887,20 @@
               fetchFeatureRequests();
               return d;
             });
+        }
+
+        function updatePromptNotes(params) {
+          return fetch("/api/settings/prompt-notes", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(params),
+          }).then(function (r) {
+            if (!r.ok)
+              return r.json().then(function (e) {
+                throw new Error(e.detail || "save failed");
+              });
+            return r.json();
+          });
         }
 
         function fetchOptionalStats() {
@@ -13467,7 +16134,7 @@
           setRemediationLoading(true);
           return fetch("/api/agent-remediation/config", {
             method: "PUT",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify({ policy: policy }),
           })
             .then(function (r) {
@@ -13525,7 +16192,7 @@
           setRemediationDispatchState(null);
           fetch("/api/agent-remediation/plan", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify(
               Object.assign({}, payload, {
                 provider_override: remediationProvider,
@@ -13560,7 +16227,7 @@
           setRemediationLoading(true);
           fetch("/api/agent-remediation/dispatch", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify(
               Object.assign({}, payload, {
                 provider: remediationProvider,
@@ -13621,7 +16288,7 @@
           setRunnerCapacityLoading(true);
           fetch("/api/fleet/schedule", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             body: JSON.stringify({ schedule: schedule, apply: apply }),
           })
             .then(function (r) {
@@ -13687,7 +16354,7 @@
 
         function onFleet(a) {
           setActionLoading(true);
-          fetch("/api/fleet/control/" + a, { method: "POST" })
+          fetch("/api/fleet/control/" + a, { method: "POST", headers: { "X-Requested-With": "XMLHttpRequest" } })
             .then(function () {
               setTimeout(fetchFleet, 2000);
             })
@@ -13699,7 +16366,7 @@
         }
         function onRunner(id, a) {
           setActionLoading(true);
-          fetch("/api/runners/" + id + "/" + a, { method: "POST" })
+          fetch("/api/runners/" + id + "/" + a, { method: "POST", headers: { "X-Requested-With": "XMLHttpRequest" } })
             .then(function () {
               setTimeout(fetchFleet, 2000);
             })
@@ -13709,6 +16376,8 @@
               }, 2500);
             });
         }
+
+        var asstPosition = lsGet(ASST_LS.position, "right");
 
         return h(
           "div",
@@ -13739,11 +16408,13 @@
             ),
             h(
               "div",
-              { className: "tab-bar" },
+              { className: "tab-bar", role: "tablist", "aria-label": "Dashboard sections" },
               h(
                 "button",
                 {
                   className: "tab-btn" + (tab === "overview" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "overview",
                   onClick: function () {
                     setTab("overview");
                   },
@@ -13756,6 +16427,8 @@
                 {
                   className:
                     "tab-btn" + (tab === "remediation" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "remediation",
                   onClick: function () {
                     setTab("remediation");
                     fetchRemediationConfig();
@@ -13786,6 +16459,8 @@
                 "button",
                 {
                   className: "tab-btn" + (tab === "queue" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "queue",
                   onClick: function () {
                     setTab("queue");
                     fetchQueue();
@@ -13812,6 +16487,8 @@
                 "button",
                 {
                   className: "tab-btn" + (tab === "machines" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "machines",
                   onClick: function () {
                     setTab("machines");
                     fetchMachines();
@@ -13838,6 +16515,8 @@
                 "button",
                 {
                   className: "tab-btn" + (tab === "org" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "org",
                   onClick: function () {
                     setTab("org");
                   },
@@ -13849,6 +16528,8 @@
                 "button",
                 {
                   className: "tab-btn" + (tab === "tests" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "tests",
                   onClick: function () {
                     setTab("tests");
                   },
@@ -13860,6 +16541,8 @@
                 "button",
                 {
                   className: "tab-btn" + (tab === "stats" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "stats",
                   onClick: function () {
                     setTab("stats");
                   },
@@ -13871,6 +16554,8 @@
                 "button",
                 {
                   className: "tab-btn" + (tab === "reports" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "reports",
                   onClick: function () {
                     setTab("reports");
                   },
@@ -13883,6 +16568,8 @@
                 {
                   className:
                     "tab-btn" + (tab === "scheduled-jobs" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "scheduled-jobs",
                   onClick: function () {
                     setTab("scheduled-jobs");
                     fetchScheduledJobs();
@@ -13909,6 +16596,8 @@
                 "button",
                 {
                   className: "tab-btn" + (tab === "workflows" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "workflows",
                   onClick: function () {
                     setTab("workflows");
                     fetchWorkflowsList();
@@ -13936,6 +16625,8 @@
                 {
                   className:
                     "tab-btn" + (tab === "runner-schedule" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "runner-schedule",
                   onClick: function () {
                     setTab("runner-schedule");
                     fetchRunnerCapacity();
@@ -13963,6 +16654,8 @@
                 {
                   className:
                     "tab-btn" + (tab === "deployment" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "deployment",
                   onClick: function () {
                     setTab("deployment");
                     fetchDeploymentState();
@@ -13994,6 +16687,8 @@
                 "button",
                 {
                   className: "tab-btn" + (tab === "history" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "history",
                   onClick: function () {
                     setTab("history");
                     fetchEnrichedRuns();
@@ -14021,6 +16716,8 @@
                 {
                   className:
                     "tab-btn" + (tab === "local-apps" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "local-apps",
                   onClick: function () {
                     setTab("local-apps");
                     fetchLocalApps();
@@ -14052,6 +16749,8 @@
                 {
                   className:
                     "tab-btn" + (tab === "credentials" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "credentials",
                   onClick: function () {
                     setTab("credentials");
                     fetchCredentials();
@@ -14080,6 +16779,8 @@
                   className:
                     "tab-btn" +
                     (tab === "fleet-orchestration" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "fleet-orchestration",
                   onClick: function () {
                     setTab("fleet-orchestration");
                     fetchFleetOrchestration();
@@ -14093,6 +16794,8 @@
                 {
                   className:
                     "tab-btn" + (tab === "assessments" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "assessments",
                   onClick: function () {
                     setTab("assessments");
                     fetchAssessments();
@@ -14106,6 +16809,8 @@
                 {
                   className:
                     "tab-btn" + (tab === "feature-requests" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "feature-requests",
                   onClick: function () {
                     setTab("feature-requests");
                     fetchFeatureRequests();
@@ -14132,6 +16837,8 @@
                 "button",
                 {
                   className: "tab-btn" + (tab === "maxwell" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "maxwell",
                   onClick: function () {
                     setTab("maxwell");
                     fetchMaxwellStatus();
@@ -14166,6 +16873,18 @@
                         "off",
                       )
                     : null,
+              ),
+              h(
+                "button",
+                {
+                  className:
+                    "tab-btn" + (tab === "diagnostics" ? " active" : ""),
+                  onClick: function () {
+                    setTab("diagnostics");
+                  },
+                },
+                I.settings(14),
+                "Diagnostics",
               ),
             ),
             h(
@@ -14211,6 +16930,13 @@
                 },
                 "Build " + shortSha(deployment.git_sha),
               ),
+              h("button", {
+                className: "btn",
+                style: { marginLeft: 4, background: asstOpen ? "var(--accent-blue)" : undefined, color: asstOpen ? "#fff" : undefined },
+                onClick: toggleAsst,
+                title: "Toggle Assistant sidebar",
+              }, "☰ Asst"),
+              h(QuickDispatchPopover, null),
               h(
                 "button",
                 {
@@ -14239,8 +16965,11 @@
           ),
           h(
             "div",
-            { className: "main-content" },
-            tab === "overview"
+            { style: { display: "flex", flexDirection: asstPosition === "left" ? "row-reverse" : "row", alignItems: "flex-start", minHeight: "calc(100vh - 56px)" } },
+            h(
+              "div",
+              { className: "main-content", role: "main", style: { flex: 1, minWidth: 0 } },
+              tab === "overview"
               ? h(FleetTab, {
                   runners: runners,
                   runs: runs,
@@ -14383,8 +17112,10 @@
                                                   templates: promptTemplates,
                                                   standards: featureStandards,
                                                   loading: featureRequestsLoading,
+                                                  promptNotes: promptNotes,
                                                   onDispatch: dispatchFeatureRequest,
                                                   onSaveTemplate: savePromptTemplate,
+                                                  onSavePromptNotes: updatePromptNotes,
                                                   onRefresh: fetchFeatureRequests,
                                                 })
                                               : tab === "maxwell"
@@ -14396,7 +17127,11 @@
                                                       fetchMaxwellStatus,
                                                     onControl: maxwellControl,
                                                   })
-                                                : null,
+                                                : tab === "diagnostics"
+                                                  ? h(DiagnosticsTab, null)
+                                                  : null,
+            ),
+            h(AssistantSidebar, { currentTab: tab, open: asstOpen, onToggle: toggleAsst }),
           ),
           h(DashboardHelp, { currentTab: tab }),
         );
