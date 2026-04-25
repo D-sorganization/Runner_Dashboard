@@ -29,3 +29,4 @@ credentials.json
 backend/.venv/
 *.pyc
 *.pyo
+.claude/worktrees/

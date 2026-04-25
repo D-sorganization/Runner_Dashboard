@@ -365,8 +365,54 @@ app = FastAPI(
     description="Monitor and control self-hosted GitHub Actions runners",
 )
 
+_PROCESSED_ENVELOPES_PATH = Path.home() / "actions-runners" / "dashboard" / "processed_envelopes.json"
+_processed_envelopes_lock: asyncio.Lock = asyncio.Lock()
+
+
+def _load_processed_envelopes() -> dict[str, float]:
+    """Load processed envelope IDs and expiration times from disk."""
+    if not _PROCESSED_ENVELOPES_PATH.exists():
+        return {}
+    try:
+        data = json.loads(_PROCESSED_ENVELOPES_PATH.read_text())
+        return {k: float(v) for k, v in data.items() if isinstance(v, (int, float))}
+    except (OSError, json.JSONDecodeError, ValueError):
+        return {}
+
+
+async def _is_envelope_replay(envelope_id: str) -> bool:
+    """Check if envelope_id has already been processed (replay detection)."""
+    async with _processed_envelopes_lock:
+        processed = _load_processed_envelopes()
+        now = datetime.now(UTC).timestamp()
+
+        if envelope_id in processed:
+            expires_at = processed[envelope_id]
+            return expires_at > now
+
+        return False
+
+
+async def _record_processed_envelope(envelope_id: str, ttl_seconds: int = 86400) -> None:
+    """Record that envelope_id has been processed (for replay detection)."""
+    async with _processed_envelopes_lock:
+        processed = _load_processed_envelopes()
+        now = datetime.now(UTC).timestamp()
+        expires_at = now + ttl_seconds
+
+        processed[envelope_id] = expires_at
+
+        cleaned = {k: v for k, v in processed.items() if v > now}
+        try:
+            _PROCESSED_ENVELOPES_PATH.parent.mkdir(parents=True, exist_ok=True)
+            config_schema.atomic_write_json(_PROCESSED_ENVELOPES_PATH, cleaned)
+        except OSError as exc:
+            log.warning("failed to record processed envelope: %s", exc)
+
+
 # ── Bounded domain routers ────────────────────────────────────────────────────
 app.include_router(_dispatch_router.router)
+_dispatch_router.set_replay_functions(_is_envelope_replay, _record_processed_envelope)
 app.include_router(_credentials_router.router)
 
 app.add_middleware(

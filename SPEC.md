@@ -1084,20 +1084,123 @@ Core logic lives in `backend/agent_dispatch_router.py`.  The server routes at
 call `agent_dispatch_router.dispatch_to_prs()` and
 `agent_dispatch_router.dispatch_to_issues()` respectively.
 
-## 15. Assistant Sidebar
+## 15. Fleet Node Security
 
-### 15.1 Overview
+### 15.1 Phase 1: Envelope Signing & Replay Protection
+
+All fleet dispatch envelopes (`CommandEnvelope` objects) are cryptographically
+signed with HMAC-SHA256 and include replay protection and timestamp validation
+to prevent unauthorized command execution, tampering, and replay attacks.
+
+### 15.2 Command Envelope Structure
+
+Every dispatch envelope includes the following security fields:
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| `envelope_id` | UUID4 (string) | Unique envelope identifier for replay detection |
+| `signature` | hex string | HMAC-SHA256 signature of the canonical envelope payload |
+| `issued_at` | ISO 8601 timestamp | Envelope creation time; must be within ±5 minutes of server time |
+| `requested_by` | string | User/principal requesting the action |
+| `action` | string | Allowlisted action name (e.g., `control.runner.start`) |
+| `payload` | dict | Action-specific parameters (e.g., runner ID) |
+
+Approval of privileged actions includes:
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| `approved_by` | string | User approving the action |
+| `approved_at` | ISO 8601 timestamp | Approval time; must be within ±5 minutes of server time |
+| `approval_hmac` | hex string | HMAC-SHA256 signature binding approval to the envelope |
+
+### 15.3 Signature Validation
+
+When a `CommandEnvelope` is created via `CommandEnvelope.from_dict()`, the
+signature is verified against the envelope's canonical JSON payload using a
+deployment-wide signing secret loaded from the `DISPATCH_SIGNING_SECRET`
+environment variable (or `~/.config/runner-dashboard/dispatch_signing_key` if
+not set).
+
+Verification failure raises an exception; invalid envelopes never reach business
+logic.
+
+### 15.4 Timestamp Validation
+
+Both `issued_at` and `approved_at` timestamps are validated to be:
+
+1. Parseable ISO 8601 strings
+2. Not more than 5 minutes in the past (freshness check)
+3. Not more than 1 minute in the future (clock skew tolerance)
+
+Validation result is a `TimestampValidationResult` enum: `VALID`, `TOO_OLD`,
+or `CLOCK_SKEW`.
+
+### 15.5 Replay Protection
+
+Every processed envelope ID is stored in the `processed_envelopes` table with
+a 24-hour TTL. The `/api/fleet/dispatch/submit` endpoint checks this table
+before accepting an envelope. Duplicate envelope IDs are rejected with a 400
+Bad Request response.
+
+Expired entries are periodically cleaned up (currently at server startup).
+
+### 15.6 Crypto Validation Route
+
+The `/api/fleet/dispatch/submit` endpoint performs full crypto validation:
+
+1. Parse the envelope from the request body
+2. Verify the envelope signature via `validate_envelope_crypto()`
+3. Check for replay via `_is_envelope_replay()`
+4. Validate timestamp freshness
+5. Record the envelope ID as processed
+6. Proceed to business logic validation
+
+If any crypto check fails, the endpoint returns 400 Bad Request with a
+descriptive error (e.g., "Envelope has already been processed (replay
+detected)").
+
+### 15.7 Implementation Details
+
+**Signing secret generation:**
+```bash
+# Generate a 48-byte (384-bit) random hex string
+openssl rand -hex 24 > ~/.config/runner-dashboard/dispatch_signing_key
+chmod 600 ~/.config/runner-dashboard/dispatch_signing_key
+export DISPATCH_SIGNING_SECRET=$(cat ~/.config/runner-dashboard/dispatch_signing_key)
+```
+
+**Signing algorithm:**
+- Canonical JSON of the envelope (with `signature` field omitted)
+- HMAC-SHA256 with the deployment signing secret
+- Hex-encoded result
+
+**Signature binding:**
+- CommandEnvelope.from_dict() auto-verifies the signature in `__post_init__`
+- DispatchConfirmation.approval_hmac binds the approval to the envelope_id
+
+**Database schema:**
+```sql
+CREATE TABLE processed_envelopes (
+  envelope_id TEXT PRIMARY KEY,
+  processed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  expires_at DATETIME
+);
+```
+
+## 16. Assistant Sidebar
+
+### 16.1 Overview
 
 A persistent collapsible sidebar that provides a conversational AI assistant
 interface accessible from any tab in the dashboard.
 
-### 15.2 Toggle
+### 16.2 Toggle
 
 A button labelled "☰ Asst" in the header-right area toggles the sidebar
 open or closed. The button is highlighted (blue background) when the sidebar
 is open.
 
-### 15.3 Layout
+### 16.3 Layout
 
 When open, the sidebar docks alongside the main content area in a flex row.
 The user may configure it to dock to the left or right of the viewport.
@@ -1107,7 +1210,7 @@ The default position is right.
 - Draggable resize handle: 280px – 600px range
 - The main content shrinks to fill the remaining width
 
-### 15.4 Persistence
+### 16.4 Persistence
 
 All sidebar preferences are stored in `localStorage` under the `assistant:`
 prefix:
@@ -1121,7 +1224,7 @@ prefix:
 | `assistant:openByDefault` | Open automatically on load | `false` |
 | `assistant:includeContext` | Send page context with each message | `true` |
 
-### 15.5 Conversation
+### 16.5 Conversation
 
 Messages are displayed as chat bubbles. User messages dock right with a blue
 background; assistant replies dock left with a tertiary background. Assistant
@@ -1131,7 +1234,7 @@ lists — no external library required.
 
 Input is a textarea. Enter sends the message; Shift+Enter inserts a newline.
 
-### 15.6 API Integration
+### 16.6 API Integration
 
 Messages are sent to `POST /api/help/chat` with the body:
 
@@ -1148,7 +1251,7 @@ Messages are sent to `POST /api/help/chat` with the body:
 
 `page_context` is omitted when the "Include page context" setting is disabled.
 
-### 15.7 Settings
+### 16.7 Settings
 
 A gear icon in the sidebar header opens a settings card with:
 
@@ -1157,7 +1260,7 @@ A gear icon in the sidebar header opens a settings card with:
 - **Include page context**: checkbox
 - **Clear conversation**: destructive button that empties the transcript
 
-### 15.8 Implementation
+### 16.8 Implementation
 
 The `AssistantSidebar` component is defined in `frontend/index.html` just
 before `QuickDispatchPopover`. It follows the no-JSX, no-build-step convention
