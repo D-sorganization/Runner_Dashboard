@@ -9400,25 +9400,64 @@
                         ),
                       ),
                       h(
-                        "a",
+                        "div",
                         {
-                          href: ghUrl,
-                          target: "_blank",
-                          rel: "noopener noreferrer",
-                          onClick: function (e) {
-                            e.stopPropagation();
-                          },
                           style: {
-                            fontSize: 11,
-                            color: "var(--accent-green)",
-                            textDecoration: "none",
-                            padding: "4px 8px",
-                            border: "1px solid var(--accent-green)",
-                            borderRadius: 4,
-                            whiteSpace: "nowrap",
+                            display: "flex",
+                            gap: 4,
+                            flexWrap: "wrap",
+                            justifyContent: "flex-end",
                           },
                         },
-                        "↗ GitHub",
+                        [
+                          {
+                            label: "Run",
+                            href: ghUrl,
+                          },
+                          {
+                            label: "Repo",
+                            href:
+                              run.repository &&
+                              run.repository.html_url
+                                ? run.repository.html_url
+                                : "https://github.com/D-sorganization/" + repoName,
+                          },
+                          {
+                            label: "Branch",
+                            href:
+                              "https://github.com/D-sorganization/" +
+                              repoName +
+                              "/tree/" +
+                              encodeURIComponent(branch),
+                          },
+                          {
+                            label: "Logs",
+                            href: ghUrl + "/logs",
+                          },
+                        ].map(function (link) {
+                          return h(
+                            "a",
+                            {
+                              key: link.label,
+                              href: link.href,
+                              target: "_blank",
+                              rel: "noopener noreferrer",
+                              onClick: function (e) {
+                                e.stopPropagation();
+                              },
+                              style: {
+                                fontSize: 10,
+                                color: "var(--accent-green)",
+                                textDecoration: "none",
+                                padding: "3px 6px",
+                                border: "1px solid var(--accent-green)",
+                                borderRadius: 4,
+                                whiteSpace: "nowrap",
+                              },
+                            },
+                            "↗ " + link.label,
+                          );
+                        }),
                       ),
                       h(
                         "select",
