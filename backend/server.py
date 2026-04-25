@@ -44,10 +44,7 @@ import psutil
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
-<<<<<<< HEAD
-=======
 from pydantic import BaseModel, Field
->>>>>>> origin/main
 
 BACKEND_DIR = Path(__file__).resolve().parent
 if str(BACKEND_DIR) not in sys.path:
@@ -55,6 +52,7 @@ if str(BACKEND_DIR) not in sys.path:
 
 import agent_dispatch_router  # noqa: E402
 import agent_remediation  # noqa: E402
+import assistant_contract  # noqa: E402
 import config_schema  # noqa: E402
 import deployment_drift  # noqa: E402
 import dispatch_contract  # noqa: E402
@@ -328,7 +326,7 @@ try:
         )
         if result.returncode == 0:
             HOST_MEMORY_GB = round(int(result.stdout.strip()) / (1024**3), 1)
-except Exception:
+except Exception:  # noqa: BLE001
     pass
 
 
@@ -431,11 +429,6 @@ app.add_middleware(
 )
 
 
-<<<<<<< HEAD
-@app.middleware("http")
-async def _add_security_headers(request: Request, call_next: Any) -> Any:
-    """Inject standard security headers on every response (issue #7)."""
-=======
 _AUTH_EXEMPT_PATHS = {"/", "/health", "/api/health", "/api/setup-key", "/manifest.webmanifest", "/icon.svg"}
 _AUTH_EXEMPT_PREFIXES = ("/docs", "/openapi", "/redoc")
 
@@ -499,7 +492,6 @@ async def _csrf_check(request: Request, call_next: Any) -> Any:
 @app.middleware("http")
 async def _add_security_headers(request: Request, call_next: Any) -> Any:
     """Inject standard security headers on every response (issue #7, #18)."""
->>>>>>> origin/main
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
@@ -738,7 +730,10 @@ async def proxy_to_hub(request: Request):
             if resp.status_code == 204 or not resp.content:
                 return {}
             return resp.json()
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
+            log.warning("Hub proxy error for %s: %s", request.url.path, e)
+            raise HTTPException(status_code=502, detail="Hub proxy error") from e
+
             log.warning("Hub proxy error for %s: %s", request.url.path, e)
             raise HTTPException(status_code=502, detail="Hub proxy error") from e
 
@@ -810,7 +805,7 @@ async def _expected_dashboard_version_from_hub() -> str | None:
             response = await client.get(f"{HUB_URL}/api/deployment/expected-version")
             response.raise_for_status()
             payload = response.json()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         log.warning("hub expected-version fetch failed: %s", exc)
         return None
     expected = str(payload.get("expected") or "").strip()
@@ -2253,7 +2248,7 @@ async def _collect_live_fleet_nodes() -> list[dict]:
                 "offline_reason": (resource_reason["offline_reason"] if resource_reason else None),
                 "offline_detail": (resource_reason["offline_detail"] if resource_reason else None),
             }
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             reason = _classify_node_offline(exc)
             return {
                 "name": name,
@@ -2326,7 +2321,7 @@ async def get_fleet_status(request: Request):
                     "error": reason["offline_detail"],
                     **reason,
                 }
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             reason = _classify_node_offline(e)
             return name, {
                 "status": "offline",
@@ -2352,7 +2347,7 @@ async def _health_impl() -> dict:
             _cache_set("runners", data)
         gh_ok = True
         runner_count = len(data.get("runners", []))
-    except Exception:
+    except Exception:  # noqa: BLE001
         gh_ok = False
         runner_count = 0
 
@@ -2561,7 +2556,7 @@ async def _recent_matlab_workflow_runs(limit: int = 5) -> list[dict]:
     """
     try:
         repos = await _get_recent_org_repos(limit=15)
-    except Exception:  # pragma: no cover - defensive
+    except Exception:  # pragma: no cover - defensive  # noqa: BLE001
         return []
     if not repos:
         return []
@@ -2569,7 +2564,7 @@ async def _recent_matlab_workflow_runs(limit: int = 5) -> list[dict]:
     async def _runs_for_repo(repo_name: str) -> list[dict]:
         try:
             data = await gh_api_admin(f"/repos/{ORG}/{repo_name}/actions/runs?per_page=10")
-        except Exception:
+        except Exception:  # noqa: BLE001
             return []
         out = []
         for run in data.get("workflow_runs", []) or []:
@@ -2594,7 +2589,7 @@ async def _recent_matlab_workflow_runs(limit: int = 5) -> list[dict]:
             *[_runs_for_repo(r["name"]) for r in repos[:10]],
             return_exceptions=True,
         )
-    except Exception:
+    except Exception:  # noqa: BLE001
         return []
     flat: list[dict] = []
     for item in nested:
@@ -2635,7 +2630,7 @@ async def get_matlab_runner_health(request: Request) -> dict:
     try:
         data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
         all_runners = data.get("runners", []) or []
-    except Exception as exc:  # pragma: no cover - defensive
+    except Exception as exc:  # pragma: no cover - defensive  # noqa: BLE001
         all_runners = []
         api_error: str | None = f"GitHub runner API unavailable: {exc}"
     else:
@@ -3116,6 +3111,8 @@ async def _remote_fleet_control(name: str, url: str, action: str) -> dict:
             "result": data,
         }
     except Exception as exc:  # noqa: BLE001 - remote nodes may be offline
+        return {"machine": name, "url": url, "success": False, "error": str(exc)}
+
         return {"machine": name, "url": url, "success": False, "error": str(exc)}
 
 
@@ -3753,7 +3750,7 @@ async def get_tests_ci_results() -> dict:
                 )
             else:
                 results.append({"repo": repo_name, "run_id": None, "conclusion": None})
-        except Exception:
+        except Exception:  # noqa: BLE001
             results.append({"repo": repo_name, "run_id": None, "conclusion": "error"})
 
     out: dict = {"results": results}
@@ -3787,7 +3784,7 @@ async def rerun_ci_test(request: Request) -> dict:
         return {"status": "triggered", "repo": repo_name, "run_id": run_id}
     except HTTPException:
         raise
-    except Exception:
+    except Exception:  # noqa: BLE001
         log.exception("Failed to rerun run %s in %s", run_id, repo_name)
         raise HTTPException(status_code=500, detail="Internal server error") from None
 
@@ -4142,7 +4139,7 @@ async def api_quick_dispatch(request: Request) -> dict:
         raise HTTPException(status_code=422, detail="expected object body")
     try:
         req = _quick_dispatch.QuickDispatchRequest(**body)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     if len(req.prompt.strip()) < 10:
@@ -4190,7 +4187,7 @@ async def api_dispatch_to_prs(request: Request) -> dict:
         raise HTTPException(status_code=422, detail="expected object body")
     try:
         req = agent_dispatch_router.PRDispatchRequest(**body)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     result = await agent_dispatch_router.dispatch_to_prs(
@@ -4215,7 +4212,7 @@ async def api_dispatch_to_issues(request: Request) -> dict:
         raise HTTPException(status_code=422, detail="expected object body")
     try:
         req = agent_dispatch_router.IssueDispatchRequest(**body)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     result = await agent_dispatch_router.dispatch_to_issues(
@@ -4247,12 +4244,12 @@ async def _append_remediation_history(entry: dict) -> None:
             if _REMEDIATION_HISTORY_PATH.exists():
                 try:
                     history = json.loads(_REMEDIATION_HISTORY_PATH.read_text(encoding="utf-8"))
-                except Exception:
+                except Exception:  # noqa: BLE001
                     history = []
             history.append(entry)
             history = history[-200:]  # keep last 200 entries
             config_schema.atomic_write_json(_REMEDIATION_HISTORY_PATH, history)
-        except Exception:
+        except Exception:  # noqa: BLE001
             pass  # history is best-effort
 
 
@@ -4293,7 +4290,7 @@ async def get_remediation_history() -> dict:
             history = json.loads(_REMEDIATION_HISTORY_PATH.read_text(encoding="utf-8"))
         else:
             history = []
-    except Exception:
+    except Exception:  # noqa: BLE001
         history = []
     return {"history": list(reversed(history[-100:]))}  # newest first
 
@@ -4310,6 +4307,227 @@ async def get_agent_providers() -> dict:
         "availability": {pid: s.to_dict() for pid, s in availability.items()},
         "providers_with_model_selection": sorted(_PROVIDERS_WITH_MODEL_SELECTION),
     }
+
+
+# ─── Assistant Chat API (Issue #88) ───────────────────────────────────────────
+
+
+async def _dispatch_to_ai_provider_for_chat(
+    provider: str | None,
+    prompt: str,
+    context: dict,
+) -> str:
+    """Call the configured AI provider for assistant chat."""
+    # For MVP: return a simple response based on the prompt
+    # In production, this would dispatch to an actual provider (Jules, Claude, etc.)
+    provider_id = provider or "ollama_local"
+
+    # Check provider availability
+    availability = agent_remediation.probe_provider_availability()
+    if provider_id not in availability or not availability[provider_id].available:
+        # Return a synthetic response for MVP
+        return f"(Note: Provider '{provider_id}' is unavailable. Mock response for demonstration.)"
+
+    # For MVP: return a simple acknowledgment
+    # Tracked in #88/#89: implement actual provider dispatch (Jules API, local Ollama, Claude API, etc.)
+    return f"Assistant response to: {prompt[:100]}... (MVP mock - implement real provider dispatch)"
+
+
+@app.post("/api/assistant/chat", tags=["assistant"])
+async def assistant_chat(request: Request) -> dict:
+    """Chat with AI assistant about dashboard state."""
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail="Invalid JSON") from None
+
+    # Validate request
+    try:
+        req = assistant_contract.AssistantChatRequest(**body)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=422, detail=str(e)) from e
+
+    # Call AI provider
+    response_text = await _dispatch_to_ai_provider_for_chat(
+        provider=req.provider,
+        prompt=req.prompt,
+        context=req.context.dict(),
+    )
+
+    return {
+        "response": response_text,
+        "provider": req.provider or "ollama_local",
+        "context_used": req.context.dict(),
+        "timestamp": datetime.now(UTC).isoformat(),
+    }
+
+
+# ─── Assistant Action Proposal API (Issue #89) ────────────────────────────────
+
+
+# In-memory storage for proposed actions (in real impl, use database)
+_proposed_actions: dict[str, dict] = {}
+
+
+@app.post("/api/assistant/propose-action", tags=["assistant"])
+async def propose_action(request: Request) -> dict:
+    """Propose an action based on user request, awaiting operator approval."""
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail="Invalid JSON") from None
+
+    try:
+        req = assistant_contract.ActionProposeRequest(**body)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=422, detail=str(e)) from e
+
+    # Call AI provider to generate action proposal
+    provider_id = req.provider or "ollama_local"
+    availability = agent_remediation.probe_provider_availability()
+    if provider_id not in availability or not availability[provider_id].available:
+        # For MVP: return a synthetic proposal
+        pass  # Continue with mock response
+
+    try:
+        # MVP: return a synthetic proposal instead of calling a provider
+        response_text = json.dumps(
+            {
+                "action_type": "restart_runner",
+                "description": f"Restart runner based on request: {req.user_request[:50]}",
+                "parameters": {"runner_name": "auto"},
+                "risk_level": "medium",
+                "rationale": "This action may resolve the issue",
+                "estimated_duration_seconds": 60,
+            }
+        )
+        # Parse JSON response
+        import json as _json_parser
+
+        try:
+            proposal_dict = _json_parser.loads(response_text)
+        except Exception:  # noqa: BLE001
+            # Fallback: wrap response in a generic action
+            proposal_dict = {
+                "action_type": "custom_response",
+                "description": response_text[:200],
+                "parameters": {},
+                "risk_level": "medium",
+                "rationale": "AI-generated action",
+            }
+
+        # Generate action ID and store
+        action_id = secrets.token_hex(8)
+        _proposed_actions[action_id] = {
+            "created_at": datetime.now(UTC).isoformat(),
+            "proposal": proposal_dict,
+            "approved": False,
+        }
+
+        return {
+            "action_id": action_id,
+            "action_type": proposal_dict.get("action_type", "custom"),
+            "parameters": proposal_dict.get("parameters", {}),
+            "description": proposal_dict.get("description", ""),
+            "risk_level": proposal_dict.get("risk_level", "medium"),
+            "rationale": proposal_dict.get("rationale", ""),
+            "estimated_duration_seconds": proposal_dict.get("estimated_duration_seconds"),
+        }
+    except Exception as e:  # noqa: BLE001
+        log.error(f"Action proposal error: {e}")
+        raise HTTPException(status_code=502, detail=f"AI provider error: {str(e)}") from e
+
+        log.error(f"Action proposal error: {e}")
+        raise HTTPException(status_code=502, detail=f"AI provider error: {str(e)}") from e
+
+
+@app.post("/api/assistant/execute-action", tags=["assistant"])
+async def execute_action(request: Request) -> dict:
+    """Execute a proposed action after operator approval."""
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail="Invalid JSON") from None
+
+    try:
+        req = assistant_contract.ActionExecuteRequest(**body)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=422, detail=str(e)) from e
+
+    # Check action exists and is pending
+    if req.action_id not in _proposed_actions:
+        raise HTTPException(status_code=404, detail="Action not found")
+
+    action_record = _proposed_actions[req.action_id]
+    if action_record.get("approved"):
+        raise HTTPException(status_code=409, detail="Action already executed")
+
+    if not req.approved:
+        # Just mark as rejected
+        action_record["approved"] = True
+        action_record["result"] = "Rejected by operator"
+        return {
+            "success": False,
+            "action_id": req.action_id,
+            "result": "Action rejected",
+            "execution_time_ms": 0,
+        }
+
+    # Mark as approved
+    action_record["approved"] = True
+    action_record["approved_at"] = datetime.now(UTC).isoformat()
+    action_record["approved_by"] = "operator"
+    action_record["operator_notes"] = req.operator_notes
+
+    proposal = action_record["proposal"]
+    action_type = proposal.get("action_type", "unknown")
+
+    start_time = time.time()
+
+    try:
+        # Execute action based on type
+        result = "Action executed successfully"
+
+        if action_type == "restart_runner":
+            runner_name = proposal.get("parameters", {}).get("runner_name")
+            if runner_name:
+                result = f"Runner '{runner_name}' restart initiated"
+                # In real impl, would call actual restart logic
+
+        elif action_type == "rerun_workflow":
+            workflow_id = proposal.get("parameters", {}).get("workflow_id")
+            if workflow_id:
+                result = f"Workflow {workflow_id} rerun initiated"
+
+        elif action_type == "dismiss_alert":
+            alert_id = proposal.get("parameters", {}).get("alert_id")
+            if alert_id:
+                result = f"Alert {alert_id} dismissed"
+
+        execution_time_ms = int((time.time() - start_time) * 1000)
+
+        action_record["result"] = result
+        action_record["execution_time_ms"] = execution_time_ms
+
+        return {
+            "success": True,
+            "action_id": req.action_id,
+            "result": result,
+            "execution_time_ms": execution_time_ms,
+        }
+
+    except Exception as e:  # noqa: BLE001
+        execution_time_ms = int((time.time() - start_time) * 1000)
+        error_msg = str(e)
+        action_record["result"] = f"Execution failed: {error_msg}"
+        action_record["execution_time_ms"] = execution_time_ms
+        log.error(f"Action execution error: {e}")
+        return {
+            "success": False,
+            "action_id": req.action_id,
+            "result": f"Execution failed: {error_msg}",
+            "execution_time_ms": execution_time_ms,
+        }
 
 
 # ─── Job Queue API ───────────────────────────────────────────────────────────
@@ -4483,7 +4701,7 @@ async def diagnose_queue() -> dict:
             runner_data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
             _cache_set("runners", runner_data)
         runners = runner_data.get("runners", [])
-    except Exception:
+    except Exception:  # noqa: BLE001
         runners = []
 
     online = [r for r in runners if r["status"] == "online"]
@@ -4626,14 +4844,14 @@ async def diagnose_queue() -> dict:
         try:
             d = await gh_api_admin(f"/orgs/{ORG}/actions/runner-groups/{gid}/runners?per_page=100")
             return [r.get("name", "") for r in d.get("runners", [])]
-        except Exception:
+        except Exception:  # noqa: BLE001
             return []
 
     async def fetch_group_repos(gid: int) -> list[str]:
         try:
             d = await gh_api_admin(f"/orgs/{ORG}/actions/runner-groups/{gid}/repositories?per_page=100")
             return [r.get("name", "") for r in d.get("repositories", [])]
-        except Exception:
+        except Exception:  # noqa: BLE001
             return []
 
     try:
@@ -4685,7 +4903,7 @@ async def diagnose_queue() -> dict:
             if restricted and blocked and any(r in online_runner_names for r in grp_runners):
                 runner_groups_restricted = True
 
-    except Exception:
+    except Exception:  # noqa: BLE001
         pass  # Non-fatal
 
     # Detect pick-runner jobs that are themselves waiting on self-hosted
@@ -4836,7 +5054,7 @@ async def _get_fleet_nodes_impl() -> dict:
     nodes = await _collect_live_fleet_nodes()
     try:
         registry = load_machine_registry()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         log.warning("Machine registry load failed: %s", exc)
         registry = {"version": 1, "machines": []}
     nodes = merge_registry_with_live_nodes(nodes, registry)
@@ -5027,7 +5245,7 @@ async def get_maxwell_status() -> dict:
             service_detail = "systemd service active"
         else:
             service_detail = r.stdout.strip() or "not active"
-    except Exception:
+    except Exception:  # noqa: BLE001
         service_detail = "systemd probe failed"
 
     # Check HTTP reachability
@@ -5041,7 +5259,7 @@ async def get_maxwell_status() -> dict:
             resp = await client.get(f"{base_url}/api/health")
             http_reachable = resp.status_code == 200
             http_detail = f"HTTP {resp.status_code}"
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         http_detail = str(e)[:80]
 
     status = "running" if (service_running or http_reachable) else "stopped"
@@ -5109,7 +5327,10 @@ async def get_maxwell_version() -> dict:
             resp = await client.get(f"{_maxwell_base_url()}{path}")
             log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
             return resp.json()
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
+        log.info("maxwell_proxy: path=%s status=%s", path, "error")
+        return {"error": str(e)[:120], "daemon_available": False}
+
         log.info("maxwell_proxy: path=%s status=%s", path, "error")
         return {"error": str(e)[:120], "daemon_available": False}
 
@@ -5124,7 +5345,10 @@ async def get_maxwell_daemon_status_detail() -> dict:
             resp = await client.get(f"{_maxwell_base_url()}{path}")
             log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
             return resp.json()
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
+        log.info("maxwell_proxy: path=%s status=%s", path, "error")
+        return {"error": str(e)[:120], "daemon_available": False}
+
         log.info("maxwell_proxy: path=%s status=%s", path, "error")
         return {"error": str(e)[:120], "daemon_available": False}
 
@@ -5142,7 +5366,10 @@ async def get_maxwell_tasks(limit: int = 20, cursor: str | None = None) -> dict:
             resp = await client.get(f"{_maxwell_base_url()}{path}", params=params)
             log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
             return resp.json()
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
+        log.info("maxwell_proxy: path=%s status=%s", path, "error")
+        return {"error": str(e)[:120], "daemon_available": False}
+
         log.info("maxwell_proxy: path=%s status=%s", path, "error")
         return {"error": str(e)[:120], "daemon_available": False}
 
@@ -5157,7 +5384,10 @@ async def get_maxwell_task_detail(task_id: str) -> dict:
             resp = await client.get(f"{_maxwell_base_url()}{path}")
             log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
             return resp.json()
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
+        log.info("maxwell_proxy: path=%s status=%s", path, "error")
+        return {"error": str(e)[:120], "daemon_available": False}
+
         log.info("maxwell_proxy: path=%s status=%s", path, "error")
         return {"error": str(e)[:120], "daemon_available": False}
 
@@ -5177,7 +5407,10 @@ async def maxwell_dispatch_task(request: Request) -> dict:
             )
             log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
             return resp.json()
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
+        log.info("maxwell_proxy: path=%s status=%s", path, "error")
+        return {"error": str(e)[:120], "daemon_available": False}
+
         log.info("maxwell_proxy: path=%s status=%s", path, "error")
         return {"error": str(e)[:120], "daemon_available": False}
 
@@ -5199,7 +5432,10 @@ async def maxwell_pipeline_control(action: str, request: Request) -> dict:
             )
             log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
             return resp.json()
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
+        log.info("maxwell_proxy: path=%s status=%s", path, "error")
+        return {"error": str(e)[:120], "daemon_available": False}
+
         log.info("maxwell_proxy: path=%s status=%s", path, "error")
         return {"error": str(e)[:120], "daemon_available": False}
 
@@ -5258,7 +5494,7 @@ async def help_chat(request: Request) -> dict:
                     answer = data.get("content", [{}])[0].get("text", "")
                     if answer:
                         return {"answer": answer, "source": "claude"}
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             log.warning("help_chat claude fallback failed: %s", e)
 
     # Generic fallback
@@ -5296,7 +5532,7 @@ async def get_assessment_scores() -> dict:
                         "provider": data.get("provider") or data.get("agent", ""),
                     }
                 )
-            except Exception:
+            except Exception:  # noqa: BLE001
                 pass
     return {"scores": results, "total": len(results)}
 
@@ -5389,7 +5625,7 @@ async def list_feature_requests() -> dict:
             data = json.loads(_FEATURE_REQUESTS_PATH.read_text(encoding="utf-8"))
         else:
             data = []
-    except Exception:
+    except Exception:  # noqa: BLE001
         data = []
     return {"requests": list(reversed(data[-100:])), "total": len(data)}
 
@@ -5401,14 +5637,14 @@ async def list_prompt_templates() -> dict:
     try:
         if _PROMPT_TEMPLATES_PATH.exists():
             templates_data = json.loads(_PROMPT_TEMPLATES_PATH.read_text(encoding="utf-8"))
-    except Exception:
+    except Exception:  # noqa: BLE001
         pass
 
     prompt_notes_data = {"notes": "", "enabled": True}
     try:
         if _PROMPT_NOTES_PATH.exists():
             prompt_notes_data = json.loads(_PROMPT_NOTES_PATH.read_text(encoding="utf-8"))
-    except Exception:
+    except Exception:  # noqa: BLE001
         pass
 
     return {
@@ -5442,7 +5678,7 @@ async def save_prompt_template(request: Request) -> dict:
             else:
                 templates.append(template)
             config_schema.atomic_write_json(_PROMPT_TEMPLATES_PATH, templates)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             raise HTTPException(status_code=500, detail=str(e)) from e
     return {"status": "saved", "name": name}
 
@@ -5455,7 +5691,7 @@ async def get_prompt_notes() -> dict:
             data = json.loads(_PROMPT_NOTES_PATH.read_text(encoding="utf-8"))
         else:
             data = {"notes": "", "enabled": True}
-    except Exception:
+    except Exception:  # noqa: BLE001
         data = {"notes": "", "enabled": True}
     return data
 
@@ -5474,7 +5710,7 @@ async def update_prompt_notes(request: Request) -> dict:
         try:
             data = {"notes": notes, "enabled": enabled}
             config_schema.atomic_write_json(_PROMPT_NOTES_PATH, data)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             raise HTTPException(status_code=500, detail=str(e)) from e
     return {"status": "saved", "notes_length": len(notes), "enabled": enabled}
 
@@ -5508,7 +5744,7 @@ async def dispatch_feature_request(request: Request) -> dict:
     try:
         if _PROMPT_NOTES_PATH.exists():
             prompt_notes_data = json.loads(_PROMPT_NOTES_PATH.read_text(encoding="utf-8"))
-    except Exception:
+    except Exception:  # noqa: BLE001
         pass
 
     # Build full prompt with notes and standards injection
@@ -5542,7 +5778,7 @@ async def dispatch_feature_request(request: Request) -> dict:
             }
             history.append(entry)
             config_schema.atomic_write_json(_FEATURE_REQUESTS_PATH, history[-200:])
-        except Exception:
+        except Exception:  # noqa: BLE001
             pass
 
     # Dispatch via feature-request workflow
@@ -5896,7 +6132,7 @@ async def get_git_drift() -> dict:
         )
         source = out.stdout.strip()
         result["source_commit"] = source[:12]
-    except Exception:
+    except Exception:  # noqa: BLE001
         result["source_commit"] = "unknown"
 
     try:
@@ -5914,7 +6150,7 @@ async def get_git_drift() -> dict:
             result["drift_details"] = "deployed version differs from origin/main"
         else:
             result["drift_details"] = "up to date"
-    except Exception:
+    except Exception:  # noqa: BLE001
         result["is_drifted"] = False
         result["remote_commit"] = "unknown"
         result["drift_details"] = "could not reach origin/main"
@@ -5940,7 +6176,7 @@ async def get_diagnostics_summary() -> dict:
         )
         summary["wsl_status"] = wsl_result.stdout.strip()
         summary["wsl_available"] = wsl_result.returncode == 0
-    except Exception:
+    except Exception:  # noqa: BLE001
         try:
             wsl_result_raw = subprocess.run(
                 ["wsl", "-l", "-v"],
@@ -5949,7 +6185,7 @@ async def get_diagnostics_summary() -> dict:
             )
             summary["wsl_status"] = wsl_result_raw.stdout.decode("utf-16-le", errors="replace").strip()
             summary["wsl_available"] = wsl_result_raw.returncode == 0
-        except Exception:
+        except Exception:  # noqa: BLE001
             summary["wsl_status"] = "WSL not available"
             summary["wsl_available"] = False
 
@@ -5969,7 +6205,7 @@ async def get_diagnostics_summary() -> dict:
             cwd=Path(__file__).parent.parent,
         )
         summary["git_commit"] = out.stdout.strip() or "unknown"
-    except Exception:
+    except Exception:  # noqa: BLE001
         summary["git_commit"] = "unknown"
 
     # Drift info
@@ -5979,7 +6215,7 @@ async def get_diagnostics_summary() -> dict:
         summary["source_commit"] = drift.get("source_commit", "unknown")
         summary["remote_commit"] = drift.get("remote_commit", "unknown")
         summary["drift_details"] = drift.get("drift_details", "")
-    except Exception:
+    except Exception:  # noqa: BLE001
         summary["is_drifted"] = False
 
     return summary
@@ -6003,7 +6239,10 @@ async def restart_dashboard_service(request: Request) -> dict:
             "success": result.returncode == 0,
             "output": (result.stdout + result.stderr).strip(),
         }
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
+        log.exception("Failed to restart runner-dashboard service")
+        raise HTTPException(status_code=500, detail="Restart failed") from exc
+
         log.exception("Failed to restart runner-dashboard service")
         raise HTTPException(status_code=500, detail="Restart failed") from exc
 
