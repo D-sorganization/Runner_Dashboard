@@ -1219,6 +1219,17 @@
           font-size: 10px;
         }
       }
+
+      /* ── SubTabs ── */
+      .subtabs { display: flex; flex-direction: row; justify-content: space-between; border-bottom: 1px solid var(--border); padding: 0 8px; }
+      .subtabs-strip { display: flex; flex-direction: row; gap: 4px; }
+      .subtab { background: none; border: none; border-bottom: 2px solid transparent; padding: 8px 14px; color: var(--text-muted); cursor: pointer; font-size: 13px; font-weight: 500; }
+      .subtab:hover { color: var(--text-primary); }
+      .subtab.active { color: var(--text-primary); border-bottom-color: var(--accent-blue); }
+      .subtab-badge { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 10px; font-size: 11px; background: var(--bg-tertiary); color: var(--text-muted); }
+      .subtab.active .subtab-badge { background: rgba(88,166,255,0.15); color: var(--accent-blue); }
+      .subtab:disabled { opacity: 0.5; cursor: not-allowed; }
+      .subtabs-right { display: flex; align-items: center; }
     </style>
   </head>
   <body>
@@ -1708,6 +1719,51 @@
             { className: "section-body" + (o ? "" : " collapsed") },
             p.children,
           ),
+        );
+      }
+
+      function SubTabs(p) {
+        var tabs = p.tabs || [];
+        var storageKey = p.storageKey;
+        var initialKey = storageKey
+          ? (localStorage.getItem(storageKey) || tabs[0] && tabs[0].key)
+          : (tabs[0] && tabs[0].key);
+        var ia = React.useState(initialKey);
+        var internalActive = ia[0],
+          setInternalActive = ia[1];
+        var activeKey = p.activeKey !== undefined ? p.activeKey : internalActive;
+        function handleChange(key) {
+          if (p.activeKey === undefined) {
+            setInternalActive(key);
+          }
+          if (storageKey) {
+            try { localStorage.setItem(storageKey, key); } catch (e) {}
+          }
+          if (p.onChange) p.onChange(key);
+        }
+        return h(
+          "div",
+          { className: "subtabs" },
+          h(
+            "div",
+            { className: "subtabs-strip" },
+            tabs.map(function (tab) {
+              return h(
+                "button",
+                {
+                  key: tab.key,
+                  className: "subtab" + (activeKey === tab.key ? " active" : ""),
+                  disabled: tab.disabled || false,
+                  onClick: function () { if (!tab.disabled) handleChange(tab.key); },
+                },
+                tab.label,
+                tab.badge != null
+                  ? h("span", { className: "subtab-badge" }, tab.badge)
+                  : null,
+              );
+            }),
+          ),
+          p.rightBadge ? h("div", { className: "subtabs-right" }, p.rightBadge) : null,
         );
       }
 
@@ -7938,10 +7994,30 @@
           setEditingDefaultProvider(false);
         }
         var accepted = !!(plan && plan.decision && plan.decision.accepted);
+        var sta = React.useState(
+          (function () {
+            try { return localStorage.getItem("remediation-subtab") || "automations"; } catch (e) { return "automations"; }
+          })()
+        );
+        var subTab = sta[0],
+          setSubTab = sta[1];
 
         return h(
           "div",
           null,
+          h(SubTabs, {
+            tabs: [
+              { key: "automations", label: "Automations" },
+              { key: "prs", label: "PRs", disabled: true },
+              { key: "issues", label: "Issues", disabled: true },
+            ],
+            activeKey: subTab,
+            onChange: setSubTab,
+            storageKey: "remediation-subtab",
+          }),
+          subTab === "automations" && h(
+            "div",
+            null,
           // ── Manual Dispatch section (TOP) ────────────────────────────────
           h(
             "div",
@@ -9144,6 +9220,19 @@
               ),
             ),
           ),
+          ),
+          subTab === "prs" &&
+            h(
+              "div",
+              { style: { padding: "24px", color: "var(--text-muted)" } },
+              "PR dispatch coming soon",
+            ),
+          subTab === "issues" &&
+            h(
+              "div",
+              { style: { padding: "24px", color: "var(--text-muted)" } },
+              "Issue dispatch coming soon",
+            ),
         );
       }
 
