@@ -412,15 +412,42 @@ async def get_setup_key(request: Request) -> dict:
 
 
 @app.middleware("http")
+async def _csrf_check(request: Request, call_next: Any) -> Any:
+    """Reject state-changing requests that lack the CSRF sentinel header (issue #30).
+
+    Browsers never send X-Requested-With cross-origin without an explicit CORS
+    pre-flight, so requiring it is a lightweight CSRF mitigation suitable for a
+    local-only dashboard.  The frontend must include the header on every
+    POST / PUT / DELETE / PATCH request.
+    """
+    if request.method in ("POST", "PUT", "DELETE", "PATCH"):
+        # Allow health / static routes without the header so monitoring tools
+        # (e.g. curl health checks) still work.  Only enforce on /api/* paths.
+        if request.url.path.startswith("/api/"):
+            if request.headers.get("X-Requested-With") != "XMLHttpRequest":
+                return JSONResponse(
+                    {"error": "CSRF check failed: missing X-Requested-With header"},
+                    status_code=403,
+                )
+    return await call_next(request)
+
+
+@app.middleware("http")
 async def _add_security_headers(request: Request, call_next: Any) -> Any:
-    """Inject standard security headers on every response (issue #7)."""
+    """Inject standard security headers on every response (issue #7, #18)."""
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    # 'unsafe-inline' removed from script-src (issue #18).
+    # 'strict-dynamic' lets scripts loaded from trusted CDN origins load further
+    # dependencies without needing individual allow-list entries.
+    # 'unsafe-inline' is retained for style-src because React's CSS-in-JS and
+    # the dashboard's own <style> block rely on inline styles. A build step
+    # would allow switching to nonce or hash-based CSP for style-src.
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' "
+        "script-src 'self' 'strict-dynamic' "
         "https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; "
         "style-src 'self' 'unsafe-inline'; "
         "img-src 'self' data:; "
