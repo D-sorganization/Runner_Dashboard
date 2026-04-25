@@ -734,7 +734,6 @@ async def proxy_to_hub(request: Request):
             log.warning("Hub proxy error for %s: %s", request.url.path, e)
             raise HTTPException(status_code=502, detail="Hub proxy error") from e
 
-
             log.warning("Hub proxy error for %s: %s", request.url.path, e)
             raise HTTPException(status_code=502, detail="Hub proxy error") from e
 
@@ -3114,7 +3113,6 @@ async def _remote_fleet_control(name: str, url: str, action: str) -> dict:
     except Exception as exc:  # noqa: BLE001 - remote nodes may be offline
         return {"machine": name, "url": url, "success": False, "error": str(exc)}
 
-
         return {"machine": name, "url": url, "success": False, "error": str(exc)}
 
 
@@ -4393,16 +4391,19 @@ async def propose_action(request: Request) -> dict:
 
     try:
         # MVP: return a synthetic proposal instead of calling a provider
-        response_text = json.dumps({
-            "action_type": "restart_runner",
-            "description": f"Restart runner based on request: {req.user_request[:50]}",
-            "parameters": {"runner_name": "auto"},
-            "risk_level": "medium",
-            "rationale": "This action may resolve the issue",
-            "estimated_duration_seconds": 60,
-        })
+        response_text = json.dumps(
+            {
+                "action_type": "restart_runner",
+                "description": f"Restart runner based on request: {req.user_request[:50]}",
+                "parameters": {"runner_name": "auto"},
+                "risk_level": "medium",
+                "rationale": "This action may resolve the issue",
+                "estimated_duration_seconds": 60,
+            }
+        )
         # Parse JSON response
         import json as _json_parser
+
         try:
             proposal_dict = _json_parser.loads(response_text)
         except Exception:  # noqa: BLE001
@@ -4435,7 +4436,6 @@ async def propose_action(request: Request) -> dict:
     except Exception as e:  # noqa: BLE001
         log.error(f"Action proposal error: {e}")
         raise HTTPException(status_code=502, detail=f"AI provider error: {str(e)}") from e
-
 
         log.error(f"Action proposal error: {e}")
         raise HTTPException(status_code=502, detail=f"AI provider error: {str(e)}") from e
@@ -5331,7 +5331,6 @@ async def get_maxwell_version() -> dict:
         log.info("maxwell_proxy: path=%s status=%s", path, "error")
         return {"error": str(e)[:120], "daemon_available": False}
 
-
         log.info("maxwell_proxy: path=%s status=%s", path, "error")
         return {"error": str(e)[:120], "daemon_available": False}
 
@@ -5349,7 +5348,6 @@ async def get_maxwell_daemon_status_detail() -> dict:
     except Exception as e:  # noqa: BLE001
         log.info("maxwell_proxy: path=%s status=%s", path, "error")
         return {"error": str(e)[:120], "daemon_available": False}
-
 
         log.info("maxwell_proxy: path=%s status=%s", path, "error")
         return {"error": str(e)[:120], "daemon_available": False}
@@ -5372,7 +5370,6 @@ async def get_maxwell_tasks(limit: int = 20, cursor: str | None = None) -> dict:
         log.info("maxwell_proxy: path=%s status=%s", path, "error")
         return {"error": str(e)[:120], "daemon_available": False}
 
-
         log.info("maxwell_proxy: path=%s status=%s", path, "error")
         return {"error": str(e)[:120], "daemon_available": False}
 
@@ -5390,7 +5387,6 @@ async def get_maxwell_task_detail(task_id: str) -> dict:
     except Exception as e:  # noqa: BLE001
         log.info("maxwell_proxy: path=%s status=%s", path, "error")
         return {"error": str(e)[:120], "daemon_available": False}
-
 
         log.info("maxwell_proxy: path=%s status=%s", path, "error")
         return {"error": str(e)[:120], "daemon_available": False}
@@ -5414,7 +5410,6 @@ async def maxwell_dispatch_task(request: Request) -> dict:
     except Exception as e:  # noqa: BLE001
         log.info("maxwell_proxy: path=%s status=%s", path, "error")
         return {"error": str(e)[:120], "daemon_available": False}
-
 
         log.info("maxwell_proxy: path=%s status=%s", path, "error")
         return {"error": str(e)[:120], "daemon_available": False}
@@ -5440,7 +5435,6 @@ async def maxwell_pipeline_control(action: str, request: Request) -> dict:
     except Exception as e:  # noqa: BLE001
         log.info("maxwell_proxy: path=%s status=%s", path, "error")
         return {"error": str(e)[:120], "daemon_available": False}
-
 
         log.info("maxwell_proxy: path=%s status=%s", path, "error")
         return {"error": str(e)[:120], "daemon_available": False}
@@ -6248,7 +6242,6 @@ async def restart_dashboard_service(request: Request) -> dict:
     except Exception as exc:  # noqa: BLE001
         log.exception("Failed to restart runner-dashboard service")
         raise HTTPException(status_code=500, detail="Restart failed") from exc
-
 
         log.exception("Failed to restart runner-dashboard service")
         raise HTTPException(status_code=500, detail="Restart failed") from exc
