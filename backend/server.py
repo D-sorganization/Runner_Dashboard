@@ -4582,8 +4582,8 @@ async def execute_assistant_tool(
             inputs=req.input,
             confirmation=req.confirmation.model_dump() if req.confirmation else None,
             principal=principal.id,
-            on_behalf_of=req.confirmation.on_behalf_of if req.confirmation else "",
-            correlation_id=req.confirmation.correlation_id if req.confirmation else "",
+            on_behalf_of=(req.confirmation.on_behalf_of or "") if req.confirmation else "",
+            correlation_id=(req.confirmation.correlation_id or "") if req.confirmation else "",
             gh_api_fn=gh_api,
             run_cmd_fn=run_cmd,
             normalize_repository_fn=_normalize_repository_input,
@@ -4612,8 +4612,8 @@ async def execute_assistant_tool(
             success=False,
             approved_by=req.confirmation.approved_by if req.confirmation else "n/a",
             principal=principal.id,
-            on_behalf_of=req.confirmation.on_behalf_of if req.confirmation else "",
-            correlation_id=req.confirmation.correlation_id if req.confirmation else "",
+            on_behalf_of=(req.confirmation.on_behalf_of or "") if req.confirmation else "",
+            correlation_id=(req.confirmation.correlation_id or "") if req.confirmation else "",
             note=req.confirmation.note if req.confirmation else "",
         )
         return {
