@@ -1,7 +1,6 @@
-from datetime import UTC, datetime
-
-UTC = UTC
 """Unit tests for agent_remediation.py — failure context, policy, and workflow classification."""
+
+import datetime as _dt_mod
 
 from agent_remediation import (  # noqa: E402
     AttemptRecord,
@@ -15,6 +14,14 @@ from agent_remediation import (  # noqa: E402
     load_policy,
     plan_dispatch,
 )
+
+UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
+
+
+def _recent_timestamp() -> str:
+    """Return a fresh ISO-8601 timestamp within the 24-hour test window."""
+    return _dt_mod.datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
 
 # ---------------------------------------------------------------------------
 # Helper: classify_failure wraps classify_workflow_type with default policy
@@ -123,7 +130,7 @@ def test_fallback_provider_chain_uses_fallback_when_primary_exhausted() -> None:
             provider_id="codex_cli",
             fingerprint=fingerprint,
             status="failed",
-            created_at=datetime.now(UTC).isoformat(),
+            created_at=_recent_timestamp(),
         )
         for _ in range(3)
     ] + [
@@ -131,7 +138,7 @@ def test_fallback_provider_chain_uses_fallback_when_primary_exhausted() -> None:
             provider_id="claude_code_cli",
             fingerprint=fingerprint,
             status="failed",
-            created_at=datetime.now(UTC).isoformat(),
+            created_at=_recent_timestamp(),
         )
         for _ in range(2)
     ]
@@ -181,7 +188,7 @@ def test_fallback_provider_chain_exhausted_all_providers() -> None:
                 provider_id="codex_cli",
                 fingerprint=fingerprint,
                 status="failed",
-                created_at=datetime.now(UTC).isoformat(),
+                created_at=_recent_timestamp(),
             )
             for _ in range(3)
         ]
@@ -190,7 +197,7 @@ def test_fallback_provider_chain_exhausted_all_providers() -> None:
                 provider_id="claude_code_cli",
                 fingerprint=fingerprint,
                 status="failed",
-                created_at=datetime.now(UTC).isoformat(),
+                created_at=_recent_timestamp(),
             )
             for _ in range(3)
         ]
@@ -199,7 +206,7 @@ def test_fallback_provider_chain_exhausted_all_providers() -> None:
                 provider_id="jules_api",
                 fingerprint=fingerprint,
                 status="failed",
-                created_at=datetime.now(UTC).isoformat(),
+                created_at=_recent_timestamp(),
             )
             for _ in range(3)
         ]
@@ -246,7 +253,7 @@ def test_fallback_provider_chain_uses_fallback_providers_field() -> None:
             provider_id="jules_api",
             fingerprint=fingerprint,
             status="failed",
-            created_at=datetime.now(UTC).isoformat(),
+            created_at=_recent_timestamp(),
         )
         for _ in range(3)
     ]
@@ -303,19 +310,19 @@ def test_attempts_for_provider_filters_by_provider_id() -> None:
             provider_id="a",
             fingerprint=fingerprint,
             status="failed",
-            created_at=datetime.now(UTC).isoformat(),
+            created_at=_recent_timestamp(),
         ),
         AttemptRecord(
             provider_id="b",
             fingerprint=fingerprint,
             status="failed",
-            created_at=datetime.now(UTC).isoformat(),
+            created_at=_recent_timestamp(),
         ),
         AttemptRecord(
             provider_id="a",
             fingerprint=fingerprint,
             status="failed",
-            created_at=datetime.now(UTC).isoformat(),
+            created_at=_recent_timestamp(),
         ),
     ]
 
@@ -345,7 +352,7 @@ def test_per_provider_attempt_count_separate_from_global() -> None:
             provider_id="codex_cli",
             fingerprint=fingerprint,
             status="failed",
-            created_at=datetime.now(UTC).isoformat(),
+            created_at=_recent_timestamp(),
         )
         for _ in range(3)
     ]

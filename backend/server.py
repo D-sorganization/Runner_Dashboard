@@ -1793,10 +1793,22 @@ try {{
 }}
 $result | ConvertTo-Json -Depth 5
 """
-    code, stdout, stderr = await run_cmd(
-        [powershell, "-NoProfile", "-Command", script],
-        timeout=12,
-    )
+    try:
+        code, stdout, stderr = await run_cmd(
+            [powershell, "-NoProfile", "-Command", script],
+            timeout=12,
+        )
+    except OSError as exc:
+        return {
+            "status": "unsupported",
+            "task_name": WSL_KEEPALIVE_TASK_NAME,
+            "task_found": False,
+            "state": None,
+            "actions": [],
+            "startup_vbs_files": [],
+            "legacy_vbs_detected": False,
+            "detail": f"PowerShell execution failed: {exc}",
+        }
 
     if code != 0:
         return {
