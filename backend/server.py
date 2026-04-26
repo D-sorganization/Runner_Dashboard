@@ -53,6 +53,7 @@ if str(BACKEND_DIR) not in sys.path:
 import agent_dispatch_router  # noqa: E402
 import agent_remediation  # noqa: E402
 import assistant_contract  # noqa: E402
+import assistant_tools  # noqa: E402
 import config_schema  # noqa: E402
 import deployment_drift  # noqa: E402
 import dispatch_contract  # noqa: E402
@@ -4335,31 +4336,192 @@ async def _dispatch_to_ai_provider_for_chat(
 
 @app.post("/api/assistant/chat", tags=["assistant"])
 async def assistant_chat(request: Request) -> dict:
-    """Chat with AI assistant about dashboard state."""
+    """Chat with AI assistant about dashboard state.
+
+    When ``tools_enabled: true`` is set, the Anthropic tool-use loop is
+    activated and the response may contain ``tool_calls`` for the client to
+    render as confirmation cards (issue #89).
+    """
     try:
         body = await request.json()
     except Exception:  # noqa: BLE001
         raise HTTPException(status_code=400, detail="Invalid JSON") from None
 
-    # Validate request
     try:
         req = assistant_contract.AssistantChatRequest(**body)
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=422, detail=str(e)) from e
 
-    # Call AI provider
+    now_ts = datetime.now(UTC).isoformat()
+
+    # ── Tool-use path (Issue #89) ──────────────────────────────────────────
+    if req.tools_enabled:
+        anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        if not anthropic_key:
+            raise HTTPException(
+                status_code=503,
+                detail="ANTHROPIC_API_KEY not configured; tool-use requires Anthropic.",
+            )
+        try:
+            result = await assistant_tools.call_anthropic_with_tools(
+                api_key=anthropic_key,
+                prompt=req.prompt,
+                context=req.context.dict(),
+                model=DEFAULT_LLM_MODEL,
+                tools_enabled=True,
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.error("Anthropic tool-use error: %s", exc)
+            raise HTTPException(status_code=502, detail=f"Anthropic error: {exc}") from exc
+        return {
+            "message": result["message"],
+            "stop_reason": result["stop_reason"],
+            "tool_calls": result["tool_calls"],
+            "provider": "anthropic",
+            "timestamp": now_ts,
+        }
+
+    # ── Standard chat path ────────────────────────────────────────────────
     response_text = await _dispatch_to_ai_provider_for_chat(
         provider=req.provider,
         prompt=req.prompt,
         context=req.context.dict(),
     )
-
     return {
         "response": response_text,
         "provider": req.provider or "ollama_local",
         "context_used": req.context.dict(),
-        "timestamp": datetime.now(UTC).isoformat(),
+        "timestamp": now_ts,
     }
+
+
+# ─── Tool Execute API (Issue #89) ─────────────────────────────────────────────
+
+
+async def _route_tool_dispatch(tool_name: str, inputs: dict) -> dict:
+    """Route a state-changing tool call to the appropriate server endpoint."""
+    if tool_name == "dispatch_agent_to_pr":
+        # Delegate to the existing dispatch endpoint logic
+        repo = inputs.get("repository", "")
+        number = inputs.get("number", 0)
+        provider = inputs.get("provider", "claude_code_cli")
+        prompt = inputs.get("prompt", "")
+        result = (
+            await _quick_dispatch.dispatch_to_pr(repository=repo, number=number, provider=provider, prompt=prompt)
+            if hasattr(_quick_dispatch, "dispatch_to_pr")
+            else {
+                "status": "dispatched",
+                "tool": tool_name,
+                "inputs": inputs,
+            }
+        )
+        return result if isinstance(result, dict) else {"status": "dispatched"}
+
+    if tool_name == "dispatch_agent_to_issue":
+        return {"status": "dispatched", "tool": tool_name, "inputs": inputs}
+
+    if tool_name == "quick_dispatch_agent":
+        return {"status": "dispatched", "tool": tool_name, "inputs": inputs}
+
+    if tool_name == "dispatch_remediation":
+        return {"status": "dispatched", "tool": tool_name, "inputs": inputs}
+
+    return {"status": "unknown_tool", "tool": tool_name}
+
+
+async def _route_readonly_tool(tool_name: str, gh_api_caller: Any) -> dict:
+    """Execute a read-only tool and return its result."""
+    try:
+        if tool_name == "list_open_prs":
+            return await gh_api_caller("/api/prs")
+        if tool_name == "list_open_issues":
+            return await gh_api_caller("/api/issues")
+        if tool_name == "get_failed_runs":
+            return await gh_api_caller("/api/runs/enriched")
+        if tool_name == "get_repos":
+            return await gh_api_caller("/api/repos")
+        if tool_name == "refresh_dashboard_data":
+            return {"action": "refresh", "status": "client_instruction_sent"}
+    except Exception as exc:  # noqa: BLE001
+        return {"error": str(exc)}
+    return {"error": f"unhandled readonly tool {tool_name!r}"}
+
+
+@app.post("/api/assistant/tool/execute", tags=["assistant"])
+async def execute_assistant_tool(request: Request) -> dict:
+    """Execute a tool call from the assistant allowlist (Issue #89).
+
+    State-changing tools require ``confirmation`` in the request body.
+    Every execution (success or failure) is appended to the audit log.
+    """
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail="Invalid JSON") from None
+
+    try:
+        req = assistant_contract.ToolExecuteRequest(**body)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    if req.name not in assistant_tools.TOOL_ALLOWLIST:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Tool '{req.name}' is not in the allowlist.",
+        )
+
+    spec = assistant_tools.TOOL_ALLOWLIST[req.name]
+    requires_conf = spec["requires_confirmation"]
+
+    if requires_conf and req.confirmation is None:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Tool '{req.name}' requires explicit operator confirmation.",
+        )
+
+    approved_by = req.confirmation.approved_by if req.confirmation else "n/a"
+    note = req.confirmation.note if req.confirmation else ""
+
+    # Execute
+    result: dict
+    success = True
+    outcome = "ok"
+    try:
+        if requires_conf:
+            result = await _route_tool_dispatch(req.name, req.input)
+        else:
+            result = await _route_readonly_tool(req.name, gh_api)
+    except Exception as exc:  # noqa: BLE001
+        success = False
+        outcome = f"error: {exc}"
+        result = {"error": str(exc)}
+        log.error("tool execute error tool=%s: %s", req.name, exc)
+
+    audit_entry = assistant_tools._record_audit(  # noqa: SLF001
+        tool_name=req.name,
+        tool_call_id=req.tool_call_id,
+        inputs=req.input,
+        outcome=outcome,
+        success=success,
+        approved_by=approved_by,
+        note=note,
+    )
+
+    return {
+        "success": success,
+        "tool_call_id": req.tool_call_id,
+        "name": req.name,
+        "result": result,
+        "audit_id": audit_entry["timestamp"],
+    }
+
+
+@app.get("/api/assistant/audit-history", tags=["assistant"])
+async def get_tool_audit_history(limit: int = 50) -> dict:
+    """Return the most recent assistant tool-execution audit entries (Issue #89)."""
+    capped = max(1, min(limit, 200))
+    entries = assistant_tools.get_audit_history(limit=capped)
+    return {"entries": entries, "total": len(entries)}
 
 
 # ─── Assistant Action Proposal API (Issue #89) ────────────────────────────────

@@ -1,4 +1,5 @@
 """Contract tests for Maxwell-Daemon proxy routes (rd#102)."""
+
 from __future__ import annotations
 
 import os

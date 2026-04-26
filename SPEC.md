@@ -1584,3 +1584,5 @@ See [`docs/pwa-launcher-design.md`](docs/pwa-launcher-design.md) for:
 - ✅ All recovery actions logged for audit
 - ✅ Cross-platform (Windows/macOS/Linux with fallbacks)
 - ✅ Zero new secrets or credential exposure
+ 
+ 

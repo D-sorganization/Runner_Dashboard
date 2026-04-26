@@ -181,10 +181,7 @@ def test_jsx_archive_removed() -> None:
 
 def test_index_html_is_only_frontend_source() -> None:
     """No other .jsx or .tsx files should exist in frontend/ at runtime."""
-    unexpected = [
-        p for p in _FRONTEND_DIR.iterdir()
-        if p.suffix in {".jsx", ".tsx"} and p.is_file()
-    ]
+    unexpected = [p for p in _FRONTEND_DIR.iterdir() if p.suffix in {".jsx", ".tsx"} and p.is_file()]
     assert not unexpected, (
         f"Unexpected transpilable source files in frontend/: {[p.name for p in unexpected]}. "
         "frontend/index.html is the only runtime source — no build step exists."

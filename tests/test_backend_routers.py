@@ -93,12 +93,12 @@ def test_server_registers_credentials_router() -> None:
 def test_server_dispatch_not_inline() -> None:
     """The dispatch endpoints must not be defined inline in server.py."""
     server_src = (_BACKEND_DIR / "server.py").read_text(encoding="utf-8")
-    assert "@app.get(\"/api/fleet/dispatch/actions\")" not in server_src
-    assert "@app.post(\"/api/fleet/dispatch/validate\")" not in server_src
-    assert "@app.post(\"/api/fleet/dispatch/submit\")" not in server_src
+    assert '@app.get("/api/fleet/dispatch/actions")' not in server_src
+    assert '@app.post("/api/fleet/dispatch/validate")' not in server_src
+    assert '@app.post("/api/fleet/dispatch/submit")' not in server_src
 
 
 def test_server_credentials_not_inline() -> None:
     """The credentials endpoint must not be defined inline in server.py."""
     server_src = (_BACKEND_DIR / "server.py").read_text(encoding="utf-8")
-    assert "@app.get(\"/api/credentials\")" not in server_src
+    assert '@app.get("/api/credentials")' not in server_src
