@@ -146,7 +146,8 @@ jobs:
           PYTHONPATH: backend
         run: |
           if [ -d tests/ ]; then
-            pytest tests/ --tb=short -q || echo "::warning::No tests found or tests failed"
+            pytest tests/ --tb=short -q
           else
             echo "No tests directory found — skipping"
+            exit 1
           fi
