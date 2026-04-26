@@ -1,16 +1,16 @@
 """Tests for backend/quick_dispatch.py (issue #85)."""
 
-from __future__ import annotations
+from __future__ import annotations  # noqa: E402
 
-import sys
-from pathlib import Path
-from unittest.mock import AsyncMock, patch
+import sys  # noqa: E402
+from pathlib import Path  # noqa: E402
+from unittest.mock import AsyncMock, patch  # noqa: E402
 
-import pytest
+import pytest  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 
-from quick_dispatch import (
+from quick_dispatch import (  # noqa: E402
     QuickDispatchRequest,
     _quick_dispatch_timestamps,
     quick_dispatch,

@@ -1,7 +1,7 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.2.1
-**Application Version:** 4.0.1 (see `VERSION`)
+**Spec Version:** 2.3.0
+**Application Version:** 4.1.0 (see `VERSION`)
 **Last Updated:** 2026-04-26
 **Status:** Active
 
@@ -794,7 +794,23 @@ All user-supplied content rendered as Markdown is passed through
 `DOMPurify.sanitize()` before `dangerouslySetInnerHTML`. Marked.js is
 configured with `{ mangle: false, headerIds: false, gfm: true }`.
 
-### 9.2 HTTP Security Headers
+### 9.2 Authorization (Wave 2)
+All mutating `/api/*` endpoints require a Bearer token in the `Authorization` header.
+Tokens are verified against the `Principal` model. Scopes are enforced per-endpoint
+using the `require_scope(scope_name)` dependency.
+
+**Scope Presets:**
+- `admin` — Full access to all endpoints.
+- `operator` — Access to runners, workflows, and remediation dispatch.
+- `viewer` — Read-only access (default for unprivileged tokens).
+
+**Audit Logging:**
+Every mutating action is recorded in `DispatchAuditLogEntry` with:
+- `principal` — The ID of the authenticated user/agent.
+- `on_behalf_of` — Optional secondary attribution (e.g. "manual override").
+- `correlation_id` — Propagated across fleet nodes for distributed tracing.
+
+### 9.3 HTTP Security Headers
 The backend injects the following headers on all responses:
 - `X-Content-Type-Options: nosniff`
 - `X-Frame-Options: SAMEORIGIN`

@@ -1,6 +1,6 @@
 """Unit tests for remote_execution_contract.py — private-host detection and envelope validation."""
 
-from remote_execution_contract import (
+from remote_execution_contract import (  # noqa: E402
     RemoteExecutionEnvelope,
     _host_is_private,
     _url_is_private,

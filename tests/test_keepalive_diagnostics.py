@@ -1,14 +1,14 @@
-from __future__ import annotations
+from __future__ import annotations  # noqa: E402
 
-import asyncio
-import json
-import sys
-from pathlib import Path
-from types import SimpleNamespace
+import asyncio  # noqa: E402
+import json  # noqa: E402
+import sys  # noqa: E402
+from pathlib import Path  # noqa: E402
+from types import SimpleNamespace  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 
-import server  # noqa: E402
+import server  # noqa: E402  # noqa: E402
 
 
 def _patch_server_windows_os(monkeypatch) -> None:

@@ -1,16 +1,16 @@
 """Tests for backend/agent_dispatch_router.py (issue #82)."""
 
-from __future__ import annotations
+from __future__ import annotations  # noqa: E402
 
-import sys
-from pathlib import Path
-from unittest.mock import AsyncMock, patch
+import sys  # noqa: E402
+from pathlib import Path  # noqa: E402
+from unittest.mock import AsyncMock, patch  # noqa: E402
 
-import pytest
+import pytest  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 
-from agent_dispatch_router import (
+from agent_dispatch_router import (  # noqa: E402
     BulkDispatchResponse,
     DispatchItem,
     DispatchSelection,

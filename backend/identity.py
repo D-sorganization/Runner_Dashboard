@@ -165,21 +165,21 @@ SCOPE_PRESETS = {
 }
 
 def require_scope(required_scope: str):
-    def checker(principal: Principal = Depends(require_principal)) -> Principal:
+    def checker(principal: Principal = Depends(require_principal)) -> Principal:  # noqa: B008
         principal_scopes = set()
         for role in principal.roles:
             if role in SCOPE_PRESETS:
                 principal_scopes.update(SCOPE_PRESETS[role])
-        
+
         if "*" in principal_scopes:
             return principal
-            
+
         for s in principal_scopes:
             if s == required_scope or (s.endswith("*") and required_scope.startswith(s[:-1])):
                 return principal
-                
+
         raise HTTPException(
-            status_code=403, 
+            status_code=403,
             detail={"error": "Authorization failed", "required_scope": required_scope, "principal": principal.id}
         )
     return checker

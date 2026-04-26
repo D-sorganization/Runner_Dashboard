@@ -6,26 +6,26 @@ Covers Phase 1 security hardening:
 - Replay detection via envelope ID deduplication
 """
 
-from __future__ import annotations
+from __future__ import annotations  # noqa: E402
 
-import json
-import os
-import sys
-from datetime import datetime, timedelta, timezone
+import json  # noqa: E402
+import os  # noqa: E402
+import sys  # noqa: E402
+from datetime import UTC, datetime, timedelta  # noqa: E402
 
-UTC = timezone.utc
-from pathlib import Path
-from unittest.mock import patch
+UTC = UTC
+from pathlib import Path  # noqa: E402
+from unittest.mock import patch  # noqa: E402
 
-import pytest
+import pytest  # noqa: E402
 
 # Ensure backend/ is on sys.path before importing
 _BACKEND = Path(__file__).parent.parent / "backend"
 if str(_BACKEND) not in sys.path:
     sys.path.insert(0, str(_BACKEND))
 
-import dispatch_contract  # noqa: E402
-from dispatch_contract import (  # noqa: E402
+import dispatch_contract  # noqa: E402  # noqa: E402
+from dispatch_contract import (  # noqa: E402  # noqa: E402
     CommandEnvelope,
     DispatchConfirmation,
     TimestampValidationResult,

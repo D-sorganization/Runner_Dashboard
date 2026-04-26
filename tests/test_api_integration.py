@@ -9,14 +9,14 @@ calls ``gh_api_admin``), so most read-only endpoints work in CI without any
 secrets.
 """
 
-from __future__ import annotations
+from __future__ import annotations  # noqa: E402
 
-import os
-import sys
-from pathlib import Path
+import os  # noqa: E402
+import sys  # noqa: E402
+from pathlib import Path  # noqa: E402
 
-import pytest
-import pytest_asyncio
+import pytest  # noqa: E402
+import pytest_asyncio  # noqa: E402
 
 # Ensure backend/ is on sys.path before importing the app
 _BACKEND = Path(__file__).parent.parent / "backend"

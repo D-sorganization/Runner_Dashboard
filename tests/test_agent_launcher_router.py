@@ -6,16 +6,15 @@ temp dirs, and use monkeypatch for the subprocess paths so the suite never
 actually shells out to a launcher CLI that may not exist on the test box.
 """
 
-from __future__ import annotations
+from __future__ import annotations  # noqa: E402
 
-import json
-from pathlib import Path
-from unittest.mock import patch
+import json  # noqa: E402
+from pathlib import Path  # noqa: E402
 
-import pytest
-from fastapi.testclient import TestClient
+import pytest  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
 
-from backend import agent_launcher_router as alr
+from backend import agent_launcher_router as alr  # noqa: E402
 
 
 # ---------------------------------------------------------------------------

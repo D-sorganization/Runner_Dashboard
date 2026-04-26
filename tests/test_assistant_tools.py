@@ -8,22 +8,22 @@ Covers:
 - execute_tool allowlist enforcement, confirmation contract, routing
 """
 
-from __future__ import annotations
+from __future__ import annotations  # noqa: E402
 
-import os
-import sys
-import unittest
-from unittest.mock import AsyncMock, MagicMock, patch
+import os  # noqa: E402
+import sys  # noqa: E402
+import unittest  # noqa: E402
+from unittest.mock import AsyncMock, MagicMock, patch  # noqa: E402
 
-import httpx  # noqa: F401  # imported so we can patch httpx.AsyncClient
+import httpx  # noqa: F401  # imported so we can patch httpx.AsyncClient  # noqa: E402
 
 # Ensure the backend directory is on sys.path when running from repo root
 BACKEND_DIR = os.path.join(os.path.dirname(__file__), "..", "backend")
 if BACKEND_DIR not in sys.path:
     sys.path.insert(0, os.path.abspath(BACKEND_DIR))
 
-import assistant_tools  # noqa: E402
-from assistant_tools import (  # noqa: E402
+import assistant_tools  # noqa: E402  # noqa: E402
+from assistant_tools import (  # noqa: E402  # noqa: E402
     _TOOL_AUDIT_LOG,
     TOOL_ALLOWLIST,
     _record_audit,

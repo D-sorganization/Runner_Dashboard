@@ -1,8 +1,7 @@
 """Unit tests for agent_remediation.py — failure context, policy, and workflow classification."""
 
-from agent_remediation import (
+from agent_remediation import (  # noqa: E402
     AttemptRecord,
-    DispatchDecision,
     FailureContext,
     ProviderAvailability,
     RemediationPolicy,

@@ -4,12 +4,12 @@ These are import-time and shape tests — they verify the routers are correctly
 structured and expose the expected routes without needing a running server.
 """
 
-from __future__ import annotations
+from __future__ import annotations  # noqa: E402
 
-import sys
-from pathlib import Path
+import sys  # noqa: E402
+from pathlib import Path  # noqa: E402
 
-import pytest
+import pytest  # noqa: E402
 
 _BACKEND_DIR = Path(__file__).parent.parent / "backend"
 sys.path.insert(0, str(_BACKEND_DIR))

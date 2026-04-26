@@ -4,12 +4,12 @@ These tests do not execute JavaScript — they assert that the compiled single-f
 frontend contains the structural markers expected by the dashboard design contract.
 """
 
-from __future__ import annotations
+from __future__ import annotations  # noqa: E402
 
-import re
-from pathlib import Path
+import re  # noqa: E402
+from pathlib import Path  # noqa: E402
 
-import pytest
+import pytest  # noqa: E402
 
 _FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 _INDEX_HTML = _FRONTEND_DIR / "index.html"

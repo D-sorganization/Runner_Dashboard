@@ -44,7 +44,7 @@ import psutil
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
-from identity import Principal, require_principal, require_scope
+from identity import Principal, require_scope  # noqa: B008
 from pydantic import BaseModel, Field
 from routers import auth as auth_router
 from starlette.middleware.sessions import SessionMiddleware
@@ -830,8 +830,10 @@ def _machine_deployment_state(node: dict, expected_version: str) -> dict:
     """Build a per-machine deployment state record."""
     deployment = _node_deployment_info(node)
     status = deployment_drift.evaluate_drift(deployment, expected_version)
-    registry = node.get("registry") if isinstance(node.get("registry"), dict) else {}
-    health = node.get("health") if isinstance(node.get("health"), dict) else {}
+    _reg = node.get("registry")
+    registry = _reg if isinstance(_reg, dict) else {}
+    _h = node.get("health")
+    health = _h if isinstance(_h, dict) else {}
     last_health_check = health.get("timestamp") or node.get("last_seen")
     last_rollback = None
     if isinstance(registry, dict):
@@ -2414,7 +2416,9 @@ async def launcher_health_check() -> dict:
 
 
 @app.post("/api/deployment/update-signal")
-async def post_deployment_update_signal(request: Request, *, principal: Principal = Depends(require_scope("system.control"))) -> dict:
+async def post_deployment_update_signal(
+    request: Request, *, principal: Principal = Depends(require_scope("system.control"))  # noqa: B008
+) -> dict:
     """Emit a structured "update requested" event for a node.
 
     The dashboard UI calls this when an operator clicks the "Update node"
@@ -2886,7 +2890,9 @@ async def list_workflows() -> dict:
 
 
 @app.post("/api/workflows/dispatch")
-async def dispatch_workflow(request: Request, *, principal: Principal = Depends(require_scope("workflows.control"))) -> dict:  # noqa: B008
+async def dispatch_workflow(
+    request: Request, *, principal: Principal = Depends(require_scope("workflows.control"))  # noqa: B008
+) -> dict:
     """Dispatch a workflow via workflow_dispatch."""
     body = await request.json()
     repo = str(body.get("repository", "")).strip()
@@ -2968,7 +2974,9 @@ async def get_repo_runs(request: Request, repo: str, per_page: int = 20):
 
 
 @app.post("/api/runners/{runner_id}/stop")
-async def stop_runner(request: Request, *, principal: Principal = Depends(require_scope("runners.control")), runner_id: int):
+async def stop_runner(
+    request: Request, *, principal: Principal = Depends(require_scope("runners.control")), runner_id: int  # noqa: B008
+):  # noqa: B008
     """Stop a specific runner's systemd service."""
     data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
     runners = data.get("runners", [])
@@ -2992,7 +3000,9 @@ async def stop_runner(request: Request, *, principal: Principal = Depends(requir
 
 
 @app.post("/api/runners/{runner_id}/start")
-async def start_runner(request: Request, *, principal: Principal = Depends(require_scope("runners.control")), runner_id: int):
+async def start_runner(
+    request: Request, *, principal: Principal = Depends(require_scope("runners.control")), runner_id: int  # noqa: B008
+):  # noqa: B008
     """Start a specific runner's systemd service."""
     data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
     runners = data.get("runners", [])
@@ -3112,7 +3122,9 @@ async def _remote_fleet_control(name: str, url: str, action: str) -> dict:
 
 
 @app.post("/api/fleet/control/{action}")
-async def fleet_control(action: str, request: Request, *, principal: Principal = Depends(require_scope("fleet.control"))):
+async def fleet_control(
+    action: str, request: Request, *, principal: Principal = Depends(require_scope("fleet.control"))  # noqa: B008
+):  # noqa: B008
     """Scale runners from any dashboard.
 
     Nodes proxy fleet-wide requests to the hub. The hub applies the action
@@ -3173,7 +3185,9 @@ async def get_fleet_capacity() -> dict:
 
 
 @app.post("/api/fleet/schedule")
-async def update_runner_schedule(request: Request, *, principal: Principal = Depends(require_scope("fleet.control"))) -> dict:
+async def update_runner_schedule(
+    request: Request, *, principal: Principal = Depends(require_scope("fleet.control"))  # noqa: B008
+) -> dict:
     """Update this machine's local runner capacity schedule."""
     body = await request.json()
     if not isinstance(body, dict):
@@ -3557,7 +3571,9 @@ async def get_heavy_test_repos():
 
 
 @app.post("/api/heavy-tests/dispatch")
-async def dispatch_heavy_test(request: Request, *, principal: Principal = Depends(require_scope("heavy-tests.dispatch"))):
+async def dispatch_heavy_test(
+    request: Request, *, principal: Principal = Depends(require_scope("heavy-tests.dispatch"))  # noqa: B008
+):  # noqa: B008
     """Dispatch a heavy test workflow via GitHub API."""
     body = await request.json()
     repo_name = body.get("repo")
@@ -3615,7 +3631,9 @@ async def dispatch_heavy_test(request: Request, *, principal: Principal = Depend
 
 
 @app.post("/api/heavy-tests/docker")
-async def run_docker_heavy_test(request: Request, *, principal: Principal = Depends(require_scope("heavy-tests.dispatch"))):
+async def run_docker_heavy_test(
+    request: Request, *, principal: Principal = Depends(require_scope("heavy-tests.dispatch"))  # noqa: B008
+):  # noqa: B008
     """Run heavy tests locally in Docker via docker-compose."""
     body = await request.json()
     repo_name = body.get("repo")
@@ -3754,7 +3772,7 @@ async def get_tests_ci_results() -> dict:
 
 
 @app.post("/api/tests/rerun")
-async def rerun_ci_test(request: Request, *, principal: Principal = Depends(require_scope("tests.rerun"))) -> dict:
+async def rerun_ci_test(request: Request, *, principal: Principal = Depends(require_scope("tests.rerun"))) -> dict:  # noqa: B008
     """Re-run a failed GitHub Actions workflow run (failed jobs only)."""
     body = await request.json()
     repo_name = body.get("repo", "")
@@ -3873,7 +3891,9 @@ async def get_agent_remediation_config() -> dict:
 
 
 @app.put("/api/agent-remediation/config", response_model=None)
-async def update_agent_remediation_config(request: Request, *, principal: Principal = Depends(require_scope("remediation.dispatch"))) -> dict | JSONResponse:
+async def update_agent_remediation_config(
+    request: Request, *, principal: Principal = Depends(require_scope("remediation.dispatch"))  # noqa: B008
+) -> dict | JSONResponse:  # noqa: B008
     """Persist the remediation policy so the dashboard can tune auto-routing."""
     body = await request.json()
     if not isinstance(body, dict):
@@ -3928,7 +3948,9 @@ async def get_agent_remediation_workflows() -> dict:
 
 
 @app.post("/api/agent-remediation/plan")
-async def plan_agent_remediation(request: Request, *, principal: Principal = Depends(require_scope("remediation.dispatch"))) -> dict:
+async def plan_agent_remediation(
+    request: Request, *, principal: Principal = Depends(require_scope("remediation.dispatch"))  # noqa: B008
+) -> dict:
     """Build a guarded remediation plan for one failed workflow run."""
     body = await request.json()
     if not isinstance(body, dict):
@@ -3993,7 +4015,9 @@ async def plan_agent_remediation(request: Request, *, principal: Principal = Dep
 
 
 @app.post("/api/agent-remediation/dispatch")
-async def dispatch_agent_remediation(request: Request, *, principal: Principal = Depends(require_scope("remediation.dispatch"))) -> dict:
+async def dispatch_agent_remediation(
+    request: Request, *, principal: Principal = Depends(require_scope("remediation.dispatch"))  # noqa: B008
+) -> dict:
     """Dispatch the central CI remediation workflow in Repository_Management."""
     client_ip = request.client.host if request.client else "unknown"
     check_dispatch_rate(client_ip)
@@ -4127,7 +4151,9 @@ async def dispatch_agent_remediation(request: Request, *, principal: Principal =
 
 
 @app.post("/api/agents/quick-dispatch")
-async def api_quick_dispatch(request: Request, *, principal: Principal = Depends(require_scope("remediation.dispatch"))) -> dict:  # noqa: B008
+async def api_quick_dispatch(
+    request: Request, *, principal: Principal = Depends(require_scope("remediation.dispatch"))  # noqa: B008
+) -> dict:
     """Dispatch an ad-hoc agent task via Agent-Quick-Dispatch.yml."""
     body = await request.json()
     if not isinstance(body, dict):
@@ -4176,7 +4202,9 @@ async def api_quick_dispatch(request: Request, *, principal: Principal = Depends
 
 
 @app.post("/api/prs/dispatch")
-async def api_dispatch_to_prs(request: Request, *, principal: Principal = Depends(require_scope("github.dispatch"))) -> dict:
+async def api_dispatch_to_prs(
+    request: Request, *, principal: Principal = Depends(require_scope("github.dispatch"))  # noqa: B008
+) -> dict:
     """Dispatch agents to one or more pull requests."""
     body = await request.json()
     if not isinstance(body, dict):
@@ -4201,7 +4229,9 @@ async def api_dispatch_to_prs(request: Request, *, principal: Principal = Depend
 
 
 @app.post("/api/issues/dispatch")
-async def api_dispatch_to_issues(request: Request, *, principal: Principal = Depends(require_scope("github.dispatch"))) -> dict:
+async def api_dispatch_to_issues(
+    request: Request, *, principal: Principal = Depends(require_scope("github.dispatch"))  # noqa: B008
+) -> dict:
     """Dispatch agents to one or more issues."""
     body = await request.json()
     if not isinstance(body, dict):
@@ -4250,7 +4280,9 @@ async def _append_remediation_history(entry: dict) -> None:
 
 
 @app.post("/api/agent-remediation/dispatch-jules")
-async def dispatch_jules_workflow(request: Request, *, principal: Principal = Depends(require_scope("remediation.dispatch"))) -> dict:
+async def dispatch_jules_workflow(
+    request: Request, *, principal: Principal = Depends(require_scope("remediation.dispatch"))  # noqa: B008
+) -> dict:
     """Dispatch a specific Jules workflow via workflow_dispatch."""
     body = await request.json()
     workflow_file = str(body.get("workflow_file", "")).strip()
@@ -4332,7 +4364,7 @@ async def _dispatch_to_ai_provider_for_chat(
 
 
 @app.post("/api/assistant/chat", tags=["assistant"])
-async def assistant_chat(request: Request, *, principal: Principal = Depends(require_scope("assistant.chat"))) -> dict:
+async def assistant_chat(request: Request, *, principal: Principal = Depends(require_scope("assistant.chat"))) -> dict:  # noqa: B008
     """Chat with AI assistant about dashboard state.
 
     When ``tools_enabled: true`` is set, the Anthropic tool-use loop is
@@ -4445,7 +4477,9 @@ async def _route_readonly_tool(tool_name: str, gh_api_caller: Any) -> dict:
 
 
 @app.post("/api/assistant/tool/execute", tags=["assistant"])
-async def execute_assistant_tool(request: Request, *, principal: Principal = Depends(require_scope("assistant.execute"))) -> dict:
+async def execute_assistant_tool(
+    request: Request, *, principal: Principal = Depends(require_scope("assistant.execute"))  # noqa: B008
+) -> dict:
     """Execute a tool call from the assistant allowlist (Issue #89).
 
     State-changing tools require ``confirmation`` in the request body.
@@ -4529,7 +4563,7 @@ _proposed_actions: dict[str, dict] = {}
 
 
 @app.post("/api/assistant/propose-action", tags=["assistant"])
-async def propose_action(request: Request, *, principal: Principal = Depends(require_scope("assistant.chat"))) -> dict:
+async def propose_action(request: Request, *, principal: Principal = Depends(require_scope("assistant.chat"))) -> dict:  # noqa: B008
     """Propose an action based on user request, awaiting operator approval."""
     try:
         body = await request.json()
@@ -4601,7 +4635,9 @@ async def propose_action(request: Request, *, principal: Principal = Depends(req
 
 
 @app.post("/api/assistant/execute-action", tags=["assistant"])
-async def execute_action(request: Request, *, principal: Principal = Depends(require_scope("assistant.execute"))) -> dict:
+async def execute_action(
+    request: Request, *, principal: Principal = Depends(require_scope("assistant.execute"))  # noqa: B008
+) -> dict:
     """Execute a proposed action after operator approval."""
     try:
         body = await request.json()
@@ -4745,7 +4781,9 @@ async def get_queue(request: Request) -> dict:
 
 
 @app.post("/api/runs/{repo}/cancel/{run_id}")
-async def cancel_run(request: Request, *, principal: Principal = Depends(require_scope("workflows.control")), repo: str, run_id: int) -> dict:
+async def cancel_run(
+    request: Request, *, principal: Principal = Depends(require_scope("workflows.control")), repo: str, run_id: int  # noqa: B008
+) -> dict:
     """Cancel a single queued or in-progress workflow run."""
     code, _, stderr = await run_cmd(
         [
@@ -4766,7 +4804,9 @@ async def cancel_run(request: Request, *, principal: Principal = Depends(require
 
 
 @app.post("/api/runs/{repo}/rerun/{run_id}")
-async def rerun_failed(request: Request, *, principal: Principal = Depends(require_scope("workflows.control")), repo: str, run_id: int) -> dict:
+async def rerun_failed(
+    request: Request, *, principal: Principal = Depends(require_scope("workflows.control")), repo: str, run_id: int  # noqa: B008
+) -> dict:
     """Re-run failed jobs in a workflow run."""
     code, _, stderr = await run_cmd(
         [
@@ -4785,7 +4825,9 @@ async def rerun_failed(request: Request, *, principal: Principal = Depends(requi
 
 
 @app.post("/api/queue/cancel-workflow")
-async def cancel_workflow_runs(request: Request, *, principal: Principal = Depends(require_scope("workflows.control"))) -> dict:
+async def cancel_workflow_runs(
+    request: Request, *, principal: Principal = Depends(require_scope("workflows.control"))  # noqa: B008
+) -> dict:
     """Cancel all queued runs of a specific workflow across the org.
 
     Body: {"workflow_name": "ci-standard", "repo": "MyRepo"}  (repo optional)
@@ -5442,7 +5484,9 @@ async def get_maxwell_status() -> dict:
 
 
 @app.post("/api/maxwell/control")
-async def maxwell_control(request: Request, *, principal: Principal = Depends(require_scope("maxwell.control"))) -> dict:
+async def maxwell_control(
+    request: Request, *, principal: Principal = Depends(require_scope("maxwell.control"))  # noqa: B008
+) -> dict:
     """Start or stop Maxwell-Daemon service (confirmation required)."""
     body = await request.json()
     action = str(body.get("action", "")).strip()
@@ -5552,7 +5596,9 @@ async def get_maxwell_task_detail(task_id: str) -> dict:
 
 
 @app.post("/api/maxwell/dispatch")
-async def maxwell_dispatch_task(request: Request, *, principal: Principal = Depends(require_scope("maxwell.control"))) -> dict:
+async def maxwell_dispatch_task(
+    request: Request, *, principal: Principal = Depends(require_scope("maxwell.control"))  # noqa: B008
+) -> dict:
     """Proxy POST /api/dispatch to Maxwell-Daemon (forwards body as-is)."""
     path = "/api/dispatch"
     resp = None
@@ -5575,7 +5621,9 @@ async def maxwell_dispatch_task(request: Request, *, principal: Principal = Depe
 
 
 @app.post("/api/maxwell/pipeline-control/{action}")
-async def maxwell_pipeline_control(action: str, request: Request, *, principal: Principal = Depends(require_scope("maxwell.control"))) -> dict:
+async def maxwell_pipeline_control(
+    action: str, request: Request, *, principal: Principal = Depends(require_scope("maxwell.control"))  # noqa: B008
+) -> dict:
     """Proxy POST /api/control/{action} to Maxwell-Daemon."""
     if action not in ("pause", "resume", "abort"):
         raise HTTPException(status_code=422, detail="action must be pause, resume, or abort")
@@ -5600,7 +5648,7 @@ async def maxwell_pipeline_control(action: str, request: Request, *, principal: 
 
 
 @app.post("/api/help/chat")
-async def help_chat(request: Request, *, principal: Principal = Depends(require_scope("operator"))) -> dict:
+async def help_chat(request: Request, *, principal: Principal = Depends(require_scope("operator"))) -> dict:  # noqa: B008
     """Answer a dashboard help question. Uses local FAQ first, falls back to Claude API if available."""
     body = await request.json()
     question = str(body.get("question", "")).strip()
@@ -5697,7 +5745,9 @@ async def get_assessment_scores() -> dict:
 
 
 @app.post("/api/assessments/dispatch")
-async def dispatch_assessment(request: Request, *, principal: Principal = Depends(require_scope("assessments.dispatch"))) -> dict:
+async def dispatch_assessment(
+    request: Request, *, principal: Principal = Depends(require_scope("assessments.dispatch"))  # noqa: B008
+) -> dict:
     """Dispatch an assessment workflow for a repository."""
     body = await request.json()
     repo = str(body.get("repository", "")).strip()
@@ -5814,7 +5864,9 @@ async def list_prompt_templates() -> dict:
 
 
 @app.post("/api/feature-requests/templates")
-async def save_prompt_template(request: Request, *, principal: Principal = Depends(require_scope("feature-requests.manage"))) -> dict:
+async def save_prompt_template(
+    request: Request, *, principal: Principal = Depends(require_scope("feature-requests.manage"))  # noqa: B008
+) -> dict:
     """Save a prompt template."""
     body = await request.json()
     name = str(body.get("name", "")).strip()
@@ -5856,7 +5908,7 @@ async def get_prompt_notes() -> dict:
 
 
 @app.put("/api/settings/prompt-notes")
-async def update_prompt_notes(request: Request, *, principal: Principal = Depends(require_scope("operator"))) -> dict:
+async def update_prompt_notes(request: Request, *, principal: Principal = Depends(require_scope("operator"))) -> dict:  # noqa: B008
     """Update the global prompt notes."""
     body = await request.json()
     if not isinstance(body, dict):
@@ -5875,7 +5927,9 @@ async def update_prompt_notes(request: Request, *, principal: Principal = Depend
 
 
 @app.post("/api/feature-requests/dispatch")
-async def dispatch_feature_request(request: Request, *, principal: Principal = Depends(require_scope("feature-requests.manage"))) -> dict:
+async def dispatch_feature_request(
+    request: Request, *, principal: Principal = Depends(require_scope("feature-requests.manage"))  # noqa: B008
+) -> dict:
     """Dispatch a feature implementation request via CI remediation workflow."""
     client_ip = request.client.host if request.client else "unknown"
     check_dispatch_rate(client_ip)
@@ -6058,7 +6112,9 @@ async def get_fleet_orchestration(request: Request) -> dict:
 
 
 @app.post("/api/fleet/orchestration/dispatch")
-async def fleet_orchestration_dispatch(request: Request, *, principal: Principal = Depends(require_scope("fleet.control"))) -> dict:  # noqa: B008
+async def fleet_orchestration_dispatch(
+    request: Request, *, principal: Principal = Depends(require_scope("fleet.control"))  # noqa: B008
+) -> dict:
     """Dispatch a workflow to a specific machine target."""
     body = await request.json()
     if not isinstance(body, dict):
@@ -6171,7 +6227,9 @@ async def fleet_orchestration_dispatch(request: Request, *, principal: Principal
 
 
 @app.post("/api/fleet/orchestration/deploy")
-async def fleet_orchestration_deploy(request: Request, *, principal: Principal = Depends(require_scope("fleet.control"))) -> dict:  # noqa: B008
+async def fleet_orchestration_deploy(
+    request: Request, *, principal: Principal = Depends(require_scope("fleet.control"))  # noqa: B008
+) -> dict:
     """Deploy a workflow or config change to a fleet machine."""
     body = await request.json()
     if not isinstance(body, dict):
@@ -6381,7 +6439,9 @@ async def get_diagnostics_summary() -> dict:
 
 
 @app.post("/api/diagnostics/restart-service")
-async def restart_dashboard_service(request: Request, *, principal: Principal = Depends(require_scope("system.control"))) -> dict:
+async def restart_dashboard_service(
+    request: Request, *, principal: Principal = Depends(require_scope("system.control"))  # noqa: B008
+) -> dict:
     """Restart the dashboard systemd service (WSL/Linux only, localhost only)."""
     client = request.client
     if not client or client.host not in ("127.0.0.1", "::1"):
@@ -6407,7 +6467,10 @@ async def restart_dashboard_service(request: Request, *, principal: Principal = 
 
 
 @app.post("/api/launchers/generate")
-async def generate_launchers(request: Request, principal: Principal = Depends(require_scope("system.control")), ) -> dict:
+async def generate_launchers(
+    request: Request,
+    principal: Principal = Depends(require_scope("system.control")),  # noqa: B008
+) -> dict:
     """Generate Windows PowerShell launcher scripts on the Desktop."""
     output_dir = Path.home() / "Desktop" / "RunnerDashboard"
     output_dir.mkdir(parents=True, exist_ok=True)

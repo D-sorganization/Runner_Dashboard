@@ -1,19 +1,19 @@
 """Unit tests for backend/issue_inventory.py (issue #81)."""
 
-from __future__ import annotations
+from __future__ import annotations  # noqa: E402
 
-import sys
-from datetime import datetime, timedelta, timezone
+import sys  # noqa: E402
+from datetime import UTC, datetime, timedelta  # noqa: E402
 
-UTC = timezone.utc
-from pathlib import Path
-from unittest.mock import AsyncMock, patch
+UTC = UTC
+from pathlib import Path  # noqa: E402
+from unittest.mock import AsyncMock, patch  # noqa: E402
 
-import pytest
+import pytest  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 
-import issue_inventory  # noqa: E402
+import issue_inventory  # noqa: E402  # noqa: E402
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 

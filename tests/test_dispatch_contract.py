@@ -1,6 +1,6 @@
 """Unit tests for dispatch_contract.py — envelope validation and confirmation gating."""
 
-from dispatch_contract import (
+from dispatch_contract import (  # noqa: E402
     ALLOWLISTED_ACTIONS,
     CommandEnvelope,
     DispatchAccess,
