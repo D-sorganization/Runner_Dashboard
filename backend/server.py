@@ -6750,6 +6750,7 @@ async def purge_stale_queue(
                 _cache.pop(key, None)
     return result
 
+
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
