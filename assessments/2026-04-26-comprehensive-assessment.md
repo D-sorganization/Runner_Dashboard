@@ -154,6 +154,7 @@
 ## 6. Integrity Notes
 
 - **Dirty trees:** runner-dashboard, Drake_Models, Games, Maxwell-Daemon, Repository_Management, Tools have dirty working trees. Assessment ran against HEAD but findings may include unstaged changes.
+- **MLProjects:** Archived (read-only). Assessment files copied to `docs/assessments/` locally but PR could not be opened. All other 11 repos have open PRs with assessment artifacts.
 - **Missing repos:** Gasification_Model_fresh, Tools_clone, Tools_work were skipped (duplicates or not in scope).
 - **Tools not installed:** `bandit`, `pip-audit`, `radon`, `vulture` not available on Windows host. Security and complexity findings are heuristic-only.
 - **Sampled:** UpstreamDrift (5,913 files), Repository_Management (26,980 files), and Tools (70,229 files) were sampled, not exhaustively scanned.
@@ -167,6 +168,7 @@
 | `assessments/2026-04-26-comprehensive-assessment.md` | This report |
 | `assessments/2026-04-26-comprehensive-assessment.json` | Machine-readable scores |
 | `assessments/2026-04-26-<repo>-assessment.json` | Per-repo JSON (12 repos) |
+| `docs/assessments/` in each repo | Distributed per-repo artifacts + fleet reports |
 | `assessments/repo_inventory.py` | Inventory script |
 | `assessments/assess_repo.py` | Reusable parameterized assessor |
 | `assessments/batch_assess.py` | Batch runner |
