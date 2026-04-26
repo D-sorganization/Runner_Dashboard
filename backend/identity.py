@@ -16,12 +16,14 @@ class Principal(BaseModel):
     github_username: str | None = None
     email: str | None = None
 
+
 class TokenRecord(BaseModel):
     token_hash: str
     principal_id: str
     created_at: float
     expires_at: float | None = None
     name: str
+
 
 class IdentityManager:
     def __init__(self, config_dir: Path = Path("config")):
@@ -79,21 +81,18 @@ class IdentityManager:
             raise ValueError(f"Principal {principal_id} not found")
 
         prin = self.principals[principal_id]
-        if prin.type != 'bot':
+        if prin.type != "bot":
             raise ValueError("Service tokens can only be minted for bot principals")
 
         raw_token = "svc_" + secrets.token_urlsafe(32)
         import hashlib
+
         token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
 
         expires_at = time.time() + (expires_in_days * 86400) if expires_in_days else None
 
         record = TokenRecord(
-            token_hash=token_hash,
-            principal_id=principal_id,
-            created_at=time.time(),
-            expires_at=expires_at,
-            name=name
+            token_hash=token_hash, principal_id=principal_id, created_at=time.time(), expires_at=expires_at, name=name
         )
         self.tokens.append(record)
         self.save_tokens()
@@ -105,6 +104,7 @@ class IdentityManager:
 
     def verify_token(self, raw_token: str) -> Principal | None:
         import hashlib
+
         token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
 
         for t in self.tokens:
@@ -114,15 +114,15 @@ class IdentityManager:
                 return self.principals.get(t.principal_id)
         return None
 
+
 identity_manager = IdentityManager()
 
 auth_header = APIKeyHeader(name="Authorization", auto_error=False)
 auth_cookie = APIKeyCookie(name="dashboard_session", auto_error=False)
 
+
 def require_principal(
-    request: Request,
-    header_token: str | None = Depends(auth_header),
-    cookie_token: str | None = Depends(auth_cookie)
+    request: Request, header_token: str | None = Depends(auth_header), cookie_token: str | None = Depends(auth_cookie)
 ) -> Principal:
     # 1. Check Bearer token
     if header_token and header_token.startswith("Bearer "):

@@ -427,7 +427,7 @@ app.add_middleware(
     session_cookie="dashboard_session",
     max_age=86400 * 7,  # 7 days
     same_site="lax",
-    https_only=False, # True if prod
+    https_only=False,  # True if prod
 )
 
 app.add_middleware(
@@ -444,8 +444,13 @@ app.add_middleware(
 
 
 _AUTH_EXEMPT_PATHS = {
-    "/", "/health", "/api/health", "/manifest.webmanifest",
-    "/icon.svg", "/api/auth/github", "/api/auth/callback"
+    "/",
+    "/health",
+    "/api/health",
+    "/manifest.webmanifest",
+    "/icon.svg",
+    "/api/auth/github",
+    "/api/auth/callback",
 }
 _AUTH_EXEMPT_PREFIXES = ("/docs", "/openapi", "/redoc")
 

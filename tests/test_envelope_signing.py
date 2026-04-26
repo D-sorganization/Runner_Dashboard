@@ -11,9 +11,9 @@ from __future__ import annotations
 import json
 import os
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -25,7 +25,6 @@ if str(_BACKEND) not in sys.path:
 import dispatch_contract
 from dispatch_contract import (
     CommandEnvelope,
-    CryptoValidationResult,
     DispatchConfirmation,
     TimestampValidationResult,
     _sign_envelope_payload,
@@ -34,7 +33,7 @@ from dispatch_contract import (
     validate_envelope_crypto,
 )
 
-UTC = timezone.utc
+UTC = UTC
 
 
 class TestEnvelopeSigningAndVerification:

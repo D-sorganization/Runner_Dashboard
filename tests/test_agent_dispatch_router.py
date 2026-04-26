@@ -20,7 +20,6 @@ from agent_dispatch_router import (
     dispatch_to_prs,
 )
 
-
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
 
@@ -208,6 +207,7 @@ async def test_dispatch_to_issues_invalid_number_rejected() -> None:
 async def test_dispatch_to_issues_audit_log_has_required_fields(tmp_path: Path) -> None:
     """Audit log entries have action, provider, accepted, recorded_at, forced fields."""
     import json
+
     import agent_dispatch_router as adr
 
     original = adr._ISSUE_DISPATCH_HISTORY_PATH

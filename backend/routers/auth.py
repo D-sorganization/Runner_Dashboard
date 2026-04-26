@@ -12,6 +12,7 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 GITHUB_CLIENT_ID = os.environ.get("GITHUB_CLIENT_ID", "")
 GITHUB_CLIENT_SECRET = os.environ.get("GITHUB_CLIENT_SECRET", "")
 
+
 @router.get("/github")
 async def github_login(request: Request):
     """Start GitHub OAuth flow."""
@@ -21,8 +22,11 @@ async def github_login(request: Request):
 
     state = secrets.token_urlsafe(16)
     request.session["oauth_state"] = state
-    redirect_uri = f"https://github.com/login/oauth/authorize?client_id={GITHUB_CLIENT_ID}&state={state}&scope=read:user"
+    redirect_uri = (
+        f"https://github.com/login/oauth/authorize?client_id={GITHUB_CLIENT_ID}&state={state}&scope=read:user"
+    )
     return RedirectResponse(url=redirect_uri)
+
 
 @router.get("/callback")
 async def github_callback(request: Request, code: str, state: str):
@@ -40,7 +44,7 @@ async def github_callback(request: Request, code: str, state: str):
                 "client_secret": GITHUB_CLIENT_SECRET,
                 "code": code,
             },
-            headers={"Accept": "application/json"}
+            headers={"Accept": "application/json"},
         )
         token_data = token_resp.json()
         access_token = token_data.get("access_token")
@@ -50,10 +54,7 @@ async def github_callback(request: Request, code: str, state: str):
         # Get user info
         user_resp = await client.get(
             "https://api.github.com/user",
-            headers={
-                "Authorization": f"Bearer {access_token}",
-                "Accept": "application/json"
-            }
+            headers={"Authorization": f"Bearer {access_token}", "Accept": "application/json"},
         )
         user_data = user_resp.json()
         github_login = user_data.get("login")
@@ -72,6 +73,7 @@ async def github_callback(request: Request, code: str, state: str):
     request.session["principal_id"] = matched_principal.id
     return RedirectResponse(url="/")
 
+
 @router.get("/dev-login")
 async def dev_login(request: Request):
     """Development login when OAuth is not configured."""
@@ -80,7 +82,7 @@ async def dev_login(request: Request):
 
     # Just grab the first human principal
     for p in identity_manager.principals.values():
-        if p.type == 'human':
+        if p.type == "human":
             request.session["principal_id"] = p.id
             return RedirectResponse(url="/")
 
@@ -90,21 +92,25 @@ async def dev_login(request: Request):
     request.session["principal_id"] = "dev-user"
     return RedirectResponse(url="/")
 
+
 @router.post("/logout")
 async def logout(request: Request):
     """Logout current user."""
     request.session.clear()
     return {"status": "logged_out"}
 
+
 @router.get("/me")
 async def get_me(principal: Principal = Depends(require_principal)):  # noqa: B008
     """Get current user info."""
     return principal
 
+
 class MintTokenRequest(BaseModel):
     principal_id: str
     name: str
     expires_in_days: int = 30
+
 
 @router.post("/tokens")
 async def mint_token(req: MintTokenRequest, current_user: Principal = Depends(require_principal)):  # noqa: B008
@@ -117,6 +123,7 @@ async def mint_token(req: MintTokenRequest, current_user: Principal = Depends(re
         return {"token": raw_token}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+
 
 @router.delete("/tokens/{token_hash}")
 async def revoke_token(token_hash: str, current_user: Principal = Depends(require_principal)):  # noqa: B008
