@@ -48,36 +48,36 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 from starlette.middleware.sessions import SessionMiddleware
 
-from backend.identity import Principal, require_principal, require_scope  # noqa: B008
-from backend.routers import admin as admin_router
-from backend.routers import auth as auth_router
+from identity import Principal, require_principal, require_scope  # noqa: B008
+from routers import admin as admin_router
+from routers import auth as auth_router
 
 BACKEND_DIR = Path(__file__).resolve().parent
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-import backend.agent_dispatch_router as agent_dispatch_router  # noqa: E402
-import backend.agent_remediation as agent_remediation  # noqa: E402
-import backend.assistant_contract as assistant_contract  # noqa: E402
-import backend.assistant_tools as assistant_tools  # noqa: E402
-import backend.config_schema as config_schema  # noqa: E402
-import backend.deployment_drift as deployment_drift  # noqa: E402
-import backend.dispatch_contract as dispatch_contract  # noqa: E402
-import backend.issue_inventory as issue_inventory  # noqa: E402
-import backend.lease_synchronizer as lease_synchronizer  # noqa: E402
-import backend.pr_inventory as pr_inventory  # noqa: E402
-import backend.quick_dispatch as _quick_dispatch  # noqa: E402
-import backend.quota_enforcement as quota_enforcement  # noqa: E402
-import backend.scheduled_workflows as scheduled_workflow_inventory  # noqa: E402
-import backend.usage_monitoring as usage_monitoring  # noqa: E402
-from backend.local_app_monitoring import collect_local_apps  # noqa: E402
-from backend.machine_registry import (  # noqa: E402
+import agent_dispatch_router as agent_dispatch_router  # noqa: E402
+import agent_remediation as agent_remediation  # noqa: E402
+import assistant_contract as assistant_contract  # noqa: E402
+import assistant_tools as assistant_tools  # noqa: E402
+import config_schema as config_schema  # noqa: E402
+import deployment_drift as deployment_drift  # noqa: E402
+import dispatch_contract as dispatch_contract  # noqa: E402
+import issue_inventory as issue_inventory  # noqa: E402
+import lease_synchronizer as lease_synchronizer  # noqa: E402
+import pr_inventory as pr_inventory  # noqa: E402
+import quick_dispatch as _quick_dispatch  # noqa: E402
+import quota_enforcement as quota_enforcement  # noqa: E402
+import scheduled_workflows as scheduled_workflow_inventory  # noqa: E402
+import usage_monitoring as usage_monitoring  # noqa: E402
+from local_app_monitoring import collect_local_apps  # noqa: E402
+from machine_registry import (  # noqa: E402
     load_machine_registry,
     merge_registry_with_live_nodes,
 )
-from backend.report_files import parse_report_metrics, sanitize_report_date  # noqa: E402
-from backend.routers import credentials as _credentials_router  # noqa: E402
-from backend.routers import dispatch as _dispatch_router  # noqa: E402
+from report_files import parse_report_metrics, sanitize_report_date  # noqa: E402
+from routers import credentials as _credentials_router  # noqa: E402
+from routers import dispatch as _dispatch_router  # noqa: E402
 
 # datetime.UTC added in Python 3.11; fall back to timezone.utc on older runtimes.
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
