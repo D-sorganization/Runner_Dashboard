@@ -41,10 +41,13 @@ from urllib.parse import urlparse
 
 import httpx
 import psutil
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from identity import Principal, require_principal
 from pydantic import BaseModel, Field
+from routers import auth as auth_router
+from starlette.middleware.sessions import SessionMiddleware
 
 BACKEND_DIR = Path(__file__).resolve().parent
 if str(BACKEND_DIR) not in sys.path:
@@ -209,7 +212,7 @@ class WorkflowDispatchBody(BaseModel):
     workflow_id: Any = None
     ref: str = Field(default="main", max_length=200)
     inputs: dict[str, Any] = Field(default_factory=dict)
-    approved_by: str = Field(default="dashboard-operator", max_length=200)
+    approved_by: str = Field(..., max_length=200)
 
 
 class HeavyTestDispatchBody(BaseModel):
@@ -416,6 +419,16 @@ async def _record_processed_envelope(envelope_id: str, ttl_seconds: int = 86400)
 app.include_router(_dispatch_router.router)
 _dispatch_router.set_replay_functions(_is_envelope_replay, _record_processed_envelope)
 app.include_router(_credentials_router.router)
+app.include_router(auth_router.router)
+
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=os.environ.get("SESSION_SECRET", secrets.token_hex(32)),
+    session_cookie="dashboard_session",
+    max_age=86400 * 7,  # 7 days
+    same_site="lax",
+    https_only=False, # True if prod
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -430,43 +443,11 @@ app.add_middleware(
 )
 
 
-_AUTH_EXEMPT_PATHS = {"/", "/health", "/api/health", "/api/setup-key", "/manifest.webmanifest", "/icon.svg"}
+_AUTH_EXEMPT_PATHS = {
+    "/", "/health", "/api/health", "/manifest.webmanifest",
+    "/icon.svg", "/api/auth/github", "/api/auth/callback"
+}
 _AUTH_EXEMPT_PREFIXES = ("/docs", "/openapi", "/redoc")
-
-
-@app.middleware("http")
-async def _auth_middleware(request: Request, call_next: Any) -> Any:
-    """Check API key for all /api/* requests (issue #16)."""
-    path = request.url.path
-    # Exempt non-API and whitelisted paths
-    if path in _AUTH_EXEMPT_PATHS or any(path.startswith(p) for p in _AUTH_EXEMPT_PREFIXES):
-        return await call_next(request)
-    if not path.startswith("/api/"):
-        return await call_next(request)
-    # Extract key from header
-    auth_header = request.headers.get("Authorization", "")
-    api_key_header = request.headers.get("X-API-Key", "")
-    provided_key = ""
-    if auth_header.startswith("Bearer "):
-        provided_key = auth_header[7:].strip()
-    elif api_key_header:
-        provided_key = api_key_header.strip()
-    if not DASHBOARD_API_KEY or secrets.compare_digest(provided_key, DASHBOARD_API_KEY):
-        return await call_next(request)
-    return JSONResponse(
-        {"error": "Authentication required"},
-        status_code=401,
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-
-
-@app.get("/api/setup-key")
-async def get_setup_key(request: Request) -> dict:
-    """Return the API key only when called from localhost (issue #16)."""
-    client_host = request.client.host if request.client else ""
-    if client_host not in ("127.0.0.1", "::1", "localhost"):
-        raise HTTPException(status_code=403, detail="This endpoint is only accessible locally")
-    return {"api_key": DASHBOARD_API_KEY, "hint": "Add 'Authorization: Bearer <key>' to all API requests."}
 
 
 @app.middleware("http")
@@ -2894,14 +2875,14 @@ async def list_workflows() -> dict:
 
 
 @app.post("/api/workflows/dispatch")
-async def dispatch_workflow(request: Request) -> dict:
+async def dispatch_workflow(request: Request, principal: Principal = Depends(require_principal)) -> dict:  # noqa: B008
     """Dispatch a workflow via workflow_dispatch."""
     body = await request.json()
     repo = str(body.get("repository", "")).strip()
     workflow_id = body.get("workflow_id")
     ref = str(body.get("ref", "main")).strip()
     inputs = body.get("inputs", {}) or {}
-    approved_by = str(body.get("approved_by", "dashboard-operator")).strip()
+    approved_by = principal.id
 
     if not repo or not workflow_id:
         raise HTTPException(status_code=422, detail="repository and workflow_id required")
@@ -4133,13 +4114,14 @@ async def dispatch_agent_remediation(request: Request) -> dict:
 
 
 @app.post("/api/agents/quick-dispatch")
-async def api_quick_dispatch(request: Request) -> dict:
+async def api_quick_dispatch(request: Request, principal: Principal = Depends(require_principal)) -> dict:  # noqa: B008
     """Dispatch an ad-hoc agent task via Agent-Quick-Dispatch.yml."""
     body = await request.json()
     if not isinstance(body, dict):
         raise HTTPException(status_code=422, detail="expected object body")
     try:
         req = _quick_dispatch.QuickDispatchRequest(**body)
+        req.requested_by = principal.id
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -6061,7 +6043,7 @@ async def get_fleet_orchestration(request: Request) -> dict:
 
 
 @app.post("/api/fleet/orchestration/dispatch")
-async def fleet_orchestration_dispatch(request: Request) -> dict:
+async def fleet_orchestration_dispatch(request: Request, principal: Principal = Depends(require_principal)) -> dict:  # noqa: B008
     """Dispatch a workflow to a specific machine target."""
     body = await request.json()
     if not isinstance(body, dict):
@@ -6072,7 +6054,7 @@ async def fleet_orchestration_dispatch(request: Request) -> dict:
     ref = str(body.get("ref", "main")).strip() or "main"
     machine_target = str(body.get("machine_target", "")).strip()
     inputs = body.get("inputs") or {}
-    approved_by = str(body.get("approved_by", "dashboard-user")).strip() or "dashboard-user"
+    approved_by = principal.id
 
     if not repo or not workflow:
         raise HTTPException(status_code=422, detail="repo and workflow are required")
@@ -6174,7 +6156,7 @@ async def fleet_orchestration_dispatch(request: Request) -> dict:
 
 
 @app.post("/api/fleet/orchestration/deploy")
-async def fleet_orchestration_deploy(request: Request) -> dict:
+async def fleet_orchestration_deploy(request: Request, principal: Principal = Depends(require_principal)) -> dict:  # noqa: B008
     """Deploy a workflow or config change to a fleet machine."""
     body = await request.json()
     if not isinstance(body, dict):
@@ -6183,7 +6165,7 @@ async def fleet_orchestration_deploy(request: Request) -> dict:
     machine = str(body.get("machine", "")).strip()
     action = str(body.get("action", "")).strip()
     confirmed = bool(body.get("confirmed", False))
-    requested_by = str(body.get("requested_by", "dashboard-user")).strip() or "dashboard-user"
+    requested_by = principal.id
 
     if not machine:
         raise HTTPException(status_code=422, detail="machine is required")
