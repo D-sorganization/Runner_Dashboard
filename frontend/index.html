@@ -39,6 +39,31 @@
         --accent-yellow: #d29922;
         --accent-purple: #bc8cff;
         --accent-orange: #f0883e;
+        
+        /* Glassmorphism Tokens */
+        --glass-bg: rgba(28, 33, 51, 0.7);
+        --glass-border: rgba(255, 255, 255, 0.1);
+        --glass-border-light: rgba(255, 255, 255, 0.05);
+        --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        --glass-blur: blur(12px);
+        
+        /* Vibrant Gradients */
+        --grad-quota: linear-gradient(90deg, #00f2fe 0%, #4facfe 100%);
+        --grad-fair: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      }
+      
+      .glass-card {
+        background: var(--glass-bg);
+        backdrop-filter: var(--glass-blur);
+        -webkit-backdrop-filter: var(--glass-blur);
+        border: 1px solid var(--glass-border);
+        border-radius: 12px;
+        box-shadow: var(--glass-shadow);
+      }
+      
+      .glass-card:hover {
+        border-color: var(--glass-border-light);
+        background: rgba(35, 42, 64, 0.8);
       }
       * {
         margin: 0;
@@ -17166,6 +17191,45 @@
             h(
               "div",
               { className: "header-right" },
+              (function() {
+                // Mock quota data for visualization
+                var quotaUsed = 14;
+                var quotaTotal = 20;
+                var percent = (quotaUsed / quotaTotal) * 100;
+                return h(
+                  "div",
+                  { 
+                    className: "glass-card",
+                    style: { 
+                      padding: "4px 12px", 
+                      display: "flex", 
+                      alignItems: "center", 
+                      gap: "10px",
+                      marginRight: "12px",
+                      fontSize: "11px",
+                      height: "32px"
+                    } 
+                  },
+                  h("span", { style: { color: "var(--text-secondary)", fontWeight: "600" } }, "FLEET QUOTA"),
+                  h(
+                    "div",
+                    { 
+                      className: "progress-bar", 
+                      style: { width: "80px", height: "6px", background: "rgba(255,255,255,0.1)" },
+                      title: quotaUsed + "/" + quotaTotal + " Runners Active"
+                    },
+                    h("div", { 
+                      className: "progress-fill", 
+                      style: { 
+                        width: percent + "%", 
+                        background: "var(--grad-quota)",
+                        boxShadow: "0 0 10px rgba(0, 242, 254, 0.5)"
+                      } 
+                    })
+                  ),
+                  h("span", { style: { color: "var(--text-primary)", fontWeight: "700" } }, quotaUsed + "/" + quotaTotal)
+                );
+              })(),
               principal ? h(
                 "span",
                 { className: "section-badge", style: { background: "rgba(88,166,255,0.15)", color: "var(--accent-blue)" } },
@@ -17265,7 +17329,8 @@
               "div",
               { className: "main-content", role: "main", style: { flex: 1, minWidth: 0 } },
               tab === "overview"
-              ? h(FleetTab, {
+              ? h("div", null,
+                h(FleetTab, {
                   runners: runners,
                   runs: runs,
                   system: system,
@@ -17281,7 +17346,57 @@
                     setTab("deployment");
                     fetchDeploymentState();
                   },
-                })
+                }),
+                h("div", { className: "section", style: { marginTop: "24px" } },
+                  h("div", { className: "section-header", style: { background: "var(--grad-fair)", color: "white" } },
+                    h("div", { className: "section-title" }, 
+                      I.activity(16),
+                      "Fair Sharing & Active Leases"
+                    ),
+                    h("span", { className: "section-badge", style: { background: "rgba(255,255,255,0.2)", color: "white" } }, "Wave 3")
+                  ),
+                  h("div", { className: "section-body" },
+                    h("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "16px" } },
+                      h("div", { className: "glass-card", style: { padding: "16px" } },
+                        h("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: "12px" } },
+                          h("span", { style: { fontWeight: "700", fontSize: "14px" } }, "USER: dieterolson"),
+                          h("span", { className: "conclusion-badge in_progress" }, "Active")
+                        ),
+                        h("div", { className: "metric-row" }, 
+                          h("span", { className: "metric-label" }, "Runner:"),
+                          h("span", { className: "metric-value" }, "ubuntu-latest-4xlarge")
+                        ),
+                        h("div", { className: "metric-row" }, 
+                          h("span", { className: "metric-label" }, "Lease Time:"),
+                          h("span", { className: "metric-value" }, "45m / 2h")
+                        ),
+                        h("div", { className: "progress-bar", style: { margin: "8px 0" } },
+                          h("div", { className: "progress-fill blue", style: { width: "37%" } })
+                        ),
+                        h("button", { className: "btn btn-red", style: { width: "100%", marginTop: "8px", justifyContent: "center" } }, "Relinquish Runner")
+                      ),
+                      h("div", { className: "glass-card", style: { padding: "16px" } },
+                        h("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: "12px" } },
+                          h("span", { style: { fontWeight: "700", fontSize: "14px" } }, "USER: jules-bot"),
+                          h("span", { className: "conclusion-badge success" }, "Idle")
+                        ),
+                        h("div", { className: "metric-row" }, 
+                          h("span", { className: "metric-label" }, "Runner:"),
+                          h("span", { className: "metric-value" }, "windows-2022-standard")
+                        ),
+                        h("div", { className: "metric-row" }, 
+                          h("span", { className: "metric-label" }, "Quota Left:"),
+                          h("span", { className: "metric-value" }, "Unlimited")
+                        ),
+                        h("div", { className: "progress-bar", style: { margin: "8px 0" } },
+                          h("div", { className: "progress-fill purple", style: { width: "100%" } })
+                        ),
+                        h("button", { className: "btn", style: { width: "100%", marginTop: "8px", justifyContent: "center" } }, "View Logs")
+                      )
+                    )
+                  )
+                )
+              )
               : tab === "deployment"
                 ? h(DeploymentTab, {
                     data: deploymentState,
