@@ -618,12 +618,7 @@ def _attempts_for_provider(
     filtered: list[AttemptRecord] = []
     for attempt in attempts:
         stamp = _parse_timestamp(attempt.created_at)
-        if (
-            attempt.fingerprint != fingerprint
-            or attempt.provider_id != provider_id
-            or stamp is None
-            or stamp < cutoff
-        ):
+        if attempt.fingerprint != fingerprint or attempt.provider_id != provider_id or stamp is None or stamp < cutoff:
             continue
         filtered.append(attempt)
     return filtered

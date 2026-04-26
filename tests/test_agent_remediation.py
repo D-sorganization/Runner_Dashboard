@@ -91,6 +91,7 @@ def test_failure_context_protected_branch_flag() -> None:
 # Fallback provider chain tests
 # ---------------------------------------------------------------------------
 
+
 def _make_availability(*provider_ids: str) -> dict[str, ProviderAvailability]:
     """Helper to create availability map with all requested providers available."""
     return {
@@ -153,31 +154,35 @@ def test_fallback_provider_chain_exhausted_all_providers() -> None:
         FailureContext(repository="foo/bar", workflow_name="CI", branch="main", failure_reason="lint")
     )
     # All providers exhausted: codex_cli (3), claude_code_cli (3), jules_api (3)
-    attempts = [
-        AttemptRecord(
-            provider_id="codex_cli",
-            fingerprint=fingerprint,
-            status="failed",
-            created_at="2026-04-25T12:00:00Z",
-        )
-        for _ in range(3)
-    ] + [
-        AttemptRecord(
-            provider_id="claude_code_cli",
-            fingerprint=fingerprint,
-            status="failed",
-            created_at="2026-04-25T12:00:00Z",
-        )
-        for _ in range(3)
-    ] + [
-        AttemptRecord(
-            provider_id="jules_api",
-            fingerprint=fingerprint,
-            status="failed",
-            created_at="2026-04-25T12:00:00Z",
-        )
-        for _ in range(3)
-    ]
+    attempts = (
+        [
+            AttemptRecord(
+                provider_id="codex_cli",
+                fingerprint=fingerprint,
+                status="failed",
+                created_at="2026-04-25T12:00:00Z",
+            )
+            for _ in range(3)
+        ]
+        + [
+            AttemptRecord(
+                provider_id="claude_code_cli",
+                fingerprint=fingerprint,
+                status="failed",
+                created_at="2026-04-25T12:00:00Z",
+            )
+            for _ in range(3)
+        ]
+        + [
+            AttemptRecord(
+                provider_id="jules_api",
+                fingerprint=fingerprint,
+                status="failed",
+                created_at="2026-04-25T12:00:00Z",
+            )
+            for _ in range(3)
+        ]
+    )
 
     policy = RemediationPolicy(
         auto_dispatch_on_failure=True,
@@ -237,9 +242,7 @@ def test_fallback_provider_chain_uses_fallback_providers_field() -> None:
             "unknown": WorkflowTypeRule(workflow_type="unknown", label="Unclassified"),
         },
     )
-    context = FailureContext(
-        repository="foo/bar", workflow_name="security scan", branch="main", failure_reason="sast"
-    )
+    context = FailureContext(repository="foo/bar", workflow_name="security scan", branch="main", failure_reason="sast")
     availability = _make_availability("jules_api", "claude_code_cli", "codex_cli")
 
     decision = plan_dispatch(
