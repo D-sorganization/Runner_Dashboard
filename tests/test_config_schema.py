@@ -24,7 +24,9 @@ def test_agent_remediation_valid_policy() -> None:
 
 def test_agent_remediation_max_attempts_out_of_range() -> None:
     with pytest.raises(ValueError, match="max_attempts_per_fingerprint"):
-        config_schema.validate_agent_remediation_config({"policy": {"max_attempts_per_fingerprint": 999}})
+        config_schema.validate_agent_remediation_config(
+            {"policy": {"max_attempts_per_fingerprint": 999}}
+        )
 
 
 def test_agent_remediation_secret_key_rejected() -> None:
@@ -72,7 +74,9 @@ def test_atomic_write_json(tmp_path: Path) -> None:
 
 
 def test_safe_read_json_nonexistent(tmp_path: Path) -> None:
-    result = config_schema.safe_read_json(tmp_path / "nonexistent.json", {"default": True})
+    result = config_schema.safe_read_json(
+        tmp_path / "nonexistent.json", {"default": True}
+    )
     assert result == {"default": True}
 
 

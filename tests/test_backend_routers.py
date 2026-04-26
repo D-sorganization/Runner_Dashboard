@@ -14,7 +14,9 @@ import pytest  # noqa: E402
 _BACKEND_DIR = Path(__file__).parent.parent / "backend"
 sys.path.insert(0, str(_BACKEND_DIR))
 
-_py311 = pytest.mark.skipif(sys.version_info < (3, 11), reason="dispatch_contract requires Python 3.11+")
+_py311 = pytest.mark.skipif(
+    sys.version_info < (3, 11), reason="dispatch_contract requires Python 3.11+"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -42,7 +44,9 @@ def test_dispatch_router_has_expected_routes() -> None:
 def test_dispatch_router_uses_dispatch_contract() -> None:
     """The dispatch router module must reference dispatch_contract — its core dependency."""
     source = (_BACKEND_DIR / "routers" / "dispatch.py").read_text(encoding="utf-8")
-    assert "import dispatch_contract" in source, "dispatch router must import dispatch_contract"
+    assert (
+        "import dispatch_contract" in source
+    ), "dispatch router must import dispatch_contract"
 
 
 # ---------------------------------------------------------------------------
@@ -79,14 +83,19 @@ def test_credentials_router_no_secret_exposure() -> None:
 def test_server_registers_dispatch_router() -> None:
     """server.py must include the dispatch router (not re-implement it inline)."""
     server_src = (_BACKEND_DIR / "server.py").read_text(encoding="utf-8")
-    assert "from routers import dispatch" in server_src or "routers.dispatch" in server_src
+    assert (
+        "from routers import dispatch" in server_src or "routers.dispatch" in server_src
+    )
     assert "include_router(_dispatch_router.router)" in server_src
 
 
 def test_server_registers_credentials_router() -> None:
     """server.py must include the credentials router (not re-implement it inline)."""
     server_src = (_BACKEND_DIR / "server.py").read_text(encoding="utf-8")
-    assert "from routers import credentials" in server_src or "routers.credentials" in server_src
+    assert (
+        "from routers import credentials" in server_src
+        or "routers.credentials" in server_src
+    )
     assert "include_router(_credentials_router.router)" in server_src
 
 

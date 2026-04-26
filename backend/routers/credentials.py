@@ -36,7 +36,9 @@ def _require_local_request(request: Request) -> None:
     """Enforce that the request originates from localhost (issue #45)."""
     client_host = request.client.host if request.client else ""
     if client_host not in ("127.0.0.1", "::1", "localhost"):
-        raise HTTPException(status_code=403, detail="This endpoint is only accessible locally")
+        raise HTTPException(
+            status_code=403, detail="This endpoint is only accessible locally"
+        )
 
 
 @router.get("/credentials")
@@ -52,8 +54,18 @@ async def get_credentials(request: Request) -> dict:
     if gh_binary:
         try:
             _excluded = {"SECRET", "PASSWORD", "ANTHROPIC_API_KEY", "DASHBOARD_API_KEY"}
-            _safe_env = {k: v for k, v in os.environ.items() if not any(exc in k.upper() for exc in _excluded)}
-            result = subprocess.run(["gh", "auth", "status"], capture_output=True, text=True, timeout=10, env=_safe_env)
+            _safe_env = {
+                k: v
+                for k, v in os.environ.items()
+                if not any(exc in k.upper() for exc in _excluded)
+            }
+            result = subprocess.run(
+                ["gh", "auth", "status"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                env=_safe_env,
+            )
             gh_auth_ok = result.returncode == 0
             gh_auth_detail = "authenticated" if gh_auth_ok else "not logged in"
         except Exception:
@@ -68,7 +80,11 @@ async def get_credentials(request: Request) -> dict:
             "authenticated": gh_auth_ok,
             "reachable": gh_auth_ok,
             "usable": gh_auth_ok,
-            "status": "ready" if gh_auth_ok else ("not_authed" if gh_binary else "not_installed"),
+            "status": (
+                "ready"
+                if gh_auth_ok
+                else ("not_authed" if gh_binary else "not_installed")
+            ),
             "detail": gh_auth_detail,
             "config_source": "system" if gh_binary else "unavailable",
             "docs_url": "https://cli.github.com/",
@@ -88,7 +104,11 @@ async def get_credentials(request: Request) -> dict:
             "reachable": jules_binary is not None,
             "usable": jules_binary is not None,
             "status": "ready" if jules_binary else "not_installed",
-            "detail": f"Found at {jules_binary}" if jules_binary else "jules not found on PATH",
+            "detail": (
+                f"Found at {jules_binary}"
+                if jules_binary
+                else "jules not found on PATH"
+            ),
             "config_source": "system" if jules_binary else "unavailable",
             "docs_url": "https://jules.google/docs/",
             "setup_hint": "Install Jules CLI from jules.google",
@@ -107,8 +127,14 @@ async def get_credentials(request: Request) -> dict:
             "reachable": jules_api_key,
             "usable": jules_api_key,
             "status": "ready" if jules_api_key else "missing_key",
-            "detail": "API key present" if jules_api_key else "JULES_API_KEY or GOOGLE_API_KEY not set",
-            "config_source": _env_source("JULES_API_KEY") if jules_api_key else "unavailable",
+            "detail": (
+                "API key present"
+                if jules_api_key
+                else "JULES_API_KEY or GOOGLE_API_KEY not set"
+            ),
+            "config_source": (
+                _env_source("JULES_API_KEY") if jules_api_key else "unavailable"
+            ),
             "docs_url": "https://jules.google/docs/api/",
             "setup_hint": "Set JULES_API_KEY environment variable",
         }
@@ -126,16 +152,24 @@ async def get_credentials(request: Request) -> dict:
             "authenticated": openai_key,
             "reachable": codex_binary is not None and openai_key,
             "usable": codex_binary is not None and openai_key,
-            "status": "ready"
-            if (codex_binary and openai_key)
-            else ("missing_key" if codex_binary else "not_installed"),
+            "status": (
+                "ready"
+                if (codex_binary and openai_key)
+                else ("missing_key" if codex_binary else "not_installed")
+            ),
             "detail": (
                 "Ready"
                 if (codex_binary and openai_key)
-                else ("OPENAI_API_KEY not set" if codex_binary else "codex not found on PATH")
+                else (
+                    "OPENAI_API_KEY not set"
+                    if codex_binary
+                    else "codex not found on PATH"
+                )
             ),
             "config_source": (
-                _env_source("OPENAI_API_KEY") if openai_key else ("system" if codex_binary else "unavailable")
+                _env_source("OPENAI_API_KEY")
+                if openai_key
+                else ("system" if codex_binary else "unavailable")
             ),
             "docs_url": "https://github.com/openai/codex",
             "setup_hint": "npm install -g @openai/codex && set OPENAI_API_KEY",
@@ -154,16 +188,24 @@ async def get_credentials(request: Request) -> dict:
             "authenticated": anthropic_key,
             "reachable": claude_binary is not None and anthropic_key,
             "usable": claude_binary is not None and anthropic_key,
-            "status": "ready"
-            if (claude_binary and anthropic_key)
-            else ("missing_key" if claude_binary else "not_installed"),
+            "status": (
+                "ready"
+                if (claude_binary and anthropic_key)
+                else ("missing_key" if claude_binary else "not_installed")
+            ),
             "detail": (
                 "Ready"
                 if (claude_binary and anthropic_key)
-                else ("ANTHROPIC_API_KEY not set" if claude_binary else "claude not found on PATH")
+                else (
+                    "ANTHROPIC_API_KEY not set"
+                    if claude_binary
+                    else "claude not found on PATH"
+                )
             ),
             "config_source": (
-                _env_source("ANTHROPIC_API_KEY") if anthropic_key else ("system" if claude_binary else "unavailable")
+                _env_source("ANTHROPIC_API_KEY")
+                if anthropic_key
+                else ("system" if claude_binary else "unavailable")
             ),
             "docs_url": "https://docs.anthropic.com/claude-code",
             "setup_hint": "npm install -g @anthropic-ai/claude-code && set ANTHROPIC_API_KEY",
@@ -171,7 +213,14 @@ async def get_credentials(request: Request) -> dict:
     )
 
     # Cline (VS Code extension)
-    cline_config = Path.home() / ".config" / "Code" / "User" / "globalStorage" / "saoudrizwan.claude-dev"
+    cline_config = (
+        Path.home()
+        / ".config"
+        / "Code"
+        / "User"
+        / "globalStorage"
+        / "saoudrizwan.claude-dev"
+    )
     cline_installed = cline_config.exists()
     probes.append(
         {
@@ -183,7 +232,11 @@ async def get_credentials(request: Request) -> dict:
             "reachable": cline_installed,
             "usable": cline_installed,
             "status": "ready" if cline_installed else "not_installed",
-            "detail": ("VS Code extension data found" if cline_installed else "Cline VS Code extension not found"),
+            "detail": (
+                "VS Code extension data found"
+                if cline_installed
+                else "Cline VS Code extension not found"
+            ),
             "config_source": "vscode" if cline_installed else "unavailable",
             "docs_url": "https://marketplace.visualstudio.com/items?itemName=saoudrizwan.claude-dev",
             "setup_hint": "Install Cline extension in VS Code",
@@ -202,7 +255,11 @@ async def get_credentials(request: Request) -> dict:
             "reachable": ollama_binary is not None,
             "usable": ollama_binary is not None,
             "status": "ready" if ollama_binary else "not_installed",
-            "detail": f"Found at {ollama_binary}" if ollama_binary else "ollama not found on PATH",
+            "detail": (
+                f"Found at {ollama_binary}"
+                if ollama_binary
+                else "ollama not found on PATH"
+            ),
             "config_source": "system" if ollama_binary else "unavailable",
             "docs_url": "https://ollama.com/",
             "setup_hint": "Install from ollama.com",

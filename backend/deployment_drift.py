@@ -124,11 +124,14 @@ def evaluate_drift(
     elif severity == "unknown":
         drift = True
         message = (
-            f"Unable to compare versions (current={current}, expected={expected_version}); manual check recommended."
+            f"Unable to compare versions (current={current}, "
+            f"expected={expected_version}); manual check recommended."
         )
     else:
         drift = True
-        message = f"Update available: {current} → {expected_version} ({severity} drift)."
+        message = (
+            f"Update available: {current} → {expected_version} ({severity} drift)."
+        )
 
     return DriftStatus(
         current=current,

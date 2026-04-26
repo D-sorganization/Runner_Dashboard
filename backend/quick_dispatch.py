@@ -30,9 +30,9 @@ log = logging.getLogger("dashboard.quick_dispatch")
 
 # ─── History path ─────────────────────────────────────────────────────────────
 
-_QUICK_DISPATCH_HISTORY_PATH = Path(os.environ.get("QUICK_DISPATCH_HISTORY_PATH", "")) or (
-    Path.home() / "actions-runners" / "dashboard" / "quick_dispatch_history.json"
-)
+_QUICK_DISPATCH_HISTORY_PATH = Path(
+    os.environ.get("QUICK_DISPATCH_HISTORY_PATH", "")
+) or (Path.home() / "actions-runners" / "dashboard" / "quick_dispatch_history.json")
 
 _quick_dispatch_history_lock: asyncio.Lock = asyncio.Lock()
 
@@ -49,7 +49,11 @@ async def _check_quick_dispatch_rate() -> int | None:
     """Return None if allowed, or seconds until the window resets if rate-limited."""
     now = time.monotonic()
     async with _quick_dispatch_rate_lock:
-        recent = [t for t in _quick_dispatch_timestamps if now - t < _QUICK_DISPATCH_WINDOW_SECONDS]
+        recent = [
+            t
+            for t in _quick_dispatch_timestamps
+            if now - t < _QUICK_DISPATCH_WINDOW_SECONDS
+        ]
         if len(recent) >= _QUICK_DISPATCH_LIMIT:
             oldest = min(recent)
             retry_after = int(_QUICK_DISPATCH_WINDOW_SECONDS - (now - oldest)) + 1
@@ -100,7 +104,9 @@ async def _append_quick_dispatch_history(entry: dict[str, Any]) -> None:
             history: list[dict[str, Any]] = []
             if _QUICK_DISPATCH_HISTORY_PATH.exists():
                 try:
-                    history = json.loads(_QUICK_DISPATCH_HISTORY_PATH.read_text(encoding="utf-8"))
+                    history = json.loads(
+                        _QUICK_DISPATCH_HISTORY_PATH.read_text(encoding="utf-8")
+                    )
                 except Exception:
                     history = []
             history.append(entry)
@@ -251,7 +257,9 @@ async def quick_dispatch(
     if code != 0:
         stderr_lower = stderr.lower()
         wf_missing = "workflow" in stderr_lower and (
-            "not found" in stderr_lower or "does not exist" in stderr_lower or "422" in stderr_lower
+            "not found" in stderr_lower
+            or "does not exist" in stderr_lower
+            or "422" in stderr_lower
         )
         if wf_missing:
             log.warning(
@@ -283,7 +291,9 @@ async def quick_dispatch(
         decision="accepted",
         detail="quick-dispatch workflow triggered",
         history_id=history_id,
-        requested_by=req.requested_by if hasattr(req, "requested_by") else "dashboard-operator",
+        requested_by=(
+            req.requested_by if hasattr(req, "requested_by") else "dashboard-operator"
+        ),
     )
     await _append_quick_dispatch_history(audit_entry)
 

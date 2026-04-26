@@ -20,7 +20,9 @@ from quick_dispatch import (  # noqa: E402
 
 
 def _make_run_cmd(returncode: int = 0, stdout: str = "", stderr: str = "") -> AsyncMock:
-    async def _run(cmd: list[str], timeout: int = 30, cwd: Path | None = None) -> tuple[int, str, str]:
+    async def _run(
+        cmd: list[str], timeout: int = 30, cwd: Path | None = None
+    ) -> tuple[int, str, str]:
         return returncode, stdout, stderr
 
     return AsyncMock(side_effect=_run)
@@ -33,10 +35,14 @@ def _normalize(value: str) -> tuple[str, str]:
     return value, f"D-sorganization/{value}"
 
 
-async def _call(req: QuickDispatchRequest, run_cmd_fn=None, extra_patches: dict | None = None):
+async def _call(
+    req: QuickDispatchRequest, run_cmd_fn=None, extra_patches: dict | None = None
+):
     if run_cmd_fn is None:
         run_cmd_fn = _make_run_cmd(0)
-    with patch("quick_dispatch.agent_remediation.probe_provider_availability") as mock_avail:
+    with patch(
+        "quick_dispatch.agent_remediation.probe_provider_availability"
+    ) as mock_avail:
         mock_avail.return_value = {
             "claude_code_cli": type(
                 "A",
@@ -81,7 +87,9 @@ async def test_provider_unavailable_rejected() -> None:
         prompt="Fix the failing test in test_api.py",
         provider="nonexistent_provider",
     )
-    with patch("quick_dispatch.agent_remediation.probe_provider_availability") as mock_avail:
+    with patch(
+        "quick_dispatch.agent_remediation.probe_provider_availability"
+    ) as mock_avail:
         mock_avail.return_value = {}
         resp = await quick_dispatch(
             req,

@@ -1,3 +1,4 @@
+# ruff: noqa: B008
 import secrets
 import time
 from pathlib import Path
@@ -76,7 +77,9 @@ class IdentityManager:
         with open(self.tokens_path, "w") as f:
             yaml.dump({"tokens": [t.model_dump() for t in self.tokens]}, f)
 
-    def mint_service_token(self, principal_id: str, name: str, expires_in_days: int | None = None) -> str:
+    def mint_service_token(
+        self, principal_id: str, name: str, expires_in_days: int | None = None
+    ) -> str:
         if principal_id not in self.principals:
             raise ValueError(f"Principal {principal_id} not found")
 
@@ -89,10 +92,16 @@ class IdentityManager:
 
         token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
 
-        expires_at = time.time() + (expires_in_days * 86400) if expires_in_days else None
+        expires_at = (
+            time.time() + (expires_in_days * 86400) if expires_in_days else None
+        )
 
         record = TokenRecord(
-            token_hash=token_hash, principal_id=principal_id, created_at=time.time(), expires_at=expires_at, name=name
+            token_hash=token_hash,
+            principal_id=principal_id,
+            created_at=time.time(),
+            expires_at=expires_at,
+            name=name,
         )
         self.tokens.append(record)
         self.save_tokens()
@@ -122,7 +131,9 @@ auth_cookie = APIKeyCookie(name="dashboard_session", auto_error=False)
 
 
 def require_principal(
-    request: Request, header_token: str | None = Depends(auth_header), cookie_token: str | None = Depends(auth_cookie)
+    request: Request,
+    header_token: str | None = Depends(auth_header),
+    cookie_token: str | None = Depends(auth_cookie),
 ) -> Principal:
     # 1. Check Bearer token
     if header_token and header_token.startswith("Bearer "):
@@ -157,15 +168,16 @@ SCOPE_PRESETS = {
         "maxwell.control",
         "assessments.dispatch",
         "feature-requests.manage",
-        "system.control"
+        "system.control",
     ],
-    "viewer": [
-        "assistant.chat"
-    ]
+    "viewer": ["assistant.chat"],
 }
 
+
 def require_scope(required_scope: str):
-    def checker(principal: Principal = Depends(require_principal)) -> Principal:  # noqa: B008
+    def checker(
+        principal: Principal = Depends(require_principal),
+    ) -> Principal:  # noqa: B008
         principal_scopes = set()
         for role in principal.roles:
             if role in SCOPE_PRESETS:
@@ -175,11 +187,18 @@ def require_scope(required_scope: str):
             return principal
 
         for s in principal_scopes:
-            if s == required_scope or (s.endswith("*") and required_scope.startswith(s[:-1])):
+            if s == required_scope or (
+                s.endswith("*") and required_scope.startswith(s[:-1])
+            ):
                 return principal
 
         raise HTTPException(
             status_code=403,
-            detail={"error": "Authorization failed", "required_scope": required_scope, "principal": principal.id}
+            detail={
+                "error": "Authorization failed",
+                "required_scope": required_scope,
+                "principal": principal.id,
+            },
         )
+
     return checker

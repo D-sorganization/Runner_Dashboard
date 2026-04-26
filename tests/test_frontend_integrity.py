@@ -60,7 +60,9 @@ def test_required_function_present(marker: str) -> None:
     assert marker in content, f"Expected '{marker}' in frontend/index.html"
 
 
-@pytest.mark.xfail(reason="RunnerPlanTab not yet implemented in frontend/index.html", strict=True)
+@pytest.mark.xfail(
+    reason="RunnerPlanTab not yet implemented in frontend/index.html", strict=True
+)
 def test_runner_plan_tab_present() -> None:
     content = _read_index()
     assert "function RunnerPlanTab" in content
@@ -73,7 +75,9 @@ def test_runner_plan_tab_present() -> None:
 
 def test_heavy_tests_tab_absent() -> None:
     content = _read_index()
-    assert "HeavyTestsTab" not in content, "HeavyTestsTab was found — use TestsTab instead"
+    assert (
+        "HeavyTestsTab" not in content
+    ), "HeavyTestsTab was found — use TestsTab instead"
 
 
 # ---------------------------------------------------------------------------
@@ -124,8 +128,13 @@ def test_dangerous_set_inner_html_sanitized() -> None:
         window_end = min(len(lines), lineno + 6)
         window = "\n".join(lines[window_start:window_end])
         has_sanitize = "DOMPurify.sanitize" in window
-        has_safe_wrapper = "renderMarkdown" in window  # renderMarkdown internally calls DOMPurify
-        has_safe_comment = re.search(r"//.*safe|//.*sanitize|//.*trusted", window, re.IGNORECASE) is not None
+        has_safe_wrapper = (
+            "renderMarkdown" in window
+        )  # renderMarkdown internally calls DOMPurify
+        has_safe_comment = (
+            re.search(r"//.*safe|//.*sanitize|//.*trusted", window, re.IGNORECASE)
+            is not None
+        )
         if not (has_sanitize or has_safe_wrapper or has_safe_comment):
             violations.append(lineno + 1)
     assert not violations, (
@@ -181,7 +190,11 @@ def test_jsx_archive_removed() -> None:
 
 def test_index_html_is_only_frontend_source() -> None:
     """No other .jsx or .tsx files should exist in frontend/ at runtime."""
-    unexpected = [p for p in _FRONTEND_DIR.iterdir() if p.suffix in {".jsx", ".tsx"} and p.is_file()]
+    unexpected = [
+        p
+        for p in _FRONTEND_DIR.iterdir()
+        if p.suffix in {".jsx", ".tsx"} and p.is_file()
+    ]
     assert not unexpected, (
         f"Unexpected transpilable source files in frontend/: {[p.name for p in unexpected]}. "
         "frontend/index.html is the only runtime source — no build step exists."

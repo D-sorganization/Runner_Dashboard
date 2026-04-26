@@ -18,7 +18,9 @@ from agent_remediation import (  # noqa: E402
 # ---------------------------------------------------------------------------
 
 
-def classify_failure(context: FailureContext, policy: RemediationPolicy | None = None) -> WorkflowTypeRule:
+def classify_failure(
+    context: FailureContext, policy: RemediationPolicy | None = None
+) -> WorkflowTypeRule:
     """Thin wrapper so tests can call classify_failure(ctx) as described in the issue."""
     if policy is None:
         policy = load_policy()
@@ -56,7 +58,9 @@ def test_classify_failure_ci_standard_returns_test_type() -> None:
 
 
 def test_classify_failure_ruff_lint_returns_lint_type() -> None:
-    ctx = FailureContext(repository="Foo", workflow_name="ruff lint check", branch="main")
+    ctx = FailureContext(
+        repository="Foo", workflow_name="ruff lint check", branch="main"
+    )
     rule = classify_failure(ctx)
     assert isinstance(rule, WorkflowTypeRule)
     assert rule.workflow_type == "lint"
@@ -81,7 +85,12 @@ def test_load_policy_returns_remediation_policy() -> None:
 
 def test_failure_context_protected_branch_flag() -> None:
     ctx = FailureContext.from_dict(
-        {"repository": "Foo", "workflow_name": "CI", "branch": "main", "protected_branch": True}
+        {
+            "repository": "Foo",
+            "workflow_name": "CI",
+            "branch": "main",
+            "protected_branch": True,
+        }
     )
     assert ctx.protected_branch is True
 
@@ -94,7 +103,9 @@ def test_failure_context_protected_branch_flag() -> None:
 def _make_availability(*provider_ids: str) -> dict[str, ProviderAvailability]:
     """Helper to create availability map with all requested providers available."""
     return {
-        pid: ProviderAvailability(provider_id=pid, available=True, status="available", detail="ready")
+        pid: ProviderAvailability(
+            provider_id=pid, available=True, status="available", detail="ready"
+        )
         for pid in provider_ids
     }
 
@@ -102,7 +113,12 @@ def _make_availability(*provider_ids: str) -> dict[str, ProviderAvailability]:
 def test_fallback_provider_chain_uses_fallback_when_primary_exhausted() -> None:
     """When primary provider is exhausted, fallback to next in chain."""
     fingerprint = build_failure_fingerprint(
-        FailureContext(repository="foo/bar", workflow_name="CI", branch="main", failure_reason="lint")
+        FailureContext(
+            repository="foo/bar",
+            workflow_name="CI",
+            branch="main",
+            failure_reason="lint",
+        )
     )
     # Primary codex_cli has 3 attempts (at limit), fallback claude_code_cli has 0
     attempts = [
@@ -133,11 +149,17 @@ def test_fallback_provider_chain_uses_fallback_when_primary_exhausted() -> None:
         enabled_providers=("codex_cli", "claude_code_cli", "jules_api"),
         default_provider="codex_cli",  # primary is codex_cli
     )
-    context = FailureContext(repository="foo/bar", workflow_name="CI", branch="main", failure_reason="lint")
+    context = FailureContext(
+        repository="foo/bar", workflow_name="CI", branch="main", failure_reason="lint"
+    )
     availability = _make_availability("codex_cli", "claude_code_cli", "jules_api")
 
     decision = plan_dispatch(
-        context, policy=policy, availability=availability, attempts=attempts, dispatch_origin="manual"
+        context,
+        policy=policy,
+        availability=availability,
+        attempts=attempts,
+        dispatch_origin="manual",
     )
 
     # codex_cli is exhausted (3 attempts), claude_code_cli has 2 attempts (under limit)
@@ -150,7 +172,12 @@ def test_fallback_provider_chain_uses_fallback_when_primary_exhausted() -> None:
 def test_fallback_provider_chain_exhausted_all_providers() -> None:
     """When all providers in chain are exhausted, reject dispatch."""
     fingerprint = build_failure_fingerprint(
-        FailureContext(repository="foo/bar", workflow_name="CI", branch="main", failure_reason="lint")
+        FailureContext(
+            repository="foo/bar",
+            workflow_name="CI",
+            branch="main",
+            failure_reason="lint",
+        )
     )
     # All providers exhausted: codex_cli (3), claude_code_cli (3), jules_api (3)
     attempts = (
@@ -193,11 +220,17 @@ def test_fallback_provider_chain_exhausted_all_providers() -> None:
         enabled_providers=("codex_cli", "claude_code_cli", "jules_api"),
         default_provider="codex_cli",
     )
-    context = FailureContext(repository="foo/bar", workflow_name="CI", branch="main", failure_reason="lint")
+    context = FailureContext(
+        repository="foo/bar", workflow_name="CI", branch="main", failure_reason="lint"
+    )
     availability = _make_availability("codex_cli", "claude_code_cli", "jules_api")
 
     decision = plan_dispatch(
-        context, policy=policy, availability=availability, attempts=attempts, dispatch_origin="manual"
+        context,
+        policy=policy,
+        availability=availability,
+        attempts=attempts,
+        dispatch_origin="manual",
     )
 
     assert decision.accepted is False
@@ -207,7 +240,12 @@ def test_fallback_provider_chain_exhausted_all_providers() -> None:
 def test_fallback_provider_chain_uses_fallback_providers_field() -> None:
     """WorkflowTypeRule.fallback_providers defines explicit fallback order."""
     fingerprint = build_failure_fingerprint(
-        FailureContext(repository="foo/bar", workflow_name="security scan", branch="main", failure_reason="sast")
+        FailureContext(
+            repository="foo/bar",
+            workflow_name="security scan",
+            branch="main",
+            failure_reason="sast",
+        )
     )
     # jules_api (primary) exhausted, fallback claude_code_cli available
     attempts = [
@@ -241,11 +279,20 @@ def test_fallback_provider_chain_uses_fallback_providers_field() -> None:
             "unknown": WorkflowTypeRule(workflow_type="unknown", label="Unclassified"),
         },
     )
-    context = FailureContext(repository="foo/bar", workflow_name="security scan", branch="main", failure_reason="sast")
+    context = FailureContext(
+        repository="foo/bar",
+        workflow_name="security scan",
+        branch="main",
+        failure_reason="sast",
+    )
     availability = _make_availability("jules_api", "claude_code_cli", "codex_cli")
 
     decision = plan_dispatch(
-        context, policy=policy, availability=availability, attempts=attempts, dispatch_origin="manual"
+        context,
+        policy=policy,
+        availability=availability,
+        attempts=attempts,
+        dispatch_origin="manual",
     )
 
     # Should skip exhausted jules_api and pick claude_code_cli (first fallback)
@@ -259,9 +306,24 @@ def test_attempts_for_provider_filters_by_provider_id() -> None:
     """_attempts_for_provider only counts attempts for the specific provider."""
     fingerprint = "test|fingerprint"
     attempts = [
-        AttemptRecord(provider_id="a", fingerprint=fingerprint, status="failed", created_at="2026-04-25T12:00:00Z"),
-        AttemptRecord(provider_id="b", fingerprint=fingerprint, status="failed", created_at="2026-04-25T12:00:00Z"),
-        AttemptRecord(provider_id="a", fingerprint=fingerprint, status="failed", created_at="2026-04-25T12:00:00Z"),
+        AttemptRecord(
+            provider_id="a",
+            fingerprint=fingerprint,
+            status="failed",
+            created_at="2026-04-25T12:00:00Z",
+        ),
+        AttemptRecord(
+            provider_id="b",
+            fingerprint=fingerprint,
+            status="failed",
+            created_at="2026-04-25T12:00:00Z",
+        ),
+        AttemptRecord(
+            provider_id="a",
+            fingerprint=fingerprint,
+            status="failed",
+            created_at="2026-04-25T12:00:00Z",
+        ),
     ]
 
     result = _attempts_for_provider(fingerprint, "a", attempts, window_hours=24)
@@ -277,7 +339,12 @@ def test_attempts_for_provider_filters_by_provider_id() -> None:
 def test_per_provider_attempt_count_separate_from_global() -> None:
     """Each provider gets its own attempt budget."""
     fingerprint = build_failure_fingerprint(
-        FailureContext(repository="foo/bar", workflow_name="CI", branch="main", failure_reason="lint")
+        FailureContext(
+            repository="foo/bar",
+            workflow_name="CI",
+            branch="main",
+            failure_reason="lint",
+        )
     )
     # codex_cli exhausted but claude_code_cli fresh
     attempts = [
@@ -300,11 +367,17 @@ def test_per_provider_attempt_count_separate_from_global() -> None:
         enabled_providers=("codex_cli", "claude_code_cli"),
         default_provider="codex_cli",
     )
-    context = FailureContext(repository="foo/bar", workflow_name="CI", branch="main", failure_reason="lint")
+    context = FailureContext(
+        repository="foo/bar", workflow_name="CI", branch="main", failure_reason="lint"
+    )
     availability = _make_availability("codex_cli", "claude_code_cli")
 
     decision = plan_dispatch(
-        context, policy=policy, availability=availability, attempts=attempts, dispatch_origin="manual"
+        context,
+        policy=policy,
+        availability=availability,
+        attempts=attempts,
+        dispatch_origin="manual",
     )
 
     # Global count is 3, but per-provider codex_cli is exhausted, so fallback to claude_code_cli

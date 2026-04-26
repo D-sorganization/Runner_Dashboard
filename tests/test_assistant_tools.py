@@ -302,7 +302,12 @@ class TestExecuteTool(unittest.IsolatedAsyncioTestCase):
             await assistant_tools.execute_tool(
                 tool_name="dispatch_agent_to_pr",
                 tool_call_id="c2",
-                inputs={"repository": "foo/bar", "number": 1, "provider": "p", "prompt": "x"},
+                inputs={
+                    "repository": "foo/bar",
+                    "number": 1,
+                    "provider": "p",
+                    "prompt": "x",
+                },
                 confirmation=None,
                 gh_api_fn=AsyncMock(),
                 dispatch_fn=AsyncMock(),
@@ -332,7 +337,12 @@ class TestExecuteTool(unittest.IsolatedAsyncioTestCase):
         result = await assistant_tools.execute_tool(
             tool_name="dispatch_agent_to_pr",
             tool_call_id="c4",
-            inputs={"repository": "foo/bar", "number": 3, "provider": "p", "prompt": "x"},
+            inputs={
+                "repository": "foo/bar",
+                "number": 3,
+                "provider": "p",
+                "prompt": "x",
+            },
             confirmation={"approved_by": "dieter", "note": "confirmed in UI"},
             gh_api_fn=AsyncMock(),
             dispatch_fn=dispatch_fn,

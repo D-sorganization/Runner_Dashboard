@@ -26,7 +26,9 @@ GhRaw = Callable[[str], Awaitable[str]]
 
 _ON_KEY_RE = re.compile(r"^(?P<indent>[ \t]*)(?:'on'|\"on\"|on)\s*:\s*(?:#.*)?$")
 _SCHEDULE_KEY_RE = re.compile(r"^(?P<indent>[ \t]*)schedule\s*:\s*(?:#.*)?$")
-_CRON_LINE_RE = re.compile(r"^(?P<indent>[ \t]*)(?:-\s*)?cron:\s*(?P<value>[^\r\n#]+?)(?:\s+#.*)?$")
+_CRON_LINE_RE = re.compile(
+    r"^(?P<indent>[ \t]*)(?:-\s*)?cron:\s*(?P<value>[^\r\n#]+?)(?:\s+#.*)?$"
+)
 
 
 def _utc_now() -> str:
@@ -61,7 +63,8 @@ def extract_cron_expressions(workflow_yaml: str) -> list[str]:
         indent = len(raw_line) - len(raw_line.lstrip(" \t"))
 
         if in_schedule_block and (
-            indent < schedule_indent or (indent == schedule_indent and not stripped.startswith("-"))
+            indent < schedule_indent
+            or (indent == schedule_indent and not stripped.startswith("-"))
         ):
             in_schedule_block = False
 
@@ -202,7 +205,9 @@ def _build_run_snapshot(run: dict[str, Any]) -> ScheduledWorkflowRunSnapshot:
     return ScheduledWorkflowRunSnapshot(
         run_id=int(run["id"]) if run.get("id") is not None else None,
         status=str(run.get("status") or ""),
-        conclusion=(str(run["conclusion"]) if run.get("conclusion") is not None else None),
+        conclusion=(
+            str(run["conclusion"]) if run.get("conclusion") is not None else None
+        ),
         html_url=str(run.get("html_url") or "") or None,
         created_at=str(run.get("created_at") or "") or None,
         updated_at=str(run.get("updated_at") or "") or None,
@@ -269,7 +274,9 @@ async def collect_inventory(
 ) -> ScheduledWorkflowInventoryReport:
     """Collect a read-only org-wide inventory of scheduled workflows."""
 
-    repos_payload = await gh_json(f"/orgs/{organization}/repos?per_page={repo_limit}&sort=updated&direction=desc")
+    repos_payload = await gh_json(
+        f"/orgs/{organization}/repos?per_page={repo_limit}&sort=updated&direction=desc"
+    )
     repositories: list[ScheduledWorkflowRepositoryInventory] = []
     total_scheduled = 0
 
@@ -286,8 +293,14 @@ async def collect_inventory(
             continue
         default_branch = str(repo.get("default_branch") or "").strip() or None
 
-        workflows_payload = await gh_json(f"/repos/{organization}/{repo_name}/actions/workflows")
-        workflows_data = workflows_payload.get("workflows", []) if isinstance(workflows_payload, dict) else []
+        workflows_payload = await gh_json(
+            f"/repos/{organization}/{repo_name}/actions/workflows"
+        )
+        workflows_data = (
+            workflows_payload.get("workflows", [])
+            if isinstance(workflows_payload, dict)
+            else []
+        )
 
         workflow_entries: list[ScheduledWorkflowEntry] = []
         for workflow in workflows_data:
@@ -296,7 +309,9 @@ async def collect_inventory(
 
             workflow_path = str(workflow.get("path") or "").strip()
             workflow_name = str(workflow.get("name") or workflow_path or "").strip()
-            workflow_id = int(workflow["id"]) if workflow.get("id") is not None else None
+            workflow_id = (
+                int(workflow["id"]) if workflow.get("id") is not None else None
+            )
             state = str(workflow.get("state") or "").strip() or "unknown"
             enabled = state == "active"
 
@@ -305,7 +320,9 @@ async def collect_inventory(
             if workflow_path:
                 try:
                     ref_suffix = f"?ref={default_branch}" if default_branch else ""
-                    raw_yaml = await gh_raw(f"/repos/{organization}/{repo_name}/contents/{workflow_path}{ref_suffix}")
+                    raw_yaml = await gh_raw(
+                        f"/repos/{organization}/{repo_name}/contents/{workflow_path}{ref_suffix}"
+                    )
                     cron_expressions = extract_cron_expressions(raw_yaml)
                     schedule_source = "raw_yaml"
                 except Exception:  # noqa: BLE001
@@ -318,7 +335,11 @@ async def collect_inventory(
                     runs_payload = await gh_json(
                         f"/repos/{organization}/{repo_name}/actions/workflows/{workflow_id}/runs?per_page=1"
                     )
-                    runs = runs_payload.get("workflow_runs", []) if isinstance(runs_payload, dict) else []
+                    runs = (
+                        runs_payload.get("workflow_runs", [])
+                        if isinstance(runs_payload, dict)
+                        else []
+                    )
                     if runs:
                         first_run = runs[0]
                         if isinstance(first_run, dict):
@@ -347,7 +368,9 @@ async def collect_inventory(
                 archived=bool(repo.get("archived")),
                 default_branch=default_branch,
                 workflow_count=len(workflow_entries),
-                scheduled_workflow_count=sum(1 for item in workflow_entries if item.scheduled),
+                scheduled_workflow_count=sum(
+                    1 for item in workflow_entries if item.scheduled
+                ),
                 workflows=tuple(workflow_entries),
             )
         )

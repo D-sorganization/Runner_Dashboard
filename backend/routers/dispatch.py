@@ -34,17 +34,23 @@ def set_replay_functions(is_replay_fn, record_fn) -> None:
 @router.get("/actions")
 async def list_dispatch_actions() -> dict:
     """Return every allowlisted action with its access level and description."""
-    return {"actions": [a.to_dict() for a in dispatch_contract.ALLOWLISTED_ACTIONS.values()]}
+    return {
+        "actions": [a.to_dict() for a in dispatch_contract.ALLOWLISTED_ACTIONS.values()]
+    }
 
 
 async def _parse_envelope(request: Request) -> dispatch_contract.CommandEnvelope:
     body = await request.json()
     if not isinstance(body, dict):
-        raise HTTPException(status_code=422, detail="Malformed envelope: expected object")
+        raise HTTPException(
+            status_code=422, detail="Malformed envelope: expected object"
+        )
     try:
         return dispatch_contract.CommandEnvelope.from_dict(body)
     except (KeyError, TypeError, ValueError) as exc:
-        raise HTTPException(status_code=422, detail=f"Malformed envelope: {exc}") from exc
+        raise HTTPException(
+            status_code=422, detail=f"Malformed envelope: {exc}"
+        ) from exc
 
 
 @router.post("/validate")
@@ -86,12 +92,22 @@ async def submit_dispatch_command(request: Request) -> dict:
 
     crypto_result = dispatch_contract.validate_envelope_crypto(envelope)
     if not crypto_result.valid:
-        log.warning("crypto validation failed: envelope_id=%s reason=%s", envelope.envelope_id, crypto_result.reason)
-        raise HTTPException(status_code=400, detail=f"Envelope validation failed: {crypto_result.reason}")
+        log.warning(
+            "crypto validation failed: envelope_id=%s reason=%s",
+            envelope.envelope_id,
+            crypto_result.reason,
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=f"Envelope validation failed: {crypto_result.reason}",
+        )
 
     if _is_envelope_replay and await _is_envelope_replay(envelope.envelope_id):
         log.warning("replay detected: envelope_id=%s", envelope.envelope_id)
-        raise HTTPException(status_code=400, detail="Envelope has already been processed (replay detected)")
+        raise HTTPException(
+            status_code=400,
+            detail="Envelope has already been processed (replay detected)",
+        )
 
     result = dispatch_contract.validate_envelope(envelope)
     audit = dispatch_contract.build_audit_log_entry(envelope, result)

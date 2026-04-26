@@ -32,14 +32,20 @@ _EXCLUDED_ENV_KEYS = {
 
 def _safe_subprocess_env() -> dict[str, str]:
     """Return env dict with secrets stripped (issue #29)."""
-    return {k: v for k, v in os.environ.items() if not any(exc in k.upper() for exc in _EXCLUDED_ENV_KEYS)}
+    return {
+        k: v
+        for k, v in os.environ.items()
+        if not any(exc in k.upper() for exc in _EXCLUDED_ENV_KEYS)
+    }
 
 
 def _validate_health_command(cmd: list[str]) -> list[str]:
     """Reject health commands containing shell metacharacters (issue #22)."""
     for part in cmd:
         if any(c in part for c in _DANGEROUS_SHELL_CHARS):
-            raise ValueError(f"health_command part contains disallowed characters: {part!r}")
+            raise ValueError(
+                f"health_command part contains disallowed characters: {part!r}"
+            )
     return cmd
 
 
@@ -95,13 +101,17 @@ def _coerce_command(value: Any, *, field: str, index: int) -> list[str]:
     if isinstance(value, str):
         # Validate raw string before splitting (issue #22)
         if any(c in value for c in _DANGEROUS_SHELL_CHARS):
-            raise ValueError(f"local tools manifest entry {index} {field} contains disallowed characters")
+            raise ValueError(
+                f"local tools manifest entry {index} {field} contains disallowed characters"
+            )
         command = shlex.split(value)
     elif isinstance(value, (list, tuple)):
         command = []
         for item in value:
             if not isinstance(item, str):
-                raise ValueError(f"local tools manifest entry {index} has invalid {field}")
+                raise ValueError(
+                    f"local tools manifest entry {index} has invalid {field}"
+                )
             text = item.strip()
             if text:
                 command.append(text)
@@ -180,19 +190,27 @@ def load_manifest(path: Path | None = None) -> list[LocalAppSpec]:
             raise ValueError(f"local tools manifest entry {index} has invalid service")
         health_url = raw_entry.get("health_url")
         if health_url is not None and not isinstance(health_url, str):
-            raise ValueError(f"local tools manifest entry {index} has invalid health_url")
+            raise ValueError(
+                f"local tools manifest entry {index} has invalid health_url"
+            )
         health_command = raw_entry.get("health_command")
         if health_command is not None:
-            health_command = _coerce_command(health_command, field="health_command", index=index)
+            health_command = _coerce_command(
+                health_command, field="health_command", index=index
+            )
         rollback_strategy = raw_entry.get("rollback_strategy")
         if rollback_strategy is not None and not isinstance(rollback_strategy, str):
-            raise ValueError(f"local tools manifest entry {index} has invalid rollback_strategy")
+            raise ValueError(
+                f"local tools manifest entry {index} has invalid rollback_strategy"
+            )
         owner = raw_entry.get("owner")
         if owner is not None and not isinstance(owner, str):
             raise ValueError(f"local tools manifest entry {index} has invalid owner")
         drift_ref = raw_entry.get("drift_ref", DEFAULT_DRIFT_REF)
         if not isinstance(drift_ref, str) or not drift_ref.strip():
-            raise ValueError(f"local tools manifest entry {index} has invalid drift_ref")
+            raise ValueError(
+                f"local tools manifest entry {index} has invalid drift_ref"
+            )
         deployment_file = _deployment_file_for(raw_entry, install_path)
         version_file = _version_file_for(raw_entry, install_path)
         apps.append(
@@ -203,7 +221,11 @@ def load_manifest(path: Path | None = None) -> list[LocalAppSpec]:
                 service=service,
                 health_url=health_url.strip() if isinstance(health_url, str) else None,
                 health_command=health_command,
-                rollback_strategy=rollback_strategy.strip() if isinstance(rollback_strategy, str) else None,
+                rollback_strategy=(
+                    rollback_strategy.strip()
+                    if isinstance(rollback_strategy, str)
+                    else None
+                ),
                 owner=owner.strip() if isinstance(owner, str) else None,
                 deployment_file=deployment_file,
                 version_file=version_file,
@@ -281,7 +303,9 @@ def _load_deployment_payload(path: Path | None) -> dict[str, Any]:
 
 def probe_deployment(app: LocalAppSpec) -> dict[str, Any]:
     payload = _load_deployment_payload(app.deployment_file)
-    deployed_version = str(payload.get("version") or payload.get("deployed_version") or "").strip()
+    deployed_version = str(
+        payload.get("version") or payload.get("deployed_version") or ""
+    ).strip()
     deployed_version_source = "deployment-file" if deployed_version else None
     if not deployed_version:
         version_file = _read_text_version(app.version_file)
@@ -340,7 +364,9 @@ def probe_health_command(command: list[str] | None) -> dict[str, Any]:
     }
 
 
-def run_command(command: list[str], timeout: int = 10) -> subprocess.CompletedProcess[str]:
+def run_command(
+    command: list[str], timeout: int = 10
+) -> subprocess.CompletedProcess[str]:
     try:
         return subprocess.run(  # noqa: S603
             command,
@@ -380,7 +406,8 @@ def probe_health(app: LocalAppSpec) -> dict[str, Any]:
                 "available": True,
                 "ok": response.status_code == 200,
                 "status_code": response.status_code,
-                "status": payload.get("status") or ("healthy" if response.status_code == 200 else "degraded"),
+                "status": payload.get("status")
+                or ("healthy" if response.status_code == 200 else "degraded"),
                 "payload": payload,
                 "url": health_url,
             }
@@ -399,7 +426,11 @@ def probe_local_app(app: LocalAppSpec) -> dict[str, Any]:
     deployment = probe_deployment(app)
     dirty_result = run_command(build_dirty_command(app))
     dirty_available = dirty_result.returncode == 0
-    dirty_entries = [line for line in dirty_result.stdout.splitlines() if line.strip()] if dirty_available else []
+    dirty_entries = (
+        [line for line in dirty_result.stdout.splitlines() if line.strip()]
+        if dirty_available
+        else []
+    )
     drift_result = run_command(build_drift_command(app))
     drift_ahead = drift_behind = None
     if drift_result.returncode == 0:

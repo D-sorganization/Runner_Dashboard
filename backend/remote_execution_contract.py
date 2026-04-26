@@ -93,7 +93,11 @@ def _host_is_private(hostname: str) -> bool:
 def _url_is_private(url: str) -> bool:
     parsed = urlparse(url)
     hostname = parsed.hostname
-    return parsed.scheme in {"http", "https"} and hostname is not None and _host_is_private(hostname)
+    return (
+        parsed.scheme in {"http", "https"}
+        and hostname is not None
+        and _host_is_private(hostname)
+    )
 
 
 def _inventory_index(registry: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
@@ -108,7 +112,9 @@ def _inventory_index(registry: dict[str, Any] | None) -> dict[str, dict[str, Any
     return index
 
 
-def _resolve_inventory_entry(target: str, registry: dict[str, Any] | None) -> dict[str, Any] | None:
+def _resolve_inventory_entry(
+    target: str, registry: dict[str, Any] | None
+) -> dict[str, Any] | None:
     entry = _inventory_index(registry).get(_normalize_token(target))
     return dict(entry) if entry is not None else None
 
@@ -125,7 +131,9 @@ def _resolve_private_target_url(entry: dict[str, Any]) -> str:
     raise ValueError("target must resolve to a private fleet-network endpoint")
 
 
-def _resolve_target(target: str, registry: dict[str, Any] | None) -> RemoteExecutionTarget | None:
+def _resolve_target(
+    target: str, registry: dict[str, Any] | None
+) -> RemoteExecutionTarget | None:
     entry = _resolve_inventory_entry(target, registry)
     if entry is None:
         return None
@@ -260,7 +268,9 @@ def get_operation(operation_name: str) -> RemoteExecutionAction | None:
     return ALLOWLISTED_OPERATIONS.get(operation_name)
 
 
-def command_preview(operation_name: str, payload: dict[str, Any] | None = None) -> tuple[str, ...]:
+def command_preview(
+    operation_name: str, payload: dict[str, Any] | None = None
+) -> tuple[str, ...]:
     operation = get_operation(operation_name)
     if operation is None:
         raise KeyError(operation_name)
@@ -321,7 +331,9 @@ def validate_envelope(
         )
 
     if not envelope.action:
-        return RemoteExecutionValidationResult(False, "action is required", None, None, False)
+        return RemoteExecutionValidationResult(
+            False, "action is required", None, None, False
+        )
 
     action = get_operation(envelope.action)
     if action is None:
@@ -330,9 +342,13 @@ def validate_envelope(
         )
 
     if not envelope.source.strip():
-        return RemoteExecutionValidationResult(False, "source is required", action, None, action.requires_confirmation)
+        return RemoteExecutionValidationResult(
+            False, "source is required", action, None, action.requires_confirmation
+        )
     if not envelope.target.strip():
-        return RemoteExecutionValidationResult(False, "target is required", action, None, action.requires_confirmation)
+        return RemoteExecutionValidationResult(
+            False, "target is required", action, None, action.requires_confirmation
+        )
     if not envelope.requested_by.strip():
         return RemoteExecutionValidationResult(
             False,
@@ -345,7 +361,9 @@ def validate_envelope(
     try:
         target = _resolve_target(envelope.target, registry)
     except ValueError as exc:
-        return RemoteExecutionValidationResult(False, str(exc), action, None, action.requires_confirmation)
+        return RemoteExecutionValidationResult(
+            False, str(exc), action, None, action.requires_confirmation
+        )
 
     if target is None:
         return RemoteExecutionValidationResult(
@@ -356,7 +374,10 @@ def validate_envelope(
             action.requires_confirmation,
         )
 
-    if action.access is RemoteExecutionAccess.PRIVILEGED and envelope.confirmation is None:
+    if (
+        action.access is RemoteExecutionAccess.PRIVILEGED
+        and envelope.confirmation is None
+    ):
         return RemoteExecutionValidationResult(
             False,
             f"confirmation required for privileged action: {action.name}",
@@ -380,10 +401,20 @@ def validate_envelope(
             True,
         )
 
-    if action.access is RemoteExecutionAccess.PRIVILEGED and not confirmation.approved_by.strip():
-        return RemoteExecutionValidationResult(False, "confirmation must record approved_by", action, target, True)
-    if action.access is RemoteExecutionAccess.PRIVILEGED and not confirmation.approved_at.strip():
-        return RemoteExecutionValidationResult(False, "confirmation must record approved_at", action, target, True)
+    if (
+        action.access is RemoteExecutionAccess.PRIVILEGED
+        and not confirmation.approved_by.strip()
+    ):
+        return RemoteExecutionValidationResult(
+            False, "confirmation must record approved_by", action, target, True
+        )
+    if (
+        action.access is RemoteExecutionAccess.PRIVILEGED
+        and not confirmation.approved_at.strip()
+    ):
+        return RemoteExecutionValidationResult(
+            False, "confirmation must record approved_at", action, target, True
+        )
     if action.name == "node.deploy_artifact" and not envelope.artifact_ref.strip():
         return RemoteExecutionValidationResult(
             False,
@@ -401,14 +432,20 @@ def validate_envelope(
             True,
         )
 
-    return RemoteExecutionValidationResult(True, "accepted", action, target, action.requires_confirmation)
+    return RemoteExecutionValidationResult(
+        True, "accepted", action, target, action.requires_confirmation
+    )
 
 
 def build_execution_plan(
     envelope: RemoteExecutionEnvelope, registry: dict[str, Any] | None = None
 ) -> RemoteExecutionPlan:
     validation = validate_envelope(envelope, registry=registry)
-    if not validation.accepted or validation.action is None or validation.target is None:
+    if (
+        not validation.accepted
+        or validation.action is None
+        or validation.target is None
+    ):
         raise ValueError(validation.reason)
     payload = dict(envelope.payload)
     if envelope.artifact_ref:

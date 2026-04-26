@@ -121,7 +121,9 @@ def _workload_capacity_from_hardware(hardware: dict[str, Any]) -> dict[str, Any]
     }
 
 
-def _merge_known_specs(live_specs: dict[str, Any], registry_specs: dict[str, Any]) -> dict:
+def _merge_known_specs(
+    live_specs: dict[str, Any], registry_specs: dict[str, Any]
+) -> dict:
     merged = dict(live_specs or {})
     for key, value in (registry_specs or {}).items():
         if value not in (None, "", []):
@@ -165,7 +167,9 @@ def _normalize_machine_entry(entry: dict[str, Any]) -> dict[str, Any]:
     if tailscale_nodes is None:
         normalized["tailscale_nodes"] = []
     elif not isinstance(tailscale_nodes, list):
-        raise ValueError("Machine registry field 'tailscale_nodes' must be a list of mappings")
+        raise ValueError(
+            "Machine registry field 'tailscale_nodes' must be a list of mappings"
+        )
     else:
         cleaned_nodes: list[dict[str, Any]] = []
         for node in tailscale_nodes:
@@ -195,7 +199,9 @@ def _normalize_machine_entry(entry: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("Machine registry field 'maintenance' must be a mapping")
 
     normalized["hardware"] = _normalize_hardware(normalized)
-    normalized["workload_capacity"] = _workload_capacity_from_hardware(normalized["hardware"])
+    normalized["workload_capacity"] = _workload_capacity_from_hardware(
+        normalized["hardware"]
+    )
 
     return normalized
 
@@ -271,7 +277,9 @@ def merge_registry_with_live_nodes(
                 registry_entry.get("hardware", {}),
             )
             merged_node["hardware_specs"] = hardware_specs
-            merged_node["workload_capacity"] = _workload_capacity_from_hardware(hardware_specs)
+            merged_node["workload_capacity"] = _workload_capacity_from_hardware(
+                hardware_specs
+            )
             seen.add(_normalize_token(str(registry_entry.get("name", ""))))
         merged.append(merged_node)
 
@@ -296,7 +304,9 @@ def merge_registry_with_live_nodes(
                 "last_seen": None,
                 "error": "Machine is declared in the registry but has no live dashboard.",
                 "offline_reason": "dashboard_not_deployed",
-                "offline_detail": ("Registry entry exists, but no live dashboard telemetry was returned."),
+                "offline_detail": (
+                    "Registry entry exists, but no live dashboard telemetry was returned."
+                ),
                 "registry": entry,
             }
         )

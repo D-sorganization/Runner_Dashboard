@@ -23,7 +23,9 @@ def _patch_server_windows_os(monkeypatch) -> None:
     monkeypatch.setattr(server, "os", WindowsOs())
 
 
-def test_windows_wslconfig_path_is_checked_directly(monkeypatch, tmp_path: Path) -> None:
+def test_windows_wslconfig_path_is_checked_directly(
+    monkeypatch, tmp_path: Path
+) -> None:
     _patch_server_windows_os(monkeypatch)
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
     monkeypatch.delenv("HOMEDRIVE", raising=False)
@@ -54,7 +56,11 @@ def test_windows_scheduled_task_probe_uses_valid_powershell(monkeypatch) -> None
 
     async def fake_run_cmd(cmd, timeout=12):  # noqa: ANN001, ARG001
         captured["script"] = cmd[-1]
-        return 0, json.dumps({"task_found": False, "startup_vbs_files": [], "actions": []}), ""
+        return (
+            0,
+            json.dumps({"task_found": False, "startup_vbs_files": [], "actions": []}),
+            "",
+        )
 
     monkeypatch.setattr(server, "_resolve_powershell_executable", lambda: "powershell")
     monkeypatch.setattr(server, "run_cmd", fake_run_cmd)

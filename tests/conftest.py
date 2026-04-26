@@ -16,7 +16,9 @@ def mock_auth():
     from server import app
 
     def mock_principal():
-        return Principal(id="test-admin", type="bot", name="Test Admin", roles=["admin"])
+        return Principal(
+            id="test-admin", type="bot", name="Test Admin", roles=["admin"]
+        )
 
     app.dependency_overrides[require_principal] = mock_principal
     yield

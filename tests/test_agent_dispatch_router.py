@@ -24,7 +24,9 @@ from agent_dispatch_router import (  # noqa: E402
 
 
 def _make_run_cmd(returncode: int = 0, stdout: str = "", stderr: str = "") -> AsyncMock:
-    async def _run(cmd: list[str], timeout: int = 30, cwd: Path | None = None) -> tuple[int, str, str]:
+    async def _run(
+        cmd: list[str], timeout: int = 30, cwd: Path | None = None
+    ) -> tuple[int, str, str]:
         return returncode, stdout, stderr
 
     return AsyncMock(side_effect=_run)
@@ -65,7 +67,9 @@ async def _dispatch_prs(req: PRDispatchRequest, run_cmd_fn=None):
         )
 
 
-async def _dispatch_issues(req: IssueDispatchRequest, run_cmd_fn=None, available: bool = True):
+async def _dispatch_issues(
+    req: IssueDispatchRequest, run_cmd_fn=None, available: bool = True
+):
     if run_cmd_fn is None:
         run_cmd_fn = _make_run_cmd(0)
     with _avail_patch(available):
@@ -104,7 +108,10 @@ async def test_dispatch_to_prs_single_happy_path() -> None:
 @pytest.mark.asyncio
 async def test_dispatch_to_prs_all_past_cap_returns_error() -> None:
     """dispatch_to_prs mode=all with >100 items → error dict with status_code=400."""
-    items = [DispatchItem(repository="D-sorganization/runner-dashboard", number=i) for i in range(1, 102)]
+    items = [
+        DispatchItem(repository="D-sorganization/runner-dashboard", number=i)
+        for i in range(1, 102)
+    ]
     req = PRDispatchRequest(
         selection=DispatchSelection(mode="all", items=items),
         provider="claude_code_cli",

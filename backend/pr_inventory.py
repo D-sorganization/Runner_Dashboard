@@ -55,7 +55,11 @@ async def _run_gh(args: list[str], timeout: int = 30) -> tuple[int, str, str]:
         return 127, "", "gh CLI not found"
     try:
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-        return proc.returncode or 0, stdout.decode(errors="replace"), stderr.decode(errors="replace")
+        return (
+            proc.returncode or 0,
+            stdout.decode(errors="replace"),
+            stderr.decode(errors="replace"),
+        )
     except (TimeoutError, asyncio.TimeoutError):  # noqa: UP041
         proc.kill()
         return -1, "", "gh command timed out"
@@ -91,7 +95,9 @@ def _normalise_pr(pr: dict, full_name: str) -> dict:
     """Convert a raw GitHub PR payload into the canonical inventory shape."""
     labels: list[str] = [lbl["name"] for lbl in (pr.get("labels") or [])]
     reviewers: list[str] = [
-        r["login"] for r in (pr.get("requested_reviewers") or []) if isinstance(r, dict) and r.get("login")
+        r["login"]
+        for r in (pr.get("requested_reviewers") or [])
+        if isinstance(r, dict) and r.get("login")
     ]
     created_at: str = pr.get("created_at") or ""
     return {
@@ -217,7 +223,9 @@ async def fetch_pr_detail(owner: str, repo: str, number: int) -> dict:
         timeout=20,
     )
     if code != 0:
-        raise ValueError(f"GitHub API error for {full_name}#{number}: {stderr.strip()[:200]}")
+        raise ValueError(
+            f"GitHub API error for {full_name}#{number}: {stderr.strip()[:200]}"
+        )
     try:
         pr = json.loads(stdout)
     except (json.JSONDecodeError, ValueError) as exc:

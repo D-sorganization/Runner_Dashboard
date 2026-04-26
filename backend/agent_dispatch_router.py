@@ -43,9 +43,9 @@ log = logging.getLogger("dashboard.agent_dispatch")
 _PR_DISPATCH_HISTORY_PATH = Path(os.environ.get("PR_DISPATCH_HISTORY_PATH", "")) or (
     Path.home() / "actions-runners" / "dashboard" / "pr_dispatch_history.json"
 )
-_ISSUE_DISPATCH_HISTORY_PATH = Path(os.environ.get("ISSUE_DISPATCH_HISTORY_PATH", "")) or (
-    Path.home() / "actions-runners" / "dashboard" / "issue_dispatch_history.json"
-)
+_ISSUE_DISPATCH_HISTORY_PATH = Path(
+    os.environ.get("ISSUE_DISPATCH_HISTORY_PATH", "")
+) or (Path.home() / "actions-runners" / "dashboard" / "issue_dispatch_history.json")
 
 _pr_dispatch_history_lock: asyncio.Lock = asyncio.Lock()
 _issue_dispatch_history_lock: asyncio.Lock = asyncio.Lock()
@@ -80,7 +80,9 @@ class PRDispatchRequest(BaseModel):
     provider: str = Field(default="claude_code_cli", max_length=100)
     prompt: str = Field(default="", max_length=10_000)
     model: str = Field(default="", max_length=200)
-    confirmation: DispatchConfirmationBody = Field(default_factory=DispatchConfirmationBody)
+    confirmation: DispatchConfirmationBody = Field(
+        default_factory=DispatchConfirmationBody
+    )
 
 
 class IssueDispatchRequest(BaseModel):
@@ -89,7 +91,9 @@ class IssueDispatchRequest(BaseModel):
     prompt: str = Field(default="", max_length=10_000)
     model: str = Field(default="", max_length=200)
     force: bool = False
-    confirmation: DispatchConfirmationBody = Field(default_factory=DispatchConfirmationBody)
+    confirmation: DispatchConfirmationBody = Field(
+        default_factory=DispatchConfirmationBody
+    )
 
 
 class RejectedTarget(BaseModel):
@@ -253,7 +257,9 @@ async def _dispatch_one(
         if code != 0:
             stderr_lower = stderr.lower()
             if "workflow" in stderr_lower and (
-                "not found" in stderr_lower or "does not exist" in stderr_lower or "422" in stderr_lower
+                "not found" in stderr_lower
+                or "does not exist" in stderr_lower
+                or "422" in stderr_lower
             ):
                 reason = f"workflow_not_configured: {workflow_file} does not exist in Repository_Management"
             else:
@@ -354,7 +360,9 @@ async def dispatch_to_prs(
         "fingerprints": fingerprints,
         "recorded_at": _utc_now(),
     }
-    await _append_history(audit_entry, _PR_DISPATCH_HISTORY_PATH, _pr_dispatch_history_lock)
+    await _append_history(
+        audit_entry, _PR_DISPATCH_HISTORY_PATH, _pr_dispatch_history_lock
+    )
 
     return BulkDispatchResponse(
         accepted=accepted_count,
@@ -419,7 +427,13 @@ async def dispatch_to_issues(
         if not req.force:
             not_pickable = _check_issue_pickable(repo, num)
             if not_pickable:
-                pre_rejected.append({"repository": repo, "number": num, "reason": f"not_pickable: {not_pickable}"})
+                pre_rejected.append(
+                    {
+                        "repository": repo,
+                        "number": num,
+                        "reason": f"not_pickable: {not_pickable}",
+                    }
+                )
                 continue
         filtered_targets.append((repo, num))
 
@@ -451,7 +465,9 @@ async def dispatch_to_issues(
     rejected: list[dict[str, Any]] = list(pre_rejected)
     accepted_count = 0
 
-    for (repo, num), (env_id, fp, reason) in zip(filtered_targets, results, strict=True):
+    for (repo, num), (env_id, fp, reason) in zip(
+        filtered_targets, results, strict=True
+    ):
         if reason:
             rejected.append({"repository": repo, "number": num, "reason": reason})
         else:
@@ -474,7 +490,9 @@ async def dispatch_to_issues(
         "forced": req.force,
         "recorded_at": _utc_now(),
     }
-    await _append_history(audit_entry, _ISSUE_DISPATCH_HISTORY_PATH, _issue_dispatch_history_lock)
+    await _append_history(
+        audit_entry, _ISSUE_DISPATCH_HISTORY_PATH, _issue_dispatch_history_lock
+    )
 
     return BulkDispatchResponse(
         accepted=accepted_count,

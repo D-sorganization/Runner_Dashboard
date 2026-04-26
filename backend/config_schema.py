@@ -25,7 +25,9 @@ def _validate_provider_order(provider_order: object) -> None:
         raise ValueError("policy.provider_order must be a list")
     for item in provider_order:
         if not isinstance(item, str) or not item:
-            raise ValueError("policy.provider_order must be a list of non-empty strings")
+            raise ValueError(
+                "policy.provider_order must be a list of non-empty strings"
+            )
 
 
 def _validate_bounded_int(value: object, field: str, lo: int, hi: int) -> None:
@@ -46,7 +48,9 @@ def _validate_policy_block(policy: object) -> None:
         _validate_provider_order(provider_order)
 
     if (max_attempts := policy.get("max_attempts_per_fingerprint")) is not None:
-        _validate_bounded_int(max_attempts, "policy.max_attempts_per_fingerprint", 1, 20)
+        _validate_bounded_int(
+            max_attempts, "policy.max_attempts_per_fingerprint", 1, 20
+        )
 
     if (max_daily := policy.get("max_daily_dispatch")) is not None:
         _validate_bounded_int(max_daily, "policy.max_daily_dispatch", 1, 100)

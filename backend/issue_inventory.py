@@ -60,7 +60,11 @@ async def _run_gh(args: list[str], timeout: int = 30) -> tuple[int, str, str]:
         return 127, "", "gh CLI not found"
     try:
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-        return proc.returncode or 0, stdout.decode(errors="replace"), stderr.decode(errors="replace")
+        return (
+            proc.returncode or 0,
+            stdout.decode(errors="replace"),
+            stderr.decode(errors="replace"),
+        )
     except (TimeoutError, asyncio.TimeoutError):  # noqa: UP041
         proc.kill()
         return -1, "", "gh command timed out"
@@ -194,7 +198,9 @@ def _normalise_issue(issue: dict, full_name: str) -> dict:
     """Convert a raw GitHub issue payload into the canonical inventory shape."""
     labels: list[str] = [lbl["name"] for lbl in (issue.get("labels") or [])]
     assignees: list[str] = [
-        a["login"] for a in (issue.get("assignees") or []) if isinstance(a, dict) and a.get("login")
+        a["login"]
+        for a in (issue.get("assignees") or [])
+        if isinstance(a, dict) and a.get("login")
     ]
     agent_claim, _ = _parse_agent_claim(labels)
     claim_expires_at = _parse_claim_expiry(issue.get("body")) if agent_claim else None
@@ -223,7 +229,9 @@ def _normalise_issue(issue: dict, full_name: str) -> dict:
 # ─── Public API ───────────────────────────────────────────────────────────────
 
 
-async def fetch_repo_issues(full_name: str, state: str = "open") -> tuple[list[dict], str | None]:
+async def fetch_repo_issues(
+    full_name: str, state: str = "open"
+) -> tuple[list[dict], str | None]:
     """Fetch issues for *full_name* (``owner/repo``).
 
     GitHub's issues API returns PRs too — we filter them out via the
@@ -334,7 +342,9 @@ async def fetch_all_issues(
                 continue
 
             # Compute pickability (no open PR lookup here — caller can enrich)
-            pickable, blocked_by = is_pickable(item, has_open_pr=item["linked_pr"] is not None)
+            pickable, blocked_by = is_pickable(
+                item, has_open_pr=item["linked_pr"] is not None
+            )
             item["pickable"] = pickable
             item["pickable_blocked_by"] = blocked_by
 

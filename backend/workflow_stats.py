@@ -111,7 +111,11 @@ def _compute_durations(run: dict[str, Any]) -> tuple[float | None, float | None]
     queued = (started - created).total_seconds() if (created and started) else None
     # run_started_at is when the job actually began; updated_at is the last
     # touch (typically completion for a conclusion-bearing run).
-    duration = (updated - started).total_seconds() if (started and updated and run.get("conclusion")) else None
+    duration = (
+        (updated - started).total_seconds()
+        if (started and updated and run.get("conclusion"))
+        else None
+    )
     return (queued, duration)
 
 
@@ -147,13 +151,17 @@ async def _gh_api_json(path: str, timeout: int = 20) -> Any:
 
 async def _list_repos(org: str) -> list[str]:
     """List repo names for the org. Falls back to an empty list on failure."""
-    data = await _gh_api_json(f"/orgs/{org}/repos?per_page=100&sort=updated&direction=desc", timeout=30)
+    data = await _gh_api_json(
+        f"/orgs/{org}/repos?per_page=100&sort=updated&direction=desc", timeout=30
+    )
     if not isinstance(data, list):
         return []
     return [r["name"] for r in data if isinstance(r, dict) and not r.get("archived")]
 
 
-async def collect_once(org: str, per_repo_pages: int = 1, per_page: int = 30) -> dict[str, int]:
+async def collect_once(
+    org: str, per_repo_pages: int = 1, per_page: int = 30
+) -> dict[str, int]:
     """Pull recent workflow runs from GitHub and persist new completed ones.
 
     Returns a dict with ``{scanned_repos, new_runs}`` for logging.
@@ -167,7 +175,9 @@ async def collect_once(org: str, per_repo_pages: int = 1, per_page: int = 30) ->
 
     async def fetch(repo: str) -> list[dict]:
         async with semaphore:
-            data = await _gh_api_json(f"/repos/{org}/{repo}/actions/runs?per_page={per_page}")
+            data = await _gh_api_json(
+                f"/repos/{org}/{repo}/actions/runs?per_page={per_page}"
+            )
         if not isinstance(data, dict):
             return []
         return [r for r in data.get("workflow_runs", []) if r.get("conclusion")]
@@ -289,7 +299,9 @@ def get_summary(days: int = 14, group_by: str = "workflow") -> dict[str, Any]:
             key: tuple[str, ...] = (r["repo"], r["workflow_name"])
         else:
             key = (r["repo"],)
-        g = groups.setdefault(key, {"dur": [], "q": [], "success": 0, "fail": 0, "total": 0})
+        g = groups.setdefault(
+            key, {"dur": [], "q": [], "success": 0, "fail": 0, "total": 0}
+        )
         g["total"] += 1
         if r["conclusion"] == "success":
             g["success"] += 1
@@ -307,7 +319,9 @@ def get_summary(days: int = 14, group_by: str = "workflow") -> dict[str, Any]:
             "count": g["total"],
             "success": g["success"],
             "failure": g["fail"],
-            "success_rate": round(g["success"] / g["total"] * 100, 1) if g["total"] else 0,
+            "success_rate": (
+                round(g["success"] / g["total"] * 100, 1) if g["total"] else 0
+            ),
             "p50_duration": _percentile(g["dur"], 0.50),
             "p95_duration": _percentile(g["dur"], 0.95),
             "p50_queued": _percentile(g["q"], 0.50),
