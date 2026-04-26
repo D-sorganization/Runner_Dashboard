@@ -1,0 +1,156 @@
+{
+  "meta": {
+    "repo": "D-sorganization/runner-dashboard",
+    "date": "2026-04-26",
+    "head_short": "e26dbae",
+    "head_long": "e26dbae1c48f4c3e2277a7db19b94e58cabdba0d",
+    "branch": "fix/issue-115-panel-review-ci",
+    "assessor": "pragmatic-ao-assessment-agent"
+  },
+  "scores": {
+    "A": 8,
+    "B": 5,
+    "C": 5,
+    "D": 6,
+    "E": 5,
+    "F": 0,
+    "G": 4,
+    "H": 7,
+    "I": 6,
+    "J": 5,
+    "K": 4,
+    "L": 4,
+    "M": 6,
+    "N": 8,
+    "O": 7
+  },
+  "overall": 5.3,
+  "findings": [
+    {
+      "criterion": "B",
+      "severity": "P1",
+      "principle": "PP4",
+      "text": "Docstring coverage low: 20/85 public functions in backend/ sample"
+    },
+    {
+      "criterion": "B",
+      "severity": "P2",
+      "principle": "PP4",
+      "text": "No ADRs found in docs/adr/"
+    },
+    {
+      "criterion": "C",
+      "severity": "P2",
+      "principle": "PP7",
+      "text": "No .coverage file found"
+    },
+    {
+      "criterion": "D",
+      "severity": "P2",
+      "principle": "PP6",
+      "text": "try/except returning None without logging in agent_dispatch_router.py"
+    },
+    {
+      "criterion": "D",
+      "severity": "P2",
+      "principle": "PP6",
+      "text": "try/except returning None without logging in agent_remediation.py"
+    },
+    {
+      "criterion": "D",
+      "severity": "P2",
+      "principle": "PP6",
+      "text": "try/except returning None without logging in deployment_drift.py"
+    },
+    {
+      "criterion": "D",
+      "severity": "P2",
+      "principle": "PP6",
+      "text": "try/except returning None without logging in issue_inventory.py"
+    },
+    {
+      "criterion": "D",
+      "severity": "P2",
+      "principle": "PP6",
+      "text": "try/except returning None without logging in local_app_monitoring.py"
+    },
+    {
+      "criterion": "D",
+      "severity": "P2",
+      "principle": "PP6",
+      "text": "try/except returning None without logging in machine_registry.py"
+    },
+    {
+      "criterion": "D",
+      "severity": "P2",
+      "principle": "PP6",
+      "text": "try/except returning None without logging in pr_inventory.py"
+    },
+    {
+      "criterion": "D",
+      "severity": "P2",
+      "principle": "PP6",
+      "text": "try/except returning None without logging in remote_execution_contract.py"
+    },
+    {
+      "criterion": "D",
+      "severity": "P2",
+      "principle": "PP6",
+      "text": "try/except returning None without logging in server.py"
+    },
+    {
+      "criterion": "D",
+      "severity": "P2",
+      "principle": "PP6",
+      "text": "try/except returning None without logging in workflow_stats.py"
+    },
+    {
+      "criterion": "E",
+      "severity": "P2",
+      "principle": "PP4",
+      "text": "No benchmarks/ directory"
+    },
+    {
+      "criterion": "F",
+      "severity": "P0",
+      "principle": "PP1",
+      "text": "God file agent_remediation.py (914 lines) exceeds 500-line soft cap"
+    },
+    {
+      "criterion": "F",
+      "severity": "P0",
+      "principle": "PP1",
+      "text": "God file dispatch_contract.py (645 lines) exceeds 500-line soft cap"
+    },
+    {
+      "criterion": "F",
+      "severity": "P0",
+      "principle": "PP1",
+      "text": "God file server.py (6476 lines) exceeds 500-line soft cap"
+    },
+    {
+      "criterion": "F",
+      "severity": "P2",
+      "principle": "PP1",
+      "text": "Many magic float literals (105) in backend/ sample"
+    },
+    {
+      "criterion": "G",
+      "severity": "P1",
+      "principle": "PP3",
+      "text": "No lockfile present (poetry.lock, package-lock.json, etc.)"
+    },
+    {
+      "criterion": "I",
+      "severity": "P2",
+      "principle": "PP3",
+      "text": "No .env.example documenting required variables"
+    },
+    {
+      "criterion": "I",
+      "severity": "P2",
+      "principle": "PP3",
+      "text": "No Dockerfile for reproducible dev environment"
+    }
+  ]
+}
