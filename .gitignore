@@ -30,3 +30,4 @@ backend/.venv/
 *.pyc
 *.pyo
 .claude/worktrees/
+.agent_remediation_state.json

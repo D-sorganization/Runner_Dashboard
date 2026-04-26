@@ -3723,7 +3723,11 @@ async def run_docker_heavy_test(
             detail=f"docker-compose file not found: {compose_path}",
         )
 
-    log.info(f"Starting Docker heavy test for {repo_name} (Python {python_version})")
+    log.info(
+        "Starting Docker heavy test for %s (Python %s)",
+        repo_name,
+        python_version,
+    )
 
     # Run docker-compose in the background
     code, stdout, stderr = await run_cmd(
@@ -4718,10 +4722,7 @@ async def propose_action(request: Request, *, principal: Principal = Depends(req
             "estimated_duration_seconds": proposal_dict.get("estimated_duration_seconds"),
         }
     except Exception as e:  # noqa: BLE001
-        log.error(f"Action proposal error: {e}")
-        raise HTTPException(status_code=502, detail=f"AI provider error: {str(e)}") from e
-
-        log.error(f"Action proposal error: {e}")
+        log.error("Action proposal error: %s", e)
         raise HTTPException(status_code=502, detail=f"AI provider error: {str(e)}") from e
 
 
@@ -4809,7 +4810,7 @@ async def execute_action(
         error_msg = str(e)
         action_record["result"] = f"Execution failed: {error_msg}"
         action_record["execution_time_ms"] = execution_time_ms
-        log.error(f"Action execution error: {e}")
+        log.error("Action execution error: %s", e)
         return {
             "success": False,
             "action_id": req.action_id,
