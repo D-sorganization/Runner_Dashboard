@@ -5479,6 +5479,119 @@
       }
 
       // ════════════════════════ QUEUE TAB ════════════════════════
+
+      // STALE QUEUE CLEANUP PANEL
+      function StaleQueuePanel(p) {
+        var onRefresh = p.onRefresh;
+        var minAgeState = React.useState(60);
+        var minAge = minAgeState[0], setMinAge = minAgeState[1];
+        var scanState = React.useState(null);
+        var scanResult = scanState[0], setScanResult = scanState[1];
+        var loadingState = React.useState(false);
+        var loading = loadingState[0], setLoading = loadingState[1];
+        var purgeLoadingState = React.useState(false);
+        var purgeLoading = purgeLoadingState[0], setPurgeLoading = purgeLoadingState[1];
+        var confirmState = React.useState(false);
+        var confirmArmed = confirmState[0], setConfirmArmed = confirmState[1];
+        var msgState = React.useState(null);
+        var msg = msgState[0], setMsg = msgState[1];
+        function ageColor(mins) {
+          if (mins > 10080) return "var(--accent-red)";
+          if (mins > 1440)  return "#f0883e";
+          if (mins > 60)    return "var(--accent-yellow)";
+          return "var(--text-muted)";
+        }
+        function fmtAge(mins) {
+          if (mins < 60) return mins + "m";
+          var h = Math.floor(mins / 60);
+          if (h < 24) return h + "h " + (mins % 60) + "m";
+          return Math.floor(h / 24) + "d " + (h % 24) + "h";
+        }
+        function runScan() {
+          setLoading(true); setScanResult(null); setMsg(null); setConfirmArmed(false);
+          fetch("/api/queue/stale?min_age=" + minAge)
+            .then(function(r) { return r.json(); })
+            .then(function(d) { setScanResult(d); setLoading(false); })
+            .catch(function() { setMsg({ type: "error", text: "Scan failed" }); setLoading(false); });
+        }
+        function armPurge() {
+          setConfirmArmed(true);
+          setTimeout(function() { setConfirmArmed(function(c) { return c ? false : c; }); }, 6000);
+        }
+        function executePurge(dryRun) {
+          setPurgeLoading(true); setConfirmArmed(false);
+          fetch("/api/queue/purge-stale", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+            body: JSON.stringify({ min_age: minAge, dry_run: dryRun }),
+          })
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+              setPurgeLoading(false);
+              var errPart = d.errors && d.errors.length ? " (errors: " + d.errors.length + ")" : "";
+              setMsg({ type: dryRun ? "info" : (d.cancelled_count > 0 ? "success" : "info"),
+                text: dryRun ? "Dry run: would cancel " + d.stale_count + " run(s)"
+                             : "Cancelled " + d.cancelled_count + " / " + d.stale_count + " stale run(s)" + errPart });
+              if (!dryRun) { setScanResult(null); if (onRefresh) setTimeout(onRefresh, 1500); }
+            })
+            .catch(function() { setPurgeLoading(false); setMsg({ type: "error", text: "Purge failed" }); });
+        }
+        var staleRuns = (scanResult && scanResult.runs) || [];
+        var staleCount = (scanResult && scanResult.stale_count) || 0;
+        return h("div", { style: { marginTop: 24, borderTop: "1px solid var(--border)", paddingTop: 16 } },
+          h("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 10 } },
+            h("span", { style: { fontWeight: 600, fontSize: 13 } }, "Stale Queue Cleanup"),
+            h("span", { style: { fontSize: 11, color: "var(--text-muted)" } }, "\u2014 scans all repos, not just recent 15"),
+          ),
+          h("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" } },
+            h("label", { style: { fontSize: 12, color: "var(--text-muted)" } }, "Min age (min):"),
+            h("input", { type: "number", min: 0, value: minAge,
+              onChange: function(e) { setMinAge(parseInt(e.target.value, 10) || 0); },
+              style: { width: 70, padding: "3px 6px", borderRadius: 4, border: "1px solid var(--border)",
+                background: "var(--bg-secondary)", color: "var(--text-primary)", fontSize: 12 } }),
+            h("button", { className: "btn", onClick: runScan, disabled: loading, style: { fontSize: 12 } },
+              loading ? h("span", { className: "spinner" }) : null, loading ? " Scanning..." : "Scan all repos"),
+            staleCount > 0 && !purgeLoading
+              ? (confirmArmed
+                ? h("span", { style: { display: "flex", gap: 6 } },
+                    h("button", { className: "btn", onClick: function() { executePurge(false); },
+                      style: { fontSize: 12, background: "var(--accent-red)", color: "#fff" } },
+                      "Confirm: cancel " + staleCount + " run(s)"),
+                    h("button", { className: "btn", onClick: function() { setConfirmArmed(false); }, style: { fontSize: 12 } }, "Never mind"))
+                : h("button", { className: "btn", onClick: armPurge,
+                    style: { fontSize: 12, borderColor: "var(--accent-red)", color: "var(--accent-red)" } },
+                    "Purge " + staleCount + " stale run(s)"))
+              : null,
+            staleCount > 0
+              ? h("button", { className: "btn", onClick: function() { executePurge(true); }, disabled: purgeLoading, style: { fontSize: 12 } }, "Dry run")
+              : null,
+          ),
+          msg ? h("div", { role: "alert", style: {
+              margin: "0 0 10px", padding: "8px 14px", borderRadius: 6, fontSize: 12,
+              background: msg.type === "error" ? "rgba(248,81,73,0.12)" : msg.type === "success" ? "rgba(63,185,80,0.12)" : "rgba(88,166,255,0.12)",
+              color: msg.type === "error" ? "var(--accent-red)" : msg.type === "success" ? "var(--accent-green)" : "var(--accent-blue)",
+              border: "1px solid " + (msg.type === "error" ? "var(--accent-red)" : msg.type === "success" ? "var(--accent-green)" : "var(--accent-blue)"),
+            } }, msg.text) : null,
+          scanResult && staleCount === 0
+            ? h("div", { style: { fontSize: 12, color: "var(--accent-green)", padding: "6px 0" } },
+                "No stale runs found (queued > " + minAge + " min across all repos)") : null,
+          staleRuns.length > 0
+            ? h("div", { style: { overflowX: "auto" } },
+                h("table", { className: "data-table", style: { fontSize: 12, width: "100%" } },
+                  h("thead", null, h("tr", null,
+                    h("th", null, "Age"), h("th", null, "Repo"), h("th", null, "Workflow"),
+                    h("th", null, "Branch"), h("th", null, "Queued at"))),
+                  h("tbody", null, staleRuns.map(function(r) {
+                    return h("tr", { key: r.run_id },
+                      h("td", null, h("span", { style: { fontWeight: 600, color: ageColor(r.age_minutes) } }, fmtAge(r.age_minutes))),
+                      h("td", null, h("code", { style: { fontSize: 11 } }, r.repo)),
+                      h("td", null, r.workflow),
+                      h("td", null, h("code", { style: { fontSize: 11 } }, r.branch)),
+                      h("td", { style: { color: "var(--text-muted)" } }, r.created_at ? new Date(r.created_at).toLocaleString() : "-"));
+                  })))) : null,
+        );
+      }
+
       function QueueTab(p) {
         var q = p.queue || {};
         var loading = p.loading;
@@ -6493,6 +6606,7 @@
                   "Queue is empty \u2014 all runners idle",
                 ),
           ),
+          h(StaleQueuePanel, { onRefresh: onRefresh }),
         );
       }
 

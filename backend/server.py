@@ -65,6 +65,7 @@ import dispatch_contract as dispatch_contract  # noqa: E402
 import issue_inventory as issue_inventory  # noqa: E402
 import lease_synchronizer as lease_synchronizer  # noqa: E402
 import pr_inventory as pr_inventory  # noqa: E402
+import queue_cleanup as queue_cleanup  # noqa: E402
 import quick_dispatch as _quick_dispatch  # noqa: E402
 import quota_enforcement as quota_enforcement  # noqa: E402
 import scheduled_workflows as scheduled_workflow_inventory  # noqa: E402
@@ -6695,6 +6696,59 @@ async def generate_launchers(
         "launchers": launchers_created,
         "message": f"Created {len(launchers_created)} launcher scripts in {output_dir}",
     }
+
+
+# --- Stale Queue Cleanup ---
+
+
+@app.get("/api/queue/stale")
+async def get_stale_queue(
+    request: Request,
+    min_age: int = 60,
+) -> dict:
+    """List every queued run older than min_age minutes across the entire org.
+
+    Unlike /api/queue (15-repo sample), this scans every repo so ancient
+    runs in quiet repos are visible.  Cached 5 minutes.
+    """
+    if _should_proxy_fleet_to_hub(request):
+        return await proxy_to_hub(request)
+    cache_key = f"stale_queue_{min_age}"
+    cached = _cache_get(cache_key, 300.0)
+    if cached is not None:
+        return cached
+    stale = await queue_cleanup.find_stale_runs(ORG, min_age)
+    payload: dict = {
+        "min_age_minutes": min_age,
+        "stale_count": len(stale),
+        "runs": [r.as_dict() for r in stale],
+    }
+    _cache_set(cache_key, payload, 300.0)
+    return payload
+
+
+@app.post("/api/queue/purge-stale")
+async def purge_stale_queue(
+    request: Request,
+    *,
+    principal: Principal = Depends(require_scope("workflows.control")),  # noqa: B008
+) -> dict:
+    """Cancel every queued run waiting longer than min_age minutes.
+
+    Body: {"min_age": 60, "dry_run": false}
+    Busts queue/diagnose/stale caches on success.
+    """
+    body = await request.json()
+    min_age = int(body.get("min_age", 60))
+    dry_run = bool(body.get("dry_run", False))
+    result = await queue_cleanup.purge_stale_runs(ORG, min_age, dry_run=dry_run)
+    if not dry_run and result.get("cancelled_count", 0) > 0:
+        _cache.pop("queue", None)
+        _cache.pop("diagnose", None)
+        for key in list(_cache.keys()):
+            if key.startswith("stale_queue_"):
+                _cache.pop(key, None)
+    return result
 
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
