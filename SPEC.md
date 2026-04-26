@@ -1,6 +1,6 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.1.0
+**Spec Version:** 2.2.0
 **Application Version:** 4.0.1 (see `VERSION`)
 **Last Updated:** 2026-04-25
 **Status:** Active
@@ -237,7 +237,8 @@ AI agent dispatch control panel organised into three sub-tabs:
 
 - **Automations** (default) — configures and dispatches remediation plans to
   Jules, GAAI, Claude, or Codex agents. Shows dispatch history and plan
-  preview. Supports per-repo agent routing and loop-guard configuration.
+  preview. Supports per-repo agent routing, loop-guard configuration, and
+  provider fallback chain escalation.
 - **PRs** — multi-select table of open pull requests fetched from
   `GET /api/prs?limit=2000`. Supports filtering by repo, author, and draft
   status. Bulk dispatch sends selected PRs to a chosen provider via

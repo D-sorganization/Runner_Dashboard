@@ -606,6 +606,24 @@ def _attempts_for_fingerprint(
     return filtered
 
 
+def _attempts_for_provider(
+    fingerprint: str,
+    provider_id: str,
+    attempts: list[AttemptRecord],
+    *,
+    window_hours: int,
+) -> list[AttemptRecord]:
+    """Return attempts matching both fingerprint and provider_id within the window."""
+    cutoff = datetime.now(UTC) - _dt_mod.timedelta(hours=window_hours)
+    filtered: list[AttemptRecord] = []
+    for attempt in attempts:
+        stamp = _parse_timestamp(attempt.created_at)
+        if attempt.fingerprint != fingerprint or attempt.provider_id != provider_id or stamp is None or stamp < cutoff:
+            continue
+        filtered.append(attempt)
+    return filtered
+
+
 def provider_prompt(provider_id: str, context: FailureContext) -> str:
     # Sanitize all user-controlled content before inserting into the prompt
     # to defend against prompt injection attacks (issue #24).
@@ -710,20 +728,9 @@ def plan_dispatch(
             workflow_label=workflow_rule.label,
             dispatch_mode=workflow_rule.dispatch_mode,
         )
-    if attempt_count >= policy.max_same_failure_attempts:
-        return DispatchDecision(
-            accepted=False,
-            reason=(
-                "Loop guard blocked dispatch because this failure fingerprint has already "
-                f"been attempted {attempt_count} time(s) in the last {policy.attempt_window_hours} hour(s)."
-            ),
-            fingerprint=fingerprint,
-            attempt_count=attempt_count,
-            remaining_attempts=remaining_attempts,
-            workflow_type=workflow_rule.workflow_type,
-            workflow_label=workflow_rule.label,
-            dispatch_mode=workflow_rule.dispatch_mode,
-        )
+    # Note: global loop guard removed — per-provider loop guards in the fallback
+    # chain below enforce the attempt budget per provider. This allows escalation
+    # to stronger agents when the primary provider is exhausted.
 
     if dispatch_origin == "automatic" and workflow_rule.dispatch_mode != "auto":
         return DispatchDecision(
@@ -742,7 +749,13 @@ def plan_dispatch(
         candidate_ids = (provider_override,)
     else:
         preferred = [workflow_rule.provider_id] if workflow_rule.provider_id else []
-        candidate_ids = tuple(dict.fromkeys(preferred + list(policy.provider_order)).keys())
+        # Build fallback chain: primary + fallback_providers + global provider_order
+        fallback_chain = list(workflow_rule.fallback_providers) if workflow_rule.fallback_providers else []
+        remaining_order = [p for p in policy.provider_order if p not in preferred and p not in fallback_chain]
+        candidate_ids = tuple(dict.fromkeys(preferred + fallback_chain + remaining_order).keys())
+
+    selected_provider: str | None = None
+    exhausted_providers: list[str] = []
     for provider_id in candidate_ids:
         if not provider_id:
             continue
@@ -752,15 +765,49 @@ def plan_dispatch(
         provider_status = availability.get(provider_id)
         if provider is None or provider_status is None or not provider_status.available:
             continue
+
+        # Check per-provider attempt count (fallback chain logic)
+        provider_attempts = _attempts_for_provider(
+            fingerprint, provider_id, attempts, window_hours=policy.attempt_window_hours
+        )
+        provider_attempt_count = len(provider_attempts)
+        if provider_attempt_count >= policy.max_same_failure_attempts:
+            exhausted_providers.append(f"{provider.label} ({provider_attempt_count} attempts)")
+            continue
+
+        selected_provider = provider_id
+        break
+
+    if selected_provider:
+        provider = PROVIDERS[selected_provider]
+        provider_attempts = _attempts_for_provider(
+            fingerprint, selected_provider, attempts, window_hours=policy.attempt_window_hours
+        )
+        provider_attempt_count = len(provider_attempts)
         return DispatchDecision(
             accepted=True,
             reason=f"Dispatch is allowed via {provider.label}.",
             fingerprint=fingerprint,
-            provider_id=provider_id,
-            prompt_preview=provider_prompt(provider_id, context),
+            provider_id=selected_provider,
+            prompt_preview=provider_prompt(selected_provider, context),
             suggested_workflow=".github/workflows/Agent-CI-Remediation.yml",
+            attempt_count=provider_attempt_count,
+            remaining_attempts=max(0, policy.max_same_failure_attempts - provider_attempt_count),
+            workflow_type=workflow_rule.workflow_type,
+            workflow_label=workflow_rule.label,
+            dispatch_mode=workflow_rule.dispatch_mode,
+        )
+
+    if exhausted_providers:
+        return DispatchDecision(
+            accepted=False,
+            reason=(
+                "Loop guard blocked dispatch because all candidate providers have reached "
+                f"their attempt limit: {', '.join(exhausted_providers)}."
+            ),
+            fingerprint=fingerprint,
             attempt_count=attempt_count,
-            remaining_attempts=remaining_attempts,
+            remaining_attempts=0,
             workflow_type=workflow_rule.workflow_type,
             workflow_label=workflow_rule.label,
             dispatch_mode=workflow_rule.dispatch_mode,
