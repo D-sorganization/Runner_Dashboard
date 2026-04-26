@@ -1659,3 +1659,15 @@ New principals can be added by editing this file; the dashboard reloads it
 automatically. Service tokens for bot principals can be minted via the
 Identity Manager (`identity_manager.mint_service_token`).
 <!-- spec-trigger-144 -->
+
+### 18.5 Cross-Fleet Coherence & Admin API (Wave 4)
+
+To ensure identity and quotas are respected across the entire fleet:
+- **Cross-Node Principal Propagation**: The \CommandEnvelope\ in \dispatch_contract.py\ includes \principal\, \on_behalf_of\, and \correlation_id\. These fields are now included in the canonical JSON payload used to generate the HMAC-SHA256 signature, ensuring that malicious actors cannot forge identities during cross-node dispatch.
+- **Hub-Side Merged Audit View**: A new endpoint \/api/fleet/audit\ aggregates orchestration audit logs from all nodes in the \FLEET_NODES\ configuration. It supports filtering by \principal\ and merges entries sorted by timestamp. Local audit logs can be retrieved via \/api/audit\.
+- **Admin API**: The \/api/admin/*\ router provides endpoints for managing the identity system:
+  - \GET /api/admin/principals\: List all registered principals and their quotas.
+  - \GET /api/admin/tokens\: List all active service token hashes.
+  - \POST /api/admin/principals/{id}/token\: Mint a new service token for a bot principal.
+  - \DELETE /api/admin/tokens/{token_hash}\: Revoke a service token.
+  - \PATCH /api/admin/principals/{id}/quota\: Update quotas (\max_runners\, \gent_spend_usd_day\, \local_app_slots\) for a specific principal.
