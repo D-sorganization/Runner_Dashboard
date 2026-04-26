@@ -11,9 +11,9 @@ from __future__ import annotations
 import json
 import os
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -22,10 +22,9 @@ _BACKEND = Path(__file__).parent.parent / "backend"
 if str(_BACKEND) not in sys.path:
     sys.path.insert(0, str(_BACKEND))
 
-import dispatch_contract
-from dispatch_contract import (
+import dispatch_contract  # noqa: E402
+from dispatch_contract import (  # noqa: E402
     CommandEnvelope,
-    CryptoValidationResult,
     DispatchConfirmation,
     TimestampValidationResult,
     _sign_envelope_payload,
@@ -34,7 +33,7 @@ from dispatch_contract import (
     validate_envelope_crypto,
 )
 
-UTC = timezone.utc
+UTC = UTC
 
 
 class TestEnvelopeSigningAndVerification:
@@ -163,7 +162,7 @@ class TestEnvelopeSigningAndVerification:
             envelope_version=1,
             secret=secret,
         )
-        sig = _sign_envelope_payload(**payload_args)
+        _sign_envelope_payload(**payload_args)
         tampered_sig = "0" * 64  # Completely different signature
 
         result = _verify_envelope_signature(**payload_args, signature=tampered_sig)

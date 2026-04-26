@@ -1,0 +1,13 @@
+principals:
+  - id: dashboard-operator
+    type: human
+    name: Default Dashboard Operator
+    roles:
+      - admin
+    github_username: dashboard-operator
+    email: operator@example.com
+  - id: runner-bot
+    type: bot
+    name: CI/CD Runner Bot
+    roles:
+      - bot

@@ -70,6 +70,7 @@ class QuickDispatchRequest(BaseModel):
     model: str = Field(default="", max_length=200)
     ref: str = Field(default="main", max_length=200)
     task_kind: str = Field(default="adhoc", max_length=100)
+    requested_by: str = Field(default="dashboard-operator", max_length=200)
 
 
 class QuickDispatchResponse(BaseModel):
@@ -117,6 +118,7 @@ def _make_audit_entry(
     decision: str,
     detail: str,
     history_id: str,
+    requested_by: str = "dashboard-operator",
     *,
     forced: bool = False,
 ) -> dict[str, Any]:
@@ -127,7 +129,7 @@ def _make_audit_entry(
         "access": DispatchAccess.PRIVILEGED.value,
         "source": "dashboard",
         "target": repository,
-        "requested_by": "dashboard-operator",
+        "requested_by": requested_by,
         "decision": decision,
         "detail": detail,
         "fingerprint": fingerprint,
@@ -281,6 +283,7 @@ async def quick_dispatch(
         decision="accepted",
         detail="quick-dispatch workflow triggered",
         history_id=history_id,
+        requested_by=req.requested_by if hasattr(req, "requested_by") else "dashboard-operator",
     )
     await _append_quick_dispatch_history(audit_entry)
 

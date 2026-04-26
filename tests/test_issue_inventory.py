@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -12,7 +12,6 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 
 import issue_inventory  # noqa: E402
-
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -28,7 +27,7 @@ def _make_issue(
     state: str = "open",
 ) -> dict:
     if created_at is None:
-        created_at = datetime.now(tz=timezone.utc).isoformat()
+        created_at = datetime.now(tz=UTC).isoformat()
     return {
         "number": number,
         "title": title,
@@ -208,7 +207,7 @@ class TestLinkedPr:
 
 class TestAgeHours:
     def test_recent_issue(self) -> None:
-        created = datetime.now(tz=timezone.utc) - timedelta(hours=3)
+        created = datetime.now(tz=UTC) - timedelta(hours=3)
         age = issue_inventory._age_hours(created.isoformat())
         assert 2.9 <= age <= 3.1
 
@@ -216,7 +215,7 @@ class TestAgeHours:
         assert issue_inventory._age_hours("bad") == 0.0
 
     def test_z_suffix(self) -> None:
-        created = datetime.now(tz=timezone.utc) - timedelta(hours=1)
+        created = datetime.now(tz=UTC) - timedelta(hours=1)
         ts = created.strftime("%Y-%m-%dT%H:%M:%SZ")
         age = issue_inventory._age_hours(ts)
         assert 0.9 <= age <= 1.1

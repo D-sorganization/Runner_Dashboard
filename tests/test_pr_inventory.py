@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -12,7 +12,6 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 
 import pr_inventory  # noqa: E402
-
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -30,7 +29,7 @@ def _make_pr(
     mergeable_state: str = "clean",
 ) -> dict:
     if created_at is None:
-        created_at = datetime.now(tz=timezone.utc).isoformat()
+        created_at = datetime.now(tz=UTC).isoformat()
     return {
         "number": number,
         "title": title,
@@ -91,12 +90,12 @@ class TestNormalisePr:
 class TestAgeHours:
     def test_recent_pr(self) -> None:
         """A PR created 2 hours ago should report age ~2.0."""
-        created = datetime.now(tz=timezone.utc) - timedelta(hours=2)
+        created = datetime.now(tz=UTC) - timedelta(hours=2)
         age = pr_inventory._age_hours(created.isoformat())
         assert 1.9 <= age <= 2.1
 
     def test_old_pr(self) -> None:
-        created = datetime.now(tz=timezone.utc) - timedelta(hours=48)
+        created = datetime.now(tz=UTC) - timedelta(hours=48)
         age = pr_inventory._age_hours(created.isoformat())
         assert 47.9 <= age <= 48.1
 
@@ -105,13 +104,13 @@ class TestAgeHours:
 
     def test_z_suffix_handled(self) -> None:
         """ISO-8601 Z suffix should be accepted."""
-        created = datetime.now(tz=timezone.utc) - timedelta(hours=5)
+        created = datetime.now(tz=UTC) - timedelta(hours=5)
         ts = created.strftime("%Y-%m-%dT%H:%M:%SZ")
         age = pr_inventory._age_hours(ts)
         assert 4.9 <= age <= 5.1
 
     def test_result_is_rounded_to_one_decimal(self) -> None:
-        created = datetime.now(tz=timezone.utc) - timedelta(hours=1, minutes=6)
+        created = datetime.now(tz=UTC) - timedelta(hours=1, minutes=6)
         age = pr_inventory._age_hours(created.isoformat())
         assert age == round(age, 1)
 
@@ -211,7 +210,6 @@ class TestFetchAllPrs:
     @pytest.mark.asyncio
     async def test_per_repo_error_captured(self) -> None:
         """An error for one repo should appear in errors[] but not fail others."""
-        import json
 
         ok_prs = [_make_pr(1, "Ok PR", "bob")]
 
@@ -232,7 +230,6 @@ class TestFetchAllPrs:
 
     @pytest.mark.asyncio
     async def test_draft_filter(self) -> None:
-        import json
 
         prs = [_make_pr(1, "Draft", draft=True), _make_pr(2, "Normal", draft=False)]
 
