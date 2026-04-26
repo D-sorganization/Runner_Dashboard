@@ -294,13 +294,14 @@ async def quick_dispatch(
         principal_obj = identity_manager.get_principal(req.principal)
         if principal_obj:
             from runner_lease import lease_manager  # noqa: PLC0415
+
             try:
                 lease_manager.acquire_lease(
                     principal=principal_obj,
                     runner_id=f"virtual-{envelope_id}",
-                    duration_seconds=3600, # Default 1h lease
+                    duration_seconds=3600,  # Default 1h lease
                     task_id=envelope_id,
-                    metadata={"source": "quick_dispatch", "repo": full_repository}
+                    metadata={"source": "quick_dispatch", "repo": full_repository},
                 )
             except (ValueError, PermissionError) as exc:
                 log.warning("Failed to acquire virtual lease for %s: %s", req.principal, exc)

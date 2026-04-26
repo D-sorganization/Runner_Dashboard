@@ -106,9 +106,7 @@ class LeaseManager:
         # 2. Check principal quota
         active_count = len(self.get_active_leases(principal.id))
         if active_count >= principal.quotas.max_runners:
-            raise PermissionError(
-                f"Principal {principal.id} has reached runner quota ({principal.quotas.max_runners})"
-            )
+            raise PermissionError(f"Principal {principal.id} has reached runner quota ({principal.quotas.max_runners})")
 
         # 3. Create lease
         record = LeaseRecord(

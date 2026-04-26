@@ -4189,6 +4189,7 @@ async def dispatch_agent_remediation(
     quota_enforcement.quota_enforcement.add_spend(principal.id, 0.10)
     try:
         from runner_lease import lease_manager  # noqa: PLC0415
+
         lease_manager.acquire_lease(
             principal=principal,
             # We don't have an envelope_id here, use fingerprint
@@ -4537,7 +4538,6 @@ async def assistant_chat(request: Request, *, principal: Principal = Depends(req
 # ─── Tool Execute API (Issue #89) ─────────────────────────────────────────────
 
 
-
 @app.post("/api/assistant/tool/execute", tags=["assistant"])
 async def execute_assistant_tool(
     request: Request,
@@ -4573,7 +4573,6 @@ async def execute_assistant_tool(
             status_code=403,
             detail=f"Tool '{req.name}' requires explicit operator confirmation.",
         )
-
 
     # Execute via assistant_tools
     try:
