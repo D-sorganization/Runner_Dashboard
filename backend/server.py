@@ -45,12 +45,11 @@ import psutil
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
-from pydantic import BaseModel, Field
-from starlette.middleware.sessions import SessionMiddleware
-
 from identity import Principal, require_principal, require_scope  # noqa: B008
+from pydantic import BaseModel, Field
 from routers import admin as admin_router
 from routers import auth as auth_router
+from starlette.middleware.sessions import SessionMiddleware
 
 BACKEND_DIR = Path(__file__).resolve().parent
 if str(BACKEND_DIR) not in sys.path:
