@@ -1284,49 +1284,32 @@
       }
       var h = React.createElement;
 
-      // ── API Key Auth (issue #16) ─────────────────────────────────────────────
-      var _apiKey = localStorage.getItem("apiKey") || "";
-
-      /** Fetch the key from /api/setup-key when running on localhost. */
-      async function _autoFetchApiKey() {
-        if (_apiKey) return;
-        try {
-          var resp = await fetch("/api/setup-key");
-          if (resp.ok) {
-            var data = await resp.json();
-            _apiKey = data.api_key || "";
-            if (_apiKey) localStorage.setItem("apiKey", _apiKey);
-          }
-        } catch (e) {
-          // Not on localhost or endpoint unavailable — ignore
-        }
-      }
-
-      /** Wrap fetch() to inject Authorization header and handle 401. */
-      async function apiFetch(url, opts) {
-        opts = opts || {};
-        opts.headers = opts.headers || {};
-        if (_apiKey) {
-          opts.headers["Authorization"] = "Bearer " + _apiKey;
-        }
-        var resp = await fetch(url, opts);
-        if (resp.status === 401) {
-          var keyPath = "~/.config/runner-dashboard/api_key.txt";
-          var msg =
-            "Authentication required. Add your API key:\n\n" +
-            "  localStorage.setItem('apiKey', '<key from " + keyPath + ">')\n\n" +
-            "Or set the Authorization header: Bearer <key>";
-          console.warn("[auth] 401 from", url, "-", msg);
-          // Show a toast/overlay if a notifier is available
+      // Wrap global fetch to detect 401s and prompt login
+      var originalFetch = window.fetch;
+      window.fetch = async function(url, opts) {
+        var resp = await originalFetch(url, opts);
+        if (resp.status === 401 && !url.includes('/api/auth/me')) {
+          console.warn("[auth] 401 Unauthorized from", url);
+          // Show auth error overlay
           if (typeof window._showAuthError === "function") {
-            window._showAuthError(keyPath);
+            window._showAuthError();
+          } else {
+            // Give them a chance to login
+            var root = document.getElementById("root");
+            if (root && root.querySelector && !root.querySelector('.auth-modal')) {
+               var div = document.createElement("div");
+               div.className = "auth-modal";
+               div.style.position = "fixed";
+               div.style.top = "0"; div.style.left = "0"; div.style.width = "100%"; div.style.height = "100%";
+               div.style.background = "rgba(15,17,23,0.8)"; div.style.zIndex = "9999";
+               div.style.display = "flex"; div.style.alignItems = "center"; div.style.justifyContent = "center";
+               div.innerHTML = '<div style="background:var(--bg-secondary);padding:32px;border-radius:12px;border:1px solid var(--border);text-align:center"><h2 style="margin-bottom:16px;color:var(--accent-red)">Session Expired</h2><p style="margin-bottom:24px;color:var(--text-secondary)">Your session has expired. Please login again to continue.</p><a href="/api/auth/github" class="btn btn-blue" style="text-decoration:none">Login with GitHub</a></div>';
+               document.body.appendChild(div);
+            }
           }
         }
         return resp;
-      }
-
-      // Auto-fetch key on load (works only from localhost)
-      _autoFetchApiKey();
+      };
       // ────────────────────────────────────────────────────────────────────────
 
       // Configure marked with safe options (issue #7)
@@ -15189,6 +15172,9 @@
         var rpl = React.useState(false);
         var reportsLoading = rpl[0],
           setReportsLoading = rpl[1];
+        var pr = React.useState(null);
+        var principal = pr[0],
+          setPrincipal = pr[1];
         var qs = React.useState({});
         var queue = qs[0],
           setQueue = qs[1];
@@ -16362,7 +16348,15 @@
             });
         }
 
+        function fetchPrincipal() {
+          fetch("/api/auth/me")
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(d) { setPrincipal(d); })
+            .catch(function() { setPrincipal(null); });
+        }
+
         React.useEffect(function () {
+          fetchPrincipal();
           fetchFleet();
           fetchRepos();
           fetchTests();
@@ -16974,6 +16968,25 @@
             h(
               "div",
               { className: "header-right" },
+              principal ? h(
+                "span",
+                { className: "section-badge", style: { background: "rgba(88,166,255,0.15)", color: "var(--accent-blue)" } },
+                "Acting as: " + principal.name
+              ) : null,
+              h(
+                "a",
+                { 
+                  href: principal ? "#" : "/api/auth/github", 
+                  onClick: principal ? function(e) {
+                    e.preventDefault();
+                    fetch("/api/auth/logout", {method: "POST", headers: { "X-Requested-With": "XMLHttpRequest" }})
+                      .then(function() { window.location.reload(); });
+                  } : undefined,
+                  className: "btn",
+                  style: { textDecoration: "none", marginRight: "12px", height: "24px", lineHeight: "12px", fontSize: "11px" }
+                },
+                principal ? "Logout" : "Login"
+              ),
               h("span", {
                 className: "status-dot " + (connected ? "green" : "red"),
               }),
