@@ -503,15 +503,19 @@ async def _add_security_headers(request: Request, call_next: Any) -> Any:
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    # 'unsafe-inline' removed from script-src (issue #18).
-    # 'strict-dynamic' lets scripts loaded from trusted CDN origins load further
-    # dependencies without needing individual allow-list entries.
-    # 'unsafe-inline' is retained for style-src because React's CSS-in-JS and
-    # the dashboard's own <style> block rely on inline styles. A build step
-    # would allow switching to nonce or hash-based CSP for style-src.
+    # CSP note: 'strict-dynamic' was previously used here but is INCOMPATIBLE
+    # with host-based allowlists — per spec, 'strict-dynamic' disables source
+    # expressions like https://cdnjs.cloudflare.com, meaning React and other CDN
+    # libraries were silently blocked, causing a blank dashboard. Removed in #172.
+    #
+    # 'unsafe-inline' is required for script-src because the frontend is a single
+    # index.html with several inline <script> blocks (error handler, React check,
+    # and the ~630 KB application bundle). Adding nonces would require a build step
+    # or per-request template rendering — not worth the complexity for a
+    # localhost-only operator tool.
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
-        "script-src 'self' 'strict-dynamic' "
+        "script-src 'self' 'unsafe-inline' "
         "https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; "
         "style-src 'self' 'unsafe-inline'; "
         "img-src 'self' data:; "
