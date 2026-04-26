@@ -13441,6 +13441,88 @@
         );
       }
 
+      // ---------- ClineLauncherTab ----------
+      // Sub-component: edit one agent. Lifted out so the parent stays
+      // readable; uses the same setConfig setter via prop.
+      function AgentEditor(props) {
+        var name = props.name;
+        var cfg = props.cfg || {};
+        var inventory = props.inventory || [];
+        var onChange = props.onChange;
+        var onDelete = props.onDelete;
+        function patch(field, value) {
+          var next = Object.assign({}, cfg); next[field] = value;
+          onChange(name, next);
+        }
+        function toggleRepo(repoName) {
+          var current = (cfg.repositories || ["__all__"]).slice();
+          if (current.indexOf("__all__") >= 0) current = []; // explicit selection mode
+          var idx = current.indexOf(repoName);
+          if (idx >= 0) current.splice(idx, 1);
+          else current.push(repoName);
+          if (current.length === 0) current = ["__all__"]; // back to all
+          patch("repositories", current);
+        }
+        var allMode = (cfg.repositories || []).indexOf("__all__") >= 0;
+        return h("div", {
+          style: { border: "1px solid var(--border-primary)", borderRadius: 4,
+                   padding: 12, marginBottom: 12 },
+        },
+          h("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 8 } },
+            h("strong", null, name),
+            h("label", { style: { fontSize: 12 } },
+              h("input", { type: "checkbox", checked: !!cfg.enabled,
+                onChange: function (e) { patch("enabled", e.target.checked); } }),
+              " enabled"),
+            h("span", { style: { flex: 1 } }),
+            h("button", { className: "btn btn-sm",
+              onClick: function () { onDelete(name); } }, "Delete"),
+          ),
+          h("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 } },
+            h("label", null, "Skill prompt",
+              h("input", { type: "text", value: cfg.skill_prompt || "",
+                style: { width: "100%" },
+                onChange: function (e) { patch("skill_prompt", e.target.value); } })),
+            h("label", null, "Rotation",
+              h("select", { value: cfg.rotation || "round-robin",
+                onChange: function (e) { patch("rotation", e.target.value); } },
+                h("option", { value: "round-robin" }, "round-robin"),
+                h("option", { value: "all-each-tick" }, "all-each-tick"),
+                h("option", { value: "random" }, "random"))),
+            h("label", null, "Interval (s)",
+              h("input", { type: "number", min: 60, value: cfg.interval_seconds || 3600,
+                style: { width: "100%" },
+                onChange: function (e) { patch("interval_seconds", parseInt(e.target.value || 0, 10)); } })),
+            h("label", null, "Timeout (s)",
+              h("input", { type: "number", min: 30, value: cfg.timeout_seconds || 3600,
+                style: { width: "100%" },
+                onChange: function (e) { patch("timeout_seconds", parseInt(e.target.value || 0, 10)); } })),
+          ),
+          h("div", { style: { marginBottom: 6 } },
+            h("strong", { style: { fontSize: 12 } }, "Repositories: "),
+            h("label", { style: { fontSize: 12, marginRight: 8 } },
+              h("input", { type: "checkbox", checked: allMode,
+                onChange: function () { patch("repositories", allMode ? [] : ["__all__"]); } }),
+              " all (" + inventory.length + ")"),
+          ),
+          allMode ? null : h("div", { style: { display: "flex", flexWrap: "wrap", gap: 4 } },
+            inventory.map(function (r) {
+              var picked = (cfg.repositories || []).indexOf(r.name) >= 0;
+              return h("button", { key: r.name,
+                className: "section-badge",
+                style: {
+                  background: picked ? "var(--accent-purple)" : "var(--bg-tertiary)",
+                  color: picked ? "white" : "var(--text-primary)",
+                  cursor: "pointer", border: "none",
+                },
+                title: r.wsl_path,
+                onClick: function () { toggleRepo(r.name); },
+              }, r.name);
+            }),
+          ),
+        );
+      }
+
       function ClineLauncherTab() {
         // Self-contained: this tab manages its own polling + actions so it
         // doesn't bloat the parent state. The launcher's state is on the
@@ -13455,6 +13537,16 @@
         var error = er[0], setError = er[1];
         var bs = React.useState({});
         var busy = bs[0], setBusy = bs[1];
+        var cs = React.useState(null);
+        var config = cs[0], setConfig = cs[1];
+        var ms = React.useState(null);
+        var models = ms[0], setModels = ms[1];
+        var ds = React.useState(false);
+        var dirty = ds[0], setDirty = ds[1];
+        var sm = React.useState("");
+        var saveMsg = sm[0], setSaveMsg = sm[1];
+        var ev = React.useState("editor"); // "editor" | "status"
+        var view = ev[0], setView = ev[1];
 
         function fetchStatus() {
           fetch("/api/agent-launcher/status")
@@ -13464,6 +13556,116 @@
             })
             .then(function (j) { setStatus(j); setError(""); })
             .catch(function (e) { setError(String(e)); });
+        }
+
+        function fetchConfig() {
+          fetch("/api/agent-launcher/config")
+            .then(function (resp) {
+              if (!resp.ok) {
+                return resp.json().then(function (j) {
+                  throw new Error(j.detail || ("HTTP " + resp.status));
+                });
+              }
+              return resp.json();
+            })
+            .then(function (j) { setConfig(j); setDirty(false); setError(""); })
+            .catch(function (e) { setError(String(e)); });
+        }
+
+        function fetchModels(provider) {
+          var url = "/api/agent-launcher/models";
+          if (provider) url += "?provider=" + encodeURIComponent(provider);
+          fetch(url)
+            .then(function (resp) {
+              if (!resp.ok) throw new Error("HTTP " + resp.status);
+              return resp.json();
+            })
+            .then(function (j) { setModels(j); })
+            .catch(function (e) {
+              // Non-fatal — editor still works without the dropdown.
+              setModels({ provider: provider, count: 0, models: [] });
+            });
+        }
+
+        function patchConfig(path, value) {
+          // path is dot-separated, e.g. "model.model_id" or "wsl_distro".
+          var next = JSON.parse(JSON.stringify(config));
+          var keys = path.split(".");
+          var ref = next;
+          for (var i = 0; i < keys.length - 1; i++) {
+            if (ref[keys[i]] === undefined) ref[keys[i]] = {};
+            ref = ref[keys[i]];
+          }
+          ref[keys[keys.length - 1]] = value;
+          setConfig(next); setDirty(true); setSaveMsg("");
+          // If provider changed, refresh model catalog.
+          if (path === "model.provider") fetchModels(value);
+        }
+
+        function patchAgent(name, agentCfg) {
+          var next = JSON.parse(JSON.stringify(config));
+          next.agents = next.agents || {};
+          next.agents[name] = agentCfg;
+          setConfig(next); setDirty(true); setSaveMsg("");
+        }
+
+        function deleteAgent(name) {
+          var keys = Object.keys(config.agents || {});
+          if (keys.length <= 1) {
+            setError("cannot delete last agent — config requires >=1");
+            return;
+          }
+          if (!window.confirm("Delete agent " + name + "?")) return;
+          var next = JSON.parse(JSON.stringify(config));
+          delete next.agents[name];
+          setConfig(next); setDirty(true); setSaveMsg("");
+        }
+
+        function addAgent() {
+          var name = window.prompt("New agent name (e.g. consolidate-prs):");
+          if (!name || !name.trim()) return;
+          name = name.trim();
+          if (config.agents && config.agents[name]) {
+            setError("agent " + name + " already exists");
+            return;
+          }
+          var next = JSON.parse(JSON.stringify(config));
+          next.agents = next.agents || {};
+          next.agents[name] = {
+            enabled: true,
+            interval_seconds: 3600,
+            skill_prompt: "/" + name,
+            timeout_seconds: 3600,
+            repositories: ["__all__"],
+            rotation: "round-robin",
+            extra_env: {},
+          };
+          setConfig(next); setDirty(true); setSaveMsg("");
+        }
+
+        function saveConfig() {
+          setSaveMsg("saving...");
+          fetch("/api/agent-launcher/config", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(config),
+          })
+            .then(function (resp) {
+              return resp.json().then(function (j) {
+                if (!resp.ok) throw new Error(j.detail || "HTTP " + resp.status);
+                return j;
+              });
+            })
+            .then(function () {
+              setDirty(false); setSaveMsg("saved ✓"); setError("");
+              // Reload normalized config back from server (defaults filled in).
+              fetchConfig();
+              setTimeout(function () { setSaveMsg(""); }, 3000);
+            })
+            .catch(function (e) {
+              setSaveMsg("");
+              setError("save failed: " + e);
+            });
         }
 
         function fetchRepos() {
@@ -13506,10 +13708,18 @@
         }
 
         React.useEffect(function () {
-          fetchStatus(); fetchRepos();
+          fetchStatus(); fetchRepos(); fetchConfig();
           var t = setInterval(fetchStatus, 5000);
           return function () { clearInterval(t); };
         }, []);
+
+        // Refresh model catalog whenever config first loads (so dropdown
+        // is populated for the configured provider on initial render).
+        React.useEffect(function () {
+          if (config && config.model && config.model.provider && !models) {
+            fetchModels(config.model.provider);
+          }
+        }, [config]);
 
         var schedRunning = status && status.scheduler_running;
         var statusBadge = h("span", {
@@ -13520,8 +13730,184 @@
           },
         }, schedRunning ? "running" : "stopped");
 
+        var inventory = (repos && repos.repos) || [];
+        var modelList = (models && models.models) || [];
+
+        // ---- Editor view --------------------------------------------------
+        function renderEditor() {
+          if (!config) {
+            return h("div", { style: { color: "var(--text-secondary)" } }, "Loading config...");
+          }
+          var providerOptions = ["ollama","anthropic","openai","openrouter","google","bedrock","vertex"];
+          var rotationOptions = ["round-robin","all-each-tick","random"];
+          return h("div", null,
+            // Top-level: WSL + provider + cline flags
+            h("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 } },
+              h("fieldset", { style: { padding: 8 } },
+                h("legend", null, "WSL + discovery"),
+                h("label", null, "WSL distro",
+                  h("input", { type: "text", value: config.wsl_distro || "",
+                    style: { width: "100%" },
+                    onChange: function (e) { patchConfig("wsl_distro", e.target.value); } })),
+                h("label", null, "Repos root (WSL path)",
+                  h("input", { type: "text", value: config.repos_root_wsl || "",
+                    style: { width: "100%" },
+                    onChange: function (e) { patchConfig("repos_root_wsl", e.target.value); } })),
+                h("label", null, "Org filter",
+                  h("input", { type: "text", value: config.repos_org_filter || "",
+                    style: { width: "100%" },
+                    onChange: function (e) { patchConfig("repos_org_filter", e.target.value); } })),
+              ),
+              h("fieldset", { style: { padding: 8 } },
+                h("legend", null, "Model"),
+                h("label", null, "Provider",
+                  h("select", { value: (config.model && config.model.provider) || "ollama",
+                    onChange: function (e) { patchConfig("model.provider", e.target.value); } },
+                    providerOptions.map(function (p) { return h("option", { key: p, value: p }, p); }))),
+                h("label", null, "Model ID",
+                  h("input", { type: "text",
+                    list: "cline-launcher-model-ids",
+                    value: (config.model && config.model.model_id) || "",
+                    style: { width: "100%" },
+                    onChange: function (e) { patchConfig("model.model_id", e.target.value || null); } }),
+                  h("datalist", { id: "cline-launcher-model-ids" },
+                    modelList.map(function (m) {
+                      return h("option", { key: m.id, value: m.id },
+                        m.size_human + " " + m.notes);
+                    })),
+                  h("div", { style: { fontSize: 11, color: "var(--text-secondary)", marginTop: 2 } },
+                    models ? (models.count + " " + (models.provider || "") + " models known. Type any tag.") : "loading models..."),
+                ),
+                h("label", null, "Context window (optional)",
+                  h("input", { type: "number", min: 0,
+                    value: (config.model && config.model.context_window) || "",
+                    style: { width: "100%" },
+                    onChange: function (e) {
+                      var v = e.target.value ? parseInt(e.target.value, 10) : null;
+                      patchConfig("model.context_window", v);
+                    } })),
+              ),
+            ),
+            h("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 } },
+              h("fieldset", { style: { padding: 8 } },
+                h("legend", null, "Cline flags"),
+                h("label", { style: { display: "block" } },
+                  h("input", { type: "checkbox",
+                    checked: !!(config.cline && config.cline.tui),
+                    onChange: function (e) { patchConfig("cline.tui", e.target.checked); } }),
+                  " --tui (open visual TUI; uncheck for headless)"),
+                h("label", { style: { display: "block" } },
+                  h("input", { type: "checkbox",
+                    checked: !!(config.cline && config.cline.yolo),
+                    onChange: function (e) { patchConfig("cline.yolo", e.target.checked); } }),
+                  " --yolo (auto-approve actions)"),
+                h("label", { style: { display: "block" } },
+                  h("input", { type: "checkbox",
+                    checked: !!(config.cline && config.cline.auto_approve_all),
+                    onChange: function (e) { patchConfig("cline.auto_approve_all", e.target.checked); } }),
+                  " --auto-approve-all (interactive yet pre-approved)"),
+              ),
+              h("fieldset", { style: { padding: 8 } },
+                h("legend", null, "Scheduler"),
+                h("label", null, "Default timeout (s)",
+                  h("input", { type: "number", min: 30, value: config.default_timeout_seconds || 3600,
+                    style: { width: "100%" },
+                    onChange: function (e) { patchConfig("default_timeout_seconds", parseInt(e.target.value || 0, 10)); } })),
+                h("label", null, "Stagger between agents (s)",
+                  h("input", { type: "number", min: 0, max: 600, value: config.stagger_seconds || 30,
+                    style: { width: "100%" },
+                    onChange: function (e) { patchConfig("stagger_seconds", parseInt(e.target.value || 0, 10)); } })),
+                h("label", null, "Max concurrent windows per agent",
+                  h("input", { type: "number", min: 1, max: 10, value: config.max_concurrent_per_agent || 1,
+                    style: { width: "100%" },
+                    onChange: function (e) { patchConfig("max_concurrent_per_agent", parseInt(e.target.value || 1, 10)); } })),
+              ),
+            ),
+            // Per-agent editors
+            h("h3", { style: { marginTop: 8 } }, "Agents"),
+            Object.keys(config.agents || {}).sort().map(function (name) {
+              return h(AgentEditor, {
+                key: name, name: name, cfg: config.agents[name],
+                inventory: inventory,
+                onChange: patchAgent, onDelete: deleteAgent,
+              });
+            }),
+            h("button", { className: "btn btn-sm", onClick: addAgent }, "+ Add agent"),
+            // Save bar
+            h("div", { style: {
+              position: "sticky", bottom: 0, padding: 12, marginTop: 16,
+              background: "var(--bg-secondary)", borderTop: "1px solid var(--border-primary)",
+              display: "flex", alignItems: "center", gap: 12,
+            } },
+              h("button", { className: "btn btn-primary", disabled: !dirty,
+                onClick: saveConfig }, dirty ? "Save changes" : "No changes"),
+              h("button", { className: "btn", disabled: !dirty,
+                onClick: function () { fetchConfig(); } }, "Discard"),
+              saveMsg ? h("span", { style: { fontSize: 12, color: "var(--accent-green)" } }, saveMsg) : null,
+              h("span", { style: { flex: 1 } }),
+              h("span", { style: { fontSize: 11, color: "var(--text-secondary)" } },
+                "Validates server-side; bad configs leave config.json untouched."),
+            ),
+          );
+        }
+
+        // ---- Status view --------------------------------------------------
+        function renderStatus() {
+          return h("div", null,
+            h("h3", null, "Agents"),
+            status && status.agents && status.agents.length
+              ? h("table", { className: "data-table", style: { width: "100%" } },
+                  h("thead", null, h("tr", null,
+                    h("th", null, "Agent"), h("th", null, "Enabled"),
+                    h("th", null, "Interval"), h("th", null, "Last run (UTC)"),
+                    h("th", null, "Last repo"), h("th", null, "Window PID"),
+                    h("th", null, "Lock"), h("th", null, "Run now"))),
+                  h("tbody", null, status.agents.map(function (a) {
+                    return h("tr", { key: a.name },
+                      h("td", null, a.name),
+                      h("td", null, a.enabled ? "yes" : "no"),
+                      h("td", null, a.interval_seconds + "s"),
+                      h("td", { style: { fontSize: 12 } }, a.last_run_iso || "-"),
+                      h("td", null, a.last_repo || "-"),
+                      h("td", null, a.last_window_pid || "-"),
+                      h("td", null, a.lock_alive
+                        ? h("span", { style: { color: "var(--accent-yellow)" } }, "alive")
+                        : "-"),
+                      h("td", null, h("button", {
+                        className: "btn btn-sm",
+                        disabled: !!busy["run-once/" + a.name] || a.lock_alive,
+                        onClick: function () { action("run-once", { agent: a.name }); },
+                      }, busy["run-once/" + a.name] ? "spawning..." : "Run once")));
+                  })))
+              : h("div", { style: { color: "var(--text-secondary)" } },
+                  "No agents configured."),
+            h("h3", { style: { marginTop: 24 } }, "Discovered repositories",
+              repos ? h("span", { className: "section-badge",
+                style: { marginLeft: 8, background: "rgba(136,108,228,0.15)", color: "var(--accent-purple)" },
+              }, repos.count + " " + (repos.org_filter || "")) : null),
+            repos && repos.repos && repos.repos.length
+              ? h("div", { style: { fontSize: 12, color: "var(--text-secondary)", marginBottom: 8 } },
+                  "WSL distro: " + repos.wsl_distro + ", root: " + repos.repos_root)
+              : null,
+            repos && repos.repos
+              ? h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6 } },
+                  repos.repos.map(function (r) {
+                    return h("span", { key: r.name, className: "section-badge",
+                      title: r.wsl_path,
+                      style: { background: "var(--bg-tertiary)" } }, r.name);
+                  }))
+              : h("div", { style: { color: "var(--text-secondary)" } },
+                  loading ? "discovering..." : "No repos discovered yet."),
+            h("div", { style: { marginTop: 24, padding: 12, background: "var(--bg-tertiary)",
+                borderRadius: 4, fontSize: 12, color: "var(--text-secondary)" } },
+              h("div", null, "Runtime root: " + (status && status.runtime_root || "-")),
+              h("div", null, "Status polls every 5s. Repo discovery + model list refresh on demand."),
+            ),
+          );
+        }
+
+        // ---- Top render ---------------------------------------------------
         return h("div", { className: "tab-panel" },
-          // Header + global controls
           h("div", { style: { display: "flex", alignItems: "center", gap: 12, marginBottom: 16 } },
             h("h2", { style: { margin: 0 } }, "Cline Agent Launcher"),
             statusBadge,
@@ -13529,99 +13915,32 @@
               ? h("span", { style: { fontSize: 12, color: "var(--text-secondary)" } },
                   "pid " + status.scheduler_pid)
               : null,
+            h("span", { style: { flex: 1 } }),
+            h("div", { className: "btn-group" },
+              h("button", { className: "btn btn-sm" + (view === "editor" ? " btn-primary" : ""),
+                onClick: function () { setView("editor"); } }, "Editor"),
+              h("button", { className: "btn btn-sm" + (view === "status" ? " btn-primary" : ""),
+                onClick: function () { setView("status"); } }, "Status"),
+            ),
           ),
           error
             ? h("div", { className: "alert alert-error", style: { marginBottom: 12 } }, error)
             : null,
           h("div", { style: { display: "flex", gap: 8, marginBottom: 16 } },
-            h("button", {
-              className: "btn btn-primary",
+            h("button", { className: "btn btn-primary",
               disabled: !!busy["start"] || schedRunning,
-              onClick: function () { action("start"); },
-            }, busy["start"] ? "starting..." : "Start scheduler"),
-            h("button", {
-              className: "btn",
+              onClick: function () { action("start"); } },
+              busy["start"] ? "starting..." : "Start scheduler"),
+            h("button", { className: "btn",
               disabled: !!busy["stop"] || !schedRunning,
-              onClick: function () { action("stop"); },
-            }, busy["stop"] ? "stopping..." : "Stop scheduler"),
-            h("button", {
-              className: "btn",
-              disabled: loading,
-              onClick: function () { fetchRepos(); fetchStatus(); },
-            }, loading ? "refreshing..." : "Refresh"),
+              onClick: function () { action("stop"); } },
+              busy["stop"] ? "stopping..." : "Stop scheduler"),
+            h("button", { className: "btn", disabled: loading,
+              onClick: function () { fetchRepos(); fetchStatus(); fetchConfig();
+                if (config && config.model) fetchModels(config.model.provider); } },
+              loading ? "refreshing..." : "Refresh"),
           ),
-
-          // Agents table
-          h("h3", null, "Agents"),
-          status && status.agents && status.agents.length
-            ? h("table", { className: "data-table", style: { width: "100%" } },
-                h("thead", null, h("tr", null,
-                  h("th", null, "Agent"),
-                  h("th", null, "Enabled"),
-                  h("th", null, "Interval"),
-                  h("th", null, "Last run (UTC)"),
-                  h("th", null, "Last repo"),
-                  h("th", null, "Window PID"),
-                  h("th", null, "Lock"),
-                  h("th", null, "Run now"),
-                )),
-                h("tbody", null, status.agents.map(function (a) {
-                  return h("tr", { key: a.name },
-                    h("td", null, a.name),
-                    h("td", null, a.enabled ? "yes" : "no"),
-                    h("td", null, a.interval_seconds + "s"),
-                    h("td", { style: { fontSize: 12 } }, a.last_run_iso || "-"),
-                    h("td", null, a.last_repo || "-"),
-                    h("td", null, a.last_window_pid || "-"),
-                    h("td", null, a.lock_alive
-                      ? h("span", { style: { color: "var(--accent-yellow)" } }, "alive")
-                      : "-"),
-                    h("td", null,
-                      h("button", {
-                        className: "btn btn-sm",
-                        disabled: !!busy["run-once/" + a.name] || a.lock_alive,
-                        onClick: function () {
-                          action("run-once", { agent: a.name });
-                        },
-                      }, busy["run-once/" + a.name] ? "spawning..." : "Run once"),
-                    ),
-                  );
-                })),
-              )
-            : h("div", { style: { color: "var(--text-secondary)" } },
-                "No agents configured. Edit %LOCALAPPDATA%\\cline_agent_launcher\\config.json"),
-
-          // Discovered repo inventory
-          h("h3", { style: { marginTop: 24 } },
-            "Discovered repositories",
-            repos ? h("span", {
-              className: "section-badge",
-              style: { marginLeft: 8, background: "rgba(136,108,228,0.15)", color: "var(--accent-purple)" },
-            }, repos.count + " " + (repos.org_filter || "")) : null,
-          ),
-          repos && repos.repos && repos.repos.length
-            ? h("div", { style: { fontSize: 12, color: "var(--text-secondary)", marginBottom: 8 } },
-                "WSL distro: " + repos.wsl_distro + ", root: " + repos.repos_root)
-            : null,
-          repos && repos.repos
-            ? h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6 } },
-                repos.repos.map(function (r) {
-                  return h("span", {
-                    key: r.name,
-                    className: "section-badge",
-                    title: r.wsl_path,
-                    style: { background: "var(--bg-tertiary)" },
-                  }, r.name);
-                }))
-            : h("div", { style: { color: "var(--text-secondary)" } },
-                loading ? "discovering..." : "No repos discovered yet."),
-
-          // Notes
-          h("div", { style: { marginTop: 24, padding: 12, background: "var(--bg-tertiary)", borderRadius: 4, fontSize: 12, color: "var(--text-secondary)" } },
-            h("div", null, "Runtime root: " + (status && status.runtime_root || "-")),
-            h("div", null, "Status polls every 5s. Repo discovery is on-demand (Refresh button)."),
-            h("div", null, "Full config editor (model selector, repo multi-select, intervals) ships in a follow-up — for now edit config.json directly and click Refresh."),
-          ),
+          view === "editor" ? renderEditor() : renderStatus(),
         );
       }
 

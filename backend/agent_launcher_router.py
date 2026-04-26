@@ -171,8 +171,36 @@ class ReposResponse(BaseModel):
     repos: list[RepoEntry]
 
 
+class ModelEntry(BaseModel):
+    id: str
+    provider: str
+    size_human: str = ""
+    family: str = ""
+    notes: str = ""
+
+
+class ModelsResponse(BaseModel):
+    provider: str
+    wsl_distro: str
+    count: int
+    models: list[ModelEntry]
+
+
 class RunOnceRequest(BaseModel):
     agent: str = Field(..., min_length=1, max_length=64)
+
+
+class DispatchRemediationRequest(BaseModel):
+    """Body for /dispatch-remediation. The dashboard's remediation surface
+    uses this to hand a CI failure off to cline via the launcher.
+
+    Pre: ``agent`` is the launcher agent name (default ``address-prs``).
+    """
+
+    repository: str = Field(..., min_length=1, max_length=200)
+    agent: str = Field(default="address-prs", min_length=1, max_length=64)
+    branch: str = Field(default="", max_length=200)
+    failure_summary: str = Field(default="", max_length=4000)
 
 
 class SimpleResponse(BaseModel):
@@ -340,6 +368,30 @@ async def put_config(request: Request) -> SimpleResponse:
 # ---------------------------------------------------------------------------
 # Repos — live WSL inventory
 # ---------------------------------------------------------------------------
+@router.get("/models", response_model=ModelsResponse)
+def get_models(provider: str = "") -> ModelsResponse:
+    """Live model catalog for the configured (or ``?provider=X``) provider.
+
+    Powers the editor's model dropdown. Returns a single placeholder entry
+    if discovery fails (ollama unreachable, missing API keys, etc.) so the
+    UI can still render a 'type any model id' fallback.
+    """
+    args = ["--list-models"]
+    if provider:
+        args += ["--provider", provider]
+    rc, stdout, stderr = _run_cli(*args, timeout=20.0)
+    if rc != 0:
+        raise HTTPException(
+            status_code=502,
+            detail=f"launcher --list-models failed: {stderr.strip()[:300]}",
+        )
+    try:
+        d = json.loads(stdout)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=500, detail=f"launcher returned invalid JSON: {exc}") from exc
+    return ModelsResponse(**d)
+
+
 @router.get("/repos", response_model=ReposResponse)
 def get_repos() -> ReposResponse:
     rc, stdout, stderr = _run_cli("--list-repos", timeout=45.0)
@@ -401,6 +453,47 @@ def stop_scheduler() -> SimpleResponse:
     if rc != 0:
         raise HTTPException(status_code=500, detail=f"--stop failed: {stderr[:300]}")
     return SimpleResponse(ok=True, detail=stdout.strip() or "stop requested")
+
+
+@router.post("/dispatch-remediation", response_model=SimpleResponse)
+def dispatch_remediation(req: DispatchRemediationRequest) -> SimpleResponse:
+    """Dispatch a CI-failure remediation to cline via the launcher.
+
+    Wiring: the dashboard's remediation layer (agent_remediation.py) calls
+    this endpoint when the chosen provider is ``cline``. The launcher
+    spawns a WT window, opens cline against the named repo's WSL path,
+    and runs the agent's configured skill (default ``/address-prs``).
+    Failure context is logged but not (yet) injected into the prompt —
+    the skill itself reads the PR's check-runs to find the failure. A
+    follow-up PR can add a one-shot prompt-override flag to the launcher
+    so the failure summary is handed in directly.
+
+    Returns 200 on successful spawn, 502 on launcher failure, 503 on
+    launcher missing.
+    """
+    cfg = get_config()
+    if req.agent not in cfg.get("agents", {}):
+        known = list(cfg.get("agents", {}))
+        raise HTTPException(
+            status_code=404,
+            detail=f"agent {req.agent!r} not configured; known: {known}",
+        )
+    log.info(
+        "dispatch-remediation: repo=%s branch=%s agent=%s",
+        req.repository,
+        req.branch or "-",
+        req.agent,
+    )
+    rc, stdout, stderr = _run_cli("--once", req.agent, timeout=90.0)
+    if rc != 0:
+        raise HTTPException(
+            status_code=502,
+            detail=f"launcher --once {req.agent} failed (rc={rc}): {(stderr or stdout)[:300]}",
+        )
+    return SimpleResponse(
+        ok=True,
+        detail=f"cline window spawned for {req.repository} via {req.agent}",
+    )
 
 
 @router.post("/run-once", response_model=SimpleResponse)

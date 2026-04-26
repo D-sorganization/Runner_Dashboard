@@ -414,11 +414,23 @@ PROVIDERS: dict[str, AgentProvider] = {
         provider_id="cline",
         label="Cline",
         execution_mode="local_plugin",
-        dispatch_mode="future",
+        # dashboard_local: dispatched by the dashboard host directly, not
+        # by GitHub Actions. The actual cline window opens via the
+        # cline_agent_launcher (Repository_Management/launchers/cline_agent_launcher),
+        # which the dashboard reaches over its own /api/agent-launcher
+        # endpoints. See backend/agent_launcher_router.py.
+        dispatch_mode="dashboard_local",
         availability_probe=("cline",),
-        editable=False,
-        experimental=True,
-        notes="Reserved for future plugin-driven local remediation; no stable CLI contract is assumed here yet.",
+        # Editable so the operator can change the model + provider via
+        # the Cline Launcher tab editor (writes to the launcher's
+        # config.json; cline reads model from there).
+        editable=True,
+        experimental=False,
+        notes=(
+            "Local cline TUI driven by the cline_agent_launcher in WSL. "
+            "Model + provider configurable from the Cline Launcher tab. "
+            "Defaults to ollama on localhost:11434 with kimi-k2.6:cloud."
+        ),
     ),
 }
 
@@ -668,6 +680,22 @@ def provider_prompt(provider_id: str, context: FailureContext) -> str:
             f"{repair_goal}\n"
             "Work inside this checkout, make the minimal code change that addresses the failure, "
             "and verify the narrowest relevant test target."
+        )
+    if provider_id == "cline":
+        # Cline runs inside its TUI window opened by the launcher in WSL.
+        # The launcher already knows the working directory; we just hand
+        # cline a self-contained prompt that mirrors the address-prs skill's
+        # contract (REST-only, scope-locked, no test weakening).
+        return (
+            f"{system_note}\n\n"
+            f"{branch_line}\nRun ID: {context.run_id or 'unknown'}\n\n"
+            f"Failure summary:\n{summary}\n\n"
+            f"Failed log excerpt:\n{log_excerpt}\n\n"
+            f"{repair_goal}\n"
+            "You are running in cline TUI inside WSL with auto-approve. "
+            "Edit the repo at $PWD, validate the fix locally before pushing, "
+            "and never weaken tests or suppress lint to make CI green. "
+            "Cap PR-push attempts at 3."
         )
     return (
         f"{system_note}\n\n"

@@ -202,6 +202,101 @@ def test_get_repos_502_on_launcher_failure(client, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# /models
+# ---------------------------------------------------------------------------
+def test_get_models_passes_through_launcher_json(client, monkeypatch):
+    fake = {
+        "provider": "ollama",
+        "wsl_distro": "Ubuntu-22.04",
+        "count": 2,
+        "models": [
+            {"id": "kimi-k2.6:cloud", "provider": "ollama",
+             "size_human": "", "family": "kimi", "notes": "cloud"},
+            {"id": "qwen3:14b", "provider": "ollama",
+             "size_human": "8.6GB", "family": "qwen3", "notes": "local"},
+        ],
+    }
+    monkeypatch.setattr(alr, "_run_cli", lambda *a, **kw: (0, json.dumps(fake), ""))
+    r = client.get("/api/agent-launcher/models")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["count"] == 2
+    assert {m["id"] for m in body["models"]} == {"kimi-k2.6:cloud", "qwen3:14b"}
+
+
+def test_get_models_passes_provider_query(client, monkeypatch):
+    """The ?provider=X query must reach the launcher CLI as --provider X."""
+    captured = {}
+    def fake_cli(*args, **kw):
+        captured["args"] = args
+        return (0, json.dumps({"provider": "anthropic", "wsl_distro": "u",
+                               "count": 0, "models": []}), "")
+    monkeypatch.setattr(alr, "_run_cli", fake_cli)
+    r = client.get("/api/agent-launcher/models?provider=anthropic")
+    assert r.status_code == 200
+    assert "--provider" in captured["args"]
+    assert "anthropic" in captured["args"]
+
+
+def test_get_models_502_on_launcher_failure(client, monkeypatch):
+    monkeypatch.setattr(alr, "_run_cli", lambda *a, **kw: (1, "", "ollama down"))
+    r = client.get("/api/agent-launcher/models")
+    assert r.status_code == 502
+
+
+# ---------------------------------------------------------------------------
+# /dispatch-remediation
+# ---------------------------------------------------------------------------
+def test_dispatch_remediation_requires_known_agent(client, monkeypatch):
+    monkeypatch.setattr(
+        alr, "_run_cli",
+        lambda *a, **kw: (0, json.dumps({"agents": {"address-prs": {}}}), ""),
+    )
+    r = client.post("/api/agent-launcher/dispatch-remediation",
+                    json={"repository": "owner/repo", "agent": "nonexistent"})
+    assert r.status_code == 404
+    assert "not configured" in r.json()["detail"]
+
+
+def test_dispatch_remediation_invokes_launcher_once(client, monkeypatch):
+    """Successful dispatch shells out to launcher --once <agent>."""
+    calls = []
+    def fake_cli(*args, **kw):
+        calls.append(args)
+        if "--once" in args:
+            return (0, "spawned", "")
+        return (0, json.dumps({"agents": {"address-prs": {}}}), "")
+    monkeypatch.setattr(alr, "_run_cli", fake_cli)
+    r = client.post("/api/agent-launcher/dispatch-remediation",
+                    json={"repository": "D-sorganization/Tools",
+                          "agent": "address-prs",
+                          "branch": "fix/bad-thing",
+                          "failure_summary": "ruff E501"})
+    assert r.status_code == 200
+    assert any("--once" in c for c in calls)
+    assert "Tools" in r.json()["detail"]
+
+
+def test_dispatch_remediation_502_on_launcher_failure(client, monkeypatch):
+    def fake_cli(*args, **kw):
+        if "--once" in args:
+            return (3, "", "spawn failed")
+        return (0, json.dumps({"agents": {"address-prs": {}}}), "")
+    monkeypatch.setattr(alr, "_run_cli", fake_cli)
+    r = client.post("/api/agent-launcher/dispatch-remediation",
+                    json={"repository": "owner/repo"})
+    assert r.status_code == 502
+
+
+def test_dispatch_remediation_validates_repository(client):
+    """Empty repository must fail pydantic validation, not reach the
+    launcher (DbC at the boundary)."""
+    r = client.post("/api/agent-launcher/dispatch-remediation",
+                    json={"repository": ""})
+    assert r.status_code == 422
+
+
+# ---------------------------------------------------------------------------
 # /run-once
 # ---------------------------------------------------------------------------
 def test_run_once_unknown_agent_returns_404(client, monkeypatch):
