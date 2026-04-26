@@ -1,0 +1,162 @@
+{
+  "meta": {
+    "repo": "D-sorganization/Games",
+    "date": "2026-04-26",
+    "head_short": "fdb5c14",
+    "head_long": "fdb5c1432fcb6581e95770baa8012cff53f6b4c7",
+    "branch": "main",
+    "assessor": "pragmatic-ao-assessment-agent"
+  },
+  "scores": {
+    "A": 8,
+    "B": 6,
+    "C": 5,
+    "D": 6,
+    "E": 5,
+    "F": 0,
+    "G": 6,
+    "H": 7,
+    "I": 6,
+    "J": 5,
+    "K": 4,
+    "L": 4,
+    "M": 5,
+    "N": 8,
+    "O": 7
+  },
+  "overall": 5.5,
+  "findings": [
+    {
+      "criterion": "B",
+      "severity": "P2",
+      "principle": "PP4",
+      "text": "No ADRs found in docs/adr/"
+    },
+    {
+      "criterion": "D",
+      "severity": "P2",
+      "principle": "PP6",
+      "text": "try/except returning None without logging in asset_catalog.py"
+    },
+    {
+      "criterion": "D",
+      "severity": "P2",
+      "principle": "PP6",
+      "text": "try/except returning None without logging in notes_workspace.py"
+    },
+    {
+      "criterion": "D",
+      "severity": "P2",
+      "principle": "PP6",
+      "text": "try/except returning None without logging in raycaster.py"
+    },
+    {
+      "criterion": "E",
+      "severity": "P2",
+      "principle": "PP4",
+      "text": "No benchmarks/ directory"
+    },
+    {
+      "criterion": "F",
+      "severity": "P0",
+      "principle": "PP1",
+      "text": "God file combat_manager.py (624 lines) exceeds 500-line soft cap"
+    },
+    {
+      "criterion": "F",
+      "severity": "P0",
+      "principle": "PP1",
+      "text": "God file raycaster.py (812 lines) exceeds 500-line soft cap"
+    },
+    {
+      "criterion": "F",
+      "severity": "P0",
+      "principle": "PP1",
+      "text": "God file raycaster_rendering.py (587 lines) exceeds 500-line soft cap"
+    },
+    {
+      "criterion": "F",
+      "severity": "P0",
+      "principle": "PP1",
+      "text": "God file game.py (751 lines) exceeds 500-line soft cap"
+    },
+    {
+      "criterion": "F",
+      "severity": "P0",
+      "principle": "PP1",
+      "text": "God file ui_renderer.py (739 lines) exceeds 500-line soft cap"
+    },
+    {
+      "criterion": "F",
+      "severity": "P0",
+      "principle": "PP1",
+      "text": "God file core.py (559 lines) exceeds 500-line soft cap"
+    },
+    {
+      "criterion": "F",
+      "severity": "P0",
+      "principle": "PP1",
+      "text": "God file bot.py (509 lines) exceeds 500-line soft cap"
+    },
+    {
+      "criterion": "F",
+      "severity": "P0",
+      "principle": "PP1",
+      "text": "God file combat_system.py (611 lines) exceeds 500-line soft cap"
+    },
+    {
+      "criterion": "F",
+      "severity": "P0",
+      "principle": "PP1",
+      "text": "God file ui_renderer.py (893 lines) exceeds 500-line soft cap"
+    },
+    {
+      "criterion": "F",
+      "severity": "P0",
+      "principle": "PP1",
+      "text": "God file weapon_renderer.py (555 lines) exceeds 500-line soft cap"
+    },
+    {
+      "criterion": "F",
+      "severity": "P0",
+      "principle": "PP1",
+      "text": "God file game.py (944 lines) exceeds 500-line soft cap"
+    },
+    {
+      "criterion": "F",
+      "severity": "P0",
+      "principle": "PP1",
+      "text": "God file ui_renderer.py (819 lines) exceeds 500-line soft cap"
+    },
+    {
+      "criterion": "F",
+      "severity": "P2",
+      "principle": "PP1",
+      "text": "Many magic float literals (196) in sample"
+    },
+    {
+      "criterion": "I",
+      "severity": "P2",
+      "principle": "PP3",
+      "text": "No .env.example documenting required variables"
+    },
+    {
+      "criterion": "I",
+      "severity": "P2",
+      "principle": "PP3",
+      "text": "No Dockerfile for reproducible dev environment"
+    },
+    {
+      "criterion": "M",
+      "severity": "P2",
+      "principle": "PP3",
+      "text": "No deploy/ directory"
+    },
+    {
+      "criterion": "M",
+      "severity": "P2",
+      "principle": "PP5",
+      "text": "No VERSION file"
+    }
+  ]
+}

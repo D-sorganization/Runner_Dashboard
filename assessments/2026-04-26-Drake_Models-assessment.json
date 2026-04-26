@@ -1,0 +1,84 @@
+{
+  "meta": {
+    "repo": "D-sorganization/Drake_Models",
+    "date": "2026-04-26",
+    "head_short": "6e288e7",
+    "head_long": "6e288e756c283f7944d3f5a8d2571897c33361ee",
+    "branch": "HEAD",
+    "assessor": "pragmatic-ao-assessment-agent"
+  },
+  "scores": {
+    "A": 8,
+    "B": 6,
+    "C": 5,
+    "D": 6,
+    "E": 5,
+    "F": 3,
+    "G": 4,
+    "H": 7,
+    "I": 6,
+    "J": 5,
+    "K": 4,
+    "L": 4,
+    "M": 5,
+    "N": 8,
+    "O": 7
+  },
+  "overall": 5.5,
+  "findings": [
+    {
+      "criterion": "B",
+      "severity": "P2",
+      "principle": "PP4",
+      "text": "No ADRs found in docs/adr/"
+    },
+    {
+      "criterion": "C",
+      "severity": "P2",
+      "principle": "PP7",
+      "text": "No .coverage file found"
+    },
+    {
+      "criterion": "E",
+      "severity": "P2",
+      "principle": "PP4",
+      "text": "No benchmarks/ directory"
+    },
+    {
+      "criterion": "F",
+      "severity": "P0",
+      "principle": "PP1",
+      "text": "God file body_model.py (814 lines) exceeds 500-line soft cap"
+    },
+    {
+      "criterion": "F",
+      "severity": "P2",
+      "principle": "PP1",
+      "text": "Many magic float literals (255) in sample"
+    },
+    {
+      "criterion": "G",
+      "severity": "P1",
+      "principle": "PP3",
+      "text": "No lockfile present (poetry.lock, package-lock.json, etc.)"
+    },
+    {
+      "criterion": "I",
+      "severity": "P2",
+      "principle": "PP3",
+      "text": "No .env.example documenting required variables"
+    },
+    {
+      "criterion": "M",
+      "severity": "P2",
+      "principle": "PP3",
+      "text": "No deploy/ directory"
+    },
+    {
+      "criterion": "M",
+      "severity": "P2",
+      "principle": "PP5",
+      "text": "No VERSION file"
+    }
+  ]
+}
