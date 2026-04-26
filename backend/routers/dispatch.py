@@ -20,6 +20,12 @@ router = APIRouter(prefix="/api/fleet/dispatch", tags=["dispatch"])
 
 log = logging.getLogger("dashboard.dispatch")
 
+
+def _sanitize_log_value(value: str) -> str:
+    """Strip log-injection characters from user-controlled strings."""
+    return value.replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")[:200]
+
+
 _is_envelope_replay: Callable[[str], Awaitable[bool]] | None = None
 _record_processed_envelope: Callable[[str], Awaitable[None]] | None = None
 
@@ -60,9 +66,9 @@ async def validate_dispatch_envelope(request: Request) -> dict:
 
     log.info(
         "validate envelope_id=%s action=%s decision=%s",
-        envelope.envelope_id,
-        envelope.action,
-        audit.decision,
+        _sanitize_log_value(envelope.envelope_id),
+        _sanitize_log_value(envelope.action),
+        _sanitize_log_value(audit.decision),
     )
 
     return {
@@ -88,8 +94,8 @@ async def submit_dispatch_command(request: Request) -> dict:
     if not crypto_result.valid:
         log.warning(
             "crypto validation failed: envelope_id=%s reason=%s",
-            envelope.envelope_id,
-            crypto_result.reason,
+            _sanitize_log_value(envelope.envelope_id),
+            _sanitize_log_value(crypto_result.reason),
         )
         raise HTTPException(
             status_code=400,
@@ -97,7 +103,7 @@ async def submit_dispatch_command(request: Request) -> dict:
         )
 
     if _is_envelope_replay and await _is_envelope_replay(envelope.envelope_id):
-        log.warning("replay detected: envelope_id=%s", envelope.envelope_id)
+        log.warning("replay detected: envelope_id=%s", _sanitize_log_value(envelope.envelope_id))
         raise HTTPException(
             status_code=400,
             detail="Envelope has already been processed (replay detected)",
@@ -108,10 +114,10 @@ async def submit_dispatch_command(request: Request) -> dict:
 
     log.info(
         "submit envelope_id=%s action=%s decision=%s requested_by=%s",
-        envelope.envelope_id,
-        envelope.action,
-        audit.decision,
-        envelope.requested_by,
+        _sanitize_log_value(envelope.envelope_id),
+        _sanitize_log_value(envelope.action),
+        _sanitize_log_value(audit.decision),
+        _sanitize_log_value(envelope.requested_by),
     )
 
     if not result.accepted:

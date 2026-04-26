@@ -11,9 +11,8 @@ from __future__ import annotations  # noqa: E402
 import json  # noqa: E402
 import os  # noqa: E402
 import sys  # noqa: E402
-from datetime import UTC, datetime, timedelta  # noqa: E402
-
-UTC = UTC
+from datetime import datetime, timedelta, timezone  # noqa: E402
+UTC = timezone.utc
 from pathlib import Path  # noqa: E402
 from unittest.mock import patch  # noqa: E402
 
@@ -34,9 +33,6 @@ from dispatch_contract import (  # noqa: E402  # noqa: E402
     _verify_envelope_signature,
     validate_envelope_crypto,
 )
-
-UTC = UTC
-
 
 class TestEnvelopeSigningAndVerification:
     """Test HMAC-SHA256 envelope signing infrastructure."""
