@@ -11,6 +11,15 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+try:
+    _StrEnum = enum.StrEnum
+except AttributeError:
+
+    class _StrEnum(str, enum.Enum):
+        """Python 3.10 compatible StrEnum fallback."""
+
+        pass
+
 # ─── Chat Endpoint Contracts (Issue #88) ────────────────────────────────────────
 
 
@@ -110,7 +119,7 @@ class AuditHistoryResponse(BaseModel):
 # Retained for backwards-compatibility with existing callers.
 
 
-class ActionRiskLevel(enum.StrEnum):
+class ActionRiskLevel(_StrEnum):
     """Risk assessment for proposed actions."""
 
     LOW = "low"  # Informational, no impact

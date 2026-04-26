@@ -55,10 +55,16 @@ def _load_signing_secret() -> str:
     return secret
 
 
-class _StrEnum(enum.StrEnum):
-    """Python 3.10 compatible StrEnum."""
+try:
+    class _StrEnum(enum.StrEnum):
+        """Python 3.10 compatible StrEnum."""
 
-    pass
+        pass
+except AttributeError:
+    class _StrEnum(str, enum.Enum):
+        """Python 3.10 compatible StrEnum fallback."""
+
+        pass
 
 
 class TimestampValidationResult(_StrEnum):
