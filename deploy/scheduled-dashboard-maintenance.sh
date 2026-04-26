@@ -258,6 +258,34 @@ verify_dashboard() {
     ok "Dashboard is enabled, restarted, and responding on port ${PORT}"
 }
 
+purge_stale_queue() {
+    # Cancel queued runs that have been waiting longer than STALE_QUEUE_AGE_MINUTES.
+    # Silently skipped when the dashboard isn't running (no GH_TOKEN, etc.).
+    local age="${STALE_QUEUE_AGE_MINUTES:-120}"
+    local script="${DASHBOARD_DIR}/deploy/../scripts/cancel_stale_queue.py"
+    # Prefer the standalone script if present (works without the service running).
+    if command -v python3 >/dev/null 2>&1 && [[ -f "${script}" ]]; then
+        info "Purging stale queue (min age ${age} min) via cancel_stale_queue.py"
+        python3 "${script}" --cancel --min-age "${age}" || warn "Stale queue purge script exited non-zero"
+        return
+    fi
+    # Fall back to the API endpoint if the dashboard is already running.
+    local api_url="http://127.0.0.1:${PORT:-8321}/api/queue/purge-stale"
+    if curl -fsS --max-time 5 "http://127.0.0.1:${PORT:-8321}/api/health" >/dev/null 2>&1; then
+        info "Purging stale queue (min age ${age} min) via dashboard API"
+        curl -fsS --max-time 60 -X POST \
+            -H "Content-Type: application/json" \
+            -d "{\"min_age\": ${age}, \"dry_run\": false}" \
+            "${api_url}" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f\"  Cancelled {d['cancelled_count']} / {d['stale_count']} stale run(s)\")" || warn "Stale queue API purge failed"
+    else
+        warn "Dashboard not reachable; skipping stale queue purge (will retry next run)"
+    fi
+}
+
+
 main() {
     info "Runner dashboard scheduled maintenance"
     echo "Repo:       ${REPO_ROOT}"
@@ -275,7 +303,9 @@ main() {
     deploy_dashboard
     install_autoscaler_if_requested
     verify_dashboard
+    purge_stale_queue
     ok "Scheduled dashboard maintenance complete"
 }
 
 main "$@"
+                              

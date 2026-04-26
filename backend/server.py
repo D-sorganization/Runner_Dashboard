@@ -45,37 +45,39 @@ import psutil
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
-from backend.identity import Principal, require_scope  # noqa: B008
+from identity import Principal, require_principal, require_scope  # noqa: B008
 from pydantic import BaseModel, Field
-from backend.routers import auth as auth_router
+from routers import admin as admin_router
+from routers import auth as auth_router
 from starlette.middleware.sessions import SessionMiddleware
 
 BACKEND_DIR = Path(__file__).resolve().parent
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-import backend.agent_dispatch_router as agent_dispatch_router  # noqa: E402
-import backend.agent_remediation as agent_remediation  # noqa: E402
-import backend.assistant_contract as assistant_contract  # noqa: E402
-import backend.assistant_tools as assistant_tools  # noqa: E402
-import backend.config_schema as config_schema  # noqa: E402
-import backend.deployment_drift as deployment_drift  # noqa: E402
-import backend.dispatch_contract as dispatch_contract  # noqa: E402
-import backend.issue_inventory as issue_inventory  # noqa: E402
-import backend.lease_synchronizer as lease_synchronizer  # noqa: E402
-import backend.pr_inventory as pr_inventory  # noqa: E402
-import backend.quick_dispatch as _quick_dispatch  # noqa: E402
-import backend.quota_enforcement as quota_enforcement  # noqa: E402
-import backend.scheduled_workflows as scheduled_workflow_inventory  # noqa: E402
-import backend.usage_monitoring as usage_monitoring  # noqa: E402
-from backend.local_app_monitoring import collect_local_apps  # noqa: E402
-from backend.machine_registry import (  # noqa: E402
+import agent_dispatch_router as agent_dispatch_router  # noqa: E402
+import agent_remediation as agent_remediation  # noqa: E402
+import assistant_contract as assistant_contract  # noqa: E402
+import assistant_tools as assistant_tools  # noqa: E402
+import config_schema as config_schema  # noqa: E402
+import deployment_drift as deployment_drift  # noqa: E402
+import dispatch_contract as dispatch_contract  # noqa: E402
+import issue_inventory as issue_inventory  # noqa: E402
+import lease_synchronizer as lease_synchronizer  # noqa: E402
+import pr_inventory as pr_inventory  # noqa: E402
+import quick_dispatch as _quick_dispatch  # noqa: E402
+import queue_cleanup as queue_cleanup  # noqa: E402
+import quota_enforcement as quota_enforcement  # noqa: E402
+import scheduled_workflows as scheduled_workflow_inventory  # noqa: E402
+import usage_monitoring as usage_monitoring  # noqa: E402
+from local_app_monitoring import collect_local_apps  # noqa: E402
+from machine_registry import (  # noqa: E402
     load_machine_registry,
     merge_registry_with_live_nodes,
 )
-from backend.report_files import parse_report_metrics, sanitize_report_date  # noqa: E402
-from backend.routers import credentials as _credentials_router  # noqa: E402
-from backend.routers import dispatch as _dispatch_router  # noqa: E402
+from report_files import parse_report_metrics, sanitize_report_date  # noqa: E402
+from routers import credentials as _credentials_router  # noqa: E402
+from routers import dispatch as _dispatch_router  # noqa: E402
 
 # datetime.UTC added in Python 3.11; fall back to timezone.utc on older runtimes.
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
@@ -6615,6 +6617,79 @@ async def generate_launchers(
         "launchers": launchers_created,
         "message": f"Created {len(launchers_created)} launcher scripts in {output_dir}",
     }
+
+
+
+# ─── Stale Queue Cleanup ─────────────────────────────────────────────────────
+
+
+@app.get("/api/queue/stale")
+async def get_stale_queue(
+    request: Request,
+    min_age: int = 60,
+) -> dict:
+    """List every queued run older than *min_age* minutes across the entire org.
+
+    Unlike /api/queue (which samples the 15 most-recently-updated repos to
+    keep latency low), this endpoint scans every repo so ancient runs in
+    quiet repos are visible.  Cached for 5 minutes because it is expensive.
+
+    Query param:
+        min_age  (int, default 60) — minimum queue age in minutes
+    """
+    if _should_proxy_fleet_to_hub(request):
+        return await proxy_to_hub(request)
+    cache_key = f"stale_queue_{min_age}"
+    cached = _cache_get(cache_key, 300.0)
+    if cached is not None:
+        return cached
+    stale = await queue_cleanup.find_stale_runs(ORG, min_age)
+    payload: dict = {
+        "min_age_minutes": min_age,
+        "stale_count": len(stale),
+        "runs": [r.as_dict() for r in stale],
+    }
+    _cache_set(cache_key, payload, 300.0)
+    return payload
+
+
+@app.post("/api/queue/purge-stale")
+async def purge_stale_queue(
+    request: Request,
+    *,
+    principal: Principal = Depends(require_scope("workflows.control")),  # noqa: B008
+) -> dict:
+    """Cancel every queued run that has been waiting longer than *min_age* minutes.
+
+    Body JSON:
+        min_age  (int,  default 60)    — threshold in minutes
+        dry_run  (bool, default false) — list only, do not cancel
+
+    Stale jobs accumulate when:
+    - runners go offline with work pending (reboot, network drop, crash)
+    - a runner label no longer matches any registered runner
+    - abandoned agent worktree runs that pushed a branch but never
+      explicitly cancelled their queued workflow run
+    - GitHub Actions queuing lag on heavily-loaded orgs
+
+    The 15-repo sampling in /api/queue means ancient runs in quiet repos
+    are invisible to the normal queue view; this endpoint scans the full
+    org so nothing is missed.
+    """
+    body = await request.json()
+    min_age = int(body.get("min_age", 60))
+    dry_run = bool(body.get("dry_run", False))
+
+    result = await queue_cleanup.purge_stale_runs(ORG, min_age, dry_run=dry_run)
+
+    # Bust caches so the next poll immediately reflects the cancellations.
+    if not dry_run and result.get("cancelled_count", 0) > 0:
+        _cache.pop("queue", None)
+        _cache.pop("diagnose", None)
+        for key in list(_cache.keys()):
+            if key.startswith("stale_queue_"):
+                _cache.pop(key, None)
+    return result
 
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
