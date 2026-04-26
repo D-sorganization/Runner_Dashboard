@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
+import datetime as _dt_mod
 import sys  # noqa: E402
-from datetime import UTC, datetime, timedelta  # noqa: E402
-from typing import Any  # noqa: E402
-
-UTC = UTC
+from datetime import datetime, timedelta
 from pathlib import Path  # noqa: E402
+from typing import Any  # noqa: E402
 from unittest.mock import AsyncMock, patch  # noqa: E402
 
 import pytest  # noqa: E402
+
+UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 
