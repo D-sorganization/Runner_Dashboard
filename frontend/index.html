@@ -15329,6 +15329,270 @@
         );
       }
 
+function PrincipalsTab() {
+  var ps = React.useState([]);
+  var principals = ps[0], setPrincipals = ps[1];
+  
+  var ts = React.useState([]);
+  var tokens = ts[0], setTokens = ts[1];
+
+  var errs = React.useState(null);
+  var error = errs[0], setError = errs[1];
+
+  var edQuotaState = React.useState(null);
+  var editingQuota = edQuotaState[0], setEditingQuota = edQuotaState[1];
+  
+  var mintTokenState = React.useState(null);
+  var mintingToken = mintTokenState[0], setMintingToken = mintTokenState[1];
+  var createdTokenState = React.useState(null);
+  var createdToken = createdTokenState[0], setCreatedToken = createdTokenState[1];
+
+  function loadData() {
+    fetch("/api/admin/principals")
+      .then(function (r) {
+        if (!r.ok) throw new Error("Failed to load principals");
+        return r.json();
+      })
+      .then(function (data) { setPrincipals(data.principals); })
+      .catch(function (e) { setError(e.message); });
+
+    fetch("/api/admin/tokens")
+      .then(function (r) {
+        if (!r.ok) throw new Error("Failed to load tokens");
+        return r.json();
+      })
+      .then(function (data) { setTokens(data.tokens); })
+      .catch(function (e) { setError(e.message); });
+  }
+
+  React.useEffect(function () {
+    loadData();
+  }, []);
+
+  function saveQuota(e) {
+    e.preventDefault();
+    var q = editingQuota.quotas;
+    fetch("/api/admin/principals/" + editingQuota.principalId + "/quota", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        max_runners: parseInt(q.max_runners),
+        agent_spend_usd_day: parseFloat(q.agent_spend_usd_day),
+        local_app_slots: parseInt(q.local_app_slots)
+      })
+    })
+    .then(function(r) {
+      if(!r.ok) throw new Error("Failed to update quota");
+      setEditingQuota(null);
+      loadData();
+    })
+    .catch(function(err) { setError(err.message); });
+  }
+
+  function doMintToken(e) {
+    e.preventDefault();
+    var name = e.target.elements.name.value;
+    var exp = e.target.elements.expires.value;
+    var body = { name: name };
+    if (exp) body.expires_in_days = parseInt(exp);
+
+    fetch("/api/admin/principals/" + mintingToken + "/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    })
+    .then(function(r) {
+      if (!r.ok) throw new Error("Failed to mint token");
+      return r.json();
+    })
+    .then(function(data) {
+      setMintingToken(null);
+      setCreatedToken(data.token);
+      loadData();
+    })
+    .catch(function(err) { setError(err.message); });
+  }
+
+  function revokeToken(hash) {
+    if(!confirm("Are you sure you want to revoke this token?")) return;
+    fetch("/api/admin/tokens/" + hash, { method: "DELETE" })
+      .then(function(r) {
+        if(!r.ok) throw new Error("Failed to revoke token");
+        loadData();
+      })
+      .catch(function(err) { setError(err.message); });
+  }
+
+  return h("div", { className: "section", style: { marginTop: "16px" } },
+    error && h("div", { className: "error-banner", style: { marginBottom: "16px", padding: "12px", background: "rgba(255,0,0,0.1)", borderLeft: "4px solid red", color: "var(--text-primary)" } }, error),
+    
+    createdToken && h("div", { className: "glass-card", style: { padding: "20px", marginBottom: "20px", border: "1px solid var(--accent-green)", background: "rgba(46, 160, 67, 0.1)" } },
+      h("h3", { style: { color: "var(--accent-green)", marginBottom: "8px" } }, "Token Successfully Created!"),
+      h("p", { style: { marginBottom: "12px" } }, "Please copy this token now. You will not be able to see it again."),
+      h("div", { style: { background: "var(--bg-secondary)", padding: "12px", borderRadius: "6px", fontFamily: "monospace", fontSize: "16px", wordBreak: "break-all", border: "1px solid var(--border)" } }, createdToken),
+      h("button", { className: "btn", style: { marginTop: "12px" }, onClick: function() { setCreatedToken(null); } }, "Dismiss")
+    ),
+
+    editingQuota && h("div", { 
+        style: { position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }
+      },
+      h("div", { className: "glass-card", style: { padding: "24px", width: "400px", maxWidth: "90%" } },
+        h("h3", { style: { marginBottom: "16px" } }, "Edit Quota: " + editingQuota.principalId),
+        h("form", { onSubmit: saveQuota, style: { display: "flex", flexDirection: "column", gap: "12px" } },
+          h("div", null,
+            h("label", { style: { display: "block", marginBottom: "4px", fontSize: "12px", color: "var(--text-secondary)" } }, "Max Runners"),
+            h("input", { 
+              type: "number", 
+              value: editingQuota.quotas.max_runners, 
+              onChange: function(e) { setEditingQuota(Object.assign({}, editingQuota, { quotas: Object.assign({}, editingQuota.quotas, { max_runners: e.target.value })})); },
+              style: { width: "100%", padding: "8px", background: "var(--bg-secondary)", border: "1px solid var(--border)", color: "white", borderRadius: "4px" }
+            })
+          ),
+          h("div", null,
+            h("label", { style: { display: "block", marginBottom: "4px", fontSize: "12px", color: "var(--text-secondary)" } }, "Agent Spend (USD/Day)"),
+            h("input", { 
+              type: "number", step: "0.01",
+              value: editingQuota.quotas.agent_spend_usd_day, 
+              onChange: function(e) { setEditingQuota(Object.assign({}, editingQuota, { quotas: Object.assign({}, editingQuota.quotas, { agent_spend_usd_day: e.target.value })})); },
+              style: { width: "100%", padding: "8px", background: "var(--bg-secondary)", border: "1px solid var(--border)", color: "white", borderRadius: "4px" }
+            })
+          ),
+          h("div", null,
+            h("label", { style: { display: "block", marginBottom: "4px", fontSize: "12px", color: "var(--text-secondary)" } }, "Local App Slots"),
+            h("input", { 
+              type: "number", 
+              value: editingQuota.quotas.local_app_slots, 
+              onChange: function(e) { setEditingQuota(Object.assign({}, editingQuota, { quotas: Object.assign({}, editingQuota.quotas, { local_app_slots: e.target.value })})); },
+              style: { width: "100%", padding: "8px", background: "var(--bg-secondary)", border: "1px solid var(--border)", color: "white", borderRadius: "4px" }
+            })
+          ),
+          h("div", { style: { display: "flex", gap: "8px", justifyContent: "flex-end", marginTop: "16px" } },
+            h("button", { type: "button", className: "btn", onClick: function() { setEditingQuota(null); } }, "Cancel"),
+            h("button", { type: "submit", className: "btn", style: { background: "var(--accent-blue)", color: "white", borderColor: "var(--accent-blue)" } }, "Save")
+          )
+        )
+      )
+    ),
+
+    mintingToken && h("div", { 
+        style: { position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }
+      },
+      h("div", { className: "glass-card", style: { padding: "24px", width: "400px", maxWidth: "90%" } },
+        h("h3", { style: { marginBottom: "16px" } }, "Mint Token: " + mintingToken),
+        h("form", { onSubmit: doMintToken, style: { display: "flex", flexDirection: "column", gap: "12px" } },
+          h("div", null,
+            h("label", { style: { display: "block", marginBottom: "4px", fontSize: "12px", color: "var(--text-secondary)" } }, "Token Name"),
+            h("input", { 
+              name: "name",
+              type: "text", 
+              placeholder: "e.g., prod-deployment-script",
+              required: true,
+              style: { width: "100%", padding: "8px", background: "var(--bg-secondary)", border: "1px solid var(--border)", color: "white", borderRadius: "4px" }
+            })
+          ),
+          h("div", null,
+            h("label", { style: { display: "block", marginBottom: "4px", fontSize: "12px", color: "var(--text-secondary)" } }, "Expires in Days (Optional)"),
+            h("input", { 
+              name: "expires",
+              type: "number", 
+              placeholder: "e.g., 30",
+              style: { width: "100%", padding: "8px", background: "var(--bg-secondary)", border: "1px solid var(--border)", color: "white", borderRadius: "4px" }
+            })
+          ),
+          h("div", { style: { display: "flex", gap: "8px", justifyContent: "flex-end", marginTop: "16px" } },
+            h("button", { type: "button", className: "btn", onClick: function() { setMintingToken(null); } }, "Cancel"),
+            h("button", { type: "submit", className: "btn", style: { background: "var(--accent-green)", color: "white", borderColor: "var(--accent-green)" } }, "Mint")
+          )
+        )
+      )
+    ),
+
+    h("div", { className: "section-header", style: { background: "var(--grad-fair)", color: "white" } },
+      h("div", { className: "section-title" }, I.server(16), "Registered Principals"),
+      h("span", { className: "section-badge", style: { background: "rgba(255,255,255,0.2)", color: "white" } }, principals.length)
+    ),
+    h("div", { className: "section-body", style: { padding: "0" } },
+      h("table", { className: "data-table", style: { width: "100%", borderCollapse: "collapse" } },
+        h("thead", null,
+          h("tr", { style: { borderBottom: "1px solid var(--border)", textAlign: "left", background: "var(--bg-secondary)" } },
+            h("th", { style: { padding: "12px" } }, "ID"),
+            h("th", { style: { padding: "12px" } }, "Type"),
+            h("th", { style: { padding: "12px" } }, "Roles"),
+            h("th", { style: { padding: "12px" } }, "Quotas"),
+            h("th", { style: { padding: "12px", textAlign: "right" } }, "Actions")
+          )
+        ),
+        h("tbody", null,
+          principals.map(function(p) {
+            return h("tr", { key: p.id, style: { borderBottom: "1px solid var(--border)" } },
+              h("td", { style: { padding: "12px", fontWeight: "600", color: "var(--accent-blue)" } }, p.id),
+              h("td", { style: { padding: "12px" } }, 
+                h("span", { className: "section-badge", style: { background: p.type === 'bot' ? "rgba(188, 140, 255, 0.15)" : "rgba(88, 166, 255, 0.15)", color: p.type === 'bot' ? "var(--accent-purple)" : "var(--accent-blue)" } }, p.type)
+              ),
+              h("td", { style: { padding: "12px" } }, 
+                p.roles.map(function(r) { return h("span", { key: r, className: "section-badge", style: { marginRight: "4px", background: "rgba(255,255,255,0.1)", color: "var(--text-secondary)" } }, r); })
+              ),
+              h("td", { style: { padding: "12px", fontSize: "12px", color: "var(--text-secondary)" } }, 
+                h("div", null, "Runners: ", h("strong", { style: { color: "var(--text-primary)" } }, p.quotas.max_runners)),
+                h("div", null, "Spend: $", h("strong", { style: { color: "var(--text-primary)" } }, parseFloat(p.quotas.agent_spend_usd_day).toFixed(2)), "/day"),
+                h("div", null, "App Slots: ", h("strong", { style: { color: "var(--text-primary)" } }, p.quotas.local_app_slots))
+              ),
+              h("td", { style: { padding: "12px", textAlign: "right" } },
+                h("button", { 
+                  className: "btn", 
+                  style: { marginRight: "8px", fontSize: "12px", padding: "4px 8px" },
+                  onClick: function() { setEditingQuota({ principalId: p.id, quotas: Object.assign({}, p.quotas) }); }
+                }, "Edit Quota"),
+                p.type === 'bot' && h("button", { 
+                  className: "btn", 
+                  style: { fontSize: "12px", padding: "4px 8px", background: "rgba(188, 140, 255, 0.1)", color: "var(--accent-purple)", borderColor: "var(--accent-purple)" },
+                  onClick: function() { setMintingToken(p.id); }
+                }, "Mint Token")
+              )
+            );
+          })
+        )
+      )
+    ),
+
+    h("div", { className: "section-header", style: { background: "var(--glass-bg)", borderTop: "1px solid var(--border)", color: "var(--text-primary)", marginTop: "24px" } },
+      h("div", { className: "section-title" }, I.server(16), "Active Service Tokens"),
+      h("span", { className: "section-badge", style: { background: "rgba(255,255,255,0.1)", color: "var(--text-secondary)" } }, tokens.length)
+    ),
+    h("div", { className: "section-body", style: { padding: "0" } },
+      h("table", { className: "data-table", style: { width: "100%", borderCollapse: "collapse" } },
+        h("thead", null,
+          h("tr", { style: { borderBottom: "1px solid var(--border)", textAlign: "left", background: "var(--bg-secondary)" } },
+            h("th", { style: { padding: "12px" } }, "Principal"),
+            h("th", { style: { padding: "12px" } }, "Name"),
+            h("th", { style: { padding: "12px" } }, "Token Hash"),
+            h("th", { style: { padding: "12px" } }, "Created"),
+            h("th", { style: { padding: "12px", textAlign: "right" } }, "Actions")
+          )
+        ),
+        h("tbody", null,
+          tokens.length === 0 && h("tr", null, h("td", { colSpan: 5, style: { padding: "24px", textAlign: "center", color: "var(--text-secondary)" } }, "No active service tokens found.")),
+          tokens.map(function(t) {
+            return h("tr", { key: t.hash, style: { borderBottom: "1px solid var(--border)" } },
+              h("td", { style: { padding: "12px", fontWeight: "600" } }, t.principal_id),
+              h("td", { style: { padding: "12px", color: "var(--text-secondary)" } }, t.name || "-"),
+              h("td", { style: { padding: "12px", fontFamily: "monospace", fontSize: "12px", color: "var(--text-secondary)" } }, t.hash.substring(0, 16) + "..."),
+              h("td", { style: { padding: "12px", fontSize: "12px", color: "var(--text-secondary)" } }, new Date(t.created_at).toLocaleString()),
+              h("td", { style: { padding: "12px", textAlign: "right" } },
+                h("button", { 
+                  className: "btn btn-red", 
+                  style: { fontSize: "12px", padding: "4px 8px" },
+                  onClick: function() { revokeToken(t.hash); }
+                }, "Revoke")
+              )
+            );
+          })
+        )
+      )
+    )
+  );
+}
+
       function App() {
         var ts = React.useState("overview");
         var tab = ts[0],
@@ -17187,6 +17451,18 @@
                 I.settings(14),
                 "Diagnostics",
               ),
+              h(
+                "button",
+                {
+                  className:
+                    "tab-btn" + (tab === "principals" ? " active" : ""),
+                  onClick: function () {
+                    setTab("principals");
+                  },
+                },
+                I.server(14),
+                "Principals",
+              ),
             ),
             h(
               "div",
@@ -17541,7 +17817,9 @@
                                                   ? h(ClineLauncherTab, null)
                                                   : tab === "diagnostics"
                                                     ? h(DiagnosticsTab, null)
-                                                    : null,
+                                                    : tab === "principals"
+                                                      ? h(PrincipalsTab, null)
+                                                      : null,
             ),
             h(AssistantSidebar, { currentTab: tab, open: asstOpen, onToggle: toggleAsst }),
           ),
