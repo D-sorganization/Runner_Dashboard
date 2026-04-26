@@ -41,6 +41,11 @@ a static HTML file — no build step, no npm, no node_modules.
 - **History Tab** — Paginated workflow run history across all org repos with
   rerun/cancel support
 - **Queue Tab** — Live job queue with diagnostic tooling to explain stalls
+- **Queue Health Panel** — Scans all org repos for stale queued runs (jobs
+  that will never execute because runners are offline or labels have changed),
+  shows age/repo/workflow, and bulk-cancels in one click. Also available as
+  `/api/queue/stale` (GET) and `/api/queue/purge-stale` (POST). Auto-runs
+  hourly via `deploy/scheduled-dashboard-maintenance.sh`.
 - **Machines Tab** — Multi-node hardware inventory with live CPU/RAM/disk/GPU
   metrics
 - **Organization Tab** — Org-level runner groups, labels, and aggregate health

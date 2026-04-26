@@ -223,6 +223,64 @@ gh auth refresh -s admin:org
 
 ---
 
+## Scheduled Maintenance (Cron)
+
+`deploy/scheduled-dashboard-maintenance.sh` is a shell script designed to run
+from the system crontab. It performs three tasks each invocation:
+
+1. **Stale-queue purge** — calls `POST /api/queue/purge-stale` (min-age: 60 min)
+   to cancel queued runs that will never execute (runner offline, label mismatch,
+   abandoned agent worktree).
+2. **Token refresh** — rotates `GH_TOKEN` in `~/.config/runner-dashboard/env`
+   via `gh auth token` and restarts the service if the token changed.
+3. **Log rotation** — trims `journalctl` logs older than 7 days to prevent
+   disk fill on long-running machines.
+
+### Install the cron job
+
+```bash
+# Run once an hour at :05 past the hour
+(crontab -l 2>/dev/null; echo "5 * * * * bash $HOME/actions-runners/dashboard/scheduled-dashboard-maintenance.sh >> $HOME/actions-runners/dashboard/maintenance.log 2>&1") | crontab -
+```
+
+Or use the install helper which adds the crontab entry automatically:
+
+```bash
+bash deploy/install-runner-maintenance.sh
+```
+
+### Manual run / test
+
+```bash
+bash ~/actions-runners/dashboard/scheduled-dashboard-maintenance.sh
+```
+
+Logs are appended to `~/actions-runners/dashboard/maintenance.log`.
+
+### Standalone queue cleanup (for one-off use)
+
+The stale-queue logic is also available as a standalone CLI tool in the
+`Repository_Management` repo:
+
+```bash
+# Dry-run: see what would be cancelled
+python scripts/cancel_stale_queue.py
+
+# Actually cancel runs queued > 60 min
+python scripts/cancel_stale_queue.py --cancel
+
+# Cancel everything (nuclear option)
+python scripts/cancel_stale_queue.py --cancel --min-age 0
+
+# JSON output for scripting
+python scripts/cancel_stale_queue.py --json
+```
+
+On Windows, set `$env:PYTHONIOENCODING="utf-8"` first to avoid codec errors
+from the box-drawing characters in the report.
+
+---
+
 ## Health Check
 
 Verify the service is responding:

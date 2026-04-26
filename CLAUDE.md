@@ -16,9 +16,10 @@ Read it before adding any cross-repo surface.
 | [`Maxwell-Daemon`](https://github.com/D-sorganization/Maxwell-Daemon) | Autonomous local AI control plane consumed by the Maxwell tab over HTTP. |
 
 **Owned here:** every dashboard tab (Fleet, Org, Heavy, Workflows,
-Remediation, Maxwell, Assessments, Feature Requests, Credentials, Reports),
-every `/api/*` endpoint, dispatch envelope/contract, deployment + rollout
-machinery, the frontend bundle, dashboard-only docs.
+Remediation, Maxwell, Assessments, Feature Requests, Credentials, Reports,
+Queue Health), every `/api/*` endpoint, dispatch envelope/contract, deployment
++ rollout machinery, the frontend bundle, stale-queue cleanup, dashboard-only
+docs.
 
 **Not owned here:** fleet-wide CI workflows (live in `Repository_Management`),
 agent claim/lease protocol (lives in `Repository_Management`), the Maxwell AI
@@ -98,7 +99,9 @@ self-contained React SPA with no build step required.
 ```
 runner-dashboard/
 ├── backend/            FastAPI server (Python 3.11+)
-│   ├── server.py           Main application (~5000 lines, all /api/* routes)
+│   ├── server.py           Main application (~6800 lines, all /api/* routes)
+│   ├── queue_cleanup.py        Stale-queue detection and bulk cancellation
+│   │                           (async helpers for /api/queue/stale and /api/queue/purge-stale)
 │   ├── agent_remediation.py    AI agent dispatch and remediation logic
 │   ├── dispatch_contract.py    Workflow dispatch type contracts
 │   ├── machine_registry.py     Multi-node fleet registry
@@ -112,13 +115,15 @@ runner-dashboard/
 │   ├── runner_autoscaler.py    Dynamic runner scaling logic
 │   └── requirements.txt        Python dependencies
 ├── frontend/           Self-contained React SPA (no build step)
-│   ├── index.html          Single-file app (~11k lines)
+│   ├── index.html          Single-file app (~18k lines)
 │   ├── RunnerDashboard.jsx Exported component (reference copy)
 │   ├── manifest.webmanifest PWA manifest
 │   └── icon.svg            App icon
 ├── deploy/             Deployment and operations scripts
 │   ├── setup.sh            Full machine setup (installs runners, service, etc.)
 │   ├── update-deployed.sh  Pull latest and restart service
+│   ├── scheduled-dashboard-maintenance.sh  Hourly cron: stale-queue purge,
+│   │                           token refresh, log rotation (run via crontab)
 │   ├── runner-dashboard.service  systemd unit file
 │   ├── runner-autoscaler.service Autoscaler systemd unit
 │   ├── runner-scheduler.py     Cron-style runner schedule daemon
