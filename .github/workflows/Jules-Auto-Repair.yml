@@ -50,6 +50,7 @@ env:
 jobs:
   intelligent-repair:
     runs-on: d-sorg-fleet
+    timeout-minutes: 30
     # Prevent multiple repairs on same branch simultaneously
     concurrency:
       group: auto-repair-${{ inputs.branch || github.event.workflow_run.head_branch }}
