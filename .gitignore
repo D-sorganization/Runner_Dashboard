@@ -28,6 +28,9 @@ credentials.json
 # Runtime state
 backend/.venv/
 *.pyc
+
+# Reject root-level scratch/debug files matching *_<number>.py
+/*_[0-9]*.py
 *.pyo
 .claude/worktrees/
 .agent_remediation_state.json
