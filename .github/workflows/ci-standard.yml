@@ -55,6 +55,16 @@ jobs:
             exit 1
           fi
           echo "All actions pinned."
+      - name: Bootstrap environment
+        run: |
+          python -m venv "$RUNNER_TEMP/health-venv"
+          source "$RUNNER_TEMP/health-venv/bin/activate"
+          pip install --upgrade pip
+          pip install pytest==8.1.1
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
+          echo "$RUNNER_TEMP/health-venv/bin" >> "$GITHUB_PATH"
       - name: Fail-fast check — pytest can collect tests
         run: |
           if [ -d tests/ ]; then
