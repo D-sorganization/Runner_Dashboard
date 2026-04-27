@@ -5455,7 +5455,7 @@ async def get_maxwell_status() -> dict:
 
     maxwell_binary = shutil.which("maxwell") or shutil.which("maxwell-daemon")
     maxwell_url = os.environ.get("MAXWELL_URL", "")
-    maxwell_port = int(os.environ.get("MAXWELL_PORT", 8322))
+    maxwell_port = int(os.environ.get("MAXWELL_PORT", 8080))
 
     # Check if maxwell service is running via systemd
     service_running = False
@@ -5548,7 +5548,12 @@ async def maxwell_control(
 
 def _maxwell_base_url() -> str:
     """Return the Maxwell-Daemon base URL from env."""
-    return os.environ.get("MAXWELL_URL", "") or f"http://localhost:{int(os.environ.get('MAXWELL_PORT', 8322))}"
+    return os.environ.get("MAXWELL_URL", "") or f"http://localhost:{int(os.environ.get('MAXWELL_PORT', 8080))}"
+
+
+def _maxwell_api_token() -> str:
+    """Return the Maxwell-Daemon API confirmation token from env."""
+    return os.environ.get("MAXWELL_API_TOKEN", "")
 
 
 @app.get("/api/maxwell/version")
@@ -5632,24 +5637,36 @@ async def maxwell_dispatch_task(
     *,
     principal: Principal = Depends(require_scope("maxwell.control")),  # noqa: B008
 ) -> dict:
-    """Proxy POST /api/dispatch to Maxwell-Daemon (forwards body as-is)."""
+    """Proxy POST /api/dispatch to Maxwell-Daemon.
+
+    Injects ``confirmation_token`` from ``MAXWELL_API_TOKEN`` env var so the
+    browser never needs to know the raw token.
+    """
+    import json as _json
+    import uuid
+
     path = "/api/dispatch"
-    resp = None
     try:
-        body = await request.body()
-        async with httpx.AsyncClient(timeout=3.0) as client:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        body = {}
+
+    # Inject auth token and ensure idempotency_key is present.
+    body["confirmation_token"] = _maxwell_api_token()
+    if not body.get("idempotency_key"):
+        body["idempotency_key"] = str(uuid.uuid4())
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(
                 f"{_maxwell_base_url()}{path}",
-                content=body,
+                content=_json.dumps(body),
                 headers={"Content-Type": "application/json"},
             )
             log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
             return resp.json()
     except Exception as e:  # noqa: BLE001
-        log.info("maxwell_proxy: path=%s status=%s", path, "error")
-        return {"error": str(e)[:120], "daemon_available": False}
-
-        log.info("maxwell_proxy: path=%s status=%s", path, "error")
+        log.info("maxwell_proxy: path=%s status=%s error=%s", path, "error", str(e)[:80])
         return {"error": str(e)[:120], "daemon_available": False}
 
 
@@ -5660,26 +5677,85 @@ async def maxwell_pipeline_control(
     *,
     principal: Principal = Depends(require_scope("maxwell.control")),  # noqa: B008
 ) -> dict:
-    """Proxy POST /api/control/{action} to Maxwell-Daemon."""
+    """Proxy POST /api/control/{action} to Maxwell-Daemon.
+
+    Injects ``confirmation_token`` from ``MAXWELL_API_TOKEN`` env var.
+    """
+    import json as _json
+
     if action not in ("pause", "resume", "abort"):
         raise HTTPException(status_code=422, detail="action must be pause, resume, or abort")
     path = f"/api/control/{action}"
-    resp = None
     try:
-        body = await request.body()
-        async with httpx.AsyncClient(timeout=3.0) as client:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        body = {}
+
+    body["confirmation_token"] = _maxwell_api_token()
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(
                 f"{_maxwell_base_url()}{path}",
-                content=body,
+                content=_json.dumps(body),
                 headers={"Content-Type": "application/json"},
             )
             log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
             return resp.json()
     except Exception as e:  # noqa: BLE001
-        log.info("maxwell_proxy: path=%s status=%s", path, "error")
+        log.info("maxwell_proxy: path=%s status=%s error=%s", path, "error", str(e)[:80])
         return {"error": str(e)[:120], "daemon_available": False}
 
-        log.info("maxwell_proxy: path=%s status=%s", path, "error")
+
+@app.get("/api/maxwell/backends")
+async def get_maxwell_backends() -> dict:
+    """Proxy GET /api/v1/backends from Maxwell-Daemon."""
+    path = "/api/v1/backends"
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get(f"{_maxwell_base_url()}{path}")
+            log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
+            return resp.json()
+    except Exception as e:  # noqa: BLE001
+        return {"error": str(e)[:120], "daemon_available": False}
+
+
+@app.get("/api/maxwell/workers")
+async def get_maxwell_workers() -> dict:
+    """Proxy GET /api/v1/workers from Maxwell-Daemon."""
+    path = "/api/v1/workers"
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get(f"{_maxwell_base_url()}{path}")
+            log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
+            return resp.json()
+    except Exception as e:  # noqa: BLE001
+        return {"error": str(e)[:120], "daemon_available": False}
+
+
+@app.get("/api/maxwell/cost")
+async def get_maxwell_cost() -> dict:
+    """Proxy GET /api/v1/cost from Maxwell-Daemon."""
+    path = "/api/v1/cost"
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get(f"{_maxwell_base_url()}{path}")
+            log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
+            return resp.json()
+    except Exception as e:  # noqa: BLE001
+        return {"error": str(e)[:120], "daemon_available": False}
+
+
+@app.get("/api/maxwell/pipeline-state")
+async def get_maxwell_pipeline_state() -> dict:
+    """Proxy GET /api/status (pipeline state) from Maxwell-Daemon."""
+    path = "/api/status"
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get(f"{_maxwell_base_url()}{path}")
+            log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
+            return resp.json()
+    except Exception as e:  # noqa: BLE001
         return {"error": str(e)[:120], "daemon_available": False}
 
 
