@@ -1921,7 +1921,7 @@ def get_gpu_info() -> dict:
 def get_per_runner_resources() -> list[dict]:
     """Get CPU and memory usage for each runner's worker processes."""
     runner_procs = []
-    for i in range(1, runner_limit() + 1):
+    for i in range(1, _runner_limit() + 1):
         runner_info: dict[str, Any] = {
             "runner_num": i,
             "cpu_percent": 0.0,
