@@ -376,7 +376,7 @@ async def get_credentials(request: Request) -> dict:
     ollama_binary = shutil.which("ollama")
     probes.append(
         {
-            "id": "ollama_local",
+            "id": "ollama",
             "label": "Ollama (Local)",
             "icon": "ollama",
             "installed": ollama_binary is not None,
@@ -401,6 +401,69 @@ async def get_credentials(request: Request) -> dict:
         },
         "probed_at": datetime.now(UTC).isoformat(),
     }
+
+
+@router.get("/ollama/status")
+async def get_ollama_status(request: Request) -> dict:
+    """Return whether ollama serve is running and the base URL."""
+    _require_local_request(request)
+    ollama_binary = shutil.which("ollama")
+    if not ollama_binary:
+        raise HTTPException(status_code=503, detail="ollama not found on PATH")
+
+    # Check if ollama serve is responsive
+    try:
+        result = subprocess.run(
+            ["ollama", "ps"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        running = result.returncode == 0
+    except Exception:
+        running = False
+
+    return {
+        "running": running,
+        "base_url": "http://localhost:11434",
+        "binary": ollama_binary,
+    }
+
+
+@router.get("/ollama/models")
+async def get_ollama_models(request: Request) -> dict:
+    """List installed Ollama models via `ollama list`."""
+    _require_local_request(request)
+    ollama_binary = shutil.which("ollama")
+    if not ollama_binary:
+        raise HTTPException(status_code=503, detail="ollama not found on PATH")
+
+    try:
+        result = subprocess.run(
+            ["ollama", "list"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        if result.returncode != 0:
+            raise HTTPException(
+                status_code=502,
+                detail=f"ollama list failed: {result.stderr.strip()[:200]}",
+            )
+        # Parse output: NAME\tID\tSIZE\tMODIFIED
+        models = []
+        for line in result.stdout.splitlines()[1:]:  # skip header
+            if not line.strip():
+                continue
+            parts = line.split(maxsplit=3)
+            if parts:
+                models.append(parts[0])
+        return {"models": models}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log.exception("Failed to list ollama models")
+        raise HTTPException(status_code=500, detail=f"Failed to list models: {exc}") from exc
 
 
 # Key management endpoints
