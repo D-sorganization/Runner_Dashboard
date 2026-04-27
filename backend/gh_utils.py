@@ -8,7 +8,8 @@ from datetime import UTC, datetime
 
 from cache_utils import cache_get, cache_set
 from fastapi import HTTPException
-from system_utils import BOOT_TIME, HOSTNAME, get_deployment_info, run_cmd
+from dashboard_config import DEPLOYMENT_FILE, HOSTNAME, VERSION
+from system_utils import BOOT_TIME, get_deployment_info, run_cmd
 
 
 async def gh_api(endpoint: str) -> dict:
@@ -58,5 +59,5 @@ async def get_gh_health_summary(org: str) -> dict:
         "github_api": "connected" if gh_ok else "unreachable",
         "runners_registered": runner_count,
         "dashboard_uptime_seconds": int(time.time() - BOOT_TIME),
-        "deployment": get_deployment_info(),
+        "deployment": get_deployment_info(VERSION, DEPLOYMENT_FILE),
     }

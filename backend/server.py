@@ -87,6 +87,7 @@ from dashboard_config import (  # noqa: E402
     RUNNER_SCHEDULER_BIN,
     RUNNER_SCHEDULER_STATE,
     SYSTEMCTL_BIN,
+    VERSION,
     WSL_KEEPALIVE_SERVICE,
     WSL_KEEPALIVE_TASK_NAME,
     runner_limit,
@@ -111,7 +112,6 @@ from security import (  # noqa: E402
 from system_utils import (  # noqa: E402
     classify_node_offline,
     get_deployment_info,
-    get_runner_service_name,
     get_system_metrics_snapshot,
     resource_offline_reason,
     run_cmd,
@@ -235,7 +235,7 @@ _default_reports_dir = (
 )
 app = FastAPI(
     title="D-sorganization Runner Dashboard",
-    version="1.2.0",
+    version=VERSION,
     docs_url="/api/docs",
 )
 app.include_router(fleet_router)
@@ -423,25 +423,7 @@ _cache: OrderedDict[str, tuple[Any, float]] = OrderedDict()
 # ─── Deployment Info ──────────────────────────────────────────────────────────
 
 
-def _deployment_info() -> dict:
-    """Return the deployed dashboard revision recorded by update-deployed.sh."""
-    fallback = {
-        "app": "runner-dashboard",
-        "version": app.version,
-        "git_sha": os.environ.get("DASHBOARD_GIT_SHA", "unknown"),
-        "git_branch": os.environ.get("DASHBOARD_GIT_BRANCH", "unknown"),
-        "source": "environment",
-    }
-    try:
-        payload = json.loads(DEPLOYMENT_FILE.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError, OSError):
-        return fallback
-    if not isinstance(payload, dict):
-        return fallback
-    payload.setdefault("app", "runner-dashboard")
-    payload.setdefault("version", app.version)
-    payload.setdefault("source", "deployment-file")
-    return payload
+# ─── Hardware Specs ───────────────────────────────────────────────────────────
 
 
 def _local_hardware_specs(gpu: dict | None = None) -> dict:
@@ -633,7 +615,7 @@ def _machine_deployment_state(node: dict, expected_version: str) -> dict:
 
 def _build_deployment_state(nodes: list[dict], expected_version: str) -> dict:
     """Summarize deployment state across the fleet."""
-    deployment = get_deployment_info()
+    deployment = get_deployment_info(VERSION, DEPLOYMENT_FILE)
     local_drift = deployment_drift.evaluate_drift(deployment, expected_version)
     machines = [_machine_deployment_state(node, expected_version) for node in nodes]
     attention_states = {"offline", "dirty", "drifted", "degraded", "unknown"}
@@ -1866,7 +1848,7 @@ async def get_fleet_status(request: Request):
 @app.get("/api/deployment")
 async def get_deployment() -> dict:
     """Return the dashboard code revision deployed on this machine."""
-    return _deployment_info()
+    return get_deployment_info(VERSION, DEPLOYMENT_FILE)
 
 
 @app.get("/api/deployment/expected-version")
@@ -1888,7 +1870,7 @@ async def get_deployment_drift() -> dict:
     see ``POST /api/deployment/update-signal`` for the notify-only affordance.
     """
     expected = await _read_expected_dashboard_version()
-    status = deployment_drift.evaluate_drift(_deployment_info(), expected)
+    status = deployment_drift.evaluate_drift(get_deployment_info(VERSION, DEPLOYMENT_FILE), expected)
     return status.to_dict()
 
 
@@ -1938,7 +1920,7 @@ async def post_deployment_update_signal(
     dry_run = bool(payload.get("dry_run", False))
 
     expected = await _read_expected_dashboard_version()
-    status = deployment_drift.evaluate_drift(_deployment_info(), expected)
+    status = deployment_drift.evaluate_drift(get_deployment_info(VERSION, DEPLOYMENT_FILE), expected)
     if dry_run:
         preview = {
             "event": "dashboard.node.update_requested",

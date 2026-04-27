@@ -78,6 +78,7 @@ def runner_scheduler_apply_command() -> list[str]:
 
 
 # Deployment
+VERSION = "1.2.0"
 DEPLOYMENT_FILE = Path(os.environ.get("RUNNER_DASHBOARD_DEPLOYMENT_FILE", BACKEND_DIR.parent / "deployment.json"))
 EXPECTED_VERSION_FILE = Path(os.environ.get("RUNNER_DASHBOARD_EXPECTED_VERSION_FILE", BACKEND_DIR.parent / "VERSION"))
 
