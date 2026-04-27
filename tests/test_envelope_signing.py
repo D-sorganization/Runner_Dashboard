@@ -11,9 +11,9 @@ from __future__ import annotations  # noqa: E402
 import json  # noqa: E402
 import os  # noqa: E402
 import sys  # noqa: E402
-from datetime import datetime, timedelta, timezone  # noqa: E402
+from datetime import UTC, datetime, timedelta  # noqa: E402
 
-UTC = timezone.utc
+UTC = UTC
 from pathlib import Path  # noqa: E402
 from unittest.mock import patch  # noqa: E402
 

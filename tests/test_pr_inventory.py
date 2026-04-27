@@ -3,9 +3,9 @@
 from __future__ import annotations  # noqa: E402
 
 import sys  # noqa: E402
-from datetime import datetime, timedelta, timezone  # noqa: E402
+from datetime import UTC, datetime, timedelta  # noqa: E402
 
-UTC = timezone.utc
+UTC = UTC
 from pathlib import Path  # noqa: E402
 from unittest.mock import AsyncMock, patch  # noqa: E402
 
@@ -236,7 +236,6 @@ class TestFetchAllPrs:
 
     @pytest.mark.asyncio
     async def test_draft_filter(self) -> None:
-
         prs = [_make_pr(1, "Draft", draft=True), _make_pr(2, "Normal", draft=False)]
 
         async def fake_fetch(full_name: str) -> tuple[list, str | None]:
