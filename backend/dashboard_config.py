@@ -30,6 +30,28 @@ DISK_MIN_FREE_GB = float(os.environ.get("DASHBOARD_DISK_MIN_FREE_GB", "25"))
 PORT = int(os.environ.get("DASHBOARD_PORT", "8321"))
 HOSTNAME = os.environ.get("DISPLAY_NAME") or platform.node()
 
+def runner_limit() -> int:
+    """Return the hard runner capacity this dashboard is allowed to manage."""
+    # We use the raw env vars here to avoid circular dependencies if needed,
+    # or just use the already defined constants.
+    _requested = int(os.environ.get("NUM_RUNNERS", "12"))
+    _max = int(os.environ.get("MAX_RUNNERS", str(_requested)))
+    return max(_requested, _max)
+MACHINE_ROLE = os.environ.get("MACHINE_ROLE", "node")
+HUB_URL = os.environ.get("HUB_URL")
+if HUB_URL:
+    HUB_URL = HUB_URL.rstrip("/")
+
+# Fleet topology
+# Mapping of name -> root URL (e.g. "Node-A" -> "http://10.0.0.5:8321")
+FLEET_NODES: dict[str, str] = {}
+_nodes_raw = os.environ.get("FLEET_NODES", "")
+if _nodes_raw:
+    for pair in _nodes_raw.split(","):
+        if ":" in pair:
+            name, url = pair.split(":", 1)
+            FLEET_NODES[name.strip()] = url.strip().rstrip("/")
+
 # Cache / UI Limits
 RUN_JOB_ENRICHMENT_LIMIT = int(os.environ.get("RUN_JOB_ENRICHMENT_LIMIT", "50"))
 MAX_CACHE_SIZE = 500
