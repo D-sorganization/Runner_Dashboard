@@ -75,6 +75,7 @@ from machine_registry import (  # noqa: E402
 )
 from report_files import parse_report_metrics, sanitize_report_date  # noqa: E402
 from routers import credentials as _credentials_router  # noqa: E402
+from routers import maxwell as maxwell_router
 from routers import dispatch as _dispatch_router  # noqa: E402
 from security import (  # noqa: E402
     check_dispatch_rate,
@@ -354,6 +355,7 @@ _dispatch_router.set_replay_functions(_is_envelope_replay, _record_processed_env
 app.include_router(_credentials_router.router)
 app.include_router(admin_router.router)
 app.include_router(auth_router.router)
+app.include_router(maxwell_router.router)
 
 # Agent-launcher control surface (sibling: Repository_Management/launchers/cline_agent_launcher).
 # Subprocess-only -- never imports the launcher Python at runtime.

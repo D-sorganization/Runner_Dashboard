@@ -1,8 +1,8 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.4.0
+**Spec Version:** 2.5.0
 **Application Version:** 4.1.0 (see `VERSION`)
-**Last Updated:** 2026-04-26
+**Last Updated:** 2026-04-27
 **Status:** Active
 
 ---
@@ -1687,7 +1687,7 @@ principals:
 New principals can be added by editing this file; the dashboard reloads it
 automatically. Service tokens for bot principals can be minted via the
 Identity Manager (`identity_manager.mint_service_token`).
-<!-- spec-trigger-144 -->
+<!-- spec-trigger-145 -->
 
 ### 18.5 Cross-Fleet Coherence & Admin API (Wave 4)
 

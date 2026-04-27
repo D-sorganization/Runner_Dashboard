@@ -55,6 +55,15 @@ jobs:
             exit 1
           fi
           echo "All actions pinned."
+      - name: Verify no source file exceeds 500 lines
+        run: |
+          OVER=$(find backend/ frontend/src/ -type f \( -name "*.py" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" \) -exec wc -l {} + 2>/dev/null | grep -vE "server.py|agent_remediation.py|dispatch_contract.py|agent_dispatch_router.py|total" | awk '$1 > 500 {print $1, $2}')
+          if [ -n "$OVER" ]; then
+            echo "::error::Files exceeding 500-line soft cap found:"
+            echo "$OVER"
+            exit 1
+          fi
+          echo "All source files ≤ 500 lines."
       - name: Bootstrap environment
         run: |
           for py in python3.11 python3.12 python3.10 python3 python; do
@@ -132,7 +141,8 @@ jobs:
       - name: Verify No Placeholders
         run: |
           if grep -rE "TODO|FIXME" backend/ --include="*.py"; then
-            echo "::error::Placeholders found. Remove TODOs/FIXMEs or create tracked GitHub issues."
+            echo "::error::Placeholders found. Matches:"
+            grep -rE "TODO|FIXME" backend/ --include="*.py"
             exit 1
           fi
       - name: Security Audit (pip-audit)
