@@ -5556,79 +5556,55 @@ def _maxwell_api_token() -> str:
     return os.environ.get("MAXWELL_API_TOKEN", "")
 
 
-@app.get("/api/maxwell/version")
-async def get_maxwell_version() -> dict:
-    """Proxy GET /api/version from Maxwell-Daemon."""
-    path = "/api/version"
-    resp = None
+def _maxwell_headers() -> dict:
+    """Return auth headers for Maxwell-Daemon requests."""
+    token = _maxwell_api_token()
+    if token:
+        return {"Authorization": f"Bearer {token}"}
+    return {}
+
+
+async def _mx_get(path: str, params: dict | None = None) -> dict:
+    """GET helper for Maxwell proxy routes."""
     try:
         async with httpx.AsyncClient(timeout=3.0) as client:
-            resp = await client.get(f"{_maxwell_base_url()}{path}")
+            resp = await client.get(
+                f"{_maxwell_base_url()}{path}",
+                params=params,
+                headers=_maxwell_headers(),
+            )
             log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
             return resp.json()
     except Exception as e:  # noqa: BLE001
-        log.info("maxwell_proxy: path=%s status=%s", path, "error")
+        log.info("maxwell_proxy: path=%s error=%s", path, str(e)[:80])
         return {"error": str(e)[:120], "daemon_available": False}
 
-        log.info("maxwell_proxy: path=%s status=%s", path, "error")
-        return {"error": str(e)[:120], "daemon_available": False}
+
+@app.get("/api/maxwell/version")
+async def get_maxwell_version() -> dict:
+    """Proxy GET /api/version from Maxwell-Daemon."""
+    return await _mx_get("/api/version")
 
 
 @app.get("/api/maxwell/daemon-status")
 async def get_maxwell_daemon_status_detail() -> dict:
     """Proxy GET /api/status from Maxwell-Daemon (pipeline state)."""
-    path = "/api/status"
-    resp = None
-    try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            resp = await client.get(f"{_maxwell_base_url()}{path}")
-            log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
-            return resp.json()
-    except Exception as e:  # noqa: BLE001
-        log.info("maxwell_proxy: path=%s status=%s", path, "error")
-        return {"error": str(e)[:120], "daemon_available": False}
-
-        log.info("maxwell_proxy: path=%s status=%s", path, "error")
-        return {"error": str(e)[:120], "daemon_available": False}
+    return await _mx_get("/api/status")
 
 
 @app.get("/api/maxwell/tasks")
 async def get_maxwell_tasks(limit: int = 20, cursor: str | None = None) -> dict:
     """Proxy GET /api/tasks from Maxwell-Daemon."""
-    path = "/api/tasks"
-    resp = None
-    try:
-        params: dict = {"limit": limit}
-        if cursor is not None:
-            params["cursor"] = cursor
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            resp = await client.get(f"{_maxwell_base_url()}{path}", params=params)
-            log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
-            return resp.json()
-    except Exception as e:  # noqa: BLE001
-        log.info("maxwell_proxy: path=%s status=%s", path, "error")
-        return {"error": str(e)[:120], "daemon_available": False}
-
-        log.info("maxwell_proxy: path=%s status=%s", path, "error")
-        return {"error": str(e)[:120], "daemon_available": False}
+    params: dict = {"limit": limit}
+    if cursor is not None:
+        params["cursor"] = cursor
+    return await _mx_get("/api/tasks", params=params)
 
 
 @app.get("/api/maxwell/tasks/{task_id}")
 async def get_maxwell_task_detail(task_id: str) -> dict:
     """Proxy GET /api/tasks/{task_id} from Maxwell-Daemon."""
-    path = f"/api/tasks/{task_id}"
-    resp = None
-    try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            resp = await client.get(f"{_maxwell_base_url()}{path}")
-            log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
-            return resp.json()
-    except Exception as e:  # noqa: BLE001
-        log.info("maxwell_proxy: path=%s status=%s", path, "error")
-        return {"error": str(e)[:120], "daemon_available": False}
-
-        log.info("maxwell_proxy: path=%s status=%s", path, "error")
-        return {"error": str(e)[:120], "daemon_available": False}
+    return await _mx_get(f"/api/tasks/{task_id}")
 
 
 @app.post("/api/maxwell/dispatch")
@@ -5656,17 +5632,19 @@ async def maxwell_dispatch_task(
     if not body.get("idempotency_key"):
         body["idempotency_key"] = str(uuid.uuid4())
 
+    hdrs = {"Content-Type": "application/json"}
+    hdrs.update(_maxwell_headers())
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(
                 f"{_maxwell_base_url()}{path}",
                 content=_json.dumps(body),
-                headers={"Content-Type": "application/json"},
+                headers=hdrs,
             )
             log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
             return resp.json()
     except Exception as e:  # noqa: BLE001
-        log.info("maxwell_proxy: path=%s status=%s error=%s", path, "error", str(e)[:80])
+        log.info("maxwell_proxy: path=%s error=%s", path, str(e)[:80])
         return {"error": str(e)[:120], "daemon_available": False}
 
 
@@ -5710,53 +5688,25 @@ async def maxwell_pipeline_control(
 @app.get("/api/maxwell/backends")
 async def get_maxwell_backends() -> dict:
     """Proxy GET /api/v1/backends from Maxwell-Daemon."""
-    path = "/api/v1/backends"
-    try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            resp = await client.get(f"{_maxwell_base_url()}{path}")
-            log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
-            return resp.json()
-    except Exception as e:  # noqa: BLE001
-        return {"error": str(e)[:120], "daemon_available": False}
+    return await _mx_get("/api/v1/backends")
 
 
 @app.get("/api/maxwell/workers")
 async def get_maxwell_workers() -> dict:
     """Proxy GET /api/v1/workers from Maxwell-Daemon."""
-    path = "/api/v1/workers"
-    try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            resp = await client.get(f"{_maxwell_base_url()}{path}")
-            log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
-            return resp.json()
-    except Exception as e:  # noqa: BLE001
-        return {"error": str(e)[:120], "daemon_available": False}
+    return await _mx_get("/api/v1/workers")
 
 
 @app.get("/api/maxwell/cost")
 async def get_maxwell_cost() -> dict:
     """Proxy GET /api/v1/cost from Maxwell-Daemon."""
-    path = "/api/v1/cost"
-    try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            resp = await client.get(f"{_maxwell_base_url()}{path}")
-            log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
-            return resp.json()
-    except Exception as e:  # noqa: BLE001
-        return {"error": str(e)[:120], "daemon_available": False}
+    return await _mx_get("/api/v1/cost")
 
 
 @app.get("/api/maxwell/pipeline-state")
 async def get_maxwell_pipeline_state() -> dict:
     """Proxy GET /api/status (pipeline state) from Maxwell-Daemon."""
-    path = "/api/status"
-    try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            resp = await client.get(f"{_maxwell_base_url()}{path}")
-            log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
-            return resp.json()
-    except Exception as e:  # noqa: BLE001
-        return {"error": str(e)[:120], "daemon_available": False}
+    return await _mx_get("/api/status")
 
 
 @app.post("/api/help/chat")
