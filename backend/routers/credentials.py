@@ -528,3 +528,58 @@ async def clear_credential_key(body: ClearKeyRequest, request: Request) -> dict:
             restart_result = {"attempted": True, "success": False, "detail": str(exc)[:200]}
 
     return {"ok": True, "env_var": env_var, "provider": provider, "maxwell_restart": restart_result}
+
+
+class LaunchAuthRequest(BaseModel):
+    provider: str = Field(..., description="Provider id to launch auth for")
+
+
+@router.post("/credentials/launch-auth")
+async def launch_auth(body: LaunchAuthRequest, request: Request) -> dict:
+    """Launch a provider's browser auth flow in a subprocess.
+
+    Returns immediately with a job_id; the UI can poll /status.
+    """
+    _require_local_request(request)
+    provider_id = body.provider.strip()
+
+    if not provider_id:
+        raise HTTPException(status_code=422, detail="provider is required")
+
+    auth_commands: dict[str, list[str]] = {
+        "gemini": ["gemini", "auth", "login"],
+        "gemini_cli": ["gemini", "auth", "login"],
+        "claude": ["claude", "auth", "login"],
+        "claude_code_cli": ["claude", "auth", "login"],
+        "anthropic": ["claude", "auth", "login"],
+    }
+
+    cmd = auth_commands.get(provider_id)
+    if not cmd:
+        raise HTTPException(
+            status_code=422,
+            detail=f"provider '{provider_id}' does not support launch-auth. Allowed: {sorted(auth_commands)}",
+        )
+
+    job_id = f"{provider_id}-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
+    client_host = request.client.host if request.client else "unknown"
+    log.info("launch_auth: provider=%s job_id=%s by=%s", provider_id, job_id, client_host)
+
+    # Fire-and-forget subprocess (auth flows are interactive and blocking)
+    try:
+        subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Binary not found for provider '{provider_id}'",
+        ) from exc
+    except Exception as exc:
+        log.warning("launch_auth failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to launch auth subprocess") from exc
+
+    return {"ok": True, "provider_id": provider_id, "job_id": job_id}
