@@ -419,7 +419,7 @@ PROVIDERS: dict[str, AgentProvider] = {
         availability_probe=("gemini",),
         required_env=("GOOGLE_API_KEY",),
         editable=True,
-        notes="Uses `gemini` CLI for local remediation and reasoning.",
+        notes="Uses `gemini` CLI for local remediation and reasoning. Setup: https://aistudio.google.com/app/apikey",
     ),
     "cline": AgentProvider(
         provider_id="cline",
