@@ -323,6 +323,7 @@ async def get_credentials(request: Request) -> dict:
             else ("VS Code found but Cline not installed" if _vscode_binary else "VS Code not found")
         )
     )
+    _cline_compatible_key = _env_present("ANTHROPIC_API_KEY") or _env_present("OPENAI_API_KEY")
     probes.append(
         {
             "id": "cline",
@@ -330,11 +331,24 @@ async def get_credentials(request: Request) -> dict:
             "icon": "vscode",
             "installed": cline_installed,
             "vscode_found": _vscode_binary is not None,
-            "authenticated": cline_installed and bool(anthropic_key),
+            "compatible_key_set": _cline_compatible_key,
+            "authenticated": cline_installed and _cline_compatible_key,
             "reachable": cline_installed,
-            "usable": cline_installed,
-            "status": "ready" if cline_installed else ("not_installed" if not _vscode_binary else "not_installed"),
-            "detail": _cline_detail,
+            "usable": cline_installed and _cline_compatible_key,
+            "status": (
+                "ready"
+                if (cline_installed and _cline_compatible_key)
+                else ("extension_installed" if cline_installed else "not_installed")
+            ),
+            "detail": (
+                "VS Code extension + compatible API key found"
+                if (cline_installed and _cline_compatible_key)
+                else (
+                    "VS Code extension installed; set ANTHROPIC_API_KEY or OPENAI_API_KEY"
+                    if cline_installed
+                    else _cline_detail
+                )
+            ),
             "config_source": "vscode" if cline_installed else "unavailable",
             "docs_url": "https://marketplace.visualstudio.com/items?itemName=saoudrizwan.claude-dev",
             "setup_hint": "Install Cline extension in VS Code: ext install saoudrizwan.claude-dev",
@@ -400,6 +414,47 @@ async def get_credentials(request: Request) -> dict:
             "not_ready": len(probes) - ready,
         },
         "probed_at": datetime.now(UTC).isoformat(),
+    }
+
+
+@router.get("/cline/status")
+async def get_cline_status(request: Request) -> dict:
+    """Return Cline extension detection status."""
+    _require_local_request(request)
+    _cline_storage = Path.home() / ".config" / "Code" / "User" / "globalStorage" / "saoudrizwan.claude-dev"
+    _cline_by_path = _cline_storage.exists()
+    _cline_by_ext = False
+    _vscode_binary = shutil.which("code")
+    if _vscode_binary and not _cline_by_path:
+        try:
+            _ext_result = subprocess.run(
+                ["code", "--list-extensions"],
+                capture_output=True,
+                text=True,
+                timeout=8,
+            )
+            _cline_by_ext = "saoudrizwan.claude-dev" in _ext_result.stdout
+        except Exception:
+            pass
+    cline_installed = _cline_by_path or _cline_by_ext
+    _compatible_key = _env_present("ANTHROPIC_API_KEY") or _env_present("OPENAI_API_KEY")
+    return {
+        "status": (
+            "extension_installed"
+            if (cline_installed and _compatible_key)
+            else ("extension_installed" if cline_installed else "not_installed")
+        ),
+        "vscode_found": _vscode_binary is not None,
+        "compatible_key_set": _compatible_key,
+        "detail": (
+            "Cline extension installed + compatible API key found"
+            if (cline_installed and _compatible_key)
+            else (
+                "Cline extension installed; set ANTHROPIC_API_KEY or OPENAI_API_KEY"
+                if cline_installed
+                else "Cline not installed in VS Code"
+            )
+        ),
     }
 
 
