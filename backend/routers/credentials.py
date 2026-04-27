@@ -85,6 +85,48 @@ def _clear_env_var(env_file: Path, key: str) -> None:
     env_file.write_text(pattern.sub("", text), encoding="utf-8")
 
 
+# Maps env var name -> Maxwell YAML backend path -> api_key field to update
+_MAXWELL_YAML = Path.home() / ".config" / "maxwell-daemon" / "maxwell-daemon.yaml"
+
+# env_var -> list of backend names in maxwell YAML whose api_key should be updated
+_MAXWELL_BACKEND_KEY_MAP: dict[str, list[str]] = {
+    "ANTHROPIC_API_KEY": ["claude", "claude-code-cli"],
+    "OPENAI_API_KEY": ["openai", "codex-cli"],
+    "GOOGLE_API_KEY": ["gemini"],
+}
+
+
+def _patch_maxwell_yaml_api_key(env_var: str, value: str) -> None:
+    """Update api_key in maxwell-daemon.yaml backends that use the given env var."""
+    if not _MAXWELL_YAML.exists():
+        return
+    backends = _MAXWELL_BACKEND_KEY_MAP.get(env_var, [])
+    if not backends:
+        return
+    try:
+        import yaml  # type: ignore[import]
+        with open(_MAXWELL_YAML) as f:
+            cfg = yaml.safe_load(f)
+        if not isinstance(cfg, dict) or "backends" not in cfg:
+            return
+        changed = False
+        for backend_name in backends:
+            if backend_name in cfg["backends"] and isinstance(cfg["backends"][backend_name], dict):
+                cfg["backends"][backend_name]["api_key"] = value
+                changed = True
+        if changed:
+            with open(_MAXWELL_YAML, "w") as f:
+                yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+            log.info("Patched maxwell YAML api_key for backends %s", backends)
+    except Exception:
+        log.exception("Could not patch maxwell YAML api_key for env_var=%s", env_var)
+
+
+def _clear_maxwell_yaml_api_key(env_var: str) -> None:
+    """Reset api_key to empty string in maxwell YAML backends that used this env var."""
+    _patch_maxwell_yaml_api_key(env_var, "")
+
+
 # Pydantic models
 
 class SetKeyRequest(BaseModel):
@@ -174,8 +216,20 @@ async def get_credentials(request: Request) -> dict:
         "key_provider": "jules",
     })
 
-    # Codex CLI
-    codex_binary = shutil.which("codex")
+    # Codex CLI — check PATH and common npm-global locations
+    codex_binary = shutil.which("codex") or (
+        next(
+            (
+                str(p) for p in [
+                    Path.home() / ".npm-global" / "bin" / "codex",
+                    Path.home() / ".local" / "bin" / "codex",
+                    Path("/usr/local/bin/codex"),
+                ]
+                if p.exists()
+            ),
+            None,
+        )
+    )
     openai_key = _env_present("OPENAI_API_KEY")
     probes.append({
         "id": "codex_cli",
@@ -185,13 +239,15 @@ async def get_credentials(request: Request) -> dict:
         "authenticated": openai_key,
         "reachable": codex_binary is not None and openai_key,
         "usable": codex_binary is not None and openai_key,
+        "binary_found": codex_binary is not None,
+        "key_status": "set" if openai_key else "missing",
         "status": (
             "ready" if (codex_binary and openai_key)
             else ("missing_key" if codex_binary else "not_installed")
         ),
         "detail": (
             "Ready" if (codex_binary and openai_key)
-            else ("OPENAI_API_KEY not set" if codex_binary else "codex not found on PATH")
+            else ("OPENAI_API_KEY not set" if codex_binary else "codex not on PATH or npm-global")
         ),
         "config_source": (
             _env_source("OPENAI_API_KEY") if openai_key else ("system" if codex_binary else "unavailable")
@@ -228,22 +284,41 @@ async def get_credentials(request: Request) -> dict:
         "key_provider": "claude",
     })
 
-    # Cline (VS Code extension)
-    cline_config = Path.home() / ".config" / "Code" / "User" / "globalStorage" / "saoudrizwan.claude-dev"
-    cline_installed = cline_config.exists()
+    # Cline (VS Code extension) — check globalStorage path AND `code --list-extensions`
+    _cline_storage = Path.home() / ".config" / "Code" / "User" / "globalStorage" / "saoudrizwan.claude-dev"
+    _cline_by_path = _cline_storage.exists()
+    _cline_by_ext = False
+    _vscode_binary = shutil.which("code")
+    if _vscode_binary and not _cline_by_path:
+        try:
+            _ext_result = subprocess.run(
+                ["code", "--list-extensions"],
+                capture_output=True, text=True, timeout=8,
+            )
+            _cline_by_ext = "saoudrizwan.claude-dev" in _ext_result.stdout
+        except Exception:
+            pass
+    cline_installed = _cline_by_path or _cline_by_ext
+    _cline_detail = (
+        "VS Code extension installed (globalStorage)" if _cline_by_path
+        else ("VS Code extension installed (code --list-extensions)" if _cline_by_ext
+              else ("VS Code found but Cline not installed" if _vscode_binary
+                    else "VS Code not found"))
+    )
     probes.append({
         "id": "cline",
         "label": "Cline (VS Code)",
         "icon": "vscode",
         "installed": cline_installed,
-        "authenticated": cline_installed,
+        "vscode_found": _vscode_binary is not None,
+        "authenticated": cline_installed and bool(anthropic_key),
         "reachable": cline_installed,
         "usable": cline_installed,
-        "status": "ready" if cline_installed else "not_installed",
-        "detail": ("VS Code extension data found" if cline_installed else "Cline VS Code extension not found"),
+        "status": "ready" if cline_installed else ("not_installed" if not _vscode_binary else "not_installed"),
+        "detail": _cline_detail,
         "config_source": "vscode" if cline_installed else "unavailable",
         "docs_url": "https://marketplace.visualstudio.com/items?itemName=saoudrizwan.claude-dev",
-        "setup_hint": "Install Cline extension in VS Code",
+        "setup_hint": "Install Cline extension in VS Code: ext install saoudrizwan.claude-dev",
     })
 
     # Gemini CLI
@@ -311,7 +386,8 @@ async def set_credential_key(body: SetKeyRequest, request: Request) -> dict:
     """Write an API key to the server-side env files. Never returns the key value.
 
     Writes to ~/.config/maxwell-daemon/env and ~/.config/runner-dashboard/env,
-    updates the current process environment, then optionally restarts maxwell-daemon.
+    updates the current process environment, patches maxwell-daemon.yaml api_key,
+    then optionally restarts maxwell-daemon.
     """
     _require_local_request(request)
 
@@ -336,6 +412,8 @@ async def set_credential_key(body: SetKeyRequest, request: Request) -> dict:
 
     os.environ[env_var] = value
     log.info("Set %s for provider=%s (length=%d)", env_var, provider, len(value))
+
+    _patch_maxwell_yaml_api_key(env_var, value)
 
     restart_result: dict = {}
     if body.restart_maxwell:
@@ -364,7 +442,7 @@ async def set_credential_key(body: SetKeyRequest, request: Request) -> dict:
 
 @router.post("/credentials/clear-key")
 async def clear_credential_key(body: ClearKeyRequest, request: Request) -> dict:
-    """Remove an API key from the server-side env files."""
+    """Remove an API key from the server-side env files and maxwell YAML."""
     _require_local_request(request)
 
     provider = body.provider.lower().strip()
@@ -380,6 +458,7 @@ async def clear_credential_key(body: ClearKeyRequest, request: Request) -> dict:
         raise HTTPException(status_code=500, detail=f"Failed to clear key: {exc}") from exc
 
     os.environ.pop(env_var, None)
+    _clear_maxwell_yaml_api_key(env_var)
     log.info("Cleared %s for provider=%s", env_var, provider)
 
     restart_result: dict = {}

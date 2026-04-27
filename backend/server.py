@@ -5711,6 +5711,12 @@ async def get_maxwell_pipeline_state() -> dict:
     return await _mx_get("/api/status")
 
 
+@app.get("/api/maxwell/backends/available")
+async def get_maxwell_backends_available() -> dict:
+    """Proxy GET /api/v1/backends/available — returns all backends Maxwell knows about."""
+    return await _mx_get("/api/v1/backends/available")
+
+
 @app.post("/api/help/chat")
 async def help_chat(request: Request, *, principal: Principal = Depends(require_scope("operator"))) -> dict:  # noqa: B008
     """Answer a dashboard help question. Uses local FAQ first, falls back to Claude API if available."""

@@ -11410,6 +11410,7 @@
         // --- local state ---
         var ts = React.useState([]);          var tasks = ts[0], setTasks = ts[1];
         var bs = React.useState(null);        var backends = bs[0], setBackends = bs[1];
+        var avs = React.useState([]);         var availBackends = avs[0], setAvailBackends = avs[1];
         var ws = React.useState(null);        var workers = ws[0], setWorkers = ws[1];
         var cs = React.useState(null);        var cost = cs[0], setCost = cs[1];
         var ps = React.useState(null);        var pipeline = ps[0], setPipeline = ps[1];
@@ -11417,7 +11418,7 @@
         var dv = React.useState("");          var daemonVersion = dv[0], setDaemonVersion = dv[1];
         var ctrl = React.useState(null);      var ctrlStatus = ctrl[0], setCtrlStatus = ctrl[1];
         var cb = React.useState(false);       var busy = cb[0], setBusy = cb[1];
-        var df = React.useState({ prompt: "", repo: "" });
+        var df = React.useState({ prompt: "", repo: "", backend: "" });
         var dispForm = df[0], setDispForm = df[1];
         var dr = React.useState(null);        var dispResult = dr[0], setDispResult = dr[1];
         var db = React.useState(false);       var dispBusy = db[0], setDispBusy = db[1];
@@ -11434,6 +11435,22 @@
           fetch("/api/maxwell/backends")
             .then(function(r) { return r.json(); })
             .then(function(d) { setBackends(d); })
+            .catch(function() {});
+          fetch("/api/maxwell/backends/available")
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+              // d is typically { backends: [{name, connected, ...}] } or an array
+              var list = [];
+              if (Array.isArray(d)) { list = d; }
+              else if (d && Array.isArray(d.backends)) { list = d.backends; }
+              else if (d && typeof d === "object") {
+                // fallback: each key is a backend name
+                list = Object.keys(d).map(function(k) {
+                  return { name: k, connected: !!(d[k] && d[k].connected) };
+                });
+              }
+              setAvailBackends(list);
+            })
             .catch(function() {});
           fetch("/api/maxwell/workers")
             .then(function(r) { return r.json(); })
@@ -11478,16 +11495,18 @@
           if (!dispForm.prompt.trim()) return;
           setDispBusy(true);
           setDispResult(null);
+          var payload = { prompt: dispForm.prompt, repo: dispForm.repo || null };
+          if (dispForm.backend) payload.backend = dispForm.backend;
           fetch("/api/maxwell/dispatch", {
             method: "POST",
             headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
-            body: JSON.stringify({ prompt: dispForm.prompt, repo: dispForm.repo || null }),
+            body: JSON.stringify(payload),
           })
             .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, d: d }; }); })
             .then(function(res) {
               if (res.ok) {
                 setDispResult({ ok: true, msg: "Queued — task ID: " + res.d.task_id });
-                setDispForm({ prompt: "", repo: "" });
+                setDispForm({ prompt: "", repo: "", backend: dispForm.backend });
                 setTimeout(fetchAll, 800);
               } else {
                 setDispResult({ ok: false, msg: res.d.detail || res.d.error || "Dispatch failed" });
@@ -11505,6 +11524,15 @@
 
         var costStr = cost && typeof cost.month_to_date_usd === "number"
           ? "$" + cost.month_to_date_usd.toFixed(4) : "—";
+
+        // Build backend options for dispatch selector
+        var backendOptions = availBackends.filter(function(b) {
+          return b && (b.name || typeof b === "string");
+        }).map(function(b) {
+          var name = b.name || b;
+          var connected = b.connected !== false;
+          return { name: name, connected: connected };
+        });
 
         return h("div", null,
           h("div", { className: "stat-row" },
@@ -11560,14 +11588,33 @@
                            border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px",
                            fontFamily: "inherit", fontSize: 13, resize: "vertical" },
                 }),
-                h("input", {
-                  placeholder: "Repo (optional) — owner/repo",
-                  value: dispForm.repo,
-                  onChange: function(e) { setDispForm(function(f) { return Object.assign({}, f, { repo: e.target.value }); }); },
-                  style: { background: "var(--bg-tertiary)", color: "var(--text-primary)",
-                           border: "1px solid var(--border)", borderRadius: 6, padding: "7px 10px",
-                           fontFamily: "inherit", fontSize: 13 },
-                }),
+                h("div", { style: { display: "flex", gap: 8 } },
+                  h("input", {
+                    placeholder: "Repo (optional) — owner/repo",
+                    value: dispForm.repo,
+                    onChange: function(e) { setDispForm(function(f) { return Object.assign({}, f, { repo: e.target.value }); }); },
+                    style: { flex: 1, background: "var(--bg-tertiary)", color: "var(--text-primary)",
+                             border: "1px solid var(--border)", borderRadius: 6, padding: "7px 10px",
+                             fontFamily: "inherit", fontSize: 13 },
+                  }),
+                  h("select", {
+                    value: dispForm.backend,
+                    onChange: function(e) { setDispForm(function(f) { return Object.assign({}, f, { backend: e.target.value }); }); },
+                    title: "Backend to use for this task",
+                    style: { background: "var(--bg-tertiary)", color: "var(--text-primary)",
+                             border: "1px solid var(--border)", borderRadius: 6, padding: "7px 10px",
+                             fontFamily: "inherit", fontSize: 12, minWidth: 130 },
+                  },
+                    h("option", { value: "" }, "auto (default)"),
+                    backendOptions.map(function(b) {
+                      return h("option", {
+                        key: b.name,
+                        value: b.name,
+                        style: { color: b.connected ? "var(--text-primary)" : "var(--text-muted)" },
+                      }, b.name + (b.connected ? "" : " (offline)"));
+                    }),
+                  ),
+                ),
                 h("button", {
                   className: "btn",
                   onClick: doDispatch,
