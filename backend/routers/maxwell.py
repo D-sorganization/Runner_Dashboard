@@ -1,0 +1,263 @@
+from __future__ import annotations
+
+import asyncio
+import datetime as _dt_mod
+import json as _json
+import logging
+import os
+import subprocess
+import uuid
+from pathlib import Path
+from typing import Any
+
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Request
+from identity import Principal, require_scope
+from pydantic import BaseModel, Field
+from security import safe_subprocess_env, sanitize_log_value
+
+router = APIRouter(prefix="/api/maxwell", tags=["maxwell"])
+log = logging.getLogger("dashboard")
+UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)
+datetime = _dt_mod.datetime
+
+class MaxwellControlBody(BaseModel):
+    action: str = Field(..., max_length=20)
+    approved_by: str = Field(..., max_length=200)
+
+def _maxwell_base_url() -> str:
+    """Return the Maxwell-Daemon base URL from env."""
+    return os.environ.get("MAXWELL_URL", "") or f"http://localhost:{int(os.environ.get('MAXWELL_PORT', 8080))}"
+
+def _maxwell_api_token() -> str:
+    """Return the Maxwell-Daemon API confirmation token from env."""
+    return os.environ.get("MAXWELL_API_TOKEN", "maxwell-local-secret")
+
+def _maxwell_headers() -> dict:
+    """Return auth headers for Maxwell-Daemon requests."""
+    token = _maxwell_api_token()
+    if token:
+        return {"Authorization": f"Bearer {token}"}
+    return {}
+
+async def _mx_get(path: str, params: dict | None = None) -> dict:
+    """GET helper for Maxwell proxy routes."""
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get(
+                f"{_maxwell_base_url()}{path}",
+                params=params,
+                headers=_maxwell_headers(),
+            )
+            log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
+            return resp.json()
+    except Exception as e:
+        log.info("maxwell_proxy: path=%s error=%s", path, str(e)[:80])
+        return {"error": str(e)[:120], "daemon_available": False}
+
+async def _run_cmd(cmd: list[str], timeout: int = 30, cwd: str | Path | None = None) -> tuple[int, str, str]:
+    """Helper to run a shell command asynchronously."""
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        cwd=cwd,
+        env=safe_subprocess_env(),
+    )
+    try:
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        return proc.returncode or 0, stdout.decode().strip(), stderr.decode().strip()
+    except asyncio.TimeoutError:
+        try:
+            proc.kill()
+        except ProcessLookupError:
+            pass
+        return -1, "", "timeout"
+
+@router.get("/status")
+async def get_maxwell_status() -> dict:
+    """Probe Maxwell-Daemon status and connectivity (Dashboard-facing)."""
+    import shutil
+
+    maxwell_binary = shutil.which("maxwell") or shutil.which("maxwell-daemon")
+    maxwell_url = os.environ.get("MAXWELL_URL", "")
+    maxwell_port = int(os.environ.get("MAXWELL_PORT", 8080))
+
+    # Check if maxwell service is running via systemd
+    service_running = False
+    service_detail = "unknown"
+    try:
+        # Note: using subprocess.run for simple systemctl check
+        r = subprocess.run(
+            ["systemctl", "is-active", "maxwell-daemon"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            env=safe_subprocess_env(),
+        )
+        service_running = (r.stdout.strip() == "active")
+        service_detail = r.stdout.strip()
+    except Exception as e:
+        service_detail = f"probe error: {str(e)}"
+
+    # Check HTTP reachability
+    http_reachable = False
+    http_detail = ""
+    base_url = _maxwell_base_url()
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get(f"{base_url}/api/health", headers=_maxwell_headers())
+            http_reachable = (resp.status_code == 200)
+            http_detail = f"HTTP {resp.status_code}"
+    except Exception as e:
+        http_detail = str(e)
+
+    status = "running" if (service_running or http_reachable) else "stopped"
+
+    return {
+        "status": status,
+        "binary_found": maxwell_binary is not None,
+        "binary_path": maxwell_binary,
+        "service_running": service_running,
+        "service_detail": service_detail,
+        "http_reachable": http_reachable,
+        "http_detail": http_detail,
+        "dashboard_url": base_url,
+        "deep_links": {
+            "dashboard": base_url,
+            "health": f"{base_url}/api/health",
+            "logs": "journalctl -u maxwell-daemon -f",
+        },
+        "probed_at": datetime.now(UTC).isoformat(),
+    }
+
+@router.post("/control")
+async def maxwell_control(
+    request: Request,
+    *,
+    principal: Principal = Depends(require_scope("maxwell.control")),
+) -> dict:
+    """Start or stop Maxwell-Daemon service (confirmation required)."""
+    body = await request.json()
+    action = str(body.get("action", "")).strip()
+    approved_by = str(body.get("approved_by", "")).strip()
+    if action not in ("start", "stop", "restart"):
+        raise HTTPException(status_code=422, detail="action must be start, stop, or restart")
+    if not approved_by:
+        raise HTTPException(status_code=422, detail="approved_by required for privileged action")
+
+    code, out, stderr = await _run_cmd(["systemctl", action, "maxwell-daemon"], timeout=15)
+    log.info(
+        "maxwell_control: action=%s approved_by=%s exit_code=%d",
+        sanitize_log_value(action),
+        sanitize_log_value(approved_by),
+        code,
+    )
+    if code != 0:
+        log.warning("maxwell %s failed: %s", action, stderr.strip()[:200])
+        raise HTTPException(
+            status_code=502,
+            detail=f"maxwell {action} failed",
+        )
+    return {"status": action + "ed", "action": action, "approved_by": approved_by}
+
+@router.get("/version")
+async def get_maxwell_version() -> dict:
+    """Proxy GET /api/version from Maxwell-Daemon."""
+    return await _mx_get("/api/version")
+
+@router.get("/daemon-status")
+async def get_maxwell_daemon_status_detail() -> dict:
+    """Proxy GET /api/status from Maxwell-Daemon (pipeline state)."""
+    return await _mx_get("/api/status")
+
+@router.get("/tasks")
+async def get_maxwell_tasks(limit: int = 20, cursor: str | None = None) -> dict:
+    """Proxy GET /api/tasks from Maxwell-Daemon."""
+    params: dict = {"limit": limit}
+    if cursor is not None:
+        params["cursor"] = cursor
+    return await _mx_get("/api/tasks", params=params)
+
+@router.get("/tasks/{task_id}")
+async def get_maxwell_task_detail(task_id: str) -> dict:
+    """Proxy GET /api/tasks/{task_id} from Maxwell-Daemon."""
+    return await _mx_get(f"/api/tasks/{task_id}")
+
+@router.post("/dispatch")
+async def maxwell_dispatch_task(
+    request: Request,
+    *,
+    principal: Principal = Depends(require_scope("maxwell.control")),
+) -> dict:
+    """Proxy POST /api/v1/tasks to Maxwell-Daemon."""
+    path = "/api/v1/tasks"
+    body = await request.json()
+    if not body.get("idempotency_key"):
+        body["idempotency_key"] = str(uuid.uuid4())
+    # Injected token
+    body["confirmation_token"] = _maxwell_api_token()
+    
+    hdrs = {"Content-Type": "application/json"}
+    hdrs.update(_maxwell_headers())
+    
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(
+                f"{_maxwell_base_url()}{path}",
+                content=_json.dumps(body),
+                headers=hdrs,
+            )
+            log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
+            return resp.json()
+    except Exception as e:
+        log.info("maxwell_proxy: path=%s error=%s", path, str(e)[:80])
+        return {"error": str(e)[:120], "daemon_available": False}
+
+@router.post("/pipeline-control/{action}")
+async def maxwell_pipeline_control(
+    action: str,
+    request: Request,
+    *,
+    principal: Principal = Depends(require_scope("maxwell.control")),
+) -> dict:
+    """Proxy POST /api/control/{action} to Maxwell-Daemon."""
+    path = f"/api/v1/control/{action}"
+    body = await request.json()
+    body["confirmation_token"] = _maxwell_api_token()
+    
+    hdrs = {"Content-Type": "application/json"}
+    hdrs.update(_maxwell_headers())
+
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.post(
+                f"{_maxwell_base_url()}{path}",
+                content=_json.dumps(body),
+                headers=hdrs,
+            )
+            log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
+            return resp.json()
+    except Exception as e:
+        log.info("maxwell_proxy: path=%s error=%s", path, str(e)[:80])
+        return {"error": str(e)[:120], "daemon_available": False}
+
+@router.get("/backends")
+async def get_maxwell_backends() -> dict:
+    """Proxy GET /api/v1/backends from Maxwell-Daemon."""
+    return await _mx_get("/api/v1/backends")
+
+@router.get("/workers")
+async def get_maxwell_workers() -> dict:
+    """Proxy GET /api/v1/workers from Maxwell-Daemon."""
+    return await _mx_get("/api/v1/workers")
+
+@router.get("/cost")
+async def get_maxwell_cost() -> dict:
+    """Proxy GET /api/v1/cost from Maxwell-Daemon."""
+    return await _mx_get("/api/v1/cost")
+
+@router.get("/pipeline-state")
+async def get_maxwell_pipeline_state() -> dict:
+    """Proxy GET /api/status (pipeline state) from Maxwell-Daemon."""
+    return await _mx_get("/api/status")

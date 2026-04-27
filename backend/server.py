@@ -47,6 +47,7 @@ from identity import Principal, require_principal, require_scope  # noqa: B008
 from pydantic import BaseModel, Field
 from routers import admin as admin_router
 from routers import auth as auth_router
+from routers import maxwell as maxwell_router
 from starlette.middleware.sessions import SessionMiddleware
 
 BACKEND_DIR = Path(__file__).resolve().parent
@@ -360,6 +361,7 @@ app.include_router(auth_router.router)
 import agent_launcher_router as _agent_launcher_router  # noqa: E402
 
 app.include_router(_agent_launcher_router.router)
+app.include_router(maxwell_router.router)
 
 app.add_middleware(
     SessionMiddleware,
@@ -4402,7 +4404,7 @@ async def _dispatch_to_ai_provider_for_chat(
     """Call the configured AI provider for assistant chat."""
     # For MVP: return a simple response based on the prompt
     # In production, this would dispatch to an actual provider (Jules, Claude, etc.)
-    provider_id = provider or "ollama_local"
+    provider_id = provider or "ollama"
 
     # Check provider availability
     availability = agent_remediation.probe_provider_availability()
@@ -4470,7 +4472,7 @@ async def assistant_chat(request: Request, *, principal: Principal = Depends(req
     )
     return {
         "response": response_text,
-        "provider": req.provider or "ollama_local",
+        "provider": req.provider or "ollama",
         "context_used": req.context.dict(),
         "timestamp": now_ts,
     }
@@ -4595,7 +4597,7 @@ async def propose_action(request: Request, *, principal: Principal = Depends(req
         raise HTTPException(status_code=422, detail=str(e)) from e
 
     # Call AI provider to generate action proposal
-    provider_id = req.provider or "ollama_local"
+    provider_id = req.provider or "ollama"
     availability = agent_remediation.probe_provider_availability()
     if provider_id not in availability or not availability[provider_id].available:
         # For MVP: return a synthetic proposal

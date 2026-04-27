@@ -33,9 +33,10 @@ DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "agent_re
 DEFAULT_PROVIDER_ORDER = (
     "jules_cli",
     "jules_api",
+    "gemini_cli",
     "codex_cli",
     "claude_code_cli",
-    "ollama_local",
+    "ollama",
     "cline",
 )
 DEFAULT_WORKFLOW_TYPE_RULES: tuple[dict[str, Any], ...] = (
@@ -397,8 +398,8 @@ PROVIDERS: dict[str, AgentProvider] = {
         editable=True,
         notes="Uses `claude -p` with auto permissions for branch-local remediation on a self-hosted runner.",
     ),
-    "ollama_local": AgentProvider(
-        provider_id="ollama_local",
+    "ollama": AgentProvider(
+        provider_id="ollama",
         label="Ollama",
         execution_mode="local_analysis",
         dispatch_mode="future",
@@ -409,6 +410,16 @@ PROVIDERS: dict[str, AgentProvider] = {
             "Useful as a low-cost analyzer or triage assistant; code-edit execution should stay gated"
             " until a stronger local agent loop is selected."
         ),
+    ),
+    "gemini_cli": AgentProvider(
+        provider_id="gemini_cli",
+        label="Gemini CLI",
+        execution_mode="local_exec",
+        dispatch_mode="github_actions",
+        availability_probe=("gemini",),
+        required_env=("GOOGLE_API_KEY",),
+        editable=True,
+        notes="Uses `gemini` CLI for local remediation and reasoning.",
     ),
     "cline": AgentProvider(
         provider_id="cline",
@@ -668,6 +679,15 @@ def provider_prompt(provider_id: str, context: FailureContext) -> str:
             f"{repair_goal}\n"
             "Work inside this checkout, make the minimal code change that addresses the failure, "
             "and verify the narrowest relevant test target."
+        )
+    if provider_id == "gemini_cli":
+        return (
+            f"{system_note}\n\n"
+            f"{branch_line}\nRun ID: {context.run_id or 'unknown'}\n\n"
+            f"Failure summary:\n{summary}\n\n"
+            f"Failed log excerpt:\n{log_excerpt}\n\n"
+            f"{repair_goal}\n"
+            "Analyze the failure, apply the fix to the local codebase, and verify the result."
         )
     return (
         f"{system_note}\n\n"
