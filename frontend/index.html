@@ -86,107 +86,14 @@
       /* ── Header ── */
       .app-header {
         background: var(--bg-secondary);
+        border-bottom: 1px solid var(--border);
+        padding: 0 24px;
+        display: flex;
+        align-items: center;
+        height: 56px;
         position: sticky;
         top: 0;
         z-index: 100;
-        display: flex;
-        flex-direction: column;
-      }
-      .ribbon-primary {
-        display: flex;
-        align-items: center;
-        padding: 0 24px;
-        height: 48px;
-        border-bottom: 1px solid var(--border);
-        gap: 2px;
-      }
-      .ribbon-secondary {
-        display: flex;
-        align-items: center;
-        padding: 0 16px;
-        height: 40px;
-        background: rgba(0,0,0,0.22);
-        border-bottom: 1px solid var(--border);
-        gap: 2px;
-        overflow-x: auto;
-      }
-      .ribbon-group {
-        display: flex;
-        align-items: center;
-        padding: 0 4px;
-        border-right: 1px solid var(--border);
-        height: 100%;
-        position: relative;
-      }
-      .ribbon-group:last-child {
-        border-right: none;
-      }
-      .ribbon-group-label {
-        position: absolute;
-        bottom: 1px;
-        left: 0;
-        right: 0;
-        text-align: center;
-        font-size: 9px;
-        color: var(--text-muted);
-        text-transform: uppercase;
-        letter-spacing: 0.3px;
-        pointer-events: none;
-        opacity: 0.6;
-      }
-      .ribbon-cat-btn {
-        background: none;
-        border: none;
-        border-bottom: 3px solid transparent;
-        color: var(--text-secondary);
-        font-size: 13px;
-        font-weight: 600;
-        padding: 0 14px;
-        height: 100%;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        white-space: nowrap;
-        transition: color 0.15s, border-color 0.15s;
-        margin-bottom: -1px;
-      }
-      .ribbon-cat-btn:hover { color: var(--text-primary); }
-      .ribbon-cat-btn.active {
-        color: var(--text-primary);
-        background: rgba(255,255,255,0.06);
-        border-radius: 6px 6px 0 0;
-      }
-      .ribbon-tab-btn {
-        background: none;
-        border: none;
-        color: rgba(255,255,255,0.45);
-        font-size: 12px;
-        font-weight: 500;
-        padding: 0 12px;
-        height: 100%;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        gap: 5px;
-        white-space: nowrap;
-        position: relative;
-        transition: color 0.15s;
-      }
-      .ribbon-tab-btn:hover {
-        color: rgba(255,255,255,1);
-        background: rgba(255,255,255,0.05);
-      }
-      .ribbon-tab-btn.active { color: var(--text-primary); }
-      .ribbon-tab-btn.active::after {
-        content: "";
-        position: absolute;
-        bottom: 0;
-        left: 4px;
-        right: 4px;
-        height: 2px;
-        background: var(--accent-blue);
-        border-radius: 2px 2px 0 0;
       }
       .app-logo {
         display: flex;
@@ -5572,119 +5479,6 @@
       }
 
       // ════════════════════════ QUEUE TAB ════════════════════════
-
-      // STALE QUEUE CLEANUP PANEL
-      function StaleQueuePanel(p) {
-        var onRefresh = p.onRefresh;
-        var minAgeState = React.useState(60);
-        var minAge = minAgeState[0], setMinAge = minAgeState[1];
-        var scanState = React.useState(null);
-        var scanResult = scanState[0], setScanResult = scanState[1];
-        var loadingState = React.useState(false);
-        var loading = loadingState[0], setLoading = loadingState[1];
-        var purgeLoadingState = React.useState(false);
-        var purgeLoading = purgeLoadingState[0], setPurgeLoading = purgeLoadingState[1];
-        var confirmState = React.useState(false);
-        var confirmArmed = confirmState[0], setConfirmArmed = confirmState[1];
-        var msgState = React.useState(null);
-        var msg = msgState[0], setMsg = msgState[1];
-        function ageColor(mins) {
-          if (mins > 10080) return "var(--accent-red)";
-          if (mins > 1440)  return "#f0883e";
-          if (mins > 60)    return "var(--accent-yellow)";
-          return "var(--text-muted)";
-        }
-        function fmtAge(mins) {
-          if (mins < 60) return mins + "m";
-          var h = Math.floor(mins / 60);
-          if (h < 24) return h + "h " + (mins % 60) + "m";
-          return Math.floor(h / 24) + "d " + (h % 24) + "h";
-        }
-        function runScan() {
-          setLoading(true); setScanResult(null); setMsg(null); setConfirmArmed(false);
-          fetch("/api/queue/stale?min_age=" + minAge)
-            .then(function(r) { return r.json(); })
-            .then(function(d) { setScanResult(d); setLoading(false); })
-            .catch(function() { setMsg({ type: "error", text: "Scan failed" }); setLoading(false); });
-        }
-        function armPurge() {
-          setConfirmArmed(true);
-          setTimeout(function() { setConfirmArmed(function(c) { return c ? false : c; }); }, 6000);
-        }
-        function executePurge(dryRun) {
-          setPurgeLoading(true); setConfirmArmed(false);
-          fetch("/api/queue/purge-stale", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
-            body: JSON.stringify({ min_age: minAge, dry_run: dryRun }),
-          })
-            .then(function(r) { return r.json(); })
-            .then(function(d) {
-              setPurgeLoading(false);
-              var errPart = d.errors && d.errors.length ? " (errors: " + d.errors.length + ")" : "";
-              setMsg({ type: dryRun ? "info" : (d.cancelled_count > 0 ? "success" : "info"),
-                text: dryRun ? "Dry run: would cancel " + d.stale_count + " run(s)"
-                             : "Cancelled " + d.cancelled_count + " / " + d.stale_count + " stale run(s)" + errPart });
-              if (!dryRun) { setScanResult(null); if (onRefresh) setTimeout(onRefresh, 1500); }
-            })
-            .catch(function() { setPurgeLoading(false); setMsg({ type: "error", text: "Purge failed" }); });
-        }
-        var staleRuns = (scanResult && scanResult.runs) || [];
-        var staleCount = (scanResult && scanResult.stale_count) || 0;
-        return h("div", { style: { marginTop: 24, borderTop: "1px solid var(--border)", paddingTop: 16 } },
-          h("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 10 } },
-            h("span", { style: { fontWeight: 600, fontSize: 13 } }, "Stale Queue Cleanup"),
-            h("span", { style: { fontSize: 11, color: "var(--text-muted)" } }, "\u2014 scans all repos, not just recent 15"),
-          ),
-          h("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" } },
-            h("label", { style: { fontSize: 12, color: "var(--text-muted)" } }, "Min age (min):"),
-            h("input", { type: "number", min: 0, value: minAge,
-              onChange: function(e) { setMinAge(parseInt(e.target.value, 10) || 0); },
-              style: { width: 70, padding: "3px 6px", borderRadius: 4, border: "1px solid var(--border)",
-                background: "var(--bg-secondary)", color: "var(--text-primary)", fontSize: 12 } }),
-            h("button", { className: "btn", onClick: runScan, disabled: loading, style: { fontSize: 12 } },
-              loading ? h("span", { className: "spinner" }) : null, loading ? " Scanning..." : "Scan all repos"),
-            staleCount > 0 && !purgeLoading
-              ? (confirmArmed
-                ? h("span", { style: { display: "flex", gap: 6 } },
-                    h("button", { className: "btn", onClick: function() { executePurge(false); },
-                      style: { fontSize: 12, background: "var(--accent-red)", color: "#fff" } },
-                      "Confirm: cancel " + staleCount + " run(s)"),
-                    h("button", { className: "btn", onClick: function() { setConfirmArmed(false); }, style: { fontSize: 12 } }, "Never mind"))
-                : h("button", { className: "btn", onClick: armPurge,
-                    style: { fontSize: 12, borderColor: "var(--accent-red)", color: "var(--accent-red)" } },
-                    "Purge " + staleCount + " stale run(s)"))
-              : null,
-            staleCount > 0
-              ? h("button", { className: "btn", onClick: function() { executePurge(true); }, disabled: purgeLoading, style: { fontSize: 12 } }, "Dry run")
-              : null,
-          ),
-          msg ? h("div", { role: "alert", style: {
-              margin: "0 0 10px", padding: "8px 14px", borderRadius: 6, fontSize: 12,
-              background: msg.type === "error" ? "rgba(248,81,73,0.12)" : msg.type === "success" ? "rgba(63,185,80,0.12)" : "rgba(88,166,255,0.12)",
-              color: msg.type === "error" ? "var(--accent-red)" : msg.type === "success" ? "var(--accent-green)" : "var(--accent-blue)",
-              border: "1px solid " + (msg.type === "error" ? "var(--accent-red)" : msg.type === "success" ? "var(--accent-green)" : "var(--accent-blue)"),
-            } }, msg.text) : null,
-          scanResult && staleCount === 0
-            ? h("div", { style: { fontSize: 12, color: "var(--accent-green)", padding: "6px 0" } },
-                "No stale runs found (queued > " + minAge + " min across all repos)") : null,
-          staleRuns.length > 0
-            ? h("div", { style: { overflowX: "auto" } },
-                h("table", { className: "data-table", style: { fontSize: 12, width: "100%" } },
-                  h("thead", null, h("tr", null,
-                    h("th", null, "Age"), h("th", null, "Repo"), h("th", null, "Workflow"),
-                    h("th", null, "Branch"), h("th", null, "Queued at"))),
-                  h("tbody", null, staleRuns.map(function(r) {
-                    return h("tr", { key: r.run_id },
-                      h("td", null, h("span", { style: { fontWeight: 600, color: ageColor(r.age_minutes) } }, fmtAge(r.age_minutes))),
-                      h("td", null, h("code", { style: { fontSize: 11 } }, r.repo)),
-                      h("td", null, r.workflow),
-                      h("td", null, h("code", { style: { fontSize: 11 } }, r.branch)),
-                      h("td", { style: { color: "var(--text-muted)" } }, r.created_at ? new Date(r.created_at).toLocaleString() : "-"));
-                  })))) : null,
-        );
-      }
-
       function QueueTab(p) {
         var q = p.queue || {};
         var loading = p.loading;
@@ -6699,7 +6493,6 @@
                   "Queue is empty \u2014 all runners idle",
                 ),
           ),
-          h(StaleQueuePanel, { onRefresh: onRefresh }),
         );
       }
 
@@ -8883,7 +8676,7 @@
               return r.json();
             })
             .then(function (data) {
-              setIssues(Array.isArray(data) ? data : (data.items || data.issues || []));
+              setIssues(Array.isArray(data) ? data : (data.issues || []));
               setLoading(false);
             })
             .catch(function (err) {
@@ -11400,267 +11193,537 @@
       }
 
       function MaxwellTab(p) {
-        // Props from parent app (systemd status + controls).
+        var status = p.status || {};
+        var loading = p.loading;
+        var error = p.error;
+        var onRefresh = p.onRefresh;
+        var onControl = p.onControl;
+        var cs = React.useState(null);
+        var controlStatus = cs[0],
+          setControlStatus = cs[1];
+        var cl = React.useState(false);
+        var controlling = cl[0],
+          setControlling = cl[1];
+        var pending = React.useState("");
+        var pendingAction = pending[0],
+          setPendingAction = pending[1];
+        var ts = React.useState([]);
+        var tasks = ts[0],
+          setTasks = ts[1];
+        var tl = React.useState(false);
+        var tasksLoading = tl[0],
+          setTasksLoading = tl[1];
+        var dv = React.useState("");
+        var daemonVersion = dv[0],
+          setDaemonVersion = dv[1];
+        var isRunning = status.status === "running";
+
+        function fetchTasks() {
+          setTasksLoading(true);
+          fetch("/api/maxwell/tasks?limit=10")
+            .then(function (r) { return r.json(); })
+            .then(function (data) { setTasks(data.tasks || []); })
+            .catch(function () { setTasks([]); })
+            .finally(function () { setTasksLoading(false); });
+        }
+
+        function fetchVersion() {
+          fetch("/api/maxwell/version")
+            .then(function (r) { return r.json(); })
+            .then(function (data) { setDaemonVersion(data.contract || data.daemon || ""); })
+            .catch(function () { setDaemonVersion(""); });
+        }
+
+        React.useEffect(function () {
+          fetchTasks();
+          fetchVersion();
+        }, []);
+
+        function doControl(action) {
+          setPendingAction(action);
+          setControlling(true);
+          setControlStatus(null);
+          onControl({ action: action })
+            .then(function () {
+              setControlStatus({ ok: true, msg: "Requested " + action + "." });
+              if (onRefresh) setTimeout(onRefresh, 1000);
+            })
+            .catch(function (err) {
+              setControlStatus({ ok: false, msg: String(err) });
+            })
+            .finally(function () {
+              setControlling(false);
+              setPendingAction("");
+            });
+        }
+        return h(
+          "div",
+          null,
+          h("div", { className: "stat-row" },
+            h(Stat, { label: "Status", value: status.status || "unknown", sub: status.service_detail || "" }),
+            h(Stat, { label: "HTTP", value: status.http_reachable ? "reachable" : "offline", sub: status.http_detail || "" }),
+            h(Stat, { label: "Binary", value: status.binary_found ? "found" : "missing", sub: status.binary_path || "not on PATH" }),
+            h(Stat, { label: "Contract", value: daemonVersion || "unknown" }),
+          ),
+          h("div", { style: { display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" } },
+            h("button", { className: "btn", onClick: onRefresh, disabled: loading }, I.refresh(12), loading ? "Refreshing..." : "Refresh"),
+            !isRunning ? h("button", { className: "btn", onClick: function () { doControl("start"); }, disabled: controlling }, "Start Maxwell") : null,
+            isRunning ? h("button", { className: "btn", onClick: function () { doControl("stop"); }, disabled: controlling }, "Stop Maxwell") : null,
+            isRunning ? h("button", { className: "btn", onClick: function () { doControl("restart"); }, disabled: controlling }, "Restart Maxwell") : null,
+          ),
+          controlStatus ? h("div", { style: { padding: "10px 12px", borderRadius: 8, marginBottom: 12, background: controlStatus.ok ? "rgba(63,185,80,0.12)" : "rgba(248,81,73,0.12)", color: controlStatus.ok ? "var(--accent-green)" : "var(--accent-red)" } }, controlStatus.msg) : null,
+          error ? h("div", { style: { padding: "10px 12px", borderRadius: 8, marginBottom: 12, background: "rgba(248,81,73,0.12)", color: "var(--accent-red)" } }, error) : null,
+          h("div", { className: "section" },
+            h("div", { className: "section-header" }, h("span", { className: "section-title" }, I.server(14), "Maxwell-Daemon")),
+            h("div", { className: "section-body" },
+              pendingAction ? h("div", { style: { fontSize: 12, color: "var(--text-muted)", marginBottom: 8 } }, "Working on " + pendingAction + "...") : null,
+              status.dashboard_url ? h("a", { href: status.dashboard_url, target: "_blank", rel: "noopener noreferrer", style: { color: "var(--accent-blue)" } }, status.dashboard_url + " ↗") : null,
+              !status.binary_found && !status.service_running && !status.http_reachable
+                ? h("div", { style: { marginTop: 12, fontSize: 12, color: "var(--text-muted)" } }, "Maxwell-Daemon is not detected on this machine.")
+                : null,
+            ),
+          ),
+          h("div", { className: "section" },
+            h("div", { className: "section-header" },
+              h("span", { className: "section-title" }, I.list ? I.list(14) : null, "Recent Tasks")
+            ),
+            h("div", { className: "section-body" },
+              tasksLoading ? h("div", { style: { color: "var(--text-muted)", fontSize: 12 } }, "Loading tasks…") :
+              !status.http_reachable ? h("div", { style: { fontSize: 12, color: "var(--text-muted)" } }, "Maxwell-Daemon offline — no task history") :
+              tasks.length === 0 ? h("div", { style: { fontSize: 12, color: "var(--text-muted)" } }, "No tasks yet") :
+              h("table", { className: "data-table" },
+                h("thead", null, h("tr", null,
+                  h("th", null, "ID"), h("th", null, "Status"), h("th", null, "Repo"), h("th", null, "Created")
+                )),
+                h("tbody", null, tasks.map(function(t) {
+                  return h("tr", { key: t.id },
+                    h("td", null, (t.id||"").slice(0,8)),
+                    h("td", null, t.status || "—"),
+                    h("td", null, t.repo || "—"),
+                    h("td", null, t.created_at ? t.created_at.slice(0,16).replace("T"," ") : "—")
+                  );
+                }))
+              )
+            )
+          ),
+        );
+      }
+
+      /*
+      function MaxwellTab(p) {
         var status = p.status || {};
         var loading = p.loading;
         var error = p.error;
         var onRefresh = p.onRefresh;
         var onControl = p.onControl;
 
-        // --- local state ---
-        var ts = React.useState([]);          var tasks = ts[0], setTasks = ts[1];
-        var bs = React.useState(null);        var backends = bs[0], setBackends = bs[1];
-        var avs = React.useState([]);         var availBackends = avs[0], setAvailBackends = avs[1];
-        var ws = React.useState(null);        var workers = ws[0], setWorkers = ws[1];
-        var cs = React.useState(null);        var cost = cs[0], setCost = cs[1];
-        var ps = React.useState(null);        var pipeline = ps[0], setPipeline = ps[1];
-        var tl = React.useState(false);       var tasksLoading = tl[0], setTasksLoading = tl[1];
-        var dv = React.useState("");          var daemonVersion = dv[0], setDaemonVersion = dv[1];
-        var ctrl = React.useState(null);      var ctrlStatus = ctrl[0], setCtrlStatus = ctrl[1];
-        var cb = React.useState(false);       var busy = cb[0], setBusy = cb[1];
-        var df = React.useState({ prompt: "", repo: "", backend: "" });
-        var dispForm = df[0], setDispForm = df[1];
-        var dr = React.useState(null);        var dispResult = dr[0], setDispResult = dr[1];
-        var db = React.useState(false);       var dispBusy = db[0], setDispBusy = db[1];
+        var cs = React.useState(null);
+        var controlStatus = cs[0],
+          setControlStatus = cs[1];
+        var cl = React.useState(false);
+        var controlling = cl[0],
+          setControlling = cl[1];
+        var ca = React.useState("");
+        var pendingAction = ca[0],
+          setPendingAction = ca[1];
+        var confirm = React.useState(false);
+        var showConfirm = confirm[0],
+          setShowConfirm = confirm[1];
 
         var isRunning = status.status === "running";
+        var statusColor = isRunning
+          ? "var(--accent-green)"
+          : "var(--accent-red)";
+        var statusBg = isRunning
+          ? "rgba(63,185,80,0.12)"
+          : "rgba(248,81,73,0.12)";
 
-        function fetchAll() {
-          setTasksLoading(true);
-          fetch("/api/maxwell/tasks?limit=20")
-            .then(function(r) { return r.json(); })
-            .then(function(d) { setTasks(d.tasks || []); })
-            .catch(function() { setTasks([]); })
-            .finally(function() { setTasksLoading(false); });
-          fetch("/api/maxwell/backends")
-            .then(function(r) { return r.json(); })
-            .then(function(d) { setBackends(d); })
-            .catch(function() {});
-          fetch("/api/maxwell/backends/available")
-            .then(function(r) { return r.json(); })
-            .then(function(d) {
-              // d is typically { backends: [{name, connected, ...}] } or an array
-              var list = [];
-              if (Array.isArray(d)) { list = d; }
-              else if (d && Array.isArray(d.backends)) { list = d.backends; }
-              else if (d && typeof d === "object") {
-                // fallback: each key is a backend name
-                list = Object.keys(d).map(function(k) {
-                  return { name: k, connected: !!(d[k] && d[k].connected) };
-                });
-              }
-              setAvailBackends(list);
-            })
-            .catch(function() {});
-          fetch("/api/maxwell/workers")
-            .then(function(r) { return r.json(); })
-            .then(function(d) { setWorkers(d); })
-            .catch(function() {});
-          fetch("/api/maxwell/cost")
-            .then(function(r) { return r.json(); })
-            .then(function(d) { setCost(d); })
-            .catch(function() {});
-          fetch("/api/maxwell/pipeline-state")
-            .then(function(r) { return r.json(); })
-            .then(function(d) { setPipeline(d); })
-            .catch(function() {});
-          fetch("/api/maxwell/version")
-            .then(function(r) { return r.json(); })
-            .then(function(d) { setDaemonVersion(d.contract || d.daemon || ""); })
-            .catch(function() {});
+        function initiateControl(action) {
+          setPendingAction(action);
+          setShowConfirm(true);
         }
 
-        React.useEffect(function() {
-          fetchAll();
-          var iv = setInterval(function() {
-            if (onRefresh) onRefresh();
-            fetchAll();
-          }, 8000);
-          return function() { clearInterval(iv); };
-        }, []);
-
-        function doControl(action) {
-          setBusy(true);
-          setCtrlStatus(null);
-          onControl({ action: action, approved_by: "dashboard" })
-            .then(function() {
-              setCtrlStatus({ ok: true, msg: action.charAt(0).toUpperCase() + action.slice(1) + "ed Maxwell." });
-              setTimeout(function() { if (onRefresh) onRefresh(); fetchAll(); }, 1200);
-            })
-            .catch(function(err) { setCtrlStatus({ ok: false, msg: String(err) }); })
-            .finally(function() { setBusy(false); });
-        }
-
-        function doDispatch() {
-          if (!dispForm.prompt.trim()) return;
-          setDispBusy(true);
-          setDispResult(null);
-          var payload = { prompt: dispForm.prompt, repo: dispForm.repo || null };
-          if (dispForm.backend) payload.backend = dispForm.backend;
-          fetch("/api/maxwell/dispatch", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
-            body: JSON.stringify(payload),
+        function doControl() {
+          setControlling(true);
+          onControl({
+            action: pendingAction,
+            approved_by: (principal && principal.name) || "anonymous",
           })
-            .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, d: d }; }); })
-            .then(function(res) {
-              if (res.ok) {
-                setDispResult({ ok: true, msg: "Queued — task ID: " + res.d.task_id });
-                setDispForm({ prompt: "", repo: "", backend: dispForm.backend });
-                setTimeout(fetchAll, 800);
-              } else {
-                setDispResult({ ok: false, msg: res.d.detail || res.d.error || "Dispatch failed" });
-              }
+            .then(function (d) {
+              setControlStatus({ ok: true, msg: d.status || "Done" });
+              onRefresh();
             })
-            .catch(function(e) { setDispResult({ ok: false, msg: String(e) }); })
-            .finally(function() { setDispBusy(false); });
+            .catch(function (e) {
+              setControlStatus({
+                ok: false,
+                msg: e.message || "Control failed",
+              });
+            })
+            .finally(function () {
+              setControlling(false);
+              setShowConfirm(false);
+              setPendingAction("");
+            });
         }
 
-        var taskStatusColor = {
-          completed: "var(--accent-green)", failed: "var(--accent-red)",
-          running: "var(--accent-blue)", queued: "var(--accent-yellow)",
-          cancelled: "var(--text-muted)",
-        };
-
-        var costStr = cost && typeof cost.month_to_date_usd === "number"
-          ? "$" + cost.month_to_date_usd.toFixed(4) : "—";
-
-        // Build backend options for dispatch selector
-        var backendOptions = availBackends.filter(function(b) {
-          return b && (b.name || typeof b === "string");
-        }).map(function(b) {
-          var name = b.name || b;
-          var connected = b.connected !== false;
-          return { name: name, connected: connected };
-        });
-
-        return h("div", null,
-          h("div", { className: "stat-row" },
-            h(Stat, { label: "Service", value: status.status || "unknown", sub: status.service_detail || "" }),
-            h(Stat, { label: "HTTP", value: status.http_reachable ? "reachable" : "offline", sub: status.http_detail || "" }),
+        return h(
+          "div",
+          null,
+          h(
+            "div",
+            { className: "stat-row" },
             h(Stat, {
-              label: "Pipeline",
-              value: pipeline ? (pipeline.pipeline_state || "unknown") : "—",
-              sub: pipeline ? ("gate: " + (pipeline.gate || "?") + " \xb7 sandbox: " + (pipeline.sandbox || "?")) : "",
-            }),
-            h(Stat, { label: "Version", value: daemonVersion || "—", sub: "contract" }),
-          ),
-          h("div", { className: "stat-row" },
-            h(Stat, {
-              label: "Workers",
-              value: workers ? String(workers.worker_count || 0) : "—",
-              sub: workers ? ("queue depth: " + (workers.queue_depth || 0)) : "",
+              label: "Ready",
+              value: summary.ready || 0,
+              sub: "providers available",
             }),
             h(Stat, {
-              label: "Backends",
-              value: backends && backends.backends ? backends.backends.join(", ") : "—",
-              sub: "active backends",
+              label: "Not ready",
+              value: summary.not_ready || 0,
+              sub: "need setup",
             }),
-            h(Stat, { label: "MTD Cost", value: costStr, sub: "month-to-date USD" }),
+            h(Stat, {
+              label: "Total",
+              value: summary.total || 0,
+              sub: "providers probed",
+              label: "Status",
+              value: status.status || "unknown",
+              sub: status.service_detail || "",
+            }),
+            h(Stat, {
+              label: "HTTP",
+              value: status.http_reachable ? "reachable" : "offline",
+              sub: status.http_detail || "",
+            }),
+            h(Stat, {
+              label: "Binary",
+              value: status.binary_found ? "found" : "missing",
+              sub: status.binary_path || "not on PATH",
+            }),
           ),
-          h("div", { style: { display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" } },
-            h("button", { className: "btn", onClick: function() { if(onRefresh) onRefresh(); fetchAll(); }, disabled: loading },
-              I.refresh ? I.refresh(12) : null, loading ? " Refreshing…" : " Refresh"),
-            !isRunning ? h("button", { className: "btn", onClick: function() { doControl("start"); }, disabled: busy }, "▶ Start Maxwell") : null,
-            isRunning ? h("button", { className: "btn", onClick: function() { doControl("stop"); }, disabled: busy }, "⏹ Stop") : null,
-            isRunning ? h("button", { className: "btn", onClick: function() { doControl("restart"); }, disabled: busy }, "↺ Restart") : null,
-          ),
-          ctrlStatus ? h("div", {
-            style: { padding: "8px 12px", borderRadius: 6, marginBottom: 10, fontSize: 13,
-                     background: ctrlStatus.ok ? "rgba(63,185,80,0.12)" : "rgba(248,81,73,0.12)",
-                     color: ctrlStatus.ok ? "var(--accent-green)" : "var(--accent-red)" }
-          }, ctrlStatus.msg) : null,
-          error ? h("div", {
-            style: { padding: "8px 12px", borderRadius: 6, marginBottom: 10, fontSize: 13,
-                     background: "rgba(248,81,73,0.12)", color: "var(--accent-red)" }
-          }, error) : null,
-          status.http_reachable ? h("div", { className: "section" },
-            h("div", { className: "section-header" },
-              h("span", { className: "section-title" }, "⚡ Dispatch Task")),
-            h("div", { className: "section-body" },
-              h("div", { style: { display: "flex", flexDirection: "column", gap: 8, maxWidth: 560 } },
-                h("textarea", {
-                  placeholder: "Prompt — e.g. 'Fix failing tests in owner/repo'",
-                  value: dispForm.prompt,
-                  onChange: function(e) { setDispForm(function(f) { return Object.assign({}, f, { prompt: e.target.value }); }); },
-                  rows: 3,
-                  style: { width: "100%", background: "var(--bg-tertiary)", color: "var(--text-primary)",
-                           border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px",
-                           fontFamily: "inherit", fontSize: 13, resize: "vertical" },
-                }),
-                h("div", { style: { display: "flex", gap: 8 } },
-                  h("input", {
-                    placeholder: "Repo (optional) — owner/repo",
-                    value: dispForm.repo,
-                    onChange: function(e) { setDispForm(function(f) { return Object.assign({}, f, { repo: e.target.value }); }); },
-                    style: { flex: 1, background: "var(--bg-tertiary)", color: "var(--text-primary)",
-                             border: "1px solid var(--border)", borderRadius: 6, padding: "7px 10px",
-                             fontFamily: "inherit", fontSize: 13 },
-                  }),
-                  h("select", {
-                    value: dispForm.backend,
-                    onChange: function(e) { setDispForm(function(f) { return Object.assign({}, f, { backend: e.target.value }); }); },
-                    title: "Backend to use for this task",
-                    style: { background: "var(--bg-tertiary)", color: "var(--text-primary)",
-                             border: "1px solid var(--border)", borderRadius: 6, padding: "7px 10px",
-                             fontFamily: "inherit", fontSize: 12, minWidth: 130 },
+          h(
+            "div",
+            {
+              style: {
+                display: "flex",
+                gap: 8,
+                marginBottom: 16,
+                alignItems: "center",
+              },
+            },
+            h(
+              "button",
+              { className: "btn", onClick: onRefresh, disabled: loading },
+              I.refresh(12),
+              loading ? "Probing…" : "Re-probe",
+            ),
+            h(
+              "span",
+              { style: { fontSize: 12, color: "var(--text-muted)" } },
+              "Probes run locally. No secrets are shown.",
+            ),
+              loading ? "Probing\u2026" : "Refresh",
+            ),
+            !isRunning
+              ? h(
+                  "button",
+                  {
+                    className: "btn",
+                    onClick: function () {
+                      initiateControl("start");
+                    },
+                    disabled: controlling,
                   },
-                    h("option", { value: "" }, "auto (default)"),
-                    backendOptions.map(function(b) {
-                      return h("option", {
-                        key: b.name,
-                        value: b.name,
-                        style: { color: b.connected ? "var(--text-primary)" : "var(--text-muted)" },
-                      }, b.name + (b.connected ? "" : " (offline)"));
-                    }),
+                  "Start Maxwell",
+                )
+              : null,
+            isRunning
+              ? h(
+                  "button",
+                  {
+                    className: "btn",
+                    onClick: function () {
+                      initiateControl("stop");
+                    },
+                    disabled: controlling,
+                  },
+                  "Stop Maxwell",
+                )
+              : null,
+            isRunning
+              ? h(
+                  "button",
+                  {
+                    className: "btn",
+                    onClick: function () {
+                      initiateControl("restart");
+                    },
+                    disabled: controlling,
+                  },
+                  "Restart Maxwell",
+                )
+              : null,
+          ),
+          error
+            ? h(
+                "div",
+                {
+                  style: {
+                    padding: "10px 12px",
+                    borderRadius: 8,
+                    background: "rgba(248,81,73,0.12)",
+                    color: "var(--accent-red)",
+                    fontSize: 12,
+                    marginBottom: 12,
+                  },
+                },
+                error,
+              )
+            : null,
+          h(
+            "div",
+            {
+              style: {
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
+                gap: 12,
+              },
+            },
+            probes.map(function (probe) {
+              return h(
+                "div",
+                {
+                  key: probe.id,
+                  style: {
+                    background: "var(--bg-secondary)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 10,
+                    padding: 16,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 8,
+          controlStatus
+            ? h(
+                "div",
+                {
+                  style: {
+                    padding: "10px 12px",
+                    borderRadius: 8,
+                    fontSize: 12,
+                    marginBottom: 12,
+                    background: controlStatus.ok
+                      ? "rgba(63,185,80,0.12)"
+                      : "rgba(248,81,73,0.12)",
+                    color: controlStatus.ok
+                      ? "var(--accent-green)"
+                      : "var(--accent-red)",
+                  },
+                },
+                controlStatus.msg,
+              )
+            : null,
+          showConfirm
+            ? h(
+                "div",
+                {
+                  style: {
+                    padding: "12px 16px",
+                    borderRadius: 8,
+                    background: "rgba(210,153,34,0.1)",
+                    border: "1px solid var(--border)",
+                    marginBottom: 12,
+                  },
+                },
+                h(
+                  "div",
+                  {
+                    style: {
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      fontSize: 13,
+                      fontWeight: 600,
+                      marginBottom: 8,
+                      color: "var(--accent-yellow)",
+                    },
+                  },
+                  "Confirm: " + pendingAction + " Maxwell-Daemon?",
+                ),
+                h(
+                  "div",
+                  { style: { display: "flex", gap: 8 } },
+                  h(
+                    "button",
+                    {
+                      className: "btn",
+                      onClick: doControl,
+                      disabled: controlling,
+                    },
+                    controlling ? "Working\u2026" : "Confirm " + pendingAction,
+                  ),
+                  h(
+                    "button",
+                    {
+                      className: "btn",
+                      style: { opacity: 0.7 },
+                      onClick: function () {
+                        setShowConfirm(false);
+                      },
+                    },
+                    "Cancel",
                   ),
                 ),
-                h("button", {
-                  className: "btn",
-                  onClick: doDispatch,
-                  disabled: dispBusy || !dispForm.prompt.trim(),
-                  style: { alignSelf: "flex-start" },
-                }, dispBusy ? "Dispatching…" : "⚡ Dispatch"),
-                dispResult ? h("div", {
-                  style: { padding: "8px 12px", borderRadius: 6, fontSize: 12,
-                           background: dispResult.ok ? "rgba(63,185,80,0.12)" : "rgba(248,81,73,0.12)",
-                           color: dispResult.ok ? "var(--accent-green)" : "var(--accent-red)" }
-                }, dispResult.msg) : null,
               )
-            )
-          ) : null,
-          h("div", { className: "section" },
-            h("div", { className: "section-header" },
-              h("span", { className: "section-title" }, "📋 Task History"),
-              h("button", { className: "btn", style: { marginLeft: "auto", fontSize: 11 },
-                            onClick: fetchAll }, "↻ Refresh")),
-            h("div", { className: "section-body" },
-              tasksLoading
-                ? h("div", { style: { color: "var(--text-muted)", fontSize: 12 } }, "Loading tasks…")
-                : !status.http_reachable
-                  ? h("div", { style: { fontSize: 12, color: "var(--text-muted)" } }, "Maxwell offline — no task data")
-                  : tasks.length === 0
-                    ? h("div", { style: { fontSize: 12, color: "var(--text-muted)" } }, "No tasks yet")
-                    : h("table", { className: "data-table" },
-                        h("thead", null, h("tr", null,
-                          h("th", null, "ID"), h("th", null, "Status"),
-                          h("th", null, "Prompt"), h("th", null, "Repo"), h("th", null, "Created"),
-                        )),
-                        h("tbody", null, tasks.map(function(t) {
-                          return h("tr", { key: t.id },
-                            h("td", { style: { fontFamily: "monospace", fontSize: 11 } }, (t.id||"").slice(0,10)),
-                            h("td", null, h("span", { style: { color: taskStatusColor[t.status] || "var(--text-muted)", fontSize: 11, fontWeight: 600 } }, t.status || "—")),
-                            h("td", { style: { maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12 } }, t.prompt_preview || "—"),
-                            h("td", { style: { fontSize: 12, color: "var(--text-muted)" } }, t.repo || "—"),
-                            h("td", { style: { fontSize: 11, color: "var(--text-muted)" } }, t.created_at ? t.created_at.slice(0,16).replace("T"," ") : "—"),
-                          );
-                        }))
-                      )
-            )
+            : null,
+          h(
+            "div",
+            { className: "section" },
+            h(
+              "div",
+              { className: "section-header" },
+              h(
+                "span",
+                { className: "section-title", style: { color: statusColor } },
+                I.server(14),
+                "Maxwell-Daemon",
+              ),
+            ),
+            h(
+              "div",
+              { className: "section-body" },
+              h(
+                "div",
+                {
+                  style: {
+                    display: "flex",
+                    gap: 12,
+                    flexWrap: "wrap",
+                    marginBottom: 12,
+                  },
+                },
+                h(
+                  "span",
+                  {
+                    className: "section-badge",
+                    style: {
+                      background: statusBg,
+                      color: statusColor,
+                      fontSize: 13,
+                      padding: "4px 12px",
+                    },
+                  },
+                  status.status || "unknown",
+                ),
+              ),
+              status.dashboard_url
+                ? h(
+                    "div",
+                    { style: { marginBottom: 8 } },
+                    h(
+                      "span",
+                      {
+                        style: { fontSize: 12, color: "var(--text-secondary)" },
+                      },
+                      "Dashboard URL: ",
+                    ),
+                    h(
+                      "a",
+                      {
+                        href: status.dashboard_url,
+                        target: "_blank",
+                        rel: "noopener noreferrer",
+                        style: { fontSize: 12, color: "var(--text-secondary)" },
+                      },
+                      status.dashboard_url + " \u2197",
+                    ),
+                  )
+                : null,
+              status.deep_links
+                ? h(
+                    "div",
+                    null,
+                    h(
+                      "div",
+                      {
+                        style: {
+                          fontSize: 12,
+                          color: "var(--text-secondary)",
+                          marginBottom: 6,
+                        },
+                      },
+                      "Deep links:",
+                    ),
+                    Object.entries(status.deep_links || {}).map(
+                      function (entry) {
+                        var k = entry[0],
+                          v = entry[1];
+                        return h(
+                          "div",
+                          { key: k, style: { fontSize: 12, marginBottom: 4 } },
+                          h(
+                            "span",
+                            {
+                              style: {
+                                color: "var(--text-muted)",
+                                minWidth: 80,
+                                display: "inline-block",
+                              },
+                            },
+                            k + ":",
+                          ),
+                          v.startsWith("http")
+                            ? h(
+                                "a",
+                                {
+                                  href: v,
+                                  target: "_blank",
+                                  rel: "noopener noreferrer",
+                                  style: { color: "var(--text-secondary)" },
+                                },
+                                v + " \u2197",
+                              )
+                            : h(
+                                "code",
+                                {
+                                  style: {
+                                    fontSize: 11,
+                                    color: "var(--text-secondary)",
+                                    background: "var(--bg-secondary)",
+                                    padding: "2px 6px",
+                                    borderRadius: 4,
+                                  },
+                                },
+                                v,
+                              ),
+                        );
+                      },
+                    ),
+                  )
+                : null,
+              !status.binary_found &&
+                !status.service_running &&
+                !status.http_reachable
+                ? h(
+                    "div",
+                    {
+                      style: {
+                        marginTop: 12,
+                        padding: "10px 12px",
+                        borderRadius: 8,
+                        background: "rgba(139,148,158,0.08)",
+                        fontSize: 12,
+                        color: "var(--text-muted)",
+                      },
+                    },
+                    "Maxwell-Daemon is not detected on this machine. If installed elsewhere, set MAXWELL_URL to point to it.",
+                  )
+                : null,
+            ),
           ),
         );
       }
 
+      */
 
       function DashboardHelp(p) {
         var currentTab = p.currentTab || "";
@@ -13403,402 +13466,186 @@
         );
       }
 
-      // ── Agent Launcher Tab ──────────────────────────────────────────────────
-      function AgentWorkflowDispatch(props) {
-        var repos = props.repos;
-        var wds = React.useState("Repository_Management");
-        var wdRepo = wds[0]; var setWdRepo = wds[1];
-        var wfs = React.useState("");
-        var wdWorkflow = wfs[0]; var setWdWorkflow = wfs[1];
-        var wrs = React.useState("main");
-        var wdRef = wrs[0]; var setWdRef = wrs[1];
-        var wss = React.useState(null);
-        var wdStatus = wss[0]; var setWdStatus = wss[1];
-
-        var SKILL_WORKFLOWS = [
-          { value: "Skills-Sync.yml", label: "Skills Sync" },
-          { value: "Agent-CI-Remediation.yml", label: "CI Remediation" },
-          { value: "Jules-Auto-Repair.yml", label: "Jules Auto-Repair" },
-          { value: "Jules-PR-AutoFix.yml", label: "Jules PR AutoFix" },
-          { value: "ci-standard.yml", label: "CI Standard" },
-        ];
-
-        function dispatchWorkflow() {
-          if (!wdRepo || !wdWorkflow) return;
-          setWdStatus("dispatching");
-          fetch("/api/workflows/dispatch", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
-            body: JSON.stringify({ repository: wdRepo, workflow_id: wdWorkflow, ref: wdRef, inputs: {} }),
-          })
-            .then(function(r) { return r.json().then(function(j) { if (!r.ok) throw new Error(j.detail || "HTTP " + r.status); return j; }); })
-            .then(function() { setWdStatus("ok"); setTimeout(function() { setWdStatus(null); }, 3000); })
-            .catch(function(e) { setWdStatus("error: " + String(e)); });
-        }
-
-        return h("div", { style: { marginTop: 24, marginBottom: 8 } },
-          h("h3", { style: { marginBottom: 10 } }, "Workflow Dispatch"),
-          h("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" } },
-            h("div", { style: { display: "flex", flexDirection: "column", gap: 4 } },
-              h("label", { style: { fontSize: 12, color: "var(--text-muted)" } }, "Repository"),
-              h("input", {
-                className: "form-input",
-                style: { width: 200 },
-                value: wdRepo,
-                onChange: function(e) { setWdRepo(e.target.value); },
-                placeholder: "Repository_Management",
-              }),
-            ),
-            h("div", { style: { display: "flex", flexDirection: "column", gap: 4 } },
-              h("label", { style: { fontSize: 12, color: "var(--text-muted)" } }, "Workflow file"),
-              h("div", { style: { display: "flex", gap: 4 } },
-                h("input", {
-                  className: "form-input",
-                  style: { width: 220 },
-                  value: wdWorkflow,
-                  onChange: function(e) { setWdWorkflow(e.target.value); },
-                  placeholder: "Skills-Sync.yml",
-                }),
-                h("select", {
-                  className: "form-input",
-                  style: { width: 140 },
-                  value: "",
-                  onChange: function(e) { if (e.target.value) setWdWorkflow(e.target.value); },
-                },
-                  h("option", { value: "" }, "presets…"),
-                  SKILL_WORKFLOWS.map(function(w) {
-                    return h("option", { key: w.value, value: w.value }, w.label);
-                  }),
-                ),
-              ),
-            ),
-            h("div", { style: { display: "flex", flexDirection: "column", gap: 4 } },
-              h("label", { style: { fontSize: 12, color: "var(--text-muted)" } }, "Ref"),
-              h("input", {
-                className: "form-input",
-                style: { width: 100 },
-                value: wdRef,
-                onChange: function(e) { setWdRef(e.target.value); },
-                placeholder: "main",
-              }),
-            ),
-            h("button", {
-              className: "btn btn-primary",
-              disabled: !wdRepo || !wdWorkflow || wdStatus === "dispatching",
-              onClick: dispatchWorkflow,
-              style: { alignSelf: "flex-end" },
-            }, wdStatus === "dispatching" ? "Dispatching…" : "▶ Dispatch"),
-            wdStatus && wdStatus !== "dispatching" && h("span", {
-              style: { alignSelf: "center", fontSize: 12, color: wdStatus === "ok" ? "var(--accent-green)" : "var(--accent-red)" },
-            }, wdStatus === "ok" ? "✓ Dispatched" : wdStatus),
-          ),
-        );
-      }
-
-      function AgentLauncherTab() {
-        // Self-contained state — doesn't bloat parent
-        var ss = React.useState(null); var status = ss[0]; var setStatus = ss[1];
-        var cs = React.useState(null); var config = cs[0]; var setConfig = cs[1];
-        var rs = React.useState(null); var repos = rs[0]; var setRepos = rs[1];
-        var ls = React.useState(false); var loading = ls[0]; var setLoading = ls[1];
-        var es = React.useState(""); var error = es[0]; var setError = es[1];
-        var bs = React.useState({}); var busy = bs[0]; var setBusy = bs[1];
-        var eas = React.useState(null); var editingAgent = eas[0]; var setEditingAgent = eas[1];
-        var efs = React.useState({}); var editForm = efs[0]; var setEditForm = efs[1];
-        var svs = React.useState(null); var saveStatus = svs[0]; var setSaveStatus = svs[1];
-
-        var PROVIDERS = [
-          { value: "claude_code_cli", label: "Claude Code" },
-          { value: "codex_cli", label: "Codex CLI" },
-          { value: "jules_api", label: "Jules API" },
-        ];
-        var MODELS = [
-          { value: "claude-sonnet-4-6", label: "Sonnet 4.6 (recommended)" },
-          { value: "claude-opus-4-6", label: "Opus 4.6 (premium)" },
-          { value: "claude-haiku-4-5-20251001", label: "Haiku 4.5 (fast)" },
-          { value: "claude-3-5-sonnet-20241022", label: "Sonnet 3.5" },
-        ];
+      function ClineLauncherTab() {
+        // Self-contained: this tab manages its own polling + actions so it
+        // doesn't bloat the parent state. The launcher's state is on the
+        // user's local FS — the dashboard only mirrors it.
+        var s = React.useState(null);
+        var status = s[0], setStatus = s[1];
+        var r = React.useState(null);
+        var repos = r[0], setRepos = r[1];
+        var l = React.useState(false);
+        var loading = l[0], setLoading = l[1];
+        var er = React.useState("");
+        var error = er[0], setError = er[1];
+        var bs = React.useState({});
+        var busy = bs[0], setBusy = bs[1];
 
         function fetchStatus() {
-          fetch("/api/agent-launcher/status", { headers: { "X-Requested-With": "XMLHttpRequest" } })
-            .then(function(r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
-            .then(function(j) { setStatus(j); setError(""); })
-            .catch(function(e) { setError(String(e)); });
-        }
-        function fetchConfig() {
-          fetch("/api/agent-launcher/config", { headers: { "X-Requested-With": "XMLHttpRequest" } })
-            .then(function(r) { return r.ok ? r.json() : null; })
-            .then(function(j) { if (j) setConfig(j); })
-            .catch(function() {});
-        }
-        function fetchRepos() {
-          setLoading(true);
-          fetch("/api/agent-launcher/repos", { headers: { "X-Requested-With": "XMLHttpRequest" } })
-            .then(function(r) {
-              if (r.status === 503) throw new Error("launcher not installed");
-              if (!r.ok) throw new Error("HTTP " + r.status);
-              return r.json();
+          fetch("/api/agent-launcher/status")
+            .then(function (resp) {
+              if (!resp.ok) throw new Error("HTTP " + resp.status);
+              return resp.json();
             })
-            .then(function(j) { setRepos(j); })
-            .catch(function(e) { setError(String(e)); })
-            .finally(function() { setLoading(false); });
-        }
-        function action(verb, body) {
-          var key = verb + (body && body.agent ? "/" + body.agent : "");
-          setBusy(function(p) { var n = Object.assign({}, p); n[key] = true; return n; });
-          var opts = { method: "POST", headers: { "X-Requested-With": "XMLHttpRequest" } };
-          if (body) { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
-          return fetch("/api/agent-launcher/" + verb, opts)
-            .then(function(r) { return r.json().then(function(j) { if (!r.ok) throw new Error(j.detail || "HTTP " + r.status); return j; }); })
-            .then(function() { fetchStatus(); })
-            .catch(function(e) { setError(String(e)); })
-            .finally(function() { setBusy(function(p) { var n = Object.assign({}, p); delete n[key]; return n; }); });
-        }
-        function startEdit(agentName) {
-          var a = (config && config.agents && config.agents[agentName]) || {};
-          setEditingAgent(agentName);
-          setEditForm({
-            enabled: a.enabled !== false,
-            interval_seconds: a.interval_seconds || 3600,
-            provider: a.provider || "claude_code_cli",
-            model: a.model || "claude-sonnet-4-6",
-          });
-          setSaveStatus(null);
-        }
-        function cancelEdit() { setEditingAgent(null); setEditForm({}); setSaveStatus(null); }
-        function saveAgentConfig() {
-          if (!config || !editingAgent) return;
-          setSaveStatus("saving");
-          var agents = Object.assign({}, config.agents || {});
-          agents[editingAgent] = Object.assign({}, agents[editingAgent] || {}, editForm);
-          var newConfig = Object.assign({}, config, { agents: agents });
-          fetch("/api/agent-launcher/config", {
-            method: "PUT",
-            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
-            body: JSON.stringify(newConfig),
-          })
-            .then(function(r) { return r.json().then(function(j) { if (!r.ok) throw new Error(j.detail || "HTTP " + r.status); return j; }); })
-            .then(function() {
-              setSaveStatus("ok");
-              setConfig(newConfig);
-              fetchStatus();
-              setTimeout(function() { setEditingAgent(null); setSaveStatus(null); }, 1200);
-            })
-            .catch(function(e) { setSaveStatus("error: " + String(e)); });
+            .then(function (j) { setStatus(j); setError(""); })
+            .catch(function (e) { setError(String(e)); });
         }
 
-        React.useEffect(function() {
-          fetchStatus(); fetchConfig(); fetchRepos();
+        function fetchRepos() {
+          setLoading(true);
+          fetch("/api/agent-launcher/repos")
+            .then(function (resp) {
+              if (resp.status === 503) {
+                throw new Error(
+                  "launcher not installed on this machine"
+                );
+              }
+              if (!resp.ok) throw new Error("HTTP " + resp.status);
+              return resp.json();
+            })
+            .then(function (j) { setRepos(j); setError(""); })
+            .catch(function (e) { setError(String(e)); })
+            .finally(function () { setLoading(false); });
+        }
+
+        function action(verb, body) {
+          var key = verb + (body && body.agent ? "/" + body.agent : "");
+          var nb = Object.assign({}, busy); nb[key] = true; setBusy(nb);
+          var opts = { method: "POST" };
+          if (body) {
+            opts.headers = { "Content-Type": "application/json" };
+            opts.body = JSON.stringify(body);
+          }
+          return fetch("/api/agent-launcher/" + verb, opts)
+            .then(function (resp) {
+              return resp.json().then(function (j) {
+                if (!resp.ok) throw new Error(j.detail || "HTTP " + resp.status);
+                return j;
+              });
+            })
+            .then(function () { fetchStatus(); })
+            .catch(function (e) { setError(String(e)); })
+            .finally(function () {
+              var nb2 = Object.assign({}, busy); delete nb2[key]; setBusy(nb2);
+            });
+        }
+
+        React.useEffect(function () {
+          fetchStatus(); fetchRepos();
           var t = setInterval(fetchStatus, 5000);
-          return function() { clearInterval(t); };
+          return function () { clearInterval(t); };
         }, []);
 
         var schedRunning = status && status.scheduler_running;
-        var agents = (status && status.agents) || [];
-        var configAgents = (config && config.agents) || {};
-
-        function nextRunMs(a) {
-          if (!a.last_run_iso) return null;
-          return new Date(a.last_run_iso).getTime() + a.interval_seconds * 1000;
-        }
+        var statusBadge = h("span", {
+          className: "section-badge",
+          style: {
+            background: schedRunning ? "rgba(63,185,80,0.15)" : "rgba(248,81,73,0.15)",
+            color: schedRunning ? "var(--accent-green)" : "var(--accent-red)",
+          },
+        }, schedRunning ? "running" : "stopped");
 
         return h("div", { className: "tab-panel" },
-          // Header
+          // Header + global controls
           h("div", { style: { display: "flex", alignItems: "center", gap: 12, marginBottom: 16 } },
-            h("h2", { style: { margin: 0 } }, "Agent Launcher"),
-            h("span", {
+            h("h2", { style: { margin: 0 } }, "Cline Agent Launcher"),
+            statusBadge,
+            status && status.scheduler_pid
+              ? h("span", { style: { fontSize: 12, color: "var(--text-secondary)" } },
+                  "pid " + status.scheduler_pid)
+              : null,
+          ),
+          error
+            ? h("div", { className: "alert alert-error", style: { marginBottom: 12 } }, error)
+            : null,
+          h("div", { style: { display: "flex", gap: 8, marginBottom: 16 } },
+            h("button", {
+              className: "btn btn-primary",
+              disabled: !!busy["start"] || schedRunning,
+              onClick: function () { action("start"); },
+            }, busy["start"] ? "starting..." : "Start scheduler"),
+            h("button", {
+              className: "btn",
+              disabled: !!busy["stop"] || !schedRunning,
+              onClick: function () { action("stop"); },
+            }, busy["stop"] ? "stopping..." : "Stop scheduler"),
+            h("button", {
+              className: "btn",
+              disabled: loading,
+              onClick: function () { fetchRepos(); fetchStatus(); },
+            }, loading ? "refreshing..." : "Refresh"),
+          ),
+
+          // Agents table
+          h("h3", null, "Agents"),
+          status && status.agents && status.agents.length
+            ? h("table", { className: "data-table", style: { width: "100%" } },
+                h("thead", null, h("tr", null,
+                  h("th", null, "Agent"),
+                  h("th", null, "Enabled"),
+                  h("th", null, "Interval"),
+                  h("th", null, "Last run (UTC)"),
+                  h("th", null, "Last repo"),
+                  h("th", null, "Window PID"),
+                  h("th", null, "Lock"),
+                  h("th", null, "Run now"),
+                )),
+                h("tbody", null, status.agents.map(function (a) {
+                  return h("tr", { key: a.name },
+                    h("td", null, a.name),
+                    h("td", null, a.enabled ? "yes" : "no"),
+                    h("td", null, a.interval_seconds + "s"),
+                    h("td", { style: { fontSize: 12 } }, a.last_run_iso || "-"),
+                    h("td", null, a.last_repo || "-"),
+                    h("td", null, a.last_window_pid || "-"),
+                    h("td", null, a.lock_alive
+                      ? h("span", { style: { color: "var(--accent-yellow)" } }, "alive")
+                      : "-"),
+                    h("td", null,
+                      h("button", {
+                        className: "btn btn-sm",
+                        disabled: !!busy["run-once/" + a.name] || a.lock_alive,
+                        onClick: function () {
+                          action("run-once", { agent: a.name });
+                        },
+                      }, busy["run-once/" + a.name] ? "spawning..." : "Run once"),
+                    ),
+                  );
+                })),
+              )
+            : h("div", { style: { color: "var(--text-secondary)" } },
+                "No agents configured. Edit %LOCALAPPDATA%\\cline_agent_launcher\\config.json"),
+
+          // Discovered repo inventory
+          h("h3", { style: { marginTop: 24 } },
+            "Discovered repositories",
+            repos ? h("span", {
               className: "section-badge",
-              style: {
-                background: schedRunning ? "rgba(63,185,80,0.15)" : "rgba(248,81,73,0.15)",
-                color: schedRunning ? "var(--accent-green)" : "var(--accent-red)",
-              },
-            }, schedRunning ? "scheduler running" : "scheduler stopped"),
-            status && status.scheduler_pid ? h("span", { style: { fontSize: 12, color: "var(--text-muted)" } }, "pid " + status.scheduler_pid) : null,
+              style: { marginLeft: 8, background: "rgba(136,108,228,0.15)", color: "var(--accent-purple)" },
+            }, repos.count + " " + (repos.org_filter || "")) : null,
           ),
-
-          error ? h("div", { className: "alert alert-error", style: { marginBottom: 12 } }, error) : null,
-
-          // Scheduler controls
-          h("div", { style: { display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" } },
-            h("button", { className: "btn btn-primary", disabled: !!busy["start"] || !!schedRunning, onClick: function() { action("start"); } },
-              busy["start"] ? "starting…" : "▶ Start Scheduler"),
-            h("button", { className: "btn", disabled: !!busy["stop"] || !schedRunning, onClick: function() { action("stop"); } },
-              busy["stop"] ? "stopping…" : "■ Stop"),
-            h("button", { className: "btn", disabled: loading, onClick: function() { fetchStatus(); fetchConfig(); fetchRepos(); } },
-              loading ? "refreshing…" : "↺ Refresh"),
-          ),
-
-          // Agent cards
-          h("div", { style: { marginBottom: 24 } },
-            h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 10 } },
-              h("h3", { style: { margin: 0 } }, "Agents"),
-              agents.length > 0 ? h("span", { style: { fontSize: 12, color: "var(--text-muted)" } },
-                agents.filter(function(a) { return a.lock_alive; }).length + " active · " + agents.length + " configured") : null,
-            ),
-            agents.length === 0
-              ? h("div", { style: { color: "var(--text-secondary)", padding: "16px 0" } },
-                  "No agents configured. Edit %LOCALAPPDATA%\\cline_agent_launcher\\config.json to add agents.")
-              : h("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 12 } },
-                  agents.map(function(a) {
-                    var isEditing = editingAgent === a.name;
-                    var cfgA = configAgents[a.name] || {};
-                    var nextMs = nextRunMs(a);
-                    var now = Date.now();
-                    var isOverdue = nextMs && now > nextMs;
-                    var timeUntil = nextMs ? Math.round((nextMs - now) / 1000) : null;
-                    var nextStr = !nextMs ? "—"
-                      : isOverdue ? "overdue " + Math.abs(Math.round((now - nextMs) / 60000)) + "m ago"
-                      : timeUntil < 60 ? "in " + timeUntil + "s"
-                      : "in " + Math.round(timeUntil / 60) + "m";
-                    var runKey = "run-once/" + a.name;
-
-                    return h("div", {
-                      key: a.name,
-                      style: {
-                        background: "var(--bg-card)",
-                        border: "1px solid " + (isEditing ? "var(--accent-blue)" : a.lock_alive ? "rgba(63,185,80,0.3)" : "var(--border)"),
-                        borderRadius: 8,
-                        padding: 14,
-                      },
-                    },
-                      // Card header
-                      h("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 10 } },
-                        h("span", { style: { fontWeight: 700, fontSize: 14, flex: 1 } }, a.name),
-                        h("span", {
-                          className: "section-badge",
-                          style: {
-                            background: a.lock_alive ? "rgba(63,185,80,0.15)" : a.enabled ? "rgba(88,166,255,0.1)" : "rgba(255,255,255,0.05)",
-                            color: a.lock_alive ? "var(--accent-green)" : a.enabled ? "var(--accent-blue)" : "var(--text-muted)",
-                          },
-                        }, a.lock_alive ? "● running" : a.enabled ? "idle" : "disabled"),
-                      ),
-
-                      // Info grid (when not editing)
-                      !isEditing && h("div", { style: { fontSize: 12, color: "var(--text-secondary)", display: "grid", gridTemplateColumns: "auto 1fr", gap: "3px 12px", marginBottom: 10 } },
-                        h("span", { style: { color: "var(--text-muted)" } }, "Provider"),
-                        h("span", null, cfgA.provider || "—"),
-                        cfgA.provider === "claude_code_cli" || !cfgA.provider ? h("span", { style: { color: "var(--text-muted)" } }, "Model") : null,
-                        cfgA.provider === "claude_code_cli" || !cfgA.provider ? h("span", null, cfgA.model || "default") : null,
-                        h("span", { style: { color: "var(--text-muted)" } }, "Interval"),
-                        h("span", null, a.interval_seconds < 3600
-                          ? Math.round(a.interval_seconds / 60) + " min"
-                          : (a.interval_seconds / 3600).toFixed(1) + " hr"),
-                        h("span", { style: { color: "var(--text-muted)" } }, "Next run"),
-                        h("span", { style: { color: isOverdue ? "var(--accent-yellow)" : undefined } }, nextStr),
-                        a.last_repo ? h("span", { style: { color: "var(--text-muted)" } }, "Last repo") : null,
-                        a.last_repo ? h("span", null, a.last_repo) : null,
-                        a.last_run_iso ? h("span", { style: { color: "var(--text-muted)" } }, "Last run") : null,
-                        a.last_run_iso ? h("span", null, a.last_run_iso.slice(0, 16).replace("T", " ")) : null,
-                      ),
-
-                      // Edit form
-                      isEditing && h("div", { style: { display: "grid", gap: 10, marginBottom: 10, fontSize: 13 } },
-                        h("label", { style: { display: "flex", alignItems: "center", gap: 8 } },
-                          h("input", { type: "checkbox", checked: !!editForm.enabled, onChange: function(e) { setEditForm(function(p) { return Object.assign({}, p, { enabled: e.target.checked }); }); } }),
-                          "Enabled",
-                        ),
-                        h("div", { style: { display: "grid", gridTemplateColumns: "90px 1fr", gap: 8, alignItems: "center" } },
-                          h("label", { style: { color: "var(--text-muted)" } }, "Provider"),
-                          h("select", { className: "form-input", value: editForm.provider || "claude_code_cli", onChange: function(e) { setEditForm(function(p) { return Object.assign({}, p, { provider: e.target.value }); }); } },
-                            PROVIDERS.map(function(p) { return h("option", { key: p.value, value: p.value }, p.label); }),
-                          ),
-                          (editForm.provider === "claude_code_cli" || !editForm.provider) ? h("label", { style: { color: "var(--text-muted)" } }, "Model") : null,
-                          (editForm.provider === "claude_code_cli" || !editForm.provider) ? h("select", { className: "form-input", value: editForm.model || "claude-sonnet-4-6", onChange: function(e) { setEditForm(function(p) { return Object.assign({}, p, { model: e.target.value }); }); } },
-                            MODELS.map(function(m) { return h("option", { key: m.value, value: m.value }, m.label); }),
-                          ) : null,
-                          h("label", { style: { color: "var(--text-muted)" } }, "Interval (s)"),
-                          h("div", { style: { display: "flex", gap: 8 } },
-                            h("input", { type: "number", className: "form-input", style: { flex: 1 }, value: editForm.interval_seconds || 3600, min: 60, step: 60, onChange: function(e) { setEditForm(function(p) { return Object.assign({}, p, { interval_seconds: parseInt(e.target.value) || 3600 }); }); } }),
-                            h("span", { style: { alignSelf: "center", fontSize: 12, color: "var(--text-muted)" } },
-                              editForm.interval_seconds < 3600
-                                ? Math.round((editForm.interval_seconds || 3600) / 60) + " min"
-                                : ((editForm.interval_seconds || 3600) / 3600).toFixed(1) + " hr"),
-                          ),
-                        ),
-                        h("div", { style: { display: "flex", gap: 8, alignItems: "center" } },
-                          h("button", { className: "btn btn-primary", onClick: saveAgentConfig, disabled: saveStatus === "saving" }, saveStatus === "saving" ? "Saving…" : "Save"),
-                          h("button", { className: "btn", onClick: cancelEdit }, "Cancel"),
-                          saveStatus && saveStatus !== "saving" && h("span", { style: { fontSize: 12, color: saveStatus === "ok" ? "var(--accent-green)" : "var(--accent-red)" } },
-                            saveStatus === "ok" ? "✓ Saved" : saveStatus),
-                        ),
-                      ),
-
-                      // Card actions
-                      h("div", { style: { display: "flex", gap: 6 } },
-                        h("button", { className: "btn btn-sm", disabled: !!busy[runKey] || !!a.lock_alive, onClick: function() { action("run-once", { agent: a.name }); }, style: { fontSize: 11 } },
-                          busy[runKey] ? "spawning…" : "▶ Run Now"),
-                        h("button", {
-                          className: "btn btn-sm",
-                          style: { fontSize: 11, background: isEditing ? "var(--accent-blue)" : undefined, color: isEditing ? "#fff" : undefined },
-                          onClick: function() { isEditing ? cancelEdit() : startEdit(a.name); },
-                        }, isEditing ? "✕ Cancel" : "⚙ Configure"),
-                      ),
-                    );
-                  }),
-                ),
-          ),
-
-          // Schedule overview
-          agents.length > 0 && h("div", { style: { marginBottom: 24 } },
-            h("h3", { style: { marginBottom: 8 } }, "Schedule"),
-            h("table", { className: "data-table", style: { width: "100%", fontSize: 13 } },
-              h("thead", null, h("tr", null,
-                h("th", null, "Agent"),
-                h("th", null, "Status"),
-                h("th", null, "Interval"),
-                h("th", null, "Last Run (UTC)"),
-                h("th", null, "Next Run"),
-                h("th", null, "Last Repo"),
-              )),
-              h("tbody", null, agents.map(function(a) {
-                var nextMs = nextRunMs(a);
-                var now = Date.now();
-                var isOverdue = nextMs && now > nextMs;
-                var timeUntil = nextMs ? Math.round((nextMs - now) / 1000) : null;
-                var timeStr = !nextMs ? "—"
-                  : isOverdue ? "overdue " + Math.abs(Math.round((now - nextMs) / 60000)) + "m"
-                  : timeUntil < 60 ? "in " + timeUntil + "s"
-                  : "in " + Math.round(timeUntil / 60) + "m";
-                return h("tr", { key: a.name },
-                  h("td", { style: { fontWeight: 600 } }, a.name),
-                  h("td", null, h("span", {
+          repos && repos.repos && repos.repos.length
+            ? h("div", { style: { fontSize: 12, color: "var(--text-secondary)", marginBottom: 8 } },
+                "WSL distro: " + repos.wsl_distro + ", root: " + repos.repos_root)
+            : null,
+          repos && repos.repos
+            ? h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6 } },
+                repos.repos.map(function (r) {
+                  return h("span", {
+                    key: r.name,
                     className: "section-badge",
-                    style: { background: a.lock_alive ? "rgba(63,185,80,0.15)" : a.enabled ? "rgba(88,166,255,0.1)" : "rgba(255,255,255,0.05)", color: a.lock_alive ? "var(--accent-green)" : a.enabled ? "var(--accent-blue)" : "var(--text-muted)" },
-                  }, a.lock_alive ? "running" : a.enabled ? "idle" : "off")),
-                  h("td", null, a.interval_seconds < 3600 ? Math.round(a.interval_seconds / 60) + " min" : (a.interval_seconds / 3600).toFixed(1) + " hr"),
-                  h("td", { style: { fontSize: 12, fontFamily: "monospace" } }, a.last_run_iso ? a.last_run_iso.slice(0, 16).replace("T", " ") : "—"),
-                  h("td", { style: { color: isOverdue ? "var(--accent-yellow)" : undefined } }, timeStr),
-                  h("td", null, a.last_repo || "—"),
-                );
-              })),
-            ),
-          ),
+                    title: r.wsl_path,
+                    style: { background: "var(--bg-tertiary)" },
+                  }, r.name);
+                }))
+            : h("div", { style: { color: "var(--text-secondary)" } },
+                loading ? "discovering..." : "No repos discovered yet."),
 
-          // Workflow dispatch panel
-          h(AgentWorkflowDispatch, { repos: repos }),
-
-          // Discovered repos
-          h("div", { style: { marginTop: 24 } },
-            h("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 8 } },
-              h("h3", { style: { margin: 0 } }, "Discovered Repositories"),
-              repos ? h("span", { className: "section-badge", style: { background: "rgba(136,108,228,0.15)", color: "var(--accent-purple)" } }, repos.count + " repos") : null,
-            ),
-            repos && repos.repos && repos.repos.length
-              ? h("div", null,
-                  h("div", { style: { fontSize: 12, color: "var(--text-muted)", marginBottom: 6 } },
-                    "distro: " + repos.wsl_distro + " · root: " + repos.repos_root + " · org: " + (repos.org_filter || "all")),
-                  h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6 } },
-                    repos.repos.map(function(r) {
-                      return h("span", { key: r.name, className: "section-badge", title: r.wsl_path, style: { background: "var(--bg-tertiary)" } }, r.name);
-                    })),
-                )
-              : h("div", { style: { color: "var(--text-secondary)" } }, loading ? "discovering…" : "No repos discovered yet."),
-          ),
-
-          // Footer
-          h("div", { style: { marginTop: 24, padding: 12, background: "var(--bg-tertiary)", borderRadius: 4, fontSize: 12, color: "var(--text-muted)" } },
-            h("div", null, "Runtime root: " + ((status && status.runtime_root) || "—")),
-            h("div", null, "Status polls every 5 s · Config saved immediately on each agent edit."),
+          // Notes
+          h("div", { style: { marginTop: 24, padding: 12, background: "var(--bg-tertiary)", borderRadius: 4, fontSize: 12, color: "var(--text-secondary)" } },
+            h("div", null, "Runtime root: " + (status && status.runtime_root || "-")),
+            h("div", null, "Status polls every 5s. Repo discovery is on-demand (Refresh button)."),
+            h("div", null, "Full config editor (model selector, repo multi-select, intervals) ships in a follow-up — for now edit config.json directly and click Refresh."),
           ),
         );
       }
@@ -14972,7 +14819,7 @@
           borderRight: position === "left" ? "1px solid var(--border)" : "none",
           display: "flex",
           flexDirection: "column",
-          height: "calc(100vh - 88px)",
+          height: "calc(100vh - 56px)",
           top: 0,
         };
 
@@ -15138,8 +14985,6 @@
           ) : null,
         );
       }
-
-      var PROVIDERS_WITH_MODEL = ["claude_code_cli", "codex_cli", "jules_api"];
 
       // ════════════════════════ QUICK DISPATCH POPOVER ════════════════════════
       function QuickDispatchPopover() {
@@ -15926,6 +15771,10 @@ function PrincipalsTab() {
         function toggleAsst() { setAsstOpen(function (o) { var n = !o; lsSet(ASST_LS.open, n); return n; }); }
         var rmS = React.useState(null);
         var recoveryModal = rmS[0], setRecoveryModal = rmS[1];
+        var rauS = React.useState({ violations: [], last_checked: null, error: null });
+        var runnerAudit = rauS[0], setRunnerAudit = rauS[1];
+        var rauDismissS = React.useState(false);
+        var auditBannerDismissed = rauDismissS[0], setAuditBannerDismissed = rauDismissS[1];
 
         function fetchFleetOrchestration() {
           setFleetOrchLoading(true);
@@ -16983,6 +16832,25 @@ function PrincipalsTab() {
             .catch(function() { setPrincipal(null); });
         }
 
+        function fetchRunnerAudit() {
+          fetch("/api/runner-routing-audit")
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+              setRunnerAudit(d || { violations: [], last_checked: null, error: null });
+              setAuditBannerDismissed(false);
+            })
+            .catch(function() {});
+        }
+
+        function triggerRunnerAuditRefresh() {
+          fetch("/api/runner-routing-audit/refresh", {
+            method: "POST",
+            headers: { "X-Requested-With": "XMLHttpRequest" },
+          })
+            .then(function() { setTimeout(fetchRunnerAudit, 3000); })
+            .catch(function() {});
+        }
+
         React.useEffect(function () {
           fetchPrincipal();
           fetchFleet();
@@ -16999,6 +16867,7 @@ function PrincipalsTab() {
           fetchDeploymentState();
           fetchScheduledJobs();
           fetchRunnerCapacity();
+          fetchRunnerAudit();
           var t1 = setInterval(fetchFleet, 30000);
           var t2 = setInterval(fetchRepos, 120000);
           var t3 = setInterval(fetchTests, 120000);
@@ -17013,6 +16882,7 @@ function PrincipalsTab() {
           var t11 = setInterval(fetchRunnerCapacity, 60000);
           var t12 = setInterval(fetchDeployment, 300000);
           var t13 = setInterval(fetchDeploymentState, 300000);
+          var t14 = setInterval(fetchRunnerAudit, 300000);
           return function () {
             clearInterval(t1);
             clearInterval(t2);
@@ -17028,6 +16898,7 @@ function PrincipalsTab() {
             clearInterval(t11);
             clearInterval(t12);
             clearInterval(t13);
+            clearInterval(t14);
           };
         }, []);
 
@@ -17085,48 +16956,619 @@ function PrincipalsTab() {
 
         var asstPosition = lsGet(ASST_LS.position, "right");
 
-        var TAB_CATEGORIES = {
-          monitor:  ["overview", "queue", "history", "stats", "machines", "local-apps"],
-          dispatch: ["workflows", "scheduled-jobs", "runner-schedule", "agent-launcher", "maxwell"],
-          manage:   ["remediation", "deployment", "fleet-orchestration", "credentials", "org", "principals"],
-          reports:  ["tests", "reports", "assessments", "feature-requests", "diagnostics"],
-        };
-        var TAB_TO_CATEGORY = {};
-        Object.keys(TAB_CATEGORIES).forEach(function(cat) {
-          TAB_CATEGORIES[cat].forEach(function(t) { TAB_TO_CATEGORY[t] = cat; });
-        });
-        var activeCategory = TAB_TO_CATEGORY[tab] || (tab === "agent-launcher" ? "dispatch" : "monitor");
-
         return h(
           "div",
           null,
           h(
             "header",
             { className: "app-header" },
-            // ── Primary ribbon row ────────────────────────────────────────
-            h("div", { className: "ribbon-primary" },
-              h("div", { className: "app-logo" },
-                h("svg", { width: 28, height: 28, viewBox: "0 0 32 32" },
-                  h("defs", null,
-                    h("linearGradient", { id: "lg", x1: 0, y1: 0, x2: 1, y2: 1 },
-                      h("stop", { offset: "0%", stopColor: "#4f8ff7" }),
-                      h("stop", { offset: "100%", stopColor: "#a855f7" }),
-                    ),
+            h(
+              "div",
+              { className: "app-logo" },
+              h(
+                "svg",
+                { width: 28, height: 28, viewBox: "0 0 32 32" },
+                h(
+                  "defs",
+                  null,
+                  h(
+                    "linearGradient",
+                    { id: "lg", x1: 0, y1: 0, x2: 1, y2: 1 },
+                    h("stop", { offset: "0%", stopColor: "#4f8ff7" }),
+                    h("stop", { offset: "100%", stopColor: "#a855f7" }),
                   ),
-                  h("rect", { width: 32, height: 32, rx: 6, fill: "url(#lg)" }),
-                  h("path", { d: "M18 6l-7 13h6l-1 7 7-13h-6z", fill: "white" }),
                 ),
-                h("span", { className: "logo-text" }, "Dashboard"),
+                h("rect", { width: 32, height: 32, rx: 6, fill: "url(#lg)" }),
+                h("path", { d: "M18 6l-7 13h6l-1 7 7-13h-6z", fill: "white" }),
               ),
-              h("div", { style: { width: 1, height: 24, background: "var(--border)", margin: "0 10px" } }),
-              h("button", { className: "ribbon-cat-btn" + (activeCategory === "monitor" ? " active" : ""), onClick: function () { setTab(TAB_CATEGORIES.monitor[0]); } }, I.server(14), "Monitor"),
-              h("button", { className: "ribbon-cat-btn" + (activeCategory === "dispatch" ? " active" : ""), onClick: function () { setTab(TAB_CATEGORIES.dispatch[0]); } }, I.queue(14), "Dispatch"),
-              h("button", { className: "ribbon-cat-btn" + (activeCategory === "manage" ? " active" : ""), onClick: function () { setTab(TAB_CATEGORIES.manage[0]); } }, I.settings(14), "Manage"),
-              h("button", { className: "ribbon-cat-btn" + (activeCategory === "reports" ? " active" : ""), onClick: function () { setTab(TAB_CATEGORIES.reports[0]); } }, I.fileText(14), "Reports"),
-              h("div", { className: "header-right" },
-                principal ? h("span", { className: "section-badge", style: { background: "rgba(88,166,255,0.15)", color: "var(--accent-blue)" } }, "Acting as: " + principal.name) : null,
-                h("a", {
-                  href: principal ? "#" : "/api/auth/github",
+              h("span", { className: "logo-text" }, "Dashboard"),
+            ),
+            h(
+              "div",
+              { className: "tab-bar", role: "tablist", "aria-label": "Dashboard sections" },
+              h(
+                "button",
+                {
+                  className: "tab-btn" + (tab === "overview" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "overview",
+                  onClick: function () {
+                    setTab("overview");
+                  },
+                },
+                I.server(14),
+                "Overview",
+              ),
+              h(
+                "button",
+                {
+                  className:
+                    "tab-btn" + (tab === "remediation" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "remediation",
+                  onClick: function () {
+                    setTab("remediation");
+                    fetchRemediationConfig();
+                  },
+                },
+                I.issue(14),
+                "Remediation",
+                runs.filter(function (run) {
+                  return run.conclusion === "failure";
+                }).length > 0
+                  ? h(
+                      "span",
+                      {
+                        className: "section-badge",
+                        style: {
+                          background: "rgba(248,81,73,0.15)",
+                          color: "var(--accent-red)",
+                          marginLeft: 2,
+                        },
+                      },
+                      runs.filter(function (run) {
+                        return run.conclusion === "failure";
+                      }).length,
+                    )
+                  : null,
+              ),
+              h(
+                "button",
+                {
+                  className: "tab-btn" + (tab === "queue" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "queue",
+                  onClick: function () {
+                    setTab("queue");
+                    fetchQueue();
+                  },
+                },
+                I.queue(14),
+                "Queue",
+                (queue.total || 0) > 0
+                  ? h(
+                      "span",
+                      {
+                        className: "section-badge",
+                        style: {
+                          background: "rgba(88,166,255,0.2)",
+                          color: "var(--accent-blue)",
+                          marginLeft: 2,
+                        },
+                      },
+                      queue.total || 0,
+                    )
+                  : null,
+              ),
+              h(
+                "button",
+                {
+                  className: "tab-btn" + (tab === "machines" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "machines",
+                  onClick: function () {
+                    setTab("machines");
+                    fetchMachines();
+                  },
+                },
+                I.server(14),
+                "Machines",
+                (machinesData.count || 0) > 1
+                  ? h(
+                      "span",
+                      {
+                        className: "section-badge",
+                        style: {
+                          background: "rgba(63,185,80,0.15)",
+                          color: "var(--accent-green)",
+                          marginLeft: 2,
+                        },
+                      },
+                      machinesData.count || 0,
+                    )
+                  : null,
+              ),
+              h(
+                "button",
+                {
+                  className: "tab-btn" + (tab === "org" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "org",
+                  onClick: function () {
+                    setTab("org");
+                  },
+                },
+                I.repo(14),
+                "Organization",
+              ),
+              h(
+                "button",
+                {
+                  className: "tab-btn" + (tab === "tests" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "tests",
+                  onClick: function () {
+                    setTab("tests");
+                  },
+                },
+                I.flask(14),
+                "Tests",
+              ),
+              h(
+                "button",
+                {
+                  className: "tab-btn" + (tab === "stats" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "stats",
+                  onClick: function () {
+                    setTab("stats");
+                  },
+                },
+                I.activity(14),
+                "Stats",
+              ),
+              h(
+                "button",
+                {
+                  className: "tab-btn" + (tab === "reports" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "reports",
+                  onClick: function () {
+                    setTab("reports");
+                  },
+                },
+                I.fileText(14),
+                "Reports",
+              ),
+              h(
+                "button",
+                {
+                  className:
+                    "tab-btn" + (tab === "scheduled-jobs" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "scheduled-jobs",
+                  onClick: function () {
+                    setTab("scheduled-jobs");
+                    fetchScheduledJobs();
+                  },
+                },
+                I.clock(14),
+                "Schedules",
+                (scheduledJobs.scheduled_workflow_count || 0) > 0
+                  ? h(
+                      "span",
+                      {
+                        className: "section-badge",
+                        style: {
+                          background: "rgba(88,166,255,0.2)",
+                          color: "var(--accent-blue)",
+                          marginLeft: 2,
+                        },
+                      },
+                      scheduledJobs.scheduled_workflow_count,
+                    )
+                  : null,
+              ),
+              h(
+                "button",
+                {
+                  className: "tab-btn" + (tab === "workflows" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "workflows",
+                  onClick: function () {
+                    setTab("workflows");
+                    fetchWorkflowsList();
+                  },
+                },
+                I.activity(14),
+                "Workflows",
+                workflowsList.length > 0
+                  ? h(
+                      "span",
+                      {
+                        className: "section-badge",
+                        style: {
+                          background: "rgba(88,166,255,0.15)",
+                          color: "#58a6ff",
+                          marginLeft: 2,
+                        },
+                      },
+                      workflowsList.length,
+                    )
+                  : null,
+              ),
+              h(
+                "button",
+                {
+                  className:
+                    "tab-btn" + (tab === "runner-schedule" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "runner-schedule",
+                  onClick: function () {
+                    setTab("runner-schedule");
+                    fetchRunnerCapacity();
+                  },
+                },
+                I.clock(14),
+                "Runner Plan",
+                runnerCapacity && runnerCapacity.state
+                  ? h(
+                      "span",
+                      {
+                        className: "section-badge",
+                        style: {
+                          background: "rgba(63,185,80,0.15)",
+                          color: "var(--accent-green)",
+                          marginLeft: 2,
+                        },
+                      },
+                      runnerCapacity.state.desired || 0,
+                    )
+                  : null,
+              ),
+              h(
+                "button",
+                {
+                  className:
+                    "tab-btn" + (tab === "deployment" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "deployment",
+                  onClick: function () {
+                    setTab("deployment");
+                    fetchDeploymentState();
+                  },
+                },
+                I.server(14),
+                "Deployment",
+                deploymentStateLoading ||
+                  ((deploymentState.rollout_state || {}).machines_attention ||
+                    0) > 0
+                  ? h(
+                      "span",
+                      {
+                        className: "section-badge",
+                        style: {
+                          background: "rgba(210,153,34,0.2)",
+                          color: "var(--accent-yellow)",
+                          marginLeft: 2,
+                        },
+                      },
+                      deploymentStateLoading
+                        ? "\u2026"
+                        : (deploymentState.rollout_state || {})
+                            .machines_attention,
+                    )
+                  : null,
+              ),
+              h(
+                "button",
+                {
+                  className: "tab-btn" + (tab === "history" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "history",
+                  onClick: function () {
+                    setTab("history");
+                    fetchEnrichedRuns();
+                  },
+                },
+                I.activity(14),
+                "History",
+                enrichedRuns.length > 0
+                  ? h(
+                      "span",
+                      {
+                        className: "section-badge",
+                        style: {
+                          background: "rgba(136,108,228,0.15)",
+                          color: "var(--accent-purple)",
+                          marginLeft: 2,
+                        },
+                      },
+                      enrichedRuns.length,
+                    )
+                  : null,
+              ),
+              h(
+                "button",
+                {
+                  className:
+                    "tab-btn" + (tab === "local-apps" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "local-apps",
+                  onClick: function () {
+                    setTab("local-apps");
+                    fetchLocalApps();
+                  },
+                },
+                I.server(14),
+                "Local Tools",
+                (function () {
+                  var apps = localApps.tools || localApps.apps || [];
+                  var n = apps.filter(localAppNeedsAttention).length;
+                  return n > 0
+                    ? h(
+                        "span",
+                        {
+                          className: "section-badge",
+                          style: {
+                            background: "rgba(210,153,34,0.2)",
+                            color: "var(--accent-yellow)",
+                            marginLeft: 2,
+                          },
+                        },
+                        n,
+                      )
+                    : null;
+                })(),
+              ),
+              h(
+                "button",
+                {
+                  className:
+                    "tab-btn" + (tab === "credentials" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "credentials",
+                  onClick: function () {
+                    setTab("credentials");
+                    fetchCredentials();
+                  },
+                },
+                I.settings(14),
+                "Credentials",
+                credentialsData.summary && credentialsData.summary.not_ready > 0
+                  ? h(
+                      "span",
+                      {
+                        className: "section-badge",
+                        style: {
+                          background: "rgba(210,153,34,0.15)",
+                          color: "var(--accent-yellow)",
+                          marginLeft: 2,
+                        },
+                      },
+                      credentialsData.summary.not_ready,
+                    )
+                  : null,
+              ),
+              h(
+                "button",
+                {
+                  className:
+                    "tab-btn" +
+                    (tab === "fleet-orchestration" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "fleet-orchestration",
+                  onClick: function () {
+                    setTab("fleet-orchestration");
+                    fetchFleetOrchestration();
+                  },
+                },
+                I.server(14),
+                "Fleet Orchestration",
+              ),
+              h(
+                "button",
+                {
+                  className:
+                    "tab-btn" + (tab === "assessments" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "assessments",
+                  onClick: function () {
+                    setTab("assessments");
+                    fetchAssessments();
+                  },
+                },
+                I.activity(14),
+                "Assessments",
+              ),
+              h(
+                "button",
+                {
+                  className:
+                    "tab-btn" + (tab === "feature-requests" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "feature-requests",
+                  onClick: function () {
+                    setTab("feature-requests");
+                    fetchFeatureRequests();
+                  },
+                },
+                I.issue(14),
+                "Feature Requests",
+                featureRequests.length > 0
+                  ? h(
+                      "span",
+                      {
+                        className: "section-badge",
+                        style: {
+                          background: "rgba(136,108,228,0.15)",
+                          color: "var(--accent-purple)",
+                          marginLeft: 2,
+                        },
+                      },
+                      featureRequests.length,
+                    )
+                  : null,
+              ),
+              h(
+                "button",
+                {
+                  className:
+                    "tab-btn" + (tab === "cline-launcher" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "cline-launcher",
+                  onClick: function () {
+                    setTab("cline-launcher");
+                  },
+                },
+                I.terminal ? I.terminal(14) : I.server(14),
+                "Cline Launcher",
+              ),
+              h(
+                "button",
+                {
+                  className: "tab-btn" + (tab === "maxwell" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "maxwell",
+                  onClick: function () {
+                    setTab("maxwell");
+                    fetchMaxwellStatus();
+                  },
+                },
+                I.server(14),
+                "Maxwell",
+                maxwellStatus.status === "running"
+                  ? h(
+                      "span",
+                      {
+                        className: "section-badge",
+                        style: {
+                          background: "rgba(63,185,80,0.15)",
+                          color: "var(--accent-green)",
+                          marginLeft: 2,
+                        },
+                      },
+                      "on",
+                    )
+                  : maxwellStatus.status
+                    ? h(
+                        "span",
+                        {
+                          className: "section-badge",
+                          style: {
+                            background: "rgba(248,81,73,0.15)",
+                            color: "var(--accent-red)",
+                            marginLeft: 2,
+                          },
+                        },
+                        "off",
+                      )
+                    : null,
+              ),
+              h(
+                "button",
+                {
+                  className: "tab-btn" + (tab === "runner-audit" ? " active" : ""),
+                  role: "tab",
+                  "aria-selected": tab === "runner-audit",
+                  onClick: function () {
+                    setTab("runner-audit");
+                  },
+                  title: "Hosted-runner billing audit",
+                },
+                I.server(14),
+                "Runner Audit",
+                (runnerAudit.violations && runnerAudit.violations.length > 0)
+                  ? h(
+                      "span",
+                      {
+                        className: "section-badge",
+                        style: {
+                          background: "rgba(248,81,73,0.2)",
+                          color: "var(--accent-red)",
+                          marginLeft: 2,
+                        },
+                      },
+                      runnerAudit.violations.length,
+                    )
+                  : null,
+              ),
+              h(
+                "button",
+                {
+                  className:
+                    "tab-btn" + (tab === "diagnostics" ? " active" : ""),
+                  onClick: function () {
+                    setTab("diagnostics");
+                  },
+                },
+                I.settings(14),
+                "Diagnostics",
+              ),
+              h(
+                "button",
+                {
+                  className:
+                    "tab-btn" + (tab === "principals" ? " active" : ""),
+                  onClick: function () {
+                    setTab("principals");
+                  },
+                },
+                I.server(14),
+                "Principals",
+              ),
+            ),
+            h(
+              "div",
+              { className: "header-right" },
+              (function() {
+                // Mock quota data for visualization
+                var quotaUsed = 14;
+                var quotaTotal = 20;
+                var percent = (quotaUsed / quotaTotal) * 100;
+                return h(
+                  "div",
+                  { 
+                    className: "glass-card",
+                    style: { 
+                      padding: "4px 12px", 
+                      display: "flex", 
+                      alignItems: "center", 
+                      gap: "10px",
+                      marginRight: "12px",
+                      fontSize: "11px",
+                      height: "32px"
+                    } 
+                  },
+                  h("span", { style: { color: "var(--text-secondary)", fontWeight: "600" } }, "FLEET QUOTA"),
+                  h(
+                    "div",
+                    { 
+                      className: "progress-bar", 
+                      style: { width: "80px", height: "6px", background: "rgba(255,255,255,0.1)" },
+                      title: quotaUsed + "/" + quotaTotal + " Runners Active"
+                    },
+                    h("div", { 
+                      className: "progress-fill", 
+                      style: { 
+                        width: percent + "%", 
+                        background: "var(--grad-quota)",
+                        boxShadow: "0 0 10px rgba(0, 242, 254, 0.5)"
+                      } 
+                    })
+                  ),
+                  h("span", { style: { color: "var(--text-primary)", fontWeight: "700" } }, quotaUsed + "/" + quotaTotal)
+                );
+              })(),
+              principal ? h(
+                "span",
+                { className: "section-badge", style: { background: "rgba(88,166,255,0.15)", color: "var(--accent-blue)" } },
+                "Acting as: " + principal.name
+              ) : null,
+              h(
+                "a",
+                { 
+                  href: principal ? "#" : "/api/auth/github", 
                   onClick: principal ? function(e) {
                     e.preventDefault();
                     fetch("/api/auth/logout", {method: "POST", headers: { "X-Requested-With": "XMLHttpRequest" }})
@@ -17134,117 +17576,134 @@ function PrincipalsTab() {
                   } : undefined,
                   className: "btn",
                   style: { textDecoration: "none", marginRight: "12px", height: "24px", lineHeight: "12px", fontSize: "11px" }
-                }, principal ? "Logout" : "Login"),
-                h("span", { className: "status-dot " + (connected ? "green" : "red") }),
-                connected ? "Live" : "Offline",
-                h("span", { className: "hide-mobile" }, lastUpdate ? " \u00B7 " + lastUpdate : ""),
-                h("span", { className: "section-badge", title: "Queued and running workflows" }, "Queue " + ((queue.queued_count || 0) + "/" + (queue.in_progress_count || 0))),
-                h("span", { className: "section-badge", title: watchdog && watchdog.summary ? watchdog.summary : "WSL keepalive and watchdog state" }, "Keepalive " + (watchdog && watchdog.status ? watchdog.status : "unknown")),
-                h("span", { className: "section-badge", title: deployment.deployed_at || "Deployment revision" }, "Build " + shortSha(deployment.git_sha)),
-                h("button", {
-                  className: "btn",
-                  style: { marginLeft: 4, background: asstOpen ? "var(--accent-blue)" : undefined, color: asstOpen ? "#fff" : undefined },
-                  onClick: toggleAsst,
-                  title: "Toggle Assistant sidebar",
-                }, "\u2630 Asst"),
-                h(QuickDispatchPopover, null),
-                h("button", {
-                  className: "btn",
-                  style: { marginLeft: 4 },
-                  onClick: function () { window.open("https://github.com/D-sorganization/runner-dashboard", "_blank"); },
-                  title: "View documentation",
-                }, I.help ? I.help(12) : "?"),
-                h("button", {
+                },
+                principal ? "Logout" : "Login"
+              ),
+              h("span", {
+                className: "status-dot " + (connected ? "green" : "red"),
+              }),
+              connected ? "Live" : "Offline",
+              h(
+                "span",
+                { className: "hide-mobile" },
+                lastUpdate ? " \u00B7 " + lastUpdate : "",
+              ),
+              h(
+                "span",
+                {
+                  className: "section-badge",
+                  title: "Queued and running workflows",
+                },
+                "Queue " +
+                  ((queue.queued_count || 0) +
+                    "/" +
+                    (queue.in_progress_count || 0)),
+              ),
+              h(
+                "span",
+                {
+                  className: "section-badge",
+                  title:
+                    watchdog && watchdog.summary
+                      ? watchdog.summary
+                      : "WSL keepalive and watchdog state",
+                },
+                "Keepalive " +
+                  (watchdog && watchdog.status ? watchdog.status : "unknown"),
+              ),
+              h(
+                "span",
+                {
+                  className: "section-badge",
+                  title: deployment.deployed_at || "Deployment revision",
+                },
+                "Build " + shortSha(deployment.git_sha),
+              ),
+              h("button", {
+                className: "btn",
+                style: { marginLeft: 4, background: asstOpen ? "var(--accent-blue)" : undefined, color: asstOpen ? "#fff" : undefined },
+                onClick: toggleAsst,
+                title: "Toggle Assistant sidebar",
+              }, "☰ Asst"),
+              h(QuickDispatchPopover, null),
+              h(
+                "button",
+                {
                   className: "btn",
                   style: { marginLeft: 4 },
                   onClick: function () {
-                    fetchFleet(); fetchRepos(); fetchTests(); fetchReports();
-                    fetchQueue(); fetchMachines(); fetchLocalApps(); fetchEnrichedRuns();
-                    fetchWatchdog(); fetchDeployment(); fetchDeploymentState();
-                    fetchRemediationConfig(); fetchScheduledJobs(); fetchRunnerCapacity();
+                    fetchFleet();
+                    fetchRepos();
+                    fetchTests();
+                    fetchReports();
+                    fetchQueue();
+                    fetchMachines();
+                    fetchLocalApps();
+                    fetchEnrichedRuns();
+                    fetchWatchdog();
+                    fetchDeployment();
+                    fetchDeploymentState();
+                    fetchRemediationConfig();
+                    fetchScheduledJobs();
+                    fetchRunnerCapacity();
                   },
-                }, I.refresh(12)),
-              ),
-            ),
-            // ── Secondary ribbon (subtabs) ────────────────────────────────
-            h("div", { className: "ribbon-secondary" },
-              // Monitor
-              activeCategory === "monitor" && h("div", { className: "ribbon-group" },
-                h("button", { className: "ribbon-tab-btn" + (tab === "overview" ? " active" : ""), onClick: function(){setTab("overview");} }, I.server(14), "Overview"),
-                h("button", { className: "ribbon-tab-btn" + (tab === "queue" ? " active" : ""), onClick: function(){setTab("queue"); fetchQueue();} }, I.queue(14), "Queue",
-                  (queue.total||0) > 0 ? h("span", {className:"section-badge",style:{background:"rgba(88,166,255,0.2)",color:"var(--accent-blue)",marginLeft:2}}, queue.total||0) : null),
-                h("button", { className: "ribbon-tab-btn" + (tab === "history" ? " active" : ""), onClick: function(){setTab("history"); fetchEnrichedRuns();} }, I.activity(14), "History",
-                  enrichedRuns.length > 0 ? h("span", {className:"section-badge",style:{background:"rgba(136,108,228,0.15)",color:"var(--accent-purple)",marginLeft:2}}, enrichedRuns.length) : null),
-                h("button", { className: "ribbon-tab-btn" + (tab === "stats" ? " active" : ""), onClick: function(){setTab("stats");} }, I.activity(14), "Stats"),
-                h("div", { className: "ribbon-group-label" }, "Overview")
-              ),
-              activeCategory === "monitor" && h("div", { className: "ribbon-group" },
-                h("button", { className: "ribbon-tab-btn" + (tab === "machines" ? " active" : ""), onClick: function(){setTab("machines"); fetchMachines();} }, I.server(14), "Machines",
-                  (machinesData.count||0) > 1 ? h("span", {className:"section-badge",style:{background:"rgba(63,185,80,0.15)",color:"var(--accent-green)",marginLeft:2}}, machinesData.count||0) : null),
-                h("button", { className: "ribbon-tab-btn" + (tab === "local-apps" ? " active" : ""), onClick: function(){setTab("local-apps"); fetchLocalApps();} }, I.server(14), "Local Tools",
-                  (function(){var apps=localApps.tools||localApps.apps||[];var n=apps.filter(localAppNeedsAttention).length;return n>0?h("span",{className:"section-badge",style:{background:"rgba(210,153,34,0.2)",color:"var(--accent-yellow)",marginLeft:2}},n):null;})()),
-                h("div", { className: "ribbon-group-label" }, "Infrastructure")
-              ),
-              // Dispatch
-              activeCategory === "dispatch" && h("div", { className: "ribbon-group" },
-                h("button", { className: "ribbon-tab-btn" + (tab === "workflows" ? " active" : ""), onClick: function(){setTab("workflows"); fetchWorkflowsList();} }, I.activity(14), "Workflows",
-                  workflowsList.length > 0 ? h("span", {className:"section-badge",style:{background:"rgba(88,166,255,0.15)",color:"#58a6ff",marginLeft:2}}, workflowsList.length) : null),
-                h("button", { className: "ribbon-tab-btn" + (tab === "scheduled-jobs" ? " active" : ""), onClick: function(){setTab("scheduled-jobs"); fetchScheduledJobs();} }, I.clock(14), "Schedules",
-                  (scheduledJobs.scheduled_workflow_count||0) > 0 ? h("span", {className:"section-badge",style:{background:"rgba(88,166,255,0.2)",color:"var(--accent-blue)",marginLeft:2}}, scheduledJobs.scheduled_workflow_count) : null),
-                h("div", { className: "ribbon-group-label" }, "Automation")
-              ),
-              activeCategory === "dispatch" && h("div", { className: "ribbon-group" },
-                h("button", { className: "ribbon-tab-btn" + (tab === "runner-schedule" ? " active" : ""), onClick: function(){setTab("runner-schedule"); fetchRunnerCapacity();} }, I.clock(14), "Runner Plan",
-                  runnerCapacity&&runnerCapacity.state ? h("span", {className:"section-badge",style:{background:"rgba(63,185,80,0.15)",color:"var(--accent-green)",marginLeft:2}}, runnerCapacity.state.desired||0) : null),
-                h("div", { className: "ribbon-group-label" }, "Capacity")
-              ),
-              activeCategory === "dispatch" && h("div", { className: "ribbon-group" },
-                h("button", { className: "ribbon-tab-btn" + (tab === "agent-launcher" ? " active" : ""), onClick: function(){setTab("agent-launcher");} }, I.terminal ? I.terminal(14) : I.server(14), "Agent Launcher"),
-                h("button", { className: "ribbon-tab-btn" + (tab === "maxwell" ? " active" : ""), onClick: function(){setTab("maxwell"); fetchMaxwellStatus();} }, I.server(14), "Maxwell",
-                  maxwellStatus.status === "running" ? h("span", {className:"section-badge",style:{background:"rgba(63,185,80,0.15)",color:"var(--accent-green)",marginLeft:2}}, "on") :
-                    maxwellStatus.status ? h("span", {className:"section-badge",style:{background:"rgba(248,81,73,0.15)",color:"var(--accent-red)",marginLeft:2}}, "off") : null),
-                h("div", { className: "ribbon-group-label" }, "Agents")
-              ),
-              // Manage
-              activeCategory === "manage" && h("div", { className: "ribbon-group" },
-                h("button", { className: "ribbon-tab-btn" + (tab === "remediation" ? " active" : ""), onClick: function(){setTab("remediation"); fetchRemediationConfig();} }, I.issue(14), "Remediation",
-                  runs.filter(function(r){return r.conclusion==="failure";}).length > 0 ? h("span", {className:"section-badge",style:{background:"rgba(248,81,73,0.15)",color:"var(--accent-red)",marginLeft:2}}, runs.filter(function(r){return r.conclusion==="failure";}).length) : null),
-                h("button", { className: "ribbon-tab-btn" + (tab === "deployment" ? " active" : ""), onClick: function(){setTab("deployment"); fetchDeploymentState();} }, I.server(14), "Deployment",
-                  (deploymentStateLoading||((deploymentState.rollout_state||{}).machines_attention||0)>0) ? h("span", {className:"section-badge",style:{background:"rgba(210,153,34,0.2)",color:"var(--accent-yellow)",marginLeft:2}}, deploymentStateLoading?"\u2026":(deploymentState.rollout_state||{}).machines_attention) : null),
-                h("button", { className: "ribbon-tab-btn" + (tab === "fleet-orchestration" ? " active" : ""), onClick: function(){setTab("fleet-orchestration"); fetchFleetOrchestration();} }, I.server(14), "Fleet Orchestration"),
-                h("div", { className: "ribbon-group-label" }, "Operations")
-              ),
-              activeCategory === "manage" && h("div", { className: "ribbon-group" },
-                h("button", { className: "ribbon-tab-btn" + (tab === "credentials" ? " active" : ""), onClick: function(){setTab("credentials"); fetchCredentials();} }, I.settings(14), "Credentials",
-                  credentialsData.summary&&credentialsData.summary.not_ready>0 ? h("span", {className:"section-badge",style:{background:"rgba(210,153,34,0.15)",color:"var(--accent-yellow)",marginLeft:2}}, credentialsData.summary.not_ready) : null),
-                h("div", { className: "ribbon-group-label" }, "Security")
-              ),
-              activeCategory === "manage" && h("div", { className: "ribbon-group" },
-                h("button", { className: "ribbon-tab-btn" + (tab === "org" ? " active" : ""), onClick: function(){setTab("org");} }, I.repo(14), "Organization"),
-                h("button", { className: "ribbon-tab-btn" + (tab === "principals" ? " active" : ""), onClick: function(){setTab("principals");} }, I.server(14), "Principals"),
-                h("div", { className: "ribbon-group-label" }, "Identity")
-              ),
-              // Reports
-              activeCategory === "reports" && h("div", { className: "ribbon-group" },
-                h("button", { className: "ribbon-tab-btn" + (tab === "tests" ? " active" : ""), onClick: function(){setTab("tests");} }, I.flask(14), "Tests"),
-                h("button", { className: "ribbon-tab-btn" + (tab === "reports" ? " active" : ""), onClick: function(){setTab("reports");} }, I.fileText(14), "Reports"),
-                h("div", { className: "ribbon-group-label" }, "Quality")
-              ),
-              activeCategory === "reports" && h("div", { className: "ribbon-group" },
-                h("button", { className: "ribbon-tab-btn" + (tab === "assessments" ? " active" : ""), onClick: function(){setTab("assessments"); fetchAssessments();} }, I.activity(14), "Assessments"),
-                h("button", { className: "ribbon-tab-btn" + (tab === "feature-requests" ? " active" : ""), onClick: function(){setTab("feature-requests"); fetchFeatureRequests();} }, I.issue(14), "Feature Requests",
-                  featureRequests.length > 0 ? h("span", {className:"section-badge",style:{background:"rgba(136,108,228,0.15)",color:"var(--accent-purple)",marginLeft:2}}, featureRequests.length) : null),
-                h("div", { className: "ribbon-group-label" }, "Evals")
-              ),
-              activeCategory === "reports" && h("div", { className: "ribbon-group" },
-                h("button", { className: "ribbon-tab-btn" + (tab === "diagnostics" ? " active" : ""), onClick: function(){setTab("diagnostics");} }, I.settings(14), "Diagnostics"),
-                h("div", { className: "ribbon-group-label" }, "System")
+                },
+                I.refresh(12),
               ),
             ),
           ),
+          (runnerAudit.violations && runnerAudit.violations.length > 0 && !auditBannerDismissed)
+            ? h(
+                "div",
+                {
+                  id: "hosted-runner-alert-banner",
+                  style: {
+                    background: "linear-gradient(90deg, rgba(248,81,73,0.18) 0%, rgba(240,136,62,0.18) 100%)",
+                    borderBottom: "2px solid var(--accent-red)",
+                    padding: "10px 24px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "12px",
+                    fontSize: "13px",
+                    fontWeight: "500",
+                    color: "var(--text-primary)",
+                    zIndex: 90,
+                    position: "sticky",
+                    top: "56px",
+                  },
+                },
+                h("span", { style: { fontSize: "18px" } }, "⚠️"),
+                h(
+                  "span",
+                  { style: { flex: 1 } },
+                  h("strong", { style: { color: "var(--accent-red)" } }, "BILLING ALERT: "),
+                  runnerAudit.violations.length + " workflow job(s) detected on GitHub-hosted runners. This incurs unexpected billing costs.",
+                ),
+                h(
+                  "button",
+                  {
+                    className: "btn",
+                    style: { background: "rgba(248,81,73,0.2)", color: "var(--accent-red)", border: "1px solid var(--accent-red)", fontSize: "12px" },
+                    onClick: function() { setTab("runner-audit"); },
+                  },
+                  "View Details",
+                ),
+                h(
+                  "button",
+                  {
+                    className: "btn",
+                    style: { fontSize: "12px", marginLeft: 4 },
+                    title: "Dismiss banner (violations still visible in Runner Audit tab)",
+                    onClick: function() { setAuditBannerDismissed(true); },
+                  },
+                  "× Dismiss",
+                ),
+              )
+            : null,
           h(
             "div",
-            { style: { display: "flex", flexDirection: asstPosition === "left" ? "row-reverse" : "row", alignItems: "flex-start", minHeight: "calc(100vh - 88px)" } },            h(
+            { style: { display: "flex", flexDirection: asstPosition === "left" ? "row-reverse" : "row", alignItems: "flex-start", minHeight: "calc(100vh - 56px)" } },
+            h(
               "div",
               { className: "main-content", role: "main", style: { flex: 1, minWidth: 0 } },
               tab === "overview"
@@ -17456,13 +17915,109 @@ function PrincipalsTab() {
                                                       fetchMaxwellStatus,
                                                     onControl: maxwellControl,
                                                   })
-                                                : tab === "agent-launcher"
-                                                  ? h(AgentLauncherTab, null)
+                                                : tab === "cline-launcher"
+                                                  ? h(ClineLauncherTab, null)
                                                   : tab === "diagnostics"
                                                     ? h(DiagnosticsTab, null)
-                                                    : tab === "principals"
-                                                      ? h(PrincipalsTab, null)
-                                                      : null,
+                                                    : tab === "runner-audit"
+                                                      ? h(
+                                                          "div",
+                                                          { className: "section", style: { padding: "24px" } },
+                                                          h(
+                                                            "div",
+                                                            { className: "section-header", style: { marginBottom: "16px", display: "flex", alignItems: "center", justifyContent: "space-between" } },
+                                                            h("div", { className: "section-title" },
+                                                              h("span", { style: { fontSize: "18px", marginRight: "8px" } }, "⚠️"),
+                                                              "Hosted-Runner Billing Audit",
+                                                            ),
+                                                            h("div", { style: { display: "flex", gap: "8px", alignItems: "center" } },
+                                                              runnerAudit.last_checked
+                                                                ? h("span", { style: { fontSize: "12px", color: "var(--text-muted)" } },
+                                                                    "Last checked: " + new Date(runnerAudit.last_checked).toLocaleString(),
+                                                                  )
+                                                                : h("span", { style: { fontSize: "12px", color: "var(--text-muted)" } }, "Not yet checked"),
+                                                              h(
+                                                                "button",
+                                                                {
+                                                                  className: "btn",
+                                                                  style: { fontSize: "12px" },
+                                                                  onClick: triggerRunnerAuditRefresh,
+                                                                },
+                                                                I.refresh(12),
+                                                                " Refresh Now",
+                                                              ),
+                                                            ),
+                                                          ),
+                                                          runnerAudit.error
+                                                            ? h("div", { style: { color: "var(--accent-red)", marginBottom: "12px", fontSize: "13px" } },
+                                                                "Error: " + runnerAudit.error,
+                                                              )
+                                                            : null,
+                                                          (runnerAudit.violations && runnerAudit.violations.length > 0)
+                                                            ? h(
+                                                                "div",
+                                                                null,
+                                                                h("div", { style: { marginBottom: "12px", padding: "10px 14px", background: "rgba(248,81,73,0.1)", border: "1px solid rgba(248,81,73,0.3)", borderRadius: "6px", fontSize: "13px" } },
+                                                                  h("strong", { style: { color: "var(--accent-red)" } }, runnerAudit.violations.length + " violation(s) found. "),
+                                                                  "These jobs ran on GitHub-hosted runners and may incur unexpected billing costs.",
+                                                                ),
+                                                                h(
+                                                                  "div",
+                                                                  { style: { overflowX: "auto" } },
+                                                                  h(
+                                                                    "table",
+                                                                    { style: { width: "100%", borderCollapse: "collapse", fontSize: "13px" } },
+                                                                    h(
+                                                                      "thead",
+                                                                      null,
+                                                                      h(
+                                                                        "tr",
+                                                                        { style: { borderBottom: "1px solid var(--border)", textAlign: "left" } },
+                                                                        h("th", { style: { padding: "8px 12px", color: "var(--text-secondary)", fontWeight: "600" } }, "Repo"),
+                                                                        h("th", { style: { padding: "8px 12px", color: "var(--text-secondary)", fontWeight: "600" } }, "Workflow"),
+                                                                        h("th", { style: { padding: "8px 12px", color: "var(--text-secondary)", fontWeight: "600" } }, "Job"),
+                                                                        h("th", { style: { padding: "8px 12px", color: "var(--text-secondary)", fontWeight: "600" } }, "Runner"),
+                                                                        h("th", { style: { padding: "8px 12px", color: "var(--text-secondary)", fontWeight: "600" } }, "Started"),
+                                                                        h("th", { style: { padding: "8px 12px", color: "var(--text-secondary)", fontWeight: "600" } }, "Link"),
+                                                                      ),
+                                                                    ),
+                                                                    h(
+                                                                      "tbody",
+                                                                      null,
+                                                                      runnerAudit.violations.map(function(v, i) {
+                                                                        return h(
+                                                                          "tr",
+                                                                          { key: i, style: { borderBottom: "1px solid var(--border)", background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.02)" } },
+                                                                          h("td", { style: { padding: "8px 12px", fontWeight: "500" } }, v.repo),
+                                                                          h("td", { style: { padding: "8px 12px", color: "var(--text-secondary)" } }, v.workflow),
+                                                                          h("td", { style: { padding: "8px 12px", color: "var(--text-secondary)" } }, v.job_name),
+                                                                          h("td", { style: { padding: "8px 12px" } },
+                                                                            h("span", { style: { background: "rgba(248,81,73,0.15)", color: "var(--accent-red)", padding: "2px 6px", borderRadius: "4px", fontSize: "11px", fontFamily: "monospace" } }, v.runner_name || v.runner_group || "unknown"),
+                                                                          ),
+                                                                          h("td", { style: { padding: "8px 12px", color: "var(--text-muted)", fontSize: "12px" } },
+                                                                            v.started_at ? new Date(v.started_at).toLocaleString() : "—",
+                                                                          ),
+                                                                          h("td", { style: { padding: "8px 12px" } },
+                                                                            v.run_url
+                                                                              ? h("a", { href: v.run_url, target: "_blank", rel: "noopener noreferrer", style: { color: "var(--accent-blue)", textDecoration: "none", fontSize: "12px" } }, "View Run ↗")
+                                                                              : "—",
+                                                                          ),
+                                                                        );
+                                                                      }),
+                                                                    ),
+                                                                  ),
+                                                                ),
+                                                              )
+                                                            : h("div", { style: { textAlign: "center", padding: "48px 24px", color: "var(--text-muted)", fontSize: "14px" } },
+                                                                h("div", { style: { fontSize: "32px", marginBottom: "12px" } }, "✓"),
+                                                                runnerAudit.last_checked
+                                                                  ? "No hosted-runner violations detected. All recent jobs ran on self-hosted runners."
+                                                                  : "Audit has not run yet. Click \"Refresh Now\" to trigger an immediate check.",
+                                                              ),
+                                                        )
+                                                      : tab === "principals"
+                                                        ? h(PrincipalsTab, null)
+                                                        : null,
             ),
             h(AssistantSidebar, { currentTab: tab, open: asstOpen, onToggle: toggleAsst }),
           ),
@@ -17579,4 +18134,4 @@ function PrincipalsTab() {
       ReactDOM.createRoot(document.getElementById("root")).render(h(App));
     </script>
   </body>
-</html>
+</html>
