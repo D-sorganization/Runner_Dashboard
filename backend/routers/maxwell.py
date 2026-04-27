@@ -233,6 +233,8 @@ async def maxwell_pipeline_control(
     principal: Principal = Depends(require_scope("maxwell.control")),  # noqa: B008,
 ) -> dict:
     """Proxy POST /api/control/{action} to Maxwell-Daemon."""
+    if action not in ("pause", "resume", "abort"):
+        raise HTTPException(status_code=422, detail="action must be pause, resume, or abort")
     path = f"/api/v1/control/{action}"
     body = await request.json()
     body["confirmation_token"] = _maxwell_api_token()
