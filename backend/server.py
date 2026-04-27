@@ -28,12 +28,13 @@ import os
 import platform
 import re
 import secrets
+import shlex
 import shutil
 import subprocess
 import sys
 import tempfile
 import time
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from pathlib import Path
 from typing import Any
 
@@ -67,54 +68,19 @@ import quick_dispatch as _quick_dispatch  # noqa: E402
 import quota_enforcement as quota_enforcement  # noqa: E402
 import scheduled_workflows as scheduled_workflow_inventory  # noqa: E402
 import usage_monitoring as usage_monitoring  # noqa: E402
-from cache_utils import cache_get, cache_set  # noqa: E402
-from dashboard_config import (  # noqa: E402
-    DEFAULT_NUM_RUNNERS,
-    DEPLOYMENT_FILE,
-    EXPECTED_VERSION_FILE,
-    FLEET_NODES,
-    HOSTNAME,
-    HUB_URL,
-    MACHINE_ROLE,
-    NUM_RUNNERS,
-    ORG,
-    PORT,
-    REPO_ROOT,
-    RUN_JOB_ENRICHMENT_LIMIT,
-    RUNNER_ALIASES,
-    RUNNER_BASE_DIR,
-    RUNNER_SCHEDULE_CONFIG,
-    RUNNER_SCHEDULER_BIN,
-    RUNNER_SCHEDULER_STATE,
-    SYSTEMCTL_BIN,
-    VERSION,
-    WSL_KEEPALIVE_SERVICE,
-    WSL_KEEPALIVE_TASK_NAME,
-    runner_limit,
-    runner_scheduler_apply_command,
-)
-from gh_utils import get_gh_health_summary, gh_api, gh_api_admin, gh_api_raw  # noqa: E402
 from local_app_monitoring import collect_local_apps  # noqa: E402
 from machine_registry import (  # noqa: E402
     load_machine_registry,
     merge_registry_with_live_nodes,
 )
-from proxy_utils import proxy_to_hub, should_proxy_fleet_to_hub  # noqa: E402
 from report_files import parse_report_metrics, sanitize_report_date  # noqa: E402
 from routers import credentials as _credentials_router  # noqa: E402
 from routers import dispatch as _dispatch_router  # noqa: E402
-from routers.fleet import router as fleet_router  # noqa: E402
 from security import (  # noqa: E402
     check_dispatch_rate,
     safe_subprocess_env,
     sanitize_log_value,
-)
-from system_utils import (  # noqa: E402
-    classify_node_offline,
-    get_deployment_info,
-    get_system_metrics_snapshot,
-    resource_offline_reason,
-    run_cmd,
+    validate_fleet_node_url,
 )
 
 # datetime.UTC added in Python 3.11; fall back to timezone.utc on older runtimes.
@@ -212,6 +178,11 @@ class HelpChatBody(BaseModel):
     current_tab: str = Field(default="", max_length=100)
 
 
+# ─── Bounded Cache ────────────────────────────────────────────────────────────
+
+MAX_CACHE_SIZE = 500
+_CACHE_EVICT_BATCH = 50
+
 # ─── Shared State Locks ───────────────────────────────────────────────────────
 _remediation_history_lock: asyncio.Lock = asyncio.Lock()
 _orchestration_audit_lock: asyncio.Lock = asyncio.Lock()
@@ -219,8 +190,81 @@ _feature_requests_lock: asyncio.Lock = asyncio.Lock()
 _prompt_templates_lock: asyncio.Lock = asyncio.Lock()
 _prompt_notes_lock: asyncio.Lock = asyncio.Lock()
 
-
 # ─── Configuration ────────────────────────────────────────────────────────────
+ORG = os.environ.get("GITHUB_ORG", "D-sorganization")
+REPO_ROOT = Path(os.environ.get("RUNNER_DASHBOARD_REPO_ROOT", BACKEND_DIR.parents[1]))
+RUNNER_BASE_DIR = Path.home() / "actions-runners"
+DEFAULT_NUM_RUNNERS = 12
+REQUESTED_NUM_RUNNERS = int(os.environ.get("NUM_RUNNERS", str(DEFAULT_NUM_RUNNERS)))
+MAX_RUNNERS = int(os.environ.get("MAX_RUNNERS", str(REQUESTED_NUM_RUNNERS)))
+NUM_RUNNERS = min(REQUESTED_NUM_RUNNERS, MAX_RUNNERS)
+DISK_WARN_PERCENT = float(os.environ.get("DASHBOARD_DISK_WARN_PERCENT", "85"))
+DISK_CRITICAL_PERCENT = float(os.environ.get("DASHBOARD_DISK_CRITICAL_PERCENT", "92"))
+DISK_MIN_FREE_GB = float(os.environ.get("DASHBOARD_DISK_MIN_FREE_GB", "25"))
+PORT = int(os.environ.get("DASHBOARD_PORT", "8321"))
+_DASHBOARD_CONFIG_DIR = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "runner-dashboard"
+HOSTNAME = os.environ.get("DISPLAY_NAME") or platform.node()
+RUN_JOB_ENRICHMENT_LIMIT = int(os.environ.get("RUN_JOB_ENRICHMENT_LIMIT", "50"))
+RUNNER_ALIASES = [item.strip() for item in os.environ.get("RUNNER_ALIASES", "").split(",") if item.strip()]
+RUNNER_SCHEDULE_CONFIG = Path(
+    os.environ.get(
+        "RUNNER_SCHEDULE_CONFIG",
+        str(Path.home() / ".config" / "runner-dashboard" / "runner-schedule.json"),
+    )
+).expanduser()
+RUNNER_SCHEDULER_BIN = os.environ.get("RUNNER_SCHEDULER_BIN", "/usr/local/bin/runner-scheduler")
+RUNNER_SCHEDULER_SERVICE = os.environ.get("RUNNER_SCHEDULER_SERVICE", "runner-scheduler.service")
+RUNNER_SCHEDULER_APPLY_CMD = os.environ.get("RUNNER_SCHEDULER_APPLY_CMD", "")
+SYSTEMCTL_BIN = os.environ.get("SYSTEMCTL_BIN") or shutil.which("systemctl") or "/usr/bin/systemctl"
+RUNNER_SCHEDULER_STATE = Path(os.environ.get("RUNNER_SCHEDULER_STATE", "/var/lib/runner-scheduler/state.json"))
+WSL_KEEPALIVE_SERVICE = os.environ.get("WSL_KEEPALIVE_SERVICE", "wsl-runner-keepalive.service")
+WSL_KEEPALIVE_TASK_NAME = os.environ.get("WSL_KEEPALIVE_TASK_NAME", "WSL-Runner-KeepAlive")
+DEPLOYMENT_FILE = Path(
+    os.environ.get(
+        "RUNNER_DASHBOARD_DEPLOYMENT_FILE",
+        Path(__file__).resolve().parent.parent / "deployment.json",
+    )
+)
+# Hub's expected dashboard version lives in runner-dashboard/VERSION and is
+# bumped on every release. Nodes compare against this to detect drift.
+EXPECTED_VERSION_FILE = Path(
+    os.environ.get(
+        "RUNNER_DASHBOARD_EXPECTED_VERSION_FILE",
+        Path(__file__).resolve().parent.parent / "VERSION",
+    )
+)
+
+# ─── Setup moving averages and host memory cache ────────────
+
+_cpu_history: deque[float] = deque(maxlen=60)
+
+
+def _runner_scheduler_apply_command() -> list[str]:
+    if RUNNER_SCHEDULER_APPLY_CMD.strip():
+        return shlex.split(RUNNER_SCHEDULER_APPLY_CMD)
+    return ["sudo", "-n", SYSTEMCTL_BIN, "start", RUNNER_SCHEDULER_SERVICE]
+
+
+HOST_MEMORY_GB = None
+try:
+    if "microsoft-standard" in platform.uname().release.lower():
+        # Running in WSL -> try interop to get physical hardware capacity
+        result = subprocess.run(
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-Command",
+                "(Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            env=safe_subprocess_env(),
+        )
+        if result.returncode == 0:
+            HOST_MEMORY_GB = round(int(result.stdout.strip()) / (1024**3), 1)
+except Exception:  # noqa: BLE001
+    pass
 
 
 # Path to daily progress reports (on Windows mount from WSL2)
@@ -233,12 +277,6 @@ _default_reports_dir = (
     / "docs"
     / "progress-tracking"
 )
-app = FastAPI(
-    title="D-sorganization Runner Dashboard",
-    version=VERSION,
-    docs_url="/api/docs",
-)
-app.include_router(fleet_router)
 REPORTS_DIR = Path(os.environ.get("REPORTS_DIR", str(_default_reports_dir)))
 
 # Repos with heavy-test workflows (workflow_dispatch capable)
@@ -259,6 +297,11 @@ HEAVY_TEST_REPOS = {
     },
 }
 
+app = FastAPI(
+    title="D-sorganization Runner Dashboard",
+    version="4.0.0",
+    description="Monitor and control self-hosted GitHub Actions runners",
+)
 
 _PROCESSED_ENVELOPES_PATH = Path.home() / "actions-runners" / "dashboard" / "processed_envelopes.json"
 _processed_envelopes_lock: asyncio.Lock = asyncio.Lock()
@@ -416,14 +459,50 @@ _setup_api_key()
 #   runs              → 30 s
 #   stats             → 60 s   (aggregate counts; no need to be instant)
 #   repos             → 120 s  (repo list / metadata changes rarely)
-#   diagnose          → 6
-# ─── Process Monitoring ───────────────────────────────────────────────────────
+#   diagnose          → 60 s   (expensive multi-call; used for troubleshooting)
 _cache: OrderedDict[str, tuple[Any, float]] = OrderedDict()
 
-# ─── Deployment Info ──────────────────────────────────────────────────────────
+
+def _cache_get(key: str, ttl: float) -> Any | None:
+    """Return cached value if within TTL, else None."""
+    entry = _cache.get(key)
+    if entry is not None:
+        data, ts = entry
+        if time.time() - ts < ttl:
+            return data
+    return None
 
 
-# ─── Hardware Specs ───────────────────────────────────────────────────────────
+def _cache_set(key: str, data: Any, _ttl: float | None = None) -> None:
+    """Store value with current timestamp. Evicts oldest entries when full (issue #48)."""
+    if key in _cache:
+        _cache.move_to_end(key)
+    elif len(_cache) >= MAX_CACHE_SIZE:
+        for _ in range(_CACHE_EVICT_BATCH):
+            if _cache:
+                _cache.popitem(last=False)
+    _cache[key] = (data, time.time())
+
+
+def _deployment_info() -> dict:
+    """Return the deployed dashboard revision recorded by update-deployed.sh."""
+    fallback = {
+        "app": "runner-dashboard",
+        "version": app.version,
+        "git_sha": os.environ.get("DASHBOARD_GIT_SHA", "unknown"),
+        "git_branch": os.environ.get("DASHBOARD_GIT_BRANCH", "unknown"),
+        "source": "environment",
+    }
+    try:
+        payload = json.loads(DEPLOYMENT_FILE.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return fallback
+    if not isinstance(payload, dict):
+        return fallback
+    payload.setdefault("app", "runner-dashboard")
+    payload.setdefault("version", app.version)
+    payload.setdefault("source", "deployment-file")
+    return payload
 
 
 def _local_hardware_specs(gpu: dict | None = None) -> dict:
@@ -440,7 +519,7 @@ def _local_hardware_specs(gpu: dict | None = None) -> dict:
         "cpu_model": platform.processor() or platform.machine(),
         "cpu_physical_cores": psutil.cpu_count(logical=False),
         "cpu_logical_cores": psutil.cpu_count(logical=True),
-        "memory_gb": round(mem.total / (1024**3), 1),
+        "memory_gb": HOST_MEMORY_GB or round(mem.total / (1024**3), 1),
         "wsl_memory_gb": round(mem.total / (1024**3), 1),
         "gpu_count": len(gpu_devices),
         "gpu_vram_gb": max(gpu_vram_values) if gpu_vram_values else None,
@@ -480,7 +559,29 @@ def _disk_pressure_snapshot(
 ) -> dict:
     """Return dashboard-safe disk pressure state for autoscaling and UI alerts."""
     status = "healthy"
-    reasons: list[str] = []
+    reasons = []
+    if percent >= DISK_CRITICAL_PERCENT:
+        status = "critical"
+        reasons.append(f"disk usage >= {DISK_CRITICAL_PERCENT:g}%")
+    elif percent >= DISK_WARN_PERCENT:
+        status = "warning"
+        reasons.append(f"disk usage >= {DISK_WARN_PERCENT:g}%")
+    if free_gb <= DISK_MIN_FREE_GB:
+        free_space_status = "critical" if free_gb <= max(5.0, DISK_MIN_FREE_GB / 2) else "warning"
+        if status != "critical":
+            status = free_space_status
+        reasons.append(f"free space <= {DISK_MIN_FREE_GB:g} GB")
+
+    recommendations = []
+    if status != "healthy":
+        recommendations.extend(
+            [
+                "Run runner-dashboard/deploy/runner-cleanup.sh to clear stale runner work directories.",
+                "Prune unused Docker images, volumes, and build caches if Docker is used in WSL.",
+                "After cleanup, run wsl --shutdown from Windows and compact the distro VHDX.",
+            ]
+        )
+
     return {
         "status": status,
         "path": path,
@@ -488,11 +589,13 @@ def _disk_pressure_snapshot(
         "used_gb": used_gb,
         "free_gb": free_gb,
         "percent": percent,
+        "warn_percent": DISK_WARN_PERCENT,
+        "critical_percent": DISK_CRITICAL_PERCENT,
+        "min_free_gb": DISK_MIN_FREE_GB,
         "reasons": reasons,
+        "recommendations": recommendations,
     }
 
-
-# ─── Auth ─────────────────────────────────────────────────────────────────────
 
 # ─── Fleet node config ───────────────────────────────────────────────────────
 # Set MACHINE_ROLE=hub on the primary machine.
@@ -503,16 +606,129 @@ def _disk_pressure_snapshot(
 # Example (in /etc/systemd/system/runner-dashboard.service on ControlTower):
 #   Environment=MACHINE_ROLE=hub
 #   Environment=FLEET_NODES=envy:http://100.x.x.x:8321,thinkpad:http://100.x.x.x:8321
+MACHINE_ROLE = os.environ.get("MACHINE_ROLE", "node")
+_fleet_raw = os.environ.get("FLEET_NODES", "")
+FLEET_NODES: dict[str, str] = {}
+for _entry in _fleet_raw.split(","):
+    _entry = _entry.strip()
+    if not _entry:
+        continue
+    # Format: name:http://host:port  — the URL part begins after the first colon
+    # but URLs also contain colons, so we require the URL to start with http
+    _colon_idx = _entry.find(":http")
+    if _colon_idx == -1:
+        _colon_idx = _entry.find(":https")
+    if _colon_idx > 0:
+        _label = _entry[:_colon_idx].strip()
+        _url = _entry[_colon_idx + 1 :].strip()
+    elif ":" in _entry:
+        _label, _, _url = _entry.partition(":")
+        _label = _label.strip()
+        _url = _url.strip()
+    else:
+        continue
+    if _label and _url:
+        try:
+            validate_fleet_node_url(_url)
+            FLEET_NODES[_label] = _url
+        except ValueError as _e:
+            log.warning("Skipping invalid FLEET_NODES entry %r: %s", _entry, _e)
 
-# ─── GitHub API ───────────────────────────────────────────────────────────────
+HUB_URL = os.environ.get("HUB_URL")
+if HUB_URL:
+    HUB_URL = HUB_URL.rstrip("/")
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
 
-# ─── App Initialization ───────────────────────────────────────────────────────
+async def proxy_to_hub(request: Request):
+    """Proxy request to the designated HUB_URL for hub-spoke topology."""
+    if not HUB_URL:
+        raise HTTPException(status_code=502, detail="HUB_URL not configured")
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        url = f"{HUB_URL}{request.url.path}"
+        if request.url.query:
+            url = f"{url}?{request.url.query}"
+        try:
+            req = client.build_request(
+                request.method,
+                url,
+                headers={k: v for k, v in request.headers.items() if k.lower() not in ("host", "content-length")},
+                content=await request.body(),
+            )
+            resp = await client.send(req)
+            # Prevent decoding errors on empty/non-json responses if necessary
+            if resp.status_code == 204 or not resp.content:
+                return {}
+            return resp.json()
+        except Exception as e:  # noqa: BLE001
+            log.warning("Hub proxy error for %s: %s", request.url.path, e)
+            raise HTTPException(status_code=502, detail="Hub proxy error") from e
+
+            log.warning("Hub proxy error for %s: %s", request.url.path, e)
+            raise HTTPException(status_code=502, detail="Hub proxy error") from e
 
 
-# ─── App Initialization ───────────────────────────────────────────────────────
+def _should_proxy_fleet_to_hub(request: Request) -> bool:
+    """Return True when this node should use the hub's fleet-wide view.
+
+    Local health, system metrics, watchdog, and runner schedule endpoints stay
+    local. Fleet-wide endpoints can proxy to the hub, while hub fan-out calls
+    can add ``?local=1`` to force a node-local action and avoid proxy loops.
+    """
+    if MACHINE_ROLE != "node" or not HUB_URL:
+        return False
+    local_value = request.query_params.get("local", "").lower()
+    scope_value = request.query_params.get("scope", "").lower()
+    return local_value not in {"1", "true", "yes", "local"} and scope_value != "local"
+
+
+async def run_cmd(cmd: list[str], timeout: int = 30, cwd: Path | None = None) -> tuple[int, str, str]:
+    """Run a shell command asynchronously."""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=str(cwd) if cwd else None,
+        )
+    except FileNotFoundError as exc:
+        return 127, "", str(exc)
+    try:
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        return (
+            proc.returncode if proc.returncode is not None else -1,
+            stdout.decode(),
+            stderr.decode(),
+        )
+    except (TimeoutError, asyncio.TimeoutError):  # noqa: UP041
+        proc.kill()
+        return -1, "", "Command timed out"
+
+
+async def gh_api(endpoint: str) -> dict:
+    """Call the GitHub API via gh CLI.
+
+    Uses GH_TOKEN env var when set (required for admin:org endpoints such as
+    /orgs/{org}/actions/runners).  GH_TOKEN must be a classic PAT with
+    scopes: repo, admin:org.  See docs/operations/fleet-machine-setup.md.
+    """
+    code, stdout, stderr = await run_cmd(["gh", "api", endpoint])
+    if code != 0:
+        raise HTTPException(status_code=502, detail=f"GitHub API error: {stderr}")
+    return json.loads(stdout)
+
+
+# gh_api_admin is an alias kept for call-site clarity; all calls use GH_TOKEN.
+gh_api_admin = gh_api
+
+
+async def gh_api_raw(endpoint: str) -> str:
+    """Call the GitHub API via gh CLI and return the raw body text."""
+    code, stdout, stderr = await run_cmd(["gh", "api", "-H", "Accept: application/vnd.github.raw", endpoint])
+    if code != 0:
+        raise HTTPException(status_code=502, detail=f"GitHub API error: {stderr}")
+    return stdout
 
 
 async def _expected_dashboard_version_from_hub() -> str | None:
@@ -615,7 +831,7 @@ def _machine_deployment_state(node: dict, expected_version: str) -> dict:
 
 def _build_deployment_state(nodes: list[dict], expected_version: str) -> dict:
     """Summarize deployment state across the fleet."""
-    deployment = get_deployment_info(VERSION, DEPLOYMENT_FILE)
+    deployment = _deployment_info()
     local_drift = deployment_drift.evaluate_drift(deployment, expected_version)
     machines = [_machine_deployment_state(node, expected_version) for node in nodes]
     attention_states = {"offline", "dirty", "drifted", "degraded", "unknown"}
@@ -797,7 +1013,6 @@ def _normalize_repository_input(value: str) -> tuple[str, str]:
     return text, f"{ORG}/{text}"
 
 
-# ─── Runner Control ───────────────────────────────────────────────────────────
 def _machine_name_from_runner_name(runner_name: str | None) -> str | None:
     """Normalize fleet runner names to dashboard machine names."""
     if not runner_name:
@@ -963,7 +1178,53 @@ def _node_visibility_snapshot(node: dict) -> dict:
     }
 
 
-# ─── Runner Scheduler ─────────────────────────────────────────────────────────
+def runner_svc_path(runner_num: int) -> Path:
+    return RUNNER_BASE_DIR / f"runner-{runner_num}" / "svc.sh"
+
+
+async def run_runner_svc(runner_num: int, action: str, timeout: int = 30) -> tuple[int, str, str]:
+    """Run a generated GitHub runner svc.sh from its own runner directory."""
+    svc_path = runner_svc_path(runner_num)
+    return await run_cmd(["sudo", str(svc_path), action], timeout=timeout, cwd=svc_path.parent)
+
+
+def runner_num_from_id(runner_id: int, runners: list[dict]) -> int | None:
+    local_names = {
+        HOSTNAME.lower(),
+        platform.node().lower(),
+        *(alias.lower() for alias in RUNNER_ALIASES),
+    }
+    for r in runners:
+        name = r.get("name", "")
+        parts = name.rsplit("-", 1)
+        if len(parts) == 2 and parts[1].isdigit() and r["id"] == runner_id:
+            machine = parts[0].removeprefix("d-sorg-local-").lower()
+            if machine not in local_names:
+                return None
+            return int(parts[1])
+    return None
+
+
+def _runner_limit() -> int:
+    """Return the hard runner capacity this dashboard is allowed to manage."""
+    return max(NUM_RUNNERS, MAX_RUNNERS)
+
+
+def _runner_sort_key(runner: dict) -> tuple[str, int, str]:
+    """Sort runner names by machine and numeric suffix instead of alphabetically."""
+    name = str(runner.get("name", ""))
+    prefix, sep, suffix = name.rpartition("-")
+    number = int(suffix) if sep and suffix.isdigit() else 10**9
+    return (prefix.lower(), number, name.lower())
+
+
+def get_runner_service_name(runner_num: int) -> str | None:
+    """Get the systemd service name for a runner."""
+    svc_file = RUNNER_BASE_DIR / f"runner-{runner_num}" / ".service"
+    if svc_file.exists():
+        return svc_file.read_text().strip()
+    # Fall back to common naming pattern
+    return f"actions.runner.{ORG}.d-sorg-local-{HOSTNAME}-{runner_num}.service"
 
 
 DEFAULT_RUNNER_SCHEDULE = {
@@ -1012,7 +1273,7 @@ def _validate_runner_schedule(config: dict) -> dict:
     sanitized: dict[str, Any] = {
         "enabled": bool(config.get("enabled", True)),
         "timezone": str(config.get("timezone") or "America/Los_Angeles"),
-        "default_count": max(0, min(runner_limit(), int(config.get("default_count", 1)))),
+        "default_count": max(0, min(_runner_limit(), int(config.get("default_count", 1)))),
         "schedules": [],
     }
     schedules = config.get("schedules", [])
@@ -1027,7 +1288,7 @@ def _validate_runner_schedule(config: dict) -> dict:
         normalized_days = [str(day).lower() for day in days]
         if any(day not in days_allowed for day in normalized_days):
             raise ValueError("schedule days must be mon/tue/wed/thu/fri/sat/sun")
-        runners = max(0, min(runner_limit(), int(entry.get("runners", 0))))
+        runners = max(0, min(_runner_limit(), int(entry.get("runners", 0))))
         sanitized["schedules"].append(
             {
                 "name": str(entry.get("name") or "scheduled"),
@@ -1130,7 +1391,7 @@ def get_runner_capacity_snapshot() -> dict:
         "configured_runners": NUM_RUNNERS,
         "default_runners": DEFAULT_NUM_RUNNERS,
         "installed_runners": sum(1 for path in RUNNER_BASE_DIR.glob("runner-*") if path.is_dir()),
-        "max_runners": runner_limit(),
+        "max_runners": _runner_limit(),
         "config_path": str(RUNNER_SCHEDULE_CONFIG),
         "state_path": str(RUNNER_SCHEDULER_STATE),
         "timers": timer_states,
@@ -1540,7 +1801,7 @@ $result | ConvertTo-Json -Depth 5
 
 async def _watchdog_status_impl() -> dict:
     """Aggregate the WSL keepalive / startup validation state."""
-    cached = cache_get("watchdog", 30.0)
+    cached = _cache_get("watchdog", 30.0)
     if cached is not None:
         return cached
 
@@ -1608,7 +1869,7 @@ async def _watchdog_status_impl() -> dict:
         "affected_machines": [HOSTNAME] if issues else [],
         "detail": "; ".join(issue for issue in issues if issue),
     }
-    cache_set("watchdog", result)
+    _cache_set("watchdog", result)
     return result
 
 
@@ -1661,7 +1922,6 @@ def get_per_runner_resources() -> list[dict]:
     """Get CPU and memory usage for each runner's worker processes."""
     runner_procs = []
     for i in range(1, runner_limit() + 1):
-        _ = get_runner_service_name(i)
         runner_info: dict[str, Any] = {
             "runner_num": i,
             "cpu_percent": 0.0,
@@ -1703,10 +1963,193 @@ def get_per_runner_resources() -> list[dict]:
 @app.get("/api/system")
 async def get_system_metrics():
     """Real-time system resource metrics."""
-    return await get_system_metrics_snapshot(runner_limit())
+    cpu_freq = psutil.cpu_freq()
+    mem = psutil.virtual_memory()
+    swap = psutil.swap_memory()
+    disk_path = str(RUNNER_BASE_DIR) if RUNNER_BASE_DIR.exists() else "/"
+    disk = shutil.disk_usage(disk_path)
+    disk_total_gb = round(disk.total / (1024**3), 1)
+    disk_used_gb = round(disk.used / (1024**3), 1)
+    disk_free_gb = round(disk.free / (1024**3), 1)
+    disk_percent = round(disk.used / disk.total * 100, 1)
 
+    if os.name == "nt":
+        net = psutil.net_io_counters()
+        per_cpu = psutil.cpu_percent(interval=0, percpu=True)
+        current_cpu = psutil.cpu_percent(interval=0)
+        _cpu_history.append(current_cpu)
+        cpu_avg_1m = round(sum(_cpu_history) / len(_cpu_history), 1) if _cpu_history else current_cpu
+        uptime_seconds = time.time() - psutil.boot_time()
+        dashboard_uptime = time.time() - BOOT_TIME
+        disk_pressure = _disk_pressure_snapshot(
+            path=disk_path,
+            total_gb=disk_total_gb,
+            used_gb=disk_used_gb,
+            free_gb=disk_free_gb,
+            percent=disk_percent,
+        )
+        hardware_specs = _local_hardware_specs(None)
+        return {
+            "hostname": HOSTNAME,
+            "platform": platform.platform(),
+            "timestamp": datetime.now(UTC).isoformat(),
+            "uptime_seconds": int(uptime_seconds),
+            "dashboard_uptime_seconds": int(dashboard_uptime),
+            "cpu": {
+                "cores_physical": psutil.cpu_count(logical=False),
+                "cores_logical": psutil.cpu_count(logical=True),
+                "percent": current_cpu,
+                "percent_1m_avg": cpu_avg_1m,
+                "per_cpu_percent": per_cpu,
+                "freq_current_mhz": round(cpu_freq.current, 0) if cpu_freq else None,
+                "freq_max_mhz": round(cpu_freq.max, 0) if cpu_freq else None,
+                "load_avg_1m": 0,
+                "load_avg_5m": 0,
+                "load_avg_15m": 0,
+            },
+            "memory": {
+                "host_total_gb": round(mem.total / (1024**3), 1),
+                "wsl_total_gb": None,
+                "total_gb": round(mem.total / (1024**3), 1),
+                "used_gb": round(mem.used / (1024**3), 1),
+                "available_gb": round(mem.available / (1024**3), 1),
+                "percent": mem.percent,
+                "swap_total_gb": round(swap.total / (1024**3), 1),
+                "swap_used_gb": round(swap.used / (1024**3), 1),
+                "swap_percent": swap.percent,
+            },
+            "disk": {
+                "path": disk_path,
+                "total_gb": disk_total_gb,
+                "used_gb": disk_used_gb,
+                "free_gb": disk_free_gb,
+                "percent": disk_percent,
+                "pressure": disk_pressure,
+                "windows_host": None,
+            },
+            "network": {
+                "bytes_sent": net.bytes_sent,
+                "bytes_recv": net.bytes_recv,
+                "packets_sent": net.packets_sent,
+                "packets_recv": net.packets_recv,
+            },
+            "gpu": None,
+            "hardware_specs": hardware_specs,
+            "workload_capacity": _workload_capacity_from_specs(hardware_specs),
+            "runner_processes": [],
+            "runner_capacity": {},
+        }
 
-# ─── Fleet Telemetry ──────────────────────────────────────────────────────────
+    # On WSL, also report the Windows host disk (/mnt/c) where the VHDX lives.
+    # The host disk is the binding constraint — if it fills up, WSL itself breaks.
+    windows_disk = None
+    wsl_host_path = Path("/mnt/c")
+    if wsl_host_path.exists():
+        try:
+            wd = shutil.disk_usage(str(wsl_host_path))
+            windows_disk = {
+                "path": str(wsl_host_path),
+                "total_gb": round(wd.total / (1024**3), 1),
+                "used_gb": round(wd.used / (1024**3), 1),
+                "free_gb": round(wd.free / (1024**3), 1),
+                "percent": round(wd.used / wd.total * 100, 1),
+                "pressure": _disk_pressure_snapshot(
+                    path=str(wsl_host_path),
+                    total_gb=round(wd.total / (1024**3), 1),
+                    used_gb=round(wd.used / (1024**3), 1),
+                    free_gb=round(wd.free / (1024**3), 1),
+                    percent=round(wd.used / wd.total * 100, 1),
+                ),
+            }
+        except OSError:
+            pass
+
+    # Use the more critical disk for the top-level pressure signal.
+    windows_pct = (windows_disk or {}).get("percent", 0)
+    effective_pct = max(disk_percent, windows_pct)
+    effective_free = min(
+        disk_free_gb,
+        (windows_disk or {}).get("free_gb", disk_free_gb),
+    )
+    disk_pressure = _disk_pressure_snapshot(
+        path=disk_path,
+        total_gb=disk_total_gb,
+        used_gb=disk_used_gb,
+        free_gb=effective_free,
+        percent=effective_pct,
+    )
+
+    # Load averages (1, 5, 15 min)
+    try:
+        load_avg = os.getloadavg() if hasattr(os, "getloadavg") else (0, 0, 0)
+    except OSError:
+        load_avg = (0, 0, 0)
+
+    # Network I/O
+    net = psutil.net_io_counters()
+
+    # Per-CPU usage
+    per_cpu = psutil.cpu_percent(interval=0, percpu=True)
+    current_cpu = psutil.cpu_percent(interval=0)
+    _cpu_history.append(current_cpu)
+    cpu_avg_1m = round(sum(_cpu_history) / len(_cpu_history), 1) if _cpu_history else current_cpu
+
+    # Uptime
+    uptime_seconds = time.time() - psutil.boot_time()
+    dashboard_uptime = time.time() - BOOT_TIME
+    gpu = get_gpu_info()
+    hardware_specs = _local_hardware_specs(gpu)
+
+    return {
+        "hostname": HOSTNAME,
+        "platform": platform.platform(),
+        "timestamp": datetime.now(UTC).isoformat(),
+        "uptime_seconds": int(uptime_seconds),
+        "dashboard_uptime_seconds": int(dashboard_uptime),
+        "cpu": {
+            "cores_physical": psutil.cpu_count(logical=False),
+            "cores_logical": psutil.cpu_count(logical=True),
+            "percent": current_cpu,
+            "percent_1m_avg": cpu_avg_1m,
+            "per_cpu_percent": per_cpu,
+            "freq_current_mhz": round(cpu_freq.current, 0) if cpu_freq else None,
+            "freq_max_mhz": round(cpu_freq.max, 0) if cpu_freq else None,
+            "load_avg_1m": round(load_avg[0], 2),
+            "load_avg_5m": round(load_avg[1], 2),
+            "load_avg_15m": round(load_avg[2], 2),
+        },
+        "memory": {
+            "host_total_gb": HOST_MEMORY_GB,
+            "wsl_total_gb": round(mem.total / (1024**3), 1),
+            "total_gb": HOST_MEMORY_GB or round(mem.total / (1024**3), 1),
+            "used_gb": round(mem.used / (1024**3), 1),
+            "available_gb": round(mem.available / (1024**3), 1),
+            "percent": mem.percent,
+            "swap_total_gb": round(swap.total / (1024**3), 1),
+            "swap_used_gb": round(swap.used / (1024**3), 1),
+            "swap_percent": swap.percent,
+        },
+        "disk": {
+            "path": disk_path,
+            "total_gb": disk_total_gb,
+            "used_gb": disk_used_gb,
+            "free_gb": disk_free_gb,
+            "percent": disk_percent,
+            "pressure": disk_pressure,
+            "windows_host": windows_disk,
+        },
+        "network": {
+            "bytes_sent": net.bytes_sent,
+            "bytes_recv": net.bytes_recv,
+            "packets_sent": net.packets_sent,
+            "packets_recv": net.packets_recv,
+        },
+        "gpu": gpu,
+        "hardware_specs": hardware_specs,
+        "workload_capacity": _workload_capacity_from_specs(hardware_specs),
+        "runner_processes": get_per_runner_resources(),
+        "runner_capacity": get_runner_capacity_snapshot(),
+    }
 
 
 async def _collect_live_fleet_nodes() -> list[dict]:
@@ -1721,7 +2164,7 @@ async def _collect_live_fleet_nodes() -> list[dict]:
                 )
             if sys_r.status_code != 200 or health_r.status_code != 200:
                 status_code = sys_r.status_code if sys_r.status_code != 200 else health_r.status_code
-                reason = classify_node_offline(status_code=status_code)
+                reason = _classify_node_offline(status_code=status_code)
                 return {
                     "name": name,
                     "url": url,
@@ -1736,7 +2179,7 @@ async def _collect_live_fleet_nodes() -> list[dict]:
                     **reason,
                 }
             system = sys_r.json()
-            resource_reason = resource_offline_reason(system)
+            resource_reason = _resource_offline_reason(system)
             return {
                 "name": name,
                 "url": url,
@@ -1754,7 +2197,7 @@ async def _collect_live_fleet_nodes() -> list[dict]:
                 "offline_detail": (resource_reason["offline_detail"] if resource_reason else None),
             }
         except Exception as exc:  # noqa: BLE001
-            reason = classify_node_offline(exc)
+            reason = _classify_node_offline(exc)
             return {
                 "name": name,
                 "url": url,
@@ -1769,9 +2212,9 @@ async def _collect_live_fleet_nodes() -> list[dict]:
                 **reason,
             }
 
-    local_sys = await get_system_metrics_snapshot(runner_limit())
-    local_health = await get_gh_health_summary(ORG)
-    local_resource_reason = resource_offline_reason(local_sys)
+    local_sys = await get_system_metrics()
+    local_health = await _health_impl()
+    local_resource_reason = _resource_offline_reason(local_sys)
     nodes: list[dict] = [
         {
             "name": HOSTNAME,
@@ -1801,7 +2244,7 @@ async def _collect_live_fleet_nodes() -> list[dict]:
 @app.get("/api/fleet/status")
 async def get_fleet_status(request: Request):
     """Get full system metrics state for all machines in the fleet network."""
-    if should_proxy_fleet_to_hub(request):
+    if _should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
 
     responses = {}
@@ -1816,18 +2259,18 @@ async def get_fleet_status(request: Request):
                 if resp.status_code == 200:
                     data = resp.json()
                     data["_role"] = "node"
-                    resource_reason = resource_offline_reason(data)
+                    resource_reason = _resource_offline_reason(data)
                     if resource_reason:
                         data.update(resource_reason)
                     return name, data
-                reason = classify_node_offline(status_code=resp.status_code)
+                reason = _classify_node_offline(status_code=resp.status_code)
                 return name, {
                     "status": "offline",
                     "error": reason["offline_detail"],
                     **reason,
                 }
         except Exception as e:  # noqa: BLE001
-            reason = classify_node_offline(e)
+            reason = _classify_node_offline(e)
             return name, {
                 "status": "offline",
                 "error": reason["offline_detail"],
@@ -1842,13 +2285,41 @@ async def get_fleet_status(request: Request):
     return responses
 
 
-# ─── Deployment Routes ────────────────────────────────────────────────────────
+async def _health_impl() -> dict:
+    """Core health logic, callable both from the HTTP endpoint and internally."""
+    try:
+        # Reuse the runner cache so health checks don't add extra API calls.
+        data = _cache_get("runners", 25.0)
+        if data is None:
+            data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
+            _cache_set("runners", data)
+        gh_ok = True
+        runner_count = len(data.get("runners", []))
+    except Exception:  # noqa: BLE001
+        gh_ok = False
+        runner_count = 0
+
+    return {
+        "status": "healthy" if gh_ok else "degraded",
+        "timestamp": datetime.now(UTC).isoformat(),
+        "hostname": HOSTNAME,
+        "github_api": "connected" if gh_ok else "unreachable",
+        "runners_registered": runner_count,
+        "dashboard_uptime_seconds": int(time.time() - BOOT_TIME),
+        "deployment": _deployment_info(),
+    }
+
+
+@app.get("/api/health")
+async def health_check(request: Request):
+    """Health endpoint for monitoring and load balancers."""
+    return await _health_impl()
 
 
 @app.get("/api/deployment")
 async def get_deployment() -> dict:
     """Return the dashboard code revision deployed on this machine."""
-    return get_deployment_info(VERSION, DEPLOYMENT_FILE)
+    return _deployment_info()
 
 
 @app.get("/api/deployment/expected-version")
@@ -1870,14 +2341,14 @@ async def get_deployment_drift() -> dict:
     see ``POST /api/deployment/update-signal`` for the notify-only affordance.
     """
     expected = await _read_expected_dashboard_version()
-    status = deployment_drift.evaluate_drift(get_deployment_info(VERSION, DEPLOYMENT_FILE), expected)
+    status = deployment_drift.evaluate_drift(_deployment_info(), expected)
     return status.to_dict()
 
 
 @app.get("/api/deployment/state")
 async def get_deployment_state(request: Request) -> dict:
     """Return dashboard deployment state for the fleet overview and deployment tab."""
-    if should_proxy_fleet_to_hub(request):
+    if _should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
     fleet = await _get_fleet_nodes_impl()
     expected = await _read_expected_dashboard_version()
@@ -1920,7 +2391,7 @@ async def post_deployment_update_signal(
     dry_run = bool(payload.get("dry_run", False))
 
     expected = await _read_expected_dashboard_version()
-    status = deployment_drift.evaluate_drift(get_deployment_info(VERSION, DEPLOYMENT_FILE), expected)
+    status = deployment_drift.evaluate_drift(_deployment_info(), expected)
     if dry_run:
         preview = {
             "event": "dashboard.node.update_requested",
@@ -1945,12 +2416,12 @@ async def post_deployment_update_signal(
 @app.get("/api/local-apps")
 async def get_local_apps(request: Request) -> dict:
     """Report local tool deployment, drift, service state, and health."""
-    cached = cache_get("local_apps", 120.0)
+    cached = _cache_get("local_apps", 120.0)
     if cached is not None:
         return cached
 
     data = await asyncio.to_thread(collect_local_apps)
-    cache_set("local_apps", data)
+    _cache_set("local_apps", data)
     return data
 
 
@@ -1963,7 +2434,20 @@ async def get_watchdog_status(request: Request):
 # ─── Runner API Routes ───────────────────────────────────────────────────────
 
 
-# ─── GitHub Runners ───────────────────────────────────────────────────────────
+@app.get("/api/runners")
+async def get_runners(request: Request):
+    """Get all org runners with their status."""
+    if _should_proxy_fleet_to_hub(request):
+        return await proxy_to_hub(request)
+
+    cached = _cache_get("runners", 60.0)
+    if cached is not None:
+        cached["runners"] = sorted(cached.get("runners", []), key=_runner_sort_key)
+        return cached
+    data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
+    data["runners"] = sorted(data.get("runners", []), key=_runner_sort_key)
+    _cache_set("runners", data)
+    return data
 
 
 # ─── MATLAB Runner Health (issue #570) ───────────────────────────────────────
@@ -1985,7 +2469,7 @@ def _is_matlab_runner(runner: dict) -> bool:
     if "matlab" in name:
         return True
     for label in runner.get("labels", []) or []:
-        lname = str(label.get("name") if isinstance(label, dict) else str(label)).lower()
+        lname = str(label.get("name", "")).lower() if isinstance(label, dict) else str(label).lower()
         if lname == "matlab" or lname.startswith("windows-matlab") or lname.startswith("d-sorg-matlab"):
             return True
     return False
@@ -2088,10 +2572,10 @@ async def get_matlab_runner_health(request: Request) -> dict:
     Always returns 200; absence of runners is represented explicitly so the UI
     can render an actionable warning instead of a spinner.
     """
-    if should_proxy_fleet_to_hub(request):
+    if _should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
 
-    cached = cache_get("matlab_runner_health", 45.0)
+    cached = _cache_get("matlab_runner_health", 45.0)
     if cached is not None:
         return cached
 
@@ -2141,7 +2625,7 @@ async def get_matlab_runner_health(request: Request) -> dict:
         "recent_workflow_runs": recent,
         "generated_at": datetime.now(UTC).isoformat(),
     }
-    cache_set("matlab_runner_health", result)
+    _cache_set("matlab_runner_health", result)
     return result
 
 
@@ -2153,11 +2637,11 @@ async def get_runs(request: Request, per_page: int = 30) -> dict:
     fetched per-repo.  We sample the 10 most recently updated repos and return
     up to ``per_page`` runs sorted newest-first.
     """
-    if should_proxy_fleet_to_hub(request):
+    if _should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
 
     cache_key = f"runs:{per_page}"
-    cached = cache_get(cache_key, 120.0)
+    cached = _cache_get(cache_key, 120.0)
     if cached is not None:
         return cached
 
@@ -2177,7 +2661,7 @@ async def get_runs(request: Request, per_page: int = 30) -> dict:
     top_runs = all_runs[:per_page]
 
     result = {"workflow_runs": top_runs, "total_count": len(top_runs)}
-    cache_set(f"runs:{per_page}", result)
+    _cache_set(f"runs:{per_page}", result)
     return result
 
 
@@ -2188,7 +2672,7 @@ async def _scheduled_workflows_impl(
 ) -> dict:
     """Collect the read-only scheduled workflow inventory."""
     cache_key = f"scheduled-workflows:{include_archived}:{repo_limit}"
-    cached = cache_get(cache_key, 300.0)
+    cached = _cache_get(cache_key, 300.0)
     if cached is not None:
         return cached
 
@@ -2211,7 +2695,7 @@ async def _scheduled_workflows_impl(
         )
         payload = report.to_dict()
         payload["status"] = "ok"
-        cache_set(cache_key, payload)
+        _cache_set(cache_key, payload)
     except (TimeoutError, asyncio.TimeoutError):  # noqa: UP041
         payload = {
             "status": "degraded",
@@ -2244,7 +2728,7 @@ async def get_scheduled_workflows(
     expressions from workflow YAML where available, and attaches a dry-run plan
     that describes future changes without executing them.
     """
-    if should_proxy_fleet_to_hub(request):
+    if _should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
     return await _scheduled_workflows_impl(
         include_archived=include_archived,
@@ -2257,7 +2741,7 @@ async def list_workflows() -> dict:
     """List all workflows per repository with trigger capabilities and latest run."""
     import base64  # noqa: PLC0415
 
-    cached = cache_get("workflows_list", 120.0)
+    cached = _cache_get("workflows_list", 120.0)
     if cached is not None:
         return cached
     repos = await _get_recent_org_repos(limit=30)
@@ -2356,7 +2840,7 @@ async def list_workflows() -> dict:
         all_workflows.extend(wf_list)
 
     result = {"workflows": all_workflows, "total": len(all_workflows)}
-    cache_set("workflows_list", result, 120.0)
+    _cache_set("workflows_list", result, 120.0)
     return result
 
 
@@ -2420,10 +2904,10 @@ async def dispatch_workflow(
 @app.get("/api/runs/enriched")
 async def get_enriched_runs(request: Request, per_page: int = 50) -> dict:
     """Return recent runs with dashboard-friendly enrichment fields."""
-    if should_proxy_fleet_to_hub(request):
+    if _should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
     cache_key = f"runs-enriched:{per_page}"
-    cached = cache_get(cache_key, 120.0)
+    cached = _cache_get(cache_key, 120.0)
     if cached is not None:
         return cached
 
@@ -2433,20 +2917,225 @@ async def get_enriched_runs(request: Request, per_page: int = 50) -> dict:
     enriched = await asyncio.gather(*[_enrich_run_with_job_placement(run) for run in enrichable])
     enriched.extend(dict(run) for run in runs[RUN_JOB_ENRICHMENT_LIMIT:])
     result = {"workflow_runs": enriched, "total_count": len(enriched)}
-    cache_set(cache_key, result)
+    _cache_set(cache_key, result)
     return result
 
 
 @app.get("/api/runs/{repo}")
 async def get_repo_runs(request: Request, repo: str, per_page: int = 20):
     """Get recent workflow runs for a specific repo."""
-    if should_proxy_fleet_to_hub(request):
+    if _should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
     data = await gh_api(f"/repos/{ORG}/{repo}/actions/runs?per_page={per_page}")
     return data
 
 
-# ─── Fleet Orchestration ──────────────────────────────────────────────────────
+@app.post("/api/runners/{runner_id}/stop")
+async def stop_runner(
+    request: Request,
+    *,
+    principal: Principal = Depends(require_scope("runners.control")),
+    runner_id: int,  # noqa: B008
+):  # noqa: B008
+    """Stop a specific runner's systemd service."""
+    data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
+    runners = data.get("runners", [])
+    num = runner_num_from_id(runner_id, runners)
+
+    if num is None:
+        msg = f"Runner ID {runner_id} not found locally"
+        raise HTTPException(status_code=404, detail=msg)
+
+    svc_path = runner_svc_path(num)
+    if not svc_path.exists():
+        raise HTTPException(status_code=404, detail=f"Runner {num} svc.sh not found")
+
+    log.info("Stopping runner %d (GitHub ID: %d)", num, runner_id)
+    code, stdout, stderr = await run_runner_svc(num, "stop")
+    if code != 0:
+        log.warning("Failed to stop runner %d: %s", num, stderr[:200])
+        raise HTTPException(status_code=500, detail=f"Failed to stop runner {num}")
+
+    return {"status": "stopped", "runner": num, "output": stdout.strip()}
+
+
+@app.post("/api/runners/{runner_id}/start")
+async def start_runner(
+    request: Request,
+    *,
+    principal: Principal = Depends(require_scope("runners.control")),
+    runner_id: int,  # noqa: B008
+):  # noqa: B008
+    """Start a specific runner's systemd service."""
+    data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
+    runners = data.get("runners", [])
+    num = runner_num_from_id(runner_id, runners)
+
+    if num is None:
+        msg = f"Runner ID {runner_id} not found locally"
+        raise HTTPException(status_code=404, detail=msg)
+
+    svc_path = runner_svc_path(num)
+    if not svc_path.exists():
+        raise HTTPException(status_code=404, detail=f"Runner {num} svc.sh not found")
+
+    log.info("Starting runner %d (GitHub ID: %d)", num, runner_id)
+    code, stdout, stderr = await run_runner_svc(num, "start")
+    if code != 0:
+        log.warning("Failed to start runner %d: %s", num, stderr[:200])
+        raise HTTPException(status_code=500, detail=f"Failed to start runner {num}")
+
+    return {"status": "started", "runner": num, "output": stdout.strip()}
+
+
+async def _fleet_control_local(action: str) -> dict:
+    """Scale runners on this machine only."""
+    data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
+    runners = data.get("runners", [])
+    results = []
+
+    log.info("Local runner control on %s: %s", HOSTNAME, action)
+
+    if action == "all-up":
+        for i in range(1, _runner_limit() + 1):
+            svc = runner_svc_path(i)
+            if svc.exists():
+                code, _, _ = await run_runner_svc(i, "start")
+                results.append({"runner": i, "action": "start", "success": code == 0})
+
+    elif action == "all-down":
+        for i in range(1, _runner_limit() + 1):
+            svc = runner_svc_path(i)
+            if svc.exists():
+                code, _, _ = await run_runner_svc(i, "stop")
+                results.append({"runner": i, "action": "stop", "success": code == 0})
+
+    elif action == "up":
+        online_nums = set()
+        for r in runners:
+            if r["status"] == "online":
+                num = runner_num_from_id(r["id"], runners)
+                if num:
+                    online_nums.add(num)
+        for i in range(1, _runner_limit() + 1):
+            if i not in online_nums:
+                svc = runner_svc_path(i)
+                if svc.exists():
+                    code, _, _ = await run_runner_svc(i, "start")
+                    results.append(
+                        {
+                            "runner": i,
+                            "action": "start",
+                            "success": code == 0,
+                        }
+                    )
+                    break
+
+    elif action == "down":
+        idle_runners = []
+        for r in runners:
+            if r["status"] == "online" and not r.get("busy"):
+                num = runner_num_from_id(r["id"], runners)
+                if num:
+                    idle_runners.append(num)
+        if idle_runners:
+            target = max(idle_runners)
+            svc = runner_svc_path(target)
+            if svc.exists():
+                code, _, _ = await run_runner_svc(target, "stop")
+                results.append(
+                    {
+                        "runner": target,
+                        "action": "stop",
+                        "success": code == 0,
+                    }
+                )
+        else:
+            raise HTTPException(status_code=400, detail="No idle runners to stop")
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown action: {action}")
+
+    return {"machine": HOSTNAME, "action": action, "results": results}
+
+
+async def _remote_fleet_control(name: str, url: str, action: str) -> dict:
+    """Ask a node dashboard to apply a runner action locally."""
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            resp = await client.post(f"{url}/api/fleet/control/{action}?local=1")
+        if resp.status_code != 200:
+            return {
+                "machine": name,
+                "url": url,
+                "success": False,
+                "status_code": resp.status_code,
+                "error": resp.text[:500],
+            }
+        data = resp.json()
+        return {
+            "machine": name,
+            "url": url,
+            "success": True,
+            "result": data,
+        }
+    except Exception as exc:  # noqa: BLE001 - remote nodes may be offline
+        return {"machine": name, "url": url, "success": False, "error": str(exc)}
+
+        return {"machine": name, "url": url, "success": False, "error": str(exc)}
+
+
+@app.post("/api/fleet/control/{action}")
+async def fleet_control(
+    action: str,
+    request: Request,
+    *,
+    principal: Principal = Depends(require_scope("fleet.control")),  # noqa: B008
+):  # noqa: B008
+    """Scale runners from any dashboard.
+
+    Nodes proxy fleet-wide requests to the hub. The hub applies the action
+    locally and fans it out to configured nodes. Internal fan-out calls use
+    ``?local=1`` so each node controls its own runner services.
+    """
+    if _should_proxy_fleet_to_hub(request):
+        return await proxy_to_hub(request)
+
+    scope = request.query_params.get("scope", "fleet")
+    should_fan_out = MACHINE_ROLE == "hub" and scope != "local" and bool(FLEET_NODES)
+    local_machine = HOSTNAME
+    try:
+        local_result = await _fleet_control_local(action)
+        local_machine = local_result.get("machine", HOSTNAME)
+        local_node_result = {
+            "machine": local_machine,
+            "url": f"http://localhost:{PORT}",
+            "success": True,
+            "result": local_result,
+        }
+    except HTTPException as exc:
+        if not should_fan_out:
+            raise
+        local_result = {"machine": HOSTNAME, "action": action, "results": []}
+        local_node_result = {
+            "machine": HOSTNAME,
+            "url": f"http://localhost:{PORT}",
+            "success": False,
+            "status_code": exc.status_code,
+            "error": str(exc.detail),
+        }
+    node_results = [local_node_result]
+
+    if should_fan_out:
+        remotes = await asyncio.gather(*[_remote_fleet_control(name, url, action) for name, url in FLEET_NODES.items()])
+        node_results.extend(remotes)
+
+    return {
+        "action": action,
+        "scope": "local" if scope == "local" else "fleet",
+        "machine": local_machine,
+        "results": local_result["results"],
+        "nodes": node_results,
+    }
 
 
 @app.get("/api/fleet/schedule")
@@ -2483,7 +3172,7 @@ async def update_runner_schedule(
         env["RUNNER_ROOT"] = str(RUNNER_BASE_DIR)
         env["RUNNER_SCHEDULE_CONFIG"] = str(RUNNER_SCHEDULE_CONFIG)
         env["RUNNER_SCHEDULER_STATE"] = str(RUNNER_SCHEDULER_STATE)
-        apply_cmd = runner_scheduler_apply_command()
+        apply_cmd = _runner_scheduler_apply_command()
         result = subprocess.run(
             apply_cmd,
             capture_output=True,
@@ -2514,10 +3203,10 @@ async def update_runner_schedule(
 @app.get("/api/repos")
 async def get_repos(request: Request):
     """Get all org repos with open PRs, open issues, and last CI status."""
-    if should_proxy_fleet_to_hub(request):
+    if _should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
 
-    cached = cache_get("repos", 600.0)
+    cached = _cache_get("repos", 600.0)
     if cached is not None:
         return cached
 
@@ -2618,7 +3307,7 @@ async def get_repos(request: Request):
     results.sort(key=lambda r: (r["last_ci_updated"] or "",), reverse=True)
 
     result = {"repos": results, "total_count": len(results), "org": ORG}
-    cache_set("repos", result)
+    _cache_set("repos", result)
     return result
 
 
@@ -3033,7 +3722,7 @@ _CI_FLEET_REPOS = [
 @app.get("/api/tests/ci-results")
 async def get_tests_ci_results() -> dict:
     """Return recent ci-standard workflow runs for key fleet repos."""
-    cached = cache_get("ci_test_results", 120.0)
+    cached = _cache_get("ci_test_results", 120.0)
     if cached is not None:
         return cached
 
@@ -3065,7 +3754,7 @@ async def get_tests_ci_results() -> dict:
             results.append({"repo": repo_name, "run_id": None, "conclusion": "error"})
 
     out: dict = {"results": results}
-    cache_set("ci_test_results", out)
+    _cache_set("ci_test_results", out)
     return out
 
 
@@ -3103,17 +3792,17 @@ async def rerun_ci_test(request: Request, *, principal: Principal = Depends(requ
 @app.get("/api/stats")
 async def get_stats(request: Request):
     """Aggregate organization, runner, queue, and workflow statistics."""
-    if should_proxy_fleet_to_hub(request):
+    if _should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
 
-    cached = cache_get("stats", 120.0)
+    cached = _cache_get("stats", 120.0)
     if cached is not None:
         return cached
 
-    runners_data = cache_get("runners", 25.0)
+    runners_data = _cache_get("runners", 25.0)
     if runners_data is None:
         runners_data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
-        cache_set("runners", runners_data)
+        _cache_set("runners", runners_data)
     runners = runners_data.get("runners", [])
 
     repos = await _get_recent_org_repos(limit=30)
@@ -3156,22 +3845,22 @@ async def get_stats(request: Request):
         "machines_offline": max(0, fleet_data.get("count", 0) - fleet_data.get("online_count", 0)),
         "repos_sampled": len(repos[:20]),
     }
-    cache_set("stats", result)
+    _cache_set("stats", result)
     return result
 
 
 @app.get("/api/usage")
 async def get_usage_monitoring(request: Request) -> dict:
     """Return normalized subscription and local tool usage summaries."""
-    if should_proxy_fleet_to_hub(request):
+    if _should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
 
-    cached = cache_get("usage_monitoring", 300.0)
+    cached = _cache_get("usage_monitoring", 300.0)
     if cached is not None:
         return cached
 
     summary = usage_monitoring.normalize_usage_summary(usage_monitoring.load_usage_sources_config())
-    cache_set("usage_monitoring", summary)
+    _cache_set("usage_monitoring", summary)
     return summary
 
 
@@ -4059,7 +4748,7 @@ async def execute_action(
 
 async def _queue_impl() -> dict:
     """Core queue aggregation, callable from the HTTP endpoint and internally."""
-    cached = cache_get("queue", 120.0)
+    cached = _cache_get("queue", 120.0)
     if cached is not None:
         return cached
 
@@ -4093,7 +4782,7 @@ async def _queue_impl() -> dict:
         "queued_count": len(queued),
         "in_progress_count": len(in_progress),
     }
-    cache_set("queue", result)
+    _cache_set("queue", result)
     return result
 
 
@@ -4104,7 +4793,7 @@ async def get_queue(request: Request) -> dict:
     GitHub has no org-level queue endpoint; we query the 15 most recently
     updated repos concurrently for both statuses and aggregate the results.
     """
-    if should_proxy_fleet_to_hub(request):
+    if _should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
     return await _queue_impl()
 
@@ -4230,16 +4919,16 @@ async def diagnose_queue() -> dict:
     labels the waiting jobs need — self-hosted fleet, ubuntu-latest, or other.
     Cross-references against the live runner pool to identify the bottleneck.
     """
-    cached = cache_get("diagnose", 120.0)
+    cached = _cache_get("diagnose", 120.0)
     if cached is not None:
         return cached
 
     # Runner pool status
     try:
-        runner_data = cache_get("runners", 25.0)
+        runner_data = _cache_get("runners", 25.0)
         if runner_data is None:
             runner_data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
-            cache_set("runners", runner_data)
+            _cache_set("runners", runner_data)
         runners = runner_data.get("runners", [])
     except Exception:  # noqa: BLE001
         runners = []
@@ -4537,7 +5226,7 @@ async def diagnose_queue() -> dict:
         "bottleneck": bottleneck,
         "sampled_jobs": sampled_jobs[:15],
     }
-    cache_set("diagnose", result)
+    _cache_set("diagnose", result)
     return result
 
 
@@ -4546,7 +5235,7 @@ async def diagnose_queue() -> dict:
 
 @app.get("/api/fleet/nodes")
 async def get_fleet_nodes(request: Request) -> dict:
-    if should_proxy_fleet_to_hub(request):
+    if _should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
     return await _get_fleet_nodes_impl()
 
@@ -4554,7 +5243,7 @@ async def get_fleet_nodes(request: Request) -> dict:
 @app.get("/api/fleet/hardware")
 async def get_fleet_hardware(request: Request) -> dict:
     """Return centralized fleet hardware specs for workload placement."""
-    if should_proxy_fleet_to_hub(request):
+    if _should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
     fleet = await _get_fleet_nodes_impl()
     machines = []
@@ -5945,10 +6634,10 @@ async def get_stale_queue(
     Unlike /api/queue (15-repo sample), this scans every repo so ancient
     runs in quiet repos are visible.  Cached 5 minutes.
     """
-    if should_proxy_fleet_to_hub(request):
+    if _should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
     cache_key = f"stale_queue_{min_age}"
-    cached = cache_get(cache_key, 300.0)
+    cached = _cache_get(cache_key, 300.0)
     if cached is not None:
         return cached
     stale = await queue_cleanup.find_stale_runs(ORG, min_age)
@@ -5957,7 +6646,7 @@ async def get_stale_queue(
         "stale_count": len(stale),
         "runs": [r.as_dict() for r in stale],
     }
-    cache_set(cache_key, payload, 300.0)
+    _cache_set(cache_key, payload, 300.0)
     return payload
 
 
