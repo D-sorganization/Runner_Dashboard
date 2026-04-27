@@ -86,14 +86,79 @@
       /* ── Header ── */
       .app-header {
         background: var(--bg-secondary);
-        border-bottom: 1px solid var(--border);
-        padding: 0 24px;
-        display: flex;
-        align-items: center;
-        height: 56px;
         position: sticky;
         top: 0;
         z-index: 100;
+        display: flex;
+        flex-direction: column;
+      }
+      .ribbon-primary {
+        display: flex;
+        align-items: center;
+        padding: 0 24px;
+        height: 48px;
+        border-bottom: 1px solid var(--border);
+        gap: 2px;
+      }
+      .ribbon-secondary {
+        display: flex;
+        align-items: center;
+        padding: 0 16px;
+        height: 40px;
+        background: rgba(0,0,0,0.22);
+        border-bottom: 1px solid var(--border);
+        gap: 2px;
+        overflow-x: hidden;
+      }
+      .ribbon-cat-btn {
+        background: none;
+        border: none;
+        border-bottom: 3px solid transparent;
+        color: var(--text-secondary);
+        font-size: 13px;
+        font-weight: 600;
+        padding: 0 14px;
+        height: 100%;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        white-space: nowrap;
+        transition: color 0.15s, border-color 0.15s;
+        margin-bottom: -1px;
+      }
+      .ribbon-cat-btn:hover { color: var(--text-primary); }
+      .ribbon-cat-btn.active {
+        color: var(--text-primary);
+        border-bottom-color: var(--accent-blue);
+      }
+      .ribbon-tab-btn {
+        background: none;
+        border: none;
+        color: rgba(255,255,255,0.45);
+        font-size: 12px;
+        font-weight: 500;
+        padding: 0 12px;
+        height: 100%;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        white-space: nowrap;
+        position: relative;
+        transition: color 0.15s;
+      }
+      .ribbon-tab-btn:hover { color: rgba(255,255,255,0.8); }
+      .ribbon-tab-btn.active { color: var(--text-primary); }
+      .ribbon-tab-btn.active::after {
+        content: "";
+        position: absolute;
+        bottom: 0;
+        left: 4px;
+        right: 4px;
+        height: 2px;
+        background: var(--accent-blue);
+        border-radius: 2px 2px 0 0;
       }
       .app-logo {
         display: flex;
@@ -8790,7 +8855,7 @@
               return r.json();
             })
             .then(function (data) {
-              setIssues(Array.isArray(data) ? data : (data.issues || []));
+              setIssues(Array.isArray(data) ? data : (data.items || data.issues || []));
               setLoading(false);
             })
             .catch(function (err) {
@@ -13580,186 +13645,402 @@
         );
       }
 
-      function ClineLauncherTab() {
-        // Self-contained: this tab manages its own polling + actions so it
-        // doesn't bloat the parent state. The launcher's state is on the
-        // user's local FS — the dashboard only mirrors it.
-        var s = React.useState(null);
-        var status = s[0], setStatus = s[1];
-        var r = React.useState(null);
-        var repos = r[0], setRepos = r[1];
-        var l = React.useState(false);
-        var loading = l[0], setLoading = l[1];
-        var er = React.useState("");
-        var error = er[0], setError = er[1];
-        var bs = React.useState({});
-        var busy = bs[0], setBusy = bs[1];
+      // ── Agent Launcher Tab ──────────────────────────────────────────────────
+      function AgentWorkflowDispatch(props) {
+        var repos = props.repos;
+        var wds = React.useState("Repository_Management");
+        var wdRepo = wds[0]; var setWdRepo = wds[1];
+        var wfs = React.useState("");
+        var wdWorkflow = wfs[0]; var setWdWorkflow = wfs[1];
+        var wrs = React.useState("main");
+        var wdRef = wrs[0]; var setWdRef = wrs[1];
+        var wss = React.useState(null);
+        var wdStatus = wss[0]; var setWdStatus = wss[1];
+
+        var SKILL_WORKFLOWS = [
+          { value: "Skills-Sync.yml", label: "Skills Sync" },
+          { value: "Agent-CI-Remediation.yml", label: "CI Remediation" },
+          { value: "Jules-Auto-Repair.yml", label: "Jules Auto-Repair" },
+          { value: "Jules-PR-AutoFix.yml", label: "Jules PR AutoFix" },
+          { value: "ci-standard.yml", label: "CI Standard" },
+        ];
+
+        function dispatchWorkflow() {
+          if (!wdRepo || !wdWorkflow) return;
+          setWdStatus("dispatching");
+          fetch("/api/workflows/dispatch", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+            body: JSON.stringify({ repository: wdRepo, workflow_id: wdWorkflow, ref: wdRef, inputs: {} }),
+          })
+            .then(function(r) { return r.json().then(function(j) { if (!r.ok) throw new Error(j.detail || "HTTP " + r.status); return j; }); })
+            .then(function() { setWdStatus("ok"); setTimeout(function() { setWdStatus(null); }, 3000); })
+            .catch(function(e) { setWdStatus("error: " + String(e)); });
+        }
+
+        return h("div", { style: { marginTop: 24, marginBottom: 8 } },
+          h("h3", { style: { marginBottom: 10 } }, "Workflow Dispatch"),
+          h("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" } },
+            h("div", { style: { display: "flex", flexDirection: "column", gap: 4 } },
+              h("label", { style: { fontSize: 12, color: "var(--text-muted)" } }, "Repository"),
+              h("input", {
+                className: "form-input",
+                style: { width: 200 },
+                value: wdRepo,
+                onChange: function(e) { setWdRepo(e.target.value); },
+                placeholder: "Repository_Management",
+              }),
+            ),
+            h("div", { style: { display: "flex", flexDirection: "column", gap: 4 } },
+              h("label", { style: { fontSize: 12, color: "var(--text-muted)" } }, "Workflow file"),
+              h("div", { style: { display: "flex", gap: 4 } },
+                h("input", {
+                  className: "form-input",
+                  style: { width: 220 },
+                  value: wdWorkflow,
+                  onChange: function(e) { setWdWorkflow(e.target.value); },
+                  placeholder: "Skills-Sync.yml",
+                }),
+                h("select", {
+                  className: "form-input",
+                  style: { width: 140 },
+                  value: "",
+                  onChange: function(e) { if (e.target.value) setWdWorkflow(e.target.value); },
+                },
+                  h("option", { value: "" }, "presets…"),
+                  SKILL_WORKFLOWS.map(function(w) {
+                    return h("option", { key: w.value, value: w.value }, w.label);
+                  }),
+                ),
+              ),
+            ),
+            h("div", { style: { display: "flex", flexDirection: "column", gap: 4 } },
+              h("label", { style: { fontSize: 12, color: "var(--text-muted)" } }, "Ref"),
+              h("input", {
+                className: "form-input",
+                style: { width: 100 },
+                value: wdRef,
+                onChange: function(e) { setWdRef(e.target.value); },
+                placeholder: "main",
+              }),
+            ),
+            h("button", {
+              className: "btn btn-primary",
+              disabled: !wdRepo || !wdWorkflow || wdStatus === "dispatching",
+              onClick: dispatchWorkflow,
+              style: { alignSelf: "flex-end" },
+            }, wdStatus === "dispatching" ? "Dispatching…" : "▶ Dispatch"),
+            wdStatus && wdStatus !== "dispatching" && h("span", {
+              style: { alignSelf: "center", fontSize: 12, color: wdStatus === "ok" ? "var(--accent-green)" : "var(--accent-red)" },
+            }, wdStatus === "ok" ? "✓ Dispatched" : wdStatus),
+          ),
+        );
+      }
+
+      function AgentLauncherTab() {
+        // Self-contained state — doesn't bloat parent
+        var ss = React.useState(null); var status = ss[0]; var setStatus = ss[1];
+        var cs = React.useState(null); var config = cs[0]; var setConfig = cs[1];
+        var rs = React.useState(null); var repos = rs[0]; var setRepos = rs[1];
+        var ls = React.useState(false); var loading = ls[0]; var setLoading = ls[1];
+        var es = React.useState(""); var error = es[0]; var setError = es[1];
+        var bs = React.useState({}); var busy = bs[0]; var setBusy = bs[1];
+        var eas = React.useState(null); var editingAgent = eas[0]; var setEditingAgent = eas[1];
+        var efs = React.useState({}); var editForm = efs[0]; var setEditForm = efs[1];
+        var svs = React.useState(null); var saveStatus = svs[0]; var setSaveStatus = svs[1];
+
+        var PROVIDERS = [
+          { value: "claude_code_cli", label: "Claude Code" },
+          { value: "codex_cli", label: "Codex CLI" },
+          { value: "jules_api", label: "Jules API" },
+        ];
+        var MODELS = [
+          { value: "claude-sonnet-4-6", label: "Sonnet 4.6 (recommended)" },
+          { value: "claude-opus-4-6", label: "Opus 4.6 (premium)" },
+          { value: "claude-haiku-4-5-20251001", label: "Haiku 4.5 (fast)" },
+          { value: "claude-3-5-sonnet-20241022", label: "Sonnet 3.5" },
+        ];
 
         function fetchStatus() {
-          fetch("/api/agent-launcher/status")
-            .then(function (resp) {
-              if (!resp.ok) throw new Error("HTTP " + resp.status);
-              return resp.json();
-            })
-            .then(function (j) { setStatus(j); setError(""); })
-            .catch(function (e) { setError(String(e)); });
+          fetch("/api/agent-launcher/status", { headers: { "X-Requested-With": "XMLHttpRequest" } })
+            .then(function(r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(function(j) { setStatus(j); setError(""); })
+            .catch(function(e) { setError(String(e)); });
         }
-
+        function fetchConfig() {
+          fetch("/api/agent-launcher/config", { headers: { "X-Requested-With": "XMLHttpRequest" } })
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(j) { if (j) setConfig(j); })
+            .catch(function() {});
+        }
         function fetchRepos() {
           setLoading(true);
-          fetch("/api/agent-launcher/repos")
-            .then(function (resp) {
-              if (resp.status === 503) {
-                throw new Error(
-                  "launcher not installed on this machine"
-                );
-              }
-              if (!resp.ok) throw new Error("HTTP " + resp.status);
-              return resp.json();
+          fetch("/api/agent-launcher/repos", { headers: { "X-Requested-With": "XMLHttpRequest" } })
+            .then(function(r) {
+              if (r.status === 503) throw new Error("launcher not installed");
+              if (!r.ok) throw new Error("HTTP " + r.status);
+              return r.json();
             })
-            .then(function (j) { setRepos(j); setError(""); })
-            .catch(function (e) { setError(String(e)); })
-            .finally(function () { setLoading(false); });
+            .then(function(j) { setRepos(j); })
+            .catch(function(e) { setError(String(e)); })
+            .finally(function() { setLoading(false); });
         }
-
         function action(verb, body) {
           var key = verb + (body && body.agent ? "/" + body.agent : "");
-          var nb = Object.assign({}, busy); nb[key] = true; setBusy(nb);
-          var opts = { method: "POST" };
-          if (body) {
-            opts.headers = { "Content-Type": "application/json" };
-            opts.body = JSON.stringify(body);
-          }
+          setBusy(function(p) { var n = Object.assign({}, p); n[key] = true; return n; });
+          var opts = { method: "POST", headers: { "X-Requested-With": "XMLHttpRequest" } };
+          if (body) { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
           return fetch("/api/agent-launcher/" + verb, opts)
-            .then(function (resp) {
-              return resp.json().then(function (j) {
-                if (!resp.ok) throw new Error(j.detail || "HTTP " + resp.status);
-                return j;
-              });
+            .then(function(r) { return r.json().then(function(j) { if (!r.ok) throw new Error(j.detail || "HTTP " + r.status); return j; }); })
+            .then(function() { fetchStatus(); })
+            .catch(function(e) { setError(String(e)); })
+            .finally(function() { setBusy(function(p) { var n = Object.assign({}, p); delete n[key]; return n; }); });
+        }
+        function startEdit(agentName) {
+          var a = (config && config.agents && config.agents[agentName]) || {};
+          setEditingAgent(agentName);
+          setEditForm({
+            enabled: a.enabled !== false,
+            interval_seconds: a.interval_seconds || 3600,
+            provider: a.provider || "claude_code_cli",
+            model: a.model || "claude-sonnet-4-6",
+          });
+          setSaveStatus(null);
+        }
+        function cancelEdit() { setEditingAgent(null); setEditForm({}); setSaveStatus(null); }
+        function saveAgentConfig() {
+          if (!config || !editingAgent) return;
+          setSaveStatus("saving");
+          var agents = Object.assign({}, config.agents || {});
+          agents[editingAgent] = Object.assign({}, agents[editingAgent] || {}, editForm);
+          var newConfig = Object.assign({}, config, { agents: agents });
+          fetch("/api/agent-launcher/config", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+            body: JSON.stringify(newConfig),
+          })
+            .then(function(r) { return r.json().then(function(j) { if (!r.ok) throw new Error(j.detail || "HTTP " + r.status); return j; }); })
+            .then(function() {
+              setSaveStatus("ok");
+              setConfig(newConfig);
+              fetchStatus();
+              setTimeout(function() { setEditingAgent(null); setSaveStatus(null); }, 1200);
             })
-            .then(function () { fetchStatus(); })
-            .catch(function (e) { setError(String(e)); })
-            .finally(function () {
-              var nb2 = Object.assign({}, busy); delete nb2[key]; setBusy(nb2);
-            });
+            .catch(function(e) { setSaveStatus("error: " + String(e)); });
         }
 
-        React.useEffect(function () {
-          fetchStatus(); fetchRepos();
+        React.useEffect(function() {
+          fetchStatus(); fetchConfig(); fetchRepos();
           var t = setInterval(fetchStatus, 5000);
-          return function () { clearInterval(t); };
+          return function() { clearInterval(t); };
         }, []);
 
         var schedRunning = status && status.scheduler_running;
-        var statusBadge = h("span", {
-          className: "section-badge",
-          style: {
-            background: schedRunning ? "rgba(63,185,80,0.15)" : "rgba(248,81,73,0.15)",
-            color: schedRunning ? "var(--accent-green)" : "var(--accent-red)",
-          },
-        }, schedRunning ? "running" : "stopped");
+        var agents = (status && status.agents) || [];
+        var configAgents = (config && config.agents) || {};
+
+        function nextRunMs(a) {
+          if (!a.last_run_iso) return null;
+          return new Date(a.last_run_iso).getTime() + a.interval_seconds * 1000;
+        }
 
         return h("div", { className: "tab-panel" },
-          // Header + global controls
+          // Header
           h("div", { style: { display: "flex", alignItems: "center", gap: 12, marginBottom: 16 } },
-            h("h2", { style: { margin: 0 } }, "Cline Agent Launcher"),
-            statusBadge,
-            status && status.scheduler_pid
-              ? h("span", { style: { fontSize: 12, color: "var(--text-secondary)" } },
-                  "pid " + status.scheduler_pid)
-              : null,
-          ),
-          error
-            ? h("div", { className: "alert alert-error", style: { marginBottom: 12 } }, error)
-            : null,
-          h("div", { style: { display: "flex", gap: 8, marginBottom: 16 } },
-            h("button", {
-              className: "btn btn-primary",
-              disabled: !!busy["start"] || schedRunning,
-              onClick: function () { action("start"); },
-            }, busy["start"] ? "starting..." : "Start scheduler"),
-            h("button", {
-              className: "btn",
-              disabled: !!busy["stop"] || !schedRunning,
-              onClick: function () { action("stop"); },
-            }, busy["stop"] ? "stopping..." : "Stop scheduler"),
-            h("button", {
-              className: "btn",
-              disabled: loading,
-              onClick: function () { fetchRepos(); fetchStatus(); },
-            }, loading ? "refreshing..." : "Refresh"),
-          ),
-
-          // Agents table
-          h("h3", null, "Agents"),
-          status && status.agents && status.agents.length
-            ? h("table", { className: "data-table", style: { width: "100%" } },
-                h("thead", null, h("tr", null,
-                  h("th", null, "Agent"),
-                  h("th", null, "Enabled"),
-                  h("th", null, "Interval"),
-                  h("th", null, "Last run (UTC)"),
-                  h("th", null, "Last repo"),
-                  h("th", null, "Window PID"),
-                  h("th", null, "Lock"),
-                  h("th", null, "Run now"),
-                )),
-                h("tbody", null, status.agents.map(function (a) {
-                  return h("tr", { key: a.name },
-                    h("td", null, a.name),
-                    h("td", null, a.enabled ? "yes" : "no"),
-                    h("td", null, a.interval_seconds + "s"),
-                    h("td", { style: { fontSize: 12 } }, a.last_run_iso || "-"),
-                    h("td", null, a.last_repo || "-"),
-                    h("td", null, a.last_window_pid || "-"),
-                    h("td", null, a.lock_alive
-                      ? h("span", { style: { color: "var(--accent-yellow)" } }, "alive")
-                      : "-"),
-                    h("td", null,
-                      h("button", {
-                        className: "btn btn-sm",
-                        disabled: !!busy["run-once/" + a.name] || a.lock_alive,
-                        onClick: function () {
-                          action("run-once", { agent: a.name });
-                        },
-                      }, busy["run-once/" + a.name] ? "spawning..." : "Run once"),
-                    ),
-                  );
-                })),
-              )
-            : h("div", { style: { color: "var(--text-secondary)" } },
-                "No agents configured. Edit %LOCALAPPDATA%\\cline_agent_launcher\\config.json"),
-
-          // Discovered repo inventory
-          h("h3", { style: { marginTop: 24 } },
-            "Discovered repositories",
-            repos ? h("span", {
+            h("h2", { style: { margin: 0 } }, "Agent Launcher"),
+            h("span", {
               className: "section-badge",
-              style: { marginLeft: 8, background: "rgba(136,108,228,0.15)", color: "var(--accent-purple)" },
-            }, repos.count + " " + (repos.org_filter || "")) : null,
+              style: {
+                background: schedRunning ? "rgba(63,185,80,0.15)" : "rgba(248,81,73,0.15)",
+                color: schedRunning ? "var(--accent-green)" : "var(--accent-red)",
+              },
+            }, schedRunning ? "scheduler running" : "scheduler stopped"),
+            status && status.scheduler_pid ? h("span", { style: { fontSize: 12, color: "var(--text-muted)" } }, "pid " + status.scheduler_pid) : null,
           ),
-          repos && repos.repos && repos.repos.length
-            ? h("div", { style: { fontSize: 12, color: "var(--text-secondary)", marginBottom: 8 } },
-                "WSL distro: " + repos.wsl_distro + ", root: " + repos.repos_root)
-            : null,
-          repos && repos.repos
-            ? h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6 } },
-                repos.repos.map(function (r) {
-                  return h("span", {
-                    key: r.name,
-                    className: "section-badge",
-                    title: r.wsl_path,
-                    style: { background: "var(--bg-tertiary)" },
-                  }, r.name);
-                }))
-            : h("div", { style: { color: "var(--text-secondary)" } },
-                loading ? "discovering..." : "No repos discovered yet."),
 
-          // Notes
-          h("div", { style: { marginTop: 24, padding: 12, background: "var(--bg-tertiary)", borderRadius: 4, fontSize: 12, color: "var(--text-secondary)" } },
-            h("div", null, "Runtime root: " + (status && status.runtime_root || "-")),
-            h("div", null, "Status polls every 5s. Repo discovery is on-demand (Refresh button)."),
-            h("div", null, "Full config editor (model selector, repo multi-select, intervals) ships in a follow-up — for now edit config.json directly and click Refresh."),
+          error ? h("div", { className: "alert alert-error", style: { marginBottom: 12 } }, error) : null,
+
+          // Scheduler controls
+          h("div", { style: { display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" } },
+            h("button", { className: "btn btn-primary", disabled: !!busy["start"] || !!schedRunning, onClick: function() { action("start"); } },
+              busy["start"] ? "starting…" : "▶ Start Scheduler"),
+            h("button", { className: "btn", disabled: !!busy["stop"] || !schedRunning, onClick: function() { action("stop"); } },
+              busy["stop"] ? "stopping…" : "■ Stop"),
+            h("button", { className: "btn", disabled: loading, onClick: function() { fetchStatus(); fetchConfig(); fetchRepos(); } },
+              loading ? "refreshing…" : "↺ Refresh"),
+          ),
+
+          // Agent cards
+          h("div", { style: { marginBottom: 24 } },
+            h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 10 } },
+              h("h3", { style: { margin: 0 } }, "Agents"),
+              agents.length > 0 ? h("span", { style: { fontSize: 12, color: "var(--text-muted)" } },
+                agents.filter(function(a) { return a.lock_alive; }).length + " active · " + agents.length + " configured") : null,
+            ),
+            agents.length === 0
+              ? h("div", { style: { color: "var(--text-secondary)", padding: "16px 0" } },
+                  "No agents configured. Edit %LOCALAPPDATA%\\cline_agent_launcher\\config.json to add agents.")
+              : h("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 12 } },
+                  agents.map(function(a) {
+                    var isEditing = editingAgent === a.name;
+                    var cfgA = configAgents[a.name] || {};
+                    var nextMs = nextRunMs(a);
+                    var now = Date.now();
+                    var isOverdue = nextMs && now > nextMs;
+                    var timeUntil = nextMs ? Math.round((nextMs - now) / 1000) : null;
+                    var nextStr = !nextMs ? "—"
+                      : isOverdue ? "overdue " + Math.abs(Math.round((now - nextMs) / 60000)) + "m ago"
+                      : timeUntil < 60 ? "in " + timeUntil + "s"
+                      : "in " + Math.round(timeUntil / 60) + "m";
+                    var runKey = "run-once/" + a.name;
+
+                    return h("div", {
+                      key: a.name,
+                      style: {
+                        background: "var(--bg-card)",
+                        border: "1px solid " + (isEditing ? "var(--accent-blue)" : a.lock_alive ? "rgba(63,185,80,0.3)" : "var(--border)"),
+                        borderRadius: 8,
+                        padding: 14,
+                      },
+                    },
+                      // Card header
+                      h("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 10 } },
+                        h("span", { style: { fontWeight: 700, fontSize: 14, flex: 1 } }, a.name),
+                        h("span", {
+                          className: "section-badge",
+                          style: {
+                            background: a.lock_alive ? "rgba(63,185,80,0.15)" : a.enabled ? "rgba(88,166,255,0.1)" : "rgba(255,255,255,0.05)",
+                            color: a.lock_alive ? "var(--accent-green)" : a.enabled ? "var(--accent-blue)" : "var(--text-muted)",
+                          },
+                        }, a.lock_alive ? "● running" : a.enabled ? "idle" : "disabled"),
+                      ),
+
+                      // Info grid (when not editing)
+                      !isEditing && h("div", { style: { fontSize: 12, color: "var(--text-secondary)", display: "grid", gridTemplateColumns: "auto 1fr", gap: "3px 12px", marginBottom: 10 } },
+                        h("span", { style: { color: "var(--text-muted)" } }, "Provider"),
+                        h("span", null, cfgA.provider || "—"),
+                        cfgA.provider === "claude_code_cli" || !cfgA.provider ? h("span", { style: { color: "var(--text-muted)" } }, "Model") : null,
+                        cfgA.provider === "claude_code_cli" || !cfgA.provider ? h("span", null, cfgA.model || "default") : null,
+                        h("span", { style: { color: "var(--text-muted)" } }, "Interval"),
+                        h("span", null, a.interval_seconds < 3600
+                          ? Math.round(a.interval_seconds / 60) + " min"
+                          : (a.interval_seconds / 3600).toFixed(1) + " hr"),
+                        h("span", { style: { color: "var(--text-muted)" } }, "Next run"),
+                        h("span", { style: { color: isOverdue ? "var(--accent-yellow)" : undefined } }, nextStr),
+                        a.last_repo ? h("span", { style: { color: "var(--text-muted)" } }, "Last repo") : null,
+                        a.last_repo ? h("span", null, a.last_repo) : null,
+                        a.last_run_iso ? h("span", { style: { color: "var(--text-muted)" } }, "Last run") : null,
+                        a.last_run_iso ? h("span", null, a.last_run_iso.slice(0, 16).replace("T", " ")) : null,
+                      ),
+
+                      // Edit form
+                      isEditing && h("div", { style: { display: "grid", gap: 10, marginBottom: 10, fontSize: 13 } },
+                        h("label", { style: { display: "flex", alignItems: "center", gap: 8 } },
+                          h("input", { type: "checkbox", checked: !!editForm.enabled, onChange: function(e) { setEditForm(function(p) { return Object.assign({}, p, { enabled: e.target.checked }); }); } }),
+                          "Enabled",
+                        ),
+                        h("div", { style: { display: "grid", gridTemplateColumns: "90px 1fr", gap: 8, alignItems: "center" } },
+                          h("label", { style: { color: "var(--text-muted)" } }, "Provider"),
+                          h("select", { className: "form-input", value: editForm.provider || "claude_code_cli", onChange: function(e) { setEditForm(function(p) { return Object.assign({}, p, { provider: e.target.value }); }); } },
+                            PROVIDERS.map(function(p) { return h("option", { key: p.value, value: p.value }, p.label); }),
+                          ),
+                          (editForm.provider === "claude_code_cli" || !editForm.provider) ? h("label", { style: { color: "var(--text-muted)" } }, "Model") : null,
+                          (editForm.provider === "claude_code_cli" || !editForm.provider) ? h("select", { className: "form-input", value: editForm.model || "claude-sonnet-4-6", onChange: function(e) { setEditForm(function(p) { return Object.assign({}, p, { model: e.target.value }); }); } },
+                            MODELS.map(function(m) { return h("option", { key: m.value, value: m.value }, m.label); }),
+                          ) : null,
+                          h("label", { style: { color: "var(--text-muted)" } }, "Interval (s)"),
+                          h("div", { style: { display: "flex", gap: 8 } },
+                            h("input", { type: "number", className: "form-input", style: { flex: 1 }, value: editForm.interval_seconds || 3600, min: 60, step: 60, onChange: function(e) { setEditForm(function(p) { return Object.assign({}, p, { interval_seconds: parseInt(e.target.value) || 3600 }); }); } }),
+                            h("span", { style: { alignSelf: "center", fontSize: 12, color: "var(--text-muted)" } },
+                              editForm.interval_seconds < 3600
+                                ? Math.round((editForm.interval_seconds || 3600) / 60) + " min"
+                                : ((editForm.interval_seconds || 3600) / 3600).toFixed(1) + " hr"),
+                          ),
+                        ),
+                        h("div", { style: { display: "flex", gap: 8, alignItems: "center" } },
+                          h("button", { className: "btn btn-primary", onClick: saveAgentConfig, disabled: saveStatus === "saving" }, saveStatus === "saving" ? "Saving…" : "Save"),
+                          h("button", { className: "btn", onClick: cancelEdit }, "Cancel"),
+                          saveStatus && saveStatus !== "saving" && h("span", { style: { fontSize: 12, color: saveStatus === "ok" ? "var(--accent-green)" : "var(--accent-red)" } },
+                            saveStatus === "ok" ? "✓ Saved" : saveStatus),
+                        ),
+                      ),
+
+                      // Card actions
+                      h("div", { style: { display: "flex", gap: 6 } },
+                        h("button", { className: "btn btn-sm", disabled: !!busy[runKey] || !!a.lock_alive, onClick: function() { action("run-once", { agent: a.name }); }, style: { fontSize: 11 } },
+                          busy[runKey] ? "spawning…" : "▶ Run Now"),
+                        h("button", {
+                          className: "btn btn-sm",
+                          style: { fontSize: 11, background: isEditing ? "var(--accent-blue)" : undefined, color: isEditing ? "#fff" : undefined },
+                          onClick: function() { isEditing ? cancelEdit() : startEdit(a.name); },
+                        }, isEditing ? "✕ Cancel" : "⚙ Configure"),
+                      ),
+                    );
+                  }),
+                ),
+          ),
+
+          // Schedule overview
+          agents.length > 0 && h("div", { style: { marginBottom: 24 } },
+            h("h3", { style: { marginBottom: 8 } }, "Schedule"),
+            h("table", { className: "data-table", style: { width: "100%", fontSize: 13 } },
+              h("thead", null, h("tr", null,
+                h("th", null, "Agent"),
+                h("th", null, "Status"),
+                h("th", null, "Interval"),
+                h("th", null, "Last Run (UTC)"),
+                h("th", null, "Next Run"),
+                h("th", null, "Last Repo"),
+              )),
+              h("tbody", null, agents.map(function(a) {
+                var nextMs = nextRunMs(a);
+                var now = Date.now();
+                var isOverdue = nextMs && now > nextMs;
+                var timeUntil = nextMs ? Math.round((nextMs - now) / 1000) : null;
+                var timeStr = !nextMs ? "—"
+                  : isOverdue ? "overdue " + Math.abs(Math.round((now - nextMs) / 60000)) + "m"
+                  : timeUntil < 60 ? "in " + timeUntil + "s"
+                  : "in " + Math.round(timeUntil / 60) + "m";
+                return h("tr", { key: a.name },
+                  h("td", { style: { fontWeight: 600 } }, a.name),
+                  h("td", null, h("span", {
+                    className: "section-badge",
+                    style: { background: a.lock_alive ? "rgba(63,185,80,0.15)" : a.enabled ? "rgba(88,166,255,0.1)" : "rgba(255,255,255,0.05)", color: a.lock_alive ? "var(--accent-green)" : a.enabled ? "var(--accent-blue)" : "var(--text-muted)" },
+                  }, a.lock_alive ? "running" : a.enabled ? "idle" : "off")),
+                  h("td", null, a.interval_seconds < 3600 ? Math.round(a.interval_seconds / 60) + " min" : (a.interval_seconds / 3600).toFixed(1) + " hr"),
+                  h("td", { style: { fontSize: 12, fontFamily: "monospace" } }, a.last_run_iso ? a.last_run_iso.slice(0, 16).replace("T", " ") : "—"),
+                  h("td", { style: { color: isOverdue ? "var(--accent-yellow)" : undefined } }, timeStr),
+                  h("td", null, a.last_repo || "—"),
+                );
+              })),
+            ),
+          ),
+
+          // Workflow dispatch panel
+          h(AgentWorkflowDispatch, { repos: repos }),
+
+          // Discovered repos
+          h("div", { style: { marginTop: 24 } },
+            h("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 8 } },
+              h("h3", { style: { margin: 0 } }, "Discovered Repositories"),
+              repos ? h("span", { className: "section-badge", style: { background: "rgba(136,108,228,0.15)", color: "var(--accent-purple)" } }, repos.count + " repos") : null,
+            ),
+            repos && repos.repos && repos.repos.length
+              ? h("div", null,
+                  h("div", { style: { fontSize: 12, color: "var(--text-muted)", marginBottom: 6 } },
+                    "distro: " + repos.wsl_distro + " · root: " + repos.repos_root + " · org: " + (repos.org_filter || "all")),
+                  h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6 } },
+                    repos.repos.map(function(r) {
+                      return h("span", { key: r.name, className: "section-badge", title: r.wsl_path, style: { background: "var(--bg-tertiary)" } }, r.name);
+                    })),
+                )
+              : h("div", { style: { color: "var(--text-secondary)" } }, loading ? "discovering…" : "No repos discovered yet."),
+          ),
+
+          // Footer
+          h("div", { style: { marginTop: 24, padding: 12, background: "var(--bg-tertiary)", borderRadius: 4, fontSize: 12, color: "var(--text-muted)" } },
+            h("div", null, "Runtime root: " + ((status && status.runtime_root) || "—")),
+            h("div", null, "Status polls every 5 s · Config saved immediately on each agent edit."),
           ),
         );
       }
@@ -14933,7 +15214,7 @@
           borderRight: position === "left" ? "1px solid var(--border)" : "none",
           display: "flex",
           flexDirection: "column",
-          height: "calc(100vh - 56px)",
+          height: "calc(100vh - 88px)",
           top: 0,
         };
 
@@ -17046,591 +17327,48 @@ function PrincipalsTab() {
 
         var asstPosition = lsGet(ASST_LS.position, "right");
 
+        var TAB_CATEGORIES = {
+          monitor:  ["overview", "queue", "history", "stats", "machines", "local-apps"],
+          dispatch: ["workflows", "scheduled-jobs", "runner-schedule", "agent-launcher", "maxwell"],
+          manage:   ["remediation", "deployment", "fleet-orchestration", "credentials", "org", "principals"],
+          reports:  ["tests", "reports", "assessments", "feature-requests", "diagnostics"],
+        };
+        var TAB_TO_CATEGORY = {};
+        Object.keys(TAB_CATEGORIES).forEach(function(cat) {
+          TAB_CATEGORIES[cat].forEach(function(t) { TAB_TO_CATEGORY[t] = cat; });
+        });
+        var activeCategory = TAB_TO_CATEGORY[tab] || (tab === "agent-launcher" ? "dispatch" : "monitor");
+
         return h(
           "div",
           null,
           h(
             "header",
             { className: "app-header" },
-            h(
-              "div",
-              { className: "app-logo" },
-              h(
-                "svg",
-                { width: 28, height: 28, viewBox: "0 0 32 32" },
-                h(
-                  "defs",
-                  null,
-                  h(
-                    "linearGradient",
-                    { id: "lg", x1: 0, y1: 0, x2: 1, y2: 1 },
-                    h("stop", { offset: "0%", stopColor: "#4f8ff7" }),
-                    h("stop", { offset: "100%", stopColor: "#a855f7" }),
+            // ── Primary ribbon row ────────────────────────────────────────
+            h("div", { className: "ribbon-primary" },
+              h("div", { className: "app-logo" },
+                h("svg", { width: 28, height: 28, viewBox: "0 0 32 32" },
+                  h("defs", null,
+                    h("linearGradient", { id: "lg", x1: 0, y1: 0, x2: 1, y2: 1 },
+                      h("stop", { offset: "0%", stopColor: "#4f8ff7" }),
+                      h("stop", { offset: "100%", stopColor: "#a855f7" }),
+                    ),
                   ),
+                  h("rect", { width: 32, height: 32, rx: 6, fill: "url(#lg)" }),
+                  h("path", { d: "M18 6l-7 13h6l-1 7 7-13h-6z", fill: "white" }),
                 ),
-                h("rect", { width: 32, height: 32, rx: 6, fill: "url(#lg)" }),
-                h("path", { d: "M18 6l-7 13h6l-1 7 7-13h-6z", fill: "white" }),
+                h("span", { className: "logo-text" }, "Dashboard"),
               ),
-              h("span", { className: "logo-text" }, "Dashboard"),
-            ),
-            h(
-              "div",
-              { className: "tab-bar", role: "tablist", "aria-label": "Dashboard sections" },
-              h(
-                "button",
-                {
-                  className: "tab-btn" + (tab === "overview" ? " active" : ""),
-                  role: "tab",
-                  "aria-selected": tab === "overview",
-                  onClick: function () {
-                    setTab("overview");
-                  },
-                },
-                I.server(14),
-                "Overview",
-              ),
-              h(
-                "button",
-                {
-                  className:
-                    "tab-btn" + (tab === "remediation" ? " active" : ""),
-                  role: "tab",
-                  "aria-selected": tab === "remediation",
-                  onClick: function () {
-                    setTab("remediation");
-                    fetchRemediationConfig();
-                  },
-                },
-                I.issue(14),
-                "Remediation",
-                runs.filter(function (run) {
-                  return run.conclusion === "failure";
-                }).length > 0
-                  ? h(
-                      "span",
-                      {
-                        className: "section-badge",
-                        style: {
-                          background: "rgba(248,81,73,0.15)",
-                          color: "var(--accent-red)",
-                          marginLeft: 2,
-                        },
-                      },
-                      runs.filter(function (run) {
-                        return run.conclusion === "failure";
-                      }).length,
-                    )
-                  : null,
-              ),
-              h(
-                "button",
-                {
-                  className: "tab-btn" + (tab === "queue" ? " active" : ""),
-                  role: "tab",
-                  "aria-selected": tab === "queue",
-                  onClick: function () {
-                    setTab("queue");
-                    fetchQueue();
-                  },
-                },
-                I.queue(14),
-                "Queue",
-                (queue.total || 0) > 0
-                  ? h(
-                      "span",
-                      {
-                        className: "section-badge",
-                        style: {
-                          background: "rgba(88,166,255,0.2)",
-                          color: "var(--accent-blue)",
-                          marginLeft: 2,
-                        },
-                      },
-                      queue.total || 0,
-                    )
-                  : null,
-              ),
-              h(
-                "button",
-                {
-                  className: "tab-btn" + (tab === "machines" ? " active" : ""),
-                  role: "tab",
-                  "aria-selected": tab === "machines",
-                  onClick: function () {
-                    setTab("machines");
-                    fetchMachines();
-                  },
-                },
-                I.server(14),
-                "Machines",
-                (machinesData.count || 0) > 1
-                  ? h(
-                      "span",
-                      {
-                        className: "section-badge",
-                        style: {
-                          background: "rgba(63,185,80,0.15)",
-                          color: "var(--accent-green)",
-                          marginLeft: 2,
-                        },
-                      },
-                      machinesData.count || 0,
-                    )
-                  : null,
-              ),
-              h(
-                "button",
-                {
-                  className: "tab-btn" + (tab === "org" ? " active" : ""),
-                  role: "tab",
-                  "aria-selected": tab === "org",
-                  onClick: function () {
-                    setTab("org");
-                  },
-                },
-                I.repo(14),
-                "Organization",
-              ),
-              h(
-                "button",
-                {
-                  className: "tab-btn" + (tab === "tests" ? " active" : ""),
-                  role: "tab",
-                  "aria-selected": tab === "tests",
-                  onClick: function () {
-                    setTab("tests");
-                  },
-                },
-                I.flask(14),
-                "Tests",
-              ),
-              h(
-                "button",
-                {
-                  className: "tab-btn" + (tab === "stats" ? " active" : ""),
-                  role: "tab",
-                  "aria-selected": tab === "stats",
-                  onClick: function () {
-                    setTab("stats");
-                  },
-                },
-                I.activity(14),
-                "Stats",
-              ),
-              h(
-                "button",
-                {
-                  className: "tab-btn" + (tab === "reports" ? " active" : ""),
-                  role: "tab",
-                  "aria-selected": tab === "reports",
-                  onClick: function () {
-                    setTab("reports");
-                  },
-                },
-                I.fileText(14),
-                "Reports",
-              ),
-              h(
-                "button",
-                {
-                  className:
-                    "tab-btn" + (tab === "scheduled-jobs" ? " active" : ""),
-                  role: "tab",
-                  "aria-selected": tab === "scheduled-jobs",
-                  onClick: function () {
-                    setTab("scheduled-jobs");
-                    fetchScheduledJobs();
-                  },
-                },
-                I.clock(14),
-                "Schedules",
-                (scheduledJobs.scheduled_workflow_count || 0) > 0
-                  ? h(
-                      "span",
-                      {
-                        className: "section-badge",
-                        style: {
-                          background: "rgba(88,166,255,0.2)",
-                          color: "var(--accent-blue)",
-                          marginLeft: 2,
-                        },
-                      },
-                      scheduledJobs.scheduled_workflow_count,
-                    )
-                  : null,
-              ),
-              h(
-                "button",
-                {
-                  className: "tab-btn" + (tab === "workflows" ? " active" : ""),
-                  role: "tab",
-                  "aria-selected": tab === "workflows",
-                  onClick: function () {
-                    setTab("workflows");
-                    fetchWorkflowsList();
-                  },
-                },
-                I.activity(14),
-                "Workflows",
-                workflowsList.length > 0
-                  ? h(
-                      "span",
-                      {
-                        className: "section-badge",
-                        style: {
-                          background: "rgba(88,166,255,0.15)",
-                          color: "#58a6ff",
-                          marginLeft: 2,
-                        },
-                      },
-                      workflowsList.length,
-                    )
-                  : null,
-              ),
-              h(
-                "button",
-                {
-                  className:
-                    "tab-btn" + (tab === "runner-schedule" ? " active" : ""),
-                  role: "tab",
-                  "aria-selected": tab === "runner-schedule",
-                  onClick: function () {
-                    setTab("runner-schedule");
-                    fetchRunnerCapacity();
-                  },
-                },
-                I.clock(14),
-                "Runner Plan",
-                runnerCapacity && runnerCapacity.state
-                  ? h(
-                      "span",
-                      {
-                        className: "section-badge",
-                        style: {
-                          background: "rgba(63,185,80,0.15)",
-                          color: "var(--accent-green)",
-                          marginLeft: 2,
-                        },
-                      },
-                      runnerCapacity.state.desired || 0,
-                    )
-                  : null,
-              ),
-              h(
-                "button",
-                {
-                  className:
-                    "tab-btn" + (tab === "deployment" ? " active" : ""),
-                  role: "tab",
-                  "aria-selected": tab === "deployment",
-                  onClick: function () {
-                    setTab("deployment");
-                    fetchDeploymentState();
-                  },
-                },
-                I.server(14),
-                "Deployment",
-                deploymentStateLoading ||
-                  ((deploymentState.rollout_state || {}).machines_attention ||
-                    0) > 0
-                  ? h(
-                      "span",
-                      {
-                        className: "section-badge",
-                        style: {
-                          background: "rgba(210,153,34,0.2)",
-                          color: "var(--accent-yellow)",
-                          marginLeft: 2,
-                        },
-                      },
-                      deploymentStateLoading
-                        ? "\u2026"
-                        : (deploymentState.rollout_state || {})
-                            .machines_attention,
-                    )
-                  : null,
-              ),
-              h(
-                "button",
-                {
-                  className: "tab-btn" + (tab === "history" ? " active" : ""),
-                  role: "tab",
-                  "aria-selected": tab === "history",
-                  onClick: function () {
-                    setTab("history");
-                    fetchEnrichedRuns();
-                  },
-                },
-                I.activity(14),
-                "History",
-                enrichedRuns.length > 0
-                  ? h(
-                      "span",
-                      {
-                        className: "section-badge",
-                        style: {
-                          background: "rgba(136,108,228,0.15)",
-                          color: "var(--accent-purple)",
-                          marginLeft: 2,
-                        },
-                      },
-                      enrichedRuns.length,
-                    )
-                  : null,
-              ),
-              h(
-                "button",
-                {
-                  className:
-                    "tab-btn" + (tab === "local-apps" ? " active" : ""),
-                  role: "tab",
-                  "aria-selected": tab === "local-apps",
-                  onClick: function () {
-                    setTab("local-apps");
-                    fetchLocalApps();
-                  },
-                },
-                I.server(14),
-                "Local Tools",
-                (function () {
-                  var apps = localApps.tools || localApps.apps || [];
-                  var n = apps.filter(localAppNeedsAttention).length;
-                  return n > 0
-                    ? h(
-                        "span",
-                        {
-                          className: "section-badge",
-                          style: {
-                            background: "rgba(210,153,34,0.2)",
-                            color: "var(--accent-yellow)",
-                            marginLeft: 2,
-                          },
-                        },
-                        n,
-                      )
-                    : null;
-                })(),
-              ),
-              h(
-                "button",
-                {
-                  className:
-                    "tab-btn" + (tab === "credentials" ? " active" : ""),
-                  role: "tab",
-                  "aria-selected": tab === "credentials",
-                  onClick: function () {
-                    setTab("credentials");
-                    fetchCredentials();
-                  },
-                },
-                I.settings(14),
-                "Credentials",
-                credentialsData.summary && credentialsData.summary.not_ready > 0
-                  ? h(
-                      "span",
-                      {
-                        className: "section-badge",
-                        style: {
-                          background: "rgba(210,153,34,0.15)",
-                          color: "var(--accent-yellow)",
-                          marginLeft: 2,
-                        },
-                      },
-                      credentialsData.summary.not_ready,
-                    )
-                  : null,
-              ),
-              h(
-                "button",
-                {
-                  className:
-                    "tab-btn" +
-                    (tab === "fleet-orchestration" ? " active" : ""),
-                  role: "tab",
-                  "aria-selected": tab === "fleet-orchestration",
-                  onClick: function () {
-                    setTab("fleet-orchestration");
-                    fetchFleetOrchestration();
-                  },
-                },
-                I.server(14),
-                "Fleet Orchestration",
-              ),
-              h(
-                "button",
-                {
-                  className:
-                    "tab-btn" + (tab === "assessments" ? " active" : ""),
-                  role: "tab",
-                  "aria-selected": tab === "assessments",
-                  onClick: function () {
-                    setTab("assessments");
-                    fetchAssessments();
-                  },
-                },
-                I.activity(14),
-                "Assessments",
-              ),
-              h(
-                "button",
-                {
-                  className:
-                    "tab-btn" + (tab === "feature-requests" ? " active" : ""),
-                  role: "tab",
-                  "aria-selected": tab === "feature-requests",
-                  onClick: function () {
-                    setTab("feature-requests");
-                    fetchFeatureRequests();
-                  },
-                },
-                I.issue(14),
-                "Feature Requests",
-                featureRequests.length > 0
-                  ? h(
-                      "span",
-                      {
-                        className: "section-badge",
-                        style: {
-                          background: "rgba(136,108,228,0.15)",
-                          color: "var(--accent-purple)",
-                          marginLeft: 2,
-                        },
-                      },
-                      featureRequests.length,
-                    )
-                  : null,
-              ),
-              h(
-                "button",
-                {
-                  className:
-                    "tab-btn" + (tab === "cline-launcher" ? " active" : ""),
-                  role: "tab",
-                  "aria-selected": tab === "cline-launcher",
-                  onClick: function () {
-                    setTab("cline-launcher");
-                  },
-                },
-                I.terminal ? I.terminal(14) : I.server(14),
-                "Cline Launcher",
-              ),
-              h(
-                "button",
-                {
-                  className: "tab-btn" + (tab === "maxwell" ? " active" : ""),
-                  role: "tab",
-                  "aria-selected": tab === "maxwell",
-                  onClick: function () {
-                    setTab("maxwell");
-                    fetchMaxwellStatus();
-                  },
-                },
-                I.server(14),
-                "Maxwell",
-                maxwellStatus.status === "running"
-                  ? h(
-                      "span",
-                      {
-                        className: "section-badge",
-                        style: {
-                          background: "rgba(63,185,80,0.15)",
-                          color: "var(--accent-green)",
-                          marginLeft: 2,
-                        },
-                      },
-                      "on",
-                    )
-                  : maxwellStatus.status
-                    ? h(
-                        "span",
-                        {
-                          className: "section-badge",
-                          style: {
-                            background: "rgba(248,81,73,0.15)",
-                            color: "var(--accent-red)",
-                            marginLeft: 2,
-                          },
-                        },
-                        "off",
-                      )
-                    : null,
-              ),
-              h(
-                "button",
-                {
-                  className:
-                    "tab-btn" + (tab === "diagnostics" ? " active" : ""),
-                  onClick: function () {
-                    setTab("diagnostics");
-                  },
-                },
-                I.settings(14),
-                "Diagnostics",
-              ),
-              h(
-                "button",
-                {
-                  className:
-                    "tab-btn" + (tab === "principals" ? " active" : ""),
-                  onClick: function () {
-                    setTab("principals");
-                  },
-                },
-                I.server(14),
-                "Principals",
-              ),
-            ),
-            h(
-              "div",
-              { className: "header-right" },
-              (function() {
-                // Mock quota data for visualization
-                var quotaUsed = 14;
-                var quotaTotal = 20;
-                var percent = (quotaUsed / quotaTotal) * 100;
-                return h(
-                  "div",
-                  { 
-                    className: "glass-card",
-                    style: { 
-                      padding: "4px 12px", 
-                      display: "flex", 
-                      alignItems: "center", 
-                      gap: "10px",
-                      marginRight: "12px",
-                      fontSize: "11px",
-                      height: "32px"
-                    } 
-                  },
-                  h("span", { style: { color: "var(--text-secondary)", fontWeight: "600" } }, "FLEET QUOTA"),
-                  h(
-                    "div",
-                    { 
-                      className: "progress-bar", 
-                      style: { width: "80px", height: "6px", background: "rgba(255,255,255,0.1)" },
-                      title: quotaUsed + "/" + quotaTotal + " Runners Active"
-                    },
-                    h("div", { 
-                      className: "progress-fill", 
-                      style: { 
-                        width: percent + "%", 
-                        background: "var(--grad-quota)",
-                        boxShadow: "0 0 10px rgba(0, 242, 254, 0.5)"
-                      } 
-                    })
-                  ),
-                  h("span", { style: { color: "var(--text-primary)", fontWeight: "700" } }, quotaUsed + "/" + quotaTotal)
-                );
-              })(),
-              principal ? h(
-                "span",
-                { className: "section-badge", style: { background: "rgba(88,166,255,0.15)", color: "var(--accent-blue)" } },
-                "Acting as: " + principal.name
-              ) : null,
-              h(
-                "a",
-                { 
-                  href: principal ? "#" : "/api/auth/github", 
+              h("div", { style: { width: 1, height: 24, background: "var(--border)", margin: "0 10px" } }),
+              h("button", { className: "ribbon-cat-btn" + (activeCategory === "monitor" ? " active" : ""), onClick: function () { setTab(TAB_CATEGORIES.monitor[0]); } }, I.server(14), "Monitor"),
+              h("button", { className: "ribbon-cat-btn" + (activeCategory === "dispatch" ? " active" : ""), onClick: function () { setTab(TAB_CATEGORIES.dispatch[0]); } }, I.queue(14), "Dispatch"),
+              h("button", { className: "ribbon-cat-btn" + (activeCategory === "manage" ? " active" : ""), onClick: function () { setTab(TAB_CATEGORIES.manage[0]); } }, I.settings(14), "Manage"),
+              h("button", { className: "ribbon-cat-btn" + (activeCategory === "reports" ? " active" : ""), onClick: function () { setTab(TAB_CATEGORIES.reports[0]); } }, I.fileText(14), "Reports"),
+              h("div", { className: "header-right" },
+                principal ? h("span", { className: "section-badge", style: { background: "rgba(88,166,255,0.15)", color: "var(--accent-blue)" } }, "Acting as: " + principal.name) : null,
+                h("a", {
+                  href: principal ? "#" : "/api/auth/github",
                   onClick: principal ? function(e) {
                     e.preventDefault();
                     fetch("/api/auth/logout", {method: "POST", headers: { "X-Requested-With": "XMLHttpRequest" }})
@@ -17638,86 +17376,78 @@ function PrincipalsTab() {
                   } : undefined,
                   className: "btn",
                   style: { textDecoration: "none", marginRight: "12px", height: "24px", lineHeight: "12px", fontSize: "11px" }
-                },
-                principal ? "Logout" : "Login"
-              ),
-              h("span", {
-                className: "status-dot " + (connected ? "green" : "red"),
-              }),
-              connected ? "Live" : "Offline",
-              h(
-                "span",
-                { className: "hide-mobile" },
-                lastUpdate ? " \u00B7 " + lastUpdate : "",
-              ),
-              h(
-                "span",
-                {
-                  className: "section-badge",
-                  title: "Queued and running workflows",
-                },
-                "Queue " +
-                  ((queue.queued_count || 0) +
-                    "/" +
-                    (queue.in_progress_count || 0)),
-              ),
-              h(
-                "span",
-                {
-                  className: "section-badge",
-                  title:
-                    watchdog && watchdog.summary
-                      ? watchdog.summary
-                      : "WSL keepalive and watchdog state",
-                },
-                "Keepalive " +
-                  (watchdog && watchdog.status ? watchdog.status : "unknown"),
-              ),
-              h(
-                "span",
-                {
-                  className: "section-badge",
-                  title: deployment.deployed_at || "Deployment revision",
-                },
-                "Build " + shortSha(deployment.git_sha),
-              ),
-              h("button", {
-                className: "btn",
-                style: { marginLeft: 4, background: asstOpen ? "var(--accent-blue)" : undefined, color: asstOpen ? "#fff" : undefined },
-                onClick: toggleAsst,
-                title: "Toggle Assistant sidebar",
-              }, "☰ Asst"),
-              h(QuickDispatchPopover, null),
-              h(
-                "button",
-                {
+                }, principal ? "Logout" : "Login"),
+                h("span", { className: "status-dot " + (connected ? "green" : "red") }),
+                connected ? "Live" : "Offline",
+                h("span", { className: "hide-mobile" }, lastUpdate ? " \u00B7 " + lastUpdate : ""),
+                h("span", { className: "section-badge", title: "Queued and running workflows" }, "Queue " + ((queue.queued_count || 0) + "/" + (queue.in_progress_count || 0))),
+                h("span", { className: "section-badge", title: watchdog && watchdog.summary ? watchdog.summary : "WSL keepalive and watchdog state" }, "Keepalive " + (watchdog && watchdog.status ? watchdog.status : "unknown")),
+                h("span", { className: "section-badge", title: deployment.deployed_at || "Deployment revision" }, "Build " + shortSha(deployment.git_sha)),
+                h("button", {
+                  className: "btn",
+                  style: { marginLeft: 4, background: asstOpen ? "var(--accent-blue)" : undefined, color: asstOpen ? "#fff" : undefined },
+                  onClick: toggleAsst,
+                  title: "Toggle Assistant sidebar",
+                }, "\u2630 Asst"),
+                h(QuickDispatchPopover, null),
+                h("button", {
                   className: "btn",
                   style: { marginLeft: 4 },
                   onClick: function () {
-                    fetchFleet();
-                    fetchRepos();
-                    fetchTests();
-                    fetchReports();
-                    fetchQueue();
-                    fetchMachines();
-                    fetchLocalApps();
-                    fetchEnrichedRuns();
-                    fetchWatchdog();
-                    fetchDeployment();
-                    fetchDeploymentState();
-                    fetchRemediationConfig();
-                    fetchScheduledJobs();
-                    fetchRunnerCapacity();
+                    fetchFleet(); fetchRepos(); fetchTests(); fetchReports();
+                    fetchQueue(); fetchMachines(); fetchLocalApps(); fetchEnrichedRuns();
+                    fetchWatchdog(); fetchDeployment(); fetchDeploymentState();
+                    fetchRemediationConfig(); fetchScheduledJobs(); fetchRunnerCapacity();
                   },
-                },
-                I.refresh(12),
+                }, I.refresh(12)),
               ),
+            ),
+            // ── Secondary ribbon (subtabs) ────────────────────────────────
+            h("div", { className: "ribbon-secondary" },
+              // Monitor
+              activeCategory === "monitor" && h("button", { className: "ribbon-tab-btn" + (tab === "overview" ? " active" : ""), onClick: function(){setTab("overview");} }, I.server(14), "Overview"),
+              activeCategory === "monitor" && h("button", { className: "ribbon-tab-btn" + (tab === "queue" ? " active" : ""), onClick: function(){setTab("queue"); fetchQueue();} }, I.queue(14), "Queue",
+                (queue.total||0) > 0 ? h("span", {className:"section-badge",style:{background:"rgba(88,166,255,0.2)",color:"var(--accent-blue)",marginLeft:2}}, queue.total||0) : null),
+              activeCategory === "monitor" && h("button", { className: "ribbon-tab-btn" + (tab === "history" ? " active" : ""), onClick: function(){setTab("history"); fetchEnrichedRuns();} }, I.activity(14), "History",
+                enrichedRuns.length > 0 ? h("span", {className:"section-badge",style:{background:"rgba(136,108,228,0.15)",color:"var(--accent-purple)",marginLeft:2}}, enrichedRuns.length) : null),
+              activeCategory === "monitor" && h("button", { className: "ribbon-tab-btn" + (tab === "stats" ? " active" : ""), onClick: function(){setTab("stats");} }, I.activity(14), "Stats"),
+              activeCategory === "monitor" && h("button", { className: "ribbon-tab-btn" + (tab === "machines" ? " active" : ""), onClick: function(){setTab("machines"); fetchMachines();} }, I.server(14), "Machines",
+                (machinesData.count||0) > 1 ? h("span", {className:"section-badge",style:{background:"rgba(63,185,80,0.15)",color:"var(--accent-green)",marginLeft:2}}, machinesData.count||0) : null),
+              activeCategory === "monitor" && h("button", { className: "ribbon-tab-btn" + (tab === "local-apps" ? " active" : ""), onClick: function(){setTab("local-apps"); fetchLocalApps();} }, I.server(14), "Local Tools",
+                (function(){var apps=localApps.tools||localApps.apps||[];var n=apps.filter(localAppNeedsAttention).length;return n>0?h("span",{className:"section-badge",style:{background:"rgba(210,153,34,0.2)",color:"var(--accent-yellow)",marginLeft:2}},n):null;})()),
+              // Dispatch
+              activeCategory === "dispatch" && h("button", { className: "ribbon-tab-btn" + (tab === "workflows" ? " active" : ""), onClick: function(){setTab("workflows"); fetchWorkflowsList();} }, I.activity(14), "Workflows",
+                workflowsList.length > 0 ? h("span", {className:"section-badge",style:{background:"rgba(88,166,255,0.15)",color:"#58a6ff",marginLeft:2}}, workflowsList.length) : null),
+              activeCategory === "dispatch" && h("button", { className: "ribbon-tab-btn" + (tab === "scheduled-jobs" ? " active" : ""), onClick: function(){setTab("scheduled-jobs"); fetchScheduledJobs();} }, I.clock(14), "Schedules",
+                (scheduledJobs.scheduled_workflow_count||0) > 0 ? h("span", {className:"section-badge",style:{background:"rgba(88,166,255,0.2)",color:"var(--accent-blue)",marginLeft:2}}, scheduledJobs.scheduled_workflow_count) : null),
+              activeCategory === "dispatch" && h("button", { className: "ribbon-tab-btn" + (tab === "runner-schedule" ? " active" : ""), onClick: function(){setTab("runner-schedule"); fetchRunnerCapacity();} }, I.clock(14), "Runner Plan",
+                runnerCapacity&&runnerCapacity.state ? h("span", {className:"section-badge",style:{background:"rgba(63,185,80,0.15)",color:"var(--accent-green)",marginLeft:2}}, runnerCapacity.state.desired||0) : null),
+              activeCategory === "dispatch" && h("button", { className: "ribbon-tab-btn" + (tab === "agent-launcher" ? " active" : ""), onClick: function(){setTab("agent-launcher");} }, I.terminal ? I.terminal(14) : I.server(14), "Agent Launcher"),
+              activeCategory === "dispatch" && h("button", { className: "ribbon-tab-btn" + (tab === "maxwell" ? " active" : ""), onClick: function(){setTab("maxwell"); fetchMaxwellStatus();} }, I.server(14), "Maxwell",
+                maxwellStatus.status === "running" ? h("span", {className:"section-badge",style:{background:"rgba(63,185,80,0.15)",color:"var(--accent-green)",marginLeft:2}}, "on") :
+                  maxwellStatus.status ? h("span", {className:"section-badge",style:{background:"rgba(248,81,73,0.15)",color:"var(--accent-red)",marginLeft:2}}, "off") : null),
+              // Manage
+              activeCategory === "manage" && h("button", { className: "ribbon-tab-btn" + (tab === "remediation" ? " active" : ""), onClick: function(){setTab("remediation"); fetchRemediationConfig();} }, I.issue(14), "Remediation",
+                runs.filter(function(r){return r.conclusion==="failure";}).length > 0 ? h("span", {className:"section-badge",style:{background:"rgba(248,81,73,0.15)",color:"var(--accent-red)",marginLeft:2}}, runs.filter(function(r){return r.conclusion==="failure";}).length) : null),
+              activeCategory === "manage" && h("button", { className: "ribbon-tab-btn" + (tab === "deployment" ? " active" : ""), onClick: function(){setTab("deployment"); fetchDeploymentState();} }, I.server(14), "Deployment",
+                (deploymentStateLoading||((deploymentState.rollout_state||{}).machines_attention||0)>0) ? h("span", {className:"section-badge",style:{background:"rgba(210,153,34,0.2)",color:"var(--accent-yellow)",marginLeft:2}}, deploymentStateLoading?"\u2026":(deploymentState.rollout_state||{}).machines_attention) : null),
+              activeCategory === "manage" && h("button", { className: "ribbon-tab-btn" + (tab === "fleet-orchestration" ? " active" : ""), onClick: function(){setTab("fleet-orchestration"); fetchFleetOrchestration();} }, I.server(14), "Fleet Orchestration"),
+              activeCategory === "manage" && h("button", { className: "ribbon-tab-btn" + (tab === "credentials" ? " active" : ""), onClick: function(){setTab("credentials"); fetchCredentials();} }, I.settings(14), "Credentials",
+                credentialsData.summary&&credentialsData.summary.not_ready>0 ? h("span", {className:"section-badge",style:{background:"rgba(210,153,34,0.15)",color:"var(--accent-yellow)",marginLeft:2}}, credentialsData.summary.not_ready) : null),
+              activeCategory === "manage" && h("button", { className: "ribbon-tab-btn" + (tab === "org" ? " active" : ""), onClick: function(){setTab("org");} }, I.repo(14), "Organization"),
+              activeCategory === "manage" && h("button", { className: "ribbon-tab-btn" + (tab === "principals" ? " active" : ""), onClick: function(){setTab("principals");} }, I.server(14), "Principals"),
+              // Reports
+              activeCategory === "reports" && h("button", { className: "ribbon-tab-btn" + (tab === "tests" ? " active" : ""), onClick: function(){setTab("tests");} }, I.flask(14), "Tests"),
+              activeCategory === "reports" && h("button", { className: "ribbon-tab-btn" + (tab === "reports" ? " active" : ""), onClick: function(){setTab("reports");} }, I.fileText(14), "Reports"),
+              activeCategory === "reports" && h("button", { className: "ribbon-tab-btn" + (tab === "assessments" ? " active" : ""), onClick: function(){setTab("assessments"); fetchAssessments();} }, I.activity(14), "Assessments"),
+              activeCategory === "reports" && h("button", { className: "ribbon-tab-btn" + (tab === "feature-requests" ? " active" : ""), onClick: function(){setTab("feature-requests"); fetchFeatureRequests();} }, I.issue(14), "Feature Requests",
+                featureRequests.length > 0 ? h("span", {className:"section-badge",style:{background:"rgba(136,108,228,0.15)",color:"var(--accent-purple)",marginLeft:2}}, featureRequests.length) : null),
+              activeCategory === "reports" && h("button", { className: "ribbon-tab-btn" + (tab === "diagnostics" ? " active" : ""), onClick: function(){setTab("diagnostics");} }, I.settings(14), "Diagnostics"),
             ),
           ),
           h(
             "div",
-            { style: { display: "flex", flexDirection: asstPosition === "left" ? "row-reverse" : "row", alignItems: "flex-start", minHeight: "calc(100vh - 56px)" } },
-            h(
+            { style: { display: "flex", flexDirection: asstPosition === "left" ? "row-reverse" : "row", alignItems: "flex-start", minHeight: "calc(100vh - 88px)" } },            h(
               "div",
               { className: "main-content", role: "main", style: { flex: 1, minWidth: 0 } },
               tab === "overview"
@@ -17929,8 +17659,8 @@ function PrincipalsTab() {
                                                       fetchMaxwellStatus,
                                                     onControl: maxwellControl,
                                                   })
-                                                : tab === "cline-launcher"
-                                                  ? h(ClineLauncherTab, null)
+                                                : tab === "agent-launcher"
+                                                  ? h(AgentLauncherTab, null)
                                                   : tab === "diagnostics"
                                                     ? h(DiagnosticsTab, null)
                                                     : tab === "principals"
@@ -18051,5 +17781,4 @@ function PrincipalsTab() {
 
       ReactDOM.createRoot(document.getElementById("root")).render(h(App));
     </script>
-  </body>
-</html>
+  </
