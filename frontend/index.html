@@ -86,14 +86,79 @@
       /* ── Header ── */
       .app-header {
         background: var(--bg-secondary);
-        border-bottom: 1px solid var(--border);
-        padding: 0 24px;
-        display: flex;
-        align-items: center;
-        height: 56px;
         position: sticky;
         top: 0;
         z-index: 100;
+        display: flex;
+        flex-direction: column;
+      }
+      .ribbon-primary {
+        display: flex;
+        align-items: center;
+        padding: 0 24px;
+        height: 48px;
+        border-bottom: 1px solid var(--border);
+        gap: 2px;
+      }
+      .ribbon-secondary {
+        display: flex;
+        align-items: center;
+        padding: 0 16px;
+        height: 40px;
+        background: rgba(0,0,0,0.22);
+        border-bottom: 1px solid var(--border);
+        gap: 2px;
+        overflow-x: hidden;
+      }
+      .ribbon-cat-btn {
+        background: none;
+        border: none;
+        border-bottom: 3px solid transparent;
+        color: var(--text-secondary);
+        font-size: 13px;
+        font-weight: 600;
+        padding: 0 14px;
+        height: 100%;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        white-space: nowrap;
+        transition: color 0.15s, border-color 0.15s;
+        margin-bottom: -1px;
+      }
+      .ribbon-cat-btn:hover { color: var(--text-primary); }
+      .ribbon-cat-btn.active {
+        color: var(--text-primary);
+        border-bottom-color: var(--accent-blue);
+      }
+      .ribbon-tab-btn {
+        background: none;
+        border: none;
+        color: rgba(255,255,255,0.45);
+        font-size: 12px;
+        font-weight: 500;
+        padding: 0 12px;
+        height: 100%;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        white-space: nowrap;
+        position: relative;
+        transition: color 0.15s;
+      }
+      .ribbon-tab-btn:hover { color: rgba(255,255,255,0.8); }
+      .ribbon-tab-btn.active { color: var(--text-primary); }
+      .ribbon-tab-btn.active::after {
+        content: "";
+        position: absolute;
+        bottom: 0;
+        left: 4px;
+        right: 4px;
+        height: 2px;
+        background: var(--accent-blue);
+        border-radius: 2px 2px 0 0;
       }
       .app-logo {
         display: flex;
@@ -8790,7 +8855,7 @@
               return r.json();
             })
             .then(function (data) {
-              setIssues(Array.isArray(data) ? data : (data.issues || []));
+              setIssues(Array.isArray(data) ? data : (data.items || data.issues || []));
               setLoading(false);
             })
             .catch(function (err) {
@@ -14933,7 +14998,7 @@
           borderRight: position === "left" ? "1px solid var(--border)" : "none",
           display: "flex",
           flexDirection: "column",
-          height: "calc(100vh - 56px)",
+          height: "calc(100vh - 88px)",
           top: 0,
         };
 
@@ -17046,591 +17111,48 @@ function PrincipalsTab() {
 
         var asstPosition = lsGet(ASST_LS.position, "right");
 
+        var TAB_CATEGORIES = {
+          monitor:  ["overview", "queue", "history", "stats", "machines", "local-apps"],
+          dispatch: ["workflows", "scheduled-jobs", "runner-schedule", "agent-launcher", "maxwell"],
+          manage:   ["remediation", "deployment", "fleet-orchestration", "credentials", "org", "principals"],
+          reports:  ["tests", "reports", "assessments", "feature-requests", "diagnostics"],
+        };
+        var TAB_TO_CATEGORY = {};
+        Object.keys(TAB_CATEGORIES).forEach(function(cat) {
+          TAB_CATEGORIES[cat].forEach(function(t) { TAB_TO_CATEGORY[t] = cat; });
+        });
+        var activeCategory = TAB_TO_CATEGORY[tab] || (tab === "agent-launcher" ? "dispatch" : "monitor");
+
         return h(
           "div",
           null,
           h(
             "header",
             { className: "app-header" },
-            h(
-              "div",
-              { className: "app-logo" },
-              h(
-                "svg",
-                { width: 28, height: 28, viewBox: "0 0 32 32" },
-                h(
-                  "defs",
-                  null,
-                  h(
-                    "linearGradient",
-                    { id: "lg", x1: 0, y1: 0, x2: 1, y2: 1 },
-                    h("stop", { offset: "0%", stopColor: "#4f8ff7" }),
-                    h("stop", { offset: "100%", stopColor: "#a855f7" }),
+            // ── Primary ribbon row ────────────────────────────────────────
+            h("div", { className: "ribbon-primary" },
+              h("div", { className: "app-logo" },
+                h("svg", { width: 28, height: 28, viewBox: "0 0 32 32" },
+                  h("defs", null,
+                    h("linearGradient", { id: "lg", x1: 0, y1: 0, x2: 1, y2: 1 },
+                      h("stop", { offset: "0%", stopColor: "#4f8ff7" }),
+                      h("stop", { offset: "100%", stopColor: "#a855f7" }),
+                    ),
                   ),
+                  h("rect", { width: 32, height: 32, rx: 6, fill: "url(#lg)" }),
+                  h("path", { d: "M18 6l-7 13h6l-1 7 7-13h-6z", fill: "white" }),
                 ),
-                h("rect", { width: 32, height: 32, rx: 6, fill: "url(#lg)" }),
-                h("path", { d: "M18 6l-7 13h6l-1 7 7-13h-6z", fill: "white" }),
+                h("span", { className: "logo-text" }, "Dashboard"),
               ),
-              h("span", { className: "logo-text" }, "Dashboard"),
-            ),
-            h(
-              "div",
-              { className: "tab-bar", role: "tablist", "aria-label": "Dashboard sections" },
-              h(
-                "button",
-                {
-                  className: "tab-btn" + (tab === "overview" ? " active" : ""),
-                  role: "tab",
-                  "aria-selected": tab === "overview",
-                  onClick: function () {
-                    setTab("overview");
-                  },
-                },
-                I.server(14),
-                "Overview",
-              ),
-              h(
-                "button",
-                {
-                  className:
-                    "tab-btn" + (tab === "remediation" ? " active" : ""),
-                  role: "tab",
-                  "aria-selected": tab === "remediation",
-                  onClick: function () {
-                    setTab("remediation");
-                    fetchRemediationConfig();
-                  },
-                },
-                I.issue(14),
-                "Remediation",
-                runs.filter(function (run) {
-                  return run.conclusion === "failure";
-                }).length > 0
-                  ? h(
-                      "span",
-                      {
-                        className: "section-badge",
-                        style: {
-                          background: "rgba(248,81,73,0.15)",
-                          color: "var(--accent-red)",
-                          marginLeft: 2,
-                        },
-                      },
-                      runs.filter(function (run) {
-                        return run.conclusion === "failure";
-                      }).length,
-                    )
-                  : null,
-              ),
-              h(
-                "button",
-                {
-                  className: "tab-btn" + (tab === "queue" ? " active" : ""),
-                  role: "tab",
-                  "aria-selected": tab === "queue",
-                  onClick: function () {
-                    setTab("queue");
-                    fetchQueue();
-                  },
-                },
-                I.queue(14),
-                "Queue",
-                (queue.total || 0) > 0
-                  ? h(
-                      "span",
-                      {
-                        className: "section-badge",
-                        style: {
-                          background: "rgba(88,166,255,0.2)",
-                          color: "var(--accent-blue)",
-                          marginLeft: 2,
-                        },
-                      },
-                      queue.total || 0,
-                    )
-                  : null,
-              ),
-              h(
-                "button",
-                {
-                  className: "tab-btn" + (tab === "machines" ? " active" : ""),
-                  role: "tab",
-                  "aria-selected": tab === "machines",
-                  onClick: function () {
-                    setTab("machines");
-                    fetchMachines();
-                  },
-                },
-                I.server(14),
-                "Machines",
-                (machinesData.count || 0) > 1
-                  ? h(
-                      "span",
-                      {
-                        className: "section-badge",
-                        style: {
-                          background: "rgba(63,185,80,0.15)",
-                          color: "var(--accent-green)",
-                          marginLeft: 2,
-                        },
-                      },
-                      machinesData.count || 0,
-                    )
-                  : null,
-              ),
-              h(
-                "button",
-                {
-                  className: "tab-btn" + (tab === "org" ? " active" : ""),
-                  role: "tab",
-                  "aria-selected": tab === "org",
-                  onClick: function () {
-                    setTab("org");
-                  },
-                },
-                I.repo(14),
-                "Organization",
-              ),
-              h(
-                "button",
-                {
-                  className: "tab-btn" + (tab === "tests" ? " active" : ""),
-                  role: "tab",
-                  "aria-selected": tab === "tests",
-                  onClick: function () {
-                    setTab("tests");
-                  },
-                },
-                I.flask(14),
-                "Tests",
-              ),
-              h(
-                "button",
-                {
-                  className: "tab-btn" + (tab === "stats" ? " active" : ""),
-                  role: "tab",
-                  "aria-selected": tab === "stats",
-                  onClick: function () {
-                    setTab("stats");
-                  },
-                },
-                I.activity(14),
-                "Stats",
-              ),
-              h(
-                "button",
-                {
-                  className: "tab-btn" + (tab === "reports" ? " active" : ""),
-                  role: "tab",
-                  "aria-selected": tab === "reports",
-                  onClick: function () {
-                    setTab("reports");
-                  },
-                },
-                I.fileText(14),
-                "Reports",
-              ),
-              h(
-                "button",
-                {
-                  className:
-                    "tab-btn" + (tab === "scheduled-jobs" ? " active" : ""),
-                  role: "tab",
-                  "aria-selected": tab === "scheduled-jobs",
-                  onClick: function () {
-                    setTab("scheduled-jobs");
-                    fetchScheduledJobs();
-                  },
-                },
-                I.clock(14),
-                "Schedules",
-                (scheduledJobs.scheduled_workflow_count || 0) > 0
-                  ? h(
-                      "span",
-                      {
-                        className: "section-badge",
-                        style: {
-                          background: "rgba(88,166,255,0.2)",
-                          color: "var(--accent-blue)",
-                          marginLeft: 2,
-                        },
-                      },
-                      scheduledJobs.scheduled_workflow_count,
-                    )
-                  : null,
-              ),
-              h(
-                "button",
-                {
-                  className: "tab-btn" + (tab === "workflows" ? " active" : ""),
-                  role: "tab",
-                  "aria-selected": tab === "workflows",
-                  onClick: function () {
-                    setTab("workflows");
-                    fetchWorkflowsList();
-                  },
-                },
-                I.activity(14),
-                "Workflows",
-                workflowsList.length > 0
-                  ? h(
-                      "span",
-                      {
-                        className: "section-badge",
-                        style: {
-                          background: "rgba(88,166,255,0.15)",
-                          color: "#58a6ff",
-                          marginLeft: 2,
-                        },
-                      },
-                      workflowsList.length,
-                    )
-                  : null,
-              ),
-              h(
-                "button",
-                {
-                  className:
-                    "tab-btn" + (tab === "runner-schedule" ? " active" : ""),
-                  role: "tab",
-                  "aria-selected": tab === "runner-schedule",
-                  onClick: function () {
-                    setTab("runner-schedule");
-                    fetchRunnerCapacity();
-                  },
-                },
-                I.clock(14),
-                "Runner Plan",
-                runnerCapacity && runnerCapacity.state
-                  ? h(
-                      "span",
-                      {
-                        className: "section-badge",
-                        style: {
-                          background: "rgba(63,185,80,0.15)",
-                          color: "var(--accent-green)",
-                          marginLeft: 2,
-                        },
-                      },
-                      runnerCapacity.state.desired || 0,
-                    )
-                  : null,
-              ),
-              h(
-                "button",
-                {
-                  className:
-                    "tab-btn" + (tab === "deployment" ? " active" : ""),
-                  role: "tab",
-                  "aria-selected": tab === "deployment",
-                  onClick: function () {
-                    setTab("deployment");
-                    fetchDeploymentState();
-                  },
-                },
-                I.server(14),
-                "Deployment",
-                deploymentStateLoading ||
-                  ((deploymentState.rollout_state || {}).machines_attention ||
-                    0) > 0
-                  ? h(
-                      "span",
-                      {
-                        className: "section-badge",
-                        style: {
-                          background: "rgba(210,153,34,0.2)",
-                          color: "var(--accent-yellow)",
-                          marginLeft: 2,
-                        },
-                      },
-                      deploymentStateLoading
-                        ? "\u2026"
-                        : (deploymentState.rollout_state || {})
-                            .machines_attention,
-                    )
-                  : null,
-              ),
-              h(
-                "button",
-                {
-                  className: "tab-btn" + (tab === "history" ? " active" : ""),
-                  role: "tab",
-                  "aria-selected": tab === "history",
-                  onClick: function () {
-                    setTab("history");
-                    fetchEnrichedRuns();
-                  },
-                },
-                I.activity(14),
-                "History",
-                enrichedRuns.length > 0
-                  ? h(
-                      "span",
-                      {
-                        className: "section-badge",
-                        style: {
-                          background: "rgba(136,108,228,0.15)",
-                          color: "var(--accent-purple)",
-                          marginLeft: 2,
-                        },
-                      },
-                      enrichedRuns.length,
-                    )
-                  : null,
-              ),
-              h(
-                "button",
-                {
-                  className:
-                    "tab-btn" + (tab === "local-apps" ? " active" : ""),
-                  role: "tab",
-                  "aria-selected": tab === "local-apps",
-                  onClick: function () {
-                    setTab("local-apps");
-                    fetchLocalApps();
-                  },
-                },
-                I.server(14),
-                "Local Tools",
-                (function () {
-                  var apps = localApps.tools || localApps.apps || [];
-                  var n = apps.filter(localAppNeedsAttention).length;
-                  return n > 0
-                    ? h(
-                        "span",
-                        {
-                          className: "section-badge",
-                          style: {
-                            background: "rgba(210,153,34,0.2)",
-                            color: "var(--accent-yellow)",
-                            marginLeft: 2,
-                          },
-                        },
-                        n,
-                      )
-                    : null;
-                })(),
-              ),
-              h(
-                "button",
-                {
-                  className:
-                    "tab-btn" + (tab === "credentials" ? " active" : ""),
-                  role: "tab",
-                  "aria-selected": tab === "credentials",
-                  onClick: function () {
-                    setTab("credentials");
-                    fetchCredentials();
-                  },
-                },
-                I.settings(14),
-                "Credentials",
-                credentialsData.summary && credentialsData.summary.not_ready > 0
-                  ? h(
-                      "span",
-                      {
-                        className: "section-badge",
-                        style: {
-                          background: "rgba(210,153,34,0.15)",
-                          color: "var(--accent-yellow)",
-                          marginLeft: 2,
-                        },
-                      },
-                      credentialsData.summary.not_ready,
-                    )
-                  : null,
-              ),
-              h(
-                "button",
-                {
-                  className:
-                    "tab-btn" +
-                    (tab === "fleet-orchestration" ? " active" : ""),
-                  role: "tab",
-                  "aria-selected": tab === "fleet-orchestration",
-                  onClick: function () {
-                    setTab("fleet-orchestration");
-                    fetchFleetOrchestration();
-                  },
-                },
-                I.server(14),
-                "Fleet Orchestration",
-              ),
-              h(
-                "button",
-                {
-                  className:
-                    "tab-btn" + (tab === "assessments" ? " active" : ""),
-                  role: "tab",
-                  "aria-selected": tab === "assessments",
-                  onClick: function () {
-                    setTab("assessments");
-                    fetchAssessments();
-                  },
-                },
-                I.activity(14),
-                "Assessments",
-              ),
-              h(
-                "button",
-                {
-                  className:
-                    "tab-btn" + (tab === "feature-requests" ? " active" : ""),
-                  role: "tab",
-                  "aria-selected": tab === "feature-requests",
-                  onClick: function () {
-                    setTab("feature-requests");
-                    fetchFeatureRequests();
-                  },
-                },
-                I.issue(14),
-                "Feature Requests",
-                featureRequests.length > 0
-                  ? h(
-                      "span",
-                      {
-                        className: "section-badge",
-                        style: {
-                          background: "rgba(136,108,228,0.15)",
-                          color: "var(--accent-purple)",
-                          marginLeft: 2,
-                        },
-                      },
-                      featureRequests.length,
-                    )
-                  : null,
-              ),
-              h(
-                "button",
-                {
-                  className:
-                    "tab-btn" + (tab === "cline-launcher" ? " active" : ""),
-                  role: "tab",
-                  "aria-selected": tab === "cline-launcher",
-                  onClick: function () {
-                    setTab("cline-launcher");
-                  },
-                },
-                I.terminal ? I.terminal(14) : I.server(14),
-                "Cline Launcher",
-              ),
-              h(
-                "button",
-                {
-                  className: "tab-btn" + (tab === "maxwell" ? " active" : ""),
-                  role: "tab",
-                  "aria-selected": tab === "maxwell",
-                  onClick: function () {
-                    setTab("maxwell");
-                    fetchMaxwellStatus();
-                  },
-                },
-                I.server(14),
-                "Maxwell",
-                maxwellStatus.status === "running"
-                  ? h(
-                      "span",
-                      {
-                        className: "section-badge",
-                        style: {
-                          background: "rgba(63,185,80,0.15)",
-                          color: "var(--accent-green)",
-                          marginLeft: 2,
-                        },
-                      },
-                      "on",
-                    )
-                  : maxwellStatus.status
-                    ? h(
-                        "span",
-                        {
-                          className: "section-badge",
-                          style: {
-                            background: "rgba(248,81,73,0.15)",
-                            color: "var(--accent-red)",
-                            marginLeft: 2,
-                          },
-                        },
-                        "off",
-                      )
-                    : null,
-              ),
-              h(
-                "button",
-                {
-                  className:
-                    "tab-btn" + (tab === "diagnostics" ? " active" : ""),
-                  onClick: function () {
-                    setTab("diagnostics");
-                  },
-                },
-                I.settings(14),
-                "Diagnostics",
-              ),
-              h(
-                "button",
-                {
-                  className:
-                    "tab-btn" + (tab === "principals" ? " active" : ""),
-                  onClick: function () {
-                    setTab("principals");
-                  },
-                },
-                I.server(14),
-                "Principals",
-              ),
-            ),
-            h(
-              "div",
-              { className: "header-right" },
-              (function() {
-                // Mock quota data for visualization
-                var quotaUsed = 14;
-                var quotaTotal = 20;
-                var percent = (quotaUsed / quotaTotal) * 100;
-                return h(
-                  "div",
-                  { 
-                    className: "glass-card",
-                    style: { 
-                      padding: "4px 12px", 
-                      display: "flex", 
-                      alignItems: "center", 
-                      gap: "10px",
-                      marginRight: "12px",
-                      fontSize: "11px",
-                      height: "32px"
-                    } 
-                  },
-                  h("span", { style: { color: "var(--text-secondary)", fontWeight: "600" } }, "FLEET QUOTA"),
-                  h(
-                    "div",
-                    { 
-                      className: "progress-bar", 
-                      style: { width: "80px", height: "6px", background: "rgba(255,255,255,0.1)" },
-                      title: quotaUsed + "/" + quotaTotal + " Runners Active"
-                    },
-                    h("div", { 
-                      className: "progress-fill", 
-                      style: { 
-                        width: percent + "%", 
-                        background: "var(--grad-quota)",
-                        boxShadow: "0 0 10px rgba(0, 242, 254, 0.5)"
-                      } 
-                    })
-                  ),
-                  h("span", { style: { color: "var(--text-primary)", fontWeight: "700" } }, quotaUsed + "/" + quotaTotal)
-                );
-              })(),
-              principal ? h(
-                "span",
-                { className: "section-badge", style: { background: "rgba(88,166,255,0.15)", color: "var(--accent-blue)" } },
-                "Acting as: " + principal.name
-              ) : null,
-              h(
-                "a",
-                { 
-                  href: principal ? "#" : "/api/auth/github", 
+              h("div", { style: { width: 1, height: 24, background: "var(--border)", margin: "0 10px" } }),
+              h("button", { className: "ribbon-cat-btn" + (activeCategory === "monitor" ? " active" : ""), onClick: function () { setTab(TAB_CATEGORIES.monitor[0]); } }, I.server(14), "Monitor"),
+              h("button", { className: "ribbon-cat-btn" + (activeCategory === "dispatch" ? " active" : ""), onClick: function () { setTab(TAB_CATEGORIES.dispatch[0]); } }, I.queue(14), "Dispatch"),
+              h("button", { className: "ribbon-cat-btn" + (activeCategory === "manage" ? " active" : ""), onClick: function () { setTab(TAB_CATEGORIES.manage[0]); } }, I.settings(14), "Manage"),
+              h("button", { className: "ribbon-cat-btn" + (activeCategory === "reports" ? " active" : ""), onClick: function () { setTab(TAB_CATEGORIES.reports[0]); } }, I.fileText(14), "Reports"),
+              h("div", { className: "header-right" },
+                principal ? h("span", { className: "section-badge", style: { background: "rgba(88,166,255,0.15)", color: "var(--accent-blue)" } }, "Acting as: " + principal.name) : null,
+                h("a", {
+                  href: principal ? "#" : "/api/auth/github",
                   onClick: principal ? function(e) {
                     e.preventDefault();
                     fetch("/api/auth/logout", {method: "POST", headers: { "X-Requested-With": "XMLHttpRequest" }})
@@ -17638,86 +17160,78 @@ function PrincipalsTab() {
                   } : undefined,
                   className: "btn",
                   style: { textDecoration: "none", marginRight: "12px", height: "24px", lineHeight: "12px", fontSize: "11px" }
-                },
-                principal ? "Logout" : "Login"
-              ),
-              h("span", {
-                className: "status-dot " + (connected ? "green" : "red"),
-              }),
-              connected ? "Live" : "Offline",
-              h(
-                "span",
-                { className: "hide-mobile" },
-                lastUpdate ? " \u00B7 " + lastUpdate : "",
-              ),
-              h(
-                "span",
-                {
-                  className: "section-badge",
-                  title: "Queued and running workflows",
-                },
-                "Queue " +
-                  ((queue.queued_count || 0) +
-                    "/" +
-                    (queue.in_progress_count || 0)),
-              ),
-              h(
-                "span",
-                {
-                  className: "section-badge",
-                  title:
-                    watchdog && watchdog.summary
-                      ? watchdog.summary
-                      : "WSL keepalive and watchdog state",
-                },
-                "Keepalive " +
-                  (watchdog && watchdog.status ? watchdog.status : "unknown"),
-              ),
-              h(
-                "span",
-                {
-                  className: "section-badge",
-                  title: deployment.deployed_at || "Deployment revision",
-                },
-                "Build " + shortSha(deployment.git_sha),
-              ),
-              h("button", {
-                className: "btn",
-                style: { marginLeft: 4, background: asstOpen ? "var(--accent-blue)" : undefined, color: asstOpen ? "#fff" : undefined },
-                onClick: toggleAsst,
-                title: "Toggle Assistant sidebar",
-              }, "☰ Asst"),
-              h(QuickDispatchPopover, null),
-              h(
-                "button",
-                {
+                }, principal ? "Logout" : "Login"),
+                h("span", { className: "status-dot " + (connected ? "green" : "red") }),
+                connected ? "Live" : "Offline",
+                h("span", { className: "hide-mobile" }, lastUpdate ? " \u00B7 " + lastUpdate : ""),
+                h("span", { className: "section-badge", title: "Queued and running workflows" }, "Queue " + ((queue.queued_count || 0) + "/" + (queue.in_progress_count || 0))),
+                h("span", { className: "section-badge", title: watchdog && watchdog.summary ? watchdog.summary : "WSL keepalive and watchdog state" }, "Keepalive " + (watchdog && watchdog.status ? watchdog.status : "unknown")),
+                h("span", { className: "section-badge", title: deployment.deployed_at || "Deployment revision" }, "Build " + shortSha(deployment.git_sha)),
+                h("button", {
+                  className: "btn",
+                  style: { marginLeft: 4, background: asstOpen ? "var(--accent-blue)" : undefined, color: asstOpen ? "#fff" : undefined },
+                  onClick: toggleAsst,
+                  title: "Toggle Assistant sidebar",
+                }, "\u2630 Asst"),
+                h(QuickDispatchPopover, null),
+                h("button", {
                   className: "btn",
                   style: { marginLeft: 4 },
                   onClick: function () {
-                    fetchFleet();
-                    fetchRepos();
-                    fetchTests();
-                    fetchReports();
-                    fetchQueue();
-                    fetchMachines();
-                    fetchLocalApps();
-                    fetchEnrichedRuns();
-                    fetchWatchdog();
-                    fetchDeployment();
-                    fetchDeploymentState();
-                    fetchRemediationConfig();
-                    fetchScheduledJobs();
-                    fetchRunnerCapacity();
+                    fetchFleet(); fetchRepos(); fetchTests(); fetchReports();
+                    fetchQueue(); fetchMachines(); fetchLocalApps(); fetchEnrichedRuns();
+                    fetchWatchdog(); fetchDeployment(); fetchDeploymentState();
+                    fetchRemediationConfig(); fetchScheduledJobs(); fetchRunnerCapacity();
                   },
-                },
-                I.refresh(12),
+                }, I.refresh(12)),
               ),
+            ),
+            // ── Secondary ribbon (subtabs) ────────────────────────────────
+            h("div", { className: "ribbon-secondary" },
+              // Monitor
+              activeCategory === "monitor" && h("button", { className: "ribbon-tab-btn" + (tab === "overview" ? " active" : ""), onClick: function(){setTab("overview");} }, I.server(14), "Overview"),
+              activeCategory === "monitor" && h("button", { className: "ribbon-tab-btn" + (tab === "queue" ? " active" : ""), onClick: function(){setTab("queue"); fetchQueue();} }, I.queue(14), "Queue",
+                (queue.total||0) > 0 ? h("span", {className:"section-badge",style:{background:"rgba(88,166,255,0.2)",color:"var(--accent-blue)",marginLeft:2}}, queue.total||0) : null),
+              activeCategory === "monitor" && h("button", { className: "ribbon-tab-btn" + (tab === "history" ? " active" : ""), onClick: function(){setTab("history"); fetchEnrichedRuns();} }, I.activity(14), "History",
+                enrichedRuns.length > 0 ? h("span", {className:"section-badge",style:{background:"rgba(136,108,228,0.15)",color:"var(--accent-purple)",marginLeft:2}}, enrichedRuns.length) : null),
+              activeCategory === "monitor" && h("button", { className: "ribbon-tab-btn" + (tab === "stats" ? " active" : ""), onClick: function(){setTab("stats");} }, I.activity(14), "Stats"),
+              activeCategory === "monitor" && h("button", { className: "ribbon-tab-btn" + (tab === "machines" ? " active" : ""), onClick: function(){setTab("machines"); fetchMachines();} }, I.server(14), "Machines",
+                (machinesData.count||0) > 1 ? h("span", {className:"section-badge",style:{background:"rgba(63,185,80,0.15)",color:"var(--accent-green)",marginLeft:2}}, machinesData.count||0) : null),
+              activeCategory === "monitor" && h("button", { className: "ribbon-tab-btn" + (tab === "local-apps" ? " active" : ""), onClick: function(){setTab("local-apps"); fetchLocalApps();} }, I.server(14), "Local Tools",
+                (function(){var apps=localApps.tools||localApps.apps||[];var n=apps.filter(localAppNeedsAttention).length;return n>0?h("span",{className:"section-badge",style:{background:"rgba(210,153,34,0.2)",color:"var(--accent-yellow)",marginLeft:2}},n):null;})()),
+              // Dispatch
+              activeCategory === "dispatch" && h("button", { className: "ribbon-tab-btn" + (tab === "workflows" ? " active" : ""), onClick: function(){setTab("workflows"); fetchWorkflowsList();} }, I.activity(14), "Workflows",
+                workflowsList.length > 0 ? h("span", {className:"section-badge",style:{background:"rgba(88,166,255,0.15)",color:"#58a6ff",marginLeft:2}}, workflowsList.length) : null),
+              activeCategory === "dispatch" && h("button", { className: "ribbon-tab-btn" + (tab === "scheduled-jobs" ? " active" : ""), onClick: function(){setTab("scheduled-jobs"); fetchScheduledJobs();} }, I.clock(14), "Schedules",
+                (scheduledJobs.scheduled_workflow_count||0) > 0 ? h("span", {className:"section-badge",style:{background:"rgba(88,166,255,0.2)",color:"var(--accent-blue)",marginLeft:2}}, scheduledJobs.scheduled_workflow_count) : null),
+              activeCategory === "dispatch" && h("button", { className: "ribbon-tab-btn" + (tab === "runner-schedule" ? " active" : ""), onClick: function(){setTab("runner-schedule"); fetchRunnerCapacity();} }, I.clock(14), "Runner Plan",
+                runnerCapacity&&runnerCapacity.state ? h("span", {className:"section-badge",style:{background:"rgba(63,185,80,0.15)",color:"var(--accent-green)",marginLeft:2}}, runnerCapacity.state.desired||0) : null),
+              activeCategory === "dispatch" && h("button", { className: "ribbon-tab-btn" + (tab === "agent-launcher" ? " active" : ""), onClick: function(){setTab("agent-launcher");} }, I.terminal ? I.terminal(14) : I.server(14), "Agent Launcher"),
+              activeCategory === "dispatch" && h("button", { className: "ribbon-tab-btn" + (tab === "maxwell" ? " active" : ""), onClick: function(){setTab("maxwell"); fetchMaxwellStatus();} }, I.server(14), "Maxwell",
+                maxwellStatus.status === "running" ? h("span", {className:"section-badge",style:{background:"rgba(63,185,80,0.15)",color:"var(--accent-green)",marginLeft:2}}, "on") :
+                  maxwellStatus.status ? h("span", {className:"section-badge",style:{background:"rgba(248,81,73,0.15)",color:"var(--accent-red)",marginLeft:2}}, "off") : null),
+              // Manage
+              activeCategory === "manage" && h("button", { className: "ribbon-tab-btn" + (tab === "remediation" ? " active" : ""), onClick: function(){setTab("remediation"); fetchRemediationConfig();} }, I.issue(14), "Remediation",
+                runs.filter(function(r){return r.conclusion==="failure";}).length > 0 ? h("span", {className:"section-badge",style:{background:"rgba(248,81,73,0.15)",color:"var(--accent-red)",marginLeft:2}}, runs.filter(function(r){return r.conclusion==="failure";}).length) : null),
+              activeCategory === "manage" && h("button", { className: "ribbon-tab-btn" + (tab === "deployment" ? " active" : ""), onClick: function(){setTab("deployment"); fetchDeploymentState();} }, I.server(14), "Deployment",
+                (deploymentStateLoading||((deploymentState.rollout_state||{}).machines_attention||0)>0) ? h("span", {className:"section-badge",style:{background:"rgba(210,153,34,0.2)",color:"var(--accent-yellow)",marginLeft:2}}, deploymentStateLoading?"\u2026":(deploymentState.rollout_state||{}).machines_attention) : null),
+              activeCategory === "manage" && h("button", { className: "ribbon-tab-btn" + (tab === "fleet-orchestration" ? " active" : ""), onClick: function(){setTab("fleet-orchestration"); fetchFleetOrchestration();} }, I.server(14), "Fleet Orchestration"),
+              activeCategory === "manage" && h("button", { className: "ribbon-tab-btn" + (tab === "credentials" ? " active" : ""), onClick: function(){setTab("credentials"); fetchCredentials();} }, I.settings(14), "Credentials",
+                credentialsData.summary&&credentialsData.summary.not_ready>0 ? h("span", {className:"section-badge",style:{background:"rgba(210,153,34,0.15)",color:"var(--accent-yellow)",marginLeft:2}}, credentialsData.summary.not_ready) : null),
+              activeCategory === "manage" && h("button", { className: "ribbon-tab-btn" + (tab === "org" ? " active" : ""), onClick: function(){setTab("org");} }, I.repo(14), "Organization"),
+              activeCategory === "manage" && h("button", { className: "ribbon-tab-btn" + (tab === "principals" ? " active" : ""), onClick: function(){setTab("principals");} }, I.server(14), "Principals"),
+              // Reports
+              activeCategory === "reports" && h("button", { className: "ribbon-tab-btn" + (tab === "tests" ? " active" : ""), onClick: function(){setTab("tests");} }, I.flask(14), "Tests"),
+              activeCategory === "reports" && h("button", { className: "ribbon-tab-btn" + (tab === "reports" ? " active" : ""), onClick: function(){setTab("reports");} }, I.fileText(14), "Reports"),
+              activeCategory === "reports" && h("button", { className: "ribbon-tab-btn" + (tab === "assessments" ? " active" : ""), onClick: function(){setTab("assessments"); fetchAssessments();} }, I.activity(14), "Assessments"),
+              activeCategory === "reports" && h("button", { className: "ribbon-tab-btn" + (tab === "feature-requests" ? " active" : ""), onClick: function(){setTab("feature-requests"); fetchFeatureRequests();} }, I.issue(14), "Feature Requests",
+                featureRequests.length > 0 ? h("span", {className:"section-badge",style:{background:"rgba(136,108,228,0.15)",color:"var(--accent-purple)",marginLeft:2}}, featureRequests.length) : null),
+              activeCategory === "reports" && h("button", { className: "ribbon-tab-btn" + (tab === "diagnostics" ? " active" : ""), onClick: function(){setTab("diagnostics");} }, I.settings(14), "Diagnostics"),
             ),
           ),
           h(
             "div",
-            { style: { display: "flex", flexDirection: asstPosition === "left" ? "row-reverse" : "row", alignItems: "flex-start", minHeight: "calc(100vh - 56px)" } },
-            h(
+            { style: { display: "flex", flexDirection: asstPosition === "left" ? "row-reverse" : "row", alignItems: "flex-start", minHeight: "calc(100vh - 88px)" } },            h(
               "div",
               { className: "main-content", role: "main", style: { flex: 1, minWidth: 0 } },
               tab === "overview"
@@ -17929,7 +17443,7 @@ function PrincipalsTab() {
                                                       fetchMaxwellStatus,
                                                     onControl: maxwellControl,
                                                   })
-                                                : tab === "cline-launcher"
+                                                : tab === "agent-launcher"
                                                   ? h(ClineLauncherTab, null)
                                                   : tab === "diagnostics"
                                                     ? h(DiagnosticsTab, null)
@@ -18051,5 +17565,4 @@ function PrincipalsTab() {
 
       ReactDOM.createRoot(document.getElementById("root")).render(h(App));
     </script>
-  </body>
-</html>
+  </
