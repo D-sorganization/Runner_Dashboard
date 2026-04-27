@@ -1,0 +1,90 @@
+{
+  "meta": {
+    "repo": "D-sorganization/controls",
+    "date": "2026-04-26",
+    "head_short": "ecbbbe9",
+    "head_long": "ecbbbe902fd86dda77368c4724731cc235d2ef36",
+    "branch": "main",
+    "assessor": "pragmatic-ao-assessment-agent"
+  },
+  "scores": {
+    "A": 8,
+    "B": 6,
+    "C": 5,
+    "D": 6,
+    "E": 5,
+    "F": 5,
+    "G": 4,
+    "H": 7,
+    "I": 7,
+    "J": 5,
+    "K": 4,
+    "L": 4,
+    "M": 5,
+    "N": 7,
+    "O": 7
+  },
+  "overall": 5.7,
+  "findings": [
+    {
+      "criterion": "B",
+      "severity": "P2",
+      "principle": "PP4",
+      "text": "No ADRs found in docs/adr/"
+    },
+    {
+      "criterion": "D",
+      "severity": "P2",
+      "principle": "PP6",
+      "text": "try/except returning None without logging in alarm_history_parser.py"
+    },
+    {
+      "criterion": "D",
+      "severity": "P2",
+      "principle": "PP6",
+      "text": "try/except returning None without logging in parse_plc.py"
+    },
+    {
+      "criterion": "E",
+      "severity": "P2",
+      "principle": "PP4",
+      "text": "No benchmarks/ directory"
+    },
+    {
+      "criterion": "F",
+      "severity": "P2",
+      "principle": "PP1",
+      "text": "Many magic float literals (50) in sample"
+    },
+    {
+      "criterion": "G",
+      "severity": "P1",
+      "principle": "PP3",
+      "text": "No lockfile present (poetry.lock, package-lock.json, etc.)"
+    },
+    {
+      "criterion": "I",
+      "severity": "P2",
+      "principle": "PP3",
+      "text": "No Dockerfile for reproducible dev environment"
+    },
+    {
+      "criterion": "M",
+      "severity": "P2",
+      "principle": "PP3",
+      "text": "No deploy/ directory"
+    },
+    {
+      "criterion": "M",
+      "severity": "P2",
+      "principle": "PP5",
+      "text": "No VERSION file"
+    },
+    {
+      "criterion": "N",
+      "severity": "P2",
+      "principle": "PP3",
+      "text": "CONTRIBUTING.md missing"
+    }
+  ]
+}
