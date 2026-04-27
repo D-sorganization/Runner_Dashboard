@@ -11,6 +11,7 @@ from dashboard_config import CACHE_EVICT_BATCH, MAX_CACHE_SIZE
 # Global cache store
 _cache: OrderedDict[str, tuple[Any, float]] = OrderedDict()
 
+
 def cache_get(key: str, ttl: float) -> Any | None:
     """Return cached value if within TTL, else None."""
     entry = _cache.get(key)
@@ -19,6 +20,7 @@ def cache_get(key: str, ttl: float) -> Any | None:
         if time.time() - ts < ttl:
             return data
     return None
+
 
 def cache_set(key: str, data: Any) -> None:
     """Store value with current timestamp. Evicts oldest entries when full."""
@@ -30,6 +32,7 @@ def cache_set(key: str, data: Any) -> None:
             if _cache:
                 _cache.popitem(last=False)
     _cache[key] = (data, time.time())
+
 
 def cache_clear() -> None:
     """Clear all cached entries."""

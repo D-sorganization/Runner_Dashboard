@@ -10,6 +10,7 @@ from fastapi import HTTPException, Request
 
 log = logging.getLogger("dashboard.proxy")
 
+
 async def proxy_to_hub(request: Request):
     """Proxy request to the designated HUB_URL for hub-spoke topology."""
     if not HUB_URL:
@@ -33,6 +34,7 @@ async def proxy_to_hub(request: Request):
         except Exception as e:
             log.warning("Hub proxy error for %s: %s", request.url.path, e)
             raise HTTPException(status_code=502, detail="Hub proxy error") from e
+
 
 def should_proxy_fleet_to_hub(request: Request) -> bool:
     """Return True when this node should use the hub's fleet-wide view."""

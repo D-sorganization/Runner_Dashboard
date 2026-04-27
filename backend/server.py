@@ -212,7 +212,6 @@ class HelpChatBody(BaseModel):
     current_tab: str = Field(default="", max_length=100)
 
 
-
 # ─── Shared State Locks ───────────────────────────────────────────────────────
 _remediation_history_lock: asyncio.Lock = asyncio.Lock()
 _orchestration_audit_lock: asyncio.Lock = asyncio.Lock()
@@ -259,7 +258,6 @@ HEAVY_TEST_REPOS = {
         "default_python": "3.11",
     },
 }
-
 
 
 _PROCESSED_ENVELOPES_PATH = Path.home() / "actions-runners" / "dashboard" / "processed_envelopes.json"
@@ -529,9 +527,7 @@ def _disk_pressure_snapshot(
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
 
-
 # ─── App Initialization ───────────────────────────────────────────────────────
-
 
 
 # ─── App Initialization ───────────────────────────────────────────────────────
@@ -983,7 +979,6 @@ def _node_visibility_snapshot(node: dict) -> dict:
         "visibility_tone": "red",
         "visibility_detail": node.get("offline_detail") or node.get("error") or "No live telemetry from this machine.",
     }
-
 
 
 # ─── Runner Scheduler ─────────────────────────────────────────────────────────
@@ -1729,7 +1724,6 @@ async def get_system_metrics():
     return await get_system_metrics_snapshot(runner_limit())
 
 
-
 # ─── Fleet Telemetry ──────────────────────────────────────────────────────────
 
 
@@ -1866,7 +1860,6 @@ async def get_fleet_status(request: Request):
     return responses
 
 
-
 # ─── Deployment Routes ────────────────────────────────────────────────────────
 
 
@@ -1986,7 +1979,6 @@ async def get_watchdog_status(request: Request):
 
 
 # ─── Runner API Routes ───────────────────────────────────────────────────────
-
 
 
 # ─── GitHub Runners ───────────────────────────────────────────────────────────
@@ -2470,8 +2462,6 @@ async def get_repo_runs(request: Request, repo: str, per_page: int = 20):
         return await proxy_to_hub(request)
     data = await gh_api(f"/repos/{ORG}/{repo}/actions/runs?per_page={per_page}")
     return data
-
-
 
 
 # ─── Fleet Orchestration ──────────────────────────────────────────────────────

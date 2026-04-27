@@ -22,11 +22,7 @@ MAX_RUNNERS = int(os.environ.get("MAX_RUNNERS", str(REQUESTED_NUM_RUNNERS)))
 NUM_RUNNERS = min(REQUESTED_NUM_RUNNERS, MAX_RUNNERS)
 
 # Runner Aliases (for machine name normalization)
-RUNNER_ALIASES = [
-    a.strip().lower()
-    for a in os.environ.get("RUNNER_ALIASES", "").split(",")
-    if a.strip()
-]
+RUNNER_ALIASES = [a.strip().lower() for a in os.environ.get("RUNNER_ALIASES", "").split(",") if a.strip()]
 
 # Disk Thresholds
 DISK_WARN_PERCENT = float(os.environ.get("DASHBOARD_DISK_WARN_PERCENT", "85"))
@@ -37,9 +33,11 @@ DISK_MIN_FREE_GB = float(os.environ.get("DASHBOARD_DISK_MIN_FREE_GB", "25"))
 PORT = int(os.environ.get("DASHBOARD_PORT", "8321"))
 HOSTNAME = os.environ.get("DISPLAY_NAME") or platform.node()
 
+
 def runner_limit() -> int:
     """Return the hard runner capacity this dashboard is allowed to manage."""
     return max(NUM_RUNNERS, MAX_RUNNERS)
+
 
 MACHINE_ROLE = os.environ.get("MACHINE_ROLE", "node")
 HUB_URL = os.environ.get("HUB_URL")
@@ -71,11 +69,13 @@ RUNNER_SCHEDULE_CONFIG = Path(os.environ.get("RUNNER_SCHEDULE_CONFIG", "/etc/run
 WSL_KEEPALIVE_SERVICE = os.environ.get("WSL_KEEPALIVE_SERVICE", "wsl-runner-keepalive.service")
 WSL_KEEPALIVE_TASK_NAME = os.environ.get("WSL_KEEPALIVE_TASK_NAME", "WSL-Runner-KeepAlive")
 
+
 def runner_scheduler_apply_command() -> list[str]:
     """Return the command to apply the runner schedule."""
     if RUNNER_SCHEDULER_APPLY_CMD:
         return RUNNER_SCHEDULER_APPLY_CMD.split()
     return [RUNNER_SCHEDULER_BIN, "apply", "--config", str(RUNNER_SCHEDULE_CONFIG)]
+
 
 # Deployment
 DEPLOYMENT_FILE = Path(os.environ.get("RUNNER_DASHBOARD_DEPLOYMENT_FILE", BACKEND_DIR.parent / "deployment.json"))
