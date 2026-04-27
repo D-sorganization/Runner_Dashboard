@@ -426,6 +426,16 @@ All endpoints are served under `http://localhost:8321/api/`.
 | Method | Path | Description |
 |---|---|---|
 | GET | `/api/credentials` | Org and repo secrets/variables inventory (names only) |
+| POST | `/api/credentials/set-key` | Securely set an API key for a provider |
+| POST | `/api/credentials/clear-key` | Remove an API key for a provider |
+| POST | `/api/credentials/launch-auth` | Launch a provider's browser auth flow in a subprocess |
+
+### Runner Audit
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/runner-routing-audit` | Recent workflow runs on GitHub-hosted runners (billing alert) |
+| POST | `/api/runner-routing-audit/refresh` | Trigger an immediate audit refresh |
 
 ### Maxwell
 

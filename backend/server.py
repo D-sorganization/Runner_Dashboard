@@ -1,7 +1,7 @@
 # ruff: noqa: B008
 #!/usr/bin/env python3
 """
-D-sorganization Runner Dashboard -- FastAPI Backend
+D-sorganization Runner Dashboard — FastAPI Backend
 ===================================================
 Provides a REST API that:
   - Proxies GitHub's org runner & workflow APIs
@@ -21,6 +21,7 @@ import asyncio
 import contextlib
 import datetime as _dt_mod
 import errno
+import ipaddress
 import json
 import logging
 import logging.handlers
@@ -34,9 +35,10 @@ import subprocess
 import sys
 import tempfile
 import time
-from collections import OrderedDict, deque
+from collections import OrderedDict, defaultdict, deque
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 import psutil
@@ -63,7 +65,6 @@ import dispatch_contract as dispatch_contract  # noqa: E402
 import issue_inventory as issue_inventory  # noqa: E402
 import lease_synchronizer as lease_synchronizer  # noqa: E402
 import pr_inventory as pr_inventory  # noqa: E402
-import queue_cleanup as queue_cleanup  # noqa: E402
 import quick_dispatch as _quick_dispatch  # noqa: E402
 import quota_enforcement as quota_enforcement  # noqa: E402
 import scheduled_workflows as scheduled_workflow_inventory  # noqa: E402
@@ -76,19 +77,12 @@ from machine_registry import (  # noqa: E402
 from report_files import parse_report_metrics, sanitize_report_date  # noqa: E402
 from routers import credentials as _credentials_router  # noqa: E402
 from routers import dispatch as _dispatch_router  # noqa: E402
-from routers import maxwell as maxwell_router  # noqa: E402
-from security import (  # noqa: E402
-    check_dispatch_rate,
-    safe_subprocess_env,
-    sanitize_log_value,
-    validate_fleet_node_url,
-)
 
 # datetime.UTC added in Python 3.11; fall back to timezone.utc on older runtimes.
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 datetime = _dt_mod.datetime
 
-#  Logging
+# ─── Logging ──────────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -96,10 +90,10 @@ logging.basicConfig(
 )
 log = logging.getLogger("dashboard")
 
-#  Constants
+# ─── Constants ────────────────────────────────────────────────────────────────
 DEFAULT_LLM_MODEL = os.environ.get("DASHBOARD_LLM_MODEL", "claude-haiku-4-5-20251001")
 
-#  API Key Authentication
+# ─── API Key Authentication ───────────────────────────────────────────────────
 
 
 def _load_or_generate_api_key() -> str:
@@ -138,7 +132,91 @@ def _setup_api_key() -> None:
     DASHBOARD_API_KEY = _load_or_generate_api_key()
 
 
-#  Pydantic Input Models
+# ─── Security Utilities ───────────────────────────────────────────────────────
+
+
+def sanitize_log_value(value: str) -> str:
+    """Strip log-injection characters from user-controlled strings."""
+    return value.replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")[:200]
+
+
+def safe_subprocess_env() -> dict[str, str]:
+    """Return os.environ with secrets stripped out for subprocess calls."""
+    excluded = {
+        "GH_TOKEN",
+        "GITHUB_TOKEN",
+        "ANTHROPIC_API_KEY",
+        "DASHBOARD_API_KEY",
+        "SECRET",
+        "PASSWORD",
+        "TOKEN",
+    }
+    return {k: v for k, v in os.environ.items() if not any(exc in k.upper() for exc in excluded)}
+
+
+def validate_fleet_node_url(url: str) -> str:
+    """Validate a fleet node URL to prevent SSRF (issue #28)."""
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(f"Fleet node URL must use http or https: {url}")
+    host = parsed.hostname or ""
+    try:
+        addr = ipaddress.ip_address(host)
+        if not (addr.is_private or addr.is_loopback):
+            raise ValueError(f"Fleet node URL must be a private/local address: {url}")
+    except ValueError as exc:
+        # If it's not an IP address check it's a hostname we trust
+        if "must be" in str(exc):
+            raise
+        # hostname — allow localhost, .local, .internal
+        if not (host == "localhost" or host.endswith(".local") or host.endswith(".internal")):
+            raise ValueError(f"Fleet node hostname not allowed: {host}") from exc
+    return url
+
+
+def validate_local_url(url: str, field: str = "url") -> str:
+    """Validate that a URL has http/https scheme and a local host (issue #23)."""
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(f"{field} must use http or https")
+    return validate_fleet_node_url(url)
+
+
+def validate_local_path(path_str: str, allowed_root: Path) -> Path:
+    """Resolve path and ensure it stays within allowed_root (issue #23)."""
+    resolved = Path(path_str).expanduser().resolve()
+    try:
+        resolved.relative_to(allowed_root)
+    except ValueError as exc:
+        raise ValueError(f"Path escapes allowed root: {path_str}") from exc
+    return resolved
+
+
+def validate_health_command(cmd: str) -> list[str]:
+    """Parse health command safely, rejecting shell metacharacters (issue #22)."""
+    dangerous = set(";|&`$()<>")
+    if any(c in cmd for c in dangerous):
+        raise ValueError(f"health_command contains disallowed characters: {cmd!r}")
+    return shlex.split(cmd)
+
+
+# ─── Rate Limiting ────────────────────────────────────────────────────────────
+
+_dispatch_rate: dict[str, list[float]] = defaultdict(list)
+DISPATCH_LIMIT_PER_MINUTE = 10
+
+
+def check_dispatch_rate(client_ip: str) -> None:
+    """Enforce rate limiting for AI agent dispatch endpoints (issue #31)."""
+    now = time.monotonic()
+    window = [t for t in _dispatch_rate[client_ip] if now - t < 60]
+    if len(window) >= DISPATCH_LIMIT_PER_MINUTE:
+        raise HTTPException(status_code=429, detail="Rate limit exceeded for agent dispatch")
+    window.append(now)
+    _dispatch_rate[client_ip] = window
+
+
+# ─── Pydantic Input Models ────────────────────────────────────────────────────
 
 
 class WorkflowDispatchBody(BaseModel):
@@ -179,19 +257,19 @@ class HelpChatBody(BaseModel):
     current_tab: str = Field(default="", max_length=100)
 
 
-#  Bounded Cache
+# ─── Bounded Cache ────────────────────────────────────────────────────────────
 
 MAX_CACHE_SIZE = 500
 _CACHE_EVICT_BATCH = 50
 
-#  Shared State Locks
+# ─── Shared State Locks ───────────────────────────────────────────────────────
 _remediation_history_lock: asyncio.Lock = asyncio.Lock()
 _orchestration_audit_lock: asyncio.Lock = asyncio.Lock()
 _feature_requests_lock: asyncio.Lock = asyncio.Lock()
 _prompt_templates_lock: asyncio.Lock = asyncio.Lock()
 _prompt_notes_lock: asyncio.Lock = asyncio.Lock()
 
-#  Configuration
+# ─── Configuration ────────────────────────────────────────────────────────────
 ORG = os.environ.get("GITHUB_ORG", "D-sorganization")
 REPO_ROOT = Path(os.environ.get("RUNNER_DASHBOARD_REPO_ROOT", BACKEND_DIR.parents[1]))
 RUNNER_BASE_DIR = Path.home() / "actions-runners"
@@ -235,7 +313,7 @@ EXPECTED_VERSION_FILE = Path(
     )
 )
 
-#  Setup moving averages and host memory cache
+# ─── Setup moving averages and host memory cache ────────────
 
 _cpu_history: deque[float] = deque(maxlen=60)
 
@@ -284,14 +362,14 @@ REPORTS_DIR = Path(os.environ.get("REPORTS_DIR", str(_default_reports_dir)))
 HEAVY_TEST_REPOS = {
     "Repository_Management": {
         "workflow_file": "ci-heavy-integration-tests.yml",
-        "description": ("Heavy Integration Suite -- Self-hosted Runner Control Tower tests"),
+        "description": ("Heavy Integration Suite — Self-hosted Runner Control Tower tests"),
         "docker_compose": "docker-compose.yml",
         "python_versions": ["3.11", "3.12"],
         "default_python": "3.12",
     },
     "UpstreamDrift": {
         "workflow_file": "heavy-tests-opt-in.yml",
-        "description": ("Heavy Integration Tests (live_simulation marker) -- MuJoCo, Drake, Pinocchio, Biomechanics"),
+        "description": ("Heavy Integration Tests (live_simulation marker) — MuJoCo, Drake, Pinocchio, Biomechanics"),
         "docker_compose": "docker-compose.yml",
         "python_versions": ["3.10", "3.11", "3.12"],
         "default_python": "3.11",
@@ -349,16 +427,15 @@ async def _record_processed_envelope(envelope_id: str, ttl_seconds: int = 86400)
             log.warning("failed to record processed envelope: %s", exc)
 
 
-#  Bounded domain routers
+# ── Bounded domain routers ────────────────────────────────────────────────────
 app.include_router(_dispatch_router.router)
 _dispatch_router.set_replay_functions(_is_envelope_replay, _record_processed_envelope)
 app.include_router(_credentials_router.router)
 app.include_router(admin_router.router)
 app.include_router(auth_router.router)
-app.include_router(maxwell_router.router)
 
 # Agent-launcher control surface (sibling: Repository_Management/launchers/cline_agent_launcher).
-# Subprocess-only -- never imports the launcher Python at runtime.
+# Subprocess-only — never imports the launcher Python at runtime.
 import agent_launcher_router as _agent_launcher_router  # noqa: E402
 
 app.include_router(_agent_launcher_router.router)
@@ -425,19 +502,15 @@ async def _add_security_headers(request: Request, call_next: Any) -> Any:
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    # CSP note: 'strict-dynamic' was previously used here but is INCOMPATIBLE
-    # with host-based allowlists -- per spec, 'strict-dynamic' disables source
-    # expressions like https://cdnjs.cloudflare.com, meaning React and other CDN
-    # libraries were silently blocked, causing a blank dashboard. Removed in #172.
-    #
-    # 'unsafe-inline' is required for script-src because the frontend is a single
-    # index.html with several inline <script> blocks (error handler, React check,
-    # and the ~630 KB application bundle). Adding nonces would require a build step
-    # or per-request template rendering -- not worth the complexity for a
-    # localhost-only operator tool.
+    # 'unsafe-inline' removed from script-src (issue #18).
+    # 'strict-dynamic' lets scripts loaded from trusted CDN origins load further
+    # dependencies without needing individual allow-list entries.
+    # 'unsafe-inline' is retained for style-src because React's CSS-in-JS and
+    # the dashboard's own <style> block rely on inline styles. A build step
+    # would allow switching to nonce or hash-based CSP for style-src.
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' "
+        "script-src 'self' 'strict-dynamic' "
         "https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; "
         "style-src 'self' 'unsafe-inline'; "
         "img-src 'self' data:; "
@@ -447,21 +520,21 @@ async def _add_security_headers(request: Request, call_next: Any) -> Any:
     return response
 
 
-#  Startup timestamp
+# ─── Startup timestamp ───────────────────────────────────────────────────────
 BOOT_TIME = time.time()
 _setup_api_key()
 
-#  Response cache
+# ─── Response cache ───────────────────────────────────────────────────────────
 # The frontend polls every 10-15 s; without caching, each poll spawns dozens of
 # `gh api` subprocesses that rapidly exhaust the 5 000 req/hr rate limit.
 # TTL values are tuned to each endpoint's staleness tolerance.
 #
-#   runners / health   25 s   (runner state changes on job start/finish)
-#   queue              20 s   (jobs drain fast; want near-real-time)
-#   runs               30 s
-#   stats              60 s   (aggregate counts; no need to be instant)
-#   repos              120 s  (repo list / metadata changes rarely)
-#   diagnose           60 s   (expensive multi-call; used for troubleshooting)
+#   runners / health  → 25 s   (runner state changes on job start/finish)
+#   queue             → 20 s   (jobs drain fast; want near-real-time)
+#   runs              → 30 s
+#   stats             → 60 s   (aggregate counts; no need to be instant)
+#   repos             → 120 s  (repo list / metadata changes rarely)
+#   diagnose          → 60 s   (expensive multi-call; used for troubleshooting)
 _cache: OrderedDict[str, tuple[Any, float]] = OrderedDict()
 
 
@@ -599,11 +672,11 @@ def _disk_pressure_snapshot(
     }
 
 
-#  Fleet node config
+# ─── Fleet node config ───────────────────────────────────────────────────────
 # Set MACHINE_ROLE=hub on the primary machine.
 # Set FLEET_NODES to a comma-separated list of "name:http://tailscale-ip:8321"
 # entries for every *other* machine in the fleet.  The hub always includes
-# itself automatically -- do not list it in FLEET_NODES.
+# itself automatically — do not list it in FLEET_NODES.
 #
 # Example (in /etc/systemd/system/runner-dashboard.service on ControlTower):
 #   Environment=MACHINE_ROLE=hub
@@ -615,7 +688,7 @@ for _entry in _fleet_raw.split(","):
     _entry = _entry.strip()
     if not _entry:
         continue
-    # Format: name:http://host:port  -- the URL part begins after the first colon
+    # Format: name:http://host:port  — the URL part begins after the first colon
     # but URLs also contain colons, so we require the URL to start with http
     _colon_idx = _entry.find(":http")
     if _colon_idx == -1:
@@ -640,7 +713,7 @@ HUB_URL = os.environ.get("HUB_URL")
 if HUB_URL:
     HUB_URL = HUB_URL.rstrip("/")
 
-#  Helpers
+# ─── Helpers ──────────────────────────────────────────────────────────────────
 
 
 async def proxy_to_hub(request: Request):
@@ -1875,7 +1948,7 @@ async def _watchdog_status_impl() -> dict:
     return result
 
 
-#  System Metrics
+# ─── System Metrics ──────────────────────────────────────────────────────────
 
 
 def get_gpu_info() -> dict:
@@ -2044,7 +2117,7 @@ async def get_system_metrics():
         }
 
     # On WSL, also report the Windows host disk (/mnt/c) where the VHDX lives.
-    # The host disk is the binding constraint -- if it fills up, WSL itself breaks.
+    # The host disk is the binding constraint — if it fills up, WSL itself breaks.
     windows_disk = None
     wsl_host_path = Path("/mnt/c")
     if wsl_host_path.exists():
@@ -2340,7 +2413,7 @@ async def get_deployment_drift() -> dict:
     """Compare the deployed version against the hub's expected VERSION.
 
     Used by the Machines tab to surface "Update available" badges on stale
-    nodes. Remote update orchestration is intentionally out of scope here --
+    nodes. Remote update orchestration is intentionally out of scope here —
     see ``POST /api/deployment/update-signal`` for the notify-only affordance.
     """
     expected = await _read_expected_dashboard_version()
@@ -2434,7 +2507,7 @@ async def get_watchdog_status(request: Request):
     return await _watchdog_status_impl()
 
 
-#  Runner API Routes
+# ─── Runner API Routes ───────────────────────────────────────────────────────
 
 
 @app.get("/api/runners")
@@ -2453,7 +2526,7 @@ async def get_runners(request: Request):
     return data
 
 
-#  MATLAB Runner Health (issue #570)
+# ─── MATLAB Runner Health (issue #570) ───────────────────────────────────────
 #
 # MATLAB linting relies on a Windows self-hosted runner where MATLAB is
 # installed natively.  Operators need to see at a glance whether that capacity
@@ -2506,7 +2579,7 @@ def _matlab_runner_summary(runner: dict) -> dict:
 async def _recent_matlab_workflow_runs(limit: int = 5) -> list[dict]:
     """Fetch recent MATLAB Code Analyzer workflow runs across the org.
 
-    Returns an empty list on any failure -- this is advisory UI, not critical
+    Returns an empty list on any failure — this is advisory UI, not critical
     control surface, so transient API errors must not break the endpoint.
     """
     try:
@@ -3255,7 +3328,7 @@ async def get_repos(request: Request):
             "last_ci_updated": None,
         }
 
-        # Get open PRs count -- use --paginate so repos with >100 open PRs are
+        # Get open PRs count — use --paginate so repos with >100 open PRs are
         # counted accurately.  GitHub's open_issues_count includes PRs, so we
         # subtract the real PR count to get the genuine issue count.
         pr_code, pr_out, _ = await run_cmd(
@@ -3314,7 +3387,7 @@ async def get_repos(request: Request):
     return result
 
 
-#  PR Inventory API
+# ─── PR Inventory API ────────────────────────────────────────────────────────
 
 
 @app.get("/api/prs")
@@ -3370,7 +3443,7 @@ async def get_pr_detail(owner: str, repo_name: str, number: int) -> dict:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
-#  Issue Inventory API
+# ─── Issue Inventory API ──────────────────────────────────────────────────────
 
 
 @app.get("/api/issues")
@@ -3430,7 +3503,7 @@ async def get_issues(
     return issues
 
 
-#  Daily Reports API
+# ─── Daily Reports API ──────────────────────────────────────────────────────
 
 
 @app.get("/api/reports")
@@ -3495,7 +3568,7 @@ async def get_report_chart(date: str):
     return FileResponse(chart_path, media_type="image/png")
 
 
-#  Heavy Test Dispatch API
+# ─── Heavy Test Dispatch API ───────────────────────────────────────────────
 
 
 @app.get("/api/heavy-tests/repos")
@@ -3698,7 +3771,7 @@ async def run_docker_heavy_test(
 
 
 # ---------------------------------------------------------------------------
-# CI Tests endpoints -- standard ci-standard workflow runs + manual rerun
+# CI Tests endpoints — standard ci-standard workflow runs + manual rerun
 # ---------------------------------------------------------------------------
 
 _CI_FLEET_REPOS = [
@@ -4169,7 +4242,7 @@ async def dispatch_agent_remediation(
     return result
 
 
-#  Quick Dispatch
+# ─── Quick Dispatch ───────────────────────────────────────────────────────────
 
 
 @app.post("/api/agents/quick-dispatch")
@@ -4231,7 +4304,7 @@ async def api_quick_dispatch(
     return resp.model_dump()
 
 
-#  Bulk PR / Issue Agent Dispatch
+# ─── Bulk PR / Issue Agent Dispatch ──────────────────────────────────────────
 
 
 @app.post("/api/prs/dispatch")
@@ -4304,7 +4377,7 @@ async def api_dispatch_to_issues(
     return dict(result)
 
 
-#  Remediation History
+# ─── Remediation History ──────────────────────────────────────────────────────
 
 _REMEDIATION_HISTORY_PATH = Path(os.environ.get("REMEDIATION_HISTORY_PATH", "")) or (
     Path.home() / "actions-runners" / "dashboard" / "remediation_history.json"
@@ -4394,7 +4467,7 @@ async def get_agent_providers() -> dict:
     }
 
 
-#  Assistant Chat API (Issue #88)
+# ─── Assistant Chat API (Issue #88) ───────────────────────────────────────────
 
 
 async def _dispatch_to_ai_provider_for_chat(
@@ -4438,7 +4511,7 @@ async def assistant_chat(request: Request, *, principal: Principal = Depends(req
 
     now_ts = datetime.now(UTC).isoformat()
 
-    #  Tool-use path (Issue #89)
+    # ── Tool-use path (Issue #89) ──────────────────────────────────────────
     if req.tools_enabled:
         anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
         if not anthropic_key:
@@ -4465,7 +4538,7 @@ async def assistant_chat(request: Request, *, principal: Principal = Depends(req
             "timestamp": now_ts,
         }
 
-    #  Standard chat path
+    # ── Standard chat path ────────────────────────────────────────────────
     response_text = await _dispatch_to_ai_provider_for_chat(
         provider=req.provider,
         prompt=req.prompt,
@@ -4479,7 +4552,7 @@ async def assistant_chat(request: Request, *, principal: Principal = Depends(req
     }
 
 
-#  Tool Execute API (Issue #89)
+# ─── Tool Execute API (Issue #89) ─────────────────────────────────────────────
 
 
 @app.post("/api/assistant/tool/execute", tags=["assistant"])
@@ -4577,7 +4650,7 @@ async def get_tool_audit_history(limit: int = 50) -> dict:
     return {"entries": entries, "total": len(entries)}
 
 
-#  Assistant Action Proposal API (Issue #89)
+# ─── Assistant Action Proposal API (Issue #89) ────────────────────────────────
 
 
 # In-memory storage for proposed actions (in real impl, use database)
@@ -4746,7 +4819,7 @@ async def execute_action(
         }
 
 
-#  Job Queue API
+# ─── Job Queue API ───────────────────────────────────────────────────────────
 
 
 async def _queue_impl() -> dict:
@@ -4919,7 +4992,7 @@ async def diagnose_queue() -> dict:
     """Explain why queued jobs are waiting.
 
     Samples queued workflow runs, fetches their jobs, and reports which runner
-    labels the waiting jobs need -- self-hosted fleet, ubuntu-latest, or other.
+    labels the waiting jobs need — self-hosted fleet, ubuntu-latest, or other.
     Cross-references against the live runner pool to identify the bottleneck.
     """
     cached = _cache_get("diagnose", 120.0)
@@ -4947,7 +5020,7 @@ async def diagnose_queue() -> dict:
         timeout=20,
     )
     if code != 0:
-        return {"error": "Cannot reach GitHub API -- check GH_TOKEN in service"}
+        return {"error": "Cannot reach GitHub API — check GH_TOKEN in service"}
 
     try:
         repos = json.loads(stdout)
@@ -5154,7 +5227,7 @@ async def diagnose_queue() -> dict:
             f"MISCONFIGURATION: {len(pick_runner_misconfig)} 'pick-runner' dispatcher "
             f"job(s) are themselves targeting 'self-hosted' in: "
             f"{', '.join(repos_affected)}. "
-            "The pick-runner job must use 'runs-on: ubuntu-latest' (not 'self-hosted') -- "  # noqa: E501
+            "The pick-runner job must use 'runs-on: ubuntu-latest' (not 'self-hosted') — "  # noqa: E501
             "it is the dispatcher that decides where to send work. "
             "Update those workflow files to fix 'runs-on: ubuntu-latest' on the pick-runner job."  # noqa: E501
         )
@@ -5166,12 +5239,12 @@ async def diagnose_queue() -> dict:
     elif waiting_for_fleet > 0 and idle:
         bottleneck = (
             f"{len(idle)} idle fleet runner(s) exist but {waiting_for_fleet} fleet job(s) are "  # noqa: E501
-            "still queued -- possible label mismatch. Verify the runner labels include 'd-sorg-fleet'."  # noqa: E501
+            "still queued — possible label mismatch. Verify the runner labels include 'd-sorg-fleet'."  # noqa: E501
         )
     elif waiting_for_generic_sh > 0 and idle:
         if runner_groups_restricted:
             blocked_info = [
-                f"'{g['name']}' (runners: {', '.join(g['runner_names'][:3])}{'Ã¢â‚¬Â¦' if len(g['runner_names']) > 3 else ''}) "  # noqa: E501
+                f"'{g['name']}' (runners: {', '.join(g['runner_names'][:3])}{'…' if len(g['runner_names']) > 3 else ''}) "  # noqa: E501
                 f"blocks: {', '.join(g['blocked_waiting_repos'][:5])}"
                 for g in runner_groups_info
                 if g["restricted"] and g["blocked_waiting_repos"]
@@ -5180,14 +5253,14 @@ async def diagnose_queue() -> dict:
                 f"RUNNER GROUP ACCESS RESTRICTION: {waiting_for_generic_sh} job(s) cannot "  # noqa: E501
                 f"reach {len(idle)} idle runner(s). "
                 + (" | ".join(blocked_info) + ". " if blocked_info else "")
-                + "FIX: GitHub org Settings Ã¢â€ â€™ Actions Ã¢â€ â€™ Runner Groups Ã¢â€ â€™ "
-                "select the restricted group Ã¢â€ â€™ set Repository access to 'All repositories'."  # noqa: E501
+                + "FIX: GitHub org Settings → Actions → Runner Groups → "
+                "select the restricted group → set Repository access to 'All repositories'."  # noqa: E501
             )
         else:
             bottleneck = (
                 f"{waiting_for_generic_sh} job(s) target the generic 'self-hosted' label "  # noqa: E501
                 f"with {len(idle)} idle runner(s). "
-                "Runners will pick these up -- but check if any are pick-runner "  # noqa: E501
+                "Runners will pick these up — but check if any are pick-runner "  # noqa: E501
                 "dispatcher jobs (they should use runs-on: ubuntu-latest, not "
                 "self-hosted, to avoid wasting a runner slot on routing logic)."
             )
@@ -5199,14 +5272,14 @@ async def diagnose_queue() -> dict:
     elif waiting_for_github_hosted > 0:
         bottleneck = (
             f"{waiting_for_github_hosted} job(s) are waiting for GitHub-hosted runners "
-            "(ubuntu-latest). This is GitHub's queue -- no local action possible. "
+            "(ubuntu-latest). This is GitHub's queue — no local action possible. "
             "This may mean pick-runner routed them to the cloud because all fleet "
             "runners were busy when the dispatcher ran."
         )
     elif not sampled_jobs:
-        bottleneck = "Could not sample job details -- runs may have just started or GitHub API rate limit may be close."
+        bottleneck = "Could not sample job details — runs may have just started or GitHub API rate limit may be close."
     else:
-        bottleneck = "Unknown -- job labels did not match known runner targets."
+        bottleneck = "Unknown — job labels did not match known runner targets."
 
     result = {
         "runner_pool": {
@@ -5233,7 +5306,7 @@ async def diagnose_queue() -> dict:
     return result
 
 
-#  Fleet Node Aggregation API
+# ─── Fleet Node Aggregation API ──────────────────────────────────────────────
 
 
 @app.get("/api/fleet/nodes")
@@ -5327,7 +5400,7 @@ async def proxy_node_system(node_name: str) -> dict:
         raise HTTPException(status_code=502, detail=f"{node_name} unreachable") from exc
 
 
-#  Request logging middleware
+# ─── Request logging middleware ───────────────────────────────────────────────
 
 
 @app.middleware("http")
@@ -5344,7 +5417,7 @@ async def log_requests(request: Request, call_next):
     )
     if not request.url.path.startswith(skip):
         log.info(
-            "%s %s Ã¢â€ â€™ %s (%sms)",
+            "%s %s → %s (%sms)",
             request.method,
             request.url.path,
             response.status_code,
@@ -5353,7 +5426,7 @@ async def log_requests(request: Request, call_next):
     return response
 
 
-#  Serve Frontend
+# ─── Serve Frontend ──────────────────────────────────────────────────────────
 
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 
@@ -5375,7 +5448,7 @@ async def serve_index():
         "<p>Frontend index.html not found</p>"
         "<p><a href='/api/health' "
         "style='color:#58a6ff'>Health Check</a>"
-        " Ã‚Â· <a href='/docs' "
+        " · <a href='/docs' "
         "style='color:#58a6ff'>API Docs</a></p>"
         "</div></body></html>"
     )
@@ -5400,13 +5473,13 @@ async def serve_icon():
     return FileResponse(icon_path, media_type="image/svg+xml")
 
 
-#  Fleet Agent Dispatcher API -- see backend/routers/dispatch.py
+# ─── Fleet Agent Dispatcher API — see backend/routers/dispatch.py ─────────────
 # Endpoints extracted to routers/dispatch.py and registered via app.include_router.
 
-#  Credentials Probe -- see backend/routers/credentials.py
+# ─── Credentials Probe — see backend/routers/credentials.py ──────────────────
 # Endpoint extracted to routers/credentials.py and registered via app.include_router.
 
-#  Maxwell-Daemon endpoints
+# ─── Maxwell-Daemon endpoints ─────────────────────────────────────────────────
 
 DASHBOARD_FAQ: dict[str, str] = {
     "fleet": "The Fleet tab shows all runners in your fleet. Use it to start/stop runners and see hardware metrics.",
@@ -5457,7 +5530,7 @@ async def get_maxwell_status() -> dict:
 
     maxwell_binary = shutil.which("maxwell") or shutil.which("maxwell-daemon")
     maxwell_url = os.environ.get("MAXWELL_URL", "")
-    maxwell_port = int(os.environ.get("MAXWELL_PORT", 8080))
+    maxwell_port = int(os.environ.get("MAXWELL_PORT", 8322))
 
     # Check if maxwell service is running via systemd
     service_running = False
@@ -5529,7 +5602,7 @@ async def maxwell_control(
     if not approved_by:
         raise HTTPException(status_code=422, detail="approved_by required for privileged action")
 
-    code, out, stderr = await run_cmd(["sudo", "systemctl", action, "maxwell-daemon"], timeout=15, cwd=REPO_ROOT)
+    code, out, stderr = await run_cmd(["systemctl", action, "maxwell-daemon"], timeout=15, cwd=REPO_ROOT)
     log.info(
         "maxwell_control: action=%s approved_by=%s exit_code=%d",
         sanitize_log_value(action),
@@ -5545,68 +5618,87 @@ async def maxwell_control(
     return {"status": action + "ed", "action": action, "approved_by": approved_by}
 
 
-#  Maxwell-Daemon Proxy Routes
+# ─── Maxwell-Daemon Proxy Routes ──────────────────────────────────────────────
 
 
 def _maxwell_base_url() -> str:
     """Return the Maxwell-Daemon base URL from env."""
-    return os.environ.get("MAXWELL_URL", "") or f"http://localhost:{int(os.environ.get('MAXWELL_PORT', 8080))}"
-
-
-def _maxwell_api_token() -> str:
-    """Return the Maxwell-Daemon API confirmation token from env."""
-    return os.environ.get("MAXWELL_API_TOKEN", "")
-
-
-def _maxwell_headers() -> dict:
-    """Return auth headers for Maxwell-Daemon requests."""
-    token = _maxwell_api_token()
-    if token:
-        return {"Authorization": f"Bearer {token}"}
-    return {}
-
-
-async def _mx_get(path: str, params: dict | None = None) -> dict:
-    """GET helper for Maxwell proxy routes."""
-    try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            resp = await client.get(
-                f"{_maxwell_base_url()}{path}",
-                params=params,
-                headers=_maxwell_headers(),
-            )
-            log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
-            return resp.json()
-    except Exception as e:  # noqa: BLE001
-        log.info("maxwell_proxy: path=%s error=%s", path, str(e)[:80])
-        return {"error": str(e)[:120], "daemon_available": False}
+    return os.environ.get("MAXWELL_URL", "") or f"http://localhost:{int(os.environ.get('MAXWELL_PORT', 8322))}"
 
 
 @app.get("/api/maxwell/version")
 async def get_maxwell_version() -> dict:
     """Proxy GET /api/version from Maxwell-Daemon."""
-    return await _mx_get("/api/version")
+    path = "/api/version"
+    resp = None
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get(f"{_maxwell_base_url()}{path}")
+            log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
+            return resp.json()
+    except Exception as e:  # noqa: BLE001
+        log.info("maxwell_proxy: path=%s status=%s", path, "error")
+        return {"error": str(e)[:120], "daemon_available": False}
+
+        log.info("maxwell_proxy: path=%s status=%s", path, "error")
+        return {"error": str(e)[:120], "daemon_available": False}
 
 
 @app.get("/api/maxwell/daemon-status")
 async def get_maxwell_daemon_status_detail() -> dict:
     """Proxy GET /api/status from Maxwell-Daemon (pipeline state)."""
-    return await _mx_get("/api/status")
+    path = "/api/status"
+    resp = None
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get(f"{_maxwell_base_url()}{path}")
+            log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
+            return resp.json()
+    except Exception as e:  # noqa: BLE001
+        log.info("maxwell_proxy: path=%s status=%s", path, "error")
+        return {"error": str(e)[:120], "daemon_available": False}
+
+        log.info("maxwell_proxy: path=%s status=%s", path, "error")
+        return {"error": str(e)[:120], "daemon_available": False}
 
 
 @app.get("/api/maxwell/tasks")
 async def get_maxwell_tasks(limit: int = 20, cursor: str | None = None) -> dict:
     """Proxy GET /api/tasks from Maxwell-Daemon."""
-    params: dict = {"limit": limit}
-    if cursor is not None:
-        params["cursor"] = cursor
-    return await _mx_get("/api/tasks", params=params)
+    path = "/api/tasks"
+    resp = None
+    try:
+        params: dict = {"limit": limit}
+        if cursor is not None:
+            params["cursor"] = cursor
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get(f"{_maxwell_base_url()}{path}", params=params)
+            log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
+            return resp.json()
+    except Exception as e:  # noqa: BLE001
+        log.info("maxwell_proxy: path=%s status=%s", path, "error")
+        return {"error": str(e)[:120], "daemon_available": False}
+
+        log.info("maxwell_proxy: path=%s status=%s", path, "error")
+        return {"error": str(e)[:120], "daemon_available": False}
 
 
 @app.get("/api/maxwell/tasks/{task_id}")
 async def get_maxwell_task_detail(task_id: str) -> dict:
     """Proxy GET /api/tasks/{task_id} from Maxwell-Daemon."""
-    return await _mx_get(f"/api/tasks/{task_id}")
+    path = f"/api/tasks/{task_id}"
+    resp = None
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get(f"{_maxwell_base_url()}{path}")
+            log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
+            return resp.json()
+    except Exception as e:  # noqa: BLE001
+        log.info("maxwell_proxy: path=%s status=%s", path, "error")
+        return {"error": str(e)[:120], "daemon_available": False}
+
+        log.info("maxwell_proxy: path=%s status=%s", path, "error")
+        return {"error": str(e)[:120], "daemon_available": False}
 
 
 @app.post("/api/maxwell/dispatch")
@@ -5615,38 +5707,24 @@ async def maxwell_dispatch_task(
     *,
     principal: Principal = Depends(require_scope("maxwell.control")),  # noqa: B008
 ) -> dict:
-    """Proxy POST /api/dispatch to Maxwell-Daemon.
-
-    Injects ``confirmation_token`` from ``MAXWELL_API_TOKEN`` env var so the
-    browser never needs to know the raw token.
-    """
-    import json as _json
-    import uuid
-
+    """Proxy POST /api/dispatch to Maxwell-Daemon (forwards body as-is)."""
     path = "/api/dispatch"
+    resp = None
     try:
-        body = await request.json()
-    except Exception:  # noqa: BLE001
-        body = {}
-
-    # Inject auth token and ensure idempotency_key is present.
-    body["confirmation_token"] = _maxwell_api_token()
-    if not body.get("idempotency_key"):
-        body["idempotency_key"] = str(uuid.uuid4())
-
-    hdrs = {"Content-Type": "application/json"}
-    hdrs.update(_maxwell_headers())
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        body = await request.body()
+        async with httpx.AsyncClient(timeout=3.0) as client:
             resp = await client.post(
                 f"{_maxwell_base_url()}{path}",
-                content=_json.dumps(body),
-                headers=hdrs,
+                content=body,
+                headers={"Content-Type": "application/json"},
             )
             log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
             return resp.json()
     except Exception as e:  # noqa: BLE001
-        log.info("maxwell_proxy: path=%s error=%s", path, str(e)[:80])
+        log.info("maxwell_proxy: path=%s status=%s", path, "error")
+        return {"error": str(e)[:120], "daemon_available": False}
+
+        log.info("maxwell_proxy: path=%s status=%s", path, "error")
         return {"error": str(e)[:120], "daemon_available": False}
 
 
@@ -5657,64 +5735,27 @@ async def maxwell_pipeline_control(
     *,
     principal: Principal = Depends(require_scope("maxwell.control")),  # noqa: B008
 ) -> dict:
-    """Proxy POST /api/control/{action} to Maxwell-Daemon.
-
-    Injects ``confirmation_token`` from ``MAXWELL_API_TOKEN`` env var.
-    """
-    import json as _json
-
+    """Proxy POST /api/control/{action} to Maxwell-Daemon."""
     if action not in ("pause", "resume", "abort"):
         raise HTTPException(status_code=422, detail="action must be pause, resume, or abort")
     path = f"/api/control/{action}"
+    resp = None
     try:
-        body = await request.json()
-    except Exception:  # noqa: BLE001
-        body = {}
-
-    body["confirmation_token"] = _maxwell_api_token()
-
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        body = await request.body()
+        async with httpx.AsyncClient(timeout=3.0) as client:
             resp = await client.post(
                 f"{_maxwell_base_url()}{path}",
-                content=_json.dumps(body),
+                content=body,
                 headers={"Content-Type": "application/json"},
             )
             log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
             return resp.json()
     except Exception as e:  # noqa: BLE001
-        log.info("maxwell_proxy: path=%s status=%s error=%s", path, "error", str(e)[:80])
+        log.info("maxwell_proxy: path=%s status=%s", path, "error")
         return {"error": str(e)[:120], "daemon_available": False}
 
-
-@app.get("/api/maxwell/backends")
-async def get_maxwell_backends() -> dict:
-    """Proxy GET /api/v1/backends from Maxwell-Daemon."""
-    return await _mx_get("/api/v1/backends")
-
-
-@app.get("/api/maxwell/workers")
-async def get_maxwell_workers() -> dict:
-    """Proxy GET /api/v1/workers from Maxwell-Daemon."""
-    return await _mx_get("/api/v1/workers")
-
-
-@app.get("/api/maxwell/cost")
-async def get_maxwell_cost() -> dict:
-    """Proxy GET /api/v1/cost from Maxwell-Daemon."""
-    return await _mx_get("/api/v1/cost")
-
-
-@app.get("/api/maxwell/pipeline-state")
-async def get_maxwell_pipeline_state() -> dict:
-    """Proxy GET /api/status (pipeline state) from Maxwell-Daemon."""
-    return await _mx_get("/api/status")
-
-
-@app.get("/api/maxwell/backends/available")
-async def get_maxwell_backends_available() -> dict:
-    """Proxy GET /api/v1/backends/available — returns all backends Maxwell knows about."""
-    return await _mx_get("/api/v1/backends/available")
+        log.info("maxwell_proxy: path=%s status=%s", path, "error")
+        return {"error": str(e)[:120], "daemon_available": False}
 
 
 @app.post("/api/help/chat")
@@ -5787,7 +5828,7 @@ async def help_chat(request: Request, *, principal: Principal = Depends(require_
     }
 
 
-#  Assessments
+# ─── Assessments ──────────────────────────────────────────────────────────────
 
 
 @app.get("/api/assessments/scores")
@@ -5864,7 +5905,7 @@ async def dispatch_assessment(
     return {"status": "dispatched", "repository": repo, "provider": provider}
 
 
-#  Feature Requests
+# ─── Feature Requests ─────────────────────────────────────────────────────────
 
 _FEATURE_REQUESTS_PATH = Path.home() / "actions-runners" / "dashboard" / "feature_requests.json"
 _PROMPT_TEMPLATES_PATH = Path.home() / "actions-runners" / "dashboard" / "prompt_templates.json"
@@ -6104,7 +6145,7 @@ async def dispatch_feature_request(
     }
 
 
-#  Fleet Orchestration Control Plane
+# ─── Fleet Orchestration Control Plane ───────────────────────────────────────
 
 _ORCHESTRATION_AUDIT_PATH = Path.home() / "actions-runners" / "dashboard" / "orchestration_audit.json"
 _DEPLOY_ACTIONS = {"sync_workflows", "restart_runner", "update_config"}
@@ -6475,7 +6516,7 @@ async def fleet_orchestration_deploy(
     }
 
 
-#  Diagnostics & Launchers
+# ─── Diagnostics & Launchers ──────────────────────────────────────────────────
 
 
 @app.get("/api/deployment/git-drift")
@@ -6656,60 +6697,119 @@ async def generate_launchers(
     }
 
 
-# --- Stale Queue Cleanup ---
+# ─── Hosted-Runner Billing Audit ─────────────────────────────────────────────
+
+HOSTED_RUNNER_PATTERNS = re.compile(
+    r"^(ubuntu-|windows-|macos-|GitHub Actions \d|Hosted Agent)",
+    re.IGNORECASE,
+)
+_runner_audit_cache: dict[str, Any] = {"violations": [], "last_checked": None, "error": None}
+_runner_audit_lock = asyncio.Lock()
 
 
-@app.get("/api/queue/stale")
-async def get_stale_queue(
-    request: Request,
-    min_age: int = 60,
-) -> dict:
-    """List every queued run older than min_age minutes across the entire org.
-
-    Unlike /api/queue (15-repo sample), this scans every repo so ancient
-    runs in quiet repos are visible.  Cached 5 minutes.
-    """
-    if _should_proxy_fleet_to_hub(request):
-        return await proxy_to_hub(request)
-    cache_key = f"stale_queue_{min_age}"
-    cached = _cache_get(cache_key, 300.0)
-    if cached is not None:
-        return cached
-    stale = await queue_cleanup.find_stale_runs(ORG, min_age)
-    payload: dict = {
-        "min_age_minutes": min_age,
-        "stale_count": len(stale),
-        "runs": [r.as_dict() for r in stale],
-    }
-    _cache_set(cache_key, payload, 300.0)
-    return payload
+@app.get("/api/runner-routing-audit")
+async def get_runner_routing_audit() -> JSONResponse:
+    """Return recent workflow runs that executed on GitHub-hosted runners."""
+    return JSONResponse(_runner_audit_cache)
 
 
-@app.post("/api/queue/purge-stale")
-async def purge_stale_queue(
-    request: Request,
-    *,
-    principal: Principal = Depends(require_scope("workflows.control")),  # noqa: B008
-) -> dict:
-    """Cancel every queued run waiting longer than min_age minutes.
-
-    Body: {"min_age": 60, "dry_run": false}
-    Busts queue/diagnose/stale caches on success.
-    """
-    body = await request.json()
-    min_age = int(body.get("min_age", 60))
-    dry_run = bool(body.get("dry_run", False))
-    result = await queue_cleanup.purge_stale_runs(ORG, min_age, dry_run=dry_run)
-    if not dry_run and result.get("cancelled_count", 0) > 0:
-        _cache.pop("queue", None)
-        _cache.pop("diagnose", None)
-        for key in list(_cache.keys()):
-            if key.startswith("stale_queue_"):
-                _cache.pop(key, None)
-    return result
+@app.post("/api/runner-routing-audit/refresh")
+async def refresh_runner_routing_audit() -> JSONResponse:
+    """Trigger an immediate audit refresh."""
+    asyncio.create_task(_run_runner_audit())
+    return JSONResponse({"status": "refresh triggered"})
 
 
-#  Main
+async def _run_runner_audit() -> None:
+    async with _runner_audit_lock:
+        try:
+            violations = await _fetch_hosted_runner_violations()
+            _runner_audit_cache["violations"] = violations
+            _runner_audit_cache["last_checked"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+            _runner_audit_cache["error"] = None
+            if violations:
+                log.warning(
+                    "BILLING ALERT: %d workflow run(s) detected on GitHub-hosted runners",
+                    len(violations),
+                )
+        except Exception as exc:  # noqa: BLE001
+            _runner_audit_cache["error"] = str(exc)
+            log.error("Runner routing audit failed: %s", exc)
+
+
+async def _fetch_hosted_runner_violations() -> list[dict[str, Any]]:
+    """Query GitHub API for recent runs on hosted runners across org repos."""
+    token = os.environ.get("GH_TOKEN", "").strip()
+    if not token:
+        return []
+
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
+    org = ORG
+    violations: list[dict[str, Any]] = []
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        repos_resp = await client.get(
+            f"https://api.github.com/orgs/{org}/repos",
+            headers=headers,
+            params={"per_page": 50, "sort": "pushed"},
+        )
+        if repos_resp.status_code != 200:
+            return []
+        repos = [r["name"] for r in repos_resp.json()]
+
+        for repo_name in repos[:20]:  # limit to 20 most recently pushed
+            try:
+                runs_resp = await client.get(
+                    f"https://api.github.com/repos/{org}/{repo_name}/actions/runs",
+                    headers=headers,
+                    params={"per_page": 10, "status": "completed"},
+                )
+                if runs_resp.status_code != 200:
+                    continue
+                for run in runs_resp.json().get("workflow_runs", []):
+                    jobs_resp = await client.get(
+                        f"https://api.github.com/repos/{org}/{repo_name}/actions/runs/{run['id']}/jobs",
+                        headers=headers,
+                        params={"per_page": 30},
+                    )
+                    if jobs_resp.status_code != 200:
+                        continue
+                    for job in jobs_resp.json().get("jobs", []):
+                        runner_name = job.get("runner_name") or ""
+                        runner_group = job.get("runner_group_name") or ""
+                        if HOSTED_RUNNER_PATTERNS.match(runner_name) or runner_group == "GitHub Actions":
+                            violations.append(
+                                {
+                                    "repo": repo_name,
+                                    "workflow": run.get("name", ""),
+                                    "run_id": run["id"],
+                                    "job_name": job.get("name", ""),
+                                    "runner_name": runner_name,
+                                    "runner_group": runner_group,
+                                    "run_url": run.get("html_url", ""),
+                                    "started_at": job.get("started_at", ""),
+                                    "conclusion": job.get("conclusion", ""),
+                                }
+                            )
+            except Exception:  # noqa: BLE001
+                continue
+
+    return violations
+
+
+async def _runner_audit_loop() -> None:
+    await asyncio.sleep(30)  # initial delay
+    while True:
+        await _run_runner_audit()
+        await asyncio.sleep(900)  # 15 minutes
+
+
+@app.on_event("startup")
+async def _start_background_tasks() -> None:
+    asyncio.create_task(_runner_audit_loop())
+
+
+# ─── Main ─────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     import uvicorn
@@ -6726,7 +6826,8 @@ if __name__ == "__main__":
 
     uvicorn.run(
         app,
-        host="0.0.0.0",  # nosec B104 -- intentional for local LAN/Tailscale access
+        host="0.0.0.0",  # nosec B104 — intentional for local LAN/Tailscale access
         port=PORT,
         log_level="warning",  # FastAPI handles its own logging
     )
+# ci-trigger
