@@ -132,7 +132,7 @@ def atomic_write_json(path: Path, data: Any) -> None:
             json.dump(data, fh, indent=2)
             fh.write("\n")
         os.replace(tmp_path, path)
-    except Exception:
+    except (OSError, TypeError, ValueError):
         try:
             os.unlink(tmp_path)
         except OSError:
