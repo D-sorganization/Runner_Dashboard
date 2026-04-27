@@ -4,15 +4,16 @@ from __future__ import annotations
 
 import json
 import time
-from datetime import datetime, timezone
-from fastapi import HTTPException
-from system_utils import run_cmd, HOSTNAME, BOOT_TIME, get_deployment_info
+from datetime import UTC, datetime
+
 from cache_utils import cache_get, cache_set
+from fastapi import HTTPException
+from system_utils import BOOT_TIME, HOSTNAME, get_deployment_info, run_cmd
 
 
 async def gh_api(endpoint: str) -> dict:
     """Call the GitHub API via gh CLI.
-    
+
     Uses GH_TOKEN env var when set (required for admin:org endpoints).
     """
     code, stdout, stderr = await run_cmd(["gh", "api", endpoint])
@@ -52,7 +53,7 @@ async def get_gh_health_summary(org: str) -> dict:
 
     return {
         "status": "healthy" if gh_ok else "degraded",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "hostname": HOSTNAME,
         "github_api": "connected" if gh_ok else "unreachable",
         "runners_registered": runner_count,

@@ -5,7 +5,8 @@ from __future__ import annotations
 import time
 from collections import OrderedDict
 from typing import Any
-from dashboard_config import MAX_CACHE_SIZE, CACHE_EVICT_BATCH
+
+from dashboard_config import CACHE_EVICT_BATCH, MAX_CACHE_SIZE
 
 # Global cache store
 _cache: OrderedDict[str, tuple[Any, float]] = OrderedDict()

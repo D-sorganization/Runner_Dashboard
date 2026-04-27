@@ -3,31 +3,31 @@
 from __future__ import annotations
 
 import asyncio
-import httpx
 import logging
-from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, Request, HTTPException
-from identity import Principal, require_scope
+from datetime import UTC, datetime
+from pathlib import Path
 
+import httpx
+from cache_utils import cache_get, cache_set
 from dashboard_config import (
-    HOSTNAME,
     FLEET_NODES,
+    HOSTNAME,
     MACHINE_ROLE,
+    MAX_RUNNERS,
+    NUM_RUNNERS,
     ORG,
     RUNNER_BASE_DIR,
-    SYSTEMCTL_BIN,
-    NUM_RUNNERS,
-    MAX_RUNNERS,
 )
-from gh_utils import gh_api_admin, get_gh_health_summary
+from fastapi import APIRouter, Depends, HTTPException, Request
+from gh_utils import get_gh_health_summary, gh_api_admin
+from identity import Principal, require_scope
+from proxy_utils import proxy_to_hub, should_proxy_fleet_to_hub
 from system_utils import (
-    get_system_metrics_snapshot,
     classify_node_offline,
+    get_system_metrics_snapshot,
     resource_offline_reason,
     run_cmd,
 )
-from proxy_utils import proxy_to_hub, should_proxy_fleet_to_hub
-from cache_utils import cache_get, cache_set
 
 log = logging.getLogger("dashboard.fleet")
 router = APIRouter(tags=["fleet"])
@@ -40,7 +40,6 @@ def _runner_limit() -> int:
 
 def runner_svc_path(runner_num: int) -> Path:
     """Return the path to a runner's svc.sh script."""
-    from pathlib import Path
     return RUNNER_BASE_DIR / f"runner-{runner_num}" / "svc.sh"
 
 
@@ -157,14 +156,14 @@ async def get_runners(request: Request):
     if cached is not None:
         cached["runners"] = sorted(cached.get("runners", []), key=_runner_sort_key)
         return cached
-    
+
     try:
         data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
         data["runners"] = sorted(data.get("runners", []), key=_runner_sort_key)
         cache_set("runners", data)
         return data
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"GitHub API error: {exc}")
+        raise HTTPException(status_code=502, detail=f"GitHub API error: {exc}") from exc
 
 
 @router.get("/api/runners/matlab")
@@ -182,7 +181,7 @@ async def get_matlab_runner_health(request: Request) -> dict:
         all_runners = data.get("runners", []) or []
     except Exception:
         all_runners = []
-    
+
     matlab = [r for r in all_runners if _is_matlab_runner(r)]
     summaries = [_matlab_runner_summary(r) for r in matlab]
 
@@ -192,7 +191,7 @@ async def get_matlab_runner_health(request: Request) -> dict:
         "online": sum(1 for r in summaries if r["status"] == "online"),
         "busy": sum(1 for r in summaries if r["busy"]),
         "offline": sum(1 for r in summaries if r["status"] != "online"),
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
     }
     cache_set("matlab_runner_health", res)
     return res
@@ -202,7 +201,7 @@ async def get_matlab_runner_health(request: Request) -> dict:
 async def stop_runner(
     request: Request,
     runner_id: int,
-    principal: Principal = Depends(require_scope("runners.control")),
+    principal: Principal = Depends(require_scope("runners.control")),  # noqa: B008
 ):
     """Stop a specific runner's service."""
     data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
@@ -223,7 +222,7 @@ async def stop_runner(
 async def start_runner(
     request: Request,
     runner_id: int,
-    principal: Principal = Depends(require_scope("runners.control")),
+    principal: Principal = Depends(require_scope("runners.control")),  # noqa: B008
 ):
     """Start a specific runner's service."""
     data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
@@ -244,7 +243,7 @@ async def start_runner(
 async def fleet_control(
     request: Request,
     action: str,
-    principal: Principal = Depends(require_scope("fleet.control")),
+    principal: Principal = Depends(require_scope("fleet.control")),  # noqa: B008
 ):
     """Orchestrate runner scaling across the fleet or locally."""
     if action not in {"up", "down", "all-up", "all-down", "all-restart"}:
@@ -298,7 +297,7 @@ async def get_fleet_status(request: Request):
                     if res_reason:
                         data.update(res_reason)
                     return name, data
-                
+
                 reason = classify_node_offline(status_code=resp.status_code)
                 return name, {
                     "status": "offline",

@@ -7,31 +7,30 @@ import json
 import logging
 import os
 import platform
+import shutil
 import subprocess
 import time
-import shutil
-from datetime import datetime, timezone
-from pathlib import Path
 from collections import deque
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
 
 import psutil
-
-from security import safe_subprocess_env
 from dashboard_config import (
-    HOSTNAME,
-    RUNNER_BASE_DIR,
-    DISK_WARN_PERCENT,
     DISK_CRITICAL_PERCENT,
     DISK_MIN_FREE_GB,
+    DISK_WARN_PERCENT,
+    HOSTNAME,
+    RUNNER_BASE_DIR,
 )
+from security import safe_subprocess_env
 log = logging.getLogger("dashboard.system")
 
 # Global state for CPU history
 _cpu_history: deque[float] = deque(maxlen=60)
 BOOT_TIME = time.time()
 
-# datetime.UTC added in Python 3.11; fall back to timezone.utc on older runtimes.
-UTC = getattr(timezone, "utc", timezone.utc)
+UTC = UTC
 
 # Host memory cache for WSL
 HOST_MEMORY_GB: float | None = None
@@ -270,13 +269,13 @@ async def get_system_metrics_snapshot(runner_limit: int | None = None) -> dict:
     current_cpu = psutil.cpu_percent(interval=0)
     _cpu_history.append(current_cpu)
     cpu_avg_1m = round(sum(_cpu_history) / len(_cpu_history), 1) if _cpu_history else current_cpu
-    
+
     try:
         uptime_seconds = time.time() - psutil.boot_time()
     except Exception:
         uptime_seconds = 0
     dashboard_uptime = time.time() - BOOT_TIME
-    
+
     gpu_info = get_gpu_info()
     disk_pressure = get_disk_pressure_snapshot(
         path=disk_path,
@@ -286,11 +285,11 @@ async def get_system_metrics_snapshot(runner_limit: int | None = None) -> dict:
         percent=disk_percent,
     )
     hardware_specs = get_local_hardware_specs(gpu_info)
-    
+
     metrics = {
         "hostname": HOSTNAME,
         "platform": platform.platform(),
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "uptime_seconds": int(uptime_seconds),
         "dashboard_uptime_seconds": int(dashboard_uptime),
         "cpu": {
@@ -345,7 +344,7 @@ async def get_system_metrics_snapshot(runner_limit: int | None = None) -> dict:
             }
         except Exception:  # noqa: BLE001
             pass
-            
+
     return metrics
 
 
@@ -402,9 +401,9 @@ def resource_offline_reason(system: dict) -> dict | None:
     pressure = disk.get("pressure", {})
     if pressure.get("status") == "critical":
         return {"offline_reason": "disk-pressure", "offline_detail": pressure.get("reasons", ["Disk critical"])[0]}
-    
+
     mem = system.get("memory", {})
     if mem.get("percent", 0) >= 98:
         return {"offline_reason": "oom-pressure", "offline_detail": "Memory usage >= 98%"}
-        
+
     return None

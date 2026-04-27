@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import logging
+
 import httpx
-from fastapi import Request, HTTPException
-from dashboard_config import MACHINE_ROLE, HUB_URL
+from dashboard_config import HUB_URL, MACHINE_ROLE
+from fastapi import HTTPException, Request
 
 log = logging.getLogger("dashboard.proxy")
 

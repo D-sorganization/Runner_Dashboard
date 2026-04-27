@@ -28,13 +28,12 @@ import os
 import platform
 import re
 import secrets
-import shlex
 import shutil
 import subprocess
 import sys
 import tempfile
 import time
-from collections import OrderedDict, deque
+from collections import OrderedDict
 from pathlib import Path
 from typing import Any
 
@@ -68,11 +67,38 @@ import quick_dispatch as _quick_dispatch  # noqa: E402
 import quota_enforcement as quota_enforcement  # noqa: E402
 import scheduled_workflows as scheduled_workflow_inventory  # noqa: E402
 import usage_monitoring as usage_monitoring  # noqa: E402
+from cache_utils import cache_get, cache_set  # noqa: E402
+from dashboard_config import (  # noqa: E402
+    DEFAULT_NUM_RUNNERS,
+    DEPLOYMENT_FILE,
+    EXPECTED_VERSION_FILE,
+    FLEET_NODES,
+    HOSTNAME,
+    HUB_URL,
+    MACHINE_ROLE,
+    NUM_RUNNERS,
+    ORG,
+    PORT,
+    REPO_ROOT,
+    RUN_JOB_ENRICHMENT_LIMIT,
+    RUNNER_ALIASES,
+    RUNNER_BASE_DIR,
+    RUNNER_SCHEDULE_CONFIG,
+    RUNNER_SCHEDULER_BIN,
+    RUNNER_SCHEDULER_STATE,
+    SYSTEMCTL_BIN,
+    WSL_KEEPALIVE_SERVICE,
+    WSL_KEEPALIVE_TASK_NAME,
+    runner_limit,
+    runner_scheduler_apply_command,
+)
+from gh_utils import get_gh_health_summary, gh_api, gh_api_admin, gh_api_raw  # noqa: E402
 from local_app_monitoring import collect_local_apps  # noqa: E402
 from machine_registry import (  # noqa: E402
     load_machine_registry,
     merge_registry_with_live_nodes,
 )
+from proxy_utils import proxy_to_hub, should_proxy_fleet_to_hub  # noqa: E402
 from report_files import parse_report_metrics, sanitize_report_date  # noqa: E402
 from routers import credentials as _credentials_router  # noqa: E402
 from routers import dispatch as _dispatch_router  # noqa: E402
@@ -81,23 +107,15 @@ from security import (  # noqa: E402
     check_dispatch_rate,
     safe_subprocess_env,
     sanitize_log_value,
-    validate_fleet_node_url,
-)
-from dashboard_config import (  # noqa: E402
-    HOSTNAME, ORG, PORT, MACHINE_ROLE, HUB_URL, FLEET_NODES,
-    RUNNER_BASE_DIR, SYSTEMCTL_BIN, RUNNER_SCHEDULER_SERVICE,
-    RUNNER_SCHEDULER_APPLY_CMD, DEPLOYMENT_FILE, runner_limit,
 )
 from system_utils import (  # noqa: E402
-    get_system_metrics_snapshot,
     classify_node_offline,
+    get_deployment_info,
+    get_runner_service_name,
+    get_system_metrics_snapshot,
     resource_offline_reason,
     run_cmd,
-    get_deployment_info,
 )
-from gh_utils import gh_api, gh_api_admin, gh_api_raw, get_gh_health_summary  # noqa: E402
-from proxy_utils import proxy_to_hub, should_proxy_fleet_to_hub  # noqa: E402
-from cache_utils import cache_get, cache_set  # noqa: E402
 
 # datetime.UTC added in Python 3.11; fall back to timezone.utc on older runtimes.
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
@@ -202,28 +220,8 @@ _feature_requests_lock: asyncio.Lock = asyncio.Lock()
 _prompt_templates_lock: asyncio.Lock = asyncio.Lock()
 _prompt_notes_lock: asyncio.Lock = asyncio.Lock()
 
-# ─── Setup moving averages and host memory cache ────────────
 
-_cpu_history: deque[float] = deque(maxlen=60)
-
-
-        # Running in WSL -> try interop to get physical hardware capacity
-        result = subprocess.run(
-            [
-                "powershell.exe",
-                "-NoProfile",
-                "-Command",
-                "(Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            env=safe_subprocess_env(),
-        )
-        if result.returncode == 0:
-            HOST_MEMORY_GB = round(int(result.stdout.strip()) / (1024**3), 1)
-except Exception:  # noqa: BLE001
-    pass
+# ─── Configuration ────────────────────────────────────────────────────────────
 
 
 # Path to daily progress reports (on Windows mount from WSL2)
@@ -462,7 +460,7 @@ def _local_hardware_specs(gpu: dict | None = None) -> dict:
         "cpu_model": platform.processor() or platform.machine(),
         "cpu_physical_cores": psutil.cpu_count(logical=False),
         "cpu_logical_cores": psutil.cpu_count(logical=True),
-        "memory_gb": HOST_MEMORY_GB or round(mem.total / (1024**3), 1),
+        "memory_gb": round(mem.total / (1024**3), 1),
         "wsl_memory_gb": round(mem.total / (1024**3), 1),
         "gpu_count": len(gpu_devices),
         "gpu_vram_gb": max(gpu_vram_values) if gpu_vram_values else None,
@@ -503,28 +501,6 @@ def _disk_pressure_snapshot(
     """Return dashboard-safe disk pressure state for autoscaling and UI alerts."""
     status = "healthy"
     reasons = []
-    if percent >= DISK_CRITICAL_PERCENT:
-        status = "critical"
-        reasons.append(f"disk usage >= {DISK_CRITICAL_PERCENT:g}%")
-    elif percent >= DISK_WARN_PERCENT:
-        status = "warning"
-        reasons.append(f"disk usage >= {DISK_WARN_PERCENT:g}%")
-    if free_gb <= DISK_MIN_FREE_GB:
-        free_space_status = "critical" if free_gb <= max(5.0, DISK_MIN_FREE_GB / 2) else "warning"
-        if status != "critical":
-            status = free_space_status
-        reasons.append(f"free space <= {DISK_MIN_FREE_GB:g} GB")
-
-    recommendations = []
-    if status != "healthy":
-        recommendations.extend(
-            [
-                "Run runner-dashboard/deploy/runner-cleanup.sh to clear stale runner work directories.",
-                "Prune unused Docker images, volumes, and build caches if Docker is used in WSL.",
-                "After cleanup, run wsl --shutdown from Windows and compact the distro VHDX.",
-            ]
-        )
-
     return {
         "status": status,
         "path": path,
@@ -532,13 +508,11 @@ def _disk_pressure_snapshot(
         "used_gb": used_gb,
         "free_gb": free_gb,
         "percent": percent,
-        "warn_percent": DISK_WARN_PERCENT,
-        "critical_percent": DISK_CRITICAL_PERCENT,
-        "min_free_gb": DISK_MIN_FREE_GB,
         "reasons": reasons,
-        "recommendations": recommendations,
     }
 
+
+# ─── Auth ─────────────────────────────────────────────────────────────────────
 
 # ─── Fleet node config ───────────────────────────────────────────────────────
 # Set MACHINE_ROLE=hub on the primary machine.
@@ -549,66 +523,14 @@ def _disk_pressure_snapshot(
 # Example (in /etc/systemd/system/runner-dashboard.service on ControlTower):
 #   Environment=MACHINE_ROLE=hub
 #   Environment=FLEET_NODES=envy:http://100.x.x.x:8321,thinkpad:http://100.x.x.x:8321
-MACHINE_ROLE = os.environ.get("MACHINE_ROLE", "node")
-_fleet_raw = os.environ.get("FLEET_NODES", "")
-FLEET_NODES: dict[str, str] = {}
-for _entry in _fleet_raw.split(","):
-    _entry = _entry.strip()
-    if not _entry:
-        continue
-    # Format: name:http://host:port  — the URL part begins after the first colon
-    # but URLs also contain colons, so we require the URL to start with http
-    _colon_idx = _entry.find(":http")
-    if _colon_idx == -1:
-        _colon_idx = _entry.find(":https")
-    if _colon_idx > 0:
-        _label = _entry[:_colon_idx].strip()
-        _url = _entry[_colon_idx + 1 :].strip()
-    elif ":" in _entry:
-        _label, _, _url = _entry.partition(":")
-        _label = _label.strip()
-        _url = _url.strip()
-    else:
-        continue
-    if _label and _url:
-        try:
-            validate_fleet_node_url(_url)
-            FLEET_NODES[_label] = _url
-        except ValueError as _e:
-            log.warning("Skipping invalid FLEET_NODES entry %r: %s", _entry, _e)
 
-HUB_URL = os.environ.get("HUB_URL")
-if HUB_URL:
-    HUB_URL = HUB_URL.rstrip("/")
+# ─── GitHub API ───────────────────────────────────────────────────────────────
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
 
 
-# ─── GitHub API ───────────────────────────────────────────────────────────────
-
-
-async def run_cmd(cmd: list[str], timeout: int = 30, cwd: Path | None = None) -> tuple[int, str, str]:
-    """Run a shell command asynchronously."""
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=str(cwd) if cwd else None,
-        )
-    except FileNotFoundError as exc:
-        return 127, "", str(exc)
-    try:
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-        return (
-            proc.returncode if proc.returncode is not None else -1,
-            stdout.decode(),
-            stderr.decode(),
-        )
-    except (TimeoutError, asyncio.TimeoutError):  # noqa: UP041
-        proc.kill()
-        return -1, "", "Command timed out"
+# ─── App Initialization ───────────────────────────────────────────────────────
 
 
 
@@ -715,7 +637,7 @@ def _machine_deployment_state(node: dict, expected_version: str) -> dict:
 
 def _build_deployment_state(nodes: list[dict], expected_version: str) -> dict:
     """Summarize deployment state across the fleet."""
-    deployment = _deployment_info()
+    deployment = get_deployment_info()
     local_drift = deployment_drift.evaluate_drift(deployment, expected_version)
     machines = [_machine_deployment_state(node, expected_version) for node in nodes]
     attention_states = {"offline", "dirty", "drifted", "degraded", "unknown"}
@@ -791,7 +713,7 @@ async def _get_recent_org_repos(limit: int = 30) -> list[dict]:
         return []
     try:
         return json.loads(stdout)
-    except (json.jsonDecodeError, ValueError):
+    except (json.JSONDecodeError, ValueError):
         return []
 
 
@@ -1113,7 +1035,7 @@ def _validate_runner_schedule(config: dict) -> dict:
     sanitized: dict[str, Any] = {
         "enabled": bool(config.get("enabled", True)),
         "timezone": str(config.get("timezone") or "America/Los_Angeles"),
-        "default_count": max(0, min(_runner_limit(), int(config.get("default_count", 1)))),
+        "default_count": max(0, min(runner_limit(), int(config.get("default_count", 1)))),
         "schedules": [],
     }
     schedules = config.get("schedules", [])
@@ -1128,7 +1050,7 @@ def _validate_runner_schedule(config: dict) -> dict:
         normalized_days = [str(day).lower() for day in days]
         if any(day not in days_allowed for day in normalized_days):
             raise ValueError("schedule days must be mon/tue/wed/thu/fri/sat/sun")
-        runners = max(0, min(_runner_limit(), int(entry.get("runners", 0))))
+        runners = max(0, min(runner_limit(), int(entry.get("runners", 0))))
         sanitized["schedules"].append(
             {
                 "name": str(entry.get("name") or "scheduled"),
@@ -1231,7 +1153,7 @@ def get_runner_capacity_snapshot() -> dict:
         "configured_runners": NUM_RUNNERS,
         "default_runners": DEFAULT_NUM_RUNNERS,
         "installed_runners": sum(1 for path in RUNNER_BASE_DIR.glob("runner-*") if path.is_dir()),
-        "max_runners": _runner_limit(),
+        "max_runners": runner_limit(),
         "config_path": str(RUNNER_SCHEDULE_CONFIG),
         "state_path": str(RUNNER_SCHEDULER_STATE),
         "timers": timer_states,
@@ -1761,7 +1683,7 @@ def get_gpu_info() -> dict:
 def get_per_runner_resources() -> list[dict]:
     """Get CPU and memory usage for each runner's worker processes."""
     runner_procs = []
-    for i in range(1, _runner_limit() + 1):
+    for i in range(1, runner_limit() + 1):
         _ = get_runner_service_name(i)
         runner_info: dict[str, Any] = {
             "runner_num": i,
@@ -1903,7 +1825,7 @@ async def _collect_live_fleet_nodes() -> list[dict]:
 @app.get("/api/fleet/status")
 async def get_fleet_status(request: Request):
     """Get full system metrics state for all machines in the fleet network."""
-    if _should_proxy_fleet_to_hub(request):
+    if should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
 
     responses = {}
@@ -1980,7 +1902,7 @@ async def get_deployment_drift() -> dict:
 @app.get("/api/deployment/state")
 async def get_deployment_state(request: Request) -> dict:
     """Return dashboard deployment state for the fleet overview and deployment tab."""
-    if _should_proxy_fleet_to_hub(request):
+    if should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
     fleet = await _get_fleet_nodes_impl()
     expected = await _read_expected_dashboard_version()
@@ -2192,7 +2114,7 @@ async def get_matlab_runner_health(request: Request) -> dict:
     Always returns 200; absence of runners is represented explicitly so the UI
     can render an actionable warning instead of a spinner.
     """
-    if _should_proxy_fleet_to_hub(request):
+    if should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
 
     cached = cache_get("matlab_runner_health", 45.0)
@@ -2257,7 +2179,7 @@ async def get_runs(request: Request, per_page: int = 30) -> dict:
     fetched per-repo.  We sample the 10 most recently updated repos and return
     up to ``per_page`` runs sorted newest-first.
     """
-    if _should_proxy_fleet_to_hub(request):
+    if should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
 
     cache_key = f"runs:{per_page}"
@@ -2348,7 +2270,7 @@ async def get_scheduled_workflows(
     expressions from workflow YAML where available, and attaches a dry-run plan
     that describes future changes without executing them.
     """
-    if _should_proxy_fleet_to_hub(request):
+    if should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
     return await _scheduled_workflows_impl(
         include_archived=include_archived,
@@ -2524,7 +2446,7 @@ async def dispatch_workflow(
 @app.get("/api/runs/enriched")
 async def get_enriched_runs(request: Request, per_page: int = 50) -> dict:
     """Return recent runs with dashboard-friendly enrichment fields."""
-    if _should_proxy_fleet_to_hub(request):
+    if should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
     cache_key = f"runs-enriched:{per_page}"
     cached = cache_get(cache_key, 120.0)
@@ -2544,22 +2466,15 @@ async def get_enriched_runs(request: Request, per_page: int = 50) -> dict:
 @app.get("/api/runs/{repo}")
 async def get_repo_runs(request: Request, repo: str, per_page: int = 20):
     """Get recent workflow runs for a specific repo."""
-    if _should_proxy_fleet_to_hub(request):
+    if should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
     data = await gh_api(f"/repos/{ORG}/{repo}/actions/runs?per_page={per_page}")
     return data
 
 
 
-# ─── Fleet Orchestration ──────────────────────────────────────────────────────
 
-    return {
-        "action": action,
-        "scope": "local" if scope == "local" else "fleet",
-        "machine": local_machine,
-        "results": local_result["results"],
-        "nodes": node_results,
-    }
+# ─── Fleet Orchestration ──────────────────────────────────────────────────────
 
 
 @app.get("/api/fleet/schedule")
@@ -2596,7 +2511,7 @@ async def update_runner_schedule(
         env["RUNNER_ROOT"] = str(RUNNER_BASE_DIR)
         env["RUNNER_SCHEDULE_CONFIG"] = str(RUNNER_SCHEDULE_CONFIG)
         env["RUNNER_SCHEDULER_STATE"] = str(RUNNER_SCHEDULER_STATE)
-        apply_cmd = _runner_scheduler_apply_command()
+        apply_cmd = runner_scheduler_apply_command()
         result = subprocess.run(
             apply_cmd,
             capture_output=True,
@@ -2627,7 +2542,7 @@ async def update_runner_schedule(
 @app.get("/api/repos")
 async def get_repos(request: Request):
     """Get all org repos with open PRs, open issues, and last CI status."""
-    if _should_proxy_fleet_to_hub(request):
+    if should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
 
     cached = cache_get("repos", 600.0)
@@ -3216,7 +3131,7 @@ async def rerun_ci_test(request: Request, *, principal: Principal = Depends(requ
 @app.get("/api/stats")
 async def get_stats(request: Request):
     """Aggregate organization, runner, queue, and workflow statistics."""
-    if _should_proxy_fleet_to_hub(request):
+    if should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
 
     cached = cache_get("stats", 120.0)
@@ -3276,7 +3191,7 @@ async def get_stats(request: Request):
 @app.get("/api/usage")
 async def get_usage_monitoring(request: Request) -> dict:
     """Return normalized subscription and local tool usage summaries."""
-    if _should_proxy_fleet_to_hub(request):
+    if should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
 
     cached = cache_get("usage_monitoring", 300.0)
@@ -4217,7 +4132,7 @@ async def get_queue(request: Request) -> dict:
     GitHub has no org-level queue endpoint; we query the 15 most recently
     updated repos concurrently for both statuses and aggregate the results.
     """
-    if _should_proxy_fleet_to_hub(request):
+    if should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
     return await _queue_impl()
 
@@ -4659,7 +4574,7 @@ async def diagnose_queue() -> dict:
 
 @app.get("/api/fleet/nodes")
 async def get_fleet_nodes(request: Request) -> dict:
-    if _should_proxy_fleet_to_hub(request):
+    if should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
     return await _get_fleet_nodes_impl()
 
@@ -4667,7 +4582,7 @@ async def get_fleet_nodes(request: Request) -> dict:
 @app.get("/api/fleet/hardware")
 async def get_fleet_hardware(request: Request) -> dict:
     """Return centralized fleet hardware specs for workload placement."""
-    if _should_proxy_fleet_to_hub(request):
+    if should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
     fleet = await _get_fleet_nodes_impl()
     machines = []
@@ -6058,7 +5973,7 @@ async def get_stale_queue(
     Unlike /api/queue (15-repo sample), this scans every repo so ancient
     runs in quiet repos are visible.  Cached 5 minutes.
     """
-    if _should_proxy_fleet_to_hub(request):
+    if should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
     cache_key = f"stale_queue_{min_age}"
     cached = cache_get(cache_key, 300.0)
