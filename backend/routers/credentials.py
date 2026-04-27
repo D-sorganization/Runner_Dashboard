@@ -52,6 +52,22 @@ def _env_present(key: str) -> bool:
     return bool(val and val.strip())
 
 
+def _env_present_anywhere(key: str) -> bool:
+    """Check env var in current process AND in maxwell/runner env files."""
+    if _env_present(key):
+        return True
+    for env_file in (_MAXWELL_ENV, _DASHBOARD_ENV):
+        if not env_file.exists():
+            continue
+        try:
+            text = env_file.read_text(encoding="utf-8")
+            if re.search(rf"^{re.escape(key)}=\S", text, re.MULTILINE):
+                return True
+        except Exception:
+            pass
+    return False
+
+
 def _env_source(key: str) -> str:
     return "env_var" if os.environ.get(key, "") else "unavailable"
 
@@ -270,7 +286,7 @@ async def get_credentials(request: Request) -> dict:
 
     # Claude Code CLI
     claude_binary = shutil.which("claude")
-    anthropic_key = _env_present("ANTHROPIC_API_KEY")
+    anthropic_key = _env_present_anywhere("ANTHROPIC_API_KEY")
     probes.append(
         {
             "id": "claude_code_cli",
@@ -280,6 +296,8 @@ async def get_credentials(request: Request) -> dict:
             "authenticated": anthropic_key,
             "reachable": claude_binary is not None and anthropic_key,
             "usable": claude_binary is not None and anthropic_key,
+            "binary_found": claude_binary is not None,
+            "key_status": "set" if anthropic_key else "missing",
             "status": (
                 "ready" if (claude_binary and anthropic_key) else ("missing_key" if claude_binary else "not_installed")
             ),
