@@ -7,8 +7,8 @@ import time
 from datetime import UTC, datetime
 
 from cache_utils import cache_get, cache_set
-from fastapi import HTTPException
 from dashboard_config import DEPLOYMENT_FILE, HOSTNAME, VERSION
+from fastapi import HTTPException
 from system_utils import BOOT_TIME, get_deployment_info, run_cmd
 
 
