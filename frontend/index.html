@@ -108,7 +108,31 @@
         background: rgba(0,0,0,0.22);
         border-bottom: 1px solid var(--border);
         gap: 2px;
-        overflow-x: hidden;
+        overflow-x: auto;
+      }
+      .ribbon-group {
+        display: flex;
+        align-items: center;
+        padding: 0 4px;
+        border-right: 1px solid var(--border);
+        height: 100%;
+        position: relative;
+      }
+      .ribbon-group:last-child {
+        border-right: none;
+      }
+      .ribbon-group-label {
+        position: absolute;
+        bottom: 1px;
+        left: 0;
+        right: 0;
+        text-align: center;
+        font-size: 9px;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+        pointer-events: none;
+        opacity: 0.6;
       }
       .ribbon-cat-btn {
         background: none;
@@ -130,7 +154,8 @@
       .ribbon-cat-btn:hover { color: var(--text-primary); }
       .ribbon-cat-btn.active {
         color: var(--text-primary);
-        border-bottom-color: var(--accent-blue);
+        background: rgba(255,255,255,0.06);
+        border-radius: 6px 6px 0 0;
       }
       .ribbon-tab-btn {
         background: none;
@@ -148,7 +173,10 @@
         position: relative;
         transition: color 0.15s;
       }
-      .ribbon-tab-btn:hover { color: rgba(255,255,255,0.8); }
+      .ribbon-tab-btn:hover {
+        color: rgba(255,255,255,1);
+        background: rgba(255,255,255,0.05);
+      }
       .ribbon-tab-btn.active { color: var(--text-primary); }
       .ribbon-tab-btn.active::after {
         content: "";
@@ -17076,6 +17104,12 @@ function PrincipalsTab() {
                 h("button", {
                   className: "btn",
                   style: { marginLeft: 4 },
+                  onClick: function () { window.open("https://github.com/D-sorganization/runner-dashboard", "_blank"); },
+                  title: "View documentation",
+                }, I.help ? I.help(12) : "?"),
+                h("button", {
+                  className: "btn",
+                  style: { marginLeft: 4 },
                   onClick: function () {
                     fetchFleet(); fetchRepos(); fetchTests(); fetchReports();
                     fetchQueue(); fetchMachines(); fetchLocalApps(); fetchEnrichedRuns();
@@ -17088,44 +17122,77 @@ function PrincipalsTab() {
             // ── Secondary ribbon (subtabs) ────────────────────────────────
             h("div", { className: "ribbon-secondary" },
               // Monitor
-              activeCategory === "monitor" && h("button", { className: "ribbon-tab-btn" + (tab === "overview" ? " active" : ""), onClick: function(){setTab("overview");} }, I.server(14), "Overview"),
-              activeCategory === "monitor" && h("button", { className: "ribbon-tab-btn" + (tab === "queue" ? " active" : ""), onClick: function(){setTab("queue"); fetchQueue();} }, I.queue(14), "Queue",
-                (queue.total||0) > 0 ? h("span", {className:"section-badge",style:{background:"rgba(88,166,255,0.2)",color:"var(--accent-blue)",marginLeft:2}}, queue.total||0) : null),
-              activeCategory === "monitor" && h("button", { className: "ribbon-tab-btn" + (tab === "history" ? " active" : ""), onClick: function(){setTab("history"); fetchEnrichedRuns();} }, I.activity(14), "History",
-                enrichedRuns.length > 0 ? h("span", {className:"section-badge",style:{background:"rgba(136,108,228,0.15)",color:"var(--accent-purple)",marginLeft:2}}, enrichedRuns.length) : null),
-              activeCategory === "monitor" && h("button", { className: "ribbon-tab-btn" + (tab === "stats" ? " active" : ""), onClick: function(){setTab("stats");} }, I.activity(14), "Stats"),
-              activeCategory === "monitor" && h("button", { className: "ribbon-tab-btn" + (tab === "machines" ? " active" : ""), onClick: function(){setTab("machines"); fetchMachines();} }, I.server(14), "Machines",
-                (machinesData.count||0) > 1 ? h("span", {className:"section-badge",style:{background:"rgba(63,185,80,0.15)",color:"var(--accent-green)",marginLeft:2}}, machinesData.count||0) : null),
-              activeCategory === "monitor" && h("button", { className: "ribbon-tab-btn" + (tab === "local-apps" ? " active" : ""), onClick: function(){setTab("local-apps"); fetchLocalApps();} }, I.server(14), "Local Tools",
-                (function(){var apps=localApps.tools||localApps.apps||[];var n=apps.filter(localAppNeedsAttention).length;return n>0?h("span",{className:"section-badge",style:{background:"rgba(210,153,34,0.2)",color:"var(--accent-yellow)",marginLeft:2}},n):null;})()),
+              activeCategory === "monitor" && h("div", { className: "ribbon-group" },
+                h("button", { className: "ribbon-tab-btn" + (tab === "overview" ? " active" : ""), onClick: function(){setTab("overview");} }, I.server(14), "Overview"),
+                h("button", { className: "ribbon-tab-btn" + (tab === "queue" ? " active" : ""), onClick: function(){setTab("queue"); fetchQueue();} }, I.queue(14), "Queue",
+                  (queue.total||0) > 0 ? h("span", {className:"section-badge",style:{background:"rgba(88,166,255,0.2)",color:"var(--accent-blue)",marginLeft:2}}, queue.total||0) : null),
+                h("button", { className: "ribbon-tab-btn" + (tab === "history" ? " active" : ""), onClick: function(){setTab("history"); fetchEnrichedRuns();} }, I.activity(14), "History",
+                  enrichedRuns.length > 0 ? h("span", {className:"section-badge",style:{background:"rgba(136,108,228,0.15)",color:"var(--accent-purple)",marginLeft:2}}, enrichedRuns.length) : null),
+                h("button", { className: "ribbon-tab-btn" + (tab === "stats" ? " active" : ""), onClick: function(){setTab("stats");} }, I.activity(14), "Stats"),
+                h("div", { className: "ribbon-group-label" }, "Overview")
+              ),
+              activeCategory === "monitor" && h("div", { className: "ribbon-group" },
+                h("button", { className: "ribbon-tab-btn" + (tab === "machines" ? " active" : ""), onClick: function(){setTab("machines"); fetchMachines();} }, I.server(14), "Machines",
+                  (machinesData.count||0) > 1 ? h("span", {className:"section-badge",style:{background:"rgba(63,185,80,0.15)",color:"var(--accent-green)",marginLeft:2}}, machinesData.count||0) : null),
+                h("button", { className: "ribbon-tab-btn" + (tab === "local-apps" ? " active" : ""), onClick: function(){setTab("local-apps"); fetchLocalApps();} }, I.server(14), "Local Tools",
+                  (function(){var apps=localApps.tools||localApps.apps||[];var n=apps.filter(localAppNeedsAttention).length;return n>0?h("span",{className:"section-badge",style:{background:"rgba(210,153,34,0.2)",color:"var(--accent-yellow)",marginLeft:2}},n):null;})()),
+                h("div", { className: "ribbon-group-label" }, "Infrastructure")
+              ),
               // Dispatch
-              activeCategory === "dispatch" && h("button", { className: "ribbon-tab-btn" + (tab === "workflows" ? " active" : ""), onClick: function(){setTab("workflows"); fetchWorkflowsList();} }, I.activity(14), "Workflows",
-                workflowsList.length > 0 ? h("span", {className:"section-badge",style:{background:"rgba(88,166,255,0.15)",color:"#58a6ff",marginLeft:2}}, workflowsList.length) : null),
-              activeCategory === "dispatch" && h("button", { className: "ribbon-tab-btn" + (tab === "scheduled-jobs" ? " active" : ""), onClick: function(){setTab("scheduled-jobs"); fetchScheduledJobs();} }, I.clock(14), "Schedules",
-                (scheduledJobs.scheduled_workflow_count||0) > 0 ? h("span", {className:"section-badge",style:{background:"rgba(88,166,255,0.2)",color:"var(--accent-blue)",marginLeft:2}}, scheduledJobs.scheduled_workflow_count) : null),
-              activeCategory === "dispatch" && h("button", { className: "ribbon-tab-btn" + (tab === "runner-schedule" ? " active" : ""), onClick: function(){setTab("runner-schedule"); fetchRunnerCapacity();} }, I.clock(14), "Runner Plan",
-                runnerCapacity&&runnerCapacity.state ? h("span", {className:"section-badge",style:{background:"rgba(63,185,80,0.15)",color:"var(--accent-green)",marginLeft:2}}, runnerCapacity.state.desired||0) : null),
-              activeCategory === "dispatch" && h("button", { className: "ribbon-tab-btn" + (tab === "agent-launcher" ? " active" : ""), onClick: function(){setTab("agent-launcher");} }, I.terminal ? I.terminal(14) : I.server(14), "Agent Launcher"),
-              activeCategory === "dispatch" && h("button", { className: "ribbon-tab-btn" + (tab === "maxwell" ? " active" : ""), onClick: function(){setTab("maxwell"); fetchMaxwellStatus();} }, I.server(14), "Maxwell",
-                maxwellStatus.status === "running" ? h("span", {className:"section-badge",style:{background:"rgba(63,185,80,0.15)",color:"var(--accent-green)",marginLeft:2}}, "on") :
-                  maxwellStatus.status ? h("span", {className:"section-badge",style:{background:"rgba(248,81,73,0.15)",color:"var(--accent-red)",marginLeft:2}}, "off") : null),
+              activeCategory === "dispatch" && h("div", { className: "ribbon-group" },
+                h("button", { className: "ribbon-tab-btn" + (tab === "workflows" ? " active" : ""), onClick: function(){setTab("workflows"); fetchWorkflowsList();} }, I.activity(14), "Workflows",
+                  workflowsList.length > 0 ? h("span", {className:"section-badge",style:{background:"rgba(88,166,255,0.15)",color:"#58a6ff",marginLeft:2}}, workflowsList.length) : null),
+                h("button", { className: "ribbon-tab-btn" + (tab === "scheduled-jobs" ? " active" : ""), onClick: function(){setTab("scheduled-jobs"); fetchScheduledJobs();} }, I.clock(14), "Schedules",
+                  (scheduledJobs.scheduled_workflow_count||0) > 0 ? h("span", {className:"section-badge",style:{background:"rgba(88,166,255,0.2)",color:"var(--accent-blue)",marginLeft:2}}, scheduledJobs.scheduled_workflow_count) : null),
+                h("div", { className: "ribbon-group-label" }, "Automation")
+              ),
+              activeCategory === "dispatch" && h("div", { className: "ribbon-group" },
+                h("button", { className: "ribbon-tab-btn" + (tab === "runner-schedule" ? " active" : ""), onClick: function(){setTab("runner-schedule"); fetchRunnerCapacity();} }, I.clock(14), "Runner Plan",
+                  runnerCapacity&&runnerCapacity.state ? h("span", {className:"section-badge",style:{background:"rgba(63,185,80,0.15)",color:"var(--accent-green)",marginLeft:2}}, runnerCapacity.state.desired||0) : null),
+                h("div", { className: "ribbon-group-label" }, "Capacity")
+              ),
+              activeCategory === "dispatch" && h("div", { className: "ribbon-group" },
+                h("button", { className: "ribbon-tab-btn" + (tab === "agent-launcher" ? " active" : ""), onClick: function(){setTab("agent-launcher");} }, I.terminal ? I.terminal(14) : I.server(14), "Agent Launcher"),
+                h("button", { className: "ribbon-tab-btn" + (tab === "maxwell" ? " active" : ""), onClick: function(){setTab("maxwell"); fetchMaxwellStatus();} }, I.server(14), "Maxwell",
+                  maxwellStatus.status === "running" ? h("span", {className:"section-badge",style:{background:"rgba(63,185,80,0.15)",color:"var(--accent-green)",marginLeft:2}}, "on") :
+                    maxwellStatus.status ? h("span", {className:"section-badge",style:{background:"rgba(248,81,73,0.15)",color:"var(--accent-red)",marginLeft:2}}, "off") : null),
+                h("div", { className: "ribbon-group-label" }, "Agents")
+              ),
               // Manage
-              activeCategory === "manage" && h("button", { className: "ribbon-tab-btn" + (tab === "remediation" ? " active" : ""), onClick: function(){setTab("remediation"); fetchRemediationConfig();} }, I.issue(14), "Remediation",
-                runs.filter(function(r){return r.conclusion==="failure";}).length > 0 ? h("span", {className:"section-badge",style:{background:"rgba(248,81,73,0.15)",color:"var(--accent-red)",marginLeft:2}}, runs.filter(function(r){return r.conclusion==="failure";}).length) : null),
-              activeCategory === "manage" && h("button", { className: "ribbon-tab-btn" + (tab === "deployment" ? " active" : ""), onClick: function(){setTab("deployment"); fetchDeploymentState();} }, I.server(14), "Deployment",
-                (deploymentStateLoading||((deploymentState.rollout_state||{}).machines_attention||0)>0) ? h("span", {className:"section-badge",style:{background:"rgba(210,153,34,0.2)",color:"var(--accent-yellow)",marginLeft:2}}, deploymentStateLoading?"\u2026":(deploymentState.rollout_state||{}).machines_attention) : null),
-              activeCategory === "manage" && h("button", { className: "ribbon-tab-btn" + (tab === "fleet-orchestration" ? " active" : ""), onClick: function(){setTab("fleet-orchestration"); fetchFleetOrchestration();} }, I.server(14), "Fleet Orchestration"),
-              activeCategory === "manage" && h("button", { className: "ribbon-tab-btn" + (tab === "credentials" ? " active" : ""), onClick: function(){setTab("credentials"); fetchCredentials();} }, I.settings(14), "Credentials",
-                credentialsData.summary&&credentialsData.summary.not_ready>0 ? h("span", {className:"section-badge",style:{background:"rgba(210,153,34,0.15)",color:"var(--accent-yellow)",marginLeft:2}}, credentialsData.summary.not_ready) : null),
-              activeCategory === "manage" && h("button", { className: "ribbon-tab-btn" + (tab === "org" ? " active" : ""), onClick: function(){setTab("org");} }, I.repo(14), "Organization"),
-              activeCategory === "manage" && h("button", { className: "ribbon-tab-btn" + (tab === "principals" ? " active" : ""), onClick: function(){setTab("principals");} }, I.server(14), "Principals"),
+              activeCategory === "manage" && h("div", { className: "ribbon-group" },
+                h("button", { className: "ribbon-tab-btn" + (tab === "remediation" ? " active" : ""), onClick: function(){setTab("remediation"); fetchRemediationConfig();} }, I.issue(14), "Remediation",
+                  runs.filter(function(r){return r.conclusion==="failure";}).length > 0 ? h("span", {className:"section-badge",style:{background:"rgba(248,81,73,0.15)",color:"var(--accent-red)",marginLeft:2}}, runs.filter(function(r){return r.conclusion==="failure";}).length) : null),
+                h("button", { className: "ribbon-tab-btn" + (tab === "deployment" ? " active" : ""), onClick: function(){setTab("deployment"); fetchDeploymentState();} }, I.server(14), "Deployment",
+                  (deploymentStateLoading||((deploymentState.rollout_state||{}).machines_attention||0)>0) ? h("span", {className:"section-badge",style:{background:"rgba(210,153,34,0.2)",color:"var(--accent-yellow)",marginLeft:2}}, deploymentStateLoading?"\u2026":(deploymentState.rollout_state||{}).machines_attention) : null),
+                h("button", { className: "ribbon-tab-btn" + (tab === "fleet-orchestration" ? " active" : ""), onClick: function(){setTab("fleet-orchestration"); fetchFleetOrchestration();} }, I.server(14), "Fleet Orchestration"),
+                h("div", { className: "ribbon-group-label" }, "Operations")
+              ),
+              activeCategory === "manage" && h("div", { className: "ribbon-group" },
+                h("button", { className: "ribbon-tab-btn" + (tab === "credentials" ? " active" : ""), onClick: function(){setTab("credentials"); fetchCredentials();} }, I.settings(14), "Credentials",
+                  credentialsData.summary&&credentialsData.summary.not_ready>0 ? h("span", {className:"section-badge",style:{background:"rgba(210,153,34,0.15)",color:"var(--accent-yellow)",marginLeft:2}}, credentialsData.summary.not_ready) : null),
+                h("div", { className: "ribbon-group-label" }, "Security")
+              ),
+              activeCategory === "manage" && h("div", { className: "ribbon-group" },
+                h("button", { className: "ribbon-tab-btn" + (tab === "org" ? " active" : ""), onClick: function(){setTab("org");} }, I.repo(14), "Organization"),
+                h("button", { className: "ribbon-tab-btn" + (tab === "principals" ? " active" : ""), onClick: function(){setTab("principals");} }, I.server(14), "Principals"),
+                h("div", { className: "ribbon-group-label" }, "Identity")
+              ),
               // Reports
-              activeCategory === "reports" && h("button", { className: "ribbon-tab-btn" + (tab === "tests" ? " active" : ""), onClick: function(){setTab("tests");} }, I.flask(14), "Tests"),
-              activeCategory === "reports" && h("button", { className: "ribbon-tab-btn" + (tab === "reports" ? " active" : ""), onClick: function(){setTab("reports");} }, I.fileText(14), "Reports"),
-              activeCategory === "reports" && h("button", { className: "ribbon-tab-btn" + (tab === "assessments" ? " active" : ""), onClick: function(){setTab("assessments"); fetchAssessments();} }, I.activity(14), "Assessments"),
-              activeCategory === "reports" && h("button", { className: "ribbon-tab-btn" + (tab === "feature-requests" ? " active" : ""), onClick: function(){setTab("feature-requests"); fetchFeatureRequests();} }, I.issue(14), "Feature Requests",
-                featureRequests.length > 0 ? h("span", {className:"section-badge",style:{background:"rgba(136,108,228,0.15)",color:"var(--accent-purple)",marginLeft:2}}, featureRequests.length) : null),
-              activeCategory === "reports" && h("button", { className: "ribbon-tab-btn" + (tab === "diagnostics" ? " active" : ""), onClick: function(){setTab("diagnostics");} }, I.settings(14), "Diagnostics"),
+              activeCategory === "reports" && h("div", { className: "ribbon-group" },
+                h("button", { className: "ribbon-tab-btn" + (tab === "tests" ? " active" : ""), onClick: function(){setTab("tests");} }, I.flask(14), "Tests"),
+                h("button", { className: "ribbon-tab-btn" + (tab === "reports" ? " active" : ""), onClick: function(){setTab("reports");} }, I.fileText(14), "Reports"),
+                h("div", { className: "ribbon-group-label" }, "Quality")
+              ),
+              activeCategory === "reports" && h("div", { className: "ribbon-group" },
+                h("button", { className: "ribbon-tab-btn" + (tab === "assessments" ? " active" : ""), onClick: function(){setTab("assessments"); fetchAssessments();} }, I.activity(14), "Assessments"),
+                h("button", { className: "ribbon-tab-btn" + (tab === "feature-requests" ? " active" : ""), onClick: function(){setTab("feature-requests"); fetchFeatureRequests();} }, I.issue(14), "Feature Requests",
+                  featureRequests.length > 0 ? h("span", {className:"section-badge",style:{background:"rgba(136,108,228,0.15)",color:"var(--accent-purple)",marginLeft:2}}, featureRequests.length) : null),
+                h("div", { className: "ribbon-group-label" }, "Evals")
+              ),
+              activeCategory === "reports" && h("div", { className: "ribbon-group" },
+                h("button", { className: "ribbon-tab-btn" + (tab === "diagnostics" ? " active" : ""), onClick: function(){setTab("diagnostics");} }, I.settings(14), "Diagnostics"),
+                h("div", { className: "ribbon-group-label" }, "System")
+              ),
             ),
           ),
           h(
