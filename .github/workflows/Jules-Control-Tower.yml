@@ -13,7 +13,7 @@ on:
       - "CI Standard"
       - "Spec Check"
       - "Spec Check (Enhanced)"
-      - "GAAI — Self-Hosted Test Runner"
+      - "GAAI - Self-Hosted Test Runner"
       - "MATLAB Lint (Windows Self-Hosted)"
       - "Fleet Dispatch CI Verify"
     types: [completed]
@@ -274,123 +274,17 @@ jobs:
   call-ci-remediation:
     needs: triage
     if: needs.triage.outputs.target == 'ci-remediation'
-    uses: ./.github/workflows/Agent-CI-Remediation.yml
+    uses: ./.github/workflows/Jules-PR-AutoFix.yml
     with:
-      target_repository: ${{ github.repository }}
-      provider: ${{ needs.triage.outputs.remediation_provider || env.DEFAULT_CI_REMEDIATION_PROVIDER }}
-      run_id: ${{ format('{0}', github.event.workflow_run.id) }}
       branch: ${{ github.event.workflow_run.head_branch || '' }}
-      workflow_name: ${{ github.event.workflow_run.name || 'CI Standard' }}
-      failure_reason: ${{ github.event.workflow_run.display_title || github.event.workflow_run.name || 'CI failure' }}
-      max_same_failure_attempts: ${{ env.MAX_REPAIR_ITERATIONS }}
-    secrets:
-      JULES_APP_ID: ${{ secrets.JULES_APP_ID }}
-      JULES_APP_PRIVATE_KEY: ${{ secrets.JULES_APP_PRIVATE_KEY }}
-      JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
-
-  call-hotfix-creator:
-    needs: triage
-    if: needs.triage.outputs.target == 'hotfix-creator'
-    uses: ./.github/workflows/Jules-Hotfix-Creator.yml
-    with:
-      run_id: ${{ format('{0}', github.event.workflow_run.id) }}
-      failed_branch: ${{ github.event.workflow_run.head_branch || '' }}
     secrets:
       JULES_APP_ID: ${{ secrets.JULES_APP_ID }}
       JULES_APP_PRIVATE_KEY: ${{ secrets.JULES_APP_PRIVATE_KEY }}
 
-  call-scribe:
-    needs: triage
-    if: needs.triage.outputs.target == 'doc-scribe'
-    uses: ./.github/workflows/Jules-Documentation-Scribe.yml
-    secrets:
-      JULES_APP_ID: ${{ secrets.JULES_APP_ID }}
-      JULES_APP_PRIVATE_KEY: ${{ secrets.JULES_APP_PRIVATE_KEY }}
+  # call-hotfix-creator:
+  #   needs: triage
+  #   if: needs.triage.outputs.target == 'hotfix-creator'
+  #   uses: ./.github/workflows/Jules-Hotfix-Creator.yml
+  #   ... (commented out due to missing file)
 
-  call-tests:
-    needs: triage
-    if: needs.triage.outputs.target == 'test-generator'
-    uses: ./.github/workflows/Jules-Test-Generator.yml
-    secrets:
-      JULES_APP_ID: ${{ secrets.JULES_APP_ID }}
-      JULES_APP_PRIVATE_KEY: ${{ secrets.JULES_APP_PRIVATE_KEY }}
-
-  call-auto-refactor:
-    needs: triage
-    if: needs.triage.outputs.target == 'auto-refactor'
-    uses: ./.github/workflows/Jules-Auto-Refactor.yml
-    secrets:
-      JULES_APP_ID: ${{ secrets.JULES_APP_ID }}
-      JULES_APP_PRIVATE_KEY: ${{ secrets.JULES_APP_PRIVATE_KEY }}
-
-  call-auto-rebase:
-    needs: triage
-    if: needs.triage.outputs.target == 'auto-rebase'
-    uses: ./.github/workflows/Jules-Auto-Rebase.yml
-    secrets:
-      JULES_APP_ID: ${{ secrets.JULES_APP_ID }}
-      JULES_APP_PRIVATE_KEY: ${{ secrets.JULES_APP_PRIVATE_KEY }}
-
-  call-archivist:
-    needs: triage
-    if: needs.triage.outputs.target == 'archivist'
-    uses: ./.github/workflows/Jules-Archivist.yml
-    secrets:
-      JULES_APP_ID: ${{ secrets.JULES_APP_ID }}
-      JULES_APP_PRIVATE_KEY: ${{ secrets.JULES_APP_PRIVATE_KEY }}
-
-  call-sentinel:
-    needs: triage
-    if: needs.triage.outputs.target == 'sentinel'
-    uses: ./.github/workflows/Jules-Sentinel.yml
-    secrets:
-      JULES_APP_ID: ${{ secrets.JULES_APP_ID }}
-      JULES_APP_PRIVATE_KEY: ${{ secrets.JULES_APP_PRIVATE_KEY }}
-
-  call-code-quality-reviewer:
-    needs: triage
-    if: needs.triage.outputs.target == 'code-quality-reviewer'
-    uses: ./.github/workflows/Jules-Code-Quality-Reviewer.yml
-    secrets:
-      JULES_APP_ID: ${{ secrets.JULES_APP_ID }}
-      JULES_APP_PRIVATE_KEY: ${{ secrets.JULES_APP_PRIVATE_KEY }}
-
-  call-assessment-generator:
-    needs: triage
-    if: needs.triage.outputs.target == 'assessment-generator'
-    uses: ./.github/workflows/Jules-Assessment-Generator.yml
-    secrets:
-      JULES_APP_ID: ${{ secrets.JULES_APP_ID }}
-      JULES_APP_PRIVATE_KEY: ${{ secrets.JULES_APP_PRIVATE_KEY }}
-
-  call-issue-resolver:
-    needs: triage
-    if: needs.triage.outputs.target == 'issue-resolver'
-    uses: ./.github/workflows/Jules-Issue-Resolver.yml
-    secrets:
-      JULES_APP_ID: ${{ secrets.JULES_APP_ID }}
-      JULES_APP_PRIVATE_KEY: ${{ secrets.JULES_APP_PRIVATE_KEY }}
-
-  call-completist:
-    needs: triage
-    if: needs.triage.outputs.target == 'completist'
-    uses: ./.github/workflows/Jules-Completist.yml
-    secrets:
-      JULES_APP_ID: ${{ secrets.JULES_APP_ID }}
-      JULES_APP_PRIVATE_KEY: ${{ secrets.JULES_APP_PRIVATE_KEY }}
-
-  call-documentation-auditor:
-    needs: triage
-    if: needs.triage.outputs.target == 'documentation-auditor'
-    uses: ./.github/workflows/Jules-Documentation-Auditor.yml
-    secrets:
-      JULES_APP_ID: ${{ secrets.JULES_APP_ID }}
-      JULES_APP_PRIVATE_KEY: ${{ secrets.JULES_APP_PRIVATE_KEY }}
-
-  call-pr-compiler:
-    needs: triage
-    if: needs.triage.outputs.target == 'pr-compiler'
-    uses: ./.github/workflows/Jules-PR-Compiler.yml
-    secrets:
-      JULES_APP_ID: ${{ secrets.JULES_APP_ID }}
-      JULES_APP_PRIVATE_KEY: ${{ secrets.JULES_APP_PRIVATE_KEY }}
+  # Other jobs (call-scribe, call-tests, etc.) are currently disabled because their workflow files are missing.
