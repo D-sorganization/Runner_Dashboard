@@ -57,7 +57,7 @@ jobs:
           echo "All actions pinned."
       - name: Verify no source file exceeds 500 lines
         run: |
-          OVER=$(find backend/ frontend/src/ -type f \( -name "*.py" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" \) -exec wc -l {} + 2>/dev/null | grep -vE "server.py|agent_remediation.py|dispatch_contract.py|agent_dispatch_router.py" | awk '$1 > 500 {print $1, $2}')
+          OVER=$(find backend/ frontend/src/ -type f \( -name "*.py" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" \) -exec wc -l {} + 2>/dev/null | grep -vE "server.py|agent_remediation.py|dispatch_contract.py|agent_dispatch_router.py|total" | awk '$1 > 500 {print $1, $2}')
           if [ -n "$OVER" ]; then
             echo "::error::Files exceeding 500-line soft cap found:"
             echo "$OVER"
