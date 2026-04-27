@@ -135,13 +135,13 @@ async def _append_history(
             if path.exists():
                 try:
                     history = json.loads(path.read_text(encoding="utf-8"))
-                except Exception:
+                except (json.JSONDecodeError, OSError):
                     history = []
             history.append(entry)
             history = history[-200:]
             config_schema.atomic_write_json(path, history)
-        except Exception:
-            pass
+        except OSError:
+            log.warning("Failed to append dispatch history to %s", path, exc_info=True)
 
 
 def _validate_provider(provider_id: str) -> str | None:

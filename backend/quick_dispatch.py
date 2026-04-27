@@ -72,7 +72,7 @@ class QuickDispatchRequest(BaseModel):
     model: str = Field(default="", max_length=200)
     ref: str = Field(default="main", max_length=200)
     task_kind: str = Field(default="adhoc", max_length=100)
-    requested_by: str = Field(default="dashboard-operator", max_length=200)
+    requested_by: str = Field(default="", max_length=200)
     principal: str = Field(default="", max_length=200)
     on_behalf_of: str = Field(default="", max_length=200)
     correlation_id: str = Field(default="", max_length=100)
@@ -106,13 +106,13 @@ async def _append_quick_dispatch_history(entry: dict[str, Any]) -> None:
             if _QUICK_DISPATCH_HISTORY_PATH.exists():
                 try:
                     history = json.loads(_QUICK_DISPATCH_HISTORY_PATH.read_text(encoding="utf-8"))
-                except Exception:
+                except (json.JSONDecodeError, OSError):
                     history = []
             history.append(entry)
             history = history[-200:]
             config_schema.atomic_write_json(_QUICK_DISPATCH_HISTORY_PATH, history)
-        except Exception:
-            pass  # history is best-effort
+        except OSError:
+            log.warning("Failed to append quick-dispatch history", exc_info=True)
 
 
 def _make_audit_entry(
@@ -123,7 +123,7 @@ def _make_audit_entry(
     decision: str,
     detail: str,
     history_id: str,
-    requested_by: str = "dashboard-operator",
+    requested_by: str = "",
     principal: str = "",
     on_behalf_of: str = "",
     correlation_id: str = "",
