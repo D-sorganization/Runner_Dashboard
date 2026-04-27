@@ -6802,7 +6802,7 @@ async def _runner_audit_loop() -> None:
         await asyncio.sleep(900)  # 15 minutes
 
 
-@app.router.on_startup
+@app.on_event("startup")
 async def _start_background_tasks() -> None:
     asyncio.create_task(_runner_audit_loop())
 
