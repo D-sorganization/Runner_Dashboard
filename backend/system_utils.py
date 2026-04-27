@@ -7,14 +7,9 @@ import json
 import logging
 import os
 import platform
-import subprocess
-import time
-from datetime import datetime, timezone
 from pathlib import Path
 
 import psutil
-
-from security import safe_subprocess_env
 
 log = logging.getLogger("dashboard.system")
 
@@ -123,7 +118,7 @@ async def run_cmd(cmd: list[str], timeout: int = 30, cwd: Path | None = None) ->
         )
     except FileNotFoundError as exc:
         return 127, "", str(exc)
-    except (TimeoutError, asyncio.TimeoutError):
-        if 'proc' in locals():
+    except TimeoutError:
+        if "proc" in locals():
             proc.kill()
         return -1, "", "Command timed out"

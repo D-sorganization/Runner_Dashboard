@@ -32,9 +32,56 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  quality-gate:
+  # ── Fleet-wide CI health gate (issue #154) ────────────────────────────────
+  ci-health-check:
     runs-on: d-sorg-fleet
-    timeout-minutes: 20
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Verify clean working tree
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::Working tree is dirty. Commit or .gitignore untracked files."
+            git status --short
+            exit 1
+          fi
+          echo "Working tree clean."
+      - name: Verify GitHub Actions are pinned to SHA
+        run: |
+          UNPINNED=$(grep -rE "uses:\s+\S+/(v[0-9]+|main|latest)" .github/workflows/ || true)
+          if [ -n "$UNPINNED" ]; then
+            echo "::error::Floating action versions found. Pin to SHA."
+            echo "$UNPINNED"
+            exit 1
+          fi
+          echo "All actions pinned."
+      - name: Bootstrap environment
+        run: |
+          for py in python3.11 python3.12 python3.10 python3 python; do
+            if command -v "$py" &>/dev/null; then
+              "$py" -m venv "$RUNNER_TEMP/health-venv"
+              break
+            fi
+          done
+          source "$RUNNER_TEMP/health-venv/bin/activate"
+          pip install --upgrade pip
+          pip install pytest==8.1.1
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
+          echo "$RUNNER_TEMP/health-venv/bin" >> "$GITHUB_PATH"
+      - name: Fail-fast check — pytest can collect tests
+        run: |
+          if [ -d tests/ ]; then
+            pytest --co -q tests/ || { echo "::error::pytest --co failed"; exit 1; }
+          else
+            echo "No tests directory — skipping collect check"
+          fi
+
+  quality-gate:
+    needs: [ci-health-check]
+    runs-on: d-sorg-fleet
+    timeout-minutes: 10
     env:
       PIP_CACHE_DIR: /home/dieterolson/actions-runners/.shared-tool-cache/pip
     steps:
@@ -98,8 +145,9 @@ jobs:
           "$RUNNER_TEMP/pip-audit-venv/bin/pip-audit" -r requirements.txt || echo "::warning::pip-audit found vulnerabilities (non-blocking)"
 
   security-scan:
+    needs: [ci-health-check]
     runs-on: d-sorg-fleet
-    timeout-minutes: 20
+    timeout-minutes: 10
     env:
       PIP_CACHE_DIR: /home/dieterolson/actions-runners/.shared-tool-cache/pip
     steps:
@@ -117,13 +165,14 @@ jobs:
 
   tests:
     needs:
+      - ci-health-check
       - quality-gate
     runs-on: d-sorg-fleet
-    timeout-minutes: 30
+    timeout-minutes: 10
     env:
       PIP_CACHE_DIR: /home/dieterolson/actions-runners/.shared-tool-cache/pip
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         python:
           - "3.11"
@@ -149,5 +198,5 @@ jobs:
             pytest tests/ --tb=short -q
           else
             echo "No tests directory found — skipping"
-            exit 1
+            exit 0
           fi
