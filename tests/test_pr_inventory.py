@@ -4,12 +4,12 @@ from __future__ import annotations  # noqa: E402
 
 import sys  # noqa: E402
 from datetime import datetime, timedelta, timezone  # noqa: E402
-
-UTC = timezone.utc
 from pathlib import Path  # noqa: E402
 from unittest.mock import AsyncMock, patch  # noqa: E402
 
 import pytest  # noqa: E402
+
+UTC = timezone.utc  # noqa: UP017
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 

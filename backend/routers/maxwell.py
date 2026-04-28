@@ -17,7 +17,7 @@ from security import safe_subprocess_env, sanitize_log_value
 
 router = APIRouter(prefix="/api/maxwell", tags=["maxwell"])
 log = logging.getLogger("dashboard")
-UTC = getattr(_dt_mod, "UTC", _dt_mod.UTC)
+UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 datetime = _dt_mod.datetime
 
 

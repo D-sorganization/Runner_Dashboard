@@ -12,12 +12,12 @@ import json  # noqa: E402
 import os  # noqa: E402
 import sys  # noqa: E402
 from datetime import datetime, timedelta, timezone  # noqa: E402
-
-UTC = timezone.utc
 from pathlib import Path  # noqa: E402
 from unittest.mock import patch  # noqa: E402
 
 import pytest  # noqa: E402
+
+UTC = timezone.utc  # noqa: UP017
 
 # Ensure backend/ is on sys.path before importing
 _BACKEND = Path(__file__).parent.parent / "backend"

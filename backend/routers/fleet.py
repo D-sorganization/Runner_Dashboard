@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
@@ -29,6 +29,7 @@ from system_utils import (
     run_cmd,
 )
 
+UTC = timezone.utc  # noqa: UP017
 log = logging.getLogger("dashboard.fleet")
 router = APIRouter(tags=["fleet"])
 

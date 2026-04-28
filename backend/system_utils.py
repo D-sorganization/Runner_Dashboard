@@ -11,7 +11,7 @@ import shutil
 import subprocess
 import time
 from collections import deque
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -25,13 +25,12 @@ from dashboard_config import (
 )
 from security import safe_subprocess_env
 
+UTC = timezone.utc  # noqa: UP017
 log = logging.getLogger("dashboard.system")
 
 # Global state for CPU history
 _cpu_history: deque[float] = deque(maxlen=60)
 BOOT_TIME = time.time()
-
-UTC = UTC
 
 # Host memory cache for WSL
 HOST_MEMORY_GB: float | None = None
