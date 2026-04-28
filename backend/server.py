@@ -4380,7 +4380,7 @@ async def get_remediation_history() -> dict:
     return {"history": list(reversed(history[-100:]))}  # newest first
 
 
-_PROVIDERS_WITH_MODEL_SELECTION: frozenset[str] = frozenset({"claude_code_cli", "codex_cli"})
+_PROVIDERS_WITH_MODEL_SELECTION: frozenset[str] = frozenset({"claude_code_cli", "codex_cli", "gemini_cli"})
 
 
 @app.get("/api/agents/providers")
