@@ -12,21 +12,21 @@
 # Usage (from WSL2, in the runner-dashboard directory):
 #   sed -i 's/\r$//' deploy/setup.sh && chmod +x deploy/setup.sh
 #
-#   ControlTower  (8 runners, hub):
-#     ./deploy/setup.sh --runners 8 --machine-name ControlTower --role hub
+#   ControlTower  (12 configured, hub):
+#     ./deploy/setup.sh --runners 12 --machine-name ControlTower --role hub
 #
 #   Brick-Windows   (1 runner, GPU node):
 #     ./deploy/setup.sh --runners 1 --machine-name Brick-Windows
 #
-#   OG-Laptop     (4 runners, node):
-#     ./deploy/setup.sh --runners 4 --machine-name OG-Laptop
+#   OGLaptop      (8 runners, node):
+#     ./deploy/setup.sh --runners 8 --machine-name OGLaptop
 #
-#   DeskComputer (8 installed runners, schedule controls day/night count):
+#   DeskComputer  (8 installed runners, schedule controls day/night count):
 #     ./deploy/setup.sh --runners 8 --machine-name DeskComputer --runner-aliases desktop
 #
 #   Hub — add fleet nodes after all machines are running (Tailscale IPs):
-#     ./deploy/setup.sh --runners 8 --machine-name ControlTower --role hub \
-#       --fleet-nodes "Brick-Windows:http://100.x.x.x:8321,OG-Laptop:http://100.x.x.x:8321,DeskComputer:http://100.x.x.x:8321"
+#     ./deploy/setup.sh --runners 12 --machine-name ControlTower --role hub \
+#       --fleet-nodes "Brick-Windows:http://100.96.15.94:8321,OGLaptop:http://100.125.64.108:8321,DeskComputer:http://100.122.254.109:8321"
 # ==============================================================================
 
 set -euo pipefail
