@@ -18,15 +18,15 @@
 #   Brick-Windows   (1 runner, GPU node):
 #     ./deploy/setup.sh --runners 1 --machine-name Brick-Windows
 #
-#   OG-Laptop     (4 runners, node):
-#     ./deploy/setup.sh --runners 4 --machine-name OG-Laptop
+#   OG-Laptop     (8 runners, node):
+#     ./deploy/setup.sh --runners 8 --machine-name OG-Laptop
 #
 #   DeskComputer (8 installed runners, schedule controls day/night count):
 #     ./deploy/setup.sh --runners 8 --machine-name DeskComputer --runner-aliases desktop
 #
 #   Hub — add fleet nodes after all machines are running (Tailscale IPs):
 #     ./deploy/setup.sh --runners 8 --machine-name ControlTower --role hub \
-#       --fleet-nodes "Brick-Windows:http://100.x.x.x:8321,OG-Laptop:http://100.x.x.x:8321,DeskComputer:http://100.x.x.x:8321"
+#       --fleet-nodes "Brick-Windows:http://100.64.12.5:8321,OG-Laptop:http://100.64.12.7:8321,DeskComputer:http://100.64.12.9:8321"
 # ==============================================================================
 
 set -euo pipefail
