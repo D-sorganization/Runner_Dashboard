@@ -77,7 +77,9 @@ jobs:
           pip install pytest==8.1.1
           if [ -f uv.lock ]; then
             pip install uv
-            uv pip install --system -r uv.lock
+            uv sync --frozen --no-dev
+            # Use the uv-managed venv
+            echo "$(pwd)/.venv/bin" >> "$GITHUB_PATH"
           elif [ -f requirements.txt ]; then
             pip install -r requirements.txt
           fi
@@ -128,7 +130,8 @@ jobs:
         run: |
           if [ -f uv.lock ]; then
             pip install uv
-            uv pip install --system -r uv.lock
+            uv sync --frozen --no-dev
+            echo "$(pwd)/.venv/bin" >> "$GITHUB_PATH"
           else
             pip install -r requirements.txt
           fi
@@ -162,7 +165,8 @@ jobs:
           python -m venv "$RUNNER_TEMP/pip-audit-venv"
           "$RUNNER_TEMP/pip-audit-venv/bin/pip" install --quiet pip-audit
           if [ -f uv.lock ]; then
-            "$RUNNER_TEMP/pip-audit-venv/bin/pip-audit" -r uv.lock --requirement-hash
+            uv export --frozen --no-dev --output-file "$RUNNER_TEMP/requirements-frozen.txt"
+            "$RUNNER_TEMP/pip-audit-venv/bin/pip-audit" -r "$RUNNER_TEMP/requirements-frozen.txt"
           else
             "$RUNNER_TEMP/pip-audit-venv/bin/pip-audit" -r requirements.txt
           fi
@@ -185,7 +189,8 @@ jobs:
           python -m venv "$RUNNER_TEMP/security-venv"
           "$RUNNER_TEMP/security-venv/bin/pip" install --quiet pip-audit
           if [ -f uv.lock ]; then
-            "$RUNNER_TEMP/security-venv/bin/pip-audit" -r uv.lock --requirement-hash --progress-spinner=off
+            uv export --frozen --no-dev --output-file "$RUNNER_TEMP/requirements-frozen.txt"
+            "$RUNNER_TEMP/security-venv/bin/pip-audit" -r "$RUNNER_TEMP/requirements-frozen.txt" --progress-spinner=off
           else
             "$RUNNER_TEMP/security-venv/bin/pip-audit" -r requirements.txt --progress-spinner=off
           fi
@@ -217,7 +222,8 @@ jobs:
           pip install --upgrade pip setuptools wheel
           if [ -f uv.lock ]; then
             pip install uv
-            uv pip install --system -r uv.lock
+            uv sync --frozen --no-dev
+            echo "$(pwd)/.venv/bin" >> "$GITHUB_PATH"
           else
             pip install -r requirements.txt
           fi
