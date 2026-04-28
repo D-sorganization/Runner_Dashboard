@@ -554,6 +554,8 @@ async def get_ollama_models(request: Request) -> dict:
     except Exception as exc:
         log.exception("Failed to list ollama models")
         raise HTTPException(status_code=500, detail=f"Failed to list models: {exc}") from exc
+
+
 # Key management endpoints
 
 
