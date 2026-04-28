@@ -64,10 +64,12 @@ import deployment_drift as deployment_drift  # noqa: E402
 import dispatch_contract as dispatch_contract  # noqa: E402
 import issue_inventory as issue_inventory  # noqa: E402
 import lease_synchronizer as lease_synchronizer  # noqa: E402
+import linear_inventory as linear_inventory  # noqa: E402
 import pr_inventory as pr_inventory  # noqa: E402
 import quick_dispatch as _quick_dispatch  # noqa: E402
 import quota_enforcement as quota_enforcement  # noqa: E402
 import scheduled_workflows as scheduled_workflow_inventory  # noqa: E402
+import unified_issue_inventory as unified_issue_inventory  # noqa: E402
 import usage_monitoring as usage_monitoring  # noqa: E402
 from local_app_monitoring import collect_local_apps  # noqa: E402
 from machine_registry import (  # noqa: E402
@@ -77,6 +79,7 @@ from machine_registry import (  # noqa: E402
 from report_files import parse_report_metrics, sanitize_report_date  # noqa: E402
 from routers import credentials as _credentials_router  # noqa: E402
 from routers import dispatch as _dispatch_router  # noqa: E402
+from routers import linear as _linear_router  # noqa: E402
 
 # datetime.UTC added in Python 3.11; fall back to timezone.utc on older runtimes.
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
@@ -431,6 +434,7 @@ async def _record_processed_envelope(envelope_id: str, ttl_seconds: int = 86400)
 app.include_router(_dispatch_router.router)
 _dispatch_router.set_replay_functions(_is_envelope_replay, _record_processed_envelope)
 app.include_router(_credentials_router.router)
+app.include_router(_linear_router.router)
 app.include_router(admin_router.router)
 app.include_router(auth_router.router)
 
@@ -3451,6 +3455,7 @@ async def get_issues(
     repo: list[str] | None = None,
     state: str = "open",
     label: list[str] | None = None,
+    source: str = "github",
     assignee: str | None = None,
     pickable_only: bool = False,
     complexity: list[str] | None = None,
@@ -3469,6 +3474,8 @@ async def get_issues(
         ``open`` (default) or ``all``.
     label:
         Repeatable; match any of the listed labels.
+    source:
+        ``github`` (default), ``linear``, or ``unified``.
     assignee:
         Filter by assignee login.
     pickable_only:
@@ -3484,21 +3491,64 @@ async def get_issues(
         org_repos = await _get_recent_org_repos(limit=50)
         repos = [r["full_name"] for r in org_repos]
 
-    issues = await issue_inventory.fetch_all_issues(
-        repos,
-        state=state,
-        labels=list(label) if label else None,
-        assignee=assignee,
-        pickable_only=pickable_only,
-        complexity=list(complexity) if complexity else None,
-        effort=list(effort) if effort else None,
-        judgement=list(judgement) if judgement else None,
-        limit=limit,
-    )
+    labels = list(label) if label else None
+    complexity_filters = list(complexity) if complexity else None
+    effort_filters = list(effort) if effort else None
+    judgement_filters = list(judgement) if judgement else None
+
+    if source == "github":
+        issues = await issue_inventory.fetch_all_issues(
+            repos,
+            state=state,
+            labels=labels,
+            assignee=assignee,
+            pickable_only=pickable_only,
+            complexity=complexity_filters,
+            effort=effort_filters,
+            judgement=judgement_filters,
+            limit=limit,
+        )
+    elif source in {"linear", "unified"}:
+        linear_config = _linear_router.load_linear_config()
+        if not _linear_router.has_configured_linear_key(linear_config):
+            raise HTTPException(status_code=503, detail=_linear_router.LINEAR_NOT_CONFIGURED_DETAIL)
+        linear_client = _linear_router.build_linear_client(linear_config)
+        try:
+            if source == "linear":
+                issues = await linear_inventory.fetch_all_issues(
+                    linear_config,
+                    linear_client,
+                    state=state,
+                    pickable_only=pickable_only,
+                    complexity=complexity_filters,
+                    effort=effort_filters,
+                    judgement=judgement_filters,
+                    limit=limit,
+                )
+                issues["stats"] = {"linear_total": len(issues.get("items", []))}
+            else:
+                issues = await unified_issue_inventory.fetch_unified_issues(
+                    github_repos=repos,
+                    linear_config=linear_config,
+                    linear_client=linear_client,
+                    state=state,
+                    labels=labels,
+                    assignee=assignee,
+                    pickable_only=pickable_only,
+                    complexity=complexity_filters,
+                    effort=effort_filters,
+                    judgement=judgement_filters,
+                    limit=limit,
+                )
+        finally:
+            await linear_client.aclose()
+    else:
+        raise HTTPException(status_code=422, detail="source must be one of github, linear, unified")
 
     # Wave 3: Sync GitHub leases with internal state
-    if isinstance(issues, list):
-        await lease_synchronizer.sync_github_leases(issues)
+    sync_items = issues if isinstance(issues, list) else issues.get("items", [])
+    if isinstance(sync_items, list):
+        await lease_synchronizer.sync_github_leases(sync_items)
 
     return issues
 

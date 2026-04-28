@@ -61,6 +61,22 @@ def test_credentials_router_has_credentials_route() -> None:
 
     paths = {r.path for r in credentials.router.routes}  # type: ignore[attr-defined]
     assert "/api/credentials" in paths
+    assert "/api/credentials/set-key" in paths
+
+
+def test_linear_router_importable() -> None:
+    from routers import linear  # noqa: PLC0415
+
+    assert hasattr(linear, "router"), "routers/linear.py must export 'router'"
+
+
+def test_linear_router_has_expected_routes() -> None:
+    from routers import linear  # noqa: PLC0415
+
+    paths = {r.path for r in linear.router.routes}  # type: ignore[attr-defined]
+    assert "/api/linear/workspaces" in paths
+    assert "/api/linear/teams" in paths
+    assert "/api/linear/issues" in paths
 
 
 def test_credentials_router_no_secret_exposure() -> None:
@@ -88,6 +104,13 @@ def test_server_registers_credentials_router() -> None:
     server_src = (_BACKEND_DIR / "server.py").read_text(encoding="utf-8")
     assert "from routers import credentials" in server_src or "routers.credentials" in server_src
     assert "include_router(_credentials_router.router)" in server_src
+
+
+def test_server_registers_linear_router() -> None:
+    """server.py must include the linear router (not re-implement it inline)."""
+    server_src = (_BACKEND_DIR / "server.py").read_text(encoding="utf-8")
+    assert "from routers import linear" in server_src or "routers.linear" in server_src
+    assert "include_router(_linear_router.router)" in server_src
 
 
 def test_server_dispatch_not_inline() -> None:

@@ -14,6 +14,7 @@ from __future__ import annotations  # noqa: E402
 import os  # noqa: E402
 import sys  # noqa: E402
 from pathlib import Path  # noqa: E402
+from unittest.mock import AsyncMock  # noqa: E402
 
 import pytest  # noqa: E402
 import pytest_asyncio  # noqa: E402
@@ -170,6 +171,126 @@ async def test_credentials_endpoint_responds(client) -> None:
     assert resp.status_code == 200
     data = resp.json()
     assert isinstance(data, (dict, list))
+
+
+@pytest.mark.asyncio
+async def test_credentials_endpoint_includes_linear_probe(client, monkeypatch) -> None:
+    from routers import credentials as credentials_router  # noqa: PLC0415
+
+    monkeypatch.setattr(
+        credentials_router,
+        "list_workspace_summaries",
+        AsyncMock(return_value=[{"id": "personal", "auth_status": "ok", "auth_kind": "api_key"}]),
+    )
+
+    resp = await client.get("/api/credentials")
+    assert resp.status_code == 200
+    data = resp.json()
+    probes = data.get("probes", []) if isinstance(data, dict) else []
+    assert any(probe.get("key_provider") == "linear" for probe in probes if isinstance(probe, dict))
+
+
+@pytest.mark.asyncio
+async def test_credentials_set_key_accepts_linear_provider(client, monkeypatch, tmp_path) -> None:
+    from routers import credentials as credentials_router  # noqa: PLC0415
+
+    dashboard_env = tmp_path / "runner-dashboard.env"
+    maxwell_env = tmp_path / "maxwell.env"
+    monkeypatch.setattr(credentials_router, "_DASHBOARD_ENV", dashboard_env)
+    monkeypatch.setattr(credentials_router, "_MAXWELL_ENV", maxwell_env)
+
+    resp = await client.post(
+        "/api/credentials/set-key",
+        json={"provider": "linear", "key": "lin_api_test", "restart_maxwell": False},
+    )
+
+    assert resp.status_code == 200
+    assert "LINEAR_API_KEY=lin_api_test" in dashboard_env.read_text(encoding="utf-8")
+    assert "LINEAR_API_KEY=lin_api_test" in maxwell_env.read_text(encoding="utf-8")
+
+
+@pytest.mark.asyncio
+async def test_issues_route_source_linear_503_when_not_configured(client, monkeypatch) -> None:
+    import server  # noqa: PLC0415
+
+    monkeypatch.setattr(server._linear_router, "load_linear_config", lambda: {"workspaces": [], "mappings": {}})
+    monkeypatch.setattr(server._linear_router, "has_configured_linear_key", lambda *_args, **_kwargs: False)
+
+    resp = await client.get("/api/issues?source=linear")
+
+    assert resp.status_code == 503
+    assert resp.json()["detail"] == server._linear_router.LINEAR_NOT_CONFIGURED_DETAIL
+
+
+@pytest.mark.asyncio
+async def test_issues_route_source_unified_503_when_not_configured(client, monkeypatch) -> None:
+    import server  # noqa: PLC0415
+
+    monkeypatch.setattr(server._linear_router, "load_linear_config", lambda: {"workspaces": [], "mappings": {}})
+    monkeypatch.setattr(server._linear_router, "has_configured_linear_key", lambda *_args, **_kwargs: False)
+
+    resp = await client.get("/api/issues?source=unified")
+
+    assert resp.status_code == 503
+    assert resp.json()["detail"] == server._linear_router.LINEAR_NOT_CONFIGURED_DETAIL
+
+
+@pytest.mark.asyncio
+async def test_issues_route_source_linear_returns_inventory_shape(client, monkeypatch) -> None:
+    import server  # noqa: PLC0415
+
+    linear_config = {"workspaces": [{"id": "personal", "mapping": "default"}], "mappings": {"default": {}}}
+    monkeypatch.setattr(server._linear_router, "load_linear_config", lambda: linear_config)
+    monkeypatch.setattr(server._linear_router, "has_configured_linear_key", lambda *_args, **_kwargs: True)
+
+    class FakeClient:
+        async def aclose(self) -> None:
+            return None
+
+    monkeypatch.setattr(server._linear_router, "build_linear_client", lambda _config: FakeClient())
+    monkeypatch.setattr(
+        server.linear_inventory,
+        "fetch_all_issues",
+        AsyncMock(return_value={"items": [{"title": "Linear issue"}], "errors": []}),
+    )
+
+    resp = await client.get("/api/issues?source=linear")
+
+    assert resp.status_code == 200
+    assert resp.json()["stats"]["linear_total"] == 1
+    assert resp.json()["items"][0]["title"] == "Linear issue"
+
+
+@pytest.mark.asyncio
+async def test_issues_route_source_unified_returns_inventory_shape(client, monkeypatch) -> None:
+    import server  # noqa: PLC0415
+
+    linear_config = {"workspaces": [{"id": "personal", "mapping": "default"}], "mappings": {"default": {}}}
+    monkeypatch.setattr(server._linear_router, "load_linear_config", lambda: linear_config)
+    monkeypatch.setattr(server._linear_router, "has_configured_linear_key", lambda *_args, **_kwargs: True)
+
+    class FakeClient:
+        async def aclose(self) -> None:
+            return None
+
+    monkeypatch.setattr(server._linear_router, "build_linear_client", lambda _config: FakeClient())
+    monkeypatch.setattr(
+        server.unified_issue_inventory,
+        "fetch_unified_issues",
+        AsyncMock(
+            return_value={
+                "items": [{"title": "Unified issue"}],
+                "errors": [],
+                "stats": {"github_total": 2, "linear_total": 1, "collapsed": 1},
+            }
+        ),
+    )
+
+    resp = await client.get("/api/issues?source=unified")
+
+    assert resp.status_code == 200
+    assert resp.json()["items"][0]["title"] == "Unified issue"
+    assert resp.json()["stats"]["collapsed"] == 1
 
 
 # ─── 9. Watchdog / diagnostics endpoint ─────────────────────────────────────

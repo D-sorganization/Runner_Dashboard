@@ -160,6 +160,20 @@ def test_icons_helper_has_activity() -> None:
     assert "I.activity" in content
 
 
+def test_issues_source_filter_persists_and_fetches_source_param() -> None:
+    content = _read_index()
+    assert "issuesSourceFilter" in content
+    assert "/api/issues?limit=2000&source=" in content
+    assert "/api/linear/workspaces" in content
+
+
+def test_credentials_tab_supports_setting_linear_api_key() -> None:
+    content = _read_index()
+    assert "probe.key_provider && onSetKey" in content
+    assert "/api/credentials/set-key" in content
+    assert "Set API key" in content
+
+
 # ---------------------------------------------------------------------------
 # Single source of truth enforcement (issue #3)
 # ---------------------------------------------------------------------------

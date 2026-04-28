@@ -20,6 +20,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
+from routers.linear import list_workspace_summaries
 
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 datetime = _dt_mod.datetime
@@ -44,6 +45,7 @@ _PROVIDER_KEY_MAP: dict[str, str] = {
     "gemini_cli": "GOOGLE_API_KEY",
     "jules": "JULES_API_KEY",
     "jules_api": "JULES_API_KEY",
+    "linear": "LINEAR_API_KEY",
 }
 
 
@@ -439,6 +441,43 @@ async def get_credentials(request: Request) -> dict:
             "setup_hint": "Install from ollama.com",
         }
     )
+
+    # Linear integration workspaces
+    try:
+        for workspace in await list_workspace_summaries():
+            auth_status = workspace.get("auth_status") or "missing_env"
+            workspace_id = workspace.get("id") or "linear"
+            teams_filter = workspace.get("teams_filter") or ["*"]
+            detail_parts = [
+                f"Workspace: {workspace_id}",
+                f"Teams: {', '.join(teams_filter) if isinstance(teams_filter, list) else '*'}",
+            ]
+            if workspace.get("default_repository"):
+                detail_parts.append(f"Default repo: {workspace['default_repository']}")
+            probes.append(
+                {
+                    "id": f"linear:{workspace_id}",
+                    "label": "Linear" if workspace_id == "personal" else f"Linear ({workspace_id})",
+                    "icon": "linear",
+                    "installed": True,
+                    "authenticated": auth_status == "ok",
+                    "reachable": auth_status == "ok",
+                    "usable": auth_status == "ok",
+                    "binary_found": auth_status == "ok",
+                    "status": "ready" if auth_status == "ok" else auth_status,
+                    "detail": " | ".join(detail_parts),
+                    "config_source": workspace.get("auth_kind") or "api_key",
+                    "docs_url": "https://linear.app/settings/api",
+                    "setup_hint": (
+                        "Get a personal API key from Linear -> Settings -> API. "
+                        "Personal API keys begin with lin_api_."
+                    ),
+                    "key_provider": "linear",
+                    "workspace_id": workspace_id,
+                }
+            )
+    except Exception:
+        log.exception("Failed to enumerate Linear workspace credential probes")
 
     ready = sum(1 for p in probes if p["usable"])
     return {

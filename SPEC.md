@@ -80,6 +80,10 @@ The backend is a single-process FastAPI application that:
    `~/.config/runner-dashboard/`.
 5. Serves the frontend SPA (`frontend/index.html`) as a static file at `GET /`.
 
+Runtime configuration files include the optional `config/linear.json`, which
+declares Linear workspaces, team filters, and taxonomy mappings used by the
+Linear and unified issue inventory endpoints.
+
 When the backend runs as a Windows fallback process, Linux-only probes must not
 raise request-time exceptions. `/api/system` returns Windows-safe `psutil`
 metrics, systemd keepalive checks report `unsupported` with an explanatory
@@ -117,6 +121,7 @@ coupling and makes each domain independently testable.
 |---|---|---|
 | `routers/dispatch.py` | `/api/fleet/dispatch` | Fleet agent dispatcher — allowlisted hub-to-node commands |
 | `routers/credentials.py` | `/api` | Credential probe — tool/key presence without exposing values |
+| `routers/linear.py` | `/api/linear` | Optional Linear read API for workspaces, teams, and issue inventory |
 
 The migration from inline `@app.*` endpoints to bounded routers is ongoing.
 Remaining endpoint domains in `server.py` are tracked for extraction under issue #4.
@@ -205,6 +210,19 @@ fleet nodes API. Supports drilling into individual node system status.
 ### 3.5 Organization Tab
 Org-level runner and repository summary. Shows runner group assignments,
 available label sets, and aggregate health across all repos.
+
+### 3.5.1 `/api/linear/*` — optional Linear integration
+
+When Linear is configured, the dashboard exposes:
+
+- `GET /api/linear/workspaces` — configured workspaces with auth status
+- `GET /api/linear/teams` — teams for one workspace or all configured workspaces
+- `GET /api/linear/issues` — Linear-only issue inventory in canonical dashboard shape
+
+If Linear is not configured, Linear-backed issue reads return HTTP 503 with the
+standard not-configured detail. `GET /api/issues` accepts
+`source={github|linear|unified}`; `github` remains the backward-compatible
+default.
 
 ### 3.6 Tests Tab
 Unified testing hub with two sections:
