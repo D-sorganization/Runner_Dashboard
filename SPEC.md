@@ -120,6 +120,11 @@ coupling and makes each domain independently testable.
 The migration from inline `@app.*` endpoints to bounded routers is ongoing.
 Remaining endpoint domains in `server.py` are tracked for extraction under issue #4.
 
+Backend tests must resolve `backend/` imports consistently from a clean checkout.
+The project pytest configuration declares `backend` on `pythonpath`, and
+`tests/conftest.py` also inserts the resolved backend directory before importing
+the FastAPI app and router dependencies.
+
 ### 2.2 Frontend
 
 **Type:** Self-contained Single-Page Application (SPA)
@@ -663,6 +668,11 @@ bash deploy/setup.sh --runners 8 --machine-name DeskComputer --runner-aliases de
 bash deploy/setup.sh --runners 8 --machine-name ControlTower --role hub \
   --fleet-nodes "Brick-Windows:http://100.64.12.5:8321,OG-Laptop:http://100.64.12.7:8321,DeskComputer:http://100.64.12.9:8321"
 ```
+
+Node-specific runner counts in the setup script examples must reflect the
+current fleet plan. OG-Laptop is documented as an eight-runner node, and hub
+fleet-node examples use concrete Tailscale URL placeholders so operators can
+replace addresses without changing the argument shape.
 
 `setup.sh` performs:
 1. Installs Python dependencies into a system venv.
