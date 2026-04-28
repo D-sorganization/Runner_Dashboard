@@ -35,7 +35,7 @@ jobs:
   # ── Fleet-wide CI health gate (issue #154) ────────────────────────────────
   ci-health-check:
     runs-on: d-sorg-fleet
-    timeout-minutes: 2
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - name: Verify clean working tree

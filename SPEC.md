@@ -1,8 +1,8 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.0
+**Spec Version:** 2.5.1
 **Application Version:** 4.1.0 (see `VERSION`)
-**Last Updated:** 2026-04-27
+**Last Updated:** 2026-04-28
 **Status:** Active
 
 ---
@@ -119,6 +119,11 @@ coupling and makes each domain independently testable.
 
 The migration from inline `@app.*` endpoints to bounded routers is ongoing.
 Remaining endpoint domains in `server.py` are tracked for extraction under issue #4.
+
+Backend tests must resolve `backend/` imports consistently from a clean checkout.
+The project pytest configuration declares `backend` on `pythonpath`, and
+`tests/conftest.py` also inserts the resolved backend directory before importing
+the FastAPI app and router dependencies.
 
 ### 2.2 Frontend
 
@@ -426,6 +431,16 @@ All endpoints are served under `http://localhost:8321/api/`.
 | Method | Path | Description |
 |---|---|---|
 | GET | `/api/credentials` | Org and repo secrets/variables inventory (names only) |
+| POST | `/api/credentials/set-key` | Securely set an API key for a provider |
+| POST | `/api/credentials/clear-key` | Remove an API key for a provider |
+| POST | `/api/credentials/launch-auth` | Launch a provider's browser auth flow in a subprocess |
+
+### Runner Audit
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/runner-routing-audit` | Recent workflow runs on GitHub-hosted runners (billing alert) |
+| POST | `/api/runner-routing-audit/refresh` | Trigger an immediate audit refresh |
 
 ### Maxwell
 
@@ -644,6 +659,21 @@ Run the full setup script on the target machine:
 bash deploy/setup.sh --runners 4 --machine-name ControlTower --role hub
 ```
 
+Fleet node examples:
+
+```bash
+bash deploy/setup.sh --runners 1 --machine-name Brick-Windows
+bash deploy/setup.sh --runners 8 --machine-name OG-Laptop
+bash deploy/setup.sh --runners 8 --machine-name DeskComputer --runner-aliases desktop
+bash deploy/setup.sh --runners 8 --machine-name ControlTower --role hub \
+  --fleet-nodes "Brick-Windows:http://100.64.12.5:8321,OG-Laptop:http://100.64.12.7:8321,DeskComputer:http://100.64.12.9:8321"
+```
+
+Node-specific runner counts in the setup script examples must reflect the
+current fleet plan. OG-Laptop is documented as an eight-runner node, and hub
+fleet-node examples use concrete Tailscale URL placeholders so operators can
+replace addresses without changing the argument shape.
+
 `setup.sh` performs:
 1. Installs Python dependencies into a system venv.
 2. Copies the systemd unit file (`runner-dashboard.service`) to
@@ -756,6 +786,9 @@ mono-repo as an independent repository.
 - Fleet-standard CI/CD workflows (ci-standard, ci-spec-check, agent workflows).
 - Branch protection with required `quality-gate` and `Verify SPEC.md freshness`
   status checks.
+- The `ci-health-check` bootstrap gate must allow enough time for a fresh
+  runner to create a Python virtual environment, install `requirements.txt`,
+  and collect tests before downstream quality, security, and test jobs run.
 - Multi-agent coordination via lease protocol.
 
 Prior versions tracked in the mono-repo `Repository_Management`. Application
@@ -770,6 +803,11 @@ The project test suite lives in `tests/`. Run all tests with:
 ```
 pytest tests/ -q
 ```
+
+Pytest is configured with `pythonpath = ["backend"]` in `pyproject.toml`.
+`tests/conftest.py` also inserts the resolved backend directory into
+`sys.path` so local and CI runs import backend modules consistently from any
+supported working directory.
 
 Test coverage areas:
 

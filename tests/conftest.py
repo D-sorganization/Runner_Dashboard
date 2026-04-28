@@ -1,7 +1,7 @@
 import sys  # noqa: E402
 from pathlib import Path  # noqa: E402
 
-backend_dir = str(Path(__file__).parent.parent / "backend")
+backend_dir = str(Path(__file__).parent.parent.resolve() / "backend")
 if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
 

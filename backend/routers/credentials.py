@@ -52,6 +52,52 @@ def _env_present(key: str) -> bool:
     return bool(val and val.strip())
 
 
+def _env_present_anywhere(key: str) -> bool:
+    """Check env var in current process AND in maxwell/runner env files."""
+    if _env_present(key):
+        return True
+    for env_file in (_MAXWELL_ENV, _DASHBOARD_ENV):
+        if not env_file.exists():
+            continue
+        try:
+            text = env_file.read_text(encoding="utf-8")
+            if re.search(rf"^{re.escape(key)}=\S", text, re.MULTILINE):
+                return True
+        except Exception:
+            pass
+    return False
+
+
+def _find_binary(name: str) -> str | None:
+    """Search for a binary on PATH and in common installation locations."""
+    # First: PATH lookup
+    found = shutil.which(name)
+    if found:
+        return found
+
+    # Common static paths
+    static_paths = [
+        Path.home() / ".npm-global" / "bin" / name,
+        Path.home() / ".local" / "bin" / name,
+        Path("/usr/local/bin") / name,
+        Path.home() / ".cargo" / "bin" / name,
+    ]
+
+    # fnm paths: ~/.local/share/fnm/node-versions/*/installation/bin/<name>
+    _fnm_base = Path.home() / ".local" / "share" / "fnm" / "node-versions"
+    if _fnm_base.exists():
+        for version_dir in _fnm_base.iterdir():
+            if version_dir.is_dir():
+                candidate = version_dir / "installation" / "bin" / name
+                static_paths.append(candidate)
+
+    for p in static_paths:
+        if p.exists():
+            return str(p)
+
+    return None
+
+
 def _env_source(key: str) -> str:
     return "env_var" if os.environ.get(key, "") else "unavailable"
 
@@ -224,21 +270,8 @@ async def get_credentials(request: Request) -> dict:
         }
     )
 
-    # Codex CLI — check PATH and common npm-global locations
-    codex_binary = shutil.which("codex") or (
-        next(
-            (
-                str(p)
-                for p in [
-                    Path.home() / ".npm-global" / "bin" / "codex",
-                    Path.home() / ".local" / "bin" / "codex",
-                    Path("/usr/local/bin/codex"),
-                ]
-                if p.exists()
-            ),
-            None,
-        )
-    )
+    # Codex CLI — check PATH, npm-global, fnm, and other common locations
+    codex_binary = _find_binary("codex")
     openai_key = _env_present("OPENAI_API_KEY")
     probes.append(
         {
@@ -270,7 +303,7 @@ async def get_credentials(request: Request) -> dict:
 
     # Claude Code CLI
     claude_binary = shutil.which("claude")
-    anthropic_key = _env_present("ANTHROPIC_API_KEY")
+    anthropic_key = _env_present_anywhere("ANTHROPIC_API_KEY")
     probes.append(
         {
             "id": "claude_code_cli",
@@ -280,6 +313,8 @@ async def get_credentials(request: Request) -> dict:
             "authenticated": anthropic_key,
             "reachable": claude_binary is not None and anthropic_key,
             "usable": claude_binary is not None and anthropic_key,
+            "binary_found": claude_binary is not None,
+            "key_status": "set" if anthropic_key else "missing",
             "status": (
                 "ready" if (claude_binary and anthropic_key) else ("missing_key" if claude_binary else "not_installed")
             ),
@@ -323,6 +358,7 @@ async def get_credentials(request: Request) -> dict:
             else ("VS Code found but Cline not installed" if _vscode_binary else "VS Code not found")
         )
     )
+    _cline_compatible_key = _env_present("ANTHROPIC_API_KEY") or _env_present("OPENAI_API_KEY")
     probes.append(
         {
             "id": "cline",
@@ -330,11 +366,24 @@ async def get_credentials(request: Request) -> dict:
             "icon": "vscode",
             "installed": cline_installed,
             "vscode_found": _vscode_binary is not None,
-            "authenticated": cline_installed and bool(anthropic_key),
+            "compatible_key_set": _cline_compatible_key,
+            "authenticated": cline_installed and _cline_compatible_key,
             "reachable": cline_installed,
-            "usable": cline_installed,
-            "status": "ready" if cline_installed else ("not_installed" if not _vscode_binary else "not_installed"),
-            "detail": _cline_detail,
+            "usable": cline_installed and _cline_compatible_key,
+            "status": (
+                "ready"
+                if (cline_installed and _cline_compatible_key)
+                else ("extension_installed" if cline_installed else "not_installed")
+            ),
+            "detail": (
+                "VS Code extension + compatible API key found"
+                if (cline_installed and _cline_compatible_key)
+                else (
+                    "VS Code extension installed; set ANTHROPIC_API_KEY or OPENAI_API_KEY"
+                    if cline_installed
+                    else _cline_detail
+                )
+            ),
             "config_source": "vscode" if cline_installed else "unavailable",
             "docs_url": "https://marketplace.visualstudio.com/items?itemName=saoudrizwan.claude-dev",
             "setup_hint": "Install Cline extension in VS Code: ext install saoudrizwan.claude-dev",
@@ -376,7 +425,7 @@ async def get_credentials(request: Request) -> dict:
     ollama_binary = shutil.which("ollama")
     probes.append(
         {
-            "id": "ollama_local",
+            "id": "ollama",
             "label": "Ollama (Local)",
             "icon": "ollama",
             "installed": ollama_binary is not None,
@@ -401,6 +450,110 @@ async def get_credentials(request: Request) -> dict:
         },
         "probed_at": datetime.now(UTC).isoformat(),
     }
+
+
+@router.get("/cline/status")
+async def get_cline_status(request: Request) -> dict:
+    """Return Cline extension detection status."""
+    _require_local_request(request)
+    _cline_storage = Path.home() / ".config" / "Code" / "User" / "globalStorage" / "saoudrizwan.claude-dev"
+    _cline_by_path = _cline_storage.exists()
+    _cline_by_ext = False
+    _vscode_binary = shutil.which("code")
+    if _vscode_binary and not _cline_by_path:
+        try:
+            _ext_result = subprocess.run(
+                ["code", "--list-extensions"],
+                capture_output=True,
+                text=True,
+                timeout=8,
+            )
+            _cline_by_ext = "saoudrizwan.claude-dev" in _ext_result.stdout
+        except Exception:
+            pass
+    cline_installed = _cline_by_path or _cline_by_ext
+    _compatible_key = _env_present("ANTHROPIC_API_KEY") or _env_present("OPENAI_API_KEY")
+    return {
+        "status": (
+            "extension_installed"
+            if (cline_installed and _compatible_key)
+            else ("extension_installed" if cline_installed else "not_installed")
+        ),
+        "vscode_found": _vscode_binary is not None,
+        "compatible_key_set": _compatible_key,
+        "detail": (
+            "Cline extension installed + compatible API key found"
+            if (cline_installed and _compatible_key)
+            else (
+                "Cline extension installed; set ANTHROPIC_API_KEY or OPENAI_API_KEY"
+                if cline_installed
+                else "Cline not installed in VS Code"
+            )
+        ),
+    }
+
+
+@router.get("/ollama/status")
+async def get_ollama_status(request: Request) -> dict:
+    """Return whether ollama serve is running and the base URL."""
+    _require_local_request(request)
+    ollama_binary = shutil.which("ollama")
+    if not ollama_binary:
+        raise HTTPException(status_code=503, detail="ollama not found on PATH")
+
+    # Check if ollama serve is responsive
+    try:
+        result = subprocess.run(
+            ["ollama", "ps"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        running = result.returncode == 0
+    except Exception:
+        running = False
+
+    return {
+        "running": running,
+        "base_url": "http://localhost:11434",
+        "binary": ollama_binary,
+    }
+
+
+@router.get("/ollama/models")
+async def get_ollama_models(request: Request) -> dict:
+    """List installed Ollama models via `ollama list`."""
+    _require_local_request(request)
+    ollama_binary = shutil.which("ollama")
+    if not ollama_binary:
+        raise HTTPException(status_code=503, detail="ollama not found on PATH")
+
+    try:
+        result = subprocess.run(
+            ["ollama", "list"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        if result.returncode != 0:
+            raise HTTPException(
+                status_code=502,
+                detail=f"ollama list failed: {result.stderr.strip()[:200]}",
+            )
+        # Parse output: NAME\tID\tSIZE\tMODIFIED
+        models = []
+        for line in result.stdout.splitlines()[1:]:  # skip header
+            if not line.strip():
+                continue
+            parts = line.split(maxsplit=3)
+            if parts:
+                models.append(parts[0])
+        return {"models": models}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log.exception("Failed to list ollama models")
+        raise HTTPException(status_code=500, detail=f"Failed to list models: {exc}") from exc
 
 
 # Key management endpoints
@@ -510,3 +663,58 @@ async def clear_credential_key(body: ClearKeyRequest, request: Request) -> dict:
             restart_result = {"attempted": True, "success": False, "detail": str(exc)[:200]}
 
     return {"ok": True, "env_var": env_var, "provider": provider, "maxwell_restart": restart_result}
+
+
+class LaunchAuthRequest(BaseModel):
+    provider: str = Field(..., description="Provider id to launch auth for")
+
+
+@router.post("/credentials/launch-auth")
+async def launch_auth(body: LaunchAuthRequest, request: Request) -> dict:
+    """Launch a provider's browser auth flow in a subprocess.
+
+    Returns immediately with a job_id; the UI can poll /status.
+    """
+    _require_local_request(request)
+    provider_id = body.provider.strip()
+
+    if not provider_id:
+        raise HTTPException(status_code=422, detail="provider is required")
+
+    auth_commands: dict[str, list[str]] = {
+        "gemini": ["gemini", "auth", "login"],
+        "gemini_cli": ["gemini", "auth", "login"],
+        "claude": ["claude", "auth", "login"],
+        "claude_code_cli": ["claude", "auth", "login"],
+        "anthropic": ["claude", "auth", "login"],
+    }
+
+    cmd = auth_commands.get(provider_id)
+    if not cmd:
+        raise HTTPException(
+            status_code=422,
+            detail=f"provider '{provider_id}' does not support launch-auth. Allowed: {sorted(auth_commands)}",
+        )
+
+    job_id = f"{provider_id}-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
+    client_host = request.client.host if request.client else "unknown"
+    log.info("launch_auth: provider=%s job_id=%s by=%s", provider_id, job_id, client_host)
+
+    # Fire-and-forget subprocess (auth flows are interactive and blocking)
+    try:
+        subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Binary not found for provider '{provider_id}'",
+        ) from exc
+    except Exception as exc:
+        log.warning("launch_auth failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to launch auth subprocess") from exc
+
+    return {"ok": True, "provider_id": provider_id, "job_id": job_id}
