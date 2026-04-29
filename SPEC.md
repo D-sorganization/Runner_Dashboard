@@ -1,6 +1,6 @@
 ﻿# SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.1
+**Spec Version:** 2.5.2
 **Application Version:** 4.1.0 (see `VERSION`)
 **Last Updated:** 2026-04-29
 **Status:** Active
@@ -122,6 +122,7 @@ coupling and makes each domain independently testable.
 | `routers/dispatch.py` | `/api/fleet/dispatch` | Fleet agent dispatcher â€” allowlisted hub-to-node commands |
 | `routers/credentials.py` | `/api` | Credential probe â€” tool/key presence without exposing values |
 | `routers/linear.py` | `/api/linear` | Optional Linear read API for workspaces, teams, and issue inventory |
+| `push.py` | `/api/push` | Web Push subscription storage, scoped unsubscribe, and test-send foundation |
 
 The migration from inline `@app.*` endpoints to bounded routers is ongoing.
 Remaining endpoint domains in `server.py` are tracked for extraction under issue #4.
@@ -368,6 +369,14 @@ All endpoints are served under `http://localhost:8321/api/`.
 | GET | `/api/queue` | Current job queue (queued + in_progress) |
 | POST | `/api/queue/cancel-workflow` | Cancel a queued workflow |
 | GET | `/api/queue/diagnose` | Diagnose queue stalls and blockages |
+
+### Push Notifications
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/api/push/subscribe` | Store or update the caller's Web Push subscription and topic list |
+| DELETE | `/api/push/subscribe/{subscription_id}` | Remove the caller's subscription; admins may remove any subscription |
+| POST | `/api/push/test` | Admin-only test send to the caller's matching subscriptions |
 
 ### Fleet
 
