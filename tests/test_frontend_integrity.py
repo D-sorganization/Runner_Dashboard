@@ -13,6 +13,7 @@ import pytest  # noqa: E402
 
 _FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 _INDEX_HTML = _FRONTEND_DIR / "index.html"
+_DESIGN_DIR = _FRONTEND_DIR / "src" / "design"
 
 
 def _read_index() -> str:
@@ -307,6 +308,7 @@ def test_mobile_a11y_dialogs_and_sections_are_labelled() -> None:
 
     for marker in [
         '"aria-label": "Runner status filters"',
+        '"aria-label": "Mobile runner monitoring cards"',
         '"aria-label": "Queue health summary"',
         '"aria-label": "Stale queued runs"',
         '"aria-label": "Mobile remediation dispatch"',
@@ -315,6 +317,93 @@ def test_mobile_a11y_dialogs_and_sections_are_labelled() -> None:
     ]:
         assert marker in content
     assert content.count('"aria-modal": "true"') >= 2
+
+
+def test_mobile_design_token_modules_exist() -> None:
+    for name in ["tokens.ts", "breakpoints.ts", "type.ts", "motion.ts"]:
+        assert (_DESIGN_DIR / name).exists(), f"Missing mobile design module {name}"
+
+
+def test_mobile_design_tokens_mirror_runtime_css_contract() -> None:
+    runtime = _read_index()
+    tokens = (_DESIGN_DIR / "tokens.ts").read_text(encoding="utf-8")
+
+    for css_name, value in [
+        ("--bg-primary", "#0f1117"),
+        ("--bg-secondary", "#161b22"),
+        ("--bg-card", "#1c2128"),
+        ("--text-primary", "#e6edf3"),
+        ("--text-secondary", "#8b949e"),
+        ("--accent-blue", "#58a6ff"),
+        ("--accent-green", "#3fb950"),
+        ("--accent-red", "#f85149"),
+        ("--mobile-hit-target", "44px"),
+    ]:
+        assert f"{css_name}: {value};" in runtime
+        assert value in tokens
+
+    assert "comfortableHitTarget" in tokens
+    assert "48px" in tokens
+    assert "toCssVariables" in tokens
+
+
+def test_mobile_breakpoint_and_motion_contract_modules_are_static_guarded() -> None:
+    breakpoints = (_DESIGN_DIR / "breakpoints.ts").read_text(encoding="utf-8")
+    motion = (_DESIGN_DIR / "motion.ts").read_text(encoding="utf-8")
+
+    for marker in ["xs", "sm", "md", "lg", "xl", "isMobile", "useBreakpoint", "375", "412"]:
+        assert marker in breakpoints
+    for marker in [
+        "prefers-reduced-motion: reduce",
+        "animation-duration: 0.01ms !important;",
+        "transition-duration: 0.01ms !important;",
+        "prefersReducedMotion",
+        'window.matchMedia("(prefers-reduced-motion: reduce)")',
+    ]:
+        assert marker in motion
+
+
+def test_mobile_design_docs_cover_native_shell_and_tokens() -> None:
+    docs_dir = Path(__file__).parent.parent / "docs"
+    native_shell = (docs_dir / "mobile-native-shell.md").read_text(encoding="utf-8")
+    design_system = (docs_dir / "mobile-design-system.md").read_text(encoding="utf-8")
+
+    assert "Capacitor" in native_shell
+    assert "React Native is not the preferred path" in native_shell
+    assert "Go/No-Go Criteria" in native_shell
+    assert "375x812" in design_system
+    assert "412x915" in design_system
+    assert "--mobile-hit-target" in design_system
+
+
+def test_mobile_design_modules_do_not_introduce_runtime_components() -> None:
+    for path in _DESIGN_DIR.glob("*.ts"):
+        content = path.read_text(encoding="utf-8")
+        assert "style={" not in content
+        assert "React" not in content
+
+
+def test_fleet_tab_has_mobile_runner_monitoring_cards() -> None:
+    content = _read_index()
+
+    for marker in [
+        "fleet-mobile-runner-list",
+        "mobile-runner-card",
+        "mobile-runner-meter-row",
+        "mobile-runner-meter-fill",
+        "runner-fleet-desktop-list",
+        "function machineTelemetryForRunner",
+        "function runnerCurrentRun",
+        "function compactRunnerActivity",
+        "compactRunnerActivity(currentRun)",
+        "dashboard live",
+        "runners only",
+    ]:
+        assert marker in content
+
+    assert "runnerCurrentRun(r, p.runs || [])" in content
+    assert "node.last_seen ? timeAgo(node.last_seen) : \"not seen\"" in content
+    assert "new Date(node.last_seen).toLocaleString" not in content
 
 
 # ---------------------------------------------------------------------------

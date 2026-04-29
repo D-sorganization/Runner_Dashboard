@@ -535,6 +535,67 @@
       .fleet-status-pill .status-dot {
         margin-right: 0;
       }
+      .fleet-mobile-runner-list {
+        display: none;
+      }
+      .mobile-runner-card {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--bg-card);
+        padding: 10px;
+        min-width: 0;
+      }
+      .mobile-runner-card-header {
+        align-items: flex-start;
+        display: flex;
+        gap: 8px;
+        justify-content: space-between;
+        min-width: 0;
+      }
+      .mobile-runner-card-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text-primary);
+        overflow-wrap: anywhere;
+      }
+      .mobile-runner-card-meta {
+        color: var(--text-muted);
+        display: flex;
+        flex-wrap: wrap;
+        font-size: 11px;
+        gap: 8px;
+        margin-top: 5px;
+      }
+      .mobile-runner-meter-row {
+        display: grid;
+        gap: 7px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        margin-top: 10px;
+      }
+      .mobile-runner-meter {
+        min-width: 0;
+      }
+      .mobile-runner-meter-label {
+        align-items: center;
+        color: var(--text-muted);
+        display: flex;
+        font-size: 10px;
+        justify-content: space-between;
+        margin-bottom: 4px;
+        text-transform: uppercase;
+      }
+      .mobile-runner-meter-track {
+        background: var(--bg-tertiary);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        height: 7px;
+        overflow: hidden;
+      }
+      .mobile-runner-meter-fill {
+        background: var(--accent-blue);
+        border-radius: inherit;
+        height: 100%;
+      }
 
       .btn {
         font-size: 12px;
@@ -1484,6 +1545,14 @@
         .fleet-status-pill {
           flex: 0 0 auto;
         }
+        .fleet-mobile-runner-list {
+          display: grid;
+          gap: 8px;
+          margin: 0 0 12px;
+        }
+        .runner-fleet-desktop-list {
+          display: none !important;
+        }
         .btn {
           padding: 4px 10px;
           font-size: 11px;
@@ -2322,6 +2391,55 @@
         return pa.number - pb.number;
       }
 
+      function boundedPercent(value) {
+        var n = Number(value);
+        if (!Number.isFinite(n)) return 0;
+        return Math.max(0, Math.min(100, Math.round(n)));
+      }
+
+      function machineTelemetryForRunner(runner, nodesByName) {
+        var machine = parseRunnerName(runner.name).machine;
+        var node = nodesByName[machine.toLowerCase()] || {};
+        var sys = node.system || {};
+        var cpu = sys.cpu || {};
+        var mem = sys.memory || {};
+        var cpuPct = boundedPercent(cpu.percent_1m_avg || cpu.percent || 0);
+        var memPct = mem.total_gb
+          ? boundedPercent((1 - mem.available_gb / mem.total_gb) * 100)
+          : boundedPercent(mem.percent || 0);
+        return {
+          machine: machine,
+          node: node,
+          cpu: cpuPct,
+          memory: memPct,
+          uptime: sys.uptime_seconds ? formatDuration(sys.uptime_seconds) : "no uptime",
+          seen: node.last_seen ? timeAgo(node.last_seen) : "not seen",
+        };
+      }
+
+      function runnerCurrentRun(runner, runs) {
+        return (runs || []).find(function (run) {
+          var status = String(run.status || "").toLowerCase();
+          var isActive =
+            status === "in_progress" ||
+            status === "queued" ||
+            status === "waiting" ||
+            (!run.conclusion && status !== "completed");
+          return (
+            isActive &&
+            (run.runner_name === runner.name || run.runner_id === runner.id)
+          );
+        });
+      }
+
+      function compactRunnerActivity(currentRun) {
+        if (!currentRun) return "idle";
+        if (currentRun.workflow_name) return currentRun.workflow_name;
+        if (currentRun.name) return currentRun.name;
+        if (currentRun.status) return currentRun.status;
+        return "running";
+      }
+
       function sortStateNext(current, key) {
         if (current && current.key === key) {
           return { key: key, dir: current.dir === "asc" ? "desc" : "asc" };
@@ -3139,7 +3257,90 @@
             ),
             h(
               "div",
-              { style: { display: "grid", gap: 10 } },
+              {
+                className: "fleet-mobile-runner-list",
+                "aria-label": "Mobile runner monitoring cards",
+              },
+              filteredRunners
+                .slice()
+                .sort(runnerSort)
+                .map(function (r) {
+                  var parsed = parseRunnerName(r.name);
+                  var telemetry = machineTelemetryForRunner(r, nodesByName);
+                  var currentRun = runnerCurrentRun(r, p.runs || []);
+                  var state = r.busy ? "busy" : r.status;
+                  return h(
+                    "div",
+                    { key: r.id, className: "mobile-runner-card" },
+                    h(
+                      "div",
+                      { className: "mobile-runner-card-header" },
+                      h(
+                        "div",
+                        null,
+                        h("div", { className: "mobile-runner-card-title" }, r.name),
+                        h(
+                          "div",
+                          { className: "mobile-runner-card-meta" },
+                          h("span", null, telemetry.machine + " #" + parsed.number),
+                          h("span", null, compactRunnerActivity(currentRun)),
+                          h("span", null, telemetry.seen),
+                        ),
+                      ),
+                      h(
+                        "span",
+                        { className: "runner-status-badge " + state },
+                        state,
+                      ),
+                    ),
+                    h(
+                      "div",
+                      { className: "mobile-runner-meter-row" },
+                      [
+                        { label: "CPU", value: telemetry.cpu },
+                        { label: "RAM", value: telemetry.memory },
+                      ].map(function (meter) {
+                        return h(
+                          "div",
+                          { key: meter.label, className: "mobile-runner-meter" },
+                          h(
+                            "div",
+                            { className: "mobile-runner-meter-label" },
+                            h("span", null, meter.label),
+                            h("span", null, meter.value + "%"),
+                          ),
+                          h(
+                            "div",
+                            { className: "mobile-runner-meter-track" },
+                            h("div", {
+                              className: "mobile-runner-meter-fill",
+                              style: {
+                                width: meter.value + "%",
+                                background: cpuColor(meter.value),
+                              },
+                            }),
+                          ),
+                        );
+                      }),
+                    ),
+                    h(
+                      "div",
+                      { className: "mobile-runner-card-meta" },
+                      h("span", null, "uptime " + telemetry.uptime),
+                      h(
+                        "span",
+                        null,
+                        telemetry.node.dashboard_reachable === false
+                          ? "runners only"
+                          : "dashboard live",
+                      ),
+                    ),
+                  );
+                }),
+            ),
+            h(
+              "div",
+              { className: "runner-fleet-desktop-list", style: { display: "grid", gap: 10 } },
               machineNames.map(function (machine) {
                 var machineRunners = (runnersByMachine[machine] || []).filter(
                   function (runner) {
