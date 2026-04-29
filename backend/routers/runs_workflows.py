@@ -25,7 +25,7 @@ import scheduled_workflows as scheduled_workflow_inventory
 from cache_utils import cache_get, cache_set
 from dashboard_config import ORG, REPO_ROOT, RUN_JOB_ENRICHMENT_LIMIT
 from fastapi import APIRouter, Depends, HTTPException, Request
-from gh_utils import gh_api, gh_api_admin, gh_api_raw
+from gh_utils import gh_api, gh_api_raw
 from identity import Principal, require_scope
 from proxy_utils import proxy_to_hub, should_proxy_fleet_to_hub
 from system_utils import run_cmd

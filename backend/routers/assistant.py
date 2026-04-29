@@ -10,6 +10,7 @@ Covers:
 
 from __future__ import annotations
 
+import datetime as _dt_mod
 import json
 import logging
 import os
@@ -24,8 +25,6 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from gh_utils import gh_api
 from identity import Principal, require_scope
 from system_utils import run_cmd
-
-import datetime as _dt_mod
 
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 datetime = _dt_mod.datetime
