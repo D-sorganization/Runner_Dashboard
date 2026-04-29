@@ -19,7 +19,8 @@ names and values.
 | `xl` | 1280 | Dense operations layouts |
 
 The epic acceptance viewports are 375x812 and 412x915. Runtime layouts must
-stay usable at both sizes.
+stay usable at both sizes, and `tests/frontend/mobile/viewport_profiles.json`
+keeps both dimensions alongside representative iPhone and Pixel profiles.
 
 ## Touch Targets
 

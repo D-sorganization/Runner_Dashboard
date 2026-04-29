@@ -23,9 +23,16 @@ def test_mobile_viewport_profiles_lock_required_issue_202_dimensions() -> None:
 
     assert config["$schema"] == "./viewport_profiles.schema.json"
     assert VIEWPORT_SCHEMA.exists()
-    assert sorted(profiles) == ["iphone-12", "pixel-5"]
+    assert sorted(profiles) == [
+        "epic-compact-375",
+        "epic-standard-412",
+        "iphone-12",
+        "pixel-5",
+    ]
     assert profiles["iphone-12"]["viewport"] == {"width": 390, "height": 844}
     assert profiles["pixel-5"]["viewport"] == {"width": 393, "height": 851}
+    assert profiles["epic-compact-375"]["viewport"] == {"width": 375, "height": 812}
+    assert profiles["epic-standard-412"]["viewport"] == {"width": 412, "height": 915}
     assert config["playwright"] == {
         "browserName": "chromium",
         "headless": True,
@@ -55,13 +62,22 @@ def test_mobile_smoke_page_contract_targets_existing_frontend_markers() -> None:
         assert page["goldenInteraction"], f"{page['name']} must describe one golden mobile action"
         assert page["requiredMarkers"], f"{page['name']} must include static frontend markers"
         for marker in page["requiredMarkers"]:
-            assert marker in html or marker in js, f"{page['name']} marker {marker!r} is missing from frontend/index.html or frontend/src/legacy/App.tsx"
+            assert marker in html or marker in js, (
+                f"{page['name']} marker {marker!r} is missing from "
+                "frontend/index.html or frontend/src/legacy/App.tsx"
+            )
 
 
 def test_touch_helper_scaffold_exports_readable_mobile_actions() -> None:
     helpers = TOUCH_HELPERS.read_text(encoding="utf-8")
 
-    assert 'MOBILE_VIEWPORT_PROFILE_NAMES = ["iphone-12", "pixel-5"]' in helpers
+    for profile_name in [
+        "iphone-12",
+        "pixel-5",
+        "epic-compact-375",
+        "epic-standard-412",
+    ]:
+        assert profile_name in helpers
     assert "export async function tap(page, target" in helpers
     assert "export async function swipe(page, start, end" in helpers
     assert "export async function longPress(page, target" in helpers

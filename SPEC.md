@@ -1,6 +1,6 @@
 ﻿# SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.7
+**Spec Version:** 2.5.8
 **Application Version:** 4.1.0 (see `VERSION`)
 **Last Updated:** 2026-04-29
 **Status:** Active
@@ -179,8 +179,9 @@ summary sections and modal dialogs. The HTML viewport metadata must not disable
 user scaling with `maximum-scale` or `user-scalable=no`.
 
 The first issue #202 mobile test harness slice lives in `tests/frontend/mobile/`.
-It defines the Playwright mobile viewport contract for `iphone-12` (390 x 844)
-and `pixel-5` (393 x 851), plus shared tap, swipe, and long-press helper
+It defines the Playwright mobile viewport contract for `iphone-12` (390 x 844),
+`pixel-5` (393 x 851), `epic-compact-375` (375 x 812), and
+`epic-standard-412` (412 x 915), plus shared tap, swipe, and long-press helper
 scaffolding. The current CI-safe guard is static pytest validation; browser
 execution and screenshot baselines remain disabled until the harness proves
 stable enough to add a non-flaky Playwright lane.
@@ -876,6 +877,10 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 ---
 
 ## 7. Changelog
+
+### 2.5.8 - 2026-04-29
+- test: add explicit epic acceptance viewport profiles for 375x812 and
+  412x915 to the mobile test harness.
 
 ### 2.5.7 - 2026-04-29
 - feat: add the mobile integration foundation for native-shell selection,
