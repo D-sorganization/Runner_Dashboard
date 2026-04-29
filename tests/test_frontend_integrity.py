@@ -12,7 +12,7 @@ from pathlib import Path  # noqa: E402
 import pytest  # noqa: E402
 
 _FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
-_INDEX_HTML = _FRONTEND_DIR / "index.html"
+_INDEX_HTML = _FRONTEND_DIR / "src" / "legacy" / "App.tsx"
 _DESIGN_DIR = _FRONTEND_DIR / "src" / "design"
 
 
@@ -22,6 +22,10 @@ def _read_index() -> str:
 
 def _index_lines() -> list[str]:
     return _read_index().splitlines()
+
+
+def _read_css() -> str:
+    return (_FRONTEND_DIR / "src" / "index.css").read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -272,7 +276,7 @@ def test_mobile_read_mostly_reports_assessments_feature_requests_markers_present
 
 
 def test_mobile_a11y_hit_target_token_is_enforced() -> None:
-    content = _read_index()
+    content = _read_css()
 
     assert "--mobile-hit-target: 44px;" in content
     assert "@media (max-width: 768px)" in content
@@ -292,15 +296,16 @@ def test_mobile_a11y_hit_target_token_is_enforced() -> None:
 
 
 def test_mobile_a11y_reduced_motion_contract_is_static_guarded() -> None:
-    content = _read_index()
+    css = _read_css()
+    js = _read_index()
 
-    assert "@media (prefers-reduced-motion: reduce)" in content
-    assert "animation-duration: 0.01ms !important;" in content
-    assert "animation-iteration-count: 1 !important;" in content
-    assert "transition-duration: 0.01ms !important;" in content
-    assert "function prefersReducedMotion()" in content
-    assert 'window.matchMedia("(prefers-reduced-motion: reduce)")' in content
-    assert 'transition: prefersReducedMotion() ? "none"' in content
+    assert "@media (prefers-reduced-motion: reduce)" in css
+    assert "animation-duration: 0.01ms !important;" in css
+    assert "animation-iteration-count: 1 !important;" in css
+    assert "transition-duration: 0.01ms !important;" in css
+    assert "function prefersReducedMotion()" in js
+    assert 'window.matchMedia("(prefers-reduced-motion: reduce)")' in js
+    assert 'transition: prefersReducedMotion() ? "none"' in js
 
 
 def test_mobile_a11y_dialogs_and_sections_are_labelled() -> None:
@@ -325,7 +330,7 @@ def test_mobile_design_token_modules_exist() -> None:
 
 
 def test_mobile_design_tokens_mirror_runtime_css_contract() -> None:
-    runtime = _read_index()
+    runtime = _read_css()
     tokens = (_DESIGN_DIR / "tokens.ts").read_text(encoding="utf-8")
 
     for css_name, value in [
