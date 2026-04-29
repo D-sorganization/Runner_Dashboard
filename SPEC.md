@@ -169,6 +169,8 @@ mobile-only read surface for runner monitoring cards over the existing runner,
 run, and machine telemetry payloads; desktop machine and runner tables remain
 the canonical wide-screen surface.
 
+
+PushSettings (issue #192) is a mobile-friendly React component for per-topic Web Push subscription management. It is located at `frontend/src/pages/PushSettings.tsx` and uses `GET /api/push/vapid-public-key` to fetch the VAPID key before subscribing to selected push topics via `POST /api/push/subscribe`.
 Mobile accessibility guards are part of the frontend source contract. At
 mobile viewport widths, primary interactive controls must use the shared
 `--mobile-hit-target` token with a minimum `44px` target size. CSS animations
@@ -887,6 +889,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 ## 7. Changelog
 
 ### 2.5.10 - 2026-04-29
+- feat: add VAPID public key endpoint (`/api/push/vapid-public-key`) and `PushSettings` frontend component with per-topic subscription toggles for Web Push notifications (issue #192).
 - feat: add the first M04 touch primitive implementation slice with
   `TouchButton` and `SegmentedControl` contracts.
 
@@ -960,6 +963,7 @@ Test coverage areas:
 - **`tests/test_mobile_test_harness.py`** - validates the issue #202 mobile
   viewport profiles, smoke-page marker contract, touch helper exports, and the
   explicit visual-regression opt-in gate.
+- **`tests/api/test_push.py`** - tests for `backend/push.py` VAPID public key endpoint response shape and principal import integrity.
 
 `pytest>=8.0` and `pytest-asyncio>=0.23` are listed in `requirements.txt`.
 
