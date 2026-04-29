@@ -15,6 +15,7 @@ _FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 _HTML_SHELL = _FRONTEND_DIR / "index.html"
 _INDEX_HTML = _FRONTEND_DIR / "src" / "legacy" / "App.tsx"
 _DESIGN_DIR = _FRONTEND_DIR / "src" / "design"
+_PRIMITIVES_DIR = _FRONTEND_DIR / "src" / "primitives"
 
 
 def _read_index() -> str:
@@ -400,6 +401,33 @@ def test_mobile_design_modules_do_not_introduce_runtime_components() -> None:
         content = path.read_text(encoding="utf-8")
         assert "style={" not in content
         assert "React" not in content
+
+
+def test_touch_primitives_foundation_contract_is_static_guarded() -> None:
+    touch_button = (_PRIMITIVES_DIR / "TouchButton.tsx").read_text(encoding="utf-8")
+    segmented = (_PRIMITIVES_DIR / "SegmentedControl.tsx").read_text(encoding="utf-8")
+    exports = (_PRIMITIVES_DIR / "index.ts").read_text(encoding="utf-8")
+    css = _read_css()
+    docs = (Path(__file__).parent.parent / "docs" / "mobile-design-system.md").read_text(
+        encoding="utf-8",
+    )
+
+    assert 'data-touch-primitive="TouchButton"' in touch_button
+    assert 'aria-pressed={pressed}' in touch_button
+    assert 'type = "button"' in touch_button
+    assert 'data-touch-primitive="SegmentedControl"' in segmented
+    assert 'role="radiogroup"' in segmented
+    assert 'role="radio"' in segmented
+    assert 'aria-checked={option.value === value}' in segmented
+    assert "ArrowRight" in segmented and "ArrowLeft" in segmented
+    assert 'export { TouchButton } from "./TouchButton";' in exports
+    assert 'export { SegmentedControl } from "./SegmentedControl";' in exports
+    assert ".touch-button" in css
+    assert ".segmented-control" in css
+    assert "min-height: var(--mobile-hit-target);" in css
+    assert "TouchButton" in docs
+    assert "SegmentedControl" in docs
+    assert "SwipeRow" in docs and "PullToRefresh" in docs and "BottomSheet" in docs
 
 
 def test_fleet_tab_has_mobile_runner_monitoring_cards() -> None:

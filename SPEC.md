@@ -1,6 +1,6 @@
 ﻿# SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.8
+**Spec Version:** 2.5.9
 **Application Version:** 4.1.0 (see `VERSION`)
 **Last Updated:** 2026-04-29
 **Status:** Active
@@ -185,6 +185,13 @@ It defines the Playwright mobile viewport contract for `iphone-12` (390 x 844),
 scaffolding. The current CI-safe guard is static pytest validation; browser
 execution and screenshot baselines remain disabled until the harness proves
 stable enough to add a non-flaky Playwright lane.
+
+The first M04 touch primitive implementation slice lives in
+`frontend/src/primitives/`. `TouchButton` wraps native buttons with the shared
+mobile hit-target and press/focus affordance, while `SegmentedControl` provides
+an accessible `radiogroup` for compact mobile filters. Gesture-heavy primitives
+(`SwipeRow`, `PullToRefresh`, and `BottomSheet`) remain separate follow-up
+work because they require pointer-event and focus-management tests.
 
 **Shared helper components** defined near the top of the script block:
 
@@ -877,6 +884,10 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 ---
 
 ## 7. Changelog
+
+### 2.5.9 - 2026-04-29
+- feat: add the first M04 touch primitive implementation slice with
+  `TouchButton` and `SegmentedControl` contracts.
 
 ### 2.5.8 - 2026-04-29
 - test: add explicit epic acceptance viewport profiles for 375x812 and

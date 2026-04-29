@@ -30,6 +30,19 @@ should prefer the `48px` comfortable target when space allows.
 The HTML viewport metadata must keep user scaling enabled; do not add
 `maximum-scale` or `user-scalable=no` to the mobile shell.
 
+## Touch Primitives
+
+`frontend/src/primitives/` contains the shared touch primitive entrypoint for
+mobile pages.
+
+| Primitive | Use this when... | Do not use this when... |
+| --- | --- | --- |
+| `TouchButton` | A tappable command must guarantee the shared hit-target size and visible press/focus feedback. | A native link or read-only badge is the correct semantic element. |
+| `SegmentedControl` | A compact mobile filter needs one selected option from a short list. | The options are long, multi-select, or require explanatory copy. |
+
+`SwipeRow`, `PullToRefresh`, and `BottomSheet` remain tracked by M04 and should
+land as focused follow-up primitives with gesture and focus-management tests.
+
 ## Type Scale
 
 | Token | Size | Use |
