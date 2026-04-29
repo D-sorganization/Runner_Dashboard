@@ -264,7 +264,7 @@ async def linear_webhook(
         payload.organization_id,
     )
 
-    # TODO(#242-followup): Route into issue pipeline when type == "Issue"
+    # Route into issue pipeline when type == "Issue" (tracked in #242-followup).
     # For now we acknowledge receipt and return the parsed metadata.
     return {
         "ok": True,
