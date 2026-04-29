@@ -110,6 +110,8 @@ surface task action details without exposing secrets.
 | `pr_inventory.py` | Fetch and normalise open PRs across repos (issue #80) |
 | `issue_inventory.py` | Fetch and normalise open issues with taxonomy (issue #81) |
 | `linear_inventory.py` | Fetch and normalise Linear issues into the canonical issue inventory shape |
+| `health.py` | Health check endpoints (`/api/health`, `/health`) extracted from server.py (issue #159) |
+| `metrics.py` | System metrics endpoints (`/api/system`, `/api/fleet/status`) extracted from server.py (issue #159) |
 
 **Bounded domain routers (`backend/routers/`):**
 

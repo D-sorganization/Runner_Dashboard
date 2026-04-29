@@ -15,25 +15,25 @@ async def get_system_metrics():
     """Real-time system resource metrics."""
     # Lazy import to avoid circular dependency with server.py
     from server import (  # noqa: PLC0415
-        psutil,
-        platform,
-        shutil,
-        os,
-        time,
-        Path,
-        RUNNER_BASE_DIR,
-        HOSTNAME,
         BOOT_TIME,
         HOST_MEMORY_GB,
+        HOSTNAME,
+        RUNNER_BASE_DIR,
+        UTC,
+        Path,
         _cpu_history,
         _disk_pressure_snapshot,
         _local_hardware_specs,
         _workload_capacity_from_specs,
+        datetime,
         get_gpu_info,
         get_per_runner_resources,
         get_runner_capacity_snapshot,
-        datetime,
-        UTC,
+        os,
+        platform,
+        psutil,
+        shutil,
+        time,
     )
 
     cpu_freq = psutil.cpu_freq()
@@ -230,14 +230,12 @@ async def get_fleet_status(request: Request):
     """Get full system metrics state for all machines in the fleet network."""
     # Lazy import to avoid circular dependency with server.py
     from server import (  # noqa: PLC0415
-        HOSTNAME,
         FLEET_NODES,
+        HOSTNAME,
+        _classify_node_offline,
+        _resource_offline_reason,
         _should_proxy_fleet_to_hub,
         proxy_to_hub,
-        _resource_offline_reason,
-        _classify_node_offline,
-        datetime,
-        UTC,
     )
 
     if _should_proxy_fleet_to_hub(request):

@@ -65,10 +65,10 @@ import config_schema as config_schema  # noqa: E402
 import deployment_drift as deployment_drift  # noqa: E402
 import dispatch_contract as dispatch_contract  # noqa: E402
 import health as _health_router  # noqa: E402
-import metrics as _metrics_router  # noqa: E402
 import issue_inventory as issue_inventory  # noqa: E402
 import lease_synchronizer as lease_synchronizer  # noqa: E402
 import linear_inventory as linear_inventory  # noqa: E402
+import metrics as _metrics_router  # noqa: E402
 import pr_inventory as pr_inventory  # noqa: E402
 import push as _push_router  # noqa: E402
 import quick_dispatch as _quick_dispatch  # noqa: E402
@@ -2114,7 +2114,7 @@ async def _collect_live_fleet_nodes() -> list[dict]:
                 **reason,
             }
 
-    local_sys = await get_system_metrics()
+    local_sys = await _metrics_router.get_system_metrics()
     local_health = await _health_router._health_impl()
     local_resource_reason = _resource_offline_reason(local_sys)
     nodes: list[dict] = [
@@ -5167,7 +5167,7 @@ async def _get_fleet_nodes_impl() -> dict:
 async def proxy_node_system(node_name: str) -> dict:
     """Proxy /api/system from a named fleet node (for detailed drill-down)."""
     if node_name in (HOSTNAME, "local"):
-        return await get_system_metrics()
+        return await _metrics_router.get_system_metrics()
     url = FLEET_NODES.get(node_name)
     if not url:
         raise HTTPException(status_code=404, detail=f"Node not found: {node_name}")

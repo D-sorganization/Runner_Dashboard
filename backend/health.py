@@ -6,6 +6,7 @@ Extracted from server.py as part of issue #159 god-module-refactor-2026q2.
 from __future__ import annotations
 
 import time
+
 from fastapi import APIRouter, Request
 
 router = APIRouter(tags=["health"])
@@ -15,15 +16,15 @@ async def _health_impl() -> dict:
     """Core health logic, callable both from the HTTP endpoint and internally."""
     # Lazy import to avoid circular dependency with server.py
     from server import (  # noqa: PLC0415
+        BOOT_TIME,
+        HOSTNAME,
+        ORG,
+        UTC,
         _cache_get,
         _cache_set,
-        gh_api_admin,
-        ORG,
-        HOSTNAME,
-        BOOT_TIME,
         _deployment_info,
         datetime,
-        UTC,
+        gh_api_admin,
     )
 
     try:
@@ -63,7 +64,7 @@ async def launcher_health_check() -> dict:
     polling before triggering custom URL protocol.
     """
     # Lazy import to avoid circular dependency with server.py
-    from server import datetime, UTC  # noqa: PLC0415
+    from server import UTC, datetime  # noqa: PLC0415
 
     return {
         "status": "ready",
