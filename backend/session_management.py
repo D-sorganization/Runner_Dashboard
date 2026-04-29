@@ -32,17 +32,11 @@ class SessionRecord(BaseModel):
 
 _SESSIONS_PATH = Path(
     os.environ.get("DASHBOARD_SESSIONS_PATH")
-    or (
-        Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
-        / "runner-dashboard"
-        / "sessions.json"
-    )
+    or (Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "runner-dashboard" / "sessions.json")
 )
 
 _SESSION_TTL_SECONDS = int(os.environ.get("DASHBOARD_SESSION_TTL_SECONDS", "86400"))
-_MAX_SESSIONS_PER_PRINCIPAL = int(
-    os.environ.get("DASHBOARD_MAX_SESSIONS_PER_PRINCIPAL", "10")
-)
+_MAX_SESSIONS_PER_PRINCIPAL = int(os.environ.get("DASHBOARD_MAX_SESSIONS_PER_PRINCIPAL", "10"))
 
 
 def _load_sessions(path: Path | None = None) -> list[SessionRecord]:
@@ -81,11 +75,7 @@ def _save_sessions(records: list[SessionRecord], path: Path | None = None) -> No
 def _prune_expired_sessions(records: list[SessionRecord]) -> list[SessionRecord]:
     now = time.time()
     cutoff = now - _SESSION_TTL_SECONDS
-    return [
-        record
-        for record in records
-        if record.last_seen_at > cutoff and record.revoked_at is None
-    ]
+    return [record for record in records if record.last_seen_at > cutoff and record.revoked_at is None]
 
 
 def generate_session_id() -> str:
@@ -205,6 +195,4 @@ def session_count_for_principal(principal_id: str) -> int:
 
 def hash_session_id(session_id: str) -> str:
     """Return a stable hash of a session id for logging (avoids leaking raw ids)."""
-    return base64.urlsafe_b64encode(
-        hashlib.sha256(session_id.encode("utf-8")).digest()
-    ).decode("ascii").rstrip("=")
+    return base64.urlsafe_b64encode(hashlib.sha256(session_id.encode("utf-8")).digest()).decode("ascii").rstrip("=")

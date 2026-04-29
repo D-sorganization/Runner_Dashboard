@@ -4,11 +4,11 @@ import secrets
 from typing import Any
 
 import httpx
+import session_management as sm
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from identity import Principal, identity_manager, require_principal
 from pydantic import BaseModel
-import session_management as sm
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
