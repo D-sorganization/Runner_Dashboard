@@ -78,7 +78,7 @@ The backend is a single-process FastAPI application that:
    and vendor-specific CLI tools.
 4. Reads and writes runtime configuration files (YAML/JSON) from `config/` and
    `~/.config/runner-dashboard/`.
-5. Serves the frontend SPA (`frontend/index.html`) as a static file at `GET /`.
+5. Serves the built frontend SPA (`dist/index.html`) as a static file at `GET /`.
 
 Runtime configuration files include the optional `config/linear.json`, which
 declares Linear workspaces, team filters, and taxonomy mappings used by the
@@ -134,21 +134,21 @@ the FastAPI app and router dependencies.
 
 ### 2.2 Frontend
 
-**Type:** Self-contained Single-Page Application (SPA)
-**Entry point:** `frontend/index.html`
-**Build step:** None â€” served directly as a static HTML file
-**JavaScript framework:** React (loaded from CDN)
-**createElement API:** `h()` alias (no JSX, no transpiler)
-**Styling:** Inline styles + embedded `<style>` block
+**Type:** Single-Page Application (SPA)
+**Entry point:** `frontend/src/main.tsx` (built via Vite)
+**Build step:** Vite + React + TypeScript (`npm run build` -> `dist/`)
+**JavaScript framework:** React (imported as ES modules)
+**createElement API:** `h()` alias (JSX migration in progress)
+**Styling:** Extracted CSS in `frontend/src/index.css` (was inline)
 
-All application logic is contained within `frontend/index.html`. There is no
-npm project, no `package.json`, and no build toolchain. The file is served
-directly by the FastAPI backend.
-
+Application logic is contained in `frontend/src/legacy/App.tsx` (migrated from
+the previous single-file `frontend/index.html`). The Vite build outputs to
+`dist/` which the FastAPI backend serves. A `package.json` with build tooling
+is now present.
 `frontend/perf-budget.json` records the issue #200 mobile performance budget.
-While the frontend remains a no-build single-file SPA, the budget check enforces
+The budget check enforces
 the target mobile shell, tab chunk, Lighthouse, INP, and FCP values plus an
-interim gzip ceiling for `frontend/index.html` and its inline JavaScript/CSS.
+interim gzip ceiling for the built `dist/index.html` and its bundled JavaScript/CSS.
 Budget increases require a PR that edits the budget file with justification.
 
 Mobile layouts must remain usable at 375x812 and 412x915 viewport sizes. The
@@ -162,9 +162,9 @@ assessment score history, and feature request history without relying on wide
 desktop tables.
 
 The mobile foundation is documented in `docs/mobile-native-shell.md` and
-`docs/mobile-design-system.md`. Until the Vite migration lands, reusable mobile
-design contracts live in static `frontend/src/design/*.ts` modules and are
-guarded by pytest without adding a frontend build step. The Fleet tab exposes a
+`docs/mobile-design-system.md`. Reusable mobile
+design contracts live in `frontend/src/design/*.ts` modules and are
+guarded by pytest. The Fleet tab exposes a
 mobile-only read surface for runner monitoring cards over the existing runner,
 run, and machine telemetry payloads; desktop machine and runner tables remain
 the canonical wide-screen surface.
@@ -212,7 +212,9 @@ navigating to a specific tab. The popover provides:
 Click-outside closes the popover. Rate-limit errors (HTTP 429) are surfaced
 with a human-readable message.
 
-`frontend/index.html` is the **sole canonical frontend source**. No other
+`frontend/src/legacy/App.tsx` is the **sole canonical frontend source** during
+Phase 1 of the Vite migration. `frontend/index.html` is now the minimal Vite
+HTML shell. No other
 frontend implementation exists in the repository. The previously present
 `RunnerDashboard.jsx` was an unused JSX archive that violated DRY; it was
 removed in issue #3 to enforce a single source of truth. A CI test
@@ -674,7 +676,7 @@ All endpoints are served under `http://localhost:8321/api/`.
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/` | Serves `frontend/index.html` |
+| GET | `/` | Serves `dist/index.html` |
 | GET | `/manifest.webmanifest` | PWA manifest |
 | GET | `/icon.svg` | App icon |
 
@@ -877,7 +879,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 ### 2.5.7 - 2026-04-29
 - feat: add the mobile integration foundation for native-shell selection,
   static design tokens, and read-only Fleet runner monitoring cards without
-  changing the no-build frontend runtime.
+  changing the built frontend runtime.
 
 ### 2.5.6 - 2026-04-29
 - test: add the issue #202 mobile Playwright harness contract with checked-in
@@ -896,7 +898,7 @@ Initial standalone release. Extracted from the `D-sorganization/Repository_Manag
 mono-repo as an independent repository.
 
 - Full FastAPI backend with all API endpoints documented above.
-- Self-contained React SPA frontend (no build step).
+- Vite-built React SPA frontend.
 - Fleet deployment scripts and systemd service unit.
 - Fleet-standard CI/CD workflows (ci-standard, ci-spec-check, agent workflows).
 - Branch protection with required `quality-gate` and `Verify SPEC.md freshness`
@@ -933,10 +935,10 @@ Test coverage areas:
 - **`tests/test_agent_remediation.py`** â€” unit tests for `backend/agent_remediation.py`:
   `FailureContext` construction, workflow-type classification for lint and test workflows,
   policy defaults.
-- **`tests/test_frontend_integrity.py`** â€” static source checks for `frontend/index.html`:
+- **`tests/test_frontend_integrity.py`** â€” static source checks for `frontend/src/legacy/App.tsx`:
   required tab function markers, absence of deprecated `HeavyTestsTab`, icon helper symbols.
 - **`tests/test_frontend_perf_budget.py`** â€” validates `frontend/perf-budget.json`
-  and enforces the interim gzip ceiling for the current no-build frontend artifact.
+  and enforces the interim gzip ceiling for the current built frontend artifact.
 - **`tests/test_mobile_test_harness.py`** - validates the issue #202 mobile
   viewport profiles, smoke-page marker contract, touch helper exports, and the
   explicit visual-regression opt-in gate.
@@ -1619,8 +1621,8 @@ A gear icon in the sidebar header opens a settings card with:
 
 ### 16.8 Implementation
 
-The `AssistantSidebar` component is defined in `frontend/index.html` just
-before `QuickDispatchPopover`. It follows the no-JSX, no-build-step convention
+The `AssistantSidebar` component is defined in `frontend/src/legacy/App.tsx` just
+before `QuickDispatchPopover`. It follows the legacy no-JSX convention
 of the rest of the frontend. Open/closed state is owned by the `App` component
 and passed down as props; all other sidebar state is internal.
 
