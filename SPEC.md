@@ -1,6 +1,6 @@
 ﻿# SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.10
+**Spec Version:** 2.5.11
 **Application Version:** 4.1.0 (see `VERSION`)
 **Last Updated:** 2026-04-29
 **Status:** Active
@@ -886,6 +886,10 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 ## 7. Changelog
 
+### 2.5.11 - 2026-04-29
+- feat: add authenticated session tracking and remote logout endpoints for the
+  mobile auth surface, including hashed session listing and bulk revocation.
+
 ### 2.5.10 - 2026-04-29
 - feat: add the first M04 touch primitive implementation slice with
   `TouchButton` and `SegmentedControl` contracts.
@@ -989,6 +993,18 @@ Principals are stored in `config/principals.yml`. The system fails closed: reque
 All mutating `/api/*` endpoints require a principal.
 - Humans authenticate via session cookies (from GitHub OAuth).
 - Bots authenticate via `Authorization: Bearer <token>`.
+- Human logins also register a durable dashboard session record in
+  `~/.config/runner-dashboard/sessions.json` (overridable via
+  `DASHBOARD_SESSIONS_PATH`) with `session_id`, `principal_id`, timestamps,
+  user agent, IP address, and optional revocation time.
+- Session records expire after `DASHBOARD_SESSION_TTL_SECONDS` (default 86400
+  seconds), cap each principal at `DASHBOARD_MAX_SESSIONS_PER_PRINCIPAL`
+  active sessions (default 10), and expose only hashed session identifiers to
+  API callers.
+- Auth routes now include `GET /api/auth/sessions` for listing active sessions,
+  `DELETE /api/auth/sessions/{session_id_hash}` for per-session remote logout,
+  and `POST /api/auth/logout/all` for bulk revocation with
+  `exclude_current=true` by default.
 Scopes are enforced per-endpoint using the `require_scope(scope_name)` dependency.
 
 **Mobile Biometric Unlock (WebAuthn):**
