@@ -1,4 +1,4 @@
-﻿# CI dispatch marker 2026-04-23
+# CI dispatch marker 2026-04-23
 name: CI Standard
 on:
   push:
@@ -17,7 +17,7 @@ on:
       - .gitignore
   workflow_dispatch:
     inputs:
-      force_cloud:
+      force_local:
         description: Force all runner-routed jobs onto GitHub-hosted runners
         required: false
         default: false
@@ -86,6 +86,9 @@ jobs:
           echo "$RUNNER_TEMP/health-venv/bin" >> "$GITHUB_PATH"
       - name: Fail-fast check â€” pytest can collect tests
         run: |
+          if [ -f .venv/bin/activate ]; then
+            source .venv/bin/activate
+          fi
           if [ -d tests/ ]; then
             pytest --co -q tests/ || { echo "::error::pytest --co failed"; exit 1; }
           else
