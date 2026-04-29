@@ -1,12 +1,14 @@
 # ruff: noqa: B008
 import os
 import secrets
+from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from identity import Principal, identity_manager, require_principal
 from pydantic import BaseModel
+import session_management as sm
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -75,6 +77,11 @@ async def github_callback(request: Request, code: str, state: str):
         raise HTTPException(status_code=403, detail="User not authorized")
 
     request.session["principal_id"] = matched_principal.id
+    request.session["session_id"] = sm.register_session(
+        matched_principal.id,
+        user_agent=request.headers.get("user-agent"),
+        ip_address=request.client.host if request.client else None,
+    )
     return RedirectResponse(url="/")
 
 
@@ -88,19 +95,37 @@ async def dev_login(request: Request):
     for p in identity_manager.principals.values():
         if p.type == "human":
             request.session["principal_id"] = p.id
+            request.session["session_id"] = sm.register_session(
+                p.id,
+                user_agent=request.headers.get("user-agent"),
+                ip_address=request.client.host if request.client else None,
+            )
             return RedirectResponse(url="/")
 
     # If none exists, create a dummy one
     dummy = Principal(id="dev-user", type="human", name="Developer")
     identity_manager.principals["dev-user"] = dummy
     request.session["principal_id"] = "dev-user"
+    request.session["session_id"] = sm.register_session(
+        "dev-user",
+        user_agent=request.headers.get("user-agent"),
+        ip_address=request.client.host if request.client else None,
+    )
     return RedirectResponse(url="/")
 
 
 @router.post("/logout")
 async def logout(request: Request):
     """Logout current user."""
+    principal_id = request.session.get("principal_id")
+    session_id = request.session.get("session_id")
     request.session.clear()
+    if principal_id:
+        if session_id:
+            sm.revoke_session(session_id)
+        else:
+            # Fallback: revoke all sessions for this principal
+            sm.revoke_all_sessions_for_principal(principal_id)
     return {"status": "logged_out"}
 
 
@@ -108,6 +133,64 @@ async def logout(request: Request):
 async def get_me(principal: Principal = Depends(require_principal)):  # noqa: B008
     """Get current user info."""
     return principal
+
+
+@router.get("/sessions")
+async def list_sessions(principal: Principal = Depends(require_principal)):  # noqa: B008
+    """List active sessions for the current user."""
+    sessions = sm.list_sessions_for_principal(principal.id)
+    return {
+        "sessions": [
+            {
+                "session_hash": sm.hash_session_id(s["session_id"]),
+                "created_at": s["created_at"],
+                "last_seen_at": s["last_seen_at"],
+                "user_agent": s["user_agent"],
+                "ip_address": s["ip_address"],
+            }
+            for s in sessions
+        ]
+    }
+
+
+@router.delete("/sessions/{session_id_hash}")
+async def revoke_session_by_hash(
+    session_id_hash: str,
+    principal: Principal = Depends(require_principal),  # noqa: B008
+) -> dict[str, Any]:
+    """Revoke a specific session by its hash (remote logout)."""
+    sessions = sm.list_sessions_for_principal(principal.id)
+    target_session_id = None
+    for s in sessions:
+        if sm.hash_session_id(s["session_id"]) == session_id_hash:
+            target_session_id = s["session_id"]
+            break
+
+    if not target_session_id:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    revoked = sm.revoke_session(target_session_id)
+    if not revoked:
+        raise HTTPException(status_code=404, detail="Session already revoked or not found")
+    return {"status": "revoked", "session_hash": session_id_hash}
+
+
+class RemoteLogoutRequest(BaseModel):
+    exclude_current: bool = True
+
+
+@router.post("/logout/all")
+async def logout_all(
+    request: Request,
+    body: RemoteLogoutRequest = RemoteLogoutRequest(),
+    principal: Principal = Depends(require_principal),  # noqa: B008
+) -> dict[str, Any]:
+    """Remote logout: revoke all sessions for this principal."""
+    current_session_id = request.session.get("session_id")
+    exclude = current_session_id if body.exclude_current else None
+    revoked_count = sm.revoke_all_sessions_for_principal(principal.id, exclude_session_id=exclude)
+    request.session.clear()
+    return {"status": "logged_out", "revoked_sessions": revoked_count}
 
 
 class MintTokenRequest(BaseModel):
