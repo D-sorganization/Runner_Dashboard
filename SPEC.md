@@ -173,6 +173,7 @@ the canonical wide-screen surface.
 
 
 PushSettings (issue #192) is a mobile-friendly React component for per-topic Web Push subscription management. It is located at `frontend/src/pages/PushSettings.tsx` and uses `GET /api/push/vapid-public-key` to fetch the VAPID key before subscribing to selected push topics via `POST /api/push/subscribe`.
+The Vite entrypoint in `frontend/src/main.tsx` includes a minimal tracer-bullet route shim for `/settings/push`: when the browser pathname resolves to that route, it renders `PushSettings` directly; all other paths continue to render the main dashboard app. This keeps the PushSettings work isolated while the Vite migration remains in progress.
 Mobile accessibility guards are part of the frontend source contract. At
 mobile viewport widths, primary interactive controls must use the shared
 `--mobile-hit-target` token with a minimum `44px` target size. CSS animations
@@ -904,6 +905,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 ### 2.5.10 - 2026-04-29
 - feat: add VAPID public key endpoint (`/api/push/vapid-public-key`) and `PushSettings` frontend component with per-topic subscription toggles for Web Push notifications (issue #192).
+- feat: route `/settings/push` from `frontend/src/main.tsx` to `PushSettings` so the Vite entrypoint exposes the `#173` tracer-bullet path during Phase 1 migration.
 - feat: add the first M04 touch primitive implementation slice with
   `TouchButton` and `SegmentedControl` contracts.
 

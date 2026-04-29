@@ -1,6 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './legacy/App'
+import { PushSettings } from './pages/PushSettings'
 import './index.css'
 
 // Service Worker Registration
@@ -52,8 +53,13 @@ function triggerInstallPrompt(): void {
 ;(window as any).__deferredPrompt = deferredPrompt
 ;(window as any).triggerInstallPrompt = triggerInstallPrompt
 
+function isPushSettingsRoute(pathname: string): boolean {
+  const normalized = pathname.replace(/\/+$/, '') || '/'
+  return normalized === '/settings/push'
+}
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <App />
+    {isPushSettingsRoute(window.location.pathname) ? <PushSettings /> : <App />}
   </React.StrictMode>,
 )
