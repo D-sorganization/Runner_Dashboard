@@ -110,7 +110,7 @@ class AuditHistoryResponse(BaseModel):
 # Retained for backwards-compatibility with existing callers.
 
 
-class ActionRiskLevel(str, enum.Enum):
+class ActionRiskLevel(str, enum.Enum):  # noqa: UP042
     """Risk assessment for proposed actions."""
 
     LOW = "low"  # Informational, no impact

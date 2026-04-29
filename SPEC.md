@@ -313,6 +313,11 @@ sessionStorage for the current browser session.
 ### 3.14 Credentials Tab
 Inventory of GitHub Actions secrets and variables across the org and per-repo.
 Read-only view of credential names (not values) for audit purposes.
+On mobile-width viewports, the tab renders locked by default and only loads
+credential metadata after a fresh WebAuthn assertion succeeds. Mobile
+credential mutations require an explicit second confirmation in a bottom-sheet
+dialog. `/api/credentials` requests are denylisted from frontend cache paths
+and sent with `cache: "no-store"`; credential values are never rendered.
 
 ### 3.15 Assessments Tab
 Dispatch and track code quality assessment workflows (Jules Assessment

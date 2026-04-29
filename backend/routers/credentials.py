@@ -469,8 +469,7 @@ async def get_credentials(request: Request) -> dict:
                     "config_source": workspace.get("auth_kind") or "api_key",
                     "docs_url": "https://linear.app/settings/api",
                     "setup_hint": (
-                        "Get a personal API key from Linear -> Settings -> API. "
-                        "Personal API keys begin with lin_api_."
+                        "Get a personal API key from Linear -> Settings -> API. Personal API keys begin with lin_api_."
                     ),
                     "key_provider": "linear",
                     "workspace_id": workspace_id,

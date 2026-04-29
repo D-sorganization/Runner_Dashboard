@@ -204,6 +204,37 @@ def test_credentials_tab_supports_setting_linear_api_key() -> None:
     assert "Set API key" in content
 
 
+def test_mobile_credentials_tab_is_locked_and_webauthn_gated() -> None:
+    content = _read_index()
+    assert "mobile-credentials-lock" in content
+    assert "Show credentials" in content
+    assert "/api/auth/webauthn/assert/begin" in content
+    assert "/api/auth/webauthn/assert/complete" in content
+    assert 'userVerification: "required"' in content
+    assert "Credentials re-locked after 60 seconds." in content
+    assert "Credentials re-locked when the tab lost focus." in content
+    assert "mobileCredentialsViewport" in content
+    assert "if (!mobileCredentialsViewport) fetchCredentials();" in content
+
+
+def test_mobile_credentials_mutations_require_bottom_sheet_confirmation() -> None:
+    content = _read_index()
+    assert "mobile-credentials-sheet" in content
+    assert "Confirm sensitive operation" in content
+    assert "Continue only if you intend to change credential state." in content
+    assert "setMobileConfirmProbe(probe)" in content
+    assert "onSetKey(probe)" in content
+
+
+def test_credentials_api_is_excluded_from_frontend_cache_contract() -> None:
+    content = _read_index()
+    assert "SERVICE_WORKER_CACHE_DENYLIST" in content
+    assert '/^\\/api\\/credentials(?:\\/|$)/' in content
+    assert "shouldBypassServiceWorkerCache(url)" in content
+    assert 'cache: "no-store"' in content
+    assert "navigator.serviceWorker" not in content
+
+
 def test_mobile_remediation_three_tap_slice_markers_present() -> None:
     content = _read_index()
     assert "remediation-mobile-tabs" in content

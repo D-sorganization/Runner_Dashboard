@@ -190,8 +190,7 @@ jobs:
           if [ -f uv.lock ]; then
             pip install uv
             uv sync --frozen
-            echo "$(pwd)/.venv/bin" >> "$GITHUB_PATH"
-            pip-audit --progress-spinner=off
+            ./.venv/bin/pip-audit --progress-spinner=off
           else
             python -m venv "$RUNNER_TEMP/security-venv"
             "$RUNNER_TEMP/security-venv/bin/pip" install --quiet pip-audit

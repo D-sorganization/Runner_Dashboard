@@ -1648,6 +1648,32 @@
         box-shadow: 0 -18px 60px rgba(0, 0, 0, 0.32);
         padding: 16px;
       }
+      .mobile-credentials-lock {
+        background: var(--bg-secondary);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 16px;
+      }
+      .mobile-credentials-sheet {
+        position: fixed;
+        inset: 0;
+        z-index: 1200;
+        display: flex;
+        align-items: flex-end;
+        justify-content: center;
+        padding: 12px;
+        background: rgba(0, 0, 0, 0.55);
+      }
+      .mobile-credentials-sheet-panel {
+        width: min(520px, 100%);
+        max-height: 88vh;
+        overflow: auto;
+        border: 1px solid var(--border);
+        border-radius: 12px 12px 8px 8px;
+        background: var(--bg-primary);
+        box-shadow: 0 -18px 60px rgba(0, 0, 0, 0.32);
+        padding: 16px;
+      }
       .remediation-inflight-tile {
         margin: 0 0 12px;
         padding: 12px;
@@ -1732,10 +1758,25 @@
         throw new Error("Dashboard dependencies failed to load");
       }
       var h = React.createElement;
+      var SERVICE_WORKER_CACHE_DENYLIST = [/^\/api\/credentials(?:\/|$)/];
+
+      function shouldBypassServiceWorkerCache(url) {
+        try {
+          var parsed = new URL(url, window.location.origin);
+          return SERVICE_WORKER_CACHE_DENYLIST.some(function (pattern) {
+            return pattern.test(parsed.pathname);
+          });
+        } catch (e) {
+          return false;
+        }
+      }
 
       // Wrap global fetch to detect 401s and prompt login
       var originalFetch = window.fetch;
       window.fetch = async function(url, opts) {
+        if (shouldBypassServiceWorkerCache(url)) {
+          opts = Object.assign({}, opts || {}, { cache: "no-store" });
+        }
         var resp = await originalFetch(url, opts);
         if (resp.status === 401 && !url.includes('/api/auth/me')) {
           console.warn("[auth] 401 Unauthorized from", url);
@@ -12261,6 +12302,122 @@
         var error = p.error;
         var onRefresh = p.onRefresh;
         var onSetKey = p.onSetKey;
+        var mobile = p.mobile;
+        var lockState = React.useState(false);
+        var mobileUnlocked = lockState[0],
+          setMobileUnlocked = lockState[1];
+        var statusState = React.useState(null);
+        var mobileUnlockStatus = statusState[0],
+          setMobileUnlockStatus = statusState[1];
+        var confirmingState = React.useState(null);
+        var mobileConfirmProbe = confirmingState[0],
+          setMobileConfirmProbe = confirmingState[1];
+
+        function base64UrlToBuffer(value) {
+          var padded = value.replace(/-/g, "+").replace(/_/g, "/");
+          padded += "=".repeat((4 - (padded.length % 4)) % 4);
+          var raw = window.atob(padded);
+          var out = new Uint8Array(raw.length);
+          for (var i = 0; i < raw.length; i += 1) out[i] = raw.charCodeAt(i);
+          return out.buffer;
+        }
+
+        function credentialToPayload(credential) {
+          if (!credential) return {};
+          return {
+            id: credential.id,
+            type: credential.type,
+            rawId: credential.rawId ? Array.from(new Uint8Array(credential.rawId)) : [],
+            response: credential.response
+              ? {
+                  authenticatorData: credential.response.authenticatorData
+                    ? Array.from(new Uint8Array(credential.response.authenticatorData))
+                    : [],
+                  clientDataJSON: credential.response.clientDataJSON
+                    ? Array.from(new Uint8Array(credential.response.clientDataJSON))
+                    : [],
+                  signature: credential.response.signature
+                    ? Array.from(new Uint8Array(credential.response.signature))
+                    : [],
+                  userHandle: credential.response.userHandle
+                    ? Array.from(new Uint8Array(credential.response.userHandle))
+                    : null,
+                }
+              : {},
+          };
+        }
+
+        function lockMobileCredentials(message) {
+          setMobileUnlocked(false);
+          setMobileConfirmProbe(null);
+          if (message) setMobileUnlockStatus(message);
+        }
+
+        function requestMobileCredentialUnlock() {
+          setMobileUnlockStatus("Requesting biometric assertion...");
+          if (!window.PublicKeyCredential || !navigator.credentials || !navigator.credentials.get) {
+            lockMobileCredentials("This browser does not expose WebAuthn credentials.");
+            return;
+          }
+          fetch("/api/auth/webauthn/assert/begin", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+            body: "{}",
+          })
+            .then(function (r) {
+              return r.json().then(function (data) {
+                if (!r.ok) throw new Error((data && data.detail) || "WebAuthn assertion failed to start");
+                return data;
+              });
+            })
+            .then(function (data) {
+              return navigator.credentials.get({
+                publicKey: {
+                  challenge: base64UrlToBuffer(data.challenge),
+                  allowCredentials: (data.allow_credentials || []).map(function (cred) {
+                    return { id: base64UrlToBuffer(cred.id), type: cred.type || "public-key" };
+                  }),
+                  timeout: data.timeout_ms || 60000,
+                  userVerification: "required",
+                },
+              });
+            })
+            .then(function (credential) {
+              return fetch("/api/auth/webauthn/assert/complete", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+                body: JSON.stringify({ credential: credentialToPayload(credential) }),
+              }).then(function (r) {
+                return r.json().then(function (data) {
+                  if (!r.ok) throw new Error((data && data.detail) || "WebAuthn assertion was not accepted");
+                  return data;
+                });
+              });
+            })
+            .then(function () {
+              setMobileUnlocked(true);
+              setMobileUnlockStatus("Unlocked for 60 seconds.");
+              if (onRefresh) onRefresh();
+            })
+            .catch(function (err) {
+              lockMobileCredentials((err && err.message) || "Biometric assertion failed.");
+            });
+        }
+
+        React.useEffect(function () {
+          if (!mobile || !mobileUnlocked) return;
+          var timer = window.setTimeout(function () {
+            lockMobileCredentials("Credentials re-locked after 60 seconds.");
+          }, 60000);
+          function onVisibilityChange() {
+            if (document.hidden) lockMobileCredentials("Credentials re-locked when the tab lost focus.");
+          }
+          document.addEventListener("visibilitychange", onVisibilityChange);
+          return function () {
+            window.clearTimeout(timer);
+            document.removeEventListener("visibilitychange", onVisibilityChange);
+          };
+        }, [mobile, mobileUnlocked]);
 
         function statusColor(status) {
           if (status === "ready") return "var(--accent-green)";
@@ -12287,6 +12444,27 @@
             probe_failed: "Probe failed",
           };
           return labels[status] || status;
+        }
+
+        if (mobile && !mobileUnlocked) {
+          return h(
+            "div",
+            { className: "mobile-credentials-lock" },
+            h("div", { style: { fontSize: 16, fontWeight: 700, marginBottom: 6 } }, "Credentials locked"),
+            h(
+              "div",
+              { style: { color: "var(--text-secondary)", fontSize: 13, lineHeight: 1.45, marginBottom: 14 } },
+              "Mobile access to credential metadata requires a fresh biometric assertion. Secret values are never shown.",
+            ),
+            h(
+              "button",
+              { className: "btn", onClick: requestMobileCredentialUnlock },
+              "Show credentials",
+            ),
+            mobileUnlockStatus
+              ? h("div", { style: { marginTop: 12, color: "var(--text-muted)", fontSize: 12 } }, mobileUnlockStatus)
+              : null,
+          );
         }
 
         return h(
@@ -12343,6 +12521,10 @@
                           className: "btn",
                           style: { fontSize: 12, padding: "6px 10px" },
                           onClick: function () {
+                            if (mobile) {
+                              setMobileConfirmProbe(probe);
+                              return;
+                            }
                             onSetKey(probe);
                           },
                         },
@@ -12365,6 +12547,64 @@
               );
             }),
           ),
+          mobile && mobileConfirmProbe
+            ? h(
+                "div",
+                {
+                  className: "mobile-credentials-sheet",
+                  role: "dialog",
+                  "aria-modal": "true",
+                  "aria-label": "Confirm mobile credential change",
+                  onClick: function () {
+                    setMobileConfirmProbe(null);
+                  },
+                },
+                h(
+                  "div",
+                  {
+                    className: "mobile-credentials-sheet-panel",
+                    onClick: function (e) {
+                      e.stopPropagation();
+                    },
+                  },
+                  h("div", { style: { fontSize: 16, fontWeight: 700, marginBottom: 8 } }, "Confirm sensitive operation"),
+                  h(
+                    "div",
+                    { style: { color: "var(--text-secondary)", fontSize: 13, lineHeight: 1.45, marginBottom: 14 } },
+                    "This will open the server-side key update flow for " +
+                      (mobileConfirmProbe.label || mobileConfirmProbe.name || mobileConfirmProbe.key_provider || "this provider") +
+                      ". Continue only if you intend to change credential state.",
+                  ),
+                  h(
+                    "div",
+                    { style: { display: "flex", gap: 8, justifyContent: "flex-end" } },
+                    h(
+                      "button",
+                      {
+                        className: "btn",
+                        onClick: function () {
+                          setMobileConfirmProbe(null);
+                        },
+                      },
+                      "Cancel",
+                    ),
+                    h(
+                      "button",
+                      {
+                        className: "btn",
+                        style: { background: "var(--accent-red)", color: "white" },
+                        onClick: function () {
+                          var probe = mobileConfirmProbe;
+                          setMobileConfirmProbe(null);
+                          onSetKey(probe);
+                        },
+                      },
+                      "Confirm",
+                    ),
+                  ),
+                ),
+              )
+            : null,
         );
       }
 
@@ -17159,6 +17399,11 @@ function PrincipalsTab() {
         var pr = React.useState(null);
         var principal = pr[0],
           setPrincipal = pr[1];
+        var mcv = React.useState(function () {
+          return window.matchMedia ? window.matchMedia("(max-width: 768px)").matches : false;
+        });
+        var mobileCredentialsViewport = mcv[0],
+          setMobileCredentialsViewport = mcv[1];
         var qs = React.useState({});
         var queue = qs[0],
           setQueue = qs[1];
@@ -17289,6 +17534,25 @@ function PrincipalsTab() {
         var runnerAudit = rauS[0], setRunnerAudit = rauS[1];
         var rauDismissS = React.useState(false);
         var auditBannerDismissed = rauDismissS[0], setAuditBannerDismissed = rauDismissS[1];
+
+        React.useEffect(function () {
+          if (!window.matchMedia) return;
+          var media = window.matchMedia("(max-width: 768px)");
+          function onMobileCredentialViewportChange(event) {
+            setMobileCredentialsViewport(event.matches);
+          }
+          setMobileCredentialsViewport(media.matches);
+          if (media.addEventListener) {
+            media.addEventListener("change", onMobileCredentialViewportChange);
+            return function () {
+              media.removeEventListener("change", onMobileCredentialViewportChange);
+            };
+          }
+          media.addListener(onMobileCredentialViewportChange);
+          return function () {
+            media.removeListener(onMobileCredentialViewportChange);
+          };
+        }, []);
 
         function fetchFleetOrchestration() {
           setFleetOrchLoading(true);
@@ -18891,7 +19155,7 @@ function PrincipalsTab() {
                   "aria-selected": tab === "credentials",
                   onClick: function () {
                     setTab("credentials");
-                    fetchCredentials();
+                    if (!mobileCredentialsViewport) fetchCredentials();
                   },
                 },
                 I.settings(14),
@@ -19439,6 +19703,7 @@ function PrincipalsTab() {
                                               error: credentialsError,
                                               onRefresh: fetchCredentials,
                                               onSetKey: setCredentialKey,
+                                              mobile: mobileCredentialsViewport,
                                             })
                                         : tab === "fleet-orchestration"
                                           ? h(FleetOrchestrationTab, {
