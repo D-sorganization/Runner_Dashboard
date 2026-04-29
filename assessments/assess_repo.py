@@ -28,7 +28,7 @@ def grep_py(pattern, repo, directory):
             for i, line in enumerate(txt.splitlines(), 1):
                 if re.search(pattern, line):
                     matches.append((str(f.relative_to(repo)), i, line.strip()))
-        except:
+        except Exception:
             pass
     return matches
 
@@ -124,7 +124,7 @@ def assess(repo):
                     total_funcs += 1
                     if i + 1 < len(lines) and ('"""' in lines[i + 1] or "'''" in lines[i + 1]):
                         docstring_funcs += 1
-        except:
+        except Exception:
             pass
     if total_funcs > 0 and docstring_funcs / total_funcs < 0.5:
         findings.append(
@@ -184,7 +184,7 @@ def assess(repo):
                         "text": "try/except returning None without logging in {}".format(f.name),
                     }
                 )
-        except:
+        except Exception:
             pass
     scores["D"] = score_d
 
@@ -202,7 +202,7 @@ def assess(repo):
                         "text": "Possible repeated file I/O inside loop in {}".format(f.name),
                     }
                 )
-        except:
+        except Exception:
             pass
     if not (Path(repo) / "benchmarks").exists():
         findings.append({"criterion": "E", "severity": "P2", "principle": "PP4", "text": "No benchmarks/ directory"})
@@ -223,14 +223,14 @@ def assess(repo):
                     }
                 )
                 score_f = max(score_f - 2, 0)
-        except:
+        except Exception:
             pass
     magic = 0
     for f in all_py[:30]:
         try:
             txt = f.read_text(encoding="utf-8", errors="ignore")
             magic += len(re.findall(r"(?<![\w\d_])\d+\.\d+(?![\w\d_])", txt))
-        except:
+        except Exception:
             pass
     if magic > 20:
         findings.append(
@@ -268,7 +268,7 @@ def assess(repo):
             for i, line in enumerate(txt.splitlines(), 1):
                 if re.search(r'(password|secret|api[_-]?key|token)\s*=\s*["\']', line, re.IGNORECASE):
                     cred.append((str(f), i))
-        except:
+        except Exception:
             pass
     if cred:
         findings.append(
@@ -327,7 +327,7 @@ def assess(repo):
                     for line in txt.splitlines():
                         if re.search(r"TODO|FIXME|XXX|HACK|KLUDGE", line):
                             todo_count += 1
-                except:
+                except Exception:
                     pass
     if todo_count > 20:
         findings.append(

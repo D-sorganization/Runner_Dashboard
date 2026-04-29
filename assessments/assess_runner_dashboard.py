@@ -30,7 +30,7 @@ def grep_py(pattern, directory):
             for i, line in enumerate(txt.splitlines(), 1):
                 if re.search(pattern, line):
                     matches.append((str(f.relative_to(REPO)), i, line.strip()))
-        except:
+        except Exception:
             pass
     return matches
 
@@ -128,7 +128,7 @@ def main():
                     total_funcs += 1
                     if i + 1 < len(lines) and ('"""' in lines[i + 1] or "'''" in lines[i + 1]):
                         docstring_funcs += 1
-        except:
+        except Exception:
             pass
     if total_funcs > 0 and docstring_funcs / total_funcs < 0.5:
         findings.append(
@@ -187,7 +187,7 @@ def main():
                             "text": "pytest.skip/xfail without issue link in {}".format(f.name),
                         }
                     )
-        except:
+        except Exception:
             pass
 
     scores["C"] = score_c
@@ -213,7 +213,7 @@ def main():
                         "text": "try/except returning None without logging in {}".format(f.name),
                     }
                 )
-        except:
+        except Exception:
             pass
 
     scores["D"] = score_d
@@ -232,7 +232,7 @@ def main():
                         "text": "Possible repeated file I/O inside loop in {}".format(f.name),
                     }
                 )
-        except:
+        except Exception:
             pass
 
     if not (Path(REPO) / "benchmarks").exists():
@@ -255,7 +255,7 @@ def main():
                     }
                 )
                 score_f = max(score_f - 2, 0)
-        except:
+        except Exception:
             pass
 
     magic = 0
@@ -263,7 +263,7 @@ def main():
         try:
             txt = f.read_text()
             magic += len(re.findall(r"(?<![\w\d_])\d+\.\d+(?![\w\d_])", txt))
-        except:
+        except Exception:
             pass
     if magic > 20:
         findings.append(
@@ -322,7 +322,7 @@ def main():
             for i, line in enumerate(txt.splitlines(), 1):
                 if re.search(r'(password|secret|api[_-]?key|token)\s*=\s*["\']', line, re.IGNORECASE):
                     cred.append((str(f), i))
-        except:
+        except Exception:
             pass
     if cred:
         findings.append(
@@ -390,7 +390,7 @@ def main():
                     for line in txt.splitlines():
                         if re.search(r"TODO|FIXME|XXX|HACK|KLUDGE", line):
                             todo_count += 1
-                except:
+                except Exception:
                     pass
     if todo_count > 20:
         findings.append(
