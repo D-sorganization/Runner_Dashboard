@@ -68,8 +68,6 @@ class TestCacheSet:
         assert before <= stored_ts <= after
 
     def test_move_to_end_on_update(self) -> None:
-        from unittest.mock import patch
-
         cache_utils.cache_set("key1", "a")
         cache_utils.cache_set("key2", "b")
         # Updating key1 should move it to the end

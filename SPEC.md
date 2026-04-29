@@ -1,6 +1,6 @@
 ﻿# SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.10
+**Spec Version:** 2.5.11
 **Application Version:** 4.1.0 (see `VERSION`)
 **Last Updated:** 2026-04-29
 **Status:** Active
@@ -536,6 +536,82 @@ All endpoints are served under `http://localhost:8321/api/`.
 | POST | `/api/prs/dispatch` | Bulk-dispatch agent tasks to selected PRs |
 | POST | `/api/issues/dispatch` | Bulk-dispatch agent tasks to selected issues |
 
+### Authentication
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/auth/github` | Start GitHub OAuth flow |
+| GET | `/api/auth/callback` | GitHub OAuth callback |
+| GET | `/api/auth/dev-login` | Development login when OAuth is not configured |
+| POST | `/api/auth/logout` | Clear session and revoke all active sessions for this principal |
+| GET | `/api/auth/me` | Get current authenticated principal |
+| POST | `/api/auth/tokens` | Mint a new service token (admin only) |
+| DELETE | `/api/auth/tokens/{token_hash}` | Revoke a service token (admin only) |
+
+#### Session Management
+
+Sessions are bound to the originating IP address, user-agent substring, and an
+anti-CSRF double-submit token. Every successful login, session refresh, or
+token rotation updates the session `updated_at` timestamp and rotates the
+session ID stored in the client cookie.
+
+**Session revocation** (`backend/session_management.py`):
+- `revoke_all_sessions_for(principal_id, except_sid=None)` revokes every
+  active session for a principal except the optionally excluded session ID.
+- `revoke_session(session_id)` revokes a single session by ID.
+- Sessions revoked by backend change include `revoked_reason` metadata
+  (`password_change`, `remote_logout`, `suspicious_activity`).
+- Revoked sessions are kept for audit rather than deleted; they remain
+  visible to the current user for 7 days and to admins for 30 days.
+
+**Session cleanup** (`SessionCleanupJob`):
+- Runs every 10 minutes (first run delayed by 60 seconds).
+- Deletes expired sessions (`last_seen_at + max_age < now`).
+- Marks stale sessions inactive (`last_seen_at + stale_threshold < now`).
+- Cleans up orphaned revoked sessions older than 7 days.
+- Logs a summary of processed and removed counts at `INFO` level.
+
+**Remote logout** (`POST /api/auth/logout`):
+- When called with an authenticated session, clears the current session and
+  revokes all other sessions belonging to the same principal.
+- Returns `{"status": "logged_out", "revoked_sessions": N}` where `N` is the
+  count of other sessions invalidated.
+- Revoked sessions receive `revoked_reason: "remote_logout"` metadata for audit.
+
+#### WebAuthn Biometric Unlock
+
+The `/api/auth/webauthn/*` route surface provides fail-closed scaffolding for
+mobile biometric unlock. Registration and assertion begin endpoints require an
+already authenticated principal and issue short-lived, HMAC-signed server
+challenges. Credential metadata is stored per principal as
+`(user_id, credential_id, public_key, sign_count)` and can be listed or revoked
+by the owning principal. Completion endpoints intentionally fail closed until a
+pinned WebAuthn verifier validates attestation/assertion payloads and sign-count
+replay protection.
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/api/auth/webauthn/register/begin` | Start a WebAuthn registration ceremony |
+| POST | `/api/auth/webauthn/register/complete` | Complete registration (returns HTTP 501 until verifier wired) |
+| POST | `/api/auth/webauthn/assert/begin` | Start a WebAuthn assertion ceremony |
+| POST | `/api/auth/webauthn/assert/complete` | Complete assertion (returns HTTP 501 until verifier wired) |
+| GET | `/api/auth/webauthn/credentials` | List active credential metadata for the current principal |
+| DELETE | `/api/auth/webauthn/credentials/{credential_id}` | Revoke one WebAuthn credential |
+
+**Challenge lifecycle:**
+- Server challenges are 32-byte base64url tokens valid for 300 seconds.
+- Each challenge is HMAC-signed with a secret derived from
+  `DASHBOARD_WEBAUTHN_CHALLENGE_SECRET`, `SESSION_SECRET`, or
+  `DASHBOARD_API_KEY` (in that order of preference).
+- Challenges are stored in the server-side session under
+  `webauthn_challenges` and pruned of expired entries on each request.
+
+**Credential storage:**
+- Credentials are persisted as JSON to
+  `~/.config/runner-dashboard/webauthn_credentials.json`.
+- The file is created with `0600` permissions.
+- Active credentials are filtered by `user_id` and `revoked_at is None`.
+
 ### Credentials
 
 | Method | Path | Description |
@@ -886,6 +962,9 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 ## 7. Changelog
 
+### 2.5.12 - 2026-04-29
+- feat: document Authentication API, Session Management, Remote Logout, and WebAuthn Biometric Unlock endpoints (issue #193).
+
 ### 2.5.10 - 2026-04-29
 - feat: add the first M04 touch primitive implementation slice with
   `TouchButton` and `SegmentedControl` contracts.
@@ -960,6 +1039,12 @@ Test coverage areas:
 - **`tests/test_mobile_test_harness.py`** - validates the issue #202 mobile
   viewport profiles, smoke-page marker contract, touch helper exports, and the
   explicit visual-regression opt-in gate.
+- `tests/test_cache_utils.py` — unit tests for `backend/cache_utils.py`:
+  TTL get behavior, eviction on capacity, LRU ordering, float TTLs.
+- `tests/test_proxy_utils.py` — unit tests for `backend/proxy_utils.py`:
+  hub-proxy routing logic, local/scope query-param precedence, case-insensitive matching.
+- `tests/test_report_files.py` — unit tests for `backend/report_files.py`:
+  markdown-table metric parsing, date sanitization, separator/header skipping.
 
 `pytest>=8.0` and `pytest-asyncio>=0.23` are listed in `requirements.txt`.
 
