@@ -2,7 +2,7 @@
 
 **Spec Version:** 2.5.1
 **Application Version:** 4.1.0 (see `VERSION`)
-**Last Updated:** 2026-04-28
+**Last Updated:** 2026-04-29
 **Status:** Active
 
 ---
@@ -144,6 +144,12 @@ All application logic is contained within `frontend/index.html`. There is no
 npm project, no `package.json`, and no build toolchain. The file is served
 directly by the FastAPI backend.
 
+Mobile layouts must remain usable at 375x812 and 412x915 viewport sizes. The
+header tab strip is horizontally scrollable, nonessential header status badges
+are hidden on mobile, Queue Health renders compact KPI/cards instead of forcing
+wide tables, and Workflows filters use sessionStorage-backed state so tab
+switching and app backgrounding do not reset the current session filters.
+
 **Shared helper components** defined near the top of the script block:
 
 - `Collapse` â€” collapsible section with header and chevron.
@@ -200,7 +206,10 @@ status, branch, and actor. Supports rerun and cancel actions on individual runs.
 ### 3.3 Queue Tab
 Live view of queued and in-progress workflow jobs. Shows waiting time, assigned
 runner, and blocking conditions. Supports bulk cancellation. Includes a
-diagnostic endpoint to explain queue stalls.
+diagnostic endpoint to explain queue stalls. On mobile, the tab presents a
+queued/running/stale KPI strip and compact queued-run cards; destructive cancel
+actions require an explicit confirmation state that shows the number of runs
+affected before the existing cancel endpoint is invoked.
 
 ### 3.4 Machines Tab
 Multi-node fleet hardware inventory sourced from `machine_registry.yml`.
@@ -280,6 +289,8 @@ The active sub-tab is persisted to `localStorage` under the key
 ### 3.13 Workflows Tab
 Browse and manually dispatch any workflow in any org repository. Supports
 input parameter forms generated from workflow `workflow_dispatch` definitions.
+Workflow search, repository, and trigger filters are persisted to
+sessionStorage for the current browser session.
 
 ### 3.14 Credentials Tab
 Inventory of GitHub Actions secrets and variables across the org and per-repo.
