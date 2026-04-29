@@ -35,3 +35,19 @@ backend/.venv/
 *.pyo
 .claude/worktrees/
 .agent_remediation_state.json
+
+# Common Python / IDE / test artifacts
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+*.egg
+pip-wheel-metadata/
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+*.db
+*.sqlite3
