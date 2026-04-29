@@ -247,6 +247,7 @@ async def get_fleet_status(request: Request):
 
     async def fetch_node(name, url):
         import httpx  # noqa: PLC0415
+
         try:
             async with httpx.AsyncClient() as client:
                 target = f"{url}/api/system"
@@ -274,6 +275,7 @@ async def get_fleet_status(request: Request):
 
     if FLEET_NODES:
         import asyncio  # noqa: PLC0415
+
         results = await asyncio.gather(*[fetch_node(n, u) for n, u in FLEET_NODES.items()])
         for name, data in results:
             responses[name] = data
