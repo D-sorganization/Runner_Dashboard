@@ -799,6 +799,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 - chore: migrate to `uv` for dependency management and add `uv.lock`.
 - ci: refactor CI workflows to be `uv`-native, ensuring reproducible builds and faster bootstrap times (resolves #163).
 - ci: updated `ci-spec-check` to monitor `uv.lock` for freshness.
+- fix: include `itsdangerous` in the `uv` dependency set so Starlette session middleware imports during test collection.
 
 ### 2.0.0 â€” 2026-04-23
 
