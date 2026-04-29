@@ -14,6 +14,7 @@ import pytest  # noqa: E402
 _FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 _HTML_SHELL = _FRONTEND_DIR / "index.html"
 _INDEX_HTML = _FRONTEND_DIR / "src" / "legacy" / "App.tsx"
+_PUSH_SETTINGS = _FRONTEND_DIR / "src" / "pages" / "PushSettings.tsx"
 _DESIGN_DIR = _FRONTEND_DIR / "src" / "design"
 _PRIMITIVES_DIR = _FRONTEND_DIR / "src" / "primitives"
 
@@ -451,6 +452,20 @@ def test_fleet_tab_has_mobile_runner_monitoring_cards() -> None:
     assert "runnerCurrentRun(r, p.runs || [])" in content
     assert 'node.last_seen ? timeAgo(node.last_seen) : "not seen"' in content
     assert "new Date(node.last_seen).toLocaleString" not in content
+
+
+def test_push_settings_route_tracer_bullet_is_present() -> None:
+    main_tsx = (_FRONTEND_DIR / "src" / "main.tsx").read_text(encoding="utf-8")
+
+    assert _PUSH_SETTINGS.exists()
+    for marker in [
+        "PushSettings",
+        "isPushSettingsRoute",
+        "window.location.pathname",
+        "normalized === '/settings/push'",
+        "isPushSettingsRoute(window.location.pathname) ? <PushSettings /> : <App />",
+    ]:
+        assert marker in main_tsx
 
 
 # ---------------------------------------------------------------------------
