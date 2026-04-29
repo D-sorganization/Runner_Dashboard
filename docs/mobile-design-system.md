@@ -26,6 +26,8 @@ stay usable at both sizes.
 Mobile controls use `--mobile-hit-target` with a minimum target of `44px`.
 High-frequency controls such as bottom navigation and primary action buttons
 should prefer the `48px` comfortable target when space allows.
+The HTML viewport metadata must keep user scaling enabled; do not add
+`maximum-scale` or `user-scalable=no` to the mobile shell.
 
 ## Type Scale
 

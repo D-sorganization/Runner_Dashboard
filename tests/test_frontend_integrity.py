@@ -12,12 +12,17 @@ from pathlib import Path  # noqa: E402
 import pytest  # noqa: E402
 
 _FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
+_HTML_SHELL = _FRONTEND_DIR / "index.html"
 _INDEX_HTML = _FRONTEND_DIR / "src" / "legacy" / "App.tsx"
 _DESIGN_DIR = _FRONTEND_DIR / "src" / "design"
 
 
 def _read_index() -> str:
     return _INDEX_HTML.read_text(encoding="utf-8")
+
+
+def _read_html_shell() -> str:
+    return _HTML_SHELL.read_text(encoding="utf-8")
 
 
 def _index_lines() -> list[str]:
@@ -293,6 +298,15 @@ def test_mobile_a11y_hit_target_token_is_enforced() -> None:
     ]:
         assert selector in content
     assert content.count("min-height: var(--mobile-hit-target);") >= 2
+
+
+def test_mobile_viewport_meta_allows_user_zoom() -> None:
+    content = _read_html_shell()
+
+    assert 'name="viewport"' in content
+    assert 'content="width=device-width, initial-scale=1.0"' in content
+    assert "maximum-scale" not in content
+    assert "user-scalable=no" not in content
 
 
 def test_mobile_a11y_reduced_motion_contract_is_static_guarded() -> None:

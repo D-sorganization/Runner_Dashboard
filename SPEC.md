@@ -175,7 +175,8 @@ mobile viewport widths, primary interactive controls must use the shared
 and transitions must respect `prefers-reduced-motion: reduce`, and inline
 transition styles must opt out through `prefersReducedMotion()`. Static
 frontend integrity tests enforce these guards alongside ARIA labels for mobile
-summary sections and modal dialogs.
+summary sections and modal dialogs. The HTML viewport metadata must not disable
+user scaling with `maximum-scale` or `user-scalable=no`.
 
 The first issue #202 mobile test harness slice lives in `tests/frontend/mobile/`.
 It defines the Playwright mobile viewport contract for `iphone-12` (390 x 844)
