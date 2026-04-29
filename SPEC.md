@@ -1,6 +1,6 @@
 ﻿# SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.6
+**Spec Version:** 2.5.7
 **Application Version:** 4.1.0 (see `VERSION`)
 **Last Updated:** 2026-04-29
 **Status:** Active
@@ -160,6 +160,14 @@ Reports, Assessments, and Feature Requests expose read-mostly mobile card and
 reader layouts over their existing APIs so operators can inspect report files,
 assessment score history, and feature request history without relying on wide
 desktop tables.
+
+The mobile foundation is documented in `docs/mobile-native-shell.md` and
+`docs/mobile-design-system.md`. Until the Vite migration lands, reusable mobile
+design contracts live in static `frontend/src/design/*.ts` modules and are
+guarded by pytest without adding a frontend build step. The Fleet tab exposes a
+mobile-only read surface for runner monitoring cards over the existing runner,
+run, and machine telemetry payloads; desktop machine and runner tables remain
+the canonical wide-screen surface.
 
 Mobile accessibility guards are part of the frontend source contract. At
 mobile viewport widths, primary interactive controls must use the shared
@@ -865,6 +873,11 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 ---
 
 ## 7. Changelog
+
+### 2.5.7 - 2026-04-29
+- feat: add the mobile integration foundation for native-shell selection,
+  static design tokens, and read-only Fleet runner monitoring cards without
+  changing the no-build frontend runtime.
 
 ### 2.5.6 - 2026-04-29
 - test: add the issue #202 mobile Playwright harness contract with checked-in
