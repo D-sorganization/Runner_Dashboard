@@ -79,6 +79,23 @@ def test_linear_router_has_expected_routes() -> None:
     assert "/api/linear/issues" in paths
 
 
+def test_webauthn_router_importable() -> None:
+    import auth_webauthn  # noqa: PLC0415
+
+    assert hasattr(auth_webauthn, "router"), "auth_webauthn.py must export 'router'"
+
+
+def test_webauthn_router_has_expected_routes() -> None:
+    import auth_webauthn  # noqa: PLC0415
+
+    paths = {r.path for r in auth_webauthn.router.routes}  # type: ignore[attr-defined]
+    assert "/api/auth/webauthn/register/begin" in paths
+    assert "/api/auth/webauthn/register/complete" in paths
+    assert "/api/auth/webauthn/assert/begin" in paths
+    assert "/api/auth/webauthn/assert/complete" in paths
+    assert "/api/auth/webauthn/credentials" in paths
+
+
 def test_credentials_router_no_secret_exposure() -> None:
     """Credentials router must never log or return raw env var values."""
     source = (_BACKEND_DIR / "routers" / "credentials.py").read_text(encoding="utf-8")
@@ -111,6 +128,13 @@ def test_server_registers_linear_router() -> None:
     server_src = (_BACKEND_DIR / "server.py").read_text(encoding="utf-8")
     assert "from routers import linear" in server_src or "routers.linear" in server_src
     assert "include_router(_linear_router.router)" in server_src
+
+
+def test_server_registers_webauthn_router() -> None:
+    """server.py must include the WebAuthn router."""
+    server_src = (_BACKEND_DIR / "server.py").read_text(encoding="utf-8")
+    assert "import auth_webauthn" in server_src
+    assert "include_router(_auth_webauthn_router.router)" in server_src
 
 
 def test_server_dispatch_not_inline() -> None:
