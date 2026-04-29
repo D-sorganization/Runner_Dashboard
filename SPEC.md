@@ -282,6 +282,14 @@ standard not-configured detail. `GET /api/issues` accepts
 `source={github|linear|unified}`; `github` remains the backward-compatible
 default.
 
+Issue #242 also adds a write-only inbound webhook surface for Linear. The
+dashboard exposes `POST /api/linear/webhook` for Funnel-delivered webhook
+events and `GET /api/linear/webhook/health` for operator health checks. The
+receiver validates `Linear-Signature` when a secret is configured, bypasses
+browser CSRF checks for this external-service route only, rejects stale
+payloads older than 300 seconds, and deduplicates repeated `webhookId` values
+to provide replay protection.
+
 ### 3.6 Tests Tab
 Unified testing hub with two sections:
 1. **CI Tests** â€” table of the latest `ci-standard` workflow run for each of

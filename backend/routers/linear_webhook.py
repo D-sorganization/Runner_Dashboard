@@ -181,7 +181,6 @@ def _payload_too_old(created_at: str | int | None) -> bool:
             # ISO-8601 string
             import datetime as dt_mod
 
-            getattr(dt_mod, "UTC", dt_mod.UTC)
             ts = dt_mod.datetime.fromisoformat(created_at.replace("Z", "+00:00"))
             ts_epoch = ts.timestamp()
         else:
