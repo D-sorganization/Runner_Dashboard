@@ -43,9 +43,9 @@ from urllib.parse import urlparse
 import httpx
 import psutil
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from identity import Principal, require_principal, require_scope  # noqa: B008
 from pydantic import BaseModel, Field
 from routers import admin as admin_router
