@@ -5489,8 +5489,10 @@ async def log_requests(request: Request, call_next):
 
 FRONTEND_DIR = Path(__file__).parent.parent / "dist"
 
-# Mount Vite build assets for fast serving
-app.mount("/assets", StaticFiles(directory=str(FRONTEND_DIR / "assets")), name="assets")
+# Mount Vite build assets for fast serving (only if dist/assets exists)
+_assets_dir = FRONTEND_DIR / "assets"
+if _assets_dir.is_dir():
+    app.mount("/assets", StaticFiles(directory=str(_assets_dir)), name="assets")
 
 
 @app.get("/")
