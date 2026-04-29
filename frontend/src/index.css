@@ -1841,3 +1841,54 @@ th.sortable.active .sort-indicator {
     color: var(--text-primary);
   }
 }
+
+/* ── Fleet Mobile ── */
+.fleet-mobile {
+  padding: 0 12px 24px;
+}
+
+.status-pills {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  margin-bottom: 12px;
+  overflow-x: auto;
+  padding: 4px 0;
+  -webkit-overflow-scrolling: touch;
+}
+
+.status-pills::-webkit-scrollbar {
+  display: none;
+}
+
+.status-pill {
+  transition: transform 100ms ease, border-color 150ms ease;
+}
+
+.status-pill:active {
+  transform: scale(0.96);
+}
+
+.status-pill-active {
+  box-shadow: 0 0 0 1px currentColor;
+}
+
+.runner-card {
+  transition: transform 150ms ease, box-shadow 200ms ease;
+}
+
+.runner-card:active {
+  transform: scale(0.985);
+}
+
+.fleet-list {
+  min-height: 200px;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── Push Settings ── */
+.push-settings {
+  padding: 16px;
+  margin: 16px;
+}
