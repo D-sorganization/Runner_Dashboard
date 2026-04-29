@@ -86,6 +86,7 @@ from routers import credentials as _credentials_router  # noqa: E402
 from routers import dispatch as _dispatch_router  # noqa: E402
 from routers import linear as _linear_router  # noqa: E402
 from routers import linear_webhook as _linear_webhook_router  # noqa: E402
+from system_utils import get_system_metrics_snapshot  # noqa: E402
 
 # datetime.UTC added in Python 3.11; fall back to timezone.utc on older runtimes.
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
@@ -2119,7 +2120,7 @@ async def _collect_live_fleet_nodes() -> list[dict]:
                 **reason,
             }
 
-    local_sys = await _metrics_router.get_system_metrics()
+    local_sys = await get_system_metrics_snapshot()
     local_health = await _health_router._health_impl()
     local_resource_reason = _resource_offline_reason(local_sys)
     nodes: list[dict] = [
@@ -5172,7 +5173,7 @@ async def _get_fleet_nodes_impl() -> dict:
 async def proxy_node_system(node_name: str) -> dict:
     """Proxy /api/system from a named fleet node (for detailed drill-down)."""
     if node_name in (HOSTNAME, "local"):
-        return await _metrics_router.get_system_metrics()
+        return await get_system_metrics_snapshot()
     url = FLEET_NODES.get(node_name)
     if not url:
         raise HTTPException(status_code=404, detail=f"Node not found: {node_name}")
