@@ -1,6 +1,6 @@
 ﻿# SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.11
+**Spec Version:** 2.5.12
 **Application Version:** 4.1.0 (see `VERSION`)
 **Last Updated:** 2026-04-29
 **Status:** Active
