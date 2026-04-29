@@ -1,4 +1,5 @@
 import React from "react"
+import { AgentDispatchPage } from "../pages/AgentDispatch"
 import { marked } from "marked"
 import DOMPurify from "dompurify"
 
@@ -4227,8 +4228,7 @@ function LocalAppsTab(p) {
             color: "var(--accent-yellow)",
             fontWeight: 600,
           },
-          title: (app.dirty_files || []).join("
-"),
+          title: (app.dirty_files || []).join("\n"),
         },
         app.dirty_files
           ? app.dirty_files.length +
@@ -4381,10 +4381,8 @@ function LocalAppsTab(p) {
                                 color: "var(--accent-yellow)",
                               },
                               title:
-                                "Uncommitted local changes:
-" +
-                                (app.dirty_files || []).join("
-"),
+                                "Uncommitted local changes:\n" +
+                                (app.dirty_files || []).join("\n"),
                             },
                             "\u26A0 dirty",
                           )
@@ -13757,9 +13755,7 @@ function FeatureRequestsTab(props) {
     setDispatchStatus("dispatching");
     var finalPrompt = promptText;
     if (promptNotesEnabled && editingPromptNotes.trim()) {
-      finalPrompt = editingPromptNotes + "
-
-" + promptText;
+      finalPrompt = editingPromptNotes + "\\n\\n" + promptText;
     }
     onDispatch({
       repository: selRepo,
@@ -14692,8 +14688,7 @@ function DiagnosticsTab() {
 function renderMarkdown(text) {
   if (!text) return [];
   var out = [];
-  var lines = text.split("
-");
+  var lines = text.split("\n");
   var i = 0;
   while (i < lines.length) {
     var line = lines[i];
@@ -14706,8 +14701,7 @@ function renderMarkdown(text) {
         i++;
       }
       out.push(h("pre", { key: out.length, style: { background: "var(--bg-tertiary)", borderRadius: 6, padding: "10px 12px", overflowX: "auto", fontSize: 12, margin: "6px 0" } },
-        h("code", null, codeLines.join("
-"))
+        h("code", null, codeLines.join("\n"))
       ));
       i++;
       continue;
@@ -17258,6 +17252,38 @@ function App() {
         h(
           "button",
           {
+            className:
+              "tab-btn" + (tab === "agent-dispatch" ? " active" : ""),
+            role: "tab",
+            "aria-selected": tab === "agent-dispatch",
+            onClick: function () {
+              setTab("agent-dispatch");
+            },
+          },
+          I.issue(14),
+          "Dispatch",
+          runs.filter(function (run) {
+            return run.conclusion === "failure";
+          }).length > 0
+            ? h(
+                "span",
+                {
+                  className: "section-badge",
+                  style: {
+                    background: "rgba(248,81,73,0.15)",
+                    color: "var(--accent-red)",
+                    marginLeft: 2,
+                  },
+                },
+                runs.filter(function (run) {
+                  return run.conclusion === "failure";
+                }).length,
+              )
+            : null,
+        ),
+        h(
+          "button",
+          {
             className: "tab-btn" + (tab === "queue" ? " active" : ""),
             role: "tab",
             "aria-selected": tab === "queue",
@@ -18008,7 +18034,9 @@ function App() {
                 fetchFleet();
               },
             })
-          : tab === "remediation"
+          : tab === "agent-dispatch"
+            ? h(AgentDispatchPage)
+            : tab === "remediation"
             ? h(RemediationTab, {
                 config: remediationConfig,
                 workflows: remediationWorkflows,
@@ -18300,9 +18328,7 @@ function App() {
                       "div",
                       null,
                       h("p", { style: { margin: "0 0 12px 0", color: "var(--text-secondary)", fontSize: "14px" } }, "The dashboard backend is not responding. To restart the service, run this command in a terminal:"),
-                      h("pre", { style: { background: "var(--bg-secondary)", padding: "12px", borderRadius: 4, margin: "0 0 16px 0", fontSize: "13px", overflow: "auto", color: "var(--text-primary)" } }, "systemctl --user restart runner-dashboard
-
-Then refresh this page."),
+                      h("pre", { style: { background: "var(--bg-secondary)", padding: "12px", borderRadius: 4, margin: "0 0 16px 0", fontSize: "13px", overflow: "auto", color: "var(--text-primary)" } }, "systemctl --user restart runner-dashboard\n\nThen refresh this page."),
                     ),
               );
             })(),
