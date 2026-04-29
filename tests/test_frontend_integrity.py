@@ -407,7 +407,7 @@ def test_fleet_tab_has_mobile_runner_monitoring_cards() -> None:
         assert marker in content
 
     assert "runnerCurrentRun(r, p.runs || [])" in content
-    assert "node.last_seen ? timeAgo(node.last_seen) : \"not seen\"" in content
+    assert 'node.last_seen ? timeAgo(node.last_seen) : "not seen"' in content
     assert "new Date(node.last_seen).toLocaleString" not in content
 
 

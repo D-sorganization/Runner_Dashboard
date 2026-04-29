@@ -5485,6 +5485,7 @@ async def log_requests(request: Request, call_next):
         )
     return response
 
+
 # ─── Serve Frontend ──────────────────────────────────────────────────────────
 
 FRONTEND_DIR = Path(__file__).parent.parent / "dist"
