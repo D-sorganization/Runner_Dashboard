@@ -421,6 +421,47 @@
         display: flex;
         gap: 6px;
       }
+      .fleet-mobile-kpis {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+      .fleet-mobile-kpi {
+        background: var(--bg-tertiary);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 9px 10px;
+        min-width: 0;
+      }
+      .fleet-mobile-kpi-label {
+        color: var(--text-muted);
+        font-size: 10px;
+        text-transform: uppercase;
+      }
+      .fleet-mobile-kpi-value {
+        color: var(--text-primary);
+        font-size: 19px;
+        font-weight: 700;
+        line-height: 1.15;
+        margin-top: 3px;
+      }
+      .fleet-status-strip {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin: 0 0 12px;
+      }
+      .fleet-status-pill {
+        align-items: center;
+        border-radius: 999px;
+        display: inline-flex;
+        gap: 6px;
+        min-height: 30px;
+      }
+      .fleet-status-pill .status-dot {
+        margin-right: 0;
+      }
 
       .btn {
         font-size: 12px;
@@ -1209,6 +1250,19 @@
         .fleet-controls {
           gap: 6px;
         }
+        .fleet-mobile-kpis {
+          grid-template-columns: repeat(4, minmax(64px, 1fr));
+          overflow-x: auto;
+          padding-bottom: 2px;
+        }
+        .fleet-status-strip {
+          flex-wrap: nowrap;
+          overflow-x: auto;
+          padding-bottom: 2px;
+        }
+        .fleet-status-pill {
+          flex: 0 0 auto;
+        }
         .btn {
           padding: 4px 10px;
           font-size: 11px;
@@ -1242,6 +1296,16 @@
         }
         .stat-label {
           font-size: 10px;
+        }
+        .fleet-mobile-kpis {
+          grid-template-columns: repeat(4, minmax(58px, 1fr));
+          gap: 6px;
+        }
+        .fleet-mobile-kpi {
+          padding: 7px 8px;
+        }
+        .fleet-mobile-kpi-value {
+          font-size: 17px;
         }
       }
 
@@ -2038,6 +2102,12 @@
         var busy = runners.filter(function (r) {
           return r.busy;
         }).length;
+        var offline = runners.filter(function (r) {
+          return r.status !== "online";
+        }).length;
+        var onlineIdle = runners.filter(function (r) {
+          return r.status === "online" && !r.busy;
+        }).length;
         var runnersByMachine = {};
         runners.forEach(function (r) {
           var machine = parseRunnerName(r.name).machine;
@@ -2158,8 +2228,9 @@
               ? "storage-warning"
               : "";
         var filteredRunners = runners.filter(function (r) {
-          if (filter === "active") return r.status === "online" || r.busy;
-          if (filter === "inactive") return r.status !== "online" && !r.busy;
+          if (filter === "online") return r.status === "online" && !r.busy;
+          if (filter === "busy") return r.busy;
+          if (filter === "offline") return r.status !== "online";
           return true;
         });
         var visibleIds = {};
@@ -2520,6 +2591,58 @@
                 },
               },
               h(
+                "div",
+                {
+                  className: "fleet-mobile-kpis",
+                  style: { flexBasis: "100%" },
+                },
+                [
+                  { label: "Total", value: runners.length },
+                  { label: "Online", value: on },
+                  { label: "Busy", value: busy },
+                  { label: "Offline", value: offline },
+                ].map(function (item) {
+                  return h(
+                    "div",
+                    { key: item.label, className: "fleet-mobile-kpi" },
+                    h("div", { className: "fleet-mobile-kpi-label" }, item.label),
+                    h("div", { className: "fleet-mobile-kpi-value" }, item.value),
+                  );
+                }),
+              ),
+              h(
+                "div",
+                {
+                  className: "fleet-status-strip",
+                  role: "group",
+                  "aria-label": "Runner status filters",
+                  style: { flexBasis: "100%" },
+                },
+                [
+                  { key: "all", label: "All", count: runners.length, dot: "green" },
+                  { key: "online", label: "Online", count: onlineIdle, dot: "green" },
+                  { key: "busy", label: "Busy", count: busy, dot: "yellow" },
+                  { key: "offline", label: "Offline", count: offline, dot: "red" },
+                ].map(function (item) {
+                  return h(
+                    "button",
+                    {
+                      key: item.key,
+                      className:
+                        "btn fleet-status-pill" +
+                        (filter === item.key ? " btn-green" : ""),
+                      onClick: function () {
+                        setFilter(item.key);
+                      },
+                      "aria-pressed": filter === item.key,
+                    },
+                    h("span", { className: "status-dot " + item.dot }),
+                    item.label,
+                    h("span", { className: "section-badge" }, item.count),
+                  );
+                }),
+              ),
+              h(
                 "button",
                 {
                   className: "btn btn-green",
@@ -2573,7 +2696,7 @@
                 { style: { color: "var(--text-muted)", fontSize: 12 } },
                 "Filter:",
               ),
-              ["all", "active", "inactive"].map(function (name) {
+              ["all", "online", "busy", "offline"].map(function (name) {
                 return h(
                   "button",
                   {

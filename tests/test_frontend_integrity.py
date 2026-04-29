@@ -107,6 +107,17 @@ def test_runner_facing_tables_use_sortable_headers() -> None:
     assert 'sortKey: "when"' in content
 
 
+def test_fleet_tab_has_mobile_kpi_and_status_filter_slice() -> None:
+    content = _read_index()
+
+    assert "fleet-mobile-kpis" in content
+    assert "fleet-status-strip" in content
+    assert "Runner status filters" in content
+    assert 'filter === "online"' in content
+    assert 'filter === "busy"' in content
+    assert 'filter === "offline"' in content
+
+
 # ---------------------------------------------------------------------------
 # dangerouslySetInnerHTML safety check
 # ---------------------------------------------------------------------------
