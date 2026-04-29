@@ -66,6 +66,7 @@ import issue_inventory as issue_inventory  # noqa: E402
 import lease_synchronizer as lease_synchronizer  # noqa: E402
 import linear_inventory as linear_inventory  # noqa: E402
 import pr_inventory as pr_inventory  # noqa: E402
+import push as _push_router  # noqa: E402
 import quick_dispatch as _quick_dispatch  # noqa: E402
 import quota_enforcement as quota_enforcement  # noqa: E402
 import scheduled_workflows as scheduled_workflow_inventory  # noqa: E402
@@ -435,6 +436,7 @@ app.include_router(_dispatch_router.router)
 _dispatch_router.set_replay_functions(_is_envelope_replay, _record_processed_envelope)
 app.include_router(_credentials_router.router)
 app.include_router(_linear_router.router)
+app.include_router(_push_router.router)
 app.include_router(admin_router.router)
 app.include_router(auth_router.router)
 
