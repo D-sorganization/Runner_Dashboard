@@ -339,8 +339,5 @@ async def get_vapid_public_key() -> dict[str, str]:
         # Return a well-known test key for local development so the frontend
         # can still exercise the subscription flow without a real VAPID pair.
         # In production this MUST be overridden with a real VAPID key pair.
-        public_key = (
-            "BEl62iM0fQZY9w6UhfjUtQ7hDPDpCAjT3bZeU9F5vC2bLq"
-            "5l6cQ0W6Oe3Qe5V5l6cQ0W6Oe3Qe5V5l6cQ0W6Oe3Qe5"
-        )
+        public_key = "BEl62iM0fQZY9w6UhfjUtQ7hDPDpCAjT3bZeU9F5vC2bLq5l6cQ0W6Oe3Qe5V5l6cQ0W6Oe3Qe5V5l6cQ0W6Oe3Qe5"
     return {"publicKey": public_key}
