@@ -290,6 +290,12 @@ browser CSRF checks for this external-service route only, rejects stale
 payloads older than 300 seconds, and deduplicates repeated `webhookId` values
 to provide replay protection.
 
+Issue #243 completes the Linear integration by wiring the webhook receiver to
+the agent-agnostic dispatch path and adding a lightweight Credentials-tab
+setup panel in `frontend/src/pages/LinearSetup.tsx`. The setup panel displays
+the webhook URL, workspace auth/trigger metadata, and the operator-facing
+instructions for configuring the inbound Linear webhook.
+
 ### 3.6 Tests Tab
 Unified testing hub with two sections:
 1. **CI Tests** â€” table of the latest `ci-standard` workflow run for each of

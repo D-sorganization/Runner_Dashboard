@@ -520,6 +520,7 @@ async def _csrf_check(request: Request, call_next: Any) -> Any:
     return await call_next(request)
 
 
+@app.middleware("http")
 async def _add_security_headers(request: Request, call_next: Any) -> Any:
     """Inject standard security headers on every response (issue #7, #18)."""
     response = await call_next(request)
