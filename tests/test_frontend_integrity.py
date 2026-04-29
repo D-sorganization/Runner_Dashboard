@@ -118,6 +118,25 @@ def test_fleet_tab_has_mobile_kpi_and_status_filter_slice() -> None:
     assert 'filter === "offline"' in content
 
 
+def test_queue_tab_has_mobile_health_cards_and_confirmed_cancel_slice() -> None:
+    content = _read_index()
+
+    assert "Queue health summary" in content
+    assert "Stale queued runs" in content
+    assert "mobile-run-card" in content
+    assert "Confirm cancel (1)" in content
+    assert "waitingSeconds(r) > 300" in content
+
+
+def test_workflows_filters_persist_in_session_storage() -> None:
+    content = _read_index()
+
+    assert "workflowsMobileFilters" in content
+    assert "sessionStorage.getItem" in content
+    assert "sessionStorage.setItem" in content
+    assert "mobile-workflow-filters" in content
+
+
 # ---------------------------------------------------------------------------
 # dangerouslySetInnerHTML safety check
 # ---------------------------------------------------------------------------

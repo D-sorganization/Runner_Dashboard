@@ -446,6 +446,78 @@
         line-height: 1.15;
         margin-top: 3px;
       }
+      .mobile-kpi-strip,
+      .mobile-card-list {
+        display: none;
+      }
+      .mobile-kpi-strip {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        margin: 0 0 12px;
+      }
+      .mobile-kpi {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--bg-card);
+        padding: 9px 10px;
+        min-width: 0;
+      }
+      .mobile-kpi-label {
+        color: var(--text-muted);
+        font-size: 11px;
+        line-height: 1.2;
+      }
+      .mobile-kpi-value {
+        color: var(--text-primary);
+        font-size: 20px;
+        font-weight: 700;
+        line-height: 1.25;
+        font-variant-numeric: tabular-nums;
+      }
+      .mobile-card-list {
+        gap: 8px;
+      }
+      .mobile-run-card {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--bg-card);
+        padding: 10px;
+        min-width: 0;
+      }
+      .mobile-run-title {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        min-width: 0;
+      }
+      .mobile-run-name {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text-primary);
+        overflow-wrap: anywhere;
+      }
+      .mobile-run-meta {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 7px;
+        color: var(--text-muted);
+        font-size: 11px;
+      }
+      .mobile-run-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        justify-content: space-between;
+        margin-top: 10px;
+      }
+      .mobile-workflow-filters {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 16px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
       .fleet-status-strip {
         display: flex;
         gap: 8px;
@@ -1221,6 +1293,13 @@
         .header-right .hide-mobile {
           display: none;
         }
+        .tab-bar {
+          flex: 1 1 auto;
+          min-width: 0;
+        }
+        .header-right {
+          display: none;
+        }
         .data-table {
           font-size: 12px;
         }
@@ -1281,6 +1360,30 @@
         }
         .cpu-heatmap {
           grid-template-columns: repeat(auto-fill, minmax(28px, 1fr));
+        }
+        .mobile-kpi-strip {
+          display: grid;
+        }
+        .mobile-card-list {
+          display: grid;
+        }
+        .queue-desktop-table {
+          display: none;
+        }
+        .mobile-workflow-filters {
+          position: sticky;
+          top: 48px;
+          z-index: 8;
+          background: var(--bg-primary);
+          border-bottom: 1px solid var(--border);
+          padding: 8px 0 10px;
+        }
+        .mobile-workflow-filters input,
+        .mobile-workflow-filters select {
+          min-width: 0 !important;
+          flex: 1 1 100% !important;
+          width: 100%;
+          box-sizing: border-box;
         }
       }
       @media (max-width: 480px) {
@@ -5722,6 +5825,9 @@
         };
         var sortedIp = sortRows(ip, ipSort, runAccessors);
         var sortedQu = sortRows(qu, queueSort, runAccessors);
+        var staleQu = sortedQu.filter(function (r) {
+          return waitingSeconds(r) > 300;
+        });
         function runDiagnose() {
           setDiagLoading(true);
           setDiag(null);
@@ -5870,6 +5976,22 @@
               label: "Auto-refresh",
               value: "15s",
               sub: "updates automatically",
+            }),
+          ),
+          h(
+            "div",
+            { className: "mobile-kpi-strip", "aria-label": "Queue health summary" },
+            [
+              { label: "Queued", value: qu.length },
+              { label: "Running", value: ip.length },
+              { label: "Stale", value: staleQu.length },
+            ].map(function (item) {
+              return h(
+                "div",
+                { key: item.label, className: "mobile-kpi" },
+                h("div", { className: "mobile-kpi-label" }, item.label),
+                h("div", { className: "mobile-kpi-value" }, item.value),
+              );
             }),
           ),
           qu.length > 0
@@ -6501,7 +6623,7 @@
                     : null,
                   h(
                     "div",
-                    { style: { overflowX: "auto" } },
+                    { className: "queue-desktop-table", style: { overflowX: "auto" } },
                     h(
                       "table",
                       { className: "data-table" },
@@ -6608,18 +6730,34 @@
                                   "button",
                                   {
                                     onClick: function () {
-                                      cancelRun(repo, r.id);
+                                      var rkey = repo + "/" + r.id;
+                                      if (confirmRun !== rkey) {
+                                        setConfirmRun(rkey);
+                                        setTimeout(function () {
+                                          setConfirmRun(function (cur) {
+                                            return cur === rkey ? null : cur;
+                                          });
+                                        }, 5000);
+                                      } else {
+                                        setConfirmRun(null);
+                                        cancelRun(repo, r.id);
+                                      }
                                     },
                                     disabled: !!cstate,
                                     style: {
                                       fontSize: 11,
                                       padding: "2px 7px",
-                                      background: "none",
+                                      background:
+                                        confirmRun === repo + "/" + r.id
+                                          ? "var(--accent-red)"
+                                          : "none",
                                       border: "1px solid var(--accent-red)",
                                       color:
                                         cstate === "done"
                                           ? "var(--text-muted)"
-                                          : "var(--accent-red)",
+                                          : confirmRun === repo + "/" + r.id
+                                            ? "#fff"
+                                            : "var(--accent-red)",
                                       borderRadius: 4,
                                       cursor: cstate ? "default" : "pointer",
                                     },
@@ -6628,13 +6766,100 @@
                                     ? h("span", { className: "spinner" })
                                     : cstate === "done"
                                       ? "cancelled"
-                                      : "Cancel",
+                                      : confirmRun === repo + "/" + r.id
+                                        ? "Confirm cancel (1)"
+                                        : "Cancel",
                                 ),
                             ),
                           );
                         }),
                       ),
                     ),
+                  ),
+                  h(
+                    "div",
+                    { className: "mobile-card-list", "aria-label": "Stale queued runs" },
+                    (staleQu.length > 0 ? staleQu : sortedQu).map(function (r) {
+                      var repo = (r.repository && r.repository.name) || "";
+                      var key = repo + "/" + r.id;
+                      var cstate = cancelling[key];
+                      var isConfirming = confirmRun === key;
+                      return h(
+                        "div",
+                        {
+                          key: "mobile-" + r.id,
+                          className: "mobile-run-card",
+                          style: { opacity: cstate === "done" ? 0.45 : 1 },
+                        },
+                        h(
+                          "div",
+                          { className: "mobile-run-title" },
+                          h("span", { className: "queue-dot waiting" }),
+                          h("span", { className: "mobile-run-name" }, r.name || "?"),
+                        ),
+                        h(
+                          "div",
+                          { className: "mobile-run-meta" },
+                          h("span", null, repo || "unknown repo"),
+                          h("span", null, r.head_branch || "unknown branch"),
+                          h("span", { style: { color: waitColor(r) } }, waited(r)),
+                        ),
+                        h(
+                          "div",
+                          { className: "mobile-run-actions" },
+                          h(
+                            "a",
+                            {
+                              href: r.html_url,
+                              target: "_blank",
+                              rel: "noopener",
+                              style: {
+                                color: "var(--accent-blue)",
+                                textDecoration: "none",
+                                fontSize: 12,
+                              },
+                            },
+                            "View run",
+                          ),
+                          repo
+                            ? h(
+                                "button",
+                                {
+                                  className: "btn",
+                                  onClick: function () {
+                                    if (!isConfirming) {
+                                      setConfirmRun(key);
+                                      setTimeout(function () {
+                                        setConfirmRun(function (cur) {
+                                          return cur === key ? null : cur;
+                                        });
+                                      }, 5000);
+                                    } else {
+                                      setConfirmRun(null);
+                                      cancelRun(repo, r.id);
+                                    }
+                                  },
+                                  disabled: !!cstate,
+                                  style: {
+                                    background: isConfirming
+                                      ? "var(--accent-red)"
+                                      : "var(--bg-secondary)",
+                                    border: "1px solid var(--accent-red)",
+                                    color: isConfirming ? "#fff" : "var(--accent-red)",
+                                  },
+                                },
+                                cstate === "pending"
+                                  ? h("span", { className: "spinner" })
+                                  : cstate === "done"
+                                    ? "Cancelled"
+                                    : isConfirming
+                                      ? "Confirm cancel (1)"
+                                      : "Cancel",
+                              )
+                            : null,
+                        ),
+                      );
+                    }),
                   ),
                 )
               : h(
@@ -10872,13 +11097,21 @@
         var onDispatch = p.onDispatch;
         var onRefresh = p.onRefresh;
 
-        var sf = React.useState("");
+        var savedFilters = {};
+        try {
+          savedFilters = JSON.parse(
+            sessionStorage.getItem("workflowsMobileFilters") || "{}",
+          );
+        } catch (e) {
+          savedFilters = {};
+        }
+        var sf = React.useState(savedFilters.search || "");
         var searchFilter = sf[0],
           setSearchFilter = sf[1];
-        var rf = React.useState("all");
+        var rf = React.useState(savedFilters.repo || "all");
         var repoFilter = rf[0],
           setRepoFilter = rf[1];
-        var tf = React.useState("all");
+        var tf = React.useState(savedFilters.trigger || "all");
         var triggerFilter = tf[0],
           setTriggerFilter = tf[1];
         var ex = React.useState(null);
@@ -10893,6 +11126,20 @@
         var dc = React.useState(false);
         var dispatchConfirm = dc[0],
           setDispatchConfirm = dc[1];
+
+        React.useEffect(
+          function () {
+            sessionStorage.setItem(
+              "workflowsMobileFilters",
+              JSON.stringify({
+                search: searchFilter,
+                repo: repoFilter,
+                trigger: triggerFilter,
+              }),
+            );
+          },
+          [searchFilter, repoFilter, triggerFilter],
+        );
 
         var repos = Array.from(
           new Set(
@@ -10994,6 +11241,7 @@
           h(
             "div",
             {
+              className: "mobile-workflow-filters",
               style: {
                 display: "flex",
                 gap: 8,
