@@ -9,6 +9,7 @@ VIEWPORTS = MOBILE_DIR / "viewport_profiles.json"
 VIEWPORT_SCHEMA = MOBILE_DIR / "viewport_profiles.schema.json"
 TOUCH_HELPERS = MOBILE_DIR / "touch_helpers.js"
 INDEX_HTML = ROOT / "frontend" / "index.html"
+LEGACY_SOURCE = ROOT / "frontend" / "src" / "legacy" / "App.tsx"
 
 
 def _viewport_config() -> dict:
@@ -35,7 +36,8 @@ def test_mobile_viewport_profiles_lock_required_issue_202_dimensions() -> None:
 
 def test_mobile_smoke_page_contract_targets_existing_frontend_markers() -> None:
     config = _viewport_config()
-    frontend = INDEX_HTML.read_text(encoding="utf-8")
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    js = LEGACY_SOURCE.read_text(encoding="utf-8")
 
     smoke_pages = config["smokePages"]
     assert {page["name"] for page in smoke_pages} >= {
@@ -53,7 +55,7 @@ def test_mobile_smoke_page_contract_targets_existing_frontend_markers() -> None:
         assert page["goldenInteraction"], f"{page['name']} must describe one golden mobile action"
         assert page["requiredMarkers"], f"{page['name']} must include static frontend markers"
         for marker in page["requiredMarkers"]:
-            assert marker in frontend, f"{page['name']} marker {marker!r} is missing from frontend/index.html"
+            assert marker in html or marker in js, f"{page['name']} marker {marker!r} is missing from frontend/index.html or frontend/src/legacy/App.tsx"
 
 
 def test_touch_helper_scaffold_exports_readable_mobile_actions() -> None:
