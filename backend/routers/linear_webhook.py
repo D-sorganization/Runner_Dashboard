@@ -1,19 +1,21 @@
-"""Linear webhook receiver.
+"""Linear webhook receiver with agent-agnostic dispatch conversion.
 
 Provides a FastAPI endpoint that ingests webhook events from Linear.app,
-validates payloads, and forwards them into the dashboard issue pipeline.
+validates payloads, converts them into the internal dispatch envelope format
+defined by ``dispatch_contract``, and forwards them to the fleet dispatch
+pipeline.
 
 Security model
 --------------
 * Requests MUST arrive over Tailscale Funnel (see docs/tailscale-funnel.md).
 * The ``Linear-Signature`` header is verified against the workspace
-  ``webhook_secret_env`` secret (stubbed; see ``_verify_linear_signature``).
+  ``webhook_secret_env`` secret.
 * Replay protection uses the same envelope-deduplication mechanism as the
   dispatch router.
 * CSRF is NOT checked for this route because it is called by an external
   service, not the browser.
 
-See SPEC.md § "Linear Webhook Integration" and issue #242.
+See SPEC.md § "Linear Webhook Integration" and issue #243.
 """
 
 from __future__ import annotations
@@ -26,6 +28,7 @@ import os
 import time
 from typing import Any
 
+import dispatch_contract
 from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 
@@ -44,11 +47,7 @@ MAX_WEBHOOK_AGE_SECONDS = 300
 
 
 class LinearWebhookPayload(BaseModel):
-    """Minimal validation for Linear webhook JSON body.
-
-    Linear's webhook format is documented at:
-    https://developers.linear.app/docs/graphql/webhooks
-    """
+    """Minimal validation for Linear webhook JSON body."""
 
     model_config = {"populate_by_name": True, "str_strip_whitespace": True}
 
@@ -62,12 +61,7 @@ class LinearWebhookPayload(BaseModel):
     @field_validator("action")
     @classmethod
     def _validate_action(cls, value: str) -> str:
-        allowed = {
-            "create",
-            "update",
-            "remove",
-            "delete",
-        }
+        allowed = {"create", "update", "remove", "delete"}
         if value.lower() not in allowed:
             raise ValueError(f"unsupported webhook action: {value}")
         return value.lower()
@@ -75,23 +69,14 @@ class LinearWebhookPayload(BaseModel):
     @field_validator("type")
     @classmethod
     def _validate_type(cls, value: str) -> str:
-        # Linear sends singular nouns; we normalize to lowercase.
-        known = {
-            "issue",
-            "comment",
-            "issuecomment",
-            "cycle",
-            "project",
-        }
+        known = {"issue", "comment", "issuecomment", "cycle", "project"}
         normalized = value.lower()
         if normalized not in known:
-            # Accept unknown types so Linear schema additions don't break us,
-            # but log a warning.
             log.warning("linear_webhook: unknown event type %r", normalized)
         return normalized
 
 
-# ─── Signature Verification (stub) ─────────────────────────────────────────────
+# ─── Signature Verification ────────────────────────────────────────────────────
 
 
 def _verify_linear_signature(
@@ -99,30 +84,8 @@ def _verify_linear_signature(
     signature_header: str | None,
     secret: str,
 ) -> bool:
-    """Verify the Linear-Signature header against the shared secret.
-
-    Linear signs payloads with HMAC-SHA256 and sends the hex digest in the
-    ``Linear-Signature`` header.  This stub implements the verification; in
-    production the secret is read from the workspace's ``webhook_secret_env``
-    environment variable.
-
-    Parameters
-    ----------
-    body:
-        Raw request body bytes.
-    signature_header:
-        Value of the ``Linear-Signature`` header.
-    secret:
-        Shared webhook secret for the workspace.
-
-    Returns
-    -------
-    bool
-        ``True`` when the signature matches or when *both* the header and
-        secret are absent (local development only).  ``False`` otherwise.
-    """
+    """Verify the Linear-Signature header against the shared secret."""
     if not signature_header and not secret:
-        # Local dev shortcut – both missing is allowed, but logged.
         log.warning("linear_webhook: signature verification skipped (no header, no secret)")
         return True
 
@@ -135,18 +98,12 @@ def _verify_linear_signature(
         return False
 
     expected = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
-    # Use constant-time comparison to avoid timing attacks
     return hmac.compare_digest(expected, signature_header)
 
 
-# ─── Replay / Idempotency ──────────────────────────────────────────────────────
+# ─── Replay / Idempotency ─────────────────────────────────────────────────────
 
 _processed_webhook_ids: set[str] = set()
-"""(In-memory) set of recently processed webhook IDs.
-
-Production deployments should replace this with Redis or a persistent cache
-so that replay protection survives process restarts.
-"""
 
 
 def _is_replay(webhook_id: str | None) -> bool:
@@ -161,9 +118,7 @@ def _record_webhook(webhook_id: str | None) -> None:
     if webhook_id is None:
         return
     _processed_webhook_ids.add(webhook_id)
-    # Prevent unbounded memory growth
     if len(_processed_webhook_ids) > 10_000:
-        # Simple eviction: clear half the set.  In production use Redis TTL.
         to_remove = list(_processed_webhook_ids)[:5_000]
         for item in to_remove:
             _processed_webhook_ids.discard(item)
@@ -178,18 +133,55 @@ def _payload_too_old(created_at: str | int | None) -> bool:
         return False
     try:
         if isinstance(created_at, str):
-            # ISO-8601 string
             import datetime as dt_mod
 
             ts = dt_mod.datetime.fromisoformat(created_at.replace("Z", "+00:00"))
             ts_epoch = ts.timestamp()
         else:
-            ts_epoch = int(created_at) / 1000.0  # Linear often sends ms
+            ts_epoch = int(created_at) / 1000.0
     except (ValueError, TypeError, OverflowError):
         return False
 
     age = time.time() - ts_epoch
     return age > MAX_WEBHOOK_AGE_SECONDS
+
+
+# ─── Dispatch Conversion ────────────────────────────────────────────────────────
+
+
+def _build_dispatch_envelope(linear_payload: LinearWebhookPayload) -> dispatch_contract.CommandEnvelope:
+    """Convert a validated Linear webhook payload into a dispatch envelope.
+
+    The envelope uses ``agents.dispatch.issue`` so the fleet can route an
+    agent to the Linear issue.  All required fields are filled from the
+    webhook ``data`` block; missing values default to safe placeholders.
+    """
+    data = linear_payload.data
+    issue_id = str(data.get("id") or data.get("identifier") or "unknown")
+    issue_title = str(data.get("title") or "")
+    issue_url = str(data.get("url") or "")
+    team_name = str(data.get("team", {}).get("name") or "") if isinstance(data.get("team"), dict) else ""
+
+    # Build a payload compatible with agents.dispatch.issue action
+    payload = {
+        "issue_id": issue_id,
+        "title": issue_title,
+        "url": issue_url,
+        "team": team_name,
+        "source": "linear",
+        "action": linear_payload.action,
+        "event_type": linear_payload.type,
+    }
+
+    return dispatch_contract.build_envelope(
+        action="agents.dispatch.issue",
+        source="linear_webhook",
+        target="fleet",
+        requested_by="linear_webhook",
+        reason=f"Linear webhook: {linear_payload.action} {linear_payload.type}",
+        payload=payload,
+        correlation_id=linear_payload.webhook_id or "",
+    )
 
 
 # ─── Main Endpoint ─────────────────────────────────────────────────────────────
@@ -200,22 +192,10 @@ async def linear_webhook(
     request: Request,
     linear_signature: str | None = Header(None, alias="Linear-Signature"),
 ) -> dict[str, Any]:
-    """Receive and validate a Linear webhook event.
-
-    1. Reads the raw body for signature verification.
-    2. Validates JSON against ``LinearWebhookPayload``.
-    3. Verifies ``Linear-Signature`` (stub; reads secret from env).
-    4. Checks replay / age guards.
-    5. Logs a sanitized summary and returns 200 so Linear doesn't retry.
-
-    Returns
-    -------
-    dict
-        ``{"ok": True, "action": ..., "type": ...}`` on success.
-    """
+    """Receive and validate a Linear webhook event, then convert to dispatch envelope."""
     body = await request.body()
 
-    # Parse JSON (do this before signature check so we can log the webhookId)
+    # Parse JSON
     try:
         payload_raw = json.loads(body)
     except json.JSONDecodeError as exc:
@@ -225,7 +205,7 @@ async def linear_webhook(
     # Validate shape
     try:
         payload = LinearWebhookPayload.model_validate(payload_raw)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         log.warning("linear_webhook: payload validation failed: %s", exc)
         raise HTTPException(status_code=422, detail="Payload validation failed") from exc
 
@@ -255,23 +235,34 @@ async def linear_webhook(
     # Record as processed
     _record_webhook(payload.webhook_id)
 
-    # Sanitized logging – never log the full issue body, just metadata
+    # Build dispatch envelope for Issue events
+    envelope: dispatch_contract.CommandEnvelope | None = None
+    if payload.type == "issue":
+        try:
+            envelope = _build_dispatch_envelope(payload)
+        except Exception as exc:
+            log.error("linear_webhook: failed to build dispatch envelope: %s", exc, exc_info=True)
+
     log.info(
-        "linear_webhook: accepted action=%s type=%s webhook_id=%s org=%s",
+        "linear_webhook: accepted action=%s type=%s webhook_id=%s org=%s dispatch=%s",
         payload.action,
         payload.type,
         payload.webhook_id,
         payload.organization_id,
+        envelope.envelope_id if envelope else "none",
     )
 
-    # TODO(#242-followup): Route into issue pipeline when type == "Issue"
-    # For now we acknowledge receipt and return the parsed metadata.
-    return {
+    response: dict[str, Any] = {
         "ok": True,
         "action": payload.action,
         "type": payload.type,
         "webhook_id": payload.webhook_id,
     }
+
+    if envelope is not None:
+        response["envelope"] = envelope.to_dict()
+
+    return response
 
 
 # ─── Health / Discovery ────────────────────────────────────────────────────────
@@ -279,10 +270,7 @@ async def linear_webhook(
 
 @router.get("/webhook/health")
 async def linear_webhook_health() -> dict[str, Any]:
-    """Return the webhook receiver's operational status.
-
-    Useful for Tailscale Funnel health checks and monitoring.
-    """
+    """Return the webhook receiver's operational status."""
     secret_present = bool(os.environ.get(LINEAR_WEBHOOK_SECRET_ENV, "").strip())
     return {
         "status": "ok",

@@ -86,6 +86,7 @@ from routers import credentials as _credentials_router  # noqa: E402
 from routers import dispatch as _dispatch_router  # noqa: E402
 from routers import linear as _linear_router  # noqa: E402
 from routers import linear_webhook as _linear_webhook_router  # noqa: E402
+from system_utils import get_system_metrics_snapshot  # noqa: E402
 
 # datetime.UTC added in Python 3.11; fall back to timezone.utc on older runtimes.
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
@@ -510,7 +511,7 @@ async def _csrf_check(request: Request, call_next: Any) -> Any:
             return await call_next(request)
         # Allow health / static routes without the header so monitoring tools
         # (e.g. curl health checks) still work.  Only enforce on /api/* paths.
-        if request.url.path.startswith("/api/"):
+        if request.url.path.startswith("/api/") and not request.url.path.startswith("/api/linear/webhook"):
             if request.headers.get("X-Requested-With") != "XMLHttpRequest":
                 return JSONResponse(
                     {"error": "CSRF check failed: missing X-Requested-With header"},
@@ -519,6 +520,7 @@ async def _csrf_check(request: Request, call_next: Any) -> Any:
     return await call_next(request)
 
 
+@app.middleware("http")
 async def _add_security_headers(request: Request, call_next: Any) -> Any:
     """Inject standard security headers on every response (issue #7, #18)."""
     response = await call_next(request)
@@ -2119,7 +2121,7 @@ async def _collect_live_fleet_nodes() -> list[dict]:
                 **reason,
             }
 
-    local_sys = await _metrics_router.get_system_metrics()
+    local_sys = await get_system_metrics_snapshot()
     local_health = await _health_router._health_impl()
     local_resource_reason = _resource_offline_reason(local_sys)
     nodes: list[dict] = [
@@ -5172,7 +5174,7 @@ async def _get_fleet_nodes_impl() -> dict:
 async def proxy_node_system(node_name: str) -> dict:
     """Proxy /api/system from a named fleet node (for detailed drill-down)."""
     if node_name in (HOSTNAME, "local"):
-        return await _metrics_router.get_system_metrics()
+        return await get_system_metrics_snapshot()
     url = FLEET_NODES.get(node_name)
     if not url:
         raise HTTPException(status_code=404, detail=f"Node not found: {node_name}")
