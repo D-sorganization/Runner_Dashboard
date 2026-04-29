@@ -1,4 +1,9 @@
-export const MOBILE_VIEWPORT_PROFILE_NAMES = ["iphone-12", "pixel-5"];
+export const MOBILE_VIEWPORT_PROFILE_NAMES = [
+  "iphone-12",
+  "pixel-5",
+  "epic-compact-375",
+  "epic-standard-412",
+];
 
 function asLocator(page, target) {
   return typeof target === "string" ? page.locator(target) : target;

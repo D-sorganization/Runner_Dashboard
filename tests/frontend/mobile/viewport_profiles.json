@@ -23,6 +23,22 @@
         "height": 851
       },
       "deviceScaleFactor": 2.75
+    },
+    {
+      "name": "epic-compact-375",
+      "viewport": {
+        "width": 375,
+        "height": 812
+      },
+      "deviceScaleFactor": 3
+    },
+    {
+      "name": "epic-standard-412",
+      "viewport": {
+        "width": 412,
+        "height": 915
+      },
+      "deviceScaleFactor": 2.75
     }
   ],
   "smokePages": [
