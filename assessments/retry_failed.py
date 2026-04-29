@@ -10,11 +10,13 @@ OWNER = "D-sorganization"
 
 FAILED = ["controls", "Games", "MLProjects", "Playground", "UpstreamDrift", "Worksheet-Workshop"]
 
+
 def run(cmd, cwd=None):
     try:
         return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, check=False)
     except Exception as e:
         return subprocess.CompletedProcess(args=cmd, returncode=1, stdout="", stderr=str(e))
+
 
 def main():
     results = []
@@ -78,9 +80,24 @@ def main():
         # Open PR
         pr_title = f"[ASSESSMENT] A-O Fleet Assessment {DATE}"
         pr_body = f"## Assessment Artifacts for {repo}\n\nThis PR adds the pragmatic A-O assessment results to `docs/assessments/`.\n\nSee fleet epic: Repository_Management #1022"
-        pr = run(["gh", "pr", "create", "--repo", f"{OWNER}/{repo}",
-                  "--title", pr_title, "--body", pr_body,
-                  "--base", "main", "--head", branch_name], cwd=str(repo_path))
+        pr = run(
+            [
+                "gh",
+                "pr",
+                "create",
+                "--repo",
+                f"{OWNER}/{repo}",
+                "--title",
+                pr_title,
+                "--body",
+                pr_body,
+                "--base",
+                "main",
+                "--head",
+                branch_name,
+            ],
+            cwd=str(repo_path),
+        )
         if pr.returncode != 0:
             # Check if PR already exists
             if "already exists" in pr.stderr.lower() or "already exists" in pr.stdout.lower():
@@ -97,7 +114,9 @@ def main():
 
     print("\n=== Retry Complete ===")
     import json
+
     print(json.dumps(results, indent=2))
+
 
 if __name__ == "__main__":
     main()
