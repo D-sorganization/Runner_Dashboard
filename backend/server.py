@@ -3710,7 +3710,6 @@ async def get_agent_providers() -> dict:
     }
 
 
-
 # ─── Job Queue API ───────────────────────────────────────────────────────────
 
 
@@ -4832,7 +4831,6 @@ async def dispatch_assessment(
             detail="Assessment dispatch failed",
         )
     return {"status": "dispatched", "repository": repo, "provider": provider}
-
 
 
 # ─── Fleet Orchestration Control Plane ───────────────────────────────────────
