@@ -59,6 +59,7 @@ import agent_dispatch_router as agent_dispatch_router  # noqa: E402
 import agent_remediation as agent_remediation  # noqa: E402
 import assistant_contract as assistant_contract  # noqa: E402
 import assistant_tools as assistant_tools  # noqa: E402
+import auth_webauthn as _auth_webauthn_router  # noqa: E402
 import config_schema as config_schema  # noqa: E402
 import deployment_drift as deployment_drift  # noqa: E402
 import dispatch_contract as dispatch_contract  # noqa: E402
@@ -437,6 +438,7 @@ app.include_router(_credentials_router.router)
 app.include_router(_linear_router.router)
 app.include_router(admin_router.router)
 app.include_router(auth_router.router)
+app.include_router(_auth_webauthn_router.router)
 
 # Agent-launcher control surface (sibling: Repository_Management/launchers/cline_agent_launcher).
 # Subprocess-only — never imports the launcher Python at runtime.

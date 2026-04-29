@@ -876,6 +876,16 @@ All mutating `/api/*` endpoints require a principal.
 - Bots authenticate via `Authorization: Bearer <token>`.
 Scopes are enforced per-endpoint using the `require_scope(scope_name)` dependency.
 
+**Mobile Biometric Unlock (WebAuthn):**
+The WebAuthn route surface is additive to the existing session model. The
+registration and assertion begin endpoints require an already authenticated
+principal and issue short-lived, HMAC-signed server challenges under
+`/api/auth/webauthn/*`. Credential metadata is stored per principal as
+`(user_id, credential_id, public_key, sign_count)` and can be listed or revoked
+by the owning principal. Completion endpoints intentionally fail closed until a
+pinned WebAuthn verifier validates attestation/assertion payloads and sign-count
+replay protection.
+
 **Scope Presets:**
 - `admin` â€” Full access to all endpoints.
 - `operator` â€” Access to runners, workflows, and remediation dispatch.
