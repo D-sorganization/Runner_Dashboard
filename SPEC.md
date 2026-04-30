@@ -1,6 +1,6 @@
 ﻿# SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.13
+**Spec Version:** 2.5.14
 **Application Version:** 4.1.0 (see `VERSION`)
 **Last Updated:** 2026-04-30T00:00:00Z
 **Status:** Active
@@ -174,6 +174,8 @@ mobile-only read surface for runner monitoring cards over the existing runner,
 run, and machine telemetry payloads; desktop machine and runner tables remain
 the canonical wide-screen surface.
 
+
+Reusable UI primitives live in `frontend/src/primitives/`. Issue #422 introduces `Badge.tsx` (`tone` in `success | warning | danger | info | neutral`, `size` in `sm | md`) and `Pill.tsx` (with a `selected` boolean prop) so that the previously ad-hoc `.section-badge`, `.runner-status-badge`, `.conclusion-badge`, `.subtab-badge`, and `.fleet-status-pill` styles share a single token-driven implementation backed by `--badge-*-bg` / `--badge-*-fg` CSS variables in `frontend/src/design/tokens.ts`.
 
 PushSettings (issue #192) is a mobile-friendly React component for per-topic Web Push subscription management. It is located at `frontend/src/pages/PushSettings.tsx` and uses `GET /api/push/vapid-public-key` to fetch the VAPID key before subscribing to selected push topics via `POST /api/push/subscribe`.
 The Vite entrypoint in `frontend/src/main.tsx` includes a minimal tracer-bullet route shim for `/settings/push`: when the browser pathname resolves to that route, it renders `PushSettings` directly; all other paths continue to render the main dashboard app. This keeps the PushSettings work isolated while the Vite migration remains in progress.

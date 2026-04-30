@@ -1,4 +1,5 @@
 import React from "react";
+import { Badge } from "../../primitives/Badge";
 
 const h = React.createElement;
 
@@ -127,7 +128,7 @@ function Collapse(p: any) {
         p.icon,
         p.title,
         p.badge
-          ? h("span", { className: "section-badge" }, p.badge)
+          ? h(Badge, { tone: "neutral" }, p.badge)
           : null,
       ),
       h(
@@ -848,8 +849,8 @@ export function QueueTab(p: QueueTabProps) {
                       "td",
                       null,
                       h(
-                        "span",
-                        { className: "conclusion-badge in_progress" },
+                        Badge,
+                        { tone: "warning" },
                         "running",
                       ),
                     ),

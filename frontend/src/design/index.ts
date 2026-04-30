@@ -2,6 +2,7 @@
 // All tokens, primitives, and theme utilities are reachable from here.
 
 export {
+  badgeTokens,
   colorTokens,
   surfaceTokens,
   spacingTokens,
