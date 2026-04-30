@@ -1,8 +1,8 @@
 ﻿# SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.13
+**Spec Version:** 2.5.14
 **Application Version:** 4.1.0 (see `VERSION`)
-**Last Updated:** 2026-04-30T00:00:00Z
+**Last Updated:** 2026-04-30T17:00:00Z
 **Status:** Active
 
 ---
@@ -352,6 +352,16 @@ AI agent dispatch control panel organised into three sub-tabs:
   Multi-select table with type/complexity/effort/judgement pills. Non-pickable
   rows are dimmed; `design`/`contested` judgement pills rendered red with
   warning. Dispatches via `POST /api/issues/dispatch` with optional force flag.
+
+Both `POST /api/prs/dispatch` and `POST /api/issues/dispatch` enforce a
+per-principal hourly fan-out cap (`backend/dispatch_quota.py`,
+`MAX_PER_PRINCIPAL_PER_HOUR=100` over a rolling 3600-second window).
+Anonymous, empty, or synthetic principals are rejected with HTTP 422 before
+any workflow dispatch is attempted; principals that exceed the rolling cap
+receive HTTP 429 with a `Retry-After` header advising when the next slot
+opens. The module exposes a counter-style metrics dict
+(`dispatch_quota.METRICS`) covering `allowed`, `rejected_anonymous`,
+`rejected_rate_limited`, and `current_principals`.
 
 The active sub-tab is persisted to `localStorage` under the key
 `remediation-subtab`.

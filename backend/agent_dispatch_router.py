@@ -31,6 +31,7 @@ from uuid import uuid4
 
 import agent_remediation
 import config_schema
+import dispatch_quota
 import quota_enforcement
 from dispatch_contract import DispatchAccess
 from identity import identity_manager
@@ -297,6 +298,23 @@ async def dispatch_to_prs(
     Returns a ``BulkDispatchResponse`` on success/partial success, or a plain
     dict with ``{"error": ..., "status_code": N}`` for hard failures.
     """
+    # ── Per-principal hourly cap & anonymous rejection (#408) ─────────────────
+    # ``check_and_record`` rejects anonymous principals up front (no dispatch
+    # is attempted) and otherwise atomically counts this dispatch against the
+    # rolling-hour cap.
+    quota_check = await dispatch_quota.quota.check_and_record(req.principal)
+    if not quota_check["allowed"]:
+        if quota_check["reason"] == "anonymous_principal":
+            return {
+                "error": "anonymous_principal: dispatch requires an authenticated principal",
+                "status_code": 422,
+            }
+        return {
+            "error": (f"rate_limited: principal exceeded {dispatch_quota.MAX_PER_PRINCIPAL_PER_HOUR} dispatches/hour"),
+            "status_code": 429,
+            "retry_after": quota_check["retry_after"],
+        }
+
     # ── Validate provider ─────────────────────────────────────────────────────
     provider_error = _validate_provider(req.provider)
     if provider_error:
@@ -446,6 +464,28 @@ async def dispatch_to_issues(
     normalize_repository_fn:
         Callable ``(value: str) -> (repo_name, full_repository)``.
     """
+    # ── Reject anonymous / empty principals before doing anything (#408) ──────
+    if dispatch_quota.quota.is_anonymous(req.principal):
+        log.warning("agent-dispatch issue rejected: anonymous principal")
+        return {
+            "error": "anonymous_principal: dispatch requires an authenticated principal",
+            "status_code": 422,
+        }
+
+    # ── Per-principal hourly cap (#408) ───────────────────────────────────────
+    quota_check = await dispatch_quota.quota.check_and_record(req.principal)
+    if not quota_check["allowed"]:
+        if quota_check["reason"] == "anonymous_principal":
+            return {
+                "error": "anonymous_principal: dispatch requires an authenticated principal",
+                "status_code": 422,
+            }
+        return {
+            "error": (f"rate_limited: principal exceeded {dispatch_quota.MAX_PER_PRINCIPAL_PER_HOUR} dispatches/hour"),
+            "status_code": 429,
+            "retry_after": quota_check["retry_after"],
+        }
+
     # ── Validate provider ─────────────────────────────────────────────────────
     provider_error = _validate_provider(req.provider)
     if provider_error:
