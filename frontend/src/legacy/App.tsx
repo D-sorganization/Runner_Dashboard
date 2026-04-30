@@ -14598,8 +14598,8 @@ h("table", { className: "data-table", style: { width: "100%", borderCollapse: "c
   );
 }
 
-function App() {
-  var ts = React.useState("overview");
+function App({ initialTab }: { initialTab?: string } = {}) {
+  var ts = React.useState(initialTab ?? "overview");
   var tab = ts[0],
     setTab = ts[1];
   var rs = React.useState([]);
