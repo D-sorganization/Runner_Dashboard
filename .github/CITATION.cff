@@ -1,0 +1,9 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using these metadata."
+title: "runner-dashboard"
+abstract: "Operator console for the D-sorganization runner fleet."
+authors:
+  - name: "D-sorganization"
+repository-code: "https://github.com/D-sorganization/runner-dashboard"
+license: MIT
+type: software

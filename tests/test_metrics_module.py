@@ -8,8 +8,6 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import pytest
-
 _BACKEND_DIR = Path(__file__).parent.parent / "backend"
 sys.path.insert(0, str(_BACKEND_DIR))
 

@@ -106,6 +106,10 @@ jobs:
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: "3.11"
+      - name: CODEOWNERS validity
+        run: |
+          test -s .github/CODEOWNERS
+          grep -E '@[A-Za-z0-9-]+(/[A-Za-z0-9-]+)?' .github/CODEOWNERS > /dev/null
       - name: Install dependencies with uv
         run: |
           if [ -f uv.lock ]; then
@@ -139,10 +143,33 @@ jobs:
       - name: Install type stubs
         run: pip install types-PyYAML types-requests
       - name: Type Check
-        run: mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional
+        # disallow_untyped_defs is now true globally (pyproject.toml).
+        # Per-module overrides shrink each release (tracked in #161).
+        # The override count is printed to the log so it cannot grow silently.
+        run: |
+          OVERRIDE_COUNT=$(python - <<'EOF'
+          import tomllib, pathlib
+          data = tomllib.loads(pathlib.Path("pyproject.toml").read_text())
+          overrides = data.get("tool", {}).get("mypy", {}).get("overrides", [])
+          relaxed = [
+              o for o in overrides
+              if o.get("disallow_untyped_defs") is False or o.get("strict_optional") is False
+          ]
+          print(len(relaxed))
+          EOF
+          )
+          echo "::notice::mypy relaxed-override module count: ${OVERRIDE_COUNT} (target: 0, tracked in #161)"
+          mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional
       - name: Run bandit security scan
-        run: bandit -r backend/ -ll -ii --exclude backend/__pycache__ -f json -o bandit-report.json || true
-        continue-on-error: true  # non-blocking, report only
+        # Blocking for HIGH severity (-l = medium+high, -i = medium+high confidence).
+        # MEDIUM findings are allow-listed in bandit.yaml with rationale per finding.
+        # Exits non-zero on HIGH; MEDIUM/LOW are suppressed via config.
+        run: |
+          bandit -r backend/ -l -i --exclude backend/__pycache__ \
+            -c bandit.yaml \
+            -f json -o bandit-report.json
+        # HIGH severity causes exit 1 — bandit returns non-zero; do NOT add
+        # continue-on-error here so the job fails on HIGH findings.
 
       - name: Upload bandit report
         if: always()
@@ -160,16 +187,41 @@ jobs:
             grep -rE "TODO|FIXME" backend/ --include="*.py"
             exit 1
           fi
+      - name: Verify Documentation Freshness (issue #394)
+        run: |
+          # The frontend is now Vite + React + TypeScript. Block any
+          # regression in CLAUDE.md / CONTRIBUTING.md to the old
+          # "no build step / no JSX / no TypeScript" claims.
+          if grep -iE 'no (build step|jsx|typescript)' CLAUDE.md CONTRIBUTING.md; then
+            echo "::error::Forbidden legacy frontend phrasing reintroduced."
+            echo "The frontend is Vite + React + TypeScript. Update the docs."
+            exit 1
+          fi
+          echo "Documentation freshness check passed."
       - name: Security Audit (pip-audit)
+        # Blocking for CRITICAL/HIGH CVEs.
+        # Known LOW/MEDIUM CVEs are allow-listed in requirements-audit-ignore.txt
+        # with rationale and expiry date per entry.
         env:
           PYTHONNOUSERSITE: "1"
         run: |
+          IGNORE_FLAGS=""
+          if [ -f requirements-audit-ignore.txt ]; then
+            # Each non-comment line is a PURL to ignore (e.g. pkg:pypi/foo@1.0.0)
+            while IFS= read -r line; do
+              [[ "$line" =~ ^#.*$ || -z "$line" ]] && continue
+              PURL=$(echo "$line" | awk '{print $1}')
+              IGNORE_FLAGS="$IGNORE_FLAGS --ignore-vuln $PURL"
+            done < requirements-audit-ignore.txt
+          fi
           if [ -f uv.lock ]; then
-            pip-audit --progress-spinner=off
+            pip-audit --progress-spinner=off $IGNORE_FLAGS
           else
             python -m venv "$RUNNER_TEMP/pip-audit-venv"
             "$RUNNER_TEMP/pip-audit-venv/bin/pip" install --quiet pip-audit
-            "$RUNNER_TEMP/pip-audit-venv/bin/pip-audit" -r requirements.txt
+            # shellcheck disable=SC2086
+            "$RUNNER_TEMP/pip-audit-venv/bin/pip-audit" -r requirements.txt \
+              --progress-spinner=off $IGNORE_FLAGS
           fi
 
   security-scan:

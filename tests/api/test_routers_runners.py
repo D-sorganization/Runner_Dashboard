@@ -24,6 +24,8 @@ if str(_BACKEND) not in sys.path:
 os.environ.setdefault("DASHBOARD_API_KEY", "test-key")
 
 import server  # noqa: E402
+from routers import runner_diagnostics as diagnostics_router  # noqa: E402
+from routers import runner_groups as groups_router  # noqa: E402
 from routers import runners as runners_router  # noqa: E402
 
 
@@ -89,7 +91,9 @@ def mock_gh_api_admin(monkeypatch: pytest.MonkeyPatch):
             }
         return {}
 
-    monkeypatch.setattr(runners_router, "gh_api_admin", mock_api)
+    monkeypatch.setattr(runners_router, "gh_api_admin", mock_api, raising=False)
+    monkeypatch.setattr(groups_router, "gh_api_admin", mock_api, raising=False)
+    monkeypatch.setattr(diagnostics_router, "gh_api_admin", mock_api, raising=False)
     return mock_api
 
 
@@ -108,7 +112,9 @@ def mock_run_runner_svc(monkeypatch: pytest.MonkeyPatch):
             return 0, "runner restarted", ""
         return 1, "", "unknown action"
 
-    monkeypatch.setattr(runners_router, "run_runner_svc", mock_svc)
+    monkeypatch.setattr(runners_router, "run_runner_svc", mock_svc, raising=False)
+    monkeypatch.setattr(groups_router, "run_runner_svc", mock_svc, raising=False)
+    monkeypatch.setattr(diagnostics_router, "run_runner_svc", mock_svc, raising=False)
     return mock_svc
 
 
@@ -123,8 +129,12 @@ def mock_cache(monkeypatch: pytest.MonkeyPatch):
     def mock_set(key: str, value):
         cache_store[key] = value
 
-    monkeypatch.setattr(runners_router, "cache_get", mock_get)
-    monkeypatch.setattr(runners_router, "cache_set", mock_set)
+    monkeypatch.setattr(runners_router, "cache_get", mock_get, raising=False)
+    monkeypatch.setattr(runners_router, "cache_set", mock_set, raising=False)
+    monkeypatch.setattr(groups_router, "cache_get", mock_get, raising=False)
+    monkeypatch.setattr(groups_router, "cache_set", mock_set, raising=False)
+    monkeypatch.setattr(diagnostics_router, "cache_get", mock_get, raising=False)
+    monkeypatch.setattr(diagnostics_router, "cache_set", mock_set, raising=False)
     return cache_store
 
 

@@ -69,23 +69,32 @@ line-length = 120
 exclude = ["frontend/", "deploy/", "docs/"]
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "B", "UP"]
+select = ["E", "F", "W", "I", "B", "UP", "T20"]
+
+[tool.ruff.lint.per-file-ignores]
+# CLI scripts intentionally use print() for stdout output.
+"scripts/*.py" = ["T201", "T203"]
+# Tests may use print() for diagnostic output during development.
+"tests/*.py" = ["T201", "T203"]
 
 [tool.mypy]
 python_version = "3.11"
 ignore_missing_imports = true
-# Type annotation strictness is enforced on new modules.
-# Pre-existing large backend files are tracked for cleanup in issue #161.
-disallow_untyped_defs = false
+# Global default: all new modules must have full type annotations.
+# Pre-existing large backend files carry per-module overrides below (tracked for
+# removal in #161). The CI step prints the override count to prevent growth.
+disallow_untyped_defs = true
+strict_optional = true
 
 [[tool.mypy.overrides]]
-# Strict checking for small, well-typed contract modules.
+# Strict checking for small, well-typed contract modules (already compliant).
 module = ["dispatch_contract", "remote_execution_contract"]
 disallow_untyped_defs = true
 strict_optional = true
 
 [[tool.mypy.overrides]]
-# Pre-existing large modules: relax strict_optional until #161 cleanup.
+# Pre-existing godfiles: relax untyped-defs and strict_optional until #161.
+# Each release this list should shrink. Do NOT add new modules here.
 module = [
     "server",
     "agent_remediation",
@@ -98,4 +107,5 @@ module = [
     "scheduled_workflows",
     "local_app_monitoring",
 ]
+disallow_untyped_defs = false
 strict_optional = false
