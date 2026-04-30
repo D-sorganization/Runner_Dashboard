@@ -2,7 +2,7 @@
 
 **Spec Version:** 2.5.13
 **Application Version:** 4.1.0 (see `VERSION`)
-**Last Updated:** 2026-04-30T00:00:00Z
+**Last Updated:** 2026-04-30T17:30:00Z
 **Status:** Active
 
 ---
@@ -1973,6 +1973,23 @@ New principals can be added by editing this file; the dashboard reloads it
 automatically. Service tokens for bot principals can be minted via the
 Identity Manager (`identity_manager.mint_service_token`).
 <!-- spec-trigger-145 -->
+
+### 18.6 CI Action Pinning & Tool Version Parity (Issue #390)
+
+To prevent silent drift between local development and CI, the repository
+enforces two invariants:
+
+- **Single SHA per action:** every `actions/<name>@<sha>` reference in
+  `.github/workflows/*.yml` must resolve to one 40-char SHA across all
+  files, with one consistent `# vN` comment. The `verify-action-pin-uniformity`
+  step in `ci-standard.yml` (job `ci-health-check`) enforces this, and
+  `tests/test_workflow_action_pinning.py` provides a fast pytest guard.
+- **Tool version parity:** `pyproject.toml [dependency-groups.dev]` pins
+  `ruff` and `mypy` exactly (e.g. `ruff==0.14.10`, `mypy==1.13.0`) to
+  match the `rev:` values in `.pre-commit-config.yaml`. The
+  `verify-tool-version-parity` step in `ci-standard.yml` enforces this,
+  preventing `uv sync` from installing a newer linter/type-checker than
+  CI uses.
 
 ### 18.5 Cross-Fleet Coherence & Admin API (Wave 4)
 
