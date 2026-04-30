@@ -966,6 +966,8 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
   allow-list policy, and mypy relaxed-override module-count guard.
 - chore(deploy): keep Docker and setup static guards on the supported Python
   3.11 runtime and systemd hardening contract.
+- security: upgrade Docker image packaging utilities with available CVE fixes
+  during the container build while preserving the locked application install.
 
 ### 2.5.14 - 2026-04-30
 - feat(scalability): drive uvicorn `workers`, `limit_concurrency`, and

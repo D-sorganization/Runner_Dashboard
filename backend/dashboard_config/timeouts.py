@@ -55,9 +55,9 @@ class Concurrency:
     finishing org-wide scans in a few seconds.
     """
 
-    # Stale-queue scan fans out across every repo in the org; 10 keeps us
+    # Stale-queue scan fans out across every repo in the org; 8 keeps us
     # comfortably under GitHub's secondary rate limits (per #393).
-    QUEUE_SCAN: int = 10
+    QUEUE_SCAN: int = 8
 
     # Bulk cancel fan-out: 5 concurrent cancel calls is a safe ceiling;
     # higher values trigger 403 abuse-detection responses.
