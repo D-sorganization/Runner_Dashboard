@@ -10,6 +10,7 @@ import uuid
 from pathlib import Path
 
 import httpx
+import maxwell_contract as _mc
 from fastapi import APIRouter, Depends, HTTPException, Request
 from identity import Principal, require_scope
 from pydantic import BaseModel, Field
@@ -99,8 +100,9 @@ async def get_maxwell_status() -> dict:
     service_running = False
     service_detail = "unknown"
     try:
-        # Note: using subprocess.run for simple systemctl check
-        r = subprocess.run(
+        # Note: using asyncio.to_thread to avoid blocking the event loop
+        r = await asyncio.to_thread(
+            subprocess.run,
             ["systemctl", "is-active", "maxwell-daemon"],
             capture_output=True,
             text=True,
@@ -177,29 +179,33 @@ async def maxwell_control(
 
 @router.get("/version")
 async def get_maxwell_version() -> dict:
-    """Proxy GET /api/version from Maxwell-Daemon."""
-    return await _mx_get("/api/version")
+    """Proxy GET /api/version from Maxwell-Daemon (contract-filtered)."""
+    raw = await _mx_get("/api/version")
+    return _mc.MaxwellVersionResponse.model_validate(_mc.strip_sensitive(raw)).model_dump()
 
 
 @router.get("/daemon-status")
 async def get_maxwell_daemon_status_detail() -> dict:
-    """Proxy GET /api/status from Maxwell-Daemon (pipeline state)."""
-    return await _mx_get("/api/status")
+    """Proxy GET /api/status from Maxwell-Daemon (pipeline state, contract-filtered)."""
+    raw = await _mx_get("/api/status")
+    return _mc.MaxwellStatusResponse.model_validate(_mc.strip_sensitive(raw)).model_dump()
 
 
 @router.get("/tasks")
 async def get_maxwell_tasks(limit: int = 20, cursor: str | None = None) -> dict:
-    """Proxy GET /api/tasks from Maxwell-Daemon."""
+    """Proxy GET /api/tasks from Maxwell-Daemon (contract-filtered)."""
     params: dict = {"limit": limit}
     if cursor is not None:
         params["cursor"] = cursor
-    return await _mx_get("/api/tasks", params=params)
+    raw = await _mx_get("/api/tasks", params=params)
+    return _mc.MaxwellTaskListResponse.model_validate(_mc.strip_sensitive(raw)).model_dump()
 
 
 @router.get("/tasks/{task_id}")
 async def get_maxwell_task_detail(task_id: str) -> dict:
-    """Proxy GET /api/tasks/{task_id} from Maxwell-Daemon."""
-    return await _mx_get(f"/api/tasks/{task_id}")
+    """Proxy GET /api/tasks/{task_id} from Maxwell-Daemon (contract-filtered)."""
+    raw = await _mx_get(f"/api/tasks/{task_id}")
+    return _mc.MaxwellTaskDetailResponse.model_validate(_mc.strip_sensitive(raw)).model_dump()
 
 
 @router.post("/dispatch")
@@ -229,7 +235,8 @@ async def maxwell_dispatch_task(
             log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
             from proxy_utils import _translate_upstream_response
 
-            return _translate_upstream_response(resp, "maxwell")
+            raw = _translate_upstream_response(resp, "maxwell")
+            return _mc.MaxwellDispatchResponse.model_validate(_mc.strip_sensitive(raw)).model_dump(by_alias=False)
     except httpx.TimeoutException as e:
         raise HTTPException(status_code=504, detail="maxwell timeout") from e
     except httpx.ConnectError as e:
@@ -268,7 +275,8 @@ async def maxwell_pipeline_control(
             log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
             from proxy_utils import _translate_upstream_response
 
-            return _translate_upstream_response(resp, "maxwell")
+            raw = _translate_upstream_response(resp, "maxwell")
+            return _mc.MaxwellControlResponse.model_validate(_mc.strip_sensitive(raw)).model_dump()
     except httpx.TimeoutException as e:
         raise HTTPException(status_code=504, detail="maxwell timeout") from e
     except httpx.ConnectError as e:
@@ -282,23 +290,27 @@ async def maxwell_pipeline_control(
 
 @router.get("/backends")
 async def get_maxwell_backends() -> dict:
-    """Proxy GET /api/v1/backends from Maxwell-Daemon."""
-    return await _mx_get("/api/v1/backends")
+    """Proxy GET /api/v1/backends from Maxwell-Daemon (contract-filtered; secrets stripped)."""
+    raw = await _mx_get("/api/v1/backends")
+    return _mc.MaxwellBackendsResponse.model_validate(_mc.strip_sensitive(raw)).model_dump()
 
 
 @router.get("/workers")
 async def get_maxwell_workers() -> dict:
-    """Proxy GET /api/v1/workers from Maxwell-Daemon."""
-    return await _mx_get("/api/v1/workers")
+    """Proxy GET /api/v1/workers from Maxwell-Daemon (contract-filtered)."""
+    raw = await _mx_get("/api/v1/workers")
+    return _mc.MaxwellWorkersResponse.model_validate(_mc.strip_sensitive(raw)).model_dump()
 
 
 @router.get("/cost")
 async def get_maxwell_cost() -> dict:
-    """Proxy GET /api/v1/cost from Maxwell-Daemon."""
-    return await _mx_get("/api/v1/cost")
+    """Proxy GET /api/v1/cost from Maxwell-Daemon (contract-filtered)."""
+    raw = await _mx_get("/api/v1/cost")
+    return _mc.MaxwellCostResponse.model_validate(_mc.strip_sensitive(raw)).model_dump()
 
 
 @router.get("/pipeline-state")
 async def get_maxwell_pipeline_state() -> dict:
-    """Proxy GET /api/status (pipeline state) from Maxwell-Daemon."""
-    return await _mx_get("/api/status")
+    """Proxy GET /api/status (pipeline state) from Maxwell-Daemon (contract-filtered)."""
+    raw = await _mx_get("/api/status")
+    return _mc.MaxwellStatusResponse.model_validate(_mc.strip_sensitive(raw)).model_dump()
