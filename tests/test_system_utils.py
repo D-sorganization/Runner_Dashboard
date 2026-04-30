@@ -8,17 +8,13 @@ These are all pure (or near-pure) functions with no external I/O.
 from __future__ import annotations
 
 import json
-import os
 import sys
 from pathlib import Path
-
-import pytest
 
 _BACKEND_DIR = Path(__file__).parent.parent / "backend"
 sys.path.insert(0, str(_BACKEND_DIR))
 
 import system_utils  # noqa: E402
-
 
 # ---------------------------------------------------------------------------
 # get_workload_capacity_from_specs

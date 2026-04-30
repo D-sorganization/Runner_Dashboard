@@ -1,0 +1,79 @@
+# Dependabot auto-merge — Issue #395
+#
+# Auto-merges Dependabot PRs that satisfy ALL of the following:
+#   1. PR was opened by github-actions[bot] / dependabot[bot].
+#   2. Update type is patch OR minor (majors require human review).
+#   3. Required CI checks pass (enforced by branch protection — `gh pr merge
+#      --auto` waits until all required checks succeed before merging).
+#
+# Security-tagged updates (`security` label, set in dependabot.yml) follow the
+# same rule: patch/minor security fixes auto-merge once CI is green; major
+# security updates pause for human review because they may include behaviour
+# changes that need verification.
+#
+# This workflow only labels and arms auto-merge — it never bypasses CI or
+# branch protection. If `gh pr merge --auto` is rejected (e.g. auto-merge is
+# not enabled in repo settings), the step logs a warning and continues; the
+# maintainer can merge manually. See the PR body for follow-up notes.
+
+name: Dependabot Auto-Merge
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: dependabot-auto-merge-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  auto-merge:
+    if: ${{ github.event.pull_request.user.login == 'dependabot[bot]' }}
+    runs-on: d-sorg-fleet
+    timeout-minutes: 5
+    steps:
+      - name: Fetch Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@d7267f607e9d3fb96fc2fbe83e0af444713e90b7 # v2.3.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log update classification
+        run: |
+          echo "package-ecosystem: ${{ steps.metadata.outputs.package-ecosystem }}"
+          echo "update-type:      ${{ steps.metadata.outputs.update-type }}"
+          echo "dependency-type:  ${{ steps.metadata.outputs.dependency-type }}"
+          echo "dependency-names: ${{ steps.metadata.outputs.dependency-names }}"
+
+      - name: Label major updates for human review
+        if: ${{ steps.metadata.outputs.update-type == 'version-update:semver-major' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          echo "Major version bump detected — flagging for human review."
+          gh pr edit "$PR_URL" --add-label "needs-human-review" || true
+          gh pr comment "$PR_URL" --body \
+            "Major version bump detected. Auto-merge is **disabled** for majors; a maintainer must review and merge manually." \
+            || true
+
+      - name: Enable auto-merge for patch and minor updates
+        if: >-
+          ${{
+            steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
+            steps.metadata.outputs.update-type == 'version-update:semver-minor'
+          }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          echo "Patch/minor update — arming auto-merge (squash) once required checks pass."
+          if ! gh pr merge --auto --squash "$PR_URL"; then
+            echo "::warning::Failed to enable auto-merge. This usually means" \
+              "auto-merge is not enabled in repository settings. Maintainer" \
+              "must merge manually after CI passes."
+          fi

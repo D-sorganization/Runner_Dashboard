@@ -2,12 +2,16 @@
 
 ## Supported Versions
 
-Only the current major version receives security fixes.
+Only the current major version receives security fixes. Older majors are
+End of Life (EOL) and will not receive security patches.
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 1.x     | :white_check_mark: |
-| < 1.0   | :x:                |
+| Version | Supported          | Status                   |
+| ------- | ------------------ | ------------------------ |
+| 4.x     | :white_check_mark: | Supported (current)      |
+| 3.x     | :x:                | End of Life — 2026-04-25 |
+| 2.x     | :x:                | End of Life              |
+| 1.x     | :x:                | End of Life              |
+| < 1.0   | :x:                | End of Life              |
 
 ## Reporting a Vulnerability
 

@@ -9,10 +9,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   local-only-workflows:
     name: Reject hosted runner routing
     runs-on: d-sorg-fleet
+    timeout-minutes: 10
     steps:
       - name: Checkout repository without external actions
         shell: bash

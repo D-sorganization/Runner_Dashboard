@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Distribute per-repo assessment JSONs into docs/assessments/ in each repo and open PRs."""
 
-import subprocess
-import shutil
-import os
 import json
+import shutil
+import subprocess
 from pathlib import Path
 
 DATE = "2026-04-26"
@@ -45,7 +44,7 @@ def main():
         # Check if dirty and stash
         status = run(["git", "status", "--porcelain"], cwd=str(repo_path))
         if status.stdout.strip():
-            print(f"  Dirty tree detected, stashing...")
+            print("  Dirty tree detected, stashing...")
             run(["git", "stash", "-u"], cwd=str(repo_path))
 
         # Create branch
