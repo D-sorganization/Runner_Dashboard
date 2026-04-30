@@ -1,9 +1,6 @@
 from __future__ import annotations  # noqa: E402
 
-import pytest  # noqa: E402
-
 import report_files  # noqa: E402
-
 
 # ---------------------------------------------------------------------------
 # sanitize_report_date
