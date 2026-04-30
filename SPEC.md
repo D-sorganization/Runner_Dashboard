@@ -139,6 +139,7 @@ the FastAPI app and router dependencies.
 **Type:** Single-Page Application (SPA)
 **Entry point:** `frontend/src/main.tsx` (built via Vite)
 **Build step:** Vite + React + TypeScript (`npm run build` -> `dist/`)
+**Type checking:** Deferred to Phase 2 (`npm run typecheck`, not blocking build)
 **JavaScript framework:** React (imported as ES modules)
 **createElement API:** `h()` alias (JSX migration in progress)
 **Styling:** Extracted CSS in `frontend/src/index.css` (was inline)
@@ -146,7 +147,9 @@ the FastAPI app and router dependencies.
 Application logic is contained in `frontend/src/legacy/App.tsx` (migrated from
 the previous single-file `frontend/index.html`). The Vite build outputs to
 `dist/` which the FastAPI backend serves. A `package.json` with build tooling
-is now present.
+is now present. Type checking is separated from the build pipeline to allow
+incremental migration of legacy code; Phase 2+ will progressively fix type errors
+as routes and components are extracted.
 `frontend/perf-budget.json` records the issue #200 mobile performance budget.
 The budget check enforces
 the target mobile shell, tab chunk, Lighthouse, INP, and FCP values plus an
