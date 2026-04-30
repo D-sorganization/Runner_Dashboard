@@ -84,6 +84,8 @@ from routers import credentials as _credentials_router  # noqa: E402
 from routers import dispatch as _dispatch_router  # noqa: E402
 from routers import feature_requests as _feature_requests_router  # noqa: E402
 from routers import fleet as _fleet_router  # noqa: E402
+from routers import fleet_control as _fleet_control_router  # noqa: E402
+from routers import fleet_status as _fleet_status_router  # noqa: E402
 from routers import linear as _linear_router  # noqa: E402
 from routers import linear_webhook as _linear_webhook_router  # noqa: E402
 from routers import runs_workflows as _runs_workflows_router  # noqa: E402
@@ -462,6 +464,9 @@ app.include_router(_agent_launcher_router.router)
 
 # Batch-2 extracted routers (epic #159)
 app.include_router(_fleet_router.router)
+app.include_router(_fleet_status_router.router)
+app.include_router(_fleet_control_router.router)
+_fleet_control_router._set_audit_lock(_orchestration_audit_lock)
 app.include_router(_runs_workflows_router.router)
 app.include_router(_assistant_router.router)
 app.include_router(_feature_requests_router.router)
@@ -4197,49 +4202,6 @@ async def diagnose_queue() -> dict:
     return result
 
 
-# ─── Fleet Node Aggregation API ──────────────────────────────────────────────
-
-
-@app.get("/api/fleet/nodes")
-async def get_fleet_nodes(request: Request) -> dict:
-    if _should_proxy_fleet_to_hub(request):
-        return await proxy_to_hub(request)
-    return await _get_fleet_nodes_impl()
-
-
-@app.get("/api/fleet/hardware")
-async def get_fleet_hardware(request: Request) -> dict:
-    """Return centralized fleet hardware specs for workload placement."""
-    if _should_proxy_fleet_to_hub(request):
-        return await proxy_to_hub(request)
-    fleet = await _get_fleet_nodes_impl()
-    machines = []
-    for node in fleet.get("nodes", []):
-        registry = node.get("registry") or {}
-        specs = node.get("hardware_specs") or node.get("system", {}).get("hardware_specs", {})
-        capacity = node.get("workload_capacity") or node.get("system", {}).get("workload_capacity", {})
-        machines.append(
-            {
-                "name": node.get("name"),
-                "display_name": registry.get("display_name") or node.get("name"),
-                "online": bool(node.get("online")),
-                "dashboard_reachable": bool(node.get("dashboard_reachable")),
-                "role": registry.get("role") or node.get("role"),
-                "runner_labels": registry.get("runner_labels", []),
-                "hardware_specs": specs,
-                "workload_capacity": capacity,
-                "offline_reason": node.get("offline_reason"),
-            }
-        )
-    return {
-        "timestamp": datetime.now(UTC).isoformat(),
-        "machines": machines,
-        "count": len(machines),
-        "online_count": sum(1 for machine in machines if machine["online"]),
-        "registry": fleet.get("registry", {}),
-    }
-
-
 async def _get_fleet_nodes_impl() -> dict:
     """Aggregate system metrics + health from all fleet nodes.
 
@@ -4270,25 +4232,8 @@ async def _get_fleet_nodes_impl() -> dict:
     }
 
 
-@app.get("/api/fleet/nodes/{node_name}/system")
-async def proxy_node_system(node_name: str) -> dict:
-    """Proxy /api/system from a named fleet node (for detailed drill-down)."""
-    if node_name in (HOSTNAME, "local"):
-        return await get_system_metrics_snapshot()
-    url = FLEET_NODES.get(node_name)
-    if not url:
-        raise HTTPException(status_code=404, detail=f"Node not found: {node_name}")
-    try:
-        async with httpx.AsyncClient(timeout=8.0) as client:
-            resp = await client.get(f"{url}/api/system")
-        if resp.status_code != 200:
-            raise HTTPException(status_code=502, detail="Node returned error")
-        return resp.json()
-    except httpx.TimeoutException as exc:
-        raise HTTPException(status_code=504, detail=f"{node_name} timed out") from exc
-    except httpx.RequestError as exc:
-        log.warning("Node %s unreachable: %s", node_name, exc)
-        raise HTTPException(status_code=502, detail=f"{node_name} unreachable") from exc
+# Fleet node aggregation routes extracted to routers/fleet_status.py
+# GET /api/fleet/nodes, GET /api/fleet/hardware, GET /api/fleet/nodes/{node_name}/system
 
 
 # ─── Request logging middleware ───────────────────────────────────────────────
