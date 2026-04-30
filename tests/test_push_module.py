@@ -6,6 +6,15 @@ Tests cover:
 - upsert_subscription / delete_subscription with an in-memory SQLite DB
 - send_push with an injectable stub transport
 - _row_to_subscription topic filtering
+
+These tests use an injectable transport stub (`_OkTransport`, `_StaleTransport`,
+etc.) and never perform real HTTP. They are safe to run in PR CI and are NOT
+marked `@pytest.mark.integration`.
+
+TODO(#434): if future tests are added here that exercise the real httpx
+transport against a live VAPID-signed push gateway, prefer `respx` /
+`pytest-httpx` to mock the network and otherwise mark the test
+`@pytest.mark.integration` so it is excluded from PR CI (see issue #401).
 """
 
 from __future__ import annotations

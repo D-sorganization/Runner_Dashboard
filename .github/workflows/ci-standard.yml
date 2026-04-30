@@ -272,9 +272,11 @@ jobs:
       - name: Run Python tests
         env:
           PYTHONPATH: backend
+        # -n auto: pytest-xdist parallel workers (issue #401).
+        # -m exclusion: integration / playwright tests run nightly only.
         run: |
           if [ -d tests/ ]; then
-            pytest tests/ --tb=short -q
+            pytest tests/ --tb=short -n auto -m "not integration and not playwright"
           else
             echo "No tests directory found â€” skipping"
             exit 0

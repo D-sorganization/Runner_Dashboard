@@ -19,6 +19,9 @@ dependencies = [
 dev = [
     "pytest>=9.0.3",
     "pytest-asyncio>=0.23.0",
+    "pytest-xdist>=3.6.0",
+    "pytest-rerunfailures>=14.0",
+    "respx>=0.21.1",
     "ruff>=0.9.0",
     "mypy>=1.15.0",
     "pip-audit>=2.10.0",
@@ -30,10 +33,35 @@ dev = [
 test = [
     "pytest==9.0.3",
     "pytest-asyncio==1.3.0",
+    "pytest-xdist==3.6.1",
+    "pytest-rerunfailures==14.0",
+    "respx==0.21.1",
 ]
 
 [tool.pytest.ini_options]
 pythonpath = ["backend"]
+# -ra: show short summary for all non-passing outcomes
+# -q: quiet mode
+# --strict-markers: fail when an unregistered marker is used (issue #401)
+# --strict-config: fail on unknown config options
+addopts = "-ra -q --strict-markers --strict-config"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests that touch real external systems (network, GitHub API, etc.); excluded from PR CI, run nightly",
+    "network: marks tests that require live network access (subset of integration)",
+    "playwright: marks browser-driven Playwright tests; excluded from default PR CI",
+]
+# filterwarnings: start permissive — escalate warning categories to errors only
+# once the warning surface is audited. The current backend (FastAPI/Pydantic v2,
+# httpx, anthropic) emits DeprecationWarnings from third-party packages that we
+# do not control. See issue #401 for the audit plan.
+filterwarnings = [
+    "default",
+]
+# pytest-rerunfailures: retry transient ConnectionError failures once (issue #401).
+# Note: a Prometheus flake counter is intentionally NOT wired up here — that is
+# tracked separately in issue #322.
+# TODO(#322): emit Prometheus counter when reruns occur.
 
 [tool.ruff]
 target-version = "py311"
