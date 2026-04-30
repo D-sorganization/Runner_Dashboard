@@ -425,7 +425,7 @@ async def api_dispatch_to_prs(
     request: Request,
     *,
     principal: Principal = Depends(require_scope("github.dispatch")),  # noqa: B008
-) -> dict:
+) -> dict | JSONResponse:
     """Dispatch agents to one or more pull requests."""
     body = await request.json()
     if not isinstance(body, dict):
@@ -468,7 +468,7 @@ async def api_dispatch_to_issues(
     request: Request,
     *,
     principal: Principal = Depends(require_scope("github.dispatch")),  # noqa: B008
-) -> dict:
+) -> dict | JSONResponse:
     """Dispatch agents to one or more issues."""
     body = await request.json()
     if not isinstance(body, dict):

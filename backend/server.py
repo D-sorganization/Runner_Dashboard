@@ -4289,7 +4289,7 @@ async def _start_background_tasks() -> None:
         if not os.path.exists(os.path.dirname(lock_path)):
             lock_path = "/tmp/runner-dashboard-leader.lock"
         _leader_lock_fd = open(lock_path, "w")
-        fcntl.flock(_leader_lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fcntl.flock(_leader_lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)  # type: ignore[attr-defined]  # type: ignore[attr-defined]
         log.info("Acquired leader lock, starting background tasks")
         asyncio.create_task(_runner_audit_loop())
     except ImportError:

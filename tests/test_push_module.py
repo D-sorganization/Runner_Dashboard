@@ -391,3 +391,43 @@ def test_send_push_filtered_by_user_id(db_path: Path) -> None:
         )
     )
     assert result["sent"] == 1  # only user-1's subscription
+
+
+# ---------------------------------------------------------------------------
+# Migrations
+# ---------------------------------------------------------------------------
+
+
+def test_push_migrations_fresh_db(db_path: Path) -> None:
+    conn = push._connect(db_path)
+    row = conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()
+    assert row[0] >= 1
+    conn.close()
+
+
+def test_push_migrations_v1_state(db_path: Path) -> None:
+    import sqlite3
+
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            CREATE TABLE push_subscriptions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                endpoint TEXT NOT NULL UNIQUE,
+                p256dh TEXT NOT NULL,
+                auth TEXT NOT NULL,
+                user_agent TEXT NOT NULL DEFAULT '',
+                topics_json TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+
+    # Now connect using push._connect which should run migrations safely
+    conn2 = push._connect(db_path)
+    row = conn2.execute("SELECT MAX(version) FROM schema_migrations").fetchone()
+    assert row[0] >= 1
+    conn2.close()
