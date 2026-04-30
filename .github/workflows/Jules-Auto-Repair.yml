@@ -41,6 +41,13 @@ permissions:
   actions: read
   checks: read
 
+# Workflow-level concurrency: this is a remediation/repair flow, so do not
+# cancel an in-flight repair when a new caller arrives — let the existing
+# attempt finish. The per-job concurrency below additionally gates by branch.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   MAX_REPAIR_ATTEMPTS: 5
   REPAIR_WINDOW_HOURS: 6

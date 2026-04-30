@@ -25,7 +25,10 @@ export const surfaceTokens = {
   glassBorder: "rgba(255, 255, 255, 0.1)",
   glassBorderLight: "rgba(255, 255, 255, 0.05)",
   glassShadow: "0 8px 32px 0 rgba(0, 0, 0, 0.37)",
-  glassBlur: "blur(12px)",
+  // glassBlur is the blur RADIUS only — consumed in CSS via
+  // `blur(var(--glass-blur))`. Override with `:root { --glass-blur: 0px }`
+  // (or future in-app reduce-transparency toggle) to disable the effect.
+  glassBlur: "12px",
 } as const;
 
 export const spacingTokens = {
