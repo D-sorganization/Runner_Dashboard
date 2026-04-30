@@ -101,6 +101,15 @@ HEAVY_TEST_REPOS = {
 }
 
 # Session
+# Request-log filter: paths sampled at 1/10 instead of fully suppressed.
+# Errors (4xx/5xx) are always logged regardless of this list.
+# Override via the LOG_FILTER_PATHS env var (comma-separated path prefixes).
+_log_filter_raw = os.environ.get(
+    "LOG_FILTER_PATHS",
+    "/api/scheduled-workflows,/api/heavy-tests,/api/reports",
+)
+LOG_FILTER_PATHS: tuple[str, ...] = tuple(p.strip() for p in _log_filter_raw.split(",") if p.strip())
+
 _SESSION_SECRET_DIR = Path(
     os.environ.get(
         "RUNNER_DASHBOARD_SESSION_SECRET_DIR",

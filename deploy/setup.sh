@@ -58,10 +58,57 @@ HUB_URL_VAL=""
 ARTIFACT_SOURCE=""
 SCHEDULE_CONFIG_VAL="${RUNNER_SCHEDULE_CONFIG:-$HOME/.config/runner-dashboard/runner-schedule.json}"
 PYTHON_BIN="${RUNNER_DASHBOARD_PYTHON:-$(command -v python3.11 || command -v python3)}"
+CHECK_ONLY=""
+DRY_RUN=""
+FORCE_RESTART=""
 
-# Parse flags
+# preflight() — assert deploy preconditions (issue #402). Idempotent.
+preflight() {
+    local errors=0 check_path="${DEPLOY_DIR}" avail_gb py_ver py_major py_minor
+    mkdir -p "$(dirname "${DEPLOY_DIR}")" 2>/dev/null || true
+    while [[ ! -d "${check_path}" && "${check_path}" != "/" ]]; do
+        check_path="$(dirname "${check_path}")"
+    done
+    avail_gb=$(df --output=avail -BG "${check_path}" 2>/dev/null | tail -1 | tr -dc '0-9')
+    if [[ -z "${avail_gb}" ]] || (( avail_gb < 1 )); then
+        echo "ERROR: insufficient disk space at ${check_path}: ${avail_gb:-unknown}G available, need >1G"
+        errors=$((errors + 1))
+    fi
+    py_ver=$(python3 --version 2>&1 | awk '{print $2}')
+    if [[ -z "${py_ver}" ]]; then
+        echo "ERROR: python3 not found on PATH"; errors=$((errors + 1))
+    else
+        py_major=$(echo "${py_ver}" | cut -d. -f1)
+        py_minor=$(echo "${py_ver}" | cut -d. -f2)
+        if (( py_major < 3 )) || { (( py_major == 3 )) && (( py_minor < 11 )); }; then
+            echo "ERROR: python3 ${py_ver} is too old; need Python 3.11+"
+            errors=$((errors + 1))
+        fi
+    fi
+    if ss -tlnp 2>/dev/null | grep -q ':8321 '; then
+        echo "WARN: port 8321 already bound; the existing process may be replaced"
+    fi
+    local env_file="${HOME}/.config/runner-dashboard/env" perms
+    if [[ -f "${env_file}" ]]; then
+        perms=$(stat -c '%a' "${env_file}" 2>/dev/null || stat -f '%Lp' "${env_file}" 2>/dev/null || echo "")
+        if [[ "${perms}" != "600" ]]; then
+            echo "ERROR: ${env_file} has permissions ${perms}; must be 600"
+            errors=$((errors + 1))
+        fi
+    fi
+    if (( errors > 0 )); then
+        echo "ERROR: preflight failed with ${errors} error(s)"
+        exit 1
+    fi
+    echo "[ OK ] preflight: disk, python, port, env all good"
+}
+
+# Parse flags. --check-only and --dry-run are recognised at any position.
+CHECK_ONLY=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --check-only)   CHECK_ONLY=1;         shift ;;
+        --dry-run)      DRY_RUN=1;            shift ;;
         --runners)      NUM_RUNNERS="$2";     shift 2 ;;
         --machine-name) MACHINE_NAME="$2";    shift 2 ;;
         --display-name) DISPLAY_NAME_VAL="$2"; shift 2 ;;
@@ -71,9 +118,28 @@ while [[ $# -gt 0 ]]; do
         --hub-url)      HUB_URL_VAL="$2";     shift 2 ;;
         --artifact)     ARTIFACT_SOURCE="$2"; shift 2 ;;
         --schedule-config) SCHEDULE_CONFIG_VAL="$2"; shift 2 ;;
+        --force)        FORCE_RESTART=1;      shift ;;
         *) shift ;;
     esac
 done
+
+# Run preflight before any mutation. --check-only and --dry-run both exit
+# here so the host is never mutated; --dry-run additionally prints the
+# would-do summary (Codex P1 PR #483: announcing "no mutations" then
+# continuing to install / copy / write secrets is unsafe).
+preflight
+if [[ -n "$CHECK_ONLY" ]]; then info "--check-only: preflight passed; exiting before any mutation"; exit 0; fi
+if [[ -n "$DRY_RUN" ]]; then
+    info "[dry-run] preflight passed; aborting before any mutation."
+    info "[dry-run] would: deploy artifact, install requirements, write secrets, write systemd unit, install sudoers drop-in, restart service."
+    exit 0
+fi
+
+# Capture state BEFORE step 2 overwrites deployment.json (Codex P0 PR #483).
+PREVIOUS_DEPLOYED_SHA=""
+SERVICE_WAS_ACTIVE=""
+[[ -f "${DEPLOY_DIR}/deployment.json" ]] && PREVIOUS_DEPLOYED_SHA=$(python3 -c "import json; print(json.load(open('${DEPLOY_DIR}/deployment.json')).get('git_sha',''))" 2>/dev/null || echo "")
+systemctl is-active --quiet runner-dashboard.service 2>/dev/null && SERVICE_WAS_ACTIVE=1
 
 [[ -z "$MACHINE_NAME" ]] && MACHINE_NAME="$(hostname)"
 [[ -z "$DISPLAY_NAME_VAL" ]] && DISPLAY_NAME_VAL="$MACHINE_NAME"
@@ -220,13 +286,19 @@ if [[ -f "${SUDOERS_FILE}" ]] && grep -qF "${SUDOERS_LINE}" "${SUDOERS_FILE}" 2>
     ok "Sudoers rule already configured"
 else
     info "Adding passwordless sudo for runner svc.sh..."
-    echo "${SUDOERS_LINE}" | sudo tee "${SUDOERS_FILE}" > /dev/null
-    sudo chmod 440 "${SUDOERS_FILE}"
-    if sudo visudo -c -f "${SUDOERS_FILE}" 2>/dev/null; then
+    # Atomic sudoers replacement (issue #402): write to tmp, validate with
+    # `visudo -c -f`, only then move into place. Validation failure leaves
+    # any existing sudoers file untouched.
+    tmp=$(mktemp)
+    echo "${SUDOERS_LINE}" > "$tmp"
+    if visudo -c -f "$tmp" >/dev/null 2>&1; then
+        sudo install -m 0440 "$tmp" "${SUDOERS_FILE}"
+        rm -f "$tmp"
         ok "Sudoers rule installed (start/stop runners without password)"
     else
-        sudo rm -f "${SUDOERS_FILE}"
-        warn "Sudoers validation failed — removed. You may need sudo password for runner control."
+        rm -f "$tmp"
+        echo "ERROR: sudoers validation failed; existing file untouched"
+        exit 1
     fi
 fi
 
@@ -296,7 +368,25 @@ SVCEOF
 
 sudo systemctl daemon-reload
 sudo systemctl enable runner-dashboard.service
-sudo systemctl restart runner-dashboard.service
+
+# Version-skip restart (issue #402): only skip the restart when the
+# *previously*-deployed git_sha (captured before step 2 overwrote
+# deployment.json) matches the current checkout AND the service is already
+# active. Without the active-service check, a fresh install would also match
+# (deployment.json was just written) and we'd leave the unit inactive — that
+# was the Codex P0 risk on PR #483.
+SKIP_RESTART=""
+if [[ -z "$FORCE_RESTART" && -n "$SERVICE_WAS_ACTIVE" && -n "$PREVIOUS_DEPLOYED_SHA" ]]; then
+    current_sha=$(git -C "${SCRIPT_DIR}" rev-parse HEAD 2>/dev/null || echo "")
+    if [[ -n "${current_sha}" && "${PREVIOUS_DEPLOYED_SHA}" == "${current_sha}" ]]; then
+        info "Service active and deployed git_sha (${PREVIOUS_DEPLOYED_SHA:0:7}) matches current checkout; skipping restart (use --force to override)"
+        SKIP_RESTART=1
+    fi
+fi
+
+if [[ -z "$SKIP_RESTART" ]]; then
+    sudo systemctl restart runner-dashboard.service
+fi
 
 # Install tightly-scoped sudoers drop-in (issue #391 AC-6).
 SUDOERS_SRC="${SCRIPT_DIR}/deploy/sudoers.d-runner-dashboard"

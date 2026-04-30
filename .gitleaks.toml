@@ -1,0 +1,61 @@
+# =============================================================================
+# Gitleaks configuration for runner-dashboard
+# =============================================================================
+# Extends the upstream default ruleset, then adds repo-specific allowlists for
+# known-safe placeholder values that show up in tests, docs, and example
+# config files.
+#
+# Refs:
+#   - Issue #396 (initial introduction)
+#   - https://github.com/gitleaks/gitleaks#configuration
+#
+# Maintainers: when allowlisting a NEW placeholder, also note the path so a
+# reviewer can verify it is in fact a placeholder and not a real credential.
+# =============================================================================
+
+[extend]
+useDefault = true
+
+# -----------------------------------------------------------------------------
+# Repo-wide allowlists (applied to every rule)
+# -----------------------------------------------------------------------------
+[allowlist]
+description = "Global allowlist for runner-dashboard"
+
+# Files / paths that are safe by construction.
+paths = [
+  # Lockfiles can contain hash-like strings that trip generic high-entropy
+  # rules; they are not secret material.
+  '''(?i)package-lock\.json$''',
+  '''(?i)uv\.lock$''',
+  # Example/template config; these never contain real secrets.
+  '''^config/.*\.example$''',
+  '''^\.env\.example$''',
+  # Auto-generated tsbuildinfo files are large hash blobs.
+  '''.*\.tsbuildinfo$''',
+  # The detect-secrets baseline itself stores hashes of known placeholders.
+  '''^\.secrets\.baseline$''',
+  # Frontend bundle assets (icons / manifest) — not source for secrets.
+  '''^frontend/icon\.svg$''',
+  # Vendored or generated fixtures used by test suites.
+  '''^tests/.*/fixtures/.*''',
+]
+
+# Regexes that match known-safe values regardless of where they appear.
+regexes = [
+  # The well-known fake VAPID test public key used in backend/push.py for
+  # local development. Tracked separately for removal under issue #396 follow-up.
+  '''BEl62iM0fQZY9w6UhfjUtQ7hDPDpCAjT3bZeU9F5vC2bLq5l6cQ0W6Oe3Qe5V5l6cQ0W6Oe3Qe5V5l6cQ0W6Oe3Qe5''',
+  # Common documentation placeholders — these strings are never real secrets.
+  '''(?i)your[-_]?(api[-_]?key|token|secret)[-_]?here''',
+  '''(?i)example[-_]?(api[-_]?key|token|secret)''',
+  '''(?i)<(api[-_]?key|token|secret)>''',
+  '''(?i)xxxx+''',
+  '''(?i)changeme''',
+  # GitHub Actions expression syntax is not a secret.
+  '''\$\{\{\s*secrets\.[A-Z_]+\s*\}\}''',
+]
+
+# Commits that have been audited and are known to contain only test fixtures
+# or placeholders. Add SHAs here only after manual review.
+commits = []

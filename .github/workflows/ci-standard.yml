@@ -55,6 +55,46 @@ jobs:
             exit 1
           fi
           echo "All actions pinned."
+      - name: verify-action-pin-uniformity
+        run: |
+          # Issue #390: every guarded action must resolve to a single SHA across
+          # all workflows, and that SHA must carry one consistent `# vN` comment.
+          fail=0
+          for action in checkout setup-python setup-node github-script upload-artifact download-artifact create-github-app-token; do
+            shas=$(grep -hE "uses:\s+actions/${action}@" .github/workflows/*.yml \
+              | sed -E 's/.*@([0-9a-f]{40}).*/\1/' | sort -u)
+            count=$(printf '%s\n' "$shas" | grep -c '^[0-9a-f]\{40\}$' || true)
+            if [ "$count" -gt 1 ]; then
+              echo "::error::Inconsistent SHA pinning for actions/${action}: ${shas}"
+              fail=1
+            fi
+            comments=$(grep -hE "uses:\s+actions/${action}@" .github/workflows/*.yml \
+              | sed -E 's/.*#\s*(v[^ ]+).*/\1/' | sort -u)
+            ccount=$(printf '%s\n' "$comments" | grep -c '^v' || true)
+            if [ "$ccount" -gt 1 ]; then
+              echo "::error::actions/${action} has inconsistent version comments: ${comments}"
+              fail=1
+            fi
+          done
+          if [ "$fail" -ne 0 ]; then exit 1; fi
+          echo "All guarded actions pinned uniformly."
+      - name: verify-tool-version-parity
+        run: |
+          # Issue #390: pyproject [dependency-groups.dev] must pin ruff/mypy
+          # to the exact versions used by .pre-commit-config.yaml.
+          ruff_pc=$(grep -A1 "astral-sh/ruff-pre-commit" .pre-commit-config.yaml | grep "rev:" | sed -E 's/.*rev:\s*v?//;s/\s.*//')
+          mypy_pc=$(grep -A1 "pre-commit/mirrors-mypy" .pre-commit-config.yaml | grep "rev:" | sed -E 's/.*rev:\s*v?//;s/\s.*//')
+          ruff_pp=$(grep -E '"ruff==' pyproject.toml | sed -E 's/.*ruff==([0-9A-Za-z.\-]+).*/\1/')
+          mypy_pp=$(grep -E '"mypy==' pyproject.toml | sed -E 's/.*mypy==([0-9A-Za-z.\-]+).*/\1/')
+          if [ "$ruff_pc" != "$ruff_pp" ] || [ -z "$ruff_pp" ]; then
+            echo "::error::ruff version drift: pre-commit=$ruff_pc pyproject=$ruff_pp"
+            exit 1
+          fi
+          if [ "$mypy_pc" != "$mypy_pp" ] || [ -z "$mypy_pp" ]; then
+            echo "::error::mypy version drift: pre-commit=$mypy_pc pyproject=$mypy_pp"
+            exit 1
+          fi
+          echo "ruff/mypy parity ok: ruff=$ruff_pc mypy=$mypy_pc"
       - name: Verify no source file exceeds 500 lines
         run: |
           OVER=$(find backend/ frontend/src/ -type f \( -name "*.py" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" \) -exec wc -l {} + 2>/dev/null | grep -vE "server.py|agent_remediation.py|dispatch_contract.py|agent_dispatch_router.py|credentials.py|App.tsx|queue.py|remediation.py|Queue/index.tsx|total" | awk '$1 > 500 {print $1, $2}')
