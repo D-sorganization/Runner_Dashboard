@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Parameterized A-O assessment for any D-Sorganization repo."""
 
-import sys, subprocess, json, re
+import json
+import re
+import subprocess
+import sys
 from pathlib import Path
 
 DATE = "2026-04-26"
@@ -65,7 +68,7 @@ def assess(repo):
                     "criterion": "A",
                     "severity": "P2",
                     "principle": "PP8",
-                    "text": "Junk drawer directory '{}' exists".format(junk),
+                    "text": f"Junk drawer directory '{junk}' exists",
                 }
             )
             score_a = max(score_a - 1, 0)
@@ -95,7 +98,7 @@ def assess(repo):
                     "criterion": "B",
                     "severity": "P2",
                     "principle": "PP4",
-                    "text": "README.md only {} lines (<30)".format(lines),
+                    "text": f"README.md only {lines} lines (<30)",
                 }
             )
             score_b = max(score_b - 2, 0)
@@ -132,7 +135,7 @@ def assess(repo):
                 "criterion": "B",
                 "severity": "P1",
                 "principle": "PP4",
-                "text": "Docstring coverage low: {}/{} public functions in sample".format(docstring_funcs, total_funcs),
+                "text": f"Docstring coverage low: {docstring_funcs}/{total_funcs} public functions in sample",
             }
         )
         score_b = max(score_b - 1, 0)
@@ -181,7 +184,7 @@ def assess(repo):
                         "criterion": "D",
                         "severity": "P2",
                         "principle": "PP6",
-                        "text": "try/except returning None without logging in {}".format(f.name),
+                        "text": f"try/except returning None without logging in {f.name}",
                     }
                 )
         except Exception:
@@ -199,7 +202,7 @@ def assess(repo):
                         "criterion": "E",
                         "severity": "P2",
                         "principle": "PP4",
-                        "text": "Possible repeated file I/O inside loop in {}".format(f.name),
+                        "text": f"Possible repeated file I/O inside loop in {f.name}",
                     }
                 )
         except Exception:
@@ -219,7 +222,7 @@ def assess(repo):
                         "criterion": "F",
                         "severity": "P0",
                         "principle": "PP1",
-                        "text": "God file {} ({} lines) exceeds 500-line soft cap".format(f.name, lines),
+                        "text": f"God file {f.name} ({lines} lines) exceeds 500-line soft cap",
                     }
                 )
                 score_f = max(score_f - 2, 0)
@@ -238,7 +241,7 @@ def assess(repo):
                 "criterion": "F",
                 "severity": "P2",
                 "principle": "PP1",
-                "text": "Many magic float literals ({}) in sample".format(magic),
+                "text": f"Many magic float literals ({magic}) in sample",
             }
         )
     scores["F"] = score_f
@@ -335,7 +338,7 @@ def assess(repo):
                 "criterion": "K",
                 "severity": "P0",
                 "principle": "PP8",
-                "text": "{} TODO/FIXME/XXX comments without issue links".format(todo_count),
+                "text": f"{todo_count} TODO/FIXME/XXX comments without issue links",
             }
         )
         score_k = max(score_k - 3, 0)
@@ -345,7 +348,7 @@ def assess(repo):
                 "criterion": "K",
                 "severity": "P1",
                 "principle": "PP8",
-                "text": "{} TODO/FIXME/XXX comments -- link to issues".format(todo_count),
+                "text": f"{todo_count} TODO/FIXME/XXX comments -- link to issues",
             }
         )
         score_k = max(score_k - 1, 0)
@@ -429,7 +432,7 @@ def assess(repo):
     overall = round(sum(scores.values()) / len(scores), 1)
     report = {
         "meta": {
-            "repo": "{}/{}".format(OWNER, repo),
+            "repo": f"{OWNER}/{repo}",
             "date": DATE,
             "head_short": run(["git", "log", "-1", "--format=%h"], cwd=repo).strip(),
             "head_long": run(["git", "log", "-1", "--format=%H"], cwd=repo).strip(),
@@ -443,7 +446,7 @@ def assess(repo):
 
     out_dir = Path("assessments")
     out_dir.mkdir(exist_ok=True)
-    (out_dir / "{}-{}-assessment.json".format(DATE, repo)).write_text(json.dumps(report, indent=2))
+    (out_dir / f"{DATE}-{repo}-assessment.json").write_text(json.dumps(report, indent=2))
     print(json.dumps(report, indent=2))
 
 

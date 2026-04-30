@@ -92,7 +92,8 @@ runner lifecycle control, AI agent dispatch, workflow management, and fleet
 orchestration from a single browser tab.
 
 The dashboard runs as a local FastAPI server on port 8321 and serves a
-self-contained React SPA with no build step required.
+Vite-built React + TypeScript SPA. The frontend bundle is produced by Vite
+from `frontend/src/` and served as static assets by the backend.
 
 ## Architecture
 
@@ -114,11 +115,25 @@ runner-dashboard/
 │   ├── report_files.py         Report parsing utilities
 │   ├── runner_autoscaler.py    Dynamic runner scaling logic
 │   └── requirements.txt        Python dependencies
-├── frontend/           Self-contained React SPA (no build step)
-│   ├── index.html          Single-file app (~18k lines)
-│   ├── RunnerDashboard.jsx Exported component (reference copy)
-│   ├── manifest.webmanifest PWA manifest
-│   └── icon.svg            App icon
+├── frontend/           Vite-built React + TypeScript SPA
+│   ├── index.html          Vite entry HTML (~30 lines, mounts /src/main.tsx)
+│   ├── src/                TypeScript + TSX source tree
+│   │   ├── main.tsx            Application entry
+│   │   ├── shell/              App shell (layout, navigation)
+│   │   ├── pages/              Tab implementations
+│   │   ├── primitives/         Reusable UI primitives
+│   │   ├── design/             Design tokens / theming
+│   │   ├── hooks/              React hooks
+│   │   ├── legacy/             Legacy `App.tsx` retained during migration
+│   │   └── index.css           Global styles
+│   ├── public/             Static assets copied verbatim by Vite
+│   ├── manifest.webmanifest    PWA manifest
+│   ├── perf-budget.json        Frontend performance budget
+│   └── icon.svg                App icon
+├── vite.config.ts      Vite build configuration (TypeScript)
+├── tsconfig.json       TypeScript compiler config (frontend)
+├── tsconfig.node.json  TypeScript config for Vite/node tooling
+├── package.json        Frontend npm dependencies and scripts
 ├── deploy/             Deployment and operations scripts
 │   ├── setup.sh            Full machine setup (installs runners, service, etc.)
 │   ├── update-deployed.sh  Pull latest and restart service
@@ -242,13 +257,25 @@ Agent workflows:
 
 ### Frontend (frontend/)
 
-- **No build step.** The frontend is a single `index.html` served directly.
-- **No JSX.** Use `h()` (aliased from `React.createElement`) for all elements.
-- **No npm/node_modules.** All dependencies loaded from CDN via `<script>` tags.
-- State managed with React hooks (`useState`, `useEffect`, `useCallback`).
-- Tabs are top-level components defined in the single file.
-- Styling via inline styles and a minimal CSS block in `<style>`.
-- No TypeScript — plain JavaScript with JSDoc comments for complex types.
+- **Vite + React + TypeScript.** Source lives in `frontend/src/`; the
+  production bundle is produced by `vite build` and consumed by the
+  FastAPI backend as static assets.
+- **TypeScript everywhere.** New components are `.tsx`; shared logic and
+  hooks are `.ts`. No new plain-JS files; legacy code under
+  `frontend/src/legacy/` is being migrated, not extended.
+- **JSX is the norm.** Write components as JSX/TSX; do not hand-roll
+  `React.createElement`. The legacy `h()` pattern only survives in
+  `frontend/src/legacy/` during the migration and must not spread.
+- **npm dependencies.** Add packages via `package.json` and lockfile;
+  do not introduce ad-hoc CDN `<script>` tags.
+- State managed with React hooks (`useState`, `useEffect`, `useCallback`)
+  and typed contexts.
+- Tabs live as standalone components under `frontend/src/pages/`.
+- Styling via CSS modules, the design tokens in `frontend/src/design/`,
+  and reusable primitives in `frontend/src/primitives/`.
+- The frontend honors the perf budget declared in
+  `frontend/perf-budget.json`; CI enforces it via
+  `tests/test_frontend_perf_budget.py`.
 
 ### General
 

@@ -1,5 +1,8 @@
 # ruff: noqa: B008
+import logging
+import os
 import secrets
+import tempfile
 import time
 from pathlib import Path
 
@@ -7,6 +10,8 @@ import yaml
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import APIKeyCookie, APIKeyHeader
 from pydantic import BaseModel, Field
+
+log = logging.getLogger("dashboard")
 
 
 class Quota(BaseModel):
@@ -63,6 +68,29 @@ class IdentityManager:
         for p in data["principals"]:
             prin = Principal(**p)
             self.principals[prin.id] = prin
+
+    def save_principals(self) -> None:
+        """Atomically persist the in-memory principals dict to ``principals.yml``.
+
+        Uses a temp-file + os.replace pattern so readers never see a partial write.
+        """
+        self.principals_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {"principals": [p.model_dump() for p in self.principals.values()]}
+        fd, tmp_path = tempfile.mkstemp(
+            dir=self.principals_path.parent,
+            prefix=".tmp-principals-",
+            suffix=".yml",
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                yaml.dump(payload, fh, default_flow_style=False, allow_unicode=True)
+            os.replace(tmp_path, self.principals_path)
+        except (OSError, yaml.YAMLError):
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
 
     def get_principal(self, principal_id: str) -> Principal | None:
         return self.principals.get(principal_id)
