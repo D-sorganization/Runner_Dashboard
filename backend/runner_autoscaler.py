@@ -279,6 +279,25 @@ def main() -> None:
     if psutil is None:
         log.error("psutil not installed; cannot run autoscaler")
         raise SystemExit(2)
+
+    try:
+        import fcntl
+        import sys
+
+        global _lock_fd
+        lock_path = "/var/run/runner-autoscaler.lock"
+        if not os.path.exists(os.path.dirname(lock_path)):
+            lock_path = "/tmp/runner-autoscaler.lock"
+        _lock_fd = open(lock_path, "w")
+        fcntl.flock(_lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)  # type: ignore[attr-defined,name-defined]
+    except ImportError:
+        pass
+    except OSError:
+        import sys
+
+        log.error("Could not acquire lock, another autoscaler instance is running.")
+        sys.exit(75)
+
     log.info(
         "autoscaler start host=%s cpu_high=%s cpu_low=%s mem_high=%s "
         "disk_high=%s disk_min_free_gb=%s load_per_core=%s sustain=%ss "
