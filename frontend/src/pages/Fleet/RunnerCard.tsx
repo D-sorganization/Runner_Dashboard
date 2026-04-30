@@ -104,14 +104,14 @@ export function RunnerCard({
         <MiniBar color="#bc8cff" label="RAM" value={ramPercent} />
       </div>
       {onAction && (
-        <div className="runner-actions" style={{ display: "flex", gap: "6px", marginTop: "10px" }}>
+        <div className="runner-actions" style={{ marginTop: "10px" }}>
           {(["drain", "stop", "restart"] as const).map((action) => (
             <button
               className={`touch-button touch-button-${action === "restart" ? "primary" : "default"}`}
               data-action={action}
               key={action}
               onClick={() => onAction(action)}
-              style={{ flex: "1", fontSize: "11px", minHeight: "28px", padding: "4px 0", textTransform: "capitalize" }}
+              style={{ flex: "1", fontSize: "11px", padding: "4px 0", textTransform: "capitalize" }}
               type="button"
             >
               {action}
