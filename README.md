@@ -107,6 +107,13 @@ dependencies are loaded from CDN. There is no build toolchain.
 See [SPEC.md](SPEC.md) for the full API catalogue, configuration reference,
 and architecture documentation.
 
+## Multi-Instance (Hub vs Node) State
+
+When deployed across multiple machines, the dashboard differentiates between "Hub" and "Node" operation:
+- **Hub (Leader)**: The central dashboard instance. Processes global actions, scheduled background tasks, stale queue cleanup, and autoscaler evaluations. If `WORKERS > 1` is configured, leader-election ensures only a single background task thread executes across all workers.
+- **Node (Follower)**: Run instances on edge runner hosts without the leader lock (`DASHBOARD_LEADER=0`). They provide the local `/api/system/metrics` endpoints that the Hub aggregates, and stream logs/metrics to the Hub.
+If two Hubs run concurrently without a shared lock directory, background scans (like queue purging) will run twice, but API operations remain idempotent.
+
 ## Development
 
 ```bash
