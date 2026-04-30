@@ -15,15 +15,11 @@ from collections.abc import Awaitable, Callable
 
 import dispatch_contract
 from fastapi import APIRouter, HTTPException, Request
+from security import sanitize_log_value as _sanitize_log_value
 
 router = APIRouter(prefix="/api/fleet/dispatch", tags=["dispatch"])
 
 log = logging.getLogger("dashboard.dispatch")
-
-
-def _sanitize_log_value(value: str) -> str:
-    """Strip log-injection characters from user-controlled strings."""
-    return value.replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")[:200]
 
 
 _is_envelope_replay: Callable[[str], Awaitable[bool]] | None = None

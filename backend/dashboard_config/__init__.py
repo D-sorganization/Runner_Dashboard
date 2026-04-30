@@ -1,4 +1,16 @@
-"""Configuration constants for runner-dashboard."""
+"""Configuration constants for runner-dashboard.
+
+This package collects the static configuration surface the dashboard reads
+at boot. Top-level names (``ORG``, ``HOSTNAME``, ``DISK_WARN_PERCENT``, etc.)
+remain importable as ``from dashboard_config import ...`` for backwards
+compatibility with the rest of the backend.
+
+Newer constant groups live in dedicated submodules:
+
+- :mod:`dashboard_config.cache_ttls` — per-endpoint cache TTL values.
+- :mod:`dashboard_config.timeouts` — HTTP/subprocess timeouts, concurrency
+  caps, and resource pressure thresholds.
+"""
 
 from __future__ import annotations
 
@@ -9,11 +21,14 @@ import secrets
 import tempfile
 from pathlib import Path
 
+from dashboard_config.cache_ttls import CacheTtl
+from dashboard_config.timeouts import Concurrency, HttpTimeout, ResourceThreshold
+
 log = logging.getLogger("dashboard")
 
 # Paths
-BACKEND_DIR = Path(__file__).resolve().parent
-REPO_ROOT = Path(os.environ.get("RUNNER_DASHBOARD_REPO_ROOT", BACKEND_DIR.parents[1]))
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(os.environ.get("RUNNER_DASHBOARD_REPO_ROOT", BACKEND_DIR.parents[0]))
 RUNNER_BASE_DIR = Path.home() / "actions-runners"
 
 # GitHub Org
@@ -28,10 +43,16 @@ NUM_RUNNERS = min(REQUESTED_NUM_RUNNERS, MAX_RUNNERS)
 # Runner Aliases (for machine name normalization)
 RUNNER_ALIASES = [a.strip().lower() for a in os.environ.get("RUNNER_ALIASES", "").split(",") if a.strip()]
 
-# Disk Thresholds
-DISK_WARN_PERCENT = float(os.environ.get("DASHBOARD_DISK_WARN_PERCENT", "85"))
-DISK_CRITICAL_PERCENT = float(os.environ.get("DASHBOARD_DISK_CRITICAL_PERCENT", "92"))
-DISK_MIN_FREE_GB = float(os.environ.get("DASHBOARD_DISK_MIN_FREE_GB", "25"))
+# Disk Thresholds (env-overridable; defaults sourced from ResourceThreshold)
+DISK_WARN_PERCENT = float(
+    os.environ.get("DASHBOARD_DISK_WARN_PERCENT", str(ResourceThreshold.DISK_WARN_PERCENT)),
+)
+DISK_CRITICAL_PERCENT = float(
+    os.environ.get("DASHBOARD_DISK_CRITICAL_PERCENT", str(ResourceThreshold.DISK_CRITICAL_PERCENT)),
+)
+DISK_MIN_FREE_GB = float(
+    os.environ.get("DASHBOARD_DISK_MIN_FREE_GB", str(ResourceThreshold.DISK_MIN_FREE_GB)),
+)
 
 # API / Port
 PORT = int(os.environ.get("DASHBOARD_PORT", "8321"))
@@ -61,6 +82,13 @@ if _nodes_raw:
 RUN_JOB_ENRICHMENT_LIMIT = int(os.environ.get("RUN_JOB_ENRICHMENT_LIMIT", "50"))
 MAX_CACHE_SIZE = 500
 CACHE_EVICT_BATCH = 50
+DEFAULT_CACHE_TTL = float(os.environ.get("DASHBOARD_CACHE_TTL", "30"))
+
+# CPU history ring-buffer depth (one sample per /api/system poll; 60 ≈ 1 min at 1 Hz)
+CPU_HISTORY_MAXLEN = int(os.environ.get("DASHBOARD_CPU_HISTORY_MAXLEN", "60"))
+
+assert MAX_CACHE_SIZE > 0, "MAX_CACHE_SIZE must be positive"
+assert CPU_HISTORY_MAXLEN > 0, "CPU_HISTORY_MAXLEN must be positive"
 
 # Scheduler / Services
 RUNNER_SCHEDULER_BIN = os.environ.get("RUNNER_SCHEDULER_BIN", "/usr/local/bin/runner-scheduler")
@@ -172,3 +200,48 @@ def _resolve_session_secret() -> tuple[str, str]:
 
 
 SESSION_SECRET, SESSION_SECRET_SOURCE = _resolve_session_secret()
+
+
+__all__ = [
+    "BACKEND_DIR",
+    "CACHE_EVICT_BATCH",
+    "DEFAULT_LLM_MODEL",
+    "DEFAULT_NUM_RUNNERS",
+    "DEPLOYMENT_FILE",
+    "DISK_CRITICAL_PERCENT",
+    "DISK_MIN_FREE_GB",
+    "DISK_WARN_PERCENT",
+    "EXPECTED_VERSION_FILE",
+    "FLEET_NODES",
+    "HEAVY_TEST_REPOS",
+    "HOSTNAME",
+    "HUB_URL",
+    "MACHINE_ROLE",
+    "MAX_CACHE_SIZE",
+    "MAX_RUNNERS",
+    "NUM_RUNNERS",
+    "ORG",
+    "PORT",
+    "REPO_ROOT",
+    "REQUESTED_NUM_RUNNERS",
+    "RUN_JOB_ENRICHMENT_LIMIT",
+    "RUNNER_ALIASES",
+    "RUNNER_BASE_DIR",
+    "RUNNER_SCHEDULER_APPLY_CMD",
+    "RUNNER_SCHEDULER_BIN",
+    "RUNNER_SCHEDULER_SERVICE",
+    "RUNNER_SCHEDULER_STATE",
+    "RUNNER_SCHEDULE_CONFIG",
+    "SESSION_SECRET",
+    "SESSION_SECRET_SOURCE",
+    "SYSTEMCTL_BIN",
+    "VERSION",
+    "WSL_KEEPALIVE_SERVICE",
+    "WSL_KEEPALIVE_TASK_NAME",
+    "CacheTtl",
+    "Concurrency",
+    "HttpTimeout",
+    "ResourceThreshold",
+    "runner_limit",
+    "runner_scheduler_apply_command",
+]

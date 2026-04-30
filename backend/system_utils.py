@@ -19,6 +19,7 @@ from typing import Any
 import httpx
 import psutil
 from dashboard_config import (
+    CPU_HISTORY_MAXLEN,
     DISK_CRITICAL_PERCENT,
     DISK_MIN_FREE_GB,
     DISK_WARN_PERCENT,
@@ -30,8 +31,8 @@ from security import safe_subprocess_env
 UTC = timezone.utc  # noqa: UP017
 log = logging.getLogger("dashboard.system")
 
-# Global state for CPU history
-_cpu_history: deque[float] = deque(maxlen=60)
+# CPU history ring-buffer: bounded by CPU_HISTORY_MAXLEN (default 60 ≈ 1 min at 1 Hz)
+_cpu_history: deque[float] = deque(maxlen=CPU_HISTORY_MAXLEN)
 BOOT_TIME = time.time()
 
 # Host memory cache for WSL

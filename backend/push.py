@@ -7,7 +7,6 @@ or a later real VAPID implementation.
 
 from __future__ import annotations
 
-import datetime as _dt_mod
 import json
 import os
 import sqlite3
@@ -18,9 +17,7 @@ from typing import Any, Protocol
 from fastapi import APIRouter, Depends, HTTPException, Request
 from identity import Principal, require_principal, require_scope
 from pydantic import BaseModel, Field, field_validator
-
-UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
-datetime = _dt_mod.datetime
+from time_utils import utc_now_iso
 
 PUSH_TOPICS = frozenset(
     {
@@ -122,10 +119,6 @@ def set_push_transport(transport: PushTransport) -> None:
     _transport = transport
 
 
-def _utc_now() -> str:
-    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
-
-
 def _db_path() -> Path:
     return Path(os.environ.get("RUNNER_DASHBOARD_PUSH_DB", str(DEFAULT_DB_PATH)))
 
@@ -175,7 +168,7 @@ def upsert_subscription(
     topics: list[str],
     db_path: Path | None = None,
 ) -> PushSubscription:
-    now = _utc_now()
+    now = utc_now_iso()
     topics_json = json.dumps(topics, separators=(",", ":"))
     with _connect(db_path) as conn:
         conn.execute(

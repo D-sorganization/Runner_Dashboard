@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react"
 import { Badge } from "../primitives/Badge";
 import { TouchButton } from "../primitives/TouchButton";
+import { useToast } from "../primitives/Toaster";
+import { SkeletonCard, SkeletonLine } from "../primitives/Skeleton";
 
 /**
  * Agent Dispatch Page — Mobile Remediation + 3-tap Agent Dispatch flow
@@ -54,6 +56,7 @@ const DEFAULT_PROVIDER_ORDER = [
 ];
 
 export function AgentDispatchPage() {
+  const { showToast } = useToast();
   const [providers, setProviders] = useState<Record<string, AgentProvider>>({});
   const [availability, setAvailability] = useState<Record<string, ProviderAvailability>>({});
   const [failedRuns, setFailedRuns] = useState<FailedRun[]>([]);
@@ -191,17 +194,15 @@ export function AgentDispatchPage() {
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.detail || `Dispatch failed: HTTP ${resp.status}`);
-      setDispatchResult({
-        status: "success",
-        message:
-          data.note ||
-          `Dispatch submitted for ${selectedProviderId} on ${repoName}. Waiting for agent heartbeat.`,
-      });
+      const successMessage =
+        data.note ||
+        `Dispatch submitted for ${selectedProviderId} on ${repoName}. Waiting for agent heartbeat.`;
+      setDispatchResult({ status: "success", message: successMessage });
+      showToast(successMessage, { variant: "success", title: "Dispatch submitted" });
     } catch (e: any) {
-      setDispatchResult({
-        status: "error",
-        message: e.message || "Dispatch failed. Please try again.",
-      });
+      const errorMessage = e.message || "Dispatch failed. Please try again.";
+      setDispatchResult({ status: "error", message: errorMessage });
+      showToast(errorMessage, { variant: "error", title: "Dispatch failed" });
     } finally {
       setDispatching(false);
     }
@@ -333,7 +334,22 @@ export function AgentDispatchPage() {
     );
   }
 
-  if (loading) return <div aria-live="polite" style={{ padding: "24px", textAlign: "center", color: "var(--text-muted)", fontSize: "14px" }}>Loading dispatch data…</div>;
+  if (loading) {
+    return (
+      <div
+        aria-busy="true"
+        aria-live="polite"
+        className="agent-dispatch-loading"
+        role="status"
+        style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "12px" }}
+      >
+        <span className="visually-hidden">Loading dispatch data…</span>
+        <SkeletonLine height={20} width="50%" />
+        <SkeletonCard lines={3} />
+        <SkeletonCard lines={3} />
+      </div>
+    );
+  }
   if (error && !loading) return <div aria-live="assertive" role="alert" style={{ padding: "24px", textAlign: "center", color: "var(--accent-red)", fontSize: "14px" }}><div style={{ marginBottom: "12px" }}>{error}</div><TouchButton onClick={fetchData} variant="primary">Retry</TouchButton></div>;
 
   return (

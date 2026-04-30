@@ -1,0 +1,63 @@
+# Verify-tag workflow (issue #431)
+#
+# Runs whenever a tag matching `v*` is pushed. Confirms the tag was created
+# by the release workflow by checking that the tag's annotation message
+# contains the auto-generated header `Auto-generated release notes (release.yml)`.
+#
+# This protects against ad-hoc tags that bypass the release workflow.
+name: Verify Tag
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-tag-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Validate tag was created by release workflow
+    runs-on: d-sorg-fleet
+    timeout-minutes: 5
+    env:
+      EXPECTED_HEADER: "Auto-generated release notes (release.yml)"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      - name: Validate tag annotation contains release workflow header
+        shell: bash
+        env:
+          TAG_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          TAG="${TAG_REF#refs/tags/}"
+          echo "Validating tag: $TAG"
+
+          # Lightweight tags have no annotation; reject them.
+          OBJ_TYPE=$(git cat-file -t "$TAG")
+          if [ "$OBJ_TYPE" != "tag" ]; then
+            echo "::error::Tag $TAG is not annotated (object type=$OBJ_TYPE)."
+            echo "Use the Release workflow to create signed/annotated tags."
+            exit 1
+          fi
+
+          # Extract the tag message (skip the standard tag headers).
+          MSG=$(git cat-file -p "$TAG" | awk 'flag; /^$/{flag=1}')
+          echo "----- tag message -----"
+          echo "$MSG"
+          echo "-----------------------"
+
+          if ! grep -qF "$EXPECTED_HEADER" <<<"$MSG"; then
+            echo "::error::Tag $TAG was not created by the release workflow."
+            echo "Expected header in tag message: $EXPECTED_HEADER"
+            exit 1
+          fi
+          echo "Tag $TAG validated: created by release workflow."

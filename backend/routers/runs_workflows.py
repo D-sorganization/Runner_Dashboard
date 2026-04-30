@@ -28,6 +28,7 @@ from dashboard_config import ORG, REPO_ROOT, RUN_JOB_ENRICHMENT_LIMIT
 from fastapi import APIRouter, Depends, HTTPException, Request
 from gh_utils import gh_api, gh_api_raw
 from identity import Principal, require_scope
+from input_validation import validate_workflow_inputs
 from proxy_utils import proxy_to_hub, should_proxy_fleet_to_hub
 from system_utils import run_cmd
 
@@ -346,7 +347,9 @@ async def dispatch_workflow(
     repo = str(body.get("repository", "")).strip()
     workflow_id = body.get("workflow_id")
     ref = str(body.get("ref", "main")).strip()
-    inputs = body.get("inputs", {}) or {}
+    # Validate inputs BEFORE any I/O — caps key count, value length, and rejects
+    # non-string values to prevent oversized workflow_dispatch payloads (#411).
+    inputs = validate_workflow_inputs(body.get("inputs"))
     correlation_id = request.headers.get("X-Correlation-Id", secrets.token_hex(8))
     inputs["correlation_id"] = correlation_id
     approved_by = principal.id

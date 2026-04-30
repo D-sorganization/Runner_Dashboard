@@ -36,6 +36,7 @@ import quota_enforcement
 from dispatch_contract import DispatchAccess
 from identity import identity_manager
 from pydantic import BaseModel, Field
+from time_utils import utc_now_iso
 
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 
@@ -111,10 +112,6 @@ class BulkDispatchResponse(BaseModel):
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
-
-
-def _utc_now() -> str:
-    return _dt_mod.datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _build_fingerprint(kind: str, repository: str, number: int, provider: str) -> str:
@@ -413,7 +410,7 @@ async def dispatch_to_prs(
         "rejected_count": len(rejected),
         "envelope_ids": envelope_ids,
         "fingerprints": fingerprints,
-        "recorded_at": _utc_now(),
+        "recorded_at": utc_now_iso(),
     }
     # ── Record spend (Wave 3) ─────────────────────────────────────────────────
     if req.principal and accepted_count > 0:
@@ -604,7 +601,7 @@ async def dispatch_to_issues(
         "envelope_ids": envelope_ids,
         "fingerprints": fingerprints,
         "forced": req.force,
-        "recorded_at": _utc_now(),
+        "recorded_at": utc_now_iso(),
     }
     # ── Record spend (Wave 3) ─────────────────────────────────────────────────
     if req.principal and accepted_count > 0:

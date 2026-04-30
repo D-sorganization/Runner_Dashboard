@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import time
 
+from cache_utils import cache_size
 import dashboard_config as dashboard_config  # noqa: E402
 from fastapi import APIRouter, Request
 
@@ -72,6 +73,24 @@ async def launcher_health_check() -> dict:
         "timestamp": datetime.now(UTC).isoformat(),
     }
 
+
+@router.get("/api/cache/size", tags=["diagnostics"])
+async def get_cache_size() -> dict:
+    """Return current entry count for each bounded cache.
+
+    Exposes the ``dashboard_cache_entries{cache}`` gauge so operators and
+    monitoring scripts can track memory growth without a Prometheus scrape.
+    Response shape: ``{"gauges": {"dashboard_cache_entries": {<cache>: <count>}}}``.
+    """
+    sizes = cache_size()
+    return {
+        "gauges": {
+            "dashboard_cache_entries": sizes,
+        },
+        "max_sizes": {
+            "main": __import__("dashboard_config").MAX_CACHE_SIZE,
+        },
+    }
 
 @router.get("/readyz", tags=["diagnostics"])
 async def readyz() -> dict:
