@@ -31,6 +31,7 @@ import logging
 import os
 import platform
 import subprocess
+import threading
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
@@ -38,6 +39,10 @@ from pydantic import BaseModel, Field
 
 log = logging.getLogger("dashboard.agent_launcher")
 router = APIRouter(prefix="/api/agent-launcher", tags=["agent-launcher"])
+
+# Bound concurrent launcher spawns to prevent fork-bomb when multiple dashboard
+# clients race to /start or /run-once simultaneously.
+_spawn_semaphore = threading.Semaphore(2)
 
 
 # ---------------------------------------------------------------------------
@@ -378,34 +383,39 @@ def start_scheduler() -> SimpleResponse:
     if pid_info and _is_pid_alive(int(pid_info.get("pid", -1))):
         return SimpleResponse(ok=True, detail=f"already running (pid {pid_info['pid']})")
 
-    if platform.system() == "Windows":
-        bat = _bat_path()
-        if not bat.is_file():
-            raise HTTPException(status_code=500, detail=f"missing launcher.bat at {bat}")
-        try:
-            # /B = no new window. pythonw inside the .bat handles detach.
-            subprocess.Popen(
-                ["cmd.exe", "/c", "start", "/B", str(bat), "--background"],
-                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,  # type: ignore[attr-defined]
-                close_fds=True,
-            )
-        except (OSError, subprocess.SubprocessError) as exc:
-            raise HTTPException(status_code=500, detail=f"spawn failed: {exc}") from exc
-    else:
-        cli = _cli_path()
-        if not cli.is_file():
-            raise HTTPException(status_code=500, detail=f"missing agent_launcher.py at {cli}")
-        try:
-            subprocess.Popen(
-                [_launcher_python(), str(cli)],
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                close_fds=True,
-                start_new_session=True,
-            )
-        except (OSError, subprocess.SubprocessError) as exc:
-            raise HTTPException(status_code=500, detail=f"spawn failed: {exc}") from exc
+    if not _spawn_semaphore.acquire(blocking=False):
+        raise HTTPException(status_code=429, detail="Too many concurrent spawn requests — try again shortly")
+    try:
+        if platform.system() == "Windows":
+            bat = _bat_path()
+            if not bat.is_file():
+                raise HTTPException(status_code=500, detail=f"missing launcher.bat at {bat}")
+            try:
+                # /B = no new window. pythonw inside the .bat handles detach.
+                subprocess.Popen(
+                    ["cmd.exe", "/c", "start", "/B", str(bat), "--background"],
+                    creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,  # type: ignore[attr-defined]
+                    close_fds=True,
+                )
+            except (OSError, subprocess.SubprocessError) as exc:
+                raise HTTPException(status_code=500, detail=f"spawn failed: {exc}") from exc
+        else:
+            cli = _cli_path()
+            if not cli.is_file():
+                raise HTTPException(status_code=500, detail=f"missing agent_launcher.py at {cli}")
+            try:
+                subprocess.Popen(
+                    [_launcher_python(), str(cli)],
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    close_fds=True,
+                    start_new_session=True,
+                )
+            except (OSError, subprocess.SubprocessError) as exc:
+                raise HTTPException(status_code=500, detail=f"spawn failed: {exc}") from exc
+    finally:
+        _spawn_semaphore.release()
     return SimpleResponse(ok=True, detail="scheduler start requested")
 
 

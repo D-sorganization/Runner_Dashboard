@@ -99,8 +99,9 @@ async def get_maxwell_status() -> dict:
     service_running = False
     service_detail = "unknown"
     try:
-        # Note: using subprocess.run for simple systemctl check
-        r = subprocess.run(
+        # Note: using asyncio.to_thread to avoid blocking the event loop
+        r = await asyncio.to_thread(
+            subprocess.run,
             ["systemctl", "is-active", "maxwell-daemon"],
             capture_output=True,
             text=True,

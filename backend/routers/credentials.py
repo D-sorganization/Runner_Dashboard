@@ -204,7 +204,8 @@ async def get_credentials(request: Request) -> dict:
         try:
             _excluded = {"SECRET", "PASSWORD", "ANTHROPIC_API_KEY", "DASHBOARD_API_KEY"}
             _safe_env = {k: v for k, v in os.environ.items() if not any(exc in k.upper() for exc in _excluded)}
-            result = subprocess.run(
+            result = await asyncio.to_thread(
+                subprocess.run,
                 ["gh", "auth", "status"],
                 capture_output=True,
                 text=True,
@@ -341,7 +342,8 @@ async def get_credentials(request: Request) -> dict:
     _vscode_binary = shutil.which("code")
     if _vscode_binary and not _cline_by_path:
         try:
-            _ext_result = subprocess.run(
+            _ext_result = await asyncio.to_thread(
+                subprocess.run,
                 ["code", "--list-extensions"],
                 capture_output=True,
                 text=True,
@@ -500,7 +502,8 @@ async def get_cline_status(request: Request) -> dict:
     _vscode_binary = shutil.which("code")
     if _vscode_binary and not _cline_by_path:
         try:
-            _ext_result = subprocess.run(
+            _ext_result = await asyncio.to_thread(
+                subprocess.run,
                 ["code", "--list-extensions"],
                 capture_output=True,
                 text=True,
@@ -541,7 +544,8 @@ async def get_ollama_status(request: Request) -> dict:
 
     # Check if ollama serve is responsive
     try:
-        result = subprocess.run(
+        result = await asyncio.to_thread(
+            subprocess.run,
             ["ollama", "ps"],
             capture_output=True,
             text=True,
@@ -567,7 +571,8 @@ async def get_ollama_models(request: Request) -> dict:
         raise HTTPException(status_code=503, detail="ollama not found on PATH")
 
     try:
-        result = subprocess.run(
+        result = await asyncio.to_thread(
+            subprocess.run,
             ["ollama", "list"],
             capture_output=True,
             text=True,
