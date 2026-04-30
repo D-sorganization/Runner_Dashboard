@@ -449,7 +449,15 @@ async def api_dispatch_to_prs(
         normalize_repository_fn=_normalize_repository_input,
     )
     if isinstance(result, dict) and "error" in result:
-        raise HTTPException(status_code=result.get("status_code", 400), detail=result["error"])
+        status_code = int(result.get("status_code", 400))
+        if status_code == 429:
+            retry_after = int(result.get("retry_after", 60))
+            return JSONResponse(
+                status_code=429,
+                content={"detail": result["error"], "retry_after_seconds": retry_after},
+                headers={"Retry-After": str(retry_after)},
+            )
+        raise HTTPException(status_code=status_code, detail=result["error"])
     if isinstance(result, agent_dispatch_router.BulkDispatchResponse):
         return result.model_dump()
     return dict(result)
@@ -484,7 +492,15 @@ async def api_dispatch_to_issues(
         normalize_repository_fn=_normalize_repository_input,
     )
     if isinstance(result, dict) and "error" in result:
-        raise HTTPException(status_code=result.get("status_code", 400), detail=result["error"])
+        status_code = int(result.get("status_code", 400))
+        if status_code == 429:
+            retry_after = int(result.get("retry_after", 60))
+            return JSONResponse(
+                status_code=429,
+                content={"detail": result["error"], "retry_after_seconds": retry_after},
+                headers={"Retry-After": str(retry_after)},
+            )
+        raise HTTPException(status_code=status_code, detail=result["error"])
     if isinstance(result, agent_dispatch_router.BulkDispatchResponse):
         return result.model_dump()
     return dict(result)

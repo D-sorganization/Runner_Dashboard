@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 import psutil
 from dashboard_config import (
+    CPU_HISTORY_MAXLEN,
     DISK_CRITICAL_PERCENT,
     DISK_MIN_FREE_GB,
     DISK_WARN_PERCENT,
@@ -40,8 +41,9 @@ _get_runner_capacity_snapshot: Callable[[], dict[str, Any]] | None = None
 _boot_time: float | None = None
 _host_memory_gb: float | None = None
 
-# CPU history for 1-minute average calculation
-_cpu_history: deque[float] = deque(maxlen=60)
+# CPU history ring-buffer: bounded by CPU_HISTORY_MAXLEN (default 60 ≈ 1 min at 1 Hz)
+assert CPU_HISTORY_MAXLEN > 0, "CPU_HISTORY_MAXLEN must be positive"  # DbC
+_cpu_history: deque[float] = deque(maxlen=CPU_HISTORY_MAXLEN)
 
 
 def _disk_pressure_snapshot(

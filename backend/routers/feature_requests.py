@@ -23,6 +23,7 @@ import config_schema
 from dashboard_config import ORG, REPO_ROOT
 from fastapi import APIRouter, Depends, HTTPException, Request
 from identity import Principal, require_scope
+from input_validation import MAX_INPUT_VALUE_LENGTH, validate_workflow_inputs
 from security import check_dispatch_rate, sanitize_log_value
 from system_utils import run_cmd
 
@@ -192,6 +193,11 @@ async def dispatch_feature_request(
     client_ip = request.client.host if request.client else "unknown"
     check_dispatch_rate(client_ip)
     body = await request.json()
+    # Validate any caller-supplied raw inputs BEFORE any I/O (#411). We do not
+    # forward this dict directly — the dispatch payload is rebuilt below from
+    # explicit fields — but rejecting oversized/non-string values here protects
+    # the temp-file write path from abuse.
+    validate_workflow_inputs(body.get("inputs"))
     repo = str(body.get("repository", "")).strip()
     branch = str(body.get("branch", "main")).strip()
     provider = str(body.get("provider", "jules_api")).strip()
@@ -252,16 +258,21 @@ async def dispatch_feature_request(
         except Exception:  # noqa: BLE001
             pass
 
-    # Dispatch via feature-request workflow
-    endpoint = f"/repos/{ORG}/Repository_Management/actions/workflows/Jules-Feature-Request.yml/dispatches"
-    payload = {
-        "ref": "main",
-        "inputs": {
+    # Dispatch via feature-request workflow. The constructed inputs are
+    # re-validated to enforce the per-value length cap (#411) — full_prompt
+    # may include injected standards which can push it past the cap.
+    dispatch_inputs = validate_workflow_inputs(
+        {
             "target_repository": f"{ORG}/{repo}",
             "branch": branch,
             "provider": provider,
-            "prompt": full_prompt[:10000],
-        },
+            "prompt": full_prompt[:MAX_INPUT_VALUE_LENGTH],
+        }
+    )
+    endpoint = f"/repos/{ORG}/Repository_Management/actions/workflows/Jules-Feature-Request.yml/dispatches"
+    payload = {
+        "ref": "main",
+        "inputs": dispatch_inputs,
     }
     with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".json", delete=False) as f:
         json.dump(payload, f)

@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react"
+import { Badge } from "../primitives/Badge";
 import { TouchButton } from "../primitives/TouchButton";
 import { useToast } from "../primitives/Toaster";
+import { SkeletonCard, SkeletonLine } from "../primitives/Skeleton";
 
 /**
  * Agent Dispatch Page — Mobile Remediation + 3-tap Agent Dispatch flow
@@ -233,10 +235,12 @@ export function AgentDispatchPage() {
       <button key={provider.id} aria-pressed={isSelected} data-touch-primitive="TouchButton" disabled={!isAvailable} onClick={() => selectProvider(provider.id)} className={`provider-card ${isSelected ? "selected" : ""} ${isAvailable ? "" : "unavailable"}`}>
         <div className="provider-header">
           <span className="label">{provider.label}</span>
-          <span className={`status ${isAvailable ? "ready" : "missing"}`}>{isAvailable ? "Ready" : provider.status}</span>
+          <Badge tone={isAvailable ? "success" : "danger"}>
+            {isAvailable ? "Ready" : provider.status}
+          </Badge>
         </div>
         {provider.notes && <span className="notes">{provider.notes}</span>}
-        {provider.experimental && <span className="experimental">Experimental</span>}
+        {provider.experimental && <Badge tone="warning">Experimental</Badge>}
       </button>
     );
   }
@@ -330,7 +334,22 @@ export function AgentDispatchPage() {
     );
   }
 
-  if (loading) return <div aria-live="polite" style={{ padding: "24px", textAlign: "center", color: "var(--text-muted)", fontSize: "14px" }}>Loading dispatch data…</div>;
+  if (loading) {
+    return (
+      <div
+        aria-busy="true"
+        aria-live="polite"
+        className="agent-dispatch-loading"
+        role="status"
+        style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "12px" }}
+      >
+        <span className="visually-hidden">Loading dispatch data…</span>
+        <SkeletonLine height={20} width="50%" />
+        <SkeletonCard lines={3} />
+        <SkeletonCard lines={3} />
+      </div>
+    );
+  }
   if (error && !loading) return <div aria-live="assertive" role="alert" style={{ padding: "24px", textAlign: "center", color: "var(--accent-red)", fontSize: "14px" }}><div style={{ marginBottom: "12px" }}>{error}</div><TouchButton onClick={fetchData} variant="primary">Retry</TouchButton></div>;
 
   return (

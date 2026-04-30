@@ -13,15 +13,28 @@ export function PushSettings() {
   const [subscribed, setSubscribed] = useState(false);
   const [topics, setTopics] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
+  const [notConfigured, setNotConfigured] = useState(false);
 
   useEffect(() => {
     fetch("/api/push/vapid-public-key")
-      .then((r) => r.json())
-      .then((data) => setPublicKey(data.publicKey))
+      .then((r) => {
+        if (r.status === 503) {
+          setNotConfigured(true);
+          return null;
+        }
+        if (!r.ok) throw new Error(`Failed to load VAPID key: ${r.status}`);
+        return r.json();
+      })
+      .then((data) => {
+        if (data && data.publicKey) setPublicKey(data.publicKey);
+      })
       .catch(() => setError("Failed to load VAPID key"));
   }, []);
 
   const subscribe = useCallback(async () => {
+    if (notConfigured) {
+      return;
+    }
     if (!publicKey || !("serviceWorker" in navigator) || !("PushManager" in window)) {
       setError("Push notifications are not supported in this browser.");
       return;
@@ -51,7 +64,7 @@ export function PushSettings() {
     } catch (e: any) {
       setError(e.message || "Subscription failed");
     }
-  }, [publicKey, topics]);
+  }, [notConfigured, publicKey, topics]);
 
   const unsubscribe = useCallback(async () => {
     try {
@@ -69,6 +82,17 @@ export function PushSettings() {
   const toggleTopic = (topic: string) => {
     setTopics((prev) => ({ ...prev, [topic]: !prev[topic] }));
   };
+
+  if (notConfigured) {
+    return (
+      <div className="glass-card" style={{ padding: "16px", margin: "16px" }}>
+        <h2 style={{ fontSize: "16px", marginBottom: "12px" }}>Push Notifications</h2>
+        <div style={{ fontSize: "14px" }}>
+          Push notifications not configured by operator
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="glass-card" style={{ padding: "16px", margin: "16px" }}>

@@ -26,6 +26,7 @@ import logging
 import logging.handlers
 import os
 import platform
+import random
 import re
 import secrets
 import shlex
@@ -79,6 +80,12 @@ import usage_monitoring as usage_monitoring  # noqa: E402
 from cache_utils import _cache  # noqa: E402
 from cache_utils import cache_get as _cache_get  # noqa: E402
 from cache_utils import cache_set as _cache_set  # noqa: E402
+from dashboard_config.cache_ttls import CacheTtl  # noqa: E402
+from dashboard_config.timeouts import (  # noqa: E402
+    Concurrency,
+    HttpTimeout,
+    ResourceThreshold,
+)
 from local_app_monitoring import collect_local_apps  # noqa: E402
 from machine_registry import (  # noqa: E402
     load_machine_registry,
@@ -214,6 +221,9 @@ class HelpChatBody(BaseModel):
 MAX_CACHE_SIZE = 500
 _CACHE_EVICT_BATCH = 50
 
+# CPU history ring-buffer depth (one sample per /api/system poll; 60 ≈ 1 min at 1 Hz)
+CPU_HISTORY_MAXLEN = int(os.environ.get("DASHBOARD_CPU_HISTORY_MAXLEN", "60"))
+
 # ─── Shared State Locks ───────────────────────────────────────────────────────
 _remediation_history_lock: asyncio.Lock = asyncio.Lock()
 _orchestration_audit_lock: asyncio.Lock = asyncio.Lock()
@@ -227,9 +237,15 @@ DEFAULT_NUM_RUNNERS = 12
 REQUESTED_NUM_RUNNERS = int(os.environ.get("NUM_RUNNERS", str(DEFAULT_NUM_RUNNERS)))
 MAX_RUNNERS = int(os.environ.get("MAX_RUNNERS", str(REQUESTED_NUM_RUNNERS)))
 NUM_RUNNERS = min(REQUESTED_NUM_RUNNERS, MAX_RUNNERS)
-DISK_WARN_PERCENT = float(os.environ.get("DASHBOARD_DISK_WARN_PERCENT", "85"))
-DISK_CRITICAL_PERCENT = float(os.environ.get("DASHBOARD_DISK_CRITICAL_PERCENT", "92"))
-DISK_MIN_FREE_GB = float(os.environ.get("DASHBOARD_DISK_MIN_FREE_GB", "25"))
+DISK_WARN_PERCENT = float(
+    os.environ.get("DASHBOARD_DISK_WARN_PERCENT", str(ResourceThreshold.DISK_WARN_PERCENT)),
+)
+DISK_CRITICAL_PERCENT = float(
+    os.environ.get("DASHBOARD_DISK_CRITICAL_PERCENT", str(ResourceThreshold.DISK_CRITICAL_PERCENT)),
+)
+DISK_MIN_FREE_GB = float(
+    os.environ.get("DASHBOARD_DISK_MIN_FREE_GB", str(ResourceThreshold.DISK_MIN_FREE_GB)),
+)
 PORT = int(os.environ.get("DASHBOARD_PORT", "8321"))
 _DASHBOARD_CONFIG_DIR = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "runner-dashboard"
 HOSTNAME = os.environ.get("DISPLAY_NAME") or platform.node()
@@ -265,7 +281,7 @@ EXPECTED_VERSION_FILE = Path(
 
 # ─── Setup moving averages and host memory cache ────────────
 
-_cpu_history: deque[float] = deque(maxlen=60)
+_cpu_history: deque[float] = deque(maxlen=CPU_HISTORY_MAXLEN)
 
 
 def _runner_scheduler_apply_command() -> list[str]:
@@ -526,7 +542,7 @@ async def proxy_to_hub(request: Request):
     """Proxy request to the designated HUB_URL for hub-spoke topology."""
     if not HUB_URL:
         raise HTTPException(status_code=502, detail="HUB_URL not configured")
-    async with httpx.AsyncClient(timeout=15.0) as client:
+    async with httpx.AsyncClient(timeout=HttpTimeout.PROXY_TO_HUB_S) as client:
         url = f"{HUB_URL}{request.url.path}"
         if request.url.query:
             url = f"{url}?{request.url.query}"
@@ -564,7 +580,11 @@ def _should_proxy_fleet_to_hub(request: Request) -> bool:
     return local_value not in {"1", "true", "yes", "local"} and scope_value != "local"
 
 
-async def run_cmd(cmd: list[str], timeout: int = 30, cwd: Path | None = None) -> tuple[int, str, str]:
+async def run_cmd(
+    cmd: list[str],
+    timeout: int = HttpTimeout.GH_DISPATCH_S,
+    cwd: Path | None = None,
+) -> tuple[int, str, str]:
     """Run a shell command asynchronously."""
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -617,7 +637,7 @@ async def _expected_dashboard_version_from_hub() -> str | None:
     if MACHINE_ROLE != "node" or not HUB_URL:
         return None
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        async with httpx.AsyncClient(timeout=HttpTimeout.HUB_VERSION_FETCH_S) as client:
             response = await client.get(f"{HUB_URL}/api/deployment/expected-version")
             response.raise_for_status()
             payload = response.json()
@@ -930,15 +950,17 @@ async def _enrich_run_with_job_placement(run: dict) -> dict:
 
 
 def _classify_node_offline(exc: Exception | None = None, *, status_code: int | None = None) -> dict:
-    """Classify why a fleet node is not fully reachable."""
-    message = str(exc) if exc else ""
-    lower = message.lower()
+    """Classify why a fleet node is not fully reachable.
+
+    Uses typed exception checks (httpx exception hierarchy and OSError.errno)
+    rather than fragile substring matching on str(exc).
+    """
     if status_code is not None:
         return {
             "offline_reason": "dashboard_unhealthy",
             "offline_detail": f"Dashboard returned HTTP {status_code}",
         }
-    if isinstance(exc, httpx.TimeoutException) or "timed out" in lower:
+    if isinstance(exc, httpx.TimeoutException):
         return {
             "offline_reason": "computer_offline",
             "offline_detail": "Dashboard host timed out over the fleet network.",
@@ -963,19 +985,13 @@ def _classify_node_offline(exc: Exception | None = None, *, status_code: int | N
                 "offline_reason": "computer_offline",
                 "offline_detail": "Fleet network could not reach the computer.",
             }
-    if "connection refused" in lower:
         return {
             "offline_reason": "wsl_connection_lost",
             "offline_detail": "Dashboard port refused the connection.",
         }
-    if "network is unreachable" in lower or "no route to host" in lower:
-        return {
-            "offline_reason": "computer_offline",
-            "offline_detail": "Fleet network route to the computer is unavailable.",
-        }
     return {
         "offline_reason": "unknown",
-        "offline_detail": message or "Dashboard node is unreachable.",
+        "offline_detail": str(exc) if exc else "Dashboard node is unreachable.",
     }
 
 
@@ -985,14 +1001,14 @@ def _resource_offline_reason(system: dict) -> dict | None:
     memory = system.get("memory") or {}
     disk = system.get("disk") or {}
     pressure = []
-    if (cpu.get("percent_1m_avg") or cpu.get("percent") or 0) >= 95:
-        pressure.append("CPU >= 95%")
-    if (memory.get("percent") or 0) >= 92:
-        pressure.append("memory >= 92%")
+    if (cpu.get("percent_1m_avg") or cpu.get("percent") or 0) >= ResourceThreshold.CPU_HARD_STOP_PERCENT:
+        pressure.append(f"CPU >= {ResourceThreshold.CPU_HARD_STOP_PERCENT:g}%")
+    if (memory.get("percent") or 0) >= ResourceThreshold.MEMORY_CRITICAL_PERCENT:
+        pressure.append(f"memory >= {ResourceThreshold.MEMORY_CRITICAL_PERCENT:g}%")
     if (disk.get("pressure") or {}).get("status") == "critical":
         pressure.append("disk pressure critical")
-    elif (disk.get("percent") or 0) >= 95:
-        pressure.append("disk >= 95%")
+    elif (disk.get("percent") or 0) >= ResourceThreshold.DISK_HARD_STOP_PERCENT:
+        pressure.append(f"disk >= {ResourceThreshold.DISK_HARD_STOP_PERCENT:g}%")
     if not pressure:
         return None
     return {
@@ -1671,7 +1687,7 @@ $result | ConvertTo-Json -Depth 5
 
 async def _watchdog_status_impl() -> dict:
     """Aggregate the WSL keepalive / startup validation state."""
-    cached = _cache_get("watchdog", 30.0)
+    cached = _cache_get("watchdog", float(CacheTtl.WATCHDOG_S))
     if cached is not None:
         return cached
 
@@ -1751,7 +1767,7 @@ async def _collect_live_fleet_nodes() -> list[dict]:
 
     async def fetch_node(name: str, url: str) -> dict:
         try:
-            async with httpx.AsyncClient(timeout=8.0) as client:
+            async with httpx.AsyncClient(timeout=HttpTimeout.PROXY_NODE_SYSTEM_S) as client:
                 sys_r, health_r = await asyncio.gather(
                     client.get(f"{url}/api/system"),
                     client.get(f"{url}/api/health"),
@@ -1922,7 +1938,7 @@ async def post_deployment_update_signal(
 @app.get("/api/local-apps")
 async def get_local_apps(request: Request) -> dict:
     """Report local tool deployment, drift, service state, and health."""
-    cached = _cache_get("local_apps", 120.0)
+    cached = _cache_get("local_apps", float(CacheTtl.LOCAL_APPS_S))
     if cached is not None:
         return cached
 
@@ -2159,7 +2175,7 @@ async def get_repos(request: Request):
     if _should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
 
-    cached = _cache_get("repos", 600.0)
+    cached = _cache_get("repos", float(CacheTtl.REPOS_S))
     if cached is not None:
         return cached
 
@@ -2250,9 +2266,10 @@ async def get_repos(request: Request):
 
         return info
 
-    # Run enrichment concurrently in batches of 10 to avoid overwhelming the API
-    for i in range(0, len(repos), 10):
-        batch = repos[i : i + 10]
+    # Run enrichment concurrently in batches to avoid overwhelming the API
+    batch_size = Concurrency.REPO_ENRICHMENT
+    for i in range(0, len(repos), batch_size):
+        batch = repos[i : i + batch_size]
         batch_results = await asyncio.gather(*[enrich_repo(r) for r in batch])
         results.extend(batch_results)
 
@@ -2721,7 +2738,7 @@ _CI_FLEET_REPOS = [
 @app.get("/api/tests/ci-results")
 async def get_tests_ci_results() -> dict:
     """Return recent ci-standard workflow runs for key fleet repos."""
-    cached = _cache_get("ci_test_results", 120.0)
+    cached = _cache_get("ci_test_results", float(CacheTtl.CI_TEST_RESULTS_S))
     if cached is not None:
         return cached
 
@@ -2794,11 +2811,11 @@ async def get_stats(request: Request):
     if _should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
 
-    cached = _cache_get("stats", 120.0)
+    cached = _cache_get("stats", float(CacheTtl.STATS_S))
     if cached is not None:
         return cached
 
-    runners_data = _cache_get("runners", 25.0)
+    runners_data = _cache_get("runners", float(CacheTtl.RUNNERS_S))
     if runners_data is None:
         runners_data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
         _cache_set("runners", runners_data)
@@ -2854,7 +2871,7 @@ async def get_usage_monitoring(request: Request) -> dict:
     if _should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
 
-    cached = _cache_get("usage_monitoring", 300.0)
+    cached = _cache_get("usage_monitoring", float(CacheTtl.USAGE_MONITORING_S))
     if cached is not None:
         return cached
 
@@ -2951,7 +2968,7 @@ async def proxy_node_system(node_name: str) -> dict:
     if not url:
         raise HTTPException(status_code=404, detail=f"Node not found: {node_name}")
     try:
-        async with httpx.AsyncClient(timeout=8.0) as client:
+        async with httpx.AsyncClient(timeout=HttpTimeout.PROXY_NODE_SYSTEM_S) as client:
             resp = await client.get(f"{url}/api/system")
         if resp.status_code != 200:
             raise HTTPException(status_code=502, detail="Node returned error")
@@ -2971,19 +2988,23 @@ async def log_requests(request: Request, call_next):
     start = time.time()
     response = await call_next(request)
     elapsed = round((time.time() - start) * 1000, 1)
-    skip = (
-        "/api/system",
-        "/api/repos",
-        "/api/reports",
-        "/api/heavy-tests",
-        "/api/scheduled-workflows",
-    )
-    if not request.url.path.startswith(skip):
+    path = request.url.path
+    status = response.status_code
+
+    # Always log errors regardless of path — incident reconstruction requires them.
+    is_error = status >= 400
+
+    # High-volume paths are sampled at 1/10 to reduce noise without losing
+    # visibility.  The filter list is configurable via dashboard_config.LOG_FILTER_PATHS
+    # (env var LOG_FILTER_PATHS, comma-separated path prefixes).
+    is_filtered = path.startswith(dashboard_config.LOG_FILTER_PATHS)
+
+    if is_error or not is_filtered or random.random() < 0.1:
         log.info(
             "%s %s → %s (%sms)",
             request.method,
-            request.url.path,
-            response.status_code,
+            path,
+            status,
             elapsed,
         )
     return response
@@ -3128,7 +3149,7 @@ async def get_maxwell_status() -> dict:
     try:
         import httpx
 
-        async with httpx.AsyncClient(timeout=3.0) as client:
+        async with httpx.AsyncClient(timeout=HttpTimeout.MAXWELL_PROXY_S) as client:
             resp = await client.get(f"{base_url}/api/health")
             http_reachable = resp.status_code == 200
             http_detail = f"HTTP {resp.status_code}"
@@ -3200,7 +3221,7 @@ async def get_maxwell_version() -> dict:
     path = "/api/version"
     resp = None
     try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
+        async with httpx.AsyncClient(timeout=HttpTimeout.MAXWELL_PROXY_S) as client:
             resp = await client.get(f"{_maxwell_base_url()}{path}")
             log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
             return resp.json()
@@ -3218,7 +3239,7 @@ async def get_maxwell_daemon_status_detail() -> dict:
     path = "/api/status"
     resp = None
     try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
+        async with httpx.AsyncClient(timeout=HttpTimeout.MAXWELL_PROXY_S) as client:
             resp = await client.get(f"{_maxwell_base_url()}{path}")
             log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
             return resp.json()
@@ -3239,7 +3260,7 @@ async def get_maxwell_tasks(limit: int = 20, cursor: str | None = None) -> dict:
         params: dict = {"limit": limit}
         if cursor is not None:
             params["cursor"] = cursor
-        async with httpx.AsyncClient(timeout=3.0) as client:
+        async with httpx.AsyncClient(timeout=HttpTimeout.MAXWELL_PROXY_S) as client:
             resp = await client.get(f"{_maxwell_base_url()}{path}", params=params)
             log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
             return resp.json()
@@ -3257,7 +3278,7 @@ async def get_maxwell_task_detail(task_id: str) -> dict:
     path = f"/api/tasks/{task_id}"
     resp = None
     try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
+        async with httpx.AsyncClient(timeout=HttpTimeout.MAXWELL_PROXY_S) as client:
             resp = await client.get(f"{_maxwell_base_url()}{path}")
             log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
             return resp.json()
@@ -3280,7 +3301,7 @@ async def maxwell_dispatch_task(
     resp = None
     try:
         body = await request.body()
-        async with httpx.AsyncClient(timeout=3.0) as client:
+        async with httpx.AsyncClient(timeout=HttpTimeout.MAXWELL_PROXY_S) as client:
             resp = await client.post(
                 f"{_maxwell_base_url()}{path}",
                 content=body,
@@ -3342,7 +3363,7 @@ async def maxwell_pipeline_control(
     resp = None
     try:
         body = await request.body()
-        async with httpx.AsyncClient(timeout=3.0) as client:
+        async with httpx.AsyncClient(timeout=HttpTimeout.MAXWELL_PROXY_S) as client:
             resp = await client.post(
                 f"{_maxwell_base_url()}{path}",
                 content=body,
@@ -3510,34 +3531,104 @@ async def dispatch_assessment(
 _ORCHESTRATION_AUDIT_PATH = Path.home() / "actions-runners" / "dashboard" / "orchestration_audit.json"
 _DEPLOY_ACTIONS = {"sync_workflows", "restart_runner", "update_config"}
 
+# Audit log is append-only NDJSON. On load failure (corrupt line, OS error), this
+# counter increments so operators can detect silent corruption. Exposed via
+# /api/metrics/audit-corrupt and the dashboard health endpoint.
+_audit_log_corrupt_total: int = 0
+
+
+def _migrate_audit_to_ndjson_if_needed() -> None:
+    """If the audit file is in the legacy single-JSON-array format, rewrite it as
+    NDJSON in place. Idempotent: a file already in NDJSON form is left alone.
+    Corruption counter is NOT incremented for migration: the file is intact."""
+    if not _ORCHESTRATION_AUDIT_PATH.exists():
+        return
+    try:
+        with _ORCHESTRATION_AUDIT_PATH.open("r", encoding="utf-8") as fh:
+            head = fh.read(1)
+            if head != "[":
+                return
+            fh.seek(0)
+            raw = fh.read().strip()
+        if not raw:
+            return
+        entries = json.loads(raw)
+        if not isinstance(entries, list):
+            return
+        tmp_path = _ORCHESTRATION_AUDIT_PATH.with_suffix(".ndjson.tmp")
+        with tmp_path.open("w", encoding="utf-8") as fh:
+            for entry in entries:
+                fh.write(json.dumps(entry, separators=(",", ":")) + "\n")
+        tmp_path.replace(_ORCHESTRATION_AUDIT_PATH)
+    except (OSError, json.JSONDecodeError) as exc:
+        log.warning("orchestration audit migration skipped: %s", exc)
+
 
 def _load_orchestration_audit(limit: int = 50, principal: str | None = None) -> list[dict]:
-    """Load recent orchestration audit entries from disk."""
+    """Tail the last `limit` orchestration audit entries from disk without rewriting.
+
+    Reads the NDJSON-formatted audit log line by line, keeping only the trailing
+    `limit` entries via a bounded deque. Legacy single-JSON-array files are
+    migrated lazily on first read.
+    """
+    global _audit_log_corrupt_total
     if not _ORCHESTRATION_AUDIT_PATH.exists():
         return []
+
+    # Lazy one-shot migration from legacy JSON array -> NDJSON.
+    _migrate_audit_to_ndjson_if_needed()
+
+    from collections import deque  # noqa: PLC0415
+
+    tail: deque[dict] = deque(maxlen=limit if not principal else None)
     try:
-        raw = _ORCHESTRATION_AUDIT_PATH.read_text(encoding="utf-8").strip()
-        if not raw:
-            return []
-        entries = json.loads(raw)
-        if isinstance(entries, list):
-            if principal:
-                entries = [e for e in entries if e.get("principal") == principal]
-            return entries[-limit:]
+        with _ORCHESTRATION_AUDIT_PATH.open("r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    _audit_log_corrupt_total += 1
+                    continue
+                if not isinstance(entry, dict):
+                    _audit_log_corrupt_total += 1
+                    continue
+                if principal and entry.get("principal") != principal:
+                    continue
+                tail.append(entry)
+    except OSError as exc:
+        _audit_log_corrupt_total += 1
+        log.warning("orchestration audit read failed: %s", exc)
         return []
-    except (OSError, json.JSONDecodeError):
-        return []
+
+    result = list(tail)
+    return result[-limit:] if principal else result
 
 
 async def _append_orchestration_audit(entry: dict) -> None:
-    """Append a single audit entry to the orchestration audit log (thread-safe)."""
+    """Append a single audit entry to the orchestration audit log.
+
+    Atomic single-line write via O_APPEND — POSIX guarantees writes <= PIPE_BUF
+    (4096 bytes) appear atomically when the file is opened with O_APPEND, so
+    concurrent appends interleave by line rather than corrupting bytes. Rotation
+    is handled out-of-band (e.g. logrotate); this writer never truncates.
+    """
     async with _orchestration_audit_lock:
-        existing = _load_orchestration_audit(limit=1000)
-        existing.append(entry)
         try:
-            config_schema.atomic_write_json(_ORCHESTRATION_AUDIT_PATH, existing)
+            _migrate_audit_to_ndjson_if_needed()
+            _ORCHESTRATION_AUDIT_PATH.parent.mkdir(parents=True, exist_ok=True)
+            line = json.dumps(entry, separators=(",", ":")) + "\n"
+            with _ORCHESTRATION_AUDIT_PATH.open("a", encoding="utf-8") as fh:
+                fh.write(line)
         except OSError as exc:
             log.warning("orchestration audit write failed: %s", exc)
+
+
+def get_audit_log_corrupt_total() -> int:
+    """Return the count of corrupt audit-log read events since process start."""
+    return _audit_log_corrupt_total
 
 
 @app.get("/api/audit", tags=["fleet"])
@@ -4184,6 +4275,34 @@ async def _start_background_tasks() -> None:
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
+
+def _read_uvicorn_env_config() -> dict[str, int]:
+    """Read uvicorn tuning knobs from environment variables (#393).
+
+    Returns a dict with ``workers``, ``limit_concurrency`` and
+    ``timeout_keep_alive``.  Defaults are conservative because the
+    leader-election guard (#367) is not yet in place — running with
+    ``WORKERS > 1`` will duplicate background tasks and is therefore *not*
+    the default.  Operators that opt in get a runtime warning.
+    """
+
+    def _int_env(name: str, default: int) -> int:
+        raw = os.environ.get(name, "").strip()
+        if not raw:
+            return default
+        try:
+            return int(raw)
+        except ValueError:
+            log.warning("Invalid %s=%r, falling back to %d", name, raw, default)
+            return default
+
+    return {
+        "workers": _int_env("WORKERS", 1),
+        "limit_concurrency": _int_env("LIMIT_CONCURRENCY", 200),
+        "timeout_keep_alive": _int_env("TIMEOUT_KEEP_ALIVE", 5),
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
 
@@ -4197,10 +4316,29 @@ if __name__ == "__main__":
     log.info("  Runners: %s @ %s", NUM_RUNNERS, RUNNER_BASE_DIR)
     log.info("=" * 60)
 
+    _uvicorn_cfg = _read_uvicorn_env_config()
+    if _uvicorn_cfg["workers"] > 1:
+        log.warning(
+            "WORKERS=%d but leader-election (#367) is not yet in place; "
+            "background tasks will be duplicated across workers. "
+            "Set WORKERS=1 until #367 lands.",
+            _uvicorn_cfg["workers"],
+        )
+
+    # uvicorn requires an import string (not the in-memory app object) when
+    # running in multi-worker mode — workers spawn via multiprocessing and
+    # each child re-imports the app. Codex P1 review on PR #482 flagged that
+    # passing `app` directly with `workers > 1` either silently runs a single
+    # worker or fails at startup. Use the import string when WORKERS > 1; keep
+    # the in-memory object for single-worker dev runs (faster, no re-import).
+    _uvicorn_target: object = "server:app" if _uvicorn_cfg["workers"] > 1 else app
     uvicorn.run(
-        app,
+        _uvicorn_target,  # type: ignore[arg-type]
         host="0.0.0.0",  # nosec B104 — intentional for local LAN/Tailscale access
         port=PORT,
         log_level="warning",  # FastAPI handles its own logging
+        workers=_uvicorn_cfg["workers"],
+        limit_concurrency=_uvicorn_cfg["limit_concurrency"],
+        timeout_keep_alive=_uvicorn_cfg["timeout_keep_alive"],
     )
 # ci-trigger

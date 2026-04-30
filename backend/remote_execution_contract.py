@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import datetime as _dt_mod
 import enum
 import ipaddress
 import re
@@ -11,8 +10,7 @@ from typing import Any
 from urllib.parse import urlparse
 from uuid import uuid4
 
-UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
-datetime = _dt_mod.datetime
+from time_utils import utc_now_iso
 
 SCHEMA_VERSION = "remote-execution-envelope.v1"
 MAX_TIMEOUT_SECONDS = 3600
@@ -37,10 +35,6 @@ class _StrEnum(str, enum.Enum):  # noqa: UP042
 class RemoteExecutionAccess(_StrEnum):
     READ_ONLY = "read_only"
     PRIVILEGED = "privileged"
-
-
-def _utc_now() -> str:
-    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _ensure_dict(payload: Any) -> dict[str, Any]:
@@ -169,7 +163,7 @@ class RemoteExecutionEnvelope:
     confirmation: RemoteExecutionConfirmation | None = None
     envelope_id: str = field(default_factory=lambda: uuid4().hex)
     schema_version: str = SCHEMA_VERSION
-    issued_at: str = field(default_factory=_utc_now)
+    issued_at: str = field(default_factory=utc_now_iso)
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)

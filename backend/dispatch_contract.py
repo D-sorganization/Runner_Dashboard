@@ -24,6 +24,8 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 from uuid import uuid4
 
+from time_utils import utc_now_iso
+
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 datetime = _dt_mod.datetime
 
@@ -159,10 +161,6 @@ class DispatchAccess(_StrEnum):
     PRIVILEGED = "privileged"
 
 
-def _utc_now() -> str:
-    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
-
-
 def _ensure_dict(payload: Any) -> dict[str, Any]:
     if payload is None:
         return {}
@@ -247,7 +245,7 @@ class CommandEnvelope:
     envelope_id: str = field(default_factory=lambda: uuid4().hex)
     schema_version: str = SCHEMA_VERSION
     envelope_version: int = ENVELOPE_VERSION
-    issued_at: str = field(default_factory=_utc_now)
+    issued_at: str = field(default_factory=utc_now_iso)
     signature: str = ""
     principal: str = ""
     on_behalf_of: str = ""
@@ -291,7 +289,7 @@ class CommandEnvelope:
             envelope_id=str(data.get("envelope_id", uuid4().hex)),
             schema_version=str(data.get("schema_version", SCHEMA_VERSION)),
             envelope_version=int(data.get("envelope_version", ENVELOPE_VERSION)),
-            issued_at=str(data.get("issued_at", _utc_now())),
+            issued_at=str(data.get("issued_at", utc_now_iso())),
             signature=str(data.get("signature", "")),
             principal=str(data.get("principal", "")),
             on_behalf_of=str(data.get("on_behalf_of", "")),
@@ -686,7 +684,7 @@ def build_audit_log_entry(
         detail=detail or validation.reason,
         confirmation_state=_confirmation_state(validation, envelope.confirmation),
         payload_snapshot=dict(envelope.payload),
-        recorded_at=_utc_now(),
+        recorded_at=utc_now_iso(),
     )
 
 

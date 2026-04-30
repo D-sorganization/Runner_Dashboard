@@ -12,14 +12,12 @@ That plan is descriptive only; no write actions are performed here.
 
 from __future__ import annotations
 
-import datetime as _dt_mod
 import re
 from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
-datetime = _dt_mod.datetime
+from time_utils import utc_now_iso
 
 GhJson = Callable[[str], Awaitable[Any]]
 GhRaw = Callable[[str], Awaitable[str]]
@@ -27,10 +25,6 @@ GhRaw = Callable[[str], Awaitable[str]]
 _ON_KEY_RE = re.compile(r"^(?P<indent>[ \t]*)(?:'on'|\"on\"|on)\s*:\s*(?:#.*)?$")
 _SCHEDULE_KEY_RE = re.compile(r"^(?P<indent>[ \t]*)schedule\s*:\s*(?:#.*)?$")
 _CRON_LINE_RE = re.compile(r"^(?P<indent>[ \t]*)(?:-\s*)?cron:\s*(?P<value>[^\r\n#]+?)(?:\s+#.*)?$")
-
-
-def _utc_now() -> str:
-    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _unique(values: list[str]) -> list[str]:
@@ -354,7 +348,7 @@ async def collect_inventory(
 
     report = ScheduledWorkflowInventoryReport(
         organization=organization,
-        generated_at=_utc_now(),
+        generated_at=utc_now_iso(),
         repository_count=len(repositories),
         scheduled_workflow_count=total_scheduled,
         repositories=tuple(repositories),

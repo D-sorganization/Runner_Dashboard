@@ -25,6 +25,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from time_utils import utc_now_iso
+
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 datetime = _dt_mod.datetime
 
@@ -155,10 +157,6 @@ def sanitize_for_prompt(text: str, max_length: int = 2000) -> str:
     return f"[START_UNTRUSTED_CONTENT]\n{text}\n[END_UNTRUSTED_CONTENT]"
 
 
-def _utc_now() -> str:
-    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
-
-
 def _as_tuple_strings(values: Any, *, fallback: tuple[str, ...]) -> tuple[str, ...]:
     if values is None:
         return fallback
@@ -217,7 +215,7 @@ class AttemptRecord:
             provider_id=str(data.get("provider_id") or data.get("provider") or ""),
             fingerprint=str(data.get("fingerprint") or ""),
             status=str(data.get("status") or "unknown"),
-            created_at=str(data.get("created_at") or _utc_now()),
+            created_at=str(data.get("created_at") or utc_now_iso()),
             run_id=int(data["run_id"]) if data.get("run_id") is not None else None,
             repository=str(data.get("repository") or ""),
             branch=str(data.get("branch") or ""),
@@ -928,7 +926,7 @@ def inspect_jules_workflows(repo_root: Path) -> WorkflowHealthReport:
     else:
         control_tower_summary = " ".join(control_tower_issues)
     return WorkflowHealthReport(
-        generated_at=_utc_now(),
+        generated_at=utc_now_iso(),
         control_tower_summary=control_tower_summary,
         workflows=tuple(entries),
     )

@@ -10,6 +10,7 @@ import pytest  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 
+import dispatch_quota  # noqa: E402
 from agent_dispatch_router import (  # noqa: E402
     BulkDispatchResponse,
     DispatchItem,
@@ -19,6 +20,18 @@ from agent_dispatch_router import (  # noqa: E402
     dispatch_to_issues,
     dispatch_to_prs,
 )
+
+
+@pytest.fixture(autouse=True)
+def _reset_dispatch_quota():
+    """Reset the in-memory hourly quota between tests so cap accounting starts fresh."""
+    original = dispatch_quota.quota
+    dispatch_quota.quota = dispatch_quota.DispatchQuota()
+    try:
+        yield
+    finally:
+        dispatch_quota.quota = original
+
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -55,6 +68,10 @@ def _avail_patch(available: bool = True):
 async def _dispatch_prs(req: PRDispatchRequest, run_cmd_fn=None):
     if run_cmd_fn is None:
         run_cmd_fn = _make_run_cmd(0)
+    # Issue #408: dispatch_to_prs requires a non-anonymous principal.  Tests
+    # that don't supply one are augmented here with a deterministic id.
+    if not req.principal:
+        req.principal = "test-principal"
     with _avail_patch(True):
         return await dispatch_to_prs(
             req,
@@ -68,6 +85,8 @@ async def _dispatch_prs(req: PRDispatchRequest, run_cmd_fn=None):
 async def _dispatch_issues(req: IssueDispatchRequest, run_cmd_fn=None, available: bool = True):
     if run_cmd_fn is None:
         run_cmd_fn = _make_run_cmd(0)
+    if not req.principal:
+        req.principal = "test-principal"
     with _avail_patch(available):
         return await dispatch_to_issues(
             req,
@@ -127,6 +146,7 @@ async def test_dispatch_to_prs_provider_unavailable_returns_error() -> None:
         ),
         provider="claude_code_cli",
         prompt="Address review comments",
+        principal="test-principal-unavailable",
     )
     with _avail_patch(False):
         result = await dispatch_to_prs(

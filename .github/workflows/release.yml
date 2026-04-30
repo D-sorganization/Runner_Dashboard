@@ -1,0 +1,281 @@
+# Release workflow (issue #431)
+#
+# Creates a GitHub release with auto-generated notes derived from
+# Conventional Commits since the last tag.
+#
+# Triggers:
+#   * workflow_dispatch — manual release with required `version` input.
+#   * push to main when `VERSION` is modified — auto-release on bump.
+#
+# NOTE on signing: tags are currently created UNSIGNED. When the org has a
+# signing key set up, swap `git tag -a` for `git tag -s` and configure the
+# GPG/Sigstore key on the runner. Tracked alongside #431 follow-up.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Semver version to release (e.g. 4.1.2). Must match VERSION file.
+        required: true
+        type: string
+      dry_run:
+        description: If true, print the would-be tag and notes but skip the release.
+        required: false
+        type: boolean
+        default: false
+  push:
+    branches:
+      - main
+    paths:
+      - VERSION
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build release notes and tag
+    runs-on: d-sorg-fleet
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      AUTO_NOTES_HEADER: "Auto-generated release notes (release.yml)"
+    steps:
+      - name: Checkout (full history for tags)
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      - name: Read VERSION file
+        id: read_version
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f VERSION ]; then
+            echo "::error::VERSION file not found at repo root"
+            exit 1
+          fi
+          # Strip comments and blank lines; pick first non-empty token.
+          VERSION_VALUE=$(grep -vE '^\s*(#|$)' VERSION | head -n1 | tr -d '[:space:]')
+          if [ -z "$VERSION_VALUE" ]; then
+            echo "::error::VERSION file is empty after stripping comments"
+            exit 1
+          fi
+          echo "version=$VERSION_VALUE" >> "$GITHUB_OUTPUT"
+          echo "Read VERSION=$VERSION_VALUE"
+
+      - name: Resolve target version and dry-run flag
+        id: resolve
+        shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
+          FILE_VERSION: ${{ steps.read_version.outputs.version }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            TARGET="$INPUT_VERSION"
+            DRY="$INPUT_DRY_RUN"
+          else
+            TARGET="$FILE_VERSION"
+            DRY="false"
+          fi
+          if [ -z "$TARGET" ]; then
+            echo "::error::Could not resolve target version"
+            exit 1
+          fi
+          echo "version=$TARGET" >> "$GITHUB_OUTPUT"
+          echo "dry_run=$DRY" >> "$GITHUB_OUTPUT"
+          echo "tag=v$TARGET" >> "$GITHUB_OUTPUT"
+          echo "Resolved target version: $TARGET (dry_run=$DRY)"
+
+      - name: Verify VERSION matches target
+        shell: bash
+        env:
+          TARGET: ${{ steps.resolve.outputs.version }}
+          FILE_VERSION: ${{ steps.read_version.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ "$TARGET" != "$FILE_VERSION" ]; then
+            echo "::error::Target version ($TARGET) does not match VERSION file ($FILE_VERSION)."
+            echo "Bump VERSION first, then re-run with the matching input."
+            exit 1
+          fi
+          echo "VERSION file matches target ($TARGET)."
+
+      - name: Verify tag does not already exist
+        shell: bash
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "::error::Tag $TAG already exists locally."
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "$TAG" >/dev/null 2>&1; then
+            echo "::error::Tag $TAG already exists on origin."
+            exit 1
+          fi
+          echo "Tag $TAG is available."
+
+      - name: Generate release notes from Conventional Commits
+        id: notes
+        shell: bash
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          PREV_TAG=$(git tag --list 'v*' --sort=-v:refname | head -n1 || true)
+          if [ -n "$PREV_TAG" ]; then
+            RANGE="${PREV_TAG}..HEAD"
+            echo "Comparing against previous tag: $PREV_TAG"
+          else
+            RANGE=""
+            echo "No previous tag found; including full history."
+          fi
+
+          NOTES_FILE="$RUNNER_TEMP/release-notes.md"
+          : > "$NOTES_FILE"
+          {
+            echo "# $TAG"
+            echo
+            echo "_${AUTO_NOTES_HEADER}_"
+            echo
+            if [ -n "$PREV_TAG" ]; then
+              echo "Changes since \`$PREV_TAG\`:"
+            else
+              echo "Initial tagged release."
+            fi
+            echo
+          } >> "$NOTES_FILE"
+
+          # Conventional commit prefixes we surface, with display headings.
+          declare -A SECTIONS=(
+            [feat]="### Features"
+            [fix]="### Bug Fixes"
+            [perf]="### Performance"
+            [refactor]="### Refactors"
+            [docs]="### Documentation"
+            [test]="### Tests"
+            [build]="### Build"
+            [ci]="### CI"
+            [chore]="### Chores"
+            [revert]="### Reverts"
+          )
+
+          ALL_COMMITS=$(git log --pretty=format:'%H%x09%s' ${RANGE:+$RANGE} || true)
+
+          for prefix in feat fix perf refactor docs test build ci chore revert; do
+            HEADING="${SECTIONS[$prefix]}"
+            MATCHES=$(echo "$ALL_COMMITS" | grep -E "	${prefix}(\([^)]+\))?!?: " || true)
+            if [ -n "$MATCHES" ]; then
+              echo "$HEADING" >> "$NOTES_FILE"
+              echo "$MATCHES" | while IFS=$'\t' read -r SHA SUBJECT; do
+                SHORT=$(echo "$SHA" | cut -c1-7)
+                printf -- '- %s (%s)\n' "$SUBJECT" "$SHORT" >> "$NOTES_FILE"
+              done
+              echo >> "$NOTES_FILE"
+            fi
+          done
+
+          if ! grep -qE '^### ' "$NOTES_FILE"; then
+            echo "_No conventional-commit entries found in range._" >> "$NOTES_FILE"
+            echo >> "$NOTES_FILE"
+          fi
+
+          echo "notes_file=$NOTES_FILE" >> "$GITHUB_OUTPUT"
+          echo "prev_tag=${PREV_TAG}" >> "$GITHUB_OUTPUT"
+          echo "----- generated notes -----"
+          cat "$NOTES_FILE"
+          echo "---------------------------"
+
+      - name: Dry-run summary
+        if: steps.resolve.outputs.dry_run == 'true'
+        shell: bash
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+          NOTES_FILE: ${{ steps.notes.outputs.notes_file }}
+        run: |
+          set -euo pipefail
+          echo "::notice::DRY RUN — no tag or release will be created."
+          echo "Would create tag: $TAG"
+          echo "Would publish release notes:"
+          cat "$NOTES_FILE"
+
+      - name: Create unsigned annotated tag
+        if: steps.resolve.outputs.dry_run != 'true'
+        shell: bash
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+          NOTES_FILE: ${{ steps.notes.outputs.notes_file }}
+        run: |
+          set -euo pipefail
+          # NOTE: tag is UNSIGNED — switch to `git tag -s` once the org
+          # signing key is provisioned on the d-sorg-fleet runners.
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Embed the auto-generated header into the tag message so the
+          # inline verification below (and verify-tag.yml for any human-pushed
+          # tag) can confirm the tag was minted by the release pipeline.
+          TAG_MSG_FILE="$RUNNER_TEMP/tag-message.txt"
+          {
+            echo "$AUTO_NOTES_HEADER"
+            echo
+            cat "$NOTES_FILE"
+          } > "$TAG_MSG_FILE"
+          git tag -a "$TAG" -F "$TAG_MSG_FILE"
+          echo "Created local annotated tag $TAG."
+
+      - name: Verify tag locally before pushing
+        if: steps.resolve.outputs.dry_run != 'true'
+        shell: bash
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # GitHub Actions does NOT trigger downstream workflow runs for
+          # tags pushed using GITHUB_TOKEN (verify-tag.yml is for
+          # defense-in-depth on human-pushed tags). Run the same checks
+          # inline here so a malformed tag is never pushed.
+          OBJ_TYPE=$(git cat-file -t "$TAG")
+          if [ "$OBJ_TYPE" != "tag" ]; then
+            echo "::error::$TAG is a $OBJ_TYPE, expected an annotated tag"
+            exit 1
+          fi
+          MSG=$(git tag -l --format='%(contents)' "$TAG")
+          if ! grep -Fq "$AUTO_NOTES_HEADER" <<< "$MSG"; then
+            echo "::error::$TAG annotation missing required header: $AUTO_NOTES_HEADER"
+            exit 1
+          fi
+          echo "Tag $TAG passed inline verification."
+
+      - name: Push tag to origin
+        if: steps.resolve.outputs.dry_run != 'true'
+        shell: bash
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git push origin "$TAG"
+          echo "Pushed tag $TAG."
+
+      - name: Create GitHub release
+        if: steps.resolve.outputs.dry_run != 'true'
+        shell: bash
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+          NOTES_FILE: ${{ steps.notes.outputs.notes_file }}
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --notes-file "$NOTES_FILE" \
+            --target "${{ github.sha }}"
+          echo "Created GitHub release $TAG."
