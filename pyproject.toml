@@ -76,6 +76,9 @@ select = ["E", "F", "W", "I", "B", "UP", "T20"]
 "scripts/*.py" = ["T201", "T203"]
 # Tests may use print() for diagnostic output during development.
 "tests/*.py" = ["T201", "T203"]
+# Assessment and scratch scripts use print() for output
+"assessments/*.py" = ["T201"]
+"scratch/*.py" = ["T201"]
 
 [tool.mypy]
 python_version = "3.11"
