@@ -25,7 +25,12 @@ from fastapi import APIRouter
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-UTC = __import__("datetime").UTC  # noqa: UP017
+# Python 3.10+ has UTC; fall back to timezone.utc for earlier versions
+import datetime as _dt
+try:
+    UTC = _dt.UTC  # noqa: UP017
+except AttributeError:
+    UTC = _dt.timezone.utc  # type: ignore
 
 log = logging.getLogger("dashboard.system")
 router = APIRouter(tags=["system"])
