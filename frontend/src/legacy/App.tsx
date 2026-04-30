@@ -36,6 +36,19 @@ window.fetch = async function(url, opts) {
   var resp = await originalFetch(url, opts);
   if (resp.status === 401 && !url.includes('/api/auth/me')) {
     console.warn("[auth] 401 Unauthorized from", url);
+    // Emit a global toast so the announcement is screen-reader-accessible
+    // even before the modal repaints (issue #421).
+    try {
+      var toaster = (window as any).__toaster;
+      if (toaster && typeof toaster.showToast === "function") {
+        toaster.showToast(
+          "Your session has expired. Please log in again to continue.",
+          { variant: "error", title: "Session expired" },
+        );
+      }
+    } catch (toastErr) {
+      console.warn("[auth] Failed to emit 401 toast:", toastErr);
+    }
     // Show auth error overlay
     if (typeof window._showAuthError === "function") {
       window._showAuthError();
