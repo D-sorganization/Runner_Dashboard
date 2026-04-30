@@ -26,6 +26,7 @@ import logging
 import logging.handlers
 import os
 import platform
+import random
 import re
 import secrets
 import shlex
@@ -2967,19 +2968,23 @@ async def log_requests(request: Request, call_next):
     start = time.time()
     response = await call_next(request)
     elapsed = round((time.time() - start) * 1000, 1)
-    skip = (
-        "/api/system",
-        "/api/repos",
-        "/api/reports",
-        "/api/heavy-tests",
-        "/api/scheduled-workflows",
-    )
-    if not request.url.path.startswith(skip):
+    path = request.url.path
+    status = response.status_code
+
+    # Always log errors regardless of path — incident reconstruction requires them.
+    is_error = status >= 400
+
+    # High-volume paths are sampled at 1/10 to reduce noise without losing
+    # visibility.  The filter list is configurable via dashboard_config.LOG_FILTER_PATHS
+    # (env var LOG_FILTER_PATHS, comma-separated path prefixes).
+    is_filtered = path.startswith(dashboard_config.LOG_FILTER_PATHS)
+
+    if is_error or not is_filtered or random.random() < 0.1:
         log.info(
             "%s %s → %s (%sms)",
             request.method,
-            request.url.path,
-            response.status_code,
+            path,
+            status,
             elapsed,
         )
     return response
