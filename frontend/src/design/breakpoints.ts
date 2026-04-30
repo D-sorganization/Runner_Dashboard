@@ -22,7 +22,7 @@ export function isCompactMobile(width: number): boolean {
 /**
  * Pure helper that maps a viewport width to a breakpoint key.
  *
- * Note: this is intentionally NOT a React hook. It does not subscribe to
+ * Note: this is intentionally NOT a runtime hook. It does not subscribe to
  * resize/matchMedia events. For the live, reactive value, use the
  * `useBreakpoint()` hook from `frontend/src/hooks/useBreakpoint.ts`.
  */

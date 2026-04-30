@@ -1,8 +1,8 @@
 # SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.15
+**Spec Version:** 2.5.16
 **Application Version:** 4.1.0 (see `VERSION`)
-**Last Updated:** 2026-04-30T21:05:00Z
+**Last Updated:** 2026-04-30T22:35:00Z
 **Status:** Active
 
 ---
@@ -960,6 +960,12 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 ---
 
 ## 7. Changelog
+
+### 2.5.16 - 2026-04-30
+- ci: keep the standard test lane aligned with the checked-in `uv.lock`, Bandit
+  allow-list policy, and mypy relaxed-override module-count guard.
+- chore(deploy): keep Docker and setup static guards on the supported Python
+  3.11 runtime and systemd hardening contract.
 
 ### 2.5.14 - 2026-04-30
 - feat(scalability): drive uvicorn `workers`, `limit_concurrency`, and

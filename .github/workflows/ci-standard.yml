@@ -191,11 +191,12 @@ jobs:
           import tomllib, pathlib
           data = tomllib.loads(pathlib.Path("pyproject.toml").read_text())
           overrides = data.get("tool", {}).get("mypy", {}).get("overrides", [])
-          relaxed = [
-              o for o in overrides
-              if o.get("disallow_untyped_defs") is False or o.get("strict_optional") is False
-          ]
-          print(len(relaxed))
+          relaxed_count = 0
+          for override in overrides:
+              if override.get("disallow_untyped_defs") is False or override.get("strict_optional") is False:
+                  modules = override.get("module", [])
+                  relaxed_count += len(modules) if isinstance(modules, list) else 1
+          print(relaxed_count)
           EOF
           )
           echo "::notice::mypy relaxed-override module count: ${OVERRIDE_COUNT} (target: 0, tracked in #161)"
