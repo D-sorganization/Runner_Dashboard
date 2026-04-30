@@ -51,6 +51,39 @@ repos:
         exclude: ^(tests/|\.github/|frontend/|deploy/)
 
   # ===========================================================================
+  # SECRET SCANNING (Issue #396)
+  # ===========================================================================
+  # Two complementary scanners:
+  #   - gitleaks: regex + entropy on staged content, repo-tuned via
+  #     `.gitleaks.toml`.
+  #   - detect-secrets: heuristic scan against the audited `.secrets.baseline`;
+  #     fails only on NEW findings outside the baseline.
+  # Rotation procedure for the baseline lives in
+  # `docs/runbooks/secret-scanning.md`.
+
+  - repo: https://github.com/gitleaks/gitleaks
+    # v8.24.0 — pinned by SHA per repo policy.
+    rev: f565e4e10c6c8081e374235bb4e4bcb8c0c2fa63
+    hooks:
+      - id: gitleaks
+        name: "gitleaks (secret scan)"
+
+  - repo: https://github.com/Yelp/detect-secrets
+    # v1.5.0 — pinned by SHA per repo policy.
+    rev: 68e8b45440415753fff70a312ece8da92ba85b4a
+    hooks:
+      - id: detect-secrets
+        name: "detect-secrets (baseline diff)"
+        args: ["--baseline", ".secrets.baseline"]
+        exclude: |
+          (?x)^(
+            package-lock\.json|
+            uv\.lock|
+            .*\.tsbuildinfo|
+            \.secrets\.baseline
+          )$
+
+  # ===========================================================================
   # PRE-PUSH HOOKS (Slower - run before push only)
   # ===========================================================================
 

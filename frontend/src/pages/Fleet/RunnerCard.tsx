@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import { Badge, type BadgeTone } from "../../primitives/Badge";
+
 export interface RunnerCardProps {
   cpuPercent: number;
   currentJob?: string | null;
@@ -67,6 +69,8 @@ export function RunnerCard({
 }: RunnerCardProps) {
   const statusColor = status === "online" ? "#3fb950" : status === "busy" ? "#d29922" : "#f85149";
   const statusText = status === "online" ? "Online" : status === "busy" ? "Busy" : "Offline";
+  const statusTone: BadgeTone =
+    status === "online" ? "success" : status === "busy" ? "warning" : "danger";
 
   return (
     <article
@@ -83,16 +87,9 @@ export function RunnerCard({
         <h3 className="runner-name" style={{ fontSize: "14px", fontWeight: 600 }}>
           {name}
         </h3>
-        <span
-          className="runner-status-dot"
-          style={{
-            background: statusColor,
-            borderRadius: "50%",
-            display: "inline-block",
-            height: "8px",
-            width: "8px",
-          }}
-        />
+        <Badge size="sm" tone={statusTone}>
+          {statusText}
+        </Badge>
       </div>
       <div className="runner-meta" style={{ color: "var(--text-secondary)", fontSize: "12px", marginBottom: "8px" }}>
         {machine} · {fmtUptime(uptimeSeconds)}

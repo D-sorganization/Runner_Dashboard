@@ -7,9 +7,12 @@ These are all pure (or near-pure) functions with no external I/O.
 
 from __future__ import annotations
 
+import errno
 import json
 import sys
 from pathlib import Path
+
+import httpx
 
 _BACKEND_DIR = Path(__file__).parent.parent / "backend"
 sys.path.insert(0, str(_BACKEND_DIR))
@@ -181,22 +184,51 @@ def test_disk_pressure_path_passthrough() -> None:
 
 
 def test_classify_node_offline_timeout_exception() -> None:
-    # The function checks str(exc).lower() for "timeout"
-    exc = RuntimeError("connection timeout exceeded")
+    # Uses isinstance(exc, httpx.TimeoutException) — not string matching.
+    exc = httpx.ConnectTimeout("timed out")
+    result = system_utils.classify_node_offline(exc)
+    assert result["offline_reason"] == "timeout"
+
+
+def test_classify_node_offline_read_timeout() -> None:
+    exc = httpx.ReadTimeout("read timed out")
     result = system_utils.classify_node_offline(exc)
     assert result["offline_reason"] == "timeout"
 
 
 def test_classify_node_offline_connection_refused() -> None:
-    exc = RuntimeError("connection refused by peer")
+    # Uses isinstance(exc, httpx.ConnectError) + OSError.errno — not string matching.
+    os_err = OSError()
+    os_err.errno = errno.ECONNREFUSED
+    exc = httpx.ConnectError("connection refused")
+    exc.__cause__ = os_err
     result = system_utils.classify_node_offline(exc)
     assert result["offline_reason"] == "refused"
 
 
 def test_classify_node_offline_no_route_to_host() -> None:
-    exc = RuntimeError("no route to host 10.0.0.1")
+    os_err = OSError()
+    os_err.errno = errno.ENETUNREACH
+    exc = httpx.ConnectError("network unreachable")
+    exc.__cause__ = os_err
     result = system_utils.classify_node_offline(exc)
     assert result["offline_reason"] == "network"
+
+
+def test_classify_node_offline_host_unreachable() -> None:
+    os_err = OSError()
+    os_err.errno = errno.EHOSTUNREACH
+    exc = httpx.ConnectError("host unreachable")
+    exc.__cause__ = os_err
+    result = system_utils.classify_node_offline(exc)
+    assert result["offline_reason"] == "network"
+
+
+def test_classify_node_offline_connect_error_no_os_cause() -> None:
+    # ConnectError without an OS cause defaults to "refused".
+    exc = httpx.ConnectError("connect failed")
+    result = system_utils.classify_node_offline(exc)
+    assert result["offline_reason"] == "refused"
 
 
 def test_classify_node_offline_401_status_code() -> None:

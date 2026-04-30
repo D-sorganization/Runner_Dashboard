@@ -1,8 +1,8 @@
-﻿# SPEC.md â€” D-sorganization Runner Dashboard
+# SPEC.md â€” D-sorganization Runner Dashboard
 
 **Spec Version:** 2.5.14
 **Application Version:** 4.1.0 (see `VERSION`)
-**Last Updated:** 2026-04-30T17:00:00Z
+**Last Updated:** 2026-04-30T17:30:00Z
 **Status:** Active
 
 ---
@@ -134,6 +134,24 @@ The project pytest configuration declares `backend` on `pythonpath`, and
 `tests/conftest.py` also inserts the resolved backend directory before importing
 the FastAPI app and router dependencies.
 
+**Uvicorn runtime tuning (env-var driven, issue #393):**
+
+When `backend/server.py` is invoked as `__main__`, the uvicorn instance is
+configured from environment variables so operators can adjust ASGI
+behaviour without code changes:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `WORKERS` | `1` | Worker process count. Stays at `1` until leader-election (#367) lands; setting it higher logs a runtime warning because background tasks would otherwise duplicate across workers. |
+| `LIMIT_CONCURRENCY` | `200` | Max concurrent in-flight requests before uvicorn returns 503. |
+| `TIMEOUT_KEEP_ALIVE` | `5` | Seconds an idle keep-alive HTTP connection is held before closure. |
+
+Invalid values fall back to the default and emit a log warning.
+
+**Bounded in-process buffers:** the CPU sample buffer `_cpu_history` is a
+`collections.deque` capped at `_CPU_HISTORY_MAXLEN` (1000 samples). The
+fixed cap guarantees flat memory regardless of process uptime (#393).
+
 ### 2.2 Frontend
 
 **Type:** Single-Page Application (SPA)
@@ -174,6 +192,8 @@ mobile-only read surface for runner monitoring cards over the existing runner,
 run, and machine telemetry payloads; desktop machine and runner tables remain
 the canonical wide-screen surface.
 
+
+Reusable UI primitives live in `frontend/src/primitives/`. Issue #422 introduces `Badge.tsx` (`tone` in `success | warning | danger | info | neutral`, `size` in `sm | md`) and `Pill.tsx` (with a `selected` boolean prop) so that the previously ad-hoc `.section-badge`, `.runner-status-badge`, `.conclusion-badge`, `.subtab-badge`, and `.fleet-status-pill` styles share a single token-driven implementation backed by `--badge-*-bg` / `--badge-*-fg` CSS variables in `frontend/src/design/tokens.ts`.
 
 PushSettings (issue #192) is a mobile-friendly React component for per-topic Web Push subscription management. It is located at `frontend/src/pages/PushSettings.tsx` and uses `GET /api/push/vapid-public-key` to fetch the VAPID key before subscribing to selected push topics via `POST /api/push/subscribe`.
 The Vite entrypoint in `frontend/src/main.tsx` includes a minimal tracer-bullet route shim for `/settings/push`: when the browser pathname resolves to that route, it renders `PushSettings` directly; all other paths continue to render the main dashboard app. This keeps the PushSettings work isolated while the Vite migration remains in progress.
@@ -242,6 +262,16 @@ implementation.
 
 The dashboard runs as a systemd service (`runner-dashboard.service`) on the
 primary fleet machine. See Section 6 for deployment details.
+
+`deploy/setup.sh` performs a `preflight()` check before any mutation (asserts
+disk free >1G at the deploy dir, Python 3.11+, port 8321 availability, and
+`~/.config/runner-dashboard/env` permissions of `600`), supports `--check-only`
+to run preflight without side effects and `--dry-run` to preview intended
+mutations, replaces `/etc/sudoers.d/runner-dashboard` atomically via
+`visudo -c -f` against a temp file (validation failure leaves the existing
+file untouched), and skips `systemctl restart runner-dashboard` when the
+deployed `git_sha` in `deployment.json` matches the current checkout unless
+`--force` is supplied.
 
 ---
 
@@ -352,16 +382,6 @@ AI agent dispatch control panel organised into three sub-tabs:
   Multi-select table with type/complexity/effort/judgement pills. Non-pickable
   rows are dimmed; `design`/`contested` judgement pills rendered red with
   warning. Dispatches via `POST /api/issues/dispatch` with optional force flag.
-
-Both `POST /api/prs/dispatch` and `POST /api/issues/dispatch` enforce a
-per-principal hourly fan-out cap (`backend/dispatch_quota.py`,
-`MAX_PER_PRINCIPAL_PER_HOUR=100` over a rolling 3600-second window).
-Anonymous, empty, or synthetic principals are rejected with HTTP 422 before
-any workflow dispatch is attempted; principals that exceed the rolling cap
-receive HTTP 429 with a `Retry-After` header advising when the next slot
-opens. The module exposes a counter-style metrics dict
-(`dispatch_quota.METRICS`) covering `allowed`, `rejected_anonymous`,
-`rejected_rate_limited`, and `current_principals`.
 
 The active sub-tab is persisted to `localStorage` under the key
 `remediation-subtab`.
@@ -764,6 +784,7 @@ env var.
 | `RUNNER_SCHEDULER_BIN` | `/usr/local/bin/runner-scheduler` | Runner scheduler binary path |
 | `RUNNER_SCHEDULER_SERVICE` | `runner-scheduler.service` | Scheduler systemd service name |
 | `RUN_JOB_ENRICHMENT_LIMIT` | `50` | Max runs to enrich with job data |
+| `LOG_FILTER_PATHS` | `/api/scheduled-workflows,/api/heavy-tests,/api/reports` | Comma-separated path prefixes sampled at 1/10 in request logs; errors always logged |
 
 ### 5.2 machine_registry.yml
 
@@ -936,6 +957,18 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 ---
 
 ## 7. Changelog
+
+### 2.5.14 - 2026-04-30
+- feat(scalability): drive uvicorn `workers`, `limit_concurrency`, and
+  `timeout_keep_alive` from `WORKERS` / `LIMIT_CONCURRENCY` /
+  `TIMEOUT_KEEP_ALIVE` env vars, with defaults `1` / `200` / `5`. `WORKERS`
+  stays at 1 until leader-election (#367) lands; setting it higher emits a
+  runtime warning. Documented under §2.1 Backend (#393).
+- chore(reliability): cap `_cpu_history` to a `collections.deque` with
+  `maxlen=1000` so the in-process CPU sample buffer cannot grow without
+  bound (#393).
+- chore(reliability): cap `queue_cleanup.find_stale_runs` fan-out to 8
+  concurrent repo queries via `asyncio.Semaphore` (#393).
 
 ### 2.5.11 - 2026-04-29
 - feat: add authenticated session tracking and remote logout endpoints for the
@@ -1149,6 +1182,30 @@ The function:
 Every generated prompt also includes the constant
 `PROMPT_UNTRUSTED_SYSTEM_INSTRUCTION` as a preamble, instructing the model
 not to follow any instructions found inside the delimiters.
+
+### 9.8 Secret Scanning (Issue #396)
+
+The repo enforces a defence-in-depth gate against accidentally committed
+credentials:
+
+- `gitleaks` and `detect-secrets` run as `pre-commit` hooks (configured in
+  `.pre-commit-config.yaml`, both pinned by SHA).
+- A dedicated `CI Secrets` workflow (`.github/workflows/ci-secrets.yml`)
+  runs `gitleaks` on every pull request and push to `main`, plus a
+  `detect-secrets` baseline-integrity check that fails when any new
+  finding appears outside the audited `.secrets.baseline`.
+- `tests/test_no_secrets_in_repo.py` runs in the standard pytest suite and
+  greps every git-tracked file for well-known credential prefixes
+  (GitHub PATs, AWS access keys, OpenAI / Anthropic / Slack tokens, PEM
+  private-key blocks). Inline `# pragma: allowlist secret` suppresses a
+  single line; `_ALLOWED_PATHS` skips known-safe files (the baseline, the
+  gitleaks config, this test file).
+- `.gitleaks.toml` extends the upstream default ruleset with allowlists
+  for the well-known fake VAPID test key in `backend/push.py` (tracked
+  for removal as a follow-up under #396) and standard documentation
+  placeholders.
+- Operational procedure (rotation, baseline refresh, leak response) lives
+  in `docs/runbooks/secret-scanning.md`.
 
 ---
 
@@ -1984,6 +2041,23 @@ automatically. Service tokens for bot principals can be minted via the
 Identity Manager (`identity_manager.mint_service_token`).
 <!-- spec-trigger-145 -->
 
+### 18.6 CI Action Pinning & Tool Version Parity (Issue #390)
+
+To prevent silent drift between local development and CI, the repository
+enforces two invariants:
+
+- **Single SHA per action:** every `actions/<name>@<sha>` reference in
+  `.github/workflows/*.yml` must resolve to one 40-char SHA across all
+  files, with one consistent `# vN` comment. The `verify-action-pin-uniformity`
+  step in `ci-standard.yml` (job `ci-health-check`) enforces this, and
+  `tests/test_workflow_action_pinning.py` provides a fast pytest guard.
+- **Tool version parity:** `pyproject.toml [dependency-groups.dev]` pins
+  `ruff` and `mypy` exactly (e.g. `ruff==0.14.10`, `mypy==1.13.0`) to
+  match the `rev:` values in `.pre-commit-config.yaml`. The
+  `verify-tool-version-parity` step in `ci-standard.yml` enforces this,
+  preventing `uv sync` from installing a newer linter/type-checker than
+  CI uses.
+
 ### 18.5 Cross-Fleet Coherence & Admin API (Wave 4)
 
 To ensure identity and quotas are respected across the entire fleet:
@@ -1995,5 +2069,6 @@ To ensure identity and quotas are respected across the entire fleet:
   - \POST /api/admin/principals/{id}/token\: Mint a new service token for a bot principal.
   - \DELETE /api/admin/tokens/{token_hash}\: Revoke a service token.
   - \PATCH /api/admin/principals/{id}/quota\: Update quotas (\max_runners\, \gent_spend_usd_day\, \local_app_slots\) for a specific principal.
-< ! - -   U p d a t e d :   2 0 2 6 - 0 4 - 2 9 T 1 8 : 3 8 : 1 6   - - >  
+< ! - -   U p d a t e d :   2 0 2 6 - 0 4 - 2 9 T 1 8 : 3 8 : 1 6   - - > 
+ 
  

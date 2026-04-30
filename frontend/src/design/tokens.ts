@@ -20,6 +20,22 @@ export const colorTokens = {
   accentOrange: "#f0883e",
 } as const;
 
+// Badge tints — paired background + foreground colours used by
+// the <Badge /> primitive. Each tone has a low-alpha tinted background
+// and a saturated foreground colour matching the same accent family.
+export const badgeTokens = {
+  successBg: "rgba(63, 185, 80, 0.15)",
+  successFg: "#3fb950",
+  warningBg: "rgba(210, 153, 34, 0.15)",
+  warningFg: "#d29922",
+  dangerBg: "rgba(248, 81, 73, 0.15)",
+  dangerFg: "#f85149",
+  infoBg: "rgba(88, 166, 255, 0.15)",
+  infoFg: "#58a6ff",
+  neutralBg: "rgba(110, 118, 129, 0.15)",
+  neutralFg: "#8b949e",
+} as const;
+
 export const surfaceTokens = {
   glassBg: "rgba(28, 33, 51, 0.7)",
   glassBorder: "rgba(255, 255, 255, 0.1)",
@@ -74,6 +90,17 @@ export const cssVariableMap = {
   "--accent-yellow": colorTokens.accentYellow,
   "--accent-purple": colorTokens.accentPurple,
   "--accent-orange": colorTokens.accentOrange,
+
+  "--badge-success-bg": badgeTokens.successBg,
+  "--badge-success-fg": badgeTokens.successFg,
+  "--badge-warning-bg": badgeTokens.warningBg,
+  "--badge-warning-fg": badgeTokens.warningFg,
+  "--badge-danger-bg": badgeTokens.dangerBg,
+  "--badge-danger-fg": badgeTokens.dangerFg,
+  "--badge-info-bg": badgeTokens.infoBg,
+  "--badge-info-fg": badgeTokens.infoFg,
+  "--badge-neutral-bg": badgeTokens.neutralBg,
+  "--badge-neutral-fg": badgeTokens.neutralFg,
 
   "--glass-bg": surfaceTokens.glassBg,
   "--glass-border": surfaceTokens.glassBorder,
