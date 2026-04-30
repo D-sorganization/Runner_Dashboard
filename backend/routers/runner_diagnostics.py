@@ -43,7 +43,12 @@ async def get_runners_diagnostics_summary(request: Request) -> dict[str, Any]:
 
         from dashboard_config import ORG
 
-        data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
+        # Keep the historical runners-router monkeypatch surface working for
+        # tests and local diagnostics while this route lives in a split module.
+        from . import runners as runners_router
+
+        api_admin = getattr(runners_router, "gh_api_admin", gh_api_admin)
+        data = await api_admin(f"/orgs/{ORG}/actions/runners")
         runners = data.get("runners", []) or []
 
         online_count = sum(1 for r in runners if r.get("status") == "online")

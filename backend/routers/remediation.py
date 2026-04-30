@@ -420,7 +420,7 @@ async def api_quick_dispatch(
 # ─── Bulk PR / Issue Agent Dispatch ──────────────────────────────────────────
 
 
-@router.post("/api/prs/dispatch")
+@router.post("/api/prs/dispatch", response_model=None)
 async def api_dispatch_to_prs(
     request: Request,
     *,
@@ -463,7 +463,7 @@ async def api_dispatch_to_prs(
     return dict(result)
 
 
-@router.post("/api/issues/dispatch")
+@router.post("/api/issues/dispatch", response_model=None)
 async def api_dispatch_to_issues(
     request: Request,
     *,

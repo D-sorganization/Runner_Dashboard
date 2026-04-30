@@ -39,6 +39,7 @@ import subprocess
 import time
 from collections import deque
 from pathlib import Path
+from typing import TextIO
 
 import yaml
 
@@ -58,6 +59,7 @@ logging.basicConfig(
     level=os.environ.get("AUTOSCALER_LOG_LEVEL", "INFO"),
     format="%(asctime)s %(levelname)s %(message)s",
 )
+_lock_fd: TextIO | None = None
 
 
 def _env_float(name: str, default: float) -> float:

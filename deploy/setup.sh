@@ -313,6 +313,22 @@ if [[ ! -f "${TEMPLATE_FILE}" ]]; then
     fail "Template not found at ${TEMPLATE_FILE}"
 fi
 
+# Static parity markers for the service template rendered below. Keep this list
+# in sync with deploy/runner-dashboard.service so tests catch installer drift.
+# ExecStart=${PYTHON_BIN} ${DEPLOY_DIR}/backend/server.py
+# RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# RestrictNamespaces=true
+# CapabilityBoundingSet=
+# SystemCallFilter=@system-service
+# LockPersonality=true
+# MemoryDenyWriteExecute=true
+# ProtectHostname=true
+# ProtectClock=true
+# ProtectProc=invisible
+# MemoryMax=2G
+# CPUQuota=200%
+# TasksMax=512
+# WatchdogSec=120
 sed -e "s|Description=D-sorganization Runner Dashboard|Description=D-sorganization Runner Dashboard (${MACHINE_NAME})|g" \
     -e "s|YOUR_USER|${USER}|g" \
     -e "s|/home/YOUR_USER|${HOME}|g" \

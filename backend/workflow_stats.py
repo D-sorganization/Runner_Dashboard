@@ -280,7 +280,7 @@ def get_summary(days: int = 14, group_by: str = "workflow") -> dict[str, Any]:
 
     key_cols = {"workflow": "repo, workflow_name", "repo": "repo"}[group_by]
     with _connect() as conn:
-        sql = f"SELECT {key_cols}, conclusion, duration_seconds, queued_seconds FROM workflow_runs WHERE created_at >= ? AND duration_seconds IS NOT NULL"  # nosec B608 — key_cols from allow-list dict  # noqa: E501
+        sql = f"SELECT {key_cols}, conclusion, duration_seconds, queued_seconds FROM workflow_runs WHERE created_at >= ? AND duration_seconds IS NOT NULL"  # noqa: E501
         rows = conn.execute(  # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query  # noqa: E501
             sql, (cutoff,)
         ).fetchall()
@@ -341,7 +341,7 @@ def get_timeseries(
         params.append(workflow_name)
 
     with _connect() as conn:
-        sql = f"SELECT created_at, duration_seconds, queued_seconds FROM workflow_runs WHERE {' AND '.join(where)} ORDER BY created_at"  # nosec B608 — where clauses from internal allow-list  # noqa: E501
+        sql = f"SELECT created_at, duration_seconds, queued_seconds FROM workflow_runs WHERE {' AND '.join(where)} ORDER BY created_at"  # noqa: E501
         rows = conn.execute(  # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query  # noqa: E501
             sql, params
         ).fetchall()
@@ -392,7 +392,7 @@ def get_recent_runs(limit: int = 50, repo: str | None = None) -> dict[str, Any]:
     params.append(limit)
 
     with _connect() as conn:
-        sql = f"SELECT run_id, repo, workflow_name, conclusion, head_branch, created_at, run_started_at, updated_at, queued_seconds, duration_seconds FROM workflow_runs WHERE {' AND '.join(where)} ORDER BY created_at DESC LIMIT ?"  # nosec B608 — where clauses from internal allow-list  # noqa: E501
+        sql = f"SELECT run_id, repo, workflow_name, conclusion, head_branch, created_at, run_started_at, updated_at, queued_seconds, duration_seconds FROM workflow_runs WHERE {' AND '.join(where)} ORDER BY created_at DESC LIMIT ?"  # noqa: E501
         rows = conn.execute(  # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query  # noqa: E501
             sql, params
         ).fetchall()

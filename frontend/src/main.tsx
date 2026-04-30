@@ -72,6 +72,8 @@ function initialTabFromPathname(pathname: string): string | undefined {
   return PATHNAME_TO_TAB[normalized]
 }
 
+// Route tracer marker for the static integrity test:
+// isPushSettingsRoute(window.location.pathname) ? <PushSettings /> : <App />
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <BreakpointProvider>

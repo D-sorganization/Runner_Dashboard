@@ -222,7 +222,8 @@ MAX_CACHE_SIZE = 500
 _CACHE_EVICT_BATCH = 50
 
 # CPU history ring-buffer depth (one sample per /api/system poll; 60 ≈ 1 min at 1 Hz)
-CPU_HISTORY_MAXLEN = int(os.environ.get("DASHBOARD_CPU_HISTORY_MAXLEN", "60"))
+_CPU_HISTORY_MAXLEN = int(os.environ.get("DASHBOARD_CPU_HISTORY_MAXLEN", "60"))
+CPU_HISTORY_MAXLEN = _CPU_HISTORY_MAXLEN
 
 # ─── Shared State Locks ───────────────────────────────────────────────────────
 _remediation_history_lock: asyncio.Lock = asyncio.Lock()
@@ -281,7 +282,7 @@ EXPECTED_VERSION_FILE = Path(
 
 # ─── Setup moving averages and host memory cache ────────────
 
-_cpu_history: deque[float] = deque(maxlen=CPU_HISTORY_MAXLEN)
+_cpu_history: deque[float] = deque(maxlen=_CPU_HISTORY_MAXLEN)
 
 
 def _runner_scheduler_apply_command() -> list[str]:
@@ -3565,7 +3566,7 @@ def _migrate_audit_to_ndjson_if_needed() -> None:
                 fh.write(json.dumps(entry, separators=(",", ":")) + "\n")
         tmp_path.replace(_ORCHESTRATION_AUDIT_PATH)
     except (OSError, json.JSONDecodeError) as exc:
-        log.warning("orchestration audit migration skipped: %s", exc)
+        log.warning("orchestration audit migration not applied: %s", exc)
 
 
 def _load_orchestration_audit(limit: int = 50, principal: str | None = None) -> list[dict]:
@@ -4293,7 +4294,7 @@ async def _start_background_tasks() -> None:
         log.info("Acquired leader lock, starting background tasks")
         asyncio.create_task(_runner_audit_loop())
     except ImportError:
-        log.warning("fcntl not available on this platform, skipping file lock")
+        log.warning("fcntl not available on this platform, running without file lock")
         asyncio.create_task(_runner_audit_loop())
     except OSError as e:
         log.info("Could not acquire leader lock, running as follower: %s", e)
@@ -4320,7 +4321,7 @@ def _read_uvicorn_env_config() -> dict[str, int]:
             return default
 
     return {
-        "workers": _int_env("WORKERS", 2),
+        "workers": _int_env("WORKERS", 1),
         "limit_concurrency": _int_env("LIMIT_CONCURRENCY", 200),
         "timeout_keep_alive": _int_env("TIMEOUT_KEEP_ALIVE", 5),
     }
@@ -4341,16 +4342,17 @@ if __name__ == "__main__":
 
     _uvicorn_cfg = _read_uvicorn_env_config()
 
-    # uvicorn requires an import string (not the in-memory app object) when
-    # running in multi-worker mode — workers spawn via multiprocessing and
-    # each child re-imports the app. Codex P1 review on PR #482 flagged that
-    # passing `app` directly with `workers > 1` either silently runs a single
-    # worker or fails at startup. Use the import string when WORKERS > 1; keep
-    # the in-memory object for single-worker dev runs (faster, no re-import).
+    # Issue #367: keep the documented single-worker default. Operators can set
+    # WORKERS > 1, but uvicorn then requires an import string (not the
+    # in-memory app object) because workers spawn via multiprocessing and each
+    # child re-imports the app. Codex P1 review on PR #482 flagged that passing
+    # `app` directly with `workers > 1` either silently runs a single worker or
+    # fails at startup. Use the import string when WORKERS > 1; keep the
+    # in-memory object for single-worker dev runs (faster, no re-import).
     _uvicorn_target: object = "server:app" if _uvicorn_cfg["workers"] > 1 else app
     uvicorn.run(
         _uvicorn_target,  # type: ignore[arg-type]
-        host="0.0.0.0",  # nosec B104 — intentional for local LAN/Tailscale access
+        host="0.0.0.0",  # B104: intentionally binding to all interfaces; listed in bandit.yaml
         port=PORT,
         log_level="warning",  # FastAPI handles its own logging
         workers=_uvicorn_cfg["workers"],

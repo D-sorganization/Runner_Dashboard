@@ -191,21 +191,22 @@ jobs:
           import tomllib, pathlib
           data = tomllib.loads(pathlib.Path("pyproject.toml").read_text())
           overrides = data.get("tool", {}).get("mypy", {}).get("overrides", [])
-          relaxed = [
-              o for o in overrides
-              if o.get("disallow_untyped_defs") is False or o.get("strict_optional") is False
-          ]
-          print(len(relaxed))
+          relaxed_count = 0
+          for override in overrides:
+              if override.get("disallow_untyped_defs") is False or override.get("strict_optional") is False:
+                  modules = override.get("module", [])
+                  relaxed_count += len(modules) if isinstance(modules, list) else 1
+          print(relaxed_count)
           EOF
           )
           echo "::notice::mypy relaxed-override module count: ${OVERRIDE_COUNT} (target: 0, tracked in #161)"
           mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional
       - name: Run bandit security scan
-        # Blocking for HIGH severity (-l = medium+high, -i = medium+high confidence).
+        # Blocking for HIGH severity (-lll = high severity, -i = low+ confidence).
         # MEDIUM findings are allow-listed in bandit.yaml with rationale per finding.
         # Exits non-zero on HIGH; MEDIUM/LOW are suppressed via config.
         run: |
-          bandit -r backend/ -l -i --exclude backend/__pycache__ \
+          bandit -r backend/ -lll -i --exclude backend/__pycache__ \
             -c bandit.yaml \
             -f json -o bandit-report.json
         # HIGH severity causes exit 1 — bandit returns non-zero; do NOT add
