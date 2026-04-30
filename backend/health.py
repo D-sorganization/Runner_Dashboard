@@ -61,12 +61,12 @@ async def health_check(request: Request):
 @router.get("/api/version")
 async def api_version() -> dict:
     """Return dashboard and dispatch-envelope version compatibilities."""
-    from server import _deployment_info  # noqa: PLC0415
     from dispatch_contract import (  # noqa: PLC0415
-        MIN_ENVELOPE_VERSION,
         MAX_ENVELOPE_VERSION,
+        MIN_ENVELOPE_VERSION,
         SUPPORTED_SCHEMA_VERSIONS,
     )
+    from server import _deployment_info  # noqa: PLC0415
 
     dep = _deployment_info()
     return {
