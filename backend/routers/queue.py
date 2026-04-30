@@ -17,7 +17,6 @@ import logging
 from cache_utils import cache_delete, cache_get, cache_set
 from dashboard_config import ORG
 from fastapi import APIRouter, Depends, HTTPException, Request
-from gh_utils import gh_api_admin
 from identity import Principal, require_scope
 from proxy_utils import proxy_to_hub, should_proxy_fleet_to_hub
 from system_utils import run_cmd
@@ -145,7 +144,7 @@ async def get_queue(request: Request) -> dict:
 async def cancel_run(
     request: Request,
     *,
-    principal: Principal = Depends(require_scope("workflows.control")),
+    principal: Principal = Depends(require_scope("workflows.control")),  # noqa: B008
     repo: str,
     run_id: int,  # noqa: B008
 ) -> dict:
@@ -172,7 +171,7 @@ async def cancel_run(
 async def rerun_failed(
     request: Request,
     *,
-    principal: Principal = Depends(require_scope("workflows.control")),
+    principal: Principal = Depends(require_scope("workflows.control")),  # noqa: B008
     repo: str,
     run_id: int,  # noqa: B008
 ) -> dict:

@@ -1,13 +1,9 @@
 """Queue diagnostic routes for analyzing workflow run delays."""
 
-import asyncio
-import json
 import logging
 
+from cache_utils import cache_get, cache_set
 from fastapi import APIRouter
-from cache_utils import cache_delete, cache_get, cache_set
-from gh_utils import gh_api_admin
-from system_utils import run_cmd
 
 log = logging.getLogger("dashboard.queue_diagnostics")
 router = APIRouter()

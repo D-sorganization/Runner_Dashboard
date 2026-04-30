@@ -17,7 +17,7 @@ from dashboard_config import (
 from fastapi import APIRouter, Request
 from gh_utils import gh_api_admin
 from proxy_utils import proxy_to_hub, should_proxy_fleet_to_hub
-from routers.runners import runner_num_from_id, runner_svc_path, run_runner_svc
+from routers.runners import run_runner_svc, runner_num_from_id, runner_svc_path
 from system_utils import (
     classify_node_offline,
     get_system_metrics_snapshot,
