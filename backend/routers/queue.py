@@ -251,5 +251,3 @@ async def cancel_workflow_runs(
         "cancelled": cancelled,
         "errors": errors,
     }
-
-

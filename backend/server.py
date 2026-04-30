@@ -904,10 +904,6 @@ def _build_deployment_state(nodes: list[dict], expected_version: str) -> dict:
     }
 
 
-
-
-
-
 async def _get_recent_org_repos(limit: int = 30) -> list[dict]:
     """Fetch recently updated organization repositories."""
     code, stdout, _ = await run_cmd(
@@ -966,8 +962,6 @@ async def _github_search_total(query: str) -> int:
         return int(json.loads(stdout).get("total_count", 0))
     except (json.JSONDecodeError, TypeError, ValueError):
         return 0
-
-
 
 
 async def _fetch_run_jobs(repo_name: str, run_id: int | str) -> list[dict]:
