@@ -22,10 +22,9 @@ RUN groupadd --gid 10001 appuser \
 # Copy requirements first for layer caching; install with hash verification
 COPY requirements.lock.txt .
 RUN pip install --no-cache-dir --require-hashes -r requirements.lock.txt
-RUN pip install --no-cache-dir wheel==0.46.2 jaraco.context==6.1.0 && \
-    rm -rf /usr/local/lib/python3.11/site-packages/wheel-0.45.1.dist-info \
-           /usr/local/lib/python3.11/site-packages/jaraco.context-5.3.0.dist-info \
-           /usr/local/lib/python3.11/site-packages/jaraco_context-5.3.0.dist-info
+RUN pip install --no-cache-dir --upgrade wheel==0.46.2 jaraco.context==6.1.0
+RUN pip uninstall -y wheel jaraco.context
+
 
 # Copy application code and set ownership
 COPY --chown=appuser:appuser backend/ ./backend/
