@@ -1,8 +1,8 @@
 # SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.14
+**Spec Version:** 2.5.15
 **Application Version:** 4.1.0 (see `VERSION`)
-**Last Updated:** 2026-04-30T17:30:00Z
+**Last Updated:** 2026-04-30T20:45:00Z
 **Status:** Active
 
 ---
@@ -630,6 +630,12 @@ env var.
 | GET | `/api/maxwell/status` | Maxwell daemon status and configuration |
 | POST | `/api/maxwell/control` | Control Maxwell daemon (start/stop/configure) |
 | POST | `/api/maxwell/chat` | Proxy Maxwell chat messages over HTTP with streamed text output |
+
+Maxwell JSON proxy endpoints preserve upstream failure modes instead of
+masking daemon errors as successful dashboard responses. Timeouts return 504,
+connection failures return 503, non-JSON upstream responses return a structured
+error payload with `upstream` and `status`, and 204 responses translate to
+`{"status": "no_content"}`.
 
 ### Assessments
 

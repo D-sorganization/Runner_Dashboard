@@ -44,12 +44,18 @@ async def client(app):
         yield ac
 
 
-def _mock_httpx_response(json_data: dict, status_code: int = 200) -> MagicMock:
+def _mock_httpx_response(json_data: dict, status_code: int = 200) -> httpx.Response:
     """Build a mock httpx.Response."""
-    mock_resp = MagicMock()
-    mock_resp.status_code = status_code
-    mock_resp.json.return_value = json_data
-    return mock_resp
+    return httpx.Response(status_code, json=json_data, request=httpx.Request("GET", "http://maxwell.test/api/mock"))
+
+
+def _mock_html_response(status_code: int = 502) -> httpx.Response:
+    return httpx.Response(
+        status_code,
+        text="<html>oom</html>",
+        headers={"content-type": "text/html"},
+        request=httpx.Request("GET", "http://maxwell.test/api/mock"),
+    )
 
 
 def _make_mock_client(get_return=None, post_return=None, get_side_effect=None, post_side_effect=None):
@@ -88,14 +94,26 @@ async def test_get_maxwell_version_returns_200_with_contract(client) -> None:
 
 @pytest.mark.asyncio
 async def test_get_maxwell_version_daemon_unreachable_returns_200(client) -> None:
-    """When daemon is unreachable, version endpoint returns 200 with daemon_available=False."""
+    """When daemon is unreachable, version endpoint preserves the upstream failure."""
     mock_cm = _make_mock_client(get_side_effect=httpx.ConnectError("connection refused"))
     with patch("httpx.AsyncClient", return_value=mock_cm):
         resp = await client.get("/api/maxwell/version")
-    assert resp.status_code == 200
+    assert resp.status_code == 503
     data = resp.json()
-    assert data.get("daemon_available") is False
-    assert "error" in data
+    assert data["detail"]["upstream"] == "maxwell"
+    assert data["detail"]["status"] == 503
+
+
+@pytest.mark.asyncio
+async def test_get_maxwell_version_html_502_preserves_upstream_status(client) -> None:
+    """HTML Maxwell 502 responses surface as structured 502 payloads."""
+    mock_cm = _make_mock_client(get_return=_mock_html_response(502))
+    with patch("httpx.AsyncClient", return_value=mock_cm):
+        resp = await client.get("/api/maxwell/version")
+    assert resp.status_code == 502
+    data = resp.json()
+    assert data["detail"]["upstream"] == "maxwell"
+    assert data["detail"]["status"] == 502
 
 
 # ─── GET /api/maxwell/tasks ───────────────────────────────────────────────────
@@ -115,13 +133,13 @@ async def test_get_maxwell_tasks_returns_200_with_tasks_key(client) -> None:
 
 @pytest.mark.asyncio
 async def test_get_maxwell_tasks_daemon_unreachable_returns_200(client) -> None:
-    """When daemon is unreachable, tasks endpoint returns 200 with daemon_available=False."""
+    """When daemon is unreachable, tasks endpoint preserves the upstream failure."""
     mock_cm = _make_mock_client(get_side_effect=httpx.ConnectError("connection refused"))
     with patch("httpx.AsyncClient", return_value=mock_cm):
         resp = await client.get("/api/maxwell/tasks")
-    assert resp.status_code == 200
+    assert resp.status_code == 503
     data = resp.json()
-    assert data.get("daemon_available") is False
+    assert data["detail"]["upstream"] == "maxwell"
 
 
 # ─── GET /api/maxwell/tasks/{task_id} ────────────────────────────────────────
@@ -141,13 +159,13 @@ async def test_get_maxwell_task_detail_returns_200(client) -> None:
 
 @pytest.mark.asyncio
 async def test_get_maxwell_task_detail_daemon_unreachable_returns_200(client) -> None:
-    """When daemon is unreachable, task detail returns 200 with daemon_available=False."""
+    """When daemon is unreachable, task detail preserves the upstream failure."""
     mock_cm = _make_mock_client(get_side_effect=httpx.ConnectError("connection refused"))
     with patch("httpx.AsyncClient", return_value=mock_cm):
         resp = await client.get("/api/maxwell/tasks/abc123")
-    assert resp.status_code == 200
+    assert resp.status_code == 503
     data = resp.json()
-    assert data.get("daemon_available") is False
+    assert data["detail"]["upstream"] == "maxwell"
 
 
 # ─── GET /api/maxwell/daemon-status ──────────────────────────────────────────
@@ -167,13 +185,13 @@ async def test_get_maxwell_daemon_status_returns_200(client) -> None:
 
 @pytest.mark.asyncio
 async def test_get_maxwell_daemon_status_unreachable_returns_200(client) -> None:
-    """When daemon is unreachable, daemon-status returns 200 with daemon_available=False."""
+    """When daemon is unreachable, daemon-status preserves the upstream failure."""
     mock_cm = _make_mock_client(get_side_effect=httpx.ConnectError("connection refused"))
     with patch("httpx.AsyncClient", return_value=mock_cm):
         resp = await client.get("/api/maxwell/daemon-status")
-    assert resp.status_code == 200
+    assert resp.status_code == 503
     data = resp.json()
-    assert data.get("daemon_available") is False
+    assert data["detail"]["upstream"] == "maxwell"
 
 
 # ─── POST /api/maxwell/pipeline-control/{action} ─────────────────────────────
@@ -208,13 +226,13 @@ async def test_maxwell_pipeline_control_badaction_returns_422(client) -> None:
 
 @pytest.mark.asyncio
 async def test_maxwell_pipeline_control_daemon_unreachable_returns_200(client) -> None:
-    """When daemon is unreachable, pipeline-control returns 200 with daemon_available=False."""
+    """When daemon is unreachable, pipeline-control preserves the upstream failure."""
     mock_cm = _make_mock_client(post_side_effect=httpx.ConnectError("connection refused"))
     with patch("httpx.AsyncClient", return_value=mock_cm):
         resp = await client.post("/api/maxwell/pipeline-control/abort", json={})
-    assert resp.status_code == 200
+    assert resp.status_code == 503
     data = resp.json()
-    assert data.get("daemon_available") is False
+    assert data["detail"]["upstream"] == "maxwell"
 
 
 # ─── POST /api/maxwell/dispatch ──────────────────────────────────────────────
@@ -222,13 +240,13 @@ async def test_maxwell_pipeline_control_daemon_unreachable_returns_200(client) -
 
 @pytest.mark.asyncio
 async def test_maxwell_dispatch_daemon_unreachable_returns_200(client) -> None:
-    """When daemon is unreachable, dispatch returns 200 with daemon_available=False (not 5xx)."""
+    """When daemon is unreachable, dispatch preserves the upstream failure."""
     mock_cm = _make_mock_client(post_side_effect=httpx.ConnectError("connection refused"))
     with patch("httpx.AsyncClient", return_value=mock_cm):
         resp = await client.post("/api/maxwell/dispatch", json={"repo": "test-repo"})
-    assert resp.status_code == 200
+    assert resp.status_code == 503
     data = resp.json()
-    assert data.get("daemon_available") is False
+    assert data["detail"]["upstream"] == "maxwell"
 
 
 # ─── POST /api/maxwell/chat ──────────────────────────────────────────────────

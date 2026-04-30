@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import sys  # noqa: E402
 from pathlib import Path  # noqa: E402
-from unittest.mock import MagicMock, patch  # noqa: E402
+from types import SimpleNamespace  # noqa: E402
+from unittest.mock import AsyncMock, MagicMock, patch  # noqa: E402
+
+import httpx  # noqa: E402
+import pytest  # noqa: E402
+from fastapi import HTTPException  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 
@@ -16,6 +21,88 @@ def _make_request(query_params: dict[str, str]) -> MagicMock:
     mock = MagicMock()
     mock.query_params.get = lambda key, default="": query_params.get(key, default)
     return mock
+
+
+def _make_proxy_request(path: str = "/api/fleet/nodes") -> MagicMock:
+    """Return a mocked FastAPI Request suitable for proxy_to_hub."""
+    mock = MagicMock()
+    mock.method = "GET"
+    mock.url = SimpleNamespace(path=path, query="")
+    mock.headers = {"x-request-id": "req-123"}
+    mock.body = AsyncMock(return_value=b"")
+    return mock
+
+
+def test_translate_upstream_response_returns_no_content_status() -> None:
+    resp = httpx.Response(204, request=httpx.Request("GET", "http://hub.internal/api/fleet/nodes"))
+
+    assert proxy_utils.translate_upstream_response(
+        resp,
+        upstream="hub",
+        request_id="req-123",
+        target_url="http://hub.internal/api/fleet/nodes",
+    ) == {"status": "no_content"}
+
+
+def test_translate_upstream_response_rejects_non_json_2xx() -> None:
+    resp = httpx.Response(
+        200,
+        text="<html>ok</html>",
+        headers={"content-type": "text/html"},
+        request=httpx.Request("GET", "http://hub.internal/api/fleet/nodes"),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        proxy_utils.translate_upstream_response(
+            resp,
+            upstream="hub",
+            request_id="req-123",
+            target_url="http://hub.internal/api/fleet/nodes",
+        )
+
+    assert exc_info.value.status_code == 502
+    assert exc_info.value.detail == {"upstream": "hub", "status": 200, "detail": "upstream returned non-JSON"}
+
+
+def test_translate_upstream_response_preserves_maxwell_html_502() -> None:
+    resp = httpx.Response(
+        502,
+        text="<html>oom</html>",
+        headers={"content-type": "text/html"},
+        request=httpx.Request("GET", "http://maxwell.internal/api/version"),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        proxy_utils.translate_upstream_response(
+            resp,
+            upstream="maxwell",
+            request_id="req-123",
+            target_url="http://maxwell.internal/api/version",
+        )
+
+    assert exc_info.value.status_code == 502
+    assert exc_info.value.detail["upstream"] == "maxwell"
+    assert exc_info.value.detail["status"] == 502
+
+
+@pytest.mark.asyncio
+async def test_proxy_to_hub_exposes_html_502_payload(monkeypatch: pytest.MonkeyPatch) -> None:
+    requests: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(502, text="<html>oom</html>", headers={"content-type": "text/html"})
+
+    transport = httpx.MockTransport(handler)
+    async_client = httpx.AsyncClient
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: async_client(transport=transport, **kwargs))
+    with patch.object(proxy_utils, "HUB_URL", "http://hub.internal"):
+        with pytest.raises(HTTPException) as exc_info:
+            await proxy_utils.proxy_to_hub(_make_proxy_request("/api/maxwell/version"))
+
+    assert len(requests) == 1
+    assert exc_info.value.status_code == 502
+    assert exc_info.value.detail == {"upstream": "hub", "status": 502, "detail": "upstream returned non-JSON"}
 
 
 class TestShouldProxyFleetToHub:

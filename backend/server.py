@@ -92,6 +92,7 @@ from machine_registry import (  # noqa: E402
     merge_registry_with_live_nodes,
 )
 from middleware import add_security_headers, csrf_check  # noqa: E402
+from proxy_utils import _request_id_from_headers, translate_upstream_response  # noqa: E402
 from report_files import parse_report_metrics, sanitize_report_date  # noqa: E402
 from routers import assistant as _assistant_router  # noqa: E402
 from routers import credentials as _credentials_router  # noqa: E402
@@ -546,6 +547,7 @@ async def proxy_to_hub(request: Request):
         url = f"{HUB_URL}{request.url.path}"
         if request.url.query:
             url = f"{url}?{request.url.query}"
+        request_id = _request_id_from_headers(dict(request.headers))
         try:
             req = client.build_request(
                 request.method,
@@ -554,16 +556,13 @@ async def proxy_to_hub(request: Request):
                 content=await request.body(),
             )
             resp = await client.send(req)
-            # Prevent decoding errors on empty/non-json responses if necessary
-            if resp.status_code == 204 or not resp.content:
-                return {}
-            return resp.json()
-        except Exception as e:  # noqa: BLE001
-            log.warning("Hub proxy error for %s: %s", request.url.path, e)
-            raise HTTPException(status_code=502, detail="Hub proxy error") from e
-
-            log.warning("Hub proxy error for %s: %s", request.url.path, e)
-            raise HTTPException(status_code=502, detail="Hub proxy error") from e
+            return translate_upstream_response(resp, upstream="hub", request_id=request_id, target_url=url)
+        except httpx.TimeoutException as e:
+            log.warning("Hub proxy timeout: request_id=%s url=%s", request_id, url)
+            raise HTTPException(status_code=504, detail="Hub proxy timeout") from e
+        except httpx.ConnectError as e:
+            log.warning("Hub proxy connect error: request_id=%s url=%s error=%s", request_id, url, e)
+            raise HTTPException(status_code=503, detail="Hub unavailable") from e
 
 
 def _should_proxy_fleet_to_hub(request: Request) -> bool:
@@ -3215,79 +3214,72 @@ def _maxwell_base_url() -> str:
     return os.environ.get("MAXWELL_URL", "") or f"http://localhost:{int(os.environ.get('MAXWELL_PORT', 8322))}"
 
 
+async def _maxwell_json_request(
+    method: str,
+    path: str,
+    *,
+    request: Request | None = None,
+    params: dict[str, Any] | None = None,
+    content: bytes | None = None,
+) -> dict[str, Any]:
+    """Proxy a Maxwell JSON endpoint and preserve upstream failure details."""
+    request_id = _request_id_from_headers(dict(request.headers)) if request is not None else "-"
+    url = f"{_maxwell_base_url()}{path}"
+    try:
+        async with httpx.AsyncClient(timeout=HttpTimeout.MAXWELL_PROXY_S) as client:
+            if method == "GET":
+                resp = await client.get(url, params=params)
+            else:
+                resp = await client.post(url, content=content or b"", headers={"Content-Type": "application/json"})
+            log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
+            try:
+                target_url = str(resp.request.url)
+            except RuntimeError:
+                target_url = url
+            return translate_upstream_response(resp, upstream="maxwell", request_id=request_id, target_url=target_url)
+    except httpx.TimeoutException as e:
+        log.warning("maxwell_proxy timeout: path=%s request_id=%s url=%s", path, request_id, url)
+        raise HTTPException(
+            status_code=504,
+            detail={"upstream": "maxwell", "status": 504, "detail": "upstream timeout"},
+        ) from e
+    except httpx.ConnectError as e:
+        log.warning("maxwell_proxy connect error: path=%s request_id=%s url=%s error=%s", path, request_id, url, e)
+        raise HTTPException(
+            status_code=503,
+            detail={"upstream": "maxwell", "status": 503, "detail": "upstream unavailable"},
+        ) from e
+
+
 @app.get("/api/maxwell/version")
 async def get_maxwell_version() -> dict:
     """Proxy GET /api/version from Maxwell-Daemon."""
     path = "/api/version"
-    resp = None
-    try:
-        async with httpx.AsyncClient(timeout=HttpTimeout.MAXWELL_PROXY_S) as client:
-            resp = await client.get(f"{_maxwell_base_url()}{path}")
-            log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
-            return resp.json()
-    except Exception as e:  # noqa: BLE001
-        log.info("maxwell_proxy: path=%s status=%s", path, "error")
-        return {"error": str(e)[:120], "daemon_available": False}
-
-        log.info("maxwell_proxy: path=%s status=%s", path, "error")
-        return {"error": str(e)[:120], "daemon_available": False}
+    return await _maxwell_json_request("GET", path)
 
 
 @app.get("/api/maxwell/daemon-status")
 async def get_maxwell_daemon_status_detail() -> dict:
     """Proxy GET /api/status from Maxwell-Daemon (pipeline state)."""
     path = "/api/status"
-    resp = None
-    try:
-        async with httpx.AsyncClient(timeout=HttpTimeout.MAXWELL_PROXY_S) as client:
-            resp = await client.get(f"{_maxwell_base_url()}{path}")
-            log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
-            return resp.json()
-    except Exception as e:  # noqa: BLE001
-        log.info("maxwell_proxy: path=%s status=%s", path, "error")
-        return {"error": str(e)[:120], "daemon_available": False}
-
-        log.info("maxwell_proxy: path=%s status=%s", path, "error")
-        return {"error": str(e)[:120], "daemon_available": False}
+    return await _maxwell_json_request("GET", path)
 
 
 @app.get("/api/maxwell/tasks")
 async def get_maxwell_tasks(limit: int = 20, cursor: str | None = None) -> dict:
     """Proxy GET /api/tasks from Maxwell-Daemon."""
     path = "/api/tasks"
-    resp = None
-    try:
-        params: dict = {"limit": limit}
-        if cursor is not None:
-            params["cursor"] = cursor
-        async with httpx.AsyncClient(timeout=HttpTimeout.MAXWELL_PROXY_S) as client:
-            resp = await client.get(f"{_maxwell_base_url()}{path}", params=params)
-            log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
-            return resp.json()
-    except Exception as e:  # noqa: BLE001
-        log.info("maxwell_proxy: path=%s status=%s", path, "error")
-        return {"error": str(e)[:120], "daemon_available": False}
-
-        log.info("maxwell_proxy: path=%s status=%s", path, "error")
-        return {"error": str(e)[:120], "daemon_available": False}
+    params: dict[str, Any] = {"limit": limit}
+    if cursor is not None:
+        params["cursor"] = cursor
+    return await _maxwell_json_request("GET", path, params=params)
 
 
 @app.get("/api/maxwell/tasks/{task_id}")
 async def get_maxwell_task_detail(task_id: str) -> dict:
     """Proxy GET /api/tasks/{task_id} from Maxwell-Daemon."""
     path = f"/api/tasks/{task_id}"
-    resp = None
-    try:
-        async with httpx.AsyncClient(timeout=HttpTimeout.MAXWELL_PROXY_S) as client:
-            resp = await client.get(f"{_maxwell_base_url()}{path}")
-            log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
-            return resp.json()
-    except Exception as e:  # noqa: BLE001
-        log.info("maxwell_proxy: path=%s status=%s", path, "error")
-        return {"error": str(e)[:120], "daemon_available": False}
-
-        log.info("maxwell_proxy: path=%s status=%s", path, "error")
-        return {"error": str(e)[:120], "daemon_available": False}
+    return await _maxwell_json_request("GET", path)
 
 
 @app.post("/api/maxwell/dispatch")
@@ -3298,23 +3290,7 @@ async def maxwell_dispatch_task(
 ) -> dict:
     """Proxy POST /api/dispatch to Maxwell-Daemon (forwards body as-is)."""
     path = "/api/dispatch"
-    resp = None
-    try:
-        body = await request.body()
-        async with httpx.AsyncClient(timeout=HttpTimeout.MAXWELL_PROXY_S) as client:
-            resp = await client.post(
-                f"{_maxwell_base_url()}{path}",
-                content=body,
-                headers={"Content-Type": "application/json"},
-            )
-            log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
-            return resp.json()
-    except Exception as e:  # noqa: BLE001
-        log.info("maxwell_proxy: path=%s status=%s", path, "error")
-        return {"error": str(e)[:120], "daemon_available": False}
-
-        log.info("maxwell_proxy: path=%s status=%s", path, "error")
-        return {"error": str(e)[:120], "daemon_available": False}
+    return await _maxwell_json_request("POST", path, request=request, content=await request.body())
 
 
 @app.post("/api/maxwell/chat", response_model=None)
@@ -3360,23 +3336,7 @@ async def maxwell_pipeline_control(
     if action not in ("pause", "resume", "abort"):
         raise HTTPException(status_code=422, detail="action must be pause, resume, or abort")
     path = f"/api/control/{action}"
-    resp = None
-    try:
-        body = await request.body()
-        async with httpx.AsyncClient(timeout=HttpTimeout.MAXWELL_PROXY_S) as client:
-            resp = await client.post(
-                f"{_maxwell_base_url()}{path}",
-                content=body,
-                headers={"Content-Type": "application/json"},
-            )
-            log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
-            return resp.json()
-    except Exception as e:  # noqa: BLE001
-        log.info("maxwell_proxy: path=%s status=%s", path, "error")
-        return {"error": str(e)[:120], "daemon_available": False}
-
-        log.info("maxwell_proxy: path=%s status=%s", path, "error")
-        return {"error": str(e)[:120], "daemon_available": False}
+    return await _maxwell_json_request("POST", path, request=request, content=await request.body())
 
 
 @app.post("/api/help/chat")
