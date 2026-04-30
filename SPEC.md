@@ -1,8 +1,8 @@
-﻿# SPEC.md â€” D-sorganization Runner Dashboard
+# SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.12
+**Spec Version:** 2.5.13
 **Application Version:** 4.1.0 (see `VERSION`)
-**Last Updated:** 2026-04-29T20:30:00Z
+**Last Updated:** 2026-04-30T00:00:00Z
 **Status:** Active
 
 ---
@@ -735,6 +735,7 @@ All endpoints are served under `http://localhost:8321/api/`.
 | `RUNNER_SCHEDULER_BIN` | `/usr/local/bin/runner-scheduler` | Runner scheduler binary path |
 | `RUNNER_SCHEDULER_SERVICE` | `runner-scheduler.service` | Scheduler systemd service name |
 | `RUN_JOB_ENRICHMENT_LIMIT` | `50` | Max runs to enrich with job data |
+| `LOG_FILTER_PATHS` | `/api/scheduled-workflows,/api/heavy-tests,/api/reports` | Comma-separated path prefixes sampled at 1/10 in request logs; errors always logged |
 
 ### 5.2 machine_registry.yml
 
@@ -1966,5 +1967,6 @@ To ensure identity and quotas are respected across the entire fleet:
   - \POST /api/admin/principals/{id}/token\: Mint a new service token for a bot principal.
   - \DELETE /api/admin/tokens/{token_hash}\: Revoke a service token.
   - \PATCH /api/admin/principals/{id}/quota\: Update quotas (\max_runners\, \gent_spend_usd_day\, \local_app_slots\) for a specific principal.
-< ! - -   U p d a t e d :   2 0 2 6 - 0 4 - 2 9 T 1 8 : 3 8 : 1 6   - - >  
+< ! - -   U p d a t e d :   2 0 2 6 - 0 4 - 2 9 T 1 8 : 3 8 : 1 6   - - > 
+ 
  
