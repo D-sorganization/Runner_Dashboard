@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import errno
 import json
 import logging
 import os
@@ -15,6 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import httpx
 import psutil
 from dashboard_config import (
     DISK_CRITICAL_PERCENT,
@@ -372,7 +374,11 @@ async def run_cmd(cmd: list[str], timeout: int = 30, cwd: Path | None = None) ->
 
 
 def classify_node_offline(exc: Exception | None = None, *, status_code: int | None = None) -> dict:
-    """Classify why a fleet node is unreachable."""
+    """Classify why a fleet node is unreachable.
+
+    Uses typed exception checks (httpx exception hierarchy and OSError.errno)
+    rather than fragile substring matching on str(exc).
+    """
     if status_code:
         if status_code == 401:
             return {"offline_reason": "auth", "offline_detail": "401 Unauthorized"}
@@ -382,17 +388,22 @@ def classify_node_offline(exc: Exception | None = None, *, status_code: int | No
             return {"offline_reason": "error", "offline_detail": f"HTTP {status_code}"}
         return {"offline_reason": "other", "offline_detail": f"HTTP {status_code}"}
 
-    if exc:
-        err_str = str(exc).lower()
-        if "timeout" in err_str:
-            return {"offline_reason": "timeout", "offline_detail": "Connection timed out"}
-        if "refused" in err_str:
-            return {"offline_reason": "refused", "offline_detail": "Connection refused"}
-        if "no route" in err_str:
-            return {"offline_reason": "network", "offline_detail": "No route to host"}
-        return {"offline_reason": "other", "offline_detail": str(exc)[:50]}
+    if exc is None:
+        return {"offline_reason": "unknown", "offline_detail": "Unknown"}
 
-    return {"offline_reason": "unknown", "offline_detail": "Unknown"}
+    if isinstance(exc, httpx.TimeoutException):
+        return {"offline_reason": "timeout", "offline_detail": "Connection timed out"}
+
+    if isinstance(exc, httpx.ConnectError):
+        cause = exc.__cause__ or exc
+        os_err = cause if isinstance(cause, OSError) else None
+        if os_err and os_err.errno == errno.ECONNREFUSED:
+            return {"offline_reason": "refused", "offline_detail": "Connection refused"}
+        if os_err and os_err.errno in {errno.ENETUNREACH, errno.EHOSTUNREACH, errno.ECONNRESET}:
+            return {"offline_reason": "network", "offline_detail": "No route to host"}
+        return {"offline_reason": "refused", "offline_detail": "Connection refused"}
+
+    return {"offline_reason": "other", "offline_detail": str(exc)[:50]}
 
 
 def resource_offline_reason(system: dict) -> dict | None:

@@ -36,7 +36,7 @@ UTC = getattr(_dt, "UTC", _dt.timezone.utc)  # noqa: UP017
 DEFAULT_MIN_AGE_MINUTES: int = 60
 _MAX_REPOS: int = 200
 _MAX_RUNS_PER_REPO: int = 100
-_SCAN_CONCURRENCY: int = Concurrency.QUEUE_SCAN  # concurrent repo queries during scan
+_SCAN_CONCURRENCY: int = Concurrency.QUEUE_SCAN  # concurrent repo queries during scan (capped per #393)
 _CANCEL_CONCURRENCY: int = Concurrency.QUEUE_CANCEL  # concurrent cancel calls
 
 

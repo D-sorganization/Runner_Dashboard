@@ -48,34 +48,7 @@ updates:
           - "minor"
           - "patch"
 
-  # Daily security-only sweep for backend Python deps. Dependabot only
-  # opens a PR if a HIGH/CRITICAL advisory matches; otherwise this is a no-op.
-  - package-ecosystem: "pip"
-    directory: "/backend"
-    schedule:
-      interval: "daily"
-      time: "06:00"
-      timezone: "Etc/UTC"
-    open-pull-requests-limit: 10
-    labels:
-      - "dependencies"
-      - "security"
-      - "high"
-      - "judgement:objective"
-    commit-message:
-      prefix: "security(deps)"
-      include: "scope"
-    # Security-only fast lane: ignore everything except security advisories.
-    # Achieved by allowing only direct production dependencies and grouping
-    # security-updates so non-security version bumps fall into the weekly
-    # schedule above instead.
-    allow:
-      - dependency-type: "all"
-    groups:
-      python-security-fastlane:
-        applies-to: security-updates
-        patterns:
-          - "*"
+
 
   # ── GitHub Actions ─────────────────────────────────────────────────────
   - package-ecosystem: "github-actions"
@@ -104,27 +77,7 @@ updates:
           - "minor"
           - "patch"
 
-  # Daily security sweep for GitHub Actions.
-  - package-ecosystem: "github-actions"
-    directory: "/"
-    schedule:
-      interval: "daily"
-      time: "06:00"
-      timezone: "Etc/UTC"
-    open-pull-requests-limit: 10
-    labels:
-      - "dependencies"
-      - "security"
-      - "high"
-      - "judgement:objective"
-    commit-message:
-      prefix: "security(actions)"
-      include: "scope"
-    groups:
-      actions-security-fastlane:
-        applies-to: security-updates
-        patterns:
-          - "*"
+
 
   # ── Docker ─────────────────────────────────────────────────────────────
   - package-ecosystem: "docker"
@@ -153,23 +106,4 @@ updates:
           - "minor"
           - "patch"
 
-  - package-ecosystem: "docker"
-    directory: "/"
-    schedule:
-      interval: "daily"
-      time: "06:00"
-      timezone: "Etc/UTC"
-    open-pull-requests-limit: 5
-    labels:
-      - "dependencies"
-      - "security"
-      - "high"
-      - "judgement:objective"
-    commit-message:
-      prefix: "security(docker)"
-      include: "scope"
-    groups:
-      docker-security-fastlane:
-        applies-to: security-updates
-        patterns:
-          - "*"
+

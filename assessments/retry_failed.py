@@ -79,7 +79,11 @@ def main():
 
         # Open PR
         pr_title = f"[ASSESSMENT] A-O Fleet Assessment {DATE}"
-        pr_body = f"## Assessment Artifacts for {repo}\n\nThis PR adds the pragmatic A-O assessment results to `docs/assessments/`.\n\nSee fleet epic: Repository_Management #1022"
+        pr_body = (
+            f"## Assessment Artifacts for {repo}\n\n"
+            "Publish static A-O assessment results to `docs/assessments/`.\n\n"
+            "See fleet epic: Repository_Management #1022"
+        )
         pr = run(
             [
                 "gh",
