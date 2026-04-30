@@ -123,13 +123,9 @@ def _db_path() -> Path:
     return Path(os.environ.get("RUNNER_DASHBOARD_PUSH_DB", str(DEFAULT_DB_PATH)))
 
 
-def _connect(path: Path | None = None) -> sqlite3.Connection:
-    db_path = path or _db_path()
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(db_path, timeout=5.0)
-    conn.execute("PRAGMA busy_timeout=5000")
-    conn.row_factory = sqlite3.Row
-    conn.execute(
+MIGRATIONS: list[tuple[int, str]] = [
+    (
+        1,
         """
         CREATE TABLE IF NOT EXISTS push_subscriptions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -142,8 +138,39 @@ def _connect(path: Path | None = None) -> sqlite3.Connection:
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         )
+        """,
+    ),
+]
+
+
+def _run_migrations(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            version INTEGER PRIMARY KEY,
+            applied_at TEXT NOT NULL
+        )
         """
     )
+    current_version = conn.execute("SELECT IFNULL(MAX(version), 0) FROM schema_migrations").fetchone()[0]
+
+    for version, ddl in MIGRATIONS:
+        if version > current_version:
+            with conn:
+                conn.execute(ddl)
+                conn.execute(
+                    "INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)",
+                    (version, utc_now_iso()),
+                )
+
+
+def _connect(path: Path | None = None) -> sqlite3.Connection:
+    db_path = path or _db_path()
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(db_path, timeout=5.0)
+    conn.execute("PRAGMA busy_timeout=5000")
+    conn.row_factory = sqlite3.Row
+    _run_migrations(conn)
     return conn
 
 
