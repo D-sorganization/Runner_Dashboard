@@ -53,9 +53,7 @@ def test_complete_endpoints_fail_closed(monkeypatch: pytest.MonkeyPatch, tmp_pat
     assert assertion.status_code == 501
 
 
-def test_assert_begin_requires_active_registered_credential(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_assert_begin_requires_active_registered_credential(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     client = _client(monkeypatch, tmp_path)
 
     response = client.post("/api/auth/webauthn/assert/begin", json={})
@@ -64,9 +62,7 @@ def test_assert_begin_requires_active_registered_credential(
     assert response.json()["detail"] == "No active WebAuthn credential registered for this user"
 
 
-def test_list_and_revoke_only_current_user_credentials(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_list_and_revoke_only_current_user_credentials(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     import auth_webauthn
 
     credential_path = tmp_path / "webauthn_credentials.json"

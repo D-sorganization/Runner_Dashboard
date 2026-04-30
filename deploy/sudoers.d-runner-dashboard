@@ -1,0 +1,32 @@
+# sudoers drop-in for the runner-dashboard service user (issue #391 AC-6).
+#
+# Install as root with:
+#   sudo install -m 0440 deploy/sudoers.d-runner-dashboard \
+#       /etc/sudoers.d/runner-dashboard
+# (setup.sh installs this automatically.)
+#
+# Replace YOUR_USER with the actual service account name before deploying,
+# or use the template substitution in setup.sh / install-autoscaler.sh.
+#
+# Scope: tightly limited to the exact unit names the dashboard touches.
+# Only the operations the dashboard legitimately needs are permitted.
+#
+# Note: systemctl verbs that require no privilege elevation (is-active, status)
+# are included here as defence-in-depth so the service user never needs a
+# broader sudo grant in future.
+
+Cmnd_Alias RUNNER_DASHBOARD_SYSTEMCTL = \
+    /usr/bin/systemctl is-active actions.runner.*.service, \
+    /usr/bin/systemctl is-active maxwell-daemon.service, \
+    /usr/bin/systemctl is-active runner-scheduler.service, \
+    /usr/bin/systemctl start   actions.runner.*.service, \
+    /usr/bin/systemctl stop    actions.runner.*.service, \
+    /usr/bin/systemctl restart actions.runner.*.service, \
+    /usr/bin/systemctl start   maxwell-daemon.service, \
+    /usr/bin/systemctl stop    maxwell-daemon.service, \
+    /usr/bin/systemctl restart maxwell-daemon.service, \
+    /usr/bin/systemctl start   runner-scheduler.service, \
+    /usr/bin/systemctl stop    runner-scheduler.service, \
+    /usr/bin/systemctl restart runner-scheduler.service
+
+YOUR_USER ALL=(root) NOPASSWD: RUNNER_DASHBOARD_SYSTEMCTL

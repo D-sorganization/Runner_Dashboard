@@ -4,10 +4,7 @@ import importlib  # noqa: E402
 import os  # noqa: E402
 from pathlib import Path  # noqa: E402
 
-import pytest  # noqa: E402
-
 import dashboard_config  # noqa: E402
-
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -291,20 +288,65 @@ def test_heavy_test_repos_structure() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_session_secret_from_env(monkeypatch) -> None:
+def test_session_secret_from_env(monkeypatch, tmp_path: Path) -> None:
     env = os.environ.copy()
     env["SESSION_SECRET"] = "my-secret-value"
+    env["RUNNER_DASHBOARD_SESSION_SECRET_DIR"] = str(tmp_path)
     monkeypatch.setattr(os, "environ", env)
     importlib.reload(dashboard_config)
     assert dashboard_config.SESSION_SECRET == "my-secret-value"
+    assert dashboard_config.SESSION_SECRET_SOURCE == "env"
 
 
-def test_session_secret_generated(monkeypatch) -> None:
+def test_session_secret_generated_and_persisted(monkeypatch, tmp_path: Path) -> None:
+    """When SESSION_SECRET is unset, a secret is generated and written to disk."""
     env = {k: v for k, v in os.environ.items() if k != "SESSION_SECRET"}
+    env["RUNNER_DASHBOARD_SESSION_SECRET_DIR"] = str(tmp_path)
     monkeypatch.setattr(os, "environ", env)
     importlib.reload(dashboard_config)
     assert isinstance(dashboard_config.SESSION_SECRET, str)
     assert len(dashboard_config.SESSION_SECRET) == 64  # 32 bytes hex = 64 chars
+    assert dashboard_config.SESSION_SECRET_SOURCE == "generated"
+    # File must exist and be readable.
+    secret_file = tmp_path / "session_secret"
+    assert secret_file.exists()
+    assert secret_file.read_text(encoding="utf-8").strip() == dashboard_config.SESSION_SECRET
+    # File permissions must be 0o600.
+    assert oct(secret_file.stat().st_mode & 0o777) == oct(0o600)
+
+
+def test_session_secret_reused_from_persisted(monkeypatch, tmp_path: Path) -> None:
+    """On subsequent boots, the persisted file is reused (source == 'persisted')."""
+    secret_file = tmp_path / "session_secret"
+    fixed_secret = "a" * 64  # 32 bytes as hex
+    secret_file.write_text(fixed_secret, encoding="utf-8")
+    secret_file.chmod(0o600)
+
+    env = {k: v for k, v in os.environ.items() if k != "SESSION_SECRET"}
+    env["RUNNER_DASHBOARD_SESSION_SECRET_DIR"] = str(tmp_path)
+    monkeypatch.setattr(os, "environ", env)
+    importlib.reload(dashboard_config)
+    assert dashboard_config.SESSION_SECRET == fixed_secret
+    assert dashboard_config.SESSION_SECRET_SOURCE == "persisted"
+
+
+def test_session_secret_same_across_two_loads(monkeypatch, tmp_path: Path) -> None:
+    """Two server instances reading the same file share the same secret."""
+    env = {k: v for k, v in os.environ.items() if k != "SESSION_SECRET"}
+    env["RUNNER_DASHBOARD_SESSION_SECRET_DIR"] = str(tmp_path)
+    monkeypatch.setattr(os, "environ", env)
+
+    # First load — generates and persists.
+    importlib.reload(dashboard_config)
+    secret_first = dashboard_config.SESSION_SECRET
+    assert dashboard_config.SESSION_SECRET_SOURCE == "generated"
+
+    # Second load — reuses persisted file.
+    importlib.reload(dashboard_config)
+    secret_second = dashboard_config.SESSION_SECRET
+    assert dashboard_config.SESSION_SECRET_SOURCE == "persisted"
+
+    assert secret_first == secret_second
 
 
 # ---------------------------------------------------------------------------
