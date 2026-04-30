@@ -3514,34 +3514,104 @@ async def dispatch_assessment(
 _ORCHESTRATION_AUDIT_PATH = Path.home() / "actions-runners" / "dashboard" / "orchestration_audit.json"
 _DEPLOY_ACTIONS = {"sync_workflows", "restart_runner", "update_config"}
 
+# Audit log is append-only NDJSON. On load failure (corrupt line, OS error), this
+# counter increments so operators can detect silent corruption. Exposed via
+# /api/metrics/audit-corrupt and the dashboard health endpoint.
+_audit_log_corrupt_total: int = 0
+
+
+def _migrate_audit_to_ndjson_if_needed() -> None:
+    """If the audit file is in the legacy single-JSON-array format, rewrite it as
+    NDJSON in place. Idempotent: a file already in NDJSON form is left alone.
+    Corruption counter is NOT incremented for migration: the file is intact."""
+    if not _ORCHESTRATION_AUDIT_PATH.exists():
+        return
+    try:
+        with _ORCHESTRATION_AUDIT_PATH.open("r", encoding="utf-8") as fh:
+            head = fh.read(1)
+            if head != "[":
+                return
+            fh.seek(0)
+            raw = fh.read().strip()
+        if not raw:
+            return
+        entries = json.loads(raw)
+        if not isinstance(entries, list):
+            return
+        tmp_path = _ORCHESTRATION_AUDIT_PATH.with_suffix(".ndjson.tmp")
+        with tmp_path.open("w", encoding="utf-8") as fh:
+            for entry in entries:
+                fh.write(json.dumps(entry, separators=(",", ":")) + "\n")
+        tmp_path.replace(_ORCHESTRATION_AUDIT_PATH)
+    except (OSError, json.JSONDecodeError) as exc:
+        log.warning("orchestration audit migration skipped: %s", exc)
+
 
 def _load_orchestration_audit(limit: int = 50, principal: str | None = None) -> list[dict]:
-    """Load recent orchestration audit entries from disk."""
+    """Tail the last `limit` orchestration audit entries from disk without rewriting.
+
+    Reads the NDJSON-formatted audit log line by line, keeping only the trailing
+    `limit` entries via a bounded deque. Legacy single-JSON-array files are
+    migrated lazily on first read.
+    """
+    global _audit_log_corrupt_total
     if not _ORCHESTRATION_AUDIT_PATH.exists():
         return []
+
+    # Lazy one-shot migration from legacy JSON array -> NDJSON.
+    _migrate_audit_to_ndjson_if_needed()
+
+    from collections import deque  # noqa: PLC0415
+
+    tail: deque[dict] = deque(maxlen=limit if not principal else None)
     try:
-        raw = _ORCHESTRATION_AUDIT_PATH.read_text(encoding="utf-8").strip()
-        if not raw:
-            return []
-        entries = json.loads(raw)
-        if isinstance(entries, list):
-            if principal:
-                entries = [e for e in entries if e.get("principal") == principal]
-            return entries[-limit:]
+        with _ORCHESTRATION_AUDIT_PATH.open("r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    _audit_log_corrupt_total += 1
+                    continue
+                if not isinstance(entry, dict):
+                    _audit_log_corrupt_total += 1
+                    continue
+                if principal and entry.get("principal") != principal:
+                    continue
+                tail.append(entry)
+    except OSError as exc:
+        _audit_log_corrupt_total += 1
+        log.warning("orchestration audit read failed: %s", exc)
         return []
-    except (OSError, json.JSONDecodeError):
-        return []
+
+    result = list(tail)
+    return result[-limit:] if principal else result
 
 
 async def _append_orchestration_audit(entry: dict) -> None:
-    """Append a single audit entry to the orchestration audit log (thread-safe)."""
+    """Append a single audit entry to the orchestration audit log.
+
+    Atomic single-line write via O_APPEND — POSIX guarantees writes <= PIPE_BUF
+    (4096 bytes) appear atomically when the file is opened with O_APPEND, so
+    concurrent appends interleave by line rather than corrupting bytes. Rotation
+    is handled out-of-band (e.g. logrotate); this writer never truncates.
+    """
     async with _orchestration_audit_lock:
-        existing = _load_orchestration_audit(limit=1000)
-        existing.append(entry)
         try:
-            config_schema.atomic_write_json(_ORCHESTRATION_AUDIT_PATH, existing)
+            _migrate_audit_to_ndjson_if_needed()
+            _ORCHESTRATION_AUDIT_PATH.parent.mkdir(parents=True, exist_ok=True)
+            line = json.dumps(entry, separators=(",", ":")) + "\n"
+            with _ORCHESTRATION_AUDIT_PATH.open("a", encoding="utf-8") as fh:
+                fh.write(line)
         except OSError as exc:
             log.warning("orchestration audit write failed: %s", exc)
+
+
+def get_audit_log_corrupt_total() -> int:
+    """Return the count of corrupt audit-log read events since process start."""
+    return _audit_log_corrupt_total
 
 
 @app.get("/api/audit", tags=["fleet"])
