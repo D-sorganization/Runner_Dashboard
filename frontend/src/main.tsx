@@ -1,24 +1,59 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './legacy/App'
 import { PushSettings } from './pages/PushSettings'
 import { Toaster } from './primitives/Toaster'
+import { useToast } from './primitives/Toaster'
 import { BreakpointProvider } from './hooks/useBreakpoint'
 import './index.css'
 
-// Service Worker Registration
-// Provides offline support, caching, and PWA installability.
+// Service Worker Registration + Update Toast
+// Provides offline support, caching, PWA installability, and update UX.
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker
       .register('/sw.js')
       .then((registration) => {
         console.log('[SW] Registered:', registration.scope)
+
+        // Watch for updates — if a new SW is waiting, prompt user to refresh
+        registration.addEventListener('updatefound', () => {
+          const newWorker = registration.installing
+          if (!newWorker) return
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              // New SW is waiting; dispatch a custom event the app can listen for
+              window.dispatchEvent(new CustomEvent('sw-update-available'))
+            }
+          })
+        })
       })
       .catch((err) => {
         console.warn('[SW] Registration failed:', err)
       })
+
+    // When a new controller takes over, the page should reload automatically
+    // or the user can manually refresh. We log for debugging.
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      console.log('[SW] New controller activated')
+    })
   })
+}
+
+// Global toast for SW updates — any component can listen via the custom event
+function SwUpdateToast(): null {
+  const { showToast } = useToast()
+  useEffect(() => {
+    function onUpdate() {
+      showToast('A new version is ready. Refresh the page to apply.', {
+        variant: 'info',
+        durationMs: 0, // persistent until dismissed
+      })
+    }
+    window.addEventListener('sw-update-available', onUpdate)
+    return () => window.removeEventListener('sw-update-available', onUpdate)
+  }, [showToast])
+  return null
 }
 
 // PWA Install Prompt Handling
@@ -78,11 +113,12 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <BreakpointProvider>
       <Toaster>
-      {isPushSettingsRoute(window.location.pathname) ? (
-        <PushSettings />
-      ) : (
-        <App initialTab={initialTabFromPathname(window.location.pathname)} />
-      )}
+        <SwUpdateToast />
+        {isPushSettingsRoute(window.location.pathname) ? (
+          <PushSettings />
+        ) : (
+          <App initialTab={initialTabFromPathname(window.location.pathname)} />
+        )}
       </Toaster>
     </BreakpointProvider>
   </React.StrictMode>,
