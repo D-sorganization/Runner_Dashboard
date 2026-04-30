@@ -1,6 +1,6 @@
 ﻿# SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.13
+**Spec Version:** 2.5.14
 **Application Version:** 4.1.0 (see `VERSION`)
 **Last Updated:** 2026-04-30T00:00:00Z
 **Status:** Active
@@ -923,9 +923,73 @@ All new deploy scripts should source it with:
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 ```
 
+### 6.9 Release Process
+
+The dashboard ships tagged releases via the `Release` workflow
+(`.github/workflows/release.yml`). The workflow runs on `d-sorg-fleet`
+runners with all third-party actions pinned to SHA, matching the rest of the
+fleet's CI policy.
+
+**Triggers**
+
+- `workflow_dispatch` with two inputs:
+  - `version` (required) — the semver string (for example `4.1.2`). Must
+    match the contents of the `VERSION` file at the workflow's checkout SHA.
+  - `dry_run` (optional, defaults to `false`) — when `true`, the workflow
+    prints the would-be tag and release notes but skips both
+    `git tag` / `git push` and `gh release create`.
+- `push` to `main` with `paths: [VERSION]` — auto-runs whenever the
+  `VERSION` file changes on `main`. The pushed version is treated as the
+  target release and `dry_run` is forced to `false`.
+
+**Steps performed by the workflow**
+
+1. Full-history checkout (so previous tags are visible).
+2. Read the `VERSION` file (comments stripped).
+3. Resolve target version (input on dispatch, file value on push) and the
+   `dry_run` flag.
+4. Verify `VERSION` matches the resolved target — mismatch fails the run.
+5. Verify `v$VERSION` does not already exist locally or on `origin`.
+6. Generate release notes from `git log --pretty=format:'%H%x09%s'` over
+   the range `<previous-tag>..HEAD`, grouping commits by Conventional Commit
+   prefix (`feat`, `fix`, `perf`, `refactor`, `docs`, `test`, `build`, `ci`,
+   `chore`, `revert`). Non-conformant commit subjects are intentionally
+   omitted from the rendered notes.
+7. If `dry_run=true`, log the tag + notes preview and stop.
+8. Otherwise, create an **unsigned annotated** tag `v$VERSION` whose tag
+   message embeds the marker line
+   `Auto-generated release notes (release.yml)` followed by the notes,
+   push it to `origin`, and call `gh release create` with the same notes.
+
+> **Signing follow-up:** tags are unsigned today. When the org provisions
+> a signing key on the `d-sorg-fleet` runners, swap `git tag -a` for
+> `git tag -s` (or attach a Sigstore identity). Tracked alongside #431.
+
+**Verification**
+
+`.github/workflows/verify-tag.yml` runs on every push of a tag matching
+`v*`. It refuses lightweight tags and asserts the annotated tag's message
+contains the `Auto-generated release notes (release.yml)` header — i.e.
+the tag was produced by the release workflow and not pushed ad-hoc.
+
+**Out of scope for this iteration**
+
+`release-please` integration is deliberately deferred. Adopting it requires
+upstream config (`release-please-config.json`, manifest), a GitHub App
+install with write scope, and an organization-level rollout decision that
+sits outside the dashboard repo. It will be tracked as a follow-up to #431.
+
 ---
 
 ## 7. Changelog
+
+### 2.5.14 - 2026-04-30
+- feat: add `release.yml` workflow with auto-generated Conventional Commit
+  release notes, `dry_run` input, and `VERSION`-bump push trigger
+  (issue #431).
+- feat: add `verify-tag.yml` to validate tags pushed under `v*` were created
+  by the release workflow (rejects lightweight or ad-hoc tags).
+- docs: document the release process in §6.9.
 
 ### 2.5.11 - 2026-04-29
 - feat: add authenticated session tracking and remote logout endpoints for the
