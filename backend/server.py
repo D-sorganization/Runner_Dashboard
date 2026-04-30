@@ -4372,15 +4372,15 @@ async def _start_background_tasks() -> None:
 if __name__ == "__main__":
     import uvicorn
 
-    print(f"\n{'=' * 60}")
-    print("  D-sorganization Runner Dashboard v4.0")
-    print(f"  Local:   http://localhost:{PORT}")
-    print(f"  Network: http://0.0.0.0:{PORT}")
-    print(f"  API docs: http://localhost:{PORT}/docs")
-    print(f"  Health:   http://localhost:{PORT}/api/health")
-    print(f"  Org: {ORG} | Host: {HOSTNAME}")
-    print(f"  Runners: {NUM_RUNNERS} @ {RUNNER_BASE_DIR}")
-    print(f"{'=' * 60}\n")
+    log.info("=" * 60)
+    log.info("  D-sorganization Runner Dashboard v4.0")
+    log.info("  Local:   http://localhost:%s", PORT)
+    log.info("  Network: http://0.0.0.0:%s", PORT)
+    log.info("  API docs: http://localhost:%s/docs", PORT)
+    log.info("  Health:   http://localhost:%s/api/health", PORT)
+    log.info("  Org: %s | Host: %s", ORG, HOSTNAME)
+    log.info("  Runners: %s @ %s", NUM_RUNNERS, RUNNER_BASE_DIR)
+    log.info("=" * 60)
 
     uvicorn.run(
         app,

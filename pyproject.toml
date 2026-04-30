@@ -41,7 +41,13 @@ line-length = 120
 exclude = ["frontend/", "deploy/", "docs/"]
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "B", "UP"]
+select = ["E", "F", "W", "I", "B", "UP", "T20"]
+
+[tool.ruff.lint.per-file-ignores]
+# CLI scripts intentionally use print() for stdout output.
+"scripts/*.py" = ["T201", "T203"]
+# Tests may use print() for diagnostic output during development.
+"tests/*.py" = ["T201", "T203"]
 
 [tool.mypy]
 python_version = "3.11"
