@@ -85,7 +85,9 @@ def _sign_challenge(challenge: str, user_id: str, ceremony: str, expires_at: flo
     return base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
 
 
-def _load_credentials(path: Path = _CREDENTIALS_PATH) -> list[WebAuthnCredentialRecord]:
+def _load_credentials(path: Path | None = None) -> list[WebAuthnCredentialRecord]:
+    if path is None:
+        path = _CREDENTIALS_PATH
     if not path.exists():
         return []
     try:
@@ -101,7 +103,9 @@ def _load_credentials(path: Path = _CREDENTIALS_PATH) -> list[WebAuthnCredential
     return records
 
 
-def _save_credentials(records: list[WebAuthnCredentialRecord], path: Path = _CREDENTIALS_PATH) -> None:
+def _save_credentials(records: list[WebAuthnCredentialRecord], path: Path | None = None) -> None:
+    if path is None:
+        path = _CREDENTIALS_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = [record.model_dump() for record in records]
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
