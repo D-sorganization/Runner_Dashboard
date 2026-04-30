@@ -5,7 +5,9 @@ import json
 import logging
 
 from fastapi import APIRouter
-from middleware import cache_delete, cache_get, cache_set, gh_api_admin, run_cmd
+from cache_utils import cache_delete, cache_get, cache_set
+from gh_utils import gh_api_admin
+from system_utils import run_cmd
 
 log = logging.getLogger("dashboard.queue_diagnostics")
 router = APIRouter()
