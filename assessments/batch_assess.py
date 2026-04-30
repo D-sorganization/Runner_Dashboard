@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Batch A-O assessment for all D-Sorganization repos."""
 
-import subprocess, json
+import json
+import subprocess
 from pathlib import Path
 
 REPOS = [

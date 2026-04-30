@@ -1,0 +1,55 @@
+name: CI Nightly (Integration)
+
+# Runs the integration test suite that PR CI deliberately skips. See
+# issue #401 for context: marker-based selection lets PR CI stay fast
+# while still exercising network/external surfaces every 24 hours.
+
+on:
+  schedule:
+    # 06:00 UTC daily.
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: ci-nightly
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    runs-on: d-sorg-fleet
+    timeout-minutes: 30
+    env:
+      PIP_CACHE_DIR: /home/dieterolson/actions-runners/.shared-tool-cache/pip
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          if [ -f uv.lock ]; then
+            pip install uv
+            uv sync --frozen
+            echo "$(pwd)/.venv/bin" >> "$GITHUB_PATH"
+          else
+            python -m venv "$RUNNER_TEMP/nightly-venv"
+            . "$RUNNER_TEMP/nightly-venv/bin/activate"
+            pip install --upgrade pip setuptools wheel
+            pip install -r requirements.txt
+            echo "$RUNNER_TEMP/nightly-venv/bin" >> "$GITHUB_PATH"
+          fi
+      - name: Run integration tests
+        env:
+          PYTHONPATH: backend
+        # -n auto: pytest-xdist parallel workers.
+        # -m integration: run only tests marked @pytest.mark.integration.
+        run: |
+          if [ -d tests/ ]; then
+            pytest tests/ --tb=short -n auto -m integration
+          else
+            echo "No tests directory found - skipping"
+            exit 0
+          fi

@@ -10,9 +10,15 @@ permissions:
   contents: write
   pull-requests: write
 
+# Lockfile upgrade opens a PR; do not cancel an in-flight run mid-PR-creation.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   upgrade:
     runs-on: d-sorg-fleet
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 

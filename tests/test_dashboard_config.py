@@ -4,10 +4,7 @@ import importlib  # noqa: E402
 import os  # noqa: E402
 from pathlib import Path  # noqa: E402
 
-import pytest  # noqa: E402
-
 import dashboard_config  # noqa: E402
-
 
 # ---------------------------------------------------------------------------
 # Paths

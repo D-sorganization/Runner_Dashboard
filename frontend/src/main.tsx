@@ -58,8 +58,24 @@ function isPushSettingsRoute(pathname: string): boolean {
   return normalized === '/settings/push'
 }
 
+const PATHNAME_TO_TAB: Record<string, string> = {
+  '/dispatch': 'agent-dispatch',
+  '/queue': 'queue',
+  '/maxwell': 'maxwell',
+  '/remediate': 'remediation',
+}
+
+function initialTabFromPathname(pathname: string): string | undefined {
+  const normalized = pathname.replace(/\/+$/, '') || '/'
+  return PATHNAME_TO_TAB[normalized]
+}
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    {isPushSettingsRoute(window.location.pathname) ? <PushSettings /> : <App />}
+    {isPushSettingsRoute(window.location.pathname) ? (
+      <PushSettings />
+    ) : (
+      <App initialTab={initialTabFromPathname(window.location.pathname)} />
+    )}
   </React.StrictMode>,
 )

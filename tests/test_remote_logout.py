@@ -116,7 +116,7 @@ def test_logout_endpoint_revokes_current_session(monkeypatch: pytest.MonkeyPatch
     client = _client(monkeypatch, tmp_path)
     import session_management as sm
 
-    sid = sm.register_session("human:test", user_agent="A", ip_address="1.1.1.1")
+    _ = sm.register_session("human:test", user_agent="A", ip_address="1.1.1.1")
 
     # The endpoint works even without session in request.session because it falls back gracefully
     response = client.post("/api/auth/logout")

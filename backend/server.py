@@ -96,6 +96,8 @@ from routers import linear_webhook as _linear_webhook_router  # noqa: E402
 from routers import queue as _queue_router  # noqa: E402
 from routers import queue_diagnostics as _queue_diagnostics_router  # noqa: E402
 from routers import remediation as _remediation_router  # noqa: E402
+from routers import runner_diagnostics as _runner_diagnostics_router  # noqa: E402
+from routers import runner_groups as _runner_groups_router  # noqa: E402
 from routers import runners as _runners_router  # noqa: E402
 from routers import runs_workflows as _runs_workflows_router  # noqa: E402
 from routers import system as _system_router  # noqa: E402
@@ -401,6 +403,8 @@ app.include_router(_fleet_router.router)
 app.include_router(_queue_router.router)
 app.include_router(_queue_diagnostics_router.router)
 app.include_router(_runners_router.router)
+app.include_router(_runner_groups_router.router)
+app.include_router(_runner_diagnostics_router.router)
 app.include_router(_runs_workflows_router.router)
 app.include_router(_assistant_router.router)
 app.include_router(_feature_requests_router.router)
@@ -4183,15 +4187,15 @@ async def _start_background_tasks() -> None:
 if __name__ == "__main__":
     import uvicorn
 
-    print(f"\n{'=' * 60}")
-    print("  D-sorganization Runner Dashboard v4.0")
-    print(f"  Local:   http://localhost:{PORT}")
-    print(f"  Network: http://0.0.0.0:{PORT}")
-    print(f"  API docs: http://localhost:{PORT}/docs")
-    print(f"  Health:   http://localhost:{PORT}/api/health")
-    print(f"  Org: {ORG} | Host: {HOSTNAME}")
-    print(f"  Runners: {NUM_RUNNERS} @ {RUNNER_BASE_DIR}")
-    print(f"{'=' * 60}\n")
+    log.info("=" * 60)
+    log.info("  D-sorganization Runner Dashboard v4.0")
+    log.info("  Local:   http://localhost:%s", PORT)
+    log.info("  Network: http://0.0.0.0:%s", PORT)
+    log.info("  API docs: http://localhost:%s/docs", PORT)
+    log.info("  Health:   http://localhost:%s/api/health", PORT)
+    log.info("  Org: %s | Host: %s", ORG, HOSTNAME)
+    log.info("  Runners: %s @ %s", NUM_RUNNERS, RUNNER_BASE_DIR)
+    log.info("=" * 60)
 
     uvicorn.run(
         app,
