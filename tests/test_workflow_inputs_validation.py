@@ -23,7 +23,6 @@ from input_validation import (  # noqa: E402
 )
 from server import app  # noqa: E402
 
-
 # ─── Unit tests for the helper ────────────────────────────────────────────────
 
 

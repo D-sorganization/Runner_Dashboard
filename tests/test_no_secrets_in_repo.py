@@ -55,9 +55,7 @@ _TOKEN_PATTERNS: dict[str, re.Pattern[str]] = {
     # Slack bot/user tokens.
     "slack_token": re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b"),
     # PEM private-key headers — any of RSA / EC / OPENSSH / PGP.
-    "private_key_block": re.compile(
-        r"-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----"
-    ),
+    "private_key_block": re.compile(r"-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----"),
 }
 
 # Files that may legitimately contain credential-shaped strings.
@@ -120,9 +118,7 @@ def test_repo_has_tracked_files() -> None:
     files = _git_tracked_files()
     if not files:
         pytest.skip("No git-tracked files (running outside a git checkout).")
-    assert any(p.suffix == ".py" for p in files), (
-        "Expected at least one Python file in the repo; got none."
-    )
+    assert any(p.suffix == ".py" for p in files), "Expected at least one Python file in the repo; got none."
 
 
 def test_no_known_credential_patterns_in_tracked_files() -> None:
@@ -158,6 +154,5 @@ def test_no_known_credential_patterns_in_tracked_files() -> None:
         "Suspected credential-shaped strings found in tracked files. Either "
         "rotate the secret, replace it with a placeholder, or annotate the "
         "line with '# pragma: allowlist secret' if the value is genuinely "
-        "fake. Findings (path, pattern, line):\n  "
-        + "\n  ".join(f"{p}:{ln} -> {name}" for p, name, ln in findings)
+        "fake. Findings (path, pattern, line):\n  " + "\n  ".join(f"{p}:{ln} -> {name}" for p, name, ln in findings)
     )

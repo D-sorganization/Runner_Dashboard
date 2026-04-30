@@ -554,14 +554,18 @@ async def proxy_to_hub(request: Request):
                 content=await request.body(),
             )
             resp = await client.send(req)
-            # Prevent decoding errors on empty/non-json responses if necessary
-            if resp.status_code == 204 or not resp.content:
-                return {}
-            return resp.json()
-        except Exception as e:  # noqa: BLE001
-            log.warning("Hub proxy error for %s: %s", request.url.path, e)
-            raise HTTPException(status_code=502, detail="Hub proxy error") from e
+            from proxy_utils import _translate_upstream_response
 
+            return _translate_upstream_response(resp, "Hub proxy")
+        except httpx.TimeoutException as e:
+            log.warning("Hub proxy timeout for %s: %s", request.url.path, e)
+            raise HTTPException(status_code=504, detail="Hub timeout") from e
+        except httpx.ConnectError as e:
+            log.warning("Hub proxy connect error for %s: %s", request.url.path, e)
+            raise HTTPException(status_code=503, detail="Hub connection error") from e
+        except HTTPException:
+            raise
+        except Exception as e:  # noqa: BLE001
             log.warning("Hub proxy error for %s: %s", request.url.path, e)
             raise HTTPException(status_code=502, detail="Hub proxy error") from e
 

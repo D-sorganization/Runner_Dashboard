@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import time
 
-from cache_utils import cache_size
 import dashboard_config as dashboard_config  # noqa: E402
+from cache_utils import cache_size
 from fastapi import APIRouter, Request
 
 router = APIRouter(tags=["health"])
@@ -91,6 +91,7 @@ async def get_cache_size() -> dict:
             "main": __import__("dashboard_config").MAX_CACHE_SIZE,
         },
     }
+
 
 @router.get("/readyz", tags=["diagnostics"])
 async def readyz() -> dict:

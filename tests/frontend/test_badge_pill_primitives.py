@@ -92,8 +92,7 @@ def test_at_least_five_consumer_files_import_primitives() -> None:
 
     rels = sorted(str(p.relative_to(REPO_ROOT)) for p in consumers)
     assert len(consumers) >= 5, (
-        f"expected at least 5 consumer files importing Badge/Pill, "
-        f"found {len(consumers)}: {rels}"
+        f"expected at least 5 consumer files importing Badge/Pill, found {len(consumers)}: {rels}"
     )
 
 

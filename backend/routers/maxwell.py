@@ -54,10 +54,18 @@ async def _mx_get(path: str, params: dict | None = None) -> dict:
                 headers=_maxwell_headers(),
             )
             log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
-            return resp.json()
+            from proxy_utils import _translate_upstream_response
+
+            return _translate_upstream_response(resp, "maxwell")
+    except httpx.TimeoutException as e:
+        raise HTTPException(status_code=504, detail="maxwell timeout") from e
+    except httpx.ConnectError as e:
+        raise HTTPException(status_code=503, detail="maxwell connection error") from e
+    except HTTPException:
+        raise
     except Exception as e:
         log.info("maxwell_proxy: path=%s error=%s", path, str(e)[:80])
-        return {"error": str(e)[:120], "daemon_available": False}
+        raise HTTPException(status_code=502, detail="maxwell proxy error") from e
 
 
 async def _run_cmd(cmd: list[str], timeout: int = 30, cwd: str | Path | None = None) -> tuple[int, str, str]:
@@ -219,10 +227,18 @@ async def maxwell_dispatch_task(
                 headers=hdrs,
             )
             log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
-            return resp.json()
+            from proxy_utils import _translate_upstream_response
+
+            return _translate_upstream_response(resp, "maxwell")
+    except httpx.TimeoutException as e:
+        raise HTTPException(status_code=504, detail="maxwell timeout") from e
+    except httpx.ConnectError as e:
+        raise HTTPException(status_code=503, detail="maxwell connection error") from e
+    except HTTPException:
+        raise
     except Exception as e:
         log.info("maxwell_proxy: path=%s error=%s", path, str(e)[:80])
-        return {"error": str(e)[:120], "daemon_available": False}
+        raise HTTPException(status_code=502, detail="maxwell proxy error") from e
 
 
 @router.post("/pipeline-control/{action}")
@@ -250,10 +266,18 @@ async def maxwell_pipeline_control(
                 headers=hdrs,
             )
             log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
-            return resp.json()
+            from proxy_utils import _translate_upstream_response
+
+            return _translate_upstream_response(resp, "maxwell")
+    except httpx.TimeoutException as e:
+        raise HTTPException(status_code=504, detail="maxwell timeout") from e
+    except httpx.ConnectError as e:
+        raise HTTPException(status_code=503, detail="maxwell connection error") from e
+    except HTTPException:
+        raise
     except Exception as e:
         log.info("maxwell_proxy: path=%s error=%s", path, str(e)[:80])
-        return {"error": str(e)[:120], "daemon_available": False}
+        raise HTTPException(status_code=502, detail="maxwell proxy error") from e
 
 
 @router.get("/backends")

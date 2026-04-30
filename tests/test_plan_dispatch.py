@@ -41,7 +41,6 @@ import datetime as _dt_mod
 from collections.abc import Callable
 
 import pytest
-
 from agent_remediation import (
     AttemptRecord,
     DispatchDecision,
@@ -146,9 +145,7 @@ def _ctx(
     )
 
 
-def _attempts_against(
-    fingerprint: str, provider_id: str, count: int
-) -> list[AttemptRecord]:
+def _attempts_against(fingerprint: str, provider_id: str, count: int) -> list[AttemptRecord]:
     return [
         AttemptRecord(
             provider_id=provider_id,
@@ -286,7 +283,9 @@ def test_plan_dispatch_b6_chain_uses_workflow_primary_first() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _b7_empty_primary() -> tuple[FailureContext, RemediationPolicy, dict[str, ProviderAvailability], list[AttemptRecord]]:
+def _b7_empty_primary() -> tuple[
+    FailureContext, RemediationPolicy, dict[str, ProviderAvailability], list[AttemptRecord]
+]:
     """Workflow rule with empty provider_id => preferred=[] but fallback present."""
     rules = {
         "lint": WorkflowTypeRule(
@@ -308,7 +307,9 @@ def _b7_empty_primary() -> tuple[FailureContext, RemediationPolicy, dict[str, Pr
     return _ctx(), policy, _make_availability("claude_code_cli"), []
 
 
-def _b8_disabled_primary() -> tuple[FailureContext, RemediationPolicy, dict[str, ProviderAvailability], list[AttemptRecord]]:
+def _b8_disabled_primary() -> tuple[
+    FailureContext, RemediationPolicy, dict[str, ProviderAvailability], list[AttemptRecord]
+]:
     """Primary provider is not in enabled_providers."""
     policy = _make_policy(
         enabled=("claude_code_cli",),  # codex_cli not enabled
@@ -317,22 +318,22 @@ def _b8_disabled_primary() -> tuple[FailureContext, RemediationPolicy, dict[str,
     return _ctx(), policy, _make_availability("codex_cli", "claude_code_cli"), []
 
 
-def _b9_unavailable_primary() -> tuple[FailureContext, RemediationPolicy, dict[str, ProviderAvailability], list[AttemptRecord]]:
+def _b9_unavailable_primary() -> tuple[
+    FailureContext, RemediationPolicy, dict[str, ProviderAvailability], list[AttemptRecord]
+]:
     """Primary provider availability=False."""
     policy = _make_policy()
-    avail = _make_availability(
-        "codex_cli", "claude_code_cli", "jules_api", unavailable=("codex_cli",)
-    )
+    avail = _make_availability("codex_cli", "claude_code_cli", "jules_api", unavailable=("codex_cli",))
     return _ctx(), policy, avail, []
 
 
-def _b10_exhausted_primary_fallback_to_secondary() -> tuple[FailureContext, RemediationPolicy, dict[str, ProviderAvailability], list[AttemptRecord]]:
+def _b10_exhausted_primary_fallback_to_secondary() -> tuple[
+    FailureContext, RemediationPolicy, dict[str, ProviderAvailability], list[AttemptRecord]
+]:
     """Primary provider has hit its attempt limit -> fallback used."""
     fp = build_failure_fingerprint(_ctx())
     attempts = _attempts_against(fp, "codex_cli", 3)  # exhausted
-    return _ctx(), _make_policy(), _make_availability(
-        "codex_cli", "claude_code_cli", "jules_api"
-    ), attempts
+    return _ctx(), _make_policy(), _make_availability("codex_cli", "claude_code_cli", "jules_api"), attempts
 
 
 @pytest.mark.parametrize(

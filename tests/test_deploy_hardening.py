@@ -63,7 +63,6 @@ def test_setup_prefers_python_311_for_runtime_service() -> None:
     assert "ExecStart=${PYTHON_BIN} ${DEPLOY_DIR}/backend/server.py" in content
 
 
-
 # ---------------------------------------------------------------------------
 # Dockerfile hardening checks (issue #415)
 # ---------------------------------------------------------------------------
@@ -76,17 +75,14 @@ def test_dockerfile_pins_base_image_to_digest() -> None:
     assert "FROM python:3.11-slim\n" not in content
     # Must include a sha256 digest pin
     assert re.search(r"FROM python:3\.11\.\d+-slim@sha256:[a-f0-9]{64}", content), (
-        "Dockerfile base image must be pinned to a specific sha256 digest, "
-        "e.g. python:3.11.10-slim@sha256:<hash>"
+        "Dockerfile base image must be pinned to a specific sha256 digest, e.g. python:3.11.10-slim@sha256:<hash>"
     )
 
 
 def test_dockerfile_installs_with_require_hashes() -> None:
     """pip install must use --require-hashes and reference the lock file."""
     content = _read(_DOCKERFILE)
-    assert "--require-hashes" in content, (
-        "Dockerfile pip install must use --require-hashes for supply-chain security"
-    )
+    assert "--require-hashes" in content, "Dockerfile pip install must use --require-hashes for supply-chain security"
     assert "requirements.lock.txt" in content, (
         "Dockerfile must install from requirements.lock.txt (not plain requirements.txt)"
     )
@@ -118,9 +114,8 @@ def test_requirements_lock_file_exists() -> None:
 def test_requirements_lock_contains_hashes() -> None:
     """requirements.lock.txt must contain --hash= entries for supply-chain pinning."""
     content = _read(_LOCK)
-    assert "--hash=sha256:" in content, (
-        "requirements.lock.txt must contain sha256 hashes for every package"
-    )
+    assert "--hash=sha256:" in content, "requirements.lock.txt must contain sha256 hashes for every package"
+
 
 # ── Issue #391: runner-dashboard.service template ────────────────────────────
 
@@ -307,4 +302,3 @@ def test_setup_sh_installs_sudoers_dropin() -> None:
         "setup.sh must reference and install the sudoers drop-in (issue #391 AC-6)"
     )
     assert "/etc/sudoers.d/runner-dashboard" in content
-

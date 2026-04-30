@@ -40,9 +40,7 @@ def test_setup_sh_syntax_check() -> None:
         text=True,
         check=False,
     )
-    assert result.returncode == 0, (
-        f"bash -n failed:\nstdout={result.stdout}\nstderr={result.stderr}"
-    )
+    assert result.returncode == 0, f"bash -n failed:\nstdout={result.stdout}\nstderr={result.stderr}"
 
 
 def test_setup_sh_has_preflight_function(script_text: str) -> None:
@@ -62,9 +60,7 @@ def test_setup_sh_has_dry_run_flag(script_text: str) -> None:
 
 def test_setup_sh_uses_visudo_validation(script_text: str) -> None:
     """Atomic sudoers replacement must validate via `visudo -c -f`."""
-    assert "visudo -c -f" in script_text, (
-        "atomic sudoers replacement using `visudo -c -f` missing"
-    )
+    assert "visudo -c -f" in script_text, "atomic sudoers replacement using `visudo -c -f` missing"
 
 
 def test_setup_sh_version_skip_uses_git_sha(script_text: str) -> None:

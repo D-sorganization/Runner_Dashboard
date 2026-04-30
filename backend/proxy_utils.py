@@ -11,6 +11,18 @@ from fastapi import HTTPException, Request
 log = logging.getLogger("dashboard.proxy")
 
 
+def _translate_upstream_response(resp: httpx.Response, upstream_name: str, request_id: str = "") -> dict:
+    if resp.status_code == 204:
+        return {"status": "no_content"}
+    if not resp.headers.get("content-type", "").startswith("application/json"):
+        body_snippet = resp.content[:200].decode("utf-8", errors="replace") if hasattr(resp, "content") else ""
+        log.warning(
+            "[%s] %s returned non-JSON (%d). Body: %s", request_id, upstream_name, resp.status_code, body_snippet
+        )
+        raise HTTPException(status_code=502, detail=f"{upstream_name} returned non-JSON ({resp.status_code})")
+    return resp.json()
+
+
 async def proxy_to_hub(request: Request):
     """Proxy request to the designated HUB_URL for hub-spoke topology."""
     if not HUB_URL:
@@ -27,10 +39,15 @@ async def proxy_to_hub(request: Request):
                 content=await request.body(),
             )
             resp = await client.send(req)
-            # Prevent decoding errors on empty/non-json responses if necessary
-            if resp.status_code == 204 or not resp.content:
-                return {}
-            return resp.json()
+            return _translate_upstream_response(resp, "Hub proxy")
+        except httpx.TimeoutException as e:
+            log.warning("Hub proxy timeout for %s: %s", request.url.path, e)
+            raise HTTPException(status_code=504, detail="Hub timeout") from e
+        except httpx.ConnectError as e:
+            log.warning("Hub proxy connect error for %s: %s", request.url.path, e)
+            raise HTTPException(status_code=503, detail="Hub connection error") from e
+        except HTTPException:
+            raise
         except Exception as e:
             log.warning("Hub proxy error for %s: %s", request.url.path, e)
             raise HTTPException(status_code=502, detail="Hub proxy error") from e
