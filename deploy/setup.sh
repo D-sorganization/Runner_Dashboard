@@ -263,7 +263,7 @@ Environment=PATH=/usr/lib/wsl/lib:${HOME}/.local/bin:${HOME}/.cargo/bin:/usr/loc
 # this user — not stored in this world-readable unit file.
 EnvironmentFile=-${HOME}/.config/runner-dashboard/env
 
-# Hardening
+# Hardening (issue #391)
 NoNewPrivileges=true
 ProtectSystem=full
 ProtectHome=read-only
@@ -274,6 +274,19 @@ ProtectKernelModules=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true
 RemoveIPC=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+CapabilityBoundingSet=
+SystemCallFilter=@system-service
+LockPersonality=true
+MemoryDenyWriteExecute=true
+ProtectHostname=true
+ProtectClock=true
+ProtectProc=invisible
+MemoryMax=2G
+CPUQuota=200%
+TasksMax=512
+WatchdogSec=120
 # Allow the dashboard to read/write runner secrets and config from HOME.
 ReadWritePaths=${HOME}/.config/runner-dashboard
 
@@ -284,6 +297,25 @@ SVCEOF
 sudo systemctl daemon-reload
 sudo systemctl enable runner-dashboard.service
 sudo systemctl restart runner-dashboard.service
+
+# Install tightly-scoped sudoers drop-in (issue #391 AC-6).
+SUDOERS_SRC="${SCRIPT_DIR}/deploy/sudoers.d-runner-dashboard"
+SUDOERS_DEST="/etc/sudoers.d/runner-dashboard"
+if [[ -f "${SUDOERS_SRC}" ]]; then
+    SUDOERS_RENDERED="$(mktemp)"
+    trap 'rm -f "${SUDOERS_RENDERED}"' EXIT
+    sed "s|YOUR_USER|${USER}|g" "${SUDOERS_SRC}" > "${SUDOERS_RENDERED}"
+    if visudo -cf "${SUDOERS_RENDERED}"; then
+        sudo install -m 0440 "${SUDOERS_RENDERED}" "${SUDOERS_DEST}"
+        echo "  installed ${SUDOERS_DEST}"
+    else
+        warn "sudoers drop-in failed visudo check; skipping install (manual action required)"
+    fi
+    rm -f "${SUDOERS_RENDERED}"
+    trap - EXIT
+else
+    warn "sudoers template not found at ${SUDOERS_SRC}; skipping"
+fi
 
 if [[ -x "${SCRIPT_DIR}/deploy/install-runner-maintenance.sh" ]]; then
     RUNNER_SCHEDULE_CONFIG="${SCHEDULE_CONFIG_VAL}" \

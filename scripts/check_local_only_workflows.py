@@ -35,15 +35,10 @@ def main() -> int:
         for line_number, line in enumerate(text.splitlines(), start=1):
             for token in BANNED:
                 if token in line:
-                    failures.append(
-                        f"{path}:{line_number}: banned hosted-runner token {token!r}"
-                    )
+                    failures.append(f"{path}:{line_number}: banned hosted-runner token {token!r}")
 
     if failures:
-        print(
-            "GitHub-hosted runner routing is forbidden. "
-            "Use local self-hosted runners only."
-        )
+        print("GitHub-hosted runner routing is forbidden. Use local self-hosted runners only.")
         print("\n".join(failures))
         return 1
 

@@ -38,6 +38,10 @@ INSTALL_WINDOWS_WATCHDOG=1
 INSTALL_AUTOSCALER=0
 WINDOWS_USER="${WINDOWS_USER:-}"
 WSL_DISTRO="${WSL_DISTRO_NAME:-}"
+BACKUP_DIR="${BACKUP_DIR:-/var/backups/runner-dashboard}"
+BACKUP_RETENTION="${BACKUP_RETENTION:-30}"
+DRY_RUN=0
+BACKUP_ONLY=0
 
 usage() {
     cat <<'EOF'
@@ -59,6 +63,10 @@ Options:
   --install-autoscaler         Install/update runner-autoscaler.service after dashboard
   --windows-user NAME          Windows profile name for .wslconfig/watchdog path
   --distro NAME                WSL distribution name for Windows watchdog
+  --backup-dir PATH            Directory for state snapshots (default: /var/backups/runner-dashboard, env BACKUP_DIR)
+  --backup-retention N         Keep most recent N backups (default: 30, env BACKUP_RETENTION)
+  --backup-only                Run only backup_state and exit (useful with --dry-run)
+  --dry-run                    Print actions without making changes (currently honoured by backup_state)
   -h, --help                   Show this help
 
 Scheduled-agent example:
@@ -85,13 +93,19 @@ while [[ $# -gt 0 ]]; do
         --install-autoscaler) INSTALL_AUTOSCALER=1; shift ;;
         --windows-user) WINDOWS_USER="$2"; shift 2 ;;
         --distro) WSL_DISTRO="$2"; shift 2 ;;
+        --backup-dir) BACKUP_DIR="$2"; shift 2 ;;
+        --backup-retention) BACKUP_RETENTION="$2"; shift 2 ;;
+        --backup-only) BACKUP_ONLY=1; shift ;;
+        --dry-run) DRY_RUN=1; shift ;;
         -h|--help) usage; exit 0 ;;
         *) fail "Unknown option: $1" ;;
     esac
 done
 
-[[ -d "${REPO_ROOT}/.git" ]] || fail "Repo root is not a git checkout: ${REPO_ROOT}"
 [[ -d "${DASHBOARD_DIR}" ]] || fail "Dashboard source not found: ${DASHBOARD_DIR}"
+if [[ "${BACKUP_ONLY}" != "1" ]]; then
+    [[ -d "${REPO_ROOT}/.git" ]] || fail "Repo root is not a git checkout: ${REPO_ROOT}"
+fi
 
 sync_repo() {
     if [[ "$SKIP_GIT" == "1" ]]; then
@@ -280,6 +294,77 @@ purge_stale_queue() {
         warn "Dashboard not reachable; skipping stale queue purge (will retry next run)"
     fi
 }
+
+backup_state() {
+    # Snapshot dashboard state for disaster recovery (issue #417).
+    #
+    # Inputs (env-overridable):
+    #   BACKUP_DIR        target dir, default /var/backups/runner-dashboard
+    #   BACKUP_RETENTION  count of recent backups to keep, default 30
+    #   DRY_RUN           when 1, print plan but do not write
+    #
+    # Snapshots (silently skipped if absent via tar --ignore-failed-read):
+    #   - <DASHBOARD_DIR>/config/         (agent_remediation.json, principals.yml, etc.)
+    #   - <DEPLOY_DIR>/config/            (deployed-host config, when present)
+    #   - $HOME/.config/runner-dashboard/ (env, session_secret, runner-schedule.json)
+    #   - $HOME/.dashboard-logs/          (recent operator logs)
+    #   - /var/log/runner-dashboard/      (recent service logs, when present)
+    local timestamp tarball
+    timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+    tarball="${BACKUP_DIR}/runner-dashboard-state-${timestamp}.tar.gz"
+
+    # Candidate paths — tar will skip missing entries via --ignore-failed-read.
+    local -a candidates=()
+    [[ -d "${DASHBOARD_DIR}/config" ]] && candidates+=("${DASHBOARD_DIR}/config")
+    [[ -d "${DEPLOY_DIR}/config" ]] && candidates+=("${DEPLOY_DIR}/config")
+    [[ -d "${HOME}/.config/runner-dashboard" ]] && candidates+=("${HOME}/.config/runner-dashboard")
+    [[ -d "${HOME}/.dashboard-logs" ]] && candidates+=("${HOME}/.dashboard-logs")
+    [[ -d "/var/log/runner-dashboard" ]] && candidates+=("/var/log/runner-dashboard")
+
+    if [[ "${DRY_RUN}" == "1" ]]; then
+        info "[DRY-RUN] backup_state would write: ${tarball}"
+        info "[DRY-RUN] would archive these existing paths:"
+        if (( ${#candidates[@]} == 0 )); then
+            warn "[DRY-RUN] no state paths exist on this host yet"
+        else
+            local p
+            for p in "${candidates[@]}"; do
+                echo "  - ${p}"
+            done
+        fi
+        info "[DRY-RUN] retention: keep most recent ${BACKUP_RETENTION} backups in ${BACKUP_DIR}"
+        return 0
+    fi
+
+    if (( ${#candidates[@]} == 0 )); then
+        warn "No state paths exist; skipping backup_state"
+        return 0
+    fi
+
+    info "Snapshotting dashboard state to ${tarball}"
+    if ! mkdir -p "${BACKUP_DIR}" 2>/dev/null; then
+        if ! sudo mkdir -p "${BACKUP_DIR}" || ! sudo chown "$(id -u):$(id -g)" "${BACKUP_DIR}"; then
+            warn "Cannot create ${BACKUP_DIR}; skipping backup_state"
+            return 0
+        fi
+    fi
+
+    if tar --ignore-failed-read -czf "${tarball}" "${candidates[@]}" 2>/dev/null; then
+        ok "Wrote state snapshot ${tarball}"
+    else
+        warn "tar reported errors while writing ${tarball} (continuing)"
+    fi
+
+    # Retention: keep the most recent BACKUP_RETENTION snapshots.
+    local keep="${BACKUP_RETENTION}"
+    local skip=$((keep + 1))
+    # shellcheck disable=SC2012  # ls -t is fine here; filenames are timestamped and we control them.
+    ls -1t "${BACKUP_DIR}"/runner-dashboard-state-*.tar.gz 2>/dev/null \
+        | tail -n "+${skip}" \
+        | xargs -r rm -f
+    ok "Backup retention: kept most recent ${keep} snapshots in ${BACKUP_DIR}"
+}
+
 main() {
     info "Runner dashboard scheduled maintenance"
     echo "Repo:       ${REPO_ROOT}"
@@ -288,6 +373,13 @@ main() {
     echo "Machine:    ${MACHINE_NAME}"
     echo "Role:       ${ROLE}"
     echo "Port:       ${PORT}"
+    echo "BackupDir:  ${BACKUP_DIR}"
+
+    if [[ "${BACKUP_ONLY}" == "1" ]]; then
+        backup_state
+        ok "Backup-only run complete"
+        return 0
+    fi
 
     sync_repo
     if [[ "${SKIP_WSL_KEEPALIVE}" != "1" ]]; then
@@ -298,6 +390,7 @@ main() {
     install_autoscaler_if_requested
     verify_dashboard
     purge_stale_queue
+    backup_state
     ok "Scheduled dashboard maintenance complete"
 }
 

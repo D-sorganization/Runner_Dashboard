@@ -22,7 +22,9 @@
   --glass-border: rgba(255, 255, 255, 0.1);
   --glass-border-light: rgba(255, 255, 255, 0.05);
   --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-  --glass-blur: blur(12px);
+  /* --glass-blur is the blur radius only; consumed via blur(var(--glass-blur)).
+     Override with `:root { --glass-blur: 0px }` to disable glass blur. */
+  --glass-blur: 12px;
   
   /* Vibrant Gradients */
   --grad-quota: linear-gradient(90deg, #00f2fe 0%, #4facfe 100%);
@@ -82,11 +84,38 @@
 
 .glass-card {
   background: var(--glass-bg);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
   border: 1px solid var(--glass-border);
   border-radius: 12px;
   box-shadow: var(--glass-shadow);
+}
+
+/* Apply backdrop-filter only when supported. The radius is driven by the
+   --glass-blur custom property so a user preference (or future in-app
+   toggle — TODO: ship UI control in a follow-up issue) can disable the
+   blur via `:root { --glass-blur: 0px }`. */
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  .glass-card {
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+  }
+}
+
+/* Fallback: when backdrop-filter is unsupported, render an opaque surface
+   so the card remains legible on low-end Android / older browsers. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass-card {
+    background: var(--bg-card-opaque, var(--bg-card));
+  }
+}
+
+/* Honor prefers-reduced-transparency: drop the blur and use an opaque
+   surface for users who request reduced transparency. */
+@media (prefers-reduced-transparency: reduce) {
+  .glass-card {
+    background: var(--bg-card-opaque, var(--bg-card));
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
 }
 
 .glass-card:hover {
