@@ -14054,7 +14054,7 @@ function QuickDispatchPopover() {
   var popoverRef = React.useRef(null);
   var triggerRef = React.useRef(null);
 
-  // Close on outside click
+  // Close on outside click and Escape
   React.useEffect(function () {
     if (!open) return;
     function onMouseDown(e) {
@@ -14065,8 +14065,15 @@ function QuickDispatchPopover() {
         setOpen(false);
       }
     }
+    function onKeyDown(e) {
+      if (e.key === "Escape") setOpen(false);
+    }
     document.addEventListener("mousedown", onMouseDown);
-    return function () { document.removeEventListener("mousedown", onMouseDown); };
+    document.addEventListener("keydown", onKeyDown);
+    return function () { 
+      document.removeEventListener("mousedown", onMouseDown); 
+      document.removeEventListener("keydown", onKeyDown); 
+    };
   }, [open]);
 
   // Fetch repos and providers when popover opens
@@ -14226,11 +14233,15 @@ function QuickDispatchPopover() {
           "div",
           {
             ref: popoverRef,
+            role: "dialog",
+            "aria-modal": "true",
+            "aria-label": "Quick Dispatch",
             style: {
               position: "fixed",
               right: 16,
               top: 64,
-              width: 320,
+              width: "calc(100vw - 32px)",
+              maxWidth: 320,
               background: "var(--bg-secondary)",
               border: "1px solid var(--border)",
               borderRadius: 8,
