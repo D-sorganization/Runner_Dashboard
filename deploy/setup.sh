@@ -103,21 +103,12 @@ preflight() {
     echo "[ OK ] preflight: disk, python, port, env all good"
 }
 
-# Parse flags. Special modes (--check-only, --dry-run) are honoured first.
-if [[ "${1:-}" == "--check-only" ]]; then
-    CHECK_ONLY=1
-    preflight
-    exit 0
-fi
-
-if [[ "${1:-}" == "--dry-run" ]]; then
-    DRY_RUN=1
-    shift
-    echo "[dry-run] mode enabled — no mutations will be performed"
-fi
-
+# Parse flags. --check-only and --dry-run are recognised at any position.
+CHECK_ONLY=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --check-only)   CHECK_ONLY=1;         shift ;;
+        --dry-run)      DRY_RUN=1;            shift ;;
         --runners)      NUM_RUNNERS="$2";     shift 2 ;;
         --machine-name) MACHINE_NAME="$2";    shift 2 ;;
         --display-name) DISPLAY_NAME_VAL="$2"; shift 2 ;;
@@ -132,8 +123,23 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Run preflight before any mutation.
+# Run preflight before any mutation. --check-only and --dry-run both exit
+# here so the host is never mutated; --dry-run additionally prints the
+# would-do summary (Codex P1 PR #483: announcing "no mutations" then
+# continuing to install / copy / write secrets is unsafe).
 preflight
+if [[ -n "$CHECK_ONLY" ]]; then info "--check-only: preflight passed; exiting before any mutation"; exit 0; fi
+if [[ -n "$DRY_RUN" ]]; then
+    info "[dry-run] preflight passed; aborting before any mutation."
+    info "[dry-run] would: deploy artifact, install requirements, write secrets, write systemd unit, install sudoers drop-in, restart service."
+    exit 0
+fi
+
+# Capture state BEFORE step 2 overwrites deployment.json (Codex P0 PR #483).
+PREVIOUS_DEPLOYED_SHA=""
+SERVICE_WAS_ACTIVE=""
+[[ -f "${DEPLOY_DIR}/deployment.json" ]] && PREVIOUS_DEPLOYED_SHA=$(python3 -c "import json; print(json.load(open('${DEPLOY_DIR}/deployment.json')).get('git_sha',''))" 2>/dev/null || echo "")
+systemctl is-active --quiet runner-dashboard.service 2>/dev/null && SERVICE_WAS_ACTIVE=1
 
 [[ -z "$MACHINE_NAME" ]] && MACHINE_NAME="$(hostname)"
 [[ -z "$DISPLAY_NAME_VAL" ]] && DISPLAY_NAME_VAL="$MACHINE_NAME"
@@ -280,23 +286,19 @@ if [[ -f "${SUDOERS_FILE}" ]] && grep -qF "${SUDOERS_LINE}" "${SUDOERS_FILE}" 2>
     ok "Sudoers rule already configured"
 else
     info "Adding passwordless sudo for runner svc.sh..."
-    if [[ -n "$DRY_RUN" ]]; then
-        echo "[dry-run] would: write atomic sudoers file ${SUDOERS_FILE}"
+    # Atomic sudoers replacement (issue #402): write to tmp, validate with
+    # `visudo -c -f`, only then move into place. Validation failure leaves
+    # any existing sudoers file untouched.
+    tmp=$(mktemp)
+    echo "${SUDOERS_LINE}" > "$tmp"
+    if visudo -c -f "$tmp" >/dev/null 2>&1; then
+        sudo install -m 0440 "$tmp" "${SUDOERS_FILE}"
+        rm -f "$tmp"
+        ok "Sudoers rule installed (start/stop runners without password)"
     else
-        # Atomic sudoers replacement (issue #402): write to a tmp file, validate
-        # with `visudo -c -f`, only then move into place. Validation failure
-        # leaves any existing sudoers file untouched.
-        tmp=$(mktemp)
-        echo "${SUDOERS_LINE}" > "$tmp"
-        if visudo -c -f "$tmp" >/dev/null 2>&1; then
-            sudo install -m 0440 "$tmp" "${SUDOERS_FILE}"
-            rm -f "$tmp"
-            ok "Sudoers rule installed (start/stop runners without password)"
-        else
-            rm -f "$tmp"
-            echo "ERROR: sudoers validation failed; existing file untouched"
-            exit 1
-        fi
+        rm -f "$tmp"
+        echo "ERROR: sudoers validation failed; existing file untouched"
+        exit 1
     fi
 fi
 
@@ -367,23 +369,22 @@ SVCEOF
 sudo systemctl daemon-reload
 sudo systemctl enable runner-dashboard.service
 
-# Version-skip restart (issue #402): if the deployed git_sha matches the
-# current checkout and --force was not passed, skip the restart to avoid
-# unnecessary churn.
+# Version-skip restart (issue #402): only skip the restart when the
+# *previously*-deployed git_sha (captured before step 2 overwrote
+# deployment.json) matches the current checkout AND the service is already
+# active. Without the active-service check, a fresh install would also match
+# (deployment.json was just written) and we'd leave the unit inactive — that
+# was the Codex P0 risk on PR #483.
 SKIP_RESTART=""
-DEPLOYMENT_JSON="${DEPLOY_DIR}/deployment.json"
-if [[ -z "$FORCE_RESTART" && -f "${DEPLOYMENT_JSON}" ]]; then
-    deployed_sha=$(python3 -c "import json,sys; print(json.load(open('${DEPLOYMENT_JSON}')).get('git_sha',''))" 2>/dev/null || echo "")
+if [[ -z "$FORCE_RESTART" && -n "$SERVICE_WAS_ACTIVE" && -n "$PREVIOUS_DEPLOYED_SHA" ]]; then
     current_sha=$(git -C "${SCRIPT_DIR}" rev-parse HEAD 2>/dev/null || echo "")
-    if [[ -n "${deployed_sha}" && -n "${current_sha}" && "${deployed_sha}" == "${current_sha}" ]]; then
-        info "Deployed git_sha (${deployed_sha:0:7}) matches current checkout; skipping restart (use --force to override)"
+    if [[ -n "${current_sha}" && "${PREVIOUS_DEPLOYED_SHA}" == "${current_sha}" ]]; then
+        info "Service active and deployed git_sha (${PREVIOUS_DEPLOYED_SHA:0:7}) matches current checkout; skipping restart (use --force to override)"
         SKIP_RESTART=1
     fi
 fi
 
-if [[ -n "$DRY_RUN" ]]; then
-    echo "[dry-run] would: systemctl restart runner-dashboard.service"
-elif [[ -z "$SKIP_RESTART" ]]; then
+if [[ -z "$SKIP_RESTART" ]]; then
     sudo systemctl restart runner-dashboard.service
 fi
 
