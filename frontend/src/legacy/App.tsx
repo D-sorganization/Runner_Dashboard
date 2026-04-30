@@ -1,6 +1,8 @@
 import React from "react"
 import { AgentDispatchPage } from "../pages/AgentDispatch"
 import { QueueTab } from "../pages/Queue"
+import { Badge } from "../primitives/Badge"
+import { Pill } from "../primitives/Pill"
 import { marked } from "marked"
 import DOMPurify from "dompurify"
 
@@ -432,7 +434,7 @@ function Collapse(p) {
         p.icon,
         p.title,
         p.badge
-          ? h("span", { className: "section-badge" }, p.badge)
+          ? h(Badge, { tone: "neutral" }, p.badge)
           : null,
       ),
       h(
@@ -485,7 +487,7 @@ function SubTabs(p) {
           },
           tab.label,
           tab.badge != null
-            ? h("span", { className: "subtab-badge" }, tab.badge)
+            ? h(Badge, { tone: activeKey === tab.key ? "info" : "neutral", size: "sm" }, tab.badge)
             : null,
         );
       }),
@@ -1219,12 +1221,8 @@ function FleetTab(p) {
                 "td",
                 null,
                 h(
-                  "span",
-                  {
-                    className:
-                      "runner-status-badge " +
-                      (n.online ? "online" : "offline"),
-                  },
+                  Badge,
+                  { tone: n.online ? "success" : "danger" },
                   n.online ? "online" : "offline",
                 ),
               ),
@@ -1329,20 +1327,18 @@ function FleetTab(p) {
             { key: "offline", label: "Offline", count: offline, dot: "red" },
           ].map(function (item) {
             return h(
-              "button",
+              Pill,
               {
                 key: item.key,
-                className:
-                  "btn fleet-status-pill" +
-                  (filter === item.key ? " btn-green" : ""),
+                className: "fleet-status-pill",
                 onClick: function () {
                   setFilter(item.key);
                 },
-                "aria-pressed": filter === item.key,
+                selected: filter === item.key,
               },
               h("span", { className: "status-dot " + item.dot }),
               item.label,
-              h("span", { className: "section-badge" }, item.count),
+              h(Badge, { tone: "neutral" }, item.count),
             );
           }),
         ),

@@ -266,7 +266,11 @@ EXPECTED_VERSION_FILE = Path(
 
 # ─── Setup moving averages and host memory cache ────────────
 
-_cpu_history: deque[float] = deque(maxlen=60)
+# Bounded CPU history sample buffer.  Size is intentionally capped to prevent
+# unbounded memory growth in long-lived processes (#393).  The deque retains
+# the most recent samples and discards older entries automatically.
+_CPU_HISTORY_MAXLEN: int = 1000
+_cpu_history: deque[float] = deque(maxlen=_CPU_HISTORY_MAXLEN)
 
 
 def _runner_scheduler_apply_command() -> list[str]:
@@ -4185,6 +4189,34 @@ async def _start_background_tasks() -> None:
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
+
+def _read_uvicorn_env_config() -> dict[str, int]:
+    """Read uvicorn tuning knobs from environment variables (#393).
+
+    Returns a dict with ``workers``, ``limit_concurrency`` and
+    ``timeout_keep_alive``.  Defaults are conservative because the
+    leader-election guard (#367) is not yet in place — running with
+    ``WORKERS > 1`` will duplicate background tasks and is therefore *not*
+    the default.  Operators that opt in get a runtime warning.
+    """
+
+    def _int_env(name: str, default: int) -> int:
+        raw = os.environ.get(name, "").strip()
+        if not raw:
+            return default
+        try:
+            return int(raw)
+        except ValueError:
+            log.warning("Invalid %s=%r, falling back to %d", name, raw, default)
+            return default
+
+    return {
+        "workers": _int_env("WORKERS", 1),
+        "limit_concurrency": _int_env("LIMIT_CONCURRENCY", 200),
+        "timeout_keep_alive": _int_env("TIMEOUT_KEEP_ALIVE", 5),
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
 
@@ -4198,10 +4230,29 @@ if __name__ == "__main__":
     log.info("  Runners: %s @ %s", NUM_RUNNERS, RUNNER_BASE_DIR)
     log.info("=" * 60)
 
+    _uvicorn_cfg = _read_uvicorn_env_config()
+    if _uvicorn_cfg["workers"] > 1:
+        log.warning(
+            "WORKERS=%d but leader-election (#367) is not yet in place; "
+            "background tasks will be duplicated across workers. "
+            "Set WORKERS=1 until #367 lands.",
+            _uvicorn_cfg["workers"],
+        )
+
+    # uvicorn requires an import string (not the in-memory app object) when
+    # running in multi-worker mode — workers spawn via multiprocessing and
+    # each child re-imports the app. Codex P1 review on PR #482 flagged that
+    # passing `app` directly with `workers > 1` either silently runs a single
+    # worker or fails at startup. Use the import string when WORKERS > 1; keep
+    # the in-memory object for single-worker dev runs (faster, no re-import).
+    _uvicorn_target: object = "server:app" if _uvicorn_cfg["workers"] > 1 else app
     uvicorn.run(
-        app,
+        _uvicorn_target,  # type: ignore[arg-type]
         host="0.0.0.0",  # nosec B104 — intentional for local LAN/Tailscale access
         port=PORT,
         log_level="warning",  # FastAPI handles its own logging
+        workers=_uvicorn_cfg["workers"],
+        limit_concurrency=_uvicorn_cfg["limit_concurrency"],
+        timeout_keep_alive=_uvicorn_cfg["timeout_keep_alive"],
     )
 # ci-trigger

@@ -100,17 +100,33 @@ strict_optional = true
 [[tool.mypy.overrides]]
 # Pre-existing godfiles: relax untyped-defs and strict_optional until #161.
 # Each release this list should shrink. Do NOT add new modules here.
+# Module paths use the `backend.<name>` form because backend/__init__.py exists,
+# which makes mypy treat `backend` as a package.
 module = [
-    "server",
-    "agent_remediation",
-    "workflow_stats",
-    "usage_monitoring",
-    "runner_autoscaler",
-    "machine_registry",
-    "deployment_drift",
-    "report_files",
-    "scheduled_workflows",
-    "local_app_monitoring",
+    "backend.server",
+    "backend.agent_remediation",
+    "backend.workflow_stats",
+    "backend.usage_monitoring",
+    "backend.runner_autoscaler",
+    "backend.machine_registry",
+    "backend.deployment_drift",
+    "backend.report_files",
+    "backend.scheduled_workflows",
+    "backend.local_app_monitoring",
+    "backend.health",
+    "backend.identity",
+    "backend.lease_synchronizer",
+    "backend.metrics",
+    "backend.proxy_utils",
+    "backend.queue_cleanup",
+    "backend.quota_enforcement",
+    "backend.runner_lease",
+    "backend.routers.admin",
+    "backend.routers.auth",
+    "backend.routers.dispatch",
+    "backend.routers.fleet",
+    "backend.routers.runs_workflows",
+    "backend.routers.system",
 ]
 disallow_untyped_defs = false
 strict_optional = false

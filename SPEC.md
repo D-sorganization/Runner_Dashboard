@@ -1,6 +1,6 @@
 # SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.13
+**Spec Version:** 2.5.14
 **Application Version:** 4.1.0 (see `VERSION`)
 **Last Updated:** 2026-04-30T17:30:00Z
 **Status:** Active
@@ -134,6 +134,24 @@ The project pytest configuration declares `backend` on `pythonpath`, and
 `tests/conftest.py` also inserts the resolved backend directory before importing
 the FastAPI app and router dependencies.
 
+**Uvicorn runtime tuning (env-var driven, issue #393):**
+
+When `backend/server.py` is invoked as `__main__`, the uvicorn instance is
+configured from environment variables so operators can adjust ASGI
+behaviour without code changes:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `WORKERS` | `1` | Worker process count. Stays at `1` until leader-election (#367) lands; setting it higher logs a runtime warning because background tasks would otherwise duplicate across workers. |
+| `LIMIT_CONCURRENCY` | `200` | Max concurrent in-flight requests before uvicorn returns 503. |
+| `TIMEOUT_KEEP_ALIVE` | `5` | Seconds an idle keep-alive HTTP connection is held before closure. |
+
+Invalid values fall back to the default and emit a log warning.
+
+**Bounded in-process buffers:** the CPU sample buffer `_cpu_history` is a
+`collections.deque` capped at `_CPU_HISTORY_MAXLEN` (1000 samples). The
+fixed cap guarantees flat memory regardless of process uptime (#393).
+
 ### 2.2 Frontend
 
 **Type:** Single-Page Application (SPA)
@@ -174,6 +192,8 @@ mobile-only read surface for runner monitoring cards over the existing runner,
 run, and machine telemetry payloads; desktop machine and runner tables remain
 the canonical wide-screen surface.
 
+
+Reusable UI primitives live in `frontend/src/primitives/`. Issue #422 introduces `Badge.tsx` (`tone` in `success | warning | danger | info | neutral`, `size` in `sm | md`) and `Pill.tsx` (with a `selected` boolean prop) so that the previously ad-hoc `.section-badge`, `.runner-status-badge`, `.conclusion-badge`, `.subtab-badge`, and `.fleet-status-pill` styles share a single token-driven implementation backed by `--badge-*-bg` / `--badge-*-fg` CSS variables in `frontend/src/design/tokens.ts`.
 
 PushSettings (issue #192) is a mobile-friendly React component for per-topic Web Push subscription management. It is located at `frontend/src/pages/PushSettings.tsx` and uses `GET /api/push/vapid-public-key` to fetch the VAPID key before subscribing to selected push topics via `POST /api/push/subscribe`.
 The Vite entrypoint in `frontend/src/main.tsx` includes a minimal tracer-bullet route shim for `/settings/push`: when the browser pathname resolves to that route, it renders `PushSettings` directly; all other paths continue to render the main dashboard app. This keeps the PushSettings work isolated while the Vite migration remains in progress.
@@ -242,6 +262,16 @@ implementation.
 
 The dashboard runs as a systemd service (`runner-dashboard.service`) on the
 primary fleet machine. See Section 6 for deployment details.
+
+`deploy/setup.sh` performs a `preflight()` check before any mutation (asserts
+disk free >1G at the deploy dir, Python 3.11+, port 8321 availability, and
+`~/.config/runner-dashboard/env` permissions of `600`), supports `--check-only`
+to run preflight without side effects and `--dry-run` to preview intended
+mutations, replaces `/etc/sudoers.d/runner-dashboard` atomically via
+`visudo -c -f` against a temp file (validation failure leaves the existing
+file untouched), and skips `systemctl restart runner-dashboard` when the
+deployed `git_sha` in `deployment.json` matches the current checkout unless
+`--force` is supplied.
 
 ---
 
@@ -927,6 +957,18 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 ---
 
 ## 7. Changelog
+
+### 2.5.14 - 2026-04-30
+- feat(scalability): drive uvicorn `workers`, `limit_concurrency`, and
+  `timeout_keep_alive` from `WORKERS` / `LIMIT_CONCURRENCY` /
+  `TIMEOUT_KEEP_ALIVE` env vars, with defaults `1` / `200` / `5`. `WORKERS`
+  stays at 1 until leader-election (#367) lands; setting it higher emits a
+  runtime warning. Documented under §2.1 Backend (#393).
+- chore(reliability): cap `_cpu_history` to a `collections.deque` with
+  `maxlen=1000` so the in-process CPU sample buffer cannot grow without
+  bound (#393).
+- chore(reliability): cap `queue_cleanup.find_stale_runs` fan-out to 8
+  concurrent repo queries via `asyncio.Semaphore` (#393).
 
 ### 2.5.11 - 2026-04-29
 - feat: add authenticated session tracking and remote logout endpoints for the
