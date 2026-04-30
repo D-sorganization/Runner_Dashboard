@@ -19,7 +19,14 @@ export function isCompactMobile(width: number): boolean {
   return width <= breakpoints.sm;
 }
 
-export function useBreakpoint(width: number): keyof typeof breakpoints {
+/**
+ * Pure helper that maps a viewport width to a breakpoint key.
+ *
+ * Note: this is intentionally NOT a React hook. It does not subscribe to
+ * resize/matchMedia events. For the live, reactive value, use the
+ * `useBreakpoint()` hook from `frontend/src/hooks/useBreakpoint.ts`.
+ */
+export function getBreakpoint(width: number): keyof typeof breakpoints {
   if (width <= breakpoints.xs) return "xs";
   if (width <= breakpoints.sm) return "sm";
   if (width <= breakpoints.md) return "md";
