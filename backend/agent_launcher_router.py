@@ -367,6 +367,11 @@ def _bat_path() -> Path:
     return root / "bin" / "launcher.bat"
 
 
+def _cli_path() -> Path:
+    root = _require_launcher()
+    return root / "bin" / "agent_launcher.py"
+
+
 @router.post("/start", response_model=SimpleResponse)
 def start_scheduler() -> SimpleResponse:
     pid_info = _read_pidfile()
@@ -387,9 +392,20 @@ def start_scheduler() -> SimpleResponse:
         except (OSError, subprocess.SubprocessError) as exc:
             raise HTTPException(status_code=500, detail=f"spawn failed: {exc}") from exc
     else:
-        rc, _, stderr = _run_cli("&")
-        if rc != 0:
-            raise HTTPException(status_code=500, detail=f"launcher exited: {stderr[:300]}")
+        cli = _cli_path()
+        if not cli.is_file():
+            raise HTTPException(status_code=500, detail=f"missing agent_launcher.py at {cli}")
+        try:
+            subprocess.Popen(
+                [_launcher_python(), str(cli)],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                close_fds=True,
+                start_new_session=True,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise HTTPException(status_code=500, detail=f"spawn failed: {exc}") from exc
     return SimpleResponse(ok=True, detail="scheduler start requested")
 
 

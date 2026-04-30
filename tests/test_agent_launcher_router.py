@@ -9,6 +9,7 @@ actually shells out to a launcher CLI that may not exist on the test box.
 from __future__ import annotations  # noqa: E402
 
 import json  # noqa: E402
+import subprocess  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 import agent_launcher_router as alr  # noqa: E402
@@ -293,3 +294,57 @@ def test_start_no_op_if_already_running(runtime, client, monkeypatch):
     r = client.post("/api/agent-launcher/start")
     assert r.status_code == 200
     assert "already running" in r.json()["detail"]
+
+
+def test_linux_start_status_stop_lifecycle(runtime, client, monkeypatch, tmp_path: Path):
+    launcher_root = tmp_path / "launcher"
+    cli = launcher_root / "bin" / "agent_launcher.py"
+    cli.parent.mkdir(parents=True)
+    cli.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+    calls: list[tuple[str, ...]] = []
+
+    class FakeProcess:
+        pid = 12345
+
+    def fake_popen(args, **kwargs):  # noqa: ANN001, ANN202
+        calls.append(tuple(str(arg) for arg in args))
+        assert args == ["python3", str(cli)]
+        assert kwargs["stdin"] is subprocess.DEVNULL
+        assert kwargs["stdout"] is subprocess.DEVNULL
+        assert kwargs["stderr"] is subprocess.DEVNULL
+        assert kwargs["close_fds"] is True
+        assert kwargs["start_new_session"] is True
+        (runtime / "scheduler.pid").write_text(
+            json.dumps({"pid": FakeProcess.pid, "started_iso": "2026-04-30T20:55:00Z"}),
+            encoding="utf-8",
+        )
+        return FakeProcess()
+
+    def fake_cli(*args, **kwargs):  # noqa: ANN001, ANN202
+        calls.append(tuple(str(arg) for arg in args))
+        if args == ("--stop",):
+            (runtime / "scheduler.pid").unlink(missing_ok=True)
+            return (0, "stop requested", "")
+        return (1, "", "unexpected cli call")
+
+    monkeypatch.setattr(alr.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(alr, "_launcher_root", lambda: launcher_root)
+    monkeypatch.setattr(alr, "_launcher_python", lambda: "python3")
+    monkeypatch.setattr(alr.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(alr, "_run_cli", fake_cli)
+    monkeypatch.setattr(alr, "_is_pid_alive", lambda pid: pid == FakeProcess.pid)
+
+    start = client.post("/api/agent-launcher/start")
+    assert start.status_code == 200, start.json()
+    assert start.json()["ok"] is True
+    assert calls[0] == ("python3", str(cli))
+
+    status = client.get("/api/agent-launcher/status")
+    assert status.status_code == 200
+    assert status.json()["scheduler_running"] is True
+    assert status.json()["scheduler_pid"] == FakeProcess.pid
+
+    stop = client.post("/api/agent-launcher/stop")
+    assert stop.status_code == 200
+    assert stop.json()["ok"] is True
+    assert calls[-1] == ("--stop",)

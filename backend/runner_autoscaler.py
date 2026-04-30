@@ -275,6 +275,9 @@ def _sample() -> tuple[float, float, float, float, float]:
     return cpu, mem, load1 / cores, disk_percent, disk_free_gb
 
 
+_lock_fd = None
+
+
 def main() -> None:
     if psutil is None:
         log.error("psutil not installed; cannot run autoscaler")

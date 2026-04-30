@@ -13,11 +13,9 @@ def test_autoscaler_leader_election(tmp_path: Path) -> None:
     # Use a custom lock path for the test
     lock_path = tmp_path / "autoscaler.lock"
 
-    script_path = Path(__file__).parent.parent / "backend" / "runner_autoscaler.py"
-
     # We want to run two subprocesses of runner_autoscaler.py
-    # But since it loops forever, we need to mock or run it with a timeout, or a small script that just does the lock logic.
-    # Actually, we can just write a small python script that imports runner_autoscaler and runs main(), but patches the lock path.
+    # But since it loops forever, we need a small script that does the lock logic.
+    # Actually, we can just write a wrapper, but patches the lock path.
     # But runner_autoscaler imports psutil and might fail.
 
     # Let's just create a small wrapper

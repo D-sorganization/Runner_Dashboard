@@ -1,8 +1,8 @@
 # SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.14
+**Spec Version:** 2.5.15
 **Application Version:** 4.1.0 (see `VERSION`)
-**Last Updated:** 2026-04-30T17:30:00Z
+**Last Updated:** 2026-04-30T21:05:00Z
 **Status:** Active
 
 ---
@@ -752,6 +752,9 @@ env var.
 | Method | Path | Description |
 |---|---|---|
 | POST | `/api/launchers/generate` | Generate Windows PowerShell launcher scripts on the Desktop |
+| GET | `/api/agent-launcher/status` | Read cline agent scheduler pidfile and per-agent state |
+| POST | `/api/agent-launcher/start` | Start the cline agent scheduler; on Linux this detaches `agent_launcher.py` with `subprocess.Popen(..., start_new_session=True)` |
+| POST | `/api/agent-launcher/stop` | Stop the cline agent scheduler via the launcher CLI |
 
 ### Static Assets
 
