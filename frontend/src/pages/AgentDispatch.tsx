@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react"
+import { Badge } from "../primitives/Badge";
 import { TouchButton } from "../primitives/TouchButton";
 
 /**
@@ -233,10 +234,12 @@ export function AgentDispatchPage() {
       <button key={provider.id} aria-pressed={isSelected} data-touch-primitive="TouchButton" disabled={!isAvailable} onClick={() => selectProvider(provider.id)} className={`provider-card ${isSelected ? "selected" : ""} ${isAvailable ? "" : "unavailable"}`}>
         <div className="provider-header">
           <span className="label">{provider.label}</span>
-          <span className={`status ${isAvailable ? "ready" : "missing"}`}>{isAvailable ? "Ready" : provider.status}</span>
+          <Badge tone={isAvailable ? "success" : "danger"}>
+            {isAvailable ? "Ready" : provider.status}
+          </Badge>
         </div>
         {provider.notes && <span className="notes">{provider.notes}</span>}
-        {provider.experimental && <span className="experimental">Experimental</span>}
+        {provider.experimental && <Badge tone="warning">Experimental</Badge>}
       </button>
     );
   }
