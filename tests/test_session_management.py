@@ -6,19 +6,15 @@ import time
 from pathlib import Path
 
 import pytest
-
 from session_management import (
-    _load_sessions,
-    _prune_expired_sessions,
-    _save_sessions,
     generate_session_id,
+    hash_session_id,
     is_session_active,
     list_sessions_for_principal,
     register_session,
     revoke_all_sessions_for_principal,
     revoke_session,
     session_count_for_principal,
-    hash_session_id,
 )
 
 

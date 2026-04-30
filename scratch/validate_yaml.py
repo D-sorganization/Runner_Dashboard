@@ -1,8 +1,9 @@
-import yaml
 import sys
 
+import yaml
+
 try:
-    with open(".github/workflows/Jules-Control-Tower.yml", "r") as f:
+    with open(".github/workflows/Jules-Control-Tower.yml") as f:
         yaml.safe_load(f)
     print("YAML is valid")
 except Exception as e:

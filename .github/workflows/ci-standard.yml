@@ -106,6 +106,10 @@ jobs:
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: "3.11"
+      - name: CODEOWNERS validity
+        run: |
+          test -s .github/CODEOWNERS
+          grep -E '@[A-Za-z0-9-]+(/[A-Za-z0-9-]+)?' .github/CODEOWNERS > /dev/null
       - name: Install dependencies with uv
         run: |
           if [ -f uv.lock ]; then
@@ -183,6 +187,17 @@ jobs:
             grep -rE "TODO|FIXME" backend/ --include="*.py"
             exit 1
           fi
+      - name: Verify Documentation Freshness (issue #394)
+        run: |
+          # The frontend is now Vite + React + TypeScript. Block any
+          # regression in CLAUDE.md / CONTRIBUTING.md to the old
+          # "no build step / no JSX / no TypeScript" claims.
+          if grep -iE 'no (build step|jsx|typescript)' CLAUDE.md CONTRIBUTING.md; then
+            echo "::error::Forbidden legacy frontend phrasing reintroduced."
+            echo "The frontend is Vite + React + TypeScript. Update the docs."
+            exit 1
+          fi
+          echo "Documentation freshness check passed."
       - name: Security Audit (pip-audit)
         # Blocking for CRITICAL/HIGH CVEs.
         # Known LOW/MEDIUM CVEs are allow-listed in requirements-audit-ignore.txt
@@ -272,9 +287,11 @@ jobs:
       - name: Run Python tests
         env:
           PYTHONPATH: backend
+        # -n auto: pytest-xdist parallel workers (issue #401).
+        # -m exclusion: integration / playwright tests run nightly only.
         run: |
           if [ -d tests/ ]; then
-            pytest tests/ --tb=short -q
+            pytest tests/ --tb=short -n auto -m "not integration and not playwright"
           else
             echo "No tests directory found â€” skipping"
             exit 0

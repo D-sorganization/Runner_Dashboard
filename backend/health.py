@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import time
 
+import dashboard_config as dashboard_config  # noqa: E402
 from fastapi import APIRouter, Request
 
 router = APIRouter(tags=["health"])
@@ -69,4 +70,32 @@ async def launcher_health_check() -> dict:
     return {
         "status": "ready",
         "timestamp": datetime.now(UTC).isoformat(),
+    }
+
+
+@router.get("/readyz", tags=["diagnostics"])
+async def readyz() -> dict:
+    """Readiness probe that surfaces operational metadata.
+
+    ``session_secret_source`` indicates how the session secret was resolved:
+
+    * ``"env"`` — ``SESSION_SECRET`` env var was explicitly set (recommended).
+    * ``"persisted"`` — secret was loaded from the persisted file at
+      ``~/.config/runner-dashboard/session_secret``.
+    * ``"generated"`` — no env var and no persisted file existed; a new
+      secret was generated and persisted on this startup.
+    """
+    # Lazy import to avoid circular dependency with server.py
+    from server import UTC, datetime  # noqa: PLC0415
+
+    assert dashboard_config.SESSION_SECRET_SOURCE in {
+        "env",
+        "persisted",
+        "generated",
+    }, f"unexpected SESSION_SECRET_SOURCE: {dashboard_config.SESSION_SECRET_SOURCE!r}"
+
+    return {
+        "status": "ready",
+        "timestamp": datetime.now(UTC).isoformat(),
+        "session_secret_source": dashboard_config.SESSION_SECRET_SOURCE,
     }

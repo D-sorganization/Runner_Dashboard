@@ -27,9 +27,7 @@ async def csrf_check(request: Request, call_next: Any) -> Any:
             return await call_next(request)
         # Allow health / static routes without the header so monitoring tools
         # (e.g. curl health checks) still work.  Only enforce on /api/* paths.
-        if request.url.path.startswith("/api/") and not request.url.path.startswith(
-            "/api/linear/webhook"
-        ):
+        if request.url.path.startswith("/api/") and not request.url.path.startswith("/api/linear/webhook"):
             if request.headers.get("X-Requested-With") != "XMLHttpRequest":
                 return JSONResponse(
                     {"error": "CSRF check failed: missing X-Requested-With header"},

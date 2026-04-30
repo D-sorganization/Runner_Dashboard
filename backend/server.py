@@ -63,6 +63,7 @@ import agent_dispatch_router as agent_dispatch_router  # noqa: E402
 import agent_remediation as agent_remediation  # noqa: E402
 import auth_webauthn as _auth_webauthn_router  # noqa: E402
 import config_schema as config_schema  # noqa: E402
+import dashboard_config as dashboard_config  # noqa: E402
 import deployment_drift as deployment_drift  # noqa: E402
 import dispatch_contract as dispatch_contract  # noqa: E402
 import health as _health_router  # noqa: E402
@@ -95,6 +96,8 @@ from routers import linear_webhook as _linear_webhook_router  # noqa: E402
 from routers import queue as _queue_router  # noqa: E402
 from routers import queue_diagnostics as _queue_diagnostics_router  # noqa: E402
 from routers import remediation as _remediation_router  # noqa: E402
+from routers import runner_diagnostics as _runner_diagnostics_router  # noqa: E402
+from routers import runner_groups as _runner_groups_router  # noqa: E402
 from routers import runners as _runners_router  # noqa: E402
 from routers import runs_workflows as _runs_workflows_router  # noqa: E402
 from routers import system as _system_router  # noqa: E402
@@ -130,11 +133,7 @@ def _load_or_generate_api_key() -> str:
     if key_from_env:
         return key_from_env
     # Try to read from persistent file
-    key_file = (
-        Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
-        / "runner-dashboard"
-        / "api_key.txt"
-    )
+    key_file = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "runner-dashboard" / "api_key.txt"
     try:
         if key_file.exists():
             stored = key_file.read_text(encoding="utf-8").strip()
@@ -149,9 +148,7 @@ def _load_or_generate_api_key() -> str:
         key_file.write_text(new_key, encoding="utf-8")
         key_file.chmod(0o600)
         log.warning("Generated new API key; saved to %s", key_file)
-        log.warning(
-            "Add header 'Authorization: Bearer %s' to all API requests.", new_key
-        )
+        log.warning("Add header 'Authorization: Bearer %s' to all API requests.", new_key)
     except OSError as exc:
         log.warning("Could not persist API key to %s: %s", key_file, exc)
     return new_key
@@ -234,42 +231,23 @@ DISK_WARN_PERCENT = float(os.environ.get("DASHBOARD_DISK_WARN_PERCENT", "85"))
 DISK_CRITICAL_PERCENT = float(os.environ.get("DASHBOARD_DISK_CRITICAL_PERCENT", "92"))
 DISK_MIN_FREE_GB = float(os.environ.get("DASHBOARD_DISK_MIN_FREE_GB", "25"))
 PORT = int(os.environ.get("DASHBOARD_PORT", "8321"))
-_DASHBOARD_CONFIG_DIR = (
-    Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
-    / "runner-dashboard"
-)
+_DASHBOARD_CONFIG_DIR = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "runner-dashboard"
 HOSTNAME = os.environ.get("DISPLAY_NAME") or platform.node()
 RUN_JOB_ENRICHMENT_LIMIT = int(os.environ.get("RUN_JOB_ENRICHMENT_LIMIT", "50"))
-RUNNER_ALIASES = [
-    item.strip()
-    for item in os.environ.get("RUNNER_ALIASES", "").split(",")
-    if item.strip()
-]
+RUNNER_ALIASES = [item.strip() for item in os.environ.get("RUNNER_ALIASES", "").split(",") if item.strip()]
 RUNNER_SCHEDULE_CONFIG = Path(
     os.environ.get(
         "RUNNER_SCHEDULE_CONFIG",
         str(Path.home() / ".config" / "runner-dashboard" / "runner-schedule.json"),
     )
 ).expanduser()
-RUNNER_SCHEDULER_BIN = os.environ.get(
-    "RUNNER_SCHEDULER_BIN", "/usr/local/bin/runner-scheduler"
-)
-RUNNER_SCHEDULER_SERVICE = os.environ.get(
-    "RUNNER_SCHEDULER_SERVICE", "runner-scheduler.service"
-)
+RUNNER_SCHEDULER_BIN = os.environ.get("RUNNER_SCHEDULER_BIN", "/usr/local/bin/runner-scheduler")
+RUNNER_SCHEDULER_SERVICE = os.environ.get("RUNNER_SCHEDULER_SERVICE", "runner-scheduler.service")
 RUNNER_SCHEDULER_APPLY_CMD = os.environ.get("RUNNER_SCHEDULER_APPLY_CMD", "")
-SYSTEMCTL_BIN = (
-    os.environ.get("SYSTEMCTL_BIN") or shutil.which("systemctl") or "/usr/bin/systemctl"
-)
-RUNNER_SCHEDULER_STATE = Path(
-    os.environ.get("RUNNER_SCHEDULER_STATE", "/var/lib/runner-scheduler/state.json")
-)
-WSL_KEEPALIVE_SERVICE = os.environ.get(
-    "WSL_KEEPALIVE_SERVICE", "wsl-runner-keepalive.service"
-)
-WSL_KEEPALIVE_TASK_NAME = os.environ.get(
-    "WSL_KEEPALIVE_TASK_NAME", "WSL-Runner-KeepAlive"
-)
+SYSTEMCTL_BIN = os.environ.get("SYSTEMCTL_BIN") or shutil.which("systemctl") or "/usr/bin/systemctl"
+RUNNER_SCHEDULER_STATE = Path(os.environ.get("RUNNER_SCHEDULER_STATE", "/var/lib/runner-scheduler/state.json"))
+WSL_KEEPALIVE_SERVICE = os.environ.get("WSL_KEEPALIVE_SERVICE", "wsl-runner-keepalive.service")
+WSL_KEEPALIVE_TASK_NAME = os.environ.get("WSL_KEEPALIVE_TASK_NAME", "WSL-Runner-KeepAlive")
 DEPLOYMENT_FILE = Path(
     os.environ.get(
         "RUNNER_DASHBOARD_DEPLOYMENT_FILE",
@@ -334,18 +312,14 @@ REPORTS_DIR = Path(os.environ.get("REPORTS_DIR", str(_default_reports_dir)))
 HEAVY_TEST_REPOS = {
     "Repository_Management": {
         "workflow_file": "ci-heavy-integration-tests.yml",
-        "description": (
-            "Heavy Integration Suite — Self-hosted Runner Control Tower tests"
-        ),
+        "description": ("Heavy Integration Suite — Self-hosted Runner Control Tower tests"),
         "docker_compose": "docker-compose.yml",
         "python_versions": ["3.11", "3.12"],
         "default_python": "3.12",
     },
     "UpstreamDrift": {
         "workflow_file": "heavy-tests-opt-in.yml",
-        "description": (
-            "Heavy Integration Tests (live_simulation marker) — MuJoCo, Drake, Pinocchio, Biomechanics"
-        ),
+        "description": ("Heavy Integration Tests (live_simulation marker) — MuJoCo, Drake, Pinocchio, Biomechanics"),
         "docker_compose": "docker-compose.yml",
         "python_versions": ["3.10", "3.11", "3.12"],
         "default_python": "3.11",
@@ -358,9 +332,7 @@ app = FastAPI(
     description="Monitor and control self-hosted GitHub Actions runners",
 )
 
-_PROCESSED_ENVELOPES_PATH = (
-    Path.home() / "actions-runners" / "dashboard" / "processed_envelopes.json"
-)
+_PROCESSED_ENVELOPES_PATH = Path.home() / "actions-runners" / "dashboard" / "processed_envelopes.json"
 _processed_envelopes_lock: asyncio.Lock = asyncio.Lock()
 
 
@@ -388,9 +360,7 @@ async def _is_envelope_replay(envelope_id: str) -> bool:
         return False
 
 
-async def _record_processed_envelope(
-    envelope_id: str, ttl_seconds: int = 86400
-) -> None:
+async def _record_processed_envelope(envelope_id: str, ttl_seconds: int = 86400) -> None:
     """Record that envelope_id has been processed (for replay detection)."""
     async with _processed_envelopes_lock:
         processed = _load_processed_envelopes()
@@ -433,13 +403,15 @@ app.include_router(_fleet_router.router)
 app.include_router(_queue_router.router)
 app.include_router(_queue_diagnostics_router.router)
 app.include_router(_runners_router.router)
+app.include_router(_runner_groups_router.router)
+app.include_router(_runner_diagnostics_router.router)
 app.include_router(_runs_workflows_router.router)
 app.include_router(_assistant_router.router)
 app.include_router(_feature_requests_router.router)
 
 app.add_middleware(
     SessionMiddleware,
-    secret_key=os.environ.get("SESSION_SECRET", secrets.token_hex(32)),
+    secret_key=dashboard_config.SESSION_SECRET,
     session_cookie="dashboard_session",
     max_age=86400 * 7,  # 7 days
     same_site="lax",
@@ -562,11 +534,7 @@ async def proxy_to_hub(request: Request):
             req = client.build_request(
                 request.method,
                 url,
-                headers={
-                    k: v
-                    for k, v in request.headers.items()
-                    if k.lower() not in ("host", "content-length")
-                },
+                headers={k: v for k, v in request.headers.items() if k.lower() not in ("host", "content-length")},
                 content=await request.body(),
             )
             resp = await client.send(req)
@@ -596,9 +564,7 @@ def _should_proxy_fleet_to_hub(request: Request) -> bool:
     return local_value not in {"1", "true", "yes", "local"} and scope_value != "local"
 
 
-async def run_cmd(
-    cmd: list[str], timeout: int = 30, cwd: Path | None = None
-) -> tuple[int, str, str]:
+async def run_cmd(cmd: list[str], timeout: int = 30, cwd: Path | None = None) -> tuple[int, str, str]:
     """Run a shell command asynchronously."""
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -640,9 +606,7 @@ gh_api_admin = gh_api
 
 async def gh_api_raw(endpoint: str) -> str:
     """Call the GitHub API via gh CLI and return the raw body text."""
-    code, stdout, stderr = await run_cmd(
-        ["gh", "api", "-H", "Accept: application/vnd.github.raw", endpoint]
-    )
+    code, stdout, stderr = await run_cmd(["gh", "api", "-H", "Accept: application/vnd.github.raw", endpoint])
     if code != 0:
         raise HTTPException(status_code=502, detail=f"GitHub API error: {stderr}")
     return stdout
@@ -668,10 +632,7 @@ async def _expected_dashboard_version_from_hub() -> str | None:
 
 async def _read_expected_dashboard_version() -> str:
     """Return the hub expected VERSION, falling back to this checkout."""
-    return (
-        await _expected_dashboard_version_from_hub()
-        or deployment_drift.read_expected_version(EXPECTED_VERSION_FILE)
-    )
+    return await _expected_dashboard_version_from_hub() or deployment_drift.read_expected_version(EXPECTED_VERSION_FILE)
 
 
 def _node_deployment_info(node: dict) -> dict:
@@ -709,9 +670,7 @@ def _machine_deployment_state(node: dict, expected_version: str) -> dict:
     if not node.get("online"):
         rollout_state = "offline"
         rollout_label = "Offline"
-        rollout_detail = (
-            node.get("offline_detail") or node.get("error") or "Node is offline."
-        )
+        rollout_detail = node.get("offline_detail") or node.get("error") or "Node is offline."
     elif status.dirty:
         rollout_state = "dirty"
         rollout_label = "Dirty"
@@ -723,10 +682,7 @@ def _machine_deployment_state(node: dict, expected_version: str) -> dict:
     elif node.get("offline_reason") == "resource_monitoring":
         rollout_state = "degraded"
         rollout_label = "Degraded"
-        rollout_detail = (
-            node.get("offline_detail")
-            or "Resource pressure is blocking the usual rollout cadence."
-        )
+        rollout_detail = node.get("offline_detail") or "Resource pressure is blocking the usual rollout cadence."
     elif status.current == "unknown":
         rollout_state = "unknown"
         rollout_label = "Unknown"
@@ -760,9 +716,7 @@ def _build_deployment_state(nodes: list[dict], expected_version: str) -> dict:
     local_drift = deployment_drift.evaluate_drift(deployment, expected_version)
     machines = [_machine_deployment_state(node, expected_version) for node in nodes]
     attention_states = {"offline", "dirty", "drifted", "degraded", "unknown"}
-    alerting = [
-        machine for machine in machines if machine["rollout_state"] in attention_states
-    ]
+    alerting = [machine for machine in machines if machine["rollout_state"] in attention_states]
     online = sum(1 for machine in machines if machine["online"])
     steady = sum(1 for machine in machines if machine["rollout_state"] == "steady")
     dirty = sum(1 for machine in machines if machine["rollout_state"] == "dirty")
@@ -975,9 +929,7 @@ async def _enrich_run_with_job_placement(run: dict) -> dict:
     return item
 
 
-def _classify_node_offline(
-    exc: Exception | None = None, *, status_code: int | None = None
-) -> dict:
+def _classify_node_offline(exc: Exception | None = None, *, status_code: int | None = None) -> dict:
     """Classify why a fleet node is not fully reachable."""
     message = str(exc) if exc else ""
     lower = message.lower()
@@ -1061,8 +1013,7 @@ def _node_visibility_snapshot(node: dict) -> dict:
             "visibility_state": "degraded",
             "visibility_label": "Degraded",
             "visibility_tone": "yellow",
-            "visibility_detail": node.get("offline_detail")
-            or "Resource pressure is high enough to warrant attention.",
+            "visibility_detail": node.get("offline_detail") or "Resource pressure is high enough to warrant attention.",
         }
 
     if online and dashboard_reachable and has_system_metrics:
@@ -1070,9 +1021,7 @@ def _node_visibility_snapshot(node: dict) -> dict:
             "visibility_state": "full_telemetry",
             "visibility_label": "Full telemetry",
             "visibility_tone": "green",
-            "visibility_detail": (
-                "Runner status and system metrics are both available."
-            ),
+            "visibility_detail": ("Runner status and system metrics are both available."),
         }
 
     if online:
@@ -1080,9 +1029,7 @@ def _node_visibility_snapshot(node: dict) -> dict:
             "visibility_state": "runners_only",
             "visibility_label": "Runners only",
             "visibility_tone": "orange",
-            "visibility_detail": (
-                "Runner registrations are healthy, but dashboard telemetry is unavailable."
-            ),
+            "visibility_detail": ("Runner registrations are healthy, but dashboard telemetry is unavailable."),
         }
 
     if dashboard_reachable:
@@ -1090,18 +1037,14 @@ def _node_visibility_snapshot(node: dict) -> dict:
             "visibility_state": "dashboard_only",
             "visibility_label": "Dashboard only",
             "visibility_tone": "blue",
-            "visibility_detail": (
-                "Dashboard is reachable, but runner registrations are offline."
-            ),
+            "visibility_detail": ("Dashboard is reachable, but runner registrations are offline."),
         }
 
     return {
         "visibility_state": "offline",
         "visibility_label": "Offline",
         "visibility_tone": "red",
-        "visibility_detail": node.get("offline_detail")
-        or node.get("error")
-        or "No live telemetry from this machine.",
+        "visibility_detail": node.get("offline_detail") or node.get("error") or "No live telemetry from this machine.",
     }
 
 
@@ -1109,14 +1052,10 @@ def runner_svc_path(runner_num: int) -> Path:
     return RUNNER_BASE_DIR / f"runner-{runner_num}" / "svc.sh"
 
 
-async def run_runner_svc(
-    runner_num: int, action: str, timeout: int = 30
-) -> tuple[int, str, str]:
+async def run_runner_svc(runner_num: int, action: str, timeout: int = 30) -> tuple[int, str, str]:
     """Run a generated GitHub runner svc.sh from its own runner directory."""
     svc_path = runner_svc_path(runner_num)
-    return await run_cmd(
-        ["sudo", str(svc_path), action], timeout=timeout, cwd=svc_path.parent
-    )
+    return await run_cmd(["sudo", str(svc_path), action], timeout=timeout, cwd=svc_path.parent)
 
 
 def runner_num_from_id(runner_id: int, runners: list[dict]) -> int | None:
@@ -1161,9 +1100,7 @@ def get_runner_service_name(runner_num: int) -> str | None:
 DEFAULT_RUNNER_SCHEDULE = {
     "enabled": True,
     "timezone": os.environ.get("RUNNER_SCHEDULE_TIMEZONE", "America/Los_Angeles"),
-    "default_count": min(
-        NUM_RUNNERS, int(os.environ.get("RUNNER_SCHEDULE_DEFAULT", "4"))
-    ),
+    "default_count": min(NUM_RUNNERS, int(os.environ.get("RUNNER_SCHEDULE_DEFAULT", "4"))),
     "schedules": [
         {
             "name": "day",
@@ -1206,9 +1143,7 @@ def _validate_runner_schedule(config: dict) -> dict:
     sanitized: dict[str, Any] = {
         "enabled": bool(config.get("enabled", True)),
         "timezone": str(config.get("timezone") or "America/Los_Angeles"),
-        "default_count": max(
-            0, min(_runner_limit(), int(config.get("default_count", 1)))
-        ),
+        "default_count": max(0, min(_runner_limit(), int(config.get("default_count", 1)))),
         "schedules": [],
     }
     schedules = config.get("schedules", [])
@@ -1325,9 +1260,7 @@ def get_runner_capacity_snapshot() -> dict:
         "aliases": RUNNER_ALIASES,
         "configured_runners": NUM_RUNNERS,
         "default_runners": DEFAULT_NUM_RUNNERS,
-        "installed_runners": sum(
-            1 for path in RUNNER_BASE_DIR.glob("runner-*") if path.is_dir()
-        ),
+        "installed_runners": sum(1 for path in RUNNER_BASE_DIR.glob("runner-*") if path.is_dir()),
         "max_runners": _runner_limit(),
         "config_path": str(RUNNER_SCHEDULE_CONFIG),
         "state_path": str(RUNNER_SCHEDULER_STATE),
@@ -1506,9 +1439,7 @@ def _probe_detail(probe: dict, fallback: str) -> str:
     return str(probe.get("detail") or probe.get("error") or fallback)
 
 
-def _detect_legacy_keepalive(
-    actions: list[dict], startup_vbs_files: list[str]
-) -> tuple[bool, str | None]:
+def _detect_legacy_keepalive(actions: list[dict], startup_vbs_files: list[str]) -> tuple[bool, str | None]:
     """Detect the old VBS/fire-and-forget keepalive pattern."""
     if startup_vbs_files:
         return True, f"Legacy VBS file(s) still present: {', '.join(startup_vbs_files)}"
@@ -1552,10 +1483,7 @@ async def _inspect_systemd_keepalive() -> dict:
 
     if code != 0:
         lower = f"{stdout}\n{stderr}".lower()
-        if (
-            "system has not been booted with systemd" in lower
-            or "failed to connect to bus" in lower
-        ):
+        if "system has not been booted with systemd" in lower or "failed to connect to bus" in lower:
             return {
                 "status": "unsupported",
                 "service": WSL_KEEPALIVE_SERVICE,
@@ -1630,7 +1558,9 @@ async def _inspect_windows_keepalive() -> dict:
         "@(Get-ChildItem -Path $startup -Filter 'wsl-keepalive.vbs'"
         " -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)"
     )
-    _ps_get_actions = "@($task.Actions | ForEach-Object { [pscustomobject]@{ Execute = $_.Execute; Arguments = $_.Arguments } })"  # noqa: E501
+    _ps_get_actions = (
+        "@($task.Actions | ForEach-Object { [pscustomobject]@{ Execute = $_.Execute; Arguments = $_.Arguments } })"  # noqa: E501
+    )
     script = f"""
 $ErrorActionPreference = 'Stop'
 $startup = [Environment]::GetFolderPath('Startup')
@@ -1684,9 +1614,7 @@ $result | ConvertTo-Json -Depth 5
             "actions": [],
             "startup_vbs_files": [],
             "legacy_vbs_detected": False,
-            "detail": stderr.strip()
-            or stdout.strip()
-            or "Scheduled task query failed.",
+            "detail": stderr.strip() or stdout.strip() or "Scheduled task query failed.",
         }
 
     try:
@@ -1770,35 +1698,22 @@ async def _watchdog_status_impl() -> dict:
             "machine": HOSTNAME,
             "layer": "Windows scheduled task",
             "status": windows["status"],
-            "detail": _probe_detail(
-                windows, "Windows scheduled task status unavailable."
-            ),
+            "detail": _probe_detail(windows, "Windows scheduled task status unavailable."),
         },
     ]
-    issue_details = [
-        check for check in checks if check["status"] not in {"healthy", "unsupported"}
-    ]
+    issue_details = [check for check in checks if check["status"] not in {"healthy", "unsupported"}]
     issues: list[str] = []
     for check in issue_details:
-        issues.append(
-            f"{check['machine']} {check['layer']} ({check['status']}): {check['detail']}"
-        )
+        issues.append(f"{check['machine']} {check['layer']} ({check['status']}): {check['detail']}")
 
     for check in (wslconfig, systemd, windows):
         if check["status"] not in {"healthy", "unsupported"}:
             check["machine"] = HOSTNAME
 
-    if (
-        wslconfig["status"] == "healthy"
-        and systemd["status"] == "healthy"
-        and windows["status"] == "healthy"
-    ):
+    if wslconfig["status"] == "healthy" and systemd["status"] == "healthy" and windows["status"] == "healthy":
         overall = "healthy"
         summary = f"{HOSTNAME}: all WSL keepalive layers are in place."
-    elif all(
-        check["status"] in {"missing", "unknown", "unsupported"}
-        for check in (wslconfig, systemd, windows)
-    ):
+    elif all(check["status"] in {"missing", "unknown", "unsupported"} for check in (wslconfig, systemd, windows)):
         overall = "unknown"
         summary = f"{HOSTNAME}: WSL keepalive status could not be fully verified."
     elif not issue_details:
@@ -1806,9 +1721,7 @@ async def _watchdog_status_impl() -> dict:
         summary = f"{HOSTNAME}: WSL keepalive checks are healthy or unsupported."
     else:
         overall = "degraded"
-        summary = (
-            f"{HOSTNAME}: {len(issue_details)} WSL keepalive check(s) need attention."
-        )
+        summary = f"{HOSTNAME}: {len(issue_details)} WSL keepalive check(s) need attention."
 
     result = {
         "status": overall,
@@ -1844,11 +1757,7 @@ async def _collect_live_fleet_nodes() -> list[dict]:
                     client.get(f"{url}/api/health"),
                 )
             if sys_r.status_code != 200 or health_r.status_code != 200:
-                status_code = (
-                    sys_r.status_code
-                    if sys_r.status_code != 200
-                    else health_r.status_code
-                )
+                status_code = sys_r.status_code if sys_r.status_code != 200 else health_r.status_code
                 reason = _classify_node_offline(status_code=status_code)
                 return {
                     "name": name,
@@ -1878,12 +1787,8 @@ async def _collect_live_fleet_nodes() -> list[dict]:
                 "health": health_r.json(),
                 "last_seen": datetime.now(UTC).isoformat(),
                 "error": None,
-                "offline_reason": (
-                    resource_reason["offline_reason"] if resource_reason else None
-                ),
-                "offline_detail": (
-                    resource_reason["offline_detail"] if resource_reason else None
-                ),
+                "offline_reason": (resource_reason["offline_reason"] if resource_reason else None),
+                "offline_detail": (resource_reason["offline_detail"] if resource_reason else None),
             }
         except Exception as exc:  # noqa: BLE001
             reason = _classify_node_offline(exc)
@@ -1918,23 +1823,13 @@ async def _collect_live_fleet_nodes() -> list[dict]:
             "health": local_health,
             "last_seen": datetime.now(UTC).isoformat(),
             "error": None,
-            "offline_reason": (
-                local_resource_reason["offline_reason"]
-                if local_resource_reason
-                else None
-            ),
-            "offline_detail": (
-                local_resource_reason["offline_detail"]
-                if local_resource_reason
-                else None
-            ),
+            "offline_reason": (local_resource_reason["offline_reason"] if local_resource_reason else None),
+            "offline_detail": (local_resource_reason["offline_detail"] if local_resource_reason else None),
         }
     ]
 
     if FLEET_NODES:
-        remote = await asyncio.gather(
-            *[fetch_node(name, url) for name, url in FLEET_NODES.items()]
-        )
+        remote = await asyncio.gather(*[fetch_node(name, url) for name, url in FLEET_NODES.items()])
         nodes.extend(remote)
 
     return nodes
@@ -2184,12 +2079,7 @@ async def fleet_control(
     node_results = [local_node_result]
 
     if should_fan_out:
-        remotes = await asyncio.gather(
-            *[
-                _remote_fleet_control(name, url, action)
-                for name, url in FLEET_NODES.items()
-            ]
-        )
+        remotes = await asyncio.gather(*[_remote_fleet_control(name, url, action) for name, url in FLEET_NODES.items()])
         node_results.extend(remotes)
 
     return {
@@ -2222,9 +2112,7 @@ async def update_runner_schedule(
     """Update this machine's local runner capacity schedule."""
     body = await request.json()
     if not isinstance(body, dict):
-        raise HTTPException(
-            status_code=400, detail="schedule payload must be an object"
-        )
+        raise HTTPException(status_code=400, detail="schedule payload must be an object")
     try:
         config = _validate_runner_schedule(body.get("schedule", body))
     except (TypeError, ValueError) as exc:
@@ -2496,9 +2384,7 @@ async def get_issues(
     elif source in {"linear", "unified"}:
         linear_config = _linear_router.load_linear_config()
         if not _linear_router.has_configured_linear_key(linear_config):
-            raise HTTPException(
-                status_code=503, detail=_linear_router.LINEAR_NOT_CONFIGURED_DETAIL
-            )
+            raise HTTPException(status_code=503, detail=_linear_router.LINEAR_NOT_CONFIGURED_DETAIL)
         linear_client = _linear_router.build_linear_client(linear_config)
         try:
             if source == "linear":
@@ -2530,9 +2416,7 @@ async def get_issues(
         finally:
             await linear_client.aclose()
     else:
-        raise HTTPException(
-            status_code=422, detail="source must be one of github, linear, unified"
-        )
+        raise HTTPException(status_code=422, detail="source must be one of github, linear, unified")
 
     # Wave 3: Sync GitHub leases with internal state
     sync_items = issues if isinstance(issues, list) else issues.get("items", [])
@@ -2561,15 +2445,9 @@ async def list_reports():
                     "filename": f.name,
                     "date": date_str,
                     "size_kb": round(stat.st_size / 1024, 1),
-                    "modified": datetime.fromtimestamp(
-                        stat.st_mtime, tz=UTC
-                    ).isoformat(),
+                    "modified": datetime.fromtimestamp(stat.st_mtime, tz=UTC).isoformat(),
                     "has_chart": chart_path.exists(),
-                    "chart_filename": (
-                        f"assessment_scores_{date_str}.png"
-                        if chart_path.exists()
-                        else None
-                    ),
+                    "chart_filename": (f"assessment_scores_{date_str}.png" if chart_path.exists() else None),
                 }
             )
     return {"reports": reports, "reports_dir": str(REPORTS_DIR), "total": len(reports)}
@@ -2645,9 +2523,7 @@ async def get_heavy_test_repos():
                             "html_url": run.get("html_url"),
                             "head_branch": run.get("head_branch"),
                             "run_number": run.get("run_number"),
-                            "triggering_actor": run.get("triggering_actor", {}).get(
-                                "login"
-                            ),
+                            "triggering_actor": run.get("triggering_actor", {}).get("login"),
                         }
                     )
             except (json.JSONDecodeError, ValueError):
@@ -2730,9 +2606,7 @@ async def dispatch_heavy_test(
         "workflow": workflow_file,
         "python_version": python_version,
         "ref": ref,
-        "message": (
-            f"Heavy test workflow dispatched for {repo_name}. Check the Actions tab for progress."
-        ),
+        "message": (f"Heavy test workflow dispatched for {repo_name}. Check the Actions tab for progress."),
     }
 
 
@@ -2754,9 +2628,7 @@ async def run_docker_heavy_test(
         )
 
     config = HEAVY_TEST_REPOS[repo_name]
-    _default_repos_base = str(
-        Path("/mnt/c") / "Users" / os.environ.get("USER", "diete") / "Repositories"
-    )
+    _default_repos_base = str(Path("/mnt/c") / "Users" / os.environ.get("USER", "diete") / "Repositories")
     _repos_base = Path(os.environ.get("HEAVY_TEST_REPOS_BASE", _default_repos_base))
     repo_path = _repos_base / repo_name
 
@@ -2886,9 +2758,7 @@ async def get_tests_ci_results() -> dict:
 
 
 @app.post("/api/tests/rerun")
-async def rerun_ci_test(
-    request: Request, *, principal: Principal = Depends(require_scope("tests.rerun"))
-) -> dict:  # noqa: B008
+async def rerun_ci_test(request: Request, *, principal: Principal = Depends(require_scope("tests.rerun"))) -> dict:  # noqa: B008
     """Re-run a failed GitHub Actions workflow run (failed jobs only)."""
     body = await request.json()
     repo_name = body.get("repo", "")
@@ -2935,9 +2805,7 @@ async def get_stats(request: Request):
     runners = runners_data.get("runners", [])
 
     repos = await _get_recent_org_repos(limit=30)
-    all_runs_nested = await asyncio.gather(
-        *[_fetch_repo_runs(repo["name"], per_page=10) for repo in repos[:20]]
-    )
+    all_runs_nested = await asyncio.gather(*[_fetch_repo_runs(repo["name"], per_page=10) for repo in repos[:20]])
     runs = [run for repo_runs in all_runs_nested for run in repo_runs]
     runs.sort(key=lambda r: r.get("created_at", ""), reverse=True)
     runs = runs[:100]
@@ -2973,9 +2841,7 @@ async def get_stats(request: Request):
         "org_open_prs": org_open_prs,
         "machines_total": fleet_data.get("count", 0),
         "machines_online": fleet_data.get("online_count", 0),
-        "machines_offline": max(
-            0, fleet_data.get("count", 0) - fleet_data.get("online_count", 0)
-        ),
+        "machines_offline": max(0, fleet_data.get("count", 0) - fleet_data.get("online_count", 0)),
         "repos_sampled": len(repos[:20]),
     }
     _cache_set("stats", result)
@@ -2992,9 +2858,7 @@ async def get_usage_monitoring(request: Request) -> dict:
     if cached is not None:
         return cached
 
-    summary = usage_monitoring.normalize_usage_summary(
-        usage_monitoring.load_usage_sources_config()
-    )
+    summary = usage_monitoring.normalize_usage_summary(usage_monitoring.load_usage_sources_config())
     _cache_set("usage_monitoring", summary)
     return summary
 
@@ -3024,12 +2888,8 @@ async def get_fleet_hardware(request: Request) -> dict:
     machines = []
     for node in fleet.get("nodes", []):
         registry = node.get("registry") or {}
-        specs = node.get("hardware_specs") or node.get("system", {}).get(
-            "hardware_specs", {}
-        )
-        capacity = node.get("workload_capacity") or node.get("system", {}).get(
-            "workload_capacity", {}
-        )
+        specs = node.get("hardware_specs") or node.get("system", {}).get("hardware_specs", {})
+        capacity = node.get("workload_capacity") or node.get("system", {}).get("workload_capacity", {})
         machines.append(
             {
                 "name": node.get("name"),
@@ -3210,9 +3070,7 @@ DASHBOARD_FAQ: dict[str, str] = {
         "The Feature Requests tab dispatches AI agents to implement new features"
         " with standards injection (TDD, DbC, DRY, LoD)."
     ),
-    "maxwell": (
-        "The Maxwell tab shows Maxwell-Daemon status and lets you start/stop the service with confirmation."
-    ),
+    "maxwell": ("The Maxwell tab shows Maxwell-Daemon status and lets you start/stop the service with confirmation."),
     "queue": "The Queue tab shows live queued and in-progress workflows with auto-refresh every 15 seconds.",
     "history": "The History tab shows recent workflow runs across all repos, filterable by status.",
     "machines": "The Machines tab shows hardware telemetry for each fleet node.",
@@ -3308,17 +3166,11 @@ async def maxwell_control(
     action = str(body.get("action", "")).strip()
     approved_by = str(body.get("approved_by", "")).strip()
     if action not in ("start", "stop", "restart"):
-        raise HTTPException(
-            status_code=422, detail="action must be start, stop, or restart"
-        )
+        raise HTTPException(status_code=422, detail="action must be start, stop, or restart")
     if not approved_by:
-        raise HTTPException(
-            status_code=422, detail="approved_by required for privileged action"
-        )
+        raise HTTPException(status_code=422, detail="approved_by required for privileged action")
 
-    code, out, stderr = await run_cmd(
-        ["systemctl", action, "maxwell-daemon"], timeout=15, cwd=REPO_ROOT
-    )
+    code, out, stderr = await run_cmd(["systemctl", action, "maxwell-daemon"], timeout=15, cwd=REPO_ROOT)
     log.info(
         "maxwell_control: action=%s approved_by=%s exit_code=%d",
         sanitize_log_value(action),
@@ -3339,10 +3191,7 @@ async def maxwell_control(
 
 def _maxwell_base_url() -> str:
     """Return the Maxwell-Daemon base URL from env."""
-    return (
-        os.environ.get("MAXWELL_URL", "")
-        or f"http://localhost:{int(os.environ.get('MAXWELL_PORT', 8322))}"
-    )
+    return os.environ.get("MAXWELL_URL", "") or f"http://localhost:{int(os.environ.get('MAXWELL_PORT', 8322))}"
 
 
 @app.get("/api/maxwell/version")
@@ -3464,9 +3313,7 @@ async def maxwell_chat(
     async def stream_daemon_response() -> Any:
         try:
             async with httpx.AsyncClient(timeout=None) as client:
-                async with client.stream(
-                    "POST", f"{_maxwell_base_url()}{path}", json=payload
-                ) as resp:
+                async with client.stream("POST", f"{_maxwell_base_url()}{path}", json=payload) as resp:
                     log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
                     if resp.status_code >= 400:
                         yield f"Maxwell chat failed with HTTP {resp.status_code}."
@@ -3478,9 +3325,7 @@ async def maxwell_chat(
             log.info("maxwell_proxy: path=%s status=%s", path, "error")
             yield f"Maxwell-Daemon is unreachable: {str(e)[:120]}"
 
-    return StreamingResponse(
-        stream_daemon_response(), media_type="text/plain; charset=utf-8"
-    )
+    return StreamingResponse(stream_daemon_response(), media_type="text/plain; charset=utf-8")
 
 
 @app.post("/api/maxwell/pipeline-control/{action}")
@@ -3492,9 +3337,7 @@ async def maxwell_pipeline_control(
 ) -> dict:
     """Proxy POST /api/control/{action} to Maxwell-Daemon."""
     if action not in ("pause", "resume", "abort"):
-        raise HTTPException(
-            status_code=422, detail="action must be pause, resume, or abort"
-        )
+        raise HTTPException(status_code=422, detail="action must be pause, resume, or abort")
     path = f"/api/control/{action}"
     resp = None
     try:
@@ -3516,9 +3359,7 @@ async def maxwell_pipeline_control(
 
 
 @app.post("/api/help/chat")
-async def help_chat(
-    request: Request, *, principal: Principal = Depends(require_scope("operator"))
-) -> dict:  # noqa: B008
+async def help_chat(request: Request, *, principal: Principal = Depends(require_scope("operator"))) -> dict:  # noqa: B008
     """Answer a dashboard help question. Uses local FAQ first, falls back to Claude API if available."""
     body = await request.json()
     question = str(body.get("question", "")).strip()
@@ -3604,11 +3445,8 @@ async def get_assessment_scores() -> dict:
                         "file": str(score_file.relative_to(REPO_ROOT)),
                         "repo": data.get("repository") or score_file.parent.name,
                         "score": data.get("score") or data.get("overall_score"),
-                        "date": data.get("date")
-                        or data.get("timestamp")
-                        or score_file.stat().st_mtime,
-                        "summary": data.get("summary")
-                        or data.get("description", "")[:200],
+                        "date": data.get("date") or data.get("timestamp") or score_file.stat().st_mtime,
+                        "summary": data.get("summary") or data.get("description", "")[:200],
                         "provider": data.get("provider") or data.get("agent", ""),
                     }
                 )
@@ -3646,9 +3484,7 @@ async def dispatch_assessment(
         "ref": "main",
         "inputs": {"target_repository": f"{ORG}/{repo}", "provider": provider},
     }
-    with tempfile.NamedTemporaryFile(
-        mode="w", encoding="utf-8", suffix=".json", delete=False
-    ) as f:
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".json", delete=False) as f:
         json.dump(payload, f)
         pf = f.name
     try:
@@ -3661,9 +3497,7 @@ async def dispatch_assessment(
         with contextlib.suppress(OSError):
             Path(pf).unlink()
     if code != 0:
-        log.warning(
-            "assessment dispatch failed: repo=%s stderr=%s", repo, stderr.strip()[:300]
-        )
+        log.warning("assessment dispatch failed: repo=%s stderr=%s", repo, stderr.strip()[:300])
         raise HTTPException(
             status_code=502,
             detail="Assessment dispatch failed",
@@ -3673,15 +3507,11 @@ async def dispatch_assessment(
 
 # ─── Fleet Orchestration Control Plane ───────────────────────────────────────
 
-_ORCHESTRATION_AUDIT_PATH = (
-    Path.home() / "actions-runners" / "dashboard" / "orchestration_audit.json"
-)
+_ORCHESTRATION_AUDIT_PATH = Path.home() / "actions-runners" / "dashboard" / "orchestration_audit.json"
 _DEPLOY_ACTIONS = {"sync_workflows", "restart_runner", "update_config"}
 
 
-def _load_orchestration_audit(
-    limit: int = 50, principal: str | None = None
-) -> list[dict]:
+def _load_orchestration_audit(limit: int = 50, principal: str | None = None) -> list[dict]:
     """Load recent orchestration audit entries from disk."""
     if not _ORCHESTRATION_AUDIT_PATH.exists():
         return []
@@ -3751,9 +3581,7 @@ async def get_fleet_audit_log(
         return []
 
     if FLEET_NODES:
-        remotes = await asyncio.gather(
-            *[fetch_remote_audit(n, u) for n, u in FLEET_NODES.items()]
-        )
+        remotes = await asyncio.gather(*[fetch_remote_audit(n, u) for n, u in FLEET_NODES.items()])
         for r_entries in remotes:
             all_entries.extend(r_entries)
 
@@ -3793,9 +3621,7 @@ async def get_fleet_orchestration(request: Request) -> dict:
         system_info = live.get("system", {}) if live else {}
         runners_info = live.get("runners", []) if live else []
         runner_count = len(runners_info) if isinstance(runners_info, list) else 0
-        busy_count = (
-            sum(1 for r in runners_info if r.get("busy")) if runner_count else 0
-        )
+        busy_count = sum(1 for r in runners_info if r.get("busy")) if runner_count else 0
         machines.append(
             {
                 "name": name,
@@ -3915,9 +3741,7 @@ async def fleet_orchestration_dispatch(
         dispatch_payload: dict = {"ref": ref}
         if inputs:
             dispatch_payload["inputs"] = inputs
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False
-        ) as pf_obj:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as pf_obj:
             json.dump(dispatch_payload, pf_obj)
             pf = pf_obj.name
         try:
@@ -4123,9 +3947,7 @@ async def get_diagnostics_summary() -> dict:
                 capture_output=True,
                 timeout=10,
             )
-            summary["wsl_status"] = wsl_result_raw.stdout.decode(
-                "utf-16-le", errors="replace"
-            ).strip()
+            summary["wsl_status"] = wsl_result_raw.stdout.decode("utf-16-le", errors="replace").strip()
             summary["wsl_available"] = wsl_result_raw.returncode == 0
         except Exception:  # noqa: BLE001
             summary["wsl_status"] = "WSL not available"
@@ -4224,9 +4046,7 @@ async def generate_launchers(
     launchers_created.append(str(restart))
 
     diag = output_dir / "Open-Diagnostics.ps1"
-    diag.write_text(
-        'Start-Process "http://localhost:8321/#diagnostics"\n', encoding="utf-8"
-    )
+    diag.write_text('Start-Process "http://localhost:8321/#diagnostics"\n', encoding="utf-8")
     launchers_created.append(str(diag))
 
     log.info("Generated %d launcher scripts in %s", len(launchers_created), output_dir)
@@ -4269,9 +4089,7 @@ async def _run_runner_audit() -> None:
         try:
             violations = await _fetch_hosted_runner_violations()
             _runner_audit_cache["violations"] = violations
-            _runner_audit_cache["last_checked"] = (
-                datetime.now(UTC).isoformat().replace("+00:00", "Z")
-            )
+            _runner_audit_cache["last_checked"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
             _runner_audit_cache["error"] = None
             if violations:
                 log.warning(
@@ -4326,10 +4144,7 @@ async def _fetch_hosted_runner_violations() -> list[dict[str, Any]]:
                     for job in jobs_resp.json().get("jobs", []):
                         runner_name = job.get("runner_name") or ""
                         runner_group = job.get("runner_group_name") or ""
-                        if (
-                            HOSTED_RUNNER_PATTERNS.match(runner_name)
-                            or runner_group == "GitHub Actions"
-                        ):
+                        if HOSTED_RUNNER_PATTERNS.match(runner_name) or runner_group == "GitHub Actions":
                             violations.append(
                                 {
                                     "repo": repo_name,
@@ -4372,15 +4187,15 @@ async def _start_background_tasks() -> None:
 if __name__ == "__main__":
     import uvicorn
 
-    print(f"\n{'=' * 60}")
-    print("  D-sorganization Runner Dashboard v4.0")
-    print(f"  Local:   http://localhost:{PORT}")
-    print(f"  Network: http://0.0.0.0:{PORT}")
-    print(f"  API docs: http://localhost:{PORT}/docs")
-    print(f"  Health:   http://localhost:{PORT}/api/health")
-    print(f"  Org: {ORG} | Host: {HOSTNAME}")
-    print(f"  Runners: {NUM_RUNNERS} @ {RUNNER_BASE_DIR}")
-    print(f"{'=' * 60}\n")
+    log.info("=" * 60)
+    log.info("  D-sorganization Runner Dashboard v4.0")
+    log.info("  Local:   http://localhost:%s", PORT)
+    log.info("  Network: http://0.0.0.0:%s", PORT)
+    log.info("  API docs: http://localhost:%s/docs", PORT)
+    log.info("  Health:   http://localhost:%s/api/health", PORT)
+    log.info("  Org: %s | Host: %s", ORG, HOSTNAME)
+    log.info("  Runners: %s @ %s", NUM_RUNNERS, RUNNER_BASE_DIR)
+    log.info("=" * 60)
 
     uvicorn.run(
         app,

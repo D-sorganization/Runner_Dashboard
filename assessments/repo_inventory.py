@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Quick inventory of all D-Sorganization repos for assessment."""
 
-import os, subprocess, json
+import json
+import subprocess
 from pathlib import Path
 
 REPOS = [
@@ -60,7 +61,7 @@ def main():
                 .decode()
                 .strip()
             )
-        except Exception as e:
+        except Exception:
             sha, sha_long, branch, dirty = "ERR", "ERR", "ERR", False
         # quick file count
         nfiles = sum(
