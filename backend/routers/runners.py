@@ -33,7 +33,20 @@ from .runner_helpers import (
     runner_health_check,
     runner_num_from_id,
     runner_sort_key,
+    runner_svc_path,
 )
+
+# Re-export private helper names expected by existing test suite
+_is_matlab_runner = is_matlab_runner
+_runner_sort_key = runner_sort_key
+
+__all__ = [
+    "run_runner_svc",
+    "runner_num_from_id",
+    "runner_svc_path",
+    "_is_matlab_runner",
+    "_runner_sort_key",
+]
 
 if TYPE_CHECKING:
     from collections.abc import Callable
