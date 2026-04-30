@@ -1,11 +1,11 @@
 # Dockerfile for runner-dashboard
 # Provides a reproducible, hardened container environment.
 #
-# Base image digest is pinned to python:3.11.10-slim (multi-arch index).
-# To regenerate:  docker pull python:3.11.10-slim && docker inspect --format='{{index .RepoDigests 0}}' python:3.11.10-slim
+# Base image digest is pinned to python:3.14.1-slim (multi-arch index).
+# To regenerate:  docker pull python:3.14.1-slim && docker inspect --format='{{index .RepoDigests 0}}' python:3.14.1-slim
 # To regenerate requirements.lock.txt:  pip-compile --generate-hashes --output-file requirements.lock.txt requirements.txt
 
-FROM python:3.14.0-slim@sha256:0aecac02dc3d4c5dbb024b753af084cafe41f5416e02193f1ce345d671ec966e
+FROM python:3.14.1-slim@sha256:b823ded4377ebb5ff1af5926702df2284e53cecbc6e3549e93a19d8632a1897e
 
 WORKDIR /app
 
