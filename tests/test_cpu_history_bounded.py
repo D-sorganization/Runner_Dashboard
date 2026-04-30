@@ -22,10 +22,10 @@ def test_cpu_history_has_maxlen() -> None:
 
 def test_cpu_history_maxlen_constant_is_exposed() -> None:
     """The maxlen value should come from a named module-level constant."""
-    assert hasattr(server, "_CPU_HISTORY_MAXLEN")
-    assert isinstance(server._CPU_HISTORY_MAXLEN, int)
-    assert server._CPU_HISTORY_MAXLEN >= 60
-    assert server._cpu_history.maxlen == server._CPU_HISTORY_MAXLEN
+    assert hasattr(server, "CPU_HISTORY_MAXLEN")
+    assert isinstance(server.CPU_HISTORY_MAXLEN, int)
+    assert server.CPU_HISTORY_MAXLEN >= 60
+    assert server._cpu_history.maxlen == server.CPU_HISTORY_MAXLEN
 
 
 def test_cpu_history_truncates_on_overflow() -> None:

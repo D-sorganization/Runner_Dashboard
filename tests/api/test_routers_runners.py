@@ -519,7 +519,7 @@ class TestErrorHandling:
             msg = "GitHub API error"
             raise RuntimeError(msg)
 
-        monkeypatch.setattr(runners_router, "gh_api_admin", failing_api)
+        monkeypatch.setattr(diagnostics_router, "gh_api_admin", failing_api)
 
         response = client.get("/api/runners/diagnostics/summary")
         assert response.status_code == 502

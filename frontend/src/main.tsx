@@ -4,22 +4,8 @@ import App from './legacy/App'
 import { PushSettings } from './pages/PushSettings'
 import { Toaster } from './primitives/Toaster'
 import { BreakpointProvider } from './hooks/useBreakpoint'
+import { t } from './i18n'
 import './index.css'
-
-// Service Worker Registration
-// Provides offline support, caching, and PWA installability.
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker
-      .register('/sw.js')
-      .then((registration) => {
-        console.log('[SW] Registered:', registration.scope)
-      })
-      .catch((err) => {
-        console.warn('[SW] Registration failed:', err)
-      })
-  })
-}
 
 // PWA Install Prompt Handling
 // Captures the beforeinstallprompt event so the app can suggest installation.
@@ -72,16 +58,77 @@ function initialTabFromPathname(pathname: string): string | undefined {
   return PATHNAME_TO_TAB[normalized]
 }
 
+function toastApi() {
+  return (window as unknown as { __toaster?: { showToast: (message: string, options?: { title?: string; variant?: string; durationMs?: number }) => number } }).__toaster
+}
+
+function registerServiceWorker(): void {
+  if (!('serviceWorker' in navigator)) return
+
+  let hasReloadedForControllerChange = false
+
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (hasReloadedForControllerChange) return
+    hasReloadedForControllerChange = true
+    toastApi()?.showToast(t('sw.updateReady.message', navigator.language), {
+      title: t('sw.updateReady.title', navigator.language),
+      variant: 'success',
+      durationMs: 12000,
+    })
+  })
+
+  window.addEventListener('load', () => {
+    navigator.serviceWorker
+      .register('/sw.js')
+      .then((registration) => {
+        console.log('[SW] Registered:', registration.scope)
+
+        if (registration.waiting && navigator.serviceWorker.controller) {
+          toastApi()?.showToast(t('sw.updateReady.message', navigator.language), {
+            title: t('sw.updateReady.title', navigator.language),
+            variant: 'success',
+            durationMs: 12000,
+          })
+        }
+
+        registration.addEventListener('updatefound', () => {
+          const installingWorker = registration.installing
+          if (!installingWorker) return
+          if (navigator.serviceWorker.controller) {
+            toastApi()?.showToast(t('sw.updateFound.message', navigator.language), {
+              variant: 'info',
+              durationMs: 4000,
+            })
+          }
+          installingWorker.addEventListener('statechange', () => {
+            if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              toastApi()?.showToast(t('sw.updateReady.message', navigator.language), {
+                title: t('sw.updateReady.title', navigator.language),
+                variant: 'success',
+                durationMs: 12000,
+              })
+            }
+          })
+        })
+      })
+      .catch((err) => {
+        console.warn('[SW] Registration failed:', err)
+      })
+  })
+}
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <BreakpointProvider>
       <Toaster>
-      {isPushSettingsRoute(window.location.pathname) ? (
-        <PushSettings />
-      ) : (
-        <App initialTab={initialTabFromPathname(window.location.pathname)} />
-      )}
+        {isPushSettingsRoute(window.location.pathname) ? (
+          <PushSettings />
+        ) : (
+          <App initialTab={initialTabFromPathname(window.location.pathname)} />
+        )}
       </Toaster>
     </BreakpointProvider>
   </React.StrictMode>,
 )
+
+registerServiceWorker()

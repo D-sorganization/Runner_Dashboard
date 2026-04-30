@@ -1,0 +1,5 @@
+{
+  "sw.updateReady.title": "Aktualisierung bereit",
+  "sw.updateReady.message": "Eine neue Dashboard-Version ist aktiv. Lade neu, falls die Seite veraltet wirkt.",
+  "sw.updateFound.message": "Dashboard-Aktualisierung wird heruntergeladen..."
+}

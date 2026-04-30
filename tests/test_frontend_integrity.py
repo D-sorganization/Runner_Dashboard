@@ -467,7 +467,7 @@ def test_push_settings_route_tracer_bullet_is_present() -> None:
         "isPushSettingsRoute",
         "window.location.pathname",
         "normalized === '/settings/push'",
-        "isPushSettingsRoute(window.location.pathname) ? <PushSettings /> : <App />",
+        "<App initialTab={initialTabFromPathname(window.location.pathname)} />",
     ]:
         assert marker in main_tsx
 

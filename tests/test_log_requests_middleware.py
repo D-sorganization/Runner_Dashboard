@@ -219,14 +219,15 @@ def test_server_references_log_filter_paths() -> None:
 def test_server_does_not_suppress_system_or_repos() -> None:
     """The old hard-coded skip list must not suppress /api/system or /api/repos."""
     server_src = (_BACKEND_DIR / "server.py").read_text(encoding="utf-8")
+    middleware_src = server_src[
+        server_src.index("async def log_requests") : server_src.index(
+            "# ─── Maxwell", server_src.index("async def log_requests")
+        )
+    ]
     # These paths must not appear in a skip/filter tuple in the middleware.
     # The old list hard-coded them — confirm they're gone.
-    assert '"/api/system"' not in server_src or "skip" not in server_src, (
-        "/api/system found in a skip-list context in server.py"
-    )
-    assert '"/api/repos"' not in server_src or "skip" not in server_src, (
-        "/api/repos found in a skip-list context in server.py"
-    )
+    assert '"/api/system"' not in middleware_src, "/api/system found in a skip-list context in server.py"
+    assert '"/api/repos"' not in middleware_src, "/api/repos found in a skip-list context in server.py"
 
 
 def test_dashboard_config_has_log_filter_paths() -> None:

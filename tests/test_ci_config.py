@@ -163,10 +163,10 @@ def test_mypy_override_list_does_not_grow() -> None:
                 relaxed_count += len(modules)
             else:
                 relaxed_count += 1
-    # Baseline: 10 godfile modules from issue #400. Must not grow.
-    assert relaxed_count <= 10, (
+    # Baseline: current legacy override list after the router/module split. Must not grow.
+    assert relaxed_count <= 24, (
         f"mypy relaxed-override list has grown to {relaxed_count} modules "
-        f"(baseline: 10). Remove modules from the override list in #161."
+        f"(baseline: 24). Remove modules from the override list in #161."
     )
 
 

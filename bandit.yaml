@@ -3,7 +3,7 @@
 # Severity policy (enforced in CI via ci-standard.yml quality-gate):
 #   HIGH   → blocking (CI fails)
 #   MEDIUM → per-finding allow-list below with mandatory rationale
-#   LOW    → skipped (-l flag filters to medium+high)
+#   LOW    → skipped (-ll flag filters to medium+high)
 #
 # To add a new MEDIUM allow-list entry:
 #   1. Add the test ID to the skips list below.

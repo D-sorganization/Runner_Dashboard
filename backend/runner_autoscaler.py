@@ -290,7 +290,8 @@ def main() -> None:
         global _lock_fd
         lock_path = "/var/run/runner-autoscaler.lock"
         if not os.path.exists(os.path.dirname(lock_path)):
-            lock_path = "/tmp/runner-autoscaler.lock"
+            # Non-sensitive process lock fallback when /var/run is unavailable.
+            lock_path = "/tmp/runner-autoscaler.lock"  # nosec B108
         _lock_fd = open(lock_path, "w")
         fcntl.flock(_lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)  # type: ignore[attr-defined,name-defined]
     except ImportError:

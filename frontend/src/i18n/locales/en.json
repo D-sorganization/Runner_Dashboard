@@ -1,0 +1,5 @@
+{
+  "sw.updateReady.title": "Update ready",
+  "sw.updateReady.message": "A new dashboard version is active. Refresh if the page looks stale.",
+  "sw.updateFound.message": "Downloading a dashboard update..."
+}

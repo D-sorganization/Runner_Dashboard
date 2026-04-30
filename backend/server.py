@@ -3337,7 +3337,8 @@ async def maxwell_chat(
 
     async def stream_daemon_response() -> Any:
         try:
-            async with httpx.AsyncClient(timeout=None) as client:
+            # Streaming chat responses remain open until the upstream finishes.
+            async with httpx.AsyncClient(timeout=None) as client:  # nosec B113
                 async with client.stream("POST", f"{_maxwell_base_url()}{path}", json=payload) as resp:
                     log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
                     if resp.status_code >= 400:
@@ -4287,7 +4288,8 @@ async def _start_background_tasks() -> None:
         global _leader_lock_fd
         lock_path = "/var/run/runner-dashboard-leader.lock"
         if not os.path.exists(os.path.dirname(lock_path)):
-            lock_path = "/tmp/runner-dashboard-leader.lock"
+            # Non-sensitive process lock fallback when /var/run is unavailable.
+            lock_path = "/tmp/runner-dashboard-leader.lock"  # nosec B108
         _leader_lock_fd = open(lock_path, "w")
         fcntl.flock(_leader_lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)  # type: ignore[attr-defined]  # type: ignore[attr-defined]
         log.info("Acquired leader lock, starting background tasks")

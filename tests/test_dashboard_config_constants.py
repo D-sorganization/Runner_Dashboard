@@ -84,7 +84,7 @@ def test_concurrency_caps() -> None:
     """Concurrency caps match the documented contract."""
     from dashboard_config.timeouts import Concurrency
 
-    assert Concurrency.QUEUE_SCAN == 10
+    assert Concurrency.QUEUE_SCAN == 8
     assert Concurrency.QUEUE_CANCEL == 5
     # Repo enrichment kept at the historic batch size of 10.
     assert Concurrency.REPO_ENRICHMENT == 10

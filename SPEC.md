@@ -197,6 +197,13 @@ Reusable UI primitives live in `frontend/src/primitives/`. Issue #422 introduces
 
 PushSettings (issue #192) is a mobile-friendly React component for per-topic Web Push subscription management. It is located at `frontend/src/pages/PushSettings.tsx` and uses `GET /api/push/vapid-public-key` to fetch the VAPID key before subscribing to selected push topics via `POST /api/push/subscribe`.
 The Vite entrypoint in `frontend/src/main.tsx` includes a minimal tracer-bullet route shim for `/settings/push`: when the browser pathname resolves to that route, it renders `PushSettings` directly; all other paths continue to render the main dashboard app. This keeps the PushSettings work isolated while the Vite migration remains in progress.
+Issue #433 adds a small frontend internationalization scaffold under
+`frontend/src/i18n/locales`. The initial English and German catalogs cover
+service worker lifecycle notifications and expose a typed `t()` helper for
+future string extraction work. `frontend/src/main.tsx` also surfaces a service
+worker update toast through the global `Toaster` when `updatefound`,
+`waiting`, or `controllerchange` indicates that a new dashboard version is
+available.
 Mobile accessibility guards are part of the frontend source contract. At
 mobile viewport widths, primary interactive controls must use the shared
 `--mobile-hit-target` token with a minimum `44px` target size. CSS animations

@@ -59,8 +59,10 @@ def test_refresh_token_requires_more_than_prefix() -> None:
 
 def test_setup_prefers_python_311_for_runtime_service() -> None:
     content = _read(_DEPLOY / "setup.sh")
+    template = _read(_DEPLOY / "runner-dashboard.service")
     assert "command -v python3.11 || command -v python3" in content
-    assert "ExecStart=${PYTHON_BIN} ${DEPLOY_DIR}/backend/server.py" in content
+    assert '-e "s|/usr/bin/python3.11|${PYTHON_BIN}|g"' in content
+    assert "ExecStart=/usr/bin/python3.11 /home/YOUR_USER/actions-runners/dashboard/backend/server.py" in template
 
 
 # ---------------------------------------------------------------------------
@@ -69,13 +71,13 @@ def test_setup_prefers_python_311_for_runtime_service() -> None:
 
 
 def test_dockerfile_pins_base_image_to_digest() -> None:
-    """FROM must reference python:3.11.x-slim pinned to a sha256 digest."""
+    """FROM must reference a pinned python slim base image digest."""
     content = _read(_DOCKERFILE)
-    # Must NOT use a floating tag like python:3.11-slim without a digest
-    assert "FROM python:3.11-slim\n" not in content
+    # Must NOT use a floating python slim tag without a digest.
+    assert not re.search(r"FROM python:3\.\d+-slim\s*$", content, re.MULTILINE)
     # Must include a sha256 digest pin
-    assert re.search(r"FROM python:3\.11\.\d+-slim@sha256:[a-f0-9]{64}", content), (
-        "Dockerfile base image must be pinned to a specific sha256 digest, e.g. python:3.11.10-slim@sha256:<hash>"
+    assert re.search(r"FROM python:3\.\d+\.\d+-slim@sha256:[a-f0-9]{64}", content), (
+        "Dockerfile base image must be pinned to a specific sha256 digest, e.g. python:3.14.0-slim@sha256:<hash>"
     )
 
 
@@ -253,15 +255,17 @@ def test_autoscaler_service_has_watchdog_sec() -> None:
     assert "WatchdogSec=120" in content
 
 
-# ── Issue #391: setup.sh heredoc parity ──────────────────────────────────────
+# ── Issue #391: setup.sh service-template parity ─────────────────────────────
 
 
 def test_setup_sh_has_new_hardening_directives() -> None:
-    """All new #391 directives must be present in setup.sh's heredoc so that
-    the installed unit file matches the template."""
+    """setup.sh must install the service template that carries #391 directives."""
     content = _read(_DEPLOY / "setup.sh")
-    missing = [d for d in _NEW_HARDENING_DIRECTIVES_391 if d not in content]
-    assert not missing, f"setup.sh missing hardening directives from issue #391: {missing}"
+    template = _read(_DEPLOY / "runner-dashboard.service")
+    assert 'TEMPLATE_FILE="${SCRIPT_DIR}/deploy/runner-dashboard.service"' in content
+    assert 'sudo tee "${SERVICE_FILE}"' in content
+    missing = [d for d in _NEW_HARDENING_DIRECTIVES_391 if d not in template]
+    assert not missing, f"runner-dashboard.service missing hardening directives from issue #391: {missing}"
 
 
 # ── Issue #391: sudoers drop-in ───────────────────────────────────────────────
