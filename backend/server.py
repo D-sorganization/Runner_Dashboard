@@ -2147,7 +2147,8 @@ async def update_runner_schedule(
         env["RUNNER_SCHEDULE_CONFIG"] = str(RUNNER_SCHEDULE_CONFIG)
         env["RUNNER_SCHEDULER_STATE"] = str(RUNNER_SCHEDULER_STATE)
         apply_cmd = _runner_scheduler_apply_command()
-        result = subprocess.run(
+        result = await asyncio.to_thread(
+            subprocess.run,
             apply_cmd,
             capture_output=True,
             text=True,
@@ -3132,7 +3133,8 @@ async def get_maxwell_status() -> dict:
     try:
         import subprocess
 
-        r = subprocess.run(
+        r = await asyncio.to_thread(
+            subprocess.run,
             ["systemctl", "is-active", "maxwell-daemon"],
             capture_output=True,
             text=True,
@@ -3983,7 +3985,8 @@ async def get_git_drift() -> dict:
 
     source = "unknown"
     try:
-        out = subprocess.run(
+        out = await asyncio.to_thread(
+            subprocess.run,
             ["git", "rev-parse", "HEAD"],
             capture_output=True,
             text=True,
@@ -3996,7 +3999,8 @@ async def get_git_drift() -> dict:
         result["source_commit"] = "unknown"
 
     try:
-        out = subprocess.run(
+        out = await asyncio.to_thread(
+            subprocess.run,
             ["git", "rev-parse", "origin/main"],
             capture_output=True,
             text=True,
@@ -4026,7 +4030,8 @@ async def get_diagnostics_summary() -> dict:
 
     # WSL status
     try:
-        wsl_result = subprocess.run(
+        wsl_result = await asyncio.to_thread(
+            subprocess.run,
             ["wsl", "-l", "-v"],
             capture_output=True,
             text=True,
@@ -4038,7 +4043,8 @@ async def get_diagnostics_summary() -> dict:
         summary["wsl_available"] = wsl_result.returncode == 0
     except Exception:  # noqa: BLE001
         try:
-            wsl_result_raw = subprocess.run(
+            wsl_result_raw = await asyncio.to_thread(
+                subprocess.run,
                 ["wsl", "-l", "-v"],
                 capture_output=True,
                 timeout=10,
@@ -4057,7 +4063,8 @@ async def get_diagnostics_summary() -> dict:
 
     # Git commit
     try:
-        out = subprocess.run(
+        out = await asyncio.to_thread(
+            subprocess.run,
             ["git", "rev-parse", "--short", "HEAD"],
             capture_output=True,
             text=True,
@@ -4093,7 +4100,8 @@ async def restart_dashboard_service(
         raise HTTPException(status_code=403, detail="Local access only")
 
     try:
-        result = subprocess.run(
+        result = await asyncio.to_thread(
+            subprocess.run,
             [SYSTEMCTL_BIN, "--user", "restart", "runner-dashboard"],
             capture_output=True,
             text=True,
