@@ -221,8 +221,9 @@ jobs:
           # signing key is provisioned on the d-sorg-fleet runners.
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # Embed the auto-generated header into the tag message so
-          # verify-tag.yml can validate the tag was created here.
+          # Embed the auto-generated header into the tag message so the
+          # inline verification below (and verify-tag.yml for any human-pushed
+          # tag) can confirm the tag was minted by the release pipeline.
           TAG_MSG_FILE="$RUNNER_TEMP/tag-message.txt"
           {
             echo "$AUTO_NOTES_HEADER"
@@ -230,6 +231,38 @@ jobs:
             cat "$NOTES_FILE"
           } > "$TAG_MSG_FILE"
           git tag -a "$TAG" -F "$TAG_MSG_FILE"
+          echo "Created local annotated tag $TAG."
+
+      - name: Verify tag locally before pushing
+        if: steps.resolve.outputs.dry_run != 'true'
+        shell: bash
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # GitHub Actions does NOT trigger downstream workflow runs for
+          # tags pushed using GITHUB_TOKEN (verify-tag.yml is for
+          # defense-in-depth on human-pushed tags). Run the same checks
+          # inline here so a malformed tag is never pushed.
+          OBJ_TYPE=$(git cat-file -t "$TAG")
+          if [ "$OBJ_TYPE" != "tag" ]; then
+            echo "::error::$TAG is a $OBJ_TYPE, expected an annotated tag"
+            exit 1
+          fi
+          MSG=$(git tag -l --format='%(contents)' "$TAG")
+          if ! grep -Fq "$AUTO_NOTES_HEADER" <<< "$MSG"; then
+            echo "::error::$TAG annotation missing required header: $AUTO_NOTES_HEADER"
+            exit 1
+          fi
+          echo "Tag $TAG passed inline verification."
+
+      - name: Push tag to origin
+        if: steps.resolve.outputs.dry_run != 'true'
+        shell: bash
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
           git push origin "$TAG"
           echo "Pushed tag $TAG."
 
