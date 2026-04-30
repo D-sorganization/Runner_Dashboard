@@ -68,7 +68,6 @@ import health as _health_router  # noqa: E402
 import issue_inventory as issue_inventory  # noqa: E402
 import lease_synchronizer as lease_synchronizer  # noqa: E402
 import linear_inventory as linear_inventory  # noqa: E402
-import metrics as _metrics_router  # noqa: E402
 import pr_inventory as pr_inventory  # noqa: E402
 import push as _push_router  # noqa: E402
 import quick_dispatch as _quick_dispatch  # noqa: E402
@@ -86,6 +85,9 @@ from routers import credentials as _credentials_router  # noqa: E402
 from routers import dispatch as _dispatch_router  # noqa: E402
 from routers import linear as _linear_router  # noqa: E402
 from routers import linear_webhook as _linear_webhook_router  # noqa: E402
+from routers import metrics as _metrics_router  # noqa: E402
+from routers import queue as _queue_router  # noqa: E402
+from routers import runner as _runner_router  # noqa: E402
 from system_utils import get_system_metrics_snapshot  # noqa: E402
 
 # datetime.UTC added in Python 3.11; fall back to timezone.utc on older runtimes.
@@ -445,6 +447,8 @@ async def _record_processed_envelope(envelope_id: str, ttl_seconds: int = 86400)
 # ── Bounded domain routers ────────────────────────────────────────────────────
 app.include_router(_dispatch_router.router)
 _dispatch_router.set_replay_functions(_is_envelope_replay, _record_processed_envelope)
+app.include_router(_queue_router.router)
+_queue_router.set_cache_store(_cache)
 app.include_router(_credentials_router.router)
 app.include_router(_linear_router.router)
 app.include_router(_linear_webhook_router.router)
@@ -454,6 +458,7 @@ app.include_router(auth_router.router)
 app.include_router(_auth_webauthn_router.router)
 app.include_router(_health_router.router)
 app.include_router(_metrics_router.router)
+app.include_router(_runner_router.router)
 
 # Agent-launcher control surface (sibling: Repository_Management/launchers/cline_agent_launcher).
 # Subprocess-only — never imports the launcher Python at runtime.
@@ -1274,44 +1279,9 @@ def _node_visibility_snapshot(node: dict) -> dict:
     }
 
 
-def runner_svc_path(runner_num: int) -> Path:
-    return RUNNER_BASE_DIR / f"runner-{runner_num}" / "svc.sh"
-
-
-async def run_runner_svc(runner_num: int, action: str, timeout: int = 30) -> tuple[int, str, str]:
-    """Run a generated GitHub runner svc.sh from its own runner directory."""
-    svc_path = runner_svc_path(runner_num)
-    return await run_cmd(["sudo", str(svc_path), action], timeout=timeout, cwd=svc_path.parent)
-
-
-def runner_num_from_id(runner_id: int, runners: list[dict]) -> int | None:
-    local_names = {
-        HOSTNAME.lower(),
-        platform.node().lower(),
-        *(alias.lower() for alias in RUNNER_ALIASES),
-    }
-    for r in runners:
-        name = r.get("name", "")
-        parts = name.rsplit("-", 1)
-        if len(parts) == 2 and parts[1].isdigit() and r["id"] == runner_id:
-            machine = parts[0].removeprefix("d-sorg-local-").lower()
-            if machine not in local_names:
-                return None
-            return int(parts[1])
-    return None
-
-
 def _runner_limit() -> int:
     """Return the hard runner capacity this dashboard is allowed to manage."""
     return max(NUM_RUNNERS, MAX_RUNNERS)
-
-
-def _runner_sort_key(runner: dict) -> tuple[str, int, str]:
-    """Sort runner names by machine and numeric suffix instead of alphabetically."""
-    name = str(runner.get("name", ""))
-    prefix, sep, suffix = name.rpartition("-")
-    number = int(suffix) if sep and suffix.isdigit() else 10**9
-    return (prefix.lower(), number, name.lower())
 
 
 def get_runner_service_name(runner_num: int) -> str | None:
@@ -2249,202 +2219,7 @@ async def get_watchdog_status(request: Request):
 
 
 # ─── Runner API Routes ───────────────────────────────────────────────────────
-
-
-@app.get("/api/runners")
-async def get_runners(request: Request):
-    """Get all org runners with their status."""
-    if _should_proxy_fleet_to_hub(request):
-        return await proxy_to_hub(request)
-
-    cached = _cache_get("runners", 60.0)
-    if cached is not None:
-        cached["runners"] = sorted(cached.get("runners", []), key=_runner_sort_key)
-        return cached
-    data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
-    data["runners"] = sorted(data.get("runners", []), key=_runner_sort_key)
-    _cache_set("runners", data)
-    return data
-
-
-# ─── MATLAB Runner Health (issue #570) ───────────────────────────────────────
-#
-# MATLAB linting relies on a Windows self-hosted runner where MATLAB is
-# installed natively.  Operators need to see at a glance whether that capacity
-# is available; missing MATLAB runners produce queued-forever CI jobs
-# otherwise.  The endpoint below surfaces online/offline/busy state, last job,
-# persistence mode (Windows service vs Scheduled Task), and links to recent
-# MATLAB Code Analyzer workflow runs.
-#
-# Runners are identified by either the `matlab` label or a name matching
-# `*windows-matlab*` / `*d-sorg-matlab*` to stay robust across naming schemes.
-
-
-def _is_matlab_runner(runner: dict) -> bool:
-    """Return True if the runner appears to be a MATLAB-capable runner."""
-    name = str(runner.get("name", "")).lower()
-    if "matlab" in name:
-        return True
-    for label in runner.get("labels", []) or []:
-        lname = str(label.get("name", "")).lower() if isinstance(label, dict) else str(label).lower()
-        if lname == "matlab" or lname.startswith("windows-matlab") or lname.startswith("d-sorg-matlab"):
-            return True
-    return False
-
-
-def _matlab_runner_summary(runner: dict) -> dict:
-    """Project a GitHub runner record into the MATLAB health shape."""
-    labels = [lbl.get("name") if isinstance(lbl, dict) else str(lbl) for lbl in (runner.get("labels") or [])]
-    status = str(runner.get("status", "unknown")).lower()
-    busy = bool(runner.get("busy"))
-    # Persistence hint: the ControlTower Windows runner is registered as a
-    # Windows service; names ending with `-scheduled` signal a Scheduled Task.
-    name = str(runner.get("name", ""))
-    if name.endswith("-scheduled") or "scheduled-task" in name.lower():
-        persistence = "scheduled_task"
-    elif status == "offline":
-        persistence = "unknown"
-    else:
-        persistence = "windows_service"
-    return {
-        "id": runner.get("id"),
-        "name": name,
-        "status": status,
-        "busy": busy,
-        "labels": labels,
-        "os": runner.get("os"),
-        "persistence": persistence,
-    }
-
-
-async def _recent_matlab_workflow_runs(limit: int = 5) -> list[dict]:
-    """Fetch recent MATLAB Code Analyzer workflow runs across the org.
-
-    Returns an empty list on any failure — this is advisory UI, not critical
-    control surface, so transient API errors must not break the endpoint.
-    """
-    try:
-        repos = await _get_recent_org_repos(limit=15)
-    except Exception:  # pragma: no cover - defensive  # noqa: BLE001
-        return []
-    if not repos:
-        return []
-
-    async def _runs_for_repo(repo_name: str) -> list[dict]:
-        try:
-            data = await gh_api_admin(f"/repos/{ORG}/{repo_name}/actions/runs?per_page=10")
-        except Exception:  # noqa: BLE001
-            return []
-        out = []
-        for run in data.get("workflow_runs", []) or []:
-            wf_name = str(run.get("name") or "").lower()
-            wf_path = str(run.get("path") or "").lower()
-            if "matlab" in wf_name or "matlab" in wf_path or "code analyzer" in wf_name:
-                out.append(
-                    {
-                        "repo": repo_name,
-                        "name": run.get("name"),
-                        "status": run.get("status"),
-                        "conclusion": run.get("conclusion"),
-                        "html_url": run.get("html_url"),
-                        "created_at": run.get("created_at"),
-                        "run_id": run.get("id"),
-                    }
-                )
-        return out
-
-    try:
-        nested = await asyncio.gather(
-            *[_runs_for_repo(r["name"]) for r in repos[:10]],
-            return_exceptions=True,
-        )
-    except Exception:  # noqa: BLE001
-        return []
-    flat: list[dict] = []
-    for item in nested:
-        if isinstance(item, list):
-            flat.extend(item)
-    flat.sort(key=lambda r: r.get("created_at") or "", reverse=True)
-    return flat[:limit]
-
-
-@app.get("/api/runners/matlab")
-async def get_matlab_runner_health(request: Request) -> dict:
-    """Surface Windows MATLAB runner health for the dashboard (issue #570).
-
-    Response shape::
-
-        {
-          "runners": [...],          # MATLAB runner summaries
-          "total": int,
-          "online": int,
-          "busy": int,
-          "offline": int,
-          "capacity_available": bool, # true iff an idle online runner exists
-          "warning": str | None,      # actionable message when capacity is zero
-          "recent_workflow_runs": [...],
-          "generated_at": "..."
-        }
-
-    Always returns 200; absence of runners is represented explicitly so the UI
-    can render an actionable warning instead of a spinner.
-    """
-    if _should_proxy_fleet_to_hub(request):
-        return await proxy_to_hub(request)
-
-    cached = _cache_get("matlab_runner_health", 45.0)
-    if cached is not None:
-        return cached
-
-    try:
-        data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
-        all_runners = data.get("runners", []) or []
-    except Exception as exc:  # pragma: no cover - defensive  # noqa: BLE001
-        all_runners = []
-        api_error: str | None = f"GitHub runner API unavailable: {exc}"
-    else:
-        api_error = None
-
-    matlab = [r for r in all_runners if _is_matlab_runner(r)]
-    summaries = [_matlab_runner_summary(r) for r in matlab]
-
-    online = sum(1 for r in summaries if r["status"] == "online")
-    busy = sum(1 for r in summaries if r["busy"])
-    offline = sum(1 for r in summaries if r["status"] != "online")
-    idle_online = sum(1 for r in summaries if r["status"] == "online" and not r["busy"])
-
-    warning: str | None = None
-    if not summaries:
-        warning = (
-            "No Windows MATLAB runners are registered. MATLAB Code Analyzer "
-            "jobs will queue indefinitely. See "
-            "docs/operations/matlab_windows_runner.md to register a runner."
-        )
-    elif online == 0:
-        warning = (
-            "All MATLAB runners are offline. Start the Windows runner service "
-            "on the ControlTower host to restore MATLAB lint capacity."
-        )
-    elif idle_online == 0:
-        warning = "All MATLAB runners are currently busy. New MATLAB lint jobs will queue until one frees up."
-
-    recent = await _recent_matlab_workflow_runs(limit=5)
-
-    result = {
-        "runners": summaries,
-        "total": len(summaries),
-        "online": online,
-        "busy": busy,
-        "offline": offline,
-        "capacity_available": idle_online > 0,
-        "warning": warning,
-        "api_error": api_error,
-        "recent_workflow_runs": recent,
-        "generated_at": datetime.now(UTC).isoformat(),
-    }
-    _cache_set("matlab_runner_health", result)
-    return result
-
+# Routes extracted to routers/runner.py and registered via app.include_router.
 
 @app.get("/api/runs")
 async def get_runs(request: Request, per_page: int = 30) -> dict:
@@ -2747,275 +2522,7 @@ async def get_repo_runs(request: Request, repo: str, per_page: int = 20):
     return data
 
 
-@app.post("/api/runners/{runner_id}/stop")
-async def stop_runner(
-    request: Request,
-    *,
-    principal: Principal = Depends(require_scope("runners.control")),
-    runner_id: int,  # noqa: B008
-):  # noqa: B008
-    """Stop a specific runner's systemd service."""
-    data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
-    runners = data.get("runners", [])
-    num = runner_num_from_id(runner_id, runners)
-
-    if num is None:
-        msg = f"Runner ID {runner_id} not found locally"
-        raise HTTPException(status_code=404, detail=msg)
-
-    svc_path = runner_svc_path(num)
-    if not svc_path.exists():
-        raise HTTPException(status_code=404, detail=f"Runner {num} svc.sh not found")
-
-    log.info("Stopping runner %d (GitHub ID: %d)", num, runner_id)
-    code, stdout, stderr = await run_runner_svc(num, "stop")
-    if code != 0:
-        log.warning("Failed to stop runner %d: %s", num, stderr[:200])
-        raise HTTPException(status_code=500, detail=f"Failed to stop runner {num}")
-
-    return {"status": "stopped", "runner": num, "output": stdout.strip()}
-
-
-@app.post("/api/runners/{runner_id}/start")
-async def start_runner(
-    request: Request,
-    *,
-    principal: Principal = Depends(require_scope("runners.control")),
-    runner_id: int,  # noqa: B008
-):  # noqa: B008
-    """Start a specific runner's systemd service."""
-    data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
-    runners = data.get("runners", [])
-    num = runner_num_from_id(runner_id, runners)
-
-    if num is None:
-        msg = f"Runner ID {runner_id} not found locally"
-        raise HTTPException(status_code=404, detail=msg)
-
-    svc_path = runner_svc_path(num)
-    if not svc_path.exists():
-        raise HTTPException(status_code=404, detail=f"Runner {num} svc.sh not found")
-
-    log.info("Starting runner %d (GitHub ID: %d)", num, runner_id)
-    code, stdout, stderr = await run_runner_svc(num, "start")
-    if code != 0:
-        log.warning("Failed to start runner %d: %s", num, stderr[:200])
-        raise HTTPException(status_code=500, detail=f"Failed to start runner {num}")
-
-    return {"status": "started", "runner": num, "output": stdout.strip()}
-
-
-async def _fleet_control_local(action: str) -> dict:
-    """Scale runners on this machine only."""
-    data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
-    runners = data.get("runners", [])
-    results = []
-
-    log.info("Local runner control on %s: %s", HOSTNAME, action)
-
-    if action == "all-up":
-        for i in range(1, _runner_limit() + 1):
-            svc = runner_svc_path(i)
-            if svc.exists():
-                code, _, _ = await run_runner_svc(i, "start")
-                results.append({"runner": i, "action": "start", "success": code == 0})
-
-    elif action == "all-down":
-        for i in range(1, _runner_limit() + 1):
-            svc = runner_svc_path(i)
-            if svc.exists():
-                code, _, _ = await run_runner_svc(i, "stop")
-                results.append({"runner": i, "action": "stop", "success": code == 0})
-
-    elif action == "up":
-        online_nums = set()
-        for r in runners:
-            if r["status"] == "online":
-                num = runner_num_from_id(r["id"], runners)
-                if num:
-                    online_nums.add(num)
-        for i in range(1, _runner_limit() + 1):
-            if i not in online_nums:
-                svc = runner_svc_path(i)
-                if svc.exists():
-                    code, _, _ = await run_runner_svc(i, "start")
-                    results.append(
-                        {
-                            "runner": i,
-                            "action": "start",
-                            "success": code == 0,
-                        }
-                    )
-                    break
-
-    elif action == "down":
-        idle_runners = []
-        for r in runners:
-            if r["status"] == "online" and not r.get("busy"):
-                num = runner_num_from_id(r["id"], runners)
-                if num:
-                    idle_runners.append(num)
-        if idle_runners:
-            target = max(idle_runners)
-            svc = runner_svc_path(target)
-            if svc.exists():
-                code, _, _ = await run_runner_svc(target, "stop")
-                results.append(
-                    {
-                        "runner": target,
-                        "action": "stop",
-                        "success": code == 0,
-                    }
-                )
-        else:
-            raise HTTPException(status_code=400, detail="No idle runners to stop")
-    else:
-        raise HTTPException(status_code=400, detail=f"Unknown action: {action}")
-
-    return {"machine": HOSTNAME, "action": action, "results": results}
-
-
-async def _remote_fleet_control(name: str, url: str, action: str) -> dict:
-    """Ask a node dashboard to apply a runner action locally."""
-    try:
-        async with httpx.AsyncClient(timeout=20.0) as client:
-            resp = await client.post(f"{url}/api/fleet/control/{action}?local=1")
-        if resp.status_code != 200:
-            return {
-                "machine": name,
-                "url": url,
-                "success": False,
-                "status_code": resp.status_code,
-                "error": resp.text[:500],
-            }
-        data = resp.json()
-        return {
-            "machine": name,
-            "url": url,
-            "success": True,
-            "result": data,
-        }
-    except Exception as exc:  # noqa: BLE001 - remote nodes may be offline
-        return {"machine": name, "url": url, "success": False, "error": str(exc)}
-
-        return {"machine": name, "url": url, "success": False, "error": str(exc)}
-
-
-@app.post("/api/fleet/control/{action}")
-async def fleet_control(
-    action: str,
-    request: Request,
-    *,
-    principal: Principal = Depends(require_scope("fleet.control")),  # noqa: B008
-):  # noqa: B008
-    """Scale runners from any dashboard.
-
-    Nodes proxy fleet-wide requests to the hub. The hub applies the action
-    locally and fans it out to configured nodes. Internal fan-out calls use
-    ``?local=1`` so each node controls its own runner services.
-    """
-    if _should_proxy_fleet_to_hub(request):
-        return await proxy_to_hub(request)
-
-    scope = request.query_params.get("scope", "fleet")
-    should_fan_out = MACHINE_ROLE == "hub" and scope != "local" and bool(FLEET_NODES)
-    local_machine = HOSTNAME
-    try:
-        local_result = await _fleet_control_local(action)
-        local_machine = local_result.get("machine", HOSTNAME)
-        local_node_result = {
-            "machine": local_machine,
-            "url": f"http://localhost:{PORT}",
-            "success": True,
-            "result": local_result,
-        }
-    except HTTPException as exc:
-        if not should_fan_out:
-            raise
-        local_result = {"machine": HOSTNAME, "action": action, "results": []}
-        local_node_result = {
-            "machine": HOSTNAME,
-            "url": f"http://localhost:{PORT}",
-            "success": False,
-            "status_code": exc.status_code,
-            "error": str(exc.detail),
-        }
-    node_results = [local_node_result]
-
-    if should_fan_out:
-        remotes = await asyncio.gather(*[_remote_fleet_control(name, url, action) for name, url in FLEET_NODES.items()])
-        node_results.extend(remotes)
-
-    return {
-        "action": action,
-        "scope": "local" if scope == "local" else "fleet",
-        "machine": local_machine,
-        "results": local_result["results"],
-        "nodes": node_results,
-    }
-
-
-@app.get("/api/fleet/schedule")
-async def get_runner_schedule() -> dict:
-    """Return this machine's local runner capacity schedule and live state."""
-    return get_runner_capacity_snapshot()
-
-
-@app.get("/api/fleet/capacity")
-async def get_fleet_capacity() -> dict:
-    """Compatibility endpoint for dashboard capacity summaries."""
-    return get_runner_capacity_snapshot()
-
-
-@app.post("/api/fleet/schedule")
-async def update_runner_schedule(
-    request: Request,
-    *,
-    principal: Principal = Depends(require_scope("fleet.control")),  # noqa: B008
-) -> dict:
-    """Update this machine's local runner capacity schedule."""
-    body = await request.json()
-    if not isinstance(body, dict):
-        raise HTTPException(status_code=400, detail="schedule payload must be an object")
-    try:
-        config = _validate_runner_schedule(body.get("schedule", body))
-    except (TypeError, ValueError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    _write_runner_schedule_config(config)
-    apply_now = bool(body.get("apply", False))
-    apply_result: dict[str, object] | None = None
-    if apply_now and Path(RUNNER_SCHEDULER_BIN).exists():
-        env = safe_subprocess_env()
-        env["RUNNER_ROOT"] = str(RUNNER_BASE_DIR)
-        env["RUNNER_SCHEDULE_CONFIG"] = str(RUNNER_SCHEDULE_CONFIG)
-        env["RUNNER_SCHEDULER_STATE"] = str(RUNNER_SCHEDULER_STATE)
-        apply_cmd = _runner_scheduler_apply_command()
-        result = subprocess.run(
-            apply_cmd,
-            capture_output=True,
-            text=True,
-            timeout=30,
-            check=False,
-            env=env,
-        )
-        apply_result = {
-            "returncode": result.returncode,
-            "stdout": result.stdout.strip()[:1000],
-            "stderr": result.stderr.strip()[:1000],
-        }
-        if result.returncode != 0:
-            error = apply_result["stderr"] or apply_result["stdout"]
-            raise HTTPException(
-                status_code=500,
-                detail=f"Schedule saved, but apply failed: {error}",
-            )
-    return {
-        "saved": True,
-        "applied": apply_now,
-        "apply_result": apply_result,
-        **get_runner_capacity_snapshot(),
-    }
-
+# Routes extracted to routers/runner.py and registered via app.include_router.
 
 @app.get("/api/repos")
 async def get_repos(request: Request):
@@ -3683,7 +3190,7 @@ async def get_stats(request: Request):
     org_open_issues, org_open_prs, queue_data, fleet_data = await asyncio.gather(
         _github_search_total(f"org:{ORG}+is:open+is:issue"),
         _github_search_total(f"org:{ORG}+is:open+is:pr"),
-        _queue_impl(),
+        _queue_router._queue_impl(),
         _get_fleet_nodes_impl(),
     )
 
@@ -4658,7 +4165,7 @@ async def get_queue(request: Request) -> dict:
     """
     if _should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
-    return await _queue_impl()
+    return await _queue_router._queue_impl()
 
 
 @app.post("/api/runs/{repo}/cancel/{run_id}")
@@ -4733,7 +4240,7 @@ async def cancel_workflow_runs(
         raise HTTPException(status_code=400, detail="workflow_name required")
 
     # Fetch current queue
-    queue_data = await _queue_impl()
+    queue_data = await _queue_router._queue_impl()
     runs_to_cancel = [
         r
         for r in queue_data["queued"]
@@ -5103,39 +4610,6 @@ async def get_fleet_nodes(request: Request) -> dict:
     return await _get_fleet_nodes_impl()
 
 
-@app.get("/api/fleet/hardware")
-async def get_fleet_hardware(request: Request) -> dict:
-    """Return centralized fleet hardware specs for workload placement."""
-    if _should_proxy_fleet_to_hub(request):
-        return await proxy_to_hub(request)
-    fleet = await _get_fleet_nodes_impl()
-    machines = []
-    for node in fleet.get("nodes", []):
-        registry = node.get("registry") or {}
-        specs = node.get("hardware_specs") or node.get("system", {}).get("hardware_specs", {})
-        capacity = node.get("workload_capacity") or node.get("system", {}).get("workload_capacity", {})
-        machines.append(
-            {
-                "name": node.get("name"),
-                "display_name": registry.get("display_name") or node.get("name"),
-                "online": bool(node.get("online")),
-                "dashboard_reachable": bool(node.get("dashboard_reachable")),
-                "role": registry.get("role") or node.get("role"),
-                "runner_labels": registry.get("runner_labels", []),
-                "hardware_specs": specs,
-                "workload_capacity": capacity,
-                "offline_reason": node.get("offline_reason"),
-            }
-        )
-    return {
-        "timestamp": datetime.now(UTC).isoformat(),
-        "machines": machines,
-        "count": len(machines),
-        "online_count": sum(1 for machine in machines if machine["online"]),
-        "registry": fleet.get("registry", {}),
-    }
-
-
 async def _get_fleet_nodes_impl() -> dict:
     """Aggregate system metrics + health from all fleet nodes.
 
@@ -5164,27 +4638,6 @@ async def _get_fleet_nodes_impl() -> dict:
             "machines": len(registry.get("machines", [])),
         },
     }
-
-
-@app.get("/api/fleet/nodes/{node_name}/system")
-async def proxy_node_system(node_name: str) -> dict:
-    """Proxy /api/system from a named fleet node (for detailed drill-down)."""
-    if node_name in (HOSTNAME, "local"):
-        return await get_system_metrics_snapshot()
-    url = FLEET_NODES.get(node_name)
-    if not url:
-        raise HTTPException(status_code=404, detail=f"Node not found: {node_name}")
-    try:
-        async with httpx.AsyncClient(timeout=8.0) as client:
-            resp = await client.get(f"{url}/api/system")
-        if resp.status_code != 200:
-            raise HTTPException(status_code=502, detail="Node returned error")
-        return resp.json()
-    except httpx.TimeoutException as exc:
-        raise HTTPException(status_code=504, detail=f"{node_name} timed out") from exc
-    except httpx.RequestError as exc:
-        log.warning("Node %s unreachable: %s", node_name, exc)
-        raise HTTPException(status_code=502, detail=f"{node_name} unreachable") from exc
 
 
 # ─── Request logging middleware ───────────────────────────────────────────────
