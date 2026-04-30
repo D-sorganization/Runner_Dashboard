@@ -1,0 +1,40 @@
+# bandit.yaml — Bandit security scan configuration
+#
+# Severity policy (enforced in CI via ci-standard.yml quality-gate):
+#   HIGH   → blocking (CI fails)
+#   MEDIUM → per-finding allow-list below with mandatory rationale
+#   LOW    → skipped (-l flag filters to medium+high)
+#
+# To add a new MEDIUM allow-list entry:
+#   1. Add the test ID to the skips list below.
+#   2. Append a comment with: rationale, affected file(s), reviewer, date.
+#   3. Include a tracking issue for remediation.
+#
+# Do NOT add HIGH-severity test IDs to skips — fix the code instead.
+
+skips:
+  # B104: Binding to all interfaces (0.0.0.0)
+  # Rationale: The FastAPI server intentionally binds to 0.0.0.0 so the
+  #   dashboard is reachable on the local fleet network. The service is not
+  #   exposed to the public internet; firewall rules at the OS level restrict
+  #   access. Tracked for review in #161.
+  # Affected: backend/server.py (uvicorn startup)
+  # Reviewer: dieterolson  Date: 2026-04-30
+  - B104
+
+  # B603: subprocess without shell=True
+  # Rationale: subprocess calls in deploy scripts use explicit argument lists
+  #   (no shell interpolation). shell=False is the secure default; bandit
+  #   B603 fires on any subprocess usage regardless. These calls pass
+  #   validated, constant command strings — no user input is interpolated.
+  # Affected: backend/agent_remediation.py, backend/runner_autoscaler.py
+  # Reviewer: dieterolson  Date: 2026-04-30
+  - B603
+
+  # B607: Starting a process with a partial path
+  # Rationale: Companion to B603. Commands like ["git", ...] rely on PATH
+  #   which is controlled by the systemd service environment. PATH is set
+  #   explicitly in runner-dashboard.service. Tracked for hardening in #161.
+  # Affected: backend/agent_remediation.py, backend/runner_autoscaler.py
+  # Reviewer: dieterolson  Date: 2026-04-30
+  - B607

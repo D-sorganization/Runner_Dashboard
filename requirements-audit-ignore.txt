@@ -1,0 +1,23 @@
+# requirements-audit-ignore.txt — pip-audit CVE allow-list
+#
+# Format (one entry per line):
+#   <PURL-or-vuln-id>  # CVE: <id>  Severity: <level>  Expires: <ISO-date>  Rationale: <text>
+#
+# Policy (enforced in CI via ci-standard.yml quality-gate):
+#   CRITICAL / HIGH CVEs → blocking; must be patched or have an explicit
+#                          time-limited waiver approved by a maintainer.
+#   MEDIUM / LOW CVEs    → add entry here with rationale and expiry date.
+#
+# Entries with an Expires date in the past must be removed or renewed.
+# Running `pip-audit -r requirements.txt` with no ignores must pass
+# for CRITICAL/HIGH before any entry can be added here.
+#
+# To add an entry:
+#   1. Verify severity is MEDIUM or LOW (HIGH/CRITICAL must be patched).
+#   2. Add the PURL reported by pip-audit (e.g. pkg:pypi/foo@1.0.0).
+#   3. Set Expires to no more than 90 days from today.
+#   4. Include the tracking issue for the upstream fix.
+#
+# Currently no CVEs are allow-listed — all dependencies are clean.
+# Add entries here when pip-audit reports MEDIUM/LOW findings that cannot
+# be immediately remediated.

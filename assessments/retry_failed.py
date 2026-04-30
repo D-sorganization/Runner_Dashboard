@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Retry failed repos with --no-verify to skip pre-commit hooks."""
 
-import subprocess
 import shutil
+import subprocess
 from pathlib import Path
 
 DATE = "2026-04-26"
@@ -30,7 +30,7 @@ def main():
         # Stash any dirty state
         status = run(["git", "status", "--porcelain"], cwd=str(repo_path))
         if status.stdout.strip():
-            print(f"  Dirty tree, stashing...")
+            print("  Dirty tree, stashing...")
             run(["git", "stash", "-u"], cwd=str(repo_path))
 
         branch_name = f"assessment/{DATE}"
@@ -64,7 +64,7 @@ def main():
         if commit.returncode != 0:
             # If nothing to commit, that's okay
             if "nothing to commit" in commit.stdout.lower() or "nothing to commit" in commit.stderr.lower():
-                print(f"  Nothing new to commit")
+                print("  Nothing new to commit")
             else:
                 print(f"  Commit failed: {commit.stderr}")
                 results.append({"repo": repo, "status": "commit_failed"})

@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import platform
 import secrets
+import tempfile
 from pathlib import Path
+
+log = logging.getLogger("dashboard")
 
 # Paths
 BACKEND_DIR = Path(__file__).resolve().parent
@@ -97,4 +101,65 @@ HEAVY_TEST_REPOS = {
 }
 
 # Session
-SESSION_SECRET = os.environ.get("SESSION_SECRET", secrets.token_hex(32))
+_SESSION_SECRET_DIR = Path(
+    os.environ.get(
+        "RUNNER_DASHBOARD_SESSION_SECRET_DIR",
+        Path.home() / ".config" / "runner-dashboard",
+    )
+)
+_SESSION_SECRET_FILE = _SESSION_SECRET_DIR / "session_secret"
+
+
+def _resolve_session_secret() -> tuple[str, str]:
+    """Return (secret, source) where source is 'env', 'persisted', or 'generated'.
+
+    Resolution order:
+    1. ``SESSION_SECRET`` env var — source ``"env"``.
+    2. Persisted file at ``~/.config/runner-dashboard/session_secret`` — source ``"persisted"``.
+    3. Generate a new secret, write it atomically with mode 0o600 — source ``"generated"``.
+
+    A WARNING is logged when the env var is absent so operators know which
+    mode the server is running in.
+    """
+    env_val = os.environ.get("SESSION_SECRET")
+    if env_val:
+        return env_val, "env"
+
+    # Try to load an already-persisted secret.
+    if _SESSION_SECRET_FILE.exists():
+        try:
+            persisted = _SESSION_SECRET_FILE.read_text(encoding="utf-8").strip()
+            if len(persisted) >= 32:
+                log.warning(
+                    "SESSION_SECRET not set; reusing persisted secret from %s",
+                    _SESSION_SECRET_FILE,
+                )
+                return persisted, "persisted"
+        except OSError:
+            pass  # Fall through to generate a new one.
+
+    # Generate, persist, and warn.
+    log.warning(
+        "SESSION_SECRET not set; persisting to %s",
+        _SESSION_SECRET_FILE,
+    )
+    new_secret = secrets.token_hex(32)
+    _SESSION_SECRET_DIR.mkdir(parents=True, exist_ok=True)
+    # Atomic write via temp file + rename so partial writes are never visible.
+    fd, tmp_path_str = tempfile.mkstemp(dir=_SESSION_SECRET_DIR, prefix=".tmp-session_secret-")
+    try:
+        os.chmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(new_secret)
+        os.replace(tmp_path_str, _SESSION_SECRET_FILE)
+        _SESSION_SECRET_FILE.chmod(0o600)
+    except OSError:
+        try:
+            os.unlink(tmp_path_str)
+        except OSError:
+            pass
+        raise
+    return new_secret, "generated"
+
+
+SESSION_SECRET, SESSION_SECRET_SOURCE = _resolve_session_secret()

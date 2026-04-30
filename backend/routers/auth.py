@@ -102,9 +102,10 @@ async def dev_login(request: Request):
             )
             return RedirectResponse(url="/")
 
-    # If none exists, create a dummy one
+    # If none exists, create a dummy one and persist it so it survives restarts.
     dummy = Principal(id="dev-user", type="human", name="Developer")
     identity_manager.principals["dev-user"] = dummy
+    identity_manager.save_principals()
     request.session["principal_id"] = "dev-user"
     request.session["session_id"] = sm.register_session(
         "dev-user",
