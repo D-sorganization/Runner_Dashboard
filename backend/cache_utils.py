@@ -34,6 +34,11 @@ def cache_set(key: str, data: Any) -> None:
     _cache[key] = (data, time.time())
 
 
+def cache_delete(key: str) -> None:
+    """Delete a specific cache entry."""
+    _cache.pop(key, None)
+
+
 def cache_clear() -> None:
     """Clear all cached entries."""
     _cache.clear()
