@@ -28,10 +28,6 @@ UTC = timezone.utc  # noqa: UP017
 log = logging.getLogger("dashboard.fleet_status")
 router = APIRouter(tags=["fleet"])
 
-# Module-level path for orchestration audit logs
-_ORCHESTRATION_AUDIT_PATH = Path.home() / "actions-runners" / "dashboard" / "orchestration_audit.json"
-
-
 def _node_deployment_info(node: dict) -> dict:
     """Return the deployment payload reported by a fleet node."""
     health = node.get("health") if isinstance(node.get("health"), dict) else {}
@@ -417,24 +413,6 @@ async def _get_fleet_nodes_impl() -> dict:
     }
 
 
-def _load_orchestration_audit(limit: int = 50, principal: str | None = None) -> list[dict]:
-    """Load recent orchestration audit entries from disk."""
-    if not _ORCHESTRATION_AUDIT_PATH.exists():
-        return []
-    try:
-        raw = _ORCHESTRATION_AUDIT_PATH.read_text(encoding="utf-8").strip()
-        if not raw:
-            return []
-        entries = json.loads(raw)
-        if isinstance(entries, list):
-            if principal:
-                entries = [e for e in entries if e.get("principal") == principal]
-            return entries[-limit:]
-        return []
-    except (OSError, json.JSONDecodeError):
-        return []
-
-
 # ─── Routes ──────────────────────────────────────────────────────────────────
 
 
@@ -500,73 +478,3 @@ async def proxy_node_system(node_name: str) -> dict:
         raise HTTPException(status_code=502, detail=f"{node_name} unreachable") from exc
 
 
-@router.get("/api/fleet/orchestration")
-async def get_fleet_orchestration(request: Request) -> dict:
-    """Return per-machine job assignment, queue, and capacity for fleet orchestration view."""
-    registry_data = load_machine_registry()
-    machines_raw = registry_data.get("machines", [])
-
-    # Try to enrich with live node data from cache
-    try:
-        fleet = await _get_fleet_nodes_impl()
-        live_nodes = {n.get("name", ""): n for n in fleet.get("nodes", [])}
-    except Exception:  # noqa: BLE001
-        live_nodes = {}
-
-    machines = []
-    for m in machines_raw:
-        name = m.get("name", "")
-        live = live_nodes.get(name, {})
-        online = bool(live.get("online", False)) if live else False
-        system_info = live.get("system", {}) if live else {}
-        runners_info = live.get("runners", []) if live else []
-        runner_count = len(runners_info) if isinstance(runners_info, list) else 0
-        busy_count = sum(1 for r in runners_info if r.get("busy")) if runner_count else 0
-        machines.append(
-            {
-                "name": name,
-                "display_name": m.get("display_name") or name,
-                "role": m.get("role", "node"),
-                "online": online,
-                "runner_count": runner_count,
-                "busy_runners": busy_count,
-                "queue_depth": max(0, busy_count),
-                "last_ping": live.get("last_ping") or live.get("checked_at"),
-                "dashboard_url": m.get("dashboard_url"),
-                "runner_labels": m.get("runner_labels", []),
-                "offline_reason": live.get("offline_reason"),
-                "cpu_percent": system_info.get("cpu_percent"),
-                "memory_percent": system_info.get("memory_percent"),
-            }
-        )
-
-    audit_entries = _load_orchestration_audit(limit=10)
-    return {
-        "timestamp": datetime.now(UTC).isoformat(),
-        "machines": machines,
-        "online_count": sum(1 for m in machines if m["online"]),
-        "total_count": len(machines),
-        "audit_log": list(reversed(audit_entries)),
-    }
-
-
-@router.get("/api/fleet/audit")
-async def get_fleet_audit_log(
-    request: Request,
-    limit: int = 50,
-    principal: str | None = None,
-    _auth: Principal = Depends(require_principal),
-) -> list[dict]:
-    """Return this fleet's orchestration audit log."""
-    return _load_orchestration_audit(limit=limit, principal=principal)
-
-
-@router.get("/api/audit")
-async def get_node_audit_log(
-    request: Request,
-    limit: int = 50,
-    principal: str | None = None,
-    _auth: Principal = Depends(require_principal),
-) -> list[dict]:
-    """Return this node's orchestration audit log."""
-    return _load_orchestration_audit(limit=limit, principal=principal)

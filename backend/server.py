@@ -21,7 +21,6 @@ import asyncio
 import contextlib
 import datetime as _dt_mod
 import errno
-import ipaddress
 import json
 import logging
 import logging.handlers
@@ -35,10 +34,9 @@ import subprocess
 import sys
 import tempfile
 import time
-from collections import OrderedDict, defaultdict, deque
+from collections import deque
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
 
 import httpx
 import psutil
@@ -78,9 +76,23 @@ from machine_registry import (  # noqa: E402
     load_machine_registry,
     merge_registry_with_live_nodes,
 )
+from middleware import (  # noqa: E402
+    _set_hub_config,
+    cache_get,
+    cache_get_internal,
+    cache_set,
+    gh_api_admin,
+    is_envelope_replay,
+    log_requests,
+    proxy_to_hub,
+    record_processed_envelope,
+    run_cmd,
+    should_proxy_fleet_to_hub,
+)
 from report_files import parse_report_metrics, sanitize_report_date  # noqa: E402
 from routers import assistant as _assistant_router  # noqa: E402
 from routers import credentials as _credentials_router  # noqa: E402
+from routers import deployment as _deployment_router  # noqa: E402
 from routers import dispatch as _dispatch_router  # noqa: E402
 from routers import feature_requests as _feature_requests_router  # noqa: E402
 from routers import fleet as _fleet_router  # noqa: E402
@@ -88,7 +100,18 @@ from routers import fleet_control as _fleet_control_router  # noqa: E402
 from routers import fleet_status as _fleet_status_router  # noqa: E402
 from routers import linear as _linear_router  # noqa: E402
 from routers import linear_webhook as _linear_webhook_router  # noqa: E402
+from routers import orchestration as _orchestration_router  # noqa: E402
+from routers import repos as _repos_router  # noqa: E402
+from routers import reports as _reports_router  # noqa: E402
 from routers import runs_workflows as _runs_workflows_router  # noqa: E402
+from routers import stats as _stats_router  # noqa: E402
+from routers import tests as _tests_router  # noqa: E402
+from security import (  # noqa: E402
+    check_dispatch_rate,
+    safe_subprocess_env,
+    sanitize_log_value,
+    validate_fleet_node_url,
+)
 from system_utils import get_system_metrics_snapshot  # noqa: E402
 
 # datetime.UTC added in Python 3.11; fall back to timezone.utc on older runtimes.
@@ -146,87 +169,17 @@ def _setup_api_key() -> None:
 
 
 # ─── Security Utilities ───────────────────────────────────────────────────────
+# All security functions (sanitize_log_value, safe_subprocess_env, validate_*, check_dispatch_rate)
+# are now imported from security.py above (issue #299).
+
+# KEEP THIS SPACE FOR FUTURE SECURITY HELPERS
 
 
-def sanitize_log_value(value: str) -> str:
+def _sanitize_log_value_REMOVED(value: str) -> str:
     """Strip log-injection characters from user-controlled strings."""
     return value.replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")[:200]
 
 
-def safe_subprocess_env() -> dict[str, str]:
-    """Return os.environ with secrets stripped out for subprocess calls."""
-    excluded = {
-        "GH_TOKEN",
-        "GITHUB_TOKEN",
-        "ANTHROPIC_API_KEY",
-        "DASHBOARD_API_KEY",
-        "SECRET",
-        "PASSWORD",
-        "TOKEN",
-    }
-    return {k: v for k, v in os.environ.items() if not any(exc in k.upper() for exc in excluded)}
-
-
-def validate_fleet_node_url(url: str) -> str:
-    """Validate a fleet node URL to prevent SSRF (issue #28)."""
-    parsed = urlparse(url)
-    if parsed.scheme not in ("http", "https"):
-        raise ValueError(f"Fleet node URL must use http or https: {url}")
-    host = parsed.hostname or ""
-    try:
-        addr = ipaddress.ip_address(host)
-        if not (addr.is_private or addr.is_loopback):
-            raise ValueError(f"Fleet node URL must be a private/local address: {url}")
-    except ValueError as exc:
-        # If it's not an IP address check it's a hostname we trust
-        if "must be" in str(exc):
-            raise
-        # hostname — allow localhost, .local, .internal
-        if not (host == "localhost" or host.endswith(".local") or host.endswith(".internal")):
-            raise ValueError(f"Fleet node hostname not allowed: {host}") from exc
-    return url
-
-
-def validate_local_url(url: str, field: str = "url") -> str:
-    """Validate that a URL has http/https scheme and a local host (issue #23)."""
-    parsed = urlparse(url)
-    if parsed.scheme not in ("http", "https"):
-        raise ValueError(f"{field} must use http or https")
-    return validate_fleet_node_url(url)
-
-
-def validate_local_path(path_str: str, allowed_root: Path) -> Path:
-    """Resolve path and ensure it stays within allowed_root (issue #23)."""
-    resolved = Path(path_str).expanduser().resolve()
-    try:
-        resolved.relative_to(allowed_root)
-    except ValueError as exc:
-        raise ValueError(f"Path escapes allowed root: {path_str}") from exc
-    return resolved
-
-
-def validate_health_command(cmd: str) -> list[str]:
-    """Parse health command safely, rejecting shell metacharacters (issue #22)."""
-    dangerous = set(";|&`$()<>")
-    if any(c in cmd for c in dangerous):
-        raise ValueError(f"health_command contains disallowed characters: {cmd!r}")
-    return shlex.split(cmd)
-
-
-# ─── Rate Limiting ────────────────────────────────────────────────────────────
-
-_dispatch_rate: dict[str, list[float]] = defaultdict(list)
-DISPATCH_LIMIT_PER_MINUTE = 10
-
-
-def check_dispatch_rate(client_ip: str) -> None:
-    """Enforce rate limiting for AI agent dispatch endpoints (issue #31)."""
-    now = time.monotonic()
-    window = [t for t in _dispatch_rate[client_ip] if now - t < 60]
-    if len(window) >= DISPATCH_LIMIT_PER_MINUTE:
-        raise HTTPException(status_code=429, detail="Rate limit exceeded for agent dispatch")
-    window.append(now)
-    _dispatch_rate[client_ip] = window
 
 
 # ─── Pydantic Input Models ────────────────────────────────────────────────────
@@ -398,49 +351,11 @@ app = FastAPI(
     description="Monitor and control self-hosted GitHub Actions runners",
 )
 
-_PROCESSED_ENVELOPES_PATH = Path.home() / "actions-runners" / "dashboard" / "processed_envelopes.json"
-_processed_envelopes_lock: asyncio.Lock = asyncio.Lock()
-
-
-def _load_processed_envelopes() -> dict[str, float]:
-    """Load processed envelope IDs and expiration times from disk."""
-    if not _PROCESSED_ENVELOPES_PATH.exists():
-        return {}
-    try:
-        data = json.loads(_PROCESSED_ENVELOPES_PATH.read_text())
-        return {k: float(v) for k, v in data.items() if isinstance(v, (int, float))}
-    except (OSError, json.JSONDecodeError, ValueError):
-        return {}
-
-
-async def _is_envelope_replay(envelope_id: str) -> bool:
-    """Check if envelope_id has already been processed (replay detection)."""
-    async with _processed_envelopes_lock:
-        processed = _load_processed_envelopes()
-        now = datetime.now(UTC).timestamp()
-
-        if envelope_id in processed:
-            expires_at = processed[envelope_id]
-            return expires_at > now
-
-        return False
-
-
-async def _record_processed_envelope(envelope_id: str, ttl_seconds: int = 86400) -> None:
-    """Record that envelope_id has been processed (for replay detection)."""
-    async with _processed_envelopes_lock:
-        processed = _load_processed_envelopes()
-        now = datetime.now(UTC).timestamp()
-        expires_at = now + ttl_seconds
-
-        processed[envelope_id] = expires_at
-
-        cleaned = {k: v for k, v in processed.items() if v > now}
-        try:
-            _PROCESSED_ENVELOPES_PATH.parent.mkdir(parents=True, exist_ok=True)
-            config_schema.atomic_write_json(_PROCESSED_ENVELOPES_PATH, cleaned)
-        except OSError as exc:
-            log.warning("failed to record processed envelope: %s", exc)
+# ─── Envelope Deduplication ───────────────────────────────────────────────────
+# Envelope replay detection extracted to middleware/envelope_deduplication.py (issue #299)
+# Aliases maintained for backward compatibility:
+_is_envelope_replay = is_envelope_replay
+_record_processed_envelope = record_processed_envelope
 
 
 # ── Bounded domain routers ────────────────────────────────────────────────────
@@ -470,6 +385,14 @@ _fleet_control_router._set_audit_lock(_orchestration_audit_lock)
 app.include_router(_runs_workflows_router.router)
 app.include_router(_assistant_router.router)
 app.include_router(_feature_requests_router.router)
+
+# Batch-3 extracted routers (epic #159)
+app.include_router(_deployment_router.router)
+app.include_router(_reports_router.router)
+app.include_router(_tests_router.router)
+app.include_router(_repos_router.router)
+app.include_router(_stats_router.router)
+app.include_router(_orchestration_router.router)
 
 app.add_middleware(
     SessionMiddleware,
@@ -560,38 +483,12 @@ BOOT_TIME = time.time()
 _setup_api_key()
 
 # ─── Response cache ───────────────────────────────────────────────────────────
-# The frontend polls every 10-15 s; without caching, each poll spawns dozens of
-# `gh api` subprocesses that rapidly exhaust the 5 000 req/hr rate limit.
-# TTL values are tuned to each endpoint's staleness tolerance.
-#
-#   runners / health  → 25 s   (runner state changes on job start/finish)
-#   queue             → 20 s   (jobs drain fast; want near-real-time)
-#   runs              → 30 s
-#   stats             → 60 s   (aggregate counts; no need to be instant)
-#   repos             → 120 s  (repo list / metadata changes rarely)
-#   diagnose          → 60 s   (expensive multi-call; used for troubleshooting)
-_cache: OrderedDict[str, tuple[Any, float]] = OrderedDict()
-
-
-def _cache_get(key: str, ttl: float) -> Any | None:
-    """Return cached value if within TTL, else None."""
-    entry = _cache.get(key)
-    if entry is not None:
-        data, ts = entry
-        if time.time() - ts < ttl:
-            return data
-    return None
-
-
-def _cache_set(key: str, data: Any, _ttl: float | None = None) -> None:
-    """Store value with current timestamp. Evicts oldest entries when full (issue #48)."""
-    if key in _cache:
-        _cache.move_to_end(key)
-    elif len(_cache) >= MAX_CACHE_SIZE:
-        for _ in range(_CACHE_EVICT_BATCH):
-            if _cache:
-                _cache.popitem(last=False)
-    _cache[key] = (data, time.time())
+# Cache functions (_cache_get, _cache_set) extracted to middleware/caching.py (issue #299)
+# See: cache_get, cache_set in middleware.caching
+# Aliases maintained for backward compatibility:
+_cache_get = cache_get
+_cache_set = cache_set
+_cache = cache_get_internal()
 
 
 def _deployment_info() -> dict:
@@ -748,97 +645,17 @@ HUB_URL = os.environ.get("HUB_URL")
 if HUB_URL:
     HUB_URL = HUB_URL.rstrip("/")
 
+# Configure middleware proxy settings with server.py's config
+_set_hub_config(HUB_URL, MACHINE_ROLE)
+
 # ─── Helpers ──────────────────────────────────────────────────────────────────
-
-
-async def proxy_to_hub(request: Request):
-    """Proxy request to the designated HUB_URL for hub-spoke topology."""
-    if not HUB_URL:
-        raise HTTPException(status_code=502, detail="HUB_URL not configured")
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        url = f"{HUB_URL}{request.url.path}"
-        if request.url.query:
-            url = f"{url}?{request.url.query}"
-        try:
-            req = client.build_request(
-                request.method,
-                url,
-                headers={k: v for k, v in request.headers.items() if k.lower() not in ("host", "content-length")},
-                content=await request.body(),
-            )
-            resp = await client.send(req)
-            # Prevent decoding errors on empty/non-json responses if necessary
-            if resp.status_code == 204 or not resp.content:
-                return {}
-            return resp.json()
-        except Exception as e:  # noqa: BLE001
-            log.warning("Hub proxy error for %s: %s", request.url.path, e)
-            raise HTTPException(status_code=502, detail="Hub proxy error") from e
-
-            log.warning("Hub proxy error for %s: %s", request.url.path, e)
-            raise HTTPException(status_code=502, detail="Hub proxy error") from e
-
-
+# Command execution and proxy functions extracted to middleware (issue #299):
+# run_cmd, gh_api, gh_api_raw, proxy_to_hub, should_proxy_fleet_to_hub
+#
+# Wrapper for _should_proxy_fleet_to_hub (underscore-prefixed for internal use):
 def _should_proxy_fleet_to_hub(request: Request) -> bool:
-    """Return True when this node should use the hub's fleet-wide view.
-
-    Local health, system metrics, watchdog, and runner schedule endpoints stay
-    local. Fleet-wide endpoints can proxy to the hub, while hub fan-out calls
-    can add ``?local=1`` to force a node-local action and avoid proxy loops.
-    """
-    if MACHINE_ROLE != "node" or not HUB_URL:
-        return False
-    local_value = request.query_params.get("local", "").lower()
-    scope_value = request.query_params.get("scope", "").lower()
-    return local_value not in {"1", "true", "yes", "local"} and scope_value != "local"
-
-
-async def run_cmd(cmd: list[str], timeout: int = 30, cwd: Path | None = None) -> tuple[int, str, str]:
-    """Run a shell command asynchronously."""
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=str(cwd) if cwd else None,
-        )
-    except FileNotFoundError as exc:
-        return 127, "", str(exc)
-    try:
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-        return (
-            proc.returncode if proc.returncode is not None else -1,
-            stdout.decode(),
-            stderr.decode(),
-        )
-    except (TimeoutError, asyncio.TimeoutError):  # noqa: UP041
-        proc.kill()
-        return -1, "", "Command timed out"
-
-
-async def gh_api(endpoint: str) -> dict:
-    """Call the GitHub API via gh CLI.
-
-    Uses GH_TOKEN env var when set (required for admin:org endpoints such as
-    /orgs/{org}/actions/runners).  GH_TOKEN must be a classic PAT with
-    scopes: repo, admin:org.  See docs/operations/fleet-machine-setup.md.
-    """
-    code, stdout, stderr = await run_cmd(["gh", "api", endpoint])
-    if code != 0:
-        raise HTTPException(status_code=502, detail=f"GitHub API error: {stderr}")
-    return json.loads(stdout)
-
-
-# gh_api_admin is an alias kept for call-site clarity; all calls use GH_TOKEN.
-gh_api_admin = gh_api
-
-
-async def gh_api_raw(endpoint: str) -> str:
-    """Call the GitHub API via gh CLI and return the raw body text."""
-    code, stdout, stderr = await run_cmd(["gh", "api", "-H", "Accept: application/vnd.github.raw", endpoint])
-    if code != 0:
-        raise HTTPException(status_code=502, detail=f"GitHub API error: {stderr}")
-    return stdout
+    """Wrapper for should_proxy_fleet_to_hub from middleware/proxy_utils.py."""
+    return should_proxy_fleet_to_hub(request)
 
 
 async def _expected_dashboard_version_from_hub() -> str | None:
@@ -4239,27 +4056,9 @@ async def _get_fleet_nodes_impl() -> dict:
 # ─── Request logging middleware ───────────────────────────────────────────────
 
 
-@app.middleware("http")
-async def log_requests(request: Request, call_next):
-    start = time.time()
-    response = await call_next(request)
-    elapsed = round((time.time() - start) * 1000, 1)
-    skip = (
-        "/api/system",
-        "/api/repos",
-        "/api/reports",
-        "/api/heavy-tests",
-        "/api/scheduled-workflows",
-    )
-    if not request.url.path.startswith(skip):
-        log.info(
-            "%s %s → %s (%sms)",
-            request.method,
-            request.url.path,
-            response.status_code,
-            elapsed,
-        )
-    return response
+# ─── Request Logging Middleware ─────────────────────────────────────────────────
+# Extracted to middleware/request_logging.py (issue #299)
+app.middleware("http")(log_requests)
 
 
 # ─── Serve Frontend ──────────────────────────────────────────────────────────
