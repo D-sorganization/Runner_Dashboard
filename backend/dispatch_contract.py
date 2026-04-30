@@ -10,6 +10,11 @@ This module defines a safe prototype foundation for dashboard dispatch:
 
 The module is intentionally side-effect free so it can be exercised in tests
 without touching the running dashboard service.
+
+Reversible schema changes are a two-step ship process:
+1. Add new fields/supported versions to dashboard first.
+2. Upgrade clients to emit the new shape.
+3. Remove old fields/versions from dashboard later.
 """
 
 from __future__ import annotations
@@ -31,6 +36,9 @@ datetime = _dt_mod.datetime
 
 SCHEMA_VERSION = "dispatch-envelope.v1"
 ENVELOPE_VERSION = 1
+MIN_ENVELOPE_VERSION = 1
+MAX_ENVELOPE_VERSION = 1
+SUPPORTED_SCHEMA_VERSIONS = frozenset({"dispatch-envelope.v1"})
 
 
 def _load_signing_secret() -> str:
@@ -563,7 +571,7 @@ def build_envelope(
 
 
 def validate_envelope(envelope: CommandEnvelope) -> DispatchValidationResult:
-    if envelope.schema_version != SCHEMA_VERSION:
+    if envelope.schema_version not in SUPPORTED_SCHEMA_VERSIONS:
         return DispatchValidationResult(
             accepted=False,
             reason=f"unsupported schema version: {envelope.schema_version}",
@@ -695,3 +703,9 @@ def command_preview(action_name: str, payload: dict[str, Any] | None = None) -> 
     if action.name == "scheduler.modify":
         return _scheduler_modify_command(_ensure_dict(payload))
     return action.prototype_command
+
+
+def migrate_envelope_v1_to_v2(envelope: CommandEnvelope) -> CommandEnvelope:
+    """Example migration shim for future use. V2 does not exist yet."""
+    # Pattern: if envelope.envelope_version == 1, map fields into v2 shape.
+    return envelope

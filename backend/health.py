@@ -58,6 +58,29 @@ async def health_check(request: Request):
     return await _health_impl()
 
 
+@router.get("/api/version")
+async def api_version() -> dict:
+    """Return dashboard and dispatch-envelope version compatibilities."""
+    from server import _deployment_info  # noqa: PLC0415
+    from dispatch_contract import (  # noqa: PLC0415
+        MIN_ENVELOPE_VERSION,
+        MAX_ENVELOPE_VERSION,
+        SUPPORTED_SCHEMA_VERSIONS,
+    )
+
+    dep = _deployment_info()
+    return {
+        "dashboard": dep.get("version", "unknown"),
+        "envelope": {
+            "min": MIN_ENVELOPE_VERSION,
+            "max": MAX_ENVELOPE_VERSION,
+            "supported": sorted(list(SUPPORTED_SCHEMA_VERSIONS)),
+        },
+        "git_sha": dep.get("git_sha", "unknown"),
+        "build_time": dep.get("build_time", "unknown"),
+    }
+
+
 @router.get("/health", tags=["diagnostics"])
 async def launcher_health_check() -> dict:
     """Minimal health check for launcher recovery detection.
