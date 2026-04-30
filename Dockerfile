@@ -23,6 +23,7 @@ RUN groupadd --gid 10001 appuser \
 COPY requirements.lock.txt .
 RUN pip install --no-cache-dir --require-hashes -r requirements.lock.txt
 RUN pip install --no-cache-dir --upgrade wheel==0.46.2 jaraco.context==6.1.0
+RUN pip uninstall -y wheel jaraco.context
 
 # Copy application code and set ownership
 COPY --chown=appuser:appuser backend/ ./backend/
