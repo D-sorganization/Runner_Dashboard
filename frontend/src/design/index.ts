@@ -10,7 +10,7 @@ export {
   toCssVariables,
 } from "./tokens";
 
-export { breakpoints, viewportContracts, isMobile, isCompactMobile, useBreakpoint } from "./breakpoints";
+export { breakpoints, viewportContracts, isMobile, isCompactMobile, getBreakpoint } from "./breakpoints";
 
 export { typeScale, lineHeights, fontStacks } from "./type";
 
