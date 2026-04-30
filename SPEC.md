@@ -1966,3 +1966,5 @@ To ensure identity and quotas are respected across the entire fleet:
   - \POST /api/admin/principals/{id}/token\: Mint a new service token for a bot principal.
   - \DELETE /api/admin/tokens/{token_hash}\: Revoke a service token.
   - \PATCH /api/admin/principals/{id}/quota\: Update quotas (\max_runners\, \gent_spend_usd_day\, \local_app_slots\) for a specific principal.
+< ! - -   U p d a t e d :   2 0 2 6 - 0 4 - 2 9 T 1 8 : 3 8 : 1 6   - - >  
+ 

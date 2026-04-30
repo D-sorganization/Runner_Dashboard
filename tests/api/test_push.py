@@ -187,11 +187,12 @@ def test_payload_rejects_oversized_body() -> None:
 def test_principal_import_keeps_auth_dependency_available() -> None:
     assert Principal(id="test", type="bot", name="Test").id == "test"
 
-def test_vapid_public_key_returns_key() -> None:
+@pytest.mark.asyncio
+async def test_vapid_public_key_returns_key() -> None:
     import os
     old = os.environ.pop("VAPID_PUBLIC_KEY", None)
     try:
-        resp = asyncio.get_event_loop().run_until_complete(push.get_vapid_public_key())
+        resp = await push.get_vapid_public_key()
         assert "publicKey" in resp
         assert len(resp["publicKey"]) > 0
     finally:

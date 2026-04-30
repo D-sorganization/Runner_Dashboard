@@ -14,13 +14,17 @@ import pytest  # noqa: E402
 _FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 _HTML_SHELL = _FRONTEND_DIR / "index.html"
 _INDEX_HTML = _FRONTEND_DIR / "src" / "legacy" / "App.tsx"
+_QUEUE_INDEX = _FRONTEND_DIR / "src" / "pages" / "Queue" / "index.tsx"
 _PUSH_SETTINGS = _FRONTEND_DIR / "src" / "pages" / "PushSettings.tsx"
 _DESIGN_DIR = _FRONTEND_DIR / "src" / "design"
 _PRIMITIVES_DIR = _FRONTEND_DIR / "src" / "primitives"
 
 
 def _read_index() -> str:
-    return _INDEX_HTML.read_text(encoding="utf-8")
+    content = _INDEX_HTML.read_text(encoding="utf-8")
+    if _QUEUE_INDEX.exists():
+        content += "\n" + _QUEUE_INDEX.read_text(encoding="utf-8")
+    return content
 
 
 def _read_html_shell() -> str:

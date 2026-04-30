@@ -45,6 +45,9 @@ def test_mobile_smoke_page_contract_targets_existing_frontend_markers() -> None:
     config = _viewport_config()
     html = INDEX_HTML.read_text(encoding="utf-8")
     js = LEGACY_SOURCE.read_text(encoding="utf-8")
+    queue_index = ROOT / "frontend" / "src" / "pages" / "Queue" / "index.tsx"
+    if queue_index.exists():
+        js += "\n" + queue_index.read_text(encoding="utf-8")
 
     smoke_pages = config["smokePages"]
     assert {page["name"] for page in smoke_pages} >= {

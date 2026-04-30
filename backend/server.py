@@ -86,7 +86,12 @@ from routers import feature_requests as _feature_requests_router  # noqa: E402
 from routers import fleet as _fleet_router  # noqa: E402
 from routers import linear as _linear_router  # noqa: E402
 from routers import linear_webhook as _linear_webhook_router  # noqa: E402
+from routers import queue as _queue_router  # noqa: E402
+from routers import queue_diagnostics as _queue_diagnostics_router  # noqa: E402
+from routers import runners as _runners_router  # noqa: E402
 from routers import runs_workflows as _runs_workflows_router  # noqa: E402
+from routers import system as _system_router  # noqa: E402
+from routers.queue import _queue_impl  # noqa: E402
 from system_utils import get_system_metrics_snapshot  # noqa: E402
 
 # datetime.UTC added in Python 3.11; fall back to timezone.utc on older runtimes.
@@ -461,7 +466,11 @@ import agent_launcher_router as _agent_launcher_router  # noqa: E402
 app.include_router(_agent_launcher_router.router)
 
 # Batch-2 extracted routers (epic #159)
+app.include_router(_system_router.router)
 app.include_router(_fleet_router.router)
+app.include_router(_queue_router.router)
+app.include_router(_queue_diagnostics_router.router)
+app.include_router(_runners_router.router)
 app.include_router(_runs_workflows_router.router)
 app.include_router(_assistant_router.router)
 app.include_router(_feature_requests_router.router)
@@ -608,98 +617,6 @@ def _deployment_info() -> dict:
     payload.setdefault("version", app.version)
     payload.setdefault("source", "deployment-file")
     return payload
-
-
-def _local_hardware_specs(gpu: dict | None = None) -> dict:
-    """Return stable-enough hardware facts for fleet workload placement."""
-    mem = psutil.virtual_memory()
-    gpu = gpu if gpu is not None else get_gpu_info()
-    gpu_devices = gpu.get("gpus", []) if isinstance(gpu, dict) else []
-    gpu_vram_values = [
-        round(device.get("vram_total_mb", 0) / 1024, 1)
-        for device in gpu_devices
-        if isinstance(device, dict) and device.get("vram_total_mb") is not None
-    ]
-    return {
-        "cpu_model": platform.processor() or platform.machine(),
-        "cpu_physical_cores": psutil.cpu_count(logical=False),
-        "cpu_logical_cores": psutil.cpu_count(logical=True),
-        "memory_gb": HOST_MEMORY_GB or round(mem.total / (1024**3), 1),
-        "wsl_memory_gb": round(mem.total / (1024**3), 1),
-        "gpu_count": len(gpu_devices),
-        "gpu_vram_gb": max(gpu_vram_values) if gpu_vram_values else None,
-        "accelerators": [device.get("name") for device in gpu_devices if device.get("name")],
-        "platform": platform.platform(),
-    }
-
-
-def _workload_capacity_from_specs(specs: dict) -> dict:
-    logical = specs.get("cpu_logical_cores") or 0
-    memory_gb = specs.get("memory_gb") or 0
-    gpu_vram_gb = specs.get("gpu_vram_gb") or 0
-    tags = set(specs.get("workload_tags") or [])
-    if gpu_vram_gb:
-        tags.add("gpu")
-    if logical and logical >= 8:
-        tags.add("parallel-ci")
-    if memory_gb and memory_gb >= 32:
-        tags.add("memory-heavy")
-    if logical and logical <= 4:
-        tags.add("small-ci")
-    return {
-        "cpu_slots": max(1, int(logical // 2)) if logical else None,
-        "memory_gb": memory_gb or None,
-        "gpu_vram_gb": gpu_vram_gb or None,
-        "tags": sorted(tags),
-    }
-
-
-def _disk_pressure_snapshot(
-    *,
-    path: str,
-    total_gb: float,
-    used_gb: float,
-    free_gb: float,
-    percent: float,
-) -> dict:
-    """Return dashboard-safe disk pressure state for autoscaling and UI alerts."""
-    status = "healthy"
-    reasons = []
-    if percent >= DISK_CRITICAL_PERCENT:
-        status = "critical"
-        reasons.append(f"disk usage >= {DISK_CRITICAL_PERCENT:g}%")
-    elif percent >= DISK_WARN_PERCENT:
-        status = "warning"
-        reasons.append(f"disk usage >= {DISK_WARN_PERCENT:g}%")
-    if free_gb <= DISK_MIN_FREE_GB:
-        free_space_status = "critical" if free_gb <= max(5.0, DISK_MIN_FREE_GB / 2) else "warning"
-        if status != "critical":
-            status = free_space_status
-        reasons.append(f"free space <= {DISK_MIN_FREE_GB:g} GB")
-
-    recommendations = []
-    if status != "healthy":
-        recommendations.extend(
-            [
-                "Run runner-dashboard/deploy/runner-cleanup.sh to clear stale runner work directories.",
-                "Prune unused Docker images, volumes, and build caches if Docker is used in WSL.",
-                "After cleanup, run wsl --shutdown from Windows and compact the distro VHDX.",
-            ]
-        )
-
-    return {
-        "status": status,
-        "path": path,
-        "total_gb": total_gb,
-        "used_gb": used_gb,
-        "free_gb": free_gb,
-        "percent": percent,
-        "warn_percent": DISK_WARN_PERCENT,
-        "critical_percent": DISK_CRITICAL_PERCENT,
-        "min_free_gb": DISK_MIN_FREE_GB,
-        "reasons": reasons,
-        "recommendations": recommendations,
-    }
 
 
 # ─── Fleet node config ───────────────────────────────────────────────────────
@@ -987,17 +904,6 @@ def _build_deployment_state(nodes: list[dict], expected_version: str) -> dict:
     }
 
 
-def _empty_queue_result() -> dict:
-    """Return the standard empty queue payload."""
-    return {
-        "queued": [],
-        "in_progress": [],
-        "total": 0,
-        "queued_count": 0,
-        "in_progress_count": 0,
-    }
-
-
 async def _get_recent_org_repos(limit: int = 30) -> list[dict]:
     """Fetch recently updated organization repositories."""
     code, stdout, _ = await run_cmd(
@@ -1014,20 +920,6 @@ async def _get_recent_org_repos(limit: int = 30) -> list[dict]:
         return json.loads(stdout)
     except (json.JSONDecodeError, ValueError):
         return []
-
-
-async def _github_search_total(query: str) -> int:
-    """Return the GitHub Search API total_count for a query."""
-    code, stdout, _ = await run_cmd(
-        ["gh", "api", f"search/issues?q={query}&per_page=1"],
-        timeout=15,
-    )
-    if code != 0:
-        return 0
-    try:
-        return int(json.loads(stdout).get("total_count", 0))
-    except (json.JSONDecodeError, TypeError, ValueError):
-        return 0
 
 
 async def _fetch_repo_runs(
@@ -1056,6 +948,20 @@ async def _fetch_repo_runs(
         if "repository" not in run or not run["repository"]:
             run["repository"] = {"name": repo_name}
     return runs
+
+
+async def _github_search_total(query: str) -> int:
+    """Return the GitHub Search API total_count for a query."""
+    code, stdout, _ = await run_cmd(
+        ["gh", "api", f"search/issues?q={query}&per_page=1"],
+        timeout=15,
+    )
+    if code != 0:
+        return 0
+    try:
+        return int(json.loads(stdout).get("total_count", 0))
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return 0
 
 
 async def _fetch_run_jobs(repo_name: str, run_id: int | str) -> list[dict]:
@@ -1979,91 +1885,6 @@ async def _watchdog_status_impl() -> dict:
 
 
 # ─── System Metrics ──────────────────────────────────────────────────────────
-
-
-def get_gpu_info() -> dict:
-    """Query nvidia-smi for GPU metrics. Returns empty dict if no NVIDIA GPU."""
-    try:
-        result = subprocess.run(
-            [
-                "nvidia-smi",
-                "--query-gpu=name,memory.total,memory.used,memory.free,utilization.gpu,temperature.gpu,power.draw,power.limit",
-                "--format=csv,noheader,nounits",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            env=safe_subprocess_env(),
-        )
-        if result.returncode != 0:
-            return {}
-
-        gpus = []
-        for line in result.stdout.strip().split("\n"):
-            parts = [p.strip() for p in line.split(",")]
-            if len(parts) >= 8:
-                total = float(parts[1])
-                used = float(parts[2])
-                vram_pct = round(used / total * 100, 1) if total > 0 else 0
-                gpus.append(
-                    {
-                        "name": parts[0],
-                        "vram_total_mb": total,
-                        "vram_used_mb": used,
-                        "vram_free_mb": float(parts[3]),
-                        "vram_percent": vram_pct,
-                        "gpu_util_percent": float(parts[4]),
-                        "temp_c": float(parts[5]),
-                        "power_draw_w": (float(parts[6]) if parts[6] != "[N/A]" else None),
-                        "power_limit_w": (float(parts[7]) if parts[7] != "[N/A]" else None),
-                    }
-                )
-        return {"gpus": gpus, "count": len(gpus)}
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        return {}
-
-
-def get_per_runner_resources() -> list[dict]:
-    """Get CPU and memory usage for each runner's worker processes."""
-    runner_procs = []
-    for i in range(1, _runner_limit() + 1):
-        _ = get_runner_service_name(i)
-        runner_info: dict[str, Any] = {
-            "runner_num": i,
-            "cpu_percent": 0.0,
-            "memory_mb": 0.0,
-            "process_count": 0,
-            "status": "stopped",
-        }
-
-        # Find runner processes by looking at the runner directory
-        runner_dir = str(RUNNER_BASE_DIR / f"runner-{i}")
-        proc_fields = [
-            "pid",
-            "name",
-            "cmdline",
-            "cpu_percent",
-            "memory_info",
-        ]
-        for proc in psutil.process_iter(proc_fields):
-            try:
-                cmdline = " ".join(proc.info.get("cmdline") or [])
-                is_runner = runner_dir in cmdline or ("Runner.Listener" in cmdline and f"runner-{i}" in cmdline)
-                if is_runner:
-                    runner_info["cpu_percent"] += proc.info.get("cpu_percent", 0) or 0
-                    mem = proc.info.get("memory_info")
-                    if mem:
-                        runner_info["memory_mb"] += mem.rss / (1024 * 1024)
-                    runner_info["process_count"] += 1
-                    runner_info["status"] = "running"
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                continue
-
-        runner_info["cpu_percent"] = round(runner_info["cpu_percent"], 1)
-        runner_info["memory_mb"] = round(runner_info["memory_mb"], 1)
-        runner_procs.append(runner_info)
-
-    return runner_procs
 
 
 async def _collect_live_fleet_nodes() -> list[dict]:
@@ -3713,488 +3534,7 @@ async def get_agent_providers() -> dict:
 # ─── Job Queue API ───────────────────────────────────────────────────────────
 
 
-async def _queue_impl() -> dict:
-    """Core queue aggregation, callable from the HTTP endpoint and internally."""
-    cached = _cache_get("queue", 120.0)
-    if cached is not None:
-        return cached
-
-    repos = await _get_recent_org_repos(limit=20)
-    if not repos:
-        return _empty_queue_result()
-
-    async def fetch_active_runs(repo_name: str) -> list[dict]:
-        results: list[dict] = []
-        for status in ("queued", "in_progress"):
-            results.extend(await _fetch_repo_runs(repo_name, per_page=10, status=status))
-        return results
-
-    sample = repos[:15]
-    all_runs_nested = await asyncio.gather(*[fetch_active_runs(r["name"]) for r in sample])
-    all_runs: list[dict] = [run for sublist in all_runs_nested for run in sublist]
-
-    queued = sorted(
-        [r for r in all_runs if r.get("status") == "queued"],
-        key=lambda r: r.get("created_at", ""),
-    )
-    in_progress = sorted(
-        [r for r in all_runs if r.get("status") == "in_progress"],
-        key=lambda r: r.get("run_started_at") or r.get("created_at", ""),
-    )
-
-    result = {
-        "queued": queued,
-        "in_progress": in_progress,
-        "total": len(queued) + len(in_progress),
-        "queued_count": len(queued),
-        "in_progress_count": len(in_progress),
-    }
-    _cache_set("queue", result)
-    return result
-
-
-@app.get("/api/queue")
-async def get_queue(request: Request) -> dict:
-    """Get queued and in-progress workflow runs across the org.
-
-    GitHub has no org-level queue endpoint; we query the 15 most recently
-    updated repos concurrently for both statuses and aggregate the results.
-    """
-    if _should_proxy_fleet_to_hub(request):
-        return await proxy_to_hub(request)
-    return await _queue_impl()
-
-
-@app.post("/api/runs/{repo}/cancel/{run_id}")
-async def cancel_run(
-    request: Request,
-    *,
-    principal: Principal = Depends(require_scope("workflows.control")),
-    repo: str,
-    run_id: int,  # noqa: B008
-) -> dict:
-    """Cancel a single queued or in-progress workflow run."""
-    code, _, stderr = await run_cmd(
-        [
-            "gh",
-            "api",
-            "-X",
-            "POST",
-            f"/repos/{ORG}/{repo}/actions/runs/{run_id}/cancel",
-        ],
-        timeout=15,
-    )
-    if code != 0:
-        raise HTTPException(status_code=502, detail=f"Cancel failed: {stderr}")
-    # Invalidate stale queue/runs caches so the next poll reflects the cancel.
-    _cache.pop("queue", None)
-    _cache.pop("diagnose", None)
-    return {"cancelled": True, "run_id": run_id, "repo": repo}
-
-
-@app.post("/api/runs/{repo}/rerun/{run_id}")
-async def rerun_failed(
-    request: Request,
-    *,
-    principal: Principal = Depends(require_scope("workflows.control")),
-    repo: str,
-    run_id: int,  # noqa: B008
-) -> dict:
-    """Re-run failed jobs in a workflow run."""
-    code, _, stderr = await run_cmd(
-        [
-            "gh",
-            "api",
-            "-X",
-            "POST",
-            f"/repos/{ORG}/{repo}/actions/runs/{run_id}/rerun-failed-jobs",
-        ],
-        timeout=15,
-    )
-    if code != 0:
-        raise HTTPException(status_code=502, detail=f"Rerun failed: {stderr}")
-    _cache.pop("queue", None)
-    return {"rerun": True, "run_id": run_id, "repo": repo}
-
-
-@app.post("/api/queue/cancel-workflow")
-async def cancel_workflow_runs(
-    request: Request,
-    *,
-    principal: Principal = Depends(require_scope("workflows.control")),  # noqa: B008
-) -> dict:
-    """Cancel all queued runs of a specific workflow across the org.
-
-    Body: {"workflow_name": "ci-standard", "repo": "MyRepo"}  (repo optional)
-    Useful for deprioritising a noisy workflow to free runners for
-    higher-priority work.
-    """
-    body = await request.json()
-    workflow_name: str = body.get("workflow_name", "")
-    target_repo: str | None = body.get("repo")
-
-    if not workflow_name:
-        raise HTTPException(status_code=400, detail="workflow_name required")
-
-    # Fetch current queue
-    queue_data = await _queue_impl()
-    runs_to_cancel = [
-        r
-        for r in queue_data["queued"]
-        if r.get("name") == workflow_name
-        and (target_repo is None or (r.get("repository") or {}).get("name") == target_repo)  # noqa: E501
-    ]
-
-    cancelled: list[dict] = []
-    errors: list[str] = []
-    for run in runs_to_cancel:
-        repo = (run.get("repository") or {}).get("name", "")
-        run_id = run["id"]
-        if not repo:
-            continue
-        code, _, stderr = await run_cmd(
-            [
-                "gh",
-                "api",
-                "-X",
-                "POST",
-                f"/repos/{ORG}/{repo}/actions/runs/{run_id}/cancel",
-            ],
-            timeout=15,
-        )
-        if code == 0:
-            cancelled.append({"repo": repo, "run_id": run_id})
-        else:
-            errors.append(f"{repo}#{run_id}: {stderr.strip()}")
-
-    if cancelled:
-        _cache.pop("queue", None)
-        _cache.pop("diagnose", None)
-
-    return {
-        "cancelled_count": len(cancelled),
-        "cancelled": cancelled,
-        "errors": errors,
-    }
-
-
-@app.get("/api/queue/diagnose")
-async def diagnose_queue() -> dict:
-    """Explain why queued jobs are waiting.
-
-    Samples queued workflow runs, fetches their jobs, and reports which runner
-    labels the waiting jobs need — self-hosted fleet, ubuntu-latest, or other.
-    Cross-references against the live runner pool to identify the bottleneck.
-    """
-    cached = _cache_get("diagnose", 120.0)
-    if cached is not None:
-        return cached
-
-    # Runner pool status
-    try:
-        runner_data = _cache_get("runners", 25.0)
-        if runner_data is None:
-            runner_data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
-            _cache_set("runners", runner_data)
-        runners = runner_data.get("runners", [])
-    except Exception:  # noqa: BLE001
-        runners = []
-
-    online = [r for r in runners if r["status"] == "online"]
-    busy = [r for r in runners if r.get("busy")]
-    idle = [r for r in online if not r.get("busy")]
-    online_runner_names = {r.get("name", "") for r in online}
-
-    # Collect queued runs across repos
-    code, stdout, _ = await run_cmd(
-        ["gh", "api", f"/orgs/{ORG}/repos?per_page=20&sort=updated&direction=desc"],
-        timeout=20,
-    )
-    if code != 0:
-        return {"error": "Cannot reach GitHub API — check GH_TOKEN in service"}
-
-    try:
-        repos = json.loads(stdout)
-    except (json.JSONDecodeError, ValueError):
-        return {"error": "Invalid response from GitHub API"}
-
-    queued_runs: list[dict] = []
-    for repo in repos[:15]:
-        rc, out, _ = await run_cmd(
-            [
-                "gh",
-                "api",
-                f"/repos/{ORG}/{repo['name']}/actions/runs?status=queued&per_page=5",
-            ],
-            timeout=10,
-        )
-        if rc != 0:
-            continue
-        try:
-            for run in json.loads(out).get("workflow_runs", []):
-                run["_repo"] = repo["name"]
-                queued_runs.append(run)
-        except (json.JSONDecodeError, ValueError):
-            continue
-
-    # For each sampled run fetch its jobs to see what runner labels are needed
-    async def get_run_jobs(run: dict) -> list[dict]:
-        rc, out, _ = await run_cmd(
-            [
-                "gh",
-                "api",
-                f"/repos/{ORG}/{run['_repo']}/actions/runs/{run['id']}/jobs?per_page=30",
-            ],
-            timeout=10,
-        )
-        if rc != 0:
-            return []
-        try:
-            return json.loads(out).get("jobs", [])
-        except (json.JSONDecodeError, ValueError):
-            return []
-
-    sample = queued_runs[:20]
-    all_jobs_nested = await asyncio.gather(*[get_run_jobs(r) for r in sample])
-
-    # Labels that GitHub automatically applies to every self-hosted runner
-    GENERIC_SELF_HOSTED = {
-        "self-hosted",
-        "linux",
-        "Linux",
-        "x64",
-        "X64",
-        "arm64",
-        "ARM64",
-        "windows",
-        "Windows",
-        "macOS",
-    }
-    GITHUB_HOSTED = {
-        "ubuntu-latest",
-        "ubuntu-22.04",
-        "ubuntu-20.04",
-        "ubuntu-24.04",
-        "windows-latest",
-        "macos-latest",
-        "macos-14",
-        "macos-13",
-    }
-
-    label_counts: dict[str, int] = {}
-    waiting_for_fleet = 0
-    waiting_for_generic_sh = 0
-    waiting_for_github_hosted = 0
-    sampled_jobs: list[dict] = []
-
-    for run, jobs in zip(sample, all_jobs_nested, strict=False):
-        for job in jobs:
-            if job.get("status") != "queued":
-                continue
-            labels: list[str] = job.get("labels", [])
-            for lbl in labels:
-                label_counts[lbl] = label_counts.get(lbl, 0) + 1
-
-            is_fleet = any(lbl.startswith("d-sorg") for lbl in labels)
-            is_generic_sh = not is_fleet and any(lbl in GENERIC_SELF_HOSTED for lbl in labels)
-            is_github = any(lbl in GITHUB_HOSTED for lbl in labels)
-
-            if is_fleet:
-                waiting_for_fleet += 1
-            elif is_generic_sh:
-                waiting_for_generic_sh += 1
-            elif is_github:
-                waiting_for_github_hosted += 1
-
-            if is_fleet:
-                target = "self-hosted (d-sorg-fleet)"
-            elif is_generic_sh:
-                target = "self-hosted (generic)"
-            elif is_github:
-                target = "github-hosted"
-            else:
-                target = "unknown"
-
-            sampled_jobs.append(
-                {
-                    "repo": run["_repo"],
-                    "run_id": run["id"],
-                    "workflow": run.get("name"),
-                    "job": job.get("name"),
-                    "labels": labels,
-                    "target": target,
-                    "created_at": job.get("created_at"),
-                }
-            )
-
-    waiting_for_self_hosted = waiting_for_fleet + waiting_for_generic_sh
-
-    # Deep runner group check: fetch runners per group and allowed repos per
-    # restricted group so we can pinpoint exactly which group the idle runners
-    # belong to and which repos they can't see.
-    runner_groups_info: list[dict] = []
-    runner_groups_restricted = False
-    runners_by_group: dict[int, list[str]] = {}  # group_id -> runner names
-
-    async def fetch_group_runners(gid: int) -> list[str]:
-        try:
-            d = await gh_api_admin(f"/orgs/{ORG}/actions/runner-groups/{gid}/runners?per_page=100")
-            return [r.get("name", "") for r in d.get("runners", [])]
-        except Exception:  # noqa: BLE001
-            return []
-
-    async def fetch_group_repos(gid: int) -> list[str]:
-        try:
-            d = await gh_api_admin(f"/orgs/{ORG}/actions/runner-groups/{gid}/repositories?per_page=100")
-            return [r.get("name", "") for r in d.get("repositories", [])]
-        except Exception:  # noqa: BLE001
-            return []
-
-    try:
-        rg_data = await gh_api_admin(f"/orgs/{ORG}/actions/runner-groups")
-        raw_groups = rg_data.get("runner_groups", [])
-
-        # Fetch runners for every group concurrently
-        group_runner_lists = await asyncio.gather(*[fetch_group_runners(g["id"]) for g in raw_groups])
-        for grp, grp_runners in zip(raw_groups, group_runner_lists, strict=False):
-            runners_by_group[grp["id"]] = grp_runners
-
-        # Fetch allowed repos for restricted groups
-        restricted_groups = [g for g in raw_groups if g.get("visibility") != "all"]
-        group_repo_lists = await asyncio.gather(*[fetch_group_repos(g["id"]) for g in restricted_groups])
-        allowed_repos_by_group: dict[int, list[str]] = {
-            g["id"]: repos for g, repos in zip(restricted_groups, group_repo_lists, strict=False)
-        }
-
-        # Collect repos with waiting jobs
-        waiting_repos = {r["_repo"] for r in sample}
-
-        for grp in raw_groups:
-            gid = grp["id"]
-            restricted = grp.get("visibility") != "all"
-            grp_runners = runners_by_group.get(gid, [])
-            allowed_repos = allowed_repos_by_group.get(gid, []) if restricted else []
-
-            # Which waiting repos are blocked by this group's restrictions?
-            blocked = [r for r in waiting_repos if r not in allowed_repos] if restricted else []
-
-            runner_groups_info.append(
-                {
-                    "id": gid,
-                    "name": grp.get("name"),
-                    "visibility": grp.get("visibility"),
-                    "restricted": restricted,
-                    # True = enterprise-owned group
-                    "inherited": grp.get("inherited", False),
-                    "allows_public_repos": grp.get("allows_public_repositories", False),
-                    "runner_count": len(grp_runners),
-                    "runner_names": grp_runners[:8],  # cap for display
-                    "allowed_repos": allowed_repos[:20] if restricted else [],
-                    "blocked_waiting_repos": blocked,
-                }
-            )
-
-            # Flag restriction if any group containing our idle runners is restricted
-            # and is blocking at least one waiting repo
-            if restricted and blocked and any(r in online_runner_names for r in grp_runners):
-                runner_groups_restricted = True
-
-    except Exception:  # noqa: BLE001
-        pass  # Non-fatal
-
-    # Detect pick-runner jobs that are themselves waiting on self-hosted
-    # (misconfiguration: pick-runner should run on ubuntu-latest, not self-hosted)
-    pick_runner_misconfig = [
-        j
-        for j in sampled_jobs
-        if (j.get("job") or "").lower() in ("pick-runner", "pick runner", "select runner")  # noqa: E501
-        and "self-hosted" in j.get("target", "")
-    ]
-
-    # Determine bottleneck
-    if pick_runner_misconfig:
-        repos_affected = sorted({j["repo"] for j in pick_runner_misconfig})
-        bottleneck = (
-            f"MISCONFIGURATION: {len(pick_runner_misconfig)} 'pick-runner' dispatcher "
-            f"job(s) are themselves targeting 'self-hosted' in: "
-            f"{', '.join(repos_affected)}. "
-            "The pick-runner job must use 'runs-on: ubuntu-latest' (not 'self-hosted') — "  # noqa: E501
-            "it is the dispatcher that decides where to send work. "
-            "Update those workflow files to fix 'runs-on: ubuntu-latest' on the pick-runner job."  # noqa: E501
-        )
-    elif waiting_for_fleet > 0 and not idle:
-        bottleneck = (
-            f"All {len(busy)} d-sorg-fleet runner(s) are busy. "
-            "Jobs will run as runners finish. Bring more machines online to increase throughput."  # noqa: E501
-        )
-    elif waiting_for_fleet > 0 and idle:
-        bottleneck = (
-            f"{len(idle)} idle fleet runner(s) exist but {waiting_for_fleet} fleet job(s) are "  # noqa: E501
-            "still queued — possible label mismatch. Verify the runner labels include 'd-sorg-fleet'."  # noqa: E501
-        )
-    elif waiting_for_generic_sh > 0 and idle:
-        if runner_groups_restricted:
-            blocked_info = [
-                f"'{g['name']}' (runners: {', '.join(g['runner_names'][:3])}{'…' if len(g['runner_names']) > 3 else ''}) "  # noqa: E501
-                f"blocks: {', '.join(g['blocked_waiting_repos'][:5])}"
-                for g in runner_groups_info
-                if g["restricted"] and g["blocked_waiting_repos"]
-            ]
-            bottleneck = (
-                f"RUNNER GROUP ACCESS RESTRICTION: {waiting_for_generic_sh} job(s) cannot "  # noqa: E501
-                f"reach {len(idle)} idle runner(s). "
-                + (" | ".join(blocked_info) + ". " if blocked_info else "")
-                + "FIX: GitHub org Settings → Actions → Runner Groups → "
-                "select the restricted group → set Repository access to 'All repositories'."  # noqa: E501
-            )
-        else:
-            bottleneck = (
-                f"{waiting_for_generic_sh} job(s) target the generic 'self-hosted' label "  # noqa: E501
-                f"with {len(idle)} idle runner(s). "
-                "Runners will pick these up — but check if any are pick-runner "  # noqa: E501
-                "dispatcher jobs (they should use runs-on: ubuntu-latest, not "
-                "self-hosted, to avoid wasting a runner slot on routing logic)."
-            )
-    elif waiting_for_generic_sh > 0 and not idle:
-        bottleneck = (
-            f"All {len(busy)} fleet runner(s) are busy and {waiting_for_generic_sh} job(s) "  # noqa: E501
-            "target generic 'self-hosted'. Jobs will run as runners free up."
-        )
-    elif waiting_for_github_hosted > 0:
-        bottleneck = (
-            f"{waiting_for_github_hosted} job(s) are waiting for GitHub-hosted runners "
-            "(ubuntu-latest). This is GitHub's queue — no local action possible. "
-            "This may mean pick-runner routed them to the cloud because all fleet "
-            "runners were busy when the dispatcher ran."
-        )
-    elif not sampled_jobs:
-        bottleneck = "Could not sample job details — runs may have just started or GitHub API rate limit may be close."
-    else:
-        bottleneck = "Unknown — job labels did not match known runner targets."
-
-    result = {
-        "runner_pool": {
-            "total": len(runners),
-            "online": len(online),
-            "busy": len(busy),
-            "idle": len(idle),
-            "offline": len(runners) - len(online),
-        },
-        "queued_runs_found": len(queued_runs),
-        "jobs_sampled": len(sampled_jobs),
-        "waiting_for_fleet": waiting_for_fleet,
-        "waiting_for_generic_self_hosted": waiting_for_generic_sh,
-        "waiting_for_self_hosted": waiting_for_self_hosted,
-        "waiting_for_github_hosted": waiting_for_github_hosted,
-        "runner_groups": runner_groups_info,
-        "runner_groups_restricted": runner_groups_restricted,
-        "pick_runner_misconfig": pick_runner_misconfig,
-        "label_breakdown": label_counts,
-        "bottleneck": bottleneck,
-        "sampled_jobs": sampled_jobs[:15],
-    }
-    _cache_set("diagnose", result)
-    return result
+# Queue management routes extracted to routers/queue.py and registered via app.include_router.
 
 
 # ─── Fleet Node Aggregation API ──────────────────────────────────────────────
@@ -5490,6 +4830,12 @@ async def _runner_audit_loop() -> None:
     while True:
         await _run_runner_audit()
         await asyncio.sleep(900)  # 15 minutes
+
+
+# Inject dependencies into system router
+_system_router.set_boot_time(BOOT_TIME)
+_system_router.set_host_memory_gb(HOST_MEMORY_GB)
+_system_router.set_runner_capacity_snapshot_func(get_runner_capacity_snapshot)
 
 
 @app.on_event("startup")

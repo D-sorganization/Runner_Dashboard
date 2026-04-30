@@ -14,21 +14,22 @@ router = APIRouter(tags=["metrics"])
 async def get_system_metrics():
     """Real-time system resource metrics."""
     # Lazy import to avoid circular dependency with server.py
+    from dashboard_config import HOSTNAME, RUNNER_BASE_DIR  # noqa: PLC0415
+    from routers.system import (  # noqa: PLC0415
+        _cpu_history,
+        _disk_pressure_snapshot,
+        _get_runner_capacity_snapshot,
+        _local_hardware_specs,
+        _workload_capacity_from_specs,
+        get_gpu_info,
+        get_per_runner_resources,
+    )
     from server import (  # noqa: PLC0415
         BOOT_TIME,
         HOST_MEMORY_GB,
-        HOSTNAME,
-        RUNNER_BASE_DIR,
         UTC,
         Path,
-        _cpu_history,
-        _disk_pressure_snapshot,
-        _local_hardware_specs,
-        _workload_capacity_from_specs,
         datetime,
-        get_gpu_info,
-        get_per_runner_resources,
-        get_runner_capacity_snapshot,
         os,
         platform,
         psutil,
@@ -221,7 +222,7 @@ async def get_system_metrics():
         "hardware_specs": hardware_specs,
         "workload_capacity": _workload_capacity_from_specs(hardware_specs),
         "runner_processes": get_per_runner_resources(),
-        "runner_capacity": get_runner_capacity_snapshot(),
+        "runner_capacity": _get_runner_capacity_snapshot() if _get_runner_capacity_snapshot else {},
     }
 
 
