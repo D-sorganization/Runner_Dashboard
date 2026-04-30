@@ -38,3 +38,66 @@ skips:
   # Affected: backend/agent_remediation.py, backend/runner_autoscaler.py
   # Reviewer: dieterolson  Date: 2026-04-30
   - B607
+
+  # B608: Possible SQL injection via string-based query construction.
+  # Rationale: All three queries in workflow_stats.py use parametrized
+  #   bindings for user-controlled values. The only f-string interpolated
+  #   fragments are from literal dict/list constants -- no user input flows
+  #   into the SQL template. Bandit cannot track allow-list provenance.
+  # Affected: backend/workflow_stats.py (get_summary, get_timeseries, get_recent_runs)
+  # Reviewer: dieterolson  Date: 2026-04-30
+  - B608
+
+  # B108: Probable insecure temp file/directory usage.
+  # Rationale: /tmp is used only for file-lock coordination between fleet
+  #   workers (leader election). No secret data is written; the lock file
+  #   is created O_EXCL by the process owner.
+  # Affected: backend/server.py (leader lock), backend/runner_autoscaler.py
+  # Reviewer: dieterolson  Date: 2026-04-30
+  - B108
+
+  # B113: httpx call with timeout=None.
+  # Rationale: The affected call is a streaming SSE proxy that intentionally
+  #   holds the connection open indefinitely (AI generation streams). A finite
+  #   timeout would kill legitimate long-running streams.
+  # Affected: backend/server.py (SSE proxy handler)
+  # Reviewer: dieterolson  Date: 2026-04-30
+  - B113
+
+  # ─── LOW severity findings (pre-existing, accepted) ───────────────────────
+
+  # B101: Use of assert detected.
+  # Rationale: assert is used in DbC-style precondition checks in utility
+  #   modules (cache_utils, input_validation, dashboard_config) and in the
+  #   health endpoint. These are not in authentication or authorization paths.
+  #   In production the server runs with Python optimizations OFF (-O not set)
+  #   so asserts remain active. Tracked for conversion to explicit raises in #161.
+  # Reviewer: dieterolson  Date: 2026-04-30
+  - B101
+
+  # B110: Try, Except, Pass detected.
+  # Rationale: Silent pass in except blocks is used only for non-critical
+  #   telemetry/probe code (e.g. optional GitHub CLI availability checks,
+  #   optional feature flag reads) where failure should degrade gracefully
+  #   without propagating exceptions to the caller.
+  # Reviewer: dieterolson  Date: 2026-04-30
+  - B110
+
+  # B112: Try, Except, Continue detected.
+  # Rationale: The two occurrences are in loop-based polling helpers where
+  #   a transient error on one iteration should not abort the entire loop.
+  # Reviewer: dieterolson  Date: 2026-04-30
+  - B112
+
+  # B311: Standard pseudo-random generators not suitable for security/cryptography.
+  # Rationale: random is used only for jitter in retry/backoff logic,
+  #   not for cryptographic or security-sensitive purposes.
+  # Reviewer: dieterolson  Date: 2026-04-30
+  - B311
+
+  # B404: Consider possible security implications associated with subprocess module.
+  # Rationale: Companion to B603/B607. subprocess is the intended inter-process
+  #   communication channel for CLI tools. All call sites use fixed argument
+  #   lists (no shell=True, no user input interpolation).
+  # Reviewer: dieterolson  Date: 2026-04-30
+  - B404

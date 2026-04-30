@@ -4350,7 +4350,7 @@ if __name__ == "__main__":
     _uvicorn_target: object = "server:app" if _uvicorn_cfg["workers"] > 1 else app
     uvicorn.run(
         _uvicorn_target,  # type: ignore[arg-type]
-        host="0.0.0.0",  # nosec B104 — intentional for local LAN/Tailscale access
+        host="0.0.0.0",  # B104: intentionally binding to all interfaces; skipped in bandit.yaml
         port=PORT,
         log_level="warning",  # FastAPI handles its own logging
         workers=_uvicorn_cfg["workers"],
