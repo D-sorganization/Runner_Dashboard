@@ -418,12 +418,12 @@ def test_touch_primitives_foundation_contract_is_static_guarded() -> None:
     )
 
     assert 'data-touch-primitive="TouchButton"' in touch_button
-    assert 'aria-pressed={pressed}' in touch_button
+    assert "aria-pressed={pressed}" in touch_button
     assert 'type = "button"' in touch_button
     assert 'data-touch-primitive="SegmentedControl"' in segmented
     assert 'role="radiogroup"' in segmented
     assert 'role="radio"' in segmented
-    assert 'aria-checked={option.value === value}' in segmented
+    assert "aria-checked={option.value === value}" in segmented
     assert "ArrowRight" in segmented and "ArrowLeft" in segmented
     assert 'export { TouchButton } from "./TouchButton";' in exports
     assert 'export { SegmentedControl } from "./SegmentedControl";' in exports

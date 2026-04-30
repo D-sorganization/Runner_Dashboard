@@ -62,6 +62,7 @@ permissions:
 jobs:
   triage:
     runs-on: d-sorg-fleet
+    timeout-minutes: 15
     # Removed global actor check to allow scheduled runs even if file modified by bot
     outputs:
       target: ${{ steps.decide.outputs.target }}

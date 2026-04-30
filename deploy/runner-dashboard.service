@@ -34,7 +34,7 @@ Environment=PATH=/usr/lib/wsl/lib:/home/YOUR_USER/.local/bin:/home/YOUR_USER/.ca
 #   FLEET_NODES=Linux-Brick:http://100.x.x.a:8321,...   (once nodes are live)
 EnvironmentFile=-/home/YOUR_USER/.config/runner-dashboard/env
 
-# Hardening
+# Hardening (issue #391)
 NoNewPrivileges=true
 ProtectSystem=full
 ProtectHome=read-only
@@ -45,7 +45,42 @@ ProtectKernelModules=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true
 RemoveIPC=true
-# Allow the dashboard to read runner configs and secrets from the service user HOME.
+# Network address-family restriction — only IPv4, IPv6, and Unix sockets.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# Prevent kernel namespace creation.
+RestrictNamespaces=true
+# Drop all ambient/effective capabilities.
+CapabilityBoundingSet=
+# Syscall allow-list: system-service set covers all normal server operations.
+SystemCallFilter=@system-service
+# Lock execution personality to the native ABI.
+LockPersonality=true
+# Prevent JIT/self-modifying code.
+MemoryDenyWriteExecute=true
+# Prevent hostname spoofing from inside the unit.
+ProtectHostname=true
+# Prevent clock manipulation.
+ProtectClock=true
+# Hide other processes from /proc.
+ProtectProc=invisible
+# Resource ceilings — override per machine via a drop-in:
+#   /etc/systemd/system/runner-dashboard.service.d/resources.conf
+# [Service]
+# MemoryMax=4G
+# CPUQuota=400%
+# TasksMax=1024
+MemoryMax=2G
+CPUQuota=200%
+TasksMax=512
+# Watchdog — systemd sends SIGABRT if the process does not reset the
+# watchdog within WatchdogSec. Because server.py does not yet call
+# sd_notify(WATCHDOG=1), Type=simple is retained so that systemd does
+# not wait for READY=1 on startup. The watchdog still fires if the
+# process hangs entirely (no heartbeat from systemd's perspective when
+# sd_notify support is added). See issue #391 AC-3 for the follow-up
+# to wire sd_notify into the FastAPI lifespan.
+WatchdogSec=120
+# Allow the dashboard to read/write runner secrets and config from HOME.
 ReadWritePaths=/home/YOUR_USER/.config/runner-dashboard
 
 [Install]

@@ -51,9 +51,7 @@ def test_get_workspaces_auth_status_missing_env_when_key_unset(
     assert response.json()["workspaces"][0]["auth_status"] == "missing_env"
 
 
-def test_get_workspaces_auth_status_auth_failed_on_401(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_get_workspaces_auth_status_auth_failed_on_401(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     config = {"workspaces": [{"id": "personal"}], "mappings": {}}
     monkeypatch.setattr(linear_router, "load_linear_config", lambda: config)
     monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")

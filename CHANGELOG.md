@@ -26,7 +26,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- CSP: removed `strict-dynamic`, restored `unsafe-inline` to fix blank dashboard (#172).
+- CSP: kept `strict-dynamic` in the `script-src` directive (it remains
+  required for compatibility with the CDN-loaded React bootstrap and is
+  still present in `backend/middleware.py`); restored `'unsafe-inline'`
+  on `style-src` to fix the blank-dashboard regression (#172).
+
+  Note: an earlier draft of this changelog entry stated that
+  `strict-dynamic` had been removed. That was inaccurate — the directive
+  was retained. This entry has been corrected (issue #394).
 
 ## [4.0.0] - 2026-04-25
 

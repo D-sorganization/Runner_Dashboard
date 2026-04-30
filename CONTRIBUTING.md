@@ -119,11 +119,22 @@ review first.
 
 ### Frontend (frontend/)
 
-- **No build step.** The frontend is a single `index.html` served directly.
-- **No JSX.** Use `h()` (aliased from `React.createElement`) for all elements.
-- **No npm / node_modules.** All dependencies are loaded from CDN via
-  `<script>` tags.
-- State managed with React hooks (`useState`, `useEffect`, `useCallback`).
-- Tabs are top-level components defined in the single file.
-- Styling via inline styles and a minimal CSS block in `<style>`.
-- No TypeScript — plain JavaScript with JSDoc comments for complex types.
+- **Vite + React + TypeScript.** Source lives in `frontend/src/`; the
+  production bundle is produced by `vite build` and consumed by the
+  FastAPI backend as static assets. `frontend/index.html` is the Vite
+  entry HTML and mounts `/src/main.tsx`.
+- **TypeScript first.** New components are `.tsx`; shared logic and
+  hooks are `.ts`. The legacy single-file `App.tsx` survives at
+  `frontend/src/legacy/App.tsx` during migration but is not where new
+  features land.
+- **Use JSX/TSX.** Write components as JSX; do not hand-roll
+  `React.createElement` (`h()`) calls outside of the legacy folder.
+- **npm dependencies.** Add packages via `package.json` and the
+  committed lockfile; do not introduce ad-hoc CDN `<script>` tags.
+- State managed with React hooks (`useState`, `useEffect`,
+  `useCallback`) and typed contexts.
+- Tabs live as standalone components under `frontend/src/pages/`.
+- Styling via the design tokens in `frontend/src/design/`, primitives in
+  `frontend/src/primitives/`, and `frontend/src/index.css`.
+- Honor the performance budget in `frontend/perf-budget.json`; it is
+  enforced by `tests/test_frontend_perf_budget.py`.

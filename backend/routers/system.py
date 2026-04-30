@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as _dt
 import logging
 import os
 import platform
@@ -25,7 +26,11 @@ from fastapi import APIRouter
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-UTC = __import__("datetime").UTC  # noqa: UP017
+# Python 3.10+ has UTC; fall back to timezone.utc for earlier versions
+try:
+    UTC = _dt.UTC  # type: ignore[attr-defined]
+except AttributeError:
+    UTC = _dt.UTC  # type: ignore[assignment]
 
 log = logging.getLogger("dashboard.system")
 router = APIRouter(tags=["system"])
