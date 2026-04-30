@@ -80,6 +80,12 @@ import usage_monitoring as usage_monitoring  # noqa: E402
 from cache_utils import _cache  # noqa: E402
 from cache_utils import cache_get as _cache_get  # noqa: E402
 from cache_utils import cache_set as _cache_set  # noqa: E402
+from dashboard_config.cache_ttls import CacheTtl  # noqa: E402
+from dashboard_config.timeouts import (  # noqa: E402
+    Concurrency,
+    HttpTimeout,
+    ResourceThreshold,
+)
 from local_app_monitoring import collect_local_apps  # noqa: E402
 from machine_registry import (  # noqa: E402
     load_machine_registry,
@@ -231,9 +237,15 @@ DEFAULT_NUM_RUNNERS = 12
 REQUESTED_NUM_RUNNERS = int(os.environ.get("NUM_RUNNERS", str(DEFAULT_NUM_RUNNERS)))
 MAX_RUNNERS = int(os.environ.get("MAX_RUNNERS", str(REQUESTED_NUM_RUNNERS)))
 NUM_RUNNERS = min(REQUESTED_NUM_RUNNERS, MAX_RUNNERS)
-DISK_WARN_PERCENT = float(os.environ.get("DASHBOARD_DISK_WARN_PERCENT", "85"))
-DISK_CRITICAL_PERCENT = float(os.environ.get("DASHBOARD_DISK_CRITICAL_PERCENT", "92"))
-DISK_MIN_FREE_GB = float(os.environ.get("DASHBOARD_DISK_MIN_FREE_GB", "25"))
+DISK_WARN_PERCENT = float(
+    os.environ.get("DASHBOARD_DISK_WARN_PERCENT", str(ResourceThreshold.DISK_WARN_PERCENT)),
+)
+DISK_CRITICAL_PERCENT = float(
+    os.environ.get("DASHBOARD_DISK_CRITICAL_PERCENT", str(ResourceThreshold.DISK_CRITICAL_PERCENT)),
+)
+DISK_MIN_FREE_GB = float(
+    os.environ.get("DASHBOARD_DISK_MIN_FREE_GB", str(ResourceThreshold.DISK_MIN_FREE_GB)),
+)
 PORT = int(os.environ.get("DASHBOARD_PORT", "8321"))
 _DASHBOARD_CONFIG_DIR = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "runner-dashboard"
 HOSTNAME = os.environ.get("DISPLAY_NAME") or platform.node()
@@ -530,7 +542,7 @@ async def proxy_to_hub(request: Request):
     """Proxy request to the designated HUB_URL for hub-spoke topology."""
     if not HUB_URL:
         raise HTTPException(status_code=502, detail="HUB_URL not configured")
-    async with httpx.AsyncClient(timeout=15.0) as client:
+    async with httpx.AsyncClient(timeout=HttpTimeout.PROXY_TO_HUB_S) as client:
         url = f"{HUB_URL}{request.url.path}"
         if request.url.query:
             url = f"{url}?{request.url.query}"
@@ -568,7 +580,11 @@ def _should_proxy_fleet_to_hub(request: Request) -> bool:
     return local_value not in {"1", "true", "yes", "local"} and scope_value != "local"
 
 
-async def run_cmd(cmd: list[str], timeout: int = 30, cwd: Path | None = None) -> tuple[int, str, str]:
+async def run_cmd(
+    cmd: list[str],
+    timeout: int = HttpTimeout.GH_DISPATCH_S,
+    cwd: Path | None = None,
+) -> tuple[int, str, str]:
     """Run a shell command asynchronously."""
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -621,7 +637,7 @@ async def _expected_dashboard_version_from_hub() -> str | None:
     if MACHINE_ROLE != "node" or not HUB_URL:
         return None
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        async with httpx.AsyncClient(timeout=HttpTimeout.HUB_VERSION_FETCH_S) as client:
             response = await client.get(f"{HUB_URL}/api/deployment/expected-version")
             response.raise_for_status()
             payload = response.json()
@@ -985,14 +1001,14 @@ def _resource_offline_reason(system: dict) -> dict | None:
     memory = system.get("memory") or {}
     disk = system.get("disk") or {}
     pressure = []
-    if (cpu.get("percent_1m_avg") or cpu.get("percent") or 0) >= 95:
-        pressure.append("CPU >= 95%")
-    if (memory.get("percent") or 0) >= 92:
-        pressure.append("memory >= 92%")
+    if (cpu.get("percent_1m_avg") or cpu.get("percent") or 0) >= ResourceThreshold.CPU_HARD_STOP_PERCENT:
+        pressure.append(f"CPU >= {ResourceThreshold.CPU_HARD_STOP_PERCENT:g}%")
+    if (memory.get("percent") or 0) >= ResourceThreshold.MEMORY_CRITICAL_PERCENT:
+        pressure.append(f"memory >= {ResourceThreshold.MEMORY_CRITICAL_PERCENT:g}%")
     if (disk.get("pressure") or {}).get("status") == "critical":
         pressure.append("disk pressure critical")
-    elif (disk.get("percent") or 0) >= 95:
-        pressure.append("disk >= 95%")
+    elif (disk.get("percent") or 0) >= ResourceThreshold.DISK_HARD_STOP_PERCENT:
+        pressure.append(f"disk >= {ResourceThreshold.DISK_HARD_STOP_PERCENT:g}%")
     if not pressure:
         return None
     return {
@@ -1671,7 +1687,7 @@ $result | ConvertTo-Json -Depth 5
 
 async def _watchdog_status_impl() -> dict:
     """Aggregate the WSL keepalive / startup validation state."""
-    cached = _cache_get("watchdog", 30.0)
+    cached = _cache_get("watchdog", float(CacheTtl.WATCHDOG_S))
     if cached is not None:
         return cached
 
@@ -1751,7 +1767,7 @@ async def _collect_live_fleet_nodes() -> list[dict]:
 
     async def fetch_node(name: str, url: str) -> dict:
         try:
-            async with httpx.AsyncClient(timeout=8.0) as client:
+            async with httpx.AsyncClient(timeout=HttpTimeout.PROXY_NODE_SYSTEM_S) as client:
                 sys_r, health_r = await asyncio.gather(
                     client.get(f"{url}/api/system"),
                     client.get(f"{url}/api/health"),
@@ -1922,7 +1938,7 @@ async def post_deployment_update_signal(
 @app.get("/api/local-apps")
 async def get_local_apps(request: Request) -> dict:
     """Report local tool deployment, drift, service state, and health."""
-    cached = _cache_get("local_apps", 120.0)
+    cached = _cache_get("local_apps", float(CacheTtl.LOCAL_APPS_S))
     if cached is not None:
         return cached
 
@@ -2159,7 +2175,7 @@ async def get_repos(request: Request):
     if _should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
 
-    cached = _cache_get("repos", 600.0)
+    cached = _cache_get("repos", float(CacheTtl.REPOS_S))
     if cached is not None:
         return cached
 
@@ -2250,9 +2266,10 @@ async def get_repos(request: Request):
 
         return info
 
-    # Run enrichment concurrently in batches of 10 to avoid overwhelming the API
-    for i in range(0, len(repos), 10):
-        batch = repos[i : i + 10]
+    # Run enrichment concurrently in batches to avoid overwhelming the API
+    batch_size = Concurrency.REPO_ENRICHMENT
+    for i in range(0, len(repos), batch_size):
+        batch = repos[i : i + batch_size]
         batch_results = await asyncio.gather(*[enrich_repo(r) for r in batch])
         results.extend(batch_results)
 
@@ -2721,7 +2738,7 @@ _CI_FLEET_REPOS = [
 @app.get("/api/tests/ci-results")
 async def get_tests_ci_results() -> dict:
     """Return recent ci-standard workflow runs for key fleet repos."""
-    cached = _cache_get("ci_test_results", 120.0)
+    cached = _cache_get("ci_test_results", float(CacheTtl.CI_TEST_RESULTS_S))
     if cached is not None:
         return cached
 
@@ -2794,11 +2811,11 @@ async def get_stats(request: Request):
     if _should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
 
-    cached = _cache_get("stats", 120.0)
+    cached = _cache_get("stats", float(CacheTtl.STATS_S))
     if cached is not None:
         return cached
 
-    runners_data = _cache_get("runners", 25.0)
+    runners_data = _cache_get("runners", float(CacheTtl.RUNNERS_S))
     if runners_data is None:
         runners_data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
         _cache_set("runners", runners_data)
@@ -2854,7 +2871,7 @@ async def get_usage_monitoring(request: Request) -> dict:
     if _should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
 
-    cached = _cache_get("usage_monitoring", 300.0)
+    cached = _cache_get("usage_monitoring", float(CacheTtl.USAGE_MONITORING_S))
     if cached is not None:
         return cached
 
@@ -2951,7 +2968,7 @@ async def proxy_node_system(node_name: str) -> dict:
     if not url:
         raise HTTPException(status_code=404, detail=f"Node not found: {node_name}")
     try:
-        async with httpx.AsyncClient(timeout=8.0) as client:
+        async with httpx.AsyncClient(timeout=HttpTimeout.PROXY_NODE_SYSTEM_S) as client:
             resp = await client.get(f"{url}/api/system")
         if resp.status_code != 200:
             raise HTTPException(status_code=502, detail="Node returned error")
@@ -3132,7 +3149,7 @@ async def get_maxwell_status() -> dict:
     try:
         import httpx
 
-        async with httpx.AsyncClient(timeout=3.0) as client:
+        async with httpx.AsyncClient(timeout=HttpTimeout.MAXWELL_PROXY_S) as client:
             resp = await client.get(f"{base_url}/api/health")
             http_reachable = resp.status_code == 200
             http_detail = f"HTTP {resp.status_code}"
@@ -3204,7 +3221,7 @@ async def get_maxwell_version() -> dict:
     path = "/api/version"
     resp = None
     try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
+        async with httpx.AsyncClient(timeout=HttpTimeout.MAXWELL_PROXY_S) as client:
             resp = await client.get(f"{_maxwell_base_url()}{path}")
             log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
             return resp.json()
@@ -3222,7 +3239,7 @@ async def get_maxwell_daemon_status_detail() -> dict:
     path = "/api/status"
     resp = None
     try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
+        async with httpx.AsyncClient(timeout=HttpTimeout.MAXWELL_PROXY_S) as client:
             resp = await client.get(f"{_maxwell_base_url()}{path}")
             log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
             return resp.json()
@@ -3243,7 +3260,7 @@ async def get_maxwell_tasks(limit: int = 20, cursor: str | None = None) -> dict:
         params: dict = {"limit": limit}
         if cursor is not None:
             params["cursor"] = cursor
-        async with httpx.AsyncClient(timeout=3.0) as client:
+        async with httpx.AsyncClient(timeout=HttpTimeout.MAXWELL_PROXY_S) as client:
             resp = await client.get(f"{_maxwell_base_url()}{path}", params=params)
             log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
             return resp.json()
@@ -3261,7 +3278,7 @@ async def get_maxwell_task_detail(task_id: str) -> dict:
     path = f"/api/tasks/{task_id}"
     resp = None
     try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
+        async with httpx.AsyncClient(timeout=HttpTimeout.MAXWELL_PROXY_S) as client:
             resp = await client.get(f"{_maxwell_base_url()}{path}")
             log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
             return resp.json()
@@ -3284,7 +3301,7 @@ async def maxwell_dispatch_task(
     resp = None
     try:
         body = await request.body()
-        async with httpx.AsyncClient(timeout=3.0) as client:
+        async with httpx.AsyncClient(timeout=HttpTimeout.MAXWELL_PROXY_S) as client:
             resp = await client.post(
                 f"{_maxwell_base_url()}{path}",
                 content=body,
@@ -3346,7 +3363,7 @@ async def maxwell_pipeline_control(
     resp = None
     try:
         body = await request.body()
-        async with httpx.AsyncClient(timeout=3.0) as client:
+        async with httpx.AsyncClient(timeout=HttpTimeout.MAXWELL_PROXY_S) as client:
             resp = await client.post(
                 f"{_maxwell_base_url()}{path}",
                 content=body,

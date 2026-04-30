@@ -47,6 +47,12 @@ try:
 except ImportError:  # psutil is optional at import time; raise on use
     psutil = None  # type: ignore[assignment]
 
+try:
+    from dashboard_config.timeouts import HttpTimeout, ResourceThreshold
+except ImportError:  # When deployed standalone the package may not be on path.
+    HttpTimeout = None  # type: ignore[assignment,misc]
+    ResourceThreshold = None  # type: ignore[assignment,misc]
+
 log = logging.getLogger("runner-autoscaler")
 logging.basicConfig(
     level=os.environ.get("AUTOSCALER_LOG_LEVEL", "INFO"),
@@ -68,11 +74,16 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
-CPU_HIGH = _env_float("AUTOSCALER_CPU_HIGH", 85.0)
+_DEFAULT_CPU_HIGH = ResourceThreshold.DISK_WARN_PERCENT if ResourceThreshold else 85.0
+_DEFAULT_MEM_HIGH = ResourceThreshold.DISK_WARN_PERCENT if ResourceThreshold else 85.0
+_DEFAULT_DISK_HIGH = ResourceThreshold.DISK_CRITICAL_PERCENT if ResourceThreshold else 92.0
+_DEFAULT_DISK_MIN_FREE_GB = ResourceThreshold.DISK_MIN_FREE_GB if ResourceThreshold else 25.0
+
+CPU_HIGH = _env_float("AUTOSCALER_CPU_HIGH", _DEFAULT_CPU_HIGH)
 CPU_LOW = _env_float("AUTOSCALER_CPU_LOW", 40.0)
-MEM_HIGH = _env_float("AUTOSCALER_MEM_HIGH", 85.0)
-DISK_HIGH = _env_float("AUTOSCALER_DISK_HIGH", 92.0)
-DISK_MIN_FREE_GB = _env_float("AUTOSCALER_DISK_MIN_FREE_GB", 25.0)
+MEM_HIGH = _env_float("AUTOSCALER_MEM_HIGH", _DEFAULT_MEM_HIGH)
+DISK_HIGH = _env_float("AUTOSCALER_DISK_HIGH", _DEFAULT_DISK_HIGH)
+DISK_MIN_FREE_GB = _env_float("AUTOSCALER_DISK_MIN_FREE_GB", _DEFAULT_DISK_MIN_FREE_GB)
 LOAD_PER_CORE = _env_float("AUTOSCALER_LOAD_PER_CORE", 1.5)
 SUSTAIN_SECS = _env_int("AUTOSCALER_SUSTAIN_SECS", 120)
 POLL_SECONDS = _env_int("AUTOSCALER_POLL_SECONDS", 15)
@@ -135,8 +146,15 @@ def _leased_runners() -> set[str]:
         return set()
 
 
+_SYSTEMCTL_TIMEOUT_S = HttpTimeout.SYSTEMCTL_S if HttpTimeout else 5
+
+
 def _unit_is_active(unit: str) -> bool:
-    r = subprocess.run(["systemctl", "is-active", "--quiet", unit], check=False, timeout=5)
+    r = subprocess.run(
+        ["systemctl", "is-active", "--quiet", unit],
+        check=False,
+        timeout=_SYSTEMCTL_TIMEOUT_S,
+    )
     return r.returncode == 0
 
 
@@ -152,7 +170,7 @@ def _runner_is_busy(unit: str) -> bool:
         ["systemctl", "show", unit, "--property=MainPID", "--value"],
         capture_output=True,
         text=True,
-        timeout=5,
+        timeout=_SYSTEMCTL_TIMEOUT_S,
         check=False,
     )
     pid_str = (r.stdout or "").strip()
