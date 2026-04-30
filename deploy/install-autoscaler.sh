@@ -48,9 +48,28 @@ EOF
 fi
 
 # 4. Install + enable the systemd unit
+# Single source of truth: substitute @VAR@ placeholders in the template
+# rather than maintaining a duplicate heredoc here. Hardening directives
+# live exclusively in deploy/runner-autoscaler.service.
+# TODO(#402): wire --check-only here to dry-run-render the unit and diff
+#             against the currently-installed file.
 echo "==> Installing systemd unit"
-sudo install -Dm 0644 "$SCRIPT_DIR/runner-autoscaler.service" \
-    /etc/systemd/system/runner-autoscaler.service
+SERVICE_TEMPLATE="$SCRIPT_DIR/runner-autoscaler.service"
+if [[ ! -f "$SERVICE_TEMPLATE" ]]; then
+    echo "Service template not found at $SERVICE_TEMPLATE" >&2
+    exit 1
+fi
+RENDERED_UNIT="$(mktemp)"
+trap 'rm -f "$RENDERED_UNIT"' EXIT
+sed \
+    -e "s|@USER@|${RUNNER_USER}|g" \
+    -e "s|@HOME@|${HOME}|g" \
+    -e "s|@DASHBOARD_DIR@|${DASHBOARD_DIR}|g" \
+    -e "s|@SCHEDULE_CONFIG@|${SCHEDULE_CONFIG}|g" \
+    "$SERVICE_TEMPLATE" > "$RENDERED_UNIT"
+sudo install -m 0644 "$RENDERED_UNIT" /etc/systemd/system/runner-autoscaler.service
+rm -f "$RENDERED_UNIT"
+trap - EXIT
 sudo install -d -m 0755 /etc/systemd/system/runner-autoscaler.service.d
 sudo tee /etc/systemd/system/runner-autoscaler.service.d/schedule-config.conf > /dev/null <<EOF
 [Service]

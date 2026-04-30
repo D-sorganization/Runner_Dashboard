@@ -234,52 +234,36 @@ fi
 header "Step 4/5: Systemd Service (Auto-Start)"
 
 SERVICE_FILE="/etc/systemd/system/runner-dashboard.service"
+SERVICE_TEMPLATE="${SCRIPT_DIR}/deploy/runner-dashboard.service"
 
-sudo tee "${SERVICE_FILE}" > /dev/null <<SVCEOF
-[Unit]
-Description=D-sorganization Runner Dashboard (${MACHINE_NAME})
-After=network.target
-Wants=network-online.target
+if [[ ! -f "${SERVICE_TEMPLATE}" ]]; then
+    fail "Service template not found at ${SERVICE_TEMPLATE}"
+fi
 
-[Service]
-Type=simple
-User=${USER}
-WorkingDirectory=${DEPLOY_DIR}
-ExecStartPre=${DEPLOY_DIR}/refresh-token.sh
-ExecStart=${PYTHON_BIN} ${DEPLOY_DIR}/backend/server.py
-Restart=always
-RestartSec=5
-Environment=GITHUB_ORG=D-sorganization
-Environment=NUM_RUNNERS=${NUM_RUNNERS}
-Environment=DASHBOARD_PORT=${PORT}
-Environment=DISPLAY_NAME=${DISPLAY_NAME_VAL}
-Environment=RUNNER_ALIASES=${RUNNER_ALIASES_VAL}
-Environment=RUNNER_SCHEDULE_CONFIG=${SCHEDULE_CONFIG_VAL}
-Environment=RUNNER_SCHEDULER_BIN=/usr/local/bin/runner-scheduler
-Environment=MACHINE_ROLE=${MACHINE_ROLE}
-Environment=HOME=${HOME}
-Environment=PATH=/usr/lib/wsl/lib:${HOME}/.local/bin:${HOME}/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-# Secrets (GH_TOKEN, FLEET_NODES) are loaded from a file readable only by
-# this user — not stored in this world-readable unit file.
-EnvironmentFile=-${HOME}/.config/runner-dashboard/env
+# Single source of truth: substitute @VAR@ placeholders in the template
+# rather than maintaining a duplicate heredoc here. Hardening directives
+# live exclusively in deploy/runner-dashboard.service.
+# TODO(#402): wire --check-only here to dry-run-render the unit and diff
+#             against the currently-installed file.
+RENDERED_UNIT="$(mktemp)"
+trap 'rm -f "${RENDERED_UNIT}"' EXIT
+sed \
+    -e "s|@USER@|${USER}|g" \
+    -e "s|@HOME@|${HOME}|g" \
+    -e "s|@DEPLOY_DIR@|${DEPLOY_DIR}|g" \
+    -e "s|@PYTHON_BIN@|${PYTHON_BIN}|g" \
+    -e "s|@MACHINE_NAME@|${MACHINE_NAME}|g" \
+    -e "s|@NUM_RUNNERS@|${NUM_RUNNERS}|g" \
+    -e "s|@PORT@|${PORT}|g" \
+    -e "s|@DISPLAY_NAME@|${DISPLAY_NAME_VAL}|g" \
+    -e "s|@RUNNER_ALIASES@|${RUNNER_ALIASES_VAL}|g" \
+    -e "s|@MACHINE_ROLE@|${MACHINE_ROLE}|g" \
+    -e "s|@SCHEDULE_CONFIG@|${SCHEDULE_CONFIG_VAL}|g" \
+    "${SERVICE_TEMPLATE}" > "${RENDERED_UNIT}"
 
-# Hardening
-NoNewPrivileges=true
-ProtectSystem=full
-ProtectHome=read-only
-PrivateTmp=true
-PrivateDevices=true
-ProtectKernelTunables=true
-ProtectKernelModules=true
-ProtectControlGroups=true
-RestrictSUIDSGID=true
-RemoveIPC=true
-# Allow the dashboard to read/write runner secrets and config from HOME.
-ReadWritePaths=${HOME}/.config/runner-dashboard
-
-[Install]
-WantedBy=multi-user.target
-SVCEOF
+sudo install -m 0644 "${RENDERED_UNIT}" "${SERVICE_FILE}"
+rm -f "${RENDERED_UNIT}"
+trap - EXIT
 
 sudo systemctl daemon-reload
 sudo systemctl enable runner-dashboard.service

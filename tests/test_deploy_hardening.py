@@ -31,4 +31,8 @@ def test_refresh_token_requires_more_than_prefix() -> None:
 def test_setup_prefers_python_311_for_runtime_service() -> None:
     content = _read(_DEPLOY / "setup.sh")
     assert "command -v python3.11 || command -v python3" in content
-    assert "ExecStart=${PYTHON_BIN} ${DEPLOY_DIR}/backend/server.py" in content
+    # ExecStart now lives in the template (deploy/runner-dashboard.service)
+    # which setup.sh substitutes via @PYTHON_BIN@. See issue #437.
+    assert "@PYTHON_BIN@|${PYTHON_BIN}" in content
+    template = _read(_DEPLOY / "runner-dashboard.service")
+    assert "ExecStart=@PYTHON_BIN@ @DEPLOY_DIR@/backend/server.py" in template
