@@ -4306,10 +4306,7 @@ def _read_uvicorn_env_config() -> dict[str, int]:
     """Read uvicorn tuning knobs from environment variables (#393).
 
     Returns a dict with ``workers``, ``limit_concurrency`` and
-    ``timeout_keep_alive``.  Defaults are conservative because the
-    leader-election guard (#367) is not yet in place — running with
-    ``WORKERS > 1`` will duplicate background tasks and is therefore *not*
-    the default.  Operators that opt in get a runtime warning.
+    ``timeout_keep_alive``.
     """
 
     def _int_env(name: str, default: int) -> int:
@@ -4323,7 +4320,7 @@ def _read_uvicorn_env_config() -> dict[str, int]:
             return default
 
     return {
-        "workers": _int_env("WORKERS", 1),
+        "workers": _int_env("WORKERS", 2),
         "limit_concurrency": _int_env("LIMIT_CONCURRENCY", 200),
         "timeout_keep_alive": _int_env("TIMEOUT_KEEP_ALIVE", 5),
     }
@@ -4343,13 +4340,6 @@ if __name__ == "__main__":
     log.info("=" * 60)
 
     _uvicorn_cfg = _read_uvicorn_env_config()
-    if _uvicorn_cfg["workers"] > 1:
-        log.warning(
-            "WORKERS=%d but leader-election (#367) is not yet in place; "
-            "background tasks will be duplicated across workers. "
-            "Set WORKERS=1 until #367 lands.",
-            _uvicorn_cfg["workers"],
-        )
 
     # uvicorn requires an import string (not the in-memory app object) when
     # running in multi-worker mode — workers spawn via multiprocessing and
