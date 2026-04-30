@@ -337,8 +337,10 @@ export function AgentDispatchPage() {
         aria-busy="true"
         aria-live="polite"
         className="agent-dispatch-loading"
+        role="status"
         style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "12px" }}
       >
+        <span className="visually-hidden">Loading dispatch data…</span>
         <SkeletonLine height={20} width="50%" />
         <SkeletonCard lines={3} />
         <SkeletonCard lines={3} />
