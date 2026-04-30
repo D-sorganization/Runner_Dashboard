@@ -4,7 +4,7 @@ import datetime as dt
 from typing import Any
 
 import pytest
-from linear_inventory import _cache, fetch_all_issues, fetch_workspace_issues
+from linear_inventory import _linear_cache, fetch_all_issues, fetch_workspace_issues
 
 
 class FakeLinearClient:
@@ -102,7 +102,7 @@ def linear_issue(**overrides: Any) -> dict[str, Any]:
 
 @pytest.fixture(autouse=True)
 def clear_cache() -> None:
-    _cache.clear()
+    _linear_cache.clear()
 
 
 @pytest.mark.asyncio

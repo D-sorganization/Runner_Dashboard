@@ -1,19 +1,17 @@
 """Linear inventory fetch and normalization.
 
-The cache TTL is intentionally shared with ``issue_inventory`` by importing its
-``_CACHE_TTL`` constant, so Linear and GitHub inventory views expire on the
-same cadence until a public shared cache module exists.
+The cache TTL matches ``issue_inventory`` (30 s) by using the shared
+``cache_utils.Cache`` primitive introduced in issue #363.
 """
 
 from __future__ import annotations
 
 import asyncio
-import copy
 import logging
 import re
-import time
 from typing import Any
 
+from cache_utils import Cache
 from issue_inventory import _CACHE_TTL as CACHE_TTL
 from issue_inventory import _age_hours, is_pickable
 from linear_client import LinearClient
@@ -25,20 +23,7 @@ OPEN_STATE_TYPES = ["triage", "backlog", "unstarted", "started"]
 CLOSED_STATE_TYPES = ["completed", "canceled"]
 GITHUB_ISSUE_URL_RE = re.compile(r"https?://github\.com/([^/]+/[^/]+)/issues/(\d+)")
 
-_cache: dict[str, tuple[Any, float]] = {}
-
-
-def _cache_get(key: str) -> Any | None:
-    entry = _cache.get(key)
-    if entry is not None:
-        data, ts = entry
-        if time.monotonic() - ts < CACHE_TTL:
-            return copy.deepcopy(data)
-    return None
-
-
-def _cache_set(key: str, data: Any) -> None:
-    _cache[key] = (copy.deepcopy(data), time.monotonic())
+_linear_cache = Cache(name="linear_inventory", deepcopy_on_set=True)
 
 
 async def fetch_workspace_issues(
@@ -101,7 +86,7 @@ async def fetch_all_issues(
         judgement=judgement_set,
         limit=limit,
     )
-    cached = _cache_get(cache_key)
+    cached = _linear_cache.get(cache_key, CACHE_TTL)
     if cached is not None:
         return cached
 
@@ -141,7 +126,7 @@ async def fetch_all_issues(
 
     items.sort(key=lambda item: item["age_hours"])
     result = {"items": items[:limit], "errors": errors}
-    _cache_set(cache_key, result)
+    _linear_cache.set(cache_key, result)
     return result
 
 

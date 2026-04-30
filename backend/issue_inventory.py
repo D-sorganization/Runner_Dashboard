@@ -15,8 +15,9 @@ import datetime as _dt_mod
 import json
 import logging
 import re
-import time
 from typing import Any
+
+from cache_utils import Cache
 
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 datetime = _dt_mod.datetime
@@ -24,25 +25,11 @@ datetime = _dt_mod.datetime
 log = logging.getLogger("dashboard")
 
 # ─── In-process cache ────────────────────────────────────────────────────────
-_cache: dict[str, tuple[Any, float]] = {}
+_issue_cache = Cache(name="issue_inventory", deepcopy_on_set=True)
 _CACHE_TTL = 30.0  # seconds
 
 # ─── Taxonomy constants ───────────────────────────────────────────────────────
 _BLOCKED_JUDGEMENTS = {"design", "contested"}
-
-
-def _cache_get(key: str) -> Any | None:
-    entry = _cache.get(key)
-    if entry is not None:
-        data, ts = entry
-        if time.monotonic() - ts < _CACHE_TTL:
-            return data
-    return None
-
-
-def _cache_set(key: str, data: Any) -> None:
-    _cache[key] = (data, time.monotonic())
-
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -307,7 +294,7 @@ async def fetch_all_issues(
         f"|{assignee}|{pickable_only}|{','.join(sorted(complexity_set))}"
         f"|{','.join(sorted(effort_set))}|{','.join(sorted(judgement_set))}|{limit}"
     )
-    cached = _cache_get(cache_key)
+    cached = _issue_cache.get(cache_key, _CACHE_TTL)
     if cached is not None:
         return cached
 
@@ -350,5 +337,5 @@ async def fetch_all_issues(
     items = items[:limit]
 
     result = {"items": items, "errors": errors}
-    _cache_set(cache_key, result)
+    _issue_cache.set(cache_key, result)
     return result
