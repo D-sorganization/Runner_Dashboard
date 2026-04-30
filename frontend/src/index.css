@@ -16,6 +16,19 @@
   --accent-purple: #bc8cff;
   --accent-orange: #f0883e;
   --mobile-hit-target: 44px;
+
+  /* Badge tints — paired bg/fg colours used by <Badge /> primitive.
+     Mirror of badgeTokens in frontend/src/design/tokens.ts. */
+  --badge-success-bg: rgba(63, 185, 80, 0.15);
+  --badge-success-fg: #3fb950;
+  --badge-warning-bg: rgba(210, 153, 34, 0.15);
+  --badge-warning-fg: #d29922;
+  --badge-danger-bg: rgba(248, 81, 73, 0.15);
+  --badge-danger-fg: #f85149;
+  --badge-info-bg: rgba(88, 166, 255, 0.15);
+  --badge-info-fg: #58a6ff;
+  --badge-neutral-bg: rgba(110, 118, 129, 0.15);
+  --badge-neutral-fg: #8b949e;
   
   /* Glassmorphism Tokens */
   --glass-bg: rgba(28, 33, 51, 0.7);

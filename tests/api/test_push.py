@@ -188,14 +188,41 @@ def test_principal_import_keeps_auth_dependency_available() -> None:
 
 
 @pytest.mark.asyncio
-async def test_vapid_public_key_returns_key() -> None:
-    import os
+async def test_vapid_public_key_returns_503_when_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from fastapi import HTTPException  # noqa: PLC0415
 
-    old = os.environ.pop("VAPID_PUBLIC_KEY", None)
-    try:
-        resp = await push.get_vapid_public_key()
-        assert "publicKey" in resp
-        assert len(resp["publicKey"]) > 0
-    finally:
-        if old is not None:
-            os.environ["VAPID_PUBLIC_KEY"] = old
+    monkeypatch.delenv("VAPID_PUBLIC_KEY", raising=False)
+    with pytest.raises(HTTPException) as excinfo:
+        await push.get_vapid_public_key()
+    assert excinfo.value.status_code == 503
+    assert excinfo.value.detail == "Push not configured"
+
+
+@pytest.mark.asyncio
+async def test_vapid_public_key_returns_key_when_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "VAPID_PUBLIC_KEY",
+        "BMxJh-T8x6YlT3q5KqoZqoZqoZqoZqoZqoZqoZqoZqoZqoZqoZqoZqoZqoZqoZqoZqoZqoZqoZqoZqoZqoZqoZ",
+    )
+    resp = await push.get_vapid_public_key()
+    assert resp["publicKey"].startswith("BMxJh")
+
+
+@pytest.mark.asyncio
+async def test_vapid_public_key_route_returns_503_when_unset(client, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("VAPID_PUBLIC_KEY", raising=False)
+    resp = await client.get("/api/push/vapid-public-key")
+    assert resp.status_code == 503
+    assert resp.json()["detail"] == "Push not configured"
+
+
+@pytest.mark.asyncio
+async def test_vapid_public_key_route_returns_200_when_configured(client, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("VAPID_PUBLIC_KEY", "BTestKeyValue123")
+    resp = await client.get("/api/push/vapid-public-key")
+    assert resp.status_code == 200
+    assert resp.json() == {"publicKey": "BTestKeyValue123"}

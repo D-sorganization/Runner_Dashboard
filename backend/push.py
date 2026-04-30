@@ -333,11 +333,13 @@ async def test_push(
 
 @router.get("/vapid-public-key")
 async def get_vapid_public_key() -> dict[str, str]:
-    """Return the VAPID public key for Web Push subscription."""
+    """Return the VAPID public key for Web Push subscription.
+
+    When ``VAPID_PUBLIC_KEY`` is unset, return a 503 so the frontend can
+    surface a clear "not configured" message instead of subscribing to a
+    transport that will silently fail on send.
+    """
     public_key = os.environ.get("VAPID_PUBLIC_KEY", "")
     if not public_key:
-        # Return a well-known test key for local development so the frontend
-        # can still exercise the subscription flow without a real VAPID pair.
-        # In production this MUST be overridden with a real VAPID key pair.
-        public_key = "BEl62iM0fQZY9w6UhfjUtQ7hDPDpCAjT3bZeU9F5vC2bLq5l6cQ0W6Oe3Qe5V5l6cQ0W6Oe3Qe5V5l6cQ0W6Oe3Qe5"
+        raise HTTPException(status_code=503, detail="Push not configured")
     return {"publicKey": public_key}
