@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Comprehensive A-O assessment for runner-dashboard."""
 
-import os, subprocess, json, re
+import json
+import re
+import subprocess
 from pathlib import Path
 
 REPO = "runner-dashboard"
@@ -65,7 +67,7 @@ def main():
                     "criterion": "A",
                     "severity": "P2",
                     "principle": "PP8",
-                    "text": "Junk drawer directory '{}' exists".format(junk),
+                    "text": f"Junk drawer directory '{junk}' exists",
                 }
             )
             score_a = max(score_a - 1, 0)
@@ -96,7 +98,7 @@ def main():
                     "criterion": "B",
                     "severity": "P2",
                     "principle": "PP4",
-                    "text": "README.md only {} lines (<30)".format(lines),
+                    "text": f"README.md only {lines} lines (<30)",
                 }
             )
             score_b = max(score_b - 2, 0)
@@ -136,9 +138,7 @@ def main():
                 "criterion": "B",
                 "severity": "P1",
                 "principle": "PP4",
-                "text": "Docstring coverage low: {}/{} public functions in backend/ sample".format(
-                    docstring_funcs, total_funcs
-                ),
+                "text": f"Docstring coverage low: {docstring_funcs}/{total_funcs} public functions in backend/ sample",
             }
         )
         score_b = max(score_b - 1, 0)
@@ -184,7 +184,7 @@ def main():
                             "criterion": "C",
                             "severity": "P2",
                             "principle": "PP8",
-                            "text": "pytest.skip/xfail without issue link in {}".format(f.name),
+                            "text": f"pytest.skip/xfail without issue link in {f.name}",
                         }
                     )
         except Exception:
@@ -210,7 +210,7 @@ def main():
                         "criterion": "D",
                         "severity": "P2",
                         "principle": "PP6",
-                        "text": "try/except returning None without logging in {}".format(f.name),
+                        "text": f"try/except returning None without logging in {f.name}",
                     }
                 )
         except Exception:
@@ -229,7 +229,7 @@ def main():
                         "criterion": "E",
                         "severity": "P2",
                         "principle": "PP4",
-                        "text": "Possible repeated file I/O inside loop in {}".format(f.name),
+                        "text": f"Possible repeated file I/O inside loop in {f.name}",
                     }
                 )
         except Exception:
@@ -251,7 +251,7 @@ def main():
                         "criterion": "F",
                         "severity": "P0",
                         "principle": "PP1",
-                        "text": "God file {} ({} lines) exceeds 500-line soft cap".format(f.name, lines),
+                        "text": f"God file {f.name} ({lines} lines) exceeds 500-line soft cap",
                     }
                 )
                 score_f = max(score_f - 2, 0)
@@ -271,7 +271,7 @@ def main():
                 "criterion": "F",
                 "severity": "P2",
                 "principle": "PP1",
-                "text": "Many magic float literals ({}) in backend/ sample".format(magic),
+                "text": f"Many magic float literals ({magic}) in backend/ sample",
             }
         )
 
@@ -398,7 +398,7 @@ def main():
                 "criterion": "K",
                 "severity": "P0",
                 "principle": "PP8",
-                "text": "{} TODO/FIXME/XXX comments without issue links".format(todo_count),
+                "text": f"{todo_count} TODO/FIXME/XXX comments without issue links",
             }
         )
         score_k = max(score_k - 3, 0)
@@ -408,7 +408,7 @@ def main():
                 "criterion": "K",
                 "severity": "P1",
                 "principle": "PP8",
-                "text": "{} TODO/FIXME/XXX comments -- link to issues".format(todo_count),
+                "text": f"{todo_count} TODO/FIXME/XXX comments -- link to issues",
             }
         )
         score_k = max(score_k - 1, 0)
@@ -502,7 +502,7 @@ def main():
     overall = round(sum(scores.values()) / len(scores), 1)
     report = {
         "meta": {
-            "repo": "{}/{}".format(OWNER, REPO),
+            "repo": f"{OWNER}/{REPO}",
             "date": DATE,
             "head_short": run(["git", "log", "-1", "--format=%h"]).strip(),
             "head_long": run(["git", "log", "-1", "--format=%H"]).strip(),
@@ -516,7 +516,7 @@ def main():
 
     out_dir = Path("assessments")
     out_dir.mkdir(exist_ok=True)
-    (out_dir / "{}-{}-assessment.json".format(DATE, REPO)).write_text(json.dumps(report, indent=2))
+    (out_dir / f"{DATE}-{REPO}-assessment.json").write_text(json.dumps(report, indent=2))
     print(json.dumps(report, indent=2))
 
 

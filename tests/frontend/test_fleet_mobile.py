@@ -1,4 +1,3 @@
-
 """Tests for Fleet mobile components.
 
 These tests verify the Fleet mobile page renders correct markup for all four

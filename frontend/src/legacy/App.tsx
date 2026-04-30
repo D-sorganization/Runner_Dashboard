@@ -13638,9 +13638,27 @@ var ASST_LS = {
   position: "assistant:position",
   width: "assistant:width",
   transcript: "assistant:transcript",
+  transcriptTimestamp: "assistant:transcript:ts",
   openByDefault: "assistant:openByDefault",
   includeContext: "assistant:includeContext",
+  saveHistory: "assistant:saveHistory",
 };
+
+var ASST_HISTORY_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+function lsLoadTranscript() {
+  try {
+    var ts = parseInt(localStorage.getItem(ASST_LS.transcriptTimestamp) || "0", 10);
+    if (!ts || Date.now() - ts > ASST_HISTORY_TTL_MS) {
+      localStorage.removeItem(ASST_LS.transcript);
+      localStorage.removeItem(ASST_LS.transcriptTimestamp);
+      return [];
+    }
+    return lsGet(ASST_LS.transcript, []);
+  } catch (e) {
+    return [];
+  }
+}
 
 function lsGet(key, fallback) {
   try { var v = localStorage.getItem(key); return v === null ? fallback : JSON.parse(v); } catch (e) { return fallback; }
@@ -13660,7 +13678,10 @@ function AssistantSidebar(props) {
   var ws2 = React.useState(lsGet(ASST_LS.width, 360));
   var width = ws2[0], setWidth = ws2[1];
 
-  var ts2 = React.useState(lsGet(ASST_LS.transcript, []));
+  var sh2 = React.useState(lsGet(ASST_LS.saveHistory, false));
+  var saveHistory = sh2[0], setSaveHistory = sh2[1];
+
+  var ts2 = React.useState(function () { return saveHistory ? lsLoadTranscript() : []; });
   var transcript = ts2[0], setTranscript = ts2[1];
 
   var ic2 = React.useState(lsGet(ASST_LS.includeContext, true));
@@ -13694,10 +13715,19 @@ function AssistantSidebar(props) {
   React.useEffect(function () { lsSet(ASST_LS.width, width); }, [width]);
   React.useEffect(function () { lsSet(ASST_LS.includeContext, includeCtx); }, [includeCtx]);
   React.useEffect(function () { lsSet(ASST_LS.openByDefault, openByDefault); }, [openByDefault]);
+  React.useEffect(function () { lsSet(ASST_LS.saveHistory, saveHistory); }, [saveHistory]);
   React.useEffect(function () {
+    if (!saveHistory) {
+      try {
+        localStorage.removeItem(ASST_LS.transcript);
+        localStorage.removeItem(ASST_LS.transcriptTimestamp);
+      } catch (e) {}
+      return;
+    }
     var capped = transcript.length > 200 ? transcript.slice(-200) : transcript;
     lsSet(ASST_LS.transcript, capped);
-  }, [transcript]);
+    try { localStorage.setItem(ASST_LS.transcriptTimestamp, String(Date.now())); } catch (e) {}
+  }, [transcript, saveHistory]);
 
   function getPageContext() {
     return {
@@ -13859,10 +13889,36 @@ function AssistantSidebar(props) {
           h("input", { type: "checkbox", checked: includeCtx, onChange: function (e) { setIncludeCtx(e.target.checked); }, style: { accentColor: "var(--accent-blue)" } }),
           "Include page context with messages"
         ),
+        h("label", { style: { fontSize: 12, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" } },
+          h("input", {
+            type: "checkbox",
+            checked: saveHistory,
+            onChange: function (e) {
+              var next = e.target.checked;
+              setSaveHistory(next);
+              if (!next) {
+                setTranscript([]);
+                try {
+                  localStorage.removeItem(ASST_LS.transcript);
+                  localStorage.removeItem(ASST_LS.transcriptTimestamp);
+                } catch (ex) {}
+              }
+            },
+            style: { accentColor: "var(--accent-blue)" },
+          }),
+          "Save chat history"
+        ),
         h("button", {
-          onClick: function () { setTranscript([]); setShowSettings(false); },
+          onClick: function () {
+            setTranscript([]);
+            try {
+              localStorage.removeItem(ASST_LS.transcript);
+              localStorage.removeItem(ASST_LS.transcriptTimestamp);
+            } catch (e) {}
+            setShowSettings(false);
+          },
           style: { background: "var(--accent-red)", color: "#fff", border: "none", borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontSize: 12, width: "100%", marginTop: 8 },
-        }, "Clear conversation"),
+        }, "Clear chat history"),
       )
     : null;
 
@@ -14598,8 +14654,8 @@ h("table", { className: "data-table", style: { width: "100%", borderCollapse: "c
   );
 }
 
-function App() {
-  var ts = React.useState("overview");
+function App({ initialTab }: { initialTab?: string } = {}) {
+  var ts = React.useState(initialTab ?? "overview");
   var tab = ts[0],
     setTab = ts[1];
   var rs = React.useState([]);

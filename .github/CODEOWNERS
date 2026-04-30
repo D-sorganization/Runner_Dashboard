@@ -1,0 +1,26 @@
+# CODEOWNERS for runner-dashboard
+#
+# This file defines required reviewers for changes to sensitive paths.
+# See docs/branch-protection.md for the branch-protection contract that
+# enforces these reviewers on protected paths.
+#
+# Team assumption:
+#   - @D-sorganization/security-reviewers and @D-sorganization/maintainers
+#     are GitHub team handles in the D-sorganization GitHub organization.
+#     If those teams have not been created yet, GitHub will treat the
+#     entries as unresolved owners (they remain syntactically valid and
+#     will not break PRs); creating the teams later activates enforcement
+#     without requiring a CODEOWNERS edit.
+#
+# Pattern reference:
+#   https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+/backend/security.py @D-sorganization/security-reviewers
+/backend/auth_webauthn.py @D-sorganization/security-reviewers
+/backend/dispatch_contract.py @D-sorganization/security-reviewers @D-sorganization/maintainers
+/backend/middleware.py @D-sorganization/security-reviewers
+/backend/identity.py @D-sorganization/security-reviewers
+/deploy/ @D-sorganization/maintainers
+/.github/workflows/ @D-sorganization/maintainers
+/docs/adr/ @D-sorganization/maintainers
+/SPEC.md @D-sorganization/maintainers

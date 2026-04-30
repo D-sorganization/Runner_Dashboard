@@ -1,3 +1,14 @@
+"""Keepalive diagnostics tests.
+
+These tests do not perform real network or subprocess calls — `run_cmd` and
+`os` are monkeypatched in every test. They are therefore safe to run in PR
+CI and are NOT marked `@pytest.mark.integration`.
+
+TODO(#434): if future tests in this module are added that exercise real
+systemd/PowerShell calls, mark them `@pytest.mark.integration` so they are
+excluded from PR CI by default and run nightly only (see issue #401).
+"""
+
 from __future__ import annotations  # noqa: E402
 
 import asyncio  # noqa: E402
