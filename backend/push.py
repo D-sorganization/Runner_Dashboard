@@ -126,7 +126,8 @@ def _db_path() -> Path:
 def _connect(path: Path | None = None) -> sqlite3.Connection:
     db_path = path or _db_path()
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=5.0)
+    conn.execute("PRAGMA busy_timeout=5000")
     conn.row_factory = sqlite3.Row
     conn.execute(
         """

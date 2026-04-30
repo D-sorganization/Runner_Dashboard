@@ -12,6 +12,8 @@ Type=simple
 User=YOUR_USER
 Group=YOUR_USER
 WorkingDirectory=/home/YOUR_USER/actions-runners/dashboard/backend
+# The autoscaler enforces a single-instance invariant using a file lock (/var/run/runner-autoscaler.lock).
+# Concurrent instances on the same host will exit with 75 (EX_TEMPFAIL) to prevent last-writer-wins conflicts.
 ExecStart=/usr/bin/python3 /home/YOUR_USER/actions-runners/dashboard/backend/runner_autoscaler.py
 Restart=on-failure
 RestartSec=15

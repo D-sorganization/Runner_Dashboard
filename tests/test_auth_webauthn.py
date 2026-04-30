@@ -118,7 +118,6 @@ def test_missing_session_middleware_raises_500(monkeypatch, tmp_path) -> None:
 
 
 def test_corrupted_credentials_json(monkeypatch, tmp_path) -> None:
-
     client = _client(monkeypatch, tmp_path)
     cred_file = tmp_path / "webauthn_credentials.json"
 

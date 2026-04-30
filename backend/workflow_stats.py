@@ -84,14 +84,16 @@ def init_db(path: Path | None = None) -> Path:
     """Create the DB file + schema if missing; return resolved path."""
     path = path or _db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(path) as conn:
+    with sqlite3.connect(path, timeout=5.0) as conn:
+        conn.execute("PRAGMA busy_timeout=5000")
         conn.executescript(SCHEMA_SQL)
     log.info("workflow_stats: DB initialized at %s", path)
     return path
 
 
 def _connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(_db_path())
+    conn = sqlite3.connect(_db_path(), timeout=5.0)
+    conn.execute("PRAGMA busy_timeout=5000")
     conn.row_factory = sqlite3.Row
     return conn
 
