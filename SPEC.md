@@ -1,8 +1,8 @@
 ﻿# SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.12
+**Spec Version:** 2.5.13
 **Application Version:** 4.1.0 (see `VERSION`)
-**Last Updated:** 2026-04-29T20:30:00Z
+**Last Updated:** 2026-04-30T00:00:00Z
 **Status:** Active
 
 ---
@@ -421,8 +421,27 @@ All endpoints are served under `http://localhost:8321/api/`.
 | Method | Path | Description |
 |---|---|---|
 | GET | `/api/system` | Host system metrics (CPU, RAM, disk, GPU) |
-| GET | `/api/health` | Simple health check â€” returns `{"status": "ok"}` |
+| GET | `/api/health` | Simple health check — returns `{“status”: “ok”}` |
 | GET | `/api/watchdog` | Watchdog status and last heartbeat |
+| GET | `/readyz` | Readiness probe — returns `{“status”:”ready”,”session_secret_source”:”env\|persisted\|generated”}` |
+
+**Session secret persistence (`SESSION_SECRET_SOURCE`):**
+When the `SESSION_SECRET` environment variable is not set, the server resolves
+the secret using the following priority order and reports the resolution mode
+in `GET /readyz` as `session_secret_source`:
+
+1. `”env”` — `SESSION_SECRET` env var was explicitly configured (recommended
+   for production).
+2. `”persisted”` — secret was read from
+   `~/.config/runner-dashboard/session_secret` (written on first startup).
+3. `”generated”` — no env var and no persisted file existed; a fresh secret
+   was generated via `secrets.token_hex(32)` and written atomically (mode
+   `0o600`) to `~/.config/runner-dashboard/session_secret`.
+
+A `WARNING` is logged at startup whenever the env var is absent so operators
+can detect the mode without querying the endpoint.  The persisted file
+directory can be overridden via the `RUNNER_DASHBOARD_SESSION_SECRET_DIR`
+env var.
 
 ### Deployment and Drift
 

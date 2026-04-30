@@ -45,3 +45,24 @@ def test_health_impl_exported() -> None:
     import health  # noqa: PLC0415
 
     assert callable(health._health_impl), "_health_impl must be callable"
+
+
+def test_health_router_has_readyz_route() -> None:
+    """The health router must expose /readyz."""
+    import health  # noqa: PLC0415
+
+    paths = {r.path for r in health.router.routes}  # type: ignore[attr-defined]
+    assert "/readyz" in paths, "health router must expose /readyz"
+
+
+def test_readyz_reports_session_secret_source(monkeypatch) -> None:
+    """GET /readyz must return a valid session_secret_source field."""
+    import dashboard_config  # noqa: PLC0415
+
+    for source in ("env", "persisted", "generated"):
+        monkeypatch.setattr(dashboard_config, "SESSION_SECRET_SOURCE", source)
+
+        import health  # noqa: PLC0415
+
+        paths = {r.path: r for r in health.router.routes}  # type: ignore[attr-defined]
+        assert "/readyz" in paths, "/readyz route must exist"

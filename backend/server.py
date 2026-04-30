@@ -63,6 +63,7 @@ import agent_dispatch_router as agent_dispatch_router  # noqa: E402
 import agent_remediation as agent_remediation  # noqa: E402
 import auth_webauthn as _auth_webauthn_router  # noqa: E402
 import config_schema as config_schema  # noqa: E402
+import dashboard_config as dashboard_config  # noqa: E402
 import deployment_drift as deployment_drift  # noqa: E402
 import dispatch_contract as dispatch_contract  # noqa: E402
 import health as _health_router  # noqa: E402
@@ -410,7 +411,7 @@ app.include_router(_feature_requests_router.router)
 
 app.add_middleware(
     SessionMiddleware,
-    secret_key=os.environ.get("SESSION_SECRET", secrets.token_hex(32)),
+    secret_key=dashboard_config.SESSION_SECRET,
     session_cookie="dashboard_session",
     max_age=86400 * 7,  # 7 days
     same_site="lax",
