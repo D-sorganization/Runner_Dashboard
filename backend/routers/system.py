@@ -28,14 +28,10 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 # Python 3.11+ has datetime.UTC; fall back to timezone.utc for 3.10
-<<<<<<< HEAD
 try:
     UTC = _dt.UTC  # type: ignore[attr-defined]
 except AttributeError:
-    UTC = _dt.UTC
-=======
-UTC = _dt.UTC
->>>>>>> main
+    UTC = _dt.timezone.utc
 
 log = logging.getLogger("dashboard.system")
 router = APIRouter(tags=["system"])
