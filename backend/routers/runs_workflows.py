@@ -29,6 +29,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from gh_utils import gh_api, gh_api_raw
 from identity import Principal, require_scope
 from input_validation import validate_workflow_inputs
+from models.github_payloads import GhJob, GhWorkflowRun
 from proxy_utils import proxy_to_hub, should_proxy_fleet_to_hub
 from security import validate_repo_slug
 from system_utils import run_cmd
@@ -71,28 +72,32 @@ async def _fetch_repo_runs(repo_name: str, per_page: int = 10, status: str | Non
 
 
 async def _enrich_run_with_job_placement(run: dict) -> dict:
-    """Add job-level runner placement data to a workflow run."""
+    """Add job-level runner placement data to a workflow run.
+
+    Uses ``GhWorkflowRun`` and ``GhJob`` typed models to extract fields,
+    replacing nested ``.get()`` chains with typed attribute access.
+    """
     enriched = dict(run)
-    repo = run.get("repository", {}).get("name") or run.get("repo")
-    run_id = run.get("id")
+    typed_run = GhWorkflowRun.model_validate(run)
+    repo = typed_run.repository_name or run.get("repo")
+    run_id = typed_run.id
     if not repo or not run_id:
         return enriched
     repo = validate_repo_slug(repo)
     try:
         data = await gh_api(f"/repos/{ORG}/{repo}/actions/runs/{run_id}/jobs")
-        jobs = data.get("jobs", [])
         enriched["jobs"] = [
             {
-                "id": j.get("id"),
-                "name": j.get("name"),
-                "status": j.get("status"),
-                "conclusion": j.get("conclusion"),
-                "runner_name": j.get("runner_name"),
-                "runner_id": j.get("runner_id"),
-                "started_at": j.get("started_at"),
-                "completed_at": j.get("completed_at"),
+                "id": job.id,
+                "name": job.name,
+                "status": job.status,
+                "conclusion": job.conclusion,
+                "runner_name": job.runner_name,
+                "runner_id": job.runner_id,
+                "started_at": job.started_at,
+                "completed_at": job.completed_at,
             }
-            for j in jobs
+            for job in (GhJob.from_api_dict(j) for j in data.get("jobs", []))
         ]
     except Exception:  # noqa: BLE001
         enriched["jobs"] = []

@@ -2190,3 +2190,20 @@ To ensure identity and quotas are respected across the entire fleet:
 < ! - -   U p d a t e d :   2 0 2 6 - 0 4 - 2 9 T 1 8 : 3 8 : 1 6   - - > 
  
  
+
+
+### 18.7 Typed GitHub Payload Models (issue #407)
+
+GitHub API response dicts are now parsed at the boundary into typed Pydantic
+view-models defined in `backend/models/github_payloads.py`:
+
+| Model | Replaces |
+|-------|---------|
+| `GhWorkflowRun` | `run.get("id")`, `(run.get("repository") or {}).get("name", "")` chains |
+| `GhJob` | `j.get("runner_name")`, label dicts vs strings |
+| `GhRunner` | `runner["labels"][i]["name"]`, `runner.get("busy")` |
+| `GhRepository` | nested repository sub-dict |
+| `GhActor` | `triggering_actor.get("login")` |
+
+All models use `extra="ignore"` so new GitHub API fields never break
+existing handlers.  Handlers receive flat, typed objects (Law of Demeter).

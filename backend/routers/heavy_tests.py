@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 from dashboard_config import ORG
 from fastapi import APIRouter, Depends, HTTPException, Request
 from identity import Principal, require_scope  # noqa: B008
+from models.github_payloads import GhWorkflowRun
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -64,18 +65,19 @@ async def get_heavy_test_repos() -> dict:
         if code == 0:
             try:
                 data = json.loads(stdout)
-                for run in data.get("workflow_runs", []):
+                for raw_run in data.get("workflow_runs", []):
+                    run = GhWorkflowRun.model_validate(raw_run)
                     recent_runs.append(
                         {
-                            "id": run["id"],
-                            "status": run["status"],
-                            "conclusion": run.get("conclusion"),
-                            "created_at": run.get("created_at"),
-                            "updated_at": run.get("updated_at"),
-                            "html_url": run.get("html_url"),
-                            "head_branch": run.get("head_branch"),
-                            "run_number": run.get("run_number"),
-                            "triggering_actor": run.get("triggering_actor", {}).get("login"),
+                            "id": run.id,
+                            "status": run.status,
+                            "conclusion": run.conclusion,
+                            "created_at": run.created_at,
+                            "updated_at": run.updated_at,
+                            "html_url": run.html_url,
+                            "head_branch": run.head_branch,
+                            "run_number": run.run_number,
+                            "triggering_actor": run.triggering_login or None,
                         }
                     )
             except (json.JSONDecodeError, ValueError):
