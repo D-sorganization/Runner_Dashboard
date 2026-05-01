@@ -204,6 +204,8 @@ run, and machine telemetry payloads; desktop machine and runner tables remain
 the canonical wide-screen surface.
 
 
+**Data fetching:** The frontend uses `@tanstack/react-query` (issue #377) for all polling. A `QueryClient` is instantiated in `frontend/src/hooks/usePollingQueries.ts` and provided via `<QueryClientProvider>` in `frontend/src/main.tsx`. Per-resource hooks (`useFleet`, `useQueue`, `useMachines`, `useRunnerCapacity`, etc.) replace the previous 14 `setInterval` calls in `frontend/src/legacy/App.tsx` and declare per-hook `refetchInterval` cadences (30 s / 60 s / 120 s / 300 s). `refetchIntervalInBackground: false` is set as a `QueryClient` default so polling automatically pauses when the browser tab is hidden, reducing idle network traffic by ≥ 70%.
+
 Reusable UI primitives live in `frontend/src/primitives/`. Issue #422 introduces `Badge.tsx` (`tone` in `success | warning | danger | info | neutral`, `size` in `sm | md`) and `Pill.tsx` (with a `selected` boolean prop) so that the previously ad-hoc `.section-badge`, `.runner-status-badge`, `.conclusion-badge`, `.subtab-badge`, and `.fleet-status-pill` styles share a single token-driven implementation backed by `--badge-*-bg` / `--badge-*-fg` CSS variables in `frontend/src/design/tokens.ts`.
 
 PushSettings (issue #192) is a mobile-friendly React component for per-topic Web Push subscription management. It is located at `frontend/src/pages/PushSettings.tsx` and uses `GET /api/push/vapid-public-key` to fetch the VAPID key before subscribing to selected push topics via `POST /api/push/subscribe`.
