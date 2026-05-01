@@ -15,6 +15,8 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 GITHUB_CLIENT_ID = os.environ.get("GITHUB_CLIENT_ID", "")
 GITHUB_CLIENT_SECRET = os.environ.get("GITHUB_CLIENT_SECRET", "")
+# When set, only members of this GitHub org may complete OAuth login (fixes #354).
+REQUIRED_GITHUB_ORG = os.environ.get("REQUIRED_GITHUB_ORG", "")
 
 
 @router.get("/github")
@@ -39,6 +41,8 @@ async def github_callback(request: Request, code: str, state: str):
     saved_state = request.session.get("oauth_state")
     if not saved_state or state != saved_state:
         raise HTTPException(status_code=400, detail="Invalid state")
+    # Invalidate the state after single use to prevent replay attacks (#354).
+    del request.session["oauth_state"]
 
     async with httpx.AsyncClient() as client:
         # Exchange code for token
@@ -66,6 +70,21 @@ async def github_callback(request: Request, code: str, state: str):
         )
         user_data = user_resp.json()
         github_login = user_data.get("login")
+
+        # Verify org membership when REQUIRED_GITHUB_ORG is configured (#354).
+        if REQUIRED_GITHUB_ORG:
+            org_resp = await client.get(
+                f"https://api.github.com/orgs/{REQUIRED_GITHUB_ORG}/members/{github_login}",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Accept": "application/json",
+                },
+            )
+            if org_resp.status_code != 204:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"You must be a member of the {REQUIRED_GITHUB_ORG} GitHub organisation to log in.",
+                )
 
     # Find principal by github username
     matched_principal = None
