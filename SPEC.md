@@ -2192,3 +2192,18 @@ To ensure identity and quotas are respected across the entire fleet:
 < ! - -   U p d a t e d :   2 0 2 6 - 0 4 - 2 9 T 1 8 : 3 8 : 1 6   - - > 
  
  
+
+
+### 18.8 Pooled GitHub API Client (issue #352)
+
+A new `backend/gh_client.py` module replaces the hottest
+`subprocess.run(["gh", "api", ...])` call-sites with a single pooled
+`httpx.AsyncClient` that reuses TLS connections and caches the Bearer token.
+
+**Key design:**
+- Token loaded once from `GH_TOKEN` / `GITHUB_TOKEN` and cached in memory.
+- Typed exceptions: `GhAuthError`, `GhRateLimited`, `GhNotFound`, `GhServerError`.
+- `paginate(path)` async iterator follows GitHub Link headers automatically.
+- `gh` CLI subprocess retained as fallback when token is absent.
+- `gh_utils.gh_api()` delegates to `gh_client.get()` transparently; all
+  existing call-sites continue to work without changes.
