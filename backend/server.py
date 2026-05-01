@@ -98,7 +98,7 @@ from machine_registry import (  # noqa: E402
     load_machine_registry,
     merge_registry_with_live_nodes,
 )
-from middleware import add_security_headers, csrf_check  # noqa: E402
+from middleware import add_security_headers, csrf_check, max_body_size_check  # noqa: E402
 from routers import assessments as _assessments_router  # noqa: E402
 
 # parse_report_metrics and sanitize_report_date moved to routers/reports.py (issue #358)
@@ -452,6 +452,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def _max_body_size(request, call_next):
+    return await max_body_size_check(request, call_next)
 
 
 @app.middleware("http")

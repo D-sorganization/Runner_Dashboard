@@ -60,10 +60,10 @@ class IdentityManager:
             return
 
         # Security validation for issue #355: validate path before loading
-        validate_config_path(self.principals_path)
+        validate_config_path(self.principals_path, allowed_roots=[self.config_dir.resolve()])
 
         # Use safe_yaml_load which validates path security
-        data = safe_yaml_load(self.principals_path)
+        data = safe_yaml_load(self.principals_path, allowed_roots=[self.config_dir.resolve()])
 
         if not data or "principals" not in data:
             return
@@ -84,7 +84,7 @@ class IdentityManager:
         self.principals_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Security validation: ensure config dir is within allowed roots
-        validate_config_path(self.principals_path.parent)
+        validate_config_path(self.principals_path.parent, allowed_roots=[self.config_dir.resolve()])
 
         payload = {"principals": [p.model_dump() for p in self.principals.values()]}
         fd, tmp_path = tempfile.mkstemp(
@@ -114,10 +114,10 @@ class IdentityManager:
             return
 
         # Security validation for issue #355: validate path before loading
-        validate_config_path(self.tokens_path)
+        validate_config_path(self.tokens_path, allowed_roots=[self.config_dir.resolve()])
 
         # Use safe_yaml_load which validates path security
-        data = safe_yaml_load(self.tokens_path)
+        data = safe_yaml_load(self.tokens_path, allowed_roots=[self.config_dir.resolve()])
 
         if not data or "tokens" not in data:
             return
@@ -131,7 +131,7 @@ class IdentityManager:
         self.tokens_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Security validation: ensure config dir is within allowed roots
-        validate_config_path(self.tokens_path.parent)
+        validate_config_path(self.tokens_path.parent, allowed_roots=[self.config_dir.resolve()])
 
         with open(self.tokens_path, "w") as f:
             yaml.dump({"tokens": [t.model_dump() for t in self.tokens]}, f)
