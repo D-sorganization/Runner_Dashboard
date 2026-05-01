@@ -15,14 +15,7 @@ from dashboard_config import RUNNER_BASE_DIR
 from system_utils import run_cmd
 
 # Python 3.11+ has datetime.UTC; fall back to timezone.utc for 3.10
-<<<<<<< HEAD
-try:
-    UTC = _dt_mod.UTC  # type: ignore[attr-defined]
-except AttributeError:
-    UTC = _dt_mod.UTC
-=======
 UTC = _dt_mod.UTC
->>>>>>> main
 
 log = logging.getLogger("dashboard.runners")
 

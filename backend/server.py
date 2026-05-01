@@ -107,7 +107,8 @@ from routers import runner_diagnostics as _runner_diagnostics_router  # noqa: E4
 from routers import runner_groups as _runner_groups_router  # noqa: E402
 from routers import runners as _runners_router  # noqa: E402
 from routers import runs_workflows as _runs_workflows_router  # noqa: E402
-from routers import system as _system_router  # noqa: E402
+from routers import system as _system_router
+from routers import web_vitals as _web_vitals_router  # noqa: E402
 from routers.queue import _queue_impl  # noqa: E402
 from security import (  # noqa: E402
     safe_subprocess_env,  # noqa: E402
@@ -416,6 +417,7 @@ app.include_router(_agent_launcher_router.router)
 
 # Batch-2 extracted routers (epic #159)
 app.include_router(_system_router.router)
+app.include_router(_web_vitals_router.router)
 app.include_router(_fleet_router.router)
 app.include_router(_queue_router.router)
 app.include_router(_queue_diagnostics_router.router)
