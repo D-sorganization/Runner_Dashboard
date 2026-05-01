@@ -65,10 +65,10 @@ def _compute_percentile(values: list[float], percentile: float) -> float | None:
         if percentile == 50:
             return round(statistics.median(sorted_vals), 3)
         elif percentile == 75:
-            q = statistics.quantiles(sorted_vals, n=4, method="nearest")
+            q = statistics.quantiles(sorted_vals, n=4, method="inclusive")
             return round(q[2], 3)
         elif percentile == 95:
-            q = statistics.quantiles(sorted_vals, n=20, method="nearest")
+            q = statistics.quantiles(sorted_vals, n=20, method="inclusive")
             return round(q[18], 3)
     except statistics.StatisticsError:
         pass
