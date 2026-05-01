@@ -18,7 +18,7 @@ from system_utils import run_cmd
 try:
     UTC = _dt_mod.UTC  # type: ignore[attr-defined]
 except AttributeError:
-    UTC = _dt_mod.timezone.utc
+    UTC = _dt_mod.UTC
 
 log = logging.getLogger("dashboard.runners")
 

@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 try:
     UTC = _dt.UTC  # type: ignore[attr-defined]
 except AttributeError:
-    UTC = _dt.timezone.utc
+    UTC = _dt.UTC
 
 log = logging.getLogger("dashboard.system")
 router = APIRouter(tags=["system"])
