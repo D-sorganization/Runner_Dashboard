@@ -136,16 +136,42 @@ def validate_health_command(cmd: str) -> list[str]:
 
 _dispatch_rate: dict[str, list[float]] = defaultdict(list)
 DISPATCH_LIMIT_PER_MINUTE = 10
+_RATE_WINDOW_SECONDS = 60
+_RATE_PRINCIPAL_TTL_SECONDS = 600  # evict inactive principals after 10 min
 
 
-def check_dispatch_rate(client_ip: str) -> None:
-    """Enforce rate limiting for AI agent dispatch endpoints (issue #31)."""
+def _evict_stale_rate_entries(now: float) -> None:
+    """Remove principals that have had no requests in the last TTL window (issue #345)."""
+    stale_keys = [
+        key
+        for key, timestamps in _dispatch_rate.items()
+        if not timestamps or (now - max(timestamps)) > _RATE_PRINCIPAL_TTL_SECONDS
+    ]
+    for key in stale_keys:
+        del _dispatch_rate[key]
+
+
+def check_dispatch_rate(client_ip: str, *, principal_id: str | None = None) -> None:
+    """Enforce rate limiting for AI agent dispatch endpoints (issue #31, #345).
+
+    Keyed on *principal_id* for authenticated callers so the limit cannot be
+    bypassed by rotating IP addresses (NAT, Tailscale, etc.).  Falls back to
+    *client_ip* only when no principal is available (public webhook path).
+    Stale entries are evicted after ``_RATE_PRINCIPAL_TTL_SECONDS`` of inactivity
+    to prevent unbounded memory growth.
+    """
+    rate_key = principal_id if principal_id else client_ip
     now = time.monotonic()
-    window = [t for t in _dispatch_rate[client_ip] if now - t < 60]
+    _evict_stale_rate_entries(now)
+    window = [t for t in _dispatch_rate[rate_key] if now - t < _RATE_WINDOW_SECONDS]
     if len(window) >= DISPATCH_LIMIT_PER_MINUTE:
-        raise HTTPException(status_code=429, detail="Rate limit exceeded for agent dispatch")
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded for agent dispatch",
+            headers={"Retry-After": str(_RATE_WINDOW_SECONDS)},
+        )
     window.append(now)
-    _dispatch_rate[client_ip] = window
+    _dispatch_rate[rate_key] = window
 
 
 # ─── YAML Loader Security ──────────────────────────────────────────────────────

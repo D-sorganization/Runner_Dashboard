@@ -191,7 +191,7 @@ async def dispatch_feature_request(
 ) -> dict:
     """Dispatch a feature implementation request via CI remediation workflow."""
     client_ip = request.client.host if request.client else "unknown"
-    check_dispatch_rate(client_ip)
+    check_dispatch_rate(client_ip, principal_id=principal.id)
     body = await request.json()
     # Validate any caller-supplied raw inputs BEFORE any I/O (#411). We do not
     # forward this dict directly — the dispatch payload is rebuilt below from

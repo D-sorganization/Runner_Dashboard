@@ -227,6 +227,47 @@ def test_check_dispatch_rate_old_requests_expired(monkeypatch) -> None:
     security.check_dispatch_rate(client)
 
 
+def test_check_dispatch_rate_principal_keyed_isolates_principals() -> None:
+    """11th call for principal A → 429; 11th call for principal B → 200 (issue #345)."""
+    from fastapi import HTTPException
+
+    security._dispatch_rate.clear()
+    now = time.monotonic()
+    # Principal A has 10 calls already
+    security._dispatch_rate["principal-A"] = [now] * 10
+    # Principal B has 0 calls
+
+    with pytest.raises(HTTPException) as exc_info:
+        security.check_dispatch_rate("1.2.3.4", principal_id="principal-A")
+    assert exc_info.value.status_code == 429
+    assert "Retry-After" in exc_info.value.headers
+
+    # Principal B should succeed (different bucket)
+    security.check_dispatch_rate("1.2.3.4", principal_id="principal-B")
+
+
+def test_check_dispatch_rate_retry_after_header_present() -> None:
+    """429 response must carry Retry-After header (issue #345)."""
+    from fastapi import HTTPException
+
+    security._dispatch_rate.clear()
+    now = time.monotonic()
+    security._dispatch_rate["p-ratelimit"] = [now] * 10
+    with pytest.raises(HTTPException) as exc_info:
+        security.check_dispatch_rate("127.0.0.1", principal_id="p-ratelimit")
+    assert exc_info.value.headers.get("Retry-After") is not None
+
+
+def test_check_dispatch_rate_stale_principals_evicted() -> None:
+    """Principals with no activity in TTL window are evicted (issue #345)."""
+    security._dispatch_rate.clear()
+    stale_ts = time.monotonic() - security._RATE_PRINCIPAL_TTL_SECONDS - 1
+    security._dispatch_rate["stale-principal"] = [stale_ts]
+    # Trigger a new request for a different principal to cause eviction
+    security.check_dispatch_rate("127.0.0.1", principal_id="active-principal")
+    assert "stale-principal" not in security._dispatch_rate
+
+
 # ---------------------------------------------------------------------------
 # safe_subprocess_env
 # ---------------------------------------------------------------------------

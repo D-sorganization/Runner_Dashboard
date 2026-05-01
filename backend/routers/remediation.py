@@ -202,7 +202,7 @@ async def dispatch_agent_remediation(
 ) -> dict:
     """Dispatch the central CI remediation workflow in Repository_Management."""
     client_ip = request.client.host if request.client else "unknown"
-    check_dispatch_rate(client_ip)
+    check_dispatch_rate(client_ip, principal_id=principal.id)
     body = await request.json()
     if not isinstance(body, dict):
         raise HTTPException(status_code=422, detail="expected object body")
