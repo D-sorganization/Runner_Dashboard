@@ -1,15 +1,15 @@
-# Release workflow (issue #431)
+# Release workflow (issues #392, #431)
 #
-# Creates a GitHub release with auto-generated notes derived from
-# Conventional Commits since the last tag.
+# Supply-chain hardened release pipeline:
+#   * Cosign keyless signing (OIDC / sigstore)
+#   * SLSA-3 build provenance via actions/attest-build-provenance
+#   * SBOM via anchore/sbom-action (syft)
+#   * Conventional-commit release notes
 #
 # Triggers:
 #   * workflow_dispatch — manual release with required `version` input.
+#   * push of a semver tag (v*.*.*) — tag-driven release.
 #   * push to main when `VERSION` is modified — auto-release on bump.
-#
-# NOTE on signing: tags are currently created UNSIGNED. When the org has a
-# signing key set up, swap `git tag -a` for `git tag -s` and configure the
-# GPG/Sigstore key on the runner. Tracked alongside #431 follow-up.
 name: Release
 
 on:
@@ -25,6 +25,8 @@ on:
         type: boolean
         default: false
   push:
+    tags:
+      - "v*.*.*"
     branches:
       - main
     paths:
@@ -32,6 +34,8 @@ on:
 
 permissions:
   contents: write
+  id-token: write  # required for cosign OIDC and attest-build-provenance
+  attestations: write  # required for actions/attest-build-provenance
 
 concurrency:
   group: release-${{ github.ref }}
@@ -39,9 +43,9 @@ concurrency:
 
 jobs:
   release:
-    name: Build release notes and tag
+    name: Build release, sign, attest, and publish
     runs-on: d-sorg-fleet
-    timeout-minutes: 15
+    timeout-minutes: 30
     env:
       GH_TOKEN: ${{ github.token }}
       AUTO_NOTES_HEADER: "Auto-generated release notes (release.yml)"
@@ -77,11 +81,16 @@ jobs:
           INPUT_DRY_RUN: ${{ inputs.dry_run }}
           FILE_VERSION: ${{ steps.read_version.outputs.version }}
           EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
         run: |
           set -euo pipefail
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             TARGET="$INPUT_VERSION"
             DRY="$INPUT_DRY_RUN"
+          elif echo "$REF" | grep -qE '^refs/tags/v'; then
+            # Tag-triggered: derive version from the tag name.
+            TARGET="${REF#refs/tags/v}"
+            DRY="false"
           else
             TARGET="$FILE_VERSION"
             DRY="false"
@@ -196,6 +205,68 @@ jobs:
           cat "$NOTES_FILE"
           echo "---------------------------"
 
+      - name: Build release tarball
+        id: tarball
+        if: steps.resolve.outputs.dry_run != 'true'
+        shell: bash
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+          VERSION: ${{ steps.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          ARTIFACT="dashboard-${VERSION}.tar.gz"
+          # Exclude ephemeral / generated artefacts from the source tarball.
+          tar czf "$ARTIFACT" \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            --exclude='venv' \
+            --exclude='__pycache__' \
+            --exclude='*.pyc' \
+            --exclude='dist' \
+            .
+          SHA256=$(sha256sum "$ARTIFACT" | awk '{print $1}')
+          echo "${SHA256}  ${ARTIFACT}" > "${ARTIFACT}.sha256"
+          echo "artifact=$ARTIFACT" >> "$GITHUB_OUTPUT"
+          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+          echo "Built $ARTIFACT (sha256=$SHA256)"
+
+      - name: Install cosign
+        if: steps.resolve.outputs.dry_run != 'true'
+        uses: sigstore/cosign-installer@d7d6bc7722e3daa8354c50bcb52f4837da5e9b6a # v3.8.1
+
+      - name: Sign release artifact with cosign (keyless OIDC)
+        if: steps.resolve.outputs.dry_run != 'true'
+        shell: bash
+        env:
+          ARTIFACT: ${{ steps.tarball.outputs.artifact }}
+          VERSION: ${{ steps.resolve.outputs.version }}
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          set -euo pipefail
+          SIG_FILE="dashboard-${VERSION}.sig"
+          CERT_FILE="dashboard-${VERSION}.pem"
+          cosign sign-blob --yes \
+            --output-signature "$SIG_FILE" \
+            --output-certificate "$CERT_FILE" \
+            "$ARTIFACT"
+          echo "Signed $ARTIFACT → $SIG_FILE (cert: $CERT_FILE)"
+
+      - name: Generate SBOM with syft (anchore/sbom-action)
+        if: steps.resolve.outputs.dry_run != 'true'
+        uses: anchore/sbom-action@e11c554f704a0b820cbf8c51673f6945e0731532 # v0.20.0
+        with:
+          path: .
+          output-file: sbom.spdx.json
+          format: spdx-json
+          artifact-name: sbom.spdx.json
+          upload-artifact: true
+
+      - name: Attest build provenance (SLSA-3)
+        if: steps.resolve.outputs.dry_run != 'true'
+        uses: actions/attest-build-provenance@db473fddc028af60658334401dc6fa5fef4c7a9b # v2.3.0
+        with:
+          subject-path: ${{ steps.tarball.outputs.artifact }}
+
       - name: Dry-run summary
         if: steps.resolve.outputs.dry_run == 'true'
         shell: bash
@@ -217,13 +288,8 @@ jobs:
           NOTES_FILE: ${{ steps.notes.outputs.notes_file }}
         run: |
           set -euo pipefail
-          # NOTE: tag is UNSIGNED — switch to `git tag -s` once the org
-          # signing key is provisioned on the d-sorg-fleet runners.
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # Embed the auto-generated header into the tag message so the
-          # inline verification below (and verify-tag.yml for any human-pushed
-          # tag) can confirm the tag was minted by the release pipeline.
           TAG_MSG_FILE="$RUNNER_TEMP/tag-message.txt"
           {
             echo "$AUTO_NOTES_HEADER"
@@ -240,10 +306,6 @@ jobs:
           TAG: ${{ steps.resolve.outputs.tag }}
         run: |
           set -euo pipefail
-          # GitHub Actions does NOT trigger downstream workflow runs for
-          # tags pushed using GITHUB_TOKEN (verify-tag.yml is for
-          # defense-in-depth on human-pushed tags). Run the same checks
-          # inline here so a malformed tag is never pushed.
           OBJ_TYPE=$(git cat-file -t "$TAG")
           if [ "$OBJ_TYPE" != "tag" ]; then
             echo "::error::$TAG is a $OBJ_TYPE, expected an annotated tag"
@@ -266,16 +328,25 @@ jobs:
           git push origin "$TAG"
           echo "Pushed tag $TAG."
 
-      - name: Create GitHub release
+      - name: Create GitHub release with artifacts
         if: steps.resolve.outputs.dry_run != 'true'
         shell: bash
         env:
           TAG: ${{ steps.resolve.outputs.tag }}
           NOTES_FILE: ${{ steps.notes.outputs.notes_file }}
+          VERSION: ${{ steps.resolve.outputs.version }}
         run: |
           set -euo pipefail
+          ARTIFACT="dashboard-${VERSION}.tar.gz"
+          SIG_FILE="dashboard-${VERSION}.sig"
+          CERT_FILE="dashboard-${VERSION}.pem"
           gh release create "$TAG" \
             --title "$TAG" \
             --notes-file "$NOTES_FILE" \
-            --target "${{ github.sha }}"
-          echo "Created GitHub release $TAG."
+            --target "${{ github.sha }}" \
+            "$ARTIFACT" \
+            "${ARTIFACT}.sha256" \
+            "$SIG_FILE" \
+            "$CERT_FILE" \
+            sbom.spdx.json
+          echo "Created GitHub release $TAG with signed artifacts and SBOM."
