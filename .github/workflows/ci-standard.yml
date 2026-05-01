@@ -152,14 +152,14 @@ jobs:
           grep -E '@[A-Za-z0-9-]+(/[A-Za-z0-9-]+)?' .github/CODEOWNERS > /dev/null
       - name: Install dependencies with uv
         run: |
+          python -m venv "$RUNNER_TEMP/ci-tools"
+          source "$RUNNER_TEMP/ci-tools/bin/activate"
+          python -m pip install --upgrade pip setuptools wheel
           if [ -f uv.lock ]; then
             pip install uv
             uv sync --frozen
             echo "$(pwd)/.venv/bin" >> "$GITHUB_PATH"
           else
-            python -m venv "$RUNNER_TEMP/ci-tools"
-            . "$RUNNER_TEMP/ci-tools/bin/activate"
-            pip install --upgrade pip
             pip install ruff==0.14.10 mypy==1.13.0 bandit==1.7.7
             pip install -r requirements.txt
             echo "$RUNNER_TEMP/ci-tools/bin" >> "$GITHUB_PATH"
@@ -280,14 +280,16 @@ jobs:
         env:
           PYTHONNOUSERSITE: "1"
         run: |
+          python -m venv "$RUNNER_TEMP/security-venv"
+          source "$RUNNER_TEMP/security-venv/bin/activate"
+          python -m pip install --upgrade pip setuptools wheel
           if [ -f uv.lock ]; then
             pip install uv
             uv sync --frozen
             ./.venv/bin/pip-audit --progress-spinner=off
           else
-            python -m venv "$RUNNER_TEMP/security-venv"
-            "$RUNNER_TEMP/security-venv/bin/pip" install --quiet pip-audit
-            "$RUNNER_TEMP/security-venv/bin/pip-audit" -r requirements.txt --progress-spinner=off
+            pip install --quiet pip-audit
+            pip-audit -r requirements.txt --progress-spinner=off
           fi
 
   tests:
