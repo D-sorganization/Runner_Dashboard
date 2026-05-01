@@ -1146,7 +1146,21 @@ An admin can act as another principal (like a bot) for debugging. By providing t
 3. As an admin, generate a service token for the bot: `POST /api/principals/<bot_id>/token`.
 4. Provide the generated token to the bot agent for API access.
 
-### 9.3 HTTP Security Headers
+### 9.3 Request Body Size Enforcement (Issue #350)
+`MaxBodySizeMiddleware` in `backend/middleware.py` rejects oversized requests
+before routing:
+
+- Default cap: **1 MB** (Content-Length > 1 048 576 bytes → HTTP 413).
+- Webhook cap: **256 KB** for `/api/linear/webhook` (configured via
+  `_LIMIT_OVERRIDES`).
+- Per-route override: `@limit_body_size(bytes)` decorator sets
+  `func.__max_body_size__`; the functional `max_body_size_check` middleware
+  walks the `__wrapped__` chain to find it.
+- Requests with no `Content-Length` header (streaming/chunked) are allowed
+  through.
+- Only mutating methods (POST, PUT, PATCH, DELETE) are checked.
+
+### 9.4 HTTP Security Headers
 The backend injects the following headers on all responses:
 - `X-Content-Type-Options: nosniff`
 - `X-Frame-Options: SAMEORIGIN`

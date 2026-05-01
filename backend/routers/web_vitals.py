@@ -9,7 +9,7 @@ import json
 import os
 import random
 import statistics
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -95,7 +95,7 @@ async def post_web_vitals(payload: WebVitalsPayload, request: Request) -> dict[s
             "delta": metric.delta,
             "id": metric.id,
             "navigation_type": metric.navigation_type,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "user_agent": request.headers.get("user-agent", ""),
         }
         data.append(entry)

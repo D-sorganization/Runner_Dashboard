@@ -30,6 +30,7 @@ from typing import Any
 
 import dispatch_contract
 from fastapi import APIRouter, Header, HTTPException, Request
+from middleware import limit_body_size
 from pydantic import BaseModel, Field, field_validator
 
 router = APIRouter(prefix="/api/linear", tags=["linear"])
@@ -188,6 +189,7 @@ def _build_dispatch_envelope(linear_payload: LinearWebhookPayload) -> dispatch_c
 
 
 @router.post("/webhook")
+@limit_body_size(256 * 1024)
 async def linear_webhook(
     request: Request,
     linear_signature: str | None = Header(None, alias="Linear-Signature"),
