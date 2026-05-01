@@ -98,18 +98,22 @@ from machine_registry import (  # noqa: E402
     merge_registry_with_live_nodes,
 )
 from middleware import add_security_headers, csrf_check  # noqa: E402
-from report_files import parse_report_metrics, sanitize_report_date  # noqa: E402
+from routers import assessments as _assessments_router  # noqa: E402
+
+# parse_report_metrics and sanitize_report_date moved to routers/reports.py (issue #358)
 from routers import assistant as _assistant_router  # noqa: E402
 from routers import credentials as _credentials_router  # noqa: E402
 from routers import dispatch as _dispatch_router  # noqa: E402
 from routers import feature_requests as _feature_requests_router  # noqa: E402
 from routers import fleet as _fleet_router  # noqa: E402
+from routers import heavy_tests as _heavy_tests_router  # noqa: E402
 from routers import linear as _linear_router  # noqa: E402
 from routers import linear_webhook as _linear_webhook_router  # noqa: E402
 from routers import maxwell as _maxwell_router  # noqa: E402
 from routers import queue as _queue_router  # noqa: E402
 from routers import queue_diagnostics as _queue_diagnostics_router  # noqa: E402
 from routers import remediation as _remediation_router  # noqa: E402
+from routers import reports as _reports_router  # noqa: E402
 from routers import runner_diagnostics as _runner_diagnostics_router  # noqa: E402
 from routers import runner_groups as _runner_groups_router  # noqa: E402
 from routers import runners as _runners_router  # noqa: E402
@@ -432,6 +436,9 @@ app.include_router(_runs_workflows_router.router)
 app.include_router(_assistant_router.router)
 app.include_router(_feature_requests_router.router)
 app.include_router(_maxwell_router.router)
+app.include_router(_reports_router.router)
+app.include_router(_heavy_tests_router.router)
+app.include_router(_assessments_router.router)
 
 app.add_middleware(
     SessionMiddleware,
@@ -2457,271 +2464,10 @@ async def get_issues(
     return issues
 
 
-# ─── Daily Reports API ──────────────────────────────────────────────────────
+# Reports routes extracted to routers/reports.py and registered via app.include_router (issue #358).
 
 
-@app.get("/api/reports")
-async def list_reports():
-    """List available daily progress reports."""
-    reports = []
-    if REPORTS_DIR.exists():
-        for f in sorted(REPORTS_DIR.glob("daily_progress_report_*.md"), reverse=True):
-            # Extract date from filename
-            date_str = f.stem.replace("daily_progress_report_", "")
-            stat = f.stat()
-            # Check for companion chart image
-            chart_path = REPORTS_DIR / f"assessment_scores_{date_str}.png"
-            reports.append(
-                {
-                    "filename": f.name,
-                    "date": date_str,
-                    "size_kb": round(stat.st_size / 1024, 1),
-                    "modified": datetime.fromtimestamp(stat.st_mtime, tz=UTC).isoformat(),
-                    "has_chart": chart_path.exists(),
-                    "chart_filename": (f"assessment_scores_{date_str}.png" if chart_path.exists() else None),
-                }
-            )
-    return {"reports": reports, "reports_dir": str(REPORTS_DIR), "total": len(reports)}
-
-
-@app.get("/api/reports/{date}")
-async def get_report(date: str):
-    """Get the content of a specific daily report."""
-    safe_date = sanitize_report_date(date)
-    report_path = REPORTS_DIR / f"daily_progress_report_{safe_date}.md"
-    if not report_path.exists():
-        raise HTTPException(
-            status_code=404,
-            detail=f"Report not found for date: {safe_date}",
-        )
-
-    content = report_path.read_text(encoding="utf-8")
-
-    # Parse key metrics from the report content
-    metrics = parse_report_metrics(content)
-
-    return {
-        "date": safe_date,
-        "filename": report_path.name,
-        "content": content,
-        "metrics": metrics,
-        "size_kb": round(report_path.stat().st_size / 1024, 1),
-    }
-
-
-@app.get("/api/reports/{date}/chart")
-async def get_report_chart(date: str):
-    """Serve the assessment scores chart image for a specific date."""
-    safe_date = sanitize_report_date(date)
-    chart_path = REPORTS_DIR / f"assessment_scores_{safe_date}.png"
-    if not chart_path.exists():
-        raise HTTPException(
-            status_code=404,
-            detail=f"Chart not found for date: {safe_date}",
-        )
-    return FileResponse(chart_path, media_type="image/png")
-
-
-# ─── Heavy Test Dispatch API ───────────────────────────────────────────────
-
-
-@app.get("/api/heavy-tests/repos")
-async def get_heavy_test_repos():
-    """List repos that support heavy test workflow dispatch."""
-    repos = []
-    for repo_name, config in HEAVY_TEST_REPOS.items():
-        # Get recent heavy test runs
-        recent_runs = []
-        code, stdout, _ = await run_cmd(
-            [
-                "gh",
-                "api",
-                f"/repos/{ORG}/{repo_name}/actions/workflows/{config['workflow_file']}/runs?per_page=10",
-            ],
-            timeout=15,
-        )
-        if code == 0:
-            try:
-                data = json.loads(stdout)
-                for run in data.get("workflow_runs", []):
-                    recent_runs.append(
-                        {
-                            "id": run["id"],
-                            "status": run["status"],
-                            "conclusion": run.get("conclusion"),
-                            "created_at": run.get("created_at"),
-                            "updated_at": run.get("updated_at"),
-                            "html_url": run.get("html_url"),
-                            "head_branch": run.get("head_branch"),
-                            "run_number": run.get("run_number"),
-                            "triggering_actor": run.get("triggering_actor", {}).get("login"),
-                        }
-                    )
-            except (json.JSONDecodeError, ValueError):
-                pass
-
-        repos.append(
-            {
-                "name": repo_name,
-                "workflow_file": config["workflow_file"],
-                "description": config["description"],
-                "python_versions": config["python_versions"],
-                "default_python": config["default_python"],
-                "docker_compose": config.get("docker_compose"),
-                "recent_runs": recent_runs,
-            }
-        )
-    return {"repos": repos}
-
-
-@app.post("/api/heavy-tests/dispatch")
-async def dispatch_heavy_test(
-    request: Request,
-    *,
-    principal: Principal = Depends(require_scope("heavy-tests.dispatch")),  # noqa: B008
-):  # noqa: B008
-    """Dispatch a heavy test workflow via GitHub API."""
-    body = await request.json()
-    repo_name = body.get("repo")
-    python_version = body.get("python_version", "3.11")
-    ref = body.get("ref", "main")
-
-    if repo_name not in HEAVY_TEST_REPOS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unknown heavy test repo: {repo_name}",
-        )
-
-    config = HEAVY_TEST_REPOS[repo_name]
-    workflow_file = config["workflow_file"]
-
-    log.info(
-        "Dispatching heavy test: %s/%s (Python %s, ref=%s)",
-        repo_name,
-        workflow_file,
-        python_version,
-        ref,
-    )
-
-    # Use gh CLI to dispatch the workflow
-    code, stdout, stderr = await run_cmd(
-        [
-            "gh",
-            "api",
-            "--method",
-            "POST",
-            f"/repos/{ORG}/{repo_name}/actions/workflows/{workflow_file}/dispatches",
-            "-f",
-            f"ref={ref}",
-            "-f",
-            f"inputs[python_version]={python_version}",
-        ],
-        timeout=15,
-    )
-
-    if code != 0:
-        log.warning(
-            "heavy_test dispatch failed: repo=%s workflow=%s stderr=%s",
-            repo_name,
-            workflow_file,
-            stderr[:200],
-        )
-        raise HTTPException(
-            status_code=502,
-            detail="Failed to dispatch workflow",
-        )
-
-    return {
-        "status": "dispatched",
-        "repo": repo_name,
-        "workflow": workflow_file,
-        "python_version": python_version,
-        "ref": ref,
-        "message": (f"Heavy test workflow dispatched for {repo_name}. Check the Actions tab for progress."),
-    }
-
-
-@app.post("/api/heavy-tests/docker")
-async def run_docker_heavy_test(
-    request: Request,
-    *,
-    principal: Principal = Depends(require_scope("heavy-tests.dispatch")),  # noqa: B008
-):  # noqa: B008
-    """Run heavy tests locally in Docker via docker-compose."""
-    body = await request.json()
-    repo_name = body.get("repo")
-    python_version = body.get("python_version", "3.11")
-
-    if repo_name not in HEAVY_TEST_REPOS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unknown heavy test repo: {repo_name}",
-        )
-
-    config = HEAVY_TEST_REPOS[repo_name]
-    _default_repos_base = str(Path("/mnt/c") / "Users" / os.environ.get("USER", "diete") / "Repositories")
-    _repos_base = Path(os.environ.get("HEAVY_TEST_REPOS_BASE", _default_repos_base))
-    repo_path = _repos_base / repo_name
-
-    if not repo_path.exists():
-        raise HTTPException(
-            status_code=404,
-            detail=f"Repo not found at {repo_path}",
-        )
-
-    docker_compose_file = str(config.get("docker_compose", "docker-compose.yml"))
-    compose_path = repo_path / docker_compose_file
-    if not compose_path.exists():
-        raise HTTPException(
-            status_code=404,
-            detail=f"docker-compose file not found: {compose_path}",
-        )
-
-    log.info(
-        "Starting Docker heavy test for %s (Python %s)",
-        repo_name,
-        python_version,
-    )
-
-    # Run docker-compose in the background
-    code, stdout, stderr = await run_cmd(
-        [
-            "docker",
-            "compose",
-            "-f",
-            str(compose_path),
-            "run",
-            "--rm",
-            "-e",
-            f"PYTHON_VERSION={python_version}",
-            "test-heavy",
-        ],
-        timeout=300,
-    )  # 5 minute timeout for docker build
-
-    if code != 0 and "service" in stderr.lower():
-        # The docker-compose file might not have a "test-heavy" service
-        # Try running with the default service
-        code, stdout, stderr = await run_cmd(
-            [
-                "docker",
-                "compose",
-                "-f",
-                str(compose_path),
-                "up",
-                "--build",
-                "--abort-on-container-exit",
-            ],
-            timeout=300,
-        )
-
-    return {
-        "status": "completed" if code == 0 else "failed",
-        "exit_code": code,
-        "repo": repo_name,
-        "output": stdout[-2000:] if stdout else "",  # Last 2000 chars
-        "error": stderr[-1000:] if stderr else "",
-    }
+# Heavy test routes extracted to routers/heavy_tests.py and registered via app.include_router (issue #358).
 
 
 # ---------------------------------------------------------------------------
@@ -3196,81 +2942,7 @@ async def help_chat(request: Request, *, principal: Principal = Depends(require_
     }
 
 
-# ─── Assessments ──────────────────────────────────────────────────────────────
-
-
-@app.get("/api/assessments/scores")
-async def get_assessment_scores() -> dict:
-    """Return assessment score history from local assessments directory."""
-    assessments_dir = REPO_ROOT / "assessments"
-    results: list[dict] = []
-    if assessments_dir.exists():
-        for score_file in sorted(assessments_dir.rglob("*.json"), reverse=True)[:50]:
-            try:
-                data = json.loads(score_file.read_text(encoding="utf-8"))
-                results.append(
-                    {
-                        "file": str(score_file.relative_to(REPO_ROOT)),
-                        "repo": data.get("repository") or score_file.parent.name,
-                        "score": data.get("score") or data.get("overall_score"),
-                        "date": data.get("date") or data.get("timestamp") or score_file.stat().st_mtime,
-                        "summary": data.get("summary") or data.get("description", "")[:200],
-                        "provider": data.get("provider") or data.get("agent", ""),
-                    }
-                )
-            except Exception:  # noqa: BLE001
-                pass
-    return {"scores": results, "total": len(results)}
-
-
-@app.post("/api/assessments/dispatch")
-async def dispatch_assessment(
-    request: Request,
-    *,
-    principal: Principal = Depends(require_scope("assessments.dispatch")),  # noqa: B008
-) -> dict:
-    """Dispatch an assessment workflow for a repository."""
-    body = await request.json()
-    repo = str(body.get("repository", "")).strip()
-    provider = str(body.get("provider", "jules_api")).strip()
-    ref = str(body.get("ref", "main")).strip()
-    if not repo:
-        raise HTTPException(status_code=422, detail="repository required")
-    if not provider:
-        raise HTTPException(status_code=422, detail="provider required")
-
-    log.info(
-        "audit: assessments_dispatch repo=%s provider=%s ref=%s",
-        sanitize_log_value(repo),
-        sanitize_log_value(provider),
-        sanitize_log_value(ref),
-    )
-
-    # Try to dispatch via GitHub Actions assessment workflow
-    endpoint = f"/repos/{ORG}/Repository_Management/actions/workflows/Jules-Assess-Repo.yml/dispatches"
-    payload = {
-        "ref": "main",
-        "inputs": {"target_repository": f"{ORG}/{repo}", "provider": provider},
-    }
-    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".json", delete=False) as f:
-        json.dump(payload, f)
-        pf = f.name
-    try:
-        code, _, stderr = await run_cmd(
-            ["gh", "api", endpoint, "--method", "POST", "--input", pf],
-            timeout=30,
-            cwd=REPO_ROOT,
-        )
-    finally:
-        with contextlib.suppress(OSError):
-            Path(pf).unlink()
-    if code != 0:
-        log.warning("assessment dispatch failed: repo=%s stderr=%s", repo, stderr.strip()[:300])
-        raise HTTPException(
-            status_code=502,
-            detail="Assessment dispatch failed",
-        )
-    return {"status": "dispatched", "repository": repo, "provider": provider}
+# Assessments routes extracted to routers/assessments.py and registered via app.include_router (issue #358).
 
 
 # ─── Fleet Orchestration Control Plane ───────────────────────────────────────
@@ -4016,6 +3688,11 @@ async def _runner_audit_loop() -> None:
 _system_router.set_boot_time(BOOT_TIME)
 _system_router.set_host_memory_gb(HOST_MEMORY_GB)
 _system_router.set_runner_capacity_snapshot_func(get_runner_capacity_snapshot)
+
+# Inject dependencies into reports/heavy_tests/assessments routers
+_reports_router.set_reports_dir(REPORTS_DIR)
+_heavy_tests_router.set_dependencies(run_cmd=run_cmd, heavy_test_repos=HEAVY_TEST_REPOS)
+_assessments_router.set_run_cmd(run_cmd)
 
 
 _leader_lock_fd = None

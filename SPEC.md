@@ -121,6 +121,9 @@ coupling and makes each domain independently testable.
 
 | Router | Prefix | Responsibility |
 |---|---|---|
+| `routers/reports.py` | `/api/reports` | Report file listing and dated metric parsing (issue #358) |
+| `routers/heavy_tests.py` | `/api/heavy-tests` | Heavy test run tracking and result storage (issue #358) |
+| `routers/assessments.py` | `/api/assessments` | Repo assessment JSON listing and retrieval (issue #358) |
 | `routers/dispatch.py` | `/api/fleet/dispatch` | Fleet agent dispatcher â€” allowlisted hub-to-node commands |
 | `routers/credentials.py` | `/api` | Credential probe â€” tool/key presence without exposing values |
 | `routers/linear.py` | `/api/linear` | Optional Linear read API for workspaces, teams, and issue inventory |
