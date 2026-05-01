@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -245,8 +245,8 @@ def test_server_wires_max_body_size_middleware() -> None:
     src = (_BACKEND_DIR / "server.py").read_text(encoding="utf-8")
     assert "max_body_size_check" in src
     # Middleware order: _max_body_size should appear before _csrf_check
-    max_body_idx = src.find("@app.middleware(\"http\")\nasync def _max_body_size")
-    csrf_idx = src.find("@app.middleware(\"http\")\nasync def _csrf_check")
+    max_body_idx = src.find('@app.middleware("http")\nasync def _max_body_size')
+    csrf_idx = src.find('@app.middleware("http")\nasync def _csrf_check')
     assert max_body_idx != -1
     assert csrf_idx != -1
     assert max_body_idx < csrf_idx

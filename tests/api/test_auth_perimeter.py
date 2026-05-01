@@ -118,6 +118,7 @@ def test_admin_principal_can_list_tokens() -> None:
 
 # ─── 4. make_principal factory ───────────────────────────────────────────────
 
+
 @pytest.mark.parametrize("role", ["admin", "operator", "viewer"])
 def test_make_principal_factory_produces_correct_role(role: str) -> None:
     """make_principal factory must produce a Principal with the given role."""

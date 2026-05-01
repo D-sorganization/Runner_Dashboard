@@ -78,6 +78,7 @@ import linear_inventory as linear_inventory  # noqa: E402
 import metrics as _metrics_router  # noqa: E402
 import orchestration_audit as orchestration_audit  # noqa: E402
 import pr_inventory as pr_inventory  # noqa: E402
+import prometheus_metrics as _prometheus_metrics_router  # noqa: E402
 import push as _push_router  # noqa: E402
 import quota_enforcement as quota_enforcement  # noqa: E402
 import unified_issue_inventory as unified_issue_inventory  # noqa: E402
@@ -127,6 +128,7 @@ from routers.queue import _queue_impl  # noqa: E402
 from security import (  # noqa: E402
     safe_subprocess_env,  # noqa: E402
     validate_fleet_node_url,  # noqa: E402
+    validate_owner_repo_format,  # noqa: E402
     validate_repo_slug,  # noqa: E402
 )
 from system_utils import get_system_metrics_snapshot  # noqa: E402
@@ -367,6 +369,9 @@ app.add_middleware(
     default_limit=1 * 1024 * 1024,  # 1 MB
 )
 
+# Issue #330 — Prometheus HTTP instrumentation middleware
+app.add_middleware(_prometheus_metrics_router.PrometheusMiddleware)
+
 # ── Replay-protection store (issue #344) ─────────────────────────────────────
 # Replaces the unbounded JSON file with a bounded SQLite-backed store.
 from replay_store import ReplayStore, migrate_json_to_sqlite  # noqa: E402
@@ -414,6 +419,7 @@ app.include_router(auth_router.router)
 app.include_router(_auth_webauthn_router.router)
 app.include_router(_health_router.router)
 app.include_router(_metrics_router.router)
+app.include_router(_prometheus_metrics_router.router)
 
 # Agent-launcher control surface (sibling: Repository_Management/launchers/cline_agent_launcher).
 # Subprocess-only — never imports the launcher Python at runtime.
@@ -918,9 +924,15 @@ def _repo_name_from_run(run: dict) -> str | None:
 
 
 def _normalize_repository_input(value: str) -> tuple[str, str]:
-    """Return (repo_name, full_name) for dashboard remediation inputs."""
+    """Return (repo_name, full_name) for dashboard remediation inputs (issue #326).
+
+    Validates against a strict regex before any owner comparison or subprocess
+    interpolation to prevent SSRF via malformed owner/repo slugs.
+    """
     text = str(value).strip()
     if "/" in text:
+        # Validate full owner/repo format before extracting parts (issue #326)
+        validate_owner_repo_format(text)
         owner, _, repo_name = text.partition("/")
         if owner.lower() != ORG.lower():
             raise HTTPException(status_code=422, detail=f"repository owner must be {ORG}")

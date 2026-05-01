@@ -31,11 +31,20 @@ def client() -> TestClient:
 
 
 @pytest.fixture(autouse=True)
-def _clear_replay_buffer(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Ensure each test starts with a clean replay buffer."""
-    webhook_router._processed_webhook_ids.clear()
+def _clear_replay_buffer(monkeypatch: pytest.MonkeyPatch, tmp_path: pytest.TempPathFactory) -> None:
+    """Ensure each test starts with a clean SQLite replay store (issue #319)."""
+    import tempfile
+    from pathlib import Path
+
+    from replay_store import ReplayStore
+
+    # Point the webhook router at a fresh in-process SQLite DB for isolation.
+    fresh_store = ReplayStore(Path(tempfile.mktemp(suffix=".db")), ttl_s=86400, max_entries=50_000)
+    monkeypatch.setattr(webhook_router, "_replay_store", fresh_store)
     # Ensure no secret is set by default
     monkeypatch.delenv("LINEAR_WEBHOOK_SECRET", raising=False)
+    yield
+    fresh_store.close()
 
 
 # ─── Payload helpers ───────────────────────────────────────────────────────────

@@ -24,7 +24,7 @@ from dashboard_config import DEFAULT_LLM_MODEL, ORG, REPO_ROOT
 from fastapi import APIRouter, Depends, HTTPException, Request
 from gh_utils import gh_api
 from identity import Principal, require_scope
-from security import validate_repo_slug
+from security import validate_owner_repo_format, validate_repo_slug
 from system_utils import run_cmd
 
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
@@ -41,9 +41,15 @@ _proposed_actions: dict[str, dict] = {}
 
 
 def _normalize_repository_input(value: str) -> tuple[str, str]:
-    """Return (short_name, full_org/name) from a bare or qualified repo name."""
+    """Return (short_name, full_org/name) from a bare or qualified repo name (issue #326).
+
+    Validates against a strict regex before any owner comparison or subprocess
+    interpolation to prevent SSRF via malformed owner/repo slugs.
+    """
     text = str(value).strip()
     if "/" in text:
+        # Validate full owner/repo format before extracting parts (issue #326)
+        validate_owner_repo_format(text)
         owner, _, repo_name = text.partition("/")
         if owner.lower() != ORG.lower():
             raise HTTPException(status_code=422, detail=f"repository owner must be {ORG}")

@@ -30,6 +30,4 @@ def test_no_duplicate_top_level_functions_in_legacy() -> None:
             duplicates.add(n)
         seen.add(n)
 
-    assert not duplicates, (
-        f"Duplicate top-level functions in legacy/App.tsx: {sorted(duplicates)}"
-    )
+    assert not duplicates, f"Duplicate top-level functions in legacy/App.tsx: {sorted(duplicates)}"

@@ -26,12 +26,14 @@ import json
 import logging
 import os
 import time
+from pathlib import Path
 from typing import Any
 
 import dispatch_contract
 from fastapi import APIRouter, Header, HTTPException, Request
 from middleware import limit_body_size
 from pydantic import BaseModel, Field, field_validator
+from replay_store import ReplayStore
 
 router = APIRouter(prefix="/api/linear", tags=["linear"])
 
@@ -43,6 +45,20 @@ LINEAR_WEBHOOK_SECRET_ENV = os.environ.get("LINEAR_WEBHOOK_SECRET_ENV", "LINEAR_
 
 # Maximum age of a webhook payload to prevent replay attacks (seconds)
 MAX_WEBHOOK_AGE_SECONDS = 300
+
+# ─── SQLite-backed replay store (issue #319) ─────────────────────────────────
+
+_REPLAY_STORE_PATH = Path(
+    os.environ.get(
+        "LINEAR_WEBHOOK_REPLAY_DB",
+        str(Path.home() / ".local" / "share" / "runner-dashboard" / "linear_webhook_replay.db"),
+    )
+)
+_replay_store: ReplayStore = ReplayStore(
+    _REPLAY_STORE_PATH,
+    ttl_s=86_400,  # 24 h
+    max_entries=50_000,
+)
 
 # ─── Pydantic Models ───────────────────────────────────────────────────────────
 
@@ -102,25 +118,19 @@ def _verify_linear_signature(
 
 # ─── Replay / Idempotency ─────────────────────────────────────────────────────
 
-_processed_webhook_ids: set[str] = set()
-
 
 def _is_replay(webhook_id: str | None) -> bool:
-    """Return True if we have already processed this webhook."""
+    """Return True if we have already processed this webhook (SQLite-backed, issue #319)."""
     if webhook_id is None:
         return False
-    return webhook_id in _processed_webhook_ids
+    return _replay_store.is_replay(webhook_id)
 
 
 def _record_webhook(webhook_id: str | None) -> None:
-    """Record a webhook ID as processed."""
+    """Record a webhook ID as processed (SQLite-backed, issue #319)."""
     if webhook_id is None:
         return
-    _processed_webhook_ids.add(webhook_id)
-    if len(_processed_webhook_ids) > 10_000:
-        to_remove = list(_processed_webhook_ids)[:5_000]
-        for item in to_remove:
-            _processed_webhook_ids.discard(item)
+    _replay_store.record(webhook_id)
 
 
 # ─── Request Age Check ─────────────────────────────────────────────────────────
@@ -278,9 +288,12 @@ async def linear_webhook(
 async def linear_webhook_health() -> dict[str, Any]:
     """Return the webhook receiver's operational status."""
     secret_present = bool(os.environ.get(LINEAR_WEBHOOK_SECRET_ENV, "").strip())
+    (replay_count,) = _replay_store._execute("SELECT COUNT(*) FROM processed").fetchone()  # noqa: SLF001
     return {
         "status": "ok",
         "signature_verification": "enabled" if secret_present else "disabled",
         "max_age_seconds": MAX_WEBHOOK_AGE_SECONDS,
-        "replay_buffer_size": len(_processed_webhook_ids),
+        "replay_store": "sqlite",
+        "replay_store_path": str(_REPLAY_STORE_PATH),
+        "replay_buffer_size": replay_count,
     }
