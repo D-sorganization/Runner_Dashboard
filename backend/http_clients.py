@@ -68,8 +68,7 @@ def get_http_clients() -> HttpClients:
     """
     if _http_clients is None:
         raise RuntimeError(
-            "HTTP clients not initialized. Ensure initialize_http_clients() "
-            "is called during application startup."
+            "HTTP clients not initialized. Ensure initialize_http_clients() is called during application startup."
         )
     return _http_clients
 

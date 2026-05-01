@@ -18,7 +18,6 @@ Then open http://localhost:8321 in your browser.
 """
 
 import asyncio
-import contextlib
 import datetime as _dt_mod
 import errno
 import json
@@ -33,7 +32,6 @@ import shlex
 import shutil
 import subprocess
 import sys
-import tempfile
 import time
 from collections import deque
 from pathlib import Path
@@ -127,7 +125,6 @@ from routers import web_vitals as _web_vitals_router  # noqa: E402
 from routers.queue import _queue_impl  # noqa: E402
 from security import (  # noqa: E402
     safe_subprocess_env,  # noqa: E402
-    sanitize_log_value,  # noqa: E402
     validate_fleet_node_url,  # noqa: E402
     validate_repo_slug,  # noqa: E402
 )

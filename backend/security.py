@@ -140,6 +140,7 @@ def _get_repo_root() -> Path | None:
     """Find the repository root directory by searching for .git."""
     try:
         import subprocess
+
         result = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
             capture_output=True,
@@ -188,6 +189,7 @@ def _check_file_mode(path: Path) -> bool:
     """
     try:
         import stat
+
         mode = path.stat().st_mode
         # Check if world-writable bit is set
         return not bool(mode & stat.S_IWOTH)
@@ -254,15 +256,11 @@ def validate_config_path(
 
     # Check symlink safety
     if check_symlink and not _check_symlink(path, allowed_roots):
-        raise ValueError(
-            f"Config path is a symlink pointing outside allowed roots: {path} -> {resolved}"
-        )
+        raise ValueError(f"Config path is a symlink pointing outside allowed roots: {path} -> {resolved}")
 
     # Check file mode safety
     if check_mode and not _check_file_mode(resolved):
-        raise ValueError(
-            f"Config file is world-writable (insecure): {resolved}"
-        )
+        raise ValueError(f"Config file is world-writable (insecure): {resolved}")
 
     return resolved
 
