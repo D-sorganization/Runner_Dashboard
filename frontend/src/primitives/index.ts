@@ -16,3 +16,6 @@ export type {
   SkeletonSize,
   SkeletonTableProps,
 } from "./Skeleton";
+
+export { FloatingActionButton } from "./FloatingActionButton";
+export type { FloatingActionButtonProps } from "./FloatingActionButton";

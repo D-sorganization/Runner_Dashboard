@@ -2609,3 +2609,127 @@ th.sortable.active .sort-indicator {
     transition: none;
   }
 }
+
+/* ── Floating Action Button (issue #379) ───────────────────────── */
+
+.fab {
+  /* The FAB is already positioned via inline styles for dynamic
+     safe-area-inset values. The class is kept for specificity and
+     potential future theming overrides. */
+}
+
+.fab:hover {
+  transform: scale(1.08);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+
+.fab:active {
+  transform: scale(0.96);
+}
+
+.fab:focus-visible {
+  outline: 3px solid var(--accent-blue);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fab {
+    transition: none !important;
+  }
+  .fab:hover,
+  .fab:active {
+    transform: none;
+  }
+}
+
+/* ── Modal Sheet for Agent Dispatch (issue #379) ───────────────── */
+
+.mobile-shell__sheet-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 300;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  animation: sheet-fade-in 180ms var(--easing-standard) forwards;
+}
+
+.mobile-shell__sheet {
+  background: var(--bg-secondary);
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+  width: 100%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.35);
+  animation: sheet-slide-up 240ms var(--easing-emphasized) forwards;
+}
+
+.mobile-shell__sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-6) var(--space-8);
+  border-bottom: 1px solid var(--border);
+}
+
+.mobile-shell__sheet-title {
+  font-size: var(--font-section-title);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.mobile-shell__sheet-close {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+}
+
+.mobile-shell__sheet-close:hover,
+.mobile-shell__sheet-close:focus-visible {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.mobile-shell__sheet-close:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
+}
+
+.mobile-shell__sheet-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-6) var(--space-8);
+  -webkit-overflow-scrolling: touch;
+}
+
+@keyframes sheet-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes sheet-slide-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-shell__sheet-overlay,
+  .mobile-shell__sheet {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}

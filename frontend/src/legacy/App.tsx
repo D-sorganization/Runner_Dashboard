@@ -3051,6 +3051,71 @@ function StatsTab(p) {
   );
 }
 
+function PerformanceTab(p) {
+  var ds = React.useState({ routes: {} });
+  var data = ds[0], setData = ds[1];
+  var ls = React.useState(false);
+  var loading = ls[0], setLoading = ls[1];
+
+  function refresh() {
+    setLoading(true);
+    fetch("/api/metrics/web-vitals")
+      .then(function (r) { return r.json(); })
+      .then(function (d) { setData(d || { routes: {} }); setLoading(false); })
+      .catch(function () { setLoading(false); });
+  }
+
+  React.useEffect(function () { refresh(); }, []);
+
+  var routes = Object.keys(data.routes || {});
+  return h(
+    "div",
+    null,
+    h(
+      "div",
+      { style: { display: "flex", gap: 8, alignItems: "center", marginBottom: 12, flexWrap: "wrap" } },
+      h("h2", { style: { fontSize: 16, margin: 0 } }, "Web Vitals"),
+      h("span", { style: { fontSize: 12, color: "var(--text-muted)" } }, "Sample rate: " + ((data.sample_rate || 0) * 100).toFixed(0) + "%"),
+      h("button", { className: "btn", onClick: refresh, disabled: loading }, loading ? "…" : "Refresh"),
+    ),
+    routes.length === 0
+      ? h("div", { style: { padding: 40, textAlign: "center", color: "var(--text-muted)" } }, "No web-vitals data yet.")
+      : routes.map(function (route) {
+          var metrics = data.routes[route];
+          return h(
+            "div",
+            { key: route, className: "card", style: { marginBottom: 12 } },
+            h("div", { style: { fontWeight: 600, fontSize: 14, marginBottom: 8 } }, route),
+            h(
+              "table",
+              { className: "run-table", style: { width: "100%" } },
+              h(
+                "thead",
+                null,
+                h("tr", null, h("th", null, "Metric"), h("th", null, "P50"), h("th", null, "P75"), h("th", null, "P95"), h("th", null, "Count")),
+              ),
+              h(
+                "tbody",
+                null,
+                Object.keys(metrics).map(function (name) {
+                  var m = metrics[name];
+                  return h(
+                    "tr",
+                    { key: name },
+                    h("td", null, name),
+                    h("td", null, m.p50 != null ? m.p50.toFixed(1) : "-"),
+                    h("td", null, m.p75 != null ? m.p75.toFixed(1) : "-"),
+                    h("td", null, m.p95 != null ? m.p95.toFixed(1) : "-"),
+                    h("td", null, m.count || 0),
+                  );
+                }),
+              ),
+            ),
+          );
+        }),
+  );
+}
+
 function ReportsTab(p) {
   var reports = p.reports;
   var loading = p.loading;
@@ -14201,11 +14266,11 @@ function App({ initialTab }: { initialTab?: string } = {}) {
         });
   }
 
-  function setCredentialKey(probe) {
+  function setCredentialKey(probe, keyValue) {
     var provider = probe && probe.key_provider;
     if (!provider) return;
     var providerLabel = probe.label || probe.name || provider;
-    var keyValue = window.prompt("Enter API key for " + providerLabel);
+    if (!keyValue) return;
     if (!keyValue) return;
     fetch("/api/credentials/set-key", {
       method: "POST",
@@ -15570,6 +15635,19 @@ function App({ initialTab }: { initialTab?: string } = {}) {
           },
           I.activity(14),
           "Stats",
+        ),
+        h(
+          "button",
+          {
+            className: "tab-btn" + (tab === "performance" ? " active" : ""),
+            role: "tab",
+            "aria-selected": tab === "performance",
+            onClick: function () {
+              setTab("performance");
+            },
+          },
+          I.activity(14),
+          "Performance",
         ),
         h(
           "button",
