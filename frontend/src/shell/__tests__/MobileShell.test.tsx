@@ -1,10 +1,18 @@
 import React from 'react'
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import '@testing-library/jest-dom/vitest'
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import { MobileShell } from '../MobileShell'
+
+const breakpointMock = vi.hoisted(() => ({ value: 'md' }))
+
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () => breakpointMock.value,
+}))
 
 describe('MobileShell', () => {
   beforeEach(() => {
+    breakpointMock.value = 'md'
     // Mock window.matchMedia for viewport detection
     window.matchMedia = vi.fn((query) => ({
       matches: query === '(max-width: 767px)',
@@ -16,6 +24,10 @@ describe('MobileShell', () => {
       removeEventListener: vi.fn(),
       dispatchEvent: vi.fn(),
     } as MediaQueryList))
+  })
+
+  afterEach(() => {
+    cleanup()
   })
 
   it('renders bottom tabs on mobile viewport', () => {
@@ -214,6 +226,44 @@ describe('MobileShell', () => {
     })
   })
 
+  it('calls onTabChange once for each drawer tab and announces selection', async () => {
+    const handleTabChange = vi.fn()
+    render(
+      <MobileShell currentTab="fleet" onTabChange={handleTabChange}>
+        <div>Test Content</div>
+      </MobileShell>
+    )
+
+    const drawerTabs = [
+      { id: 'org', label: 'Org' },
+      { id: 'heavy', label: 'Heavy Runners' },
+      { id: 'assessments', label: 'Assessments' },
+      { id: 'requests', label: 'Feature Requests' },
+      { id: 'credentials', label: 'Credentials' },
+      { id: 'reports', label: 'Reports' },
+      { id: 'health', label: 'Queue Health' },
+    ] as const
+
+    for (const tab of drawerTabs) {
+      fireEvent.click(screen.getByText('More'))
+
+      await waitFor(() => {
+        expect(screen.getByText(tab.label)).toBeInTheDocument()
+      })
+
+      handleTabChange.mockClear()
+      fireEvent.click(screen.getByText(tab.label))
+
+      expect(handleTabChange).toHaveBeenCalledTimes(1)
+      expect(handleTabChange).toHaveBeenCalledWith(tab.id)
+      expect(screen.getByText(`${tab.label} selected`)).toBeInTheDocument()
+
+      await waitFor(() => {
+        expect(screen.queryByText(tab.label)).not.toBeInTheDocument()
+      })
+    }
+  })
+
   it('closes drawer when backdrop is clicked', async () => {
     const handleTabChange = vi.fn()
     const { container } = render(
@@ -272,6 +322,7 @@ describe('MobileShell', () => {
   })
 
   it('does not show mobile shell on desktop viewport', () => {
+    breakpointMock.value = 'lg'
     window.matchMedia = vi.fn((query) => ({
       matches: query !== '(max-width: 767px)',
       media: query,

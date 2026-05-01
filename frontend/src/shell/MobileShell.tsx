@@ -4,7 +4,9 @@ import { colorTokens, spacingTokens, touchTokens } from '../design/tokens'
 import { FloatingActionButton } from '../primitives/FloatingActionButton'
 import { AgentDispatchPage } from '../pages/AgentDispatch'
 
-export type TabId = 'fleet' | 'workflows' | 'remediation' | 'maxwell' | 'more'
+type MainTabId = 'fleet' | 'workflows' | 'remediation' | 'maxwell' | 'more'
+type DrawerTabId = 'org' | 'heavy' | 'assessments' | 'requests' | 'credentials' | 'reports' | 'health'
+export type TabId = MainTabId | DrawerTabId
 
 export interface MobileShellProps {
   children: ReactNode
@@ -68,7 +70,7 @@ const iconMap = {
 }
 
 // Tab configuration
-const mainTabs: Array<{ id: TabId; label: string; Icon: typeof FleetIcon }> = [
+const mainTabs: Array<{ id: MainTabId; label: string; Icon: typeof FleetIcon }> = [
   { id: 'fleet', label: 'Fleet', Icon: FleetIcon },
   { id: 'workflows', label: 'Workflows', Icon: WorkflowsIcon },
   { id: 'remediation', label: 'Remediation', Icon: RemediationIcon },
@@ -77,7 +79,7 @@ const mainTabs: Array<{ id: TabId; label: string; Icon: typeof FleetIcon }> = [
 ]
 
 // Additional tabs in drawer
-const drawerTabs = [
+const drawerTabs: Array<{ id: DrawerTabId; label: string }> = [
   { id: 'org', label: 'Org' },
   { id: 'heavy', label: 'Heavy Runners' },
   { id: 'assessments', label: 'Assessments' },
@@ -87,7 +89,7 @@ const drawerTabs = [
   { id: 'health', label: 'Queue Health' },
 ]
 
-function tabIndexForId(tabId: TabId): number {
+function tabIndexForId(tabId: MainTabId): number {
   return mainTabs.findIndex((t) => t.id === tabId)
 }
 
@@ -96,6 +98,7 @@ export function MobileShell({ children, currentTab, onTabChange }: MobileShellPr
   const isMobile = breakpoint !== 'lg' && breakpoint !== 'xl'
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [dispatchOpen, setDispatchOpen] = useState(false)
+  const [drawerAnnouncement, setDrawerAnnouncement] = useState('')
 
   const openDispatch = useCallback(() => setDispatchOpen(true), [])
   const closeDispatch = useCallback(() => setDispatchOpen(false), [])
@@ -117,7 +120,7 @@ export function MobileShell({ children, currentTab, onTabChange }: MobileShellPr
   // Visible on Fleet, Workflows, Remediation, Queue. Hidden on AgentDispatch itself.
   const showDispatchFab = !dispatchOpen && ['fleet', 'workflows', 'remediation', 'queue'].includes(currentTab)
 
-  const tabRefs = useRef<Record<TabId, HTMLButtonElement | null>>({
+  const tabRefs = useRef<Record<MainTabId, HTMLButtonElement | null>>({
     fleet: null,
     workflows: null,
     remediation: null,
@@ -125,15 +128,21 @@ export function MobileShell({ children, currentTab, onTabChange }: MobileShellPr
     more: null,
   })
 
-  const handleTabClick = useCallback((tabId: TabId) => {
+  const handleTabClick = useCallback((tabId: MainTabId) => {
     onTabChange(tabId)
     if (tabId === 'more') {
       setDrawerOpen(true)
     }
   }, [onTabChange])
 
+  const handleDrawerTabClick = useCallback((tabId: DrawerTabId, label: string) => {
+    onTabChange(tabId)
+    setDrawerAnnouncement(`${label} selected`)
+    setDrawerOpen(false)
+  }, [onTabChange])
+
   // Arrow-key cycling per WAI-ARIA tablist pattern
-  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLButtonElement>, tabId: TabId) => {
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLButtonElement>, tabId: MainTabId) => {
     const tabs = mainTabs.map((t) => t.id)
     const idx = tabs.indexOf(tabId)
     let nextIdx = idx
@@ -176,6 +185,9 @@ export function MobileShell({ children, currentTab, onTabChange }: MobileShellPr
       {/* Main content area */}
       <div className="mobile-shell__content">
         {children}
+      </div>
+      <div className="visually-hidden" aria-live="polite" aria-atomic="true">
+        {drawerAnnouncement}
       </div>
 
       {/* Bottom Tab Bar — WAI-ARIA tablist */}
@@ -269,10 +281,7 @@ export function MobileShell({ children, currentTab, onTabChange }: MobileShellPr
                 <button
                   key={tab.id}
                   className="mobile-shell__drawer-item"
-                  onClick={() => {
-                    setDrawerOpen(false)
-                    // Handle drawer tab selection
-                  }}
+                  onClick={() => handleDrawerTabClick(tab.id, tab.label)}
                   type="button"
                 >
                   {tab.label}
