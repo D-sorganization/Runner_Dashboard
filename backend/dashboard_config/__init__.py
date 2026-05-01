@@ -57,6 +57,9 @@ DISK_MIN_FREE_GB = float(
 # API / Port
 PORT = int(os.environ.get("DASHBOARD_PORT", "8321"))
 HOSTNAME = os.environ.get("DISPLAY_NAME") or platform.node()
+MAXWELL_PORT = int(os.environ.get("MAXWELL_PORT", "8322"))
+MAXWELL_URL = (os.environ.get("MAXWELL_URL", "") or f"http://localhost:{MAXWELL_PORT}").rstrip("/")
+MAXWELL_API_TOKEN = os.environ.get("MAXWELL_API_TOKEN", "maxwell-local-secret")
 
 
 def runner_limit() -> int:
@@ -218,6 +221,9 @@ __all__ = [
     "HUB_URL",
     "MACHINE_ROLE",
     "MAX_CACHE_SIZE",
+    "MAXWELL_API_TOKEN",
+    "MAXWELL_PORT",
+    "MAXWELL_URL",
     "MAX_RUNNERS",
     "NUM_RUNNERS",
     "ORG",

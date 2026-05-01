@@ -4,14 +4,16 @@ import asyncio
 import datetime as _dt_mod
 import json as _json
 import logging
-import os
 import subprocess
 import uuid
 from pathlib import Path
+from typing import Any
 
 import httpx
 import maxwell_contract as _mc
+from dashboard_config import MAXWELL_API_TOKEN, MAXWELL_URL
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from identity import Principal, require_scope
 from pydantic import BaseModel, Field
 from security import safe_subprocess_env, sanitize_log_value
@@ -27,14 +29,19 @@ class MaxwellControlBody(BaseModel):
     approved_by: str = Field(..., max_length=200)
 
 
+class MaxwellChatBody(BaseModel):
+    message: str = Field(..., max_length=4000)
+    history: list[dict[str, str]] = Field(default_factory=list, max_length=20)
+
+
 def _maxwell_base_url() -> str:
-    """Return the Maxwell-Daemon base URL from env."""
-    return os.environ.get("MAXWELL_URL", "") or f"http://localhost:{int(os.environ.get('MAXWELL_PORT', 8080))}"
+    """Return the configured Maxwell-Daemon base URL."""
+    return MAXWELL_URL
 
 
 def _maxwell_api_token() -> str:
-    """Return the Maxwell-Daemon API confirmation token from env."""
-    return os.environ.get("MAXWELL_API_TOKEN", "maxwell-local-secret")
+    """Return the configured Maxwell-Daemon API confirmation token."""
+    return MAXWELL_API_TOKEN
 
 
 def _maxwell_headers() -> dict:
@@ -246,6 +253,43 @@ async def maxwell_dispatch_task(
     except Exception as e:
         log.info("maxwell_proxy: path=%s error=%s", path, str(e)[:80])
         raise HTTPException(status_code=502, detail="maxwell proxy error") from e
+
+
+@router.post("/chat", response_model=None)
+async def maxwell_chat(
+    body: MaxwellChatBody,
+    *,
+    principal: Principal = Depends(require_scope("operator")),  # noqa: B008
+) -> StreamingResponse:
+    """Proxy chat messages to Maxwell-Daemon while preserving streamed output."""
+    path = "/api/chat"
+    payload = {
+        "message": body.message,
+        "history": body.history[-20:],
+        "stream": True,
+    }
+
+    async def stream_daemon_response() -> Any:
+        try:
+            async with httpx.AsyncClient(timeout=None) as client:
+                async with client.stream(
+                    "POST",
+                    f"{_maxwell_base_url()}{path}",
+                    json=payload,
+                    headers=_maxwell_headers(),
+                ) as resp:
+                    log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
+                    if resp.status_code >= 400:
+                        yield f"Maxwell chat failed with HTTP {resp.status_code}."
+                        return
+                    async for chunk in resp.aiter_text():
+                        if chunk:
+                            yield chunk
+        except Exception as e:  # noqa: BLE001
+            log.info("maxwell_proxy: path=%s status=%s", path, "error")
+            yield f"Maxwell-Daemon is unreachable: {str(e)[:120]}"
+
+    return StreamingResponse(stream_daemon_response(), media_type="text/plain; charset=utf-8")
 
 
 @router.post("/pipeline-control/{action}")
