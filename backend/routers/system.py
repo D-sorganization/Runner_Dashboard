@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 # Python 3.11+ has datetime.UTC; fall back to timezone.utc for 3.10
-UTC = getattr(_dt, "UTC", _dt.timezone.utc)  # noqa: UP017
+
 
 log = logging.getLogger("dashboard.system")
 router = APIRouter(tags=["system"])
