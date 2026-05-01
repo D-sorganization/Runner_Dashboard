@@ -53,7 +53,6 @@ from fastapi.responses import (
     FileResponse,
     HTMLResponse,
     JSONResponse,
-    StreamingResponse,
 )
 from fastapi.staticfiles import StaticFiles
 from identity import Principal, require_scope  # noqa: B008
@@ -94,6 +93,7 @@ from dashboard_config.timeouts import (  # noqa: E402
     HttpTimeout,
     ResourceThreshold,
 )
+from http_clients import initialize_http_clients, shutdown_http_clients  # noqa: E402
 from local_app_monitoring import collect_local_apps  # noqa: E402
 from machine_registry import (  # noqa: E402
     load_machine_registry,
@@ -103,11 +103,13 @@ from middleware import add_security_headers, csrf_check  # noqa: E402
 from report_files import parse_report_metrics, sanitize_report_date  # noqa: E402
 from routers import assistant as _assistant_router  # noqa: E402
 from routers import credentials as _credentials_router  # noqa: E402
+from routers import deployment as _deployment_router  # noqa: E402
 from routers import dispatch as _dispatch_router  # noqa: E402
 from routers import feature_requests as _feature_requests_router  # noqa: E402
 from routers import fleet as _fleet_router  # noqa: E402
 from routers import linear as _linear_router  # noqa: E402
 from routers import linear_webhook as _linear_webhook_router  # noqa: E402
+from routers import maxwell as _maxwell_router  # noqa: E402
 from routers import orchestration as _orchestration_router  # noqa: E402
 from routers import queue as _queue_router  # noqa: E402
 from routers import queue_diagnostics as _queue_diagnostics_router  # noqa: E402
@@ -210,16 +212,6 @@ class AssessmentDispatchBody(BaseModel):
     repository: str = Field(..., max_length=200)
     provider: str = Field(default="jules_api", max_length=100)
     ref: str = Field(default="main", max_length=200)
-
-
-class MaxwellControlBody(BaseModel):
-    action: str = Field(..., max_length=20)
-    approved_by: str = Field(..., max_length=200)
-
-
-class MaxwellChatBody(BaseModel):
-    message: str = Field(..., max_length=4000)
-    history: list[dict[str, str]] = Field(default_factory=list, max_length=20)
 
 
 class HelpChatBody(BaseModel):
@@ -432,6 +424,8 @@ app.include_router(_runner_diagnostics_router.router)
 app.include_router(_runs_workflows_router.router)
 app.include_router(_assistant_router.router)
 app.include_router(_feature_requests_router.router)
+app.include_router(_maxwell_router.router)
+app.include_router(_deployment_router.router)
 app.include_router(_orchestration_router.router)
 
 app.add_middleware(
@@ -1847,88 +1841,7 @@ async def _collect_live_fleet_nodes() -> list[dict]:
     return nodes
 
 
-@app.get("/api/deployment")
-async def get_deployment() -> dict:
-    """Return the dashboard code revision deployed on this machine."""
-    return _deployment_info()
-
-
-@app.get("/api/deployment/expected-version")
-async def get_expected_deployment_version() -> dict:
-    """Return the local expected dashboard version for hub-spoke nodes."""
-    return {
-        "expected": deployment_drift.read_expected_version(EXPECTED_VERSION_FILE),
-        "source": "local-version-file",
-        "path": str(EXPECTED_VERSION_FILE),
-    }
-
-
-@app.get("/api/deployment/drift")
-async def get_deployment_drift() -> dict:
-    """Compare the deployed version against the hub's expected VERSION.
-
-    Used by the Machines tab to surface "Update available" badges on stale
-    nodes. Remote update orchestration is intentionally out of scope here —
-    see ``POST /api/deployment/update-signal`` for the notify-only affordance.
-    """
-    expected = await _read_expected_dashboard_version()
-    status = deployment_drift.evaluate_drift(_deployment_info(), expected)
-    return status.to_dict()
-
-
-@app.get("/api/deployment/state")
-async def get_deployment_state(request: Request) -> dict:
-    """Return dashboard deployment state for the fleet overview and deployment tab."""
-    if _should_proxy_fleet_to_hub(request):
-        return await proxy_to_hub(request)
-    fleet = await _get_fleet_nodes_impl()
-    expected = await _read_expected_dashboard_version()
-    return _build_deployment_state(fleet.get("nodes", []), expected)
-
-
-@app.post("/api/deployment/update-signal")
-async def post_deployment_update_signal(
-    request: Request,
-    *,
-    principal: Principal = Depends(require_scope("system.control")),  # noqa: B008
-) -> dict:
-    """Emit a structured "update requested" event for a node.
-
-    The dashboard UI calls this when an operator clicks the "Update node"
-    affordance on a drifting machine card. We intentionally do *not* SSH
-    or run ansible from here: this just logs a well-shaped event that
-    ``scheduled-dashboard-maintenance.sh`` (or a future webhook consumer)
-    can pick up. Callers should treat this as fire-and-notify only.
-    """
-    try:
-        payload = await request.json()
-    except (json.JSONDecodeError, ValueError):
-        payload = {}
-    node = str(payload.get("node") or HOSTNAME)
-    reason = str(payload.get("reason") or "user-requested")
-    dry_run = bool(payload.get("dry_run", False))
-
-    expected = await _read_expected_dashboard_version()
-    status = deployment_drift.evaluate_drift(_deployment_info(), expected)
-    if dry_run:
-        preview = {
-            "event": "dashboard.node.update_requested",
-            "node": node,
-            "current": status.current,
-            "expected": status.expected,
-            "severity": status.severity,
-            "reason": reason,
-            "dirty": status.dirty,
-            "dry_run": True,
-        }
-        return {
-            "accepted": True,
-            "dry_run": True,
-            "preview": preview,
-            "drift": status.to_dict(),
-        }
-    event = deployment_drift.emit_update_signal(node, status, reason=reason)
-    return {"accepted": True, "event": event, "drift": status.to_dict()}
+# Deployment routes extracted to routers/deployment.py and registered via app.include_router (issue #357).
 
 
 @app.get("/api/local-apps")
@@ -2940,262 +2853,6 @@ DASHBOARD_FAQ: dict[str, str] = {
 }
 
 
-@app.get("/api/maxwell/status")
-async def get_maxwell_status() -> dict:
-    """Probe Maxwell-Daemon status and connectivity."""
-    import shutil
-
-    maxwell_binary = shutil.which("maxwell") or shutil.which("maxwell-daemon")
-    maxwell_url = os.environ.get("MAXWELL_URL", "")
-    maxwell_port = int(os.environ.get("MAXWELL_PORT", 8322))
-
-    # Check if maxwell service is running via systemd
-    service_running = False
-    service_detail = "unknown"
-    try:
-        import subprocess
-
-        r = await asyncio.to_thread(
-            subprocess.run,
-            ["systemctl", "is-active", "maxwell-daemon"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            env=safe_subprocess_env(),
-        )
-        if r.returncode == 0 and r.stdout.strip() == "active":
-            service_running = True
-            service_detail = "systemd service active"
-        else:
-            service_detail = r.stdout.strip() or "not active"
-    except Exception:  # noqa: BLE001
-        service_detail = "systemd probe failed"
-
-    # Check HTTP reachability
-    http_reachable = False
-    http_detail = ""
-    base_url = maxwell_url or f"http://localhost:{maxwell_port}"
-    try:
-        import httpx
-
-        async with httpx.AsyncClient(timeout=HttpTimeout.MAXWELL_PROXY_S) as client:
-            resp = await client.get(f"{base_url}/api/health")
-            http_reachable = resp.status_code == 200
-            http_detail = f"HTTP {resp.status_code}"
-    except Exception as e:  # noqa: BLE001
-        http_detail = str(e)[:80]
-
-    status = "running" if (service_running or http_reachable) else "stopped"
-
-    return {
-        "status": status,
-        "binary_found": maxwell_binary is not None,
-        "binary_path": maxwell_binary,
-        "service_running": service_running,
-        "service_detail": service_detail,
-        "http_reachable": http_reachable,
-        "http_detail": http_detail,
-        "dashboard_url": base_url,
-        "deep_links": {
-            "dashboard": base_url,
-            "health": f"{base_url}/api/health",
-            "logs": "journalctl -u maxwell-daemon -f",
-        },
-        "probed_at": datetime.now(UTC).isoformat(),
-    }
-
-
-@app.post("/api/maxwell/control")
-async def maxwell_control(
-    request: Request,
-    *,
-    principal: Principal = Depends(require_scope("maxwell.control")),  # noqa: B008
-) -> dict:
-    """Start or stop Maxwell-Daemon service (confirmation required)."""
-    body = await request.json()
-    action = str(body.get("action", "")).strip()
-    approved_by = str(body.get("approved_by", "")).strip()
-    if action not in ("start", "stop", "restart"):
-        raise HTTPException(status_code=422, detail="action must be start, stop, or restart")
-    if not approved_by:
-        raise HTTPException(status_code=422, detail="approved_by required for privileged action")
-
-    code, out, stderr = await run_cmd(["systemctl", action, "maxwell-daemon"], timeout=15, cwd=REPO_ROOT)
-    log.info(
-        "maxwell_control: action=%s approved_by=%s exit_code=%d",
-        sanitize_log_value(action),
-        sanitize_log_value(approved_by),
-        code,
-    )
-    if code != 0:
-        log.warning("maxwell %s failed: %s", action, stderr.strip()[:200])
-        raise HTTPException(
-            status_code=502,
-            detail=f"maxwell {action} failed",
-        )
-    return {"status": action + "ed", "action": action, "approved_by": approved_by}
-
-
-# ─── Maxwell-Daemon Proxy Routes ──────────────────────────────────────────────
-
-
-def _maxwell_base_url() -> str:
-    """Return the Maxwell-Daemon base URL from env."""
-    return os.environ.get("MAXWELL_URL", "") or f"http://localhost:{int(os.environ.get('MAXWELL_PORT', 8322))}"
-
-
-@app.get("/api/maxwell/version")
-async def get_maxwell_version() -> dict:
-    """Proxy GET /api/version from Maxwell-Daemon."""
-    path = "/api/version"
-    resp = None
-    try:
-        async with httpx.AsyncClient(timeout=HttpTimeout.MAXWELL_PROXY_S) as client:
-            resp = await client.get(f"{_maxwell_base_url()}{path}")
-            log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
-            return resp.json()
-    except Exception as e:  # noqa: BLE001
-        log.info("maxwell_proxy: path=%s status=%s", path, "error")
-        return {"error": str(e)[:120], "daemon_available": False}
-
-
-
-@app.get("/api/maxwell/daemon-status")
-async def get_maxwell_daemon_status_detail() -> dict:
-    """Proxy GET /api/status from Maxwell-Daemon (pipeline state)."""
-    path = "/api/status"
-    resp = None
-    try:
-        async with httpx.AsyncClient(timeout=HttpTimeout.MAXWELL_PROXY_S) as client:
-            resp = await client.get(f"{_maxwell_base_url()}{path}")
-            log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
-            return resp.json()
-    except Exception as e:  # noqa: BLE001
-        log.info("maxwell_proxy: path=%s status=%s", path, "error")
-        return {"error": str(e)[:120], "daemon_available": False}
-
-
-
-@app.get("/api/maxwell/tasks")
-async def get_maxwell_tasks(limit: int = 20, cursor: str | None = None) -> dict:
-    """Proxy GET /api/tasks from Maxwell-Daemon."""
-    path = "/api/tasks"
-    resp = None
-    try:
-        params: dict = {"limit": limit}
-        if cursor is not None:
-            params["cursor"] = cursor
-        async with httpx.AsyncClient(timeout=HttpTimeout.MAXWELL_PROXY_S) as client:
-            resp = await client.get(f"{_maxwell_base_url()}{path}", params=params)
-            log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
-            return resp.json()
-    except Exception as e:  # noqa: BLE001
-        log.info("maxwell_proxy: path=%s status=%s", path, "error")
-        return {"error": str(e)[:120], "daemon_available": False}
-
-
-
-@app.get("/api/maxwell/tasks/{task_id}")
-async def get_maxwell_task_detail(task_id: str) -> dict:
-    """Proxy GET /api/tasks/{task_id} from Maxwell-Daemon."""
-    path = f"/api/tasks/{task_id}"
-    resp = None
-    try:
-        async with httpx.AsyncClient(timeout=HttpTimeout.MAXWELL_PROXY_S) as client:
-            resp = await client.get(f"{_maxwell_base_url()}{path}")
-            log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
-            return resp.json()
-    except Exception as e:  # noqa: BLE001
-        log.info("maxwell_proxy: path=%s status=%s", path, "error")
-        return {"error": str(e)[:120], "daemon_available": False}
-
-
-
-@app.post("/api/maxwell/dispatch")
-async def maxwell_dispatch_task(
-    request: Request,
-    *,
-    principal: Principal = Depends(require_scope("maxwell.control")),  # noqa: B008
-) -> dict:
-    """Proxy POST /api/dispatch to Maxwell-Daemon (forwards body as-is)."""
-    path = "/api/dispatch"
-    resp = None
-    try:
-        body = await request.body()
-        async with httpx.AsyncClient(timeout=HttpTimeout.MAXWELL_PROXY_S) as client:
-            resp = await client.post(
-                f"{_maxwell_base_url()}{path}",
-                content=body,
-                headers={"Content-Type": "application/json"},
-            )
-            log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
-            return resp.json()
-    except Exception as e:  # noqa: BLE001
-        log.info("maxwell_proxy: path=%s status=%s", path, "error")
-        return {"error": str(e)[:120], "daemon_available": False}
-
-
-
-@app.post("/api/maxwell/chat", response_model=None)
-async def maxwell_chat(
-    body: MaxwellChatBody,
-    *,
-    principal: Principal = Depends(require_scope("operator")),  # noqa: B008
-) -> StreamingResponse:
-    """Proxy chat messages to Maxwell-Daemon while preserving streamed output."""
-    path = "/api/chat"
-    payload = {
-        "message": body.message,
-        "history": body.history[-20:],
-        "stream": True,
-    }
-
-    async def stream_daemon_response() -> Any:
-        try:
-            async with httpx.AsyncClient(timeout=None) as client:
-                async with client.stream("POST", f"{_maxwell_base_url()}{path}", json=payload) as resp:
-                    log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
-                    if resp.status_code >= 400:
-                        yield f"Maxwell chat failed with HTTP {resp.status_code}."
-                        return
-                    async for chunk in resp.aiter_text():
-                        if chunk:
-                            yield chunk
-        except Exception as e:  # noqa: BLE001
-            log.info("maxwell_proxy: path=%s status=%s", path, "error")
-            yield f"Maxwell-Daemon is unreachable: {str(e)[:120]}"
-
-    return StreamingResponse(stream_daemon_response(), media_type="text/plain; charset=utf-8")
-
-
-@app.post("/api/maxwell/pipeline-control/{action}")
-async def maxwell_pipeline_control(
-    action: str,
-    request: Request,
-    *,
-    principal: Principal = Depends(require_scope("maxwell.control")),  # noqa: B008
-) -> dict:
-    """Proxy POST /api/control/{action} to Maxwell-Daemon."""
-    if action not in ("pause", "resume", "abort"):
-        raise HTTPException(status_code=422, detail="action must be pause, resume, or abort")
-    path = f"/api/control/{action}"
-    resp = None
-    try:
-        body = await request.body()
-        async with httpx.AsyncClient(timeout=HttpTimeout.MAXWELL_PROXY_S) as client:
-            resp = await client.post(
-                f"{_maxwell_base_url()}{path}",
-                content=body,
-                headers={"Content-Type": "application/json"},
-            )
-            log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
-            return resp.json()
-    except Exception as e:  # noqa: BLE001
-        log.info("maxwell_proxy: path=%s status=%s", path, "error")
-        return {"error": str(e)[:120], "daemon_available": False}
-
-
-
 @app.post("/api/help/chat")
 async def help_chat(request: Request, *, principal: Principal = Depends(require_scope("operator"))) -> dict:  # noqa: B008
     """Answer a dashboard help question. Uses local FAQ first, falls back to Claude API if available."""
@@ -3350,50 +3007,7 @@ async def dispatch_assessment(
 # ─── Diagnostics & Launchers ──────────────────────────────────────────────────
 
 
-@app.get("/api/deployment/git-drift")
-async def get_git_drift() -> dict:
-    """Return git-commit-based drift: compares HEAD against origin/main."""
-    repo_root = Path(__file__).parent.parent
-    result: dict[str, object] = {}
-
-    source = "unknown"
-    try:
-        out = await asyncio.to_thread(
-            subprocess.run,
-            ["git", "rev-parse", "HEAD"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            cwd=repo_root,
-        )
-        source = out.stdout.strip()
-        result["source_commit"] = source[:12]
-    except Exception:  # noqa: BLE001
-        result["source_commit"] = "unknown"
-
-    try:
-        out = await asyncio.to_thread(
-            subprocess.run,
-            ["git", "rev-parse", "origin/main"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            cwd=repo_root,
-        )
-        remote = out.stdout.strip()
-        result["remote_commit"] = remote[:12]
-        result["is_drifted"] = bool(source and remote and source != remote)
-        if result["is_drifted"]:
-            result["drift_details"] = "deployed version differs from origin/main"
-        else:
-            result["drift_details"] = "up to date"
-    except Exception:  # noqa: BLE001
-        result["is_drifted"] = False
-        result["remote_commit"] = "unknown"
-        result["drift_details"] = "could not reach origin/main"
-
-    result["process_pid"] = os.getpid()
-    return result
+# GET /api/deployment/git-drift extracted to routers/deployment.py (issue #357).
 
 
 @app.get("/api/diagnostics/summary")
@@ -3450,7 +3064,7 @@ async def get_diagnostics_summary() -> dict:
 
     # Drift info
     try:
-        drift = await get_git_drift()
+        drift = await _deployment_router.get_git_drift()
         summary["is_drifted"] = drift.get("is_drifted", False)
         summary["source_commit"] = drift.get("source_commit", "unknown")
         summary["remote_commit"] = drift.get("remote_commit", "unknown")
@@ -3487,7 +3101,6 @@ async def restart_dashboard_service(
     except Exception as exc:  # noqa: BLE001
         log.exception("Failed to restart runner-dashboard service")
         raise HTTPException(status_code=500, detail="Restart failed") from exc
-
 
 
 @app.post("/api/launchers/generate")
@@ -3670,12 +3283,27 @@ _orchestration_router.set_dependencies(
     runner_base_dir=RUNNER_BASE_DIR,
 )
 
+# Inject dependencies into deployment router
+_deployment_router.set_dependencies(
+    get_fleet_nodes_impl=_get_fleet_nodes_impl,
+    proxy_to_hub=proxy_to_hub,
+    should_proxy_fleet_to_hub=_should_proxy_fleet_to_hub,
+    deployment_info=_deployment_info,
+    read_expected_dashboard_version=_read_expected_dashboard_version,
+    build_deployment_state=_build_deployment_state,
+)
+
 
 _leader_lock_fd = None
 
 
 @app.on_event("startup")
-async def _start_background_tasks() -> None:
+async def _startup() -> None:
+    """Initialize HTTP clients and notify systemd on startup (issue #364)."""
+    # Initialize pooled HTTP clients
+    initialize_http_clients()
+    log.info("Initialized pooled HTTP clients with connection reuse")
+
     # Notify systemd that we are ready (issue #391 AC-3)
     if _sd_notify is not None:
         _sd_notify("READY=1\nWATCHDOG_USEC=120000000")  # 120s in microseconds
@@ -3706,6 +3334,13 @@ async def _start_background_tasks() -> None:
         asyncio.create_task(_runner_audit_loop())
     except OSError as e:
         log.info("Could not acquire leader lock, running as follower: %s", e)
+
+
+@app.on_event("shutdown")
+async def _shutdown() -> None:
+    """Close pooled HTTP clients on shutdown (issue #364)."""
+    await shutdown_http_clients()
+    log.info("Closed pooled HTTP clients")
 
 
 # ─── Main ─────────────────────────────────────────────────────────────────────

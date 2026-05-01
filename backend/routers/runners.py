@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any
 from cache_utils import cache_get, cache_set
 from dashboard_config import ORG
 from fastapi import APIRouter, Depends, HTTPException, Request
-from gh_utils import gh_api_admin
+from gh_utils import RateLimitedError, gh_api_admin
 from identity import Principal, require_scope
 from proxy_utils import proxy_to_hub, should_proxy_fleet_to_hub
 
@@ -96,6 +96,17 @@ async def get_runners(request: Request) -> dict[str, Any]:
         cache_set("runners", data)
         log.info("fetched runners list from GitHub API (count=%d)", len(data.get("runners", [])))
         return data
+    except RateLimitedError as exc:
+        log.warning("GitHub rate limit while fetching runners: retry_after=%d", exc.retry_after_seconds)
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "error": "github_rate_limited",
+                "retry_after_seconds": exc.retry_after_seconds,
+                "resource_class": exc.resource_class,
+            },
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        ) from exc
     except Exception as exc:
         log.error("failed to fetch runners: %s", exc)
         raise HTTPException(status_code=502, detail=f"GitHub API error: {exc}") from exc

@@ -23,6 +23,7 @@ if str(_BACKEND) not in sys.path:
 
 os.environ.setdefault("DASHBOARD_API_KEY", "test-key")
 
+import gh_utils  # noqa: E402
 import server  # noqa: E402
 from routers import runner_diagnostics as diagnostics_router  # noqa: E402
 from routers import runner_groups as groups_router  # noqa: E402
@@ -507,6 +508,53 @@ class TestErrorHandling:
 
         response = client.get("/api/runners")
         assert response.status_code == 502
+
+    def test_get_runners_rate_limit_returns_retry_after(
+        self,
+        client: TestClient,
+        monkeypatch: pytest.MonkeyPatch,
+        mock_cache,
+    ) -> None:
+        """GitHub rate limits surface as 429 with machine-readable backoff."""
+        del mock_cache
+        gh_utils.clear_rate_limit_breakers()
+
+        async def fake_run_cmd(cmd: list[str]) -> tuple[int, str, str]:  # noqa: ARG001
+            return (
+                1,
+                "",
+                "\n".join(
+                    [
+                        "HTTP/2.0 403 Forbidden",
+                        "X-RateLimit-Remaining: 0",
+                        "Retry-After: 37",
+                        '{"message":"API rate limit exceeded"}',
+                    ],
+                ),
+            )
+
+        monkeypatch.setattr(gh_utils, "run_cmd", fake_run_cmd)
+        monkeypatch.setattr(runners_router, "gh_api_admin", gh_utils.gh_api)
+
+        response = client.get("/api/runners")
+
+        assert response.status_code == 429
+        assert response.headers["Retry-After"] == "37"
+        assert response.json()["detail"] == {
+            "error": "github_rate_limited",
+            "retry_after_seconds": 37,
+            "resource_class": "actions",
+        }
+
+        async def should_not_run(cmd: list[str]) -> tuple[int, str, str]:  # noqa: ARG001
+            raise AssertionError("circuit breaker should block before gh is called")
+
+        monkeypatch.setattr(gh_utils, "run_cmd", should_not_run)
+
+        response = client.get("/api/runners")
+
+        assert response.status_code == 429
+        assert int(response.headers["Retry-After"]) > 0
 
     def test_diagnostics_with_api_error(
         self,

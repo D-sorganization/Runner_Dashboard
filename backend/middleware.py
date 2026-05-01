@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import logging
+from collections.abc import Callable
 from typing import Any
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
+
+log = logging.getLogger("dashboard.middleware")
 
 # --------------------------------------------------------------------------- #
 # MaxBodySizeMiddleware  (issue #350)
@@ -109,6 +113,92 @@ _AUTH_EXEMPT_PATHS = {
     "/api/auth/callback",
     "/api/linear/webhook",
 }
+
+DEFAULT_MAX_BODY_SIZE = 1 * 1024 * 1024  # 1 MB
+WEBHOOK_MAX_BODY_SIZE = 256 * 1024  # 256 KB
+
+
+def limit_body_size(max_bytes: int) -> Callable[[Callable], Callable]:
+    """Decorator to set a per-route maximum body size in bytes.
+
+    Usage::
+
+        @router.post("/webhook")
+        @limit_body_size(256 * 1024)
+        async def my_handler(request: Request): ...
+
+    The middleware inspects the matched route's endpoint for this marker.
+    """
+    def decorator(func: Callable) -> Callable:
+        func.__max_body_size__ = max_bytes  # type: ignore[attr-defined]
+        return func
+    return decorator
+
+
+def _get_route_body_limit(request: Request) -> int | None:
+    """Return the body size limit for the matched route, or None for default."""
+    route = request.scope.get("route")
+    if route is None:
+        return None
+
+    endpoint = getattr(route, "endpoint", None)
+    if endpoint is None:
+        return None
+
+    # FastAPI may wrap endpoints; walk the __wrapped__ chain.
+    candidate: Any = endpoint
+    while candidate is not None:
+        limit = getattr(candidate, "__max_body_size__", None)
+        if isinstance(limit, int):
+            return limit
+        candidate = getattr(candidate, "__wrapped__", None)
+
+    return None
+
+
+async def max_body_size_check(request: Request, call_next: Any) -> Any:
+    """Reject requests whose Content-Length exceeds the route limit.
+
+    Default limit is 1 MB.  Routes may override via ``@limit_body_size(bytes)``.
+    Requests without a Content-Length header (streaming / chunked) are allowed.
+    """
+    # Only enforce for mutating methods that typically carry a body.
+    if request.method not in ("POST", "PUT", "PATCH", "DELETE"):
+        return await call_next(request)
+
+    content_length = request.headers.get("content-length")
+    if content_length is None:
+        # No Content-Length header — allow through (streaming/chunked).
+        return await call_next(request)
+
+    try:
+        body_len = int(content_length)
+    except ValueError:
+        return JSONResponse(
+            {"error": "Invalid Content-Length header"},
+            status_code=400,
+        )
+
+    route_limit = _get_route_body_limit(request)
+    if route_limit is None:
+        limit = DEFAULT_MAX_BODY_SIZE
+    else:
+        limit = route_limit
+
+    if body_len > limit:
+        log.warning(
+            "max_body_size_check: rejecting %s %s — body %d bytes > limit %d bytes",
+            request.method,
+            request.url.path,
+            body_len,
+            limit,
+        )
+        return JSONResponse(
+            {"error": f"Request body too large ({body_len} bytes > {limit} bytes)"},
+            status_code=413,
+        )
+
+    return await call_next(request)
 
 
 async def csrf_check(request: Request, call_next: Any) -> Any:

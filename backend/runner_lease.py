@@ -13,6 +13,7 @@ from typing import Any
 import yaml
 from identity import Principal
 from pydantic import BaseModel, Field
+from security import safe_yaml_load, validate_config_path
 
 log = logging.getLogger("dashboard.runner_lease")
 
@@ -39,8 +40,11 @@ class LeaseManager:
             return
 
         try:
-            with open(self.leases_path) as f:
-                data = yaml.safe_load(f)
+            # Security validation for issue #355: validate path before loading
+            validate_config_path(self.leases_path)
+
+            # Use safe_yaml_load which validates path security
+            data = safe_yaml_load(self.leases_path)
             if not data or "leases" not in data:
                 self.leases = []
                 return
@@ -50,8 +54,13 @@ class LeaseManager:
             self.leases = []
 
     def save_leases(self):
+        """Save leases with security validation (issue #355)."""
         try:
             self.config_dir.mkdir(parents=True, exist_ok=True)
+
+            # Security validation: ensure config dir is within allowed roots
+            validate_config_path(self.leases_path.parent)
+
             with open(self.leases_path, "w") as f:
                 yaml.dump({"leases": [lease.model_dump() for lease in self.leases]}, f)
         except Exception as exc:

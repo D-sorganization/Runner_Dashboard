@@ -4,8 +4,15 @@ import { QueueTab } from "../pages/Queue"
 import { Badge } from "../primitives/Badge"
 import { Pill } from "../primitives/Pill"
 import { RecoveryDialog } from "./RecoveryDialog"
+import { SessionExpiredDialog } from "./SessionExpiredDialog"
 import { marked } from "marked"
 import DOMPurify from "dompurify"
+import {
+  emitSessionExpired,
+  shouldIgnoreUnauthorizedResponse,
+  subscribeSessionExpired,
+  tryRefreshSession,
+} from "./sessionExpired"
 
 // @ts-nocheck
 /* eslint-disable */
@@ -28,15 +35,18 @@ function shouldBypassServiceWorkerCache(url) {
   }
 }
 
-// Wrap global fetch to detect 401s and prompt login
+// Wrap global fetch to detect session-expiry 401s and prompt login through React.
 var originalFetch = window.fetch;
 window.fetch = async function(url, opts) {
   if (shouldBypassServiceWorkerCache(url)) {
     opts = Object.assign({}, opts || {}, { cache: "no-store" });
   }
   var resp = await originalFetch(url, opts);
-  if (resp.status === 401 && !url.includes('/api/auth/me')) {
+  if (resp.status === 401 && !shouldIgnoreUnauthorizedResponse(url)) {
     console.warn("[auth] 401 Unauthorized from", url);
+    if (await tryRefreshSession(originalFetch)) {
+      return originalFetch(url, opts);
+    }
     // Emit a global toast so the announcement is screen-reader-accessible
     // even before the modal repaints (issue #421).
     try {
@@ -50,23 +60,7 @@ window.fetch = async function(url, opts) {
     } catch (toastErr) {
       console.warn("[auth] Failed to emit 401 toast:", toastErr);
     }
-    // Show auth error overlay
-    if (typeof window._showAuthError === "function") {
-      window._showAuthError();
-    } else {
-      // Give them a chance to login
-      var root = document.getElementById("root");
-      if (root && root.querySelector && !root.querySelector('.auth-modal')) {
-         var div = document.createElement("div");
-         div.className = "auth-modal";
-         div.style.position = "fixed";
-         div.style.top = "0"; div.style.left = "0"; div.style.width = "100%"; div.style.height = "100%";
-         div.style.background = "rgba(15,17,23,0.8)"; div.style.zIndex = "9999";
-         div.style.display = "flex"; div.style.alignItems = "center"; div.style.justifyContent = "center";
-         div.innerHTML = '<div style="background:var(--bg-secondary);padding:32px;border-radius:12px;border:1px solid var(--border);text-align:center"><h2 style="margin-bottom:16px;color:var(--accent-red)">Session Expired</h2><p style="margin-bottom:24px;color:var(--text-secondary)">Your session has expired. Please login again to continue.</p><a href="/api/auth/github" class="btn btn-blue" style="text-decoration:none">Login with GitHub</a></div>';
-         document.body.appendChild(div);
-      }
-    }
+    emitSessionExpired();
   }
   return resp;
 };
@@ -14183,10 +14177,25 @@ function App({ initialTab }: { initialTab?: string } = {}) {
   function toggleAsst() { setAsstOpen(function (o) { var n = !o; lsSet(ASST_LS.open, n); return n; }); }
   var rmS = React.useState(null);
   var recoveryModal = rmS[0], setRecoveryModal = rmS[1];
+  var seS = React.useState(false);
+  var sessionExpiredOpen = seS[0], setSessionExpiredOpen = seS[1];
   var rauS = React.useState({ violations: [], last_checked: null, error: null });
   var runnerAudit = rauS[0], setRunnerAudit = rauS[1];
   var rauDismissS = React.useState(false);
   var auditBannerDismissed = rauDismissS[0], setAuditBannerDismissed = rauDismissS[1];
+
+  React.useEffect(function () {
+    var unsubscribe = subscribeSessionExpired(function () {
+      setSessionExpiredOpen(true);
+    });
+    window._showAuthError = function () {
+      setSessionExpiredOpen(true);
+    };
+    return function () {
+      unsubscribe();
+      if (window._showAuthError) delete window._showAuthError;
+    };
+  }, []);
 
   React.useEffect(function () {
     if (!window.matchMedia) return;
@@ -16557,6 +16566,10 @@ function App({ initialTab }: { initialTab?: string } = {}) {
     recoveryModal && recoveryModal.visible
       ? h(RecoveryDialog, { onClose: function () { setRecoveryModal(null); } })
       : null,
+    h(SessionExpiredDialog, {
+      open: sessionExpiredOpen,
+      onClose: function () { setSessionExpiredOpen(false); },
+    }),
     h(DashboardHelp, { currentTab: tab }),
   );
 }

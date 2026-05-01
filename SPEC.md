@@ -1,8 +1,8 @@
 # SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.21
+**Spec Version:** 2.5.22
 **Application Version:** 4.1.0 (see `VERSION`)
-**Last Updated:** 2026-05-01T07:22:00Z
+**Last Updated:** 2026-05-01T16:30:00Z
 **Status:** Active
 
 ---
@@ -121,6 +121,7 @@ coupling and makes each domain independently testable.
 
 | Router | Prefix | Responsibility |
 |---|---|---|
+| `routers/deployment.py` | `/api/deployment` | Deployment metadata, expected-version, drift, git-drift (issue #357) |
 | `routers/dispatch.py` | `/api/fleet/dispatch` | Fleet agent dispatcher â€” allowlisted hub-to-node commands |
 | `routers/credentials.py` | `/api` | Credential probe â€” tool/key presence without exposing values |
 | `routers/linear.py` | `/api/linear` | Optional Linear read API for workspaces, teams, and issue inventory |
@@ -133,6 +134,13 @@ Backend tests must resolve `backend/` imports consistently from a clean checkout
 The project pytest configuration declares `backend` on `pythonpath`, and
 `tests/conftest.py` also inserts the resolved backend directory before importing
 the FastAPI app and router dependencies.
+
+**Auth test fixtures (issue #343):** `mock_auth` is opt-in (not `autouse`).
+Tests that need to bypass authentication must declare `mock_auth` explicitly.
+`make_principal(id, type, roles)` creates a minimal `Principal`; the helpers
+`admin_principal`, `operator_principal`, and `viewer_principal` cover the
+three main roles. `make_authed_client(principal)` returns a `TestClient` with
+the given principal pre-wired.
 
 **Uvicorn runtime tuning (env-var driven, issue #393):**
 
@@ -488,7 +496,7 @@ env var.
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/api/runners` | All org runners with systemd service state |
+| GET | `/api/runners` | All org runners with systemd service state; GitHub rate limits return HTTP 429 with `Retry-After` and `retry_after_seconds` |
 | GET | `/api/runners/matlab` | MATLAB-capable runner subset |
 | POST | `/api/runners/{runner_id}/stop` | Stop a runner's systemd service |
 | POST | `/api/runners/{runner_id}/start` | Start a runner's systemd service |
@@ -961,6 +969,11 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 ## 7. Changelog
 
+### 2.5.22 - 2026-05-01
+- fix: `gh_api` exposes GitHub rate limits as `RateLimitedError` with
+  `retry_after_seconds`, records a per-token/resource in-memory breaker, and
+  `/api/runners` translates the condition to HTTP 429 with `Retry-After`.
+
 ### 2.5.16 - 2026-04-30
 - ci: keep the standard test lane aligned with the checked-in `uv.lock`, Bandit
   allow-list policy, and mypy relaxed-override module-count guard.
@@ -1141,7 +1154,21 @@ An admin can act as another principal (like a bot) for debugging. By providing t
 3. As an admin, generate a service token for the bot: `POST /api/principals/<bot_id>/token`.
 4. Provide the generated token to the bot agent for API access.
 
-### 9.3 HTTP Security Headers
+### 9.3 Request Body Size Enforcement (Issue #350)
+`MaxBodySizeMiddleware` in `backend/middleware.py` rejects oversized requests
+before routing:
+
+- Default cap: **1 MB** (Content-Length > 1 048 576 bytes → HTTP 413).
+- Webhook cap: **256 KB** for `/api/linear/webhook` (configured via
+  `_LIMIT_OVERRIDES`).
+- Per-route override: `@limit_body_size(bytes)` decorator sets
+  `func.__max_body_size__`; the functional `max_body_size_check` middleware
+  walks the `__wrapped__` chain to find it.
+- Requests with no `Content-Length` header (streaming/chunked) are allowed
+  through.
+- Only mutating methods (POST, PUT, PATCH, DELETE) are checked.
+
+### 9.4 HTTP Security Headers
 The backend injects the following headers on all responses:
 - `X-Content-Type-Options: nosniff`
 - `X-Frame-Options: SAMEORIGIN`
@@ -1217,6 +1244,19 @@ credentials:
   placeholders.
 - Operational procedure (rotation, baseline refresh, leak response) lives
   in `docs/runbooks/secret-scanning.md`.
+
+### 9.9 YAML Config Path Validation (Issue #355)
+
+All YAML configuration loaders (`machine_registry.py`, `identity.py`,
+`runner_lease.py`, `quota_enforcement.py`) validate paths before loading:
+
+- `validate_config_path(path, allowed_roots)` in `backend/security.py`
+  resolves the path and confirms it is within allowed roots
+  (`~/.config/runner-dashboard` and `<repo>/config`).
+- Symlinks are rejected if they point outside the allowed root.
+- World-writable files (mode bits `o+w`) are rejected.
+- `safe_yaml_load(path, allowed_roots)` combines path validation with
+  `yaml.safe_load` into a single safe entry point.
 
 ---
 
