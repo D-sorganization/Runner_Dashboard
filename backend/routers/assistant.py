@@ -24,6 +24,7 @@ from dashboard_config import DEFAULT_LLM_MODEL, ORG, REPO_ROOT
 from fastapi import APIRouter, Depends, HTTPException, Request
 from gh_utils import gh_api
 from identity import Principal, require_scope
+from security import validate_repo_slug
 from system_utils import run_cmd
 
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
@@ -41,10 +42,15 @@ _proposed_actions: dict[str, dict] = {}
 
 def _normalize_repository_input(value: str) -> tuple[str, str]:
     """Return (short_name, full_org/name) from a bare or qualified repo name."""
-    if "/" in value:
-        parts = value.split("/", 1)
-        return parts[1], value
-    return value, f"{ORG}/{value}"
+    text = str(value).strip()
+    if "/" in text:
+        owner, _, repo_name = text.partition("/")
+        if owner.lower() != ORG.lower():
+            raise HTTPException(status_code=422, detail=f"repository owner must be {ORG}")
+        repo_name = validate_repo_slug(repo_name)
+        return repo_name, f"{ORG}/{repo_name}"
+    repo_name = validate_repo_slug(text)
+    return repo_name, f"{ORG}/{repo_name}"
 
 
 async def _dispatch_to_ai_provider_for_chat(

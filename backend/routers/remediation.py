@@ -22,7 +22,7 @@ from dashboard_config import ORG
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from identity import Principal, require_scope
-from security import check_dispatch_rate
+from security import check_dispatch_rate, validate_repo_slug
 from system_utils import run_cmd
 
 # Python 3.11+ has datetime.UTC; fall back to timezone.utc for 3.10
@@ -34,16 +34,15 @@ REPO_ROOT = Path(os.environ.get("RUNNER_DASHBOARD_REPO_ROOT", Path(__file__).par
 
 
 def _normalize_repository_input(value: str) -> tuple[str, str]:
-    value = value.strip().lstrip("/")
-    if not value:
-        return "", ""
-    parts = value.split("/")
-    repo_name = parts[-1]
-    if "/" in value:
-        full_repository = value
-    else:
-        full_repository = f"{ORG}/{value}"
-    return repo_name, full_repository
+    text = str(value).strip().lstrip("/")
+    if "/" in text:
+        owner, _, repo_name = text.partition("/")
+        if owner.lower() != ORG.lower():
+            raise HTTPException(status_code=422, detail=f"repository owner must be {ORG}")
+        repo_name = validate_repo_slug(repo_name)
+        return repo_name, f"{ORG}/{repo_name}"
+    repo_name = validate_repo_slug(text)
+    return repo_name, f"{ORG}/{repo_name}"
 
 
 # Import server lazy imports below if needed
