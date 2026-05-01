@@ -69,7 +69,7 @@ def config(*workspaces: dict[str, Any]) -> dict[str, Any]:
 
 
 def created_at(hours_ago: float = 2.0) -> str:
-    created = dt.datetime.now(tz=dt.UTC) - dt.timedelta(hours=hours_ago)
+    created = dt.datetime.now(tz=dt.timezone.utc) - dt.timedelta(hours=hours_ago)
     return created.isoformat().replace("+00:00", "Z")
 
 

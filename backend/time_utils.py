@@ -13,12 +13,12 @@ Two helpers are exposed:
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 
 def utc_now() -> datetime:
     """Return the current UTC time as a timezone-aware datetime."""
-    return datetime.now(UTC)
+    return datetime.now(timezone.utc)
 
 
 def utc_now_iso() -> str:

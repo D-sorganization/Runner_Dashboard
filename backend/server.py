@@ -39,6 +39,12 @@ from collections import deque
 from pathlib import Path
 from typing import Any
 
+# systemd watchdog / ready notification (issue #391 AC-3)
+try:
+    from systemd.daemon import notify as _sd_notify
+except ImportError:
+    _sd_notify = None
+
 import httpx
 import psutil
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -4286,6 +4292,13 @@ _leader_lock_fd = None
 
 @app.on_event("startup")
 async def _start_background_tasks() -> None:
+    # Notify systemd that we are ready (issue #391 AC-3)
+    if _sd_notify is not None:
+        _sd_notify("READY=1\nWATCHDOG_USEC=120000000")  # 120s in microseconds
+        log.info("Sent systemd READY=1 notification")
+    else:
+        log.debug("systemd.daemon not available; omitting sd_notify")
+
     if os.environ.get("DASHBOARD_LEADER") == "1":
         asyncio.create_task(_runner_audit_loop())
         return

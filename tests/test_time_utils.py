@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from time_utils import utc_now, utc_now_iso
+
+UTC = timezone.utc
 
 
 def test_utc_now_returns_datetime() -> None:

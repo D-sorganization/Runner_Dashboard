@@ -25,6 +25,12 @@ from identity import Principal, require_scope
 from security import check_dispatch_rate
 from system_utils import run_cmd
 
+# Python 3.11+ has datetime.UTC; fall back to timezone.utc for earlier versions
+try:
+    UTC = _dt_mod.UTC  # type: ignore
+except AttributeError:
+    UTC = _dt_mod.timezone.utc  # type: ignore
+
 _remediation_history_lock: asyncio.Lock = asyncio.Lock()
 
 REPO_ROOT = Path(os.environ.get("RUNNER_DASHBOARD_REPO_ROOT", Path(__file__).parents[2]))
@@ -341,7 +347,7 @@ async def dispatch_agent_remediation(
     }
     await _append_remediation_history(
         {
-            "timestamp": _dt_mod.datetime.now(_dt_mod.UTC).isoformat(),
+            "timestamp": _dt_mod.datetime.now(UTC).isoformat(),
             "repository": full_repository,
             "workflow_name": context.workflow_name,
             "branch": context.branch,

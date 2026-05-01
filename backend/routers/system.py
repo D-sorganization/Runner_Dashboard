@@ -27,11 +27,11 @@ from fastapi import APIRouter
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-# Python 3.10+ has UTC; fall back to timezone.utc for earlier versions
+# Python 3.11+ has datetime.UTC; fall back to timezone.utc for earlier versions
 try:
     UTC = _dt.UTC  # type: ignore[attr-defined]
 except AttributeError:
-    UTC = _dt.UTC  # type: ignore[assignment]
+    UTC = _dt.timezone.utc  # type: ignore[assignment]
 
 log = logging.getLogger("dashboard.system")
 router = APIRouter(tags=["system"])
