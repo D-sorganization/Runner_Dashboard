@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { PullToRefresh } from "../../primitives/PullToRefresh";
 import { SkeletonCard, SkeletonLine } from "../../primitives/Skeleton";
 import { KpiHeader } from "./KpiHeader";
 import { RunnerCard } from "./RunnerCard";
@@ -22,25 +23,51 @@ export function FleetMobile() {
   const [filter, setFilter] = useState<FilterStatus>("all");
   const [refreshing, setRefreshing] = useState(false);
 
-  const fetchFleet = useCallback(async () => {
-    try {
-      const resp = await fetch("/api/fleet/status");
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const json = await resp.json();
-      setData(json);
-      setError(null);
-    } catch (e: any) {
-      setError(e.message || "Failed to load fleet data");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
+  const fetchFleet = useCallback(
+    async (signal?: AbortSignal) => {
+      try {
+        const resp = await fetch("/api/fleet/status", { signal });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const json = await resp.json();
+        setData(json);
+        setError(null);
+      } catch (e: any) {
+        if (e.name === "AbortError") return;
+        setError(e.message || "Failed to load fleet data");
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    []
+  );
 
   useEffect(() => {
-    fetchFleet();
-    const interval = setInterval(fetchFleet, 30000);
-    return () => clearInterval(interval);
+    const controller = new AbortController();
+    fetchFleet(controller.signal);
+
+    let interval: ReturnType<typeof setInterval> | null = null;
+    const startPolling = () => {
+      interval = setInterval(() => fetchFleet(), 30000);
+    };
+    startPolling();
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        if (interval) clearInterval(interval);
+        interval = null;
+      } else {
+        fetchFleet();
+        startPolling();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      controller.abort();
+      if (interval) clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [fetchFleet]);
 
   const nodes = useMemo(() => Object.entries(data), [data]);
@@ -65,25 +92,6 @@ export function FleetMobile() {
     });
   }, [nodes, filter]);
 
-  function onPullDown(e: React.TouchEvent) {
-    const target = e.currentTarget as HTMLElement;
-    const startY = e.touches[0].clientY;
-    let moved = false;
-    function onMove(ev: TouchEvent) {
-      const dy = ev.touches[0].clientY - startY;
-      if (dy > 60 && target.scrollTop <= 0 && !moved) {
-        moved = true;
-        setRefreshing(true);
-        fetchFleet();
-      }
-    }
-    function onEnd() {
-      window.removeEventListener("touchmove", onMove);
-      window.removeEventListener("touchend", onEnd);
-    }
-    window.addEventListener("touchmove", onMove);
-    window.addEventListener("touchend", onEnd);
-  }
 
   if (loading) {
     return (
@@ -129,11 +137,7 @@ export function FleetMobile() {
           Refreshing…
         </div>
       )}
-      <div
-        className="fleet-list"
-        onTouchStart={onPullDown}
-        style={{ touchAction: "pan-y", WebkitOverflowScrolling: "touch" }}
-      >
+      <PullToRefresh onRefresh={() => { setRefreshing(true); return fetchFleet(); }}>
         {filtered.length === 0 ? (
           <div className="fleet-empty" style={{ color: "var(--text-muted)", padding: "32px", textAlign: "center" }}>
             No runners match the selected filter.
@@ -156,7 +160,7 @@ export function FleetMobile() {
             );
           })
         )}
-      </div>
+      </PullToRefresh>
     </section>
   );
 }

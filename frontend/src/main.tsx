@@ -19,6 +19,20 @@ if ('serviceWorker' in navigator) {
       .catch((err) => {
         console.warn('[SW] Registration failed:', err)
       })
+
+    // Detect when a waiting service worker takes control (update available)
+    // and surface a reload prompt via the global toast API (#433).
+    let updateToastId: number | null = null
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      const toaster = (window as any).__toaster
+      if (toaster && typeof toaster.showToast === 'function' && updateToastId == null) {
+        updateToastId = toaster.showToast('Dashboard update installed. Reload to apply.', {
+          variant: 'info',
+          title: 'Update',
+          durationMs: 0,
+        })
+      }
+    })
   })
 }
 
