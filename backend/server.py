@@ -56,7 +56,7 @@ from fastapi.responses import (
     StreamingResponse,
 )
 from fastapi.staticfiles import StaticFiles
-from identity import Principal, require_principal, require_scope  # noqa: B008
+from identity import Principal, require_scope  # noqa: B008
 from middleware import MaxBodySizeMiddleware
 from pydantic import BaseModel, Field
 from routers import admin as admin_router
@@ -79,6 +79,7 @@ import issue_inventory as issue_inventory  # noqa: E402
 import lease_synchronizer as lease_synchronizer  # noqa: E402
 import linear_inventory as linear_inventory  # noqa: E402
 import metrics as _metrics_router  # noqa: E402
+import orchestration_audit as orchestration_audit  # noqa: E402
 import pr_inventory as pr_inventory  # noqa: E402
 import push as _push_router  # noqa: E402
 import quota_enforcement as quota_enforcement  # noqa: E402
@@ -107,6 +108,7 @@ from routers import feature_requests as _feature_requests_router  # noqa: E402
 from routers import fleet as _fleet_router  # noqa: E402
 from routers import linear as _linear_router  # noqa: E402
 from routers import linear_webhook as _linear_webhook_router  # noqa: E402
+from routers import orchestration as _orchestration_router  # noqa: E402
 from routers import queue as _queue_router  # noqa: E402
 from routers import queue_diagnostics as _queue_diagnostics_router  # noqa: E402
 from routers import remediation as _remediation_router  # noqa: E402
@@ -236,7 +238,7 @@ CPU_HISTORY_MAXLEN = _CPU_HISTORY_MAXLEN
 
 # ─── Shared State Locks ───────────────────────────────────────────────────────
 _remediation_history_lock: asyncio.Lock = asyncio.Lock()
-_orchestration_audit_lock: asyncio.Lock = asyncio.Lock()
+# _orchestration_audit_lock moved to orchestration_audit.py (issue #359).
 # Feature-request locks moved to routers/feature_requests.py
 
 # ─── Configuration ────────────────────────────────────────────────────────────
@@ -364,49 +366,38 @@ app.add_middleware(
     default_limit=1 * 1024 * 1024,  # 1 MB
 )
 
+# ── Replay-protection store (issue #344) ─────────────────────────────────────
+# Replaces the unbounded JSON file with a bounded SQLite-backed store.
+from replay_store import ReplayStore, migrate_json_to_sqlite  # noqa: E402
+
 _PROCESSED_ENVELOPES_PATH = Path.home() / "actions-runners" / "dashboard" / "processed_envelopes.json"
-_processed_envelopes_lock: asyncio.Lock = asyncio.Lock()
+_REPLAY_STORE_PATH = Path.home() / "actions-runners" / "dashboard" / "replay.db"
+_replay_store: ReplayStore = ReplayStore(_REPLAY_STORE_PATH)
 
-
-def _load_processed_envelopes() -> dict[str, float]:
-    """Load processed envelope IDs and expiration times from disk."""
-    if not _PROCESSED_ENVELOPES_PATH.exists():
-        return {}
-    try:
-        data = json.loads(_PROCESSED_ENVELOPES_PATH.read_text())
-        return {k: float(v) for k, v in data.items() if isinstance(v, (int, float))}
-    except (OSError, json.JSONDecodeError, ValueError):
-        return {}
+# One-shot migration: import any live entries from the legacy JSON file.
+migrate_json_to_sqlite(_PROCESSED_ENVELOPES_PATH, _replay_store)
 
 
 async def _is_envelope_replay(envelope_id: str) -> bool:
     """Check if envelope_id has already been processed (replay detection)."""
-    async with _processed_envelopes_lock:
-        processed = _load_processed_envelopes()
-        now = datetime.now(UTC).timestamp()
-
-        if envelope_id in processed:
-            expires_at = processed[envelope_id]
-            return expires_at > now
-
-        return False
+    return _replay_store.is_replay(envelope_id)
 
 
 async def _record_processed_envelope(envelope_id: str, ttl_seconds: int = 86400) -> None:
     """Record that envelope_id has been processed (for replay detection)."""
-    async with _processed_envelopes_lock:
-        processed = _load_processed_envelopes()
-        now = datetime.now(UTC).timestamp()
-        expires_at = now + ttl_seconds
+    _replay_store.record(envelope_id)
 
-        processed[envelope_id] = expires_at
 
-        cleaned = {k: v for k, v in processed.items() if v > now}
+async def _periodic_replay_purge() -> None:
+    """Background task: purge expired replay-store entries every hour."""
+    while True:
+        await asyncio.sleep(3600)
         try:
-            _PROCESSED_ENVELOPES_PATH.parent.mkdir(parents=True, exist_ok=True)
-            config_schema.atomic_write_json(_PROCESSED_ENVELOPES_PATH, cleaned)
-        except OSError as exc:
-            log.warning("failed to record processed envelope: %s", exc)
+            deleted = _replay_store.purge_expired()
+            if deleted:
+                log.info("replay_store: periodic purge removed %d entries", deleted)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("replay_store: periodic purge failed: %s", exc)
 
 
 # ── Bounded domain routers ────────────────────────────────────────────────────
@@ -441,6 +432,7 @@ app.include_router(_runner_diagnostics_router.router)
 app.include_router(_runs_workflows_router.router)
 app.include_router(_assistant_router.router)
 app.include_router(_feature_requests_router.router)
+app.include_router(_orchestration_router.router)
 
 app.add_middleware(
     SessionMiddleware,
@@ -556,35 +548,15 @@ if HUB_URL:
 
 
 async def proxy_to_hub(request: Request):
-    """Proxy request to the designated HUB_URL for hub-spoke topology."""
-    if not HUB_URL:
-        raise HTTPException(status_code=502, detail="HUB_URL not configured")
-    async with httpx.AsyncClient(timeout=HttpTimeout.PROXY_TO_HUB_S) as client:
-        url = f"{HUB_URL}{request.url.path}"
-        if request.url.query:
-            url = f"{url}?{request.url.query}"
-        try:
-            req = client.build_request(
-                request.method,
-                url,
-                headers={k: v for k, v in request.headers.items() if k.lower() not in ("host", "content-length")},
-                content=await request.body(),
-            )
-            resp = await client.send(req)
-            from proxy_utils import _translate_upstream_response
+    """Proxy request to the designated HUB_URL for hub-spoke topology.
 
-            return _translate_upstream_response(resp, "Hub proxy")
-        except httpx.TimeoutException as e:
-            log.warning("Hub proxy timeout for %s: %s", request.url.path, e)
-            raise HTTPException(status_code=504, detail="Hub timeout") from e
-        except httpx.ConnectError as e:
-            log.warning("Hub proxy connect error for %s: %s", request.url.path, e)
-            raise HTTPException(status_code=503, detail="Hub connection error") from e
-        except HTTPException:
-            raise
-        except Exception as e:  # noqa: BLE001
-            log.warning("Hub proxy error for %s: %s", request.url.path, e)
-            raise HTTPException(status_code=502, detail="Hub proxy error") from e
+    Delegates to ``proxy_utils.proxy_to_hub`` which strips sensitive headers
+    (Authorization, Cookie, X-API-Key, X-CSRF-Token) before forwarding,
+    preventing credential laundering (issue #347).
+    """
+    from proxy_utils import proxy_to_hub as _pu_proxy_to_hub  # noqa: PLC0415
+
+    return await _pu_proxy_to_hub(request)
 
 
 def _should_proxy_fleet_to_hub(request: Request) -> bool:
@@ -1979,6 +1951,7 @@ async def get_watchdog_status(request: Request):
 
 # Runner routes extracted to routers/fleet.py and registered via app.include_router.
 # Runs and workflow routes extracted to routers/runs_workflows.py and registered via app.include_router.
+# Fleet control, schedule, capacity, nodes, hardware routes extracted to routers/orchestration.py (issue #359).
 
 
 async def _fleet_control_local(action: str) -> dict:
@@ -2075,122 +2048,9 @@ async def _remote_fleet_control(name: str, url: str, action: str) -> dict:
         return {"machine": name, "url": url, "success": False, "error": str(exc)}
 
 
-
-@app.post("/api/fleet/control/{action}")
-async def fleet_control(
-    action: str,
-    request: Request,
-    *,
-    principal: Principal = Depends(require_scope("fleet.control")),  # noqa: B008
-):  # noqa: B008
-    """Scale runners from any dashboard.
-
-    Nodes proxy fleet-wide requests to the hub. The hub applies the action
-    locally and fans it out to configured nodes. Internal fan-out calls use
-    ``?local=1`` so each node controls its own runner services.
-    """
-    if _should_proxy_fleet_to_hub(request):
-        return await proxy_to_hub(request)
-
-    scope = request.query_params.get("scope", "fleet")
-    should_fan_out = MACHINE_ROLE == "hub" and scope != "local" and bool(FLEET_NODES)
-    local_machine = HOSTNAME
-    try:
-        local_result = await _fleet_control_local(action)
-        local_machine = local_result.get("machine", HOSTNAME)
-        local_node_result = {
-            "machine": local_machine,
-            "url": f"http://localhost:{PORT}",
-            "success": True,
-            "result": local_result,
-        }
-    except HTTPException as exc:
-        if not should_fan_out:
-            raise
-        local_result = {"machine": HOSTNAME, "action": action, "results": []}
-        local_node_result = {
-            "machine": HOSTNAME,
-            "url": f"http://localhost:{PORT}",
-            "success": False,
-            "status_code": exc.status_code,
-            "error": str(exc.detail),
-        }
-    node_results = [local_node_result]
-
-    if should_fan_out:
-        remotes = await asyncio.gather(*[_remote_fleet_control(name, url, action) for name, url in FLEET_NODES.items()])
-        node_results.extend(remotes)
-
-    return {
-        "action": action,
-        "scope": "local" if scope == "local" else "fleet",
-        "machine": local_machine,
-        "results": local_result["results"],
-        "nodes": node_results,
-    }
-
-
-@app.get("/api/fleet/schedule")
-async def get_runner_schedule() -> dict:
-    """Return this machine's local runner capacity schedule and live state."""
-    return get_runner_capacity_snapshot()
-
-
-@app.get("/api/fleet/capacity")
-async def get_fleet_capacity() -> dict:
-    """Compatibility endpoint for dashboard capacity summaries."""
-    return get_runner_capacity_snapshot()
-
-
-@app.post("/api/fleet/schedule")
-async def update_runner_schedule(
-    request: Request,
-    *,
-    principal: Principal = Depends(require_scope("fleet.control")),  # noqa: B008
-) -> dict:
-    """Update this machine's local runner capacity schedule."""
-    body = await request.json()
-    if not isinstance(body, dict):
-        raise HTTPException(status_code=400, detail="schedule payload must be an object")
-    try:
-        config = _validate_runner_schedule(body.get("schedule", body))
-    except (TypeError, ValueError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    _write_runner_schedule_config(config)
-    apply_now = bool(body.get("apply", False))
-    apply_result: dict[str, object] | None = None
-    if apply_now and Path(RUNNER_SCHEDULER_BIN).exists():
-        env = safe_subprocess_env()
-        env["RUNNER_ROOT"] = str(RUNNER_BASE_DIR)
-        env["RUNNER_SCHEDULE_CONFIG"] = str(RUNNER_SCHEDULE_CONFIG)
-        env["RUNNER_SCHEDULER_STATE"] = str(RUNNER_SCHEDULER_STATE)
-        apply_cmd = _runner_scheduler_apply_command()
-        result = await asyncio.to_thread(
-            subprocess.run,
-            apply_cmd,
-            capture_output=True,
-            text=True,
-            timeout=30,
-            check=False,
-            env=env,
-        )
-        apply_result = {
-            "returncode": result.returncode,
-            "stdout": result.stdout.strip()[:1000],
-            "stderr": result.stderr.strip()[:1000],
-        }
-        if result.returncode != 0:
-            error = apply_result["stderr"] or apply_result["stdout"]
-            raise HTTPException(
-                status_code=500,
-                detail=f"Schedule saved, but apply failed: {error}",
-            )
-    return {
-        "saved": True,
-        "applied": apply_now,
-        "apply_result": apply_result,
-        **get_runner_capacity_snapshot(),
-    }
+# Fleet control/{action}, /fleet/schedule, /fleet/capacity routes extracted to
+# routers/orchestration.py (issue #359). _fleet_control_local and
+# _remote_fleet_control are kept here and injected via set_dependencies().
 
 
 @app.get("/api/repos")
@@ -2911,46 +2771,8 @@ async def get_usage_monitoring(request: Request) -> dict:
 
 
 # ─── Fleet Node Aggregation API ──────────────────────────────────────────────
-
-
-@app.get("/api/fleet/nodes")
-async def get_fleet_nodes(request: Request) -> dict:
-    if _should_proxy_fleet_to_hub(request):
-        return await proxy_to_hub(request)
-    return await _get_fleet_nodes_impl()
-
-
-@app.get("/api/fleet/hardware")
-async def get_fleet_hardware(request: Request) -> dict:
-    """Return centralized fleet hardware specs for workload placement."""
-    if _should_proxy_fleet_to_hub(request):
-        return await proxy_to_hub(request)
-    fleet = await _get_fleet_nodes_impl()
-    machines = []
-    for node in fleet.get("nodes", []):
-        registry = node.get("registry") or {}
-        specs = node.get("hardware_specs") or node.get("system", {}).get("hardware_specs", {})
-        capacity = node.get("workload_capacity") or node.get("system", {}).get("workload_capacity", {})
-        machines.append(
-            {
-                "name": node.get("name"),
-                "display_name": registry.get("display_name") or node.get("name"),
-                "online": bool(node.get("online")),
-                "dashboard_reachable": bool(node.get("dashboard_reachable")),
-                "role": registry.get("role") or node.get("role"),
-                "runner_labels": registry.get("runner_labels", []),
-                "hardware_specs": specs,
-                "workload_capacity": capacity,
-                "offline_reason": node.get("offline_reason"),
-            }
-        )
-    return {
-        "timestamp": datetime.now(UTC).isoformat(),
-        "machines": machines,
-        "count": len(machines),
-        "online_count": sum(1 for machine in machines if machine["online"]),
-        "registry": fleet.get("registry", {}),
-    }
+# Routes extracted to routers/orchestration.py (issue #359).
+# _get_fleet_nodes_impl kept here and injected via set_dependencies().
 
 
 async def _get_fleet_nodes_impl() -> dict:
@@ -2983,25 +2805,7 @@ async def _get_fleet_nodes_impl() -> dict:
     }
 
 
-@app.get("/api/fleet/nodes/{node_name}/system")
-async def proxy_node_system(node_name: str) -> dict:
-    """Proxy /api/system from a named fleet node (for detailed drill-down)."""
-    if node_name in (HOSTNAME, "local"):
-        return await get_system_metrics_snapshot()
-    url = FLEET_NODES.get(node_name)
-    if not url:
-        raise HTTPException(status_code=404, detail=f"Node not found: {node_name}")
-    try:
-        async with httpx.AsyncClient(timeout=HttpTimeout.PROXY_NODE_SYSTEM_S) as client:
-            resp = await client.get(f"{url}/api/system")
-        if resp.status_code != 200:
-            raise HTTPException(status_code=502, detail="Node returned error")
-        return resp.json()
-    except httpx.TimeoutException as exc:
-        raise HTTPException(status_code=504, detail=f"{node_name} timed out") from exc
-    except httpx.RequestError as exc:
-        log.warning("Node %s unreachable: %s", node_name, exc)
-        raise HTTPException(status_code=502, detail=f"{node_name} unreachable") from exc
+# /api/fleet/nodes/{node_name}/system extracted to routers/orchestration.py (issue #359).
 
 
 # ─── Request logging middleware ───────────────────────────────────────────────
@@ -3539,445 +3343,8 @@ async def dispatch_assessment(
     return {"status": "dispatched", "repository": repo, "provider": provider}
 
 
-# ─── Fleet Orchestration Control Plane ───────────────────────────────────────
-
-_ORCHESTRATION_AUDIT_PATH = Path.home() / "actions-runners" / "dashboard" / "orchestration_audit.json"
-_DEPLOY_ACTIONS = {"sync_workflows", "restart_runner", "update_config"}
-
-# Audit log is append-only NDJSON. On load failure (corrupt line, OS error), this
-# counter increments so operators can detect silent corruption. Exposed via
-# /api/metrics/audit-corrupt and the dashboard health endpoint.
-_audit_log_corrupt_total: int = 0
-
-
-def _migrate_audit_to_ndjson_if_needed() -> None:
-    """If the audit file is in the legacy single-JSON-array format, rewrite it as
-    NDJSON in place. Idempotent: a file already in NDJSON form is left alone.
-    Corruption counter is NOT incremented for migration: the file is intact."""
-    if not _ORCHESTRATION_AUDIT_PATH.exists():
-        return
-    try:
-        with _ORCHESTRATION_AUDIT_PATH.open("r", encoding="utf-8") as fh:
-            head = fh.read(1)
-            if head != "[":
-                return
-            fh.seek(0)
-            raw = fh.read().strip()
-        if not raw:
-            return
-        entries = json.loads(raw)
-        if not isinstance(entries, list):
-            return
-        tmp_path = _ORCHESTRATION_AUDIT_PATH.with_suffix(".ndjson.tmp")
-        with tmp_path.open("w", encoding="utf-8") as fh:
-            for entry in entries:
-                fh.write(json.dumps(entry, separators=(",", ":")) + "\n")
-        tmp_path.replace(_ORCHESTRATION_AUDIT_PATH)
-    except (OSError, json.JSONDecodeError) as exc:
-        log.warning("orchestration audit migration not applied: %s", exc)
-
-
-def _load_orchestration_audit(limit: int = 50, principal: str | None = None) -> list[dict]:
-    """Tail the last `limit` orchestration audit entries from disk without rewriting.
-
-    Reads the NDJSON-formatted audit log line by line, keeping only the trailing
-    `limit` entries via a bounded deque. Legacy single-JSON-array files are
-    migrated lazily on first read.
-    """
-    global _audit_log_corrupt_total
-    if not _ORCHESTRATION_AUDIT_PATH.exists():
-        return []
-
-    # Lazy one-shot migration from legacy JSON array -> NDJSON.
-    _migrate_audit_to_ndjson_if_needed()
-
-    from collections import deque  # noqa: PLC0415
-
-    tail: deque[dict] = deque(maxlen=limit if not principal else None)
-    try:
-        with _ORCHESTRATION_AUDIT_PATH.open("r", encoding="utf-8") as fh:
-            for line in fh:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    entry = json.loads(line)
-                except json.JSONDecodeError:
-                    _audit_log_corrupt_total += 1
-                    continue
-                if not isinstance(entry, dict):
-                    _audit_log_corrupt_total += 1
-                    continue
-                if principal and entry.get("principal") != principal:
-                    continue
-                tail.append(entry)
-    except OSError as exc:
-        _audit_log_corrupt_total += 1
-        log.warning("orchestration audit read failed: %s", exc)
-        return []
-
-    result = list(tail)
-    return result[-limit:] if principal else result
-
-
-async def _append_orchestration_audit(entry: dict) -> None:
-    """Append a single audit entry to the orchestration audit log.
-
-    Atomic single-line write via O_APPEND — POSIX guarantees writes <= PIPE_BUF
-    (4096 bytes) appear atomically when the file is opened with O_APPEND, so
-    concurrent appends interleave by line rather than corrupting bytes. Rotation
-    is handled out-of-band (e.g. logrotate); this writer never truncates.
-    """
-    async with _orchestration_audit_lock:
-        try:
-            _migrate_audit_to_ndjson_if_needed()
-            _ORCHESTRATION_AUDIT_PATH.parent.mkdir(parents=True, exist_ok=True)
-            line = json.dumps(entry, separators=(",", ":")) + "\n"
-            with _ORCHESTRATION_AUDIT_PATH.open("a", encoding="utf-8") as fh:
-                fh.write(line)
-        except OSError as exc:
-            log.warning("orchestration audit write failed: %s", exc)
-
-
-def get_audit_log_corrupt_total() -> int:
-    """Return the count of corrupt audit-log read events since process start."""
-    return _audit_log_corrupt_total
-
-
-@app.get("/api/audit", tags=["fleet"])
-async def get_node_audit_log(
-    request: Request,
-    limit: int = 50,
-    principal: str | None = None,
-    _auth: Principal = Depends(require_principal),
-) -> list[dict]:
-    """Return this node's orchestration audit log."""
-    return _load_orchestration_audit(limit=limit, principal=principal)
-
-
-@app.get("/api/fleet/audit", tags=["fleet"])
-async def get_fleet_audit_log(
-    request: Request,
-    limit: int = 50,
-    principal: str | None = None,
-    _auth: Principal = Depends(require_principal),
-) -> dict:
-    """Return a merged view of orchestration audit logs across the fleet."""
-    local_entries = _load_orchestration_audit(limit=limit, principal=principal)
-    all_entries = list(local_entries)
-
-    async def fetch_remote_audit(name: str, url: str) -> list[dict]:
-        try:
-            params: dict[str, Any] = {"limit": limit}
-            if principal:
-                params["principal"] = principal
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                headers = {}
-                if auth_header := request.headers.get("Authorization"):
-                    headers["Authorization"] = auth_header
-                r = await client.get(f"{url}/api/audit", params=params, headers=headers)
-            if r.status_code == 200:
-                data = r.json()
-                if isinstance(data, list):
-                    return data
-        except Exception as exc:  # noqa: BLE001
-            log.warning("Failed to fetch audit from %s (%s): %s", name, url, exc)
-        return []
-
-    if FLEET_NODES:
-        remotes = await asyncio.gather(*[fetch_remote_audit(n, u) for n, u in FLEET_NODES.items()])
-        for r_entries in remotes:
-            all_entries.extend(r_entries)
-
-    def _parse_ts(entry: dict) -> _dt_mod.datetime:
-        ts_str = entry.get("timestamp") or entry.get("ts") or ""
-        try:
-            return _dt_mod.datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
-        except ValueError:
-            return _dt_mod.datetime.min.replace(tzinfo=UTC)
-
-    all_entries.sort(key=_parse_ts, reverse=True)
-
-    return {
-        "entries": all_entries[:limit],
-        "count": len(all_entries[:limit]),
-    }
-
-
-@app.get("/api/fleet/orchestration")
-async def get_fleet_orchestration(request: Request) -> dict:
-    """Return per-machine job assignment, queue, and capacity for fleet orchestration view."""
-    registry_data = load_machine_registry()
-    machines_raw = registry_data.get("machines", [])
-
-    # Try to enrich with live node data from cache
-    try:
-        fleet = await _get_fleet_nodes_impl()
-        live_nodes = {n.get("name", ""): n for n in fleet.get("nodes", [])}
-    except Exception:  # noqa: BLE001
-        live_nodes = {}
-
-    machines = []
-    for m in machines_raw:
-        name = m.get("name", "")
-        live = live_nodes.get(name, {})
-        online = bool(live.get("online", False)) if live else False
-        system_info = live.get("system", {}) if live else {}
-        runners_info = live.get("runners", []) if live else []
-        runner_count = len(runners_info) if isinstance(runners_info, list) else 0
-        busy_count = sum(1 for r in runners_info if r.get("busy")) if runner_count else 0
-        machines.append(
-            {
-                "name": name,
-                "display_name": m.get("display_name") or name,
-                "role": m.get("role", "node"),
-                "online": online,
-                "runner_count": runner_count,
-                "busy_runners": busy_count,
-                "queue_depth": max(0, busy_count),
-                "last_ping": live.get("last_ping") or live.get("checked_at"),
-                "dashboard_url": m.get("dashboard_url"),
-                "runner_labels": m.get("runner_labels", []),
-                "offline_reason": live.get("offline_reason"),
-                "cpu_percent": system_info.get("cpu_percent"),
-                "memory_percent": system_info.get("memory_percent"),
-            }
-        )
-
-    audit_entries = _load_orchestration_audit(limit=10)
-    return {
-        "timestamp": datetime.now(UTC).isoformat(),
-        "machines": machines,
-        "online_count": sum(1 for m in machines if m["online"]),
-        "total_count": len(machines),
-        "audit_log": list(reversed(audit_entries)),
-    }
-
-
-@app.post("/api/fleet/orchestration/dispatch")
-async def fleet_orchestration_dispatch(
-    request: Request,
-    *,
-    principal: Principal = Depends(require_scope("fleet.control")),  # noqa: B008
-) -> dict:
-    """Dispatch a workflow to a specific machine target."""
-    body = await request.json()
-    if not isinstance(body, dict):
-        raise HTTPException(status_code=422, detail="Expected JSON object")
-
-    repo = str(body.get("repo", "")).strip()
-    workflow = str(body.get("workflow", "")).strip()
-    ref = str(body.get("ref", "main")).strip() or "main"
-    machine_target = str(body.get("machine_target", "")).strip()
-    inputs = body.get("inputs") or {}
-    approved_by = principal.id
-
-    if not repo or not workflow:
-        raise HTTPException(status_code=422, detail="repo and workflow are required")
-
-    log.info(
-        "audit: fleet_orchestration_dispatch repo=%s workflow=%s ref=%s target=%s by=%s",
-        sanitize_log_value(repo),
-        sanitize_log_value(workflow),
-        sanitize_log_value(ref),
-        sanitize_log_value(machine_target),
-        sanitize_log_value(approved_by),
-    )
-
-    from uuid import uuid4  # noqa: PLC0415
-
-    audit_id = uuid4().hex
-    now_str = datetime.now(UTC).isoformat().replace("+00:00", "Z")
-
-    # Build a dispatch_contract envelope for auditing
-    try:
-        confirmation = dispatch_contract.DispatchConfirmation(
-            approved_by=approved_by,
-            approved_at=now_str,
-            note=f"Fleet orchestration dispatch to {machine_target or 'any'}",
-        )
-        envelope = dispatch_contract.build_envelope(
-            action="runner.status",  # read-only, used for audit record only
-            source="fleet-orchestration",
-            target=machine_target or "fleet",
-            requested_by=approved_by,
-            reason=f"Dispatch {workflow} on {repo}@{ref}",
-            payload={"repo": repo, "workflow": workflow, "ref": ref, "inputs": inputs},
-            confirmation=confirmation,
-            principal=principal.id,
-            on_behalf_of=getattr(request.state, "on_behalf_of", None) or "",
-        )
-        validation = dispatch_contract.validate_envelope(envelope)
-        audit_entry_obj = dispatch_contract.build_audit_log_entry(envelope, validation)
-        audit_entry = audit_entry_obj.to_dict()
-    except Exception as exc:  # noqa: BLE001
-        log.warning("orchestration dispatch audit build failed: %s", exc)
-        audit_entry = {
-            "event_id": audit_id,
-            "action": "workflow.dispatch",
-            "target": machine_target,
-            "requested_by": approved_by,
-            "decision": "accepted",
-            "recorded_at": now_str,
-        }
-
-    audit_entry["orchestration_type"] = "workflow_dispatch"
-    audit_entry["repo"] = repo
-    audit_entry["workflow"] = workflow
-    audit_entry["ref"] = ref
-    audit_entry["machine_target"] = machine_target
-    audit_entry["audit_id"] = audit_id
-    await _append_orchestration_audit(audit_entry)
-
-    log.info(
-        "fleet-orchestration dispatch repo=%s workflow=%s ref=%s target=%s by=%s",
-        sanitize_log_value(repo),
-        sanitize_log_value(workflow),
-        sanitize_log_value(ref),
-        sanitize_log_value(machine_target),
-        sanitize_log_value(approved_by),
-    )
-
-    # Attempt actual workflow dispatch via gh CLI
-    run_url = None
-    try:
-        endpoint = f"/repos/{ORG}/{repo}/actions/workflows/{workflow}/dispatches"
-        dispatch_payload: dict = {"ref": ref}
-        if inputs:
-            dispatch_payload["inputs"] = inputs
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as pf_obj:
-            json.dump(dispatch_payload, pf_obj)
-            pf = pf_obj.name
-        try:
-            code, _, stderr = await run_cmd(
-                ["gh", "api", endpoint, "--method", "POST", "--input", pf],
-                timeout=30,
-                cwd=REPO_ROOT,
-            )
-        finally:
-            with contextlib.suppress(OSError):
-                Path(pf).unlink()
-        if code != 0:
-            log.warning("orchestration workflow dispatch gh failed: %s", stderr[:200])
-    except Exception as exc:  # noqa: BLE001
-        log.warning("orchestration dispatch gh call failed: %s", exc)
-
-    return {
-        "dispatched": True,
-        "run_url": run_url,
-        "audit_id": audit_id,
-        "machine_target": machine_target,
-        "repo": repo,
-        "workflow": workflow,
-        "ref": ref,
-    }
-
-
-@app.post("/api/fleet/orchestration/deploy")
-async def fleet_orchestration_deploy(
-    request: Request,
-    *,
-    principal: Principal = Depends(require_scope("fleet.control")),  # noqa: B008
-) -> dict:
-    """Deploy a workflow or config change to a fleet machine."""
-    body = await request.json()
-    if not isinstance(body, dict):
-        raise HTTPException(status_code=422, detail="Expected JSON object")
-
-    machine = str(body.get("machine", "")).strip()
-    action = str(body.get("action", "")).strip()
-    confirmed = bool(body.get("confirmed", False))
-    requested_by = principal.id
-
-    if not machine:
-        raise HTTPException(status_code=422, detail="machine is required")
-    if action not in _DEPLOY_ACTIONS:
-        raise HTTPException(
-            status_code=422,
-            detail=f"action must be one of: {', '.join(sorted(_DEPLOY_ACTIONS))}",
-        )
-    if not confirmed:
-        raise HTTPException(
-            status_code=403,
-            detail="confirmed=true is required to deploy to a fleet machine",
-        )
-
-    log.info(
-        "audit: fleet_orchestration_deploy machine=%s action=%s by=%s",
-        sanitize_log_value(machine),
-        sanitize_log_value(action),
-        sanitize_log_value(requested_by),
-    )
-
-    from uuid import uuid4  # noqa: PLC0415
-
-    audit_id = uuid4().hex
-    now_str = datetime.now(UTC).isoformat().replace("+00:00", "Z")
-
-    # Map deploy actions to dispatch_contract actions for auditing
-    contract_action_map = {
-        "sync_workflows": "dashboard.update_and_restart",
-        "restart_runner": "runner.restart",
-        "update_config": "runner.restart",
-    }
-    contract_action = contract_action_map.get(action, "runner.restart")
-
-    try:
-        confirmation = dispatch_contract.DispatchConfirmation(
-            approved_by=requested_by,
-            approved_at=now_str,
-            note=f"Fleet deploy action={action} to machine={machine}",
-        )
-        envelope = dispatch_contract.build_envelope(
-            action=contract_action,
-            source="fleet-orchestration",
-            target=machine,
-            requested_by=requested_by,
-            reason=f"Deploy action {action} to {machine}",
-            payload={"deploy_action": action},
-            confirmation=confirmation,
-            principal=principal.id,
-            on_behalf_of=getattr(request.state, "on_behalf_of", None) or "",
-        )
-        validation = dispatch_contract.validate_envelope(envelope)
-        audit_entry_obj = dispatch_contract.build_audit_log_entry(envelope, validation)
-        audit_entry = audit_entry_obj.to_dict()
-    except Exception as exc:  # noqa: BLE001
-        log.warning("orchestration deploy audit build failed: %s", exc)
-        audit_entry = {
-            "event_id": audit_id,
-            "action": action,
-            "target": machine,
-            "requested_by": requested_by,
-            "decision": "accepted",
-            "recorded_at": now_str,
-        }
-
-    audit_entry["orchestration_type"] = "fleet_deploy"
-    audit_entry["deploy_action"] = action
-    audit_entry["machine"] = machine
-    audit_entry["audit_id"] = audit_id
-    await _append_orchestration_audit(audit_entry)
-
-    log.info(
-        "fleet-orchestration deploy machine=%s action=%s by=%s",
-        sanitize_log_value(machine),
-        sanitize_log_value(action),
-        sanitize_log_value(requested_by),
-    )
-
-    action_labels = {
-        "sync_workflows": "Sync workflows",
-        "restart_runner": "Restart runner",
-        "update_config": "Update config",
-    }
-    return {
-        "deployed": True,
-        "machine": machine,
-        "action": action,
-        "message": f"{action_labels.get(action, action)} dispatched to {machine}",
-        "audit_id": audit_id,
-    }
+# Fleet orchestration routes, audit functions, and lock moved to
+# orchestration_audit.py and routers/orchestration.py (issue #359).
 
 
 # ─── Diagnostics & Launchers ──────────────────────────────────────────────────
@@ -4284,6 +3651,25 @@ _system_router.set_boot_time(BOOT_TIME)
 _system_router.set_host_memory_gb(HOST_MEMORY_GB)
 _system_router.set_runner_capacity_snapshot_func(get_runner_capacity_snapshot)
 
+# Inject dependencies into orchestration router (issue #359)
+_orchestration_router.set_dependencies(
+    fleet_control_local=_fleet_control_local,
+    remote_fleet_control=_remote_fleet_control,
+    get_fleet_nodes_impl=_get_fleet_nodes_impl,
+    proxy_to_hub=proxy_to_hub,
+    should_proxy_fleet_to_hub=_should_proxy_fleet_to_hub,
+    get_runner_capacity_snapshot=get_runner_capacity_snapshot,
+    validate_runner_schedule=_validate_runner_schedule,
+    write_runner_schedule_config=_write_runner_schedule_config,
+    runner_scheduler_apply_command=_runner_scheduler_apply_command,
+    run_cmd=run_cmd,
+    get_system_metrics_snapshot=get_system_metrics_snapshot,
+    runner_scheduler_bin=RUNNER_SCHEDULER_BIN,
+    runner_schedule_config=RUNNER_SCHEDULE_CONFIG,
+    runner_scheduler_state=RUNNER_SCHEDULER_STATE,
+    runner_base_dir=RUNNER_BASE_DIR,
+)
+
 
 _leader_lock_fd = None
 
@@ -4296,6 +3682,9 @@ async def _start_background_tasks() -> None:
         log.info("Sent systemd READY=1 notification")
     else:
         log.debug("systemd.daemon not available; omitting sd_notify")
+
+    # Replay-store purge runs on every node regardless of leader status.
+    asyncio.create_task(_periodic_replay_purge())
 
     if os.environ.get("DASHBOARD_LEADER") == "1":
         asyncio.create_task(_runner_audit_loop())
