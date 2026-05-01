@@ -83,7 +83,7 @@ class MaxBodySizeMiddleware:
         await self.app(scope, receive, send)
 
 
-def max_body_size(limit_bytes: int):
+def max_body_size(limit_bytes: int) -> Callable[[Any], Any]:
     """Decorator for route handlers that need a larger body limit.
 
     Usage::

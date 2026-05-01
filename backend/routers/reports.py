@@ -43,7 +43,7 @@ def set_reports_dir(reports_dir: Path) -> None:
 
 
 @router.get("/api/reports")
-async def list_reports():
+async def list_reports() -> dict:
     """List available daily progress reports."""
     reports_dir: Path = _reports_dir  # type: ignore[assignment]
     reports = []
@@ -66,7 +66,7 @@ async def list_reports():
 
 
 @router.get("/api/reports/{date}")
-async def get_report(date: str):
+async def get_report(date: str) -> dict:
     """Get the content of a specific daily report."""
     reports_dir: Path = _reports_dir  # type: ignore[assignment]
     safe_date = sanitize_report_date(date)
@@ -90,7 +90,7 @@ async def get_report(date: str):
 
 
 @router.get("/api/reports/{date}/chart")
-async def get_report_chart(date: str):
+async def get_report_chart(date: str) -> FileResponse:
     """Serve the assessment scores chart image for a specific date."""
     reports_dir: Path = _reports_dir  # type: ignore[assignment]
     safe_date = sanitize_report_date(date)

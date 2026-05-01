@@ -47,7 +47,7 @@ def set_dependencies(
 
 
 @router.get("/api/heavy-tests/repos")
-async def get_heavy_test_repos():
+async def get_heavy_test_repos() -> dict:
     """List repos that support heavy test workflow dispatch."""
     heavy_test_repos: dict = _heavy_test_repos  # type: ignore[assignment]
     repos = []
@@ -100,7 +100,7 @@ async def dispatch_heavy_test(
     request: Request,
     *,
     principal: Principal = Depends(require_scope("heavy-tests.dispatch")),  # noqa: B008
-):
+) -> dict:
     """Dispatch a heavy test workflow via GitHub API."""
     heavy_test_repos: dict = _heavy_test_repos  # type: ignore[assignment]
     body = await request.json()
@@ -167,7 +167,7 @@ async def run_docker_heavy_test(
     request: Request,
     *,
     principal: Principal = Depends(require_scope("heavy-tests.dispatch")),  # noqa: B008
-):
+) -> dict:
     """Run heavy tests locally in Docker via docker-compose."""
     heavy_test_repos: dict = _heavy_test_repos  # type: ignore[assignment]
     body = await request.json()
