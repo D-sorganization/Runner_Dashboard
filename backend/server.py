@@ -445,8 +445,8 @@ app.add_middleware(
     secret_key=dashboard_config.SESSION_SECRET,
     session_cookie="dashboard_session",
     max_age=86400 * 7,  # 7 days
-    same_site="lax",
-    https_only=False,  # True if prod
+    same_site="strict",
+    https_only=True,
 )
 
 app.add_middleware(

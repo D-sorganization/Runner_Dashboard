@@ -2190,3 +2190,36 @@ To ensure identity and quotas are respected across the entire fleet:
 < ! - -   U p d a t e d :   2 0 2 6 - 0 4 - 2 9 T 1 8 : 3 8 : 1 6   - - > 
  
  
+
+
+### 18.6 Consistent Error Envelope (issue #406)
+
+All 4xx and 5xx responses from `/api/*` routes return a JSON object conforming
+to `ErrorResponse` (`backend/error_models.py`):
+
+```json
+{
+  "error": "<machine-readable code>",
+  "detail": "<human-readable description>",
+  "request_id": "<optional trace id>"
+}
+```
+
+Standard error codes:
+
+| Code | HTTP status | Meaning |
+|------|-------------|---------|
+| `not_found` | 404 | Resource does not exist |
+| `forbidden` | 403 | Permission denied |
+| `validation_error` | 422 | Invalid request input |
+| `rate_limited` | 429 | GitHub rate limit hit |
+| `conflict` | 409 | State conflict (e.g. already stopped) |
+| `bad_gateway` | 502 | Upstream GitHub API error |
+| `server_error` | 500 | Internal server error |
+| `service_error` | 500/404/403 | systemd service lifecycle failure |
+
+Service lifecycle failures (`start`, `stop`, `restart`) additionally map
+stderr text to semantic status codes via `service_stderr_to_status()`:
+- "not loaded" / "Unit not found" → 404
+- "permission denied" / "access denied" → 403
+- anything else → 500

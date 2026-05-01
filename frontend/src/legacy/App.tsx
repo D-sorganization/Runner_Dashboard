@@ -13991,10 +13991,14 @@ h("table", { className: "data-table", style: { width: "100%", borderCollapse: "c
   );
 }
 
-function App({ initialTab }: { initialTab?: string } = {}) {
+function App({ initialTab, onTabChange }: { initialTab?: string; onTabChange?: (tab: string) => void } = {}) {
   var ts = React.useState(initialTab ?? "overview");
   var tab = ts[0],
-    setTab = ts[1];
+    _setTabInternal = ts[1];
+  var setTab = React.useCallback(function(nextTab: string) {
+    _setTabInternal(nextTab);
+    if (onTabChange) onTabChange(nextTab);
+  }, [onTabChange]);
   var rs = React.useState([]);
   var runners = rs[0],
     setRunners = rs[1];
