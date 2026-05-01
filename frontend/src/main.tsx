@@ -118,67 +118,77 @@ function initialTabFromPathname(pathname: string): string | undefined {
   return PATHNAME_TO_TAB[normalized]
 }
 
-// AppWithMobileShell lifts tab state so MobileShell bottom-nav stays in sync
-// with the legacy App's internal tab. Must live inside BreakpointProvider.
+// Map legacy App tab strings to MobileShell TabIds (they differ in a few cases).
+const LEGACY_TO_TAB_ID: Record<string, TabId> = {
+  overview: 'fleet',
+  fleet: 'fleet',
+  workflows: 'workflows',
+  remediation: 'remediation',
+  maxwell: 'maxwell',
+  org: 'org',
+  machines: 'heavy',
+  assessments: 'assessments',
+  'feature-requests': 'requests',
+  credentials: 'credentials',
+  reports: 'reports',
+  queue: 'health',
+  health: 'health',
+}
+
+// Inverse map: MobileShell TabId → legacy App tab string.
+const TAB_ID_TO_LEGACY: Partial<Record<TabId, string>> = {
+  fleet: 'overview',
+  workflows: 'workflows',
+  remediation: 'remediation',
+  maxwell: 'maxwell',
+  org: 'org',
+  heavy: 'machines',
+  assessments: 'assessments',
+  requests: 'feature-requests',
+  credentials: 'credentials',
+  reports: 'reports',
+  health: 'queue',
+}
+
+/**
+ * AppWithMobileShell lifts tab state to the root so MobileShell's bottom-nav
+ * stays in sync with the legacy App's internal tab selection.
+ * Must render inside <BreakpointProvider>.
+ */
 function AppWithMobileShell({ initialTab }: { initialTab?: string }) {
   const breakpoint = useBreakpoint()
   const isMobile = breakpoint !== 'lg' && breakpoint !== 'xl'
 
-  // Normalise the URL-derived tab to a TabId (MobileShell tabs are a subset).
-  // Falls back to 'fleet' which maps to 'overview' in legacy naming.
-  const resolvedInitial = (initialTab ?? 'fleet') as TabId
-  const [tab, setTab] = useState<TabId>(resolvedInitial)
+  const resolvedInitialTabId: TabId =
+    (initialTab && LEGACY_TO_TAB_ID[initialTab]) || 'fleet'
+  const [mobileTab, setMobileTab] = useState<TabId>(resolvedInitialTabId)
 
-  const handleTabChange = useCallback((nextTab: TabId) => {
-    setTab(nextTab)
+  const handleMobileTabChange = useCallback((nextTab: TabId) => {
+    setMobileTab(nextTab)
   }, [])
 
-  // Map MobileShell TabIds to the legacy App's internal tab string where they differ.
-  const TAB_ID_TO_LEGACY: Partial<Record<TabId, string>> = {
-    fleet: 'overview',
-    workflows: 'workflows',
-    remediation: 'remediation',
-    maxwell: 'maxwell',
-    org: 'org',
-    heavy: 'machines',
-    assessments: 'assessments',
-    requests: 'feature-requests',
-    credentials: 'credentials',
-    reports: 'reports',
-    health: 'queue',
-  }
-
-  const legacyTab = TAB_ID_TO_LEGACY[tab] ?? String(tab)
-
+  // Sync MobileShell state when the legacy App navigates internally (desktop
+  // tab clicks, URL deeplinks, etc.).
   const handleLegacyTabChange = useCallback((nextLegacyTab: string) => {
-    // Reverse-map the legacy tab name back to a TabId for MobileShell state.
-    const LEGACY_TO_TAB_ID: Record<string, TabId> = {
-      overview: 'fleet',
-      workflows: 'workflows',
-      remediation: 'remediation',
-      maxwell: 'maxwell',
-      org: 'org',
-      machines: 'heavy',
-      assessments: 'assessments',
-      'feature-requests': 'requests',
-      credentials: 'credentials',
-      reports: 'reports',
-      queue: 'health',
-      fleet: 'fleet',
-    }
     const mapped = LEGACY_TO_TAB_ID[nextLegacyTab]
-    if (mapped) setTab(mapped)
+    if (mapped) setMobileTab(mapped)
   }, [])
+
+  const legacyInitialTab =
+    initialTab ?? TAB_ID_TO_LEGACY[resolvedInitialTabId] ?? 'overview'
 
   if (isMobile) {
     return (
-      <MobileShell currentTab={tab} onTabChange={handleTabChange}>
-        <App initialTab={legacyTab} onTabChange={handleLegacyTabChange} />
+      <MobileShell currentTab={mobileTab} onTabChange={handleMobileTabChange}>
+        <App
+          initialTab={TAB_ID_TO_LEGACY[mobileTab] ?? legacyInitialTab}
+          onTabChange={handleLegacyTabChange}
+        />
       </MobileShell>
     )
   }
 
-  return <App initialTab={legacyTab} onTabChange={handleLegacyTabChange} />
+  return <App initialTab={legacyInitialTab} onTabChange={handleLegacyTabChange} />
 }
 
 // Route tracer marker for the static integrity test:
