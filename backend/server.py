@@ -113,7 +113,7 @@ from routers import runner_diagnostics as _runner_diagnostics_router  # noqa: E4
 from routers import runner_groups as _runner_groups_router  # noqa: E402
 from routers import runners as _runners_router  # noqa: E402
 from routers import runs_workflows as _runs_workflows_router  # noqa: E402
-from routers import system as _system_router
+from routers import system as _system_router  # noqa: E402
 from routers import web_vitals as _web_vitals_router  # noqa: E402
 from routers.queue import _queue_impl  # noqa: E402
 from security import (  # noqa: E402
