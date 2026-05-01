@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -49,7 +50,7 @@ class ReplayStore:
         self._execute("CREATE TABLE IF NOT EXISTS processed (  id TEXT PRIMARY KEY,  expires_at REAL NOT NULL)")
         self._execute("CREATE INDEX IF NOT EXISTS idx_expires ON processed (expires_at)")
 
-    def _retry_sqlite_busy(self, operation: Any) -> _T:
+    def _retry_sqlite_busy(self, operation: Callable[[], _T]) -> _T:
         for attempt in range(_SQLITE_BUSY_RETRIES):
             try:
                 return operation()
