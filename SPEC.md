@@ -2262,3 +2262,16 @@ view-models defined in `backend/models/github_payloads.py`:
 
 All models use `extra="ignore"` so new GitHub API fields never break
 existing handlers.  Handlers receive flat, typed objects (Law of Demeter).
+### 18.8 Pooled GitHub API Client (issue #352)
+
+A new `backend/gh_client.py` module replaces the hottest
+`subprocess.run(["gh", "api", ...])` call-sites with a single pooled
+`httpx.AsyncClient` that reuses TLS connections and caches the Bearer token.
+
+**Key design:**
+- Token loaded once from `GH_TOKEN` / `GITHUB_TOKEN` and cached in memory.
+- Typed exceptions: `GhAuthError`, `GhRateLimited`, `GhNotFound`, `GhServerError`.
+- `paginate(path)` async iterator follows GitHub Link headers automatically.
+- `gh` CLI subprocess retained as fallback when token is absent.
+- `gh_utils.gh_api()` delegates to `gh_client.get()` transparently; all
+  existing call-sites continue to work without changes.
