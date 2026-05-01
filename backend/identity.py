@@ -6,6 +6,7 @@ import tempfile
 import time
 from pathlib import Path
 
+import session_management as sm
 import yaml
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import APIKeyCookie, APIKeyHeader
@@ -206,10 +207,14 @@ def require_principal(
         raw_token = header_token.replace("Bearer ", "")
         prin = identity_manager.verify_token(raw_token)
 
-    # 2. Check session
+    # 2. Check session — also consult revocation store (issue #346)
     if not prin and hasattr(request, "session"):
         principal_id = request.session.get("principal_id")
+        session_id = request.session.get("session_id")
         if principal_id and principal_id in identity_manager.principals:
+            # Reject sessions that have been revoked or FIFO-evicted
+            if session_id and not sm.touch_session(session_id):
+                raise HTTPException(status_code=401, detail="Session revoked or expired")
             prin = identity_manager.principals[principal_id]
 
     # 3. Loopback bypass — requests from 127.0.0.1 or ::1 are automatically
@@ -239,6 +244,14 @@ def require_principal(
             if target_prin:
                 # The returned principal is the target. The real user is on_behalf_of.
                 request.state.on_behalf_of = prin.id
+                client_ip = getattr(request.client, "host", "unknown") if request.client else "unknown"
+                log.info(
+                    "audit: impersonate admin=%s target=%s path=%s source_ip=%s",
+                    prin.id,
+                    target_prin.id,
+                    request.url.path,
+                    client_ip,
+                )
                 return target_prin
             else:
                 raise HTTPException(status_code=400, detail="Impersonation target not found")

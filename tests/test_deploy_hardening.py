@@ -313,3 +313,49 @@ def test_setup_sh_installs_sudoers_dropin() -> None:
         "setup.sh must reference and install the sudoers drop-in (issue #391 AC-6)"
     )
     assert "/etc/sudoers.d/runner-dashboard" in content
+
+
+# ── Issue #341: rollback.sh integrity and health probe ───────────────────────
+
+
+def test_rollback_sh_exits_nonzero_on_integrity_failure() -> None:
+    """rollback.sh must call fail() (which exits 1) when sha256sum check fails."""
+    content = _read(_DEPLOY / "rollback.sh")
+    assert "sha256sum -c" in content, "rollback.sh must verify backup integrity with sha256sum"
+    assert 'fail "Backup integrity check FAILED' in content
+
+
+def test_rollback_sh_has_health_probe_with_retry() -> None:
+    """rollback.sh must curl /api/health and retry up to HEALTH_RETRIES times."""
+    content = _read(_DEPLOY / "rollback.sh")
+    assert "HEALTH_RETRIES" in content, "rollback.sh must define HEALTH_RETRIES"
+    assert "/api/health" in content, "rollback.sh must probe /api/health after restart"
+    assert "sleep" in content, "rollback.sh must sleep between health probe retries"
+    assert 'fail "Health probe failed' in content, "rollback.sh must exit non-zero when health probe exhausts retries"
+
+
+def test_rollback_sh_supports_db_migration_rollback() -> None:
+    """rollback.sh must attempt alembic downgrade -1 when alembic is present."""
+    content = _read(_DEPLOY / "rollback.sh")
+    assert "alembic" in content, "rollback.sh must support DB migration rollback via alembic"
+    assert "downgrade -1" in content
+
+
+def test_rollback_sh_set_euo_pipefail() -> None:
+    """rollback.sh must fail hard on any error."""
+    content = _read(_DEPLOY / "rollback.sh")
+    assert "set -euo pipefail" in content
+
+
+def test_lib_sh_backup_dir_writes_manifest() -> None:
+    """backup_dir() in lib.sh must write a SHA256 manifest alongside the backup."""
+    content = _read(_DEPLOY / "lib.sh")
+    assert "sha256sum" in content, "lib.sh backup_dir() must write a SHA256 manifest"
+    assert "manifest" in content
+
+
+def test_rollback_sh_list_shows_integrity_status() -> None:
+    """rollback.sh --list must display integrity check status for each backup."""
+    content = _read(_DEPLOY / "rollback.sh")
+    assert "_integrity_status" in content
+    assert "--list" in content

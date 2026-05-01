@@ -123,3 +123,65 @@ def test_logout_endpoint_revokes_current_session(monkeypatch: pytest.MonkeyPatch
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "logged_out"
+
+
+# ---------------------------------------------------------------------------
+# Issue #346 — require_principal session revocation check (unit-level)
+# ---------------------------------------------------------------------------
+
+
+def _make_mock_request(session: dict) -> object:
+    """Build a minimal mock request with a session dict and non-loopback client."""
+    from unittest.mock import MagicMock
+
+    req = MagicMock()
+    req.session = session
+    req.headers = {}
+    # Non-loopback host so the loopback bypass does not fire
+    req.client = MagicMock()
+    req.client.host = "10.0.0.1"
+    req.state = MagicMock()
+    return req
+
+
+def test_require_principal_rejects_revoked_session(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Revoke a session then call require_principal with same session → 401 (issue #346)."""
+    import identity as id_mod
+    import session_management as sm
+    from fastapi import HTTPException
+    from identity import Principal, require_principal
+
+    sessions_path = tmp_path / "sessions346a.json"
+    monkeypatch.setattr(sm, "_SESSIONS_PATH", sessions_path)
+    sessions_path.write_text("[]")
+
+    test_principal = Principal(id="human:alice", type="human", name="Alice", roles=["operator"])
+    monkeypatch.setitem(id_mod.identity_manager.principals, "human:alice", test_principal)
+
+    sid = sm.register_session("human:alice")
+    sm.revoke_session(sid)
+
+    req = _make_mock_request({"principal_id": "human:alice", "session_id": sid})
+    with pytest.raises(HTTPException) as exc_info:
+        require_principal(req, header_token=None, cookie_token=None)
+    assert exc_info.value.status_code == 401
+
+
+def test_require_principal_accepts_active_session(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Active session passes require_principal without raising (issue #346)."""
+    import identity as id_mod
+    import session_management as sm
+    from identity import Principal, require_principal
+
+    sessions_path = tmp_path / "sessions346b.json"
+    monkeypatch.setattr(sm, "_SESSIONS_PATH", sessions_path)
+    sessions_path.write_text("[]")
+
+    test_principal = Principal(id="human:bob", type="human", name="Bob", roles=["operator"])
+    monkeypatch.setitem(id_mod.identity_manager.principals, "human:bob", test_principal)
+
+    sid = sm.register_session("human:bob")
+
+    req = _make_mock_request({"principal_id": "human:bob", "session_id": sid})
+    prin = require_principal(req, header_token=None, cookie_token=None)
+    assert prin.id == "human:bob"
