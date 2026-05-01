@@ -15,7 +15,7 @@ from dashboard_config import RUNNER_BASE_DIR
 from system_utils import run_cmd
 
 # Python 3.11+ has datetime.UTC; fall back to timezone.utc for 3.10
-
+UTC = _dt_mod.UTC
 
 log = logging.getLogger("dashboard.runners")
 
