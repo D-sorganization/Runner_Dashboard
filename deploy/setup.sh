@@ -161,21 +161,17 @@ echo ""
 
 # ── Step 1: Install Python deps ──────────────────────────────────────────────
 header "Step 1/5: Python Dependencies"
-REQUIREMENTS_FILE="${SCRIPT_DIR}/backend/requirements.txt"
-if [[ -f "$REQUIREMENTS_FILE" ]]; then
-    PIP_ARGS=(install --quiet -r "$REQUIREMENTS_FILE")
-    if "${PYTHON_BIN}" -m pip install --help 2>/dev/null | grep -q -- '--break-system-packages'; then
-        PIP_ARGS=(install --break-system-packages --quiet -r "$REQUIREMENTS_FILE")
-    fi
-else
-    # Fallback if requirements.txt is somehow absent
-    PIP_ARGS=(install --quiet fastapi pydantic uvicorn psutil httpx PyYAML)
-    if "${PYTHON_BIN}" -m pip install --help 2>/dev/null | grep -q -- '--break-system-packages'; then
-        PIP_ARGS=(install --break-system-packages --quiet fastapi pydantic uvicorn psutil httpx PyYAML)
-    fi
+# Install uv if absent, then sync from the single root uv.lock (issue #333).
+# uv sync --frozen --no-dev ensures reproducible installs that match CI exactly.
+if ! command -v uv &>/dev/null; then
+    "${PYTHON_BIN}" -m pip install --quiet uv
 fi
-"${PYTHON_BIN}" -m pip "${PIP_ARGS[@]}"
-ok "backend dependencies installed from requirements.txt"
+if [[ -f "${SCRIPT_DIR}/uv.lock" ]]; then
+    uv sync --frozen --no-dev --project "${SCRIPT_DIR}"
+else
+    fail "uv.lock missing — refusing to install with floating transitives. Re-run 'uv lock' and commit."
+fi
+ok "backend dependencies installed via uv sync --frozen --no-dev"
 
 # ── Step 2: Deploy dashboard files ───────────────────────────────────────────
 header "Step 2/5: Deploy Dashboard"
