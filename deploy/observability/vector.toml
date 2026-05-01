@@ -1,0 +1,129 @@
+# Vector log aggregation sidecar configuration
+# Issue #418 — Log shipping for runner-dashboard fleet nodes
+#
+# Ships structured application logs from journald to a configured Loki
+# endpoint. Retention is enforced at 7 days for application logs.
+#
+# Prerequisites:
+#   - Vector installed (https://vector.dev) or running as a Docker sidecar
+#   - LOKI_URL environment variable set to your Loki endpoint
+#   - FLEET_NODE_NAME environment variable set to the machine's hostname
+#
+# Start:
+#   vector --config deploy/observability/vector.toml
+#
+# Or as a systemd service (see vector.service below).
+
+# --------------------------------------------------------------------------
+# Data directory (Vector internal state)
+# --------------------------------------------------------------------------
+[data_dir]
+
+# Use /var/lib/vector on Linux hosts; the container mounts this path.
+# Default: "/var/lib/vector"
+
+# --------------------------------------------------------------------------
+# Sources
+# --------------------------------------------------------------------------
+
+[sources.journald]
+  type = "journald"
+  # Collect logs from the runner-dashboard systemd unit only.
+  include_units = ["runner-dashboard.service", "runner-autoscaler.service"]
+  # Also capture kernel-level OOM kills that may affect the service.
+  include_matches = { "_SYSTEMD_UNIT" = ["runner-dashboard.service", "runner-autoscaler.service"] }
+
+[sources.docker_logs]
+  type = "docker_logs"
+  # In Docker Compose mode, collect from the dashboard container by label.
+  include_labels = { "com.runner-dashboard.service" = "dashboard" }
+
+# --------------------------------------------------------------------------
+# Transforms
+# --------------------------------------------------------------------------
+
+[transforms.parse_structured]
+  type = "remap"
+  inputs = ["journald", "docker_logs"]
+  source = '''
+    # Promote the structured JSON payload when the MESSAGE field is JSON.
+    parsed, err = parse_json(.message ?? "")
+    if err == null {
+      . = merge(., parsed)
+    }
+
+    # Normalise the severity field.
+    .level = downcase(string!(.level ?? .severity ?? .PRIORITY ?? "info"))
+    if .level == "30" { .level = "info" }
+    if .level == "40" { .level = "warn" }
+    if .level == "50" { .level = "error" }
+
+    # Add fleet metadata labels used for Loki stream selection.
+    .fleet_node = get_env_var!("FLEET_NODE_NAME")
+    .service    = "runner-dashboard"
+
+    # Drop raw duplicate fields to keep log size small.
+    del(.PRIORITY)
+    del(.severity)
+  '''
+
+[transforms.add_retention_label]
+  type = "remap"
+  inputs = ["parse_structured"]
+  source = '''
+    # Tag logs with a retention policy so Loki compactor can apply rules.
+    # Application logs: 7 days. Error logs: 30 days.
+    if .level == "error" || .level == "critical" {
+      .retention = "30d"
+    } else {
+      .retention = "7d"
+    }
+  '''
+
+# --------------------------------------------------------------------------
+# Sinks
+# --------------------------------------------------------------------------
+
+[sinks.loki]
+  type = "loki"
+  inputs = ["add_retention_label"]
+  endpoint = "${LOKI_URL:-http://localhost:3100}"
+
+  # Loki stream labels (low-cardinality selectors).
+  [sinks.loki.labels]
+    job       = "runner-dashboard"
+    node      = "{{ fleet_node }}"
+    level     = "{{ level }}"
+    retention = "{{ retention }}"
+
+  encoding.codec = "json"
+
+  # Batch up to 1 MB or 5 seconds, whichever comes first.
+  [sinks.loki.batch]
+    max_bytes   = 1_048_576
+    timeout_secs = 5
+
+  # Retry on network failures.
+  [sinks.loki.request]
+    retry_attempts = 5
+    retry_initial_backoff_secs = 1
+    retry_max_duration_secs = 30
+
+[sinks.stdout_debug]
+  # Local debug sink — disabled in production by setting VECTOR_LOG=error.
+  type = "console"
+  inputs = ["add_retention_label"]
+  encoding.codec = "json"
+
+# --------------------------------------------------------------------------
+# Journald drop-in for retention limits
+# --------------------------------------------------------------------------
+#
+# Create /etc/systemd/journald.conf.d/runner-dashboard.conf with:
+#
+#   [Journal]
+#   SystemMaxUse=1G
+#   MaxRetentionSec=30day
+#   RuntimeMaxUse=256M
+#
+# Then: systemctl restart systemd-journald
