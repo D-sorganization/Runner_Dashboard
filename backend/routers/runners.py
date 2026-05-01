@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any
 
 from cache_utils import cache_get, cache_set
 from dashboard_config import ORG
+from error_models import bad_gateway, not_found, rate_limited, service_error, service_stderr_to_status
 from fastapi import APIRouter, Depends, HTTPException, Request
 from gh_utils import RateLimitedError, gh_api_admin
 from identity import Principal, require_scope
@@ -100,16 +101,17 @@ async def get_runners(request: Request) -> dict[str, Any]:
         log.warning("GitHub rate limit while fetching runners: retry_after=%d", exc.retry_after_seconds)
         raise HTTPException(
             status_code=429,
-            detail={
-                "error": "github_rate_limited",
-                "retry_after_seconds": exc.retry_after_seconds,
-                "resource_class": exc.resource_class,
-            },
+            detail=rate_limited(f"GitHub rate limited; retry after {exc.retry_after_seconds}s").model_dump(
+                exclude_none=True
+            ),
             headers={"Retry-After": str(exc.retry_after_seconds)},
         ) from exc
     except Exception as exc:
         log.error("failed to fetch runners: %s", exc)
-        raise HTTPException(status_code=502, detail=f"GitHub API error: {exc}") from exc
+        raise HTTPException(
+            status_code=502,
+            detail=bad_gateway(f"GitHub API error: {exc}").model_dump(exclude_none=True),
+        ) from exc
 
 
 @router.get("/api/runners/matlab")
@@ -187,12 +189,19 @@ async def start_runner(
 
         if num is None:
             log.warning("start_runner: runner_id=%d not found locally (principal=%s)", runner_id, principal.user_id)
-            raise HTTPException(status_code=404, detail=f"Runner ID {runner_id} not found locally")
+            raise HTTPException(
+                status_code=404,
+                detail=not_found(f"Runner ID {runner_id} not found locally").model_dump(exclude_none=True),
+            )
 
         code, stdout, stderr = await run_runner_svc(num, "start")
         if code != 0:
             log.error("start_runner: failed for runner_num=%d: %s (principal=%s)", num, stderr, principal.user_id)
-            raise HTTPException(status_code=500, detail=f"Failed to start runner {num}: {stderr}")
+            status = service_stderr_to_status(stderr)
+            raise HTTPException(
+                status_code=status,
+                detail=service_error(f"Failed to start runner {num}: {stderr}").model_dump(exclude_none=True),
+            )
 
         log.info("start_runner: started runner_num=%d (runner_id=%d, principal=%s)", num, runner_id, principal.user_id)
         return {"status": "started", "runner": num, "output": stdout.strip()}
@@ -200,7 +209,10 @@ async def start_runner(
         raise
     except Exception as exc:
         log.error("start_runner: unexpected error for runner_id=%d: %s", runner_id, exc)
-        raise HTTPException(status_code=500, detail=f"Internal error: {exc}") from exc
+        raise HTTPException(
+            status_code=500,
+            detail=service_error(f"Internal error: {exc}").model_dump(exclude_none=True),
+        ) from exc
 
 
 @router.post("/api/runners/{runner_id}/stop")
@@ -231,12 +243,19 @@ async def stop_runner(
 
         if num is None:
             log.warning("stop_runner: runner_id=%d not found locally (principal=%s)", runner_id, principal.user_id)
-            raise HTTPException(status_code=404, detail=f"Runner ID {runner_id} not found locally")
+            raise HTTPException(
+                status_code=404,
+                detail=not_found(f"Runner ID {runner_id} not found locally").model_dump(exclude_none=True),
+            )
 
         code, stdout, stderr = await run_runner_svc(num, "stop")
         if code != 0:
             log.error("stop_runner: failed for runner_num=%d: %s (principal=%s)", num, stderr, principal.user_id)
-            raise HTTPException(status_code=500, detail=f"Failed to stop runner {num}: {stderr}")
+            status = service_stderr_to_status(stderr)
+            raise HTTPException(
+                status_code=status,
+                detail=service_error(f"Failed to stop runner {num}: {stderr}").model_dump(exclude_none=True),
+            )
 
         log.info("stop_runner: stopped runner_num=%d (runner_id=%d, principal=%s)", num, runner_id, principal.user_id)
         return {"status": "stopped", "runner": num, "output": stdout.strip()}
@@ -244,7 +263,10 @@ async def stop_runner(
         raise
     except Exception as exc:
         log.error("stop_runner: unexpected error for runner_id=%d: %s", runner_id, exc)
-        raise HTTPException(status_code=500, detail=f"Internal error: {exc}") from exc
+        raise HTTPException(
+            status_code=500,
+            detail=service_error(f"Internal error: {exc}").model_dump(exclude_none=True),
+        ) from exc
 
 
 @router.post("/api/runners/{runner_id}/restart")
@@ -275,13 +297,19 @@ async def restart_runner(
 
         if num is None:
             log.warning("restart_runner: runner_id=%d not found locally (principal=%s)", runner_id, principal.user_id)
-            raise HTTPException(status_code=404, detail=f"Runner ID {runner_id} not found locally")
+            raise HTTPException(
+                status_code=404,
+                detail=not_found(f"Runner ID {runner_id} not found locally").model_dump(exclude_none=True),
+            )
 
         # Stop
         stop_code, stop_stdout, stop_stderr = await run_runner_svc(num, "stop")
         if stop_code != 0:
             log.error("restart_runner: stop failed for runner_num=%d: %s", num, stop_stderr)
-            raise HTTPException(status_code=500, detail=f"Failed to stop runner {num}: {stop_stderr}")
+            raise HTTPException(
+                status_code=service_stderr_to_status(stop_stderr),
+                detail=service_error(f"Failed to stop runner {num}: {stop_stderr}").model_dump(exclude_none=True),
+            )
 
         # Brief delay
         await asyncio.sleep(1)
@@ -290,7 +318,10 @@ async def restart_runner(
         start_code, start_stdout, start_stderr = await run_runner_svc(num, "start")
         if start_code != 0:
             log.error("restart_runner: start failed for runner_num=%d: %s", num, start_stderr)
-            raise HTTPException(status_code=500, detail=f"Failed to start runner {num}: {start_stderr}")
+            raise HTTPException(
+                status_code=service_stderr_to_status(start_stderr),
+                detail=service_error(f"Failed to start runner {num}: {start_stderr}").model_dump(exclude_none=True),
+            )
 
         log.info(
             "restart_runner: restarted runner_num=%d (runner_id=%d, principal=%s)",
@@ -308,7 +339,10 @@ async def restart_runner(
         raise
     except Exception as exc:
         log.error("restart_runner: unexpected error for runner_id=%d: %s", runner_id, exc)
-        raise HTTPException(status_code=500, detail=f"Internal error: {exc}") from exc
+        raise HTTPException(
+            status_code=500,
+            detail=service_error(f"Internal error: {exc}").model_dump(exclude_none=True),
+        ) from exc
 
 
 @router.get("/api/runners/{runner_id}/status")
@@ -333,7 +367,10 @@ async def get_runner_status(request: Request, runner_id: int) -> dict[str, Any]:
 
         if runner is None:
             log.warning("get_runner_status: runner_id=%d not found", runner_id)
-            raise HTTPException(status_code=404, detail=f"Runner ID {runner_id} not found")
+            raise HTTPException(
+                status_code=404,
+                detail=not_found(f"Runner ID {runner_id} not found").model_dump(exclude_none=True),
+            )
 
         num = runner_num_from_id(runner_id, runners)
         health = runner_health_check(runner)
@@ -357,4 +394,7 @@ async def get_runner_status(request: Request, runner_id: int) -> dict[str, Any]:
         raise
     except Exception as exc:
         log.error("get_runner_status: error for runner_id=%d: %s", runner_id, exc)
-        raise HTTPException(status_code=502, detail=f"GitHub API error: {exc}") from exc
+        raise HTTPException(
+            status_code=502,
+            detail=bad_gateway(f"GitHub API error: {exc}").model_dump(exclude_none=True),
+        ) from exc

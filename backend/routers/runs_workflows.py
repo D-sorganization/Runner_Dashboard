@@ -25,6 +25,7 @@ from pathlib import Path
 import scheduled_workflows as scheduled_workflow_inventory
 from cache_utils import cache_get, cache_set
 from dashboard_config import ORG, REPO_ROOT, RUN_JOB_ENRICHMENT_LIMIT
+from error_models import bad_gateway, validation_error
 from fastapi import APIRouter, Depends, HTTPException, Request
 from gh_utils import gh_api, gh_api_raw
 from identity import Principal, require_scope
@@ -359,7 +360,10 @@ async def dispatch_workflow(
     approved_by = principal.id
 
     if not repo or not workflow_id:
-        raise HTTPException(status_code=422, detail="repository and workflow_id required")
+        raise HTTPException(
+            status_code=422,
+            detail=validation_error("repository and workflow_id are required").model_dump(exclude_none=True),
+        )
     repo = validate_repo_slug(repo)
 
     endpoint = f"/repos/{ORG}/{repo}/actions/workflows/{workflow_id}/dispatches"
@@ -383,7 +387,10 @@ async def dispatch_workflow(
             workflow_id,
             stderr.strip()[:300],
         )
-        raise HTTPException(status_code=502, detail="Workflow dispatch failed")
+        raise HTTPException(
+            status_code=502,
+            detail=bad_gateway("Workflow dispatch failed").model_dump(exclude_none=True),
+        )
 
     log.info(
         "workflow_dispatch audit: repo=%s workflow_id=%s ref=%s approved_by=%s",
