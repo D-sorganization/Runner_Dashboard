@@ -15,7 +15,7 @@ from identity import Principal  # noqa: E402
 
 
 @pytest_asyncio.fixture
-async def client():
+async def client(mock_auth):  # noqa: ARG001
     from httpx import ASGITransport, AsyncClient  # noqa: PLC0415
     from server import app  # noqa: PLC0415
 

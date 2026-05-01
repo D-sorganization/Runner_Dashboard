@@ -28,7 +28,7 @@ def app():
 
 
 @pytest_asyncio.fixture
-async def client(app):
+async def client(app, mock_auth):  # noqa: ARG001
     """Async HTTP client wired directly to the ASGI app."""
     from httpx import ASGITransport, AsyncClient  # noqa: PLC0415
 

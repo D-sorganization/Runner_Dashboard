@@ -31,7 +31,7 @@ from routers import runners as runners_router  # noqa: E402
 
 
 @pytest.fixture
-def client() -> TestClient:
+def client(mock_auth) -> TestClient:  # noqa: ARG001
     """Create a test client for the FastAPI app."""
     return TestClient(server.app)
 

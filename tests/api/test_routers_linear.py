@@ -20,7 +20,7 @@ from routers import linear as linear_router  # noqa: E402
 
 
 @pytest.fixture
-def client() -> TestClient:
+def client(mock_auth) -> TestClient:  # noqa: ARG001
     return TestClient(server.app)
 
 

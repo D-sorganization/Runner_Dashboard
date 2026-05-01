@@ -115,7 +115,7 @@ def test_validate_keys_at_exact_limit_ok() -> None:
 
 
 @pytest.fixture
-def client() -> TestClient:
+def client(mock_auth) -> TestClient:  # noqa: ARG001
     return TestClient(app, headers={"X-Requested-With": "XMLHttpRequest"})
 
 

@@ -43,11 +43,16 @@ def test_repository_normalizers_reuse_slug_validation(normalizer) -> None:
 
 
 @pytest.mark.parametrize("repo", ["abc&def", "../etc", "", "a" * 200])
-def test_workflow_dispatch_rejects_invalid_repository_before_gh_api(repo: str, monkeypatch) -> None:
+def test_workflow_dispatch_rejects_invalid_repository_before_gh_api(
+    repo: str, monkeypatch, mock_auth  # noqa: ARG001
+) -> None:
+    """Input validation (422) fires before dispatching — mock_auth prevents 401 masking it."""
+    from routers import runs_workflows  # noqa: PLC0415
+
     async def fail_run_cmd(*_args, **_kwargs):  # pragma: no cover - must not run
         raise AssertionError("invalid repository reached gh api")
 
-    monkeypatch.setattr("routers.runs_workflows.run_cmd", fail_run_cmd)
+    monkeypatch.setattr(runs_workflows, "run_cmd", fail_run_cmd)
     client = TestClient(server.app, headers={"X-Requested-With": "XMLHttpRequest"})
 
     response = client.post(
@@ -58,11 +63,16 @@ def test_workflow_dispatch_rejects_invalid_repository_before_gh_api(repo: str, m
     assert response.status_code == 422
 
 
-def test_cancel_run_rejects_invalid_path_repository_before_gh_api(monkeypatch) -> None:
+def test_cancel_run_rejects_invalid_path_repository_before_gh_api(
+    monkeypatch, mock_auth  # noqa: ARG001
+) -> None:
+    """Input validation (422) fires before dispatching — mock_auth prevents 401 masking it."""
+    from routers import queue  # noqa: PLC0415
+
     async def fail_run_cmd(*_args, **_kwargs):  # pragma: no cover - must not run
         raise AssertionError("invalid repository reached gh api")
 
-    monkeypatch.setattr("routers.queue.run_cmd", fail_run_cmd)
+    monkeypatch.setattr(queue, "run_cmd", fail_run_cmd)
     client = TestClient(server.app, headers={"X-Requested-With": "XMLHttpRequest"})
 
     response = client.post("/api/runs/abc%26def/cancel/123")
