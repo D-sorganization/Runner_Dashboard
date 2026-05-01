@@ -125,6 +125,8 @@ from routers import runners as _runners_router  # noqa: E402
 from routers import runs_workflows as _runs_workflows_router  # noqa: E402
 from routers import system as _system_router  # noqa: E402
 from routers import web_vitals as _web_vitals_router  # noqa: E402
+from routers import repos as _repos_router  # noqa: E402
+from routers import diagnostics as _diagnostics_router  # noqa: E402
 from routers.queue import _queue_impl  # noqa: E402
 from security import (  # noqa: E402
     safe_subprocess_env,  # noqa: E402
@@ -448,6 +450,8 @@ app.include_router(_assessments_router.router)
 app.include_router(_orchestration_router.router)
 app.include_router(_runner_audit_router.router)  # batch 3 extraction (issue #298)
 app.include_router(_linear_sync_router.router)  # Linear read sync (issue #236)
+app.include_router(_repos_router.router)  # issue #360
+app.include_router(_diagnostics_router.router)  # issue #360
 
 app.add_middleware(
     SessionMiddleware,
@@ -2017,455 +2021,28 @@ async def _remote_fleet_control(name: str, url: str, action: str) -> dict:
 # _remote_fleet_control are kept here and injected via set_dependencies().
 
 
-@app.get("/api/repos")
-async def get_repos(request: Request):
-    """Get all org repos with open PRs, open issues, and last CI status."""
-    if _should_proxy_fleet_to_hub(request):
-        return await proxy_to_hub(request)
-
-    cached = _cache_get("repos", float(CacheTtl.REPOS_S))
-    if cached is not None:
-        return cached
-
-    # Fetch all org repos (paginate up to 200)
-    repos = []
-    for page in range(1, 3):
-        code, stdout, stderr = await run_cmd(
-            [
-                "gh",
-                "api",
-                f"/orgs/{ORG}/repos?per_page=100&page={page}&sort=updated&direction=desc",
-            ],
-            timeout=30,
-        )
-        if code != 0:
-            break
-        batch = json.loads(stdout)
-        if not batch:
-            break
-        repos.extend(batch)
-
-    results = []
-
-    # Fetch PR counts, issue counts, and last workflow run concurrently
-    async def enrich_repo(repo):
-        name = repo["name"]
-        full_name = repo["full_name"]
-        info = {
-            "name": name,
-            "full_name": full_name,
-            "description": repo.get("description", ""),
-            "url": repo.get("html_url", ""),
-            "private": repo.get("private", False),
-            "language": repo.get("language"),
-            "default_branch": repo.get("default_branch", "main"),
-            "updated_at": repo.get("updated_at", ""),
-            "open_issues_count": repo.get("open_issues_count", 0),  # includes PRs
-            "open_prs": 0,
-            "open_issues": 0,
-            "last_ci_status": None,
-            "last_ci_conclusion": None,
-            "last_ci_run_url": None,
-            "last_ci_updated": None,
-        }
-
-        # Get open PRs count — use --paginate so repos with >100 open PRs are
-        # counted accurately.  GitHub's open_issues_count includes PRs, so we
-        # subtract the real PR count to get the genuine issue count.
-        pr_code, pr_out, _ = await run_cmd(
-            [
-                "gh",
-                "api",
-                "--paginate",
-                f"/repos/{full_name}/pulls?state=open&per_page=100",
-            ],
-            timeout=30,
-        )
-        if pr_code == 0:
-            try:
-                info["open_prs"] = len(json.loads(pr_out))
-            except (json.JSONDecodeError, ValueError):
-                pass
-
-        # Calculate real issues (subtract PRs from total open_issues_count)
-        info["open_issues"] = max(0, info["open_issues_count"] - info["open_prs"])
-
-        # Get last workflow run
-        run_code, run_out, _ = await run_cmd(
-            [
-                "gh",
-                "api",
-                f"/repos/{full_name}/actions/runs?per_page=1",
-            ],
-            timeout=15,
-        )
-        if run_code == 0:
-            try:
-                runs_data = json.loads(run_out)
-                runs_list = runs_data.get("workflow_runs", [])
-                if runs_list:
-                    last_run = runs_list[0]
-                    info["last_ci_status"] = last_run.get("status")
-                    info["last_ci_conclusion"] = last_run.get("conclusion")
-                    info["last_ci_run_url"] = last_run.get("html_url")
-                    info["last_ci_updated"] = last_run.get("updated_at")
-            except (json.JSONDecodeError, ValueError):
-                pass
-
-        return info
-
-    # Run enrichment concurrently in batches to avoid overwhelming the API
-    batch_size = Concurrency.REPO_ENRICHMENT
-    for i in range(0, len(repos), batch_size):
-        batch = repos[i : i + batch_size]
-        batch_results = await asyncio.gather(*[enrich_repo(r) for r in batch])
-        results.extend(batch_results)
-
-    # Sort: repos with CI activity first, then by update time
-    results.sort(key=lambda r: (r["last_ci_updated"] or "",), reverse=True)
-
-    result = {"repos": results, "total_count": len(results), "org": ORG}
-    _cache_set("repos", result)
-    return result
+# Repository routes extracted to routers/repos.py and registered via app.include_router (issue #360).
 
 
 # ─── PR Inventory API ────────────────────────────────────────────────────────
 
 
-@app.get("/api/prs")
-async def get_prs(
-    repo: list[str] | None = None,
-    include_drafts: bool = True,
-    author: str | None = None,
-    label: list[str] | None = None,
-    limit: int = 500,
-) -> dict:
-    """Aggregate open pull-requests across organisation repositories.
+# PR routes extracted to routers/repos.py (issue #360).
 
-    Query parameters
-    ----------------
-    repo:
-        Repeatable ``owner/repo`` slug filter; defaults to all repos returned
-        by ``_get_recent_org_repos()``.
-    include_drafts:
-        Include draft PRs (default ``true``).
-    author:
-        Filter to a specific author login.
-    label:
-        Repeatable; match any of the listed labels.
-    limit:
-        Maximum items returned (default 500, max 2000).
-    """
-    if repo:
-        repos = list(repo)
-    else:
-        org_repos = await _get_recent_org_repos(limit=50)
-        repos = [r["full_name"] for r in org_repos]
-
-    return await pr_inventory.fetch_all_prs(
-        repos,
-        include_drafts=include_drafts,
-        author=author,
-        labels=list(label) if label else None,
-        limit=limit,
-    )
-
-
-@app.get("/api/prs/{owner}/{repo_name}/{number}")
-async def get_pr_detail(owner: str, repo_name: str, number: int) -> dict:
-    """Return detailed information for a single pull-request.
-
-    Extra fields compared to the list endpoint: ``body_excerpt`` (first 2 KB),
-    ``checks`` (list of ``{name, conclusion, url}``), ``files_changed``,
-    ``additions``, ``deletions``.
-    """
-    try:
-        return await pr_inventory.fetch_pr_detail(owner, repo_name, number)
-    except ValueError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-
+# PR detail route extracted to routers/repos.py (issue #360).
 
 # ─── Issue Inventory API ──────────────────────────────────────────────────────
 
 
-@app.get("/api/issues")
-async def get_issues(
-    repo: list[str] | None = None,
-    state: str = "open",
-    label: list[str] | None = None,
-    source: str = "github",
-    assignee: str | None = None,
-    pickable_only: bool = False,
-    complexity: list[str] | None = None,
-    effort: list[str] | None = None,
-    judgement: list[str] | None = None,
-    limit: int = 500,
-) -> dict:
-    """Aggregate open issues across organisation repositories.
+# Issue inventory routes extracted to routers/repos.py (issue #360).
 
-    Query parameters
-    ----------------
-    repo:
-        Repeatable ``owner/repo`` slug filter; defaults to all repos returned
-        by ``_get_recent_org_repos()``.
-    state:
-        ``open`` (default) or ``all``.
-    label:
-        Repeatable; match any of the listed labels.
-    source:
-        ``github`` (default), ``linear``, or ``unified``.
-    assignee:
-        Filter by assignee login.
-    pickable_only:
-        When ``true``, only issues available for agent pickup are returned.
-    complexity / effort / judgement:
-        Repeatable taxonomy dimension filters (match any provided value).
-    limit:
-        Maximum items returned (default 500, max 2000).
-    """
-    if repo:
-        repos = list(repo)
-    else:
-        org_repos = await _get_recent_org_repos(limit=50)
-        repos = [r["full_name"] for r in org_repos]
+# CI test results route extracted to routers/repos.py (issue #360).
 
-    labels = list(label) if label else None
-    complexity_filters = list(complexity) if complexity else None
-    effort_filters = list(effort) if effort else None
-    judgement_filters = list(judgement) if judgement else None
+# CI test rerun route extracted to routers/repos.py (issue #360).
 
-    if source == "github":
-        issues = await issue_inventory.fetch_all_issues(
-            repos,
-            state=state,
-            labels=labels,
-            assignee=assignee,
-            pickable_only=pickable_only,
-            complexity=complexity_filters,
-            effort=effort_filters,
-            judgement=judgement_filters,
-            limit=limit,
-        )
-    elif source in {"linear", "unified"}:
-        linear_config = _linear_router.load_linear_config()
-        if not _linear_router.has_configured_linear_key(linear_config):
-            raise HTTPException(status_code=503, detail=_linear_router.LINEAR_NOT_CONFIGURED_DETAIL)
-        linear_client = _linear_router.build_linear_client(linear_config)
-        try:
-            if source == "linear":
-                issues = await linear_inventory.fetch_all_issues(
-                    linear_config,
-                    linear_client,
-                    state=state,
-                    pickable_only=pickable_only,
-                    complexity=complexity_filters,
-                    effort=effort_filters,
-                    judgement=judgement_filters,
-                    limit=limit,
-                )
-                issues["stats"] = {"linear_total": len(issues.get("items", []))}
-            else:
-                issues = await unified_issue_inventory.fetch_unified_issues(
-                    github_repos=repos,
-                    linear_config=linear_config,
-                    linear_client=linear_client,
-                    state=state,
-                    labels=labels,
-                    assignee=assignee,
-                    pickable_only=pickable_only,
-                    complexity=complexity_filters,
-                    effort=effort_filters,
-                    judgement=judgement_filters,
-                    limit=limit,
-                )
-        finally:
-            await linear_client.aclose()
-    else:
-        raise HTTPException(status_code=422, detail="source must be one of github, linear, unified")
+# Stats route extracted to routers/repos.py (issue #360).
 
-    # Wave 3: Sync GitHub leases with internal state
-    sync_items = issues if isinstance(issues, list) else issues.get("items", [])
-    if isinstance(sync_items, list):
-        await lease_synchronizer.sync_github_leases(sync_items)
-
-    return issues
-
-
-# Reports routes extracted to routers/reports.py and registered via app.include_router (issue #358).
-
-
-# Heavy test routes extracted to routers/heavy_tests.py and registered via app.include_router (issue #358).
-
-
-# ---------------------------------------------------------------------------
-# CI Tests endpoints — standard ci-standard workflow runs + manual rerun
-# ---------------------------------------------------------------------------
-
-_CI_FLEET_REPOS = [
-    "Repository_Management",
-    "AffineDrift",
-    "Controls",
-    "Drake_Models",
-    "Games",
-    "Gasification_Model",
-    "MEB_Conversion",
-    "MLProjects",
-    "Movement_Optimizer",
-    "MuJoCo_Models",
-    "OpenSim_Models",
-    "Pinocchio_Models",
-    "Playground",
-    "QuatEngine",
-    "Tools",
-    "UpstreamDrift",
-    "Worksheet-Workshop",
-]
-
-
-@app.get("/api/tests/ci-results")
-async def get_tests_ci_results() -> dict:
-    """Return recent ci-standard workflow runs for key fleet repos."""
-    cached = _cache_get("ci_test_results", float(CacheTtl.CI_TEST_RESULTS_S))
-    if cached is not None:
-        return cached
-
-    results = []
-    for repo_name in _CI_FLEET_REPOS:
-        try:
-            data = await gh_api_admin(
-                f"/repos/{ORG}/{repo_name}/actions/workflows/ci-standard.yml/runs?per_page=3&branch=main"
-            )
-            runs = data.get("workflow_runs", []) if data else []
-            if runs:
-                latest = runs[0]
-                results.append(
-                    {
-                        "repo": repo_name,
-                        "run_id": latest.get("id"),
-                        "run_number": latest.get("run_number"),
-                        "status": latest.get("status"),
-                        "conclusion": latest.get("conclusion"),
-                        "head_branch": latest.get("head_branch"),
-                        "html_url": latest.get("html_url"),
-                        "created_at": latest.get("created_at"),
-                        "updated_at": latest.get("updated_at"),
-                    }
-                )
-            else:
-                results.append({"repo": repo_name, "run_id": None, "conclusion": None})
-        except Exception:  # noqa: BLE001
-            results.append({"repo": repo_name, "run_id": None, "conclusion": "error"})
-
-    out: dict = {"results": results}
-    _cache_set("ci_test_results", out)
-    return out
-
-
-@app.post("/api/tests/rerun")
-async def rerun_ci_test(request: Request, *, principal: Principal = Depends(require_scope("tests.rerun"))) -> dict:  # noqa: B008
-    """Re-run a failed GitHub Actions workflow run (failed jobs only)."""
-    body = await request.json()
-    repo_name = body.get("repo", "")
-    run_id = body.get("run_id")
-
-    if not repo_name or not run_id:
-        raise HTTPException(status_code=400, detail="repo and run_id are required")
-
-    try:
-        code, stdout, stderr = await run_cmd(
-            [
-                "gh",
-                "api",
-                f"/repos/{ORG}/{repo_name}/actions/runs/{run_id}/rerun-failed-jobs",
-                "--method",
-                "POST",
-            ]
-        )
-        if code != 0:
-            raise HTTPException(status_code=502, detail=f"GitHub API error: {stderr}")
-        _cache_delete("ci_test_results")
-        return {"status": "triggered", "repo": repo_name, "run_id": run_id}
-    except HTTPException:
-        raise
-    except Exception:  # noqa: BLE001
-        log.exception("Failed to rerun run %s in %s", run_id, repo_name)
-        raise HTTPException(status_code=500, detail="Internal server error") from None
-
-
-@app.get("/api/stats")
-async def get_stats(request: Request):
-    """Aggregate organization, runner, queue, and workflow statistics."""
-    if _should_proxy_fleet_to_hub(request):
-        return await proxy_to_hub(request)
-
-    cached = _cache_get("stats", float(CacheTtl.STATS_S))
-    if cached is not None:
-        return cached
-
-    runners_data = _cache_get("runners", float(CacheTtl.RUNNERS_S))
-    if runners_data is None:
-        runners_data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
-        _cache_set("runners", runners_data)
-    runners = runners_data.get("runners", [])
-
-    repos = await _get_recent_org_repos(limit=30)
-    all_runs_nested = await asyncio.gather(*[_fetch_repo_runs(repo["name"], per_page=10) for repo in repos[:20]])
-    runs = [run for repo_runs in all_runs_nested for run in repo_runs]
-    runs.sort(key=lambda r: r.get("created_at", ""), reverse=True)
-    runs = runs[:100]
-
-    online = sum(1 for r in runners if r["status"] == "online")
-    busy = sum(1 for r in runners if r.get("busy"))
-    completed = [r for r in runs if r.get("conclusion")]
-    successes = sum(1 for r in completed if r["conclusion"] == "success")
-    failures = sum(1 for r in completed if r["conclusion"] == "failure")
-
-    org_open_issues, org_open_prs, queue_data, fleet_data = await asyncio.gather(
-        _github_search_total(f"org:{ORG}+is:open+is:issue"),
-        _github_search_total(f"org:{ORG}+is:open+is:pr"),
-        _queue_impl(),
-        _get_fleet_nodes_impl(),
-    )
-
-    result = {
-        "runners_total": len(runners),
-        "runners_online": online,
-        "runners_busy": busy,
-        "runners_idle": max(0, online - busy),
-        "runners_offline": max(0, len(runners) - online),
-        "runs_total": len(runs),
-        "runs_success": successes,
-        "runs_failure": failures,
-        "runs_completed": len(completed),
-        "success_rate": round(successes / len(completed) * 100) if completed else 0,
-        "in_progress": queue_data.get("in_progress_count", 0),
-        "queued": queue_data.get("queued_count", 0),
-        "queue_total": queue_data.get("total", 0),
-        "org_open_issues": org_open_issues,
-        "org_open_prs": org_open_prs,
-        "machines_total": fleet_data.get("count", 0),
-        "machines_online": fleet_data.get("online_count", 0),
-        "machines_offline": max(0, fleet_data.get("count", 0) - fleet_data.get("online_count", 0)),
-        "repos_sampled": len(repos[:20]),
-    }
-    _cache_set("stats", result)
-    return result
-
-
-@app.get("/api/usage")
-async def get_usage_monitoring(request: Request) -> dict:
-    """Return normalized subscription and local tool usage summaries."""
-    if _should_proxy_fleet_to_hub(request):
-        return await proxy_to_hub(request)
-
-    cached = _cache_get("usage_monitoring", float(CacheTtl.USAGE_MONITORING_S))
-    if cached is not None:
-        return cached
-
-    summary = usage_monitoring.normalize_usage_summary(usage_monitoring.load_usage_sources_config())
-    _cache_set("usage_monitoring", summary)
-    return summary
-
+# Usage monitoring route extracted to routers/repos.py (issue #360).
 
 # ─── Job Queue API ───────────────────────────────────────────────────────────
 
@@ -2732,98 +2309,9 @@ async def help_chat(request: Request, *, principal: Principal = Depends(require_
 # GET /api/deployment/git-drift extracted to routers/deployment.py (issue #357).
 
 
-@app.get("/api/diagnostics/summary")
-async def get_diagnostics_summary() -> dict:
-    """Consolidated diagnostics for the Diagnostics tab."""
-    summary: dict[str, object] = {}
+# Diagnostics summary route extracted to routers/diagnostics.py (issue #360).
 
-    # WSL status
-    try:
-        wsl_result = await asyncio.to_thread(
-            subprocess.run,
-            ["wsl", "-l", "-v"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-            encoding="utf-16-le",
-            errors="replace",
-        )
-        summary["wsl_status"] = wsl_result.stdout.strip()
-        summary["wsl_available"] = wsl_result.returncode == 0
-    except Exception:  # noqa: BLE001
-        try:
-            wsl_result_raw = await asyncio.to_thread(
-                subprocess.run,
-                ["wsl", "-l", "-v"],
-                capture_output=True,
-                timeout=10,
-            )
-            summary["wsl_status"] = wsl_result_raw.stdout.decode("utf-16-le", errors="replace").strip()
-            summary["wsl_available"] = wsl_result_raw.returncode == 0
-        except Exception:  # noqa: BLE001
-            summary["wsl_status"] = "WSL not available"
-            summary["wsl_available"] = False
-
-    # Dashboard process info
-    proc = psutil.Process(os.getpid())
-    summary["dashboard_pid"] = proc.pid
-    summary["dashboard_memory_mb"] = round(proc.memory_info().rss / 1024 / 1024, 1)
-    summary["dashboard_port"] = PORT
-
-    # Git commit
-    try:
-        out = await asyncio.to_thread(
-            subprocess.run,
-            ["git", "rev-parse", "--short", "HEAD"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            cwd=Path(__file__).parent.parent,
-        )
-        summary["git_commit"] = out.stdout.strip() or "unknown"
-    except Exception:  # noqa: BLE001
-        summary["git_commit"] = "unknown"
-
-    # Drift info
-    try:
-        drift = await _deployment_router.get_git_drift()
-        summary["is_drifted"] = drift.get("is_drifted", False)
-        summary["source_commit"] = drift.get("source_commit", "unknown")
-        summary["remote_commit"] = drift.get("remote_commit", "unknown")
-        summary["drift_details"] = drift.get("drift_details", "")
-    except Exception:  # noqa: BLE001
-        summary["is_drifted"] = False
-
-    return summary
-
-
-@app.post("/api/diagnostics/restart-service")
-async def restart_dashboard_service(
-    request: Request,
-    *,
-    principal: Principal = Depends(require_scope("system.control")),  # noqa: B008
-) -> dict:
-    """Restart the dashboard systemd service (WSL/Linux only, localhost only)."""
-    client = request.client
-    if not client or client.host not in ("127.0.0.1", "::1"):
-        raise HTTPException(status_code=403, detail="Local access only")
-
-    try:
-        result = await asyncio.to_thread(
-            subprocess.run,
-            [SYSTEMCTL_BIN, "--user", "restart", "runner-dashboard"],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        return {
-            "success": result.returncode == 0,
-            "output": (result.stdout + result.stderr).strip(),
-        }
-    except Exception as exc:  # noqa: BLE001
-        log.exception("Failed to restart runner-dashboard service")
-        raise HTTPException(status_code=500, detail="Restart failed") from exc
-
+# Restart-service route extracted to routers/diagnostics.py (issue #360).
 
 @app.post("/api/launchers/generate")
 async def generate_launchers(
@@ -2872,6 +2360,17 @@ async def generate_launchers(
 # The audit background loop is started in _startup() via
 # _runner_audit_router.start_audit_loop() below.
 
+HOSTED_RUNNER_PATTERNS = re.compile(
+    r"^(ubuntu-|windows-|macos-|GitHub Actions \d|Hosted Agent)",
+    re.IGNORECASE,
+)
+_runner_audit_cache: dict[str, Any] = {
+    "violations": [],
+    "last_checked": None,
+    "error": None,
+}
+_runner_audit_lock = asyncio.Lock()
+
 
 # Inject dependencies into system router
 _system_router.set_boot_time(BOOT_TIME)
@@ -2915,10 +2414,40 @@ _assessments_router.set_run_cmd(run_cmd)
 
 _leader_lock_fd = None
 
+# Runner routing audit refresh route extracted to routers/diagnostics.py (issue #360).
 
 @app.on_event("startup")
 async def _startup() -> None:
     """Initialize HTTP clients and notify systemd on startup (issue #364)."""
+    # Wire injected dependencies for extracted routers (issue #360)
+    _repos_router.set_dependencies(
+        cache_get=_cache_get,
+        cache_set=_cache_set,
+        cache_delete=_cache_delete,
+        run_cmd=run_cmd,
+        gh_api_admin=gh_api_admin,
+        get_recent_org_repos=_get_recent_org_repos,
+        get_fleet_nodes_impl=_get_fleet_nodes_impl,
+        queue_impl=_queue_impl,
+        pr_inventory=pr_inventory,
+        issue_inventory=issue_inventory,
+        linear_router=_linear_router,
+        linear_inventory=linear_inventory,
+        unified_issue_inventory=unified_issue_inventory,
+        lease_synchronizer=lease_synchronizer,
+        usage_monitoring=usage_monitoring,
+        org=ORG,
+        repos_ttl=float(CacheTtl.REPOS_S),
+        ci_test_results_ttl=float(CacheTtl.CI_TEST_RESULTS_S),
+        stats_ttl=float(CacheTtl.STATS_S),
+        usage_monitoring_ttl=float(CacheTtl.USAGE_MONITORING_S),
+    )
+    _diagnostics_router.set_dependencies(
+        get_git_drift=_deployment_router.get_git_drift,
+        port=PORT,
+        systemctl_bin=SYSTEMCTL_BIN,
+        run_runner_audit_fn=_run_runner_audit,
+    )
     # Initialize pooled HTTP clients
     initialize_http_clients()
     log.info("Initialized pooled HTTP clients with connection reuse")
