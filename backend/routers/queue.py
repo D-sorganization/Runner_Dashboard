@@ -19,6 +19,7 @@ from dashboard_config import ORG
 from error_models import bad_gateway, validation_error
 from fastapi import APIRouter, Depends, HTTPException, Request
 from identity import Principal, require_scope
+from models.github_payloads import GhWorkflowRun
 from proxy_utils import proxy_to_hub, should_proxy_fleet_to_hub
 from security import validate_repo_slug
 from system_utils import run_cmd
@@ -227,20 +228,18 @@ async def cancel_workflow_runs(
             detail=validation_error("workflow_name is required").model_dump(exclude_none=True),
         )
 
-    # Fetch current queue
+    # Fetch current queue — parse into typed view-models to avoid .get() chains
     queue_data = await _queue_impl()
+    typed_runs = [GhWorkflowRun.model_validate(r) for r in queue_data.get("queued", [])]
     runs_to_cancel = [
-        r
-        for r in queue_data["queued"]
-        if r.get("name") == workflow_name
-        and (target_repo is None or (r.get("repository") or {}).get("name") == target_repo)  # noqa: E501
+        r for r in typed_runs if r.name == workflow_name and (target_repo is None or r.repository_name == target_repo)
     ]
 
     cancelled: list[dict] = []
     errors: list[str] = []
     for run in runs_to_cancel:
-        repo = (run.get("repository") or {}).get("name", "")
-        run_id = run["id"]
+        repo = run.repository_name
+        run_id = run.id
         if not repo:
             continue
         code, _, stderr = await run_cmd(

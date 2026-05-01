@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from dashboard_config import RUNNER_BASE_DIR
+from models.github_payloads import GhRunner
 from system_utils import run_cmd
 
 # Python 3.11+ has datetime.UTC; fall back to timezone.utc for 3.10
@@ -90,28 +91,43 @@ def runner_sort_key(runner: dict) -> tuple[str, int, str]:
     return (status_rank, num, name)
 
 
-def is_matlab_runner(runner: dict) -> bool:
+def is_matlab_runner(runner: dict | GhRunner) -> bool:
     """Check if runner has MATLAB installed by examining labels.
 
+    Accepts both raw GitHub API dicts and typed ``GhRunner`` instances.
+
     Args:
-        runner: Runner dict from GitHub API.
+        runner: Runner dict or typed GhRunner from GitHub API.
 
     Returns:
         True if MATLAB label is present.
     """
-    labels = [lbl.get("name", "").lower() for lbl in runner.get("labels", []) if isinstance(lbl, dict)]
-    return "matlab" in labels or "windows-matlab" in labels
+    if isinstance(runner, GhRunner):
+        label_names = [lbl.lower() for lbl in runner.label_names]
+    else:
+        label_names = [lbl.get("name", "").lower() for lbl in runner.get("labels", []) if isinstance(lbl, dict)]
+    return "matlab" in label_names or "windows-matlab" in label_names
 
 
-def matlab_runner_summary(runner: dict) -> dict[str, Any]:
+def matlab_runner_summary(runner: dict | GhRunner) -> dict[str, Any]:
     """Extract summary for MATLAB runners.
 
+    Accepts both raw GitHub API dicts and typed ``GhRunner`` instances.
+
     Args:
-        runner: Runner dict from GitHub API.
+        runner: Runner dict or typed GhRunner from GitHub API.
 
     Returns:
         Simplified runner dict with key fields.
     """
+    if isinstance(runner, GhRunner):
+        return {
+            "id": runner.id,
+            "name": runner.name,
+            "status": runner.status,
+            "busy": runner.busy,
+            "labels": runner.label_names,
+        }
     return {
         "id": runner.get("id"),
         "name": runner.get("name"),
@@ -121,11 +137,13 @@ def matlab_runner_summary(runner: dict) -> dict[str, Any]:
     }
 
 
-def runner_health_check(runner: dict, system_metrics: dict | None = None) -> dict[str, Any]:
+def runner_health_check(runner: dict | GhRunner, system_metrics: dict | None = None) -> dict[str, Any]:
     """Compute health status for a runner.
 
+    Accepts both raw GitHub API dicts and typed ``GhRunner`` instances.
+
     Args:
-        runner: Runner dict from GitHub API.
+        runner: Runner dict or typed GhRunner from GitHub API.
         system_metrics: Optional system metrics snapshot.
 
     Returns:
@@ -134,17 +152,27 @@ def runner_health_check(runner: dict, system_metrics: dict | None = None) -> dic
     health_status = "healthy"
     issues = []
 
-    if runner.get("status") != "online":
-        health_status = "offline"
-        issues.append(f"runner offline ({runner.get('status')})")
+    if isinstance(runner, GhRunner):
+        runner_id = runner.id
+        runner_name = runner.name
+        status = runner.status
+        labels: list = runner.labels
+    else:
+        runner_id = runner.get("id")
+        runner_name = runner.get("name")
+        status = runner.get("status")
+        labels = runner.get("labels", [])
 
-    labels = runner.get("labels", [])
+    if status != "online":
+        health_status = "offline"
+        issues.append(f"runner offline ({status})")
+
     if not labels:
         issues.append("no labels assigned")
 
     return {
-        "runner_id": runner.get("id"),
-        "runner_name": runner.get("name"),
+        "runner_id": runner_id,
+        "runner_name": runner_name,
         "status": health_status,
         "issues": issues,
         "last_check": _dt_mod.datetime.now(UTC).isoformat(),
