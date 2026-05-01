@@ -50,6 +50,13 @@ repos:
         types: [python]
         exclude: ^(tests/|\.github/|frontend/|deploy/)
 
+      - id: no-duplicate-subprocess-env
+        name: "no duplicate subprocess env scrubbers"
+        entry: python scripts/find-dupe-subprocess-env.py
+        language: system
+        pass_filenames: false
+        types: [python]
+
   # ===========================================================================
   # SECRET SCANNING (Issue #396)
   # ===========================================================================

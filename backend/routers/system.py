@@ -22,6 +22,7 @@ from dashboard_config import (
     RUNNER_BASE_DIR,
 )
 from fastapi import APIRouter
+from security import safe_subprocess_env
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -140,12 +141,6 @@ def _workload_capacity_from_specs(specs: dict) -> dict:
 def get_gpu_info() -> dict:
     """Query nvidia-smi for GPU metrics. Returns empty dict if no NVIDIA GPU."""
     try:
-
-        def safe_subprocess_env() -> dict[str, str]:
-            """Return a safe environment for subprocess calls."""
-            safe_vars = ["PATH", "HOME", "USER", "SHELL", "LANG"]
-            return {k: os.environ.get(k, "") for k in safe_vars}
-
         result = subprocess.run(
             [
                 "nvidia-smi",
