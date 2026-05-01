@@ -1,0 +1,87 @@
+# docker-compose.yml — runner-dashboard + Vector log-shipping sidecar
+# Issue #418: Log aggregation sidecar with 7-day retention policy.
+#
+# Usage:
+#   LOKI_URL=http://my-loki:3100 FLEET_NODE_NAME=prod-node-1 \
+#     docker compose up -d
+#
+# The dashboard service reads GH_TOKEN from the environment.
+# The vector sidecar ships structured logs to the Loki endpoint.
+
+services:
+  dashboard:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: runner-dashboard:latest
+    container_name: runner-dashboard
+    restart: unless-stopped
+    ports:
+      - "8321:8321"
+    environment:
+      # Required: GitHub PAT with admin:org and repo scopes.
+      - GH_TOKEN=${GH_TOKEN}
+      # Optional overrides.
+      - ORG=${ORG:-D-sorganization}
+      - DASHBOARD_LOG_LEVEL=${DASHBOARD_LOG_LEVEL:-INFO}
+      - SESSION_SECRET=${SESSION_SECRET}
+    volumes:
+      - dashboard-data:/app/data
+      # Expose structured logs to the sidecar via a shared volume.
+      - log-output:/app/logs
+    logging:
+      driver: "json-file"
+      options:
+        # Rotate at 100 MB; keep 7 days worth (approx).
+        max-size: "100m"
+        max-file: "7"
+        labels: "com.runner-dashboard.service"
+    labels:
+      com.runner-dashboard.service: "dashboard"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8321/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - dashboard-net
+
+  vector:
+    image: timberio/vector:0.39.0-alpine
+    container_name: runner-dashboard-vector
+    restart: unless-stopped
+    depends_on:
+      dashboard:
+        condition: service_healthy
+    environment:
+      - LOKI_URL=${LOKI_URL:-http://localhost:3100}
+      - FLEET_NODE_NAME=${FLEET_NODE_NAME:-unknown}
+      # Reduce Vector's own log verbosity in production.
+      - VECTOR_LOG=${VECTOR_LOG:-warn}
+    volumes:
+      # Mount the sidecar config.
+      - ../deploy/observability/vector.toml:/etc/vector/vector.toml:ro
+      # Shared log volume from dashboard container.
+      - log-output:/var/log/dashboard:ro
+      # Vector internal state (position tracking, buffer).
+      - vector-data:/var/lib/vector
+      # Docker socket for container log collection.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: ["--config", "/etc/vector/vector.toml"]
+    networks:
+      - dashboard-net
+    labels:
+      com.runner-dashboard.service: "vector-sidecar"
+
+volumes:
+  dashboard-data:
+    driver: local
+  log-output:
+    driver: local
+  vector-data:
+    driver: local
+
+networks:
+  dashboard-net:
+    driver: bridge

@@ -2275,3 +2275,25 @@ A new `backend/gh_client.py` module replaces the hottest
 - `gh` CLI subprocess retained as fallback when token is absent.
 - `gh_utils.gh_api()` delegates to `gh_client.get()` transparently; all
   existing call-sites continue to work without changes.
+### 18.9 Log Shipping: Vector Sidecar + Retention Policy (issue #418)
+
+Log aggregation sidecar configuration for the runner-dashboard fleet.
+
+**Files added:**
+- `deploy/observability/vector.toml` — Vector config shipping journald +
+  Docker container logs to Loki; 7-day retention for app logs, 30-day for errors
+- `deploy/observability/journald-retention.conf` — journald drop-in limiting
+  on-host storage to 1 GB / 30 days
+- `docker/docker-compose.yml` — Dashboard + Vector sidecar as a Compose stack;
+  Docker json-file driver rotates at 100 MB × 7 files
+- `docs/runbooks/log-retention.md` — Ops runbook covering setup, verification,
+  troubleshooting, and Grafana alert definitions
+
+**Retention tiers:**
+
+| Tier | Storage | Retention |
+|------|---------|-----------|
+| info/warn application logs | Loki | 7 days |
+| error/critical logs | Loki | 30 days |
+| Journald on-host | systemd-journald | 1 GB max / 30 days |
+| Docker json-file | local | 7 × 100 MB |
