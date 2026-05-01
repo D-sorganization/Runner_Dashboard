@@ -24,18 +24,19 @@ import contextlib
 import datetime as _dt_mod
 import json
 import logging
-import subprocess
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import dispatch_contract
-import httpx
 import orchestration_audit as _audit
 from dashboard_config import FLEET_NODES, HOSTNAME, MACHINE_ROLE, ORG, PORT, REPO_ROOT
 from fastapi import APIRouter, Depends, HTTPException, Request
-from identity import Principal, require_principal, require_scope  # noqa: B008
+from identity import Principal, require_scope  # noqa: B008
 from machine_registry import load_machine_registry
+from routers import orchestration_audit_routes as _audit_routes
+from routers import orchestration_node_routes as _node_routes
+from routers import orchestration_schedule_routes as _schedule_routes
 from security import sanitize_log_value
 
 if TYPE_CHECKING:
@@ -46,6 +47,9 @@ datetime = _dt_mod.datetime
 
 log = logging.getLogger("dashboard.orchestration")
 router = APIRouter(tags=["orchestration"])
+router.include_router(_audit_routes.router)
+router.include_router(_schedule_routes.router)
+router.include_router(_node_routes.router)
 
 # ---------------------------------------------------------------------------
 # Injected dependencies (set by server.py after import)
@@ -56,18 +60,7 @@ _remote_fleet_control: Callable | None = None
 _get_fleet_nodes_impl: Callable | None = None
 _proxy_to_hub: Callable | None = None
 _should_proxy_fleet_to_hub: Callable | None = None
-_get_runner_capacity_snapshot: Callable | None = None
-_validate_runner_schedule: Callable | None = None
-_write_runner_schedule_config: Callable | None = None
-_runner_scheduler_apply_command: Callable | None = None
 _run_cmd: Callable | None = None
-_get_system_metrics_snapshot: Callable | None = None
-
-# These are injected scalars
-_runner_scheduler_bin: str = ""
-_runner_schedule_config: Path | None = None
-_runner_scheduler_state: Path | None = None
-_runner_base_dir: Path | None = None
 
 _DEPLOY_ACTIONS = {"sync_workflows", "restart_runner", "update_config"}
 
@@ -92,92 +85,35 @@ def set_dependencies(  # noqa: PLR0913
     """Wire server.py helpers into this router (called at startup)."""
     global _fleet_control_local, _remote_fleet_control, _get_fleet_nodes_impl  # noqa: PLW0603
     global _proxy_to_hub, _should_proxy_fleet_to_hub  # noqa: PLW0603
-    global _get_runner_capacity_snapshot, _validate_runner_schedule  # noqa: PLW0603
-    global _write_runner_schedule_config, _runner_scheduler_apply_command  # noqa: PLW0603
-    global _run_cmd, _get_system_metrics_snapshot  # noqa: PLW0603
-    global _runner_scheduler_bin, _runner_schedule_config  # noqa: PLW0603
-    global _runner_scheduler_state, _runner_base_dir  # noqa: PLW0603
+    global _run_cmd  # noqa: PLW0603
 
     _fleet_control_local = fleet_control_local
     _remote_fleet_control = remote_fleet_control
     _get_fleet_nodes_impl = get_fleet_nodes_impl
     _proxy_to_hub = proxy_to_hub
     _should_proxy_fleet_to_hub = should_proxy_fleet_to_hub
-    _get_runner_capacity_snapshot = get_runner_capacity_snapshot
-    _validate_runner_schedule = validate_runner_schedule
-    _write_runner_schedule_config = write_runner_schedule_config
-    _runner_scheduler_apply_command = runner_scheduler_apply_command
     _run_cmd = run_cmd
-    _get_system_metrics_snapshot = get_system_metrics_snapshot
-    _runner_scheduler_bin = runner_scheduler_bin
-    _runner_schedule_config = runner_schedule_config
-    _runner_scheduler_state = runner_scheduler_state
-    _runner_base_dir = runner_base_dir
+    _schedule_routes.set_dependencies(
+        get_runner_capacity_snapshot=get_runner_capacity_snapshot,
+        validate_runner_schedule=validate_runner_schedule,
+        write_runner_schedule_config=write_runner_schedule_config,
+        runner_scheduler_apply_command=runner_scheduler_apply_command,
+        runner_scheduler_bin=runner_scheduler_bin,
+        runner_schedule_config=runner_schedule_config,
+        runner_scheduler_state=runner_scheduler_state,
+        runner_base_dir=runner_base_dir,
+    )
+    _node_routes.set_dependencies(
+        get_fleet_nodes_impl=get_fleet_nodes_impl,
+        proxy_to_hub=proxy_to_hub,
+        should_proxy_fleet_to_hub=should_proxy_fleet_to_hub,
+        get_system_metrics_snapshot=get_system_metrics_snapshot,
+    )
 
 
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
-
-
-@router.get("/api/audit", tags=["fleet"])
-async def get_node_audit_log(
-    request: Request,
-    limit: int = 50,
-    principal: str | None = None,
-    _auth: Principal = Depends(require_principal),
-) -> list[dict]:
-    """Return this node's orchestration audit log."""
-    return _audit.load_orchestration_audit(limit=limit, principal=principal)
-
-
-@router.get("/api/fleet/audit", tags=["fleet"])
-async def get_fleet_audit_log(
-    request: Request,
-    limit: int = 50,
-    principal: str | None = None,
-    _auth: Principal = Depends(require_principal),
-) -> dict:
-    """Return a merged view of orchestration audit logs across the fleet."""
-    local_entries = _audit.load_orchestration_audit(limit=limit, principal=principal)
-    all_entries = list(local_entries)
-
-    async def fetch_remote_audit(name: str, url: str) -> list[dict]:
-        try:
-            params: dict[str, Any] = {"limit": limit}
-            if principal:
-                params["principal"] = principal
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                headers = {}
-                if auth_header := request.headers.get("Authorization"):
-                    headers["Authorization"] = auth_header
-                r = await client.get(f"{url}/api/audit", params=params, headers=headers)
-            if r.status_code == 200:
-                data = r.json()
-                if isinstance(data, list):
-                    return data
-        except Exception as exc:  # noqa: BLE001
-            log.warning("Failed to fetch audit from %s (%s): %s", name, url, exc)
-        return []
-
-    if FLEET_NODES:
-        remotes = await asyncio.gather(*[fetch_remote_audit(n, u) for n, u in FLEET_NODES.items()])
-        for r_entries in remotes:
-            all_entries.extend(r_entries)
-
-    def _parse_ts(entry: dict) -> _dt_mod.datetime:
-        ts_str = entry.get("timestamp") or entry.get("ts") or ""
-        try:
-            return _dt_mod.datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
-        except ValueError:
-            return _dt_mod.datetime.min.replace(tzinfo=UTC)
-
-    all_entries.sort(key=_parse_ts, reverse=True)
-
-    return {
-        "entries": all_entries[:limit],
-        "count": len(all_entries[:limit]),
-    }
 
 
 @router.get("/api/fleet/orchestration")
@@ -506,130 +442,3 @@ async def fleet_control(
         "results": local_result["results"],
         "nodes": node_results,
     }
-
-
-@router.get("/api/fleet/schedule")
-async def get_runner_schedule() -> dict:
-    """Return this machine's local runner capacity schedule and live state."""
-    return _get_runner_capacity_snapshot()  # type: ignore[misc]
-
-
-@router.get("/api/fleet/capacity")
-async def get_fleet_capacity() -> dict:
-    """Compatibility endpoint for dashboard capacity summaries."""
-    return _get_runner_capacity_snapshot()  # type: ignore[misc]
-
-
-@router.post("/api/fleet/schedule")
-async def update_runner_schedule(
-    request: Request,
-    *,
-    principal: Principal = Depends(require_scope("fleet.control")),  # noqa: B008
-) -> dict:
-    """Update this machine's local runner capacity schedule."""
-    from security import safe_subprocess_env  # noqa: PLC0415
-
-    body = await request.json()
-    if not isinstance(body, dict):
-        raise HTTPException(status_code=400, detail="schedule payload must be an object")
-    try:
-        config = _validate_runner_schedule(body.get("schedule", body))  # type: ignore[misc]
-    except (TypeError, ValueError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    _write_runner_schedule_config(config)  # type: ignore[misc]
-    apply_now = bool(body.get("apply", False))
-    apply_result: dict[str, object] | None = None
-    if apply_now and Path(_runner_scheduler_bin).exists():
-        env = safe_subprocess_env()
-        env["RUNNER_ROOT"] = str(_runner_base_dir)
-        env["RUNNER_SCHEDULE_CONFIG"] = str(_runner_schedule_config)
-        env["RUNNER_SCHEDULER_STATE"] = str(_runner_scheduler_state)
-        apply_cmd = _runner_scheduler_apply_command()  # type: ignore[misc]
-        result = await asyncio.to_thread(
-            subprocess.run,
-            apply_cmd,
-            capture_output=True,
-            text=True,
-            timeout=30,
-            check=False,
-            env=env,
-        )
-        apply_result = {
-            "returncode": result.returncode,
-            "stdout": result.stdout.strip()[:1000],
-            "stderr": result.stderr.strip()[:1000],
-        }
-        if result.returncode != 0:
-            error = apply_result["stderr"] or apply_result["stdout"]
-            raise HTTPException(
-                status_code=500,
-                detail=f"Schedule saved, but apply failed: {error}",
-            )
-    return {
-        "saved": True,
-        "applied": apply_now,
-        "apply_result": apply_result,
-        **_get_runner_capacity_snapshot(),  # type: ignore[misc]
-    }
-
-
-@router.get("/api/fleet/nodes")
-async def get_fleet_nodes(request: Request) -> dict:
-    """Aggregate system metrics + health from all fleet nodes."""
-    if _should_proxy_fleet_to_hub(request):  # type: ignore[misc]
-        return await _proxy_to_hub(request)  # type: ignore[misc]
-    return await _get_fleet_nodes_impl()  # type: ignore[misc]
-
-
-@router.get("/api/fleet/hardware")
-async def get_fleet_hardware(request: Request) -> dict:
-    """Return centralized fleet hardware specs for workload placement."""
-    if _should_proxy_fleet_to_hub(request):  # type: ignore[misc]
-        return await _proxy_to_hub(request)  # type: ignore[misc]
-    fleet = await _get_fleet_nodes_impl()  # type: ignore[misc]
-    machines = []
-    for node in fleet.get("nodes", []):
-        registry = node.get("registry") or {}
-        specs = node.get("hardware_specs") or node.get("system", {}).get("hardware_specs", {})
-        capacity = node.get("workload_capacity") or node.get("system", {}).get("workload_capacity", {})
-        machines.append(
-            {
-                "name": node.get("name"),
-                "display_name": registry.get("display_name") or node.get("name"),
-                "online": bool(node.get("online")),
-                "dashboard_reachable": bool(node.get("dashboard_reachable")),
-                "role": registry.get("role") or node.get("role"),
-                "runner_labels": registry.get("runner_labels", []),
-                "hardware_specs": specs,
-                "workload_capacity": capacity,
-                "offline_reason": node.get("offline_reason"),
-            }
-        )
-    return {
-        "timestamp": datetime.now(UTC).isoformat(),
-        "machines": machines,
-        "count": len(machines),
-        "online_count": sum(1 for machine in machines if machine["online"]),
-        "registry": fleet.get("registry", {}),
-    }
-
-
-@router.get("/api/fleet/nodes/{node_name}/system")
-async def proxy_node_system(node_name: str) -> dict:
-    """Proxy /api/system from a named fleet node (for detailed drill-down)."""
-    if node_name in (HOSTNAME, "local"):
-        return await _get_system_metrics_snapshot()  # type: ignore[misc]
-    url = FLEET_NODES.get(node_name)
-    if not url:
-        raise HTTPException(status_code=404, detail=f"Node not found: {node_name}")
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(f"{url}/api/system")
-        if resp.status_code != 200:
-            raise HTTPException(status_code=502, detail="Node returned error")
-        return resp.json()
-    except httpx.TimeoutException as exc:
-        raise HTTPException(status_code=504, detail=f"{node_name} timed out") from exc
-    except httpx.RequestError as exc:
-        log.warning("Node %s unreachable: %s", node_name, exc)
-        raise HTTPException(status_code=502, detail=f"{node_name} unreachable") from exc
