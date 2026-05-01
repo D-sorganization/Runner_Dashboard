@@ -3,6 +3,7 @@ import { AgentDispatchPage } from "../pages/AgentDispatch"
 import { QueueTab } from "../pages/Queue"
 import { Badge } from "../primitives/Badge"
 import { Pill } from "../primitives/Pill"
+import { RecoveryDialog } from "./RecoveryDialog"
 import { marked } from "marked"
 import DOMPurify from "dompurify"
 
@@ -16554,110 +16555,7 @@ function App({ initialTab }: { initialTab?: string } = {}) {
       h(AssistantSidebar, { currentTab: tab, open: asstOpen, onToggle: toggleAsst }),
     ),
     recoveryModal && recoveryModal.visible
-      ? h(
-          "div",
-          {
-            style: {
-              position: "fixed",
-              inset: 0,
-              background: "rgba(0,0,0,0.5)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              zIndex: 1000,
-              cursor: "pointer",
-            },
-            onClick: function (e) {
-              if (e.target === e.currentTarget) setRecoveryModal(null);
-            },
-          },
-          h(
-            "div",
-            {
-              style: {
-                background: "var(--bg-primary)",
-                border: "1px solid var(--border)",
-                borderRadius: 8,
-                padding: "24px",
-                minWidth: 400,
-                maxWidth: 560,
-                maxHeight: "80vh",
-                overflow: "auto",
-                cursor: "default",
-                boxShadow: "0 10px 40px rgba(0,0,0,0.3)",
-              },
-              onClick: function (e) {
-                e.stopPropagation();
-              },
-            },
-            h("h2", { style: { margin: "0 0 16px 0", color: "var(--accent-red)" } }, "Backend Not Responding"),
-            (function () {
-              var isWindows = typeof navigator !== "undefined" && navigator.platform.includes("Win32");
-              var isMac = typeof navigator !== "undefined" && navigator.platform.includes("Mac");
-              return h(
-                "div",
-                null,
-                isWindows || isMac
-                  ? h("p", { style: { margin: "0 0 16px 0", color: "var(--text-secondary)", fontSize: "14px" } }, "The dashboard backend is not responding. Click \"Start Now\" to restart the service, or run the terminal command below.")
-                  : h(
-                      "div",
-                      null,
-                      h("p", { style: { margin: "0 0 12px 0", color: "var(--text-secondary)", fontSize: "14px" } }, "The dashboard backend is not responding. To restart the service, run this command in a terminal:"),
-                      h("pre", { style: { background: "var(--bg-secondary)", padding: "12px", borderRadius: 4, margin: "0 0 16px 0", fontSize: "13px", overflow: "auto", color: "var(--text-primary)" } }, "systemctl --user restart runner-dashboard\n\nThen refresh this page."),
-                    ),
-              );
-            })(),
-            h(
-              "div",
-              { style: { display: "flex", gap: "12px", justifyContent: "flex-end" } },
-              (function () {
-                var isWindows = typeof navigator !== "undefined" && navigator.platform.includes("Win32");
-                var isMac = typeof navigator !== "undefined" && navigator.platform.includes("Mac");
-                return isWindows || isMac
-                  ? h(
-                      "button",
-                      {
-                        onClick: function () {
-                          if (window.location.protocol === "https:") {
-                            window.location.href = "runner-dashboard://start";
-                          } else {
-                            alert("Protocol handler requires HTTPS context. Make sure you're using HTTPS.");
-                          }
-                        },
-                        style: {
-                          padding: "8px 16px",
-                          background: "var(--accent-green)",
-                          color: "white",
-                          border: "none",
-                          borderRadius: 4,
-                          cursor: "pointer",
-                          fontSize: "14px",
-                          fontWeight: "500",
-                        },
-                      },
-                      "Start Now",
-                    )
-                  : null;
-              })(),
-              h(
-                "button",
-                {
-                  onClick: function () { setRecoveryModal(null); },
-                  style: {
-                    padding: "8px 16px",
-                    background: "var(--bg-secondary)",
-                    color: "var(--text-primary)",
-                    border: "1px solid var(--border)",
-                    borderRadius: 4,
-                    cursor: "pointer",
-                    fontSize: "14px",
-                  },
-                },
-                "Refresh",
-              ),
-            ),
-          ),
-        )
+      ? h(RecoveryDialog, { onClose: function () { setRecoveryModal(null); } })
       : null,
     h(DashboardHelp, { currentTab: tab }),
   );
