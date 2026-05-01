@@ -15,7 +15,7 @@ from dashboard_config import MAXWELL_API_TOKEN, MAXWELL_URL
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from identity import Principal, require_scope
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from security import safe_subprocess_env, sanitize_log_value
 
 router = APIRouter(prefix="/api/maxwell", tags=["maxwell"])
@@ -27,6 +27,25 @@ datetime = _dt_mod.datetime
 class MaxwellControlBody(BaseModel):
     action: str = Field(..., max_length=20)
     approved_by: str = Field(..., max_length=200)
+
+
+class MaxwellDispatchBody(BaseModel):
+    """Request body for POST /api/maxwell/dispatch (issue #349).
+
+    Caller must supply ``confirmation_token``; proxy must not inject it.
+    """
+
+    confirmation_token: str = Field(..., min_length=1, max_length=512)
+    idempotency_key: str | None = Field(default=None, max_length=128)
+
+
+class MaxwellPipelineControlBody(BaseModel):
+    """Request body for POST /api/maxwell/pipeline-control/{action} (issue #349).
+
+    Caller must supply ``confirmation_token``; proxy must not inject it.
+    """
+
+    confirmation_token: str = Field(..., min_length=1, max_length=512)
 
 
 class MaxwellChatBody(BaseModel):
@@ -221,13 +240,33 @@ async def maxwell_dispatch_task(
     *,
     principal: Principal = Depends(require_scope("maxwell.control")),  # noqa: B008,
 ) -> dict:
-    """Proxy POST /api/v1/tasks to Maxwell-Daemon."""
+    """Proxy POST /api/v1/tasks to Maxwell-Daemon (issue #349).
+
+    Caller must supply ``confirmation_token``; server-side injection removed
+    so the dashboard cannot silently bypass the daemon's confirmation gate.
+    """
+    import hashlib as _hashlib
+
     path = "/api/v1/tasks"
-    body = await request.json()
+    raw_body = await request.json()
+
+    # Validate caller-supplied confirmation_token (DbC, issue #349)
+    try:
+        validated_dispatch = MaxwellDispatchBody.model_validate(
+            {
+                "confirmation_token": raw_body.get("confirmation_token"),
+                "idempotency_key": raw_body.get("idempotency_key"),
+            }
+        )
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail="confirmation_token is required") from exc
+
+    token_hash = _hashlib.sha256(validated_dispatch.confirmation_token.encode()).hexdigest()[:16]
+
+    body = dict(raw_body)
     if not body.get("idempotency_key"):
-        body["idempotency_key"] = str(uuid.uuid4())
-    # Injected token
-    body["confirmation_token"] = _maxwell_api_token()
+        body["idempotency_key"] = validated_dispatch.idempotency_key or str(uuid.uuid4())
+    # confirmation_token comes from the caller — do NOT overwrite with the API token
 
     hdrs = {"Content-Type": "application/json"}
     hdrs.update(_maxwell_headers())
@@ -243,7 +282,14 @@ async def maxwell_dispatch_task(
             from proxy_utils import _translate_upstream_response
 
             raw = _translate_upstream_response(resp, "maxwell")
-            return _mc.MaxwellDispatchResponse.model_validate(_mc.strip_sensitive(raw)).model_dump(by_alias=False)
+            result = _mc.MaxwellDispatchResponse.model_validate(_mc.strip_sensitive(raw)).model_dump(by_alias=False)
+            log.info(
+                "audit: maxwell_dispatch principal=%s task_id=%s confirmation_token_hash=%s",
+                principal.id,
+                result.get("task_id", "unknown"),
+                token_hash,
+            )
+            return result
     except httpx.TimeoutException as e:
         raise HTTPException(status_code=504, detail="maxwell timeout") from e
     except httpx.ConnectError as e:
@@ -299,12 +345,23 @@ async def maxwell_pipeline_control(
     *,
     principal: Principal = Depends(require_scope("maxwell.control")),  # noqa: B008,
 ) -> dict:
-    """Proxy POST /api/control/{action} to Maxwell-Daemon."""
+    """Proxy POST /api/control/{action} to Maxwell-Daemon (issue #349).
+
+    Caller must provide ``confirmation_token``; server-side injection removed.
+    """
     if action not in ("pause", "resume", "abort"):
         raise HTTPException(status_code=422, detail="action must be pause, resume, or abort")
     path = f"/api/v1/control/{action}"
-    body = await request.json()
-    body["confirmation_token"] = _maxwell_api_token()
+    raw_body = await request.json()
+
+    # Validate caller-supplied confirmation_token (DbC, issue #349)
+    try:
+        MaxwellPipelineControlBody.model_validate({"confirmation_token": raw_body.get("confirmation_token")})
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail="confirmation_token is required") from exc
+
+    body = dict(raw_body)
+    # confirmation_token comes from the caller — do NOT overwrite with the API token
 
     hdrs = {"Content-Type": "application/json"}
     hdrs.update(_maxwell_headers())

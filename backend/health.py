@@ -1,17 +1,96 @@
 """Health check endpoints for the runner dashboard.
 
 Extracted from server.py as part of issue #159 god-module-refactor-2026q2.
+
+Issue #332 — split /livez (no I/O) from /readyz (dependency checks).
+
+/livez  — liveness probe. Returns 200 unconditionally if the process is up.
+          No I/O, no dependency checks.  Suitable for systemd WatchdogSec /
+          Kubernetes liveness probe.
+
+/readyz — readiness probe. Runs a set of lightweight dependency probes
+          (GH_TOKEN presence, gh CLI in PATH, SQLite stores readable).
+          Returns 200 only when all probes pass; 503 otherwise with a
+          structured ``{ status, checks }`` body.
+
+/api/health — human-readable composite view (backward compat).  Retains the
+              previous behaviour of checking GitHub API reachability and
+              returning uptime/runner counts.
 """
 
 from __future__ import annotations
 
+import datetime as _dt_mod
 import time
 
-import dashboard_config as dashboard_config  # noqa: E402
+import dashboard_config
 from cache_utils import cache_size
 from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
+from readiness import aggregate, get_default_probes
 
 router = APIRouter(tags=["health"])
+
+UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
+
+
+# ---------------------------------------------------------------------------
+# /livez — liveness probe (NO I/O, always 200 if process is alive)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/livez", tags=["diagnostics"])
+async def livez() -> dict:
+    """Liveness probe.
+
+    Returns 200 with ``{"status": "ok"}`` unconditionally as long as the
+    Python process is running and able to handle requests.  Performs no I/O
+    and checks no external dependencies.
+
+    Use this as the liveness target for systemd ``WatchdogSec`` or a
+    Kubernetes liveness probe.  If this endpoint starts failing, the process
+    is likely deadlocked or OOM-killed — not merely waiting for a dependency.
+    """
+    return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# /readyz — readiness probe (dependency checks, may return 503)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/readyz", tags=["diagnostics"])
+async def readyz() -> JSONResponse:
+    """Readiness probe.
+
+    Runs lightweight checks for each required dependency:
+    - ``github_token`` — ``GH_TOKEN`` env var is present
+    - ``gh_cli``       — ``gh`` binary is in PATH
+    - ``lease_db``     — replay/lease SQLite store is readable
+    - ``push_db``      — push-subscription SQLite store is readable
+
+    Returns 200 when all checks pass.  Returns 503 with a structured body:
+    ``{ "status": "down"|"degraded", "checks": { <name>: <status>|{status, detail} } }``
+    when any check fails.
+
+    Also includes ``session_secret_source`` for backward compatibility with
+    existing monitoring scripts that key on that field.
+    """
+    assert dashboard_config.SESSION_SECRET_SOURCE in {
+        "env",
+        "persisted",
+        "generated",
+    }, f"unexpected SESSION_SECRET_SOURCE: {dashboard_config.SESSION_SECRET_SOURCE!r}"
+
+    http_status, body = await aggregate(get_default_probes())
+    body["session_secret_source"] = dashboard_config.SESSION_SECRET_SOURCE
+    body["timestamp"] = _dt_mod.datetime.now(UTC).isoformat()
+    return JSONResponse(content=body, status_code=http_status)
+
+
+# ---------------------------------------------------------------------------
+# /api/health — human-readable composite (backward compat, retains I/O)
+# ---------------------------------------------------------------------------
 
 
 async def _health_impl() -> dict:
@@ -21,11 +100,9 @@ async def _health_impl() -> dict:
         BOOT_TIME,
         HOSTNAME,
         ORG,
-        UTC,
         _cache_get,
         _cache_set,
         _deployment_info,
-        datetime,
         gh_api_admin,
     )
 
@@ -43,7 +120,7 @@ async def _health_impl() -> dict:
 
     return {
         "status": "healthy" if gh_ok else "degraded",
-        "timestamp": datetime.now(UTC).isoformat(),
+        "timestamp": _dt_mod.datetime.now(UTC).isoformat(),
         "hostname": HOSTNAME,
         "github_api": "connected" if gh_ok else "unreachable",
         "runners_registered": runner_count,
@@ -88,12 +165,9 @@ async def launcher_health_check() -> dict:
     Returns 200 if backend is ready. Used by PWA recovery modal for
     polling before triggering custom URL protocol.
     """
-    # Lazy import to avoid circular dependency with server.py
-    from server import UTC, datetime  # noqa: PLC0415
-
     return {
         "status": "ready",
-        "timestamp": datetime.now(UTC).isoformat(),
+        "timestamp": _dt_mod.datetime.now(UTC).isoformat(),
     }
 
 
@@ -111,34 +185,6 @@ async def get_cache_size() -> dict:
             "dashboard_cache_entries": sizes,
         },
         "max_sizes": {
-            "main": __import__("dashboard_config").MAX_CACHE_SIZE,
+            "main": dashboard_config.MAX_CACHE_SIZE,
         },
-    }
-
-
-@router.get("/readyz", tags=["diagnostics"])
-async def readyz() -> dict:
-    """Readiness probe that surfaces operational metadata.
-
-    ``session_secret_source`` indicates how the session secret was resolved:
-
-    * ``"env"`` — ``SESSION_SECRET`` env var was explicitly set (recommended).
-    * ``"persisted"`` — secret was loaded from the persisted file at
-      ``~/.config/runner-dashboard/session_secret``.
-    * ``"generated"`` — no env var and no persisted file existed; a new
-      secret was generated and persisted on this startup.
-    """
-    # Lazy import to avoid circular dependency with server.py
-    from server import UTC, datetime  # noqa: PLC0415
-
-    assert dashboard_config.SESSION_SECRET_SOURCE in {
-        "env",
-        "persisted",
-        "generated",
-    }, f"unexpected SESSION_SECRET_SOURCE: {dashboard_config.SESSION_SECRET_SOURCE!r}"
-
-    return {
-        "status": "ready",
-        "timestamp": datetime.now(UTC).isoformat(),
-        "session_secret_source": dashboard_config.SESSION_SECRET_SOURCE,
     }
