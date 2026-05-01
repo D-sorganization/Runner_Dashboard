@@ -114,3 +114,64 @@ class TestShouldProxyFleetToHub:
             with patch.object(proxy_utils, "HUB_URL", ""):
                 req = _make_request({})
                 assert proxy_utils.should_proxy_fleet_to_hub(req) is False
+
+
+class TestSafeForwardHeaders:
+    """Verify that _safe_forward_headers strips sensitive caller headers (issue #347)."""
+
+    def _make_request_with_headers(self, headers: dict[str, str]) -> MagicMock:
+        mock = MagicMock()
+        mock.headers.items.return_value = list(headers.items())
+        return mock
+
+    def test_authorization_header_stripped(self) -> None:
+        req = self._make_request_with_headers(
+            {"Authorization": "Bearer caller-token", "X-Requested-With": "XMLHttpRequest"}
+        )
+        result = proxy_utils._safe_forward_headers(req)
+        assert "Authorization" not in result
+        # X-Requested-With is safe and should pass through
+        assert result.get("X-Requested-With") == "XMLHttpRequest"
+
+    def test_cookie_header_stripped(self) -> None:
+        req = self._make_request_with_headers({"Cookie": "session=abc123", "Accept": "application/json"})
+        result = proxy_utils._safe_forward_headers(req)
+        assert "Cookie" not in result
+
+    def test_x_api_key_stripped(self) -> None:
+        req = self._make_request_with_headers({"X-API-Key": "secret-key", "Content-Type": "application/json"})
+        result = proxy_utils._safe_forward_headers(req)
+        assert "X-API-Key" not in result
+
+    def test_x_csrf_token_stripped(self) -> None:
+        req = self._make_request_with_headers({"X-CSRF-Token": "csrf-value"})
+        result = proxy_utils._safe_forward_headers(req)
+        assert "X-CSRF-Token" not in result
+
+    def test_hub_fleet_token_injected_when_set(self, monkeypatch) -> None:
+        monkeypatch.setenv("HUB_FLEET_TOKEN", "fleet-secret-token")
+        req = self._make_request_with_headers({"X-Requested-With": "XMLHttpRequest"})
+        result = proxy_utils._safe_forward_headers(req)
+        assert result.get("Authorization") == "Bearer fleet-secret-token"
+
+    def test_hub_fleet_token_not_injected_when_unset(self, monkeypatch) -> None:
+        monkeypatch.delenv("HUB_FLEET_TOKEN", raising=False)
+        req = self._make_request_with_headers({"X-Requested-With": "XMLHttpRequest"})
+        result = proxy_utils._safe_forward_headers(req)
+        assert "Authorization" not in result
+
+    def test_host_and_content_length_stripped(self) -> None:
+        req = self._make_request_with_headers(
+            {"host": "localhost:8321", "content-length": "42", "Accept": "application/json"}
+        )
+        result = proxy_utils._safe_forward_headers(req)
+        assert "host" not in result
+        assert "content-length" not in result
+        assert result.get("Accept") == "application/json"
+
+    def test_case_insensitive_header_stripping(self) -> None:
+        req = self._make_request_with_headers(
+            {"AUTHORIZATION": "Bearer caller-token", "COOKIE": "s=x", "X-API-KEY": "secret"}
+        )
+        result = proxy_utils._safe_forward_headers(req)
+        assert not any(k.upper() in {"AUTHORIZATION", "COOKIE", "X-API-KEY"} for k in result)

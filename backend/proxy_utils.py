@@ -3,12 +3,28 @@
 from __future__ import annotations
 
 import logging
+import os
 
 import httpx
 from dashboard_config import HUB_URL, MACHINE_ROLE
 from fastapi import HTTPException, Request
 
 log = logging.getLogger("dashboard.proxy")
+
+# Headers that must NEVER be forwarded to the hub (issue #347).
+# Forwarding these would allow credential laundering if HUB_URL is
+# misconfigured to point at a host controlled by a different tenant.
+_SENSITIVE_HEADERS: frozenset[str] = frozenset(
+    {
+        "authorization",
+        "cookie",
+        "x-api-key",
+        "x-csrf-token",
+    }
+)
+
+# Headers removed for technical reasons (hop-by-hop).
+_HOP_BY_HOP_HEADERS: frozenset[str] = frozenset({"host", "content-length"})
 
 
 def _translate_upstream_response(resp: httpx.Response, upstream_name: str, request_id: str = "") -> dict:
@@ -23,8 +39,35 @@ def _translate_upstream_response(resp: httpx.Response, upstream_name: str, reque
     return resp.json()
 
 
+def _safe_forward_headers(request: Request) -> dict[str, str]:
+    """Return a header dict safe to forward to the hub.
+
+    Strips all sensitive headers (Authorization, Cookie, X-API-Key,
+    X-CSRF-Token) and hop-by-hop headers.  Injects the intra-fleet bearer
+    token (HUB_FLEET_TOKEN) for hub authentication instead.
+    """
+    forwarded: dict[str, str] = {}
+    for key, value in request.headers.items():
+        lkey = key.lower()
+        if lkey in _SENSITIVE_HEADERS or lkey in _HOP_BY_HOP_HEADERS:
+            continue
+        forwarded[key] = value
+
+    # Inject intra-fleet bearer token (see docs/runbooks/hub-credentials.md).
+    hub_token = os.environ.get("HUB_FLEET_TOKEN", "")
+    if hub_token:
+        forwarded["Authorization"] = f"Bearer {hub_token}"
+
+    return forwarded
+
+
 async def proxy_to_hub(request: Request):
-    """Proxy request to the designated HUB_URL for hub-spoke topology."""
+    """Proxy request to the designated HUB_URL for hub-spoke topology.
+
+    Sensitive caller headers are stripped and replaced with the intra-fleet
+    bearer token so that operator credentials cannot be laundered to the hub
+    (issue #347).
+    """
     if not HUB_URL:
         raise HTTPException(status_code=502, detail="HUB_URL not configured")
     async with httpx.AsyncClient(timeout=15.0) as client:
@@ -35,7 +78,7 @@ async def proxy_to_hub(request: Request):
             req = client.build_request(
                 request.method,
                 url,
-                headers={k: v for k, v in request.headers.items() if k.lower() not in ("host", "content-length")},
+                headers=_safe_forward_headers(request),
                 content=await request.body(),
             )
             resp = await client.send(req)
