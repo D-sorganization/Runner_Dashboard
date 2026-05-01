@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from time_utils import utc_now, utc_now_iso
 
@@ -21,14 +21,14 @@ def test_utc_now_is_timezone_aware() -> None:
 def test_utc_now_uses_utc_timezone() -> None:
     """``utc_now()`` returns a datetime anchored to UTC."""
     now = utc_now()
-    assert now.utcoffset() == UTC.utcoffset(now)
+    assert now.utcoffset() == timezone.utc.utcoffset(now)
 
 
 def test_utc_now_is_recent() -> None:
     """``utc_now()`` returns the present moment, not a stale value."""
-    before = datetime.now(UTC)
+    before = datetime.now(timezone.utc)
     sample = utc_now()
-    after = datetime.now(UTC)
+    after = datetime.now(timezone.utc)
     assert before <= sample <= after
 
 
@@ -50,4 +50,4 @@ def test_utc_now_iso_round_trip() -> None:
     iso = utc_now_iso()
     parsed = datetime.fromisoformat(iso.replace("Z", "+00:00"))
     assert parsed.tzinfo is not None
-    assert parsed.utcoffset() == UTC.utcoffset(parsed)
+    assert parsed.utcoffset() == timezone.utc.utcoffset(parsed)

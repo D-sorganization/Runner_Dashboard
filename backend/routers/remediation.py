@@ -67,7 +67,7 @@ async def update_agent_remediation_config(
     request: Request,
     *,
     principal: Principal = Depends(require_scope("remediation.dispatch")),  # noqa: B008
-) -> dict | JSONResponse:  # noqa: B008
+) -> dict:  # noqa: B008
     """Persist the remediation policy so the dashboard can tune auto-routing."""
     body = await request.json()
     if not isinstance(body, dict):
@@ -78,7 +78,7 @@ async def update_agent_remediation_config(
     try:
         config_schema.validate_agent_remediation_config(body)
     except ValueError as exc:
-        return JSONResponse({"error": str(exc)}, status_code=422)
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     current = agent_remediation.load_policy()
     workflow_type_rules = agent_remediation._load_workflow_type_rules(  # noqa: SLF001
@@ -425,7 +425,7 @@ async def api_dispatch_to_prs(
     request: Request,
     *,
     principal: Principal = Depends(require_scope("github.dispatch")),  # noqa: B008
-) -> dict | JSONResponse:
+) -> dict:
     """Dispatch agents to one or more pull requests."""
     body = await request.json()
     if not isinstance(body, dict):
@@ -468,7 +468,7 @@ async def api_dispatch_to_issues(
     request: Request,
     *,
     principal: Principal = Depends(require_scope("github.dispatch")),  # noqa: B008
-) -> dict | JSONResponse:
+) -> dict:
     """Dispatch agents to one or more issues."""
     body = await request.json()
     if not isinstance(body, dict):
