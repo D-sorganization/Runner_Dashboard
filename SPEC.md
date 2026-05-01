@@ -2225,3 +2225,18 @@ stderr text to semantic status codes via `service_stderr_to_status()`:
 - "not loaded" / "Unit not found" → 404
 - "permission denied" / "access denied" → 403
 - anything else → 500
+### 18.7 Typed GitHub Payload Models (issue #407)
+
+GitHub API response dicts are now parsed at the boundary into typed Pydantic
+view-models defined in `backend/models/github_payloads.py`:
+
+| Model | Replaces |
+|-------|---------|
+| `GhWorkflowRun` | `run.get("id")`, `(run.get("repository") or {}).get("name", "")` chains |
+| `GhJob` | `j.get("runner_name")`, label dicts vs strings |
+| `GhRunner` | `runner["labels"][i]["name"]`, `runner.get("busy")` |
+| `GhRepository` | nested repository sub-dict |
+| `GhActor` | `triggering_actor.get("login")` |
+
+All models use `extra="ignore"` so new GitHub API fields never break
+existing handlers.  Handlers receive flat, typed objects (Law of Demeter).
