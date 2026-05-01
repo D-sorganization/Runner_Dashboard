@@ -8,7 +8,7 @@ const PUSH_TOPICS = [
   { id: "queue.stale", label: "Queue stale" },
 ] as const;
 
-export function PushSettings() {
+export default function PushSettings() {
   const [publicKey, setPublicKey] = useState<string | null>(null);
   const [subscribed, setSubscribed] = useState(false);
   const [topics, setTopics] = useState<Record<string, boolean>>({});

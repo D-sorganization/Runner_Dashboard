@@ -37,3 +37,10 @@ def test_frontend_perf_budget_script_runs_from_checkout_root() -> None:
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_tab_chunk_budget_contract_enforced() -> None:
+    """Per-route lazy chunk gzip must not exceed tab_chunk budget (issue #383)."""
+    budget = budget_check.load_budget()
+    tab_limit = budget.get("budgets", {}).get("tab_chunk", {}).get("js_gzip_bytes")
+    assert tab_limit == 102400, f"tab_chunk.js_gzip_bytes must be 102400, got {tab_limit!r}"

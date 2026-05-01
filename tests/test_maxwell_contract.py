@@ -12,8 +12,6 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import pytest
-
 # ---------------------------------------------------------------------------
 # Make the backend package importable from tests/
 # ---------------------------------------------------------------------------
@@ -22,7 +20,6 @@ if str(_BACKEND) not in sys.path:
     sys.path.insert(0, str(_BACKEND))
 
 import maxwell_contract as mc  # noqa: E402
-
 
 # ---------------------------------------------------------------------------
 # strip_sensitive

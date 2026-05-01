@@ -7,7 +7,7 @@ After=network.target
 Wants=network-online.target
 
 [Service]
-Type=simple
+Type=notify
 # User, WorkingDirectory, ExecStart, and HOME are set by setup.sh at deploy time.
 User=YOUR_USER
 WorkingDirectory=/home/YOUR_USER/actions-runners/dashboard
@@ -73,12 +73,10 @@ MemoryMax=2G
 CPUQuota=200%
 TasksMax=512
 # Watchdog — systemd sends SIGABRT if the process does not reset the
-# watchdog within WatchdogSec. Because server.py does not yet call
-# sd_notify(WATCHDOG=1), Type=simple is retained so that systemd does
-# not wait for READY=1 on startup. The watchdog still fires if the
-# process hangs entirely (no heartbeat from systemd's perspective when
-# sd_notify support is added). See issue #391 AC-3 for the follow-up
-# to wire sd_notify into the FastAPI lifespan.
+# watchdog within WatchdogSec. server.py now calls sd_notify(READY=1)
+# on startup and sends WATCHDOG=1 every 60s from a background task.
+# Type=notify ensures systemd waits for READY=1 before marking the
+# service as started. See issue #391 AC-3.
 WatchdogSec=120
 # Allow the dashboard to read/write runner secrets and config from HOME.
 ReadWritePaths=/home/YOUR_USER/.config/runner-dashboard

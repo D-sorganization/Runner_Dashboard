@@ -7,6 +7,32 @@ import { RootErrorBoundary } from './primitives/RootErrorBoundary'
 import { BreakpointProvider } from './hooks/useBreakpoint'
 import './i18n'
 import './index.css'
+// Web Vitals — send metrics to backend (issue #385)
+import { onCLS, onINP, onFCP, onLCP } from 'web-vitals'
+
+function sendWebVitals(metric: any) {
+  const payload = {
+    route: window.location.pathname,
+    metrics: [{
+      name: metric.name,
+      value: metric.value,
+      rating: metric.rating || '',
+      delta: metric.delta || null,
+      id: metric.id || '',
+      navigation_type: metric.navigationType || '',
+    }],
+  }
+  fetch('/api/metrics/web-vitals', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }).catch(() => {})
+}
+
+onCLS(sendWebVitals)
+onINP(sendWebVitals)
+onFCP(sendWebVitals)
+onLCP(sendWebVitals)
 
 // Service Worker Registration
 // Provides offline support, caching, and PWA installability.

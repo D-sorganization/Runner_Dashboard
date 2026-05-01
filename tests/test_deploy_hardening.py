@@ -186,6 +186,12 @@ def test_dashboard_service_has_watchdog_sec() -> None:
     assert "WatchdogSec=120" in content
 
 
+def test_dashboard_service_type_is_notify() -> None:
+    content = _read(_DEPLOY / "runner-dashboard.service")
+    assert "Type=notify" in content
+    assert "\nType=simple\n" not in content
+
+
 # ── Issue #391: runner-autoscaler.service template ───────────────────────────
 
 

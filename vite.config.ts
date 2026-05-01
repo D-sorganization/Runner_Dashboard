@@ -8,6 +8,21 @@ export default defineConfig({
   build: {
     outDir: '../dist',
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id: string) {
+          if (id.includes('node_modules/react/') || id.includes('node_modules/react-dom/')) {
+            return 'vendor-react'
+          }
+          if (id.includes('node_modules/marked')) {
+            return 'vendor-marked'
+          }
+          if (id.includes('node_modules/dompurify')) {
+            return 'vendor-dompurify'
+          }
+        },
+      },
+    },
   },
   server: {
     port: 5173,

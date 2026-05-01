@@ -39,6 +39,12 @@ from collections import deque
 from pathlib import Path
 from typing import Any
 
+# systemd watchdog / ready notification (issue #391 AC-3)
+try:
+    from systemd.daemon import notify as _sd_notify
+except ImportError:
+    _sd_notify = None
+
 import httpx
 import psutil
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -107,7 +113,8 @@ from routers import runner_diagnostics as _runner_diagnostics_router  # noqa: E4
 from routers import runner_groups as _runner_groups_router  # noqa: E402
 from routers import runners as _runners_router  # noqa: E402
 from routers import runs_workflows as _runs_workflows_router  # noqa: E402
-from routers import system as _system_router  # noqa: E402
+from routers import system as _system_router
+from routers import web_vitals as _web_vitals_router  # noqa: E402
 from routers.queue import _queue_impl  # noqa: E402
 from security import (  # noqa: E402
     safe_subprocess_env,  # noqa: E402
@@ -416,6 +423,7 @@ app.include_router(_agent_launcher_router.router)
 
 # Batch-2 extracted routers (epic #159)
 app.include_router(_system_router.router)
+app.include_router(_web_vitals_router.router)
 app.include_router(_fleet_router.router)
 app.include_router(_queue_router.router)
 app.include_router(_queue_diagnostics_router.router)
@@ -4286,6 +4294,13 @@ _leader_lock_fd = None
 
 @app.on_event("startup")
 async def _start_background_tasks() -> None:
+    # Notify systemd that we are ready (issue #391 AC-3)
+    if _sd_notify is not None:
+        _sd_notify("READY=1\nWATCHDOG_USEC=120000000")  # 120s in microseconds
+        log.info("Sent systemd READY=1 notification")
+    else:
+        log.debug("systemd.daemon not available; omitting sd_notify")
+
     if os.environ.get("DASHBOARD_LEADER") == "1":
         asyncio.create_task(_runner_audit_loop())
         return

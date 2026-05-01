@@ -1,12 +1,18 @@
-// Mobile Design System — barrel exports
-// All tokens, primitives, and theme utilities are reachable from here.
-
+// Mobile Design System
 export {
-  badgeTokens,
+  darkColorTokens,
+  lightColorTokens,
   colorTokens,
+  darkBadgeTokens,
+  lightBadgeTokens,
+  badgeTokens,
+  darkSurfaceTokens,
+  lightSurfaceTokens,
   surfaceTokens,
   spacingTokens,
   touchTokens,
+  darkCssVariableMap,
+  lightCssVariableMap,
   cssVariableMap,
   toCssVariables,
 } from "./tokens";
@@ -18,4 +24,4 @@ export { typeScale, lineHeights, fontStacks } from "./type";
 export { motionDurations, motionEasing, reducedMotionCss, prefersReducedMotion } from "./motion";
 
 export { ThemeProvider } from "./ThemeProvider";
-export type { ThemeProviderProps } from "./ThemeProvider";
+export type { ThemeProviderProps, ThemeMode } from "./ThemeProvider";

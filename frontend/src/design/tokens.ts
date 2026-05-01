@@ -1,7 +1,5 @@
-// Design Tokens — Single source of truth for the runner-dashboard visual system.
-// These values are mirrored in frontend/src/index.css as CSS custom properties.
-
-export const colorTokens = {
+// Design Tokens
+export const darkColorTokens = {
   bgPrimary: "#0f1117",
   bgSecondary: "#161b22",
   bgTertiary: "#1c2333",
@@ -11,7 +9,7 @@ export const colorTokens = {
   borderLight: "#3d444d",
   textPrimary: "#e6edf3",
   textSecondary: "#8b949e",
-  textMuted: "#6e7681",
+  textMuted: "#7a838e",
   accentBlue: "#58a6ff",
   accentGreen: "#3fb950",
   accentRed: "#f85149",
@@ -20,10 +18,28 @@ export const colorTokens = {
   accentOrange: "#f0883e",
 } as const;
 
-// Badge tints — paired background + foreground colours used by
-// the <Badge /> primitive. Each tone has a low-alpha tinted background
-// and a saturated foreground colour matching the same accent family.
-export const badgeTokens = {
+export const lightColorTokens = {
+  bgPrimary: "#ffffff",
+  bgSecondary: "#f6f8fa",
+  bgTertiary: "#f0f2f5",
+  bgCard: "#ffffff",
+  bgHover: "#f3f4f6",
+  border: "#d0d7de",
+  borderLight: "#e1e4e8",
+  textPrimary: "#1f2328",
+  textSecondary: "#656d76",
+  textMuted: "#5c6570",
+  accentBlue: "#0969da",
+  accentGreen: "#1a7f37",
+  accentRed: "#cf222e",
+  accentYellow: "#9a6700",
+  accentPurple: "#8250df",
+  accentOrange: "#bc4c00",
+} as const;
+
+export const colorTokens = darkColorTokens;
+
+export const darkBadgeTokens = {
   successBg: "rgba(63, 185, 80, 0.15)",
   successFg: "#3fb950",
   warningBg: "rgba(210, 153, 34, 0.15)",
@@ -36,16 +52,38 @@ export const badgeTokens = {
   neutralFg: "#8b949e",
 } as const;
 
-export const surfaceTokens = {
+export const lightBadgeTokens = {
+  successBg: "rgba(26, 127, 55, 0.12)",
+  successFg: "#1a7f37",
+  warningBg: "rgba(154, 103, 0, 0.12)",
+  warningFg: "#9a6700",
+  dangerBg: "rgba(207, 34, 46, 0.12)",
+  dangerFg: "#cf222e",
+  infoBg: "rgba(9, 105, 218, 0.12)",
+  infoFg: "#0969da",
+  neutralBg: "rgba(101, 109, 118, 0.12)",
+  neutralFg: "#656d76",
+} as const;
+
+export const badgeTokens = darkBadgeTokens;
+
+export const darkSurfaceTokens = {
   glassBg: "rgba(28, 33, 51, 0.7)",
   glassBorder: "rgba(255, 255, 255, 0.1)",
   glassBorderLight: "rgba(255, 255, 255, 0.05)",
   glassShadow: "0 8px 32px 0 rgba(0, 0, 0, 0.37)",
-  // glassBlur is the blur RADIUS only — consumed in CSS via
-  // `blur(var(--glass-blur))`. Override with `:root { --glass-blur: 0px }`
-  // (or future in-app reduce-transparency toggle) to disable the effect.
   glassBlur: "12px",
 } as const;
+
+export const lightSurfaceTokens = {
+  glassBg: "rgba(255, 255, 255, 0.7)",
+  glassBorder: "rgba(0, 0, 0, 0.08)",
+  glassBorderLight: "rgba(0, 0, 0, 0.05)",
+  glassShadow: "0 8px 32px 0 rgba(0, 0, 0, 0.1)",
+  glassBlur: "12px",
+} as const;
+
+export const surfaceTokens = darkSurfaceTokens;
 
 export const spacingTokens = {
   0: "0px",
@@ -73,40 +111,40 @@ export const touchTokens = {
   safeAreaInsetBottom: "env(safe-area-inset-bottom)",
 } as const;
 
-export const cssVariableMap = {
-  "--bg-primary": colorTokens.bgPrimary,
-  "--bg-secondary": colorTokens.bgSecondary,
-  "--bg-tertiary": colorTokens.bgTertiary,
-  "--bg-card": colorTokens.bgCard,
-  "--bg-hover": colorTokens.bgHover,
-  "--border": colorTokens.border,
-  "--border-light": colorTokens.borderLight,
-  "--text-primary": colorTokens.textPrimary,
-  "--text-secondary": colorTokens.textSecondary,
-  "--text-muted": colorTokens.textMuted,
-  "--accent-blue": colorTokens.accentBlue,
-  "--accent-green": colorTokens.accentGreen,
-  "--accent-red": colorTokens.accentRed,
-  "--accent-yellow": colorTokens.accentYellow,
-  "--accent-purple": colorTokens.accentPurple,
-  "--accent-orange": colorTokens.accentOrange,
+export const darkCssVariableMap = {
+  "--bg-primary": darkColorTokens.bgPrimary,
+  "--bg-secondary": darkColorTokens.bgSecondary,
+  "--bg-tertiary": darkColorTokens.bgTertiary,
+  "--bg-card": darkColorTokens.bgCard,
+  "--bg-hover": darkColorTokens.bgHover,
+  "--border": darkColorTokens.border,
+  "--border-light": darkColorTokens.borderLight,
+  "--text-primary": darkColorTokens.textPrimary,
+  "--text-secondary": darkColorTokens.textSecondary,
+  "--text-muted": darkColorTokens.textMuted,
+  "--accent-blue": darkColorTokens.accentBlue,
+  "--accent-green": darkColorTokens.accentGreen,
+  "--accent-red": darkColorTokens.accentRed,
+  "--accent-yellow": darkColorTokens.accentYellow,
+  "--accent-purple": darkColorTokens.accentPurple,
+  "--accent-orange": darkColorTokens.accentOrange,
 
-  "--badge-success-bg": badgeTokens.successBg,
-  "--badge-success-fg": badgeTokens.successFg,
-  "--badge-warning-bg": badgeTokens.warningBg,
-  "--badge-warning-fg": badgeTokens.warningFg,
-  "--badge-danger-bg": badgeTokens.dangerBg,
-  "--badge-danger-fg": badgeTokens.dangerFg,
-  "--badge-info-bg": badgeTokens.infoBg,
-  "--badge-info-fg": badgeTokens.infoFg,
-  "--badge-neutral-bg": badgeTokens.neutralBg,
-  "--badge-neutral-fg": badgeTokens.neutralFg,
+  "--badge-success-bg": darkBadgeTokens.successBg,
+  "--badge-success-fg": darkBadgeTokens.successFg,
+  "--badge-warning-bg": darkBadgeTokens.warningBg,
+  "--badge-warning-fg": darkBadgeTokens.warningFg,
+  "--badge-danger-bg": darkBadgeTokens.dangerBg,
+  "--badge-danger-fg": darkBadgeTokens.dangerFg,
+  "--badge-info-bg": darkBadgeTokens.infoBg,
+  "--badge-info-fg": darkBadgeTokens.infoFg,
+  "--badge-neutral-bg": darkBadgeTokens.neutralBg,
+  "--badge-neutral-fg": darkBadgeTokens.neutralFg,
 
-  "--glass-bg": surfaceTokens.glassBg,
-  "--glass-border": surfaceTokens.glassBorder,
-  "--glass-border-light": surfaceTokens.glassBorderLight,
-  "--glass-shadow": surfaceTokens.glassShadow,
-  "--glass-blur": surfaceTokens.glassBlur,
+  "--glass-bg": darkSurfaceTokens.glassBg,
+  "--glass-border": darkSurfaceTokens.glassBorder,
+  "--glass-border-light": darkSurfaceTokens.glassBorderLight,
+  "--glass-shadow": darkSurfaceTokens.glassShadow,
+  "--glass-blur": darkSurfaceTokens.glassBlur,
 
   "--mobile-hit-target": touchTokens.minimumHitTarget,
   "--comfortable-hit-target": touchTokens.comfortableHitTarget,
@@ -130,8 +168,68 @@ export const cssVariableMap = {
   "--space-15": spacingTokens[15],
 } as const;
 
-export function toCssVariables(): string {
-  return Object.entries(cssVariableMap)
+export const lightCssVariableMap = {
+  "--bg-primary": lightColorTokens.bgPrimary,
+  "--bg-secondary": lightColorTokens.bgSecondary,
+  "--bg-tertiary": lightColorTokens.bgTertiary,
+  "--bg-card": lightColorTokens.bgCard,
+  "--bg-hover": lightColorTokens.bgHover,
+  "--border": lightColorTokens.border,
+  "--border-light": lightColorTokens.borderLight,
+  "--text-primary": lightColorTokens.textPrimary,
+  "--text-secondary": lightColorTokens.textSecondary,
+  "--text-muted": lightColorTokens.textMuted,
+  "--accent-blue": lightColorTokens.accentBlue,
+  "--accent-green": lightColorTokens.accentGreen,
+  "--accent-red": lightColorTokens.accentRed,
+  "--accent-yellow": lightColorTokens.accentYellow,
+  "--accent-purple": lightColorTokens.accentPurple,
+  "--accent-orange": lightColorTokens.accentOrange,
+
+  "--badge-success-bg": lightBadgeTokens.successBg,
+  "--badge-success-fg": lightBadgeTokens.successFg,
+  "--badge-warning-bg": lightBadgeTokens.warningBg,
+  "--badge-warning-fg": lightBadgeTokens.warningFg,
+  "--badge-danger-bg": lightBadgeTokens.dangerBg,
+  "--badge-danger-fg": lightBadgeTokens.dangerFg,
+  "--badge-info-bg": lightBadgeTokens.infoBg,
+  "--badge-info-fg": lightBadgeTokens.infoFg,
+  "--badge-neutral-bg": lightBadgeTokens.neutralBg,
+  "--badge-neutral-fg": lightBadgeTokens.neutralFg,
+
+  "--glass-bg": lightSurfaceTokens.glassBg,
+  "--glass-border": lightSurfaceTokens.glassBorder,
+  "--glass-border-light": lightSurfaceTokens.glassBorderLight,
+  "--glass-shadow": lightSurfaceTokens.glassShadow,
+  "--glass-blur": lightSurfaceTokens.glassBlur,
+
+  "--mobile-hit-target": touchTokens.minimumHitTarget,
+  "--comfortable-hit-target": touchTokens.comfortableHitTarget,
+  "--bottom-nav-height": touchTokens.bottomNavHeight,
+
+  "--space-0": spacingTokens[0],
+  "--space-1": spacingTokens[1],
+  "--space-2": spacingTokens[2],
+  "--space-3": spacingTokens[3],
+  "--space-4": spacingTokens[4],
+  "--space-5": spacingTokens[5],
+  "--space-6": spacingTokens[6],
+  "--space-7": spacingTokens[7],
+  "--space-8": spacingTokens[8],
+  "--space-9": spacingTokens[9],
+  "--space-10": spacingTokens[10],
+  "--space-11": spacingTokens[11],
+  "--space-12": spacingTokens[12],
+  "--space-13": spacingTokens[13],
+  "--space-14": spacingTokens[14],
+  "--space-15": spacingTokens[15],
+} as const;
+
+export const cssVariableMap = darkCssVariableMap;
+
+export function toCssVariables(theme: "dark" | "light" = "dark"): string {
+  const map = theme === "light" ? lightCssVariableMap : darkCssVariableMap;
+  return Object.entries(map)
     .map(([name, value]) => `${name}: ${value};`)
     .join("\n");
 }
