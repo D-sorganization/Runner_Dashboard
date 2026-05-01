@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import shlex
 import subprocess
 from dataclasses import dataclass
@@ -10,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+from security import safe_subprocess_env
 
 log = logging.getLogger("dashboard.local_app_monitoring")
 
@@ -18,21 +18,6 @@ _DANGEROUS_SHELL_CHARS = set(";|&`$()<>")
 MANIFEST_FILENAME = "local_apps.json"
 DEFAULT_DEPLOYMENT_FILENAME = "deployment.json"
 DEFAULT_DRIFT_REF = "origin/main"
-
-_EXCLUDED_ENV_KEYS = {
-    "GH_TOKEN",
-    "GITHUB_TOKEN",
-    "ANTHROPIC_API_KEY",
-    "DASHBOARD_API_KEY",
-    "SECRET",
-    "PASSWORD",
-    "TOKEN",
-}
-
-
-def _safe_subprocess_env() -> dict[str, str]:
-    """Return env dict with secrets stripped (issue #29)."""
-    return {k: v for k, v in os.environ.items() if not any(exc in k.upper() for exc in _EXCLUDED_ENV_KEYS)}
 
 
 def _validate_health_command(cmd: list[str]) -> list[str]:
@@ -350,7 +335,7 @@ def run_command(command: list[str], timeout: int = 10) -> subprocess.CompletedPr
             errors="replace",
             check=False,
             timeout=timeout,
-            env=_safe_subprocess_env(),
+            env=safe_subprocess_env(),
         )
     except FileNotFoundError as exc:
         return subprocess.CompletedProcess(command, 127, "", str(exc))

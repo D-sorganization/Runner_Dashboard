@@ -33,19 +33,40 @@ def sanitize_log_value(value: str) -> str:
 
 # ─── Environment Scrubbing ─────────────────────────────────────────────────────
 
+_PROVIDER_API_KEY_ENV_VARS = frozenset(
+    {
+        "ANTHROPIC_API_KEY",
+        "OPENAI_API_KEY",
+        "GOOGLE_API_KEY",
+        "JULES_API_KEY",
+        "LINEAR_API_KEY",
+    }
+)
 
-def safe_subprocess_env() -> dict[str, str]:
-    """Return os.environ with secrets stripped out for subprocess calls."""
-    excluded = {
+_DENIED_SUBPROCESS_ENV_KEYS = frozenset(
+    {
+        *_PROVIDER_API_KEY_ENV_VARS,
         "GH_TOKEN",
         "GITHUB_TOKEN",
-        "ANTHROPIC_API_KEY",
+        "MAXWELL_API_TOKEN",
         "DASHBOARD_API_KEY",
-        "SECRET",
-        "PASSWORD",
-        "TOKEN",
+        "SESSION_SECRET",
+        "DISPATCH_SIGNING_SECRET",
+        "LINEAR_WEBHOOK_SECRET",
     }
-    return {k: v for k, v in os.environ.items() if not any(exc in k.upper() for exc in excluded)}
+)
+
+_DENIED_SUBPROCESS_ENV_PREFIXES = ("AWS_", "AZURE_")
+
+
+def safe_subprocess_env() -> dict[str, str]:
+    """Return os.environ with known secret-bearing keys stripped for subprocess calls."""
+    return {
+        key: value
+        for key, value in os.environ.items()
+        if key.upper() not in _DENIED_SUBPROCESS_ENV_KEYS
+        and not key.upper().startswith(_DENIED_SUBPROCESS_ENV_PREFIXES)
+    }
 
 
 # ─── URL Validation ────────────────────────────────────────────────────────────

@@ -21,6 +21,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 from routers.linear import list_workspace_summaries
+from security import safe_subprocess_env
 
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 datetime = _dt_mod.datetime
@@ -202,15 +203,13 @@ async def get_credentials(request: Request) -> dict:
     gh_auth_detail = "gh not found"
     if gh_binary:
         try:
-            _excluded = {"SECRET", "PASSWORD", "ANTHROPIC_API_KEY", "DASHBOARD_API_KEY"}
-            _safe_env = {k: v for k, v in os.environ.items() if not any(exc in k.upper() for exc in _excluded)}
             result = await asyncio.to_thread(
                 subprocess.run,
                 ["gh", "auth", "status"],
                 capture_output=True,
                 text=True,
                 timeout=10,
-                env=_safe_env,
+                env=safe_subprocess_env(),
             )
             gh_auth_ok = result.returncode == 0
             gh_auth_detail = "authenticated" if gh_auth_ok else "not logged in"

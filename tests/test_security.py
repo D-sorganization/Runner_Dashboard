@@ -1,5 +1,6 @@
 from __future__ import annotations  # noqa: E402
 
+import ast
 import time
 from pathlib import Path  # noqa: E402
 
@@ -237,16 +238,61 @@ def test_safe_subprocess_env_excludes_secrets(monkeypatch) -> None:
         "GH_TOKEN": "secret123",
         "GITHUB_TOKEN": "secret456",
         "ANTHROPIC_API_KEY": "key789",
+        "OPENAI_API_KEY": "openai",
+        "GOOGLE_API_KEY": "google",
+        "JULES_API_KEY": "jules",
+        "LINEAR_API_KEY": "linear",
+        "MAXWELL_API_TOKEN": "maxwell",
         "DASHBOARD_API_KEY": "apikey",
+        "SESSION_SECRET": "session",
+        "DISPATCH_SIGNING_SECRET": "dispatch",
+        "LINEAR_WEBHOOK_SECRET": "webhook",
+        "AWS_ACCESS_KEY_ID": "aws",
+        "AZURE_CLIENT_SECRET": "azure",
         "MY_SECRET": "shh",
         "DATABASE_PASSWORD": "password",
         "SOME_TOKEN": "tok",
+        "MAINTENANCE_TOKEN_FILE_PATH": "/tmp/token-file",
+        "MAINTENANCE_PASSWORD_PROMPT_DISABLED": "1",
+        "XDG_TOKEN_PATH": "/tmp/xdg-token",
         "NORMAL_VAR": "ok",
     }
     monkeypatch.setattr("os.environ", fake_env)
 
     result = security.safe_subprocess_env()
-    assert result == {"PATH": "/usr/bin", "NORMAL_VAR": "ok"}
+    assert result == {
+        "PATH": "/usr/bin",
+        "MY_SECRET": "shh",
+        "DATABASE_PASSWORD": "password",
+        "SOME_TOKEN": "tok",
+        "MAINTENANCE_TOKEN_FILE_PATH": "/tmp/token-file",
+        "MAINTENANCE_PASSWORD_PROMPT_DISABLED": "1",
+        "XDG_TOKEN_PATH": "/tmp/xdg-token",
+        "NORMAL_VAR": "ok",
+    }
+
+
+def test_safe_subprocess_env_excludes_provider_key_map_values(monkeypatch) -> None:
+    credentials_source = Path("backend/routers/credentials.py").read_text(encoding="utf-8")
+    credentials_tree = ast.parse(credentials_source)
+    provider_map_node = next(
+        node
+        for node in ast.walk(credentials_tree)
+        if isinstance(node, ast.AnnAssign)
+        and isinstance(node.target, ast.Name)
+        and node.target.id == "_PROVIDER_KEY_MAP"
+    )
+    provider_key_map = ast.literal_eval(provider_map_node.value)
+
+    fake_env = {key: f"value-{key}" for key in set(provider_key_map.values())}
+    fake_env["PATH"] = "/usr/bin"
+    monkeypatch.setattr("os.environ", fake_env)
+
+    result = security.safe_subprocess_env()
+
+    for env_var in set(provider_key_map.values()):
+        assert env_var not in result
+    assert result == {"PATH": "/usr/bin"}
 
 
 def test_safe_subprocess_env_empty(monkeypatch) -> None:
@@ -264,7 +310,7 @@ def test_validate_config_path_valid_file(tmp_path: Path) -> None:
     config_file = tmp_path / "config" / "test.yml"
     config_file.parent.mkdir(parents=True, exist_ok=True)
     config_file.write_text("key: value")
-    
+
     result = security.validate_config_path(config_file, allowed_roots=[tmp_path])
     assert result == config_file.resolve()
 
@@ -273,10 +319,10 @@ def test_validate_config_path_escape_root(tmp_path: Path) -> None:
     """Test that paths escaping allowed roots are rejected."""
     evil_file = tmp_path / "evil.yml"
     evil_file.write_text("malicious: true")
-    
+
     allowed_root = tmp_path / "allowed"
     allowed_root.mkdir(parents=True, exist_ok=True)
-    
+
     with pytest.raises(ValueError, match="escapes allowed roots"):
         security.validate_config_path(evil_file, allowed_roots=[allowed_root])
 
@@ -286,13 +332,13 @@ def test_validate_config_path_symlink_escape(tmp_path: Path) -> None:
     # Create a file outside the allowed root
     evil_file = tmp_path / "evil.yml"
     evil_file.write_text("malicious: true")
-    
+
     # Create allowed root with a symlink to the evil file
     allowed_root = tmp_path / "allowed"
     allowed_root.mkdir(parents=True, exist_ok=True)
     symlink = allowed_root / "config.yml"
     symlink.symlink_to(evil_file)
-    
+
     # The resolved path escapes the allowed root, so it's rejected
     with pytest.raises(ValueError, match="escapes allowed roots"):
         security.validate_config_path(symlink, allowed_roots=[allowed_root])
@@ -302,15 +348,15 @@ def test_validate_config_path_symlink_safe(tmp_path: Path) -> None:
     """Test that symlinks pointing within allowed roots are accepted."""
     allowed_root = tmp_path / "allowed"
     allowed_root.mkdir(parents=True, exist_ok=True)
-    
+
     # Create target file within allowed root
     target_file = allowed_root / "target.yml"
     target_file.write_text("safe: true")
-    
+
     # Create symlink within same root
     symlink = allowed_root / "config.yml"
     symlink.symlink_to(target_file)
-    
+
     result = security.validate_config_path(symlink, allowed_roots=[allowed_root])
     assert result == target_file.resolve()
 
@@ -318,14 +364,14 @@ def test_validate_config_path_symlink_safe(tmp_path: Path) -> None:
 def test_validate_config_path_world_writable(tmp_path: Path) -> None:
     """Test that world-writable files are rejected."""
     import stat
-    
+
     config_file = tmp_path / "config.yml"
     config_file.write_text("key: value")
-    
+
     # Make file world-writable
     current_mode = config_file.stat().st_mode
     config_file.chmod(current_mode | stat.S_IWOTH)
-    
+
     with pytest.raises(ValueError, match="world-writable"):
         security.validate_config_path(config_file, allowed_roots=[tmp_path], check_mode=True)
 
@@ -333,7 +379,7 @@ def test_validate_config_path_world_writable(tmp_path: Path) -> None:
 def test_validate_config_path_non_existent(tmp_path: Path) -> None:
     """Test that non-existent files are rejected."""
     non_existent = tmp_path / "does_not_exist.yml"
-    
+
     with pytest.raises(ValueError, match="does not exist"):
         security.validate_config_path(non_existent, allowed_roots=[tmp_path])
 
@@ -342,7 +388,7 @@ def test_safe_yaml_load_valid(tmp_path: Path) -> None:
     """Test loading a valid YAML file."""
     config_file = tmp_path / "config.yml"
     config_file.write_text("key: value\nnested:\n  item: 123")
-    
+
     result = security.safe_yaml_load(config_file, allowed_roots=[tmp_path])
     assert result == {"key": "value", "nested": {"item": 123}}
 
@@ -351,10 +397,10 @@ def test_safe_yaml_load_escape_root(tmp_path: Path) -> None:
     """Test that safe_yaml_load rejects paths escaping allowed roots."""
     evil_file = tmp_path / "evil.yml"
     evil_file.write_text("malicious: true")
-    
+
     allowed_root = tmp_path / "allowed"
     allowed_root.mkdir(parents=True, exist_ok=True)
-    
+
     with pytest.raises(ValueError, match="escapes allowed roots"):
         security.safe_yaml_load(evil_file, allowed_roots=[allowed_root])
 
@@ -368,7 +414,7 @@ def test_validate_config_path_dot_expansion(tmp_path: Path) -> None:
     config_dir.mkdir(parents=True, exist_ok=True)
     config_file = config_dir / "test.yml"
     config_file.write_text("key: value")
-    
+
     # This should work since ~/.config/runner-dashboard is a default allowed root
     # But we need to provide explicit roots for the test
     result = security.validate_config_path(config_file, allowed_roots=[home_sim])
@@ -379,7 +425,7 @@ def test_validate_config_path_json_file(tmp_path: Path) -> None:
     """Test that JSON files are also validated."""
     config_file = tmp_path / "config.json"
     config_file.write_text('{"key": "value"}')
-    
+
     result = security.validate_config_path(config_file, allowed_roots=[tmp_path])
     assert result == config_file.resolve()
 
@@ -397,7 +443,7 @@ def test_check_file_mode_safe(tmp_path: Path) -> None:
     """Test _check_file_mode with a safe file."""
     config_file = tmp_path / "config.yml"
     config_file.write_text("key: value")
-    
+
     result = security._check_file_mode(config_file)
     assert result is True
 
@@ -406,6 +452,6 @@ def test_check_symlink_safe(tmp_path: Path) -> None:
     """Test _check_symlink with a non-symlink file."""
     config_file = tmp_path / "config.yml"
     config_file.write_text("key: value")
-    
+
     result = security._check_symlink(config_file, allowed_roots=[tmp_path])
     assert result is True
