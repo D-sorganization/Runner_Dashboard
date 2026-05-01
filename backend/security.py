@@ -23,6 +23,10 @@ from fastapi import HTTPException
 
 _REPO_SLUG_RE = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
 
+# Strict owner/repo format used by _normalize_repository_input (issue #326).
+# Rejects anything that isn't a plain GitHub owner/repo slug pair.
+_OWNER_REPO_RE = re.compile(r"^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$")
+
 # ─── Log Sanitization ──────────────────────────────────────────────────────────
 
 
@@ -106,6 +110,27 @@ def validate_repo_slug(name: str) -> str:
     if not _REPO_SLUG_RE.fullmatch(slug):
         raise HTTPException(status_code=422, detail="repository must match ^[A-Za-z0-9._-]{1,100}$")
     return slug
+
+
+def validate_owner_repo_format(value: str) -> str:
+    """Validate that *value* is a strict ``owner/repo`` slug (issue #326).
+
+    Rejects any input that does not match ``^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$``
+    before it reaches owner-comparison or subprocess interpolation, preventing
+    SSRF via malformed owner segments (null bytes, URL-encoded chars, etc.).
+
+    Returns the stripped, validated value unchanged.
+    """
+    stripped = str(value).strip()
+    if not _OWNER_REPO_RE.fullmatch(stripped):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "repository must be in 'owner/repo' format matching "
+                "^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$ with no extra path components"
+            ),
+        )
+    return stripped
 
 
 # ─── Path Validation ───────────────────────────────────────────────────────────

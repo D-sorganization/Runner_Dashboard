@@ -106,7 +106,22 @@ def _env_source(key: str) -> str:
 
 
 def _require_local_request(request: Request) -> None:
-    """Enforce that the request originates from localhost (issue #45)."""
+    """Enforce that the request originates from localhost (issue #45, #321).
+
+    Rejects requests that include proxy-forwarding headers (X-Forwarded-For,
+    X-Real-IP, Forwarded) even when the transport-layer peer is loopback,
+    preventing header-based bypass of the loopback trust check.
+    """
+    # Reject any request that carries forwarding headers — an attacker behind a
+    # reverse proxy could set X-Forwarded-For: 127.0.0.1 to spoof local origin.
+    _PROXY_HEADERS = ("x-forwarded-for", "x-real-ip", "forwarded", "x-forwarded-host")
+    for header in _PROXY_HEADERS:
+        if request.headers.get(header):
+            raise HTTPException(
+                status_code=403,
+                detail="This endpoint is only accessible locally (proxy headers not allowed)",
+            )
+
     client_host = request.client.host if request.client else ""
     if client_host not in ("127.0.0.1", "::1", "localhost"):
         raise HTTPException(status_code=403, detail="This endpoint is only accessible locally")
