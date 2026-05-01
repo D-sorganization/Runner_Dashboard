@@ -24,7 +24,6 @@ if str(_BACKEND) not in sys.path:
 # available on PYTHONPATH=backend in CI.
 from cache_utils import Cache  # noqa: E402
 
-
 # ---------------------------------------------------------------------------
 # Basic get / set / TTL
 # ---------------------------------------------------------------------------

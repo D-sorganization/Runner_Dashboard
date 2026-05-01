@@ -29,7 +29,7 @@ from system_utils import run_cmd
 try:
     UTC = _dt_mod.UTC  # type: ignore
 except AttributeError:
-    UTC = _dt_mod.timezone.utc  # type: ignore
+    UTC = _dt_mod.timezone.utc  # type: ignore  # noqa: UP017
 
 _remediation_history_lock: asyncio.Lock = asyncio.Lock()
 
