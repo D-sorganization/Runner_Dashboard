@@ -1,6 +1,5 @@
-import React, { useState, useMemo, ReactNode } from 'react'
+import React, { useState, useMemo, ReactNode, useCallback, useEffect, useRef } from 'react'
 import { useBreakpoint } from '../hooks/useBreakpoint'
-import { breakpoints } from '../design/breakpoints'
 import { colorTokens, spacingTokens, touchTokens } from '../design/tokens'
 
 export type TabId = 'fleet' | 'workflows' | 'remediation' | 'maxwell' | 'more'
@@ -12,37 +11,136 @@ export interface MobileShellProps {
   tabContent?: Record<TabId, ReactNode>
 }
 
+// Inline SVG icons — aria-hidden so screen readers skip them.
+function FleetIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+    </svg>
+  )
+}
+
+function WorkflowsIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 1v6m0 6v6m4.22-10.22l4.24-4.24M6.34 6.34L2.1 2.1m17.9 17.9l-4.24-4.24M6.34 17.66l-4.24 4.24" />
+    </svg>
+  )
+}
+
+function RemediationIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+    </svg>
+  )
+}
+
+function MaxwellIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+      <line x1="3" y1="9" x2="21" y2="9" />
+      <line x1="9" y1="21" x2="9" y2="9" />
+    </svg>
+  )
+}
+
+function MoreIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="5" r="1" />
+      <circle cx="12" cy="12" r="1" />
+      <circle cx="12" cy="19" r="1" />
+    </svg>
+  )
+}
+
+const iconMap = {
+  fleet: FleetIcon,
+  workflows: WorkflowsIcon,
+  remediation: RemediationIcon,
+  maxwell: MaxwellIcon,
+  more: MoreIcon,
+}
+
+// Tab configuration
+const mainTabs: Array<{ id: TabId; label: string; Icon: typeof FleetIcon }> = [
+  { id: 'fleet', label: 'Fleet', Icon: FleetIcon },
+  { id: 'workflows', label: 'Workflows', Icon: WorkflowsIcon },
+  { id: 'remediation', label: 'Remediation', Icon: RemediationIcon },
+  { id: 'maxwell', label: 'Maxwell', Icon: MaxwellIcon },
+  { id: 'more', label: 'More', Icon: MoreIcon },
+]
+
+// Additional tabs in drawer
+const drawerTabs = [
+  { id: 'org', label: 'Org' },
+  { id: 'heavy', label: 'Heavy Runners' },
+  { id: 'assessments', label: 'Assessments' },
+  { id: 'requests', label: 'Feature Requests' },
+  { id: 'credentials', label: 'Credentials' },
+  { id: 'reports', label: 'Reports' },
+  { id: 'health', label: 'Queue Health' },
+]
+
+function tabIndexForId(tabId: TabId): number {
+  return mainTabs.findIndex((t) => t.id === tabId)
+}
+
 export function MobileShell({ children, currentTab, onTabChange }: MobileShellProps) {
   const breakpoint = useBreakpoint()
   const isMobile = breakpoint !== 'lg' && breakpoint !== 'xl'
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const tabRefs = useRef<Record<TabId, HTMLButtonElement | null>>({
+    fleet: null,
+    workflows: null,
+    remediation: null,
+    maxwell: null,
+    more: null,
+  })
 
-  // Main tabs visible on bottom nav (5 primary tabs)
-  const mainTabs: Array<{ id: TabId; label: string; icon: string }> = [
-    { id: 'fleet', label: 'Fleet', icon: '⚡' },
-    { id: 'workflows', label: 'Workflows', icon: '⚙️' },
-    { id: 'remediation', label: 'Remediation', icon: '🔧' },
-    { id: 'maxwell', label: 'Maxwell', icon: '🤖' },
-    { id: 'more', label: 'More', icon: '⋯' },
-  ]
-
-  // Additional tabs in drawer (shown on "More" tab)
-  const drawerTabs = [
-    { id: 'org', label: 'Org' },
-    { id: 'heavy', label: 'Heavy Runners' },
-    { id: 'assessments', label: 'Assessments' },
-    { id: 'requests', label: 'Feature Requests' },
-    { id: 'credentials', label: 'Credentials' },
-    { id: 'reports', label: 'Reports' },
-    { id: 'health', label: 'Queue Health' },
-  ]
-
-  const handleTabClick = (tabId: TabId) => {
+  const handleTabClick = useCallback((tabId: TabId) => {
     onTabChange(tabId)
     if (tabId === 'more') {
       setDrawerOpen(true)
     }
-  }
+  }, [onTabChange])
+
+  // Arrow-key cycling per WAI-ARIA tablist pattern
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLButtonElement>, tabId: TabId) => {
+    const tabs = mainTabs.map((t) => t.id)
+    const idx = tabs.indexOf(tabId)
+    let nextIdx = idx
+
+    switch (e.key) {
+      case 'ArrowLeft':
+      case 'ArrowUp':
+        e.preventDefault()
+        nextIdx = idx === 0 ? tabs.length - 1 : idx - 1
+        break
+      case 'ArrowRight':
+      case 'ArrowDown':
+        e.preventDefault()
+        nextIdx = idx === tabs.length - 1 ? 0 : idx + 1
+        break
+      case 'Home':
+        e.preventDefault()
+        nextIdx = 0
+        break
+      case 'End':
+        e.preventDefault()
+        nextIdx = tabs.length - 1
+        break
+      default:
+        return
+    }
+
+    const nextTab = tabs[nextIdx]
+    onTabChange(nextTab)
+    tabRefs.current[nextTab]?.focus()
+  }, [onTabChange])
 
   // Only show mobile shell on small viewports
   if (!isMobile) {
@@ -50,48 +148,69 @@ export function MobileShell({ children, currentTab, onTabChange }: MobileShellPr
   }
 
   return (
-    <div style={styles.container}>
+    <div className="mobile-shell">
       {/* Main content area */}
-      <div style={styles.content}>
+      <div className="mobile-shell__content">
         {children}
       </div>
 
-      {/* Bottom Tab Bar */}
-      <nav style={styles.navBar}>
-        {mainTabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => handleTabClick(tab.id)}
-            style={{
-              ...styles.tabButton,
-              ...(currentTab === tab.id ? styles.tabButtonActive : {}),
-            }}
-            title={tab.label}
-          >
-            <span style={styles.tabIcon}>{tab.icon}</span>
-            <span style={styles.tabLabel}>{tab.label}</span>
-          </button>
-        ))}
+      {/* Bottom Tab Bar — WAI-ARIA tablist */}
+      <nav
+        className="mobile-shell__nav"
+        role="tablist"
+        aria-label="Main navigation"
+      >
+        {mainTabs.map((tab) => {
+          const isActive = currentTab === tab.id
+          const Icon = tab.Icon
+          return (
+            <button
+              key={tab.id}
+              ref={(el) => { tabRefs.current[tab.id] = el }}
+              onClick={() => handleTabClick(tab.id)}
+              onKeyDown={(e) => handleKeyDown(e, tab.id)}
+              className={`mobile-shell__tab ${isActive ? 'mobile-shell__tab--active' : ''}`}
+              role="tab"
+              aria-selected={isActive}
+              tabIndex={isActive ? 0 : -1}
+              title={tab.label}
+              type="button"
+            >
+              <span className="mobile-shell__tab-accent" aria-hidden="true" />
+              <Icon className="mobile-shell__tab-icon" />
+              <span className="mobile-shell__tab-label">{tab.label}</span>
+            </button>
+          )
+        })}
       </nav>
 
       {/* Drawer for additional tabs */}
       {drawerOpen && (
-        <div style={styles.drawerOverlay} onClick={() => setDrawerOpen(false)}>
-          <div style={styles.drawer} onClick={(e) => e.stopPropagation()}>
-            <div style={styles.drawerHeader}>
-              <button style={styles.drawerClose} onClick={() => setDrawerOpen(false)}>
-                ✕
+        <div className="mobile-shell__drawer-overlay" onClick={() => setDrawerOpen(false)} role="presentation">
+          <div className="mobile-shell__drawer" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="More options">
+            <div className="mobile-shell__drawer-header">
+              <button
+                className="mobile-shell__drawer-close"
+                onClick={() => setDrawerOpen(false)}
+                type="button"
+                aria-label="Close drawer"
+              >
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="20" height="20">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
               </button>
             </div>
-            <div style={styles.drawerContent}>
+            <div className="mobile-shell__drawer-content">
               {drawerTabs.map((tab) => (
                 <button
                   key={tab.id}
-                  style={styles.drawerItem}
+                  className="mobile-shell__drawer-item"
                   onClick={() => {
                     setDrawerOpen(false)
                     // Handle drawer tab selection
                   }}
+                  type="button"
                 >
                   {tab.label}
                 </button>
@@ -102,135 +221,4 @@ export function MobileShell({ children, currentTab, onTabChange }: MobileShellPr
       )}
     </div>
   )
-}
-
-const styles = {
-  container: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    height: '100vh',
-    width: '100%',
-    backgroundColor: colorTokens.bgPrimary,
-  },
-
-  content: {
-    flex: 1,
-    overflow: 'auto',
-    paddingBottom: `calc(${touchTokens.bottomNavHeight} + env(safe-area-inset-bottom))`,
-  },
-
-  navBar: {
-    display: 'flex',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-    height: touchTokens.bottomNavHeight,
-    backgroundColor: colorTokens.bgSecondary,
-    borderTop: `1px solid ${colorTokens.border}`,
-    position: 'fixed' as const,
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingBottom: 'env(safe-area-inset-bottom)',
-    zIndex: 100,
-  },
-
-  tabButton: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacingTokens[1],
-    flex: 1,
-    height: '100%',
-    background: 'none',
-    border: 'none',
-    color: colorTokens.textSecondary,
-    cursor: 'pointer',
-    fontSize: '12px',
-    padding: 0,
-    transition: 'color 0.2s',
-  },
-
-  tabButtonActive: {
-    color: colorTokens.accentBlue,
-  },
-
-  tabIcon: {
-    fontSize: '20px',
-  },
-
-  tabLabel: {
-    fontSize: '11px',
-    fontWeight: 500 as const,
-  },
-
-  drawerOverlay: {
-    position: 'fixed' as const,
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    zIndex: 200,
-    animation: 'fadeIn 0.2s ease-out',
-  },
-
-  drawer: {
-    position: 'fixed' as const,
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: '280px',
-    backgroundColor: colorTokens.bgSecondary,
-    borderRight: `1px solid ${colorTokens.border}`,
-    display: 'flex',
-    flexDirection: 'column' as const,
-    zIndex: 201,
-    animation: 'slideInLeft 0.3s ease-out',
-  },
-
-  drawerHeader: {
-    display: 'flex',
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-    height: '56px',
-    paddingRight: spacingTokens[4],
-    borderBottom: `1px solid ${colorTokens.border}`,
-  },
-
-  drawerClose: {
-    background: 'none',
-    border: 'none',
-    color: colorTokens.textPrimary,
-    fontSize: '20px',
-    cursor: 'pointer',
-    padding: spacingTokens[2],
-    minWidth: touchTokens.minimumHitTarget,
-    minHeight: touchTokens.minimumHitTarget,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  drawerContent: {
-    flex: 1,
-    overflow: 'auto',
-    display: 'flex',
-    flexDirection: 'column' as const,
-  },
-
-  drawerItem: {
-    padding: `${spacingTokens[4]} ${spacingTokens[4]}`,
-    background: 'none',
-    border: 'none',
-    borderBottom: `1px solid ${colorTokens.border}`,
-    color: colorTokens.textPrimary,
-    textAlign: 'left' as const,
-    cursor: 'pointer',
-    minHeight: touchTokens.minimumHitTarget,
-    display: 'flex',
-    alignItems: 'center',
-    fontSize: '14px',
-    transition: 'backgroundColor 0.2s',
-  },
 }

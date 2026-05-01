@@ -2426,3 +2426,186 @@ th.sortable.active .sort-indicator {
   white-space: nowrap;
   border: 0;
 }
+
+/* ── MobileShell a11y refactor (issue #373) ──────────────────── */
+
+.mobile-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100%;
+  background-color: var(--bg-primary);
+}
+
+.mobile-shell__content {
+  flex: 1;
+  overflow: auto;
+  padding-bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom));
+}
+
+.mobile-shell__nav {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  height: var(--bottom-nav-height);
+  background-color: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding-bottom: env(safe-area-inset-bottom);
+  z-index: 100;
+}
+
+.mobile-shell__tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  flex: 1;
+  height: 100%;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0;
+  transition: color 0.2s;
+  position: relative;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-shell__tab {
+    transition: none;
+  }
+}
+
+.mobile-shell__tab:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: -2px;
+}
+
+.mobile-shell__tab--active {
+  color: var(--accent-blue);
+}
+
+/* 2px top accent bar for active state (color-blind safe) */
+.mobile-shell__tab-accent {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 0;
+  background-color: var(--accent-blue);
+  border-radius: 0 0 2px 2px;
+  transition: height 0.2s ease-out;
+}
+
+.mobile-shell__tab--active .mobile-shell__tab-accent {
+  height: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-shell__tab-accent {
+    transition: none;
+  }
+}
+
+.mobile-shell__tab-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.mobile-shell__tab-label {
+  font-size: 11px;
+  font-weight: 500;
+}
+
+/* Drawer */
+.mobile-shell__drawer-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 200;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.mobile-shell__drawer {
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 280px;
+  background-color: var(--bg-secondary);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  z-index: 201;
+  animation: slideInLeft 0.3s ease-out;
+}
+
+.mobile-shell__drawer-header {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  height: 56px;
+  padding-right: var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.mobile-shell__drawer-close {
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: 20px;
+  cursor: pointer;
+  padding: var(--space-2);
+  min-width: var(--mobile-hit-target);
+  min-height: var(--mobile-hit-target);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mobile-shell__drawer-close:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: -2px;
+}
+
+.mobile-shell__drawer-content {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.mobile-shell__drawer-item {
+  padding: var(--space-4) var(--space-4);
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  min-height: var(--mobile-hit-target);
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  transition: background-color 0.2s;
+}
+
+.mobile-shell__drawer-item:hover,
+.mobile-shell__drawer-item:focus-visible {
+  background-color: var(--bg-hover);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-shell__drawer-item {
+    transition: none;
+  }
+}

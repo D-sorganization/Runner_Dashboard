@@ -1,3 +1,4 @@
+import React from 'react'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MobileShell } from '../MobileShell'
@@ -14,7 +15,7 @@ describe('MobileShell', () => {
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
       dispatchEvent: vi.fn(),
-    }))
+    } as MediaQueryList))
   })
 
   it('renders bottom tabs on mobile viewport', () => {
@@ -32,7 +33,22 @@ describe('MobileShell', () => {
     expect(screen.getByText('More')).toBeInTheDocument()
   })
 
-  it('highlights active tab', () => {
+  it('uses SVG icons instead of emoji', () => {
+    const handleTabChange = vi.fn()
+    render(
+      <MobileShell currentTab="fleet" onTabChange={handleTabChange}>
+        <div>Test Content</div>
+      </MobileShell>
+    )
+
+    // Each tab should have an SVG icon with aria-hidden="true"
+    const svgs = screen.getAllByRole('tab').map((tab) =>
+      tab.querySelector('svg[aria-hidden="true"]')
+    )
+    expect(svgs.every((svg) => svg !== null)).toBe(true)
+  })
+
+  it('exposes role=tablist and role=tab semantics', () => {
     const handleTabChange = vi.fn()
     render(
       <MobileShell currentTab="workflows" onTabChange={handleTabChange}>
@@ -40,8 +56,67 @@ describe('MobileShell', () => {
       </MobileShell>
     )
 
-    const workflowsTab = screen.getByText('Workflows').closest('button')
-    expect(workflowsTab).toHaveStyle({ color: '#58a6ff' }) // accentBlue
+    const tablist = screen.getByRole('tablist')
+    expect(tablist).toBeInTheDocument()
+    expect(tablist).toHaveAttribute('aria-label', 'Main navigation')
+
+    const tabs = screen.getAllByRole('tab')
+    expect(tabs).toHaveLength(5)
+  })
+
+  it('sets aria-selected on active tab only', () => {
+    const handleTabChange = vi.fn()
+    render(
+      <MobileShell currentTab="workflows" onTabChange={handleTabChange}>
+        <div>Test Content</div>
+      </MobileShell>
+    )
+
+    const tabs = screen.getAllByRole('tab')
+    tabs.forEach((tab) => {
+      const label = tab.querySelector('.mobile-shell__tab-label')?.textContent
+      const isSelected = tab.getAttribute('aria-selected') === 'true'
+      if (label === 'Workflows') {
+        expect(isSelected).toBe(true)
+      } else {
+        expect(isSelected).toBe(false)
+      }
+    })
+  })
+
+  it('sets tabIndex=0 on active tab and -1 on inactive tabs', () => {
+    const handleTabChange = vi.fn()
+    render(
+      <MobileShell currentTab="fleet" onTabChange={handleTabChange}>
+        <div>Test Content</div>
+      </MobileShell>
+    )
+
+    const tabs = screen.getAllByRole('tab')
+    const fleetTab = tabs.find((t) => t.textContent?.includes('Fleet'))
+    const otherTabs = tabs.filter((t) => !t.textContent?.includes('Fleet'))
+
+    expect(fleetTab).toHaveAttribute('tabIndex', '0')
+    otherTabs.forEach((tab) => {
+      expect(tab).toHaveAttribute('tabIndex', '-1')
+    })
+  })
+
+  it('renders 2px top accent bar for color-blind active cue', () => {
+    const handleTabChange = vi.fn()
+    render(
+      <MobileShell currentTab="workflows" onTabChange={handleTabChange}>
+        <div>Test Content</div>
+      </MobileShell>
+    )
+
+    const activeTab = screen.getAllByRole('tab').find(
+      (t) => t.getAttribute('aria-selected') === 'true'
+    )
+    expect(activeTab).toBeTruthy()
+
+    const accent = activeTab!.querySelector('.mobile-shell__tab-accent')
+    expect(accent).toBeInTheDocument()
   })
 
   it('calls onTabChange when tab is clicked', () => {
@@ -56,6 +131,70 @@ describe('MobileShell', () => {
     fireEvent.click(workflowsTab)
 
     expect(handleTabChange).toHaveBeenCalledWith('workflows')
+  })
+
+  it('cycles focus with ArrowRight keyboard', () => {
+    const handleTabChange = vi.fn()
+    render(
+      <MobileShell currentTab="fleet" onTabChange={handleTabChange}>
+        <div>Test Content</div>
+      </MobileShell>
+    )
+
+    const tabs = screen.getAllByRole('tab')
+    const fleetTab = tabs.find((t) => t.textContent?.includes('Fleet'))!
+
+    fireEvent.keyDown(fleetTab, { key: 'ArrowRight' })
+
+    expect(handleTabChange).toHaveBeenCalledWith('workflows')
+  })
+
+  it('cycles focus with ArrowLeft keyboard wrapping to end', () => {
+    const handleTabChange = vi.fn()
+    render(
+      <MobileShell currentTab="fleet" onTabChange={handleTabChange}>
+        <div>Test Content</div>
+      </MobileShell>
+    )
+
+    const tabs = screen.getAllByRole('tab')
+    const fleetTab = tabs.find((t) => t.textContent?.includes('Fleet'))!
+
+    fireEvent.keyDown(fleetTab, { key: 'ArrowLeft' })
+
+    expect(handleTabChange).toHaveBeenCalledWith('more')
+  })
+
+  it('cycles to first tab with Home key', () => {
+    const handleTabChange = vi.fn()
+    render(
+      <MobileShell currentTab="maxwell" onTabChange={handleTabChange}>
+        <div>Test Content</div>
+      </MobileShell>
+    )
+
+    const tabs = screen.getAllByRole('tab')
+    const maxwellTab = tabs.find((t) => t.textContent?.includes('Maxwell'))!
+
+    fireEvent.keyDown(maxwellTab, { key: 'Home' })
+
+    expect(handleTabChange).toHaveBeenCalledWith('fleet')
+  })
+
+  it('cycles to last tab with End key', () => {
+    const handleTabChange = vi.fn()
+    render(
+      <MobileShell currentTab="fleet" onTabChange={handleTabChange}>
+        <div>Test Content</div>
+      </MobileShell>
+    )
+
+    const tabs = screen.getAllByRole('tab')
+    const fleetTab = tabs.find((t) => t.textContent?.includes('Fleet'))!
+
+    fireEvent.keyDown(fleetTab, { key: 'End' })
+
+    expect(handleTabChange).toHaveBeenCalledWith('more')
   })
 
   it('opens drawer when More tab is clicked', async () => {
@@ -92,7 +231,7 @@ describe('MobileShell', () => {
     })
 
     // Click backdrop
-    const overlay = container.querySelector('[style*="rgba(0, 0, 0, 0.5)"]')
+    const overlay = container.querySelector('.mobile-shell__drawer-overlay')
     if (overlay) {
       fireEvent.click(overlay)
     }
@@ -142,7 +281,7 @@ describe('MobileShell', () => {
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
       dispatchEvent: vi.fn(),
-    }))
+    }) as MediaQueryList)
 
     const handleTabChange = vi.fn()
     render(
