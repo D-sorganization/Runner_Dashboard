@@ -135,6 +135,13 @@ The project pytest configuration declares `backend` on `pythonpath`, and
 `tests/conftest.py` also inserts the resolved backend directory before importing
 the FastAPI app and router dependencies.
 
+**Auth test fixtures (issue #343):** `mock_auth` is opt-in (not `autouse`).
+Tests that need to bypass authentication must declare `mock_auth` explicitly.
+`make_principal(id, type, roles)` creates a minimal `Principal`; the helpers
+`admin_principal`, `operator_principal`, and `viewer_principal` cover the
+three main roles. `make_authed_client(principal)` returns a `TestClient` with
+the given principal pre-wired.
+
 **Uvicorn runtime tuning (env-var driven, issue #393):**
 
 When `backend/server.py` is invoked as `__main__`, the uvicorn instance is
