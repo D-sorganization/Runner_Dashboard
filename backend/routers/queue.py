@@ -19,6 +19,7 @@ from dashboard_config import ORG
 from fastapi import APIRouter, Depends, HTTPException, Request
 from identity import Principal, require_scope
 from proxy_utils import proxy_to_hub, should_proxy_fleet_to_hub
+from security import validate_repo_slug
 from system_utils import run_cmd
 
 log = logging.getLogger("dashboard.queue")
@@ -64,6 +65,7 @@ async def _fetch_repo_runs(
     status: str | None = None,
 ) -> list[dict]:
     """Fetch workflow runs for one repository and annotate repository name."""
+    repo_name = validate_repo_slug(repo_name)
     status_part = f"&status={status}" if status else ""
     rc, out, _ = await run_cmd(
         [
@@ -149,6 +151,7 @@ async def cancel_run(
     run_id: int,  # noqa: B008
 ) -> dict:
     """Cancel a single queued or in-progress workflow run."""
+    repo = validate_repo_slug(repo)
     code, _, stderr = await run_cmd(
         [
             "gh",
@@ -176,6 +179,7 @@ async def rerun_failed(
     run_id: int,  # noqa: B008
 ) -> dict:
     """Re-run failed jobs in a workflow run."""
+    repo = validate_repo_slug(repo)
     code, _, stderr = await run_cmd(
         [
             "gh",
@@ -207,6 +211,8 @@ async def cancel_workflow_runs(
     body = await request.json()
     workflow_name: str = body.get("workflow_name", "")
     target_repo: str | None = body.get("repo")
+    if target_repo is not None:
+        target_repo = validate_repo_slug(target_repo)
 
     if not workflow_name:
         raise HTTPException(status_code=400, detail="workflow_name required")

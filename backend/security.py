@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import ipaddress
 import os
+import re
 import shlex
 import time
 from collections import defaultdict
@@ -18,6 +19,8 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from fastapi import HTTPException
+
+_REPO_SLUG_RE = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
 
 # ─── Log Sanitization ──────────────────────────────────────────────────────────
 
@@ -73,6 +76,14 @@ def validate_local_url(url: str, field: str = "url") -> str:
     if parsed.scheme not in ("http", "https"):
         raise ValueError(f"{field} must use http or https")
     return validate_fleet_node_url(url)
+
+
+def validate_repo_slug(name: str) -> str:
+    """Return a GitHub repository slug safe for interpolation into gh api paths."""
+    slug = str(name).strip()
+    if not _REPO_SLUG_RE.fullmatch(slug):
+        raise HTTPException(status_code=422, detail="repository must match ^[A-Za-z0-9._-]{1,100}$")
+    return slug
 
 
 # ─── Path Validation ───────────────────────────────────────────────────────────

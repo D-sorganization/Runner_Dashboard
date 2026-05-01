@@ -57,12 +57,11 @@ from fastapi.responses import (
 )
 from fastapi.staticfiles import StaticFiles
 from identity import Principal, require_principal, require_scope  # noqa: B008
+from middleware import MaxBodySizeMiddleware
 from pydantic import BaseModel, Field
 from routers import admin as admin_router
 from routers import auth as auth_router
 from starlette.middleware.sessions import SessionMiddleware
-
-from middleware import MaxBodySizeMiddleware
 
 BACKEND_DIR = Path(__file__).resolve().parent
 if str(BACKEND_DIR) not in sys.path:
@@ -122,6 +121,7 @@ from security import (  # noqa: E402
     safe_subprocess_env,  # noqa: E402
     sanitize_log_value,  # noqa: E402
     validate_fleet_node_url,  # noqa: E402
+    validate_repo_slug,  # noqa: E402
 )
 from system_utils import get_system_metrics_snapshot  # noqa: E402
 
@@ -919,9 +919,12 @@ def _normalize_repository_input(value: str) -> tuple[str, str]:
     text = str(value).strip()
     if "/" in text:
         owner, _, repo_name = text.partition("/")
-        if owner and repo_name:
-            return repo_name, text
-    return text, f"{ORG}/{text}"
+        if owner.lower() != ORG.lower():
+            raise HTTPException(status_code=422, detail=f"repository owner must be {ORG}")
+        repo_name = validate_repo_slug(repo_name)
+        return repo_name, f"{ORG}/{repo_name}"
+    repo_name = validate_repo_slug(text)
+    return repo_name, f"{ORG}/{repo_name}"
 
 
 def _machine_name_from_runner_name(runner_name: str | None) -> str | None:

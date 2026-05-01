@@ -30,6 +30,7 @@ from gh_utils import gh_api, gh_api_raw
 from identity import Principal, require_scope
 from input_validation import validate_workflow_inputs
 from proxy_utils import proxy_to_hub, should_proxy_fleet_to_hub
+from security import validate_repo_slug
 from system_utils import run_cmd
 
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
@@ -58,6 +59,7 @@ async def _get_recent_org_repos(limit: int = 30) -> list[dict]:
 
 async def _fetch_repo_runs(repo_name: str, per_page: int = 10, status: str | None = None) -> list[dict]:
     """Fetch workflow runs for a single repository."""
+    repo_name = validate_repo_slug(repo_name)
     url = f"/repos/{ORG}/{repo_name}/actions/runs?per_page={per_page}"
     if status:
         url += f"&status={status}"
@@ -75,6 +77,7 @@ async def _enrich_run_with_job_placement(run: dict) -> dict:
     run_id = run.get("id")
     if not repo or not run_id:
         return enriched
+    repo = validate_repo_slug(repo)
     try:
         data = await gh_api(f"/repos/{ORG}/{repo}/actions/runs/{run_id}/jobs")
         jobs = data.get("jobs", [])
@@ -209,6 +212,7 @@ async def get_repo_runs(request: Request, repo: str, per_page: int = 20):
     """Get recent workflow runs for a specific repo."""
     if should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
+    repo = validate_repo_slug(repo)
     data = await gh_api(f"/repos/{ORG}/{repo}/actions/runs?per_page={per_page}")
     return data
 
@@ -356,6 +360,7 @@ async def dispatch_workflow(
 
     if not repo or not workflow_id:
         raise HTTPException(status_code=422, detail="repository and workflow_id required")
+    repo = validate_repo_slug(repo)
 
     endpoint = f"/repos/{ORG}/{repo}/actions/workflows/{workflow_id}/dispatches"
     payload = {"ref": ref, "inputs": inputs}
