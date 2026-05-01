@@ -1,4 +1,7 @@
 import React, { useState, useCallback } from 'react'
+// Issue #375: router.tsx has React Router v6 BrowserRouter with lazy() chunks.
+// To activate: replace <AppWithMobileShell /> below with <AppRouter />.
+// import { AppRouter } from './router'
 import ReactDOM from 'react-dom/client'
 import { QueryClientProvider } from '@tanstack/react-query'
 import App from './legacy/App'

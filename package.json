@@ -15,7 +15,8 @@
     "generate-api:check": "bash scripts/gen-api-client.sh --check",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "test:e2e:headed": "playwright test --headed"
+    "test:e2e:headed": "playwright test --headed",
+    "generate:api": "openapi-typescript http://localhost:8000/openapi.json -o src/types/api.d.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.0.1",
@@ -27,6 +28,7 @@
     "marked": "^14.1.0",
     "react-hook-form": "^7.56.2",
     "react-i18next": "^17.0.6",
+    "react-router-dom": "^6.28.0",
     "web-vitals": "^5.2.0",
     "zod": "^4.4.1"
   },
@@ -38,6 +40,7 @@
     "@types/dompurify": "^3.0.5",
     "@types/react": "^18.3.28",
     "@types/react-dom": "^18.3.7",
+    "@types/react-router-dom": "^5.3.3",
     "@typescript-eslint/eslint-plugin": "^7.15.0",
     "@typescript-eslint/parser": "^7.15.0",
     "@vitejs/plugin-react": "^4.7.0",
