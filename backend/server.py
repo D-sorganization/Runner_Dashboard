@@ -77,7 +77,7 @@ import push as _push_router  # noqa: E402
 import quota_enforcement as quota_enforcement  # noqa: E402
 import unified_issue_inventory as unified_issue_inventory  # noqa: E402
 import usage_monitoring as usage_monitoring  # noqa: E402
-from cache_utils import _cache  # noqa: E402
+from cache_utils import cache_delete as _cache_delete  # noqa: E402
 from cache_utils import cache_get as _cache_get  # noqa: E402
 from cache_utils import cache_set as _cache_set  # noqa: E402
 from dashboard_config.cache_ttls import CacheTtl  # noqa: E402
@@ -2802,7 +2802,7 @@ async def rerun_ci_test(request: Request, *, principal: Principal = Depends(requ
         )
         if code != 0:
             raise HTTPException(status_code=502, detail=f"GitHub API error: {stderr}")
-        _cache.pop("ci_test_results", None)
+        _cache_delete("ci_test_results")
         return {"status": "triggered", "repo": repo_name, "run_id": run_id}
     except HTTPException:
         raise

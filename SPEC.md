@@ -2,7 +2,11 @@
 
 **Spec Version:** 2.5.21
 **Application Version:** 4.1.0 (see `VERSION`)
+<<<<<<< HEAD
+**Last Updated:** 2026-04-30T23:45:00Z
+=======
 **Last Updated:** 2026-04-30T23:52:00Z
+>>>>>>> main
 **Status:** Active
 
 ---

@@ -13,30 +13,16 @@ import datetime as _dt_mod
 import json
 import logging
 import re
-import time
-from typing import Any
+
+from cache_utils import Cache
 
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 datetime = _dt_mod.datetime
 
 log = logging.getLogger("dashboard")
 
-# ─── In-process cache ────────────────────────────────────────────────────────
-_cache: dict[str, tuple[Any, float]] = {}
+_pr_cache = Cache(name="pr_inventory", deepcopy_on_set=True)
 _CACHE_TTL = 30.0  # seconds
-
-
-def _cache_get(key: str) -> Any | None:
-    entry = _cache.get(key)
-    if entry is not None:
-        data, ts = entry
-        if time.monotonic() - ts < _CACHE_TTL:
-            return data
-    return None
-
-
-def _cache_set(key: str, data: Any) -> None:
-    _cache[key] = (data, time.monotonic())
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -175,7 +161,7 @@ async def fetch_all_prs(
     label_set: set[str] = set(labels) if labels else set()
 
     cache_key = f"prs|{','.join(sorted(repos))}|{include_drafts}|{author}|{','.join(sorted(label_set))}|{limit}"
-    cached = _cache_get(cache_key)
+    cached = _pr_cache.get(cache_key, _CACHE_TTL)
     if cached is not None:
         return cached
 
@@ -203,7 +189,7 @@ async def fetch_all_prs(
     items = items[:limit]
 
     result = {"items": items, "total": len(items), "errors": errors}
-    _cache_set(cache_key, result)
+    _pr_cache.set(cache_key, result)
     return result
 
 
@@ -211,7 +197,7 @@ async def fetch_pr_detail(owner: str, repo: str, number: int) -> dict:
     """Fetch single PR with extra fields: body_excerpt, checks, files stats."""
     full_name = f"{owner}/{repo}"
     cache_key = f"pr_detail|{full_name}|{number}"
-    cached = _cache_get(cache_key)
+    cached = _pr_cache.get(cache_key, _CACHE_TTL)
     if cached is not None:
         return cached
 
@@ -257,5 +243,5 @@ async def fetch_pr_detail(owner: str, repo: str, number: int) -> dict:
                 pass
 
     base["checks"] = checks
-    _cache_set(cache_key, base)
+    _pr_cache.set(cache_key, base)
     return base
