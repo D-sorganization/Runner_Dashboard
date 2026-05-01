@@ -1108,6 +1108,28 @@ Test coverage areas:
   explicit visual-regression opt-in gate.
 - **`tests/api/test_push.py`** - tests for `backend/push.py` VAPID public key endpoint response shape and principal import integrity.
 
+### 8.1 Playwright E2E Smoke Tests (Issue #389)
+
+`tests/e2e/smoke.spec.ts` — Playwright tests covering page load and basic navigation.
+
+Run with: `npm run test:e2e`
+
+Configuration is in `playwright.config.ts` at the repo root. Viewport profiles
+are sourced from `tests/frontend/mobile/viewport_profiles.json` to keep mobile
+smoke tests in sync with the Playwright suite. The CI workflow
+`.github/workflows/frontend-tests.yml` runs Playwright Chromium smoke tests as
+a blocking e2e job that gates merge on `main`.
+
+Coverage:
+- Root page loads with correct title; React `#root` element is non-empty; no top-level JS errors
+- Fleet tab visible in navigation; renders content (runner cards, loading state, or empty state)
+- Queue tab renders without crashing
+- Maxwell tab degrades gracefully when daemon is offline (shows error/retry state, not blank)
+- AgentDispatch page renders when accessible
+- PushSettings page renders when accessible
+- Navigation landmarks (nav, tablist) are present and visible when rendered
+- Root path returns HTTP 2xx
+
 `pytest>=8.0` and `pytest-asyncio>=0.23` are listed in `requirements.txt`.
 
 ---

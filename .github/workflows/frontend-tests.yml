@@ -6,8 +6,12 @@ on:
   push:
     branches: [main]
 
+concurrency:
+  group: frontend-tests-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  frontend-tests:
+  vitest:
     name: Vitest + Coverage
     runs-on: d-sorg-fleet
     timeout-minutes: 15
@@ -16,8 +20,8 @@ jobs:
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: "20"
+          cache: "npm"
 
       - name: Install dependencies
         run: npm install
@@ -37,4 +41,62 @@ jobs:
         with:
           name: coverage-report
           path: coverage/
+          retention-days: 7
+
+  playwright-e2e:
+    name: Playwright E2E smoke tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: vitest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers (Chromium only)
+        run: npx playwright install chromium --with-deps
+
+      - name: Set up Python for backend
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install backend dependencies
+        run: pip install -r requirements.txt
+        working-directory: backend
+
+      - name: Start dashboard backend
+        run: |
+          cd backend
+          GH_TOKEN=dummy python server.py &
+          echo "BACKEND_PID=$!" >> "$GITHUB_ENV"
+          # Wait for backend to be ready
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8321/api/health > /dev/null 2>&1; then
+              echo "Backend ready after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Run Playwright e2e smoke tests
+        env:
+          DASHBOARD_URL: http://localhost:8321
+        run: npm run test:e2e -- --project=chromium-desktop
+
+      - name: Upload Playwright test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results
+          path: |
+            playwright-report/
+            test-results/
           retention-days: 7
