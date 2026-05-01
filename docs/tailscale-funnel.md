@@ -49,7 +49,7 @@ Environment="TAILSCALE_FUNNEL=1"
 Add to `~/.config/runner-dashboard/env`:
 
 ```bash
-LINEAR_WEBHOOK_SECRET="whsec_..."
+LINEAR_WEBHOOK_SECRET="whsec_..."  # pragma: allowlist secret
 ```
 
 Restart the dashboard:
