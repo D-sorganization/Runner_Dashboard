@@ -78,7 +78,7 @@ async def update_agent_remediation_config(
     try:
         config_schema.validate_agent_remediation_config(body)
     except ValueError as exc:
-        return JSONResponse({"error": str(exc)}, status_code=422)
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     current = agent_remediation.load_policy()
     workflow_type_rules = agent_remediation._load_workflow_type_rules(  # noqa: SLF001
@@ -341,7 +341,7 @@ async def dispatch_agent_remediation(
     }
     await _append_remediation_history(
         {
-            "timestamp": _dt_mod.datetime.now(_dt_mod.timezone.utc).isoformat(),
+            "timestamp": _dt_mod.datetime.now(_dt_mod.UTC).isoformat(),
             "repository": full_repository,
             "workflow_name": context.workflow_name,
             "branch": context.branch,
