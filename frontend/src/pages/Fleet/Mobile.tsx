@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { SkeletonCard, SkeletonLine } from "../../primitives/Skeleton";
+import { PullToRefresh } from "../../primitives/PullToRefresh";
+import { useHaptic } from "../../hooks/useHaptic";
 import { KpiHeader } from "./KpiHeader";
 import { RunnerCard } from "./RunnerCard";
 import { StatusPill } from "./StatusPill";
@@ -65,25 +67,14 @@ export function FleetMobile() {
     });
   }, [nodes, filter]);
 
-  function onPullDown(e: React.TouchEvent) {
-    const target = e.currentTarget as HTMLElement;
-    const startY = e.touches[0].clientY;
-    let moved = false;
-    function onMove(ev: TouchEvent) {
-      const dy = ev.touches[0].clientY - startY;
-      if (dy > 60 && target.scrollTop <= 0 && !moved) {
-        moved = true;
-        setRefreshing(true);
-        fetchFleet();
-      }
-    }
-    function onEnd() {
-      window.removeEventListener("touchmove", onMove);
-      window.removeEventListener("touchend", onEnd);
-    }
-    window.addEventListener("touchmove", onMove);
-    window.addEventListener("touchend", onEnd);
-  }
+  const haptic = useHaptic();
+
+  const handleRefresh = useCallback(async () => {
+    haptic.medium();
+    setRefreshing(true);
+    await fetchFleet();
+    haptic.success();
+  }, [fetchFleet, haptic]);
 
   if (loading) {
     return (
@@ -129,34 +120,35 @@ export function FleetMobile() {
           Refreshing…
         </div>
       )}
-      <div
-        className="fleet-list"
-        onTouchStart={onPullDown}
-        style={{ touchAction: "pan-y", WebkitOverflowScrolling: "touch" }}
-      >
-        {filtered.length === 0 ? (
-          <div className="fleet-empty" style={{ color: "var(--text-muted)", padding: "32px", textAlign: "center" }}>
-            No runners match the selected filter.
-          </div>
-        ) : (
-          filtered.map(([name, node]) => {
-            const s = node.status?.toLowerCase() || "offline";
-            const status = s === "online" ? "online" : s === "busy" || s === "running" ? "busy" : "offline";
-            return (
-              <RunnerCard
-                key={name}
-                cpuPercent={node.cpu_percent ?? 0}
-                currentJob={node.current_job}
-                machine={node.hostname || name}
-                name={name}
-                ramPercent={node.memory_percent ?? 0}
-                status={status}
-                uptimeSeconds={node.uptime_seconds ?? 0}
-              />
-            );
-          })
-        )}
-      </div>
+      <PullToRefresh onRefresh={handleRefresh} disabled={refreshing}>
+        <div
+          className="fleet-list"
+          style={{ touchAction: "pan-y", WebkitOverflowScrolling: "touch" }}
+        >
+          {filtered.length === 0 ? (
+            <div className="fleet-empty" style={{ color: "var(--text-muted)", padding: "32px", textAlign: "center" }}>
+              No runners match the selected filter.
+            </div>
+          ) : (
+            filtered.map(([name, node]) => {
+              const s = node.status?.toLowerCase() || "offline";
+              const status = s === "online" ? "online" : s === "busy" || s === "running" ? "busy" : "offline";
+              return (
+                <RunnerCard
+                  key={name}
+                  cpuPercent={node.cpu_percent ?? 0}
+                  currentJob={node.current_job}
+                  machine={node.hostname || name}
+                  name={name}
+                  ramPercent={node.memory_percent ?? 0}
+                  status={status}
+                  uptimeSeconds={node.uptime_seconds ?? 0}
+                />
+              );
+            })
+          )}
+        </div>
+      </PullToRefresh>
     </section>
   );
 }
