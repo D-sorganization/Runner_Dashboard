@@ -22,7 +22,7 @@ from pathlib import Path
 try:
     import tomllib
 except ModuleNotFoundError:
-    import tomli as tomllib  # type: ignore[no-redef]
+    import tomli as tomllib  # Python < 3.11
 
 ROOT = Path(__file__).resolve().parent.parent
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci-standard.yml"

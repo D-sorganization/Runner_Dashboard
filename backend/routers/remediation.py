@@ -25,11 +25,8 @@ from identity import Principal, require_scope
 from security import check_dispatch_rate
 from system_utils import run_cmd
 
-# Python 3.11+ has datetime.UTC; fall back to timezone.utc for earlier versions
-try:
-    UTC = _dt_mod.UTC  # type: ignore
-except AttributeError:
-    UTC = _dt_mod.timezone.utc  # type: ignore  # noqa: UP017
+# Python 3.11+ has datetime.UTC; fall back to timezone.utc for 3.10
+UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 
 _remediation_history_lock: asyncio.Lock = asyncio.Lock()
 
