@@ -36,20 +36,13 @@ class ReplayStore:
         path.parent.mkdir(parents=True, exist_ok=True)
         self._db: sqlite3.Connection = sqlite3.connect(str(path), isolation_level=None, check_same_thread=False)
         self._db.execute("PRAGMA journal_mode=WAL")
-        self._db.execute(
-            "CREATE TABLE IF NOT EXISTS processed ("
-            "  id TEXT PRIMARY KEY,"
-            "  expires_at REAL NOT NULL"
-            ")"
-        )
+        self._db.execute("CREATE TABLE IF NOT EXISTS processed (  id TEXT PRIMARY KEY,  expires_at REAL NOT NULL)")
         self._db.execute("CREATE INDEX IF NOT EXISTS idx_expires ON processed (expires_at)")
 
     def is_replay(self, envelope_id: str) -> bool:
         """Return True if *envelope_id* has been recorded and has not expired."""
         now = time.time()
-        row = self._db.execute(
-            "SELECT expires_at FROM processed WHERE id = ?", (envelope_id,)
-        ).fetchone()
+        row = self._db.execute("SELECT expires_at FROM processed WHERE id = ?", (envelope_id,)).fetchone()
         return row is not None and row[0] > now
 
     def record(self, envelope_id: str) -> None:
@@ -78,9 +71,7 @@ class ReplayStore:
             return
         excess = count - self._max_entries
         self._db.execute(
-            "DELETE FROM processed WHERE id IN ("
-            "  SELECT id FROM processed ORDER BY expires_at ASC LIMIT ?"
-            ")",
+            "DELETE FROM processed WHERE id IN (  SELECT id FROM processed ORDER BY expires_at ASC LIMIT ?)",
             (excess,),
         )
         log.debug("replay_store: evicted %d oldest entries (cap=%d)", excess, self._max_entries)
