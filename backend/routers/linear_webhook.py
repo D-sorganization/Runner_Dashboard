@@ -85,17 +85,15 @@ def _verify_linear_signature(
     signature_header: str | None,
     secret: str,
 ) -> bool:
-    """Verify the Linear-Signature header against the shared secret."""
-    if not signature_header and not secret:
-        log.warning("linear_webhook: signature verification skipped (no header, no secret)")
-        return True
+    """Verify the Linear-Signature header against the shared secret.
 
+    Both *secret* and *signature_header* must be present and valid.
+    The function intentionally does not handle the "no secret" case —
+    callers must reject the request before calling this helper when
+    the secret is absent (see the route handler below).
+    """
     if not signature_header:
         log.warning("linear_webhook: missing Linear-Signature header")
-        return False
-
-    if not secret:
-        log.warning("linear_webhook: missing webhook secret")
         return False
 
     expected = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
@@ -211,8 +209,14 @@ async def linear_webhook(
         log.warning("linear_webhook: payload validation failed: %s", exc)
         raise HTTPException(status_code=422, detail="Payload validation failed") from exc
 
-    # Signature verification
-    secret = os.environ.get(LINEAR_WEBHOOK_SECRET_ENV, "")
+    # Signature verification — fail closed when the secret is not configured (closes #316)
+    secret = os.environ.get(LINEAR_WEBHOOK_SECRET_ENV, "").strip()
+    if not secret:
+        log.error(
+            "linear_webhook: %s env var is not set — rejecting request",
+            LINEAR_WEBHOOK_SECRET_ENV,
+        )
+        raise HTTPException(status_code=503, detail="Linear webhook secret not configured")
     if not _verify_linear_signature(body, linear_signature, secret):
         log.warning(
             "linear_webhook: signature verification failed (webhook_id=%s)",
