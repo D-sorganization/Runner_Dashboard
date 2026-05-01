@@ -204,6 +204,8 @@ run, and machine telemetry payloads; desktop machine and runner tables remain
 the canonical wide-screen surface.
 
 
+**Offline mutation queue (issue #380):** When `navigator.onLine` is `false`, POST/DELETE/PATCH mutations that fail due to network error are persisted to IndexedDB via `frontend/src/lib/mutationQueue.ts` (backed by the `idb` library). Each queued entry carries a generated `Idempotency-Key` UUID so server-side duplicate execution is impossible on replay. On `window.online`, the queue is drained in FIFO order; entries older than 10 minutes require explicit user reconfirmation before replay. The `OfflineQueueIndicator` primitive in `frontend/src/primitives/OfflineQueueIndicator.tsx` renders an accessible `role="status"` badge showing offline state and pending-replay count.
+
 Reusable UI primitives live in `frontend/src/primitives/`. Issue #422 introduces `Badge.tsx` (`tone` in `success | warning | danger | info | neutral`, `size` in `sm | md`) and `Pill.tsx` (with a `selected` boolean prop) so that the previously ad-hoc `.section-badge`, `.runner-status-badge`, `.conclusion-badge`, `.subtab-badge`, and `.fleet-status-pill` styles share a single token-driven implementation backed by `--badge-*-bg` / `--badge-*-fg` CSS variables in `frontend/src/design/tokens.ts`.
 
 PushSettings (issue #192) is a mobile-friendly React component for per-topic Web Push subscription management. It is located at `frontend/src/pages/PushSettings.tsx` and uses `GET /api/push/vapid-public-key` to fetch the VAPID key before subscribing to selected push topics via `POST /api/push/subscribe`.
