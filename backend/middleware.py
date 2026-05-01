@@ -226,13 +226,25 @@ async def add_security_headers(request: Request, call_next: Any) -> Any:
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    # CSP: remove third-party CDN sources; use 'strict-dynamic' with nonce-based
+    # scripts only (issue #324).  'unsafe-inline' on style-src is retained for
+    # Vite-injected critical CSS until a nonce pipeline is available.
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
-        "script-src 'self' 'strict-dynamic' "
-        "https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; "
+        "script-src 'self' 'strict-dynamic'; "
         "style-src 'self' 'unsafe-inline'; "
         "img-src 'self' data:; "
         "connect-src 'self'; "
-        "font-src 'self' data:;"
+        "font-src 'self' data:; "
+        "object-src 'none'; "
+        "base-uri 'self'; "
+        "frame-ancestors 'none';"
+    )
+    # HSTS: instruct browsers to use HTTPS for 1 year; include subdomains
+    # (issue #324).
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    # Permissions-Policy: lock down sensitive browser features (issue #324).
+    response.headers["Permissions-Policy"] = (
+        "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()"
     )
     return response

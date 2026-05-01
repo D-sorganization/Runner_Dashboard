@@ -1,10 +1,13 @@
-import React from 'react'
+import React, { useState, useCallback } from 'react'
 import ReactDOM from 'react-dom/client'
+import { QueryClientProvider } from '@tanstack/react-query'
 import App from './legacy/App'
 import PushSettings from './pages/PushSettings'
+import { MobileShell, type TabId } from './shell/MobileShell'
 import { Toaster } from './primitives/Toaster'
 import { RootErrorBoundary } from './primitives/RootErrorBoundary'
-import { BreakpointProvider } from './hooks/useBreakpoint'
+import { BreakpointProvider, useBreakpoint } from './hooks/useBreakpoint'
+import { queryClient } from './hooks/usePollingQueries'
 import './i18n'
 import './index.css'
 // Web Vitals — send metrics to backend (issue #385)
@@ -115,20 +118,95 @@ function initialTabFromPathname(pathname: string): string | undefined {
   return PATHNAME_TO_TAB[normalized]
 }
 
+// Map legacy App tab strings to MobileShell TabIds (they differ in a few cases).
+const LEGACY_TO_TAB_ID: Record<string, TabId> = {
+  overview: 'fleet',
+  fleet: 'fleet',
+  workflows: 'workflows',
+  remediation: 'remediation',
+  maxwell: 'maxwell',
+  org: 'org',
+  machines: 'heavy',
+  assessments: 'assessments',
+  'feature-requests': 'requests',
+  credentials: 'credentials',
+  reports: 'reports',
+  queue: 'health',
+  health: 'health',
+}
+
+// Inverse map: MobileShell TabId → legacy App tab string.
+const TAB_ID_TO_LEGACY: Partial<Record<TabId, string>> = {
+  fleet: 'overview',
+  workflows: 'workflows',
+  remediation: 'remediation',
+  maxwell: 'maxwell',
+  org: 'org',
+  heavy: 'machines',
+  assessments: 'assessments',
+  requests: 'feature-requests',
+  credentials: 'credentials',
+  reports: 'reports',
+  health: 'queue',
+}
+
+/**
+ * AppWithMobileShell lifts tab state to the root so MobileShell's bottom-nav
+ * stays in sync with the legacy App's internal tab selection.
+ * Must render inside <BreakpointProvider>.
+ */
+function AppWithMobileShell({ initialTab }: { initialTab?: string }) {
+  const breakpoint = useBreakpoint()
+  const isMobile = breakpoint !== 'lg' && breakpoint !== 'xl'
+
+  const resolvedInitialTabId: TabId =
+    (initialTab && LEGACY_TO_TAB_ID[initialTab]) || 'fleet'
+  const [mobileTab, setMobileTab] = useState<TabId>(resolvedInitialTabId)
+
+  const handleMobileTabChange = useCallback((nextTab: TabId) => {
+    setMobileTab(nextTab)
+  }, [])
+
+  // Sync MobileShell state when the legacy App navigates internally (desktop
+  // tab clicks, URL deeplinks, etc.).
+  const handleLegacyTabChange = useCallback((nextLegacyTab: string) => {
+    const mapped = LEGACY_TO_TAB_ID[nextLegacyTab]
+    if (mapped) setMobileTab(mapped)
+  }, [])
+
+  const legacyInitialTab =
+    initialTab ?? TAB_ID_TO_LEGACY[resolvedInitialTabId] ?? 'overview'
+
+  if (isMobile) {
+    return (
+      <MobileShell currentTab={mobileTab} onTabChange={handleMobileTabChange}>
+        <App
+          initialTab={TAB_ID_TO_LEGACY[mobileTab] ?? legacyInitialTab}
+          onTabChange={handleLegacyTabChange}
+        />
+      </MobileShell>
+    )
+  }
+
+  return <App initialTab={legacyInitialTab} onTabChange={handleLegacyTabChange} />
+}
+
 // Route tracer marker for the static integrity test:
 // isPushSettingsRoute(window.location.pathname) ? <PushSettings /> : <App />
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <RootErrorBoundary>
-      <BreakpointProvider>
-        <Toaster>
-          {isPushSettingsRoute(window.location.pathname) ? (
-            <PushSettings />
-          ) : (
-            <App initialTab={initialTabFromPathname(window.location.pathname)} />
-          )}
-        </Toaster>
-      </BreakpointProvider>
-    </RootErrorBoundary>
+    <QueryClientProvider client={queryClient}>
+      <RootErrorBoundary>
+        <BreakpointProvider>
+          <Toaster>
+            {isPushSettingsRoute(window.location.pathname) ? (
+              <PushSettings />
+            ) : (
+              <AppWithMobileShell initialTab={initialTabFromPathname(window.location.pathname)} />
+            )}
+          </Toaster>
+        </BreakpointProvider>
+      </RootErrorBoundary>
+    </QueryClientProvider>
   </React.StrictMode>,
 )

@@ -1108,6 +1108,28 @@ Test coverage areas:
   explicit visual-regression opt-in gate.
 - **`tests/api/test_push.py`** - tests for `backend/push.py` VAPID public key endpoint response shape and principal import integrity.
 
+### 8.1 Playwright E2E Smoke Tests (Issue #389)
+
+`tests/e2e/smoke.spec.ts` — Playwright tests covering page load and basic navigation.
+
+Run with: `npm run test:e2e`
+
+Configuration is in `playwright.config.ts` at the repo root. Viewport profiles
+are sourced from `tests/frontend/mobile/viewport_profiles.json` to keep mobile
+smoke tests in sync with the Playwright suite. The CI workflow
+`.github/workflows/frontend-tests.yml` runs Playwright Chromium smoke tests as
+a blocking e2e job that gates merge on `main`.
+
+Coverage:
+- Root page loads with correct title; React `#root` element is non-empty; no top-level JS errors
+- Fleet tab visible in navigation; renders content (runner cards, loading state, or empty state)
+- Queue tab renders without crashing
+- Maxwell tab degrades gracefully when daemon is offline (shows error/retry state, not blank)
+- AgentDispatch page renders when accessible
+- PushSettings page renders when accessible
+- Navigation landmarks (nav, tablist) are present and visible when rendered
+- Root path returns HTTP 2xx
+
 `pytest>=8.0` and `pytest-asyncio>=0.23` are listed in `requirements.txt`.
 
 ---
@@ -2194,6 +2216,52 @@ To ensure identity and quotas are respected across the entire fleet:
  
 
 
+### 18.6 Consistent Error Envelope (issue #406)
+
+All 4xx and 5xx responses from `/api/*` routes return a JSON object conforming
+to `ErrorResponse` (`backend/error_models.py`):
+
+```json
+{
+  "error": "<machine-readable code>",
+  "detail": "<human-readable description>",
+  "request_id": "<optional trace id>"
+}
+```
+
+Standard error codes:
+
+| Code | HTTP status | Meaning |
+|------|-------------|---------|
+| `not_found` | 404 | Resource does not exist |
+| `forbidden` | 403 | Permission denied |
+| `validation_error` | 422 | Invalid request input |
+| `rate_limited` | 429 | GitHub rate limit hit |
+| `conflict` | 409 | State conflict (e.g. already stopped) |
+| `bad_gateway` | 502 | Upstream GitHub API error |
+| `server_error` | 500 | Internal server error |
+| `service_error` | 500/404/403 | systemd service lifecycle failure |
+
+Service lifecycle failures (`start`, `stop`, `restart`) additionally map
+stderr text to semantic status codes via `service_stderr_to_status()`:
+- "not loaded" / "Unit not found" → 404
+- "permission denied" / "access denied" → 403
+- anything else → 500
+### 18.7 Typed GitHub Payload Models (issue #407)
+
+GitHub API response dicts are now parsed at the boundary into typed Pydantic
+view-models defined in `backend/models/github_payloads.py`:
+
+| Model | Replaces |
+|-------|---------|
+| `GhWorkflowRun` | `run.get("id")`, `(run.get("repository") or {}).get("name", "")` chains |
+| `GhJob` | `j.get("runner_name")`, label dicts vs strings |
+| `GhRunner` | `runner["labels"][i]["name"]`, `runner.get("busy")` |
+| `GhRepository` | nested repository sub-dict |
+| `GhActor` | `triggering_actor.get("login")` |
+
+All models use `extra="ignore"` so new GitHub API fields never break
+existing handlers.  Handlers receive flat, typed objects (Law of Demeter).
 ### 18.8 Pooled GitHub API Client (issue #352)
 
 A new `backend/gh_client.py` module replaces the hottest
