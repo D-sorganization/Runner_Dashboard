@@ -19,6 +19,8 @@ try:
 except ImportError:  # pragma: no cover - deployment installs PyYAML
     yaml = None  # type: ignore[assignment]
 
+from security import safe_yaml_load, validate_config_path
+
 DEFAULT_REGISTRY_PATH = Path(__file__).with_name("machine_registry.yml")
 
 
@@ -130,14 +132,26 @@ def _merge_known_specs(live_specs: dict[str, Any], registry_specs: dict[str, Any
 
 
 def _load_raw_registry(path: Path) -> dict[str, Any]:
-    text = path.read_text(encoding="utf-8")
+    """Load registry data with security validation.
+
+    Validates path is within allowed roots, checks for symlinks escaping
+    allowed directories, and verifies file is not world-writable.
+    """
     suffix = path.suffix.lower()
+
     if suffix == ".json":
+        # For JSON files, still validate path security
+        validated_path = validate_config_path(path)
+        text = validated_path.read_text(encoding="utf-8")
         data = json.loads(text)
     elif yaml is not None:
-        data = yaml.safe_load(text)
+        # Use secure YAML loader with path validation
+        data = safe_yaml_load(path)
     else:  # pragma: no cover - kept for bare-bones environments
+        validated_path = validate_config_path(path)
+        text = validated_path.read_text(encoding="utf-8")
         data = json.loads(text)
+
     if data is None:
         return {}
     if not isinstance(data, dict):
@@ -205,6 +219,10 @@ def load_machine_registry(path: str | Path | None = None) -> dict[str, Any]:
 
     Missing files are treated as an empty registry so the dashboard remains
     usable while the foundation is being adopted incrementally.
+
+    Security: Validates that config paths are within allowed roots, rejects
+    symlinks pointing outside allowed directories, and refuses world-writable
+    config files (issue #355).
     """
 
     if path is None:
@@ -212,6 +230,11 @@ def load_machine_registry(path: str | Path | None = None) -> dict[str, Any]:
     registry_path = Path(path)
     if not registry_path.exists():
         return {"version": 1, "machines": []}
+
+    # Validate the path before loading (security check for issue #355)
+    # This will raise ValueError if path escapes allowed roots, is a dangerous
+    # symlink, or is world-writable
+    validate_config_path(registry_path)
 
     raw = _load_raw_registry(registry_path)
     machines = raw.get("machines", [])

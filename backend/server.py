@@ -92,6 +92,7 @@ from dashboard_config.timeouts import (  # noqa: E402
     HttpTimeout,
     ResourceThreshold,
 )
+from http_clients import initialize_http_clients, shutdown_http_clients  # noqa: E402
 from local_app_monitoring import collect_local_apps  # noqa: E402
 from machine_registry import (  # noqa: E402
     load_machine_registry,
@@ -4022,7 +4023,12 @@ _leader_lock_fd = None
 
 
 @app.on_event("startup")
-async def _start_background_tasks() -> None:
+async def _startup() -> None:
+    """Initialize HTTP clients and notify systemd on startup (issue #364)."""
+    # Initialize pooled HTTP clients
+    initialize_http_clients()
+    log.info("Initialized pooled HTTP clients with connection reuse")
+
     # Notify systemd that we are ready (issue #391 AC-3)
     if _sd_notify is not None:
         _sd_notify("READY=1\nWATCHDOG_USEC=120000000")  # 120s in microseconds
@@ -4050,6 +4056,13 @@ async def _start_background_tasks() -> None:
         asyncio.create_task(_runner_audit_loop())
     except OSError as e:
         log.info("Could not acquire leader lock, running as follower: %s", e)
+
+
+@app.on_event("shutdown")
+async def _shutdown() -> None:
+    """Close pooled HTTP clients on shutdown (issue #364)."""
+    await shutdown_http_clients()
+    log.info("Closed pooled HTTP clients")
 
 
 # ─── Main ─────────────────────────────────────────────────────────────────────

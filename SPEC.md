@@ -1237,6 +1237,19 @@ credentials:
 - Operational procedure (rotation, baseline refresh, leak response) lives
   in `docs/runbooks/secret-scanning.md`.
 
+### 9.9 YAML Config Path Validation (Issue #355)
+
+All YAML configuration loaders (`machine_registry.py`, `identity.py`,
+`runner_lease.py`, `quota_enforcement.py`) validate paths before loading:
+
+- `validate_config_path(path, allowed_roots)` in `backend/security.py`
+  resolves the path and confirms it is within allowed roots
+  (`~/.config/runner-dashboard` and `<repo>/config`).
+- Symlinks are rejected if they point outside the allowed root.
+- World-writable files (mode bits `o+w`) are rejected.
+- `safe_yaml_load(path, allowed_roots)` combines path validation with
+  `yaml.safe_load` into a single safe entry point.
+
 ---
 
 ## 10. Prompt Notes and Agent Dispatch Configuration
