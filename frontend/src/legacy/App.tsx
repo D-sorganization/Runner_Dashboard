@@ -14266,11 +14266,11 @@ function App({ initialTab }: { initialTab?: string } = {}) {
         });
   }
 
-  function setCredentialKey(probe) {
+  function setCredentialKey(probe, keyValue) {
     var provider = probe && probe.key_provider;
     if (!provider) return;
     var providerLabel = probe.label || probe.name || provider;
-    var keyValue = window.prompt("Enter API key for " + providerLabel);
+    if (!keyValue) return;
     if (!keyValue) return;
     fetch("/api/credentials/set-key", {
       method: "POST",
