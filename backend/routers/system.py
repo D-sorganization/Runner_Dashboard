@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 import datetime as _dt_mod
+
 # Python 3.11+ has datetime.UTC; fall back to timezone.utc for 3.10
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 
