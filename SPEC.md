@@ -1,8 +1,8 @@
 # SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.21
+**Spec Version:** 2.5.22
 **Application Version:** 4.1.0 (see `VERSION`)
-**Last Updated:** 2026-04-30T23:45:00Z
+**Last Updated:** 2026-05-01T03:08:00Z
 **Status:** Active
 
 ---
@@ -967,6 +967,12 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 ---
 
 ## 7. Changelog
+
+### 2.5.22 - 2026-05-01
+- security: remove the build-time `setuptools` / `wheel` packaging stack from
+  the final Docker image after installing locked requirements so Trivy no
+  longer reports vendored `jaraco.context` and `wheel` CVEs in the runtime
+  layer.
 
 ### 2.5.21 - 2026-04-30
 - fix(state): add a typed Zod-backed frontend storage layer with key registry,

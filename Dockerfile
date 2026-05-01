@@ -22,11 +22,16 @@ RUN groupadd --gid 10001 appuser \
 # Copy requirements first for layer caching; install with hash verification
 COPY requirements.lock.txt .
 RUN pip install --no-cache-dir --require-hashes -r requirements.lock.txt
-RUN pip install --no-cache-dir --upgrade wheel==0.46.2 jaraco.context==6.1.0 \
-    && pip uninstall -y wheel jaraco.context \
+RUN pip uninstall -y setuptools wheel jaraco.context backports.tarfile || true \
     && rm -rf \
+        /usr/local/lib/python3.11/site-packages/_distutils_hack \
+        /usr/local/lib/python3.11/site-packages/pkg_resources \
+        /usr/local/lib/python3.11/site-packages/setuptools \
+        /usr/local/lib/python3.11/site-packages/setuptools-*.dist-info \
         /usr/local/lib/python3.11/site-packages/wheel \
         /usr/local/lib/python3.11/site-packages/wheel-*.dist-info \
+        /usr/local/lib/python3.11/site-packages/backports \
+        /usr/local/lib/python3.11/site-packages/backports.tarfile-*.dist-info \
         /usr/local/lib/python3.11/site-packages/jaraco.context-*.dist-info \
         /usr/local/lib/python3.11/site-packages/jaraco/context.py \
         /usr/local/lib/python3.11/site-packages/jaraco/__pycache__/context*.pyc
