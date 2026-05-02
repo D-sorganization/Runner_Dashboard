@@ -46,14 +46,17 @@ if [[ -z "$ARTIFACT_SOURCE" ]]; then
     [[ -d "$REPO/backend" && -d "$REPO/frontend" ]] || fail "Dashboard repo not found at $REPO — check the path."
 fi
 
-info "Installing/updating backend dependencies..."
-if [[ -f "$REPO/backend/requirements.txt" ]]; then
-    pip_install -r "$REPO/backend/requirements.txt"
-else
-    # Fallback: install known packages if requirements.txt is absent (e.g. artifact deploy)
-    pip_install fastapi pydantic uvicorn psutil httpx PyYAML
+info "Installing/updating backend dependencies via uv sync (issue #333)..."
+# uv sync --frozen --no-dev ensures the install matches uv.lock exactly.
+if ! command -v uv &>/dev/null; then
+    pip install --quiet uv
 fi
-ok "backend dependencies installed"
+if [[ -f "$REPO/uv.lock" ]]; then
+    uv sync --frozen --no-dev --project "$REPO"
+else
+    fail "uv.lock missing at $REPO — refusing to install with floating transitives."
+fi
+ok "backend dependencies installed via uv sync --frozen --no-dev"
 
 if ! dry_run "backup $DEPLOY_DIR"; then
     info "Creating backup snapshot..."

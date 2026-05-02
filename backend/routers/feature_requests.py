@@ -85,7 +85,7 @@ async def list_feature_requests() -> dict:
             data = json.loads(_FEATURE_REQUESTS_PATH.read_text(encoding="utf-8"))
         else:
             data = []
-    except Exception:  # noqa: BLE001
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
         data = []
     return {"requests": list(reversed(data[-100:])), "total": len(data)}
 
@@ -97,14 +97,14 @@ async def list_prompt_templates() -> dict:
     try:
         if _PROMPT_TEMPLATES_PATH.exists():
             templates_data = json.loads(_PROMPT_TEMPLATES_PATH.read_text(encoding="utf-8"))
-    except Exception:  # noqa: BLE001
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
         pass
 
     prompt_notes_data = {"notes": "", "enabled": True}
     try:
         if _PROMPT_NOTES_PATH.exists():
             prompt_notes_data = json.loads(_PROMPT_NOTES_PATH.read_text(encoding="utf-8"))
-    except Exception:  # noqa: BLE001
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
         pass
 
     return {
@@ -155,7 +155,7 @@ async def get_prompt_notes() -> dict:
             data = json.loads(_PROMPT_NOTES_PATH.read_text(encoding="utf-8"))
         else:
             data = {"notes": "", "enabled": True}
-    except Exception:  # noqa: BLE001
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
         data = {"notes": "", "enabled": True}
     return data
 
@@ -221,7 +221,7 @@ async def dispatch_feature_request(
     try:
         if _PROMPT_NOTES_PATH.exists():
             prompt_notes_data = json.loads(_PROMPT_NOTES_PATH.read_text(encoding="utf-8"))
-    except Exception:  # noqa: BLE001
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
         pass
 
     # Build full prompt with notes and standards injection
@@ -255,7 +255,7 @@ async def dispatch_feature_request(
             }
             history.append(entry)
             config_schema.atomic_write_json(_FEATURE_REQUESTS_PATH, history[-200:])
-        except Exception:  # noqa: BLE001
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
             pass
 
     # Dispatch via feature-request workflow. The constructed inputs are

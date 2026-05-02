@@ -55,7 +55,7 @@ def _load_sessions(path: Path | None = None) -> list[SessionRecord]:
         if isinstance(item, dict):
             try:
                 records.append(SessionRecord(**item))
-            except Exception:
+            except (TypeError, ValueError):
                 continue
     return records
 

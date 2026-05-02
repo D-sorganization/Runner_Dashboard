@@ -8,12 +8,15 @@ import session_management as sm
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from identity import Principal, identity_manager, require_principal
+from middleware import check_auth_rate_limit
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 GITHUB_CLIENT_ID = os.environ.get("GITHUB_CLIENT_ID", "")
 GITHUB_CLIENT_SECRET = os.environ.get("GITHUB_CLIENT_SECRET", "")
+# When set, only members of this GitHub org may complete OAuth login (fixes #354).
+REQUIRED_GITHUB_ORG = os.environ.get("REQUIRED_GITHUB_ORG", "")
 
 
 @router.get("/github")
@@ -34,9 +37,12 @@ async def github_login(request: Request):
 @router.get("/callback")
 async def github_callback(request: Request, code: str, state: str):
     """Handle GitHub OAuth callback."""
+    check_auth_rate_limit(request)  # issue #320: 5 attempts / 5 min per IP
     saved_state = request.session.get("oauth_state")
     if not saved_state or state != saved_state:
         raise HTTPException(status_code=400, detail="Invalid state")
+    # Invalidate the state after single use to prevent replay attacks (#354).
+    del request.session["oauth_state"]
 
     async with httpx.AsyncClient() as client:
         # Exchange code for token
@@ -65,6 +71,21 @@ async def github_callback(request: Request, code: str, state: str):
         user_data = user_resp.json()
         github_login = user_data.get("login")
 
+        # Verify org membership when REQUIRED_GITHUB_ORG is configured (#354).
+        if REQUIRED_GITHUB_ORG:
+            org_resp = await client.get(
+                f"https://api.github.com/orgs/{REQUIRED_GITHUB_ORG}/members/{github_login}",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Accept": "application/json",
+                },
+            )
+            if org_resp.status_code != 204:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"You must be a member of the {REQUIRED_GITHUB_ORG} GitHub organisation to log in.",
+                )
+
     # Find principal by github username
     matched_principal = None
     for p in identity_manager.principals.values():
@@ -88,6 +109,7 @@ async def github_callback(request: Request, code: str, state: str):
 @router.get("/dev-login")
 async def dev_login(request: Request):
     """Development login when OAuth is not configured."""
+    check_auth_rate_limit(request)  # issue #320: 5 attempts / 5 min per IP
     if GITHUB_CLIENT_ID:
         raise HTTPException(status_code=400, detail="Dev login disabled when OAuth is configured")
 

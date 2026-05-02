@@ -66,7 +66,7 @@ def _env_present_anywhere(key: str) -> bool:
             text = env_file.read_text(encoding="utf-8")
             if re.search(rf"^{re.escape(key)}=\S", text, re.MULTILINE):
                 return True
-        except Exception:
+        except (OSError, UnicodeDecodeError):
             pass
     return False
 
@@ -106,7 +106,22 @@ def _env_source(key: str) -> str:
 
 
 def _require_local_request(request: Request) -> None:
-    """Enforce that the request originates from localhost (issue #45)."""
+    """Enforce that the request originates from localhost (issue #45, #321).
+
+    Rejects requests that include proxy-forwarding headers (X-Forwarded-For,
+    X-Real-IP, Forwarded) even when the transport-layer peer is loopback,
+    preventing header-based bypass of the loopback trust check.
+    """
+    # Reject any request that carries forwarding headers — an attacker behind a
+    # reverse proxy could set X-Forwarded-For: 127.0.0.1 to spoof local origin.
+    _PROXY_HEADERS = ("x-forwarded-for", "x-real-ip", "forwarded", "x-forwarded-host")
+    for header in _PROXY_HEADERS:
+        if request.headers.get(header):
+            raise HTTPException(
+                status_code=403,
+                detail="This endpoint is only accessible locally (proxy headers not allowed)",
+            )
+
     client_host = request.client.host if request.client else ""
     if client_host not in ("127.0.0.1", "::1", "localhost"):
         raise HTTPException(status_code=403, detail="This endpoint is only accessible locally")
@@ -168,7 +183,9 @@ def _patch_maxwell_yaml_api_key(env_var: str, value: str) -> None:
             with open(_MAXWELL_YAML, "w") as f:
                 yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
             log.info("Patched maxwell YAML api_key for backends %s", backends)
-    except Exception:
+    except Exception as e:
+        if isinstance(e, (KeyboardInterrupt, SystemExit)):
+            raise
         log.exception("Could not patch maxwell YAML api_key for env_var=%s", env_var)
 
 
@@ -213,8 +230,8 @@ async def get_credentials(request: Request) -> dict:
             )
             gh_auth_ok = result.returncode == 0
             gh_auth_detail = "authenticated" if gh_auth_ok else "not logged in"
-        except Exception:
-            gh_auth_detail = "probe failed"
+        except (OSError, subprocess.SubprocessError, TimeoutError):
+            gh_auth_detail = "probe failed"  # subprocess / OS error; non-fatal probe failure
 
     probes.append(
         {
@@ -349,7 +366,7 @@ async def get_credentials(request: Request) -> dict:
                 timeout=8,
             )
             _cline_by_ext = "saoudrizwan.claude-dev" in _ext_result.stdout
-        except Exception:
+        except (OSError, subprocess.SubprocessError, TimeoutError):
             pass
     cline_installed = _cline_by_path or _cline_by_ext
     _cline_detail = (
@@ -476,7 +493,9 @@ async def get_credentials(request: Request) -> dict:
                     "workspace_id": workspace_id,
                 }
             )
-    except Exception:
+    except Exception as e:
+        if isinstance(e, (KeyboardInterrupt, SystemExit)):
+            raise
         log.exception("Failed to enumerate Linear workspace credential probes")
 
     ready = sum(1 for p in probes if p["usable"])
@@ -509,7 +528,7 @@ async def get_cline_status(request: Request) -> dict:
                 timeout=8,
             )
             _cline_by_ext = "saoudrizwan.claude-dev" in _ext_result.stdout
-        except Exception:
+        except (OSError, subprocess.SubprocessError, TimeoutError):
             pass
     cline_installed = _cline_by_path or _cline_by_ext
     _compatible_key = _env_present("ANTHROPIC_API_KEY") or _env_present("OPENAI_API_KEY")
@@ -551,7 +570,7 @@ async def get_ollama_status(request: Request) -> dict:
             timeout=10,
         )
         running = result.returncode == 0
-    except Exception:
+    except (OSError, subprocess.SubprocessError, TimeoutError):
         running = False
 
     return {

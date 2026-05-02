@@ -15,6 +15,7 @@ import json
 import os
 import secrets
 import time
+from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +29,27 @@ _CONFIG_DIR = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) /
 _CREDENTIALS_PATH = Path(os.environ.get("DASHBOARD_WEBAUTHN_CREDENTIALS", _CONFIG_DIR / "webauthn_credentials.json"))
 _CHALLENGE_SESSION_KEY = "webauthn_challenges"
 _CHALLENGE_TTL_SECONDS = 300
+
+# Rate limiting for challenge endpoints (issue #322).
+# Keyed on principal_id; limit is intentionally conservative because each
+# legitimate user only needs a handful of challenges per minute.
+_WEBAUTHN_RATE_LIMIT = 5  # max challenges per window per principal
+_WEBAUTHN_RATE_WINDOW = 60  # seconds
+_webauthn_rate: dict[str, list[float]] = defaultdict(list)
+
+
+def _check_webauthn_rate(principal_id: str) -> None:
+    """Enforce per-principal rate limit on challenge issuance (issue #322)."""
+    now = time.monotonic()
+    window = [t for t in _webauthn_rate[principal_id] if now - t < _WEBAUTHN_RATE_WINDOW]
+    if len(window) >= _WEBAUTHN_RATE_LIMIT:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many WebAuthn challenge requests. Please wait before retrying.",
+            headers={"Retry-After": str(_WEBAUTHN_RATE_WINDOW)},
+        )
+    window.append(now)
+    _webauthn_rate[principal_id] = window
 
 
 class WebAuthnCredentialRecord(BaseModel):
@@ -152,6 +174,7 @@ async def register_begin(
     principal: Principal = Depends(require_principal),  # noqa: B008
 ) -> dict[str, Any]:
     """Start device registration after the existing session is authenticated."""
+    _check_webauthn_rate(principal.id)
     challenge = _new_challenge(request, principal, "register")
     return {
         "challenge": challenge.challenge,
@@ -178,6 +201,7 @@ async def assert_begin(
     principal: Principal = Depends(require_principal),  # noqa: B008
 ) -> dict[str, Any]:
     """Start an assertion ceremony for the current authenticated user."""
+    _check_webauthn_rate(principal.id)
     credentials = _active_credentials_for(principal.id)
     if body.credential_id:
         credentials = [record for record in credentials if record.credential_id == body.credential_id]

@@ -497,3 +497,183 @@ class TestEnvelopeJsonRoundTrip:
             assert restored.confirmation.envelope_id == "env123"
             assert restored.confirmation.approval_hmac == "hmac789"
             assert validate_envelope_crypto(restored).valid is True
+
+
+class TestPayloadHashInSignature:
+    """Tests verifying that payload is included in the envelope HMAC (issue #317)."""
+
+    def test_payload_hash_is_part_of_signature(self):
+        """Envelopes with different payloads must produce different signatures."""
+        with patch.dict(os.environ, {"DISPATCH_SIGNING_SECRET": "test-secret"}):
+            env1 = CommandEnvelope(
+                action="runner.status",
+                source="hub",
+                target="node-1",
+                requested_by="alice",
+                payload={"service": "all"},
+            )
+            env2 = CommandEnvelope(
+                action="runner.status",
+                source="hub",
+                target="node-1",
+                requested_by="alice",
+                payload={"service": "malicious-override"},
+            )
+            assert env1.signature != env2.signature, (
+                "Different payloads must yield different HMAC signatures (issue #317)"
+            )
+
+    def test_signature_invalid_after_payload_swap(self):
+        """Verify_signature must return False if payload was swapped after signing."""
+        with patch.dict(os.environ, {"DISPATCH_SIGNING_SECRET": "test-secret"}):
+            original = CommandEnvelope(
+                action="runner.status",
+                source="hub",
+                target="node-1",
+                requested_by="alice",
+                payload={"service": "all"},
+            )
+            # Simulate an attacker replacing the payload without re-signing
+            tampered = CommandEnvelope.from_dict({**original.to_dict(), "payload": {"service": "evil"}})
+            # The tampered envelope keeps the original signature but has a new payload
+            object.__setattr__(tampered, "signature", original.signature)
+            assert not tampered.verify_signature(), "Swapped payload must invalidate the HMAC signature (issue #317)"
+
+    def test_empty_payload_is_signed(self):
+        """An envelope with no payload hashes consistently (empty dict = stable hash)."""
+        with patch.dict(os.environ, {"DISPATCH_SIGNING_SECRET": "test-secret"}):
+            env = CommandEnvelope(
+                action="runner.status",
+                source="hub",
+                target="node-1",
+                requested_by="alice",
+            )
+            assert env.verify_signature() is True
+
+    def test_hash_payload_helper_stable(self):
+        """_hash_payload returns the same digest for identical dicts."""
+        from dispatch_contract import _hash_payload
+
+        assert _hash_payload({"a": 1, "b": 2}) == _hash_payload({"b": 2, "a": 1})
+        assert _hash_payload(None) == _hash_payload({})
+        assert _hash_payload({"a": 1}) != _hash_payload({"a": 2})
+
+
+class TestApprovalHmacBinding:
+    """Tests for approval_hmac bound to envelope (issue #318)."""
+
+    def test_verify_approval_hmac_accepts_correct_hmac(self):
+        """verify_approval_hmac returns True for a correctly computed approval_hmac."""
+        from dispatch_contract import DispatchConfirmation, _compute_approval_hmac, verify_approval_hmac
+
+        with patch.dict(os.environ, {"DISPATCH_SIGNING_SECRET": "test-secret"}):
+            envelope_id = "abc123"
+            action = "runner.restart"
+            secret = "test-secret"
+            correct_hmac = _compute_approval_hmac(envelope_id, action, secret)
+
+            confirmation = DispatchConfirmation(
+                approved_by="alice",
+                approved_at="2026-01-01T12:00:00Z",
+                envelope_id=envelope_id,
+                approval_hmac=correct_hmac,
+            )
+            assert verify_approval_hmac(confirmation, envelope_id, action) is True
+
+    def test_verify_approval_hmac_rejects_wrong_hmac(self):
+        """verify_approval_hmac returns False for an incorrect approval_hmac."""
+        from dispatch_contract import DispatchConfirmation, verify_approval_hmac
+
+        confirmation = DispatchConfirmation(
+            approved_by="alice",
+            approved_at="2026-01-01T12:00:00Z",
+            envelope_id="abc123",
+            approval_hmac="0" * 64,
+        )
+        assert verify_approval_hmac(confirmation, "abc123", "runner.restart") is False
+
+    def test_verify_approval_hmac_rejects_wrong_envelope_id(self):
+        """approval_hmac generated for one envelope_id must fail for another."""
+        from dispatch_contract import DispatchConfirmation, _compute_approval_hmac, verify_approval_hmac
+
+        with patch.dict(os.environ, {"DISPATCH_SIGNING_SECRET": "test-secret"}):
+            secret = "test-secret"
+            original_hmac = _compute_approval_hmac("original-id", "runner.restart", secret)
+            confirmation = DispatchConfirmation(
+                approved_by="alice",
+                approved_at="2026-01-01T12:00:00Z",
+                envelope_id="different-id",
+                approval_hmac=original_hmac,
+            )
+            # The HMAC was for "original-id" but we present "different-id"
+            assert verify_approval_hmac(confirmation, "different-id", "runner.restart") is False
+
+    def test_verify_approval_hmac_rejects_wrong_action(self):
+        """approval_hmac generated for one action must fail for a different action."""
+        from dispatch_contract import DispatchConfirmation, _compute_approval_hmac, verify_approval_hmac
+
+        with patch.dict(os.environ, {"DISPATCH_SIGNING_SECRET": "test-secret"}):
+            secret = "test-secret"
+            original_hmac = _compute_approval_hmac("abc123", "runner.restart", secret)
+            confirmation = DispatchConfirmation(
+                approved_by="alice",
+                approved_at="2026-01-01T12:00:00Z",
+                envelope_id="abc123",
+                approval_hmac=original_hmac,
+            )
+            # The HMAC was for "runner.restart" but we verify against "runner.stop"
+            assert verify_approval_hmac(confirmation, "abc123", "runner.stop") is False
+
+    def test_validate_envelope_crypto_rejects_invalid_approval_hmac(self):
+        """validate_envelope_crypto must fail if approval_hmac is wrong (issue #318)."""
+        with patch.dict(os.environ, {"DISPATCH_SIGNING_SECRET": "test-secret"}):
+            now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+            confirmation = DispatchConfirmation(
+                approved_by="alice",
+                approved_at=now,
+                envelope_id="some-id",
+                approval_hmac="wrong" * 13,  # 65 chars but invalid
+            )
+            envelope = CommandEnvelope(
+                action="runner.restart",
+                source="hub",
+                target="node-1",
+                requested_by="alice",
+                confirmation=confirmation,
+            )
+            result = validate_envelope_crypto(envelope)
+            assert result.valid is False
+            assert "approval_hmac" in result.reason
+
+    def test_validate_envelope_crypto_accepts_correct_approval_hmac(self):
+        """validate_envelope_crypto accepts envelopes with a correct approval_hmac."""
+        from dispatch_contract import _compute_approval_hmac
+
+        with patch.dict(os.environ, {"DISPATCH_SIGNING_SECRET": "test-secret"}):
+            now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+            # We need to know the envelope_id before creating the confirmation,
+            # so we build it first, then rebuild with the correct approval_hmac.
+            import uuid
+
+            envelope_id = uuid.uuid4().hex
+            action = "runner.restart"
+            secret = "test-secret"
+            correct_hmac = _compute_approval_hmac(envelope_id, action, secret)
+
+            confirmation = DispatchConfirmation(
+                approved_by="alice",
+                approved_at=now,
+                envelope_id=envelope_id,
+                approval_hmac=correct_hmac,
+            )
+            # Build envelope with pre-set envelope_id and confirmation
+            envelope = CommandEnvelope(
+                action=action,
+                source="hub",
+                target="node-1",
+                requested_by="alice",
+                confirmation=confirmation,
+                envelope_id=envelope_id,
+            )
+            result = validate_envelope_crypto(envelope)
+            assert result.valid is True, f"Expected valid=True, got: {result.reason}"

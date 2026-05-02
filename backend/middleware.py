@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import time
+from collections import defaultdict
 from collections.abc import Callable
 from typing import Any
 
@@ -226,13 +228,61 @@ async def add_security_headers(request: Request, call_next: Any) -> Any:
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    # CSP: remove third-party CDN sources; use 'strict-dynamic' with nonce-based
+    # scripts only (issue #324).  'unsafe-inline' on style-src is retained for
+    # Vite-injected critical CSS until a nonce pipeline is available.
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
-        "script-src 'self' 'strict-dynamic' "
-        "https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; "
+        "script-src 'self' 'strict-dynamic'; "
         "style-src 'self' 'unsafe-inline'; "
         "img-src 'self' data:; "
         "connect-src 'self'; "
-        "font-src 'self' data:;"
+        "font-src 'self' data:; "
+        "object-src 'none'; "
+        "base-uri 'self'; "
+        "frame-ancestors 'none';"
+    )
+    # HSTS: instruct browsers to use HTTPS for 1 year; include subdomains
+    # (issue #324).
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    # Permissions-Policy: lock down sensitive browser features (issue #324).
+    response.headers["Permissions-Policy"] = (
+        "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()"
     )
     return response
+
+
+# --------------------------------------------------------------------------- #
+# IP-keyed rate limiter (issue #320)                                          #
+# --------------------------------------------------------------------------- #
+# Strict limits for unauthenticated auth endpoints.
+_AUTH_RATE_LIMIT = 5  # max attempts per window
+_AUTH_RATE_WINDOW = 300  # seconds (5 minutes)
+
+# Store: { ip: [timestamp, ...] }
+_auth_rate_store: dict[str, list[float]] = defaultdict(list)
+
+
+def check_auth_rate_limit(request: Any) -> None:
+    """Raise HTTP 429 when the calling IP exceeds 5 attempts per 5 minutes.
+
+    Intended for unauthenticated endpoints like /api/auth/dev-login and
+    /api/auth/callback where brute-force / spam attacks are a real risk
+    (issue #320).  Key is the client IP address.
+    """
+    from fastapi import HTTPException  # local import to avoid circular deps
+
+    client = getattr(request, "client", None)
+    ip = client.host if client else "unknown"
+
+    now = time.monotonic()
+    window = [t for t in _auth_rate_store[ip] if now - t < _AUTH_RATE_WINDOW]
+    if len(window) >= _AUTH_RATE_LIMIT:
+        log.warning("auth_rate_limit: IP %s exceeded %d attempts in %ds", ip, _AUTH_RATE_LIMIT, _AUTH_RATE_WINDOW)
+        raise HTTPException(
+            status_code=429,
+            detail="Too many authentication attempts. Please wait 5 minutes before retrying.",
+            headers={"Retry-After": str(_AUTH_RATE_WINDOW)},
+        )
+    window.append(now)
+    _auth_rate_store[ip] = window

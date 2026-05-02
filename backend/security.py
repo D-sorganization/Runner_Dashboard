@@ -23,6 +23,10 @@ from fastapi import HTTPException
 
 _REPO_SLUG_RE = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
 
+# Strict owner/repo format used by _normalize_repository_input (issue #326).
+# Rejects anything that isn't a plain GitHub owner/repo slug pair.
+_OWNER_REPO_RE = re.compile(r"^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$")
+
 # ─── Log Sanitization ──────────────────────────────────────────────────────────
 
 
@@ -108,6 +112,27 @@ def validate_repo_slug(name: str) -> str:
     return slug
 
 
+def validate_owner_repo_format(value: str) -> str:
+    """Validate that *value* is a strict ``owner/repo`` slug (issue #326).
+
+    Rejects any input that does not match ``^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$``
+    before it reaches owner-comparison or subprocess interpolation, preventing
+    SSRF via malformed owner segments (null bytes, URL-encoded chars, etc.).
+
+    Returns the stripped, validated value unchanged.
+    """
+    stripped = str(value).strip()
+    if not _OWNER_REPO_RE.fullmatch(stripped):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "repository must be in 'owner/repo' format matching "
+                "^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$ with no extra path components"
+            ),
+        )
+    return stripped
+
+
 # ─── Path Validation ───────────────────────────────────────────────────────────
 
 
@@ -185,9 +210,9 @@ DEFAULT_ALLOWED_ROOTS = [
 
 def _get_repo_root() -> Path | None:
     """Find the repository root directory by searching for .git."""
-    try:
-        import subprocess
+    import subprocess
 
+    try:
         result = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
             capture_output=True,
@@ -196,7 +221,7 @@ def _get_repo_root() -> Path | None:
             timeout=5,
         )
         return Path(result.stdout.strip())
-    except Exception:
+    except (OSError, subprocess.SubprocessError, TimeoutError):
         return None
 
 

@@ -1,0 +1,54 @@
+{
+  "root": true,
+  "env": {
+    "browser": true,
+    "es2020": true
+  },
+  "extends": [
+    "eslint:recommended",
+    "plugin:@typescript-eslint/recommended",
+    "plugin:react-hooks/recommended"
+  ],
+  "ignorePatterns": ["dist", "coverage", "node_modules"],
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": {
+    "ecmaVersion": 2020,
+    "sourceType": "module"
+  },
+  "plugins": ["@typescript-eslint", "react-hooks", "react-refresh"],
+  "rules": {
+    "react-refresh/only-export-components": [
+      "warn",
+      { "allowConstantExport": true }
+    ],
+    "no-console": "warn",
+    "@typescript-eslint/no-explicit-any": "warn",
+    "@typescript-eslint/no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }]
+  },
+  "overrides": [
+    {
+      "files": ["frontend/src/**/*.{ts,tsx}"],
+      "excludedFiles": ["frontend/src/legacy/**"],
+      "rules": {
+        "@typescript-eslint/ban-ts-comment": [
+          "error",
+          {
+            "ts-nocheck": true,
+            "ts-ignore": "allow-with-description",
+            "ts-expect-error": "allow-with-description",
+            "minimumDescriptionLength": 10
+          }
+        ]
+      }
+    },
+    {
+      "files": ["frontend/src/legacy/**/*.{ts,tsx}"],
+      "rules": {
+        "@typescript-eslint/ban-ts-comment": "off",
+        "@typescript-eslint/no-explicit-any": "off",
+        "@typescript-eslint/no-unused-vars": "off",
+        "no-console": "off"
+      }
+    }
+  ]
+}

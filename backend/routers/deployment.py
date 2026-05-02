@@ -157,7 +157,9 @@ async def get_git_drift() -> dict:
         )
         source = out.stdout.strip()
         result["source_commit"] = source[:12]
-    except Exception:  # noqa: BLE001
+    except Exception as e:  # noqa: BLE001
+        if isinstance(e, (KeyboardInterrupt, SystemExit)):
+            raise
         result["source_commit"] = "unknown"
 
     try:
@@ -176,7 +178,9 @@ async def get_git_drift() -> dict:
             result["drift_details"] = "deployed version differs from origin/main"
         else:
             result["drift_details"] = "up to date"
-    except Exception:  # noqa: BLE001
+    except Exception as e:  # noqa: BLE001
+        if isinstance(e, (KeyboardInterrupt, SystemExit)):
+            raise
         result["is_drifted"] = False
         result["remote_commit"] = "unknown"
         result["drift_details"] = "could not reach origin/main"

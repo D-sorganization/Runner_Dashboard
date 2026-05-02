@@ -286,7 +286,9 @@ async def send_push(
     for subscription in _subscriptions_for_topic(topic, user_id, db_path):
         try:
             status_code = await sender.send(subscription, payload)
-        except Exception:
+        except Exception as e:
+            if isinstance(e, (KeyboardInterrupt, SystemExit)):
+                raise
             failed += 1
             continue
         if status_code in (404, 410):

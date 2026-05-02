@@ -185,15 +185,20 @@ identity_manager = IdentityManager()
 auth_header = APIKeyHeader(name="Authorization", auto_error=False)
 auth_cookie = APIKeyCookie(name="dashboard_session", auto_error=False)
 
-# Synthetic admin principal granted automatically to loopback (127.0.0.1) requests.
-# This allows the local browser to use all authenticated endpoints without manual
-# principal setup on a single-machine deployment.
+# Synthetic admin principal granted to loopback requests ONLY when
+# DASHBOARD_LOOPBACK_AUTH=1 is explicitly set.  This env var must never be
+# set in production; it is intended solely for local single-user development
+# where the dashboard is not reachable beyond 127.0.0.1.
+# See security issue #315 — unconditional loopback bypass is a P0 vulnerability
+# because SSRF or local-network access grants full admin without credentials.
 _LOOPBACK_ADMIN = Principal(
     id="__loopback__",
     type="human",
     name="Local Admin (loopback)",
     roles=["admin"],
 )
+
+_LOOPBACK_AUTH_ENABLED: bool = os.environ.get("DASHBOARD_LOOPBACK_AUTH", "").strip() == "1"
 
 
 def require_principal(
@@ -217,10 +222,10 @@ def require_principal(
                 raise HTTPException(status_code=401, detail="Session revoked or expired")
             prin = identity_manager.principals[principal_id]
 
-    # 3. Loopback bypass — requests from 127.0.0.1 or ::1 are automatically
-    #    granted admin access.  This is appropriate for the local single-user
-    #    dashboard that is not exposed beyond the loopback interface.
-    if not prin:
+    # 3. Loopback bypass (issue #315) — ONLY active when DASHBOARD_LOOPBACK_AUTH=1
+    #    is explicitly set.  Never enable in production: an attacker with SSRF or
+    #    local-network access can spoof the source IP and obtain full admin access.
+    if not prin and _LOOPBACK_AUTH_ENABLED:
         client_host = getattr(request.client, "host", "") if request.client else ""
         if client_host in ("127.0.0.1", "::1"):
             prin = _LOOPBACK_ADMIN

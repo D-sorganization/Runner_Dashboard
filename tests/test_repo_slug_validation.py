@@ -44,7 +44,9 @@ def test_repository_normalizers_reuse_slug_validation(normalizer) -> None:
 
 @pytest.mark.parametrize("repo", ["abc&def", "../etc", "", "a" * 200])
 def test_workflow_dispatch_rejects_invalid_repository_before_gh_api(
-    repo: str, monkeypatch, mock_auth  # noqa: ARG001
+    repo: str,
+    monkeypatch,
+    mock_auth,  # noqa: ARG001
 ) -> None:
     """Input validation (422) fires before dispatching — mock_auth prevents 401 masking it."""
     from routers import runs_workflows  # noqa: PLC0415
@@ -64,7 +66,8 @@ def test_workflow_dispatch_rejects_invalid_repository_before_gh_api(
 
 
 def test_cancel_run_rejects_invalid_path_repository_before_gh_api(
-    monkeypatch, mock_auth  # noqa: ARG001
+    monkeypatch,
+    mock_auth,  # noqa: ARG001
 ) -> None:
     """Input validation (422) fires before dispatching — mock_auth prevents 401 masking it."""
     from routers import queue  # noqa: PLC0415

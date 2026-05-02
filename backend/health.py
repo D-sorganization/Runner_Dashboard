@@ -114,7 +114,9 @@ async def _health_impl() -> dict:
             _cache_set("runners", data)
         gh_ok = True
         runner_count = len(data.get("runners", []))
-    except Exception:  # noqa: BLE001
+    except Exception as e:  # noqa: BLE001
+        if isinstance(e, (KeyboardInterrupt, SystemExit)):
+            raise
         gh_ok = False
         runner_count = 0
 

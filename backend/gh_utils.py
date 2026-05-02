@@ -122,11 +122,35 @@ def _record_rate_limit(endpoint: str, retry_after_seconds: int) -> RateLimitedEr
 
 
 async def gh_api(endpoint: str) -> dict:
-    """Call the GitHub API via gh CLI.
+    """Call the GitHub API, preferring the pooled httpx client over subprocess.
 
-    Uses GH_TOKEN env var when set (required for admin:org endpoints).
+    When ``GH_TOKEN`` / ``GITHUB_TOKEN`` is set the request is made via
+    ``gh_client.get()`` which reuses pooled TLS connections (issue #352).
+    Falls back to spawning a ``gh api`` subprocess when no token is available.
+
+    Uses the existing circuit-breaker and rate-limit machinery from this module.
     """
     _raise_if_circuit_open(endpoint)
+
+    # ── Fast path: use pooled httpx client when token is available ──────────
+    try:
+        import gh_client as _gc
+
+        return await _gc.get(endpoint)
+    except ImportError:
+        pass
+    except _gc.GhAuthError:
+        pass  # No token — fall through to subprocess
+    except _gc.GhRateLimited as exc:
+        raise _record_rate_limit(endpoint, exc.retry_after_seconds) from exc
+    except _gc.GhNotFound as exc:
+        raise HTTPException(status_code=404, detail=f"GitHub resource not found: {endpoint}") from exc
+    except _gc.GhServerError as exc:
+        if exc.status_code == 429:
+            raise _record_rate_limit(endpoint, DEFAULT_RATE_LIMIT_RETRY_AFTER_SECONDS) from exc
+        raise HTTPException(status_code=502, detail=f"GitHub API error ({exc.status_code}): {exc}") from exc
+
+    # ── Fallback: subprocess gh CLI ─────────────────────────────────────────
     code, stdout, stderr = await run_cmd(["gh", "api", endpoint])
     if code != 0:
         output = "\n".join(part for part in (stderr, stdout) if part)
@@ -139,7 +163,7 @@ async def gh_api(endpoint: str) -> dict:
         raise HTTPException(status_code=502, detail=f"Invalid JSON from GitHub API: {stdout}") from exc
 
 
-# gh_api_admin is an alias kept for call-site clarity.
+# gh_api_admin is an alias kept for call-site clarity; all calls use GH_TOKEN.
 gh_api_admin = gh_api
 
 

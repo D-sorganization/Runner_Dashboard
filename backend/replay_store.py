@@ -104,8 +104,9 @@ class ReplayStore:
         """Close the underlying SQLite connection."""
         try:
             self._db.close()
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as e:  # noqa: BLE001
+            if isinstance(e, (KeyboardInterrupt, SystemExit)):
+                raise
 
 
 def migrate_json_to_sqlite(json_path: Path, store: ReplayStore) -> int:

@@ -34,3 +34,6 @@ export type {
   DialogActionsProps,
   DialogCloseProps,
 } from "./Dialog";
+
+export { BottomSheet } from "./BottomSheet";
+export type { BottomSheetProps } from "./BottomSheet";

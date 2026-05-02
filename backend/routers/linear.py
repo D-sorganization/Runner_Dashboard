@@ -211,7 +211,9 @@ async def _workspace_auth_status(workspace: dict[str, Any], client: LinearClient
             status = "ok"
         except LinearAPIError as exc:
             status = "auth_failed" if exc.status_code in (401, 403) else "auth_failed"
-        except Exception:
+        except Exception as e:
+            if isinstance(e, (KeyboardInterrupt, SystemExit)):
+                raise
             status = "auth_failed"
 
     _auth_status_cache[cache_key] = (status, time.monotonic())

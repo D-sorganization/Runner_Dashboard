@@ -23,7 +23,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from identity import Principal, require_scope
 from request_context import current_request_id
-from security import check_dispatch_rate, validate_repo_slug
+from security import check_dispatch_rate, validate_owner_repo_format, validate_repo_slug
 from system_utils import run_cmd
 
 # Python 3.11+ has datetime.UTC; fall back to timezone.utc for 3.10
@@ -35,8 +35,15 @@ REPO_ROOT = Path(os.environ.get("RUNNER_DASHBOARD_REPO_ROOT", Path(__file__).par
 
 
 def _normalize_repository_input(value: str) -> tuple[str, str]:
+    """Return (repo_name, full_name) from a bare or qualified repo name (issue #326).
+
+    Validates against a strict regex before any owner comparison or subprocess
+    interpolation to prevent SSRF via malformed owner/repo slugs.
+    """
     text = str(value).strip().lstrip("/")
     if "/" in text:
+        # Validate full owner/repo format before extracting parts (issue #326)
+        validate_owner_repo_format(text)
         owner, _, repo_name = text.partition("/")
         if owner.lower() != ORG.lower():
             raise HTTPException(status_code=422, detail=f"repository owner must be {ORG}")
@@ -524,12 +531,12 @@ async def _append_remediation_history(entry: dict) -> None:
             if _REMEDIATION_HISTORY_PATH.exists():
                 try:
                     history = json.loads(_REMEDIATION_HISTORY_PATH.read_text(encoding="utf-8"))
-                except Exception:  # noqa: BLE001
+                except (OSError, json.JSONDecodeError, UnicodeDecodeError):
                     history = []
             history.append(entry)
             history = history[-200:]  # keep last 200 entries
             config_schema.atomic_write_json(_REMEDIATION_HISTORY_PATH, history)
-        except Exception:  # noqa: BLE001
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
             pass  # history is best-effort
 
 
@@ -584,7 +591,7 @@ async def get_remediation_history() -> dict:
             history = json.loads(_REMEDIATION_HISTORY_PATH.read_text(encoding="utf-8"))
         else:
             history = []
-    except Exception:  # noqa: BLE001
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
         history = []
     return {"history": list(reversed(history[-100:]))}  # newest first
 

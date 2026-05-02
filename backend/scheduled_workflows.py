@@ -302,7 +302,9 @@ async def collect_inventory(
                     raw_yaml = await gh_raw(f"/repos/{organization}/{repo_name}/contents/{workflow_path}{ref_suffix}")
                     cron_expressions = extract_cron_expressions(raw_yaml)
                     schedule_source = "raw_yaml"
-                except Exception:  # noqa: BLE001
+                except Exception as e:  # noqa: BLE001
+                    if isinstance(e, (KeyboardInterrupt, SystemExit)):
+                        raise
                     schedule_source = "unavailable"
 
             scheduled = bool(cron_expressions)
@@ -317,7 +319,9 @@ async def collect_inventory(
                         first_run = runs[0]
                         if isinstance(first_run, dict):
                             latest_run = _build_run_snapshot(first_run)
-                except Exception:  # noqa: BLE001
+                except Exception as e:  # noqa: BLE001
+                    if isinstance(e, (KeyboardInterrupt, SystemExit)):
+                        raise
                     latest_run = None
 
             total_scheduled += int(scheduled)

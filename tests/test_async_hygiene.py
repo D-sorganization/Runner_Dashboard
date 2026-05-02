@@ -39,8 +39,8 @@ AUDIT_FILES = _TOP_LEVEL + _ROUTER_FILES
 # Files that are explicitly exempted (sync-only subprocess usage).
 _EXEMPT = {
     "agent_launcher_router.py",  # all calls are in sync helpers / Popen
-    "system.py",                 # get_gpu_info is sync; called via to_thread
-    "local_app_monitoring.py",   # has noqa:S603, sync context
+    "system.py",  # get_gpu_info is sync; called via to_thread
+    "local_app_monitoring.py",  # has noqa:S603, sync context
 }
 
 
@@ -96,10 +96,7 @@ def test_no_blocking_subprocess_run_in_async(path: Path) -> None:
 
     violations = _find_violations(path)
     if violations:
-        details = "\n".join(
-            f"  {path.name}:{lineno} — inside async def {fn}()"
-            for lineno, fn in violations
-        )
+        details = "\n".join(f"  {path.name}:{lineno} — inside async def {fn}()" for lineno, fn in violations)
         pytest.fail(
             textwrap.dedent(f"""
                 Found {len(violations)} blocking subprocess.run call(s) inside async handlers.

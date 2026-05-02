@@ -125,7 +125,9 @@ async def get_fleet_orchestration(request: Request) -> dict:
     try:
         fleet = await _get_fleet_nodes_impl()  # type: ignore[misc]
         live_nodes = {n.get("name", ""): n for n in fleet.get("nodes", [])}
-    except Exception:  # noqa: BLE001
+    except Exception as e:  # noqa: BLE001
+        if isinstance(e, (KeyboardInterrupt, SystemExit)):
+            raise
         live_nodes = {}
 
     machines = []

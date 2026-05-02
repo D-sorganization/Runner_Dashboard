@@ -54,7 +54,7 @@ try:
         )
         if result.returncode == 0:
             HOST_MEMORY_GB = round(int(result.stdout.strip()) / (1024**3), 1)
-except Exception:  # noqa: BLE001
+except (OSError, subprocess.SubprocessError, TimeoutError, ValueError):
     pass
 
 
@@ -275,7 +275,7 @@ async def get_system_metrics_snapshot(runner_limit: int | None = None) -> dict:
 
     try:
         uptime_seconds = time.time() - psutil.boot_time()
-    except Exception:
+    except OSError:
         uptime_seconds = 0
     dashboard_uptime = time.time() - BOOT_TIME
 
@@ -345,7 +345,7 @@ async def get_system_metrics_snapshot(runner_limit: int | None = None) -> dict:
                 "free_gb": round(wd.free / (1024**3), 1),
                 "percent": round(wd.used / wd.total * 100, 1),
             }
-        except Exception:  # noqa: BLE001
+        except (OSError, psutil.Error):
             pass
 
     return metrics

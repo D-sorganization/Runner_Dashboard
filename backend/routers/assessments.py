@@ -61,8 +61,9 @@ async def get_assessment_scores() -> dict:
                         "provider": data.get("provider") or data.get("agent", ""),
                     }
                 )
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception as e:  # noqa: BLE001
+                if isinstance(e, (KeyboardInterrupt, SystemExit)):
+                    raise
     return {"scores": results, "total": len(results)}
 
 
