@@ -16,7 +16,6 @@ import {
   enqueue,
   count,
   generateIdempotencyKey,
-  MAX_ENTRY_AGE_MS,
   type QueuedMutation,
 } from "../lib/mutationQueue"
 import { useToast } from "../primitives/Toaster"
@@ -75,6 +74,7 @@ export function useMutationQueue() {
         )
       }
     } catch (err) {
+      // eslint-disable-next-line no-console
       console.error("[useMutationQueue] drain failed:", err)
     } finally {
       drainingRef.current = false
@@ -135,6 +135,7 @@ export function useMutationQueue() {
           durationMs: 0, // persistent until dismissed
         })
       } catch (err) {
+        // eslint-disable-next-line no-console
         console.error("[useMutationQueue] enqueue failed:", err)
         toast.showToast("Could not queue action — data may be lost.", {
           variant: "error",

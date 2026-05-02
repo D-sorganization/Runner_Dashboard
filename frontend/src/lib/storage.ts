@@ -1,4 +1,4 @@
-import { z, ZodType } from 'zod';
+import { ZodType } from 'zod';
 
 /**
  * Storage key registry with versioning for migration support.
@@ -86,6 +86,7 @@ export const storage = {
       // TODO: Apply migration if version mismatch
       const result = schema.safeParse(parsed);
       if (!result.success) {
+        // eslint-disable-next-line no-console
         console.warn(`[storage] Schema validation failed for ${keyDef.key}, using default`, result.error);
         return defaultValue;
       }
@@ -96,9 +97,11 @@ export const storage = {
         throw err;
       }
       if (err instanceof Error && err.name === 'QuotaExceededError') {
+        // eslint-disable-next-line no-console
         console.warn(`[storage] Quota exceeded for ${keyDef.key}, falling back to memory`);
         return memoryStore.get(keyDef.key) as T ?? defaultValue;
       }
+      // eslint-disable-next-line no-console
       console.warn(`[storage] Error reading ${keyDef.key}:`, err);
       return memoryStore.get(keyDef.key) as T ?? defaultValue;
     }
@@ -126,6 +129,7 @@ export const storage = {
       memoryStore.delete(keyDef.key);
     } catch (err) {
       if (err instanceof Error && (err.name === 'QuotaExceededError' || err.message.includes('quota'))) {
+        // eslint-disable-next-line no-console
         console.warn(`[storage] Quota exceeded for ${keyDef.key}, using memory fallback`);
         memoryStore.set(keyDef.key, value);
         throw new StorageError(
@@ -146,6 +150,7 @@ export const storage = {
       store.removeItem(keyDef.key);
       memoryStore.delete(keyDef.key);
     } catch (err) {
+      // eslint-disable-next-line no-console
       console.warn(`[storage] Error removing ${keyDef.key}:`, err);
     }
   },

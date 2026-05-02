@@ -31,8 +31,8 @@ export function FleetMobile() {
       const json = await resp.json();
       setData(json);
       setError(null);
-    } catch (e: any) {
-      setError(e.message || "Failed to load fleet data");
+    } catch (e) {
+      setError((e instanceof Error ? e.message : String(e)) || "Failed to load fleet data");
     } finally {
       setLoading(false);
       setRefreshing(false);

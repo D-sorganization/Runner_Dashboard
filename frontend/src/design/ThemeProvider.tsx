@@ -24,7 +24,7 @@ export interface ThemeProviderProps {
 export const ThemeProvider: React.FC<ThemeProviderProps> = ({
   children,
   reducedMotion = false,
-  theme = "system",
+  theme: _theme = "system",
 }) => {
   const css = useMemo(() => {
     const darkVars = toCssVariables("dark");
@@ -47,7 +47,7 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({
 
       ${reducedMotion ? reducedMotionCss : ""}
     `;
-  }, []);
+  }, [reducedMotion]);
 
   return (
     <>

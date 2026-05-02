@@ -61,8 +61,8 @@ export default function PushSettings() {
       if (!resp.ok) throw new Error(`Subscribe failed: ${resp.status}`);
       setSubscribed(true);
       setError(null);
-    } catch (e: any) {
-      setError(e.message || "Subscription failed");
+    } catch (e) {
+      setError((e instanceof Error ? e.message : String(e)) || "Subscription failed");
     }
   }, [notConfigured, publicKey, topics]);
 
@@ -74,8 +74,8 @@ export default function PushSettings() {
       setSubscribed(false);
       setTopics({});
       setError(null);
-    } catch (e: any) {
-      setError(e.message || "Unsubscribe failed");
+    } catch (e) {
+      setError((e instanceof Error ? e.message : String(e)) || "Unsubscribe failed");
     }
   }, []);
 

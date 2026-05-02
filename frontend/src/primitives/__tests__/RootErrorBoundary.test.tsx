@@ -15,11 +15,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { RootErrorBoundary } from '../RootErrorBoundary'
 
 // Suppress React error boundary console.error noise in test output
+// eslint-disable-next-line no-console
 const originalConsoleError = console.error
 beforeEach(() => {
   vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 afterEach(() => {
+  // eslint-disable-next-line no-console
   console.error = originalConsoleError
   vi.restoreAllMocks()
 })

@@ -90,8 +90,8 @@ export function AgentDispatchPage() {
           (r: FailedRun) => r.conclusion === "failure"
         )
       );
-    } catch (e: any) {
-      setError(e.message || "Failed to load dispatch data");
+    } catch (e) {
+      setError((e instanceof Error ? e.message : String(e)) || "Failed to load dispatch data");
     } finally {
       setLoading(false);
     }
@@ -199,8 +199,8 @@ export function AgentDispatchPage() {
         `Dispatch submitted for ${selectedProviderId} on ${repoName}. Waiting for agent heartbeat.`;
       setDispatchResult({ status: "success", message: successMessage });
       showToast(successMessage, { variant: "success", title: "Dispatch submitted" });
-    } catch (e: any) {
-      const errorMessage = e.message || "Dispatch failed. Please try again.";
+    } catch (e) {
+      const errorMessage = (e instanceof Error ? e.message : String(e)) || "Dispatch failed. Please try again.";
       setDispatchResult({ status: "error", message: errorMessage });
       showToast(errorMessage, { variant: "error", title: "Dispatch failed" });
     } finally {

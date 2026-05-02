@@ -142,6 +142,7 @@ export async function drain(options?: {
   for (const entry of entries) {
     // DbC: idempotency-key must be set
     if (!entry.idempotencyKey) {
+      // eslint-disable-next-line no-console
       console.warn("[mutationQueue] drain: entry missing idempotencyKey, skipping", entry)
       continue
     }
@@ -176,10 +177,12 @@ export async function drain(options?: {
         replayed++
       } else {
         // 5xx = transient server error — leave in queue
+        // eslint-disable-next-line no-console
         console.warn(`[mutationQueue] replay got ${resp.status} for ${entry.url}, keeping in queue`)
       }
     } catch (err) {
       // Network still down — abort drain for this cycle
+      // eslint-disable-next-line no-console
       console.warn("[mutationQueue] drain aborted (network unavailable):", err)
       break
     }

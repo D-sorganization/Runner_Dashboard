@@ -79,6 +79,7 @@ const ToastContext = createContext<ToastApi | null>(null);
  * provider mounts: in that case it logs a console warning and the helpers
  * become no-ops, so consumer modules cannot crash the app at import time.
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export function useToast(): ToastApi {
   const ctx = useContext(ToastContext);
   if (ctx) return ctx;

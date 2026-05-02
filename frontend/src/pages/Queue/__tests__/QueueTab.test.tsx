@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect } from "vitest";
 import { vi } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { QueueTab } from "../index";
 
 describe("QueueTab Component", () => {
@@ -96,7 +96,7 @@ describe("QueueTab Component", () => {
   });
 
   it("renders run details correctly", () => {
-    const { container } = render(
+    render(
       <QueueTab queue={mockQueue} loading={false} />
     );
 
@@ -127,7 +127,7 @@ describe("QueueTab Component", () => {
 
   it("calls onRefresh callback when provided", async () => {
     const mockRefresh = vi.fn();
-    const { container } = render(
+    render(
       <QueueTab queue={mockQueue} loading={false} onRefresh={mockRefresh} />
     );
 

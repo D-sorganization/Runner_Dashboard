@@ -8,6 +8,7 @@
  * - Re-locks after 60 seconds of inactivity or when tab loses focus
  * - Add key via BottomSheet form
  */
+/* eslint-disable @typescript-eslint/no-explicit-any -- legacy API response shapes lack complete TypeScript definitions */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SkeletonCard, SkeletonLine } from "../../primitives/Skeleton";
 import { PullToRefresh } from "../../primitives/PullToRefresh";
@@ -215,8 +216,8 @@ function CredentialActionSheet({ probe, onClose, onKeySet }: CredentialActionShe
       setSubmitSuccess(true);
       setKeyValue("");
       onKeySet();
-    } catch (e: any) {
-      setSubmitError(e.message || "Failed to set key");
+    } catch (e) {
+      setSubmitError((e instanceof Error ? e.message : String(e)) || "Failed to set key");
     } finally {
       setSubmitting(false);
     }
@@ -241,8 +242,8 @@ function CredentialActionSheet({ probe, onClose, onKeySet }: CredentialActionShe
       }
       setSubmitSuccess(true);
       onKeySet();
-    } catch (e: any) {
-      setSubmitError(e.message || "Failed to clear key");
+    } catch (e) {
+      setSubmitError((e instanceof Error ? e.message : String(e)) || "Failed to clear key");
     } finally {
       setSubmitting(false);
     }

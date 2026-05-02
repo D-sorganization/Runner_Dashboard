@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- WebAuthn API lacks complete TypeScript definitions */
 import { useCallback, useEffect, useState } from "react";
 
 type UnlockStatus = "idle" | "prompting" | "success" | "error";
@@ -133,9 +134,9 @@ export function BiometricUnlock() {
 
       setStatus("success");
       setMessage("Biometric credential registered successfully.");
-    } catch (e: any) {
+    } catch (e) {
       setStatus("error");
-      setMessage(e.message || "Registration failed");
+      setMessage((e instanceof Error ? e.message : String(e)) || "Registration failed");
     }
   }, [isSupported]);
 
@@ -227,9 +228,9 @@ export function BiometricUnlock() {
 
       setStatus("success");
       setMessage("Biometric authentication successful.");
-    } catch (e: any) {
+    } catch (e) {
       setStatus("error");
-      setMessage(e.message || "Authentication failed");
+      setMessage((e instanceof Error ? e.message : String(e)) || "Authentication failed");
     }
   }, [isSupported]);
 
@@ -246,9 +247,9 @@ export function BiometricUnlock() {
         }
         setCredentials((prev) => prev.filter((c) => c.credential_id !== credentialId));
         setMessage("Credential revoked.");
-      } catch (e: any) {
+      } catch (e) {
         setStatus("error");
-        setMessage(e.message || "Revoke failed");
+        setMessage((e instanceof Error ? e.message : String(e)) || "Revoke failed");
       }
     },
     []

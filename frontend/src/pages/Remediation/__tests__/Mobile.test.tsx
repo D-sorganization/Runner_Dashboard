@@ -440,9 +440,7 @@ describe("RemediationMobile", () => {
       expect(screen.getByRole("radiogroup")).toBeInTheDocument();
     });
 
-    const inflight = screen.queryByRole("status", {
-      name: /In-flight dispatch/i,
-    });
+    expect(screen.queryByRole("status", { name: /In-flight dispatch/i })).not.toBeInTheDocument();
     expect(screen.getByRole("radiogroup")).toBeInTheDocument();
   });
 });

@@ -37,12 +37,6 @@ vi.mock("idb", () => ({
 
 import { openDB } from "idb"
 import {
-  enqueue,
-  getAll,
-  count,
-  remove,
-  drain,
-  clearAll,
   generateIdempotencyKey,
   MAX_ENTRY_AGE_MS,
 } from "../mutationQueue"
@@ -52,6 +46,7 @@ let mockStore: MockStore
 beforeEach(async () => {
   mockStore = { data: new Map(), nextId: 1 }
   const db = createMockDb(mockStore)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   vi.mocked(openDB).mockResolvedValue(db as any)
 
   // Reset module so _db singleton is cleared between tests

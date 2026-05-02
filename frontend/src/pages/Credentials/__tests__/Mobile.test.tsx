@@ -104,7 +104,7 @@ function setupFetch({
   setKeyOk?: boolean;
   clearKeyOk?: boolean;
 } = {}) {
-  const fetchMock = vi.fn((url: string, options?: RequestInit) => {
+  const fetchMock = vi.fn((url: string, _options?: RequestInit) => {
     if (url.includes("/api/credentials") && !url.includes("set-key") && !url.includes("clear-key")) {
       return Promise.resolve({
         ok: credentialsOk,

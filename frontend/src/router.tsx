@@ -30,16 +30,19 @@ import { RootErrorBoundary } from "./primitives/RootErrorBoundary"
 // Each import() becomes a separate Vite chunk (route-level code splitting).
 
 const LazyQueue = React.lazy(() =>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   import("./pages/Queue").then((m) => ({ default: m.QueueTab ?? (m as any).default })),
 )
 
 const LazyAgentDispatch = React.lazy(() =>
   import("./pages/AgentDispatch").then((m) => ({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     default: m.AgentDispatchPage ?? (m as any).default,
   })),
 )
 
 const LazyPushSettings = React.lazy(() =>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   import("./pages/PushSettings").then((m) => ({ default: m.default ?? (m as any).PushSettings })),
 )
 
@@ -73,6 +76,7 @@ function withSuspense(element: React.ReactElement) {
 
 // ---- Route definitions ------------------------------------------------------
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const router = createBrowserRouter([
   {
     errorElement: <RootErrorBoundary />,
