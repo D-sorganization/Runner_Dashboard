@@ -93,7 +93,7 @@ function tabIndexForId(tabId: MainTabId): number {
   return mainTabs.findIndex((t) => t.id === tabId)
 }
 
-export function MobileShell({ children, currentTab, onTabChange }: MobileShellProps) {
+export function MobileShell({ children, currentTab, onTabChange, tabContent }: MobileShellProps) {
   const breakpoint = useBreakpoint()
   const isMobile = breakpoint !== 'lg' && breakpoint !== 'xl'
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -180,11 +180,22 @@ export function MobileShell({ children, currentTab, onTabChange }: MobileShellPr
     return <>{children}</>
   }
 
+  // Resolve native content for the active tab, if provided.
+  const nativeContent = tabContent?.[currentTab]
+
   return (
     <div className="mobile-shell">
-      {/* Main content area */}
+      {/* Main content area — native mobile component takes precedence when provided */}
       <div className="mobile-shell__content">
-        {children}
+        {nativeContent != null ? (
+          <>
+            {/* Keep legacy App mounted but hidden so it keeps its internal state */}
+            <div style={{ display: 'none' }} aria-hidden="true">{children}</div>
+            {nativeContent}
+          </>
+        ) : (
+          children
+        )}
       </div>
       <div className="visually-hidden" aria-live="polite" aria-atomic="true">
         {drawerAnnouncement}
