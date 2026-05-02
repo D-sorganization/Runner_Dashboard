@@ -220,8 +220,8 @@ export function ReportsMobile() {
       const json = await resp.json();
       setReports(json.reports ?? []);
       setError(null);
-    } catch (e: any) {
-      setError(e.message || "Failed to load reports");
+    } catch (e) {
+      setError((e instanceof Error ? e.message : String(e)) || "Failed to load reports");
     } finally {
       setLoading(false);
       setRefreshing(false);

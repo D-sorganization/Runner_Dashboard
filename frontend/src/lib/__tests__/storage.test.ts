@@ -43,6 +43,7 @@ describe('storage', () => {
   it('should throw on invalid data when setting', () => {
     const key = STORAGE_KEYS.ISSUES_SOURCE_FILTER;
     expect(() => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       storage.setItem(key, TestSchema, { name: 'test', count: 'not a number' } as any);
     }).toThrow(StorageError);
   });

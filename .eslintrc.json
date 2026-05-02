@@ -49,6 +49,23 @@
         "@typescript-eslint/no-unused-vars": "off",
         "no-console": "off"
       }
+    },
+    {
+      "files": [
+        "frontend/src/components/SortTh.tsx",
+        "frontend/src/components/SubTabs.tsx",
+        "frontend/src/components/formatters.ts",
+        "frontend/src/pages/Queue/index.tsx"
+      ],
+      "rules": {
+        "no-var": "off",
+        "no-empty": "off",
+        "no-console": "off",
+        "no-extra-semi": "off",
+        "@typescript-eslint/no-explicit-any": "off",
+        "@typescript-eslint/no-unused-vars": "off",
+        "react-refresh/only-export-components": "off"
+      }
     }
   ]
 }

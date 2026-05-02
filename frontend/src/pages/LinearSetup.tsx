@@ -28,8 +28,8 @@ export function LinearSetup() {
         setWorkspaces(data.workspaces || []);
         setLoading(false);
       })
-      .catch((e: any) => {
-        setError(e.message || "Failed to load workspaces");
+      .catch((e: unknown) => {
+        setError((e instanceof Error ? e.message : String(e)) || "Failed to load workspaces");
         setLoading(false);
       });
 

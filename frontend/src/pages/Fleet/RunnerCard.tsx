@@ -1,5 +1,3 @@
-import type { ReactNode } from "react";
-
 import { Badge, type BadgeTone } from "../../primitives/Badge";
 
 export interface RunnerCardProps {

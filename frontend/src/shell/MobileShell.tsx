@@ -1,6 +1,5 @@
-import React, { useState, useMemo, ReactNode, useCallback, useEffect, useRef } from 'react'
+import React, { useState, ReactNode, useCallback, useEffect, useRef } from 'react'
 import { useBreakpoint } from '../hooks/useBreakpoint'
-import { colorTokens, spacingTokens, touchTokens } from '../design/tokens'
 import { FloatingActionButton } from '../primitives/FloatingActionButton'
 import { AgentDispatchPage } from '../pages/AgentDispatch'
 
@@ -61,14 +60,6 @@ function MoreIcon({ className }: { className?: string }) {
   )
 }
 
-const iconMap = {
-  fleet: FleetIcon,
-  workflows: WorkflowsIcon,
-  remediation: RemediationIcon,
-  maxwell: MaxwellIcon,
-  more: MoreIcon,
-}
-
 // Tab configuration
 const mainTabs: Array<{ id: MainTabId; label: string; Icon: typeof FleetIcon }> = [
   { id: 'fleet', label: 'Fleet', Icon: FleetIcon },
@@ -88,10 +79,6 @@ const drawerTabs: Array<{ id: DrawerTabId; label: string }> = [
   { id: 'reports', label: 'Reports' },
   { id: 'health', label: 'Queue Health' },
 ]
-
-function tabIndexForId(tabId: MainTabId): number {
-  return mainTabs.findIndex((t) => t.id === tabId)
-}
 
 export function MobileShell({ children, currentTab, onTabChange, tabContent }: MobileShellProps) {
   const breakpoint = useBreakpoint()

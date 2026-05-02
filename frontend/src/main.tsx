@@ -1,6 +1,6 @@
+/* eslint-disable react-refresh/only-export-components -- main.tsx is the app entry point, not a component module */
 import React, { useState, useCallback } from 'react'
 import ReactDOM from 'react-dom/client'
-import { QueryClientProvider } from '@tanstack/react-query'
 import App from './legacy/App'
 import PushSettings from './pages/PushSettings'
 import { QueueMobile } from './pages/Queue'
@@ -16,7 +16,7 @@ import './index.css'
 // Web Vitals — send metrics to backend (issue #385)
 import { onCLS, onINP, onFCP, onLCP } from 'web-vitals'
 
-function sendWebVitals(metric: any) {
+function sendWebVitals(metric: { name: string; value: number; rating?: string; delta?: number; id?: string; navigationType?: string }) {
   const payload = {
     route: window.location.pathname,
     metrics: [{
@@ -44,6 +44,7 @@ onLCP(sendWebVitals)
 // Provides offline support, caching, and PWA installability.
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('controllerchange', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const toaster = (window as any).__toaster
     if (toaster && typeof toaster.showToast === 'function') {
       toaster.showToast('A dashboard update is ready.', {
@@ -58,13 +59,15 @@ if ('serviceWorker' in navigator) {
   })
 
   window.addEventListener('load', () => {
-    const buildId = (import.meta as any).env?.VITE_BUILD_ID || 'dev'
+    const buildId = (import.meta.env as Record<string, string>)?.VITE_BUILD_ID || 'dev'
     navigator.serviceWorker
       .register(`/sw.js?build=${encodeURIComponent(buildId)}`)
       .then((registration) => {
+        // eslint-disable-next-line no-console
         console.log('[SW] Registered:', registration.scope)
       })
       .catch((err) => {
+        // eslint-disable-next-line no-console
         console.warn('[SW] Registration failed:', err)
       })
   })
@@ -77,32 +80,40 @@ let deferredPrompt: Event | null = null
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault()
   deferredPrompt = e
+  // eslint-disable-next-line no-console
   console.log('[PWA] Install prompt deferred')
 })
 
 // Expose a helper to trigger the install prompt
 // Components can call this if they want to offer an "Install App" button.
 function triggerInstallPrompt(): void {
-  const prompt = (window as any).__deferredPrompt || deferredPrompt
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const w = window as any
+  const prompt = w.__deferredPrompt || deferredPrompt
   if (prompt) {
-    ;(prompt as any).prompt()
-    ;(prompt as any).userChoice.then((choice: { outcome: string }) => {
+    prompt.prompt()
+    prompt.userChoice.then((choice: { outcome: string }) => {
       if (choice.outcome === 'accepted') {
+        // eslint-disable-next-line no-console
         console.log('[PWA] User accepted install prompt')
       } else {
+        // eslint-disable-next-line no-console
         console.log('[PWA] User dismissed install prompt')
       }
       deferredPrompt = null
-      ;(window as any).__deferredPrompt = null
+      w.__deferredPrompt = null
     })
   } else {
+    // eslint-disable-next-line no-console
     console.log('[PWA] No deferred install prompt available')
   }
 }
 
 // Attach to window for legacy access
-;(window as any).__deferredPrompt = deferredPrompt
-;(window as any).triggerInstallPrompt = triggerInstallPrompt
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const _win = window as any
+_win.__deferredPrompt = deferredPrompt
+_win.triggerInstallPrompt = triggerInstallPrompt
 
 // Map legacy App tab strings to MobileShell TabIds.
 const LEGACY_TO_TAB_ID: Record<string, TabId> = {
