@@ -1,14 +1,15 @@
 name: Agent Fleet Dashboard
 
-# Regenerates docs/fleet-in-flight.md every 15 minutes. Only commits if
-# the file changed.
+# Regenerates docs/fleet-in-flight.md every 30 minutes. Only commits if
+# the file changed. Single-flight concurrency favors completion over
+# canceling in-progress refreshes.
 #
 # Fail-open: if generation fails, a placeholder is written and the
 # workflow completes successfully. Next run retries.
 
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "7,37 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -16,40 +17,93 @@ permissions:
 
 concurrency:
   group: agent-fleet-dashboard
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   refresh:
     runs-on: d-sorg-fleet
     timeout-minutes: 15
     steps:
+      - name: Preflight Jules app credentials
+        id: credential-preflight
+        env:
+          JULES_APP_CLIENT_ID: ${{ secrets.JULES_APP_ID }}
+          JULES_APP_PRIVATE_KEY: ${{ secrets.JULES_APP_PRIVATE_KEY }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: | # pragma: allowlist secret
+          missing=0
+          if [ -z "$JULES_APP_CLIENT_ID" ]; then
+            echo "::warning title=Missing GitHub App credential::JULES_APP_ID is not configured."
+            missing=1
+          fi
+          if [ -z "$JULES_APP_PRIVATE_KEY" ]; then
+            echo "::warning title=Missing GitHub App credential::JULES_APP_PRIVATE_KEY is not configured."
+            missing=1
+          fi
+
+          if [ "$missing" -ne 0 ]; then
+            echo "credentials-present=false" >> "$GITHUB_OUTPUT"
+            echo "DASHBOARD_STATUS=skipped_missing_credentials" >> "$GITHUB_ENV"
+            {
+              echo "## Agent Fleet Dashboard"
+              echo ""
+              echo "- **Status:** skipped"
+              echo "- **Reason:** missing GitHub App credentials"
+              echo "- **Token action:** not invoked"
+            } >> "$GITHUB_STEP_SUMMARY"
+
+            if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+              echo "::error::Configure JULES_APP_ID and JULES_APP_PRIVATE_KEY before manually running this workflow."
+              exit 1
+            fi
+            exit 0
+          fi
+
+          echo "credentials-present=true" >> "$GITHUB_OUTPUT"
+          echo "DASHBOARD_STATUS=credentials_ok" >> "$GITHUB_ENV"
+
       - name: Generate Jules app token
+        if: steps.credential-preflight.outputs.credentials-present == 'true'
         id: app-token
         uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v1
         with:
-          app-id: ${{ secrets.JULES_APP_ID }}
+          client-id: ${{ secrets.JULES_APP_ID }}
           private-key: ${{ secrets.JULES_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
+          permission-actions: read
+          permission-contents: write
+          permission-issues: read
+          permission-organization-self-hosted-runners: read
+          permission-pull-requests: read
 
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        if: steps.credential-preflight.outputs.credentials-present == 'true'
         with:
           token: ${{ steps.app-token.outputs.token }}
 
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        if: steps.credential-preflight.outputs.credentials-present == 'true'
         with:
           python-version: "3.11"
 
       - name: Generate dashboard
+        if: steps.credential-preflight.outputs.credentials-present == 'true'
         # Fail-open: generation errors emit a warning but allow the commit step to
         # write a placeholder, so the next cron run can retry cleanly.
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          python -m scripts.generate_fleet_dashboard \
-            --output docs/fleet-in-flight.md \
-            || echo "::warning::dashboard generation failed; continuing"
+          echo "DASHBOARD_STATUS=generating" >> "$GITHUB_ENV"
+          if python -m scripts.generate_fleet_dashboard \
+            --output docs/fleet-in-flight.md; then
+            echo "DASHBOARD_STATUS=generated" >> "$GITHUB_ENV"
+          else
+            echo "::warning::dashboard generation failed; continuing"
+            echo "DASHBOARD_STATUS=generation_failed_fail_open" >> "$GITHUB_ENV"
+          fi
 
       - name: Commit if changed
+        if: steps.credential-preflight.outputs.credentials-present == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
@@ -58,10 +112,15 @@ jobs:
           if [ -n "$(git status --porcelain docs/fleet-in-flight.md)" ]; then
             git add docs/fleet-in-flight.md
             git commit -m "chore(dashboard): refresh fleet-in-flight.md"
-            git push origin HEAD:main || \
+            if git push origin HEAD:main; then
+              echo "DASHBOARD_COMMIT_STATUS=committed" >> "$GITHUB_ENV"
+            else
               echo "::warning::could not push dashboard update; next run retries"
+              echo "DASHBOARD_COMMIT_STATUS=push_failed_fail_open" >> "$GITHUB_ENV"
+            fi
           else
             echo "No change to dashboard; skipping commit."
+            echo "DASHBOARD_COMMIT_STATUS=no_change" >> "$GITHUB_ENV"
           fi
 
       - name: Summary
@@ -71,4 +130,8 @@ jobs:
             echo "## Agent Fleet Dashboard"
             echo ""
             echo "- **Generated:** $(date -Iseconds)"
+            echo "- **Schedule target:** every 30 minutes"
+            echo "- **Single flight:** enabled"
+            echo "- **Status:** ${DASHBOARD_STATUS:-not_started}"
+            echo "- **Commit:** ${DASHBOARD_COMMIT_STATUS:-not_attempted}"
           } >> "$GITHUB_STEP_SUMMARY"

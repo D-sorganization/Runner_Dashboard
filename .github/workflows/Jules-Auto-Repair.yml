@@ -23,6 +23,13 @@ on:
         required: false
         type: number
         default: 5
+    secrets:
+      JULES_APP_ID:
+        required: true
+      JULES_APP_PRIVATE_KEY:
+        required: true
+      JULES_API_KEY:
+        required: false
   workflow_dispatch:
     inputs:
       branch:

@@ -121,11 +121,15 @@ jobs:
           WF_RUN_DISPLAY_TITLE: ${{ github.event.workflow_run.display_title }}
           WF_RUN_BRANCH: ${{ github.event.workflow_run.head_branch }}
         run: |
-          RESULT=$(python3 scripts/resolve_agent_remediation_rule.py \
-            --repository "$WF_REPO_NAME" \
-            --workflow-name "${WF_RUN_NAME:-CI Standard}" \
-            --failure-reason "${WF_RUN_DISPLAY_TITLE:-${WF_RUN_NAME:-CI failure}}" \
-            --branch "${WF_RUN_BRANCH:-}")
+          if [ -f scripts/resolve_agent_remediation_rule.py ]; then
+            RESULT=$(python3 scripts/resolve_agent_remediation_rule.py \
+              --repository "$WF_REPO_NAME" \
+              --workflow-name "${WF_RUN_NAME:-CI Standard}" \
+              --failure-reason "${WF_RUN_DISPLAY_TITLE:-${WF_RUN_NAME:-CI failure}}" \
+              --branch "${WF_RUN_BRANCH:-}")
+          else
+            RESULT='{"workflow_type":"ci-remediation","workflow_label":"Jules PR AutoFix","dispatch_mode":"auto","provider_id":"jules_pr_autofix"}'
+          fi
           echo "$RESULT"
           echo "workflow_type=$(echo "$RESULT" | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"workflow_type\"])')" >> "$GITHUB_OUTPUT"
           echo "workflow_label=$(echo "$RESULT" | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"workflow_label\"])')" >> "$GITHUB_OUTPUT"
@@ -278,6 +282,10 @@ jobs:
     uses: ./.github/workflows/Jules-PR-AutoFix.yml
     with:
       branch: ${{ github.event.workflow_run.head_branch || '' }}
+      source_run_id: ${{ format('{0}', github.event.workflow_run.id) }}
+      failed_workflow: ${{ github.event.workflow_run.name || 'CI Standard' }}
+      failure_reason: ${{ github.event.workflow_run.display_title || github.event.workflow_run.name || 'CI failure' }}
+      remediation_owner: "Jules Control Tower"
     secrets:
       JULES_APP_ID: ${{ secrets.JULES_APP_ID }}
       JULES_APP_PRIVATE_KEY: ${{ secrets.JULES_APP_PRIVATE_KEY }}

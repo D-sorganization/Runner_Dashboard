@@ -1,6 +1,6 @@
 name: Agent Lease Reaper
 
-# Sweeps expired coordination leases across the fleet every 30 minutes.
+# Sweeps expired coordination leases across the fleet hourly.
 # See docs/agent-lease-protocol.md.
 #
 # For each issue carrying a claim:<agent> label:
@@ -9,11 +9,12 @@ name: Agent Lease Reaper
 # - Otherwise, remove the claim:* label and post an audit comment.
 #
 # Fail-open: per-issue errors log and continue. A reaper outage only
-# means stale claims linger for another 30 minutes — not a halt.
+# means stale claims linger for another scheduled run — not a halt.
+# Runtime is bounded below the job timeout so partial progress is visible.
 
 on:
   schedule:
-    - cron: "*/30 * * * *"
+    - cron: "17 * * * *"
   workflow_dispatch:
     inputs:
       dry_run:
@@ -40,45 +41,108 @@ jobs:
     runs-on: d-sorg-fleet
     timeout-minutes: 20
     steps:
+      - name: Preflight Jules app credentials
+        id: credential-preflight
+        env:
+          JULES_APP_CLIENT_ID: ${{ secrets.JULES_APP_ID }}
+          JULES_APP_PRIVATE_KEY: ${{ secrets.JULES_APP_PRIVATE_KEY }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          missing=0
+          if [ -z "$JULES_APP_CLIENT_ID" ]; then
+            echo "::warning title=Missing GitHub App credential::JULES_APP_ID is not configured."
+            missing=1
+          fi
+          if [ -z "$JULES_APP_PRIVATE_KEY" ]; then
+            echo "::warning title=Missing GitHub App credential::JULES_APP_PRIVATE_KEY is not configured."
+            missing=1
+          fi
+
+          if [ "$missing" -ne 0 ]; then
+            echo "credentials-present=false" >> "$GITHUB_OUTPUT"
+            echo "REAPER_STATUS=skipped_missing_credentials" >> "$GITHUB_ENV"
+            {
+              echo "## Agent Lease Reaper"
+              echo ""
+              echo "- **Status:** skipped"
+              echo "- **Reason:** missing GitHub App credentials"
+              echo "- **Token action:** not invoked"
+            } >> "$GITHUB_STEP_SUMMARY"
+
+            if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+              echo "::error::Configure JULES_APP_ID and JULES_APP_PRIVATE_KEY before manually running this workflow."
+              exit 1
+            fi
+            exit 0
+          fi
+
+          echo "credentials-present=true" >> "$GITHUB_OUTPUT"
+          echo "REAPER_STATUS=credentials_ok" >> "$GITHUB_ENV"
+
       - name: Generate Jules app token
+        if: steps.credential-preflight.outputs.credentials-present == 'true'
         id: app-token
         uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v1
         with:
-          app-id: ${{ secrets.JULES_APP_ID }}
+          client-id: ${{ secrets.JULES_APP_ID }}
           private-key: ${{ secrets.JULES_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
+          permission-contents: read
+          permission-issues: write
+          permission-pull-requests: read
 
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        if: steps.credential-preflight.outputs.credentials-present == 'true'
         with:
           repository: D-sorganization/Repository_Management
           ref: main
 
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        if: steps.credential-preflight.outputs.credentials-present == 'true'
         with:
           python-version: "3.11"
 
       - name: Reap expired leases
+        if: steps.credential-preflight.outputs.credentials-present == 'true'
         # Fail-open by design: reaper errors only delay cleanup, never block agents.
         # Error handling is done inline; the step always exits 0.
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          DRY_RUN: ${{ inputs.dry_run }}
-          REPOS_INPUT: ${{ inputs.repos }}
+          DRY_RUN: ${{ inputs.dry_run || 'false' }}
+          REPOS_INPUT: ${{ inputs.repos || '' }}
         run: |
           set -uo pipefail
+          started_at=$(date +%s)
+          echo "REAPER_STATUS=running" >> "$GITHUB_ENV"
+          echo "REAPER_STARTED_AT=$started_at" >> "$GITHUB_ENV"
+
           MODE="--apply"
           if [ "$DRY_RUN" = "true" ]; then
             MODE="--dry-run"
           fi
-          REPOS_ARG=""
+          REPOS_ARG=()
           if [ -n "$REPOS_INPUT" ]; then
-            # shellcheck disable=SC2086
-            REPOS_ARG="--repos $REPOS_INPUT"
+            read -r -a repos <<< "$REPOS_INPUT"
+            REPOS_ARG=(--repos "${repos[@]}")
           fi
-          python -m scripts.agent_lease_reaper $MODE $REPOS_ARG || {
-            echo "::warning::lease reaper exited non-zero; continuing"
-            exit 0
-          }
+
+          set +e
+          timeout --preserve-status 17m python -m scripts.agent_lease_reaper "$MODE" "${REPOS_ARG[@]}"
+          status=$?
+          set -e
+          duration=$(( $(date +%s) - started_at ))
+          echo "REAPER_DURATION_SECONDS=$duration" >> "$GITHUB_ENV"
+
+          if [ "$status" -eq 0 ]; then
+            echo "REAPER_STATUS=completed" >> "$GITHUB_ENV"
+          elif [ "$status" -eq 124 ] || [ "$status" -eq 143 ]; then
+            echo "::warning::lease reaper hit the 17 minute workflow bound; continuing"
+            echo "REAPER_STATUS=timed_out_fail_open" >> "$GITHUB_ENV"
+          else
+            echo "::warning::lease reaper exited non-zero ($status); continuing"
+            echo "REAPER_STATUS=failed_fail_open" >> "$GITHUB_ENV"
+          fi
+          exit 0
 
       - name: Summary
         if: always()
@@ -89,6 +153,12 @@ jobs:
           {
             echo "## Agent Lease Reaper"
             echo ""
+            echo "- **Status:** ${REAPER_STATUS:-not_started}"
             echo "- **Dry run:** $DRY_RUN_DISPLAY"
             echo "- **Repos override:** $REPOS_DISPLAY"
+            echo "- **Schedule target:** hourly"
+            echo "- **Single flight:** enabled"
+            echo "- **Runtime bound:** 17 minutes"
+            echo "- **Duration:** ${REAPER_DURATION_SECONDS:-0}s"
+            echo "- **Progress counters:** emitted by scripts.agent_lease_reaper logs"
           } >> "$GITHUB_STEP_SUMMARY"

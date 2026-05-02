@@ -107,3 +107,42 @@ def test_workflow_jobs_have_timeout_minutes(workflow_path: Path) -> None:
         f"Add `timeout-minutes:` under each job (lint/quality 10, tests 20, "
         f"integration 30, deploy 15)."
     )
+
+
+def test_pr_autofix_is_not_a_second_automatic_ci_remediation_entrypoint() -> None:
+    """Issue #596: automatic CI remediation must be owned by Control Tower."""
+    autofix = _load_workflow(_WORKFLOWS_DIR / "Jules-PR-AutoFix.yml")
+    triggers = autofix.get(True) or autofix.get("on") or {}
+
+    assert "workflow_run" not in triggers, (
+        "Jules-PR-AutoFix.yml must not listen directly to workflow_run; "
+        "Control Tower is the single automatic CI remediation owner."
+    )
+    assert "workflow_call" in triggers, "Jules-PR-AutoFix.yml must remain callable by Control Tower."
+    assert "workflow_dispatch" in triggers, "Jules-PR-AutoFix.yml must preserve manual maintainer dispatch."
+
+    control_tower_text = (_WORKFLOWS_DIR / "Jules-Control-Tower.yml").read_text(encoding="utf-8")
+    assert "uses: ./.github/workflows/Jules-PR-AutoFix.yml" in control_tower_text
+    assert 'remediation_owner: "Jules Control Tower"' in control_tower_text
+
+
+def test_pr_autofix_uses_bounded_rest_verification_not_tight_pr_checks_polling() -> None:
+    """Issue #597: avoid tight GraphQL polling through `gh pr checks`."""
+    text = (_WORKFLOWS_DIR / "Jules-PR-AutoFix.yml").read_text(encoding="utf-8")
+
+    assert "gh pr checks" not in text
+    assert "CI_POLL_INTERVAL" not in text
+    assert "CI_VERIFY_ATTEMPTS" in text
+    assert "actions/runs?branch=" in text
+    assert "deferred" in text
+
+
+def test_pr_autofix_preserves_branch_safety_and_status_contract() -> None:
+    """Issues #596/#597: keep protected branch guard and explicit outcomes."""
+    text = (_WORKFLOWS_DIR / "Jules-PR-AutoFix.yml").read_text(encoding="utf-8")
+
+    assert '"$BRANCH" == "main"' in text
+    assert '"$BRANCH" == "master"' in text
+    assert "Cannot auto-fix protected branch" in text
+    for status in ("passed", "failed", "deferred", "manual_required"):
+        assert status in text

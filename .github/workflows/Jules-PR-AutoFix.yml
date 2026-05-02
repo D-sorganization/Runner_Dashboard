@@ -1,20 +1,52 @@
 name: Jules PR AutoFix (Direct Push with CI Verification)
 
 # This workflow pushes fixes DIRECTLY to PR branches (like Cursor bugbot)
-# and ITERATES until CI passes or max attempts reached.
+# when called by Jules Control Tower or manually dispatched by maintainers.
 #
 # Key features:
-# 1. Iterates up to 5 times until CI passes (with safeguards)
-# 2. Waits for CI to complete and checks results
+# 1. Centralized automatic ownership: CI failures enter via Jules Control Tower
+# 2. Uses bounded REST verification and defers instead of tight check polling
 # 3. Applies comprehensive fixes: ruff (lint + format), import sorting, autoflake
 # 4. Mypy autofix agent: intelligent type error resolution (real fixes + targeted suppressions)
-# 5. Verification gate - only marks success when CI passes
+# 5. Verification gate - only marks success when CI is observed passing
 # 6. Safeguards: job timeout, iteration caps, max-files-per-commit limits
 
 on:
-  workflow_run:
-    workflows: ["CI Standard"]
-    types: [completed]
+  workflow_call:
+    inputs:
+      branch:
+        required: false
+        type: string
+        default: ""
+      dry_run:
+        required: false
+        type: boolean
+        default: false
+      max_iterations:
+        required: false
+        type: string
+        default: "5"
+      source_run_id:
+        required: false
+        type: string
+        default: ""
+      failed_workflow:
+        required: false
+        type: string
+        default: "CI Standard"
+      failure_reason:
+        required: false
+        type: string
+        default: "CI failure"
+      remediation_owner:
+        required: false
+        type: string
+        default: "Jules Control Tower"
+    secrets:
+      JULES_APP_ID:
+        required: true
+      JULES_APP_PRIVATE_KEY:
+        required: true
   workflow_dispatch:
     inputs:
       branch:
@@ -40,7 +72,7 @@ permissions:
 
 # Prevent concurrent fixes on the same branch
 concurrency:
-  group: pr-autofix-${{ github.event.workflow_run.head_branch || github.event.inputs.branch || github.ref }}
+  group: pr-autofix-${{ inputs.branch || github.ref_name || github.ref }}
   cancel-in-progress: false
 
 env:
@@ -48,23 +80,21 @@ env:
   # Safety cap: never auto-fix more than MAX_FIX_ATTEMPTS iterations per run
   MAX_FIX_ATTEMPTS: 5
   FIX_WINDOW_HOURS: 4
-  # Time to wait for CI to complete (in seconds) - 10 min max
-  CI_WAIT_TIMEOUT: 600
-  CI_POLL_INTERVAL: 30
+  # Short, bounded REST verification after pushing a fix. If CI is still
+  # queued/running, defer to the next workflow_run event instead of polling.
+  CI_VERIFY_ATTEMPTS: 3
+  CI_VERIFY_INTERVAL: 120
 
 jobs:
   iterative-fix:
     name: Fix and Verify CI (Iterative)
     runs-on: d-sorg-fleet
     timeout-minutes: 30
-    # Only run on failures (not success) for workflow_run events
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'failure')
 
     outputs:
       final_status: ${{ steps.final-status.outputs.status }}
       iterations_used: ${{ steps.final-status.outputs.iterations }}
+      verification_status: ${{ steps.final-status.outputs.verification_status }}
 
     steps:
       - name: Generate Jules app token
@@ -78,13 +108,17 @@ jobs:
         id: branch
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          INPUT_BRANCH: ${{ github.event.inputs.branch }}
-          WF_RUN_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          INPUT_BRANCH: ${{ inputs.branch }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
           if [ -n "$INPUT_BRANCH" ]; then
             BRANCH="$INPUT_BRANCH"
+          elif [ -n "$REF_NAME" ]; then
+            BRANCH="$REF_NAME"
           else
-            BRANCH="$WF_RUN_BRANCH"
+            echo "::error::Branch input is required for manual or reusable PR AutoFix runs."
+            echo "skip=true" >> $GITHUB_OUTPUT
+            exit 0
           fi
 
           echo "Target branch: $BRANCH"
@@ -174,10 +208,20 @@ jobs:
           BRANCH: ${{ steps.branch.outputs.branch }}
           PR_NUMBER: ${{ steps.branch.outputs.pr_number }}
           MAX_ITERATIONS: ${{ steps.limits.outputs.remaining_attempts }}
-          DRY_RUN: ${{ github.event.inputs.dry_run }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          REPO: ${{ github.repository }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          FAILED_WORKFLOW: ${{ inputs.failed_workflow }}
+          FAILURE_REASON: ${{ inputs.failure_reason }}
+          REMEDIATION_OWNER: ${{ inputs.remediation_owner }}
+          VERIFY_ATTEMPTS: ${{ env.CI_VERIFY_ATTEMPTS }}
+          VERIFY_INTERVAL: ${{ env.CI_VERIFY_INTERVAL }}
         run: |
           iteration=0
           ci_passed=false
+          verification_status="manual_required"
+          files_modified=""
+          validation_summary="ruff, autoflake, mypy-agent"
 
           while [ $iteration -lt $MAX_ITERATIONS ] && [ "$ci_passed" != "true" ]; do
             iteration=$((iteration + 1))
@@ -278,6 +322,10 @@ jobs:
               git commit -m "[AutoFix] Iteration $iteration: Apply fixes ($CHANGES_MADE)
 
           Automated fixes applied directly to PR #$PR_NUMBER branch.
+          Remediation owner: $REMEDIATION_OWNER
+          Source run: ${SOURCE_RUN_ID:-manual}
+          Failed workflow: $FAILED_WORKFLOW
+          Failure reason: $FAILURE_REASON
           Iteration: $iteration of $MAX_ITERATIONS
           Tools used:$CHANGES_MADE
 
@@ -287,43 +335,53 @@ jobs:
           Co-Authored-By: Jules AutoFix <jules-bot@users.noreply.github.com>"
 
               # Push changes
+              COMMIT_SHA=$(git rev-parse HEAD)
+              files_modified=$(git diff --name-only HEAD~1 HEAD | paste -sd ', ' -)
               git push origin "$BRANCH"
-              echo "✅ Pushed iteration $iteration fixes to $BRANCH"
+              echo "Pushed iteration $iteration fixes to $BRANCH"
 
-              # Wait for CI to start
-              echo ">>> Waiting for CI to start..."
-              sleep 30
+              echo ">>> Checking CI status with bounded REST Actions lookup..."
+              verification_status="deferred"
+              attempt=0
+              while [ $attempt -lt "$VERIFY_ATTEMPTS" ]; do
+                attempt=$((attempt + 1))
+                RUN_INFO=$(gh api "repos/$REPO/actions/runs?branch=$BRANCH&per_page=20" \
+                  --jq ".workflow_runs
+                    | map(select(.head_sha == \"$COMMIT_SHA\" and .name == \"CI Standard\"))
+                    | sort_by(.created_at)
+                    | reverse
+                    | .[0] // empty" 2>/dev/null || true)
 
-              # Wait for CI to complete
-              echo ">>> Waiting for CI to complete (timeout: ${CI_WAIT_TIMEOUT}s)..."
-              wait_time=0
-              while [ $wait_time -lt "$CI_WAIT_TIMEOUT" ]; do
-                # Get the latest check run status
-                CHECK_STATUS=$(gh pr checks "$PR_NUMBER" --json name,state,conclusion \
-                  --jq '.[] | select(.name == "quality-gate" or .name == "tests") | .state' 2>/dev/null | head -1)
+                if [ -n "$RUN_INFO" ]; then
+                  RUN_STATUS=$(echo "$RUN_INFO" | jq -r '.status // empty')
+                  RUN_CONCLUSION=$(echo "$RUN_INFO" | jq -r '.conclusion // empty')
+                  RUN_URL=$(echo "$RUN_INFO" | jq -r '.html_url // empty')
+                  echo "CI Standard run status: ${RUN_STATUS:-unknown}, conclusion: ${RUN_CONCLUSION:-pending}"
+                  echo "CI run: ${RUN_URL:-not available}"
 
-                if [ "$CHECK_STATUS" == "COMPLETED" ]; then
-                  # Check conclusion
-                  CONCLUSION=$(gh pr checks "$PR_NUMBER" --json name,conclusion \
-                    --jq '.[] | select(.name == "quality-gate") | .conclusion' 2>/dev/null | head -1)
-
-                  if [ "$CONCLUSION" == "SUCCESS" ]; then
-                    echo "CI PASSED after iteration $iteration!"
-                    ci_passed=true
-                    break 2  # Exit both loops
-                  else
-                    echo "CI still failing after iteration $iteration (conclusion: $CONCLUSION)"
-                    break  # Exit wait loop, continue fix loop
+                  if [ "$RUN_STATUS" = "completed" ]; then
+                    if [ "$RUN_CONCLUSION" = "success" ]; then
+                      echo "CI PASSED after iteration $iteration."
+                      ci_passed=true
+                      verification_status="passed"
+                      break 2
+                    fi
+                    echo "CI completed with conclusion: ${RUN_CONCLUSION:-unknown}"
+                    verification_status="failed"
+                    break
                   fi
+                else
+                  echo "CI Standard run for $COMMIT_SHA not visible yet (attempt $attempt/$VERIFY_ATTEMPTS)."
                 fi
 
-                sleep "$CI_POLL_INTERVAL"
-                wait_time=$((wait_time + CI_POLL_INTERVAL))
-                echo "  ... waiting ($wait_time/${CI_WAIT_TIMEOUT}s)"
+                if [ $attempt -lt "$VERIFY_ATTEMPTS" ]; then
+                  sleep "$VERIFY_INTERVAL"
+                fi
               done
 
-              if [ $wait_time -ge "$CI_WAIT_TIMEOUT" ]; then
-                echo "⚠️ CI wait timeout reached, continuing with next iteration"
+              if [ "$verification_status" = "deferred" ]; then
+                echo "CI verification deferred; Control Tower will own any follow-up workflow_run failure."
+                break
               fi
 
               # Pull any changes before next iteration
@@ -340,8 +398,15 @@ jobs:
           done
 
           echo "iterations_used=$iteration" >> $GITHUB_OUTPUT
+          echo "files_modified=${files_modified:-none}" >> $GITHUB_OUTPUT
+          echo "validation=$validation_summary" >> $GITHUB_OUTPUT
+          echo "verification_status=$verification_status" >> $GITHUB_OUTPUT
           if [ "$ci_passed" == "true" ]; then
             echo "status=success" >> $GITHUB_OUTPUT
+          elif [ "$verification_status" == "failed" ]; then
+            echo "status=manual_required" >> $GITHUB_OUTPUT
+          elif [ "$verification_status" == "deferred" ]; then
+            echo "status=deferred" >> $GITHUB_OUTPUT
           else
             echo "status=partial" >> $GITHUB_OUTPUT
           fi
@@ -351,26 +416,42 @@ jobs:
           steps.branch.outputs.skip != 'true' &&
           steps.limits.outputs.exceeded != 'true' &&
           steps.fix-loop.outputs.status != '' &&
-          github.event.inputs.dry_run != 'true'
+          inputs.dry_run != true
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ steps.branch.outputs.pr_number }}
           STATUS: ${{ steps.fix-loop.outputs.status }}
           ITERATIONS: ${{ steps.fix-loop.outputs.iterations_used }}
+          VERIFICATION_STATUS: ${{ steps.fix-loop.outputs.verification_status }}
+          FILES_MODIFIED: ${{ steps.fix-loop.outputs.files_modified }}
+          VALIDATION: ${{ steps.fix-loop.outputs.validation }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          FAILED_WORKFLOW: ${{ inputs.failed_workflow }}
+          FAILURE_REASON: ${{ inputs.failure_reason }}
+          REMEDIATION_OWNER: ${{ inputs.remediation_owner }}
         run: |
           if [ "$STATUS" == "success" ]; then
-            EMOJI="✅"
             MESSAGE="CI is now **passing** after $ITERATIONS iteration(s)!"
+          elif [ "$STATUS" == "deferred" ]; then
+            MESSAGE="Applied $ITERATIONS iteration(s) of fixes. CI verification is **deferred** to the next workflow_run event."
+          elif [ "$STATUS" == "manual_required" ]; then
+            MESSAGE="Applied $ITERATIONS iteration(s), but CI is still failing. Manual review is required."
           else
-            EMOJI="🔧"
             MESSAGE="Applied $ITERATIONS iteration(s) of fixes. CI may still need manual attention."
           fi
 
-          gh pr comment "$PR_NUMBER" --body "## $EMOJI AutoFix Complete
+          gh pr comment "$PR_NUMBER" --body "## AutoFix Complete
 
           $MESSAGE
 
+          **Remediation owner:** $REMEDIATION_OWNER
+          **Source run:** ${SOURCE_RUN_ID:-manual}
+          **Failed workflow:** $FAILED_WORKFLOW
+          **Failure reason:** $FAILURE_REASON
           **Iterations used:** $ITERATIONS / ${{ env.MAX_FIX_ATTEMPTS }}
+          **Verification status:** $VERIFICATION_STATUS
+          **Files modified:** ${FILES_MODIFIED:-none}
+          **Validation:** $VALIDATION
           **Fix types applied:** ruff (lint + format), autoflake, mypy-agent
 
           ### What was fixed:
@@ -388,6 +469,7 @@ jobs:
         run: |
           echo "status=${{ steps.fix-loop.outputs.status || 'skipped' }}" >> $GITHUB_OUTPUT
           echo "iterations=${{ steps.fix-loop.outputs.iterations_used || '0' }}" >> $GITHUB_OUTPUT
+          echo "verification_status=${{ steps.fix-loop.outputs.verification_status || 'not_run' }}" >> $GITHUB_OUTPUT
 
       - name: Generate Summary
         if: always()
@@ -399,10 +481,16 @@ jobs:
           echo "- **Skipped:** ${{ steps.branch.outputs.skip }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Limit Exceeded:** ${{ steps.limits.outputs.exceeded || 'N/A' }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Final Status:** ${{ steps.fix-loop.outputs.status || 'N/A' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Verification Status:** ${{ steps.fix-loop.outputs.verification_status || 'N/A' }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Iterations Used:** ${{ steps.fix-loop.outputs.iterations_used || '0' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Files Modified:** ${{ steps.fix-loop.outputs.files_modified || 'none' }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ "${{ steps.fix-loop.outputs.status }}" == "success" ]; then
-            echo "### ✅ CI Verification: PASSED" >> $GITHUB_STEP_SUMMARY
+            echo "### CI Verification: PASSED" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ steps.fix-loop.outputs.status }}" == "deferred" ]; then
+            echo "### CI Verification: Deferred to workflow_run follow-up" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ steps.fix-loop.outputs.status }}" == "manual_required" ]; then
+            echo "### CI Verification: Failed, manual review required" >> $GITHUB_STEP_SUMMARY
           elif [ "${{ steps.fix-loop.outputs.status }}" == "partial" ]; then
-            echo "### ⚠️ CI Verification: Partial (manual review needed)" >> $GITHUB_STEP_SUMMARY
+            echo "### CI Verification: Partial (manual review needed)" >> $GITHUB_STEP_SUMMARY
           fi

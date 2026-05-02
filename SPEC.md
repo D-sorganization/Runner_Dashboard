@@ -1,8 +1,8 @@
 ﻿# SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.22
+**Spec Version:** 2.5.24
 **Application Version:** 4.1.0 (see `VERSION`)
-**Last Updated:** 2026-05-01T16:30:00Z
+**Last Updated:** 2026-05-02T22:48:00Z
 **Status:** Active
 
 ---
@@ -1000,6 +1000,24 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 ---
 
 ## 7. Changelog
+
+### 2.5.24 - 2026-05-02
+- ci: made Python and frontend validation path-aware for pull requests while
+  preserving full backend/frontend suites on `main`, so workflow-only changes
+  still run static workflow gates without being blocked by unrelated source
+  test debt.
+
+### 2.5.23 - 2026-05-02
+- ci: reduced duplicate remediation work by making Control Tower the single
+  automatic CI-remediation owner, converting PR AutoFix to reusable/manual
+  execution, replacing tight PR-check polling with bounded REST Actions lookup,
+  and adding explicit deferred/manual verification states.
+- ci: reduced scheduled dashboard/reaper churn with credential preflights,
+  single-flight concurrency, less frequent schedules, bounded lease reaper
+  runtime, and consistent action SHA pinning.
+- ci: kept the 500-line quality gate strict on `main` while limiting pull
+  request enforcement to changed source files so historical line-count debt
+  does not block unrelated workflow reliability fixes.
 
 ### 2.5.22 - 2026-05-01
 - fix: `gh_api` exposes GitHub rate limits as `RateLimitedError` with

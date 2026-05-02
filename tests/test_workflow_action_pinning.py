@@ -46,7 +46,7 @@ def _collect_uses() -> list[tuple[Path, int, str, str, str]]:
     """Return (path, lineno, ref, sha, comment) for every pinned `uses:` line."""
     rows: list[tuple[Path, int, str, str, str]] = []
     for wf in sorted(WORKFLOWS_DIR.glob("*.yml")):
-        for lineno, raw in enumerate(wf.read_text().splitlines(), start=1):
+        for lineno, raw in enumerate(wf.read_text(encoding="utf-8").splitlines(), start=1):
             m = _USES_LINE.match(raw)
             if not m:
                 continue
@@ -115,7 +115,7 @@ def test_no_floating_action_versions() -> None:
     floating = re.compile(r"^\s*-?\s*uses:\s+(?P<ref>[\w./-]+)@(?P<tag>v\d+|main|latest)\s*$")
     offenders: list[str] = []
     for wf in sorted(WORKFLOWS_DIR.glob("*.yml")):
-        for lineno, raw in enumerate(wf.read_text().splitlines(), start=1):
+        for lineno, raw in enumerate(wf.read_text(encoding="utf-8").splitlines(), start=1):
             m = floating.match(raw)
             if m:
                 offenders.append(f"{wf.relative_to(REPO_ROOT)}:{lineno}  {m.group('ref')}@{m.group('tag')}")
