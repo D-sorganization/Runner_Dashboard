@@ -13,6 +13,7 @@ import {
   subscribeSessionExpired,
   tryRefreshSession,
 } from "./sessionExpired"
+import { installWheelValueGuard } from "./wheelValueGuard"
 
 // @ts-nocheck
 /* eslint-disable */
@@ -14199,6 +14200,10 @@ function App({ initialTab, onTabChange }: { initialTab?: string; onTabChange?: (
       unsubscribe();
       if (window._showAuthError) delete window._showAuthError;
     };
+  }, []);
+
+  React.useEffect(function () {
+    return installWheelValueGuard(document);
   }, []);
 
   React.useEffect(function () {
