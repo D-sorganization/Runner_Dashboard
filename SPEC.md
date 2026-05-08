@@ -1,8 +1,8 @@
 ﻿# SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.24
+**Spec Version:** 2.5.25
 **Application Version:** 4.1.0 (see `VERSION`)
-**Last Updated:** 2026-05-02T22:48:00Z
+**Last Updated:** 2026-05-07T18:05:00Z
 **Status:** Active
 
 ---
@@ -1000,6 +1000,11 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 ---
 
 ## 7. Changelog
+
+### 2.5.25 - 2026-05-07
+- fix(frontend): install a document-level wheel guard for focused numeric,
+  range, and select controls in the legacy dashboard so scroll gestures no
+  longer mutate editable values by accident.
 
 ### 2.5.24 - 2026-05-02
 - ci: made Python and frontend validation path-aware for pull requests while

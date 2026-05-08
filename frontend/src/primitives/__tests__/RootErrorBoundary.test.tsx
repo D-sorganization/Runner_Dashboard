@@ -11,7 +11,7 @@
 
 import React from 'react'
 import { render, screen, fireEvent } from '@testing-library/react'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { RootErrorBoundary } from '../RootErrorBoundary'
 
 // Suppress React error boundary console.error noise in test output
