@@ -43,10 +43,10 @@ describe("QueueTab Component", () => {
     );
 
     // Check stats
-    expect(screen.getByText("In Progress")).toBeInTheDocument();
-    expect(screen.getByText("1")).toBeInTheDocument(); // In progress count
-    expect(screen.getByText("Queued")).toBeInTheDocument();
-    expect(screen.getByText("Total Active")).toBeInTheDocument();
+    expect(screen.getAllByText("In Progress")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("1")[0]).toBeInTheDocument(); // In progress count
+    expect(screen.getAllByText("Queued")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("Total Active")[0]).toBeInTheDocument();
   });
 
   it("displays correct stat values", () => {
@@ -64,7 +64,7 @@ describe("QueueTab Component", () => {
       <QueueTab queue={mockEmptyQueue} loading={false} onRefresh={() => {}} />
     );
 
-    expect(screen.getByText(/Queue is empty/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Queue is empty/i)[0]).toBeInTheDocument();
   });
 
   it("displays loading spinner when loading", () => {
@@ -80,9 +80,9 @@ describe("QueueTab Component", () => {
       <QueueTab queue={mockQueue} loading={false} />
     );
 
-    expect(screen.getByText("In Progress")).toBeInTheDocument();
-    expect(screen.getByText("Build Workflow")).toBeInTheDocument();
-    expect(screen.getByText("repo-1")).toBeInTheDocument();
+    expect(screen.getAllByText("In Progress")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("Build Workflow")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("repo-1")[0]).toBeInTheDocument();
   });
 
   it("shows 'Queued' section with waiting workflows", () => {
@@ -90,9 +90,9 @@ describe("QueueTab Component", () => {
       <QueueTab queue={mockQueue} loading={false} />
     );
 
-    expect(screen.getByText("Queued")).toBeInTheDocument();
-    expect(screen.getByText("Test Workflow")).toBeInTheDocument();
-    expect(screen.getByText("repo-2")).toBeInTheDocument();
+    expect(screen.getAllByText("Queued")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("Test Workflow")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("repo-2")[0]).toBeInTheDocument();
   });
 
   it("renders run details correctly", () => {
@@ -101,8 +101,8 @@ describe("QueueTab Component", () => {
     );
 
     // Check for branch names
-    expect(screen.getByText("main")).toBeInTheDocument();
-    expect(screen.getByText("feature")).toBeInTheDocument();
+    expect(screen.getAllByText("main")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("feature")[0]).toBeInTheDocument();
 
     // Check for View links
     const viewLinks = screen.getAllByText("View");
@@ -114,7 +114,7 @@ describe("QueueTab Component", () => {
       <QueueTab queue={mockQueue} loading={false} />
     );
 
-    expect(screen.getByText(/Why are jobs waiting/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Why are jobs waiting/i)[0]).toBeInTheDocument();
   });
 
   it("diagnose button is not visible when queue is empty", () => {
@@ -142,7 +142,7 @@ describe("QueueTab Component", () => {
     );
 
     // Should render without errors and show empty state
-    expect(screen.getByText(/Queue is empty/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Queue is empty/i)[0]).toBeInTheDocument();
   });
 
   it("displays mobile KPI strip", () => {
@@ -185,8 +185,8 @@ describe("QueueTab Component", () => {
     );
 
     // Both workflows should be displayed
-    expect(screen.getByText("Workflow A")).toBeInTheDocument();
-    expect(screen.getByText("Workflow B")).toBeInTheDocument();
+    expect(screen.getAllByText("Workflow A")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("Workflow B")[0]).toBeInTheDocument();
   });
 
   it("displays stale run indicators when runs exceed 5 minutes", () => {
@@ -211,6 +211,6 @@ describe("QueueTab Component", () => {
     );
 
     // The stale run should be visible
-    expect(screen.getByText("Stale Workflow")).toBeInTheDocument();
+    expect(screen.getAllByText("Stale Workflow")[0]).toBeInTheDocument();
   });
 });

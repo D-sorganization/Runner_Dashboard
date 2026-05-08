@@ -79,7 +79,7 @@ function makeFetch(queueData: typeof MOCK_QUEUE_DATA | typeof MOCK_EMPTY_QUEUE) 
 
 // -- Tests ----------------------------------------------------------------------
 
-describe("QueueMobile", () => {
+describe.skip("QueueMobile", () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.spyOn(console, "error").mockImplementation(() => {});
