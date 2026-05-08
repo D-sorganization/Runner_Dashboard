@@ -1,6 +1,21 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { installWheelValueGuard } from "../wheelValueGuard";
 
+// WheelEvent polyfill for jsdom environment
+class WheelEventPolyfill extends Event {
+  deltaX: number;
+  deltaY: number;
+  deltaZ: number;
+
+  constructor(type: string, options?: WheelEventInit) {
+    super(type, options);
+    this.deltaX = options?.deltaX ?? 0;
+    this.deltaY = options?.deltaY ?? 0;
+    this.deltaZ = options?.deltaZ ?? 0;
+  }
+}
+const WheelEvent = (globalThis as any).WheelEvent ?? WheelEventPolyfill;
+
 describe("installWheelValueGuard", () => {
   afterEach(() => {
     document.body.innerHTML = "";
