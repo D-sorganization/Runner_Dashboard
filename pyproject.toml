@@ -44,16 +44,35 @@ test = [
 package = false
 [tool.pytest.ini_options]
 pythonpath = ["backend"]
+# Fleet Testing Standards Phase 1 (§2) — see Repository_Management
+# docs/FLEET_TESTING_STANDARDS.md. Tier: Applications (fail_under=75).
 # -ra: show short summary for all non-passing outcomes
 # -q: quiet mode
 # --strict-markers: fail when an unregistered marker is used (issue #401)
 # --strict-config: fail on unknown config options
-addopts = "-ra -q --strict-markers --strict-config"
+# Default lane: fast, deterministic, offline. Slow / integration / network /
+# playwright / e2e / live_simulation tests are excluded by default and run
+# in dedicated lanes (nightly, release).
+addopts = "-ra -q --strict-markers --strict-config -m \"not slow and not integration and not network and not playwright and not e2e and not live_simulation and not requires_network\""
 markers = [
+    # ---- legacy / pre-existing markers ----
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests that touch real external systems (network, GitHub API, etc.); excluded from PR CI, run nightly",
     "network: marks tests that require live network access (subset of integration)",
     "playwright: marks browser-driven Playwright tests; excluded from default PR CI",
+    # ---- fleet standard tier markers (§2) ----
+    "unit: pure logic, fully mocked, < 100 ms wall-clock",
+    "e2e: full-stack smoke tests; nightly + release gate only",
+    "live_simulation: requires a real physics / math engine; deselect by default",
+    # ---- environment markers ----
+    "requires_network: needs real outbound network; deselect by default",
+    "requires_gpu: needs CUDA / Metal / ROCm",
+    "requires_gl: needs OpenGL or a display",
+    "headless_safe: verified under QT_QPA_PLATFORM=offscreen",
+    # ---- workflow markers ----
+    "serial: must run with -n 0 (xdist parallel breaks this test)",
+    "benchmark: deterministic perf smoke; not a primary correctness gate",
+    "smoke: release-blocking smoke; subset of e2e",
 ]
 # filterwarnings: start permissive — escalate warning categories to errors only
 # once the warning surface is audited. The current backend (FastAPI/Pydantic v2,
