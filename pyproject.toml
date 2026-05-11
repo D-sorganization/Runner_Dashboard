@@ -57,6 +57,11 @@ markers = [
     "heavy: resource-intensive tests",
 ]
 
+[tool.coverage.report]
+# Phase 4 step 1 (EPIC #1140): raise fail_under from baseline 50 -> 55.
+# Applications tier target: 75%.
+fail_under = 55
+
 [tool.ruff]
 target-version = "py311"
 line-length = 120
