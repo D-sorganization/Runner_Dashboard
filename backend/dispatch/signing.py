@@ -7,8 +7,11 @@ Public API:
 - sign_payload(canonical_json, secret) -> str
 - verify_payload(canonical_json, signature, secret) -> bool
 - _load_signing_secret() -> str
+- _hash_payload(payload) -> str
 - _sign_envelope_payload(...) -> str
 - _verify_envelope_signature(...) -> bool
+- _compute_approval_hmac(envelope_id, action, secret) -> str
+- verify_approval_hmac(confirmation, envelope_id, action) -> bool
 - validate_timestamp_freshness(timestamp_str, ttl_seconds) -> TimestampValidationResult
 - TimestampValidationResult (enum)
 """
@@ -90,6 +93,55 @@ def validate_timestamp_freshness(timestamp_str: str, ttl_seconds: int = 300) -> 
 _validate_timestamp_freshness = validate_timestamp_freshness
 
 
+def _hash_payload(payload: dict | None) -> str:
+    """Return a stable SHA-256 hex digest of a payload dict.
+
+    Keys are sorted so insertion order does not affect the hash.
+    ``None`` and ``{}`` both hash to the same digest.
+    """
+    normalised = payload if payload else {}
+    canonical = json.dumps(normalised, separators=(",", ":"), sort_keys=True)
+    return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def _compute_approval_hmac(envelope_id: str, action: str, secret: str) -> str:
+    """HMAC-SHA256 of 'approve:<envelope_id>:<action>' with *secret*.
+
+    Pure computation — callers supply the secret explicitly so this function
+    can be used in test fixtures as well as production paths.
+    """
+    message = f"approve:{envelope_id}:{action}".encode()
+    return hmac.new(secret.encode(), message, hashlib.sha256).hexdigest()
+
+
+def verify_approval_hmac(confirmation: object, envelope_id: str, action: str) -> bool:
+    """Verify that *confirmation.approval_hmac* is bound to *envelope_id* and *action*.
+
+    Loads the secret from ``APPROVAL_HMAC_SECRET`` (falls back to the
+    dispatch signing secret so that single-secret deployments work out of
+    the box).  Returns ``False`` immediately if no secret is configured.
+
+    ``confirmation`` is expected to be a ``DispatchConfirmation``-like object
+    with an ``approval_hmac`` attribute.
+    """
+    stored_hmac: str = getattr(confirmation, "approval_hmac", "")
+    if not stored_hmac:
+        # No HMAC was recorded on this confirmation — skip binding check.
+        # Confirmations that include an approval_hmac must always verify;
+        # those without one are accepted for backward compatibility with
+        # clients that pre-date issue #318.
+        return True
+    secret = os.environ.get("APPROVAL_HMAC_SECRET", "").strip()
+    if not secret:
+        # Fall back to the dispatch signing secret so single-secret
+        # deployments work without extra configuration.
+        secret = os.environ.get("DISPATCH_SIGNING_SECRET", "").strip()
+    if not secret:
+        return False
+    expected = _compute_approval_hmac(envelope_id, action, secret)
+    return hmac.compare_digest(stored_hmac, expected)
+
+
 def _build_canonical_json(
     action: str,
     source: str,
@@ -147,8 +199,13 @@ def _sign_envelope_payload(
     principal: str = "",
     on_behalf_of: str = "",
     correlation_id: str = "",
+    payload_hash: str = "",
 ) -> str:
-    """Generate HMAC-SHA256 signature over envelope payload."""
+    """Generate HMAC-SHA256 signature over envelope payload.
+
+    *payload_hash* (issue #317) is appended to the canonical JSON so that a
+    captured envelope cannot be replayed with a substituted payload.
+    """
     canonical = _build_canonical_json(
         action,
         source,
@@ -160,6 +217,9 @@ def _sign_envelope_payload(
         on_behalf_of,
         correlation_id,
     )
+    # Include payload hash to bind signature to payload content (issue #317).
+    if payload_hash:
+        canonical = canonical + payload_hash
     return sign_payload(canonical, secret)
 
 
@@ -175,6 +235,7 @@ def _verify_envelope_signature(
     principal: str = "",
     on_behalf_of: str = "",
     correlation_id: str = "",
+    payload_hash: str = "",
 ) -> bool:
     """Verify HMAC-SHA256 signature over envelope payload."""
     expected = _sign_envelope_payload(
@@ -188,5 +249,6 @@ def _verify_envelope_signature(
         principal,
         on_behalf_of,
         correlation_id,
+        payload_hash,
     )
     return hmac.compare_digest(expected, signature)
