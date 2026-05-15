@@ -9,6 +9,7 @@ import os
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -24,6 +25,11 @@ from routers import linear_webhook as webhook_router  # noqa: E402
 
 API_AUTH = {"Authorization": "Bearer test-key"}
 
+# Default HMAC secret used by the autouse fixture so the endpoint does not
+# return 503 "secret not configured" for every test (issue #316 changed the
+# webhook to fail-closed when LINEAR_WEBHOOK_SECRET is absent).
+_TEST_SECRET = "test-webhook-secret-ci"
+
 
 @pytest.fixture
 def client() -> TestClient:
@@ -32,7 +38,13 @@ def client() -> TestClient:
 
 @pytest.fixture(autouse=True)
 def _clear_replay_buffer(monkeypatch: pytest.MonkeyPatch, tmp_path: pytest.TempPathFactory) -> None:
-    """Ensure each test starts with a clean SQLite replay store (issue #319)."""
+    """Ensure each test starts with a clean SQLite replay store (issue #319).
+
+    Sets LINEAR_WEBHOOK_SECRET to _TEST_SECRET so the endpoint does not
+    immediately 503 on every test (issue #316 fail-closed behaviour).
+    Tests that want to verify the no-secret code path must override the env
+    var via their own monkeypatch call.
+    """
     import tempfile
     from pathlib import Path
 
@@ -41,8 +53,9 @@ def _clear_replay_buffer(monkeypatch: pytest.MonkeyPatch, tmp_path: pytest.TempP
     # Point the webhook router at a fresh in-process SQLite DB for isolation.
     fresh_store = ReplayStore(Path(tempfile.mktemp(suffix=".db")), ttl_s=86400, max_entries=50_000)
     monkeypatch.setattr(webhook_router, "_replay_store", fresh_store)
-    # Ensure no secret is set by default
-    monkeypatch.delenv("LINEAR_WEBHOOK_SECRET", raising=False)
+    # Provide a default test secret so the endpoint passes the secret-presence
+    # check.  Individual tests that need a different value override it below.
+    monkeypatch.setenv("LINEAR_WEBHOOK_SECRET", _TEST_SECRET)
     yield
     fresh_store.close()
 
@@ -77,16 +90,31 @@ def _sign_body(body: bytes, secret: str) -> str:
     return hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
 
 
+def _signed_post(
+    client: TestClient,
+    payload: dict,
+    *,
+    secret: str = _TEST_SECRET,
+    extra_headers: dict | None = None,
+) -> Any:
+    """POST *payload* to /api/linear/webhook with a valid HMAC signature."""
+    body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    sig = _sign_body(body, secret)
+    headers = {
+        "Linear-Signature": sig,
+        "Content-Type": "application/json",
+        **API_AUTH,
+        **(extra_headers or {}),
+    }
+    return client.post("/api/linear/webhook", content=body, headers=headers)
+
+
 # ─── Validation tests ──────────────────────────────────────────────────────────
 
 
 def test_webhook_returns_ok_for_valid_payload(client: TestClient) -> None:
     payload = _make_payload()
-    response = client.post(
-        "/api/linear/webhook",
-        json=payload,
-        headers=API_AUTH,
-    )
+    response = _signed_post(client, payload)
     assert response.status_code == 200
     data = response.json()
     assert data["ok"] is True
@@ -95,6 +123,7 @@ def test_webhook_returns_ok_for_valid_payload(client: TestClient) -> None:
 
 
 def test_webhook_rejects_invalid_json(client: TestClient) -> None:
+    # JSON parse failure happens before the secret check — no signature needed.
     response = client.post(
         "/api/linear/webhook",
         content=b"not json",
@@ -105,14 +134,15 @@ def test_webhook_rejects_invalid_json(client: TestClient) -> None:
 
 
 def test_webhook_rejects_unsupported_action(client: TestClient) -> None:
+    # Payload validation failure happens before the secret check.
     payload = _make_payload(action="destroy")
-    response = client.post("/api/linear/webhook", json=payload, headers=API_AUTH)
+    response = _signed_post(client, payload)
     assert response.status_code == 422
 
 
 def test_webhook_accepts_unknown_type_with_warning(client: TestClient) -> None:
     payload = _make_payload(type_="UnknownType")
-    response = client.post("/api/linear/webhook", json=payload, headers=API_AUTH)
+    response = _signed_post(client, payload)
     assert response.status_code == 200
     assert response.json()["type"] == "unknowntype"
 
@@ -150,11 +180,18 @@ def test_webhook_rejects_bad_signature(client: TestClient, monkeypatch: pytest.M
     assert response.status_code == 401
 
 
-def test_webhook_allows_dev_mode_when_no_secret_or_header(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_webhook_rejects_when_no_secret_configured(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Webhook must return 503 when LINEAR_WEBHOOK_SECRET is not set.
+
+    Issue #316 changed the endpoint to fail-closed: an unconfigured deployment
+    must not silently accept all inbound requests (old "dev mode" behaviour has
+    been removed).
+    """
     monkeypatch.delenv("LINEAR_WEBHOOK_SECRET", raising=False)
     payload = _make_payload()
     response = client.post("/api/linear/webhook", json=payload, headers=API_AUTH)
-    assert response.status_code == 200
+    assert response.status_code == 503
+    assert "not configured" in response.json()["detail"].lower()
 
 
 # ─── Replay protection tests ──────────────────────────────────────────────────
@@ -162,21 +199,21 @@ def test_webhook_allows_dev_mode_when_no_secret_or_header(client: TestClient, mo
 
 def test_webhook_detects_replay(client: TestClient) -> None:
     payload = _make_payload(webhook_id="replay-me")
-    response1 = client.post("/api/linear/webhook", json=payload, headers=API_AUTH)
+    response1 = _signed_post(client, payload)
     assert response1.status_code == 200
     assert response1.json().get("replay") is None
 
-    response2 = client.post("/api/linear/webhook", json=payload, headers=API_AUTH)
+    response2 = _signed_post(client, payload)
     assert response2.status_code == 200
     assert response2.json()["replay"] is True
 
 
 def test_webhook_without_webhook_id_allows_replay(client: TestClient) -> None:
     payload = _make_payload(webhook_id=None)
-    response1 = client.post("/api/linear/webhook", json=payload, headers=API_AUTH)
+    response1 = _signed_post(client, payload)
     assert response1.status_code == 200
 
-    response2 = client.post("/api/linear/webhook", json=payload, headers=API_AUTH)
+    response2 = _signed_post(client, payload)
     assert response2.status_code == 200
 
 
@@ -186,7 +223,7 @@ def test_webhook_without_webhook_id_allows_replay(client: TestClient) -> None:
 def test_webhook_rejects_old_payload(client: TestClient) -> None:
     old_time = int((time.time() - 400) * 1000)
     payload = _make_payload(created_at=old_time)
-    response = client.post("/api/linear/webhook", json=payload, headers=API_AUTH)
+    response = _signed_post(client, payload)
     assert response.status_code == 400
     assert response.json()["detail"] == "Payload too old"
 
@@ -194,7 +231,7 @@ def test_webhook_rejects_old_payload(client: TestClient) -> None:
 def test_webhook_accepts_recent_payload(client: TestClient) -> None:
     recent_time = int((time.time() - 10) * 1000)
     payload = _make_payload(created_at=recent_time)
-    response = client.post("/api/linear/webhook", json=payload, headers=API_AUTH)
+    response = _signed_post(client, payload)
     assert response.status_code == 200
 
 
@@ -213,7 +250,7 @@ def test_webhook_issue_event_returns_envelope(client: TestClient) -> None:
             "team": {"name": "Platform"},
         },
     )
-    response = client.post("/api/linear/webhook", json=payload, headers=API_AUTH)
+    response = _signed_post(client, payload)
     assert response.status_code == 200
     data = response.json()
 
@@ -236,7 +273,7 @@ def test_webhook_issue_event_returns_envelope(client: TestClient) -> None:
 def test_webhook_non_issue_event_skips_envelope(client: TestClient) -> None:
     """Non-issue events should not produce a dispatch envelope."""
     payload = _make_payload(type_="Cycle", data={"id": "cycle-1"})
-    response = client.post("/api/linear/webhook", json=payload, headers=API_AUTH)
+    response = _signed_post(client, payload)
     assert response.status_code == 200
     data = response.json()
     assert "envelope" not in data
@@ -248,7 +285,7 @@ def test_webhook_envelope_missing_team(client: TestClient) -> None:
         type_="Issue",
         data={"id": "issue-2", "title": "No team here"},
     )
-    response = client.post("/api/linear/webhook", json=payload, headers=API_AUTH)
+    response = _signed_post(client, payload)
     assert response.status_code == 200
     data = response.json()
     assert "envelope" in data
@@ -260,11 +297,20 @@ def test_webhook_envelope_missing_team(client: TestClient) -> None:
 
 
 def test_webhook_health_returns_status(client: TestClient) -> None:
+    # autouse fixture sets LINEAR_WEBHOOK_SECRET=_TEST_SECRET, so
+    # signature_verification reports "enabled".
     response = client.get("/api/linear/webhook/health", headers=API_AUTH)
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "ok"
-    assert data["signature_verification"] == "disabled"
+    assert data["signature_verification"] == "enabled"
+
+
+def test_webhook_health_shows_disabled_when_no_secret(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("LINEAR_WEBHOOK_SECRET", raising=False)
+    response = client.get("/api/linear/webhook/health", headers=API_AUTH)
+    assert response.status_code == 200
+    assert response.json()["signature_verification"] == "disabled"
 
 
 def test_webhook_health_shows_enabled_when_secret_set(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -280,5 +326,5 @@ def test_webhook_health_shows_enabled_when_secret_set(client: TestClient, monkey
 def test_webhook_bypasses_csrf_check(client: TestClient) -> None:
     """The webhook endpoint should not be blocked by CSRF."""
     payload = _make_payload()
-    response = client.post("/api/linear/webhook", json=payload, headers=API_AUTH)
+    response = _signed_post(client, payload)
     assert response.status_code == 200
