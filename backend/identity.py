@@ -185,6 +185,7 @@ identity_manager = IdentityManager()
 auth_header = APIKeyHeader(name="Authorization", auto_error=False)
 auth_cookie = APIKeyCookie(name="dashboard_session", auto_error=False)
 
+
 def require_principal(
     request: Request,
     header_token: str | None = Depends(auth_header),
