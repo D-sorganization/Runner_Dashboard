@@ -19,6 +19,7 @@ import {
 export type ThemeMode = 'system' | FleetThemeId;
 
 const STORAGE_KEY = 'runner-dashboard:theme-mode';
+const ACCENT_STORAGE_KEY = 'runner-dashboard:accent-color';
 const CUSTOM_THEMES_KEY = 'runner-dashboard:custom-themes';
 
 /** Custom theme stored in localStorage. */
@@ -65,6 +66,15 @@ function saveCustomThemesToStorage(themes: CustomTheme[]): void {
   }
 }
 
+function getStoredAccent(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return localStorage.getItem(ACCENT_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Apply fleet theme CSS variables to the document root.
  */
@@ -87,6 +97,7 @@ export function useTheme() {
   const [mode, setModeState] = useState<ThemeMode>(() => getStoredMode());
   const [systemTheme, setSystemTheme] = useState<'light' | 'dark'>(() => getSystemTheme());
   const [customThemes, setCustomThemes] = useState<CustomTheme[]>(loadCustomThemes);
+  const [accentColor, setAccentColorState] = useState<string | null>(() => getStoredAccent());
 
   // Resolved fleet theme ID
   const resolvedThemeId: FleetThemeId = useMemo(() => {
@@ -134,6 +145,19 @@ export function useTheme() {
     }
   }, []);
 
+  const setAccentColor = useCallback((color: string | null) => {
+    setAccentColorState(color);
+    try {
+      if (color) {
+        localStorage.setItem(ACCENT_STORAGE_KEY, color);
+      } else {
+        localStorage.removeItem(ACCENT_STORAGE_KEY);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
   const saveCustomTheme = useCallback(
     (ct: CustomTheme) => {
       setCustomThemes((prev) => {
@@ -172,6 +196,10 @@ export function useTheme() {
     customThemes,
     /** Change theme mode. */
     setMode,
+    /** Current custom accent color. */
+    accentColor,
+    /** Set custom accent color. */
+    setAccentColor,
     /** Save a custom theme. */
     saveCustomTheme,
     /** Delete a custom theme. */
