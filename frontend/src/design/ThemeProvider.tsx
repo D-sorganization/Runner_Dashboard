@@ -1,13 +1,44 @@
-import React, { useMemo } from "react";
-import { toCssVariables } from "./tokens";
-import { motionDurations, motionEasing, reducedMotionCss } from "./motion";
+/**
+ * ThemeProvider — injects fleet-shared theme CSS variables into the DOM.
+ *
+ * Replaces the original dark/light-only provider with full fleet theme
+ * support (13 built-in + custom themes). Still generates the motion
+ * and spacing tokens alongside the color variables.
+ *
+ * Addresses: Runner_Dashboard#618, #619
+ */
+import React, { useMemo } from 'react';
+import { motionDurations, motionEasing, reducedMotionCss } from './motion';
+import { spacingTokens, touchTokens } from './tokens';
+import {
+  FLEET_THEMES,
+  fleetThemeToCssVars,
+  type FleetThemeId,
+} from './fleetThemes';
 
-export type ThemeMode = "system" | "light" | "dark";
+export type ThemeMode = 'system' | 'light' | 'dark';
 
 export interface ThemeProviderProps {
   children: React.ReactNode;
   reducedMotion?: boolean;
   theme?: ThemeMode;
+  /** Fleet theme ID override — takes precedence over theme prop. */
+  fleetThemeId?: FleetThemeId;
+}
+
+function buildSpacingVars(): string {
+  return Object.entries(spacingTokens)
+    .map(([key, val]) => `--space-${key}: ${val};`)
+    .join('\n        ');
+}
+
+function buildFleetVars(themeId: FleetThemeId): string {
+  const def = FLEET_THEMES[themeId];
+  if (!def) return '';
+  const vars = fleetThemeToCssVars(def);
+  return Object.entries(vars)
+    .map(([key, val]) => `${key}: ${val};`)
+    .join('\n        ');
 }
 
 /**
@@ -19,35 +50,50 @@ export interface ThemeProviderProps {
  *   - "light":  forces light theme
  *   - "dark":   forces dark theme
  *
- * Theme transitions are instant (0ms) to satisfy prefers-reduced-motion.
+ * When `fleetThemeId` is set, it overrides the mode and applies the full
+ * fleet palette from themes.json.
  */
 export const ThemeProvider: React.FC<ThemeProviderProps> = ({
   children,
   reducedMotion = false,
-  theme: _theme = "system",
+  theme: _theme = 'system',
+  fleetThemeId,
 }) => {
   const css = useMemo(() => {
-    const darkVars = toCssVariables("dark");
-    const lightVars = toCssVariables("light");
-
-    return `
-      :root {
-        ${darkVars}
+    const spacing = buildSpacingVars();
+    const motionVars = `
         --motion-instant: ${motionDurations.instant};
         --motion-fast: ${motionDurations.fast};
         --motion-normal: ${motionDurations.normal};
         --motion-slow: ${motionDurations.slow};
         --easing-standard: ${motionEasing.standard};
         --easing-emphasized: ${motionEasing.emphasized};
+    `;
+    const touchVars = `
+        --mobile-hit-target: ${touchTokens.minimumHitTarget};
+        --comfortable-hit-target: ${touchTokens.comfortableHitTarget};
+        --bottom-nav-height: ${touchTokens.bottomNavHeight};
+    `;
+
+    // If a fleet theme is specified, generate its CSS vars
+    const darkFleet = buildFleetVars(fleetThemeId ?? 'dark');
+    const lightFleet = buildFleetVars('light');
+
+    return `
+      :root {
+        ${darkFleet}
+        ${spacing}
+        ${motionVars}
+        ${touchVars}
       }
 
       [data-theme="light"] {
-        ${lightVars}
+        ${lightFleet}
       }
 
-      ${reducedMotion ? reducedMotionCss : ""}
+      ${reducedMotion ? reducedMotionCss : ''}
     `;
-  }, [reducedMotion]);
+  }, [reducedMotion, fleetThemeId]);
 
   return (
     <>

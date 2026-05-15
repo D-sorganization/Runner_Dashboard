@@ -25,3 +25,15 @@ export { motionDurations, motionEasing, reducedMotionCss, prefersReducedMotion }
 
 export { ThemeProvider } from "./ThemeProvider";
 export type { ThemeProviderProps, ThemeMode } from "./ThemeProvider";
+
+// Fleet shared theme system (Runner_Dashboard#618)
+export {
+  FLEET_THEMES,
+  fleetThemeToCssVars,
+  getFleetThemeIds,
+  getFleetThemeDisplayName,
+  isFleetThemeDark,
+  getFleetThemesByCategory,
+} from "./fleetThemes";
+export type { FleetThemeId, FleetThemeDef, FleetThemeColors, FleetSemanticColors } from "./fleetThemes";
+
