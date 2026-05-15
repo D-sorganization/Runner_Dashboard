@@ -2446,7 +2446,7 @@ async def _startup() -> None:
         get_git_drift=_deployment_router.get_git_drift,
         port=PORT,
         systemctl_bin=SYSTEMCTL_BIN,
-        run_runner_audit_fn=_run_runner_audit,
+        run_runner_audit_fn=_runner_audit_router._run_runner_audit,
     )
     # Initialize pooled HTTP clients
     initialize_http_clients()
