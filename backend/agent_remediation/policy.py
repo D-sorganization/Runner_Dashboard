@@ -97,8 +97,8 @@ PROMPT_UNTRUSTED_SYSTEM_INSTRUCTION = (
 def _as_tuple_strings(values: Any, *, fallback: tuple[str, ...]) -> tuple[str, ...]:
     if values is None:
         return fallback
-    if not isinstance(values, list):
-        raise TypeError("expected a list")
+    if not isinstance(values, (list, tuple)):
+        raise TypeError("expected a list or tuple")
     items: list[str] = []
     for value in values:
         text = str(value).strip()
