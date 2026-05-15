@@ -1,20 +1,19 @@
 import React, { useMemo } from "react";
 import { toCssVariables } from "./tokens";
 import { motionDurations, motionEasing, reducedMotionCss } from "./motion";
-
-export type ThemeMode = "system" | "light" | "dark";
+import { useTheme } from "../hooks/useTheme";
+import { ThemeContext } from "./ThemeContext";
 
 export interface ThemeProviderProps {
   children: React.ReactNode;
   reducedMotion?: boolean;
-  theme?: ThemeMode;
 }
 
 /**
  * ThemeProvider injects the design-token CSS custom properties into a <style>
  * block so every component—legacy or modern—reads from the same source of truth.
  *
- * It supports three modes:
+ * It supports three modes via useTheme context:
  *   - "system": follows prefers-color-scheme
  *   - "light":  forces light theme
  *   - "dark":   forces dark theme
@@ -24,11 +23,19 @@ export interface ThemeProviderProps {
 export const ThemeProvider: React.FC<ThemeProviderProps> = ({
   children,
   reducedMotion = false,
-  theme: _theme = "system",
 }) => {
+  const { theme, mode, setMode, accentColor, setAccentColor } = useTheme();
+
   const css = useMemo(() => {
     const darkVars = toCssVariables("dark");
     const lightVars = toCssVariables("light");
+
+    const customAccent = accentColor
+      ? `
+        --accent-blue: ${accentColor};
+        --badge-info-fg: ${accentColor};
+      `
+      : "";
 
     return `
       :root {
@@ -39,20 +46,23 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({
         --motion-slow: ${motionDurations.slow};
         --easing-standard: ${motionEasing.standard};
         --easing-emphasized: ${motionEasing.emphasized};
+        ${theme === "dark" ? customAccent : ""}
       }
 
       [data-theme="light"] {
         ${lightVars}
+        ${theme === "light" ? customAccent : ""}
       }
 
       ${reducedMotion ? reducedMotionCss : ""}
     `;
-  }, [reducedMotion]);
+  }, [reducedMotion, theme, accentColor]);
 
   return (
-    <>
+    <ThemeContext.Provider value={{ theme, mode, setMode, accentColor, setAccentColor }}>
       <style>{css}</style>
       {children}
-    </>
+    </ThemeContext.Provider>
   );
 };
+

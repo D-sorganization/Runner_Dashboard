@@ -5,7 +5,7 @@
 # To regenerate:  docker pull python:3.11.14-slim && docker inspect --format='{{index .RepoDigests 0}}' python:3.11.14-slim
 # To regenerate requirements.lock.txt:  pip-compile --generate-hashes --output-file requirements.lock.txt requirements.txt
 
-FROM python:3.14.0-slim@sha256:0aecac02dc3d4c5dbb024b753af084cafe41f5416e02193f1ce345d671ec966e
+FROM python:3.11-slim
 
 WORKDIR /app
 
