@@ -472,21 +472,31 @@ class TestEnvelopeJsonRoundTrip:
             assert validate_envelope_crypto(restored).valid is True
 
     def test_envelope_with_confirmation_roundtrip(self):
-        """Envelope with confirmation roundtrips correctly."""
+        """Envelope with confirmation roundtrips correctly.
+
+        Uses a valid approval_hmac so that validate_envelope_crypto passes the
+        binding check introduced in issue #318.
+        """
+        from dispatch_contract import _compute_approval_hmac
+
         with patch.dict(os.environ, {"DISPATCH_SIGNING_SECRET": "test-secret"}):
             now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+            envelope_id = "env123"
+            action = "runner.restart"
+            valid_hmac = _compute_approval_hmac(envelope_id, action, "test-secret")
             confirmation = DispatchConfirmation(
                 approved_by="bob",
                 approved_at=now,
-                envelope_id="env123",
-                approval_hmac="hmac789",
+                envelope_id=envelope_id,
+                approval_hmac=valid_hmac,
             )
             original = CommandEnvelope(
-                action="runner.restart",
+                action=action,
                 source="hub",
                 target="node-1",
                 requested_by="alice",
                 confirmation=confirmation,
+                envelope_id=envelope_id,
             )
 
             data_dict = original.to_dict()
@@ -494,8 +504,8 @@ class TestEnvelopeJsonRoundTrip:
 
             assert restored.confirmation is not None
             assert restored.confirmation.approved_by == "bob"
-            assert restored.confirmation.envelope_id == "env123"
-            assert restored.confirmation.approval_hmac == "hmac789"
+            assert restored.confirmation.envelope_id == envelope_id
+            assert restored.confirmation.approval_hmac == valid_hmac
             assert validate_envelope_crypto(restored).valid is True
 
 
@@ -677,3 +687,66 @@ class TestApprovalHmacBinding:
             )
             result = validate_envelope_crypto(envelope)
             assert result.valid is True, f"Expected valid=True, got: {result.reason}"
+
+
+class TestApprovalHmacFunctions:
+    """Tests for _compute_approval_hmac and verify_approval_hmac (issue #625)."""
+
+    def test_compute_hmac_is_deterministic(self):
+        """Same envelope_id, action, and secret always produce the same HMAC."""
+        from dispatch_contract import _compute_approval_hmac
+
+        hmac1 = _compute_approval_hmac("env-abc", "runner.restart", "secret-key")
+        hmac2 = _compute_approval_hmac("env-abc", "runner.restart", "secret-key")
+        assert hmac1 == hmac2
+        assert len(hmac1) == 64
+        assert all(c in "0123456789abcdef" for c in hmac1)
+
+    def test_verify_hmac_accepts_valid(self):
+        """A freshly computed HMAC verifies successfully."""
+        from dispatch_contract import DispatchConfirmation, _compute_approval_hmac, verify_approval_hmac
+
+        with patch.dict(os.environ, {"APPROVAL_HMAC_SECRET": "test-verify-secret"}):
+            envelope_id = "env-xyz"
+            action = "runner.stop"
+            secret = "test-verify-secret"
+            correct_hmac = _compute_approval_hmac(envelope_id, action, secret)
+            confirmation = DispatchConfirmation(
+                approved_by="alice",
+                approved_at="2026-01-01T12:00:00Z",
+                envelope_id=envelope_id,
+                approval_hmac=correct_hmac,
+            )
+            assert verify_approval_hmac(confirmation, envelope_id, action) is True
+
+    def test_verify_hmac_rejects_tampered(self):
+        """A tampered HMAC (wrong bytes) must not verify."""
+        from dispatch_contract import DispatchConfirmation, verify_approval_hmac
+
+        with patch.dict(os.environ, {"APPROVAL_HMAC_SECRET": "test-verify-secret"}):
+            confirmation = DispatchConfirmation(
+                approved_by="alice",
+                approved_at="2026-01-01T12:00:00Z",
+                envelope_id="env-xyz",
+                approval_hmac="0" * 64,  # Completely wrong HMAC
+            )
+            assert verify_approval_hmac(confirmation, "env-xyz", "runner.stop") is False
+
+    def test_verify_hmac_rejects_empty_secret(self):
+        """verify_approval_hmac returns False when a non-empty HMAC is present but no secret is configured."""
+        from dispatch_contract import DispatchConfirmation, _compute_approval_hmac, verify_approval_hmac
+
+        # Compute the HMAC outside the cleared-env context so we have a
+        # syntactically valid (but now unverifiable) token to present.
+        correct_hmac = _compute_approval_hmac("env-xyz", "runner.stop", "some-secret")
+        confirmation = DispatchConfirmation(
+            approved_by="alice",
+            approved_at="2026-01-01T12:00:00Z",
+            envelope_id="env-xyz",
+            approval_hmac=correct_hmac,
+        )
+        # When the env has a non-empty approval_hmac but no configured secret,
+        # verification must fail because we cannot reconstruct the expected value.
+        with patch.dict(os.environ, {}, clear=True):
+            # Neither APPROVAL_HMAC_SECRET nor DISPATCH_SIGNING_SECRET present
+            assert verify_approval_hmac(confirmation, "env-xyz", "runner.stop") is False
