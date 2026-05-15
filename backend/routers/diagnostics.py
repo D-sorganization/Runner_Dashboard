@@ -30,7 +30,7 @@ router = APIRouter(tags=["diagnostics"])
 # Injected dependencies (set by server.py after import)
 # ---------------------------------------------------------------------------
 
-_get_git_drift = None
+_get_git_drift: Any = None
 PORT: int = 8321
 SYSTEMCTL_BIN: str = "/usr/bin/systemctl"
 
@@ -44,10 +44,10 @@ _runner_audit_cache: dict[str, Any] = {
     "error": None,
 }
 _runner_audit_lock = asyncio.Lock()
-_run_runner_audit_fn = None
+_run_runner_audit_fn: Any = None
 
 
-def set_dependencies(
+def set_dependencies(  # type: ignore[no-untyped-def]
     *,
     get_git_drift,
     port: int,
@@ -140,7 +140,7 @@ async def get_diagnostics_summary() -> dict:
 async def restart_dashboard_service(
     request: Request,
     *,
-    principal=Depends(require_scope("system.control")),  # noqa: B008
+    principal: Any = Depends(require_scope("system.control")),  # noqa: B008
 ) -> dict:
     """Restart the dashboard systemd service (WSL/Linux only, localhost only)."""
     client = request.client
@@ -167,7 +167,7 @@ async def restart_dashboard_service(
 @router.post("/api/launchers/generate")
 async def generate_launchers(
     request: Request,
-    principal=Depends(require_scope("system.control")),  # noqa: B008
+    principal: Any = Depends(require_scope("system.control")),  # noqa: B008
 ) -> dict:
     """Generate Windows PowerShell launcher scripts on the Desktop."""
     output_dir = Path.home() / "Desktop" / "RunnerDashboard"
