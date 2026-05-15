@@ -3,31 +3,41 @@ import { toCssVariables } from "./tokens";
 import { motionDurations, motionEasing, reducedMotionCss } from "./motion";
 import { useTheme } from "../hooks/useTheme";
 import { ThemeContext } from "./ThemeContext";
+import {
+  FLEET_THEMES,
+  fleetThemeToCssVars,
+  type FleetThemeId,
+} from "./fleetThemes";
 
 export interface ThemeProviderProps {
   children: React.ReactNode;
   reducedMotion?: boolean;
+  fleetThemeId?: FleetThemeId;
+}
+
+function buildFleetVars(themeId: FleetThemeId): string {
+  const def = FLEET_THEMES[themeId];
+  if (!def) return "";
+  const vars = fleetThemeToCssVars(def);
+  return Object.entries(vars)
+    .map(([key, val]) => `${key}: ${val};`)
+    .join("\n        ");
 }
 
 /**
  * ThemeProvider injects the design-token CSS custom properties into a <style>
  * block so every component—legacy or modern—reads from the same source of truth.
- *
- * It supports three modes via useTheme context:
- *   - "system": follows prefers-color-scheme
- *   - "light":  forces light theme
- *   - "dark":   forces dark theme
- *
- * Theme transitions are instant (0ms) to satisfy prefers-reduced-motion.
  */
 export const ThemeProvider: React.FC<ThemeProviderProps> = ({
   children,
   reducedMotion = false,
+  fleetThemeId,
 }) => {
   const { theme, mode, setMode, accentColor, setAccentColor } = useTheme();
 
   const css = useMemo(() => {
-    const darkVars = toCssVariables("dark");
+    // If a fleet theme is specified, it overrides the basic dark/light tokens
+    const darkVars = fleetThemeId ? buildFleetVars(fleetThemeId) : toCssVariables("dark");
     const lightVars = toCssVariables("light");
 
     const customAccent = accentColor
@@ -56,7 +66,7 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({
 
       ${reducedMotion ? reducedMotionCss : ""}
     `;
-  }, [reducedMotion, theme, accentColor]);
+  }, [reducedMotion, theme, accentColor, fleetThemeId]);
 
   return (
     <ThemeContext.Provider value={{ theme, mode, setMode, accentColor, setAccentColor }}>
@@ -65,4 +75,3 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({
     </ThemeContext.Provider>
   );
 };
-
