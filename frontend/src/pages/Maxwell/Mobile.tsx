@@ -19,6 +19,7 @@ import { PullToRefresh } from "../../primitives/PullToRefresh";
 import { SkeletonCard, SkeletonLine } from "../../primitives/Skeleton";
 import { TouchButton } from "../../primitives/TouchButton";
 import { useHaptic } from "../../hooks/useHaptic";
+import { useVoiceInput } from "../../hooks/useVoiceInput";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -238,6 +239,15 @@ export function MaxwellMobile() {
   const [chatSending, setChatSending] = useState(false);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const chatListRef = useRef<HTMLDivElement>(null);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+
+  const voice = useVoiceInput({
+    onTranscript: (text) => {
+      setChatInput((prev) => (prev ? `${prev} ${text}` : text));
+      setVoiceError(null);
+    },
+    onError: (msg) => setVoiceError(msg),
+  });
 
   // -- Control sheet state ----------------------------------------------------
   const [controlSheetOpen, setControlSheetOpen] = useState(false);
@@ -667,6 +677,23 @@ export function MaxwellMobile() {
         </div>
 
         {/* Composer */}
+        {voiceError && (
+          <div
+            aria-live="polite"
+            role="alert"
+            style={{
+              background: "rgba(248,81,73,0.12)",
+              border: "1px solid rgba(248,81,73,0.35)",
+              borderRadius: 6,
+              color: "var(--accent-red)",
+              fontSize: 11,
+              marginTop: 6,
+              padding: "4px 8px",
+            }}
+          >
+            {voiceError}
+          </div>
+        )}
         <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
           <textarea
             aria-label="Message Maxwell"
@@ -694,6 +721,27 @@ export function MaxwellMobile() {
               resize: "none",
             }}
           />
+          {voice.available && (
+            <TouchButton
+              aria-label={voice.recording ? "Stop voice recording" : "Start voice input"}
+              aria-pressed={voice.recording}
+              data-testid="maxwell-mic-btn"
+              disabled={chatSending || !status.http_reachable}
+              onClick={voice.toggle}
+              variant={voice.recording ? "primary" : "default"}
+              style={{
+                flexShrink: 0,
+                minHeight: 40,
+                minWidth: 40,
+                padding: "0 10px",
+                outline: voice.recording
+                  ? "2px solid var(--accent-green)"
+                  : undefined,
+              }}
+            >
+              {voice.recording ? "[REC]" : "🎙"}
+            </TouchButton>
+          )}
           <TouchButton
             aria-label="Send message to Maxwell"
             data-testid="maxwell-send-btn"
