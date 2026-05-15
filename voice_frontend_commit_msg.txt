@@ -1,0 +1,5 @@
+feat: add voice-to-text input to assistant sidebar
+
+- Created VoiceInputButton component using Web Speech API
+- Integrated VoiceInputButton into AssistantSidebar in legacy App.tsx
+- Added transcription handler to append voice text to chat input
