@@ -343,17 +343,19 @@ async def get_tests_ci_results() -> dict:
             runs = data.get("workflow_runs", []) if data else []
             if runs:
                 latest = runs[0]
-                results.append({
-                    "repo": repo_name,
-                    "run_id": latest.get("id"),
-                    "run_number": latest.get("run_number"),
-                    "status": latest.get("status"),
-                    "conclusion": latest.get("conclusion"),
-                    "head_branch": latest.get("head_branch"),
-                    "html_url": latest.get("html_url"),
-                    "created_at": latest.get("created_at"),
-                    "updated_at": latest.get("updated_at"),
-                })
+                results.append(
+                    {
+                        "repo": repo_name,
+                        "run_id": latest.get("id"),
+                        "run_number": latest.get("run_number"),
+                        "status": latest.get("status"),
+                        "conclusion": latest.get("conclusion"),
+                        "head_branch": latest.get("head_branch"),
+                        "html_url": latest.get("html_url"),
+                        "created_at": latest.get("created_at"),
+                        "updated_at": latest.get("updated_at"),
+                    }
+                )
             else:
                 results.append({"repo": repo_name, "run_id": None, "conclusion": None})
         except Exception as e:  # noqa: BLE001
@@ -383,9 +385,11 @@ async def rerun_ci_test(
     try:
         code, _stdout, stderr = await _run_cmd(
             [
-                "gh", "api",
+                "gh",
+                "api",
                 f"/repos/{ORG}/{repo_name}/actions/runs/{run_id}/rerun-failed-jobs",
-                "--method", "POST",
+                "--method",
+                "POST",
             ]
         )
         if code != 0:
@@ -443,9 +447,7 @@ async def get_stats(request: Request):
         except (json.JSONDecodeError, TypeError, ValueError):
             return 0
 
-    all_runs_nested = await asyncio.gather(
-        *[_fetch_repo_runs_local(repo["name"], per_page=10) for repo in repos[:20]]
-    )
+    all_runs_nested = await asyncio.gather(*[_fetch_repo_runs_local(repo["name"], per_page=10) for repo in repos[:20]])
     runs = [run for repo_runs in all_runs_nested for run in repo_runs]
     runs.sort(key=lambda r: r.get("created_at", ""), reverse=True)
     runs = runs[:100]

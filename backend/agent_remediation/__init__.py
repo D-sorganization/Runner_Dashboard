@@ -12,38 +12,38 @@ All public names are re-exported here so existing imports continue to work:
 
 from __future__ import annotations
 
-from .providers import (
-    AgentProvider,
-    ProviderAvailability,
-    PROVIDERS,
-    probe_provider_availability,
+from .planner import (
+    DispatchDecision,
+    WorkflowHealthEntry,
+    WorkflowHealthReport,
+    inspect_jules_workflows,
+    plan_dispatch,
+    provider_prompt,
+    sanitize_for_prompt,
 )
 from .policy import (
-    SCHEMA_VERSION,
     DEFAULT_CONFIG_PATH,
     DEFAULT_PROVIDER_ORDER,
     DEFAULT_WORKFLOW_TYPE_RULES,
     LEGACY_WORKFLOW_PATTERNS,
     PROMPT_UNTRUSTED_SYSTEM_INSTRUCTION,
+    SCHEMA_VERSION,
     AttemptRecord,
     FailureContext,
     RemediationPolicy,
     WorkflowTypeRule,
-    load_policy,
-    save_policy,
-    classify_workflow_type,
-    build_failure_fingerprint,
     _attempts_for_fingerprint,
     _attempts_for_provider,
+    build_failure_fingerprint,
+    classify_workflow_type,
+    load_policy,
+    save_policy,
 )
-from .planner import (
-    DispatchDecision,
-    WorkflowHealthEntry,
-    WorkflowHealthReport,
-    sanitize_for_prompt,
-    provider_prompt,
-    plan_dispatch,
-    inspect_jules_workflows,
+from .providers import (
+    PROVIDERS,
+    AgentProvider,
+    ProviderAvailability,
+    probe_provider_availability,
 )
 
 __all__ = [

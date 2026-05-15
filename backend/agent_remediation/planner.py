@@ -11,11 +11,10 @@ from pathlib import Path
 from typing import Any
 
 from .policy import (
+    PROMPT_UNTRUSTED_SYSTEM_INSTRUCTION,
     AttemptRecord,
     FailureContext,
-    PROMPT_UNTRUSTED_SYSTEM_INSTRUCTION,
     RemediationPolicy,
-    WorkflowTypeRule,
     _attempts_for_fingerprint,
     _attempts_for_provider,
     build_failure_fingerprint,

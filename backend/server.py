@@ -44,7 +44,6 @@ except ImportError:
     _sd_notify = None
 
 import httpx
-import psutil
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import (
@@ -87,7 +86,6 @@ from cache_utils import cache_get as _cache_get  # noqa: E402
 from cache_utils import cache_set as _cache_set  # noqa: E402
 from dashboard_config.cache_ttls import CacheTtl  # noqa: E402
 from dashboard_config.timeouts import (  # noqa: E402
-    Concurrency,
     HttpTimeout,
     ResourceThreshold,
 )
@@ -105,6 +103,7 @@ from routers import assessments as _assessments_router  # noqa: E402
 from routers import assistant as _assistant_router  # noqa: E402
 from routers import credentials as _credentials_router  # noqa: E402
 from routers import deployment as _deployment_router  # noqa: E402
+from routers import diagnostics as _diagnostics_router  # noqa: E402
 from routers import dispatch as _dispatch_router  # noqa: E402
 from routers import feature_requests as _feature_requests_router  # noqa: E402
 from routers import fleet as _fleet_router  # noqa: E402
@@ -118,6 +117,7 @@ from routers import queue as _queue_router  # noqa: E402
 from routers import queue_diagnostics as _queue_diagnostics_router  # noqa: E402
 from routers import remediation as _remediation_router  # noqa: E402
 from routers import reports as _reports_router  # noqa: E402
+from routers import repos as _repos_router  # noqa: E402
 from routers import runner_audit as _runner_audit_router  # noqa: E402  # issue #298
 from routers import runner_diagnostics as _runner_diagnostics_router  # noqa: E402
 from routers import runner_groups as _runner_groups_router  # noqa: E402
@@ -125,8 +125,6 @@ from routers import runners as _runners_router  # noqa: E402
 from routers import runs_workflows as _runs_workflows_router  # noqa: E402
 from routers import system as _system_router  # noqa: E402
 from routers import web_vitals as _web_vitals_router  # noqa: E402
-from routers import repos as _repos_router  # noqa: E402
-from routers import diagnostics as _diagnostics_router  # noqa: E402
 from routers.queue import _queue_impl  # noqa: E402
 from security import (  # noqa: E402
     safe_subprocess_env,  # noqa: E402
@@ -2313,6 +2311,7 @@ async def help_chat(request: Request, *, principal: Principal = Depends(require_
 
 # Restart-service route extracted to routers/diagnostics.py (issue #360).
 
+
 @app.post("/api/launchers/generate")
 async def generate_launchers(
     request: Request,
@@ -2415,6 +2414,7 @@ _assessments_router.set_run_cmd(run_cmd)
 _leader_lock_fd = None
 
 # Runner routing audit refresh route extracted to routers/diagnostics.py (issue #360).
+
 
 @app.on_event("startup")
 async def _startup() -> None:
