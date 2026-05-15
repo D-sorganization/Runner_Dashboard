@@ -11,6 +11,7 @@ import { MobileShell, type TabId } from './shell/MobileShell'
 import { Toaster } from './primitives/Toaster'
 import { RootErrorBoundary } from './primitives/RootErrorBoundary'
 import { BreakpointProvider, useBreakpoint } from './hooks/useBreakpoint'
+import { ThemeProvider } from './design/ThemeProvider'
 import './i18n'
 import './index.css'
 // Web Vitals — send metrics to backend (issue #385)
@@ -220,15 +221,17 @@ function AppWithMobileShell({ initialTab }: { initialTab?: string }) {
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <RootErrorBoundary>
-      <BreakpointProvider>
-        <Toaster>
-          {isPushSettingsRoute(window.location.pathname) ? (
-            <PushSettings />
-          ) : (
-            <AppWithMobileShell initialTab={initialTabFromPathname(window.location.pathname)} />
-          )}
-        </Toaster>
-      </BreakpointProvider>
+      <ThemeProvider>
+        <BreakpointProvider>
+          <Toaster>
+            {isPushSettingsRoute(window.location.pathname) ? (
+              <PushSettings />
+            ) : (
+              <AppWithMobileShell initialTab={initialTabFromPathname(window.location.pathname)} />
+            )}
+          </Toaster>
+        </BreakpointProvider>
+      </ThemeProvider>
     </RootErrorBoundary>
   </React.StrictMode>,
 )

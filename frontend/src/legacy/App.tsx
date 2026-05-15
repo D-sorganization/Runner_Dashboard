@@ -14,6 +14,7 @@ import {
   tryRefreshSession,
 } from "./sessionExpired"
 import { installWheelValueGuard } from "./wheelValueGuard"
+import { ThemeSettings } from "../components/ThemeSettings"
 
 // @ts-nocheck
 /* eslint-disable */
@@ -16058,6 +16059,18 @@ function App({ initialTab, onTabChange }: { initialTab?: string; onTabChange?: (
           I.server(14),
           "Principals",
         ),
+        h(
+          "button",
+          {
+            className:
+              "tab-btn" + (tab === "settings" ? " active" : ""),
+            onClick: function () {
+              setTab("settings");
+            },
+          },
+          I.settings(14),
+          "Settings",
+        ),
       ),
       h(
         "div",
@@ -16568,7 +16581,9 @@ function App({ initialTab, onTabChange }: { initialTab?: string; onTabChange?: (
                                                   )
                                                 : tab === "principals"
                                                   ? h(PrincipalsTab, null)
-                                                  : null,
+                                                  : tab === "settings"
+                                                    ? h(ThemeSettings, null)
+                                                    : null,
       ),
       h(AssistantSidebar, { currentTab: tab, open: asstOpen, onToggle: toggleAsst }),
     ),
