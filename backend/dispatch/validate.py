@@ -60,7 +60,7 @@ def validate_envelope_crypto(envelope: object) -> CryptoValidationResult:
         )
 
     if envelope.confirmation is not None:  # type: ignore[attr-defined]
-        approved_at_result = validate_timestamp_freshness(envelope.confirmation.approved_at, ttl_seconds=300)
+        approved_at_result = validate_timestamp_freshness(envelope.confirmation.approved_at, ttl_seconds=300)  # type: ignore[attr-defined]
         if approved_at_result != TimestampValidationResult.VALID:
             reason_map = {
                 TimestampValidationResult.TOO_OLD: "confirmation approved_at timestamp too old",
