@@ -14,6 +14,7 @@ import {
   tryRefreshSession,
 } from "./sessionExpired"
 import { installWheelValueGuard } from "./wheelValueGuard"
+import { VoiceInputButton } from "../components/VoiceInputButton"
 
 // @ts-nocheck
 /* eslint-disable */
@@ -13093,6 +13094,12 @@ function AssistantSidebar(props) {
       .finally(function () { setLoading(false); });
   }
 
+  function handleTranscription(text) {
+    setInputVal(function (prev) {
+      return prev ? prev + " " + text : text;
+    });
+  }
+
   function onKeyDown(e) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -13275,20 +13282,23 @@ function AssistantSidebar(props) {
           }),
           h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
             h("span", { style: { fontSize: 11, color: "var(--text-muted)" } }, "Shift+Enter for newline"),
-            h("button", {
-              onClick: sendMessage,
-              disabled: loading || !inputVal.trim(),
-              style: {
-                background: "var(--accent-blue)",
-                color: "#fff",
-                border: "none",
-                borderRadius: 6,
-                padding: "5px 14px",
-                cursor: loading || !inputVal.trim() ? "default" : "pointer",
-                fontSize: 13,
-                opacity: loading || !inputVal.trim() ? 0.5 : 1,
-              },
-            }, "Send"),
+            h("div", { style: { display: "flex", gap: 8, alignItems: "center" } },
+              h(VoiceInputButton, { onTranscription: handleTranscription, disabled: loading }),
+              h("button", {
+                onClick: sendMessage,
+                disabled: loading || !inputVal.trim(),
+                style: {
+                  background: "var(--accent-blue)",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 6,
+                  padding: "5px 14px",
+                  cursor: loading || !inputVal.trim() ? "default" : "pointer",
+                  fontSize: 13,
+                  opacity: loading || !inputVal.trim() ? 0.5 : 1,
+                },
+              }, "Send"),
+            ),
           ),
         ),
       )

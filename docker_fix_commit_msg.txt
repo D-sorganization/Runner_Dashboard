@@ -1,0 +1,3 @@
+fix: downgrade Docker base image to python:3.11-slim for stability
+
+The previous image (python:3.14.0-slim) was experimental and caused CI build failures. Downgrading to stable 3.11-slim and ensuring site-packages cleanup paths match.
