@@ -30,21 +30,21 @@ router = APIRouter(tags=["repos"])
 # Injected dependencies (set by server.py after import)
 # ---------------------------------------------------------------------------
 
-_cache_get = None
-_cache_set = None
-_cache_delete = None
-_run_cmd = None
-_gh_api_admin = None
-_get_recent_org_repos = None
-_get_fleet_nodes_impl = None
-_queue_impl = None
-_pr_inventory = None
-_issue_inventory = None
-_linear_router = None
-_linear_inventory = None
-_unified_issue_inventory = None
-_lease_synchronizer = None
-_usage_monitoring = None
+_cache_get: Any = None
+_cache_set: Any = None
+_cache_delete: Any = None
+_run_cmd: Any = None
+_gh_api_admin: Any = None
+_get_recent_org_repos: Any = None
+_get_fleet_nodes_impl: Any = None
+_queue_impl: Any = None
+_pr_inventory: Any = None
+_issue_inventory: Any = None
+_linear_router: Any = None
+_linear_inventory: Any = None
+_unified_issue_inventory: Any = None
+_lease_synchronizer: Any = None
+_usage_monitoring: Any = None
 
 ORG: str = "D-sorganization"
 
@@ -74,7 +74,7 @@ _CI_FLEET_REPOS = [
 ]
 
 
-def set_dependencies(
+def set_dependencies(  # type: ignore[no-untyped-def]
     *,
     cache_get,
     cache_set,
@@ -126,7 +126,7 @@ def set_dependencies(
 
 
 @router.get("/api/repos")
-async def get_repos(request: Request):
+async def get_repos(request: Request) -> Any:
     """Get all org repos with open PRs, open issues, and last CI status."""
     if should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
@@ -343,17 +343,19 @@ async def get_tests_ci_results() -> dict:
             runs = data.get("workflow_runs", []) if data else []
             if runs:
                 latest = runs[0]
-                results.append({
-                    "repo": repo_name,
-                    "run_id": latest.get("id"),
-                    "run_number": latest.get("run_number"),
-                    "status": latest.get("status"),
-                    "conclusion": latest.get("conclusion"),
-                    "head_branch": latest.get("head_branch"),
-                    "html_url": latest.get("html_url"),
-                    "created_at": latest.get("created_at"),
-                    "updated_at": latest.get("updated_at"),
-                })
+                results.append(
+                    {
+                        "repo": repo_name,
+                        "run_id": latest.get("id"),
+                        "run_number": latest.get("run_number"),
+                        "status": latest.get("status"),
+                        "conclusion": latest.get("conclusion"),
+                        "head_branch": latest.get("head_branch"),
+                        "html_url": latest.get("html_url"),
+                        "created_at": latest.get("created_at"),
+                        "updated_at": latest.get("updated_at"),
+                    }
+                )
             else:
                 results.append({"repo": repo_name, "run_id": None, "conclusion": None})
         except Exception as e:  # noqa: BLE001
@@ -370,7 +372,7 @@ async def get_tests_ci_results() -> dict:
 async def rerun_ci_test(
     request: Request,
     *,
-    principal=Depends(require_scope("tests.rerun")),  # noqa: B008
+    principal: Any = Depends(require_scope("tests.rerun")),  # noqa: B008
 ) -> dict:
     """Re-run a failed GitHub Actions workflow run (failed jobs only)."""
     body = await request.json()
@@ -383,9 +385,11 @@ async def rerun_ci_test(
     try:
         code, _stdout, stderr = await _run_cmd(
             [
-                "gh", "api",
+                "gh",
+                "api",
                 f"/repos/{ORG}/{repo_name}/actions/runs/{run_id}/rerun-failed-jobs",
-                "--method", "POST",
+                "--method",
+                "POST",
             ]
         )
         if code != 0:
@@ -402,7 +406,7 @@ async def rerun_ci_test(
 
 
 @router.get("/api/stats")
-async def get_stats(request: Request):
+async def get_stats(request: Request) -> Any:
     """Aggregate organization, runner, queue, and workflow statistics."""
     if should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
@@ -443,9 +447,7 @@ async def get_stats(request: Request):
         except (json.JSONDecodeError, TypeError, ValueError):
             return 0
 
-    all_runs_nested = await asyncio.gather(
-        *[_fetch_repo_runs_local(repo["name"], per_page=10) for repo in repos[:20]]
-    )
+    all_runs_nested = await asyncio.gather(*[_fetch_repo_runs_local(repo["name"], per_page=10) for repo in repos[:20]])
     runs = [run for repo_runs in all_runs_nested for run in repo_runs]
     runs.sort(key=lambda r: r.get("created_at", ""), reverse=True)
     runs = runs[:100]

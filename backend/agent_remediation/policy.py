@@ -5,14 +5,12 @@ Extracted from agent_remediation.py (issue #361).
 
 from __future__ import annotations
 
+import datetime as _dt_mod
 import json
 import os
-import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
-
-import datetime as _dt_mod
 
 from time_utils import utc_now_iso
 
@@ -99,8 +97,8 @@ PROMPT_UNTRUSTED_SYSTEM_INSTRUCTION = (
 def _as_tuple_strings(values: Any, *, fallback: tuple[str, ...]) -> tuple[str, ...]:
     if values is None:
         return fallback
-    if not isinstance(values, list):
-        raise TypeError("expected a list")
+    if not isinstance(values, (list, tuple)):
+        raise TypeError("expected a list or tuple")
     items: list[str] = []
     for value in values:
         text = str(value).strip()
@@ -176,7 +174,7 @@ class RemediationPolicy:
     provider_order: tuple[str, ...]
     enabled_providers: tuple[str, ...]
     default_provider: str
-    workflow_type_rules: dict[str, "WorkflowTypeRule"] = field(default_factory=dict)
+    workflow_type_rules: dict[str, WorkflowTypeRule] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -358,6 +356,7 @@ def classify_workflow_type(
 
 def build_failure_fingerprint(context: FailureContext) -> str:
     import hashlib
+
     raw = f"{context.repository}|{context.workflow_name}|{context.failure_reason[:200]}"
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 

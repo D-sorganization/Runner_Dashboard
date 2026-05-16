@@ -18,7 +18,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "backend"))
 
 import agent_remediation  # noqa: E402
 
-
 # -- Helpers ------------------------------------------------------------------
 
 
@@ -102,7 +101,7 @@ async def test_well_formed_mobile_dispatch_accepted() -> None:
     app.dependency_overrides[require_principal] = _mock_principal
     try:
         with _make_policy_patch(), _make_avail_patch(True):
-            with patch("routers.remediation.run_cmd", return_value=_make_run_cmd(0)):
+            with patch("routers.remediation.run_cmd", new=_make_run_cmd(0)):
                 with patch("quota_enforcement.quota_enforcement.check_dispatch_quota", return_value=(True, "")):
                     with patch("quota_enforcement.quota_enforcement.add_spend"):
                         with patch("routers.remediation._append_remediation_history"):
@@ -116,9 +115,7 @@ async def test_well_formed_mobile_dispatch_accepted() -> None:
         app.dependency_overrides.clear()
         app.dependency_overrides.update(original_overrides)
 
-    assert resp.status_code not in (422, 500), (
-        f"Unexpected error {resp.status_code}: {resp.text}"
-    )
+    assert resp.status_code not in (422, 500), f"Unexpected error {resp.status_code}: {resp.text}"
 
 
 @pytest.mark.asyncio
@@ -146,14 +143,13 @@ async def test_invalid_repo_name_rejected_422() -> None:
                 resp = client.post(
                     "/api/agent-remediation/dispatch",
                     json=bad_body,
+                    headers={"X-Requested-With": "XMLHttpRequest"},
                 )
     finally:
         app.dependency_overrides.clear()
         app.dependency_overrides.update(original_overrides)
 
-    assert resp.status_code == 422, (
-        f"Expected 422 for invalid repo name, got {resp.status_code}: {resp.text}"
-    )
+    assert resp.status_code == 422, f"Expected 422 for invalid repo name, got {resp.status_code}: {resp.text}"
 
 
 @pytest.mark.asyncio
@@ -183,14 +179,13 @@ async def test_rate_limit_enforced() -> None:
                 resp = client.post(
                     "/api/agent-remediation/dispatch",
                     json=VALID_MOBILE_DISPATCH_BODY,
+                    headers={"X-Requested-With": "XMLHttpRequest"},
                 )
     finally:
         app.dependency_overrides.clear()
         app.dependency_overrides.update(original_overrides)
 
-    assert resp.status_code == 429, (
-        f"Expected 429, got {resp.status_code}: {resp.text}"
-    )
+    assert resp.status_code == 429, f"Expected 429, got {resp.status_code}: {resp.text}"
 
 
 @pytest.mark.asyncio
@@ -226,9 +221,7 @@ async def test_missing_required_fields_rejected() -> None:
         app.dependency_overrides.clear()
         app.dependency_overrides.update(original_overrides)
 
-    assert resp.status_code != 200, (
-        f"Expected non-200 for incomplete body, got {resp.status_code}: {resp.text}"
-    )
+    assert resp.status_code != 200, f"Expected non-200 for incomplete body, got {resp.status_code}: {resp.text}"
 
 
 @pytest.mark.asyncio
@@ -307,6 +300,4 @@ async def test_quota_exceeded_returns_403() -> None:
         app.dependency_overrides.clear()
         app.dependency_overrides.update(original_overrides)
 
-    assert resp.status_code == 403, (
-        f"Expected 403 for quota exceeded, got {resp.status_code}: {resp.text}"
-    )
+    assert resp.status_code == 403, f"Expected 403 for quota exceeded, got {resp.status_code}: {resp.text}"
