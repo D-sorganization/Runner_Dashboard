@@ -1,0 +1,56 @@
+name: 'Verify Issue Resolution'
+description: 'Refuses to close an issue or merge a closer-PR unless the diff substantively matches the issue body claims.'
+inputs:
+  pr_number:
+    description: 'PR number being merged or pointing at the issue'
+    required: true
+  issue_number:
+    description: 'Issue number being closed'
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Verify diff substantively matches issue claims
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        PR: ${{ inputs.pr_number }}
+        ISSUE: ${{ inputs.issue_number }}
+        REPO: ${{ github.repository }}
+      run: |
+        set -eo pipefail
+        STATS=$(gh pr view "$PR" --repo "$REPO" --json additions,deletions,changedFiles)
+        ADDS=$(echo "$STATS" | jq -r .additions)
+        DELS=$(echo "$STATS" | jq -r .deletions)
+        FILES=$(echo "$STATS" | jq -r .changedFiles)
+
+        if [ "$ADDS" -lt 5 ] && [ "$DELS" -lt 5 ] && [ "$FILES" -lt 2 ]; then
+          echo "::error::Refusing to resolve issue #$ISSUE: PR #$PR has trivial diff (+$ADDS/-$DELS, $FILES files)."
+          exit 1
+        fi
+
+        TITLE=$(gh pr view "$PR" --repo "$REPO" --json title --jq .title)
+        if echo "$TITLE" | grep -qiE '^feat[(:]|Implement|System|Engine|Framework'; then
+          PR_FILES=$(gh pr diff "$PR" --repo "$REPO" --name-only)
+          CODE=$(echo "$PR_FILES" | grep -cE '^(src/|rust_core/|api/)' || true)
+          if [ "${CODE:-0}" -lt 1 ]; then
+            echo "::error::Refusing to resolve issue #$ISSUE: PR #$PR title claims a feature but touches no src/, rust_core/, or api/ files."
+            exit 1
+          fi
+        fi
+
+        ISSUE_BODY=$(gh issue view "$ISSUE" --repo "$REPO" --json body --jq .body 2>/dev/null || echo "")
+        REF_PATHS=$(echo "$ISSUE_BODY" | grep -oE '(src|tests|rust_core|api)/[A-Za-z0-9_./-]+' | sort -u || true)
+        if [ -n "$REF_PATHS" ]; then
+          PR_FILES=$(gh pr diff "$PR" --repo "$REPO" --name-only)
+          MATCH=0
+          while IFS= read -r path; do
+            if echo "$PR_FILES" | grep -qF "$path"; then MATCH=1; break; fi
+          done <<< "$REF_PATHS"
+          if [ "$MATCH" -eq 0 ]; then
+            echo "::error::Refusing to resolve issue #$ISSUE: PR #$PR touches none of the paths the issue body references."
+            exit 1
+          fi
+        fi
+
+        echo "::notice::Issue-resolution verification passed for PR #$PR closing issue #$ISSUE."

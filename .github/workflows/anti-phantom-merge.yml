@@ -1,0 +1,102 @@
+name: Anti-Phantom Merge Guard
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  pull_request_target:
+    types: [labeled, unlabeled]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: read
+
+concurrency:
+  group: anti-phantom-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.base.ref == 'main' || github.event.pull_request.base.ref == 'master'
+    steps:
+      - name: Checkout PR head with full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Anti-phantom guard
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -eo pipefail
+
+          LABELS=$(gh pr view "$PR" --repo "$REPO" --json labels --jq '[.labels[].name] | join(",")')
+          if echo "$LABELS" | grep -qw "phantom-guard-override"; then
+            ACTOR="${{ github.actor }}"
+            PERM=$(gh api "repos/$REPO/collaborators/$ACTOR/permission" --jq .permission 2>/dev/null || echo "none")
+            if [ "$PERM" = "admin" ]; then
+              echo "::notice::phantom-guard-override label applied by admin; skipping checks."
+              exit 0
+            else
+              echo "::warning::phantom-guard-override label found but actor $ACTOR is not admin (perm=$PERM); ignoring label."
+            fi
+          fi
+
+          STATS=$(gh pr view "$PR" --repo "$REPO" --json additions,deletions,changedFiles)
+          ADDS=$(echo "$STATS" | jq -r .additions)
+          DELS=$(echo "$STATS" | jq -r .deletions)
+          FILES=$(echo "$STATS" | jq -r .changedFiles)
+          TITLE=$(gh pr view "$PR" --repo "$REPO" --json title --jq .title)
+          BODY=$(gh pr view "$PR" --repo "$REPO" --json body --jq .body)
+          PR_FILES=$(gh pr diff "$PR" --repo "$REPO" --name-only)
+
+          FAIL=""
+          fail() { FAIL="${FAIL}- $1\n"; }
+
+          if [ "$FILES" -eq 0 ] && [ "$TITLE" != "chore: empty PR" ]; then
+            fail "Rule 1 (empty diff): PR has zero changed files. If intentional, set title to exactly 'chore: empty PR'."
+          fi
+
+          if echo "$TITLE" | grep -qiE '^feat[(:]|Implement|System|Engine|Framework'; then
+            CODE_FILES=$(echo "$PR_FILES" | grep -cE '^(src/|rust_core/|api/)' || true)
+            if [ "${CODE_FILES:-0}" -lt 1 ]; then
+              fail "Rule 2 (feature without code): title claims a feature but PR touches zero files under src/, rust_core/, or api/."
+            fi
+          fi
+
+          ISSUE_NUM=$(echo "$BODY" | grep -ioE '(Closes|Fixes|Resolves) #[0-9]+' | head -1 | grep -oE '[0-9]+' || true)
+          if [ -n "$ISSUE_NUM" ]; then
+            ISSUE_BODY=$(gh issue view "$ISSUE_NUM" --repo "$REPO" --json body --jq .body 2>/dev/null || echo "")
+            REF_PATHS=$(echo "$ISSUE_BODY" | grep -oE '(src|tests|rust_core|api)/[A-Za-z0-9_./-]+' | sort -u || true)
+            if [ -n "$REF_PATHS" ]; then
+              MATCH=0
+              while IFS= read -r path; do
+                if echo "$PR_FILES" | grep -qF "$path"; then MATCH=1; break; fi
+              done <<< "$REF_PATHS"
+              if [ "$MATCH" -eq 0 ]; then
+                fail "Rule 3 (issue path mismatch): PR closes #$ISSUE_NUM but touches none of the paths the issue body references."
+              fi
+            fi
+          fi
+
+          LAST_COMMITTER=$(git log -1 --pretty=format:%an)
+          LAST_MSG=$(git log -1 --pretty=format:%s)
+          if [ "$LAST_COMMITTER" = "github-actions[bot]" ] && echo "$LAST_MSG" | grep -q "^Merge branch 'main'"; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            HUMAN_COMMITS=$(git log --pretty=format:%an "${BASE_SHA}..HEAD" | grep -cv -E '\[bot\]$' || true)
+            if [ "${HUMAN_COMMITS:-0}" -eq 0 ]; then
+              fail "Rule 4 (bot-only commits): the only commits since branch point are 'Merge branch main' from github-actions[bot]; branch likely absorbed via sibling PR."
+            fi
+          fi
+
+          if [ -n "$FAIL" ]; then
+            printf "::error::Anti-phantom guard failed:\n%b" "$FAIL"
+            COMMENT=$(printf "## Anti-Phantom Merge Guard failed\n\n%b\n### Override\nApply the \`phantom-guard-override\` label (admin-only) to bypass." "$FAIL")
+            gh pr comment "$PR" --repo "$REPO" --body "$COMMENT" >/dev/null
+            exit 1
+          fi
+          echo "::notice::Anti-phantom guard passed."
