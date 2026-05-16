@@ -27,8 +27,11 @@ let mockInstance: MockSpeechRecognition | null = null;
 
 function installMock() {
   mockInstance = null;
-  const Ctor = vi.fn(() => {
+  // vi.fn() in Vitest 4+ requires a regular function or class — not an arrow
+  // function — when the mock will be called with `new`.
+  const Ctor = vi.fn(function (this: MockSpeechRecognition) {
     mockInstance = new MockSpeechRecognition();
+    // Return the instance explicitly so that `new Ctor()` resolves to it.
     return mockInstance;
   }) as unknown as typeof SpeechRecognition;
   Object.defineProperty(window, 'SpeechRecognition', {
