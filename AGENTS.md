@@ -721,3 +721,32 @@ affect documented functionality, features, or architecture.
 - **NO PARALLELIZED GITHUB CLI**: Never write or execute Bash/PowerShell scripts that loop over multiple repositories to perform gh operations (e.g., automated PR merge scripts running in loops).
 - **BATCHING**: If extracting remote information is absolutely necessary, use a single, focused, and batched query.
 - **SILENT FAILURES**: If an API rate limit is hit, HALT NETWORK ACTIVITY IMMEDIATELY. Do not write retry-loops that further punish the API endpoint. Alert the user and pivot to local technical-debt resolution.
+
+
+## Closing issues — non-negotiable rule
+
+NEVER close a feature or bug issue without one of:
+
+1. A merged PR that implements the acceptance criteria (use `Closes #N` in the PR body or title), OR
+2. An explicit `wontfix`, `roadmap`, `duplicate`, `invalid`, or `not-planned` label.
+
+The **Verify-Issue-Closure** workflow will automatically reopen any issue closed without evidence. Do not work around it.
+
+When implementing an issue:
+- Write or update tests FIRST (TDD: red → green → refactor)
+- Add Design-by-Contract preconditions/postconditions where it clarifies invariants
+- Respect Law of Demeter — don’t reach through three layers
+- Don’t duplicate code (DRY)
+- Run tests locally before pushing
+- If you can’t fully implement, leave the issue open and post a status comment
+
+### How to close issues properly
+
+| Method | Example |
+|--------|---------|
+| Closing keyword in PR body | `Closes #1234` or `Fixes #5678` |
+| Closing keyword in PR title | `fix: resolve login crash (#1234)` |
+| Exempt label | Apply `wontfix`, `roadmap`, `duplicate`, `invalid`, or `not-planned` |
+| Bot + auto-generated label | Only for auto-generated issues closed by bots |
+
+The workflow checks the PR timeline for cross-referenced merged PRs with closing keywords. If none are found and no exempt label is present, the issue is reopened with an explanatory comment.
