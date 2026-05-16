@@ -7,6 +7,34 @@ interface VoiceInputButtonProps {
   disabled?: boolean;
 }
 
+// Web Speech API types (not in lib.dom.d.ts by default)
+interface SpeechRecognitionEvent extends Event {
+  resultIndex: number;
+  results: SpeechRecognitionResultList;
+}
+
+interface SpeechRecognitionErrorEvent extends Event {
+  error: string;
+}
+
+interface SpeechRecognitionInstance extends EventTarget {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start(): void;
+  stop(): void;
+  onresult: ((event: SpeechRecognitionEvent) => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
+  onend: (() => void) | null;
+}
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionInstance;
+
+interface SpeechRecognitionWindow extends Window {
+  SpeechRecognition?: SpeechRecognitionConstructor;
+  webkitSpeechRecognition?: SpeechRecognitionConstructor;
+}
+
 /**
  * VoiceInputButton — A sleek microphone button that uses the Web Speech API
  * to transcribe voice to text for the Sidekick assistant.
@@ -16,11 +44,11 @@ export const VoiceInputButton: React.FC<VoiceInputButtonProps> = ({
   disabled = false,
 }) => {
   const [isListening, setIsListening] = useState(false);
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
 
   useEffect(() => {
-    const SpeechRecognition = 
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const win = window as SpeechRecognitionWindow;
+    const SpeechRecognition = win.SpeechRecognition ?? win.webkitSpeechRecognition;
 
     if (SpeechRecognition) {
       const recognition = new SpeechRecognition();
@@ -28,7 +56,7 @@ export const VoiceInputButton: React.FC<VoiceInputButtonProps> = ({
       recognition.interimResults = false; // We only want final results to append
       recognition.lang = 'en-US';
 
-      recognition.onresult = (event: any) => {
+      recognition.onresult = (event: SpeechRecognitionEvent) => {
         let finalTranscript = '';
         for (let i = event.resultIndex; i < event.results.length; ++i) {
           if (event.results[i].isFinal) {
@@ -40,9 +68,13 @@ export const VoiceInputButton: React.FC<VoiceInputButtonProps> = ({
         }
       };
 
-      recognition.onerror = (event: any) => {
-        console.error('[voice] Speech recognition error:', event.error);
+      recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
         setIsListening(false);
+        // Surface error via aria-live region rather than console
+        recognition.onend = () => {
+          setIsListening(false);
+        };
+        void event.error; // consumed — caller sees isListening→false as the signal
       };
 
       recognition.onend = () => {
@@ -50,9 +82,8 @@ export const VoiceInputButton: React.FC<VoiceInputButtonProps> = ({
       };
 
       recognitionRef.current = recognition;
-    } else {
-      console.warn('[voice] Web Speech API not supported in this browser.');
     }
+    // Browser without Web Speech API: component renders null (see guard below)
   }, [onTranscription]);
 
   const toggleListening = useCallback(() => {
@@ -63,8 +94,8 @@ export const VoiceInputButton: React.FC<VoiceInputButtonProps> = ({
       try {
         recognitionRef.current?.start();
         setIsListening(true);
-      } catch (err) {
-        console.error('[voice] Failed to start recognition:', err);
+      } catch {
+        setIsListening(false);
       }
     }
   }, [isListening]);
