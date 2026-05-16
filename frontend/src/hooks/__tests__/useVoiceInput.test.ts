@@ -1,3 +1,4 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import { useVoiceInput } from '../useVoiceInput';
 
@@ -14,10 +15,10 @@ class MockSpeechRecognition {
   onerror: ((event: SpeechRecognitionErrorEvent) => void) | null = null;
   onend: (() => void) | null = null;
 
-  start = jest.fn(() => {
+  start = vi.fn(() => {
     // noop — test triggers events manually
   });
-  stop = jest.fn(() => {
+  stop = vi.fn(() => {
     this.onend?.();
   });
 }
@@ -26,7 +27,7 @@ let mockInstance: MockSpeechRecognition | null = null;
 
 function installMock() {
   mockInstance = null;
-  const Ctor = jest.fn(() => {
+  const Ctor = vi.fn(() => {
     mockInstance = new MockSpeechRecognition();
     return mockInstance;
   }) as unknown as typeof SpeechRecognition;
@@ -59,14 +60,14 @@ describe('useVoiceInput — availability', () => {
 
   it('available is false when SpeechRecognition is absent', () => {
     removeMock();
-    const onTranscript = jest.fn();
+    const onTranscript = vi.fn();
     const { result } = renderHook(() => useVoiceInput({ onTranscript }));
     expect(result.current.available).toBe(false);
   });
 
   it('available is true when SpeechRecognition is present', () => {
     installMock();
-    const onTranscript = jest.fn();
+    const onTranscript = vi.fn();
     const { result } = renderHook(() => useVoiceInput({ onTranscript }));
     expect(result.current.available).toBe(true);
   });
@@ -77,13 +78,13 @@ describe('useVoiceInput — start / stop', () => {
   afterEach(removeMock);
 
   it('recording is false initially', () => {
-    const onTranscript = jest.fn();
+    const onTranscript = vi.fn();
     const { result } = renderHook(() => useVoiceInput({ onTranscript }));
     expect(result.current.recording).toBe(false);
   });
 
   it('recording becomes true after start()', () => {
-    const onTranscript = jest.fn();
+    const onTranscript = vi.fn();
     const { result } = renderHook(() => useVoiceInput({ onTranscript }));
     act(() => result.current.start());
     expect(result.current.recording).toBe(true);
@@ -91,7 +92,7 @@ describe('useVoiceInput — start / stop', () => {
   });
 
   it('recording becomes false after stop()', () => {
-    const onTranscript = jest.fn();
+    const onTranscript = vi.fn();
     const { result } = renderHook(() => useVoiceInput({ onTranscript }));
     act(() => result.current.start());
     act(() => result.current.stop());
@@ -100,7 +101,7 @@ describe('useVoiceInput — start / stop', () => {
   });
 
   it('toggle starts then stops recording', () => {
-    const onTranscript = jest.fn();
+    const onTranscript = vi.fn();
     const { result } = renderHook(() => useVoiceInput({ onTranscript }));
     act(() => result.current.toggle());
     expect(result.current.recording).toBe(true);
@@ -114,7 +115,7 @@ describe('useVoiceInput — transcription', () => {
   afterEach(removeMock);
 
   it('calls onTranscript with the recognized text', () => {
-    const onTranscript = jest.fn();
+    const onTranscript = vi.fn();
     const { result } = renderHook(() => useVoiceInput({ onTranscript }));
     act(() => result.current.start());
 
@@ -128,7 +129,7 @@ describe('useVoiceInput — transcription', () => {
   });
 
   it('recording resets to false after recognition ends', () => {
-    const onTranscript = jest.fn();
+    const onTranscript = vi.fn();
     const { result } = renderHook(() => useVoiceInput({ onTranscript }));
     act(() => result.current.start());
     act(() => mockInstance?.onend?.());
@@ -141,8 +142,8 @@ describe('useVoiceInput — error handling', () => {
   afterEach(removeMock);
 
   it('calls onError with friendly message on not-allowed', () => {
-    const onTranscript = jest.fn();
-    const onError = jest.fn();
+    const onTranscript = vi.fn();
+    const onError = vi.fn();
     const { result } = renderHook(() =>
       useVoiceInput({ onTranscript, onError })
     );
@@ -156,8 +157,8 @@ describe('useVoiceInput — error handling', () => {
 
   it('calls onError when SR unavailable and start() is called', () => {
     removeMock();
-    const onTranscript = jest.fn();
-    const onError = jest.fn();
+    const onTranscript = vi.fn();
+    const onError = vi.fn();
     const { result } = renderHook(() =>
       useVoiceInput({ onTranscript, onError })
     );
