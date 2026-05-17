@@ -62,7 +62,9 @@ _integrity_status() {
 
 if [[ "$LIST_ONLY" == "true" ]]; then
     info "Available backups for $DEPLOY_DIR:"
-    backups=$(ls -d "${DEPLOY_DIR}.bak."* 2>/dev/null | sort -r || true)
+    # fix: ls -d also matches *.manifest.sha256 files, which then fail the
+    # require_dir check downstream. find -type d is the correct filter.
+    backups=$(find "$(dirname "$DEPLOY_DIR")" -maxdepth 1 -type d -name "$(basename "$DEPLOY_DIR").bak.*" 2>/dev/null | sort -r || true)
     if [[ -z "$backups" ]]; then
         warn "No backups found for $DEPLOY_DIR"
         exit 0
@@ -87,7 +89,7 @@ fi
 # ─── Select backup ────────────────────────────────────────────────────────────
 
 if [[ -z "$BACKUP_PATH" ]]; then
-    BACKUP_PATH=$(ls -d "${DEPLOY_DIR}.bak."* 2>/dev/null | sort -r | head -1 || true)
+    BACKUP_PATH=$(find "$(dirname "$DEPLOY_DIR")" -maxdepth 1 -type d -name "$(basename "$DEPLOY_DIR").bak.*" 2>/dev/null | sort -r | head -1 || true)
     [[ -n "$BACKUP_PATH" ]] || fail "No backup found. Run update-deployed.sh first."
     info "Auto-selected: $BACKUP_PATH"
 fi

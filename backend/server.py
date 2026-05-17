@@ -378,7 +378,15 @@ app.add_middleware(_prometheus_metrics_router.PrometheusMiddleware)
 from replay_store import ReplayStore, migrate_json_to_sqlite  # noqa: E402
 
 _PROCESSED_ENVELOPES_PATH = Path.home() / "actions-runners" / "dashboard" / "processed_envelopes.json"
-_REPLAY_STORE_PATH = Path.home() / "actions-runners" / "dashboard" / "replay.db"
+# Path is overridable via RUNNER_DASHBOARD_REPLAY_DB so operators with
+# constrained systemd sandboxes (ProtectHome=read-only) can relocate the DB
+# to any directory in their ReadWritePaths list without editing this file.
+_REPLAY_STORE_PATH = Path(
+    os.environ.get(
+        "RUNNER_DASHBOARD_REPLAY_DB",
+        str(Path.home() / "actions-runners" / "dashboard" / "replay.db"),
+    )
+)
 _replay_store: ReplayStore = ReplayStore(_REPLAY_STORE_PATH)
 
 # One-shot migration: import any live entries from the legacy JSON file.

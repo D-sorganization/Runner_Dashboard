@@ -196,6 +196,58 @@ at service start. The file is owned by the runner user with mode `0600`.
 
 ---
 
+## systemd Sandboxing
+
+The installed unit (`/etc/systemd/system/runner-dashboard.service`) is
+hardened with `ProtectHome=read-only`, which makes the entire `$HOME` tree
+read-only from the service's point of view, with exceptions allowed only via
+explicit `ReadWritePaths=` entries.
+
+The current canonical list of paths the service must be able to write:
+
+| Path | Why it must be writable |
+|---|---|
+| `~/.config/runner-dashboard/` | Token cache, session secret, scheduler config, env file |
+| `~/.local/share/runner-dashboard/` | SQLite replay store for the Linear webhook receiver (issue #243) |
+| `~/actions-runners/dashboard/` | SQLite replay store for dispatch envelopes (issue #344), push-subscription DB, orchestration audit log |
+
+These paths are baked into `deploy/runner-dashboard.service`, the template
+that `setup.sh` substitutes per machine. **If you upgraded an existing
+deployment whose installed unit was generated before this list was extended,
+re-run `bash deploy/setup.sh ...` to regenerate the unit.** The unit is not
+patched in place; it is regenerated from the template.
+
+### Diagnosis: `EROFS` at startup
+
+If the service crash-loops with a Python traceback ending in:
+
+```
+OSError: [Errno 30] Read-only file system: '/home/<user>/.local/share/runner-dashboard'
+```
+
+(or any other path under `$HOME`), this is **not** a filesystem-permissions
+issue. It is the systemd sandbox refusing the write because the path is not
+on the `ReadWritePaths=` list. See
+[`docs/runbooks/dashboard-down.md` § "EROFS at startup"](runbooks/dashboard-down.md#pattern-erofs--read-only-filesystem-at-startup)
+for the full triage and the per-host drop-in workaround.
+
+### Overriding replay-store paths
+
+Both `ReplayStore` instances respect environment variables for their
+database location, so an operator on a fleet machine with a constrained
+sandbox policy can move them onto an already-allowlisted path without
+editing the unit file:
+
+| Variable | Default | Used by |
+|---|---|---|
+| `RUNNER_DASHBOARD_REPLAY_DB` | `~/actions-runners/dashboard/replay.db` | dispatch envelope replay store (`backend/server.py`) |
+| `LINEAR_WEBHOOK_REPLAY_DB` | `~/.local/share/runner-dashboard/linear_webhook_replay.db` | Linear webhook replay store (`backend/routers/linear_webhook.py`) |
+
+Set these in `~/.config/runner-dashboard/env` (which is loaded by systemd at
+service start) to point both DBs at a single writable directory.
+
+---
+
 ## Token Refresh
 
 GitHub PATs expire. When the dashboard reports `github_api: disconnected`, refresh

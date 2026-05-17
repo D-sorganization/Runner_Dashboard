@@ -80,6 +80,12 @@ TasksMax=512
 WatchdogSec=120
 # Allow the dashboard to read/write runner secrets and config from HOME.
 ReadWritePaths=/home/YOUR_USER/.config/runner-dashboard
+# ReplayStore SQLite locations introduced in #344 (issue #243 also writes
+# under .local/share). Both paths must be on this list, or the service
+# crash-loops at module import with OSError [Errno 30] Read-only file
+# system. See docs/deployment-model.md "systemd Sandboxing".
+ReadWritePaths=/home/YOUR_USER/.local/share/runner-dashboard
+ReadWritePaths=/home/YOUR_USER/actions-runners/dashboard
 
 [Install]
 WantedBy=multi-user.target
