@@ -18,7 +18,7 @@ concurrency:
 jobs:
   guard:
     timeout-minutes: 60
-    runs-on: ubuntu-latest
+    runs-on: d-sorg-fleet
     if: github.event.pull_request.base.ref == 'main' || github.event.pull_request.base.ref == 'master'
     steps:
       - name: Checkout PR head with full history
