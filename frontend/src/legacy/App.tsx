@@ -13305,11 +13305,11 @@ function AssistantSidebar(props) {
       )
     : null;
 
-  return h("div", { style: sidebarStyle, "aria-label": "Assistant sidebar" },
+  return h("div", { style: sidebarStyle, "aria-label": "Chat sidebar" },
     open ? h("div", { style: dragHandleStyle, onMouseDown: startDrag }) : null,
     open ? h(React.Fragment, null,
       h("div", { style: headerStyle },
-        h("span", { style: { fontWeight: 600, fontSize: 13 } }, "✨ Assistant"),
+        h("span", { style: { fontWeight: 600, fontSize: 13 } }, "💬 Chat"),
         h("div", { style: { display: "flex", gap: 6 } },
           h("label", {
             title: "Save chat history",
@@ -16187,8 +16187,8 @@ function App({ initialTab, onTabChange }: { initialTab?: string; onTabChange?: (
           className: "btn",
           style: { marginLeft: 4, background: asstOpen ? "var(--accent-blue)" : undefined, color: asstOpen ? "#fff" : undefined },
           onClick: toggleAsst,
-          title: "Toggle Assistant sidebar",
-        }, "☰ Asst"),
+          title: "Toggle Chat sidebar",
+        }, "💬 Chat"),
         h(QuickDispatchPopover, null),
         h(
           "button",
