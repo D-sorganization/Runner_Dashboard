@@ -8,8 +8,10 @@ Routes:
   GET /api/issues
   GET /api/tests/ci-results
   POST /api/tests/rerun
-  GET /api/stats
-  GET /api/usage
+
+Stats and usage routes (``/api/stats``, ``/api/usage``) live in
+:mod:`backend.routers.repos_stats` to keep this module under the 500-line cap.
+The companion router shares dependency state via :func:`set_dependencies`.
 """
 
 from __future__ import annotations
@@ -22,6 +24,8 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from identity import require_scope
 from proxy_utils import proxy_to_hub, should_proxy_fleet_to_hub
+
+from .repos_stats import router as stats_router
 
 log = logging.getLogger("dashboard.repos")
 router = APIRouter(tags=["repos"])
@@ -405,101 +409,6 @@ async def rerun_ci_test(
         raise HTTPException(status_code=500, detail="Internal server error") from None
 
 
-@router.get("/api/stats")
-async def get_stats(request: Request) -> Any:
-    """Aggregate organization, runner, queue, and workflow statistics."""
-    if should_proxy_fleet_to_hub(request):
-        return await proxy_to_hub(request)
-
-    cached = _cache_get("stats", _STATS_TTL)
-    if cached is not None:
-        return cached
-
-    runners_data = _cache_get("runners", 25.0)
-    if runners_data is None:
-        runners_data = await _gh_api_admin(f"/orgs/{ORG}/actions/runners")
-        _cache_set("runners", runners_data)
-    runners = runners_data.get("runners", [])
-
-    repos = await _get_recent_org_repos(limit=30)
-
-    async def _fetch_repo_runs_local(repo_name: str, per_page: int = 10) -> list[dict]:
-        code, stdout, _ = await _run_cmd(
-            ["gh", "api", f"/repos/{ORG}/{repo_name}/actions/runs?per_page={per_page}"],
-            timeout=15,
-        )
-        if code != 0:
-            return []
-        try:
-            return json.loads(stdout).get("workflow_runs", [])
-        except (json.JSONDecodeError, ValueError):
-            return []
-
-    async def _github_search_total_local(query: str) -> int:
-        code, stdout, _ = await _run_cmd(
-            ["gh", "api", f"search/issues?q={query}&per_page=1"],
-            timeout=15,
-        )
-        if code != 0:
-            return 0
-        try:
-            return int(json.loads(stdout).get("total_count", 0))
-        except (json.JSONDecodeError, TypeError, ValueError):
-            return 0
-
-    all_runs_nested = await asyncio.gather(*[_fetch_repo_runs_local(repo["name"], per_page=10) for repo in repos[:20]])
-    runs = [run for repo_runs in all_runs_nested for run in repo_runs]
-    runs.sort(key=lambda r: r.get("created_at", ""), reverse=True)
-    runs = runs[:100]
-
-    online = sum(1 for r in runners if r["status"] == "online")
-    busy = sum(1 for r in runners if r.get("busy"))
-    completed = [r for r in runs if r.get("conclusion")]
-    successes = sum(1 for r in completed if r["conclusion"] == "success")
-    failures = sum(1 for r in completed if r["conclusion"] == "failure")
-
-    org_open_issues, org_open_prs, queue_data, fleet_data = await asyncio.gather(
-        _github_search_total_local(f"org:{ORG}+is:open+is:issue"),
-        _github_search_total_local(f"org:{ORG}+is:open+is:pr"),
-        _queue_impl(),
-        _get_fleet_nodes_impl(),
-    )
-
-    result = {
-        "runners_total": len(runners),
-        "runners_online": online,
-        "runners_busy": busy,
-        "runners_idle": max(0, online - busy),
-        "runners_offline": max(0, len(runners) - online),
-        "runs_total": len(runs),
-        "runs_success": successes,
-        "runs_failure": failures,
-        "runs_completed": len(completed),
-        "success_rate": round(successes / len(completed) * 100) if completed else 0,
-        "in_progress": queue_data.get("in_progress_count", 0),
-        "queued": queue_data.get("queued_count", 0),
-        "queue_total": queue_data.get("total", 0),
-        "org_open_issues": org_open_issues,
-        "org_open_prs": org_open_prs,
-        "machines_total": fleet_data.get("count", 0),
-        "machines_online": fleet_data.get("online_count", 0),
-        "machines_offline": max(0, fleet_data.get("count", 0) - fleet_data.get("online_count", 0)),
-        "repos_sampled": len(repos[:20]),
-    }
-    _cache_set("stats", result)
-    return result
-
-
-@router.get("/api/usage")
-async def get_usage_monitoring(request: Request) -> dict:
-    """Return normalized subscription and local tool usage summaries."""
-    if should_proxy_fleet_to_hub(request):
-        return await proxy_to_hub(request)
-
-    cached = _cache_get("usage_monitoring", _USAGE_MONITORING_TTL)
-    if cached is not None:
-        return cached
-
-    summary = _usage_monitoring.normalize_usage_summary(_usage_monitoring.load_usage_sources_config())
-    _cache_set("usage_monitoring", summary)
-    return summary
+# /api/stats and /api/usage live in repos_stats.py — merge that router into
+# this module's APIRouter so callers continue to register a single router.
+router.include_router(stats_router)
