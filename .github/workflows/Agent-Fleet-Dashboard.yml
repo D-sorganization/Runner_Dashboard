@@ -85,6 +85,7 @@ jobs:
         if: steps.credential-preflight.outputs.credentials-present == 'true'
         with:
           python-version: "3.11"
+          cache: 'pip'
 
       - name: Generate dashboard
         if: steps.credential-preflight.outputs.credentials-present == 'true'
