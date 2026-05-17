@@ -299,7 +299,10 @@ async def cancel_workflow_runs(
     queue_data = await _queue_impl()
     typed_runs = [GhWorkflowRun.model_validate(r) for r in queue_data.get("queued", [])]
     runs_to_cancel = [
-        r for r in typed_runs if r.name == workflow_name and (target_repo is None or r.repository_name == target_repo)
+        r
+        for r in typed_runs
+        if r.name == workflow_name
+        and (target_repo is None or r.repository_name == target_repo)
     ]
 
     cancelled: list[dict] = []
