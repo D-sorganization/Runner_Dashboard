@@ -265,7 +265,6 @@ jobs:
   # --- WORKER DISPATCH ---
 
   call-repair:
-    timeout-minutes: 30
     needs: triage
     if: needs.triage.outputs.target == 'auto-repair'
     uses: ./.github/workflows/Jules-Auto-Repair.yml
@@ -278,7 +277,6 @@ jobs:
       JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
 
   call-ci-remediation:
-    timeout-minutes: 30
     needs: triage
     if: needs.triage.outputs.target == 'ci-remediation'
     uses: ./.github/workflows/Jules-PR-AutoFix.yml
