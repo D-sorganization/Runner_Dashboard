@@ -1,176 +1,23 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { SegmentedControl } from "../../primitives/SegmentedControl";
-import { Badge } from "../../primitives/Badge";
 import { TouchButton } from "../../primitives/TouchButton";
 import { SkeletonCard, SkeletonLine } from "../../primitives/Skeleton";
 import { PullToRefresh } from "../../primitives/PullToRefresh";
-import { BottomSheet } from "../../primitives/BottomSheet";
 import { useHaptic } from "../../hooks/useHaptic";
 
-// -- Types -----------------------------------------------------------------------
-
-interface WorkflowRun {
-  id: string | number;
-  name?: string;
-  head_branch?: string;
-  html_url?: string;
-  run_started_at?: string;
-  created_at?: string;
-  runner_name?: string;
-  runner?: { name?: string };
-  triggering_actor?: { login?: string };
-  actor?: { login?: string };
-  repository?: { name?: string };
-}
-
-interface QueueData {
-  in_progress?: WorkflowRun[];
-  queued?: WorkflowRun[];
-  total?: number;
-}
-
-type FilterValue = "all" | "running" | "queued" | "failed";
-
-interface RunDetail {
-  run: WorkflowRun;
-  status: FilterValue;
-  repo: string;
-  elapsed: string;
-}
-
-// -- Constants -------------------------------------------------------------------
-
-const FILTER_OPTIONS = [
-  { label: "All", value: "all" },
-  { label: "Running", value: "running" },
-  { label: "Queued", value: "queued" },
-  { label: "Failed", value: "failed" },
-];
-
-const POLL_INTERVAL_MS = 15_000;
-
-// -- Helpers ---------------------------------------------------------------------
-
-function formatDuration(seconds: number): string {
-  if (!seconds || seconds < 0) return "-";
-  if (seconds < 60) return `${seconds}s`;
-  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
-}
-
-function elapsedSeconds(run: WorkflowRun): number {
-  const start = run.run_started_at ?? run.created_at;
-  if (!start) return 0;
-  return Math.round((Date.now() - new Date(start).getTime()) / 1000);
-}
-
-function elapsedLabel(run: WorkflowRun): string {
-  return formatDuration(elapsedSeconds(run));
-}
-
-function runRepo(run: WorkflowRun): string {
-  return run.repository?.name ?? "";
-}
-
-function triggeredBy(run: WorkflowRun): string {
-  return run.triggering_actor?.login ?? run.actor?.login ?? "unknown";
-}
-
-function runnerName(run: WorkflowRun): string {
-  return run.runner_name ?? run.runner?.name ?? "-";
-}
-
-function statusTone(
-  status: FilterValue,
-): "warning" | "info" | "danger" | "neutral" {
-  if (status === "running") return "warning";
-  if (status === "queued") return "info";
-  if (status === "failed") return "danger";
-  return "neutral";
-}
-
-function statusLabel(status: FilterValue): string {
-  if (status === "running") return "running";
-  if (status === "queued") return "queued";
-  if (status === "failed") return "failed";
-  return "unknown";
-}
-
-// -- Sub-components --------------------------------------------------------------
-
-interface RunCardProps {
-  elapsed: string;
-  repo: string;
-  run: WorkflowRun;
-  status: FilterValue;
-  onClick: () => void;
-}
-
-function RunCard({ elapsed, repo, run, status, onClick }: RunCardProps) {
-  return (
-    <button
-      aria-label={`${run.name ?? "Workflow run"} in ${repo}, ${statusLabel(status)}, ${elapsed}`}
-      className="queue-mobile-run-card"
-      onClick={onClick}
-      style={{
-        background: "var(--bg-secondary)",
-        border: "1px solid var(--border)",
-        borderRadius: 10,
-        cursor: "pointer",
-        display: "block",
-        marginBottom: 10,
-        padding: "12px 14px",
-        textAlign: "left",
-        width: "100%",
-      }}
-      type="button"
-    >
-      <div
-        style={{
-          alignItems: "center",
-          display: "flex",
-          justifyContent: "space-between",
-          marginBottom: 6,
-        }}
-      >
-        <span
-          style={{
-            color: "var(--text-primary)",
-            fontSize: 13,
-            fontWeight: 600,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-            maxWidth: "60%",
-          }}
-        >
-          {run.name ?? "Workflow run"}
-        </span>
-        <Badge tone={statusTone(status)} size="sm">
-          {statusLabel(status)}
-        </Badge>
-      </div>
-      <div
-        style={{
-          color: "var(--text-secondary)",
-          display: "flex",
-          fontSize: 12,
-          gap: 8,
-          flexWrap: "wrap",
-        }}
-      >
-        <span>{repo || "unknown repo"}</span>
-        {run.head_branch && (
-          <span style={{ color: "var(--text-muted)" }}>{run.head_branch}</span>
-        )}
-        <span style={{ color: "var(--text-muted)", marginLeft: "auto" }}>
-          {elapsed}
-        </span>
-      </div>
-    </button>
-  );
-}
-
-// -- Main component --------------------------------------------------------------
+import { MobileRunCard } from "./MobileRunCard";
+import { MobileRunDetail } from "./MobileRunDetail";
+import type {
+  FilterValue,
+  QueueData,
+  RunDetail,
+} from "./mobileTypes";
+import {
+  FILTER_OPTIONS,
+  POLL_INTERVAL_MS,
+  elapsedLabel,
+  runRepo,
+} from "./mobileTypes";
 
 export function QueueMobile() {
   const [queueData, setQueueData] = useState<QueueData>({});
@@ -332,10 +179,6 @@ export function QueueMobile() {
     );
   }
 
-  const selectedKey = selectedRun
-    ? `${selectedRun.repo}/${selectedRun.run.id}`
-    : null;
-
   return (
     <section
       aria-label="Queue and Workflows"
@@ -431,7 +274,7 @@ export function QueueMobile() {
             </div>
           ) : (
             filtered.map((item) => (
-              <RunCard
+              <MobileRunCard
                 key={`${item.repo}/${item.run.id}`}
                 elapsed={item.elapsed}
                 repo={item.repo}
@@ -448,118 +291,14 @@ export function QueueMobile() {
       </div>
 
       {/* Detail BottomSheet */}
-      <BottomSheet
-        isOpen={!!selectedRun}
+      <MobileRunDetail
+        selectedRun={selectedRun}
         onClose={() => setSelectedRun(null)}
-        title={selectedRun?.run.name ?? "Workflow run"}
-      >
-        {selectedRun && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {/* Meta rows */}
-            <div
-              style={{
-                background: "var(--bg-tertiary)",
-                borderRadius: 8,
-                display: "flex",
-                flexDirection: "column",
-                gap: 8,
-                padding: "12px 14px",
-              }}
-            >
-              {[
-                { label: "Repo", value: selectedRun.repo || "-" },
-                {
-                  label: "Branch",
-                  value: selectedRun.run.head_branch || "-",
-                },
-                {
-                  label: "Triggered by",
-                  value: triggeredBy(selectedRun.run),
-                },
-                { label: "Runner", value: runnerName(selectedRun.run) },
-                { label: "Elapsed", value: selectedRun.elapsed },
-                { label: "Status", value: statusLabel(selectedRun.status) },
-              ].map(({ label, value }) => (
-                <div
-                  key={label}
-                  style={{
-                    alignItems: "center",
-                    display: "flex",
-                    justifyContent: "space-between",
-                  }}
-                >
-                  <span
-                    style={{ color: "var(--text-muted)", fontSize: 12 }}
-                  >
-                    {label}
-                  </span>
-                  <span
-                    style={{
-                      color: "var(--text-primary)",
-                      fontSize: 13,
-                      fontWeight: 500,
-                    }}
-                  >
-                    {value}
-                  </span>
-                </div>
-              ))}
-            </div>
-
-            {/* Action buttons */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {selectedRun.run.html_url && (
-                <TouchButton
-                  aria-label="View run on GitHub"
-                  onClick={() => {
-                    window.open(
-                      selectedRun.run.html_url,
-                      "_blank",
-                      "noopener,noreferrer",
-                    );
-                  }}
-                  variant="default"
-                  style={{ minHeight: 48, width: "100%" }}
-                >
-                  View on GitHub
-                </TouchButton>
-              )}
-
-              <TouchButton
-                aria-label="Re-run workflow"
-                disabled={
-                  !selectedRun.repo ||
-                  cancelDone[selectedKey!] === true
-                }
-                onClick={() => handleRerunRun(selectedRun)}
-                variant="primary"
-                style={{ minHeight: 48, width: "100%" }}
-              >
-                Re-run
-              </TouchButton>
-
-              {selectedRun.status === "running" && selectedRun.repo && (
-                <TouchButton
-                  aria-label="Cancel run"
-                  disabled={
-                    cancelling[selectedKey!] === true ||
-                    cancelDone[selectedKey!] === true
-                  }
-                  onClick={() => handleCancelRun(selectedRun)}
-                  variant="danger"
-                  style={{ minHeight: 48, width: "100%" }}
-                >
-                  {cancelDone[selectedKey!]
-                    ? "Cancelled"
-                    : cancelling[selectedKey!]
-                      ? "Cancelling..."
-                      : "Cancel"}
-                </TouchButton>
-              )}
-            </div>
-          </div>
-        )}
-      </BottomSheet>
+        onRerun={handleRerunRun}
+        onCancel={handleCancelRun}
+        cancelling={cancelling}
+        cancelDone={cancelDone}
+      />
     </section>
   );
 }
