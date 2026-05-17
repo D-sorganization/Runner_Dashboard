@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   lint:
-    runs-on: ubuntu-latest
+    runs-on: d-sorg-fleet
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
@@ -37,24 +37,36 @@ jobs:
 
       - name: Require timeout-minutes, concurrency, cancel-in-progress
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FILES: ${{ steps.changed.outputs.files }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eo pipefail
           [ -z "$FILES" ] && exit 0
           FAIL=""
           while IFS= read -r f; do
             [ -z "$f" ] && continue
-            [ ! -f "$f" ] && continue
+            [ ! -f "$f" ] && continue  # deleted file — skip
+            # Check timeout-minutes (anywhere in file)
             if ! grep -q '^\s*timeout-minutes:' "$f"; then
               FAIL="${FAIL}\n  - $f: missing timeout-minutes"
             fi
+            # Check concurrency block
             if ! grep -q '^concurrency:' "$f"; then
               FAIL="${FAIL}\n  - $f: missing concurrency block"
             fi
-            if grep -q '^concurrency:' "$f" && ! grep -q 'cancel-in-progress:\s*true' "$f"; then
-              FAIL="${FAIL}\n  - $f: cancel-in-progress not set to true"
-            fi
+            # Check cancel-in-progress: true (only if concurrency exists)
+            # Exception allowlist — workflows where cancel-in-progress: false is legitimate
+            # (publishes/releases should not be interrupted mid-stream)
+            case "$(basename "$f")" in
+              publish-artifacts.yml|release.yml|publish.yml|deploy.yml|nightly-publish.yml)
+                echo "::notice::Skipping cancel-in-progress check for $f (intentional exception)"
+                ;;
+              *)
+                if grep -q '^concurrency:' "$f" && ! grep -q 'cancel-in-progress:\s*true' "$f"; then
+                  FAIL="${FAIL}\n  - $f: cancel-in-progress not set to true"
+                fi
+                ;;
+            esac
           done <<< "$FILES"
           if [ -n "$FAIL" ]; then
             printf "::error::Workflow lint failed:%b\n" "$FAIL"
