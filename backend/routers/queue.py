@@ -63,51 +63,110 @@ async def _get_recent_org_repos(limit: int = 30) -> list[dict]:
 async def _fetch_repo_runs(
     repo_name: str,
     *,
-    per_page: int = 10,
+    per_page: int = 100,
     status: str | None = None,
 ) -> list[dict]:
-    """Fetch workflow runs for one repository and annotate repository name."""
+    """Fetch workflow runs for one repository and annotate repository name.
+
+    Failures (non-zero exit, JSON parse error) raise instead of returning [].
+    Callers that aggregate across many repos must use return_exceptions=True
+    so one repo's transient failure cannot silently zero its contribution to
+    the org-wide queue total — that was the root cause of the dashboard
+    "queue drops to zero" flicker (see Runner_Dashboard#641).
+    """
     repo_name = validate_repo_slug(repo_name)
     status_part = f"&status={status}" if status else ""
-    rc, out, _ = await run_cmd(
+    rc, out, err = await run_cmd(
         [
             "gh",
             "api",
             f"/repos/{ORG}/{repo_name}/actions/runs?per_page={per_page}{status_part}",
         ],
-        timeout=15,
+        timeout=30,
     )
     if rc != 0:
-        return []
-    try:
-        runs = json.loads(out).get("workflow_runs", [])
-    except (json.JSONDecodeError, ValueError):
-        return []
+        raise RuntimeError(
+            f"gh api failed for {repo_name} (status={status}): rc={rc} {err[:200]!r}"
+        )
+    runs = json.loads(out).get("workflow_runs", [])
     for run in runs:
         if "repository" not in run or not run["repository"]:
             run["repository"] = {"name": repo_name}
     return runs
 
 
+# Cache TTL kept at 60s (down from 120s) so partial failures heal faster.
+# `queue:stale` is a parallel key written whenever we have any fresh result;
+# it is read with an effectively infinite TTL when every upstream fetch fails,
+# so the dashboard never has to render an empty queue just because one batch
+# of `gh api` calls timed out (the symptom reported in Runner_Dashboard#641).
+_QUEUE_CACHE_TTL = 60.0
+_QUEUE_CACHE_KEY = "queue"
+_QUEUE_STALE_KEY = "queue:stale"
+_QUEUE_REPO_LIMIT = 30  # was 15 — repos beyond this silently contributed 0
+# Years, in seconds. cache_utils proactively deletes entries past TTL, so we
+# need a value larger than the process's expected uptime, not literally inf.
+_QUEUE_STALE_TTL = 60.0 * 60.0 * 24.0 * 365.0
+
+
 async def _queue_impl() -> dict:
-    """Core queue aggregation, callable from the HTTP endpoint and internally."""
-    cached = cache_get("queue", 120.0)
+    """Core queue aggregation, callable from the HTTP endpoint and internally.
+
+    Behavior:
+    1. If the cache is fresh (<TTL), serve it.
+    2. Otherwise fetch all `_QUEUE_REPO_LIMIT` repos concurrently with
+       `return_exceptions=True`. Repos that succeed contribute their runs;
+       repos that fail are logged at WARNING level but do NOT zero out the
+       result. If ANY repo succeeded, we cache and return a fresh result.
+    3. If every fetch failed, fall back to the last cached stale result
+       rather than serving an empty queue — the dashboard rendering empty
+       was the user-visible symptom we're fixing.
+    """
+    cached = cache_get(_QUEUE_CACHE_KEY, _QUEUE_CACHE_TTL)
     if cached is not None:
         return cached
 
-    repos = await _get_recent_org_repos(limit=20)
+    repos = await _get_recent_org_repos(limit=_QUEUE_REPO_LIMIT)
     if not repos:
-        return _empty_queue_result()
+        # No repos visible at all; try the stale cache before giving up.
+        stale = cache_get(_QUEUE_STALE_KEY, _QUEUE_STALE_TTL)
+        return stale if stale is not None else _empty_queue_result()
 
     async def fetch_active_runs(repo_name: str) -> list[dict]:
         results: list[dict] = []
         for status in ("queued", "in_progress"):
-            results.extend(await _fetch_repo_runs(repo_name, per_page=10, status=status))
+            results.extend(await _fetch_repo_runs(repo_name, status=status))
         return results
 
-    sample = repos[:15]
-    all_runs_nested = await asyncio.gather(*[fetch_active_runs(r["name"]) for r in sample])
-    all_runs: list[dict] = [run for sublist in all_runs_nested for run in sublist]
+    sample = repos[:_QUEUE_REPO_LIMIT]
+    fetched = await asyncio.gather(
+        *[fetch_active_runs(r["name"]) for r in sample],
+        return_exceptions=True,
+    )
+
+    all_runs: list[dict] = []
+    failures: list[str] = []
+    for repo, result in zip(sample, fetched, strict=True):
+        if isinstance(result, BaseException):
+            failures.append(f"{repo['name']}: {result!r}")
+            continue
+        all_runs.extend(result)
+
+    if failures:
+        log.warning(
+            "queue aggregation: %d/%d repos failed: %s",
+            len(failures),
+            len(sample),
+            "; ".join(failures[:5]),
+        )
+
+    # If every repo failed, prefer last-known-good over empty.
+    if len(failures) == len(sample):
+        stale = cache_get(_QUEUE_STALE_KEY, _QUEUE_STALE_TTL)
+        if stale is not None:
+            log.warning("queue aggregation: all repos failed; serving stale cache")
+            return stale
+        return _empty_queue_result()
 
     queued = sorted(
         [r for r in all_runs if r.get("status") == "queued"],
@@ -124,8 +183,13 @@ async def _queue_impl() -> dict:
         "total": len(queued) + len(in_progress),
         "queued_count": len(queued),
         "in_progress_count": len(in_progress),
+        "stats": {
+            "repos_sampled": len(sample),
+            "repos_failed": len(failures),
+        },
     }
-    cache_set("queue", result)
+    cache_set(_QUEUE_CACHE_KEY, result)
+    cache_set(_QUEUE_STALE_KEY, result)
     return result
 
 
@@ -136,8 +200,11 @@ async def _queue_impl() -> dict:
 async def get_queue(request: Request) -> dict:
     """Get queued and in-progress workflow runs across the org.
 
-    GitHub has no org-level queue endpoint; we query the 15 most recently
-    updated repos concurrently for both statuses and aggregate the results.
+    GitHub has no org-level queue endpoint; we query the top
+    `_QUEUE_REPO_LIMIT` most-recently-updated repos concurrently for both
+    statuses and aggregate. Partial failures are logged but do not zero out
+    the result; if everything fails, we serve the last cached payload rather
+    than empty (see Runner_Dashboard#641).
     """
     if should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
@@ -232,7 +299,10 @@ async def cancel_workflow_runs(
     queue_data = await _queue_impl()
     typed_runs = [GhWorkflowRun.model_validate(r) for r in queue_data.get("queued", [])]
     runs_to_cancel = [
-        r for r in typed_runs if r.name == workflow_name and (target_repo is None or r.repository_name == target_repo)
+        r
+        for r in typed_runs
+        if r.name == workflow_name
+        and (target_repo is None or r.repository_name == target_repo)
     ]
 
     cancelled: list[dict] = []
