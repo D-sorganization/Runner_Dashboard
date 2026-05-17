@@ -16,7 +16,7 @@ concurrency:
 jobs:
   local-only-workflows:
     name: Reject hosted runner routing
-    runs-on: d-sorg-fleet
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Checkout repository without external actions
