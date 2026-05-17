@@ -21,6 +21,7 @@ permissions:
 
 jobs:
   verify-closure:
+    timeout-minutes: 30
     # Skip if the issue was just reopened (state_reason == 'reopened') so we
     # don't loop on our own reopen action. Also skip if the closer is the
     # github-actions bot itself (defence in depth).

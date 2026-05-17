@@ -17,6 +17,7 @@ concurrency:
 
 jobs:
   guard:
+    timeout-minutes: 60
     runs-on: ubuntu-latest
     if: github.event.pull_request.base.ref == 'main' || github.event.pull_request.base.ref == 'master'
     steps:
