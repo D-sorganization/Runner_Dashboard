@@ -76,22 +76,53 @@ def safe_subprocess_env() -> dict[str, str]:
 # ─── URL Validation ────────────────────────────────────────────────────────────
 
 
+# Tailscale's CGNAT range — 100.64.0.0/10 per RFC 6598 — is what every
+# Tailscale node IP falls under. `ipaddress.IPv4Address.is_private` does
+# NOT include CGNAT (it covers 10/8, 172.16/12, 192.168/16 only). Without
+# this allowance, every Tailscale-routed peer is rejected by
+# validate_fleet_node_url() and fleet federation can't be configured at
+# all over the canonical Tailscale transport — observed on this fleet
+# 2026-05-18: machine_registry shipped 4 nodes with 100.x IPs and every
+# one was rejected on auto-derive, so `/api/fleet/nodes` returned just
+# the local host. See #668 follow-up for the diagnostic surface.
+_TAILSCALE_CGNAT_NET = ipaddress.ip_network("100.64.0.0/10")
+
+
 def validate_fleet_node_url(url: str) -> str:
-    """Validate a fleet node URL to prevent SSRF (issue #28)."""
+    """Validate a fleet node URL to prevent SSRF (issue #28).
+
+    Allowed address ranges:
+      - RFC 1918 private (10/8, 172.16/12, 192.168/16)
+      - Loopback (127/8)
+      - RFC 6598 CGNAT (100.64.0.0/10) — Tailscale + carrier-grade NAT
+    Allowed hostnames:
+      - localhost
+      - *.local
+      - *.internal
+      - *.ts.net (Tailscale MagicDNS — full FQDNs for federation peers)
+    """
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https"):
         raise ValueError(f"Fleet node URL must use http or https: {url}")
     host = parsed.hostname or ""
     try:
         addr = ipaddress.ip_address(host)
-        if not (addr.is_private or addr.is_loopback):
-            raise ValueError(f"Fleet node URL must be a private/local address: {url}")
+        if addr.is_private or addr.is_loopback:
+            return url
+        if isinstance(addr, ipaddress.IPv4Address) and addr in _TAILSCALE_CGNAT_NET:
+            return url
+        raise ValueError(f"Fleet node URL must be a private/local address: {url}")
     except ValueError as exc:
         # If it's not an IP address check it's a hostname we trust
         if "must be" in str(exc):
             raise
-        # hostname – allow localhost, .local, .internal
-        if not (host == "localhost" or host.endswith(".local") or host.endswith(".internal")):
+        # hostname – allow localhost, .local, .internal, .ts.net (Tailscale MagicDNS)
+        if not (
+            host == "localhost"
+            or host.endswith(".local")
+            or host.endswith(".internal")
+            or host.endswith(".ts.net")
+        ):
             raise ValueError(f"Fleet node hostname not allowed: {host}") from exc
     return url
 
