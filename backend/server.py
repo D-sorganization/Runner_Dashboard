@@ -2482,20 +2482,47 @@ async def _startup() -> None:
         import fcntl
 
         global _leader_lock_fd
-        lock_path = "/var/run/runner-dashboard-leader.lock"
-        if not os.path.exists(os.path.dirname(lock_path)):
-            lock_path = "/tmp/runner-dashboard-leader.lock"
-        _leader_lock_fd = open(lock_path, "w")
-        fcntl.flock(_leader_lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)  # type: ignore[attr-defined]  # type: ignore[attr-defined]
-        log.info("Acquired leader lock, starting background tasks")
-        _runner_audit_router.start_audit_loop()
-        _linear_sync_router.start_sync_loop()  # issue #236
+        # Walk a candidate list and use the first writable path. Same
+        # regression #664's follow-up fixed in the autoscaler: hard-coded
+        # /var/run/ with a dir-existence check that always passed (because
+        # /run exists via symlink) — non-root deploys hit PermissionError
+        # and got demoted to follower forever. See #666.
+        candidates = [
+            os.environ.get("DASHBOARD_LEADER_LOCK_PATH"),
+            "/var/run/runner-dashboard-leader.lock",
+            f"/run/user/{os.getuid()}/runner-dashboard-leader.lock",  # type: ignore[attr-defined]
+            os.path.expanduser("~/.cache/runner-dashboard-leader.lock"),
+            "/tmp/runner-dashboard-leader.lock",
+        ]
+        acquired = False
+        last_err: OSError | None = None
+        for candidate in candidates:
+            if not candidate:
+                continue
+            try:
+                os.makedirs(os.path.dirname(candidate), exist_ok=True)
+                _leader_lock_fd = open(candidate, "w")
+                fcntl.flock(_leader_lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)  # type: ignore[attr-defined]
+                log.info("Acquired leader lock at %s, starting background tasks", candidate)
+                _runner_audit_router.start_audit_loop()
+                _linear_sync_router.start_sync_loop()  # issue #236
+                acquired = True
+                break
+            except OSError as exc:
+                last_err = exc
+                if _leader_lock_fd is not None:
+                    try:
+                        _leader_lock_fd.close()
+                    except OSError:
+                        pass
+                    _leader_lock_fd = None
+                continue
+        if not acquired:
+            log.info("Could not acquire leader lock on any candidate path; running as follower: %s", last_err)
     except ImportError:
         log.warning("fcntl not available on this platform, running without file lock")
         _runner_audit_router.start_audit_loop()
         _linear_sync_router.start_sync_loop()  # issue #236
-    except OSError as e:
-        log.info("Could not acquire leader lock, running as follower: %s", e)
 
 
 @app.on_event("shutdown")
