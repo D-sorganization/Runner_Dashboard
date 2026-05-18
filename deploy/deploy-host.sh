@@ -31,6 +31,12 @@
 
 set -Eeuo pipefail
 
+# When the repo lives on /mnt/c/ (Windows-mounted), uv's default hardlink
+# install mode hits a cross-filesystem copy that can intermittently fail
+# with ENOENT on the .dist-info RECORD files. Force a plain copy so the
+# deploy is robust regardless of where the checkout lives.
+export UV_LINK_MODE="${UV_LINK_MODE:-copy}"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="${REPO:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
 DEPLOY_DIR="${DEPLOY_DIR:-${HOME}/actions-runners/dashboard}"
