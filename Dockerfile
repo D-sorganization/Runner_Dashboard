@@ -6,7 +6,7 @@
 # (pydantic-core, uvloop, watchfiles, httptools, jiter, etc.).
 # To regenerate requirements.lock.txt:  uv export --no-dev -o requirements.lock.txt
 
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 WORKDIR /app
 
