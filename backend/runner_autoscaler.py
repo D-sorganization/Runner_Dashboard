@@ -104,19 +104,35 @@ RUNNER_SCHEDULE_CONFIG = os.path.expanduser(
 )
 RUNNER_BASE_DIR = os.path.expanduser(os.environ.get("RUNNER_BASE_DIR", "~/actions-runners"))
 
-# Issue #651: defense-in-depth busy signal. The Runner.Worker child of MainPID
-# is the primary signal, but there is a 1-2s race window between job pickup
-# (Listener has accepted a job, written `_work/_temp/_runner_file_commands/`)
-# and Worker fork. During that window we'd otherwise misread the unit as idle
-# and kill it, leaving residue that breaks the next allocation. The lockfile
-# written by `deploy/runner-hooks/job-started.sh` closes one half of the
-# window; the listener-log quietude check below closes the other half.
+# Issue #651: layered busy detection. The Runner.Worker child of MainPID is the
+# primary signal, but there is a 1-2s race window between job pickup (Listener
+# has accepted a job, written `_work/_temp/_runner_file_commands/`) and Worker
+# fork. During that window we'd otherwise misread the unit as idle and kill it,
+# leaving residue that breaks the next allocation. Two complementary signals
+# close the window:
+#
+#   1. Pickup-directory mtime check (this module): the Listener creates files
+#      under `_work/_temp/_runner_file_commands/` BEFORE forking the Worker.
+#      A recent mtime means "Listener has accepted a job, may or may not have
+#      Worker yet — treat as busy".
+#   2. Job-pickup hook lockfile (deploy/runner-hooks/job-started.sh): the
+#      Worker writes a sentinel lockfile when it starts. This catches the
+#      inverse race — Worker is alive but psutil's process tree walk missed
+#      it (transient /proc race, child reparented, etc.).
+#
+# The pickup-directory check fires at the moment of job acceptance; the
+# lockfile fires once the Worker is alive. Together they cover the full
+# pre-Worker → Worker-running lifecycle without relying on log scraping.
 RUNNER_BUSY_LOCK_DIR = Path(os.environ.get("RUNNER_BUSY_LOCK_DIR", "/var/run/runner-busy"))
 RUNNER_BUSY_LOCK_MAX_AGE_SECONDS = _env_int(
     "RUNNER_BUSY_LOCK_MAX_AGE_SECONDS", 24 * 60 * 60
 )  # 24h — stale lockfiles (Worker killed mid-job, never wrote completion hook)
 # are GC'd by deploy/runner-cleanup.sh; the autoscaler treats them as "stale,
 # not busy" to avoid permanently locking out a runner.
+RUNNER_PICKUP_DIR_MAX_AGE_SECONDS = _env_int(
+    "RUNNER_PICKUP_DIR_MAX_AGE_SECONDS", 30
+)  # Listener handoff to Worker should be sub-second; 30s headroom is generous.
+# Anything older than this is residue, not in-progress pickup.
 
 HOSTNAME = platform.node()
 
@@ -242,38 +258,106 @@ def _runner_busy_via_lockfile(unit: str) -> bool:
     return True
 
 
+def _runner_workdir_for_unit(unit: str) -> str:
+    """Resolve the unit's WorkingDirectory from systemd.
+
+    Returns empty string if the unit isn't known or doesn't have a working
+    directory configured. Used by ``_runner_busy_via_pickup_dir`` to find
+    the runner's `_work/_temp/_runner_file_commands/` location without
+    assuming a directory-naming convention.
+    """
+    r = subprocess.run(
+        ["systemctl", "show", unit, "--property=WorkingDirectory", "--value"],
+        capture_output=True,
+        text=True,
+        timeout=_SYSTEMCTL_TIMEOUT_S,
+        check=False,
+    )
+    return (r.stdout or "").strip()
+
+
+def _runner_busy_via_pickup_dir(unit: str) -> bool:
+    """Return True if the Listener is mid-pickup (issue #651 root race).
+
+    The Listener writes files under ``_work/_temp/_runner_file_commands/``
+    BEFORE forking the Worker. If the autoscaler kills in that 1-2s window:
+    - MainPID has no Worker child (false negative on Strategy 1)
+    - The job-pickup hook hasn't fired yet (false negative on Strategy 0)
+
+    Checking the directory's mtime closes that window. A directory modified
+    within ``RUNNER_PICKUP_DIR_MAX_AGE_SECONDS`` (default 30s) means the
+    Listener is actively handing off — busy. Older = stale residue from a
+    prior killed Worker, NOT busy (the cleanup pass GCs it).
+
+    Why mtime rather than existence: a corrupted runner that we're trying
+    to heal will have a stale `_runner_file_commands/` directory left over.
+    Marking that as busy forever would prevent cleanup from ever touching
+    the runner. mtime distinguishes active pickup (recent) from stale
+    residue (old).
+    """
+    work_dir = _runner_workdir_for_unit(unit)
+    if not work_dir:
+        return False
+    fc = Path(work_dir) / "_work" / "_temp" / "_runner_file_commands"
+    try:
+        stat = fc.stat()
+    except (FileNotFoundError, NotADirectoryError):
+        return False
+    except OSError as exc:
+        log.debug("pickup-dir stat failed unit=%s path=%s err=%s", unit, fc, exc)
+        return False
+    age = time.time() - stat.st_mtime
+    if age <= RUNNER_PICKUP_DIR_MAX_AGE_SECONDS:
+        log.info(
+            "pickup-dir fresh (age=%.1fs <= %ds) — treating as busy unit=%s",
+            age,
+            RUNNER_PICKUP_DIR_MAX_AGE_SECONDS,
+            unit,
+        )
+        return True
+    return False
+
+
 def _runner_is_busy(unit: str) -> bool:
     """Best-effort: does the runner have an active job?
 
     The GitHub Actions runner creates a ``Runner.Worker`` child process while
-    executing a job.  We layer three detection strategies; ANY positive signal
+    executing a job.  We layer FOUR detection strategies; ANY positive signal
     counts as busy:
 
-    1. **Lockfile path** (issue #651) — the runner's JOB_STARTED hook writes
-       ``/var/run/runner-busy/<runner-name>.lock``. This catches the brief
-       window where the Worker exists but psutil hasn't yet seen it as a
-       child of MainPID, and it persists across transient process-tree
-       inspection failures. Stale lockfiles (>24h) are ignored.
+    1. **Pickup-directory mtime** (issue #651 root race) — the Listener
+       writes ``_work/_temp/_runner_file_commands/`` BEFORE forking the
+       Worker. A recent mtime catches the pre-Worker race window that
+       neither the lockfile (hook hasn't fired) nor the MainPID walk
+       (no Worker child yet) can see.
 
-    2. **MainPID path** — ask systemd for the unit's MainPID, then walk the
+    2. **Lockfile path** (issue #651 defense-in-depth) — the runner's
+       JOB_STARTED hook writes ``/var/run/runner-busy/<runner-name>.lock``.
+       This catches the inverse window where the Worker exists but psutil's
+       child walk transiently misses it. Stale lockfiles (>24h) are ignored.
+
+    3. **MainPID path** — ask systemd for the unit's MainPID, then walk the
        process tree looking for a ``Runner.Worker`` child.  This is the most
-       direct signal once the Worker has forked.
+       direct signal once the Worker has forked and stabilized.
 
-    3. **ActiveState/SubState fallback** — when MainPID is 0 (transient
+    4. **ActiveState/SubState fallback** — when MainPID is 0 (transient
        restart, brief crash, listener mid-reconfig), the main-PID path gives
        a false negative.  Instead we query ActiveState and SubState: if the
        unit is ``active/running`` we conservatively return *True* so the
-       autoscaler never kills a runner that may be mid-job.  Err on the side
-       of safety.
+       autoscaler never kills a runner that may be mid-job.
 
     If all strategies are inconclusive return *False* only when there is clear
     evidence the unit is inactive (e.g., ActiveState=inactive).
     """
-    # ── Strategy 0: lockfile (defense-in-depth for the pickup race) ─────────
+    # ── Strategy 1: pickup-window directory (closes the pre-Worker race) ────
+    if _runner_busy_via_pickup_dir(unit):
+        return True
+
+    # ── Strategy 2: lockfile (defense-in-depth for transient psutil misses) ─
     if _runner_busy_via_lockfile(unit):
         return True
 
-    # ── Strategy 1: MainPID-based child scan ─────────────────────────────────
+    # ── Strategy 3: MainPID-based child scan ─────────────────────────────────
     r = subprocess.run(
         ["systemctl", "show", unit, "--property=MainPID", "--value"],
         capture_output=True,
@@ -305,7 +389,7 @@ def _runner_is_busy(unit: str) -> bool:
         # MainPID was valid but no Runner.Worker child found — not busy.
         return False
 
-    # ── Strategy 2: ActiveState/SubState fallback (MainPID == 0) ─────────────
+    # ── Strategy 4: ActiveState/SubState fallback (MainPID == 0) ─────────────
     # MainPID=0 is a transient state: the listener is restarting, or systemd
     # hasn't yet registered the PID.  Never assume "not busy" in this window.
     active_state, sub_state = _unit_state(unit)
@@ -431,7 +515,7 @@ def main() -> None:
         for candidate in (
             os.environ.get("AUTOSCALER_LOCK_PATH"),
             "/var/run/runner-autoscaler.lock",
-            f"/run/user/{os.getuid()}/runner-autoscaler.lock",
+            f"/run/user/{os.getuid()}/runner-autoscaler.lock",  # type: ignore[attr-defined]
             os.path.expanduser("~/.cache/runner-autoscaler.lock"),
             "/tmp/runner-autoscaler.lock",
         ):

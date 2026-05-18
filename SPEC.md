@@ -982,20 +982,32 @@ adjusts the active runner count based on the policy defined in
 `config/runner-schedule.json`.
 
 **Busy detection contract.** Before stopping a runner the autoscaler MUST
-treat the unit as busy when ANY of these signals fire:
+treat the unit as busy when ANY of these signals fire (ordered by which
+phase of the job lifecycle they cover):
 
-1. A fresh job-pickup lockfile exists at
-   `$RUNNER_BUSY_LOCK_DIR/<runner-name>.lock` (defense-in-depth, written by
-   the runner's `ACTIONS_RUNNER_HOOK_JOB_STARTED` hook — see
-   `deploy/runner-hooks/job-started.sh`). Lockfiles older than
-   `RUNNER_BUSY_LOCK_MAX_AGE_SECONDS` (default 24h) are treated as stale
-   and ignored.
-2. The unit's MainPID has a `Runner.Worker` child process.
-3. The unit's MainPID is 0/unknown but `ActiveState=active` and
-   `SubState=running` (conservative fallback during transient restarts).
+1. **Pre-Worker pickup window.** The runner's `_work/_temp/_runner_file_commands/`
+   directory has been modified within the last `RUNNER_PICKUP_DIR_MAX_AGE_SECONDS`
+   (default 30s). The Listener writes to this directory the moment it accepts
+   a job, before forking the `Runner.Worker`, so this signal closes the
+   1-2s race window where MainPID has no Worker child but a job IS assigned.
+   Older mtime → stale residue (NOT busy); cleanup will GC it.
+2. **Worker running.** A fresh job-pickup lockfile exists at
+   `$RUNNER_BUSY_LOCK_DIR/<runner-name>.lock`, written by the runner's
+   `ACTIONS_RUNNER_HOOK_JOB_STARTED` hook (see
+   `deploy/runner-hooks/job-started.sh`). Catches the inverse window where
+   the Worker exists but psutil's child-walk transiently misses it.
+   Lockfiles older than `RUNNER_BUSY_LOCK_MAX_AGE_SECONDS` (default 24h)
+   are treated as stale and ignored.
+3. **Process tree.** The unit's MainPID has a `Runner.Worker` child process.
+   The most direct signal once the Worker has forked and stabilized.
+4. **Conservative fallback.** MainPID is 0/unknown but `ActiveState=active`
+   and `SubState=running` — treat as busy during transient restarts.
 
 The shell cleanup script `deploy/runner-cleanup.sh` honours the same
-contract and additionally garbage-collects stale lockfiles.
+contract and additionally garbage-collects stale lockfiles. The
+`/run/user/$UID/`, `~/.cache/`, and `/tmp/` fallbacks for the autoscaler's
+own self-lock are defined in `_acquire_lock()` (the hard-coded `/var/run/`
+path is unwritable for non-root deploys; see #664 follow-up).
 
 ### 6.7 Runner Service Unit Template
 
