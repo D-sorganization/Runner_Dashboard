@@ -1,0 +1,17 @@
+[Unit]
+Description=Scan GitHub runner directories for corruption residue and emit Prometheus metrics
+Documentation=https://github.com/D-sorganization/Runner_Dashboard/blob/main/docs/observability.md
+After=local-fs.target
+
+[Service]
+Type=oneshot
+User=root
+# RUNNER_ROOT is overridden by install-runner-maintenance.sh to match the
+# operator-configured runner install location.
+Environment=RUNNER_ROOT=/home/runner/actions-runners
+Environment=PROM_FILE=/var/lib/node_exporter/textfile_collector/runner_corruption.prom
+Environment=DIAG_PAGES_MIN_AGE_DAYS=1
+ExecStart=/usr/local/bin/runner-corruption-scan
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

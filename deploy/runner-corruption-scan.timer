@@ -1,0 +1,12 @@
+[Unit]
+Description=Run runner corruption residue scan every five minutes
+Documentation=https://github.com/D-sorganization/Runner_Dashboard/blob/main/docs/observability.md
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Persistent=true
+
+[Install]
+WantedBy=timers.target
