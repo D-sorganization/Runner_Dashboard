@@ -60,7 +60,11 @@ permissions:
 
 concurrency:
   group: queued-job-reaper
-  cancel-in-progress: false
+  # cancel-in-progress: true — if a prior reaper run is somehow still alive
+  # when the next 15-minute cron fires, the newer scan supersedes it; the
+  # cancellation operations themselves are idempotent (cancelling an already
+  # cancelled run is a no-op).
+  cancel-in-progress: true
 
 jobs:
   reap:
