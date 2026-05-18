@@ -161,7 +161,12 @@ cleanup_runner_diag() {
 }
 
 cleanup_runners() {
-    local unit runner_dir was_active
+    # Per-runner block: a stop/start failure on ONE runner must not abort the
+    # whole pass. Before this guard, `systemctl stop` returning exit 1 (which
+    # happens when stop races with a job pickup on that unit and systemctl
+    # reports "Job for ... canceled") tripped `set -e` and skipped runners 2..N.
+    # Result: on busy hosts the cleanup was a silent no-op every night.
+    local unit runner_dir was_active stop_rc start_rc
     while read -r unit; do
         [[ -n "$unit" ]] || continue
         runner_dir="$(service_workdir "$unit")"
@@ -174,14 +179,29 @@ cleanup_runners() {
             continue
         fi
         was_active=0
+        stop_rc=0
         if unit_active "$unit"; then
             was_active=1
-            run systemctl stop "$unit"
+            run systemctl stop "$unit" || stop_rc=$?
+            if (( stop_rc != 0 )); then
+                # If a job was assigned in the brief window between runner_busy()
+                # and systemctl stop, the stop is racy. Skip cleanup for this
+                # runner this pass; the next pass will catch it once idle.
+                log "skip $unit: systemctl stop failed (rc=$stop_rc), likely raced with job pickup; will retry next pass"
+                if ! unit_active "$unit"; then
+                    run systemctl start "$unit" || log "warn $unit: restart after failed stop also failed"
+                fi
+                continue
+            fi
         fi
         cleanup_runner_workdir "$runner_dir"
         cleanup_runner_diag "$runner_dir"
         if [[ "$was_active" == "1" ]]; then
-            run systemctl start "$unit"
+            start_rc=0
+            run systemctl start "$unit" || start_rc=$?
+            if (( start_rc != 0 )); then
+                log "error $unit: failed to restart after cleanup (rc=$start_rc); host may have a stuck unit"
+            fi
         fi
     done < <(list_runner_units)
 }
