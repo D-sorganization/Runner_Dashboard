@@ -17,6 +17,16 @@ COMPACT_VHD="${COMPACT_VHD:-0}"
 COMPACT_VHD_ONLY="${COMPACT_VHD_ONLY:-0}"
 COMPACT_VHD_DISTRO="${COMPACT_VHD_DISTRO:-Ubuntu-22.04}"
 LOCK_FILE="/run/runner-cleanup.lock"
+TEXTFILE_COLLECTOR_DIR="${TEXTFILE_COLLECTOR_DIR:-/var/lib/node_exporter/textfile_collector}"
+CLEANUP_METRICS_FILE="${CLEANUP_METRICS_FILE:-${TEXTFILE_COLLECTOR_DIR}/runner_cleanup.prom}"
+
+# Tracked by write_metrics(): incremented every time cleanup_runners() fails
+# to stop a runner unit. Surfaced as runner_cleanup_stop_failures_total.
+CLEANUP_STOP_FAILURES=0
+# Tracked by write_metrics(): "ok" for a clean run, "skipped" when another
+# instance held the lock, "failed" when main() returns non-zero or the EXIT
+# trap fires before main completes.
+CLEANUP_RESULT="failed"
 
 # Parse flags. Keep env-var style as the primary interface; flags are a
 # convenience wrapper so callers can say `runner-cleanup.sh --compact-vhd`.
@@ -72,6 +82,45 @@ delete_path() {
     local path="$1"
     log "delete $path"
     [[ "$DRY_RUN" == "1" ]] || rm -rf -- "$path"
+}
+
+write_metrics() {
+    # Emit a Prometheus textfile-collector snapshot of the last cleanup pass.
+    # Invoked from an EXIT trap so partial / failed runs still publish a
+    # signal. Failures here are non-fatal: the trap must never mask the
+    # underlying exit status of main().
+    local host metrics_dir tmp_file
+    host="${FLEET_NODE_NAME:-$(hostname -s 2>/dev/null || hostname)}"
+    metrics_dir="$(dirname -- "$CLEANUP_METRICS_FILE")"
+    if ! mkdir -p -- "$metrics_dir" 2>/dev/null; then
+        log "metrics: cannot create $metrics_dir; skipping textfile emit"
+        return 0
+    fi
+    tmp_file="${CLEANUP_METRICS_FILE}.tmp"
+    {
+        printf '# HELP runner_cleanup_runs_total Total runner cleanup passes by result.\n'
+        printf '# TYPE runner_cleanup_runs_total counter\n'
+        for result in ok skipped failed; do
+            local value=0
+            [[ "$result" == "$CLEANUP_RESULT" ]] && value=1
+            printf 'runner_cleanup_runs_total{host="%s",result="%s"} %d\n' \
+                "$host" "$result" "$value"
+        done
+        printf '# HELP runner_cleanup_stop_failures_total Runner unit stop failures observed in the last cleanup pass.\n'
+        printf '# TYPE runner_cleanup_stop_failures_total counter\n'
+        printf 'runner_cleanup_stop_failures_total{host="%s"} %d\n' \
+            "$host" "$CLEANUP_STOP_FAILURES"
+        printf '# HELP runner_cleanup_last_run_timestamp_seconds Unix timestamp of the last cleanup pass.\n'
+        printf '# TYPE runner_cleanup_last_run_timestamp_seconds gauge\n'
+        printf 'runner_cleanup_last_run_timestamp_seconds{host="%s"} %d\n' \
+            "$host" "$(date +%s)"
+    } >"$tmp_file" 2>/dev/null || {
+        log "metrics: failed writing $tmp_file"
+        rm -f -- "$tmp_file" 2>/dev/null || true
+        return 0
+    }
+    mv -f -- "$tmp_file" "$CLEANUP_METRICS_FILE" 2>/dev/null \
+        || log "metrics: failed publishing $CLEANUP_METRICS_FILE"
 }
 
 bytes_human() {
@@ -215,6 +264,8 @@ cleanup_runners() {
             was_active=1
             run systemctl stop "$unit" || stop_rc=$?
             if (( stop_rc != 0 )); then
+                # Increment the metric for #663's textfile-collector path.
+                CLEANUP_STOP_FAILURES=$((CLEANUP_STOP_FAILURES + 1))
                 # If a job was assigned in the brief window between runner_busy()
                 # and systemctl stop, the stop is racy. Skip cleanup for this
                 # runner this pass; the next pass will catch it once idle.
@@ -286,6 +337,7 @@ main() {
     exec 9>"$LOCK_FILE"
     if ! flock -n 9; then
         log "another cleanup is already running; exiting"
+        CLEANUP_RESULT="skipped"
         return 0
     fi
     local before after used
@@ -311,6 +363,13 @@ main() {
     if [[ "$COMPACT_VHD" == "1" ]]; then
         compact_wsl_vhd
     fi
+    CLEANUP_RESULT="ok"
 }
+
+# Emit a textfile-collector metric on every exit path. The trap fires
+# regardless of whether main() returned cleanly, hit set -e, or was
+# interrupted, so silent regressions (issue #651) can no longer accumulate
+# undetected — Prometheus will see runner_cleanup_runs_total{result="failed"}.
+trap 'write_metrics' EXIT
 
 main "$@"
