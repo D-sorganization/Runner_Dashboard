@@ -419,18 +419,48 @@ def main() -> None:
         import sys
 
         global _lock_fd
-        lock_path = "/var/run/runner-autoscaler.lock"
-        if not os.path.exists(os.path.dirname(lock_path)):
-            lock_path = "/tmp/runner-autoscaler.lock"
-        _lock_fd = open(lock_path, "w")
-        fcntl.flock(_lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)  # type: ignore[attr-defined,name-defined]
+        # Walk a small candidate list; the first writable path wins. The old
+        # code hard-coded /var/run with a directory-existence check, which is
+        # wrong when the service runs as a non-root user (the typical
+        # deployment): /run exists but isn't writable for the runner user, so
+        # the open() failed with PermissionError → caught as OSError → service
+        # exit(75) every poll → systemd crash-loop. See d-sorg-local-ControlTower
+        # post-2026-05-18 deploy for an instance.
+        lock_path = ""
+        last_err: OSError | None = None
+        for candidate in (
+            os.environ.get("AUTOSCALER_LOCK_PATH"),
+            "/var/run/runner-autoscaler.lock",
+            f"/run/user/{os.getuid()}/runner-autoscaler.lock",
+            os.path.expanduser("~/.cache/runner-autoscaler.lock"),
+            "/tmp/runner-autoscaler.lock",
+        ):
+            if not candidate:
+                continue
+            try:
+                os.makedirs(os.path.dirname(candidate), exist_ok=True)
+                _lock_fd = open(candidate, "w")
+                fcntl.flock(_lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)  # type: ignore[attr-defined,name-defined]
+                lock_path = candidate
+                break
+            except OSError as exc:
+                last_err = exc
+                if _lock_fd is not None:
+                    try:
+                        _lock_fd.close()
+                    except OSError:
+                        pass
+                    _lock_fd = None
+                continue
+        if not lock_path:
+            log.error(
+                "Could not acquire lock on any candidate path; last error: %s",
+                last_err,
+            )
+            sys.exit(75)
+        log.info("acquired autoscaler lock at %s", lock_path)
     except ImportError:
         pass
-    except OSError:
-        import sys
-
-        log.error("Could not acquire lock, another autoscaler instance is running.")
-        sys.exit(75)
 
     log.info(
         "autoscaler start host=%s cpu_high=%s cpu_low=%s mem_high=%s "
