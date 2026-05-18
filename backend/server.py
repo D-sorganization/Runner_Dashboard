@@ -2309,6 +2309,63 @@ _assets_dir = FRONTEND_DIR / "assets"
 if _assets_dir.is_dir():
     app.mount("/assets", StaticFiles(directory=str(_assets_dir)), name="assets")
 
+# Mount the PWA icon set for /icons/<name>.png. The dist build copies
+# frontend/public/icons/ to dist/icons/ via vite build (the public/ dir
+# semantics). Without this mount, /icons/icon-180.png requests fall through
+# to the SPA catch-all and return index.html, which means Windows taskbar
+# pinned shortcuts (and any browser that pre-fetches the apple-touch-icon)
+# get HTML instead of a PNG and silently fall back to a generic icon.
+_icons_dir = FRONTEND_DIR / "icons"
+if _icons_dir.is_dir():
+    app.mount("/icons", StaticFiles(directory=str(_icons_dir)), name="icons")
+
+
+@app.get("/favicon.ico")
+async def serve_favicon():
+    """Serve /favicon.ico for browsers and taskbar shortcuts.
+
+    Windows browsers always probe this URL when creating a pinned site
+    shortcut. With no real ICO in the bundle, fall back to the SVG icon
+    served with image/x-icon content type (the SVG renders fine in modern
+    browsers; only legacy IE would have a problem).
+    """
+    favicon = FRONTEND_DIR / "favicon.ico"
+    if favicon.exists():
+        return FileResponse(favicon, media_type="image/x-icon")
+    svg = FRONTEND_DIR / "icon.svg"
+    if svg.exists():
+        return FileResponse(svg, media_type="image/svg+xml")
+    raise HTTPException(status_code=404, detail="favicon not found")
+
+
+@app.get("/sw.js")
+async def serve_service_worker():
+    """Serve the PWA service worker. Must be at the origin root or PWA
+    install fails."""
+    sw = FRONTEND_DIR / "sw.js"
+    if not sw.exists():
+        raise HTTPException(status_code=404, detail="service worker not found")
+    return FileResponse(sw, media_type="application/javascript")
+
+
+@app.get("/offline.html")
+async def serve_offline():
+    """Serve the PWA offline fallback page."""
+    offline = FRONTEND_DIR / "offline.html"
+    if not offline.exists():
+        raise HTTPException(status_code=404, detail="offline page not found")
+    return FileResponse(offline, media_type="text/html")
+
+
+@app.get("/robots.txt")
+async def serve_robots():
+    """Serve robots.txt (currently disallows everything; this dashboard is
+    a private operator console)."""
+    robots = FRONTEND_DIR / "robots.txt"
+    if not robots.exists():
+        raise HTTPException(status_code=404, detail="robots.txt not found")
+    return FileResponse(robots, media_type="text/plain")
+
 
 @app.get("/")
 async def serve_index():
