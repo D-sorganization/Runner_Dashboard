@@ -158,6 +158,85 @@ Apply PR [#662](https://github.com/D-sorganization/Runner_Dashboard/pull/662) (i
 2. `runner-dashboard.service` is genuinely down: `sudo systemctl status runner-dashboard.service`. Restart: `sudo systemctl restart runner-dashboard.service`.
 3. The Funnel itself is misrouting `/api/*` — check `tailscale funnel status` against `docs/tailscale-funnel.md`.
 
+### Symptom: WSL2 host deploys, but `deploy-check.sh` fails health with `github_api=unreachable`
+
+This is a host networking failure, not a dashboard build failure. It was observed on
+DeskComputer during the 2026-05-18 rollout: Windows could reach GitHub, but WSL2
+could not open public TCP connections, so `/api/health` reported `github_api=unreachable`.
+
+First confirm the failure is in WSL2:
+
+```bash
+curl --max-time 8 -sS -o /tmp/github-rate-limit.json \
+  -w 'github_api_http=%{http_code} time=%{time_total}\n' \
+  https://api.github.com/rate_limit
+timeout 6 bash -lc '</dev/tcp/1.1.1.1/443' \
+  && echo tcp_1_1_1_1_443=ok || echo tcp_1_1_1_1_443=fail
+timeout 6 bash -lc '</dev/tcp/api.github.com/443' \
+  && echo tcp_api_github_443=ok || echo tcp_api_github_443=fail
+```
+
+If those fail in WSL2 while Windows can reach `https://api.github.com/rate_limit`,
+switch WSL2 to mirrored networking from Windows PowerShell:
+
+```powershell
+$path = "$env:USERPROFILE\.wslconfig"
+Copy-Item $path "$path.bak-$(Get-Date -Format yyyyMMdd-HHmmss)" -Force
+notepad $path
+wsl.exe --shutdown
+```
+
+Preserve any existing `.wslconfig` resource limits such as `memory`, `swap`, and
+`processors`; add only the three networking keys below to the existing `[wsl2]`
+section if they are missing:
+
+```ini
+networkingMode=mirrored
+dnsTunneling=true
+autoProxy=true
+```
+
+After WSL2 restarts, rerun the TCP checks above before rerunning
+`bash deploy/deploy-check.sh`.
+
+### Symptom: after enabling mirrored networking, `runner-dashboard.service` fails with `address already in use`
+
+Mirrored networking puts host network interfaces, including the Tailscale address,
+inside WSL2. If Windows already has Tailscale Serve or a stale `netsh portproxy`
+listening on the dashboard port, the dashboard cannot bind `0.0.0.0:8321`.
+
+Check from Windows PowerShell:
+
+```powershell
+Get-NetTCPConnection -LocalPort 8321 -State Listen |
+  Select-Object LocalAddress,LocalPort,OwningProcess,
+    @{Name='ProcessName';Expression={(Get-Process -Id $_.OwningProcess).ProcessName}}
+tailscale serve status
+netsh interface portproxy show all
+```
+
+If `tailscaled` is serving `:8321` to `127.0.0.1:8321`, reset that proxy and let
+the WSL2 dashboard bind the port directly:
+
+```powershell
+tailscale serve reset
+wsl.exe -- bash -lc 'sudo systemctl reset-failed runner-dashboard.service && sudo systemctl restart runner-dashboard.service'
+```
+
+If `netsh interface portproxy show all` still lists `0.0.0.0:8321`, remove it from
+an elevated Windows PowerShell:
+
+```powershell
+netsh interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport=8321
+```
+
+Then verify from both sides:
+
+```powershell
+Invoke-WebRequest -UseBasicParsing -TimeoutSec 8 http://127.0.0.1:8321/api/health
+wsl.exe -- bash -lc 'curl --max-time 8 -sS http://127.0.0.1:8321/api/health | python3 -m json.tool'
+```
+
 ### Rollback
 
 If the migration drop-in introduces a regression on a host:
