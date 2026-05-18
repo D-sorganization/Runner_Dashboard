@@ -570,6 +570,59 @@ for _entry in _fleet_raw.split(","):
         except ValueError as _e:
             log.warning("Skipping invalid FLEET_NODES entry %r: %s", _entry, _e)
 
+# Federation autoconfig: when FLEET_NODES env is empty, derive peer URLs from
+# machine_registry.yml. The registry already names every fleet machine plus
+# its Tailscale node IPs and `dashboard_url`, so manually maintaining a second
+# copy in systemd Environment= lines is redundant and historically forgotten
+# (the cause of dashboards reporting "everything looks fine on my machine"
+# while never querying peers). Each registry machine becomes a FLEET_NODES
+# entry, except this host itself, when:
+#   - the machine has a `dashboard_url`, OR
+#   - the machine has at least one tailscale_nodes[].ip we can build a URL from
+# Operators can still override individual entries by setting FLEET_NODES env.
+_AUTODERIVE_FLEET = os.environ.get("AUTODERIVE_FLEET_NODES", "1").lower() not in {
+    "0",
+    "false",
+    "no",
+    "",
+}
+FLEET_NODES_SOURCE = "env" if FLEET_NODES else "empty"
+if _AUTODERIVE_FLEET and not FLEET_NODES:
+    try:
+        from machine_registry import load_machine_registry as _load_registry_for_fleet
+
+        _registry = _load_registry_for_fleet()
+        _self = (os.environ.get("DISPLAY_NAME") or platform.node() or "").strip().lower()
+        for _machine in _registry.get("machines", []):
+            _name = str(_machine.get("name", "")).strip()
+            if not _name:
+                continue
+            _aliases = {str(a).strip().lower() for a in _machine.get("aliases", []) or []}
+            if _name.lower() == _self or _self in _aliases:
+                continue
+            # Prefer explicit dashboard_url; fall back to tailscale_nodes[].ip
+            _candidate_url = str(_machine.get("dashboard_url") or "").strip()
+            if not _candidate_url:
+                for _node in _machine.get("tailscale_nodes", []) or []:
+                    _ip = str(_node.get("ip", "")).strip()
+                    if _ip:
+                        _candidate_url = f"http://{_ip}:8321"
+                        break
+            if not _candidate_url:
+                continue
+            try:
+                validate_fleet_node_url(_candidate_url)
+                FLEET_NODES[_name] = _candidate_url
+            except ValueError as _e:
+                log.warning(
+                    "Skipping derived FLEET_NODES entry %s=%s: %s", _name, _candidate_url, _e
+                )
+        if FLEET_NODES:
+            FLEET_NODES_SOURCE = "registry"
+            log.info("FLEET_NODES auto-derived from registry: %s", ", ".join(FLEET_NODES.keys()))
+    except Exception as _exc:  # noqa: BLE001
+        log.warning("FLEET_NODES auto-derive from registry failed: %s", _exc)
+
 HUB_URL = os.environ.get("HUB_URL")
 if HUB_URL:
     HUB_URL = HUB_URL.rstrip("/")
@@ -2128,6 +2181,123 @@ async def log_requests(request: Request, call_next):
             rid,
         )
     return response
+
+
+# ─── Operator diagnostics ────────────────────────────────────────────────────
+#
+# /api/diagnostics surfaces the config-load and fleet-federation state that
+# previously only appeared in journald. It's the canonical signal for "is this
+# deployment wired up correctly" — used by `deploy/deploy-check.sh` after each
+# deploy and by operators when the UI looks stale.
+#
+# Design contract:
+#   - Always returns 200 even when subsystems are broken (so the endpoint
+#     itself is a reliable diagnostic). Per-subsystem status is in the body.
+#   - Reports point-in-time facts only. Doesn't trigger I/O the rest of the
+#     app doesn't already do (no extra GitHub calls, no DB queries).
+#   - Stable schema: adding fields is OK, removing or renaming is a breaking
+#     change. The deploy-check.sh script and tests pin this schema.
+
+
+def _diagnostics_payload() -> dict:
+    """Build the /api/diagnostics body. Pure-ish — only safe local I/O."""
+    from machine_registry import load_machine_registry  # local import to avoid cycle
+
+    # Registry load status
+    registry_status: dict[str, object]
+    registry_err: str | None = None
+    machines_count = 0
+    try:
+        _registry = load_machine_registry()
+        machines_count = len(_registry.get("machines", []))
+        registry_status = {
+            "loaded": True,
+            "machines": machines_count,
+            "version": _registry.get("version"),
+            "path": os.environ.get("MACHINE_REGISTRY_PATH")
+            or str(Path(__file__).with_name("machine_registry.yml")),
+        }
+    except Exception as exc:  # noqa: BLE001
+        registry_err = str(exc)
+        registry_status = {
+            "loaded": False,
+            "error": registry_err,
+            "path": os.environ.get("MACHINE_REGISTRY_PATH")
+            or str(Path(__file__).with_name("machine_registry.yml")),
+        }
+
+    # Fleet federation status (config only — peer reachability is /api/fleet/nodes)
+    fleet_status = {
+        "source": FLEET_NODES_SOURCE,
+        "node_count": len(FLEET_NODES),
+        "nodes": sorted(FLEET_NODES.keys()),
+        "machine_role": MACHINE_ROLE,
+    }
+
+    # Background-task leader status (the leader-lock fix from #666)
+    leader_status = {
+        "is_leader": _leader_lock_fd is not None,
+        "lock_path": getattr(_leader_lock_fd, "name", None) if _leader_lock_fd else None,
+    }
+
+    # Deployment metadata (mtime of key files + git sha if available)
+    deploy_info: dict[str, object] = {}
+    backend_dir = Path(__file__).resolve().parent
+    for label, candidate in [
+        ("server_py", backend_dir / "server.py"),
+        ("machine_registry_yml", backend_dir / "machine_registry.yml"),
+        ("autoscaler_py", backend_dir / "runner_autoscaler.py"),
+    ]:
+        try:
+            stat = candidate.stat()
+            deploy_info[label] = {
+                "path": str(candidate),
+                "mtime": datetime.fromtimestamp(stat.st_mtime, UTC).isoformat(),
+                "size": stat.st_size,
+            }
+        except OSError:
+            deploy_info[label] = {"path": str(candidate), "missing": True}
+
+    # Cache utilization snapshot (best-effort — module may not expose stats)
+    cache_status: dict[str, object] = {}
+    try:
+        from cache_utils import _cache  # type: ignore[attr-defined]
+
+        cache_status = {
+            "size": getattr(_cache, "size", lambda: None)() if callable(getattr(_cache, "size", None)) else None,
+            "default_ttl_seconds": getattr(_cache, "default_ttl", None),
+        }
+    except Exception:  # noqa: BLE001
+        cache_status = {"available": False}
+
+    # Overall health summary so deploy-check.sh can grep one field
+    healthy = (
+        registry_status.get("loaded") is True
+        and (fleet_status["node_count"] > 0 or MACHINE_ROLE != "hub")
+    )
+
+    return {
+        "ok": bool(healthy),
+        "hostname": HOSTNAME,
+        "timestamp": datetime.now(UTC).isoformat(),
+        "machine_registry": registry_status,
+        "fleet_federation": fleet_status,
+        "leader": leader_status,
+        "deployment": deploy_info,
+        "cache": cache_status,
+    }
+
+
+@app.get("/api/diagnostics")
+async def get_diagnostics(request: Request) -> dict:
+    """Surface deployment + federation health for post-deploy validation.
+
+    See _diagnostics_payload() for the schema contract. The endpoint is
+    intentionally read-only and never raises — operators can curl this on a
+    sick dashboard to see what's wrong.
+    """
+    _ = request  # FastAPI requires the parameter for middleware to attach
+    return _diagnostics_payload()
 
 
 # ─── Serve Frontend ──────────────────────────────────────────────────────────

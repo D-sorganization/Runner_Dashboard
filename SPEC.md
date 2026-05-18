@@ -785,6 +785,7 @@ env var.
 
 | Method | Path | Description |
 |---|---|---|
+| GET | `/api/diagnostics` | **Operator deploy-health endpoint.** Always 200. Reports machine_registry load status (including the error message if load failed), fleet_federation source + peer count, leader-lock status, key file mtimes, cache config. Used by `deploy/deploy-check.sh` and any external monitoring. Schema is a stable contract — adding fields OK, removing/renaming is a breaking change. |
 | GET | `/api/diagnostics/summary` | Consolidated diagnostics: PID, memory, WSL status, git commit, drift |
 | POST | `/api/diagnostics/restart-service` | Restart runner-dashboard systemd service (localhost only) |
 
@@ -832,7 +833,29 @@ env var.
 
 ### 5.2 machine_registry.yml
 
-Located at `backend/machine_registry.yml`. Defines the multi-node fleet:
+Located at `backend/machine_registry.yml`. Defines the multi-node fleet.
+
+**Path resolution and security:** `machine_registry.load_machine_registry()`
+passes `backend/` (the module's own directory) and `~/.config/runner-dashboard/`
+as explicit allowed roots to the security validator. This is intentional: the
+deployed install (`~/actions-runners/dashboard/`) is not a git checkout, so
+the validator's default git-repo-root inference returns None. Without the
+explicit allow-list every load on a deployed host fails as "Config path
+escapes allowed roots", silently disabling fleet federation. The `MACHINE_REGISTRY_PATH`
+env var overrides the lookup; operators wishing to manage the registry as
+host config can place it under `~/.config/runner-dashboard/`.
+
+**Fleet federation auto-derivation:** when the `FLEET_NODES` env var is empty
+and `AUTODERIVE_FLEET_NODES` is unset or truthy, the server iterates the
+registry's machines and populates `FLEET_NODES` from each entry's
+`dashboard_url` (preferred) or first `tailscale_nodes[].ip`. The local host
+is excluded by hostname/alias match against `DISPLAY_NAME` (or `platform.node()`).
+This removes the historical foot-gun of leaving `FLEET_NODES` unset in systemd
+Environment= lines and the dashboard silently showing only the local machine.
+The `/api/diagnostics` endpoint reports the effective source (`env`, `registry`,
+or `empty`) so deploy validation can confirm it.
+
+Example structure:
 
 ```yaml
 nodes:

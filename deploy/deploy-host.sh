@@ -180,5 +180,18 @@ if [[ -f /var/log/runner-cleanup/last-run.prom ]]; then
     ok "metrics: $(grep '^runner_cleanup_runs_total' /var/log/runner-cleanup/last-run.prom | head -1)"
 fi
 
+# Full deploy-check (machine_registry, fleet_federation, leader, dropins).
+# Non-zero exit means a real misconfiguration the operator should fix —
+# this catches the failure mode where the service is "active" but silently
+# broken (e.g. registry load fails, FLEET_NODES empty, follower-mode forever).
+section "Post-deploy validation"
+if [[ -x "${SCRIPT_DIR}/deploy-check.sh" ]]; then
+    if ! "${SCRIPT_DIR}/deploy-check.sh"; then
+        fail "deploy-check.sh reported failures — see output above"
+    fi
+else
+    warn "deploy-check.sh not found at ${SCRIPT_DIR}/deploy-check.sh; skipping"
+fi
+
 echo ""
 ok "Deploy complete. Dashboard: http://localhost:8321"
