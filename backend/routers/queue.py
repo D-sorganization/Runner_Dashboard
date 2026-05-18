@@ -2,6 +2,7 @@
 
 Covers:
   - GET  /api/queue              – queued and in-progress workflow runs (org-wide sample)
+  - GET  /api/queue/status       – same as /api/queue but with per-run timing breakdown
   - POST /api/runs/{repo}/cancel/{run_id}      – cancel single workflow run
   - POST /api/runs/{repo}/rerun/{run_id}       – re-run failed jobs in workflow
   - POST /api/queue/cancel-workflow             – cancel all queued runs of a workflow
@@ -21,6 +22,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from identity import Principal, require_scope
 from models.github_payloads import GhWorkflowRun
 from proxy_utils import proxy_to_hub, should_proxy_fleet_to_hub
+from run_timing import annotate_runs_with_timing
 from security import validate_repo_slug
 from system_utils import run_cmd
 
@@ -85,9 +87,7 @@ async def _fetch_repo_runs(
         timeout=30,
     )
     if rc != 0:
-        raise RuntimeError(
-            f"gh api failed for {repo_name} (status={status}): rc={rc} {err[:200]!r}"
-        )
+        raise RuntimeError(f"gh api failed for {repo_name} (status={status}): rc={rc} {err[:200]!r}")
     runs = json.loads(out).get("workflow_runs", [])
     for run in runs:
         if "repository" not in run or not run["repository"]:
@@ -211,6 +211,31 @@ async def get_queue(request: Request) -> dict:
     return await _queue_impl()
 
 
+@router.get("/api/queue/status")
+async def get_queue_status(request: Request) -> dict:
+    """Queue data with per-run queue-wait vs. execution-time breakdown.
+
+    Identical to ``GET /api/queue`` but each run object includes a ``timing``
+    sub-object::
+
+        {
+          "queue_wait_seconds": 45,   # seconds waiting for a runner
+          "exec_seconds":       120,  # seconds the job code has been running
+        }
+
+    For queued runs (no runner yet), ``exec_seconds`` is 0 and
+    ``queue_wait_seconds`` is the time since the run was created.
+
+    This breakdown lets the dashboard display "Queue: 45s | Exec: 2m" without
+    an extra GitHub API round-trip (the timestamps come from the run objects
+    already fetched by ``/api/queue``).
+    """
+    if should_proxy_fleet_to_hub(request):
+        return await proxy_to_hub(request)
+    raw = await _queue_impl()
+    return annotate_runs_with_timing(raw)
+
+
 @router.post("/api/runs/{repo}/cancel/{run_id}")
 async def cancel_run(
     request: Request,
@@ -299,10 +324,7 @@ async def cancel_workflow_runs(
     queue_data = await _queue_impl()
     typed_runs = [GhWorkflowRun.model_validate(r) for r in queue_data.get("queued", [])]
     runs_to_cancel = [
-        r
-        for r in typed_runs
-        if r.name == workflow_name
-        and (target_repo is None or r.repository_name == target_repo)
+        r for r in typed_runs if r.name == workflow_name and (target_repo is None or r.repository_name == target_repo)
     ]
 
     cancelled: list[dict] = []

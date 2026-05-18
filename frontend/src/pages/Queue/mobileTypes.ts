@@ -1,6 +1,17 @@
 // Shared types and helpers for the Queue mobile view.
 // Extracted from Mobile.tsx to keep that file under the 500-line cap.
 
+/**
+ * Per-run queue-wait vs execution-time breakdown.
+ * Populated by GET /api/queue/status (see backend/routers/queue.py).
+ */
+export interface RunTiming {
+  /** Seconds the run spent waiting for a runner to become available. */
+  queue_wait_seconds: number;
+  /** Seconds the run has been actively executing on a runner. */
+  exec_seconds: number;
+}
+
 export interface WorkflowRun {
   id: string | number;
   name?: string;
@@ -13,6 +24,8 @@ export interface WorkflowRun {
   triggering_actor?: { login?: string };
   actor?: { login?: string };
   repository?: { name?: string };
+  /** Present when fetched from /api/queue/status. */
+  timing?: RunTiming;
 }
 
 export interface QueueData {
@@ -65,6 +78,24 @@ export function triggeredBy(run: WorkflowRun): string {
 
 export function runnerName(run: WorkflowRun): string {
   return run.runner_name ?? run.runner?.name ?? "-";
+}
+
+/**
+ * Format a run's timing breakdown as a compact string.
+ *
+ * Returns "Queue: Xm Ys | Exec: Xm Ys" for in-progress runs,
+ * "Queue: Xm Ys" for queued runs (exec_seconds === 0),
+ * or an empty string when timing data is absent.
+ */
+export function timingLabel(run: WorkflowRun): string {
+  const t = run.timing;
+  if (!t) return "";
+  const queueStr = formatDuration(t.queue_wait_seconds);
+  if (t.exec_seconds === 0) {
+    return `Queue: ${queueStr}`;
+  }
+  const execStr = formatDuration(t.exec_seconds);
+  return `Queue: ${queueStr} | Exec: ${execStr}`;
 }
 
 export function statusTone(
