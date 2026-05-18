@@ -122,6 +122,15 @@ Environment=ACTIONS_RUNNER_HOOK_JOB_STARTED=${HOOK_DIR}/job-started.sh
 Environment=ACTIONS_RUNNER_HOOK_JOB_COMPLETED=${HOOK_DIR}/job-completed.sh
 Environment=RUNNER_BUSY_LOCK_DIR=${LOCK_DIR}
 Environment=RUNNER_NAME=${runner_name}
+
+# Belt-and-suspenders for WSL2 hosts where the cgroup-wide kill can
+# fail with EINVAL ("Failed to kill control group ...: Invalid argument").
+# Observed on Ubuntu 22.04 / WSL2 6.x kernels: KillMode=mixed cascade
+# silently no-ops on the Worker child, leaving an orphan that gets
+# logged on the next start as "Found left-over process ... in control
+# group". This ExecStop= pkill's any leftover Workers under this
+# unit's WorkingDirectory.
+ExecStop=-${HOOK_DIR}/force-drain.sh
 EOF
         log "wrote ${override_file}"
     fi
