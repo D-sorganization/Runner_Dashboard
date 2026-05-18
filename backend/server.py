@@ -703,14 +703,14 @@ async def run_cmd(
         return -1, "", "Command timed out"
 
 
-async def gh_api(endpoint: str) -> dict:
+async def gh_api(endpoint: str, timeout: int = HttpTimeout.GH_DISPATCH_S) -> dict:
     """Call the GitHub API via gh CLI.
 
     Uses GH_TOKEN env var when set (required for admin:org endpoints such as
     /orgs/{org}/actions/runners).  GH_TOKEN must be a classic PAT with
     scopes: repo, admin:org.  See docs/operations/fleet-machine-setup.md.
     """
-    code, stdout, stderr = await run_cmd(["gh", "api", endpoint])
+    code, stdout, stderr = await run_cmd(["gh", "api", endpoint], timeout=timeout)
     if code != 0:
         raise HTTPException(status_code=502, detail=f"GitHub API error: {stderr}")
     return json.loads(stdout)

@@ -38,3 +38,10 @@ def test_server_registers_metrics_router() -> None:
     server_src = (_BACKEND_DIR / "server.py").read_text(encoding="utf-8")
     assert "import metrics as _metrics_router" in server_src
     assert "include_router(_metrics_router.router)" in server_src
+
+
+def test_metrics_imports_psutil_directly() -> None:
+    """metrics.py must not depend on server.py re-exporting psutil."""
+    metrics_src = (_BACKEND_DIR / "metrics.py").read_text(encoding="utf-8")
+    assert "import psutil" in metrics_src
+    assert "psutil," not in metrics_src

@@ -110,6 +110,15 @@ def test_security_headers_csp_has_default_src() -> None:
     assert "default-src" in csp
 
 
+def test_security_headers_csp_allows_static_vite_entrypoint() -> None:
+    app = _make_app_with_security_headers()
+    client = TestClient(app, raise_server_exceptions=False)
+    resp = client.get("/api/anything")
+    csp = resp.headers.get("Content-Security-Policy", "")
+    assert "script-src 'self';" in csp
+    assert "strict-dynamic" not in csp
+
+
 def test_security_headers_present_on_post() -> None:
     """Security headers must be injected on POST responses too."""
     app = _make_app_with_security_headers()

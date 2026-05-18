@@ -220,18 +220,20 @@ function AppWithMobileShell({ initialTab }: { initialTab?: string }) {
 // isPushSettingsRoute(window.location.pathname) ? <PushSettings /> : <AppWithMobileShell />
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <RootErrorBoundary>
-      <ThemeProvider>
-        <BreakpointProvider>
-          <Toaster>
-            {isPushSettingsRoute(window.location.pathname) ? (
-              <PushSettings />
-            ) : (
-              <AppWithMobileShell initialTab={initialTabFromPathname(window.location.pathname)} />
-            )}
-          </Toaster>
-        </BreakpointProvider>
-      </ThemeProvider>
-    </RootErrorBoundary>
+    <React.Suspense fallback={<div role="status" className="app-loading">Loading dashboard...</div>}>
+      <RootErrorBoundary>
+        <ThemeProvider>
+          <BreakpointProvider>
+            <Toaster>
+              {isPushSettingsRoute(window.location.pathname) ? (
+                <PushSettings />
+              ) : (
+                <AppWithMobileShell initialTab={initialTabFromPathname(window.location.pathname)} />
+              )}
+            </Toaster>
+          </BreakpointProvider>
+        </ThemeProvider>
+      </RootErrorBoundary>
+    </React.Suspense>
   </React.StrictMode>,
 )

@@ -52,6 +52,13 @@ def test_update_deployed_requires_successful_backup() -> None:
     assert 'fail "Backup returned empty path; aborting update"' in content
 
 
+def test_update_deployed_builds_and_syncs_frontend_dist() -> None:
+    content = _read(_DEPLOY / "update-deployed.sh")
+    assert "npm install --no-audit --no-fund --package-lock=false" in content
+    assert "npm run build" in content
+    assert 'sync_dir "$REPO/dist" "$DEPLOY_DIR/dist"' in content
+
+
 def test_refresh_token_requires_more_than_prefix() -> None:
     content = _read(_DEPLOY / "refresh-token.sh")
     assert "[A-Za-z0-9_]{30,}" in content

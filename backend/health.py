@@ -27,6 +27,7 @@ import dashboard_config
 from cache_utils import cache_size
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
+from prometheus_metrics import record_dashboard_health
 from readiness import aggregate, get_default_probes
 
 router = APIRouter(tags=["health"])
@@ -95,6 +96,7 @@ async def readyz() -> JSONResponse:
 
 async def _health_impl() -> dict:
     """Core health logic, callable both from the HTTP endpoint and internally."""
+    start = time.perf_counter()
     # Lazy import to avoid circular dependency with server.py
     from server import (  # noqa: PLC0415
         BOOT_TIME,
@@ -106,25 +108,37 @@ async def _health_impl() -> dict:
         gh_api_admin,
     )
 
+    github_error_type = None
     try:
         # Reuse the runner cache so health checks don't add extra API calls.
         data = _cache_get("runners", 25.0)
         if data is None:
-            data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
+            data = await gh_api_admin(
+                f"/orgs/{ORG}/actions/runners",
+                timeout=dashboard_config.HttpTimeout.HEALTH_GH_API_S,
+            )
             _cache_set("runners", data)
         gh_ok = True
         runner_count = len(data.get("runners", []))
     except Exception as e:  # noqa: BLE001
         if isinstance(e, (KeyboardInterrupt, SystemExit)):
             raise
+        github_error_type = type(e).__name__
         gh_ok = False
         runner_count = 0
 
+    github_api = "connected" if gh_ok else "unreachable"
+    status = "healthy" if gh_ok else "degraded"
+    duration_s = time.perf_counter() - start
+    record_dashboard_health(status, github_api, duration_s)
+
     return {
-        "status": "healthy" if gh_ok else "degraded",
+        "status": status,
         "timestamp": _dt_mod.datetime.now(UTC).isoformat(),
         "hostname": HOSTNAME,
-        "github_api": "connected" if gh_ok else "unreachable",
+        "github_api": github_api,
+        "github_error_type": github_error_type,
+        "github_check_seconds": round(duration_s, 3),
         "runners_registered": runner_count,
         "dashboard_uptime_seconds": int(time.time() - BOOT_TIME),
         "deployment": _deployment_info(),
