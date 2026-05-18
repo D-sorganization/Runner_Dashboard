@@ -30,7 +30,11 @@
 
 set -Eeuo pipefail
 
-HOOK_DIR="${HOOK_DIR:-/opt/runner-dashboard/deploy/runner-hooks}"
+# Default to where deploy/install-runner-maintenance.sh installs the hooks.
+# That path is /usr/local/bin/runner-hooks (a stable system location), not
+# a repo checkout, so the drop-ins survive any future change to where the
+# Runner_Dashboard tree is cloned.
+HOOK_DIR="${HOOK_DIR:-/usr/local/bin/runner-hooks}"
 LOCK_DIR="${LOCK_DIR:-/var/run/runner-busy}"
 TIMEOUT_STOP_SEC="${TIMEOUT_STOP_SEC:-120}"
 DRY_RUN="${DRY_RUN:-0}"
