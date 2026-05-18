@@ -77,6 +77,20 @@ Expected response:
 }
 ```
 
+## Same-origin /api/* passthrough
+
+Because `tailscale funnel 8321` forwards **all** paths under the public HTTPS
+host to the local backend on port 8321, the dashboard's `/api/*` calls (and
+the `/health` probe consumed by the in-app recovery modal) are served from the
+**same origin** as the frontend bundle. No browser mixed-content blocking and
+no separate reverse proxy is required: the FastAPI server hosts both the Vite
+static bundle and the JSON API under one port.
+
+If you front the dashboard with your own reverse proxy (nginx, Caddy) instead
+of Tailscale Funnel, ensure it proxies `/api/*` **and** `/health` to
+`127.0.0.1:8321`, or the in-app "Backend is down" recovery modal will fire
+even though the backend is healthy.
+
 ## Security Considerations
 
 | Control | Purpose |

@@ -61,17 +61,54 @@ describe("RecoveryDialog", () => {
     expect(refresh).toHaveFocus();
   });
 
-  it("shows inline protocol handler guidance instead of using alert", () => {
+  it("shows actionable diagnostic guidance without misleading HTTPS verbiage when Start Now is clicked", () => {
     setPlatform("Win32");
     const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
 
-    render(<RecoveryDialog onClose={vi.fn()} />);
+    render(
+      <RecoveryDialog
+        onClose={vi.fn()}
+        healthUrl="https://example.ts.net/health"
+      />,
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Start Now" }));
 
     expect(alertSpy).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert")).toHaveTextContent("Protocol handler requires HTTPS context");
+    const alert = screen.getByRole("alert");
+    // The misleading "Make sure you're using HTTPS" guidance must be gone:
+    expect(alert.textContent ?? "").not.toMatch(/make sure you're using https/i);
+    expect(alert.textContent ?? "").not.toMatch(/protocol handler requires https context/i);
+    // The replacement is actionable: tells the user what to do and which URL
+    // is being probed.
+    expect(alert).toHaveTextContent(/systemctl --user restart runner-dashboard/);
+    expect(alert).toHaveTextContent("https://example.ts.net/health");
 
     alertSpy.mockRestore();
+  });
+
+  it("always shows the terminal restart command, including on desktop platforms", () => {
+    setPlatform("Win32");
+
+    render(<RecoveryDialog onClose={vi.fn()} />);
+
+    // The restart command must be visible up-front — clicking Start Now is
+    // best-effort and frequently does nothing (handler not registered).
+    expect(
+      screen.getByText(/systemctl --user restart runner-dashboard/),
+    ).toBeInTheDocument();
+  });
+
+  it("surfaces the health-probe URL so operators can curl it from outside the page", () => {
+    setPlatform("Win32");
+
+    render(
+      <RecoveryDialog
+        onClose={vi.fn()}
+        healthUrl="https://example.ts.net/health"
+      />,
+    );
+
+    expect(screen.getByText("https://example.ts.net/health")).toBeInTheDocument();
   });
 });
