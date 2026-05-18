@@ -132,6 +132,32 @@ cleanup_runner_workdir() {
                 delete_path "$path"
             done
     fi
+    # issue #651: clean stale _runner_file_commands left over from
+    # jobs that died mid-execution. The directory is normally
+    # created+deleted within a single job lifecycle; anything still
+    # here when the runner is idle is corruption that causes the
+    # next allocation to fail with "Missing file at path:
+    # .../_runner_file_commands/save_state_<uuid>".
+    if [[ -d "$work_dir/_temp/_runner_file_commands" ]]; then
+        delete_path "$work_dir/_temp/_runner_file_commands"
+    fi
+}
+
+cleanup_runner_diag() {
+    # issue #651: rotate the runner's _diag/pages/ output. The actions
+    # runner writes UUID-named log files there per page-event; if two
+    # runs collide on the same UUID the runner aborts with "The file
+    # '.../_diag/pages/<uuid>_<uuid>_1.log' already exists". Capping
+    # age + leaving the directory itself in place prevents both the
+    # collision and the next allocation's startup failure.
+    local runner_dir="$1"
+    local diag_dir="${runner_dir}/_diag/pages"
+    [[ -d "$diag_dir" ]] || return 0
+    find "$diag_dir" -maxdepth 1 -type f -name '*.log' \
+        -mtime +"$RUNNER_TEMP_DAYS" \
+        -print0 | while IFS= read -r -d '' path; do
+            delete_path "$path"
+        done
 }
 
 cleanup_runners() {
@@ -153,6 +179,7 @@ cleanup_runners() {
             run systemctl stop "$unit"
         fi
         cleanup_runner_workdir "$runner_dir"
+        cleanup_runner_diag "$runner_dir"
         if [[ "$was_active" == "1" ]]; then
             run systemctl start "$unit"
         fi
