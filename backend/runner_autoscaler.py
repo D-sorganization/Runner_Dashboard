@@ -104,6 +104,20 @@ RUNNER_SCHEDULE_CONFIG = os.path.expanduser(
 )
 RUNNER_BASE_DIR = os.path.expanduser(os.environ.get("RUNNER_BASE_DIR", "~/actions-runners"))
 
+# Issue #651: defense-in-depth busy signal. The Runner.Worker child of MainPID
+# is the primary signal, but there is a 1-2s race window between job pickup
+# (Listener has accepted a job, written `_work/_temp/_runner_file_commands/`)
+# and Worker fork. During that window we'd otherwise misread the unit as idle
+# and kill it, leaving residue that breaks the next allocation. The lockfile
+# written by `deploy/runner-hooks/job-started.sh` closes one half of the
+# window; the listener-log quietude check below closes the other half.
+RUNNER_BUSY_LOCK_DIR = Path(os.environ.get("RUNNER_BUSY_LOCK_DIR", "/var/run/runner-busy"))
+RUNNER_BUSY_LOCK_MAX_AGE_SECONDS = _env_int(
+    "RUNNER_BUSY_LOCK_MAX_AGE_SECONDS", 24 * 60 * 60
+)  # 24h — stale lockfiles (Worker killed mid-job, never wrote completion hook)
+# are GC'd by deploy/runner-cleanup.sh; the autoscaler treats them as "stale,
+# not busy" to avoid permanently locking out a runner.
+
 HOSTNAME = platform.node()
 
 
@@ -182,27 +196,83 @@ def _unit_state(unit: str) -> tuple[str, str]:
     return active_state, sub_state
 
 
+def _runner_name_for_unit(unit: str) -> str:
+    """Extract the runner name from a unit (the last dotted segment before .service).
+
+    Example: ``actions.runner.D-sorganization.d-sorg-local-ControlTower-3.service``
+    → ``d-sorg-local-ControlTower-3``.
+    """
+    # The unit prefix is ``actions.runner.<org>.``. Whatever follows up to the
+    # ``.service`` suffix is the runner name. We use rpartition so a future
+    # rename that adds extra dots to the org segment doesn't break us.
+    if not unit.endswith(".service"):
+        return unit
+    stem = unit[: -len(".service")]
+    return stem.rpartition(".")[2] or stem
+
+
+def _runner_busy_via_lockfile(unit: str) -> bool:
+    """Return True if a fresh job-pickup lockfile exists for *unit*.
+
+    Issue #651 defense-in-depth signal. The Runner.Worker child of MainPID is
+    the primary busy signal but races with job pickup; see
+    ``deploy/runner-hooks/job-started.sh`` for the contract. A lockfile older
+    than ``RUNNER_BUSY_LOCK_MAX_AGE_SECONDS`` is treated as stale (Worker died
+    mid-job without firing the completion hook) and the runner is NOT
+    considered busy on its account — the cleanup pass will GC it.
+    """
+    runner_name = _runner_name_for_unit(unit)
+    lock = RUNNER_BUSY_LOCK_DIR / f"{runner_name}.lock"
+    try:
+        stat = lock.stat()
+    except FileNotFoundError:
+        return False
+    except OSError as exc:
+        log.debug("lockfile stat failed unit=%s path=%s err=%s", unit, lock, exc)
+        return False
+    age = time.time() - stat.st_mtime
+    if age > RUNNER_BUSY_LOCK_MAX_AGE_SECONDS:
+        log.info(
+            "stale lockfile (age=%.0fs > max=%ds) — not treating as busy unit=%s",
+            age,
+            RUNNER_BUSY_LOCK_MAX_AGE_SECONDS,
+            unit,
+        )
+        return False
+    return True
+
+
 def _runner_is_busy(unit: str) -> bool:
     """Best-effort: does the runner have an active job?
 
     The GitHub Actions runner creates a ``Runner.Worker`` child process while
-    executing a job.  We try two detection strategies, preferring precision
-    over speed:
+    executing a job.  We layer three detection strategies; ANY positive signal
+    counts as busy:
 
-    1. **MainPID path** — ask systemd for the unit's MainPID, then walk the
+    1. **Lockfile path** (issue #651) — the runner's JOB_STARTED hook writes
+       ``/var/run/runner-busy/<runner-name>.lock``. This catches the brief
+       window where the Worker exists but psutil hasn't yet seen it as a
+       child of MainPID, and it persists across transient process-tree
+       inspection failures. Stale lockfiles (>24h) are ignored.
+
+    2. **MainPID path** — ask systemd for the unit's MainPID, then walk the
        process tree looking for a ``Runner.Worker`` child.  This is the most
-       direct signal.
+       direct signal once the Worker has forked.
 
-    2. **ActiveState/SubState fallback** — when MainPID is 0 (transient
+    3. **ActiveState/SubState fallback** — when MainPID is 0 (transient
        restart, brief crash, listener mid-reconfig), the main-PID path gives
        a false negative.  Instead we query ActiveState and SubState: if the
        unit is ``active/running`` we conservatively return *True* so the
        autoscaler never kills a runner that may be mid-job.  Err on the side
        of safety.
 
-    If both strategies fail or psutil is unavailable, return *False* only when
-    there is clear evidence the unit is inactive (e.g., ActiveState=inactive).
+    If all strategies are inconclusive return *False* only when there is clear
+    evidence the unit is inactive (e.g., ActiveState=inactive).
     """
+    # ── Strategy 0: lockfile (defense-in-depth for the pickup race) ─────────
+    if _runner_busy_via_lockfile(unit):
+        return True
+
     # ── Strategy 1: MainPID-based child scan ─────────────────────────────────
     r = subprocess.run(
         ["systemctl", "show", unit, "--property=MainPID", "--value"],
@@ -349,18 +419,48 @@ def main() -> None:
         import sys
 
         global _lock_fd
-        lock_path = "/var/run/runner-autoscaler.lock"
-        if not os.path.exists(os.path.dirname(lock_path)):
-            lock_path = "/tmp/runner-autoscaler.lock"
-        _lock_fd = open(lock_path, "w")
-        fcntl.flock(_lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)  # type: ignore[attr-defined,name-defined]
+        # Walk a small candidate list; the first writable path wins. The old
+        # code hard-coded /var/run with a directory-existence check, which is
+        # wrong when the service runs as a non-root user (the typical
+        # deployment): /run exists but isn't writable for the runner user, so
+        # the open() failed with PermissionError → caught as OSError → service
+        # exit(75) every poll → systemd crash-loop. See d-sorg-local-ControlTower
+        # post-2026-05-18 deploy for an instance.
+        lock_path = ""
+        last_err: OSError | None = None
+        for candidate in (
+            os.environ.get("AUTOSCALER_LOCK_PATH"),
+            "/var/run/runner-autoscaler.lock",
+            f"/run/user/{os.getuid()}/runner-autoscaler.lock",
+            os.path.expanduser("~/.cache/runner-autoscaler.lock"),
+            "/tmp/runner-autoscaler.lock",
+        ):
+            if not candidate:
+                continue
+            try:
+                os.makedirs(os.path.dirname(candidate), exist_ok=True)
+                _lock_fd = open(candidate, "w")
+                fcntl.flock(_lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)  # type: ignore[attr-defined,name-defined]
+                lock_path = candidate
+                break
+            except OSError as exc:
+                last_err = exc
+                if _lock_fd is not None:
+                    try:
+                        _lock_fd.close()
+                    except OSError:
+                        pass
+                    _lock_fd = None
+                continue
+        if not lock_path:
+            log.error(
+                "Could not acquire lock on any candidate path; last error: %s",
+                last_err,
+            )
+            sys.exit(75)
+        log.info("acquired autoscaler lock at %s", lock_path)
     except ImportError:
         pass
-    except OSError:
-        import sys
-
-        log.error("Could not acquire lock, another autoscaler instance is running.")
-        sys.exit(75)
 
     log.info(
         "autoscaler start host=%s cpu_high=%s cpu_low=%s mem_high=%s "

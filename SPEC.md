@@ -981,6 +981,32 @@ The optional autoscaler service (`deploy/runner-autoscaler.service`) runs
 adjusts the active runner count based on the policy defined in
 `config/runner-schedule.json`.
 
+**Busy detection contract.** Before stopping a runner the autoscaler MUST
+treat the unit as busy when ANY of these signals fire:
+
+1. A fresh job-pickup lockfile exists at
+   `$RUNNER_BUSY_LOCK_DIR/<runner-name>.lock` (defense-in-depth, written by
+   the runner's `ACTIONS_RUNNER_HOOK_JOB_STARTED` hook — see
+   `deploy/runner-hooks/job-started.sh`). Lockfiles older than
+   `RUNNER_BUSY_LOCK_MAX_AGE_SECONDS` (default 24h) are treated as stale
+   and ignored.
+2. The unit's MainPID has a `Runner.Worker` child process.
+3. The unit's MainPID is 0/unknown but `ActiveState=active` and
+   `SubState=running` (conservative fallback during transient restarts).
+
+The shell cleanup script `deploy/runner-cleanup.sh` honours the same
+contract and additionally garbage-collects stale lockfiles.
+
+### 6.7 Runner Service Unit Template
+
+GitHub Actions runner units installed by the runner package use
+`KillMode=process` by default, which orphans `Runner.Worker` children when
+the listener is stopped. Existing units are migrated to `KillMode=mixed`
+plus the job-pickup hooks above by running
+`sudo deploy/migrate-runner-units.sh` once per host. The migration uses a
+systemd drop-in (`/etc/systemd/system/<unit>.d/10-runner-dashboard-busy-lock.conf`)
+so it survives upstream runner package upgrades.
+
 ### 6.7 Shared Deploy Library
 
 `deploy/lib.sh` is sourced by all deploy scripts and provides:

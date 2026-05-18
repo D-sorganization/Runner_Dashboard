@@ -94,8 +94,39 @@ unit_active() {
     systemctl is-active --quiet "$1"
 }
 
+RUNNER_BUSY_LOCK_DIR="${RUNNER_BUSY_LOCK_DIR:-/var/run/runner-busy}"
+RUNNER_BUSY_LOCK_MAX_AGE_SECONDS="${RUNNER_BUSY_LOCK_MAX_AGE_SECONDS:-86400}"
+
+runner_busy_via_lockfile() {
+    # Issue #651 defense-in-depth signal mirroring backend/runner_autoscaler.py's
+    # _runner_busy_via_lockfile. The runner's JOB_STARTED hook writes
+    # ${RUNNER_BUSY_LOCK_DIR}/<runner-name>.lock; we treat a fresh lockfile
+    # as "busy". Stale ones (older than RUNNER_BUSY_LOCK_MAX_AGE_SECONDS)
+    # are ignored AND garbage-collected here so a Worker killed mid-job
+    # doesn't permanently lock its runner out of cleanup.
+    local runner_dir="$1"
+    local runner_name lock now mtime age
+    runner_name="$(basename "$runner_dir")"
+    lock="${RUNNER_BUSY_LOCK_DIR}/${runner_name}.lock"
+    [[ -f "$lock" ]] || return 1
+    now=$(date +%s)
+    mtime=$(stat -c %Y "$lock" 2>/dev/null || echo 0)
+    age=$(( now - mtime ))
+    if (( age > RUNNER_BUSY_LOCK_MAX_AGE_SECONDS )); then
+        log "stale runner-busy lockfile (age=${age}s) — removing $lock"
+        rm -f "$lock"
+        return 1
+    fi
+    return 0
+}
+
 runner_busy() {
     local runner_dir="$1"
+    # Combine the lockfile signal with the process-tree check; either is
+    # sufficient to mark the runner busy (#651).
+    if runner_busy_via_lockfile "$runner_dir"; then
+        return 0
+    fi
     ps -eo args= | grep -F "${runner_dir}/bin/Runner.Worker" | grep -v 'grep -F' >/dev/null 2>&1
 }
 
