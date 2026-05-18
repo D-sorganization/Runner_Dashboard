@@ -1,0 +1,298 @@
+name: Queued Job Reaper
+
+# Periodically cancels queued GitHub Actions jobs whose required runner
+# labels cannot be satisfied by any currently online self-hosted runner.
+#
+# Why: when a workflow specifies `runs-on: [self-hosted, <typo>]` and no
+# online runner advertises every requested label, the job sits queued
+# forever (no error, no timeout). This reaper converts that silent hang
+# into a visible cancellation within ~15 minutes.
+#
+# Algorithm (per repo in the org):
+#   1. Pull the set of *online, non-busy-or-not* self-hosted runners and
+#      the labels each advertises (org-level REST API).
+#   2. List workflow runs in status=queued.
+#   3. For each queued run older than --min-age minutes:
+#        a. Fetch each job's requested `labels` via
+#           /repos/{owner}/{repo}/actions/runs/{run_id}/jobs (the `labels`
+#           field on a queued job is the resolved label expression).
+#        b. Skip jobs that target GitHub-hosted runners (ubuntu-*,
+#           windows-*, macos-*) — those are GitHub's queue, not the
+#           fleet's; concurrency/billing hangs are out of scope.
+#        c. Skip jobs whose label set is fully contained in *some* online
+#           runner's label set (i.e. there exists a runner whose labels
+#           are a superset of the requested labels). That job is just
+#           waiting for the runner to free up — leave it alone.
+#        d. Otherwise the job is unsatisfiable. Cancel the run and append
+#           to the $GITHUB_STEP_SUMMARY audit log.
+#
+# Disable: set repo variable QUEUED_JOB_REAPER_DISABLED=true, or disable
+# this workflow in the Actions tab, or set workflow_dispatch input
+# `dry-run: true` to force read-only mode without disabling the schedule.
+#
+# Token scopes required (org-admin to enumerate runners):
+#   - actions: write (cancel runs)
+#   - administration: read on the org (list org runners)
+#   - contents: read
+# Provided here via the existing JULES_APP_* GitHub App credentials,
+# which already carry org-self-hosted-runners:read elsewhere in this repo.
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: "Read-only: log what would be cancelled, don't cancel."
+        required: false
+        default: "false"
+        type: choice
+        options: ["true", "false"]
+      min-age-minutes:
+        description: "Only consider runs queued for at least this many minutes."
+        required: false
+        default: "20"
+        type: string
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: queued-job-reaper
+  # cancel-in-progress: true — if a prior reaper run is somehow still alive
+  # when the next 15-minute cron fires, the newer scan supersedes it; the
+  # cancellation operations themselves are idempotent (cancelling an already
+  # cancelled run is a no-op).
+  cancel-in-progress: true
+
+jobs:
+  reap:
+    runs-on: [self-hosted, d-sorg-fleet]
+    timeout-minutes: 13
+    steps:
+      - name: Preflight Jules app credentials
+        id: credential-preflight
+        env:
+          JULES_APP_CLIENT_ID: ${{ secrets.JULES_APP_ID }}
+          JULES_APP_PRIVATE_KEY: ${{ secrets.JULES_APP_PRIVATE_KEY }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: | # pragma: allowlist secret
+          missing=0
+          if [ -z "$JULES_APP_CLIENT_ID" ]; then
+            echo "::warning title=Missing GitHub App credential::JULES_APP_ID is not configured."
+            missing=1
+          fi
+          if [ -z "$JULES_APP_PRIVATE_KEY" ]; then
+            echo "::warning title=Missing GitHub App credential::JULES_APP_PRIVATE_KEY is not configured."
+            missing=1
+          fi
+          if [ "$missing" -ne 0 ]; then
+            echo "credentials-present=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "## Queued Job Reaper"
+              echo ""
+              echo "- **Status:** skipped"
+              echo "- **Reason:** missing GitHub App credentials"
+            } >> "$GITHUB_STEP_SUMMARY"
+            if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+              echo "::error::Configure JULES_APP_ID and JULES_APP_PRIVATE_KEY before manually running this workflow."
+              exit 1
+            fi
+            exit 0
+          fi
+          echo "credentials-present=true" >> "$GITHUB_OUTPUT"
+
+      - name: Generate Jules app token
+        if: steps.credential-preflight.outputs.credentials-present == 'true'
+        id: app-token
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v1
+        with:
+          client-id: ${{ secrets.JULES_APP_ID }}
+          private-key: ${{ secrets.JULES_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          permission-actions: write
+          permission-contents: read
+          permission-organization-self-hosted-runners: read
+
+      - name: Check kill switch
+        if: steps.credential-preflight.outputs.credentials-present == 'true'
+        id: kill-switch
+        env:
+          DISABLED_FLAG: ${{ vars.QUEUED_JOB_REAPER_DISABLED }}
+        run: |
+          if [ "${DISABLED_FLAG:-false}" = "true" ]; then
+            echo "::notice::QUEUED_JOB_REAPER_DISABLED=true; exiting without action."
+            {
+              echo "## Queued Job Reaper"
+              echo ""
+              echo "- **Status:** disabled via repo variable QUEUED_JOB_REAPER_DISABLED=true"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "disabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "disabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Reap unsatisfiable queued runs
+        if: steps.credential-preflight.outputs.credentials-present == 'true' && steps.kill-switch.outputs.disabled != 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          ORG: D-sorganization
+          DRY_RUN: ${{ inputs.dry-run || 'false' }}
+          MIN_AGE_MINUTES: ${{ inputs.min-age-minutes || '20' }}
+        run: |
+          set -uo pipefail
+
+          # -------- 1. Fetch online self-hosted runners --------
+          # Each entry: {name, status, busy, labels:[{name},...]}
+          # We consider a runner satisfying if status=="online" (busy
+          # runners are still satisfying — the job is just waiting).
+          runners_json=$(gh api --paginate "/orgs/${ORG}/actions/runners" \
+            --jq '[.runners[] | select(.status=="online") | {name, labels:[.labels[].name | ascii_downcase]}]' \
+            | jq -s 'add // []')
+          online_count=$(echo "$runners_json" | jq 'length')
+          echo "Found $online_count online self-hosted runners."
+
+          # Union of all online labels — used for the human-readable
+          # "available labels" diagnostic, not for the satisfiability test.
+          available_labels=$(echo "$runners_json" \
+            | jq -r '[.[].labels[]] | unique | join(", ")')
+
+          # Hosted-runner label prefixes we never touch.
+          is_hosted_label() {
+            case "$1" in
+              ubuntu-*|windows-*|macos-*|ubuntu|windows|macos) return 0 ;;
+              *) return 1 ;;
+            esac
+          }
+
+          # Returns 0 if some online runner advertises a superset of $1
+          # (a comma-separated, lowercased label list).
+          requested_satisfied_by_online() {
+            local requested_csv="$1"
+            echo "$runners_json" | jq -e --arg req "$requested_csv" '
+              ($req | split(",") | map(select(length>0))) as $r
+              | any(.[]; (.labels) as $have | ($r | all(. as $x | $have | index($x))))
+            ' >/dev/null
+          }
+
+          # -------- 2. Iterate repos --------
+          mapfile -t repos < <(gh repo list "$ORG" --no-archived --limit 200 --json name --jq '.[].name')
+          echo "Scanning ${#repos[@]} repos in $ORG."
+
+          summary_file="$(mktemp)"
+          {
+            echo "## Queued Job Reaper"
+            echo ""
+            echo "- **Started:** $(date -Iseconds)"
+            echo "- **Dry run:** ${DRY_RUN}"
+            echo "- **Min queue age:** ${MIN_AGE_MINUTES} minutes"
+            echo "- **Online runners:** ${online_count}"
+            echo "- **Available labels:** ${available_labels:-(none)}"
+            echo ""
+            echo "| Repo | Run | Workflow | Requested labels | Action |"
+            echo "|------|-----|----------|------------------|--------|"
+          } > "$summary_file"
+
+          cutoff_epoch=$(( $(date +%s) - MIN_AGE_MINUTES*60 ))
+          cancel_count=0
+          skip_busy_count=0
+          skip_hosted_count=0
+
+          for repo in "${repos[@]}"; do
+            # List queued runs; pagination via --paginate.
+            queued=$(gh api --paginate \
+              "/repos/${ORG}/${repo}/actions/runs?status=queued&per_page=100" \
+              --jq '[.workflow_runs[] | {id, name, created_at, html_url}]' \
+              | jq -s 'add // []' 2>/dev/null || echo "[]")
+
+            n=$(echo "$queued" | jq 'length')
+            [ "$n" -eq 0 ] && continue
+
+            echo "$repo: $n queued run(s)"
+
+            while IFS=$'\t' read -r run_id wf_name created_at run_url; do
+              [ -z "$run_id" ] && continue
+              created_epoch=$(date -d "$created_at" +%s 2>/dev/null || echo 0)
+              if [ "$created_epoch" -gt "$cutoff_epoch" ]; then
+                continue  # too young
+              fi
+
+              # Fetch jobs for this run. For a queued job the `labels`
+              # field carries the resolved runs-on label list.
+              jobs_json=$(gh api --paginate \
+                "/repos/${ORG}/${repo}/actions/runs/${run_id}/jobs?filter=latest" \
+                --jq '[.jobs[] | select(.status=="queued") | {name, labels:[.labels[] | ascii_downcase]}]' \
+                | jq -s 'add // []' 2>/dev/null || echo "[]")
+
+              n_jobs=$(echo "$jobs_json" | jq 'length')
+              [ "$n_jobs" -eq 0 ] && continue
+
+              unsatisfiable_labels=""
+              all_satisfied=true
+              all_hosted=true
+              while IFS= read -r labels_csv; do
+                [ -z "$labels_csv" ] && continue
+                # Hosted check: if any label is hosted-prefixed, treat the
+                # whole job as hosted and skip cancellation logic.
+                hosted_in_job=false
+                IFS=',' read -r -a lab_arr <<< "$labels_csv"
+                for l in "${lab_arr[@]}"; do
+                  if is_hosted_label "$l"; then
+                    hosted_in_job=true
+                    break
+                  fi
+                done
+                if $hosted_in_job; then
+                  continue
+                fi
+                all_hosted=false
+                if ! requested_satisfied_by_online "$labels_csv"; then
+                  all_satisfied=false
+                  unsatisfiable_labels="$labels_csv"
+                  break
+                fi
+              done < <(echo "$jobs_json" | jq -r '.[].labels | join(",")')
+
+              if $all_hosted; then
+                skip_hosted_count=$((skip_hosted_count+1))
+                continue
+              fi
+              if $all_satisfied; then
+                skip_busy_count=$((skip_busy_count+1))
+                continue
+              fi
+
+              reason="requested labels [${unsatisfiable_labels}] have no matching online runner. Available labels: [${available_labels}]"
+              echo "::warning::Cancelling ${ORG}/${repo} run ${run_id}: ${reason}"
+
+              if [ "$DRY_RUN" = "true" ]; then
+                action="would-cancel (dry-run)"
+              else
+                if gh api -X POST "/repos/${ORG}/${repo}/actions/runs/${run_id}/cancel" >/dev/null 2>&1; then
+                  action="cancelled"
+                  cancel_count=$((cancel_count+1))
+                  # Best-effort annotation comment on the commit, if pushable.
+                  # (Skipped: workflow_run has no canonical comment surface;
+                  # the step summary is the audit trail.)
+                else
+                  action="cancel-failed"
+                fi
+              fi
+
+              printf '| %s | [%s](%s) | %s | `%s` | %s — %s |\n' \
+                "$repo" "$run_id" "$run_url" "$wf_name" "$unsatisfiable_labels" "$action" "$reason" \
+                >> "$summary_file"
+            done < <(echo "$queued" | jq -r '.[] | [.id, .name, .created_at, .html_url] | @tsv')
+          done
+
+          {
+            echo ""
+            echo "- **Cancelled:** ${cancel_count}"
+            echo "- **Skipped (runner busy, satisfiable):** ${skip_busy_count}"
+            echo "- **Skipped (GitHub-hosted):** ${skip_hosted_count}"
+            echo "- **Finished:** $(date -Iseconds)"
+          } >> "$summary_file"
+
+          cat "$summary_file" >> "$GITHUB_STEP_SUMMARY"
+          echo "Done. cancelled=$cancel_count busy_skipped=$skip_busy_count hosted_skipped=$skip_hosted_count"
