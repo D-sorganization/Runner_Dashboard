@@ -82,18 +82,42 @@ fi
 
 # ── 2. /api/diagnostics ──────────────────────────────────────────────────────
 DIAG_JSON="$(curl -sS --max-time "$TIMEOUT_SEC" "$DIAGNOSTICS_URL" 2>/dev/null || echo '{}')"
-DIAG_PYTHON=$(printf '%s' "$DIAG_JSON" | python3 -c 'import sys,json
+# Write the JSON to a temp file so the python parser doesn't fight bash
+# quoting / heredoc semantics. Earlier inline-pipe attempts hit
+# subtle parse failures that made deploy-check report the diagnostics
+# endpoint as "unreachable" even when /api/diagnostics was returning
+# a perfectly valid response. The tempfile pattern is bulletproof.
+DIAG_TMPFILE="$(mktemp /tmp/diag.XXXXXX.json)"
+printf '%s' "$DIAG_JSON" >"$DIAG_TMPFILE"
+DIAG_PYTHON=$(python3 - "$DIAG_TMPFILE" <<'PY' 2>/dev/null
+import json, sys
+
 try:
-    d=json.load(sys.stdin)
+    with open(sys.argv[1]) as f:
+        d = json.load(f)
 except Exception:
-    print("invalid|||")
+    print("invalid|||||||")
     sys.exit(0)
-ok=d.get("ok")
-reg=d.get("machine_registry",{})
-fleet=d.get("fleet_federation",{})
-leader=d.get("leader",{})
-print(f"{ok}|{reg.get(\"loaded\")}|{reg.get(\"machines\",0)}|{reg.get(\"error\",\"\")}|{fleet.get(\"source\",\"\")}|{fleet.get(\"node_count\",0)}|{fleet.get(\"machine_role\",\"\")}|{leader.get(\"is_leader\",False)}|{leader.get(\"lock_path\",\"\")}")
-' 2>/dev/null)
+reg = d.get("machine_registry", {}) or {}
+fleet = d.get("fleet_federation", {}) or {}
+leader = d.get("leader", {}) or {}
+fields = [
+    str(d.get("ok")),
+    str(reg.get("loaded")),
+    str(reg.get("machines", 0)),
+    str(reg.get("error", "") or ""),
+    str(fleet.get("source", "") or ""),
+    str(fleet.get("node_count", 0)),
+    str(fleet.get("machine_role", "") or ""),
+    str(leader.get("is_leader", False)),
+    str(leader.get("lock_path", "") or ""),
+]
+# Strip pipes from values that might contain them (paths, error messages)
+fields = [f.replace("|", "_") for f in fields]
+print("|".join(fields))
+PY
+)
+rm -f "$DIAG_TMPFILE"
 IFS='|' read -r DIAG_OK REG_LOADED REG_MACHINES REG_ERROR FLEET_SOURCE FLEET_NODE_COUNT MACHINE_ROLE LEADER_IS_LEADER LEADER_LOCK_PATH <<<"$DIAG_PYTHON"
 
 if [[ "$DIAG_OK" == "True" ]]; then
@@ -141,6 +165,11 @@ if (( TOTAL == 0 )); then
     record "runner_units" WARN "no actions.runner.*.service installed on this host"
 elif (( ACTIVE == TOTAL )); then
     record "runner_units" PASS "$ACTIVE / $TOTAL active"
+elif systemctl is-active --quiet runner-autoscaler.service 2>/dev/null; then
+    # When the autoscaler is healthy, it scales idle units down on load —
+    # that's correct behaviour, not a deploy failure. Surface as WARN so
+    # operators see the count but the check doesn't fail spuriously.
+    record "runner_units" WARN "$ACTIVE / $TOTAL active (autoscaler-driven scale-down likely)"
 else
     record "runner_units" FAIL "only $ACTIVE / $TOTAL active"
 fi
