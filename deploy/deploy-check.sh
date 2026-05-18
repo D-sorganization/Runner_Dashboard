@@ -109,6 +109,9 @@ if [[ "$REG_LOADED" == "True" && "${REG_MACHINES:-0}" -gt 0 ]]; then
     record "machine_registry" PASS "loaded $REG_MACHINES machine(s)"
 elif [[ "$REG_LOADED" == "True" ]]; then
     record "machine_registry" WARN "loaded but contains 0 machines (empty registry)"
+elif [[ -n "$REG_ERROR" && "$REG_ERROR" == *"world-writable"* ]]; then
+    # Specific actionable message for the deploy-from-/mnt/c case.
+    record "machine_registry" FAIL "world-writable YAML — run: chmod 0644 <path>; or redeploy (update-deployed.sh now normalises perms)"
 else
     record "machine_registry" FAIL "load failed: ${REG_ERROR:-unknown error}"
 fi

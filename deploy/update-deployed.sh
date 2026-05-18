@@ -76,6 +76,14 @@ else
     info "Copying backend..."
     if ! dry_run "sync_dir $REPO/runner-dashboard/backend $DEPLOY_DIR/backend"; then
         sync_dir "$REPO/backend" "$DEPLOY_DIR/backend"
+        # When the source repo lives on /mnt/c/ (Windows-mounted), files come
+        # over with mode 0777 because NTFS can't represent POSIX bits faithfully.
+        # security.py's _check_file_mode rejects world-writable config files,
+        # which silently breaks machine_registry load. Normalise YAML/JSON
+        # config perms to 0644 so the validator accepts them.
+        find "$DEPLOY_DIR/backend" -maxdepth 2 -type f \
+            \( -name '*.yml' -o -name '*.yaml' -o -name '*.json' \) \
+            -exec chmod 0644 {} + 2>/dev/null || true
         ok  "backend deployed"
     fi
 
