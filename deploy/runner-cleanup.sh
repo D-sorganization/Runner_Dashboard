@@ -160,6 +160,29 @@ cleanup_runner_diag() {
         done
 }
 
+# Stop a runner unit and wait for it to reach inactive. Tolerates the
+# autoscaler-race in #653: if a job lands between our busy-check and the
+# stop call, the unit self-exits and `systemctl stop` returns non-zero.
+# Aborting on that error left runners 2..N untouched, defeating #651/#652.
+# Returns 0 if the unit reaches inactive within STOP_TIMEOUT, 1 otherwise.
+STOP_TIMEOUT="${STOP_TIMEOUT:-30}"
+stop_runner_unit() {
+    local unit="$1"
+    local deadline=$(( SECONDS + STOP_TIMEOUT ))
+    if [[ "$DRY_RUN" == "1" ]]; then
+        log "[dry-run] systemctl stop --no-block $unit"
+        return 0
+    fi
+    log "+ systemctl stop --no-block $unit"
+    systemctl stop --no-block "$unit" || true
+    while (( SECONDS < deadline )); do
+        unit_active "$unit" || return 0
+        sleep 1
+    done
+    log "stop $unit: still active after ${STOP_TIMEOUT}s"
+    return 1
+}
+
 cleanup_runners() {
     local unit runner_dir was_active
     while read -r unit; do
@@ -176,7 +199,21 @@ cleanup_runners() {
         was_active=0
         if unit_active "$unit"; then
             was_active=1
-            run systemctl stop "$unit"
+            if ! stop_runner_unit "$unit"; then
+                log "skip $unit: did not reach inactive; leaving workdir untouched"
+                continue
+            fi
+        fi
+        # Re-check busy *after* stop: a job may have landed during the stop
+        # window and forked Runner.Worker, leaving an orphan even though the
+        # unit reports inactive. Cleaning under those conditions is exactly
+        # the corruption that #651/#652 set out to clean up.
+        if runner_busy "$runner_dir"; then
+            log "skip $unit: became busy during stop (orphan worker present)"
+            if [[ "$was_active" == "1" ]]; then
+                run systemctl start "$unit"
+            fi
+            continue
         fi
         cleanup_runner_workdir "$runner_dir"
         cleanup_runner_diag "$runner_dir"

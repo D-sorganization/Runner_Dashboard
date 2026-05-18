@@ -359,3 +359,61 @@ def test_rollback_sh_list_shows_integrity_status() -> None:
     content = _read(_DEPLOY / "rollback.sh")
     assert "_integrity_status" in content
     assert "--list" in content
+
+
+# ---------------------------------------------------------------------------
+# Issue #653: runner-cleanup must tolerate the autoscaler race.
+#
+# Before this fix the nightly cleanup ran under `set -Eeuo pipefail` and a
+# bare `systemctl stop "$unit"`. If a job landed between the busy-check and
+# the stop call the unit self-exited, systemctl returned exit 1, and the
+# whole loop aborted on the first runner — leaving runners 2..N untouched
+# and defeating the corruption cleanup added by #651/#652.
+# ---------------------------------------------------------------------------
+
+
+def test_runner_cleanup_tolerates_systemctl_stop_failure() -> None:
+    """cleanup_runners must not abort on `systemctl stop` failure.
+
+    Regression for #653: the script must use `stop_runner_unit` (which
+    wraps the call with `|| true` and polls `is-active`) instead of the
+    bare `run systemctl stop "$unit"` that aborts under set -e.
+    """
+    content = _read(_DEPLOY / "runner-cleanup.sh")
+    assert "stop_runner_unit" in content, (
+        "cleanup_runners must call stop_runner_unit, the tolerant wrapper"
+    )
+    assert "systemctl stop --no-block" in content, (
+        "stop_runner_unit must issue a non-blocking stop and poll for inactive"
+    )
+    # The legacy bare-stop call must be gone — its presence reintroduces the bug.
+    assert 'run systemctl stop "$unit"' not in content, (
+        "bare `run systemctl stop \"$unit\"` reintroduces the #653 strict-mode abort"
+    )
+
+
+def test_runner_cleanup_polls_for_inactive_with_timeout() -> None:
+    """stop_runner_unit must bound its wait via STOP_TIMEOUT."""
+    content = _read(_DEPLOY / "runner-cleanup.sh")
+    assert 'STOP_TIMEOUT="${STOP_TIMEOUT:-' in content, (
+        "STOP_TIMEOUT must be overridable and have a default"
+    )
+    assert "unit_active" in content
+
+
+def test_runner_cleanup_rechecks_busy_after_stop() -> None:
+    """cleanup_runners must re-check `runner_busy` after the stop completes.
+
+    A job that lands during the stop window can fork Runner.Worker even
+    though the unit ends up inactive; cleaning the workdir under those
+    conditions is exactly the corruption #651/#652 fixed.
+    """
+    content = _read(_DEPLOY / "runner-cleanup.sh")
+    # There must be at least two `runner_busy` checks: one before stop,
+    # one after. The post-stop check is the new guard.
+    assert content.count('runner_busy "$runner_dir"') >= 2, (
+        "cleanup_runners must re-check runner_busy after stop_runner_unit"
+    )
+    assert "orphan worker" in content, (
+        "post-stop busy-check should log the orphan-worker reason for skip"
+    )
