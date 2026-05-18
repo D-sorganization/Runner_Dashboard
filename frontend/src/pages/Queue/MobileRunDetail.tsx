@@ -1,7 +1,7 @@
 import { BottomSheet } from "../../primitives/BottomSheet";
 import { TouchButton } from "../../primitives/TouchButton";
 import type { RunDetail } from "./mobileTypes";
-import { runnerName, statusLabel, triggeredBy } from "./mobileTypes";
+import { runnerName, statusLabel, timingLabel, triggeredBy } from "./mobileTypes";
 
 interface MobileRunDetailProps {
   selectedRun: RunDetail | null;
@@ -50,6 +50,9 @@ export function MobileRunDetail({
               { label: "Runner", value: runnerName(selectedRun.run) },
               { label: "Elapsed", value: selectedRun.elapsed },
               { label: "Status", value: statusLabel(selectedRun.status) },
+              ...(timingLabel(selectedRun.run)
+                ? [{ label: "Timing", value: timingLabel(selectedRun.run) }]
+                : []),
             ].map(({ label, value }) => (
               <div
                 key={label}

@@ -548,6 +548,7 @@ env var.
 | Method | Path | Description |
 |---|---|---|
 | GET | `/api/queue` | Current job queue (queued + in_progress) |
+| GET | `/api/queue/status` | Queue data with per-run `timing` breakdown (queue_wait_seconds, exec_seconds) |
 | POST | `/api/queue/cancel-workflow` | Cancel a queued workflow |
 | GET | `/api/queue/diagnose` | Diagnose queue stalls and blockages |
 
