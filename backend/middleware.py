@@ -228,12 +228,12 @@ async def add_security_headers(request: Request, call_next: Any) -> Any:
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    # CSP: remove third-party CDN sources; use 'strict-dynamic' with nonce-based
-    # scripts only (issue #324).  'unsafe-inline' on style-src is retained for
-    # Vite-injected critical CSS until a nonce pipeline is available.
+    # CSP: keep script loading self-hosted. Vite emits static module scripts
+    # without nonces, so do not use strict-dynamic until the HTML path can
+    # attach a nonce to the generated entrypoint.
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
-        "script-src 'self' 'strict-dynamic'; "
+        "script-src 'self'; "
         "style-src 'self' 'unsafe-inline'; "
         "img-src 'self' data:; "
         "connect-src 'self'; "

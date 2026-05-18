@@ -36,6 +36,7 @@ class HttpTimeout:
     # GitHub API tail latency without holding workers too long.
     PROXY_TO_HUB_S: float = 15.0
     GH_API_DEFAULT_S: int = 15
+    HEALTH_GH_API_S: int = 1
 
     # Default budget for ``run_cmd`` subprocess invocations. Used at call
     # sites that pass ``timeout=20`` explicitly when a tighter budget is

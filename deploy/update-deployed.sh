@@ -96,7 +96,12 @@ else
 
     info "Copying frontend..."
     if ! dry_run "sync_dir $REPO/runner-dashboard/frontend $DEPLOY_DIR/frontend"; then
+        if [[ ! -d "$REPO/node_modules" ]]; then
+            (cd "$REPO" && npm install --no-audit --no-fund --package-lock=false)
+        fi
+        (cd "$REPO" && npm run build)
         sync_dir "$REPO/frontend" "$DEPLOY_DIR/frontend"
+        sync_dir "$REPO/dist" "$DEPLOY_DIR/dist"
         ok  "frontend deployed"
     fi
 
