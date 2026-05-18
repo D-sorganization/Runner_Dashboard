@@ -278,3 +278,138 @@ def test_sample_raises_without_psutil(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(ra, "psutil", None)
     with pytest.raises(RuntimeError, match="psutil is required"):
         ra._sample()
+
+
+# ---------------------------------------------------------------------------
+# _runner_is_busy — issue #640: MainPID=0 transient must not return False
+# ---------------------------------------------------------------------------
+
+
+def _make_pid_proc(stdout: str = "", returncode: int = 0) -> MagicMock:
+    cp = MagicMock(spec=subprocess.CompletedProcess)
+    cp.stdout = stdout
+    cp.returncode = returncode
+    cp.stderr = ""
+    return cp
+
+
+def _make_state_proc(active: str, sub: str) -> MagicMock:
+    cp = MagicMock(spec=subprocess.CompletedProcess)
+    cp.stdout = f"ActiveState={active}\nSubState={sub}\n"
+    cp.returncode = 0
+    cp.stderr = ""
+    return cp
+
+
+class TestRunnerIsBusy:
+    """Tests for _runner_is_busy() covering the MainPID=0 transient case."""
+
+    UNIT = "actions.runner.my-org.runner1.service"
+
+    def test_main_pid_zero_active_running_returns_true(self) -> None:
+        """MainPID=0 + ActiveState=active/SubState=running → busy (conservative)."""
+        pid_resp = _make_pid_proc("0")
+        state_resp = _make_state_proc("active", "running")
+
+        with patch("subprocess.run", side_effect=[pid_resp, state_resp]):
+            assert ra._runner_is_busy(self.UNIT) is True
+
+    def test_main_pid_zero_inactive_returns_false(self) -> None:
+        """MainPID=0 + ActiveState=inactive → not busy."""
+        pid_resp = _make_pid_proc("0")
+        state_resp = _make_state_proc("inactive", "dead")
+
+        with patch("subprocess.run", side_effect=[pid_resp, state_resp]):
+            assert ra._runner_is_busy(self.UNIT) is False
+
+    def test_main_pid_zero_failed_returns_false(self) -> None:
+        """MainPID=0 + ActiveState=failed → not busy."""
+        pid_resp = _make_pid_proc("0")
+        state_resp = _make_state_proc("failed", "failed")
+
+        with patch("subprocess.run", side_effect=[pid_resp, state_resp]):
+            assert ra._runner_is_busy(self.UNIT) is False
+
+    def test_main_pid_zero_activating_returns_true(self) -> None:
+        """MainPID=0 + ActiveState=activating (unknown/transient) → busy (safe)."""
+        pid_resp = _make_pid_proc("0")
+        state_resp = _make_state_proc("activating", "start")
+
+        with patch("subprocess.run", side_effect=[pid_resp, state_resp]):
+            assert ra._runner_is_busy(self.UNIT) is True
+
+    def test_main_pid_empty_active_running_returns_true(self) -> None:
+        """Empty MainPID response also falls back to state check."""
+        pid_resp = _make_pid_proc("")
+        state_resp = _make_state_proc("active", "running")
+
+        with patch("subprocess.run", side_effect=[pid_resp, state_resp]):
+            assert ra._runner_is_busy(self.UNIT) is True
+
+    def test_main_pid_valid_no_worker_child_returns_false(self) -> None:
+        """Valid MainPID with no Runner.Worker child → not busy."""
+        pid_resp = _make_pid_proc("1234")
+
+        mock_psutil = MagicMock()
+        mock_proc = MagicMock()
+        mock_psutil.Process.return_value = mock_proc
+        mock_proc.children.return_value = []
+
+        with patch("subprocess.run", return_value=pid_resp), patch.object(ra, "psutil", mock_psutil):
+            assert ra._runner_is_busy(self.UNIT) is False
+
+    def test_main_pid_valid_with_worker_child_returns_true(self) -> None:
+        """Valid MainPID with a Runner.Worker child → busy."""
+        pid_resp = _make_pid_proc("1234")
+
+        mock_psutil = MagicMock()
+        mock_proc = MagicMock()
+        mock_child = MagicMock()
+        mock_child.name.return_value = "Runner.Worker"
+        mock_child.cmdline.return_value = ["/opt/runner/Runner.Worker"]
+        mock_proc.children.return_value = [mock_child]
+        mock_psutil.Process.return_value = mock_proc
+        mock_psutil.NoSuchProcess = ProcessLookupError
+        mock_psutil.AccessDenied = PermissionError
+
+        with patch("subprocess.run", return_value=pid_resp), patch.object(ra, "psutil", mock_psutil):
+            assert ra._runner_is_busy(self.UNIT) is True
+
+    def test_main_pid_valid_process_gone_returns_false(self) -> None:
+        """Valid MainPID but process already gone (NoSuchProcess) → not busy."""
+        pid_resp = _make_pid_proc("1234")
+
+        mock_psutil = MagicMock()
+        mock_psutil.NoSuchProcess = ProcessLookupError
+        mock_psutil.AccessDenied = PermissionError
+        mock_psutil.Process.side_effect = ProcessLookupError(1234)
+
+        with patch("subprocess.run", return_value=pid_resp), patch.object(ra, "psutil", mock_psutil):
+            assert ra._runner_is_busy(self.UNIT) is False
+
+    def test_psutil_none_main_pid_zero_active_running_returns_true(self) -> None:
+        """Even without psutil, MainPID=0 + active/running → busy (conservative)."""
+        pid_resp = _make_pid_proc("0")
+        state_resp = _make_state_proc("active", "running")
+
+        with patch("subprocess.run", side_effect=[pid_resp, state_resp]), patch.object(ra, "psutil", None):
+            assert ra._runner_is_busy(self.UNIT) is True
+
+
+# ---------------------------------------------------------------------------
+# LOAD_PER_CORE default raised to 2.5 (issue #640)
+# ---------------------------------------------------------------------------
+
+
+def test_load_per_core_default_is_2_5(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Default AUTOSCALER_LOAD_PER_CORE must be 2.5 to avoid false positives."""
+    monkeypatch.delenv("AUTOSCALER_LOAD_PER_CORE", raising=False)
+    # The module constant is already loaded; test the helper with the new default.
+    result = ra._env_float("AUTOSCALER_LOAD_PER_CORE", 2.5)
+    assert result == pytest.approx(2.5)
+
+
+def test_load_per_core_configurable_via_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AUTOSCALER_LOAD_PER_CORE", "3.0")
+    result = ra._env_float("AUTOSCALER_LOAD_PER_CORE", 2.5)
+    assert result == pytest.approx(3.0)

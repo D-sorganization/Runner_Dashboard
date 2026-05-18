@@ -20,7 +20,7 @@ Environment variables:
     AUTOSCALER_MEM_HIGH        default 85  — memory headroom threshold
     AUTOSCALER_DISK_HIGH       default 92  — disk usage threshold
     AUTOSCALER_DISK_MIN_FREE_GB default 25 — minimum free disk headroom
-    AUTOSCALER_LOAD_PER_CORE   default 1.5 — sustained load1 / cpu_count
+    AUTOSCALER_LOAD_PER_CORE   default 2.5 — sustained load1 / cpu_count
     AUTOSCALER_SUSTAIN_SECS    default 120 — how long a threshold must hold
     AUTOSCALER_POLL_SECONDS    default 15  — sample cadence
     AUTOSCALER_MIN_ONLINE      default 1   — never reduce below this count
@@ -86,7 +86,10 @@ CPU_LOW = _env_float("AUTOSCALER_CPU_LOW", 40.0)
 MEM_HIGH = _env_float("AUTOSCALER_MEM_HIGH", _DEFAULT_MEM_HIGH)
 DISK_HIGH = _env_float("AUTOSCALER_DISK_HIGH", _DEFAULT_DISK_HIGH)
 DISK_MIN_FREE_GB = _env_float("AUTOSCALER_DISK_MIN_FREE_GB", _DEFAULT_DISK_MIN_FREE_GB)
-LOAD_PER_CORE = _env_float("AUTOSCALER_LOAD_PER_CORE", 1.5)
+# 2.5 is intentionally generous: 16 parallel runners each running pip-install
+# steps can briefly spike load without indicating true saturation. The old
+# default of 1.5 fired constantly in that scenario.  Override via env var.
+LOAD_PER_CORE = _env_float("AUTOSCALER_LOAD_PER_CORE", 2.5)
 SUSTAIN_SECS = _env_int("AUTOSCALER_SUSTAIN_SECS", 120)
 POLL_SECONDS = _env_int("AUTOSCALER_POLL_SECONDS", 15)
 MIN_ONLINE = _env_int("AUTOSCALER_MIN_ONLINE", 1)
@@ -160,14 +163,47 @@ def _unit_is_active(unit: str) -> bool:
     return r.returncode == 0
 
 
+def _unit_state(unit: str) -> tuple[str, str]:
+    """Return (ActiveState, SubState) for *unit* from systemctl, or ('', '')."""
+    r = subprocess.run(
+        ["systemctl", "show", unit, "--property=ActiveState,SubState"],
+        capture_output=True,
+        text=True,
+        timeout=_SYSTEMCTL_TIMEOUT_S,
+        check=False,
+    )
+    active_state = ""
+    sub_state = ""
+    for line in (r.stdout or "").splitlines():
+        if line.startswith("ActiveState="):
+            active_state = line.split("=", 1)[1].strip()
+        elif line.startswith("SubState="):
+            sub_state = line.split("=", 1)[1].strip()
+    return active_state, sub_state
+
+
 def _runner_is_busy(unit: str) -> bool:
     """Best-effort: does the runner have an active job?
 
-    The GitHub Actions runner creates a `.runner_worker` lock file inside its
-    install directory while executing a job. We look for a child Runner.Worker
-    process under the unit's cgroup as the authoritative signal.
+    The GitHub Actions runner creates a ``Runner.Worker`` child process while
+    executing a job.  We try two detection strategies, preferring precision
+    over speed:
+
+    1. **MainPID path** — ask systemd for the unit's MainPID, then walk the
+       process tree looking for a ``Runner.Worker`` child.  This is the most
+       direct signal.
+
+    2. **ActiveState/SubState fallback** — when MainPID is 0 (transient
+       restart, brief crash, listener mid-reconfig), the main-PID path gives
+       a false negative.  Instead we query ActiveState and SubState: if the
+       unit is ``active/running`` we conservatively return *True* so the
+       autoscaler never kills a runner that may be mid-job.  Err on the side
+       of safety.
+
+    If both strategies fail or psutil is unavailable, return *False* only when
+    there is clear evidence the unit is inactive (e.g., ActiveState=inactive).
     """
-    # Find the main PID of the unit
+    # ── Strategy 1: MainPID-based child scan ─────────────────────────────────
     r = subprocess.run(
         ["systemctl", "show", unit, "--property=MainPID", "--value"],
         capture_output=True,
@@ -176,25 +212,48 @@ def _runner_is_busy(unit: str) -> bool:
         check=False,
     )
     pid_str = (r.stdout or "").strip()
-    if not pid_str or pid_str == "0":
-        return False
+
+    main_pid: int | None = None
     try:
-        main_pid = int(pid_str)
-    except ValueError:
+        candidate = int(pid_str)
+        if candidate > 0:
+            main_pid = candidate
+    except (ValueError, TypeError):
+        pass
+
+    if main_pid is not None and psutil is not None:
+        try:
+            proc = psutil.Process(main_pid)
+            for child in proc.children(recursive=True):
+                try:
+                    if "Runner.Worker" in child.name() or "Runner.Worker" in " ".join(child.cmdline()):
+                        return True
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+        # MainPID was valid but no Runner.Worker child found — not busy.
         return False
-    if psutil is None:
+
+    # ── Strategy 2: ActiveState/SubState fallback (MainPID == 0) ─────────────
+    # MainPID=0 is a transient state: the listener is restarting, or systemd
+    # hasn't yet registered the PID.  Never assume "not busy" in this window.
+    active_state, sub_state = _unit_state(unit)
+    log.debug(
+        "_runner_is_busy fallback unit=%s MainPID=%s ActiveState=%s SubState=%s",
+        unit,
+        pid_str or "?",
+        active_state,
+        sub_state,
+    )
+    if active_state == "active" and sub_state == "running":
+        # Unit is alive; we cannot confirm idleness without a valid PID, so
+        # treat as busy to avoid interrupting a potential in-flight job.
+        return True
+    if active_state in ("inactive", "failed", "deactivating"):
         return False
-    try:
-        proc = psutil.Process(main_pid)
-        for child in proc.children(recursive=True):
-            try:
-                if "Runner.Worker" in child.name() or "Runner.Worker" in " ".join(child.cmdline()):
-                    return True
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                continue
-    except (psutil.NoSuchProcess, psutil.AccessDenied):
-        return False
-    return False
+    # Unknown / activating / reloading — be conservative.
+    return True
 
 
 def _stop_unit(unit: str) -> bool:
