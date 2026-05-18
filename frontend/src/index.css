@@ -40,7 +40,6 @@
   --glass-blur: 12px;
   
   /* Vibrant Gradients */
-  --grad-quota: linear-gradient(90deg, #00f2fe 0%, #4facfe 100%);
   --grad-fair: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   
   /* Spacing Scale */

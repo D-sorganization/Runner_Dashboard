@@ -16085,45 +16085,15 @@ function App({ initialTab, onTabChange }: { initialTab?: string; onTabChange?: (
       h(
         "div",
         { className: "header-right" },
-        (function() {
-          // Mock quota data for visualization
-          var quotaUsed = 14;
-          var quotaTotal = 20;
-          var percent = (quotaUsed / quotaTotal) * 100;
-          return h(
-            "div",
-            {
-              className: "glass-card",
-              style: {
-                padding: "4px 12px",
-                display: "flex",
-                alignItems: "center",
-                gap: "10px",
-                marginRight: "12px",
-                fontSize: "11px",
-                height: "32px"
-              }
-            },
-            h("span", { style: { color: "var(--text-secondary)", fontWeight: "600" } }, "FLEET QUOTA"),
-            h(
-              "div",
-              {
-                className: "progress-bar",
-                style: { width: "80px", height: "6px", background: "rgba(255,255,255,0.1)" },
-                title: quotaUsed + "/" + quotaTotal + " Runners Active"
-              },
-              h("div", {
-                className: "progress-fill",
-                style: {
-                  width: percent + "%",
-                  background: "var(--grad-quota)",
-                  boxShadow: "0 0 10px rgba(0, 242, 254, 0.5)"
-                }
-              })
-            ),
-            h("span", { style: { color: "var(--text-primary)", fontWeight: "700" } }, quotaUsed + "/" + quotaTotal)
-          );
-        })(),
+        // The "FLEET QUOTA" widget that used to live here was a hardcoded
+        // mock (14/20). Removed because it (a) showed fake data with no
+        // backing API, (b) had no defined semantics — "quota" wasn't tied
+        // to runner schedule limits, busy-count, or anything real, and
+        // (c) was obscuring the principal/badge/settings controls in the
+        // toolstrip. If a real fleet-capacity indicator is wanted, it
+        // belongs in the new shell under frontend/src/shell with a clear
+        // data contract (e.g. busy_runners / scheduled_runners derived
+        // from /api/fleet/nodes), not as another mock here.
         principal ? h(
           "span",
           { className: "section-badge", style: { background: "rgba(88,166,255,0.15)", color: "var(--accent-blue)" } },
