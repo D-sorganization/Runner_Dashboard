@@ -130,7 +130,12 @@ Environment=RUNNER_NAME=${runner_name}
 # logged on the next start as "Found left-over process ... in control
 # group". This ExecStop= pkill's any leftover Workers under this
 # unit's WorkingDirectory.
-ExecStop=-${HOOK_DIR}/force-drain.sh
+#
+# %n passes the full unit name to force-drain.sh as \$1. The script
+# uses it to resolve WorkingDirectory via "systemctl show", which is
+# more reliable than guessing from \$RUNNER_NAME (the runner-dir name
+# often does not match the runner's registered system name).
+ExecStop=-${HOOK_DIR}/force-drain.sh %n
 EOF
         log "wrote ${override_file}"
     fi

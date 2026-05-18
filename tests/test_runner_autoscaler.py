@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -307,6 +308,16 @@ class TestRunnerIsBusy:
 
     UNIT = "actions.runner.my-org.runner1.service"
 
+    @pytest.fixture(autouse=True)
+    def _bypass_pickup_dir_strategy(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The new Strategy 1 (pickup-window dir mtime) calls subprocess.run to
+        resolve WorkingDirectory. These MainPID-focused tests mock subprocess
+        with fixed-length side_effect lists, so an extra call would exhaust
+        the iterator. Force Strategy 1 to return False so the MainPID
+        strategy is what's under test here.
+        """
+        monkeypatch.setattr(ra, "_runner_busy_via_pickup_dir", lambda _u: False)
+
     def test_main_pid_zero_active_running_returns_true(self) -> None:
         """MainPID=0 + ActiveState=active/SubState=running → busy (conservative)."""
         pid_resp = _make_pid_proc("0")
@@ -414,3 +425,211 @@ def test_load_per_core_configurable_via_env(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setenv("AUTOSCALER_LOAD_PER_CORE", "3.0")
     result = ra._env_float("AUTOSCALER_LOAD_PER_CORE", 2.5)
     assert result == pytest.approx(3.0)
+
+
+# ---------------------------------------------------------------------------
+# Job-pickup busy signals — issue #651 race-close coverage
+#
+# Tests the helpers introduced in #664 plus the pickup-window check added
+# in the follow-up:
+#   * _runner_busy_via_pickup_dir  (pickup-window directory mtime check)
+#   * _runner_busy_via_lockfile    (job-started hook lockfile)
+#   * Multi-strategy short-circuit in _runner_is_busy
+#
+# These tests cover the traceability gap the reviewer flagged on #664.
+# ---------------------------------------------------------------------------
+
+
+class TestRunnerNameForUnit:
+    """_runner_name_for_unit: extract runner short-name from a systemd unit."""
+
+    def test_strips_actions_runner_prefix_and_service_suffix(self) -> None:
+        unit = "actions.runner.D-sorganization.d-sorg-local-ControlTower-3.service"
+        assert ra._runner_name_for_unit(unit) == "d-sorg-local-ControlTower-3"
+
+    def test_handles_arbitrary_org_segment_with_dots(self) -> None:
+        unit = "actions.runner.org.with.dots.my-runner.service"
+        assert ra._runner_name_for_unit(unit) == "my-runner"
+
+    def test_returns_input_when_not_a_service_unit(self) -> None:
+        assert ra._runner_name_for_unit("not-a-real-unit") == "not-a-real-unit"
+
+
+class TestRunnerBusyViaPickupDir:
+    """_runner_busy_via_pickup_dir: pre-Worker pickup-window check (#651 root race)."""
+
+    UNIT = "actions.runner.D-sorganization.runner-1.service"
+
+    def test_no_workdir_returns_false(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(ra, "_runner_workdir_for_unit", lambda _u: "")
+        assert ra._runner_busy_via_pickup_dir(self.UNIT) is False
+
+    def test_no_pickup_dir_returns_false(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(ra, "_runner_workdir_for_unit", lambda _u: str(tmp_path))
+        assert ra._runner_busy_via_pickup_dir(self.UNIT) is False
+
+    def test_fresh_pickup_dir_returns_true(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(ra, "_runner_workdir_for_unit", lambda _u: str(tmp_path))
+        fc = tmp_path / "_work" / "_temp" / "_runner_file_commands"
+        fc.mkdir(parents=True)
+        assert ra._runner_busy_via_pickup_dir(self.UNIT) is True
+
+    def test_stale_pickup_dir_returns_false(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Stale residue must NOT mark the runner as busy.
+
+        If we returned True here, cleanup could never touch a corrupted
+        runner. The age cutoff distinguishes mid-pickup from stale residue.
+        """
+        import os as _os
+
+        monkeypatch.setattr(ra, "_runner_workdir_for_unit", lambda _u: str(tmp_path))
+        monkeypatch.setattr(ra, "RUNNER_PICKUP_DIR_MAX_AGE_SECONDS", 10)
+        fc = tmp_path / "_work" / "_temp" / "_runner_file_commands"
+        fc.mkdir(parents=True)
+        old = time.time() - 600
+        _os.utime(fc, (old, old))
+        assert ra._runner_busy_via_pickup_dir(self.UNIT) is False
+
+    def test_pickup_dir_short_circuits_is_busy(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A fresh pickup dir must mark busy BEFORE MainPID inspection.
+
+        That's the whole point of Strategy 1: it has to fire in the
+        listener-accepted-but-Worker-not-forked window where MainPID's
+        child walk would say 'no Worker -> idle'.
+        """
+        monkeypatch.setattr(ra, "_runner_workdir_for_unit", lambda _u: str(tmp_path))
+        fc = tmp_path / "_work" / "_temp" / "_runner_file_commands"
+        fc.mkdir(parents=True)
+        with patch("subprocess.run", side_effect=AssertionError("MainPID path reached")):
+            assert ra._runner_is_busy(self.UNIT) is True
+
+
+class TestRunnerBusyViaLockfile:
+    """_runner_busy_via_lockfile: Worker-alive defense-in-depth signal."""
+
+    UNIT = "actions.runner.D-sorganization.d-sorg-local-ControlTower-3.service"
+    RUNNER_NAME = "d-sorg-local-ControlTower-3"
+
+    def test_no_lockfile_returns_false(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(ra, "RUNNER_BUSY_LOCK_DIR", tmp_path)
+        assert ra._runner_busy_via_lockfile(self.UNIT) is False
+
+    def test_fresh_lockfile_returns_true(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(ra, "RUNNER_BUSY_LOCK_DIR", tmp_path)
+        (tmp_path / (self.RUNNER_NAME + ".lock")).write_text("pid=1\n")
+        assert ra._runner_busy_via_lockfile(self.UNIT) is True
+
+    def test_stale_lockfile_returns_false_and_is_not_deleted(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Autoscaler never mutates the filesystem; deletion is cleanup's job."""
+        import os as _os
+
+        monkeypatch.setattr(ra, "RUNNER_BUSY_LOCK_DIR", tmp_path)
+        monkeypatch.setattr(ra, "RUNNER_BUSY_LOCK_MAX_AGE_SECONDS", 60)
+        lock = tmp_path / (self.RUNNER_NAME + ".lock")
+        lock.write_text("pid=1\n")
+        old = time.time() - 2 * 60 * 60
+        _os.utime(lock, (old, old))
+        assert ra._runner_busy_via_lockfile(self.UNIT) is False
+        assert lock.exists()
+
+    def test_is_busy_uses_lockfile_when_pickup_dir_misses(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Strategy 2 must fire when Strategy 1 (pickup dir) is absent.
+
+        Models the case: Worker has started, hook fired, but pickup dir is
+        empty (or was cleared, or this is past the pickup window).
+        """
+        monkeypatch.setattr(ra, "_runner_workdir_for_unit", lambda _u: str(tmp_path))
+        lock_dir = tmp_path / "_locks"
+        lock_dir.mkdir()
+        monkeypatch.setattr(ra, "RUNNER_BUSY_LOCK_DIR", lock_dir)
+        (lock_dir / (self.RUNNER_NAME + ".lock")).write_text("pid=1\n")
+        with patch("subprocess.run", side_effect=AssertionError("MainPID reached")):
+            assert ra._runner_is_busy(self.UNIT) is True
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="fcntl-based file locking is POSIX-only; the autoscaler only runs on Linux.",
+)
+class TestAutoscalerLockPathFallback:
+    """Acquisition of the autoscaler self-lock — non-root writable fallback.
+
+    #664 fixed: hard-coded /var/run/runner-autoscaler.lock with a directory-
+    existence check that always passed (because /run exists via symlink),
+    so non-root deploys hit PermissionError -> systemd crash-loop. The fix
+    walks a candidate list and uses the first writable path. These tests
+    pin that contract.
+    """
+
+    def test_writable_candidate_wins(self, tmp_path: Path) -> None:
+        """The lock-acquisition pattern must find a writable candidate."""
+        import fcntl
+        import os as _os
+
+        unwritable_dir = tmp_path / "ro"
+        unwritable_dir.mkdir()
+        unwritable_dir.chmod(0o555)
+        writable = tmp_path / "writable.lock"
+
+        candidates = [
+            str(unwritable_dir / "blocked.lock"),
+            str(writable),
+        ]
+        chosen = ""
+        fd = None
+        try:
+            for candidate in candidates:
+                try:
+                    _os.makedirs(_os.path.dirname(candidate), exist_ok=True)
+                    fd = open(candidate, "w")
+                    fcntl.flock(fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    chosen = candidate
+                    break
+                except OSError:
+                    if fd is not None:
+                        fd.close()
+                        fd = None
+                    continue
+            assert chosen == str(writable), (
+                "lock acquisition must skip unwritable candidates and use the next"
+            )
+        finally:
+            if fd is not None:
+                fd.close()
+
+    def test_holding_a_lock_blocks_a_second_acquirer(self, tmp_path: Path) -> None:
+        """The flock(LOCK_EX | LOCK_NB) must actually block a second instance.
+
+        This is the property the autoscaler depends on to avoid two copies
+        scaling against each other.
+        """
+        import fcntl
+
+        path = tmp_path / "autoscaler.lock"
+        fd1 = open(path, "w")
+        fcntl.flock(fd1.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        try:
+            fd2 = open(path, "w")
+            try:
+                with pytest.raises(OSError):
+                    fcntl.flock(fd2.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            finally:
+                fd2.close()
+        finally:
+            fd1.close()

@@ -145,6 +145,28 @@ unit_active() {
 
 RUNNER_BUSY_LOCK_DIR="${RUNNER_BUSY_LOCK_DIR:-/var/run/runner-busy}"
 RUNNER_BUSY_LOCK_MAX_AGE_SECONDS="${RUNNER_BUSY_LOCK_MAX_AGE_SECONDS:-86400}"
+RUNNER_PICKUP_DIR_MAX_AGE_SECONDS="${RUNNER_PICKUP_DIR_MAX_AGE_SECONDS:-30}"
+
+runner_busy_via_pickup_dir() {
+    # Mirror of backend/runner_autoscaler.py::_runner_busy_via_pickup_dir.
+    # The Listener writes _work/_temp/_runner_file_commands/ BEFORE forking
+    # the Worker. A recent mtime means the Listener has accepted a job
+    # but the Worker hasn't started yet — the exact race window that left
+    # corruption residue in issue #651. Stale residue (older than
+    # RUNNER_PICKUP_DIR_MAX_AGE_SECONDS) is NOT treated as busy; it gets
+    # GC'd by the existing cleanup_runner_workdir paths.
+    local runner_dir="$1"
+    local fc="${runner_dir}/_work/_temp/_runner_file_commands"
+    [[ -d "$fc" ]] || return 1
+    local mtime age
+    mtime=$(stat -c %Y "$fc" 2>/dev/null || echo 0)
+    age=$(( $(date +%s) - mtime ))
+    if (( age <= RUNNER_PICKUP_DIR_MAX_AGE_SECONDS )); then
+        log "pickup-dir fresh (age=${age}s) — treating $(basename "$runner_dir") as busy"
+        return 0
+    fi
+    return 1
+}
 
 runner_busy_via_lockfile() {
     # Issue #651 defense-in-depth signal mirroring backend/runner_autoscaler.py's
@@ -171,8 +193,13 @@ runner_busy_via_lockfile() {
 
 runner_busy() {
     local runner_dir="$1"
-    # Combine the lockfile signal with the process-tree check; either is
-    # sufficient to mark the runner busy (#651).
+    # Layered signals (#651). ANY positive signal counts as busy:
+    #  1. Pickup-dir mtime  — Listener has accepted but Worker not yet forked
+    #  2. Lockfile          — Worker has fired JOB_STARTED hook
+    #  3. Process tree      — Runner.Worker child is alive
+    if runner_busy_via_pickup_dir "$runner_dir"; then
+        return 0
+    fi
     if runner_busy_via_lockfile "$runner_dir"; then
         return 0
     fi
