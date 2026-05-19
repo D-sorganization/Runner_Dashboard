@@ -105,7 +105,11 @@ surface task action details without exposing secrets.
 | `usage_monitoring.py` | Per-runner CPU/RAM usage time-series collection |
 | `workflow_stats.py` | Aggregate workflow success/failure statistics |
 | `report_files.py` | Parse dated report files for the Reports tab |
-| `runner_autoscaler.py` | Dynamic runner count scaling logic |
+| `runner_autoscaler.py` | Dynamic runner count scaling — main loop and public re-export facade |
+| `autoscaler_config.py` | Autoscaler env-var helpers and all threshold constants |
+| `autoscaler_systemd.py` | Autoscaler systemd unit enumeration, state inspection, start/stop |
+| `autoscaler_busy.py` | Autoscaler layered busy-detection (4 strategies, issue #651) |
+| `autoscaler_sampling.py` | Autoscaler resource sampling (CPU/mem/disk/load) and scheduler integration |
 | `config_schema.py` | Config validation and atomic JSON writes |
 | `pr_inventory.py` | Fetch and normalise open PRs across repos (issue #80) |
 | `issue_inventory.py` | Fetch and normalise open issues with taxonomy (issue #81) |

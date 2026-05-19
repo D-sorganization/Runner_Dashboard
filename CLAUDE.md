@@ -113,7 +113,11 @@ runner-dashboard/
 │   ├── usage_monitoring.py     Runner usage metrics
 │   ├── workflow_stats.py       Workflow statistics aggregation
 │   ├── report_files.py         Report parsing utilities
-│   ├── runner_autoscaler.py    Dynamic runner scaling logic
+│   ├── runner_autoscaler.py    Dynamic runner scaling — main loop + public facade
+│   ├── autoscaler_config.py    Autoscaler env helpers and threshold constants
+│   ├── autoscaler_systemd.py   Autoscaler systemd unit enumeration and control
+│   ├── autoscaler_busy.py      Autoscaler 4-strategy busy detection (issue #651)
+│   ├── autoscaler_sampling.py  Autoscaler resource sampling and scheduler
 │   └── requirements.txt        Python dependencies
 ├── frontend/           Vite-built React + TypeScript SPA
 │   ├── index.html          Vite entry HTML (~30 lines, mounts /src/main.tsx)
