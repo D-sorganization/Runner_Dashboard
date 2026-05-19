@@ -633,3 +633,88 @@ class TestAutoscalerLockPathFallback:
                 fd2.close()
         finally:
             fd1.close()
+
+
+# ---------------------------------------------------------------------------
+# Graceful-drain drop-in contract — issue #640 Fix 3
+#
+# _stop_unit() delegates SIGTERM/SIGKILL timing entirely to systemd's stop
+# machinery. Correct behaviour requires that the actions.runner.* units are
+# configured with KillMode=mixed and TimeoutStopSec >= 600s. The installer
+# (deploy/install-autoscaler.sh) is responsible for writing this drop-in;
+# the tests below pin the expected drop-in content so regressions in the
+# installer are caught by CI rather than silently landing on the host.
+# ---------------------------------------------------------------------------
+
+
+class TestGracefulDrainDropin:
+    """install-autoscaler.sh must emit a correct graceful-stop drop-in."""
+
+    INSTALL_SCRIPT = Path(__file__).resolve().parent.parent / "deploy" / "install-autoscaler.sh"
+
+    def _read_script(self) -> str:
+        return self.INSTALL_SCRIPT.read_text(encoding="utf-8")
+
+    def test_install_script_exists(self) -> None:
+        assert self.INSTALL_SCRIPT.is_file(), "deploy/install-autoscaler.sh is missing"
+
+    def test_dropin_sets_timeout_stop_sec(self) -> None:
+        """TimeoutStopSec must be present and set to ≥ 600s in the drop-in block."""
+        content = self._read_script()
+        # The drop-in block must reference TimeoutStopSec with a value derived
+        # from RUNNER_STOP_TIMEOUT (default 600).
+        assert "TimeoutStopSec" in content, (
+            "install-autoscaler.sh must set TimeoutStopSec in the graceful-stop drop-in"
+        )
+        assert "600" in content, (
+            "Default RUNNER_STOP_TIMEOUT must be 600 (seconds) in install-autoscaler.sh"
+        )
+
+    def test_dropin_sets_kill_mode_mixed(self) -> None:
+        """KillMode=mixed must be present — it lets Worker children finish naturally."""
+        content = self._read_script()
+        assert "KillMode=mixed" in content, (
+            "install-autoscaler.sh must set KillMode=mixed so Worker children "
+            "survive their parent's SIGTERM and can complete the running job"
+        )
+
+    def test_dropin_applied_to_runner_units(self) -> None:
+        """The drop-in must target actions.runner units, not the autoscaler itself."""
+        content = self._read_script()
+        assert "actions.runner" in content, (
+            "install-autoscaler.sh must write the drop-in for actions.runner.* units"
+        )
+
+    def test_stop_unit_uses_systemctl_stop(self) -> None:
+        """_stop_unit must use 'systemctl stop', delegating kill timing to the drop-in.
+
+        If _stop_unit hard-codes --signal=SIGKILL or uses systemctl kill,
+        the drop-in's TimeoutStopSec/KillMode settings are bypassed, defeating
+        the graceful-drain contract.
+        """
+        import ast
+        import inspect
+        import textwrap
+
+        # Extract only the code lines (skip the docstring) to avoid false
+        # positives from documentation that mentions SIGKILL as an anti-pattern.
+        tree = ast.parse(textwrap.dedent(inspect.getsource(ra._stop_unit)))
+        func_def = tree.body[0]
+        assert isinstance(func_def, ast.FunctionDef)
+        # Reconstruct source without the leading docstring node.
+        non_doc_nodes = func_def.body
+        if non_doc_nodes and isinstance(non_doc_nodes[0], ast.Expr) and isinstance(
+            non_doc_nodes[0].value, ast.Constant
+        ):
+            non_doc_nodes = non_doc_nodes[1:]
+        code_src = ast.unparse(ast.Module(body=non_doc_nodes, type_ignores=[]))  # type: ignore[attr-defined]
+
+        assert "systemctl" in code_src, "_stop_unit must call systemctl"
+        assert "stop" in code_src, "_stop_unit must use systemctl stop"
+        assert "SIGKILL" not in code_src, (
+            "_stop_unit must not hard-code SIGKILL in its executable code; "
+            "let systemd's TimeoutStopSec handle it"
+        )
+        assert "systemctl kill" not in code_src, (
+            "_stop_unit must not use systemctl kill; that bypasses the graceful-drain drop-in"
+        )

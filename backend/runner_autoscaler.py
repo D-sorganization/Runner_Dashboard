@@ -411,6 +411,23 @@ def _runner_is_busy(unit: str) -> bool:
 
 
 def _stop_unit(unit: str) -> bool:
+    """Stop *unit* via ``sudo systemctl stop``.
+
+    Graceful-drain contract (issue #640 Fix 3):
+    This function sends ``systemctl stop`` which delivers SIGTERM to the unit's
+    main process. Whether the runner Worker children survive long enough to
+    finish their job depends on the ``KillMode`` and ``TimeoutStopSec`` settings
+    of the runner's service unit. The ``deploy/install-autoscaler.sh`` installer
+    writes a drop-in that sets ``KillMode=mixed`` and ``TimeoutStopSec=600`` on
+    all ``actions.runner.*`` units. Without that drop-in, systemd falls back to
+    its default ``TimeoutStopSec=90s`` and ``KillMode=control-group``, which
+    sends SIGKILL to the entire cgroup after 90 seconds — killing mid-job
+    Workers and corrupting the runner's work directory.
+
+    The autoscaler never calls ``systemctl kill --signal=SIGKILL`` directly;
+    the kill is always delegated to systemd's stop machinery, whose behaviour
+    the drop-in controls.
+    """
     if DRY_RUN:
         log.info("[dry-run] would stop %s", unit)
         return True
