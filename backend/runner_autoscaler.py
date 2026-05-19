@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
-"""Performance-aware runner auto-scaler.
+"""Performance-aware runner auto-scaler — main loop and public entry point.
 
-Monitors the local machine's CPU, memory, and load, and takes idle runners
+Monitors the local machine's CPU, memory, load, and disk, taking idle runners
 offline (by stopping their systemd unit) when thresholds are exceeded, and
-brings them back online when load drops. The goal is to avoid making the
-host unusable when the fleet is saturated.
+bringing them back online when load drops.  Only *idle* runners are stopped;
+a busy runner is never interrupted mid-job.  A minimum number of runners
+(``MIN_ONLINE_RUNNERS``) is always kept running so at least one lane stays
+available for small jobs.
 
-Only *idle* runners are stopped; a busy runner is never interrupted
-mid-job. A minimum number of runners (``MIN_ONLINE_RUNNERS``) is always
-kept running so at least one lane stays available for small jobs.
+Implementation is split across focused modules:
+  autoscaler_config    — env helpers and all threshold constants
+  autoscaler_systemd   — unit enumeration, state inspection, start/stop
+  autoscaler_busy      — layered busy-detection logic
+  autoscaler_sampling  — resource sampling and scheduler integration
 
 Runs as a separate systemd unit (``runner-autoscaler.service``) every
-``POLL_INTERVAL`` seconds. See ``deploy/runner-autoscaler.service`` for
+``POLL_INTERVAL`` seconds.  See ``deploy/runner-autoscaler.service`` for
 the unit file.
 
 Environment variables:
@@ -30,503 +34,115 @@ Environment variables:
 
 from __future__ import annotations
 
-import json
 import logging
 import os
-import platform
-import shutil
-import subprocess
+import sys
 import time
 from collections import deque
-from pathlib import Path
-from typing import TextIO
 
-import yaml
-
-try:
-    import psutil
-except ImportError:  # psutil is optional at import time; raise on use
-    psutil = None  # type: ignore[assignment]
-
-try:
-    from dashboard_config.timeouts import HttpTimeout, ResourceThreshold
-except ImportError:  # When deployed standalone the package may not be on path.
-    HttpTimeout = None  # type: ignore[assignment,misc]
-    ResourceThreshold = None  # type: ignore[assignment,misc]
+# Re-export sub-module symbols so that callers (and existing tests) that do
+#   import runner_autoscaler as ra; ra._env_float(...); ra.DRY_RUN; ...
+# continue to work without modification.
+from autoscaler_busy import (
+    _runner_busy_via_lockfile,
+    _runner_busy_via_pickup_dir,
+    _runner_is_busy,
+)
+from autoscaler_config import (
+    CPU_HIGH,
+    CPU_LOW,
+    DISK_HIGH,
+    DISK_MIN_FREE_GB,
+    DRY_RUN,  # noqa: PLC0414 (explicit re-export for tests)
+    HOSTNAME,
+    LOAD_PER_CORE,
+    MAX_STEP,
+    MEM_HIGH,
+    MIN_ONLINE,
+    POLL_SECONDS,
+    RUNNER_BUSY_LOCK_DIR,
+    RUNNER_BUSY_LOCK_MAX_AGE_SECONDS,
+    RUNNER_PICKUP_DIR_MAX_AGE_SECONDS,
+    RUNNER_SCHEDULER_BIN,
+    SUSTAIN_SECS,
+    Path,  # noqa: PLC0414 (explicit re-export for tests)
+    _env_float,
+    _env_int,
+    _lock_fd,
+    psutil,
+)
+from autoscaler_sampling import (
+    _leased_runners,
+    _sample,
+    _scheduled_desired_count,
+)
+from autoscaler_systemd import (
+    _list_runner_units,
+    _runner_name_for_unit,
+    _runner_workdir_for_unit,
+    _start_unit,
+    _stop_unit,
+    _unit_is_active,
+    _unit_state,
+)
 
 log = logging.getLogger("runner-autoscaler")
 logging.basicConfig(
     level=os.environ.get("AUTOSCALER_LOG_LEVEL", "INFO"),
     format="%(asctime)s %(levelname)s %(message)s",
 )
-_lock_fd: TextIO | None = None
+
+__all__ = [
+    "CPU_HIGH",
+    "CPU_LOW",
+    "DISK_HIGH",
+    "DISK_MIN_FREE_GB",
+    "DRY_RUN",
+    "HOSTNAME",
+    "LOAD_PER_CORE",
+    "MAX_STEP",
+    "MEM_HIGH",
+    "MIN_ONLINE",
+    "Path",
+    "POLL_SECONDS",
+    "RUNNER_BUSY_LOCK_DIR",
+    "RUNNER_BUSY_LOCK_MAX_AGE_SECONDS",
+    "RUNNER_PICKUP_DIR_MAX_AGE_SECONDS",
+    "RUNNER_SCHEDULER_BIN",
+    "SUSTAIN_SECS",
+    "_env_float",
+    "_env_int",
+    "_lock_fd",
+    "psutil",
+    "_list_runner_units",
+    "_runner_name_for_unit",
+    "_runner_workdir_for_unit",
+    "_start_unit",
+    "_stop_unit",
+    "_unit_is_active",
+    "_unit_state",
+    "_runner_busy_via_lockfile",
+    "_runner_busy_via_pickup_dir",
+    "_runner_is_busy",
+    "_leased_runners",
+    "_sample",
+    "_scheduled_desired_count",
+]
 
 
-def _env_float(name: str, default: float) -> float:
-    try:
-        return float(os.environ.get(name, default))
-    except ValueError:
-        return default
+def _acquire_lock() -> None:
+    """Acquire the autoscaler singleton lock file, exiting with code 75 on failure.
 
-
-def _env_int(name: str, default: int) -> int:
-    try:
-        return int(os.environ.get(name, default))
-    except ValueError:
-        return default
-
-
-_DEFAULT_CPU_HIGH = ResourceThreshold.DISK_WARN_PERCENT if ResourceThreshold else 85.0
-_DEFAULT_MEM_HIGH = ResourceThreshold.DISK_WARN_PERCENT if ResourceThreshold else 85.0
-_DEFAULT_DISK_HIGH = ResourceThreshold.DISK_CRITICAL_PERCENT if ResourceThreshold else 92.0
-_DEFAULT_DISK_MIN_FREE_GB = ResourceThreshold.DISK_MIN_FREE_GB if ResourceThreshold else 25.0
-
-CPU_HIGH = _env_float("AUTOSCALER_CPU_HIGH", _DEFAULT_CPU_HIGH)
-CPU_LOW = _env_float("AUTOSCALER_CPU_LOW", 40.0)
-MEM_HIGH = _env_float("AUTOSCALER_MEM_HIGH", _DEFAULT_MEM_HIGH)
-DISK_HIGH = _env_float("AUTOSCALER_DISK_HIGH", _DEFAULT_DISK_HIGH)
-DISK_MIN_FREE_GB = _env_float("AUTOSCALER_DISK_MIN_FREE_GB", _DEFAULT_DISK_MIN_FREE_GB)
-# 2.5 is intentionally generous: 16 parallel runners each running pip-install
-# steps can briefly spike load without indicating true saturation. The old
-# default of 1.5 fired constantly in that scenario.  Override via env var.
-LOAD_PER_CORE = _env_float("AUTOSCALER_LOAD_PER_CORE", 2.5)
-SUSTAIN_SECS = _env_int("AUTOSCALER_SUSTAIN_SECS", 120)
-POLL_SECONDS = _env_int("AUTOSCALER_POLL_SECONDS", 15)
-MIN_ONLINE = _env_int("AUTOSCALER_MIN_ONLINE", 1)
-MAX_STEP = _env_int("AUTOSCALER_MAX_SCALE_STEP", 1)
-DRY_RUN = bool(_env_int("AUTOSCALER_DRY_RUN", 0))
-RUNNER_SCHEDULER_BIN = os.environ.get("RUNNER_SCHEDULER_BIN", "/usr/local/bin/runner-scheduler")
-RUNNER_SCHEDULE_CONFIG = os.path.expanduser(
-    os.environ.get(
-        "RUNNER_SCHEDULE_CONFIG",
-        "~/.config/runner-dashboard/runner-schedule.json",
-    )
-)
-RUNNER_BASE_DIR = os.path.expanduser(os.environ.get("RUNNER_BASE_DIR", "~/actions-runners"))
-
-# Issue #651: layered busy detection. The Runner.Worker child of MainPID is the
-# primary signal, but there is a 1-2s race window between job pickup (Listener
-# has accepted a job, written `_work/_temp/_runner_file_commands/`) and Worker
-# fork. During that window we'd otherwise misread the unit as idle and kill it,
-# leaving residue that breaks the next allocation. Two complementary signals
-# close the window:
-#
-#   1. Pickup-directory mtime check (this module): the Listener creates files
-#      under `_work/_temp/_runner_file_commands/` BEFORE forking the Worker.
-#      A recent mtime means "Listener has accepted a job, may or may not have
-#      Worker yet — treat as busy".
-#   2. Job-pickup hook lockfile (deploy/runner-hooks/job-started.sh): the
-#      Worker writes a sentinel lockfile when it starts. This catches the
-#      inverse race — Worker is alive but psutil's process tree walk missed
-#      it (transient /proc race, child reparented, etc.).
-#
-# The pickup-directory check fires at the moment of job acceptance; the
-# lockfile fires once the Worker is alive. Together they cover the full
-# pre-Worker → Worker-running lifecycle without relying on log scraping.
-RUNNER_BUSY_LOCK_DIR = Path(os.environ.get("RUNNER_BUSY_LOCK_DIR", "/var/run/runner-busy"))
-RUNNER_BUSY_LOCK_MAX_AGE_SECONDS = _env_int(
-    "RUNNER_BUSY_LOCK_MAX_AGE_SECONDS", 24 * 60 * 60
-)  # 24h — stale lockfiles (Worker killed mid-job, never wrote completion hook)
-# are GC'd by deploy/runner-cleanup.sh; the autoscaler treats them as "stale,
-# not busy" to avoid permanently locking out a runner.
-RUNNER_PICKUP_DIR_MAX_AGE_SECONDS = _env_int(
-    "RUNNER_PICKUP_DIR_MAX_AGE_SECONDS", 30
-)  # Listener handoff to Worker should be sub-second; 30s headroom is generous.
-# Anything older than this is residue, not in-progress pickup.
-
-HOSTNAME = platform.node()
-
-
-def _list_runner_units() -> list[str]:
-    """Enumerate this machine's GitHub Actions runner systemd units."""
-    try:
-        r = subprocess.run(
-            ["systemctl", "list-unit-files", "--type=service", "--no-legend"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        log.warning("systemctl list failed: %s", exc)
-        return []
-    units = []
-    for line in r.stdout.splitlines():
-        name = line.split()[0] if line else ""
-        if name.startswith("actions.runner.") and name.endswith(".service"):
-            units.append(name)
-    return sorted(units)
-
-
-def _leased_runners() -> set[str]:
-    """Read config/leases.yml and return a set of leased runner_ids."""
-    # Assuming config is relative to the dashboard root.
-    # The autoscaler might run from a different CWD, so we should resolve this.
-    path = Path(__file__).resolve().parent.parent / "config" / "leases.yml"
-    if not path.exists():
-        return set()
-    try:
-        with open(path) as f:
-            data = yaml.safe_load(f)
-        if not data or "leases" not in data:
-            return set()
-        now = time.time()
-        return {
-            str(lease_rec["runner_id"])
-            for lease_rec in data["leases"]
-            if lease_rec.get("expires_at") is None or float(lease_rec["expires_at"]) > now
-        }
-    except Exception as exc:
-        log.warning("Failed to read leases: %s", exc)
-        return set()
-
-
-_SYSTEMCTL_TIMEOUT_S = HttpTimeout.SYSTEMCTL_S if HttpTimeout else 5
-
-
-def _unit_is_active(unit: str) -> bool:
-    r = subprocess.run(
-        ["systemctl", "is-active", "--quiet", unit],
-        check=False,
-        timeout=_SYSTEMCTL_TIMEOUT_S,
-    )
-    return r.returncode == 0
-
-
-def _unit_state(unit: str) -> tuple[str, str]:
-    """Return (ActiveState, SubState) for *unit* from systemctl, or ('', '')."""
-    r = subprocess.run(
-        ["systemctl", "show", unit, "--property=ActiveState,SubState"],
-        capture_output=True,
-        text=True,
-        timeout=_SYSTEMCTL_TIMEOUT_S,
-        check=False,
-    )
-    active_state = ""
-    sub_state = ""
-    for line in (r.stdout or "").splitlines():
-        if line.startswith("ActiveState="):
-            active_state = line.split("=", 1)[1].strip()
-        elif line.startswith("SubState="):
-            sub_state = line.split("=", 1)[1].strip()
-    return active_state, sub_state
-
-
-def _runner_name_for_unit(unit: str) -> str:
-    """Extract the runner name from a unit (the last dotted segment before .service).
-
-    Example: ``actions.runner.D-sorganization.d-sorg-local-ControlTower-3.service``
-    → ``d-sorg-local-ControlTower-3``.
+    Walks a candidate list; the first writable path wins. The old code
+    hard-coded /var/run with a directory-existence check, which is wrong when
+    the service runs as a non-root user: /run exists but isn't writable for
+    the runner user, so open() failed → systemd crash-loop. See
+    d-sorg-local-ControlTower post-2026-05-18 deploy.
     """
-    # The unit prefix is ``actions.runner.<org>.``. Whatever follows up to the
-    # ``.service`` suffix is the runner name. We use rpartition so a future
-    # rename that adds extra dots to the org segment doesn't break us.
-    if not unit.endswith(".service"):
-        return unit
-    stem = unit[: -len(".service")]
-    return stem.rpartition(".")[2] or stem
-
-
-def _runner_busy_via_lockfile(unit: str) -> bool:
-    """Return True if a fresh job-pickup lockfile exists for *unit*.
-
-    Issue #651 defense-in-depth signal. The Runner.Worker child of MainPID is
-    the primary busy signal but races with job pickup; see
-    ``deploy/runner-hooks/job-started.sh`` for the contract. A lockfile older
-    than ``RUNNER_BUSY_LOCK_MAX_AGE_SECONDS`` is treated as stale (Worker died
-    mid-job without firing the completion hook) and the runner is NOT
-    considered busy on its account — the cleanup pass will GC it.
-    """
-    runner_name = _runner_name_for_unit(unit)
-    lock = RUNNER_BUSY_LOCK_DIR / f"{runner_name}.lock"
-    try:
-        stat = lock.stat()
-    except FileNotFoundError:
-        return False
-    except OSError as exc:
-        log.debug("lockfile stat failed unit=%s path=%s err=%s", unit, lock, exc)
-        return False
-    age = time.time() - stat.st_mtime
-    if age > RUNNER_BUSY_LOCK_MAX_AGE_SECONDS:
-        log.info(
-            "stale lockfile (age=%.0fs > max=%ds) — not treating as busy unit=%s",
-            age,
-            RUNNER_BUSY_LOCK_MAX_AGE_SECONDS,
-            unit,
-        )
-        return False
-    return True
-
-
-def _runner_workdir_for_unit(unit: str) -> str:
-    """Resolve the unit's WorkingDirectory from systemd.
-
-    Returns empty string if the unit isn't known or doesn't have a working
-    directory configured. Used by ``_runner_busy_via_pickup_dir`` to find
-    the runner's `_work/_temp/_runner_file_commands/` location without
-    assuming a directory-naming convention.
-    """
-    r = subprocess.run(
-        ["systemctl", "show", unit, "--property=WorkingDirectory", "--value"],
-        capture_output=True,
-        text=True,
-        timeout=_SYSTEMCTL_TIMEOUT_S,
-        check=False,
-    )
-    return (r.stdout or "").strip()
-
-
-def _runner_busy_via_pickup_dir(unit: str) -> bool:
-    """Return True if the Listener is mid-pickup (issue #651 root race).
-
-    The Listener writes files under ``_work/_temp/_runner_file_commands/``
-    BEFORE forking the Worker. If the autoscaler kills in that 1-2s window:
-    - MainPID has no Worker child (false negative on Strategy 1)
-    - The job-pickup hook hasn't fired yet (false negative on Strategy 0)
-
-    Checking the directory's mtime closes that window. A directory modified
-    within ``RUNNER_PICKUP_DIR_MAX_AGE_SECONDS`` (default 30s) means the
-    Listener is actively handing off — busy. Older = stale residue from a
-    prior killed Worker, NOT busy (the cleanup pass GCs it).
-
-    Why mtime rather than existence: a corrupted runner that we're trying
-    to heal will have a stale `_runner_file_commands/` directory left over.
-    Marking that as busy forever would prevent cleanup from ever touching
-    the runner. mtime distinguishes active pickup (recent) from stale
-    residue (old).
-    """
-    work_dir = _runner_workdir_for_unit(unit)
-    if not work_dir:
-        return False
-    fc = Path(work_dir) / "_work" / "_temp" / "_runner_file_commands"
-    try:
-        stat = fc.stat()
-    except (FileNotFoundError, NotADirectoryError):
-        return False
-    except OSError as exc:
-        log.debug("pickup-dir stat failed unit=%s path=%s err=%s", unit, fc, exc)
-        return False
-    age = time.time() - stat.st_mtime
-    if age <= RUNNER_PICKUP_DIR_MAX_AGE_SECONDS:
-        log.info(
-            "pickup-dir fresh (age=%.1fs <= %ds) — treating as busy unit=%s",
-            age,
-            RUNNER_PICKUP_DIR_MAX_AGE_SECONDS,
-            unit,
-        )
-        return True
-    return False
-
-
-def _runner_is_busy(unit: str) -> bool:
-    """Best-effort: does the runner have an active job?
-
-    The GitHub Actions runner creates a ``Runner.Worker`` child process while
-    executing a job.  We layer FOUR detection strategies; ANY positive signal
-    counts as busy:
-
-    1. **Pickup-directory mtime** (issue #651 root race) — the Listener
-       writes ``_work/_temp/_runner_file_commands/`` BEFORE forking the
-       Worker. A recent mtime catches the pre-Worker race window that
-       neither the lockfile (hook hasn't fired) nor the MainPID walk
-       (no Worker child yet) can see.
-
-    2. **Lockfile path** (issue #651 defense-in-depth) — the runner's
-       JOB_STARTED hook writes ``/var/run/runner-busy/<runner-name>.lock``.
-       This catches the inverse window where the Worker exists but psutil's
-       child walk transiently misses it. Stale lockfiles (>24h) are ignored.
-
-    3. **MainPID path** — ask systemd for the unit's MainPID, then walk the
-       process tree looking for a ``Runner.Worker`` child.  This is the most
-       direct signal once the Worker has forked and stabilized.
-
-    4. **ActiveState/SubState fallback** — when MainPID is 0 (transient
-       restart, brief crash, listener mid-reconfig), the main-PID path gives
-       a false negative.  Instead we query ActiveState and SubState: if the
-       unit is ``active/running`` we conservatively return *True* so the
-       autoscaler never kills a runner that may be mid-job.
-
-    If all strategies are inconclusive return *False* only when there is clear
-    evidence the unit is inactive (e.g., ActiveState=inactive).
-    """
-    # ── Strategy 1: pickup-window directory (closes the pre-Worker race) ────
-    if _runner_busy_via_pickup_dir(unit):
-        return True
-
-    # ── Strategy 2: lockfile (defense-in-depth for transient psutil misses) ─
-    if _runner_busy_via_lockfile(unit):
-        return True
-
-    # ── Strategy 3: MainPID-based child scan ─────────────────────────────────
-    r = subprocess.run(
-        ["systemctl", "show", unit, "--property=MainPID", "--value"],
-        capture_output=True,
-        text=True,
-        timeout=_SYSTEMCTL_TIMEOUT_S,
-        check=False,
-    )
-    pid_str = (r.stdout or "").strip()
-
-    main_pid: int | None = None
-    try:
-        candidate = int(pid_str)
-        if candidate > 0:
-            main_pid = candidate
-    except (ValueError, TypeError):
-        pass
-
-    if main_pid is not None and psutil is not None:
-        try:
-            proc = psutil.Process(main_pid)
-            for child in proc.children(recursive=True):
-                try:
-                    if "Runner.Worker" in child.name() or "Runner.Worker" in " ".join(child.cmdline()):
-                        return True
-                except (psutil.NoSuchProcess, psutil.AccessDenied):
-                    continue
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            pass
-        # MainPID was valid but no Runner.Worker child found — not busy.
-        return False
-
-    # ── Strategy 4: ActiveState/SubState fallback (MainPID == 0) ─────────────
-    # MainPID=0 is a transient state: the listener is restarting, or systemd
-    # hasn't yet registered the PID.  Never assume "not busy" in this window.
-    active_state, sub_state = _unit_state(unit)
-    log.debug(
-        "_runner_is_busy fallback unit=%s MainPID=%s ActiveState=%s SubState=%s",
-        unit,
-        pid_str or "?",
-        active_state,
-        sub_state,
-    )
-    if active_state == "active" and sub_state == "running":
-        # Unit is alive; we cannot confirm idleness without a valid PID, so
-        # treat as busy to avoid interrupting a potential in-flight job.
-        return True
-    if active_state in ("inactive", "failed", "deactivating"):
-        return False
-    # Unknown / activating / reloading — be conservative.
-    return True
-
-
-def _stop_unit(unit: str) -> bool:
-    """Stop *unit* via ``sudo systemctl stop``.
-
-    Graceful-drain contract (issue #640 Fix 3):
-    This function sends ``systemctl stop`` which delivers SIGTERM to the unit's
-    main process. Whether the runner Worker children survive long enough to
-    finish their job depends on the ``KillMode`` and ``TimeoutStopSec`` settings
-    of the runner's service unit. The ``deploy/install-autoscaler.sh`` installer
-    writes a drop-in that sets ``KillMode=mixed`` and ``TimeoutStopSec=600`` on
-    all ``actions.runner.*`` units. Without that drop-in, systemd falls back to
-    its default ``TimeoutStopSec=90s`` and ``KillMode=control-group``, which
-    sends SIGKILL to the entire cgroup after 90 seconds — killing mid-job
-    Workers and corrupting the runner's work directory.
-
-    The autoscaler never calls ``systemctl kill --signal=SIGKILL`` directly;
-    the kill is always delegated to systemd's stop machinery, whose behaviour
-    the drop-in controls.
-    """
-    if DRY_RUN:
-        log.info("[dry-run] would stop %s", unit)
-        return True
-    r = subprocess.run(
-        ["sudo", "-n", "systemctl", "stop", unit],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if r.returncode != 0:
-        log.warning("Failed to stop %s: %s", unit, r.stderr.strip()[:200])
-        return False
-    log.warning("Autoscaler STOPPED %s (host overloaded)", unit)
-    return True
-
-
-def _start_unit(unit: str) -> bool:
-    if DRY_RUN:
-        log.info("[dry-run] would start %s", unit)
-        return True
-    r = subprocess.run(
-        ["sudo", "-n", "systemctl", "start", unit],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if r.returncode != 0:
-        log.warning("Failed to start %s: %s", unit, r.stderr.strip()[:200])
-        return False
-    log.info("Autoscaler STARTED %s (host recovered)", unit)
-    return True
-
-
-def _scheduled_desired_count(default: int) -> int:
-    """Read the schedule service's current desired capacity when installed."""
-    if not os.path.exists(RUNNER_SCHEDULER_BIN):
-        return default
-    try:
-        env = os.environ.copy()
-        env["RUNNER_SCHEDULE_CONFIG"] = RUNNER_SCHEDULE_CONFIG
-        result = subprocess.run(
-            [RUNNER_SCHEDULER_BIN, "--dry-run", "--json"],
-            capture_output=True,
-            text=True,
-            timeout=20,
-            check=False,
-            env=env,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        log.debug("scheduler desired lookup failed: %s", exc)
-        return default
-    if result.returncode != 0:
-        log.debug("scheduler desired lookup failed: %s", result.stderr.strip()[:200])
-        return default
-    try:
-        state = json.loads(result.stdout)
-        return max(0, int(state.get("desired", default)))
-    except (TypeError, ValueError, json.JSONDecodeError):
-        return default
-
-
-def _sample() -> tuple[float, float, float, float, float]:
-    """Return (cpu_percent, mem_percent, load_per_core, disk_percent, disk_free_gb)."""
-    if psutil is None:
-        raise RuntimeError("psutil is required for runner-autoscaler")
-    cpu = psutil.cpu_percent(interval=1.0)
-    mem = psutil.virtual_memory().percent
-    try:
-        load1 = os.getloadavg()[0]  # type: ignore[attr-defined]
-    except OSError:
-        load1 = 0.0
-    cores = psutil.cpu_count(logical=True) or 1
-    disk_path = RUNNER_BASE_DIR if os.path.exists(RUNNER_BASE_DIR) else "/"
-    usage = shutil.disk_usage(disk_path)
-    disk_percent = usage.used / usage.total * 100
-    disk_free_gb = usage.free / (1024**3)
-    return cpu, mem, load1 / cores, disk_percent, disk_free_gb
-
-
-_lock_fd = None
-
-
-def main() -> None:
-    if psutil is None:
-        log.error("psutil not installed; cannot run autoscaler")
-        raise SystemExit(2)
-
+    global _lock_fd  # noqa: PLW0603
     try:
         import fcntl
-        import sys
 
-        global _lock_fd
-        # Walk a small candidate list; the first writable path wins. The old
-        # code hard-coded /var/run with a directory-existence check, which is
-        # wrong when the service runs as a non-root user (the typical
-        # deployment): /run exists but isn't writable for the runner user, so
-        # the open() failed with PermissionError → caught as OSError → service
-        # exit(75) every poll → systemd crash-loop. See d-sorg-local-ControlTower
-        # post-2026-05-18 deploy for an instance.
         lock_path = ""
         last_err: OSError | None = None
         for candidate in (
@@ -563,23 +179,9 @@ def main() -> None:
     except ImportError:
         pass
 
-    log.info(
-        "autoscaler start host=%s cpu_high=%s cpu_low=%s mem_high=%s "
-        "disk_high=%s disk_min_free_gb=%s load_per_core=%s sustain=%ss "
-        "poll=%ss min_online=%s step=%s dry=%s",
-        HOSTNAME,
-        CPU_HIGH,
-        CPU_LOW,
-        MEM_HIGH,
-        DISK_HIGH,
-        DISK_MIN_FREE_GB,
-        LOAD_PER_CORE,
-        SUSTAIN_SECS,
-        POLL_SECONDS,
-        MIN_ONLINE,
-        MAX_STEP,
-        DRY_RUN,
-    )
+
+def _run_poll_loop() -> None:
+    """Infinite poll loop: sample resources, classify runners, scale up/down."""
     history_len = max(3, SUSTAIN_SECS // max(POLL_SECONDS, 1))
     samples: deque[tuple[float, float, float, float, float]] = deque(maxlen=history_len)
 
@@ -591,7 +193,6 @@ def main() -> None:
                 time.sleep(POLL_SECONDS)
                 continue
 
-            # Averages over the sustain window
             avg_cpu = sum(s[0] for s in samples) / len(samples)
             avg_mem = sum(s[1] for s in samples) / len(samples)
             avg_load = sum(s[2] for s in samples) / len(samples)
@@ -611,7 +212,11 @@ def main() -> None:
             idle_active = [u for u in active if u not in busy and not any(r in u for r in leased)]
 
             if leased:
-                log.info("Detected %d active leases: %s", len(leased), ", ".join(sorted(leased)))
+                log.info(
+                    "Detected %d active leases: %s",
+                    len(leased),
+                    ", ".join(sorted(leased)),
+                )
 
             overloaded = (
                 avg_cpu >= CPU_HIGH
@@ -646,7 +251,6 @@ def main() -> None:
             )
 
             if overloaded and len(active) > MIN_ONLINE:
-                # Scale down: stop up to MAX_STEP idle runners, never going below MIN_ONLINE
                 room = len(active) - MIN_ONLINE
                 to_stop = idle_active[: min(MAX_STEP, room)]
                 if not to_stop and busy:
@@ -665,6 +269,34 @@ def main() -> None:
         except Exception as exc:  # noqa: BLE001
             log.exception("autoscaler tick failed: %s", exc)
         time.sleep(POLL_SECONDS)
+
+
+def main() -> None:
+    """Entry point: acquire the singleton lock, then run the poll loop."""
+    if psutil is None:
+        log.error("psutil not installed; cannot run autoscaler")
+        raise SystemExit(2)
+
+    _acquire_lock()
+
+    log.info(
+        "autoscaler start host=%s cpu_high=%s cpu_low=%s mem_high=%s "
+        "disk_high=%s disk_min_free_gb=%s load_per_core=%s sustain=%ss "
+        "poll=%ss min_online=%s step=%s dry=%s",
+        HOSTNAME,
+        CPU_HIGH,
+        CPU_LOW,
+        MEM_HIGH,
+        DISK_HIGH,
+        DISK_MIN_FREE_GB,
+        LOAD_PER_CORE,
+        SUSTAIN_SECS,
+        POLL_SECONDS,
+        MIN_ONLINE,
+        MAX_STEP,
+        DRY_RUN,
+    )
+    _run_poll_loop()
 
 
 if __name__ == "__main__":
