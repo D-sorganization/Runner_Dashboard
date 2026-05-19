@@ -517,7 +517,17 @@ function Stat(p) {
       { className: "stat-value", style: { color: p.color || "inherit" } },
       p.value,
     ),
-    p.sub ? h("div", { className: "stat-sub" }, p.sub) : null,
+    p.sub
+      ? h(
+          "div",
+          {
+            className: "stat-sub",
+            // Hover for the full text when the sub line has been truncated.
+            title: p.subTitle || (typeof p.sub === "string" ? p.sub : ""),
+          },
+          p.sub,
+        )
+      : null,
   );
 }
 
@@ -793,6 +803,11 @@ function FleetTab(p) {
   var machinesData = p.machinesData || {};
   var deployment = p.deployment || {};
   var onOpenDeployment = p.onOpenDeployment || function () {};
+  // Used by the fleet-status hero panel for KPI buttons and the
+  // hosted-runner billing alert. Defaulted so unit tests / standalone
+  // rendering of FleetTab don't need to pass them.
+  var setTab = p.setTab || function () {};
+  var runnerAudit = p.runnerAudit || { violations: [] };
   var driftState = React.useState(null);
   var driftInfo = driftState[0], setDriftInfo = driftState[1];
   React.useEffect(function () {
@@ -961,9 +976,127 @@ function FleetTab(p) {
       }),
     );
   }
+  // ─── Fleet status hero panel (computed once per render) ─────────────────
+  // Rolls up the cross-cutting health signals into a single banner so an
+  // operator can see "is everything OK?" at a glance, before scrolling
+  // through the KPI grid. See feat/header-2row-overview-alerts.
+  var heroAlerts = [];
+  if (machineCount > 0 && machineOnline < machineCount) {
+    var offlineMachines = machineNodes
+      .filter(function (n) { return !n.online; })
+      .map(function (n) { return n.name; });
+    heroAlerts.push({
+      level: "critical",
+      title: (machineCount - machineOnline) + " machine(s) offline",
+      detail: offlineMachines.join(", ") || "see Machine Health below",
+    });
+  }
+  if (watchdog && watchdog.status && watchdog.status !== "healthy") {
+    heroAlerts.push({
+      level: watchdog.status === "legacy" ? "critical" : "warning",
+      title: "WSL Keepalive: " + watchdog.status,
+      detail: watchdog.summary || watchdog.detail || "WSL keepalive needs attention",
+    });
+  }
+  if (stats.success_rate !== undefined && stats.success_rate < 70 && completedRuns > 0) {
+    heroAlerts.push({
+      level: stats.success_rate < 40 ? "critical" : "warning",
+      title: "Success rate: " + stats.success_rate + "%",
+      detail: stats.runs_success + "/" + completedRuns + " recent runs passed",
+    });
+  }
+  if (runnerAudit && runnerAudit.violations && runnerAudit.violations.length > 0) {
+    heroAlerts.push({
+      level: "warning",
+      title: runnerAudit.violations.length + " job(s) on GitHub-hosted runners",
+      detail: "Billing alert — see Runner Audit tab",
+    });
+  }
+  var heroLevel =
+    heroAlerts.some(function (a) { return a.level === "critical"; })
+      ? "critical"
+      : heroAlerts.length > 0
+        ? "warning"
+        : "ok";
+  var heroLevelLabel = heroLevel === "ok" ? "Operational" : heroLevel === "warning" ? "Degraded" : "Critical";
+  var heroLevelColor = heroLevel === "ok"
+    ? "var(--accent-green)"
+    : heroLevel === "warning"
+      ? "var(--accent-yellow)"
+      : "var(--accent-red)";
+
   return h(
     "div",
     null,
+    h(
+      "section",
+      {
+        className: "fleet-hero fleet-hero--" + heroLevel,
+        role: "region",
+        "aria-label": "Fleet status",
+      },
+      h(
+        "div",
+        { className: "fleet-hero__status" },
+        h("span", {
+          className: "fleet-hero__dot",
+          style: { background: heroLevelColor, boxShadow: "0 0 0 4px " + heroLevelColor.replace(")", " / 0.18)").replace("var(--", "var(--") },
+          "aria-hidden": true,
+        }),
+        h(
+          "div",
+          { className: "fleet-hero__status-text" },
+          h("div", { className: "fleet-hero__title" }, "Fleet ", heroLevelLabel),
+          h("div", { className: "fleet-hero__subtitle" },
+            heroAlerts.length === 0
+              ? "All systems nominal"
+              : heroAlerts.length + " active alert" + (heroAlerts.length === 1 ? "" : "s")),
+        ),
+      ),
+      h(
+        "div",
+        { className: "fleet-hero__kpis" },
+        h("button", { className: "fleet-hero__kpi", onClick: function () { setTab("machines"); }, type: "button" },
+          h("span", { className: "fleet-hero__kpi-label" }, "Machines"),
+          h("span", { className: "fleet-hero__kpi-value" }, machineOnline + " / " + machineCount),
+        ),
+        h("button", { className: "fleet-hero__kpi", onClick: function () { setTab("overview"); }, type: "button" },
+          h("span", { className: "fleet-hero__kpi-label" }, "Open PRs"),
+          h("span", { className: "fleet-hero__kpi-value" }, String(openPrs)),
+        ),
+        h("button", { className: "fleet-hero__kpi", onClick: function () { setTab("queue"); }, type: "button" },
+          h("span", { className: "fleet-hero__kpi-label" }, "Queue"),
+          h("span", { className: "fleet-hero__kpi-value" }, String(queued)),
+          queued > 0
+            ? h("span", { className: "fleet-hero__kpi-sub" }, running + " running")
+            : null,
+        ),
+        h("button", { className: "fleet-hero__kpi", onClick: function () { setTab("overview"); }, type: "button" },
+          h("span", { className: "fleet-hero__kpi-label" }, "Runners"),
+          h("span", { className: "fleet-hero__kpi-value" }, on + " / " + runners.length),
+          busy > 0
+            ? h("span", { className: "fleet-hero__kpi-sub" }, busy + " busy")
+            : null,
+        ),
+      ),
+      heroAlerts.length > 0
+        ? h(
+            "ul",
+            { className: "fleet-hero__alerts", "aria-label": "Active alerts" },
+            heroAlerts.map(function (a, i) {
+              return h(
+                "li",
+                {
+                  key: "alert-" + i,
+                  className: "fleet-hero__alert fleet-hero__alert--" + a.level,
+                },
+                h("span", { className: "fleet-hero__alert-title" }, a.title),
+                h("span", { className: "fleet-hero__alert-detail" }, a.detail),
+              );
+            }),
+          )
+        : null,
+    ),
     h(
       "div",
       { className: "stat-row" },
@@ -1020,10 +1153,16 @@ function FleetTab(p) {
               : watchdog.status === "degraded"
                 ? "var(--accent-yellow)"
                 : "inherit",
+        // Truncate the keepalive detail so a 200-character Windows
+        // scheduled-task error doesn't blow out the card height. Full
+        // detail stays available via tooltip + the alerts hero up top.
         sub:
-          watchdog.detail ||
-          watchdog.summary ||
-          "Read-only keepalive checks",
+          watchdog.summary
+            ? (watchdog.summary.length > 80
+                ? watchdog.summary.slice(0, 77) + "…"
+                : watchdog.summary)
+            : "Read-only keepalive checks",
+        subTitle: watchdog.detail || watchdog.summary || "",
       }),
       h(Stat, {
         label: "Storage",
@@ -15468,7 +15607,10 @@ function App({ initialTab, onTabChange }: { initialTab?: string; onTabChange?: (
     null,
     h(
       "header",
-      { className: "app-header" },
+      { className: "app-header app-header--rows" },
+      h(
+        "div",
+        { className: "app-header__row app-header__row--primary" },
       h(
         "div",
         { className: "app-logo" },
@@ -16082,6 +16224,10 @@ function App({ initialTab, onTabChange }: { initialTab?: string; onTabChange?: (
           "Settings",
         ),
       ),
+      ), // close app-header__row--primary
+      h(
+        "div",
+        { className: "app-header__row app-header__row--secondary" },
       h(
         "div",
         { className: "header-right" },
@@ -16185,6 +16331,7 @@ function App({ initialTab, onTabChange }: { initialTab?: string; onTabChange?: (
           I.refresh(12),
         ),
       ),
+      ), // close app-header__row--secondary
     ),
     (runnerAudit.violations && runnerAudit.violations.length > 0 && !auditBannerDismissed)
       ? h(
@@ -16254,6 +16401,8 @@ function App({ initialTab, onTabChange }: { initialTab?: string; onTabChange?: (
             loading: actionLoading,
             watchdog: watchdog,
             deployment: deployment,
+            setTab: setTab,             // for hero KPI buttons that navigate to other tabs
+            runnerAudit: runnerAudit,   // for hosted-runner billing alert in fleet hero
             onOpenDeployment: function () {
               setTab("deployment");
               fetchDeploymentState();
