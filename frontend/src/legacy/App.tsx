@@ -1,4 +1,5 @@
 import React from "react"
+import * as fleetAlerts from "../lib/fleetAlerts"
 import { AgentDispatchPage } from "../pages/AgentDispatch"
 import { QueueTab } from "../pages/Queue"
 import { Badge } from "../primitives/Badge"
@@ -977,48 +978,21 @@ function FleetTab(p) {
     );
   }
   // ─── Fleet status hero panel (computed once per render) ─────────────────
-  // Rolls up the cross-cutting health signals into a single banner so an
-  // operator can see "is everything OK?" at a glance, before scrolling
-  // through the KPI grid. See feat/header-2row-overview-alerts.
-  var heroAlerts = [];
-  if (machineCount > 0 && machineOnline < machineCount) {
-    var offlineMachines = machineNodes
-      .filter(function (n) { return !n.online; })
-      .map(function (n) { return n.name; });
-    heroAlerts.push({
-      level: "critical",
-      title: (machineCount - machineOnline) + " machine(s) offline",
-      detail: offlineMachines.join(", ") || "see Machine Health below",
-    });
-  }
-  if (watchdog && watchdog.status && watchdog.status !== "healthy") {
-    heroAlerts.push({
-      level: watchdog.status === "legacy" ? "critical" : "warning",
-      title: "WSL Keepalive: " + watchdog.status,
-      detail: watchdog.summary || watchdog.detail || "WSL keepalive needs attention",
-    });
-  }
-  if (stats.success_rate !== undefined && stats.success_rate < 70 && completedRuns > 0) {
-    heroAlerts.push({
-      level: stats.success_rate < 40 ? "critical" : "warning",
-      title: "Success rate: " + stats.success_rate + "%",
-      detail: stats.runs_success + "/" + completedRuns + " recent runs passed",
-    });
-  }
-  if (runnerAudit && runnerAudit.violations && runnerAudit.violations.length > 0) {
-    heroAlerts.push({
-      level: "warning",
-      title: runnerAudit.violations.length + " job(s) on GitHub-hosted runners",
-      detail: "Billing alert — see Runner Audit tab",
-    });
-  }
-  var heroLevel =
-    heroAlerts.some(function (a) { return a.level === "critical"; })
-      ? "critical"
-      : heroAlerts.length > 0
-        ? "warning"
-        : "ok";
-  var heroLevelLabel = heroLevel === "ok" ? "Operational" : heroLevel === "warning" ? "Degraded" : "Critical";
+  // The rollup logic lives in frontend/src/lib/fleetAlerts.ts so it can be
+  // unit-tested without the legacy h()-tree. The hero panel below is the
+  // only consumer today; the new shell migration will reuse the same fn.
+  var heroResult = fleetAlerts.computeFleetAlerts({
+    machineCount: machineCount,
+    machineOnline: machineOnline,
+    machineNodes: machineNodes,
+    watchdog: watchdog,
+    stats: stats,
+    completedRuns: completedRuns,
+    runnerAudit: runnerAudit,
+  });
+  var heroAlerts = heroResult.alerts;
+  var heroLevel = heroResult.level;
+  var heroLevelLabel = fleetAlerts.fleetLevelLabel(heroLevel);
   var heroLevelColor = heroLevel === "ok"
     ? "var(--accent-green)"
     : heroLevel === "warning"
