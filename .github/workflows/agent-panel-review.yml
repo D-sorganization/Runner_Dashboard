@@ -47,7 +47,7 @@ permissions:
 
 concurrency:
   group: agent-panel-review
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   on-demand-label:

@@ -47,7 +47,7 @@ permissions:
 
 concurrency:
   group: taxonomy-rollout
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   route:
