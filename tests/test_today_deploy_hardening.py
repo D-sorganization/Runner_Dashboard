@@ -254,13 +254,37 @@ def test_update_deployed_builds_frontend_and_syncs_dist() -> None:
 # ─── PR #669: health-check fail-fast ─────────────────────────────────────────
 
 
-def test_health_uses_short_github_timeout() -> None:
-    """Health check must use HEALTH_GH_API_S (1s) so it doesn't hang on
-    slow / unreachable GitHub. Inheriting the default dispatch timeout
-    (15s+) made the dashboard appear hung on networks where Tailscale's
-    outbound was degraded (observed on DeskComputer)."""
+def test_health_uses_named_github_timeout() -> None:
+    """Health check must use a NAMED timeout constant (HEALTH_GH_API_S)
+    so an operator changing the budget doesn't have to grep multiple
+    call sites. The original 1 s value was too tight (gh api subprocess
+    startup takes 5-8 s on a typical host); the constant now lives at
+    10 s but the named-constant contract is what matters here."""
     src = _read(_BACKEND / "health.py")
     assert "HEALTH_GH_API_S" in src
+
+
+def test_health_gh_api_timeout_is_realistic() -> None:
+    """The original 1 s value killed every health check because `gh api`
+    forks a Go binary, loads its config, signs the request, and only
+    then makes the network call — that takes 5-8 s on a typical host
+    even when curl-direct against api.github.com takes 130 ms. Pin a
+    floor so a future operator can't re-tighten back to a value that
+    breaks the dashboard's GitHub view.
+
+    See d-sorg-local-ControlTower 2026-05-18: the 1 s budget made the
+    Overview tab render 0 % success rate because /api/stats depends on
+    the same `gh api` path and times out identically."""
+    src = _read(_BACKEND / "dashboard_config" / "timeouts.py")
+    import re
+
+    match = re.search(r"HEALTH_GH_API_S:\s*int\s*=\s*(\d+)", src)
+    assert match is not None, "HEALTH_GH_API_S declaration not found"
+    value = int(match.group(1))
+    assert value >= 5, (
+        f"HEALTH_GH_API_S={value}s is below the 5s floor; `gh api` subprocess "
+        f"startup alone takes 5-8s. Anything lower kills every health check."
+    )
 
 
 def test_metrics_imports_psutil_directly_not_through_server() -> None:
