@@ -1,0 +1,12 @@
+{
+  "cancel_in_progress_false_allowlist": {
+    "dependabot-auto-merge.yml": "Dependabot auto-merge arms a single PR-specific merge path and should finish once started.",
+    "lockfile-upgrade.yml": "The scheduled lockfile refresh is serialized maintenance that should finish once it has updated a branch.",
+    "release.yml": "Release publishing must not be interrupted after versioning and tag orchestration begin.",
+    "verify-tag.yml": "Tag verification should finish for the pushed release tag instead of being replaced mid-run."
+  },
+  "pr_concurrency_singleton_allowlist": {
+    "Agent-Redundant-PR-Closer.yml": "Duplicate PR arbitration intentionally runs as one repo-wide singleton to compare all open PRs.",
+    "Jules-Control-Tower.yml": "The central orchestrator intentionally runs as one repo-wide singleton across PR and workflow_run triggers."
+  }
+}
