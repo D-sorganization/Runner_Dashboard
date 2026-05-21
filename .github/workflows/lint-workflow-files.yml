@@ -92,10 +92,10 @@ jobs:
               FAIL="${FAIL}\n  - $f: missing concurrency block"
             fi
             # Check cancel-in-progress: true (only if concurrency exists)
-            # Exception allowlist — workflows where cancel-in-progress: false is legitimate
-            # (publishes/releases should not be interrupted mid-stream)
+            # Exception allowlist — workflows where cancel-in-progress: false is legitimate.
+            # Keep this list in sync with tests/test_workflow_hygiene.py.
             case "$(basename "$f")" in
-              publish-artifacts.yml|release.yml|publish.yml|deploy.yml|nightly-publish.yml)
+              dependabot-auto-merge.yml|lockfile-upgrade.yml|release.yml|verify-tag.yml)
                 echo "::notice::Skipping cancel-in-progress check for $f (intentional exception)"
                 ;;
               *)

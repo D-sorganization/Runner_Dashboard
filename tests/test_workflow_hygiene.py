@@ -23,6 +23,25 @@ import yaml
 
 _WORKFLOWS_DIR = Path(__file__).parent.parent / ".github" / "workflows"
 
+_CANCEL_FALSE_ALLOWLIST: dict[str, str] = {
+    "dependabot-auto-merge.yml": "Arms auto-merge for one PR; cancelling mid-run can lose the policy note.",
+    "lockfile-upgrade.yml": "Creates or updates a dependency PR; cancelling mid-PR write is noisy.",
+    "release.yml": "Publishes release artifacts and tags; never interrupt a release mid-stream.",
+    "verify-tag.yml": "Validates a pushed tag; tag verification should be immutable once started.",
+}
+
+_SINGLETON_GROUP_ALLOWLIST: dict[str, str] = {
+    "Agent-Fleet-Dashboard.yml": "Scheduled singleton refresh; a newer refresh supersedes older work.",
+    "Agent-Lease-Reaper.yml": "Scheduled singleton cleanup; overlapping runs should collapse.",
+    "agent-panel-review.yml": "One panel review worker should own the review queue at a time.",
+    "Agent-Redundant-PR-Closer.yml": "Singleton closer avoids competing PR-close decisions.",
+    "ci-nightly.yml": "Nightly singleton; only one nightly run should occupy the fleet.",
+    "issue-taxonomy-backfill.yml": "Backfill is an explicit singleton maintenance workflow.",
+    "Jules-Control-Tower.yml": "Control Tower is the single automatic remediation coordinator.",
+    "taxonomy-rollout.yml": "Taxonomy rollout is a singleton governance workflow.",
+    "util-queued-job-reaper.yml": "Queue reaper is a singleton maintenance workflow with a max-cancel cap.",
+}
+
 
 def _workflow_files() -> list[Path]:
     files = sorted(_WORKFLOWS_DIR.glob("*.yml"))
@@ -34,6 +53,21 @@ def _load_workflow(path: Path) -> dict:
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     assert isinstance(data, dict), f"{path.name}: top-level YAML must be a mapping"
     return data
+
+
+def _triggers(data: dict) -> dict | str | list:
+    return data.get(True) or data.get("on") or {}
+
+
+def _has_trigger(data: dict, name: str) -> bool:
+    triggers = _triggers(data)
+    if isinstance(triggers, str):
+        return triggers == name
+    if isinstance(triggers, list):
+        return name in triggers
+    if isinstance(triggers, dict):
+        return name in triggers
+    return False
 
 
 def _is_reusable_caller(job_body: dict) -> bool:
@@ -69,6 +103,63 @@ def test_workflow_has_concurrency_block(workflow_path: Path) -> None:
     assert "cancel-in-progress" in block, (
         f"{workflow_path.name}: `concurrency.cancel-in-progress` must be set "
         f"(true for fast-forward CI, false for deploy/release/repair flows)."
+    )
+
+
+def test_cancel_false_allowlist_is_documented_and_current() -> None:
+    """Any false cancel exception must be explicit and carry a rationale."""
+    false_cancel = []
+    for workflow_path in _workflow_files():
+        block = _load_workflow(workflow_path)["concurrency"]
+        if block.get("cancel-in-progress") is False:
+            false_cancel.append(workflow_path.name)
+
+    assert sorted(false_cancel) == sorted(_CANCEL_FALSE_ALLOWLIST), (
+        "Workflows with cancel-in-progress: false must be documented in "
+        "_CANCEL_FALSE_ALLOWLIST with a release/deploy/PR-write rationale."
+    )
+    for workflow, reason in _CANCEL_FALSE_ALLOWLIST.items():
+        assert reason and len(reason) >= 20, f"{workflow}: allowlist rationale is too thin"
+
+
+@pytest.mark.parametrize(
+    "workflow_path",
+    _workflow_files(),
+    ids=lambda p: p.name,
+)
+def test_pr_triggered_workflows_cancel_superseded_runs(workflow_path: Path) -> None:
+    """PR workflows must cancel superseded runs unless explicitly allowlisted."""
+    data = _load_workflow(workflow_path)
+    if not (_has_trigger(data, "pull_request") or _has_trigger(data, "pull_request_target")):
+        return
+    if workflow_path.name in _CANCEL_FALSE_ALLOWLIST:
+        return
+
+    block = data["concurrency"]
+    assert block.get("cancel-in-progress") is True, (
+        f"{workflow_path.name}: PR-triggered workflows must cancel superseded "
+        "runs unless they are documented in _CANCEL_FALSE_ALLOWLIST."
+    )
+
+
+@pytest.mark.parametrize(
+    "workflow_path",
+    _workflow_files(),
+    ids=lambda p: p.name,
+)
+def test_pr_concurrency_groups_do_not_collapse_all_prs(workflow_path: Path) -> None:
+    """PR workflow groups should distinguish PR/ref unless intentionally singleton."""
+    data = _load_workflow(workflow_path)
+    if not (_has_trigger(data, "pull_request") or _has_trigger(data, "pull_request_target")):
+        return
+    if workflow_path.name in _SINGLETON_GROUP_ALLOWLIST:
+        return
+
+    group = str(data["concurrency"].get("group") or "")
+    assert "github.ref" in group or "pull_request.number" in group or "github.head_ref" in group, (
+        f"{workflow_path.name}: PR-triggered concurrency group must include "
+        "github.ref, github.head_ref, or github.event.pull_request.number "
+        "unless documented as a singleton."
     )
 
 
@@ -146,3 +237,29 @@ def test_pr_autofix_preserves_branch_safety_and_status_contract() -> None:
     assert "Cannot auto-fix protected branch" in text
     for status in ("passed", "failed", "deferred", "manual_required"):
         assert status in text
+
+
+def test_workflow_linter_false_cancel_allowlist_matches_static_policy() -> None:
+    """The workflow-file linter must enforce the same false-cancel exceptions."""
+    text = (_WORKFLOWS_DIR / "lint-workflow-files.yml").read_text(encoding="utf-8")
+    for workflow in _CANCEL_FALSE_ALLOWLIST:
+        assert workflow in text, f"{workflow} missing from lint-workflow-files.yml allowlist"
+    for stale_exception in ("publish-artifacts.yml", "publish.yml", "deploy.yml", "nightly-publish.yml"):
+        assert stale_exception not in text, f"stale broad exception remains in workflow linter: {stale_exception}"
+
+
+def test_queued_job_reaper_has_safe_stale_controls() -> None:
+    """Issue #688: reaper manual runs need dry-run, reason filtering, and caps."""
+    data = _load_workflow(_WORKFLOWS_DIR / "util-queued-job-reaper.yml")
+    dispatch = _triggers(data)["workflow_dispatch"]
+    inputs = dispatch["inputs"]
+
+    assert inputs["dry-run"]["default"] == "true"
+    assert inputs["reason-filter"]["default"] == ""
+    assert inputs["max-cancel"]["default"] == "10"
+
+    text = (_WORKFLOWS_DIR / "util-queued-job-reaper.yml").read_text(encoding="utf-8")
+    assert "unsatisfiable_runner_labels" in text
+    assert "superseded_pr_head" in text
+    assert "skipped (max-cancel reached)" in text
+    assert "QUEUED_JOB_REAPER_DISABLED" in text

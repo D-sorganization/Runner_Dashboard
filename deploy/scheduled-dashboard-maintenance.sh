@@ -273,26 +273,65 @@ verify_dashboard() {
 }
 
 purge_stale_queue() {
-    # Cancel queued runs older than STALE_QUEUE_AGE_MINUTES (default 120 min).
+    # Preview or cancel stale queued runs older than STALE_QUEUE_AGE_MINUTES
+    # (default 120 min). The dashboard stale API is preferred because it is
+    # where newer reason policy such as `superseded_pr_head` and
+    # `safe_to_cancel` belongs. If that endpoint is missing on an older deploy,
+    # do not pretend cleanup happened; fall back to the Repository_Management
+    # script only when it exists.
     local age="${STALE_QUEUE_AGE_MINUTES:-120}"
+    local dry_run="${STALE_QUEUE_DRY_RUN:-1}"
+    local max_cancel="${STALE_QUEUE_MAX_CANCEL:-10}"
+    local reason_filter="${STALE_QUEUE_REASON_FILTER:-}"
+    local dashboard_base="http://127.0.0.1:${PORT:-8321}"
     local script
     script="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../Repository_Management/scripts/cancel_stale_queue.py"
-    if command -v python3 >/dev/null 2>&1 && [[ -f "${script}" ]]; then
-        info "Purging stale queue (runs queued > ${age} min)"
-        python3 "${script}" --cancel --min-age "${age}" || warn "Stale queue purge exited non-zero"
+
+    if ! [[ "${age}" =~ ^[0-9]+$ ]] || [[ "${age}" -lt 1 ]]; then
+        warn "Invalid STALE_QUEUE_AGE_MINUTES=${age}; skipping stale queue cleanup"
         return
     fi
+    if ! [[ "${max_cancel}" =~ ^[0-9]+$ ]] || [[ "${max_cancel}" -lt 1 ]]; then
+        warn "Invalid STALE_QUEUE_MAX_CANCEL=${max_cancel}; skipping stale queue cleanup"
+        return
+    fi
+
     if curl -fsS --max-time 5 "http://127.0.0.1:${PORT:-8321}/api/health" >/dev/null 2>&1; then
-        info "Purging stale queue via dashboard API (runs queued > ${age} min)"
-        curl -fsS --max-time 60 -X POST \
-            -H "Content-Type: application/json" \
-            -d "{\"min_age\": ${age}, \"dry_run\": false}" \
-            "http://127.0.0.1:${PORT:-8321}/api/queue/purge-stale" \
-            | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'  Cancelled {d[\"cancelled_count\"]}/{d[\"stale_count\"]} stale run(s)')" \
-            || warn "Stale queue API purge failed"
+        local stale_status
+        stale_status="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 "${dashboard_base}/api/queue/stale?min_age_minutes=${age}" || true)"
+        if [[ "${stale_status}" =~ ^2 ]]; then
+            info "Previewing stale queue via dashboard API (age>${age} min, dry_run=${dry_run}, max_cancel=${max_cancel}, reason_filter=${reason_filter:-any})"
+            local payload
+            payload="{\"min_age\": ${age}, \"dry_run\": true}"
+            curl -fsS --max-time 60 -X POST \
+                -H "Content-Type: application/json" \
+                -d "${payload}" \
+                "${dashboard_base}/api/queue/purge-stale" \
+                | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'  Preview: {d.get(\"stale_count\", 0)} stale run(s), cancelled {d.get(\"cancelled_count\", 0)}')" \
+                || warn "Stale queue API preview failed"
+            if [[ "${dry_run}" != "0" ]]; then
+                warn "STALE_QUEUE_DRY_RUN=${dry_run}; leaving stale queue untouched"
+                return
+            fi
+            warn "Dashboard stale API does not yet expose max-cancel/reason-filter cancellation in this script; refusing uncapped purge"
+            return
+        fi
+        warn "Dashboard stale API unavailable at /api/queue/stale (HTTP ${stale_status}); falling back if standalone script exists"
     else
         warn "Dashboard not reachable; skipping stale queue purge (will retry next run)"
+        return
     fi
+
+    if command -v python3 >/dev/null 2>&1 && [[ -f "${script}" ]]; then
+        if [[ "${dry_run}" != "0" ]]; then
+            info "Previewing stale queue with standalone script (runs queued > ${age} min)"
+            python3 "${script}" --min-age "${age}" || warn "Standalone stale queue preview exited non-zero"
+            return
+        fi
+        warn "Standalone stale queue script does not expose max-cancel/reason-filter controls; refusing uncapped purge"
+        return
+    fi
+    warn "No stale queue cleanup endpoint or standalone script is available"
 }
 
 backup_state() {
