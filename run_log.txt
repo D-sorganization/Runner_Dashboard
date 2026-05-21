@@ -1,0 +1,59 @@
+reap	Set up job	﻿2026-05-20T05:11:07.0252418Z Current runner version: '2.334.0'
+reap	Set up job	2026-05-20T05:11:07.0259610Z Runner name: 'd-sorg-local-ControlTower-4'
+reap	Set up job	2026-05-20T05:11:07.0261751Z Runner group name: 'default'
+reap	Set up job	2026-05-20T05:11:07.0262789Z Machine name: 'ControlTower'
+reap	Set up job	2026-05-20T05:11:07.0266154Z ##[group]GITHUB_TOKEN Permissions
+reap	Set up job	2026-05-20T05:11:07.0268930Z Actions: write
+reap	Set up job	2026-05-20T05:11:07.0269662Z Contents: read
+reap	Set up job	2026-05-20T05:11:07.0270332Z Metadata: read
+reap	Set up job	2026-05-20T05:11:07.0271337Z ##[endgroup]
+reap	Set up job	2026-05-20T05:11:07.0273299Z Secret source: Actions
+reap	Set up job	2026-05-20T05:11:07.0273981Z Prepare workflow directory
+reap	Set up job	2026-05-20T05:11:07.0872658Z Prepare all required actions
+reap	Set up job	2026-05-20T05:11:07.0911414Z Getting action download info
+reap	Set up job	2026-05-20T05:11:14.4872865Z Download action repository 'actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1' (SHA:bcd2ba49218906704ab6c1aa796996da409d3eb1)
+reap	Set up job	2026-05-20T05:11:29.6682996Z Complete job name: reap
+reap	Set up runner	﻿2026-05-20T05:11:29.7139657Z A job started hook has been configured by the self-hosted runner administrator
+reap	Set up runner	2026-05-20T05:11:29.7264524Z ##[group]Run '/usr/local/bin/runner-hooks/job-started.sh'
+reap	Set up runner	2026-05-20T05:11:29.7292715Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+reap	Set up runner	2026-05-20T05:11:29.7293425Z ##[endgroup]
+reap	Set up runner	2026-05-20T05:11:29.7443026Z /usr/local/bin/runner-hooks/job-started.sh: line 46: /var/run/runner-busy/d-sorg-local-ControlTower-4.lock.tmp: No such file or directory
+reap	Preflight Jules app credentials	﻿2026-05-20T05:11:44.8302337Z ##[group]Run missing=0
+reap	Preflight Jules app credentials	2026-05-20T05:11:44.8302808Z [36;1mmissing=0[0m
+reap	Preflight Jules app credentials	2026-05-20T05:11:44.8303007Z [36;1mif [ -z "$JULES_APP_CLIENT_ID" ]; then[0m
+reap	Preflight Jules app credentials	2026-05-20T05:11:44.8303327Z [36;1m  echo "::warning title=Missing GitHub App credential::JULES_APP_ID is not configured."[0m
+reap	Preflight Jules app credentials	2026-05-20T05:11:44.8303635Z [36;1m  missing=1[0m
+reap	Preflight Jules app credentials	2026-05-20T05:11:44.8303765Z [36;1mfi[0m
+reap	Preflight Jules app credentials	2026-05-20T05:11:44.8303931Z [36;1mif [ -z "$JULES_APP_PRIVATE_KEY" ]; then[0m
+reap	Preflight Jules app credentials	2026-05-20T05:11:44.8304267Z [36;1m  echo "::warning title=Missing GitHub App credential::JULES_APP_PRIVATE_KEY is not configured."[0m
+reap	Preflight Jules app credentials	2026-05-20T05:11:44.8304621Z [36;1m  missing=1[0m
+reap	Preflight Jules app credentials	2026-05-20T05:11:44.8304762Z [36;1mfi[0m
+reap	Preflight Jules app credentials	2026-05-20T05:11:44.8304880Z [36;1mif [ "$missing" -ne 0 ]; then[0m
+reap	Preflight Jules app credentials	2026-05-20T05:11:44.8305105Z [36;1m  echo "credentials-present=false" >> "$GITHUB_OUTPUT"[0m
+reap	Preflight Jules app credentials	2026-05-20T05:11:44.8305311Z [36;1m  {[0m
+reap	Preflight Jules app credentials	2026-05-20T05:11:44.8305459Z [36;1m    echo "## Queued Job Reaper"[0m
+reap	Preflight Jules app credentials	2026-05-20T05:11:44.8305621Z [36;1m    echo ""[0m
+reap	Preflight Jules app credentials	2026-05-20T05:11:44.8305821Z [36;1m    echo "- **Status:** skipped"[0m
+reap	Preflight Jules app credentials	2026-05-20T05:11:44.8306040Z [36;1m    echo "- **Reason:** missing GitHub App credentials"[0m
+reap	Preflight Jules app credentials	2026-05-20T05:11:44.8306259Z [36;1m  } >> "$GITHUB_STEP_SUMMARY"[0m
+reap	Preflight Jules app credentials	2026-05-20T05:11:44.8306454Z [36;1m  if [ "$EVENT_NAME" = "workflow_dispatch" ]; then[0m
+reap	Preflight Jules app credentials	2026-05-20T05:11:44.8306816Z [36;1m    echo "::error::Configure JULES_APP_ID and JULES_APP_PRIVATE_KEY before manually running this workflow."[0m
+reap	Preflight Jules app credentials	2026-05-20T05:11:44.8307140Z [36;1m    exit 1[0m
+reap	Preflight Jules app credentials	2026-05-20T05:11:44.8307280Z [36;1m  fi[0m
+reap	Preflight Jules app credentials	2026-05-20T05:11:44.8307404Z [36;1m  exit 0[0m
+reap	Preflight Jules app credentials	2026-05-20T05:11:44.8307570Z [36;1mfi[0m
+reap	Preflight Jules app credentials	2026-05-20T05:11:44.8307786Z [36;1mecho "credentials-present=true" >> "$GITHUB_OUTPUT"[0m
+reap	Preflight Jules app credentials	2026-05-20T05:11:44.8335394Z shell: /usr/bin/bash -e {0}
+reap	Preflight Jules app credentials	2026-05-20T05:11:44.8335684Z env:
+reap	Preflight Jules app credentials	2026-05-20T05:11:44.8335835Z   JULES_APP_CLIENT_ID: 
+reap	Preflight Jules app credentials	2026-05-20T05:11:44.8335982Z   JULES_APP_PRIVATE_KEY: 
+reap	Preflight Jules app credentials	2026-05-20T05:11:44.8336136Z   EVENT_NAME: schedule
+reap	Preflight Jules app credentials	2026-05-20T05:11:44.8336298Z ##[endgroup]
+reap	Preflight Jules app credentials	2026-05-20T05:11:44.8408758Z ##[warning]JULES_APP_ID is not configured.
+reap	Preflight Jules app credentials	2026-05-20T05:11:44.8413864Z ##[warning]JULES_APP_PRIVATE_KEY is not configured.
+reap	Complete runner	﻿2026-05-20T05:11:44.8491001Z A job completed hook has been configured by the self-hosted runner administrator
+reap	Complete runner	2026-05-20T05:11:45.4891639Z ##[group]Run '/home/dieterolson/actions-runners/fleet/runner-post-job.sh'
+reap	Complete runner	2026-05-20T05:11:45.4915514Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+reap	Complete runner	2026-05-20T05:11:45.4915838Z ##[endgroup]
+reap	Complete runner	2026-05-20T05:11:45.6226572Z [post-job] Cleaned _temp: 8877 bytes freed (Tue May 19 22:11:45 PDT 2026)
+reap	Complete job	﻿2026-05-20T05:11:45.6282203Z Cleaning up orphan processes
