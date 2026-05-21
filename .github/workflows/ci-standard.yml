@@ -446,6 +446,7 @@ jobs:
     name: CI Complete
     needs: [ci-health-check, quality-gate, security-scan, tests]
     runs-on: d-sorg-fleet
+    timeout-minutes: 5
     if: always()
     steps:
       - name: Verify all jobs succeeded
