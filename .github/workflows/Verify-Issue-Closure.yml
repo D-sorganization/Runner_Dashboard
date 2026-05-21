@@ -19,18 +19,23 @@ permissions:
   issues: write
   pull-requests: read
 
+concurrency:
+  group: verify-issue-closure-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
 jobs:
   verify-closure:
+    timeout-minutes: 30
     # Skip if the issue was just reopened (state_reason == 'reopened') so we
     # don't loop on our own reopen action. Also skip if the closer is the
     # github-actions bot itself (defence in depth).
     if: >-
       github.event.issue.state_reason != 'reopened' &&
       github.event.sender.login != 'github-actions[bot]'
-    runs-on: ubuntu-latest
+    runs-on: d-sorg-fleet
     steps:
       - name: Check for closure evidence
-        uses: actions/github-script@v7
+        uses: actions/github-script@373c709c69115d41ff229c7e5df9f8788daa9553 # v9
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |

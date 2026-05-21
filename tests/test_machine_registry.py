@@ -279,3 +279,74 @@ def test_merge_registry_offline_placeholder_included() -> None:
     registry = {"machines": [{"name": "offline-host", "aliases": [], "hardware": {}}]}
     merged = mr.merge_registry_with_live_nodes(live, registry)
     assert any(m.get("name") == "offline-host" for m in merged)
+
+
+# ---------------------------------------------------------------------------
+# Path validation — issue: the YAML ships under backend/ but the security
+# validator only allowed ~/.config/runner-dashboard/ + git-repo-root. On
+# deployed installs (which are not git checkouts) every load silently failed
+# with "Config path escapes allowed roots", breaking fleet federation.
+# ---------------------------------------------------------------------------
+
+
+
+def test_load_machine_registry_from_module_dir(monkeypatch) -> None:
+    """The registry must load when the YAML lives next to machine_registry.py,
+    even when there is no git repo and no ~/.config/runner-dashboard/.
+
+    Reproduces the deployed-install case where update-deployed.sh copies
+    backend/ next to where the runtime expects machine_registry.yml. The
+    previous code only allowed ~/.config/runner-dashboard/ + git-repo-root,
+    so deployed hosts (not git checkouts) silently failed every load with
+    'Config path escapes allowed roots'.
+    """
+    import machine_registry as mr_module
+
+    module_dir = Path(mr_module.__file__).resolve().parent
+    target = module_dir / "_pytest_machine_registry.yml"
+    target.write_text(
+        "version: 1\n"
+        "machines:\n"
+        "  - name: test-machine\n"
+        "    aliases: [test]\n"
+        "    dashboard_url: http://100.0.0.1:8321\n"
+        "    tailscale_nodes:\n"
+        "      - name: test-node\n"
+        "        ip: 100.0.0.1\n",
+        encoding="utf-8",
+    )
+    # Windows-mounted filesystems can't represent POSIX mode bits, so the
+    # world-writable check fires spuriously. The check itself is covered
+    # by security.py's own tests; here we just need to verify the path
+    # passes the allowed-roots check.
+    import security as _security
+
+    monkeypatch.setattr(_security, "_check_file_mode", lambda _p: True)
+    try:
+        result = mr.load_machine_registry(path=target)
+        assert result["version"] == 1
+        assert len(result["machines"]) == 1
+        assert result["machines"][0]["name"] == "test-machine"
+    finally:
+        target.unlink(missing_ok=True)
+
+
+def test_load_machine_registry_rejects_unrelated_path(tmp_path: Path, monkeypatch) -> None:
+    """The validator must still reject paths outside the allowed roots.
+
+    A regression of this would defeat the security check entirely.
+    """
+    rogue = tmp_path / "rogue.yml"
+    rogue.write_text("version: 1\nmachines: []\n", encoding="utf-8")
+    import pytest
+    import security as _security
+
+    monkeypatch.setattr(_security, "_check_file_mode", lambda _p: True)
+    with pytest.raises(ValueError, match="escapes allowed roots"):
+        mr.load_machine_registry(path=rogue)
+
+
+def test_load_machine_registry_missing_path_returns_empty(tmp_path: Path) -> None:
+    """A missing file is benign — return an empty registry, don't raise."""
+    result = mr.load_machine_registry(path=tmp_path / "absent.yml")
+    assert result == {"version": 1, "machines": []}

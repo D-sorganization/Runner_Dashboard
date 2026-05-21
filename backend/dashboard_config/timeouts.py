@@ -36,6 +36,18 @@ class HttpTimeout:
     # GitHub API tail latency without holding workers too long.
     PROXY_TO_HUB_S: float = 15.0
     GH_API_DEFAULT_S: int = 15
+    # 10 s. The original 1 s value (added in #669) assumed the network
+    # round-trip is the bottleneck; on this fleet the bottleneck is
+    # `gh api` itself — forking the Go binary, loading its config, and
+    # signing the request takes 5-8 s consistently even when curl-direct
+    # is sub-second. A 1 s budget killed every health check, surfacing as
+    # `github_api=unreachable` on hosts where the network was fine
+    # (observed on d-sorg-local-ControlTower 2026-05-18 evening; the
+    # entire Overview tab rendered 0 % success rate because /api/stats
+    # depends on the same path and times out the same way). 10 s leaves
+    # enough headroom for tail-latency without holding the worker thread
+    # for the full 15 s default that long-running endpoints use.
+    HEALTH_GH_API_S: int = 10
 
     # Default budget for ``run_cmd`` subprocess invocations. Used at call
     # sites that pass ``timeout=20`` explicitly when a tighter budget is

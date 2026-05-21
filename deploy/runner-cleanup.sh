@@ -17,6 +17,16 @@ COMPACT_VHD="${COMPACT_VHD:-0}"
 COMPACT_VHD_ONLY="${COMPACT_VHD_ONLY:-0}"
 COMPACT_VHD_DISTRO="${COMPACT_VHD_DISTRO:-Ubuntu-22.04}"
 LOCK_FILE="/run/runner-cleanup.lock"
+TEXTFILE_COLLECTOR_DIR="${TEXTFILE_COLLECTOR_DIR:-/var/lib/node_exporter/textfile_collector}"
+CLEANUP_METRICS_FILE="${CLEANUP_METRICS_FILE:-${TEXTFILE_COLLECTOR_DIR}/runner_cleanup.prom}"
+
+# Tracked by write_metrics(): incremented every time cleanup_runners() fails
+# to stop a runner unit. Surfaced as runner_cleanup_stop_failures_total.
+CLEANUP_STOP_FAILURES=0
+# Tracked by write_metrics(): "ok" for a clean run, "skipped" when another
+# instance held the lock, "failed" when main() returns non-zero or the EXIT
+# trap fires before main completes.
+CLEANUP_RESULT="failed"
 
 # Parse flags. Keep env-var style as the primary interface; flags are a
 # convenience wrapper so callers can say `runner-cleanup.sh --compact-vhd`.
@@ -74,6 +84,45 @@ delete_path() {
     [[ "$DRY_RUN" == "1" ]] || rm -rf -- "$path"
 }
 
+write_metrics() {
+    # Emit a Prometheus textfile-collector snapshot of the last cleanup pass.
+    # Invoked from an EXIT trap so partial / failed runs still publish a
+    # signal. Failures here are non-fatal: the trap must never mask the
+    # underlying exit status of main().
+    local host metrics_dir tmp_file
+    host="${FLEET_NODE_NAME:-$(hostname -s 2>/dev/null || hostname)}"
+    metrics_dir="$(dirname -- "$CLEANUP_METRICS_FILE")"
+    if ! mkdir -p -- "$metrics_dir" 2>/dev/null; then
+        log "metrics: cannot create $metrics_dir; skipping textfile emit"
+        return 0
+    fi
+    tmp_file="${CLEANUP_METRICS_FILE}.tmp"
+    {
+        printf '# HELP runner_cleanup_runs_total Total runner cleanup passes by result.\n'
+        printf '# TYPE runner_cleanup_runs_total counter\n'
+        for result in ok skipped failed; do
+            local value=0
+            [[ "$result" == "$CLEANUP_RESULT" ]] && value=1
+            printf 'runner_cleanup_runs_total{host="%s",result="%s"} %d\n' \
+                "$host" "$result" "$value"
+        done
+        printf '# HELP runner_cleanup_stop_failures_total Runner unit stop failures observed in the last cleanup pass.\n'
+        printf '# TYPE runner_cleanup_stop_failures_total counter\n'
+        printf 'runner_cleanup_stop_failures_total{host="%s"} %d\n' \
+            "$host" "$CLEANUP_STOP_FAILURES"
+        printf '# HELP runner_cleanup_last_run_timestamp_seconds Unix timestamp of the last cleanup pass.\n'
+        printf '# TYPE runner_cleanup_last_run_timestamp_seconds gauge\n'
+        printf 'runner_cleanup_last_run_timestamp_seconds{host="%s"} %d\n' \
+            "$host" "$(date +%s)"
+    } >"$tmp_file" 2>/dev/null || {
+        log "metrics: failed writing $tmp_file"
+        rm -f -- "$tmp_file" 2>/dev/null || true
+        return 0
+    }
+    mv -f -- "$tmp_file" "$CLEANUP_METRICS_FILE" 2>/dev/null \
+        || log "metrics: failed publishing $CLEANUP_METRICS_FILE"
+}
+
 bytes_human() {
     numfmt --to=iec-i --suffix=B --format='%.1f' "$1" 2>/dev/null || printf '%sB' "$1"
 }
@@ -94,8 +143,66 @@ unit_active() {
     systemctl is-active --quiet "$1"
 }
 
+RUNNER_BUSY_LOCK_DIR="${RUNNER_BUSY_LOCK_DIR:-/var/run/runner-busy}"
+RUNNER_BUSY_LOCK_MAX_AGE_SECONDS="${RUNNER_BUSY_LOCK_MAX_AGE_SECONDS:-86400}"
+RUNNER_PICKUP_DIR_MAX_AGE_SECONDS="${RUNNER_PICKUP_DIR_MAX_AGE_SECONDS:-30}"
+
+runner_busy_via_pickup_dir() {
+    # Mirror of backend/runner_autoscaler.py::_runner_busy_via_pickup_dir.
+    # The Listener writes _work/_temp/_runner_file_commands/ BEFORE forking
+    # the Worker. A recent mtime means the Listener has accepted a job
+    # but the Worker hasn't started yet — the exact race window that left
+    # corruption residue in issue #651. Stale residue (older than
+    # RUNNER_PICKUP_DIR_MAX_AGE_SECONDS) is NOT treated as busy; it gets
+    # GC'd by the existing cleanup_runner_workdir paths.
+    local runner_dir="$1"
+    local fc="${runner_dir}/_work/_temp/_runner_file_commands"
+    [[ -d "$fc" ]] || return 1
+    local mtime age
+    mtime=$(stat -c %Y "$fc" 2>/dev/null || echo 0)
+    age=$(( $(date +%s) - mtime ))
+    if (( age <= RUNNER_PICKUP_DIR_MAX_AGE_SECONDS )); then
+        log "pickup-dir fresh (age=${age}s) — treating $(basename "$runner_dir") as busy"
+        return 0
+    fi
+    return 1
+}
+
+runner_busy_via_lockfile() {
+    # Issue #651 defense-in-depth signal mirroring backend/runner_autoscaler.py's
+    # _runner_busy_via_lockfile. The runner's JOB_STARTED hook writes
+    # ${RUNNER_BUSY_LOCK_DIR}/<runner-name>.lock; we treat a fresh lockfile
+    # as "busy". Stale ones (older than RUNNER_BUSY_LOCK_MAX_AGE_SECONDS)
+    # are ignored AND garbage-collected here so a Worker killed mid-job
+    # doesn't permanently lock its runner out of cleanup.
+    local runner_dir="$1"
+    local runner_name lock now mtime age
+    runner_name="$(basename "$runner_dir")"
+    lock="${RUNNER_BUSY_LOCK_DIR}/${runner_name}.lock"
+    [[ -f "$lock" ]] || return 1
+    now=$(date +%s)
+    mtime=$(stat -c %Y "$lock" 2>/dev/null || echo 0)
+    age=$(( now - mtime ))
+    if (( age > RUNNER_BUSY_LOCK_MAX_AGE_SECONDS )); then
+        log "stale runner-busy lockfile (age=${age}s) — removing $lock"
+        rm -f "$lock"
+        return 1
+    fi
+    return 0
+}
+
 runner_busy() {
     local runner_dir="$1"
+    # Layered signals (#651). ANY positive signal counts as busy:
+    #  1. Pickup-dir mtime  — Listener has accepted but Worker not yet forked
+    #  2. Lockfile          — Worker has fired JOB_STARTED hook
+    #  3. Process tree      — Runner.Worker child is alive
+    if runner_busy_via_pickup_dir "$runner_dir"; then
+        return 0
+    fi
+    if runner_busy_via_lockfile "$runner_dir"; then
+        return 0
+    fi
     ps -eo args= | grep -F "${runner_dir}/bin/Runner.Worker" | grep -v 'grep -F' >/dev/null 2>&1
 }
 
@@ -132,10 +239,41 @@ cleanup_runner_workdir() {
                 delete_path "$path"
             done
     fi
+    # issue #651: clean stale _runner_file_commands left over from
+    # jobs that died mid-execution. The directory is normally
+    # created+deleted within a single job lifecycle; anything still
+    # here when the runner is idle is corruption that causes the
+    # next allocation to fail with "Missing file at path:
+    # .../_runner_file_commands/save_state_<uuid>".
+    if [[ -d "$work_dir/_temp/_runner_file_commands" ]]; then
+        delete_path "$work_dir/_temp/_runner_file_commands"
+    fi
+}
+
+cleanup_runner_diag() {
+    # issue #651: rotate the runner's _diag/pages/ output. The actions
+    # runner writes UUID-named log files there per page-event; if two
+    # runs collide on the same UUID the runner aborts with "The file
+    # '.../_diag/pages/<uuid>_<uuid>_1.log' already exists". Capping
+    # age + leaving the directory itself in place prevents both the
+    # collision and the next allocation's startup failure.
+    local runner_dir="$1"
+    local diag_dir="${runner_dir}/_diag/pages"
+    [[ -d "$diag_dir" ]] || return 0
+    find "$diag_dir" -maxdepth 1 -type f -name '*.log' \
+        -mtime +"$RUNNER_TEMP_DAYS" \
+        -print0 | while IFS= read -r -d '' path; do
+            delete_path "$path"
+        done
 }
 
 cleanup_runners() {
-    local unit runner_dir was_active
+    # Per-runner block: a stop/start failure on ONE runner must not abort the
+    # whole pass. Before this guard, `systemctl stop` returning exit 1 (which
+    # happens when stop races with a job pickup on that unit and systemctl
+    # reports "Job for ... canceled") tripped `set -e` and skipped runners 2..N.
+    # Result: on busy hosts the cleanup was a silent no-op every night.
+    local unit runner_dir was_active stop_rc start_rc
     while read -r unit; do
         [[ -n "$unit" ]] || continue
         runner_dir="$(service_workdir "$unit")"
@@ -148,13 +286,31 @@ cleanup_runners() {
             continue
         fi
         was_active=0
+        stop_rc=0
         if unit_active "$unit"; then
             was_active=1
-            run systemctl stop "$unit"
+            run systemctl stop "$unit" || stop_rc=$?
+            if (( stop_rc != 0 )); then
+                # Increment the metric for #663's textfile-collector path.
+                CLEANUP_STOP_FAILURES=$((CLEANUP_STOP_FAILURES + 1))
+                # If a job was assigned in the brief window between runner_busy()
+                # and systemctl stop, the stop is racy. Skip cleanup for this
+                # runner this pass; the next pass will catch it once idle.
+                log "skip $unit: systemctl stop failed (rc=$stop_rc), likely raced with job pickup; will retry next pass"
+                if ! unit_active "$unit"; then
+                    run systemctl start "$unit" || log "warn $unit: restart after failed stop also failed"
+                fi
+                continue
+            fi
         fi
         cleanup_runner_workdir "$runner_dir"
+        cleanup_runner_diag "$runner_dir"
         if [[ "$was_active" == "1" ]]; then
-            run systemctl start "$unit"
+            start_rc=0
+            run systemctl start "$unit" || start_rc=$?
+            if (( start_rc != 0 )); then
+                log "error $unit: failed to restart after cleanup (rc=$start_rc); host may have a stuck unit"
+            fi
         fi
     done < <(list_runner_units)
 }
@@ -208,6 +364,7 @@ main() {
     exec 9>"$LOCK_FILE"
     if ! flock -n 9; then
         log "another cleanup is already running; exiting"
+        CLEANUP_RESULT="skipped"
         return 0
     fi
     local before after used
@@ -233,6 +390,13 @@ main() {
     if [[ "$COMPACT_VHD" == "1" ]]; then
         compact_wsl_vhd
     fi
+    CLEANUP_RESULT="ok"
 }
+
+# Emit a textfile-collector metric on every exit path. The trap fires
+# regardless of whether main() returned cleanly, hit set -e, or was
+# interrupted, so silent regressions (issue #651) can no longer accumulate
+# undetected — Prometheus will see runner_cleanup_runs_total{result="failed"}.
+trap 'write_metrics' EXIT
 
 main "$@"

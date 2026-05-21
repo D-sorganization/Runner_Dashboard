@@ -5,9 +5,19 @@ Extracted from server.py as part of issue #159 god-module-refactor-2026q2.
 
 from __future__ import annotations
 
+import datetime as _dt_mod
+import os
+import platform
+import shutil
+import time
+from pathlib import Path
+
+import psutil
 from fastapi import APIRouter, Request
 
 router = APIRouter(tags=["metrics"])
+UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
+datetime = _dt_mod.datetime
 
 
 @router.get("/api/system")
@@ -24,18 +34,7 @@ async def get_system_metrics():
         get_gpu_info,
         get_per_runner_resources,
     )
-    from server import (  # noqa: PLC0415
-        BOOT_TIME,
-        HOST_MEMORY_GB,
-        UTC,
-        Path,
-        datetime,
-        os,
-        platform,
-        psutil,
-        shutil,
-        time,
-    )
+    from server import BOOT_TIME, HOST_MEMORY_GB  # noqa: PLC0415
 
     cpu_freq = psutil.cpu_freq()
     mem = psutil.virtual_memory()

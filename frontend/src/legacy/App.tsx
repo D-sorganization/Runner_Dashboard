@@ -1,4 +1,5 @@
 import React from "react"
+import * as fleetAlerts from "../lib/fleetAlerts"
 import { AgentDispatchPage } from "../pages/AgentDispatch"
 import { QueueTab } from "../pages/Queue"
 import { Badge } from "../primitives/Badge"
@@ -517,7 +518,17 @@ function Stat(p) {
       { className: "stat-value", style: { color: p.color || "inherit" } },
       p.value,
     ),
-    p.sub ? h("div", { className: "stat-sub" }, p.sub) : null,
+    p.sub
+      ? h(
+          "div",
+          {
+            className: "stat-sub",
+            // Hover for the full text when the sub line has been truncated.
+            title: p.subTitle || (typeof p.sub === "string" ? p.sub : ""),
+          },
+          p.sub,
+        )
+      : null,
   );
 }
 
@@ -793,6 +804,11 @@ function FleetTab(p) {
   var machinesData = p.machinesData || {};
   var deployment = p.deployment || {};
   var onOpenDeployment = p.onOpenDeployment || function () {};
+  // Used by the fleet-status hero panel for KPI buttons and the
+  // hosted-runner billing alert. Defaulted so unit tests / standalone
+  // rendering of FleetTab don't need to pass them.
+  var setTab = p.setTab || function () {};
+  var runnerAudit = p.runnerAudit || { violations: [] };
   var driftState = React.useState(null);
   var driftInfo = driftState[0], setDriftInfo = driftState[1];
   React.useEffect(function () {
@@ -961,9 +977,100 @@ function FleetTab(p) {
       }),
     );
   }
+  // ─── Fleet status hero panel (computed once per render) ─────────────────
+  // The rollup logic lives in frontend/src/lib/fleetAlerts.ts so it can be
+  // unit-tested without the legacy h()-tree. The hero panel below is the
+  // only consumer today; the new shell migration will reuse the same fn.
+  var heroResult = fleetAlerts.computeFleetAlerts({
+    machineCount: machineCount,
+    machineOnline: machineOnline,
+    machineNodes: machineNodes,
+    watchdog: watchdog,
+    stats: stats,
+    completedRuns: completedRuns,
+    runnerAudit: runnerAudit,
+  });
+  var heroAlerts = heroResult.alerts;
+  var heroLevel = heroResult.level;
+  var heroLevelLabel = fleetAlerts.fleetLevelLabel(heroLevel);
+  var heroLevelColor = heroLevel === "ok"
+    ? "var(--accent-green)"
+    : heroLevel === "warning"
+      ? "var(--accent-yellow)"
+      : "var(--accent-red)";
+
   return h(
     "div",
     null,
+    h(
+      "section",
+      {
+        className: "fleet-hero fleet-hero--" + heroLevel,
+        role: "region",
+        "aria-label": "Fleet status",
+      },
+      h(
+        "div",
+        { className: "fleet-hero__status" },
+        h("span", {
+          className: "fleet-hero__dot",
+          style: { background: heroLevelColor, boxShadow: "0 0 0 4px " + heroLevelColor.replace(")", " / 0.18)").replace("var(--", "var(--") },
+          "aria-hidden": true,
+        }),
+        h(
+          "div",
+          { className: "fleet-hero__status-text" },
+          h("div", { className: "fleet-hero__title" }, "Fleet ", heroLevelLabel),
+          h("div", { className: "fleet-hero__subtitle" },
+            heroAlerts.length === 0
+              ? "All systems nominal"
+              : heroAlerts.length + " active alert" + (heroAlerts.length === 1 ? "" : "s")),
+        ),
+      ),
+      h(
+        "div",
+        { className: "fleet-hero__kpis" },
+        h("button", { className: "fleet-hero__kpi", onClick: function () { setTab("machines"); }, type: "button" },
+          h("span", { className: "fleet-hero__kpi-label" }, "Machines"),
+          h("span", { className: "fleet-hero__kpi-value" }, machineOnline + " / " + machineCount),
+        ),
+        h("button", { className: "fleet-hero__kpi", onClick: function () { setTab("overview"); }, type: "button" },
+          h("span", { className: "fleet-hero__kpi-label" }, "Open PRs"),
+          h("span", { className: "fleet-hero__kpi-value" }, String(openPrs)),
+        ),
+        h("button", { className: "fleet-hero__kpi", onClick: function () { setTab("queue"); }, type: "button" },
+          h("span", { className: "fleet-hero__kpi-label" }, "Queue"),
+          h("span", { className: "fleet-hero__kpi-value" }, String(queued)),
+          queued > 0
+            ? h("span", { className: "fleet-hero__kpi-sub" }, running + " running")
+            : null,
+        ),
+        h("button", { className: "fleet-hero__kpi", onClick: function () { setTab("overview"); }, type: "button" },
+          h("span", { className: "fleet-hero__kpi-label" }, "Runners"),
+          h("span", { className: "fleet-hero__kpi-value" }, on + " / " + runners.length),
+          busy > 0
+            ? h("span", { className: "fleet-hero__kpi-sub" }, busy + " busy")
+            : null,
+        ),
+      ),
+      heroAlerts.length > 0
+        ? h(
+            "ul",
+            { className: "fleet-hero__alerts", "aria-label": "Active alerts" },
+            heroAlerts.map(function (a, i) {
+              return h(
+                "li",
+                {
+                  key: "alert-" + i,
+                  className: "fleet-hero__alert fleet-hero__alert--" + a.level,
+                },
+                h("span", { className: "fleet-hero__alert-title" }, a.title),
+                h("span", { className: "fleet-hero__alert-detail" }, a.detail),
+              );
+            }),
+          )
+        : null,
+    ),
     h(
       "div",
       { className: "stat-row" },
@@ -1020,10 +1127,16 @@ function FleetTab(p) {
               : watchdog.status === "degraded"
                 ? "var(--accent-yellow)"
                 : "inherit",
+        // Truncate the keepalive detail so a 200-character Windows
+        // scheduled-task error doesn't blow out the card height. Full
+        // detail stays available via tooltip + the alerts hero up top.
         sub:
-          watchdog.detail ||
-          watchdog.summary ||
-          "Read-only keepalive checks",
+          watchdog.summary
+            ? (watchdog.summary.length > 80
+                ? watchdog.summary.slice(0, 77) + "…"
+                : watchdog.summary)
+            : "Read-only keepalive checks",
+        subTitle: watchdog.detail || watchdog.summary || "",
       }),
       h(Stat, {
         label: "Storage",
@@ -13305,11 +13418,11 @@ function AssistantSidebar(props) {
       )
     : null;
 
-  return h("div", { style: sidebarStyle, "aria-label": "Assistant sidebar" },
+  return h("div", { style: sidebarStyle, "aria-label": "Chat sidebar" },
     open ? h("div", { style: dragHandleStyle, onMouseDown: startDrag }) : null,
     open ? h(React.Fragment, null,
       h("div", { style: headerStyle },
-        h("span", { style: { fontWeight: 600, fontSize: 13 } }, "✨ Assistant"),
+        h("span", { style: { fontWeight: 600, fontSize: 13 } }, "💬 Chat"),
         h("div", { style: { display: "flex", gap: 6 } },
           h("label", {
             title: "Save chat history",
@@ -15468,7 +15581,10 @@ function App({ initialTab, onTabChange }: { initialTab?: string; onTabChange?: (
     null,
     h(
       "header",
-      { className: "app-header" },
+      { className: "app-header app-header--rows" },
+      h(
+        "div",
+        { className: "app-header__row app-header__row--primary" },
       h(
         "div",
         { className: "app-logo" },
@@ -16082,48 +16198,22 @@ function App({ initialTab, onTabChange }: { initialTab?: string; onTabChange?: (
           "Settings",
         ),
       ),
+      ), // close app-header__row--primary
+      h(
+        "div",
+        { className: "app-header__row app-header__row--secondary" },
       h(
         "div",
         { className: "header-right" },
-        (function() {
-          // Mock quota data for visualization
-          var quotaUsed = 14;
-          var quotaTotal = 20;
-          var percent = (quotaUsed / quotaTotal) * 100;
-          return h(
-            "div",
-            {
-              className: "glass-card",
-              style: {
-                padding: "4px 12px",
-                display: "flex",
-                alignItems: "center",
-                gap: "10px",
-                marginRight: "12px",
-                fontSize: "11px",
-                height: "32px"
-              }
-            },
-            h("span", { style: { color: "var(--text-secondary)", fontWeight: "600" } }, "FLEET QUOTA"),
-            h(
-              "div",
-              {
-                className: "progress-bar",
-                style: { width: "80px", height: "6px", background: "rgba(255,255,255,0.1)" },
-                title: quotaUsed + "/" + quotaTotal + " Runners Active"
-              },
-              h("div", {
-                className: "progress-fill",
-                style: {
-                  width: percent + "%",
-                  background: "var(--grad-quota)",
-                  boxShadow: "0 0 10px rgba(0, 242, 254, 0.5)"
-                }
-              })
-            ),
-            h("span", { style: { color: "var(--text-primary)", fontWeight: "700" } }, quotaUsed + "/" + quotaTotal)
-          );
-        })(),
+        // The "FLEET QUOTA" widget that used to live here was a hardcoded
+        // mock (14/20). Removed because it (a) showed fake data with no
+        // backing API, (b) had no defined semantics — "quota" wasn't tied
+        // to runner schedule limits, busy-count, or anything real, and
+        // (c) was obscuring the principal/badge/settings controls in the
+        // toolstrip. If a real fleet-capacity indicator is wanted, it
+        // belongs in the new shell under frontend/src/shell with a clear
+        // data contract (e.g. busy_runners / scheduled_runners derived
+        // from /api/fleet/nodes), not as another mock here.
         principal ? h(
           "span",
           { className: "section-badge", style: { background: "rgba(88,166,255,0.15)", color: "var(--accent-blue)" } },
@@ -16187,8 +16277,8 @@ function App({ initialTab, onTabChange }: { initialTab?: string; onTabChange?: (
           className: "btn",
           style: { marginLeft: 4, background: asstOpen ? "var(--accent-blue)" : undefined, color: asstOpen ? "#fff" : undefined },
           onClick: toggleAsst,
-          title: "Toggle Assistant sidebar",
-        }, "☰ Asst"),
+          title: "Toggle Chat sidebar",
+        }, "💬 Chat"),
         h(QuickDispatchPopover, null),
         h(
           "button",
@@ -16215,6 +16305,7 @@ function App({ initialTab, onTabChange }: { initialTab?: string; onTabChange?: (
           I.refresh(12),
         ),
       ),
+      ), // close app-header__row--secondary
     ),
     (runnerAudit.violations && runnerAudit.violations.length > 0 && !auditBannerDismissed)
       ? h(
@@ -16284,6 +16375,8 @@ function App({ initialTab, onTabChange }: { initialTab?: string; onTabChange?: (
             loading: actionLoading,
             watchdog: watchdog,
             deployment: deployment,
+            setTab: setTab,             // for hero KPI buttons that navigate to other tabs
+            runnerAudit: runnerAudit,   // for hosted-runner billing alert in fleet hero
             onOpenDeployment: function () {
               setTab("deployment");
               fetchDeploymentState();

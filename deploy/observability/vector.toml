@@ -33,6 +33,21 @@
   # Also capture kernel-level OOM kills that may affect the service.
   include_matches = { "_SYSTEMD_UNIT" = ["runner-dashboard.service", "runner-autoscaler.service"] }
 
+# Issue #651 — orphan Runner.Worker detection.
+# systemd emits "Unit process <PID> (Runner.Worker) remains running after
+# unit stopped" when KillMode=process on the actions.runner.*.service
+# units leaves a Worker behind. These orphans corrupt the next allocation
+# (stale _runner_file_commands, _diag/pages collisions). This source
+# tails the systemd journal globally so we can see the kernel/systemd-
+# generated messages that the per-unit `journald` source above filters
+# out by design.
+[sources.journald_systemd]
+  type = "journald"
+  include_units = ["init.scope", "systemd"]
+  # Also include the actions runner units themselves so worker exit
+  # messages aren't lost.
+  include_matches = { "SYSLOG_IDENTIFIER" = ["systemd"] }
+
 [sources.docker_logs]
   type = "docker_logs"
   # In Docker Compose mode, collect from the dashboard container by label.
@@ -66,6 +81,33 @@
     del(.PRIORITY)
     del(.severity)
   '''
+
+# Issue #651 — Detect orphan Runner.Worker processes via the systemd
+# log line: "Unit process N (Runner.Worker) remains running after unit
+# stopped". This is the signature of KillMode=process letting a child
+# survive its parent. See docs/observability.md.
+[transforms.orphan_worker_filter]
+  type = "filter"
+  inputs = ["journald_systemd"]
+  condition = '''
+    msg = string!(.message ?? "")
+    contains(msg, "(Runner.Worker)") && contains(msg, "remains running after unit stopped")
+  '''
+
+[transforms.orphan_worker_to_metric]
+  type = "log_to_metric"
+  inputs = ["orphan_worker_filter"]
+
+  [[transforms.orphan_worker_to_metric.metrics]]
+    type = "counter"
+    field = "message"
+    name = "runner_orphan_worker_total"
+    namespace = "runner"
+    increment_by_value = false
+
+    [transforms.orphan_worker_to_metric.metrics.tags]
+      host   = "{{ host }}"
+      runner = "{{ _SYSTEMD_UNIT }}"
 
 [transforms.add_retention_label]
   type = "remap"
@@ -114,6 +156,51 @@
   type = "console"
   inputs = ["add_retention_label"]
   encoding.codec = "json"
+
+# ---------------------------------------------------------------------------
+# Issue #651 — Prometheus exporter for orphan-Worker counter.
+#
+# This is the canonical scrape path for `runner_orphan_worker_total`. The
+# Prometheus server (or the fleet's central scraper) must be configured to
+# pull from <vector-host>:9598/metrics. See docs/observability.md.
+#
+# TODO(observability): The fleet does not yet ship a centralised Prometheus
+# server config in this repo; verify the scrape target is registered with
+# the operator's Prometheus instance before relying on this metric for
+# alerting. If your deployment runs Vector behind a firewall, expose this
+# port via Tailscale rather than the public network.
+# ---------------------------------------------------------------------------
+[sinks.prometheus_runner_metrics]
+  type = "prometheus_exporter"
+  inputs = ["orphan_worker_to_metric"]
+  address = "${VECTOR_PROM_ADDR:-0.0.0.0:9598}"
+  default_namespace = "runner"
+
+# Forward the raw orphan-worker log lines to Loki as well so operators can
+# correlate the counter spike with the exact journald message. Use a
+# dedicated stream label so alerts can match on `{event="orphan_worker"}`.
+[transforms.orphan_worker_for_loki]
+  type = "remap"
+  inputs = ["orphan_worker_filter"]
+  source = '''
+    .event       = "orphan_worker"
+    .level       = "warn"
+    .fleet_node  = get_env_var!("FLEET_NODE_NAME")
+    .service     = "runner-dashboard"
+    .retention   = "30d"
+  '''
+
+[sinks.loki_orphan_worker]
+  type = "loki"
+  inputs = ["orphan_worker_for_loki"]
+  endpoint = "${LOKI_URL:-http://localhost:3100}"
+  encoding.codec = "json"
+
+  [sinks.loki_orphan_worker.labels]
+    job       = "runner-dashboard"
+    node      = "{{ fleet_node }}"
+    event     = "{{ event }}"
+    retention = "{{ retention }}"
 
 # --------------------------------------------------------------------------
 # Journald drop-in for retention limits

@@ -139,16 +139,25 @@ def _load_raw_registry(path: Path) -> dict[str, Any]:
     """
     suffix = path.suffix.lower()
 
+    # See load_machine_registry: the YAML ships next to this module so the
+    # module's directory must be an explicit allowed root. The deployed
+    # install path is not a git checkout, so the repo-root inference in
+    # security.py can't help us.
+    explicit_roots = [
+        Path(__file__).resolve().parent,
+        Path("~/.config/runner-dashboard").expanduser(),
+    ]
+
     if suffix == ".json":
         # For JSON files, still validate path security
-        validated_path = validate_config_path(path)
+        validated_path = validate_config_path(path, allowed_roots=explicit_roots)
         text = validated_path.read_text(encoding="utf-8")
         data = json.loads(text)
     elif yaml is not None:
         # Use secure YAML loader with path validation
-        data = safe_yaml_load(path)
+        data = safe_yaml_load(path, allowed_roots=explicit_roots)
     else:  # pragma: no cover - kept for bare-bones environments
-        validated_path = validate_config_path(path)
+        validated_path = validate_config_path(path, allowed_roots=explicit_roots)
         text = validated_path.read_text(encoding="utf-8")
         data = json.loads(text)
 
@@ -231,10 +240,30 @@ def load_machine_registry(path: str | Path | None = None) -> dict[str, Any]:
     if not registry_path.exists():
         return {"version": 1, "machines": []}
 
-    # Validate the path before loading (security check for issue #355)
-    # This will raise ValueError if path escapes allowed roots, is a dangerous
-    # symlink, or is world-writable
-    validate_config_path(registry_path)
+    # Validate the path before loading (security check for issue #355).
+    #
+    # The registry YAML ships alongside this module under ``backend/``, so the
+    # directory containing this file is a legitimate allowed root. The deployed
+    # install path (``$HOME/actions-runners/dashboard/backend/``) is NOT a git
+    # checkout, which means ``_get_repo_root()`` in security.py returns None
+    # and the file would otherwise be rejected as "escapes allowed roots".
+    # That misconfiguration silently broke fleet federation on every deployed
+    # host — the dashboard tried to load this file on every /api/fleet/nodes
+    # call and fell back to an empty registry, so cross-machine specs and
+    # tailscale_nodes data never reached the UI. See log lines like
+    # "Machine registry load failed: Config path escapes allowed roots ...".
+    #
+    # We explicitly allow:
+    #   1. The module's own directory (where this YAML ships)
+    #   2. The canonical config dir (~/.config/runner-dashboard/) for sites
+    #      that prefer to manage the registry as host config
+    #   3. The repo-root config and ~/.config defaults that validate_config_path
+    #      already adds
+    explicit_roots = [
+        Path(__file__).resolve().parent,
+        Path("~/.config/runner-dashboard").expanduser(),
+    ]
+    validate_config_path(registry_path, allowed_roots=explicit_roots)
 
     raw = _load_raw_registry(registry_path)
     machines = raw.get("machines", [])

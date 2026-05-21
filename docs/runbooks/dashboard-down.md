@@ -95,6 +95,59 @@ After mitigation, investigate the **root cause** before closing:
   cron; restore it if the cron entry was lost.
 - File a postmortem.
 
+## Pattern: EROFS / Read-only filesystem at startup
+
+A specific class of crash-loop deserves callout because the surface error
+message is misleading. If `journalctl -u runner-dashboard -n 100 --no-pager`
+shows:
+
+```
+OSError: [Errno 30] Read-only file system: '/home/<user>/.local/share/runner-dashboard'
+```
+
+(or any other path under `$HOME`), this is **not** a filesystem-permissions
+problem on the directory itself. The systemd sandbox sets
+`ProtectHome=read-only`, which makes `$HOME` read-only from the service's
+view except for explicit `ReadWritePaths=` entries. New code paths that
+write to home directories outside that allowlist hit `EROFS`, even if the
+target directory is mode `0755` and owned by the service user.
+
+### Quick triage
+
+```bash
+# 1. Identify which path the service is failing to write.
+journalctl -u runner-dashboard -n 100 --no-pager | grep -B2 -i "Read-only file system"
+
+# 2. Compare against the installed unit's ReadWritePaths.
+sudo grep -nE 'ReadWritePaths|ProtectHome' \
+    /etc/systemd/system/runner-dashboard.service \
+    /etc/systemd/system/runner-dashboard.service.d/*.conf 2>/dev/null
+```
+
+### Quick fix (per-host, drop-in — survives `setup.sh` re-runs)
+
+```bash
+sudo mkdir -p /etc/systemd/system/runner-dashboard.service.d
+sudo tee /etc/systemd/system/runner-dashboard.service.d/99-rw-paths.conf <<EOF
+[Service]
+ReadWritePaths=/home/$USER/.local/share/runner-dashboard
+ReadWritePaths=/home/$USER/actions-runners/dashboard
+EOF
+sudo systemctl daemon-reload
+sudo systemctl restart runner-dashboard
+```
+
+Drop-ins are layered additively on top of the main unit; they survive a
+`setup.sh` re-install of the main unit file.
+
+### Permanent fix
+
+The deploy template (`deploy/runner-dashboard.service`) carries the canonical
+`ReadWritePaths=` list. New code that writes to a path not on the list
+should land alongside an update to the template. See
+[`docs/deployment-model.md` § "systemd Sandboxing"](../deployment-model.md#systemd-sandboxing)
+for the current list.
+
 ## Postmortem Template
 
 [`postmortem-template.md`](./postmortem-template.md)

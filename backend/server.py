@@ -378,7 +378,15 @@ app.add_middleware(_prometheus_metrics_router.PrometheusMiddleware)
 from replay_store import ReplayStore, migrate_json_to_sqlite  # noqa: E402
 
 _PROCESSED_ENVELOPES_PATH = Path.home() / "actions-runners" / "dashboard" / "processed_envelopes.json"
-_REPLAY_STORE_PATH = Path.home() / "actions-runners" / "dashboard" / "replay.db"
+# Path is overridable via RUNNER_DASHBOARD_REPLAY_DB so operators with
+# constrained systemd sandboxes (ProtectHome=read-only) can relocate the DB
+# to any directory in their ReadWritePaths list without editing this file.
+_REPLAY_STORE_PATH = Path(
+    os.environ.get(
+        "RUNNER_DASHBOARD_REPLAY_DB",
+        str(Path.home() / "actions-runners" / "dashboard" / "replay.db"),
+    )
+)
 _replay_store: ReplayStore = ReplayStore(_REPLAY_STORE_PATH)
 
 # One-shot migration: import any live entries from the legacy JSON file.
@@ -562,6 +570,59 @@ for _entry in _fleet_raw.split(","):
         except ValueError as _e:
             log.warning("Skipping invalid FLEET_NODES entry %r: %s", _entry, _e)
 
+# Federation autoconfig: when FLEET_NODES env is empty, derive peer URLs from
+# machine_registry.yml. The registry already names every fleet machine plus
+# its Tailscale node IPs and `dashboard_url`, so manually maintaining a second
+# copy in systemd Environment= lines is redundant and historically forgotten
+# (the cause of dashboards reporting "everything looks fine on my machine"
+# while never querying peers). Each registry machine becomes a FLEET_NODES
+# entry, except this host itself, when:
+#   - the machine has a `dashboard_url`, OR
+#   - the machine has at least one tailscale_nodes[].ip we can build a URL from
+# Operators can still override individual entries by setting FLEET_NODES env.
+_AUTODERIVE_FLEET = os.environ.get("AUTODERIVE_FLEET_NODES", "1").lower() not in {
+    "0",
+    "false",
+    "no",
+    "",
+}
+FLEET_NODES_SOURCE = "env" if FLEET_NODES else "empty"
+if _AUTODERIVE_FLEET and not FLEET_NODES:
+    try:
+        from machine_registry import load_machine_registry as _load_registry_for_fleet
+
+        _registry = _load_registry_for_fleet()
+        _self = (os.environ.get("DISPLAY_NAME") or platform.node() or "").strip().lower()
+        for _machine in _registry.get("machines", []):
+            _name = str(_machine.get("name", "")).strip()
+            if not _name:
+                continue
+            _aliases = {str(a).strip().lower() for a in _machine.get("aliases", []) or []}
+            if _name.lower() == _self or _self in _aliases:
+                continue
+            # Prefer explicit dashboard_url; fall back to tailscale_nodes[].ip
+            _candidate_url = str(_machine.get("dashboard_url") or "").strip()
+            if not _candidate_url:
+                for _node in _machine.get("tailscale_nodes", []) or []:
+                    _ip = str(_node.get("ip", "")).strip()
+                    if _ip:
+                        _candidate_url = f"http://{_ip}:8321"
+                        break
+            if not _candidate_url:
+                continue
+            try:
+                validate_fleet_node_url(_candidate_url)
+                FLEET_NODES[_name] = _candidate_url
+            except ValueError as _e:
+                log.warning(
+                    "Skipping derived FLEET_NODES entry %s=%s: %s", _name, _candidate_url, _e
+                )
+        if FLEET_NODES:
+            FLEET_NODES_SOURCE = "registry"
+            log.info("FLEET_NODES auto-derived from registry: %s", ", ".join(FLEET_NODES.keys()))
+    except Exception as _exc:  # noqa: BLE001
+        log.warning("FLEET_NODES auto-derive from registry failed: %s", _exc)
+
 HUB_URL = os.environ.get("HUB_URL")
 if HUB_URL:
     HUB_URL = HUB_URL.rstrip("/")
@@ -642,14 +703,14 @@ async def run_cmd(
         return -1, "", "Command timed out"
 
 
-async def gh_api(endpoint: str) -> dict:
+async def gh_api(endpoint: str, timeout: int = HttpTimeout.GH_DISPATCH_S) -> dict:
     """Call the GitHub API via gh CLI.
 
     Uses GH_TOKEN env var when set (required for admin:org endpoints such as
     /orgs/{org}/actions/runners).  GH_TOKEN must be a classic PAT with
     scopes: repo, admin:org.  See docs/operations/fleet-machine-setup.md.
     """
-    code, stdout, stderr = await run_cmd(["gh", "api", endpoint])
+    code, stdout, stderr = await run_cmd(["gh", "api", endpoint], timeout=timeout)
     if code != 0:
         raise HTTPException(status_code=502, detail=f"GitHub API error: {stderr}")
     return json.loads(stdout)
@@ -2122,6 +2183,123 @@ async def log_requests(request: Request, call_next):
     return response
 
 
+# ─── Operator diagnostics ────────────────────────────────────────────────────
+#
+# /api/diagnostics surfaces the config-load and fleet-federation state that
+# previously only appeared in journald. It's the canonical signal for "is this
+# deployment wired up correctly" — used by `deploy/deploy-check.sh` after each
+# deploy and by operators when the UI looks stale.
+#
+# Design contract:
+#   - Always returns 200 even when subsystems are broken (so the endpoint
+#     itself is a reliable diagnostic). Per-subsystem status is in the body.
+#   - Reports point-in-time facts only. Doesn't trigger I/O the rest of the
+#     app doesn't already do (no extra GitHub calls, no DB queries).
+#   - Stable schema: adding fields is OK, removing or renaming is a breaking
+#     change. The deploy-check.sh script and tests pin this schema.
+
+
+def _diagnostics_payload() -> dict:
+    """Build the /api/diagnostics body. Pure-ish — only safe local I/O."""
+    from machine_registry import load_machine_registry  # local import to avoid cycle
+
+    # Registry load status
+    registry_status: dict[str, object]
+    registry_err: str | None = None
+    machines_count = 0
+    try:
+        _registry = load_machine_registry()
+        machines_count = len(_registry.get("machines", []))
+        registry_status = {
+            "loaded": True,
+            "machines": machines_count,
+            "version": _registry.get("version"),
+            "path": os.environ.get("MACHINE_REGISTRY_PATH")
+            or str(Path(__file__).with_name("machine_registry.yml")),
+        }
+    except Exception as exc:  # noqa: BLE001
+        registry_err = str(exc)
+        registry_status = {
+            "loaded": False,
+            "error": registry_err,
+            "path": os.environ.get("MACHINE_REGISTRY_PATH")
+            or str(Path(__file__).with_name("machine_registry.yml")),
+        }
+
+    # Fleet federation status (config only — peer reachability is /api/fleet/nodes)
+    fleet_status = {
+        "source": FLEET_NODES_SOURCE,
+        "node_count": len(FLEET_NODES),
+        "nodes": sorted(FLEET_NODES.keys()),
+        "machine_role": MACHINE_ROLE,
+    }
+
+    # Background-task leader status (the leader-lock fix from #666)
+    leader_status = {
+        "is_leader": _leader_lock_fd is not None,
+        "lock_path": getattr(_leader_lock_fd, "name", None) if _leader_lock_fd else None,
+    }
+
+    # Deployment metadata (mtime of key files + git sha if available)
+    deploy_info: dict[str, object] = {}
+    backend_dir = Path(__file__).resolve().parent
+    for label, candidate in [
+        ("server_py", backend_dir / "server.py"),
+        ("machine_registry_yml", backend_dir / "machine_registry.yml"),
+        ("autoscaler_py", backend_dir / "runner_autoscaler.py"),
+    ]:
+        try:
+            stat = candidate.stat()
+            deploy_info[label] = {
+                "path": str(candidate),
+                "mtime": datetime.fromtimestamp(stat.st_mtime, UTC).isoformat(),
+                "size": stat.st_size,
+            }
+        except OSError:
+            deploy_info[label] = {"path": str(candidate), "missing": True}
+
+    # Cache utilization snapshot (best-effort — module may not expose stats)
+    cache_status: dict[str, object] = {}
+    try:
+        from cache_utils import _cache  # type: ignore[attr-defined]
+
+        cache_status = {
+            "size": getattr(_cache, "size", lambda: None)() if callable(getattr(_cache, "size", None)) else None,
+            "default_ttl_seconds": getattr(_cache, "default_ttl", None),
+        }
+    except Exception:  # noqa: BLE001
+        cache_status = {"available": False}
+
+    # Overall health summary so deploy-check.sh can grep one field
+    healthy = (
+        registry_status.get("loaded") is True
+        and (fleet_status["node_count"] > 0 or MACHINE_ROLE != "hub")
+    )
+
+    return {
+        "ok": bool(healthy),
+        "hostname": HOSTNAME,
+        "timestamp": datetime.now(UTC).isoformat(),
+        "machine_registry": registry_status,
+        "fleet_federation": fleet_status,
+        "leader": leader_status,
+        "deployment": deploy_info,
+        "cache": cache_status,
+    }
+
+
+@app.get("/api/diagnostics")
+async def get_diagnostics(request: Request) -> dict:
+    """Surface deployment + federation health for post-deploy validation.
+
+    See _diagnostics_payload() for the schema contract. The endpoint is
+    intentionally read-only and never raises — operators can curl this on a
+    sick dashboard to see what's wrong.
+    """
+    _ = request  # FastAPI requires the parameter for middleware to attach
+    return _diagnostics_payload()
+
+
 # ─── Serve Frontend ──────────────────────────────────────────────────────────
 
 FRONTEND_DIR = Path(__file__).parent.parent / "dist"
@@ -2130,6 +2308,63 @@ FRONTEND_DIR = Path(__file__).parent.parent / "dist"
 _assets_dir = FRONTEND_DIR / "assets"
 if _assets_dir.is_dir():
     app.mount("/assets", StaticFiles(directory=str(_assets_dir)), name="assets")
+
+# Mount the PWA icon set for /icons/<name>.png. The dist build copies
+# frontend/public/icons/ to dist/icons/ via vite build (the public/ dir
+# semantics). Without this mount, /icons/icon-180.png requests fall through
+# to the SPA catch-all and return index.html, which means Windows taskbar
+# pinned shortcuts (and any browser that pre-fetches the apple-touch-icon)
+# get HTML instead of a PNG and silently fall back to a generic icon.
+_icons_dir = FRONTEND_DIR / "icons"
+if _icons_dir.is_dir():
+    app.mount("/icons", StaticFiles(directory=str(_icons_dir)), name="icons")
+
+
+@app.get("/favicon.ico")
+async def serve_favicon():
+    """Serve /favicon.ico for browsers and taskbar shortcuts.
+
+    Windows browsers always probe this URL when creating a pinned site
+    shortcut. With no real ICO in the bundle, fall back to the SVG icon
+    served with image/x-icon content type (the SVG renders fine in modern
+    browsers; only legacy IE would have a problem).
+    """
+    favicon = FRONTEND_DIR / "favicon.ico"
+    if favicon.exists():
+        return FileResponse(favicon, media_type="image/x-icon")
+    svg = FRONTEND_DIR / "icon.svg"
+    if svg.exists():
+        return FileResponse(svg, media_type="image/svg+xml")
+    raise HTTPException(status_code=404, detail="favicon not found")
+
+
+@app.get("/sw.js")
+async def serve_service_worker():
+    """Serve the PWA service worker. Must be at the origin root or PWA
+    install fails."""
+    sw = FRONTEND_DIR / "sw.js"
+    if not sw.exists():
+        raise HTTPException(status_code=404, detail="service worker not found")
+    return FileResponse(sw, media_type="application/javascript")
+
+
+@app.get("/offline.html")
+async def serve_offline():
+    """Serve the PWA offline fallback page."""
+    offline = FRONTEND_DIR / "offline.html"
+    if not offline.exists():
+        raise HTTPException(status_code=404, detail="offline page not found")
+    return FileResponse(offline, media_type="text/html")
+
+
+@app.get("/robots.txt")
+async def serve_robots():
+    """Serve robots.txt (currently disallows everything; this dashboard is
+    a private operator console)."""
+    robots = FRONTEND_DIR / "robots.txt"
+    if not robots.exists():
+        raise HTTPException(status_code=404, detail="robots.txt not found")
+    return FileResponse(robots, media_type="text/plain")
 
 
 @app.get("/")
@@ -2474,20 +2709,47 @@ async def _startup() -> None:
         import fcntl
 
         global _leader_lock_fd
-        lock_path = "/var/run/runner-dashboard-leader.lock"
-        if not os.path.exists(os.path.dirname(lock_path)):
-            lock_path = "/tmp/runner-dashboard-leader.lock"
-        _leader_lock_fd = open(lock_path, "w")
-        fcntl.flock(_leader_lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)  # type: ignore[attr-defined]  # type: ignore[attr-defined]
-        log.info("Acquired leader lock, starting background tasks")
-        _runner_audit_router.start_audit_loop()
-        _linear_sync_router.start_sync_loop()  # issue #236
+        # Walk a candidate list and use the first writable path. Same
+        # regression #664's follow-up fixed in the autoscaler: hard-coded
+        # /var/run/ with a dir-existence check that always passed (because
+        # /run exists via symlink) — non-root deploys hit PermissionError
+        # and got demoted to follower forever. See #666.
+        candidates = [
+            os.environ.get("DASHBOARD_LEADER_LOCK_PATH"),
+            "/var/run/runner-dashboard-leader.lock",
+            f"/run/user/{os.getuid()}/runner-dashboard-leader.lock",  # type: ignore[attr-defined]
+            os.path.expanduser("~/.cache/runner-dashboard-leader.lock"),
+            "/tmp/runner-dashboard-leader.lock",
+        ]
+        acquired = False
+        last_err: OSError | None = None
+        for candidate in candidates:
+            if not candidate:
+                continue
+            try:
+                os.makedirs(os.path.dirname(candidate), exist_ok=True)
+                _leader_lock_fd = open(candidate, "w")
+                fcntl.flock(_leader_lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)  # type: ignore[attr-defined]
+                log.info("Acquired leader lock at %s, starting background tasks", candidate)
+                _runner_audit_router.start_audit_loop()
+                _linear_sync_router.start_sync_loop()  # issue #236
+                acquired = True
+                break
+            except OSError as exc:
+                last_err = exc
+                if _leader_lock_fd is not None:
+                    try:
+                        _leader_lock_fd.close()
+                    except OSError:
+                        pass
+                    _leader_lock_fd = None
+                continue
+        if not acquired:
+            log.info("Could not acquire leader lock on any candidate path; running as follower: %s", last_err)
     except ImportError:
         log.warning("fcntl not available on this platform, running without file lock")
         _runner_audit_router.start_audit_loop()
         _linear_sync_router.start_sync_loop()  # issue #236
-    except OSError as e:
-        log.info("Could not acquire leader lock, running as follower: %s", e)
 
 
 @app.on_event("shutdown")

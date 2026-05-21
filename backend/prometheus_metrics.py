@@ -11,6 +11,8 @@ the ``prometheus_client`` library.  Metrics collected:
 - ``dashboard_runner_leases_expired_total``   – Expired runner leases counter
 - ``dashboard_cache_hits_total``              – Cache hits by cache name
 - ``dashboard_cache_misses_total``            – Cache misses by cache name
+- ``dashboard_health_checks_total``           – Dashboard health outcomes
+- ``dashboard_health_check_duration_seconds`` – Dashboard health-check latency
 """
 
 from __future__ import annotations
@@ -85,6 +87,19 @@ if _PROMETHEUS_AVAILABLE:
         "Total cache misses",
         ["cache"],
     )
+
+    # Health endpoint
+    DASHBOARD_HEALTH_CHECKS_TOTAL = Counter(
+        "dashboard_health_checks_total",
+        "Total dashboard health checks by dashboard and GitHub API status",
+        ["status", "github_api"],
+    )
+    DASHBOARD_HEALTH_DURATION = Histogram(
+        "dashboard_health_check_duration_seconds",
+        "Dashboard health-check latency in seconds",
+        ["status", "github_api"],
+        buckets=(0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
+    )
 else:  # pragma: no cover
     # Stub objects so imports don't fail when prometheus_client is absent
     class _Stub:  # type: ignore[override]
@@ -114,6 +129,8 @@ else:  # pragma: no cover
     RUNNER_LEASES_EXPIRED_TOTAL = _stub  # type: ignore[assignment]
     CACHE_HITS_TOTAL = _stub  # type: ignore[assignment]
     CACHE_MISSES_TOTAL = _stub  # type: ignore[assignment]
+    DASHBOARD_HEALTH_CHECKS_TOTAL = _stub  # type: ignore[assignment]
+    DASHBOARD_HEALTH_DURATION = _stub  # type: ignore[assignment]
 
 
 # ─── Helpers for external callers ─────────────────────────────────────────────
@@ -133,6 +150,12 @@ def record_cache_hit(cache_name: str) -> None:
 def record_cache_miss(cache_name: str) -> None:
     """Record a cache miss for the named cache."""
     CACHE_MISSES_TOTAL.labels(cache=cache_name).inc()
+
+
+def record_dashboard_health(status: str, github_api: str, duration_s: float) -> None:
+    """Record a completed dashboard health check."""
+    DASHBOARD_HEALTH_CHECKS_TOTAL.labels(status=status, github_api=github_api).inc()
+    DASHBOARD_HEALTH_DURATION.labels(status=status, github_api=github_api).observe(duration_s)
 
 
 def update_lease_gauge(active_count: int) -> None:

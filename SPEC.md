@@ -105,7 +105,11 @@ surface task action details without exposing secrets.
 | `usage_monitoring.py` | Per-runner CPU/RAM usage time-series collection |
 | `workflow_stats.py` | Aggregate workflow success/failure statistics |
 | `report_files.py` | Parse dated report files for the Reports tab |
-| `runner_autoscaler.py` | Dynamic runner count scaling logic |
+| `runner_autoscaler.py` | Dynamic runner count scaling — main loop and public re-export facade |
+| `autoscaler_config.py` | Autoscaler env-var helpers and all threshold constants |
+| `autoscaler_systemd.py` | Autoscaler systemd unit enumeration, state inspection, start/stop |
+| `autoscaler_busy.py` | Autoscaler layered busy-detection (4 strategies, issue #651) |
+| `autoscaler_sampling.py` | Autoscaler resource sampling (CPU/mem/disk/load) and scheduler integration |
 | `config_schema.py` | Config validation and atomic JSON writes |
 | `pr_inventory.py` | Fetch and normalise open PRs across repos (issue #80) |
 | `issue_inventory.py` | Fetch and normalise open issues with taxonomy (issue #81) |
@@ -548,6 +552,7 @@ env var.
 | Method | Path | Description |
 |---|---|---|
 | GET | `/api/queue` | Current job queue (queued + in_progress) |
+| GET | `/api/queue/status` | Queue data with per-run `timing` breakdown (queue_wait_seconds, exec_seconds) |
 | POST | `/api/queue/cancel-workflow` | Cancel a queued workflow |
 | GET | `/api/queue/diagnose` | Diagnose queue stalls and blockages |
 
@@ -784,6 +789,7 @@ env var.
 
 | Method | Path | Description |
 |---|---|---|
+| GET | `/api/diagnostics` | **Operator deploy-health endpoint.** Always 200. Reports machine_registry load status (including the error message if load failed), fleet_federation source + peer count, leader-lock status, key file mtimes, cache config. Used by `deploy/deploy-check.sh` and any external monitoring. Schema is a stable contract — adding fields OK, removing/renaming is a breaking change. |
 | GET | `/api/diagnostics/summary` | Consolidated diagnostics: PID, memory, WSL status, git commit, drift |
 | POST | `/api/diagnostics/restart-service` | Restart runner-dashboard systemd service (localhost only) |
 
@@ -831,7 +837,29 @@ env var.
 
 ### 5.2 machine_registry.yml
 
-Located at `backend/machine_registry.yml`. Defines the multi-node fleet:
+Located at `backend/machine_registry.yml`. Defines the multi-node fleet.
+
+**Path resolution and security:** `machine_registry.load_machine_registry()`
+passes `backend/` (the module's own directory) and `~/.config/runner-dashboard/`
+as explicit allowed roots to the security validator. This is intentional: the
+deployed install (`~/actions-runners/dashboard/`) is not a git checkout, so
+the validator's default git-repo-root inference returns None. Without the
+explicit allow-list every load on a deployed host fails as "Config path
+escapes allowed roots", silently disabling fleet federation. The `MACHINE_REGISTRY_PATH`
+env var overrides the lookup; operators wishing to manage the registry as
+host config can place it under `~/.config/runner-dashboard/`.
+
+**Fleet federation auto-derivation:** when the `FLEET_NODES` env var is empty
+and `AUTODERIVE_FLEET_NODES` is unset or truthy, the server iterates the
+registry's machines and populates `FLEET_NODES` from each entry's
+`dashboard_url` (preferred) or first `tailscale_nodes[].ip`. The local host
+is excluded by hostname/alias match against `DISPLAY_NAME` (or `platform.node()`).
+This removes the historical foot-gun of leaving `FLEET_NODES` unset in systemd
+Environment= lines and the dashboard silently showing only the local machine.
+The `/api/diagnostics` endpoint reports the effective source (`env`, `registry`,
+or `empty`) so deploy validation can confirm it.
+
+Example structure:
 
 ```yaml
 nodes:
@@ -979,6 +1007,44 @@ The optional autoscaler service (`deploy/runner-autoscaler.service`) runs
 `backend/runner_autoscaler.py` as a daemon. It monitors queue depth and
 adjusts the active runner count based on the policy defined in
 `config/runner-schedule.json`.
+
+**Busy detection contract.** Before stopping a runner the autoscaler MUST
+treat the unit as busy when ANY of these signals fire (ordered by which
+phase of the job lifecycle they cover):
+
+1. **Pre-Worker pickup window.** The runner's `_work/_temp/_runner_file_commands/`
+   directory has been modified within the last `RUNNER_PICKUP_DIR_MAX_AGE_SECONDS`
+   (default 30s). The Listener writes to this directory the moment it accepts
+   a job, before forking the `Runner.Worker`, so this signal closes the
+   1-2s race window where MainPID has no Worker child but a job IS assigned.
+   Older mtime → stale residue (NOT busy); cleanup will GC it.
+2. **Worker running.** A fresh job-pickup lockfile exists at
+   `$RUNNER_BUSY_LOCK_DIR/<runner-name>.lock`, written by the runner's
+   `ACTIONS_RUNNER_HOOK_JOB_STARTED` hook (see
+   `deploy/runner-hooks/job-started.sh`). Catches the inverse window where
+   the Worker exists but psutil's child-walk transiently misses it.
+   Lockfiles older than `RUNNER_BUSY_LOCK_MAX_AGE_SECONDS` (default 24h)
+   are treated as stale and ignored.
+3. **Process tree.** The unit's MainPID has a `Runner.Worker` child process.
+   The most direct signal once the Worker has forked and stabilized.
+4. **Conservative fallback.** MainPID is 0/unknown but `ActiveState=active`
+   and `SubState=running` — treat as busy during transient restarts.
+
+The shell cleanup script `deploy/runner-cleanup.sh` honours the same
+contract and additionally garbage-collects stale lockfiles. The
+`/run/user/$UID/`, `~/.cache/`, and `/tmp/` fallbacks for the autoscaler's
+own self-lock are defined in `_acquire_lock()` (the hard-coded `/var/run/`
+path is unwritable for non-root deploys; see #664 follow-up).
+
+### 6.7 Runner Service Unit Template
+
+GitHub Actions runner units installed by the runner package use
+`KillMode=process` by default, which orphans `Runner.Worker` children when
+the listener is stopped. Existing units are migrated to `KillMode=mixed`
+plus the job-pickup hooks above by running
+`sudo deploy/migrate-runner-units.sh` once per host. The migration uses a
+systemd drop-in (`/etc/systemd/system/<unit>.d/10-runner-dashboard-busy-lock.conf`)
+so it survives upstream runner package upgrades.
 
 ### 6.7 Shared Deploy Library
 

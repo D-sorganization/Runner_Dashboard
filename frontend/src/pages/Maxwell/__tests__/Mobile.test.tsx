@@ -5,8 +5,11 @@
  * Covers:
  * 1. Renders the daemon status pill.
  * 2. Shows active tasks from GET /api/maxwell/tasks.
- * 3. Sends a chat message via POST /api/maxwell/chat.
+ * 3. Sends a chat message via POST /api/maxwell/chat (issue #648: Chat component
+ *    is fully wired to the Maxwell-Daemon chat service; these tests verify the
+ *    full round-trip from user input → POST /api/maxwell/chat → rendered response).
  * 4. Control sheet opens when the settings button is pressed.
+ * 5. Chat is gracefully disabled when the daemon is unreachable (issue #648).
  */
 import "@testing-library/jest-dom/vitest";
 import React from "react";
@@ -321,6 +324,84 @@ describe("MaxwellMobile", () => {
         ([url, opts]) => url.includes("/api/maxwell/chat") && opts?.method === "POST",
       );
       expect(chatCalls).toHaveLength(1);
+    });
+  });
+
+  // issue #648: Chat component wired-up verification — daemon-unreachable state
+  // The issue reported the Chat as "non-functional". The component IS wired;
+  // these tests verify graceful degradation when Maxwell-Daemon is offline so
+  // operators understand why chat is disabled rather than seeing a broken UI.
+
+  it("chat composer is disabled when daemon is unreachable", async () => {
+    setupFetch({ statusData: { status: "stopped", http_reachable: false } });
+    render(<MaxwellMobile />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/message maxwell/i)).toBeInTheDocument();
+    });
+
+    const textarea = screen.getByLabelText(/message maxwell/i);
+    expect(textarea).toBeDisabled();
+
+    const sendBtn = screen.getByRole("button", { name: /send message to maxwell/i });
+    expect(sendBtn).toBeDisabled();
+  });
+
+  it("shows a retry button when daemon is unreachable", async () => {
+    setupFetch({ statusData: { status: "stopped", http_reachable: false } });
+    render(<MaxwellMobile />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /retry maxwell connection/i })).toBeInTheDocument();
+    });
+  });
+
+  it("shows placeholder text explaining why chat is disabled when daemon is unreachable", async () => {
+    setupFetch({ statusData: { status: "stopped", http_reachable: false } });
+    render(<MaxwellMobile />);
+
+    await waitFor(() => {
+      const textarea = screen.getByLabelText(/message maxwell/i);
+      expect(textarea).toHaveAttribute(
+        "placeholder",
+        expect.stringMatching(/daemon unreachable/i),
+      );
+    });
+  });
+
+  it("shows unreachable hint in empty chat history when daemon is offline", async () => {
+    setupFetch({ statusData: { status: "stopped", http_reachable: false } });
+    render(<MaxwellMobile />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText(/no chat messages yet/i),
+      ).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getByLabelText(/no chat messages yet/i),
+    ).toHaveTextContent(/unreachable/i);
+  });
+
+  it("chat POST surfaces error message in the history when daemon returns an error", async () => {
+    setupFetch({ chatOk: false });
+    render(<MaxwellMobile />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/message maxwell/i)).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText(/message maxwell/i), {
+      target: { value: "fleet status" },
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /send message to maxwell/i }));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Maxwell-Daemon is unreachable/i)).toBeInTheDocument();
     });
   });
 

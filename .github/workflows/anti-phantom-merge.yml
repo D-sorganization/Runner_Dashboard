@@ -17,11 +17,12 @@ concurrency:
 
 jobs:
   guard:
-    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    runs-on: d-sorg-fleet
     if: github.event.pull_request.base.ref == 'main' || github.event.pull_request.base.ref == 'master'
     steps:
       - name: Checkout PR head with full history
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}

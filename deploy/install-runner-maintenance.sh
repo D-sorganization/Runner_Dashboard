@@ -7,6 +7,7 @@ RUNNER_ROOT="${RUNNER_ROOT:-$HOME/actions-runners}"
 RUNNER_USER="${RUNNER_USER:-$USER}"
 SCHEDULE_CONFIG="${RUNNER_SCHEDULE_CONFIG:-$HOME/.config/runner-dashboard/runner-schedule.json}"
 SYSTEMCTL_BIN="${SYSTEMCTL_BIN:-$(command -v systemctl)}"
+TEXTFILE_COLLECTOR_DIR="${TEXTFILE_COLLECTOR_DIR:-/var/lib/node_exporter/textfile_collector}"
 
 echo "Installing runner maintenance services for ${RUNNER_USER}"
 
@@ -17,7 +18,23 @@ fi
 
 sudo install -m 0755 "${SCRIPT_DIR}/runner-cleanup.sh" /usr/local/bin/runner-cleanup
 sudo install -m 0755 "${SCRIPT_DIR}/runner-scheduler.py" /usr/local/bin/runner-scheduler
-sudo install -d -m 0755 /var/log/runner-cleanup /var/lib/runner-scheduler
+sudo install -m 0755 "${SCRIPT_DIR}/runner-corruption-scan.sh" /usr/local/bin/runner-corruption-scan
+# Operator break-glass from #661 — drains, heals, and restarts every
+# actions.runner.*.service on the host.
+sudo install -m 0755 "${SCRIPT_DIR}/heal-host.sh" /usr/local/bin/heal-host
+# Runner job-pickup hooks from #664 — referenced by the per-unit
+# drop-ins written by migrate-runner-units.sh. Installed at a stable
+# system path so the drop-ins don't depend on a repo checkout location.
+HOOK_INSTALL_DIR="/usr/local/bin/runner-hooks"
+sudo install -d -m 0755 "${HOOK_INSTALL_DIR}"
+sudo install -m 0755 "${SCRIPT_DIR}/runner-hooks/job-started.sh"   "${HOOK_INSTALL_DIR}/job-started.sh"
+sudo install -m 0755 "${SCRIPT_DIR}/runner-hooks/job-completed.sh" "${HOOK_INSTALL_DIR}/job-completed.sh"
+sudo install -m 0755 "${SCRIPT_DIR}/runner-hooks/force-drain.sh"   "${HOOK_INSTALL_DIR}/force-drain.sh"
+# Lockfile dir consulted by job-started.sh, job-completed.sh, the
+# autoscaler busy-check (#664), and runner-cleanup.sh GC (#651).
+# Must be writable by the runner user.
+sudo install -d -m 0775 -o "${RUNNER_USER}" -g "${RUNNER_USER}" /var/run/runner-busy
+sudo install -d -m 0755 /var/log/runner-cleanup /var/lib/runner-scheduler "${TEXTFILE_COLLECTOR_DIR}"
 
 SCHEDULER_SUDOERS="/etc/sudoers.d/runner-dashboard-scheduler"
 sudo tee "${SCHEDULER_SUDOERS}" > /dev/null <<SUDOERS
@@ -87,8 +104,61 @@ Persistent=true
 WantedBy=timers.target
 TIMER
 
+sudo tee /etc/systemd/system/runner-corruption-scan.service > /dev/null <<SERVICE
+[Unit]
+Description=Scan GitHub runner directories for corruption residue and emit Prometheus metrics
+Documentation=https://github.com/D-sorganization/Runner_Dashboard/blob/main/docs/observability.md
+After=local-fs.target
+
+[Service]
+Type=oneshot
+User=root
+Environment=RUNNER_ROOT=${RUNNER_ROOT}
+Environment=PROM_FILE=${TEXTFILE_COLLECTOR_DIR}/runner_corruption.prom
+Environment=DIAG_PAGES_MIN_AGE_DAYS=1
+ExecStart=/usr/local/bin/runner-corruption-scan
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+SERVICE
+
+sudo tee /etc/systemd/system/runner-corruption-scan.timer > /dev/null <<'TIMER'
+[Unit]
+Description=Run runner corruption residue scan every five minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+TIMER
+
+# Ensure runner-cleanup writes its textfile metric to the same collector
+# directory used by node_exporter. The cleanup script defaults to
+# /var/lib/node_exporter/textfile_collector but honours TEXTFILE_COLLECTOR_DIR.
+sudo mkdir -p /etc/systemd/system/runner-cleanup.service.d
+sudo tee /etc/systemd/system/runner-cleanup.service.d/textfile.conf > /dev/null <<CONF
+[Service]
+Environment=TEXTFILE_COLLECTOR_DIR=${TEXTFILE_COLLECTOR_DIR}
+CONF
+
 sudo systemctl daemon-reload
-sudo systemctl enable --now runner-cleanup.timer runner-scheduler.timer
+sudo systemctl enable --now runner-cleanup.timer runner-scheduler.timer runner-corruption-scan.timer
+
+# Apply (or re-apply) the per-unit drop-ins from #664. Idempotent.
+# Passes the installed hook dir explicitly so the drop-ins reference the
+# stable /usr/local/bin path rather than whatever default the script ships.
+if [[ -x "${SCRIPT_DIR}/migrate-runner-units.sh" ]]; then
+    echo "Applying actions.runner.*.service drop-ins (idempotent)..."
+    sudo HOOK_DIR="${HOOK_INSTALL_DIR}" LOCK_DIR=/var/run/runner-busy \
+        "${SCRIPT_DIR}/migrate-runner-units.sh"
+fi
 
 echo "Installed:"
-systemctl list-timers runner-cleanup.timer runner-scheduler.timer --all
+systemctl list-timers runner-cleanup.timer runner-scheduler.timer runner-corruption-scan.timer --all
+echo ""
+echo "Binaries:"
+ls -l /usr/local/bin/runner-cleanup /usr/local/bin/heal-host /usr/local/bin/runner-corruption-scan "${HOOK_INSTALL_DIR}"/ | grep -v '^total'

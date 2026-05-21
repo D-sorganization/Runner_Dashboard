@@ -79,6 +79,43 @@ def test_validate_fleet_node_url_public_ip() -> None:
         security.validate_fleet_node_url("http://8.8.8.8:8080")
 
 
+def test_validate_fleet_node_url_tailscale_cgnat_low() -> None:
+    """Tailscale uses 100.64.0.0/10 (RFC 6598 CGNAT). Without this allowance,
+    no Tailscale-routed peer can be configured as a fleet node — which broke
+    federation on every host whose machine_registry.yml used the canonical
+    100.x IPs Tailscale assigns. Pin the low end of the range."""
+    assert (
+        security.validate_fleet_node_url("http://100.64.0.1:8321")
+        == "http://100.64.0.1:8321"
+    )
+
+
+def test_validate_fleet_node_url_tailscale_cgnat_high() -> None:
+    """Pin the high end of 100.64.0.0/10. Anything inside this range must
+    pass; anything outside must fail.
+    """
+    assert (
+        security.validate_fleet_node_url("http://100.127.255.254:8321")
+        == "http://100.127.255.254:8321"
+    )
+
+
+def test_validate_fleet_node_url_just_above_cgnat_rejected() -> None:
+    """100.128.0.0 is the first address outside CGNAT and is a public IP —
+    must still be rejected."""
+    with pytest.raises(ValueError, match="private/local address"):
+        security.validate_fleet_node_url("http://100.128.0.1:8321")
+
+
+def test_validate_fleet_node_url_tailscale_magicdns_hostname() -> None:
+    """Tailscale MagicDNS hostnames end in .ts.net; allow them so operators
+    can use stable names instead of CGNAT IPs in registry / FLEET_NODES."""
+    assert (
+        security.validate_fleet_node_url("https://controltower.tail-scale.ts.net")
+        == "https://controltower.tail-scale.ts.net"
+    )
+
+
 def test_validate_fleet_node_url_invalid_scheme() -> None:
     with pytest.raises(ValueError, match="http or https"):
         security.validate_fleet_node_url("ftp://localhost:8080")
