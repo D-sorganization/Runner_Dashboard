@@ -228,16 +228,19 @@ async def add_security_headers(request: Request, call_next: Any) -> Any:
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    # CSP: keep script loading self-hosted. Vite emits static module scripts
-    # without nonces, so do not use strict-dynamic until the HTML path can
-    # attach a nonce to the generated entrypoint.
+    # CSP: 'strict-dynamic' requires per-script nonces and silently makes
+    # 'self' a no-op in CSP3 browsers — it blocks the Vite module bundle
+    # entirely (blank white screen). Until server-side nonce injection is
+    # implemented (issue #324), use plain 'self' for scripts.
+    # Google Fonts (googleapis/gstatic) are explicitly allowed since
+    # index.html loads them at runtime.
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
         "script-src 'self'; "
-        "style-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "img-src 'self' data:; "
         "connect-src 'self'; "
-        "font-src 'self' data:; "
+        "font-src 'self' data: https://fonts.gstatic.com; "
         "object-src 'none'; "
         "base-uri 'self'; "
         "frame-ancestors 'none';"
@@ -245,9 +248,9 @@ async def add_security_headers(request: Request, call_next: Any) -> Any:
     # HSTS: instruct browsers to use HTTPS for 1 year; include subdomains
     # (issue #324).
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-    # Permissions-Policy: lock down sensitive browser features (issue #324).
+    # Permissions-Policy: microphone allowed on self for VoiceInputButton.
     response.headers["Permissions-Policy"] = (
-        "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()"
+        "camera=(), microphone=(self), geolocation=(), payment=(), usb=(), interest-cohort=()"
     )
     return response
 
