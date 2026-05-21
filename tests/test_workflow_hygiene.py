@@ -16,12 +16,22 @@ Tracking: issue #429.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 import yaml
 
 _WORKFLOWS_DIR = Path(__file__).parent.parent / ".github" / "workflows"
+_POLICY_PATH = Path(__file__).parent.parent / "config" / "workflow_concurrency_policy.json"
+_PR_TRIGGER_KEYS = ("pull_request", "pull_request_target")
+_PR_GROUP_TOKENS = (
+    "github.ref",
+    "github.head_ref",
+    "github.event.pull_request.number",
+    "github.event.pull_request.head.sha",
+    "github.event.number",
+)
 
 _CANCEL_FALSE_ALLOWLIST: dict[str, str] = {
     "dependabot-auto-merge.yml": "Arms auto-merge for one PR; cancelling mid-run can lose the policy note.",
@@ -68,6 +78,21 @@ def _has_trigger(data: dict, name: str) -> bool:
     if isinstance(triggers, dict):
         return name in triggers
     return False
+
+
+def _workflow_triggers(path: Path) -> dict:
+    data = _load_workflow(path)
+    triggers = data.get("on")
+    if triggers is None and True in data:
+        triggers = data[True]
+    assert isinstance(triggers, dict), f"{path.name}: workflow `on:` block must be a mapping"
+    return triggers
+
+
+def _load_concurrency_policy() -> dict[str, dict[str, str]]:
+    data = json.loads(_POLICY_PATH.read_text(encoding="utf-8"))
+    assert isinstance(data, dict), "workflow concurrency policy must be a JSON object"
+    return data
 
 
 def _is_reusable_caller(job_body: dict) -> bool:
@@ -198,6 +223,74 @@ def test_workflow_jobs_have_timeout_minutes(workflow_path: Path) -> None:
         f"Add `timeout-minutes:` under each job (lint/quality 10, tests 20, "
         f"integration 30, deploy 15)."
     )
+
+
+def test_workflow_concurrency_policy_references_real_workflows() -> None:
+    """Issue #689: exception allowlists must stay explicit and maintainable."""
+    policy = _load_concurrency_policy()
+    workflow_names = {path.name for path in _workflow_files()}
+
+    for policy_name, entries in policy.items():
+        assert isinstance(entries, dict), f"{policy_name} must map workflow filenames to rationale strings."
+        for workflow_name, rationale in entries.items():
+            assert workflow_name in workflow_names, f"{policy_name}: unknown workflow `{workflow_name}` in policy file."
+            assert isinstance(rationale, str) and rationale.strip(), (
+                f"{policy_name}: `{workflow_name}` must have a non-empty rationale."
+            )
+
+
+def test_pr_workflows_use_cancel_in_progress_true_or_documented_exception() -> None:
+    """Issue #689: PR-triggered workflows should cancel superseded runs by default."""
+    policy = _load_concurrency_policy()
+    false_allowlist = policy["cancel_in_progress_false_allowlist"]
+
+    for workflow_path in _workflow_files():
+        triggers = _workflow_triggers(workflow_path)
+        if not any(key in triggers for key in _PR_TRIGGER_KEYS):
+            continue
+        concurrency = _load_workflow(workflow_path)["concurrency"]
+        cancel_in_progress = concurrency["cancel-in-progress"]
+        if cancel_in_progress is False:
+            assert workflow_path.name in false_allowlist, (
+                f"{workflow_path.name}: PR-triggered workflow has `cancel-in-progress: false` "
+                f"but is not documented in `{_POLICY_PATH.name}`."
+            )
+
+
+def test_pr_workflow_concurrency_groups_are_pr_scoped_or_documented_singletons() -> None:
+    """Issue #689: PR concurrency groups must not collapse unrelated PRs by accident."""
+    policy = _load_concurrency_policy()
+    singleton_allowlist = policy["pr_concurrency_singleton_allowlist"]
+
+    for workflow_path in _workflow_files():
+        triggers = _workflow_triggers(workflow_path)
+        if not any(key in triggers for key in _PR_TRIGGER_KEYS):
+            continue
+        if workflow_path.name in singleton_allowlist:
+            continue
+        concurrency = _load_workflow(workflow_path)["concurrency"]
+        group = concurrency["group"]
+        assert any(token in group for token in _PR_GROUP_TOKENS), (
+            f"{workflow_path.name}: PR-triggered workflow uses concurrency group `{group}` "
+            "without a PR/ref discriminator. Either scope it by PR/ref or document it in "
+            f"`{_POLICY_PATH.name}` as an intentional singleton."
+        )
+
+
+def test_ci_triage_runbook_documents_workflow_concurrency_policy() -> None:
+    """Issue #689: operators need one canonical reference for concurrency rules."""
+    runbook = (Path(__file__).parent.parent / "docs" / "runbooks" / "ci-failure-triage.md").read_text(encoding="utf-8")
+
+    assert "workflow_concurrency_policy.json" in runbook
+    assert "cancel-in-progress: true" in runbook
+    assert "PR number" in runbook or "github.ref" in runbook
+
+
+def test_lint_workflow_references_documented_concurrency_policy() -> None:
+    """Issue #689: workflow-only PRs should enforce the same exception policy in lint."""
+    lint_workflow = (_WORKFLOWS_DIR / "lint-workflow-files.yml").read_text(encoding="utf-8")
+
+    assert "workflow_concurrency_policy.json" in lint_workflow
 
 
 def test_pr_autofix_is_not_a_second_automatic_ci_remediation_entrypoint() -> None:

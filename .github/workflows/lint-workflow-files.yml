@@ -46,68 +46,101 @@ jobs:
         run: |
           set -eo pipefail
           [ -z "$FILES" ] && exit 0
-          # Per-job timeout-minutes checker (skips reusable-caller jobs which forbid it)
-          # See: https://docs.github.com/en/actions/using-workflows/reusing-workflows
-          # Caller jobs (those with `uses:`) only allow:
-          #   name, uses, with, secrets, needs, if, permissions, concurrency, strategy
-          cat > /tmp/check_timeouts.py <<'PYEOF'
-          import sys, yaml
-          path = sys.argv[1]
+          cat > /tmp/check_workflow_policy.py <<'PYEOF'
+          import json
+          import sys
+          from pathlib import Path
+
+          import yaml
+
+          PR_TRIGGER_KEYS = ("pull_request", "pull_request_target")
+          PR_GROUP_TOKENS = (
+              "github.ref",
+              "github.head_ref",
+              "github.event.pull_request.number",
+              "github.event.pull_request.head.sha",
+              "github.event.number",
+          )
+
+          policy_path = Path("config/workflow_concurrency_policy.json")
+          policy = json.loads(policy_path.read_text(encoding="utf-8"))
+          false_allowlist = policy["cancel_in_progress_false_allowlist"]
+          singleton_allowlist = policy["pr_concurrency_singleton_allowlist"]
+
+          path = Path(sys.argv[1])
           try:
-              with open(path, encoding="utf-8") as fh:
-                  data = yaml.safe_load(fh)
+              data = yaml.safe_load(path.read_text(encoding="utf-8"))
           except Exception as exc:
               print(f"yaml-parse-error: {exc}")
               sys.exit(0)
-          if not isinstance(data, dict) or "jobs" not in data:
+
+          if not isinstance(data, dict):
               sys.exit(0)
+
+          errors = []
+          jobs = data.get("jobs") or {}
           missing, forbidden = [], []
-          for name, job in data["jobs"].items():
-              if not isinstance(job, dict):
-                  continue
-              has_uses = "uses" in job
-              has_tm = "timeout-minutes" in job
-              if has_uses and has_tm:
-                  forbidden.append(name)
-              elif not has_uses and not has_tm:
-                  missing.append(name)
-          parts = []
+          if isinstance(jobs, dict):
+              for name, job in jobs.items():
+                  if not isinstance(job, dict):
+                      continue
+                  has_uses = "uses" in job
+                  has_tm = "timeout-minutes" in job
+                  if has_uses and has_tm:
+                      forbidden.append(name)
+                  elif not has_uses and not has_tm:
+                      missing.append(name)
           if missing:
-              parts.append("missing timeout-minutes on jobs: " + ",".join(missing))
+              errors.append("missing timeout-minutes on jobs: " + ",".join(missing))
           if forbidden:
-              parts.append("timeout-minutes forbidden on reusable-caller jobs: " + ",".join(forbidden))
-          if parts:
-              print("; ".join(parts))
+              errors.append("timeout-minutes forbidden on reusable-caller jobs: " + ",".join(forbidden))
+
+          concurrency = data.get("concurrency")
+          if not isinstance(concurrency, dict):
+              errors.append("missing concurrency block")
+          else:
+              group = concurrency.get("group")
+              if not group:
+                  errors.append("concurrency.group must be non-empty")
+              if "cancel-in-progress" not in concurrency:
+                  errors.append("concurrency.cancel-in-progress must be set")
+              elif concurrency["cancel-in-progress"] is False and path.name not in false_allowlist:
+                  errors.append(
+                      "cancel-in-progress false must be documented in "
+                      + policy_path.as_posix()
+                  )
+
+              triggers = data.get("on")
+              if triggers is None and True in data:
+                  triggers = data[True]
+              if (
+                  isinstance(triggers, dict)
+                  and any(key in triggers for key in PR_TRIGGER_KEYS)
+                  and path.name not in singleton_allowlist
+                  and isinstance(group, str)
+                  and not any(token in group for token in PR_GROUP_TOKENS)
+              ):
+                  errors.append(
+                      "PR-triggered workflow concurrency group must include a PR/ref discriminator "
+                      "or be documented as a singleton in "
+                      + policy_path.as_posix()
+                  )
+
+          if errors:
+              print("; ".join(errors))
           PYEOF
           FAIL=""
           while IFS= read -r f; do
             [ -z "$f" ] && continue
             [ ! -f "$f" ] && continue  # deleted file — skip
-            TM_ERR=$(python3 /tmp/check_timeouts.py "$f")
-            if [ -n "$TM_ERR" ]; then
-              FAIL="${FAIL}\n  - $f: $TM_ERR"
+            POLICY_ERR=$(python3 /tmp/check_workflow_policy.py "$f")
+            if [ -n "$POLICY_ERR" ]; then
+              FAIL="${FAIL}\n  - $f: $POLICY_ERR"
             fi
-            # Check concurrency block
-            if ! grep -q '^concurrency:' "$f"; then
-              FAIL="${FAIL}\n  - $f: missing concurrency block"
-            fi
-            # Check cancel-in-progress: true (only if concurrency exists)
-            # Exception allowlist — workflows where cancel-in-progress: false is legitimate.
-            # Keep this list in sync with tests/test_workflow_hygiene.py.
-            case "$(basename "$f")" in
-              dependabot-auto-merge.yml|lockfile-upgrade.yml|release.yml|verify-tag.yml)
-                echo "::notice::Skipping cancel-in-progress check for $f (intentional exception)"
-                ;;
-              *)
-                if grep -q '^concurrency:' "$f" && ! grep -q 'cancel-in-progress:\s*true' "$f"; then
-                  FAIL="${FAIL}\n  - $f: cancel-in-progress not set to true"
-                fi
-                ;;
-            esac
           done <<< "$FILES"
           if [ -n "$FAIL" ]; then
             printf "::error::Workflow lint failed:%b\n" "$FAIL"
-            COMMENT=$(printf "## Workflow lint failed\n\nThe following modified workflow files are missing required protections:%b\n\n### Required keys\n- \`timeout-minutes:\` on every job EXCEPT reusable-caller jobs (jobs with \`uses: ./.github/workflows/...\`); GitHub forbids \`timeout-minutes\` on caller jobs\n- \`concurrency:\` block at workflow level\n- \`cancel-in-progress: true\` inside concurrency\n\n### Why\nThese protections prevent the queue-saturation pattern that clogged the fleet on 2026-05-15/16. See CLAUDE.md for the canonical YAML pattern." "$FAIL")
+            COMMENT=$(printf "## Workflow lint failed\n\nThe following modified workflow files are missing required protections:%b\n\n### Required keys\n- \`timeout-minutes:\` on every job EXCEPT reusable-caller jobs (jobs with \`uses: ./.github/workflows/...\`); GitHub forbids \`timeout-minutes\` on caller jobs\n- \`concurrency:\` block at workflow level\n- \`cancel-in-progress: true\` by default, or an explicit exception in \`config/workflow_concurrency_policy.json\`\n- PR-triggered workflows need a PR/ref-scoped concurrency group unless the workflow is an intentional singleton documented in \`config/workflow_concurrency_policy.json\`\n\n### Why\nThese protections prevent the queue-saturation pattern that clogged the fleet on 2026-05-15/16. See \`docs/runbooks/ci-failure-triage.md\` for the canonical pattern and exception policy." "$FAIL")
             gh pr comment "${{ github.event.pull_request.number }}" --repo "${{ github.repository }}" --body "$COMMENT" >/dev/null
             exit 1
           fi
