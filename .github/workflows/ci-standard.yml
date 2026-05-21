@@ -136,7 +136,7 @@ jobs:
             exit 0
           fi
 
-          for py in python3.12 python3.11 python3 python; do
+          for py in python3.12 python3.11 python python; do
             if command -v "$py" >/dev/null 2>&1; then
               PYTHON_BIN="$py"
               break
@@ -191,7 +191,7 @@ jobs:
       - name: Bootstrap environment
         if: steps.python-scope.outputs.run_python_tests == 'true'
         run: |
-          for py in python3.11 python3.12 python3.10 python3 python; do
+          for py in python3.11 python3.12 python3.10 python python; do
             if command -v "$py" &>/dev/null; then
               "$py" -m venv "$RUNNER_TEMP/health-venv"
               break
@@ -400,7 +400,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - name: Bootstrap Python venv
         run: |
-          for py in python3.11 python3.12 python3.10 python3; do
+          for py in python3.11 python3.12 python3.10 python; do
             if command -v "$py" &>/dev/null; then
               "$py" -m venv "$RUNNER_TEMP/ci-venv"
               break
@@ -441,3 +441,17 @@ jobs:
             coverage.xml
           retention-days: 14
           if-no-files-found: ignore
+
+  ci-complete:
+    name: CI Complete
+    needs: [ci-health-check, quality-gate, security-scan, tests]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Verify all jobs succeeded
+        run: |
+          if [ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" = "true" ]; then
+            echo "One or more required jobs failed or were cancelled."
+            exit 1
+          fi
+          echo "All jobs completed successfully."
