@@ -335,10 +335,14 @@ def test_pr_autofix_preserves_branch_safety_and_status_contract() -> None:
 def test_workflow_linter_false_cancel_allowlist_matches_static_policy() -> None:
     """The workflow-file linter must enforce the same false-cancel exceptions."""
     text = (_WORKFLOWS_DIR / "lint-workflow-files.yml").read_text(encoding="utf-8")
+    policy = _load_concurrency_policy()
+    false_allowlist = policy["cancel_in_progress_false_allowlist"]
+
+    assert "workflow_concurrency_policy.json" in text
     for workflow in _CANCEL_FALSE_ALLOWLIST:
-        assert workflow in text, f"{workflow} missing from lint-workflow-files.yml allowlist"
+        assert workflow in false_allowlist, f"{workflow} missing from workflow concurrency policy"
     for stale_exception in ("publish-artifacts.yml", "publish.yml", "deploy.yml", "nightly-publish.yml"):
-        assert stale_exception not in text, f"stale broad exception remains in workflow linter: {stale_exception}"
+        assert stale_exception not in false_allowlist, f"stale broad exception remains in policy: {stale_exception}"
 
 
 def test_queued_job_reaper_has_safe_stale_controls() -> None:
