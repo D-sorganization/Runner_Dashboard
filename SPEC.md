@@ -1102,6 +1102,12 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 ## 7. Changelog
 
+### 2.5.26 - 2026-05-21
+
+- ci: added a documented workflow concurrency policy allowlist for
+  `cancel-in-progress: false` exceptions and intentional PR-singleton
+  workflows, with shared lint/test enforcement and operator triage guidance.
+
 ### 2.5.25 - 2026-05-07
 
 - fix(frontend): install a document-level wheel guard for focused numeric,
@@ -2363,7 +2369,7 @@ Identity Manager (`identity_manager.mint_service_token`).
 
 <!-- spec-trigger-145 -->
 
-### 18.6 CI Action Pinning & Tool Version Parity (Issue #390)
+### 18.6 CI Action Pinning, Workflow Concurrency Policy & Tool Version Parity (Issues #390, #689)
 
 To prevent silent drift between local development and CI, the repository
 enforces two invariants:
@@ -2379,6 +2385,15 @@ enforces two invariants:
   `verify-tool-version-parity` step in `ci-standard.yml` enforces this,
   preventing `uv sync` from installing a newer linter/type-checker than
   CI uses.
+- **Workflow concurrency policy:** `config/workflow_concurrency_policy.json`
+  is the single allowlist for PR-triggered workflows that intentionally keep
+  `cancel-in-progress: false` and for repo-wide PR singleton concurrency
+  groups. `tests/test_workflow_hygiene.py` and
+  `.github/workflows/lint-workflow-files.yml` both enforce that PR workflows
+  default to `cancel-in-progress: true`, include a PR/ref discriminator in
+  their concurrency group unless explicitly allowlisted, and point operators
+  to `docs/runbooks/ci-failure-triage.md` for the canonical remediation
+  pattern.
 
 ### 18.5 Cross-Fleet Coherence & Admin API (Wave 4)
 
