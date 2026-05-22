@@ -53,7 +53,7 @@ jobs:
           FILES=$(echo "$STATS" | jq -r .changedFiles)
           TITLE=$(gh pr view "$PR" --repo "$REPO" --json title --jq .title)
           BODY=$(gh pr view "$PR" --repo "$REPO" --json body --jq .body)
-          PR_FILES=$(gh pr diff "$PR" --repo "$REPO" --name-only)
+          PR_FILES=$(gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[].filename')
 
           FAIL=""
           fail() { FAIL="${FAIL}- $1\n"; }
