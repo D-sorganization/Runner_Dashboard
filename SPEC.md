@@ -1,9 +1,22 @@
 ﻿# SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.25
+**Spec Version:** 2.5.26
 **Application Version:** 4.1.0 (see `VERSION`)
-**Last Updated:** 2026-05-07T18:05:00Z
+**Last Updated:** 2026-05-22T15:05:00Z
 **Status:** Active
+
+### Recent Spec Updates
+
+- **2026-05-22 (2.5.26):** Added `DASHBOARD_HOST` env var
+  (`dashboard_config.HOST`) for uvicorn bind interface; default preserves
+  historical `0.0.0.0` behaviour. Added `deploy/wsl-mirrored-port-helper.sh`
+  invoked from the systemd unit's `ExecStartPre`/`ExecStartPost` to dodge
+  the recurring WSL-mirrored Tailscale-serve port conflict that crash-looped
+  the dashboard after every WSL cold-restart. Added `deploy/wsl-keepalive.ps1`
+  Windows watchdog with responsiveness probe, structured JSONL logging, and
+  exponential backoff (replaces the prior 8-line script that only detected
+  "WSL stopped", missing the more common "WSL running but unresponsive"
+  failure mode). See `docs/wsl-mirrored-port-conflict.md`.
 
 ---
 
@@ -17,7 +30,7 @@ Quick form:
 
 - **[`Repository_Management`](https://github.com/D-sorganization/Repository_Management)** â€” fleet orchestrator.
   Publishes shared CI workflows, skills, templates, agent coordination.
-  *Does not* own dashboard UI, backend, or HTTP API.
+  _Does not_ own dashboard UI, backend, or HTTP API.
 - **`runner-dashboard`** (this repo) â€” operator console. Owns every dashboard
   tab, every `/api/*` endpoint, deployment + rollback machinery.
 - **[`Maxwell-Daemon`](https://github.com/D-sorganization/Maxwell-Daemon)** â€”
@@ -94,28 +107,28 @@ surface task action details without exposing secrets.
 
 **Supporting modules (all in `backend/`):**
 
-| Module | Responsibility |
-|---|---|
-| `agent_remediation.py` | AI agent dispatch plans, Jules/GAAI/Claude invocation |
-| `dispatch_contract.py` | Type contracts for workflow dispatch payloads |
-| `machine_registry.py` | Multi-node fleet registry (load, merge with live data) |
-| `scheduled_workflows.py` | Inventory of scheduled workflow definitions |
-| `deployment_drift.py` | Version drift detection between deployed and expected |
-| `local_app_monitoring.py` | Health checks for local process/app registry |
-| `usage_monitoring.py` | Per-runner CPU/RAM usage time-series collection |
-| `workflow_stats.py` | Aggregate workflow success/failure statistics |
-| `report_files.py` | Parse dated report files for the Reports tab |
-| `runner_autoscaler.py` | Dynamic runner count scaling — main loop and public re-export facade |
-| `autoscaler_config.py` | Autoscaler env-var helpers and all threshold constants |
-| `autoscaler_systemd.py` | Autoscaler systemd unit enumeration, state inspection, start/stop |
-| `autoscaler_busy.py` | Autoscaler layered busy-detection (4 strategies, issue #651) |
-| `autoscaler_sampling.py` | Autoscaler resource sampling (CPU/mem/disk/load) and scheduler integration |
-| `config_schema.py` | Config validation and atomic JSON writes |
-| `pr_inventory.py` | Fetch and normalise open PRs across repos (issue #80) |
-| `issue_inventory.py` | Fetch and normalise open issues with taxonomy (issue #81) |
-| `linear_inventory.py` | Fetch and normalise Linear issues into the canonical issue inventory shape |
-| `health.py` | Health check endpoints (`/api/health`, `/health`) extracted from server.py (issue #159) |
-| `metrics.py` | System metrics endpoints (`/api/system`, `/api/fleet/status`) extracted from server.py (issue #159) |
+| Module                    | Responsibility                                                                                      |
+| ------------------------- | --------------------------------------------------------------------------------------------------- |
+| `agent_remediation.py`    | AI agent dispatch plans, Jules/GAAI/Claude invocation                                               |
+| `dispatch_contract.py`    | Type contracts for workflow dispatch payloads                                                       |
+| `machine_registry.py`     | Multi-node fleet registry (load, merge with live data)                                              |
+| `scheduled_workflows.py`  | Inventory of scheduled workflow definitions                                                         |
+| `deployment_drift.py`     | Version drift detection between deployed and expected                                               |
+| `local_app_monitoring.py` | Health checks for local process/app registry                                                        |
+| `usage_monitoring.py`     | Per-runner CPU/RAM usage time-series collection                                                     |
+| `workflow_stats.py`       | Aggregate workflow success/failure statistics                                                       |
+| `report_files.py`         | Parse dated report files for the Reports tab                                                        |
+| `runner_autoscaler.py`    | Dynamic runner count scaling — main loop and public re-export facade                                |
+| `autoscaler_config.py`    | Autoscaler env-var helpers and all threshold constants                                              |
+| `autoscaler_systemd.py`   | Autoscaler systemd unit enumeration, state inspection, start/stop                                   |
+| `autoscaler_busy.py`      | Autoscaler layered busy-detection (4 strategies, issue #651)                                        |
+| `autoscaler_sampling.py`  | Autoscaler resource sampling (CPU/mem/disk/load) and scheduler integration                          |
+| `config_schema.py`        | Config validation and atomic JSON writes                                                            |
+| `pr_inventory.py`         | Fetch and normalise open PRs across repos (issue #80)                                               |
+| `issue_inventory.py`      | Fetch and normalise open issues with taxonomy (issue #81)                                           |
+| `linear_inventory.py`     | Fetch and normalise Linear issues into the canonical issue inventory shape                          |
+| `health.py`               | Health check endpoints (`/api/health`, `/health`) extracted from server.py (issue #159)             |
+| `metrics.py`              | System metrics endpoints (`/api/system`, `/api/fleet/status`) extracted from server.py (issue #159) |
 
 **Bounded domain routers (`backend/routers/`):**
 
@@ -123,16 +136,16 @@ Well-bounded API domains with no cross-domain shared state are extracted into
 `APIRouter` modules and registered with `app.include_router()`. This reduces
 coupling and makes each domain independently testable.
 
-| Router | Prefix | Responsibility |
-|---|---|---|
-| `routers/deployment.py` | `/api/deployment` | Deployment metadata, expected-version, drift, git-drift (issue #357) |
-| `routers/reports.py` | `/api/reports` | Report file listing and dated metric parsing (issue #358) |
-| `routers/heavy_tests.py` | `/api/heavy-tests` | Heavy test run tracking and result storage (issue #358) |
-| `routers/assessments.py` | `/api/assessments` | Repo assessment JSON listing and retrieval (issue #358) |
-| `routers/dispatch.py` | `/api/fleet/dispatch` | Fleet agent dispatcher â€” allowlisted hub-to-node commands |
-| `routers/credentials.py` | `/api` | Credential probe â€” tool/key presence without exposing values |
-| `routers/linear.py` | `/api/linear` | Optional Linear read API for workspaces, teams, and issue inventory |
-| `push.py` | `/api/push` | Web Push subscription storage, scoped unsubscribe, and test-send foundation |
+| Router                   | Prefix                | Responsibility                                                              |
+| ------------------------ | --------------------- | --------------------------------------------------------------------------- |
+| `routers/deployment.py`  | `/api/deployment`     | Deployment metadata, expected-version, drift, git-drift (issue #357)        |
+| `routers/reports.py`     | `/api/reports`        | Report file listing and dated metric parsing (issue #358)                   |
+| `routers/heavy_tests.py` | `/api/heavy-tests`    | Heavy test run tracking and result storage (issue #358)                     |
+| `routers/assessments.py` | `/api/assessments`    | Repo assessment JSON listing and retrieval (issue #358)                     |
+| `routers/dispatch.py`    | `/api/fleet/dispatch` | Fleet agent dispatcher â€” allowlisted hub-to-node commands                 |
+| `routers/credentials.py` | `/api`                | Credential probe â€” tool/key presence without exposing values              |
+| `routers/linear.py`      | `/api/linear`         | Optional Linear read API for workspaces, teams, and issue inventory         |
+| `push.py`                | `/api/push`           | Web Push subscription storage, scoped unsubscribe, and test-send foundation |
 
 The migration from inline `@app.*` endpoints to bounded routers is ongoing.
 Remaining endpoint domains in `server.py` are tracked for extraction under issue #4.
@@ -155,11 +168,11 @@ When `backend/server.py` is invoked as `__main__`, the uvicorn instance is
 configured from environment variables so operators can adjust ASGI
 behaviour without code changes:
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `WORKERS` | `1` | Worker process count. Stays at `1` until leader-election (#367) lands; setting it higher logs a runtime warning because background tasks would otherwise duplicate across workers. |
-| `LIMIT_CONCURRENCY` | `200` | Max concurrent in-flight requests before uvicorn returns 503. |
-| `TIMEOUT_KEEP_ALIVE` | `5` | Seconds an idle keep-alive HTTP connection is held before closure. |
+| Variable             | Default | Purpose                                                                                                                                                                            |
+| -------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `WORKERS`            | `1`     | Worker process count. Stays at `1` until leader-election (#367) lands; setting it higher logs a runtime warning because background tasks would otherwise duplicate across workers. |
+| `LIMIT_CONCURRENCY`  | `200`   | Max concurrent in-flight requests before uvicorn returns 503.                                                                                                                      |
+| `TIMEOUT_KEEP_ALIVE` | `5`     | Seconds an idle keep-alive HTTP connection is held before closure.                                                                                                                 |
 
 Invalid values fall back to the default and emit a log warning.
 
@@ -206,7 +219,6 @@ guarded by pytest. The Fleet tab exposes a
 mobile-only read surface for runner monitoring cards over the existing runner,
 run, and machine telemetry payloads; desktop machine and runner tables remain
 the canonical wide-screen surface.
-
 
 **Offline mutation queue (issue #380):** When `navigator.onLine` is `false`, POST/DELETE/PATCH mutations that fail due to network error are persisted to IndexedDB via `frontend/src/lib/mutationQueue.ts` (backed by the `idb` library). Each queued entry carries a generated `Idempotency-Key` UUID so server-side duplicate execution is impossible on replay. On `window.online`, the queue is drained in FIFO order; entries older than 10 minutes require explicit user reconfirmation before replay. The `OfflineQueueIndicator` primitive in `frontend/src/primitives/OfflineQueueIndicator.tsx` renders an accessible `role="status"` badge showing offline state and pending-replay count.
 
@@ -295,15 +307,18 @@ deployed `git_sha` in `deployment.json` matches the current checkout unless
 ## 3. Feature List â€” Dashboard Tabs
 
 ### 3.1 Fleet Tab
+
 Real-time view of all self-hosted runners. Displays runner name, status (idle,
 active, offline), current job, labels, and systemd service state. Provides
 start/stop controls per runner and bulk fleet controls.
 
 ### 3.2 History Tab
+
 Paginated workflow run history across all org repositories. Filterable by repo,
 status, branch, and actor. Supports rerun and cancel actions on individual runs.
 
 ### 3.3 Queue Tab
+
 Live view of queued and in-progress workflow jobs. Shows waiting time, assigned
 runner, and blocking conditions. Supports bulk cancellation. Includes a
 diagnostic endpoint to explain queue stalls. On mobile, the tab presents a
@@ -312,11 +327,13 @@ actions require an explicit confirmation state that shows the number of runs
 affected before the existing cancel endpoint is invoked.
 
 ### 3.4 Machines Tab
+
 Multi-node fleet hardware inventory sourced from `machine_registry.yml`.
 Displays per-node system metrics (CPU, RAM, disk, GPU VRAM) fetched via the
 fleet nodes API. Supports drilling into individual node system status.
 
 ### 3.5 Organization Tab
+
 Org-level runner and repository summary. Shows runner group assignments,
 available label sets, and aggregate health across all repos.
 
@@ -348,7 +365,9 @@ the webhook URL, workspace auth/trigger metadata, and the operator-facing
 instructions for configuring the inbound Linear webhook.
 
 ### 3.6 Tests Tab
+
 Unified testing hub with two sections:
+
 1. **CI Tests** â€” table of the latest `ci-standard` workflow run for each of
    the 17 fleet repos, showing conclusion badge, branch, run number, and
    timestamp. Failed or cancelled runs show a **Re-run Failed** button that
@@ -359,10 +378,12 @@ Unified testing hub with two sections:
    Docker-based test environments.
 
 ### 3.7 Stats Tab
+
 Aggregate workflow statistics: success rates, average duration, failure
 frequency, and per-repo breakdowns sourced from the `/api/stats` endpoint.
 
 ### 3.8 Reports Tab
+
 Displays dated fleet report files (Markdown). Provides date selection and
 renders the report with parsed metrics summary cards.
 On mobile, report files render as tappable cards with date and size metadata,
@@ -370,19 +391,23 @@ the selected report uses a constrained reader with mobile typography, and an
 Open raw link exposes the underlying report API response as a fallback.
 
 ### 3.9 Scheduled Workflows Tab
+
 Inventory of all cron-scheduled workflows across the org. Shows next/previous
 run times, schedule expressions, and allows manual dispatch of any scheduled
 workflow.
 
 ### 3.10 Runner Plan Tab
+
 Fleet autoscaler configuration. Displays current runner count, scaling policy,
 schedule-based on/off windows, and allows adjusting the target runner count.
 
 ### 3.11 Local Apps Tab
+
 Health status of local registered applications (processes, services defined in
 `local_apps.json`). Shows up/down state, PID, and restart commands.
 
 ### 3.12 Remediation Tab
+
 AI agent dispatch control panel organised into three sub-tabs:
 
 - **Automations** (default) â€” configures and dispatches remediation plans to
@@ -414,12 +439,14 @@ above the sub-tabs so the status remains visible while switching between
 Automations, PRs, and Issues.
 
 ### 3.13 Workflows Tab
+
 Browse and manually dispatch any workflow in any org repository. Supports
 input parameter forms generated from workflow `workflow_dispatch` definitions.
 Workflow search, repository, and trigger filters are persisted to
 sessionStorage for the current browser session.
 
 ### 3.14 Credentials Tab
+
 Inventory of GitHub Actions secrets and variables across the org and per-repo.
 Read-only view of credential names (not values) for audit purposes.
 On mobile-width viewports, the tab renders locked by default and only loads
@@ -429,6 +456,7 @@ dialog. `/api/credentials` requests are denylisted from frontend cache paths
 and sent with `cache: "no-store"`; credential values are never rendered.
 
 ### 3.15 Assessments Tab
+
 Dispatch and track code quality assessment workflows (Jules Assessment
 Generator). Shows per-repo assessment scores from the `/api/assessments/scores`
 endpoint.
@@ -437,6 +465,7 @@ provider, date, and summary while preserving the existing dispatch controls and
 read endpoint.
 
 ### 3.16 Feature Requests Tab
+
 Browse and submit feature request issues via templates. Allows dispatching
 feature implementation workflows directly from the dashboard.
 On mobile, dispatched feature request history renders as compact read-mostly
@@ -444,16 +473,19 @@ cards showing repository, status, vote-count metadata when present, provider,
 date, and prompt excerpt over the existing `/api/feature-requests` response.
 
 ### 3.17 Maxwell Tab
+
 Control interface for the Maxwell daemon (fleet orchestration AI). Shows
 daemon status, configuration, start/stop/configure controls, and a mobile
 operator chat surface with preserved history, quick actions, streamed replies,
 and a daemon-unreachable retry state.
 
 ### 3.18 Fleet Orchestration Tab
+
 Cross-node deployment orchestration. Shows orchestration run history,
 dispatches multi-repo deployment plans, and monitors rolling deploy status.
 
 ### 3.19 Help Tab
+
 In-app help chat powered by the `/api/help/chat` endpoint. Provides contextual
 assistance about dashboard features and fleet operations.
 
@@ -465,18 +497,19 @@ All endpoints are served under `http://localhost:8321/api/`.
 
 ### System and Health
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/api/system` | Host system metrics (CPU, RAM, disk, GPU) |
-| GET | `/api/health` | Simple health check — returns `{“status”: “ok”}` |
-| GET | `/api/watchdog` | Watchdog status and last heartbeat |
-| GET | `/readyz` | Readiness probe — runs dependency checks (GH_TOKEN, gh CLI, SQLite stores); returns 200 or 503 with `{status, checks}` |
-| GET | `/livez` | Liveness probe — returns `{“status”:”ok”}` with no I/O; always 200 if process is up |
-| GET | `/metrics` | Prometheus text exposition — HTTP request counts/latency, GH API calls, active leases, cache sizes, uptime (issue #330). No auth gate; scrape from `localhost` only. |
+| Method | Path            | Description                                                                                                                                                          |
+| ------ | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/system`   | Host system metrics (CPU, RAM, disk, GPU)                                                                                                                            |
+| GET    | `/api/health`   | Simple health check — returns `{“status”: “ok”}`                                                                                                                     |
+| GET    | `/api/watchdog` | Watchdog status and last heartbeat                                                                                                                                   |
+| GET    | `/readyz`       | Readiness probe — runs dependency checks (GH_TOKEN, gh CLI, SQLite stores); returns 200 or 503 with `{status, checks}`                                               |
+| GET    | `/livez`        | Liveness probe — returns `{“status”:”ok”}` with no I/O; always 200 if process is up                                                                                  |
+| GET    | `/metrics`      | Prometheus text exposition — HTTP request counts/latency, GH API calls, active leases, cache sizes, uptime (issue #330). No auth gate; scrape from `localhost` only. |
 
 **Prometheus metrics (`/metrics`):**
 Implemented in `backend/instrumentation.py` using the `prometheus_client` library.
 Metrics exported:
+
 - `dashboard_http_requests_total{method,path,status}` — counter
 - `dashboard_http_request_duration_seconds{method,path}` — histogram
 - `dashboard_gh_api_calls_total{result}` — counter (result: success/4xx/5xx/rate_limited)
@@ -513,185 +546,186 @@ in `GET /readyz` as `session_secret_source`:
    `0o600`) to `~/.config/runner-dashboard/session_secret`.
 
 A `WARNING` is logged at startup whenever the env var is absent so operators
-can detect the mode without querying the endpoint.  The persisted file
+can detect the mode without querying the endpoint. The persisted file
 directory can be overridden via the `RUNNER_DASHBOARD_SESSION_SECRET_DIR`
 env var.
 
 ### Deployment and Drift
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/api/deployment` | Current deployment metadata |
-| GET | `/api/deployment/expected-version` | Expected version from repo |
-| GET | `/api/deployment/drift` | Version drift between deployed and expected |
-| GET | `/api/deployment/git-drift` | Git-commit drift: HEAD vs origin/main with is_drifted flag |
-| GET | `/api/deployment/state` | Full deployment state object |
-| POST | `/api/deployment/update-signal` | Signal the update mechanism |
+| Method | Path                               | Description                                                |
+| ------ | ---------------------------------- | ---------------------------------------------------------- |
+| GET    | `/api/deployment`                  | Current deployment metadata                                |
+| GET    | `/api/deployment/expected-version` | Expected version from repo                                 |
+| GET    | `/api/deployment/drift`            | Version drift between deployed and expected                |
+| GET    | `/api/deployment/git-drift`        | Git-commit drift: HEAD vs origin/main with is_drifted flag |
+| GET    | `/api/deployment/state`            | Full deployment state object                               |
+| POST   | `/api/deployment/update-signal`    | Signal the update mechanism                                |
 
 ### Runners
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/api/runners` | All org runners with systemd service state; GitHub rate limits return HTTP 429 with `Retry-After` and `retry_after_seconds` |
-| GET | `/api/runners/matlab` | MATLAB-capable runner subset |
-| POST | `/api/runners/{runner_id}/stop` | Stop a runner's systemd service |
-| POST | `/api/runners/{runner_id}/start` | Start a runner's systemd service |
+| Method | Path                             | Description                                                                                                                 |
+| ------ | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/runners`                   | All org runners with systemd service state; GitHub rate limits return HTTP 429 with `Retry-After` and `retry_after_seconds` |
+| GET    | `/api/runners/matlab`            | MATLAB-capable runner subset                                                                                                |
+| POST   | `/api/runners/{runner_id}/stop`  | Stop a runner's systemd service                                                                                             |
+| POST   | `/api/runners/{runner_id}/start` | Start a runner's systemd service                                                                                            |
 
 ### Workflow Runs
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/api/runs` | Recent workflow runs (all repos) |
-| GET | `/api/runs/enriched` | Runs with per-job enrichment data |
-| GET | `/api/runs/{repo}` | Runs for a specific repository |
-| POST | `/api/runs/{repo}/cancel/{run_id}` | Cancel a workflow run |
-| POST | `/api/runs/{repo}/rerun/{run_id}` | Re-run a workflow run |
+| Method | Path                               | Description                       |
+| ------ | ---------------------------------- | --------------------------------- |
+| GET    | `/api/runs`                        | Recent workflow runs (all repos)  |
+| GET    | `/api/runs/enriched`               | Runs with per-job enrichment data |
+| GET    | `/api/runs/{repo}`                 | Runs for a specific repository    |
+| POST   | `/api/runs/{repo}/cancel/{run_id}` | Cancel a workflow run             |
+| POST   | `/api/runs/{repo}/rerun/{run_id}`  | Re-run a workflow run             |
 
 ### Queue
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/api/queue` | Current job queue (queued + in_progress) |
-| GET | `/api/queue/status` | Queue data with per-run `timing` breakdown (queue_wait_seconds, exec_seconds) |
-| POST | `/api/queue/cancel-workflow` | Cancel a queued workflow |
-| GET | `/api/queue/diagnose` | Diagnose queue stalls and blockages |
+| Method | Path                         | Description                                                                   |
+| ------ | ---------------------------- | ----------------------------------------------------------------------------- |
+| GET    | `/api/queue`                 | Current job queue (queued + in_progress)                                      |
+| GET    | `/api/queue/status`          | Queue data with per-run `timing` breakdown (queue_wait_seconds, exec_seconds) |
+| POST   | `/api/queue/cancel-workflow` | Cancel a queued workflow                                                      |
+| GET    | `/api/queue/diagnose`        | Diagnose queue stalls and blockages                                           |
 
 ### Push Notifications
 
-| Method | Path | Description |
-|---|---|---|
-| POST | `/api/push/subscribe` | Store or update the caller's Web Push subscription and topic list |
+| Method | Path                                    | Description                                                          |
+| ------ | --------------------------------------- | -------------------------------------------------------------------- |
+| POST   | `/api/push/subscribe`                   | Store or update the caller's Web Push subscription and topic list    |
 | DELETE | `/api/push/subscribe/{subscription_id}` | Remove the caller's subscription; admins may remove any subscription |
-| POST | `/api/push/test` | Admin-only test send to the caller's matching subscriptions |
-| GET | `/api/push/vapid-public-key` | VAPID public key for Web Push subscription setup |
+| POST   | `/api/push/test`                        | Admin-only test send to the caller's matching subscriptions          |
+| GET    | `/api/push/vapid-public-key`            | VAPID public key for Web Push subscription setup                     |
 
 ### Fleet
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/api/fleet/status` | Aggregate fleet status summary |
-| POST | `/api/fleet/control/{action}` | Bulk fleet action (start-all, stop-all, etc.) |
-| GET | `/api/fleet/schedule` | Runner schedule configuration |
-| POST | `/api/fleet/schedule` | Update runner schedule |
-| GET | `/api/fleet/capacity` | Fleet capacity and utilization |
-| GET | `/api/fleet/nodes` | All registered fleet nodes |
-| GET | `/api/fleet/hardware` | Per-node hardware specifications |
-| GET | `/api/fleet/nodes/{node_name}/system` | System metrics for a specific node |
-| GET | `/api/fleet/dispatch/actions` | Available fleet dispatch actions |
-| POST | `/api/fleet/dispatch/validate` | Validate a dispatch payload |
-| POST | `/api/fleet/dispatch/submit` | Submit a fleet dispatch job |
-| GET | `/api/fleet/orchestration` | Orchestration run history |
-| POST | `/api/fleet/orchestration/dispatch` | Dispatch an orchestration plan |
-| POST | `/api/fleet/orchestration/deploy` | Execute a multi-node deployment |
+| Method | Path                                  | Description                                   |
+| ------ | ------------------------------------- | --------------------------------------------- |
+| GET    | `/api/fleet/status`                   | Aggregate fleet status summary                |
+| POST   | `/api/fleet/control/{action}`         | Bulk fleet action (start-all, stop-all, etc.) |
+| GET    | `/api/fleet/schedule`                 | Runner schedule configuration                 |
+| POST   | `/api/fleet/schedule`                 | Update runner schedule                        |
+| GET    | `/api/fleet/capacity`                 | Fleet capacity and utilization                |
+| GET    | `/api/fleet/nodes`                    | All registered fleet nodes                    |
+| GET    | `/api/fleet/hardware`                 | Per-node hardware specifications              |
+| GET    | `/api/fleet/nodes/{node_name}/system` | System metrics for a specific node            |
+| GET    | `/api/fleet/dispatch/actions`         | Available fleet dispatch actions              |
+| POST   | `/api/fleet/dispatch/validate`        | Validate a dispatch payload                   |
+| POST   | `/api/fleet/dispatch/submit`          | Submit a fleet dispatch job                   |
+| GET    | `/api/fleet/orchestration`            | Orchestration run history                     |
+| POST   | `/api/fleet/orchestration/dispatch`   | Dispatch an orchestration plan                |
+| POST   | `/api/fleet/orchestration/deploy`     | Execute a multi-node deployment               |
 
 ### Workflows
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/api/workflows/list` | All dispatchable workflows in the org |
-| POST | `/api/workflows/dispatch` | Manually dispatch a workflow |
-| GET | `/api/scheduled-workflows` | Cron-scheduled workflow inventory |
+| Method | Path                       | Description                           |
+| ------ | -------------------------- | ------------------------------------- |
+| GET    | `/api/workflows/list`      | All dispatchable workflows in the org |
+| POST   | `/api/workflows/dispatch`  | Manually dispatch a workflow          |
+| GET    | `/api/scheduled-workflows` | Cron-scheduled workflow inventory     |
 
 ### Repositories
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/api/repos` | All org repositories with metadata |
+| Method | Path         | Description                        |
+| ------ | ------------ | ---------------------------------- |
+| GET    | `/api/repos` | All org repositories with metadata |
 
 ### Reports
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/api/reports` | List of available dated report files |
-| GET | `/api/reports/{date}` | Report content for a specific date |
-| GET | `/api/reports/{date}/chart` | Chart data from a dated report |
+| Method | Path                        | Description                          |
+| ------ | --------------------------- | ------------------------------------ |
+| GET    | `/api/reports`              | List of available dated report files |
+| GET    | `/api/reports/{date}`       | Report content for a specific date   |
+| GET    | `/api/reports/{date}/chart` | Chart data from a dated report       |
 
 ### Tests
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/api/tests/ci-results` | Latest `ci-standard` run per fleet repo (17 repos, cached 120 s) |
-| POST | `/api/tests/rerun` | Re-run failed jobs on a given workflow run (`{repo, run_id}`) |
-| GET | `/api/heavy-tests/repos` | Repos eligible for heavy integration testing |
-| POST | `/api/heavy-tests/dispatch` | Dispatch a heavy test workflow via GitHub Actions |
-| POST | `/api/heavy-tests/docker` | Dispatch a Docker-based heavy test run |
+| Method | Path                        | Description                                                      |
+| ------ | --------------------------- | ---------------------------------------------------------------- |
+| GET    | `/api/tests/ci-results`     | Latest `ci-standard` run per fleet repo (17 repos, cached 120 s) |
+| POST   | `/api/tests/rerun`          | Re-run failed jobs on a given workflow run (`{repo, run_id}`)    |
+| GET    | `/api/heavy-tests/repos`    | Repos eligible for heavy integration testing                     |
+| POST   | `/api/heavy-tests/dispatch` | Dispatch a heavy test workflow via GitHub Actions                |
+| POST   | `/api/heavy-tests/docker`   | Dispatch a Docker-based heavy test run                           |
 
 ### Stats and Usage
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/api/stats` | Aggregate workflow statistics |
-| GET | `/api/usage` | Runner usage time-series data |
+| Method | Path         | Description                   |
+| ------ | ------------ | ----------------------------- |
+| GET    | `/api/stats` | Aggregate workflow statistics |
+| GET    | `/api/usage` | Runner usage time-series data |
 
 ### Agent Remediation
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/api/agent-remediation/config` | Current remediation configuration |
-| PUT | `/api/agent-remediation/config` | Update remediation configuration |
-| GET | `/api/agent-remediation/workflows` | Eligible workflows for remediation |
-| POST | `/api/agent-remediation/plan` | Generate a remediation plan |
-| POST | `/api/agent-remediation/dispatch` | Dispatch a remediation plan (GAAI/Claude/Codex) |
-| POST | `/api/agent-remediation/dispatch-jules` | Dispatch via Jules API |
-| GET | `/api/agent-remediation/history` | Remediation dispatch history |
+| Method | Path                                    | Description                                     |
+| ------ | --------------------------------------- | ----------------------------------------------- |
+| GET    | `/api/agent-remediation/config`         | Current remediation configuration               |
+| PUT    | `/api/agent-remediation/config`         | Update remediation configuration                |
+| GET    | `/api/agent-remediation/workflows`      | Eligible workflows for remediation              |
+| POST   | `/api/agent-remediation/plan`           | Generate a remediation plan                     |
+| POST   | `/api/agent-remediation/dispatch`       | Dispatch a remediation plan (GAAI/Claude/Codex) |
+| POST   | `/api/agent-remediation/dispatch-jules` | Dispatch via Jules API                          |
+| GET    | `/api/agent-remediation/history`        | Remediation dispatch history                    |
 
 ### Quick Dispatch
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/api/agents/providers` | Available agent providers and their availability status |
-| POST | `/api/agents/quick-dispatch` | Dispatch an ad-hoc agent task to any repository |
+| Method | Path                         | Description                                             |
+| ------ | ---------------------------- | ------------------------------------------------------- |
+| GET    | `/api/agents/providers`      | Available agent providers and their availability status |
+| POST   | `/api/agents/quick-dispatch` | Dispatch an ad-hoc agent task to any repository         |
 
 ### PR and Issue Dispatch
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/api/prs` | List open pull requests across the org with claim/link metadata |
-| GET | `/api/prs/{owner}/{repo}/{number}` | Single PR detail with checks and file count |
-| GET | `/api/issues` | List open issues with taxonomy and pickability |
-| POST | `/api/prs/dispatch` | Bulk-dispatch agent tasks to selected PRs |
-| POST | `/api/issues/dispatch` | Bulk-dispatch agent tasks to selected issues |
+| Method | Path                               | Description                                                     |
+| ------ | ---------------------------------- | --------------------------------------------------------------- |
+| GET    | `/api/prs`                         | List open pull requests across the org with claim/link metadata |
+| GET    | `/api/prs/{owner}/{repo}/{number}` | Single PR detail with checks and file count                     |
+| GET    | `/api/issues`                      | List open issues with taxonomy and pickability                  |
+| POST   | `/api/prs/dispatch`                | Bulk-dispatch agent tasks to selected PRs                       |
+| POST   | `/api/issues/dispatch`             | Bulk-dispatch agent tasks to selected issues                    |
 
 ### Credentials
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/api/credentials` | Org and repo secrets/variables inventory (names only) |
-| POST | `/api/credentials/set-key` | Securely set an API key for a provider |
-| POST | `/api/credentials/clear-key` | Remove an API key for a provider |
-| POST | `/api/credentials/launch-auth` | Launch a provider's browser auth flow in a subprocess |
+| Method | Path                           | Description                                           |
+| ------ | ------------------------------ | ----------------------------------------------------- |
+| GET    | `/api/credentials`             | Org and repo secrets/variables inventory (names only) |
+| POST   | `/api/credentials/set-key`     | Securely set an API key for a provider                |
+| POST   | `/api/credentials/clear-key`   | Remove an API key for a provider                      |
+| POST   | `/api/credentials/launch-auth` | Launch a provider's browser auth flow in a subprocess |
 
 ### Runner Audit
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/api/runner-routing-audit` | Recent workflow runs on GitHub-hosted runners (billing alert) |
-| POST | `/api/runner-routing-audit/refresh` | Trigger an immediate audit refresh |
+| Method | Path                                | Description                                                   |
+| ------ | ----------------------------------- | ------------------------------------------------------------- |
+| GET    | `/api/runner-routing-audit`         | Recent workflow runs on GitHub-hosted runners (billing alert) |
+| POST   | `/api/runner-routing-audit/refresh` | Trigger an immediate audit refresh                            |
 
 ### Maxwell
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/api/maxwell/status` | Maxwell daemon status and configuration |
-| POST | `/api/maxwell/control` | Control Maxwell daemon (start/stop/configure) |
-| POST | `/api/maxwell/chat` | Proxy Maxwell chat messages over HTTP with streamed text output |
+| Method | Path                   | Description                                                     |
+| ------ | ---------------------- | --------------------------------------------------------------- |
+| GET    | `/api/maxwell/status`  | Maxwell daemon status and configuration                         |
+| POST   | `/api/maxwell/control` | Control Maxwell daemon (start/stop/configure)                   |
+| POST   | `/api/maxwell/chat`    | Proxy Maxwell chat messages over HTTP with streamed text output |
 
 ### Assessments
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/api/assessments/scores` | Per-repo assessment quality scores |
-| POST | `/api/assessments/dispatch` | Dispatch an assessment workflow |
+| Method | Path                        | Description                        |
+| ------ | --------------------------- | ---------------------------------- |
+| GET    | `/api/assessments/scores`   | Per-repo assessment quality scores |
+| POST   | `/api/assessments/dispatch` | Dispatch an assessment workflow    |
 
 ### Assistant (Issues #88, #89)
 
 #### Context-Aware Chat (Issue #88)
 
-| Method | Path | Description |
-|---|---|---|
-| POST | `/api/assistant/chat` | Query assistant about dashboard state with context |
+| Method | Path                  | Description                                        |
+| ------ | --------------------- | -------------------------------------------------- |
+| POST   | `/api/assistant/chat` | Query assistant about dashboard state with context |
 
 **Request body:**
+
 ```json
 {
   "prompt": "Why did this workflow fail?",
@@ -699,13 +733,14 @@ env var.
     "current_tab": "remediation",
     "selected_run_id": 12345,
     "selected_items": [],
-    "dashboard_state": {"...": "..."}
+    "dashboard_state": { "...": "..." }
   },
   "provider": "claude_code_cli"
 }
 ```
 
 **Response:**
+
 ```json
 {
   "response": "Based on the logs, the failure was...",
@@ -717,12 +752,13 @@ env var.
 
 #### Action Proposals (Issue #89)
 
-| Method | Path | Description |
-|---|---|---|
-| POST | `/api/assistant/propose-action` | Propose an action based on user request (awaiting approval) |
-| POST | `/api/assistant/execute-action` | Execute an approved action with full details |
+| Method | Path                            | Description                                                 |
+| ------ | ------------------------------- | ----------------------------------------------------------- |
+| POST   | `/api/assistant/propose-action` | Propose an action based on user request (awaiting approval) |
+| POST   | `/api/assistant/execute-action` | Execute an approved action with full details                |
 
 **Propose request:**
+
 ```json
 {
   "user_request": "Restart runner-5",
@@ -732,12 +768,13 @@ env var.
 ```
 
 **Propose response:**
+
 ```json
 {
   "action_id": "a1b2c3d4",
   "action_type": "restart_runner",
   "description": "Restart runner-5 (will be offline ~30s)",
-  "parameters": {"runner_name": "runner-5", "timeout_seconds": 300},
+  "parameters": { "runner_name": "runner-5", "timeout_seconds": 300 },
   "risk_level": "medium",
   "rationale": "User requested restart for debugging",
   "estimated_duration_seconds": 30
@@ -745,6 +782,7 @@ env var.
 ```
 
 **Execute request:**
+
 ```json
 {
   "action_id": "a1b2c3d4",
@@ -754,6 +792,7 @@ env var.
 ```
 
 **Execute response:**
+
 ```json
 {
   "success": true,
@@ -763,52 +802,51 @@ env var.
 }
 ```
 
-
 ### Feature Requests
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/api/feature-requests` | Feature request issues list |
-| GET | `/api/feature-requests/templates` | Available feature request templates |
-| POST | `/api/feature-requests/templates` | Create a new feature request template |
-| POST | `/api/feature-requests/dispatch` | Dispatch a feature implementation workflow |
+| Method | Path                              | Description                                |
+| ------ | --------------------------------- | ------------------------------------------ |
+| GET    | `/api/feature-requests`           | Feature request issues list                |
+| GET    | `/api/feature-requests/templates` | Available feature request templates        |
+| POST   | `/api/feature-requests/templates` | Create a new feature request template      |
+| POST   | `/api/feature-requests/dispatch`  | Dispatch a feature implementation workflow |
 
 ### Local Apps
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/api/local-apps` | Health status of registered local applications |
+| Method | Path              | Description                                    |
+| ------ | ----------------- | ---------------------------------------------- |
+| GET    | `/api/local-apps` | Health status of registered local applications |
 
 ### Help
 
-| Method | Path | Description |
-|---|---|---|
-| POST | `/api/help/chat` | In-app help chat (context-aware AI response) |
+| Method | Path             | Description                                  |
+| ------ | ---------------- | -------------------------------------------- |
+| POST   | `/api/help/chat` | In-app help chat (context-aware AI response) |
 
 ### Diagnostics
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/api/diagnostics` | **Operator deploy-health endpoint.** Always 200. Reports machine_registry load status (including the error message if load failed), fleet_federation source + peer count, leader-lock status, key file mtimes, cache config. Used by `deploy/deploy-check.sh` and any external monitoring. Schema is a stable contract — adding fields OK, removing/renaming is a breaking change. |
-| GET | `/api/diagnostics/summary` | Consolidated diagnostics: PID, memory, WSL status, git commit, drift |
-| POST | `/api/diagnostics/restart-service` | Restart runner-dashboard systemd service (localhost only) |
+| Method | Path                               | Description                                                                                                                                                                                                                                                                                                                                                                        |
+| ------ | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/diagnostics`                 | **Operator deploy-health endpoint.** Always 200. Reports machine_registry load status (including the error message if load failed), fleet_federation source + peer count, leader-lock status, key file mtimes, cache config. Used by `deploy/deploy-check.sh` and any external monitoring. Schema is a stable contract — adding fields OK, removing/renaming is a breaking change. |
+| GET    | `/api/diagnostics/summary`         | Consolidated diagnostics: PID, memory, WSL status, git commit, drift                                                                                                                                                                                                                                                                                                               |
+| POST   | `/api/diagnostics/restart-service` | Restart runner-dashboard systemd service (localhost only)                                                                                                                                                                                                                                                                                                                          |
 
 ### Launchers
 
-| Method | Path | Description |
-|---|---|---|
-| POST | `/api/launchers/generate` | Generate Windows PowerShell launcher scripts on the Desktop |
-| GET | `/api/agent-launcher/status` | Read cline agent scheduler pidfile and per-agent state |
-| POST | `/api/agent-launcher/start` | Start the cline agent scheduler; on Linux this detaches `agent_launcher.py` with `subprocess.Popen(..., start_new_session=True)` |
-| POST | `/api/agent-launcher/stop` | Stop the cline agent scheduler via the launcher CLI |
+| Method | Path                         | Description                                                                                                                      |
+| ------ | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/api/launchers/generate`    | Generate Windows PowerShell launcher scripts on the Desktop                                                                      |
+| GET    | `/api/agent-launcher/status` | Read cline agent scheduler pidfile and per-agent state                                                                           |
+| POST   | `/api/agent-launcher/start`  | Start the cline agent scheduler; on Linux this detaches `agent_launcher.py` with `subprocess.Popen(..., start_new_session=True)` |
+| POST   | `/api/agent-launcher/stop`   | Stop the cline agent scheduler via the launcher CLI                                                                              |
 
 ### Static Assets
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/` | Serves `dist/index.html` |
-| GET | `/manifest.webmanifest` | PWA manifest |
-| GET | `/icon.svg` | App icon |
+| Method | Path                    | Description              |
+| ------ | ----------------------- | ------------------------ |
+| GET    | `/`                     | Serves `dist/index.html` |
+| GET    | `/manifest.webmanifest` | PWA manifest             |
+| GET    | `/icon.svg`             | App icon                 |
 
 ---
 
@@ -816,24 +854,24 @@ env var.
 
 ### 5.1 Environment Variables
 
-| Variable | Default | Description |
-|---|---|---|
-| `GITHUB_TOKEN` | (required) | GitHub PAT or App token with org runner/workflow scopes |
-| `GITHUB_ORG` | `D-sorganization` | GitHub organization name |
-| `DASHBOARD_PORT` | `8321` | HTTP port the server listens on |
-| `DISPLAY_NAME` | `hostname` | Display name shown in the UI header |
-| `NUM_RUNNERS` | `12` | Target number of self-hosted runners |
-| `MAX_RUNNERS` | `NUM_RUNNERS` | Hard cap on runner count |
-| `RUNNER_DASHBOARD_REPO_ROOT` | Parent of backend dir | Repo root for relative path resolution |
-| `DASHBOARD_DISK_WARN_PERCENT` | `85` | Disk usage % threshold for warning state |
-| `DASHBOARD_DISK_CRITICAL_PERCENT` | `92` | Disk usage % threshold for critical state |
-| `DASHBOARD_DISK_MIN_FREE_GB` | `25` | Minimum free disk GB threshold |
-| `RUNNER_ALIASES` | `` | Comma-separated runner name aliases |
-| `RUNNER_SCHEDULE_CONFIG` | `~/.config/runner-dashboard/runner-schedule.json` | Path to schedule config |
-| `RUNNER_SCHEDULER_BIN` | `/usr/local/bin/runner-scheduler` | Runner scheduler binary path |
-| `RUNNER_SCHEDULER_SERVICE` | `runner-scheduler.service` | Scheduler systemd service name |
-| `RUN_JOB_ENRICHMENT_LIMIT` | `50` | Max runs to enrich with job data |
-| `LOG_FILTER_PATHS` | `/api/scheduled-workflows,/api/heavy-tests,/api/reports` | Comma-separated path prefixes sampled at 1/10 in request logs; errors always logged |
+| Variable                          | Default                                                  | Description                                                                         |
+| --------------------------------- | -------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `GITHUB_TOKEN`                    | (required)                                               | GitHub PAT or App token with org runner/workflow scopes                             |
+| `GITHUB_ORG`                      | `D-sorganization`                                        | GitHub organization name                                                            |
+| `DASHBOARD_PORT`                  | `8321`                                                   | HTTP port the server listens on                                                     |
+| `DISPLAY_NAME`                    | `hostname`                                               | Display name shown in the UI header                                                 |
+| `NUM_RUNNERS`                     | `12`                                                     | Target number of self-hosted runners                                                |
+| `MAX_RUNNERS`                     | `NUM_RUNNERS`                                            | Hard cap on runner count                                                            |
+| `RUNNER_DASHBOARD_REPO_ROOT`      | Parent of backend dir                                    | Repo root for relative path resolution                                              |
+| `DASHBOARD_DISK_WARN_PERCENT`     | `85`                                                     | Disk usage % threshold for warning state                                            |
+| `DASHBOARD_DISK_CRITICAL_PERCENT` | `92`                                                     | Disk usage % threshold for critical state                                           |
+| `DASHBOARD_DISK_MIN_FREE_GB`      | `25`                                                     | Minimum free disk GB threshold                                                      |
+| `RUNNER_ALIASES`                  | ``                                                       | Comma-separated runner name aliases                                                 |
+| `RUNNER_SCHEDULE_CONFIG`          | `~/.config/runner-dashboard/runner-schedule.json`        | Path to schedule config                                                             |
+| `RUNNER_SCHEDULER_BIN`            | `/usr/local/bin/runner-scheduler`                        | Runner scheduler binary path                                                        |
+| `RUNNER_SCHEDULER_SERVICE`        | `runner-scheduler.service`                               | Scheduler systemd service name                                                      |
+| `RUN_JOB_ENRICHMENT_LIMIT`        | `50`                                                     | Max runs to enrich with job data                                                    |
+| `LOG_FILTER_PATHS`                | `/api/scheduled-workflows,/api/heavy-tests,/api/reports` | Comma-separated path prefixes sampled at 1/10 in request logs; errors always logged |
 
 ### 5.2 machine_registry.yml
 
@@ -929,6 +967,7 @@ fleet-node examples use concrete Tailscale URL placeholders so operators can
 replace addresses without changing the argument shape.
 
 `setup.sh` performs:
+
 1. Installs Python dependencies into a system venv.
 2. Copies the systemd unit file (`runner-dashboard.service`) to
    `/etc/systemd/system/`.
@@ -943,6 +982,7 @@ bash deploy/update-deployed.sh
 ```
 
 This script:
+
 1. Installs/updates Python backend dependencies via `pip_install` (from `deploy/lib.sh`).
 2. Creates a timestamped backup of the current deploy directory (`.bak.YYYYMMDD_HHMMSS`)
    before any files are changed.
@@ -1068,17 +1108,20 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 ## 7. Changelog
 
 ### 2.5.25 - 2026-05-07
+
 - fix(frontend): install a document-level wheel guard for focused numeric,
   range, and select controls in the legacy dashboard so scroll gestures no
   longer mutate editable values by accident.
 
 ### 2.5.24 - 2026-05-02
+
 - ci: made Python and frontend validation path-aware for pull requests while
   preserving full backend/frontend suites on `main`, so workflow-only changes
   still run static workflow gates without being blocked by unrelated source
   test debt.
 
 ### 2.5.23 - 2026-05-02
+
 - ci: reduced duplicate remediation work by making Control Tower the single
   automatic CI-remediation owner, converting PR AutoFix to reusable/manual
   execution, replacing tight PR-check polling with bounded REST Actions lookup,
@@ -1091,11 +1134,13 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
   does not block unrelated workflow reliability fixes.
 
 ### 2.5.22 - 2026-05-01
+
 - fix: `gh_api` exposes GitHub rate limits as `RateLimitedError` with
   `retry_after_seconds`, records a per-token/resource in-memory breaker, and
   `/api/runners` translates the condition to HTTP 429 with `Retry-After`.
 
 ### 2.5.16 - 2026-04-30
+
 - ci: keep the standard test lane aligned with the checked-in `uv.lock`, Bandit
   allow-list policy, and mypy relaxed-override module-count guard.
 - chore(deploy): keep Docker and setup static guards on the supported Python
@@ -1104,6 +1149,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
   during the container build while preserving the locked application install.
 
 ### 2.5.14 - 2026-04-30
+
 - feat(scalability): drive uvicorn `workers`, `limit_concurrency`, and
   `timeout_keep_alive` from `WORKERS` / `LIMIT_CONCURRENCY` /
   `TIMEOUT_KEEP_ALIVE` env vars, with defaults `1` / `200` / `5`. `WORKERS`
@@ -1116,30 +1162,36 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
   concurrent repo queries via `asyncio.Semaphore` (#393).
 
 ### 2.5.11 - 2026-04-29
+
 - feat: add authenticated session tracking and remote logout endpoints for the
   mobile auth surface, including hashed session listing and bulk revocation.
 
 ### 2.5.10 - 2026-04-29
+
 - feat: add VAPID public key endpoint (`/api/push/vapid-public-key`) and `PushSettings` frontend component with per-topic subscription toggles for Web Push notifications (issue #192).
 - feat: route `/settings/push` from `frontend/src/main.tsx` to `PushSettings` so the Vite entrypoint exposes the `#173` tracer-bullet path during Phase 1 migration.
 - feat: add the first M04 touch primitive implementation slice with
   `TouchButton` and `SegmentedControl` contracts.
 
 ### 2.5.8 - 2026-04-29
+
 - test: add explicit epic acceptance viewport profiles for 375x812 and
   412x915 to the mobile test harness.
 
 ### 2.5.7 - 2026-04-29
+
 - feat: add the mobile integration foundation for native-shell selection,
   static design tokens, and read-only Fleet runner monitoring cards without
   changing the built frontend runtime.
 
 ### 2.5.6 - 2026-04-29
+
 - test: add the issue #202 mobile Playwright harness contract with checked-in
   viewport profiles, touch helper scaffolding, and static validation before
   enabling browser or visual-regression CI.
 
 ### 2.5.2 — 2026-04-28
+
 - chore: migrate to `uv` for dependency management and add `uv.lock`.
 - ci: refactor CI workflows to be `uv`-native, ensuring reproducible builds and faster bootstrap times (resolves #163).
 - ci: updated `ci-spec-check` to monitor `uv.lock` for freshness.
@@ -1210,6 +1262,7 @@ smoke tests in sync with the Playwright suite. The CI workflow
 a blocking e2e job that gates merge on `main`.
 
 Coverage:
+
 - Root page loads with correct title; React `#root` element is non-empty; no top-level JS errors
 - Fleet tab visible in navigation; renders content (runner cards, loading state, or empty state)
 - Queue tab renders without crashing
@@ -1226,6 +1279,7 @@ Coverage:
 ## 9. Security
 
 ### 9.1 Markdown Rendering
+
 All user-supplied content rendered as Markdown is passed through
 `DOMPurify.sanitize()` before `dangerouslySetInnerHTML`. Marked.js is
 configured with `{ mangle: false, headerIds: false, gfm: true }`.
@@ -1236,6 +1290,7 @@ The dashboard employs a strict Identity and Authorization model to secure access
 
 **Identity Model:**
 A **principal** is either a human or a bot/agent. Both have the same shape:
+
 - `id`: Unique identifier (e.g., `human:dieter`, `bot:claude`).
 - `type`: `human` or `bot`.
 - `roles`: Assigned roles (`admin`, `operator`, `viewer`, `bot`), which expand into specific action scopes.
@@ -1247,6 +1302,7 @@ Principals are stored in `config/principals.yml`. The system fails closed: reque
 
 **Authorization:**
 All mutating `/api/*` endpoints require a principal.
+
 - Humans authenticate via session cookies (from GitHub OAuth).
 - Bots authenticate via `Authorization: Bearer <token>`.
 - Human logins also register a durable dashboard session record in
@@ -1261,7 +1317,7 @@ All mutating `/api/*` endpoints require a principal.
   `DELETE /api/auth/sessions/{session_id_hash}` for per-session remote logout,
   and `POST /api/auth/logout/all` for bulk revocation with
   `exclude_current=true` by default.
-Scopes are enforced per-endpoint using the `require_scope(scope_name)` dependency.
+  Scopes are enforced per-endpoint using the `require_scope(scope_name)` dependency.
 
 **Mobile Biometric Unlock (WebAuthn):**
 The WebAuthn route surface is additive to the existing session model. The
@@ -1274,6 +1330,7 @@ pinned WebAuthn verifier validates attestation/assertion payloads and sign-count
 replay protection.
 
 **Scope Presets:**
+
 - `admin` â€” Full access to all endpoints.
 - `operator` â€” Access to runners, workflows, and remediation dispatch.
 - `viewer` â€” Read-only access (default for unprivileged tokens).
@@ -1281,6 +1338,7 @@ replay protection.
 
 **Audit Logging & Attribution:**
 Every mutating action is recorded in `DispatchAuditLogEntry` with dual-attribution:
+
 - `principal` â€” The ID of the authenticated user/agent.
 - `on_behalf_of` â€” Optional secondary attribution (e.g. when an admin impersonates a bot for debugging, the bot is the principal, and the admin is `on_behalf_of`).
 - `correlation_id` â€” Propagated across fleet nodes for distributed tracing.
@@ -1289,17 +1347,20 @@ Every mutating action is recorded in `DispatchAuditLogEntry` with dual-attributi
 An admin can act as another principal (like a bot) for debugging. By providing the `X-Impersonate-Principal: <bot_id>` header, the admin adopts the target principal's scopes. The audit log records the target as the `principal` and the admin as `on_behalf_of`.
 
 **Onboarding a New Human:**
+
 1. Add the human to `config/principals.yml` with `type: human`.
 2. Assign appropriate `roles` (e.g., `operator`, `viewer`).
 3. Set their `quotas`.
 
 **Onboarding a New Bot:**
+
 1. Add the bot to `config/principals.yml` with `type: bot`.
 2. Assign the `bot` role.
 3. As an admin, generate a service token for the bot: `POST /api/principals/<bot_id>/token`.
 4. Provide the generated token to the bot agent for API access.
 
 ### 9.3 Request Body Size Enforcement (Issue #350)
+
 `MaxBodySizeMiddleware` in `backend/middleware.py` rejects oversized requests
 before routing:
 
@@ -1314,17 +1375,21 @@ before routing:
 - Only mutating methods (POST, PUT, PATCH, DELETE) are checked.
 
 ### 9.4 HTTP Security Headers
+
 The backend injects the following headers on all responses:
+
 - `X-Content-Type-Options: nosniff`
 - `X-Frame-Options: SAMEORIGIN`
 - `Referrer-Policy: strict-origin-when-cross-origin`
 - `Content-Security-Policy` â€” allows self, CDN scripts (jsdelivr, cdnjs, unpkg)
 
 ### 9.3 Destructive Action Confirmation
+
 Critical fleet operations (runner stop, fleet restart) use a two-step
 inline confirmation UI instead of `window.confirm()`.
 
 ### 9.4 Token Handling
+
 `GH_TOKEN` and `ANTHROPIC_API_KEY` must be supplied as environment variables
 only â€” never hardcoded in source files or configuration. The recommended setup
 path is the `configure-env-vars.sh` script, which writes tokens to the systemd
@@ -1332,6 +1397,7 @@ override file so they are not visible in the process environment of child
 processes and are not stored in shell history.
 
 ### 9.5 Network Exposure
+
 The dashboard backend binds to `0.0.0.0:8321` by default so that multi-node
 fleet monitoring works across the local network. Operators who do not need
 cross-node access should bind to `127.0.0.1` instead (set the `HOST`
@@ -1340,22 +1406,25 @@ by the dashboard itself; use a reverse proxy (nginx, Caddy) in front of the
 service when HTTPS is required.
 
 ### 9.6 Operator Hardening Checklist
+
 - Restrict network access to port 8321 via firewall rules (`ufw`, `iptables`,
   or cloud security groups); do not expose it publicly.
 - Rotate `GH_TOKEN` and `ANTHROPIC_API_KEY` on a regular schedule (at minimum
   whenever a team member departs).
 - Keep Python dependencies current: run `pip-audit` and `pip install -U -r
-  requirements.txt` during routine maintenance windows.
+requirements.txt` during routine maintenance windows.
 - Review agent dispatch logs in the Remediation tab regularly to detect
   unexpected or unauthorized agent invocations.
 - Consider binding to `127.0.0.1` and using a reverse proxy with
   authentication if the dashboard is accessible to untrusted network segments.
 
 ### 9.7 Prompt Injection Sanitization
+
 All user-controlled text inserted into LLM agent prompts (workflow failure
 messages, log excerpts, issue bodies, PR descriptions) is passed through
 `sanitize_for_prompt()` in `backend/agent_remediation.py` before inclusion.
 The function:
+
 - Truncates input to a configurable `max_length` (default 2000 chars) to
   limit token usage and reduce attack surface.
 - Wraps the content in `[START_UNTRUSTED_CONTENT]` / `[END_UNTRUSTED_CONTENT]`
@@ -1479,13 +1548,13 @@ Aggregates open pull-requests across organisation repositories.
 
 **Query parameters:**
 
-| Parameter | Type | Default | Description |
-|---|---|---|---|
-| `repo` | string (repeatable) | all org repos | Filter to specific `owner/repo` slugs |
-| `include_drafts` | bool | `true` | Include draft PRs |
-| `author` | string | â€” | Filter by author login |
-| `label` | string (repeatable) | â€” | Match any of these labels |
-| `limit` | int | 500 | Maximum items returned (hard cap 2000) |
+| Parameter        | Type                | Default       | Description                            |
+| ---------------- | ------------------- | ------------- | -------------------------------------- |
+| `repo`           | string (repeatable) | all org repos | Filter to specific `owner/repo` slugs  |
+| `include_drafts` | bool                | `true`        | Include draft PRs                      |
+| `author`         | string              | â€”           | Filter by author login                 |
+| `label`          | string (repeatable) | â€”           | Match any of these labels              |
+| `limit`          | int                 | 500           | Maximum items returned (hard cap 2000) |
 
 **Response:**
 
@@ -1522,13 +1591,13 @@ Aggregates open pull-requests across organisation repositories.
 
 Returns single-PR detail with extra fields not present in the list endpoint:
 
-| Field | Description |
-|---|---|
-| `body_excerpt` | First 2 KB of the PR body |
-| `checks` | List of `{name, conclusion, url}` from the commit check-runs API |
-| `files_changed` | Number of changed files |
-| `additions` | Lines added |
-| `deletions` | Lines deleted |
+| Field           | Description                                                      |
+| --------------- | ---------------------------------------------------------------- |
+| `body_excerpt`  | First 2 KB of the PR body                                        |
+| `checks`        | List of `{name, conclusion, url}` from the commit check-runs API |
+| `files_changed` | Number of changed files                                          |
+| `additions`     | Lines added                                                      |
+| `deletions`     | Lines deleted                                                    |
 
 ---
 
@@ -1543,17 +1612,17 @@ filtering.
 
 **Query parameters:**
 
-| Parameter | Type | Default | Description |
-|---|---|---|---|
-| `repo` | string (repeatable) | all org repos | Filter to specific `owner/repo` slugs |
-| `state` | `open` \| `all` | `open` | Issue state |
-| `label` | string (repeatable) | â€” | Match any of these labels |
-| `assignee` | string | â€” | Filter by assignee login |
-| `pickable_only` | bool | `false` | Only return issues available for agent pickup |
-| `complexity` | string (repeatable) | â€” | Match any `complexity:*` value |
-| `effort` | string (repeatable) | â€” | Match any `effort:*` value |
-| `judgement` | string (repeatable) | â€” | Match any `judgement:*` value |
-| `limit` | int | 500 | Maximum items returned (hard cap 2000) |
+| Parameter       | Type                | Default       | Description                                   |
+| --------------- | ------------------- | ------------- | --------------------------------------------- |
+| `repo`          | string (repeatable) | all org repos | Filter to specific `owner/repo` slugs         |
+| `state`         | `open` \| `all`     | `open`        | Issue state                                   |
+| `label`         | string (repeatable) | â€”           | Match any of these labels                     |
+| `assignee`      | string              | â€”           | Filter by assignee login                      |
+| `pickable_only` | bool                | `false`       | Only return issues available for agent pickup |
+| `complexity`    | string (repeatable) | â€”           | Match any `complexity:*` value                |
+| `effort`        | string (repeatable) | â€”           | Match any `effort:*` value                    |
+| `judgement`     | string (repeatable) | â€”           | Match any `judgement:*` value                 |
+| `limit`         | int                 | 500           | Maximum items returned (hard cap 2000)        |
 
 **Response:**
 
@@ -1659,6 +1728,7 @@ Triggers the `Agent-Quick-Dispatch.yml` workflow in `Repository_Management` for
 an ad-hoc agent task.
 
 **Request body:**
+
 ```json
 {
   "repository": "D-sorganization/runner-dashboard",
@@ -1671,6 +1741,7 @@ an ad-hoc agent task.
 ```
 
 **Success response (200):**
+
 ```json
 {
   "accepted": true,
@@ -1683,6 +1754,7 @@ an ad-hoc agent task.
 ```
 
 **Rejection response (409):**
+
 ```json
 { "accepted": false, "reason": "provider_unavailable: ..." }
 ```
@@ -1704,20 +1776,24 @@ exceeded.
 
 If `Agent-Quick-Dispatch.yml` does not exist in `Repository_Management`, the
 endpoint returns HTTP 501:
+
 ```json
-{"reason": "workflow_not_configured", "suggested_workflow": "Agent-Quick-Dispatch.yml"}
+{
+  "reason": "workflow_not_configured",
+  "suggested_workflow": "Agent-Quick-Dispatch.yml"
+}
 ```
 
 ### 13.5 Audit Log
 
 Every accepted dispatch writes a `DispatchAuditLogEntry`-shaped record to
 `_QUICK_DISPATCH_HISTORY_PATH` (default:
-`~/actions-runners/dashboard/quick_dispatch_history.json`).  The path can be
+`~/actions-runners/dashboard/quick_dispatch_history.json`). The path can be
 overridden via the `QUICK_DISPATCH_HISTORY_PATH` environment variable.
 
 ### 13.6 Implementation
 
-Core logic lives in `backend/quick_dispatch.py`.  The server route at
+Core logic lives in `backend/quick_dispatch.py`. The server route at
 `POST /api/agents/quick-dispatch` is a thin shell that calls
 `quick_dispatch.quick_dispatch()`.
 
@@ -1732,26 +1808,28 @@ Core logic lives in `backend/quick_dispatch.py`.  The server route at
 Dispatches agents to one or more pull requests via `Agent-PR-Action.yml`.
 
 **Request body:**
+
 ```json
 {
   "selection": {
     "mode": "single | repo | list | all",
     "repository": "D-sorganization/runner-dashboard",
     "number": 76,
-    "items": [{"repository": "...", "number": 1}]
+    "items": [{ "repository": "...", "number": 1 }]
   },
   "provider": "claude_code_cli",
   "prompt": "Address review comments",
   "model": "claude-opus-4-7",
-  "confirmation": {"approved_by": "dieter", "note": "manual click"}
+  "confirmation": { "approved_by": "dieter", "note": "manual click" }
 }
 ```
 
 **Response:**
+
 ```json
 {
   "accepted": 5,
-  "rejected": [{"repository": "...", "number": 4, "reason": "..."}],
+  "rejected": [{ "repository": "...", "number": 4, "reason": "..." }],
   "envelope_ids": ["uuid-hex"],
   "fingerprints": ["sha256-prefix"]
 }
@@ -1770,12 +1848,12 @@ Same shape as PR dispatch, with two additional fields:
 
 ### 14.3 Selection Modes
 
-| Mode     | Description |
-|----------|-------------|
-| `single` | One specific PR/issue by `repository` + `number`. |
+| Mode     | Description                                                |
+| -------- | ---------------------------------------------------------- |
+| `single` | One specific PR/issue by `repository` + `number`.          |
 | `repo`   | All open PRs/issues in a repository (caller pre-resolves). |
-| `list`   | Explicit list of `{repository, number}` items. |
-| `all`    | All pre-populated items. Hard-capped at 100 targets. |
+| `list`   | Explicit list of `{repository, number}` items.             |
+| `all`    | All pre-populated items. Hard-capped at 100 targets.       |
 
 ### 14.4 Concurrency
 
@@ -1801,15 +1879,15 @@ does not exist in `Repository_Management`, the affected target is added to the
 Three new actions are registered in the `ALLOWLISTED_ACTIONS` catalog in
 `backend/dispatch_contract.py`:
 
-| Action | Access | Requires Confirmation |
-|--------|--------|-----------------------|
-| `agents.dispatch.adhoc` | PRIVILEGED | Yes |
-| `agents.dispatch.pr` | PRIVILEGED | Yes |
-| `agents.dispatch.issue` | PRIVILEGED | Yes |
+| Action                  | Access     | Requires Confirmation |
+| ----------------------- | ---------- | --------------------- |
+| `agents.dispatch.adhoc` | PRIVILEGED | Yes                   |
+| `agents.dispatch.pr`    | PRIVILEGED | Yes                   |
+| `agents.dispatch.issue` | PRIVILEGED | Yes                   |
 
 ### 14.8 Implementation
 
-Core logic lives in `backend/agent_dispatch_router.py`.  The server routes at
+Core logic lives in `backend/agent_dispatch_router.py`. The server routes at
 `POST /api/prs/dispatch` and `POST /api/issues/dispatch` are thin shells that
 call `agent_dispatch_router.dispatch_to_prs()` and
 `agent_dispatch_router.dispatch_to_issues()` respectively.
@@ -1826,22 +1904,22 @@ to prevent unauthorized command execution, tampering, and replay attacks.
 
 Every dispatch envelope includes the following security fields:
 
-| Field | Type | Purpose |
-|-------|------|---------|
-| `envelope_id` | UUID4 (string) | Unique envelope identifier for replay detection |
-| `signature` | hex string | HMAC-SHA256 signature of the canonical envelope payload |
-| `issued_at` | ISO 8601 timestamp | Envelope creation time; must be within Â±5 minutes of server time |
-| `requested_by` | string | User/principal requesting the action |
-| `action` | string | Allowlisted action name (e.g., `control.runner.start`) |
-| `payload` | dict | Action-specific parameters (e.g., runner ID) |
+| Field          | Type               | Purpose                                                           |
+| -------------- | ------------------ | ----------------------------------------------------------------- |
+| `envelope_id`  | UUID4 (string)     | Unique envelope identifier for replay detection                   |
+| `signature`    | hex string         | HMAC-SHA256 signature of the canonical envelope payload           |
+| `issued_at`    | ISO 8601 timestamp | Envelope creation time; must be within Â±5 minutes of server time |
+| `requested_by` | string             | User/principal requesting the action                              |
+| `action`       | string             | Allowlisted action name (e.g., `control.runner.start`)            |
+| `payload`      | dict               | Action-specific parameters (e.g., runner ID)                      |
 
 Approval of privileged actions includes:
 
-| Field | Type | Purpose |
-|-------|------|---------|
-| `approved_by` | string | User approving the action |
-| `approved_at` | ISO 8601 timestamp | Approval time; must be within Â±5 minutes of server time |
-| `approval_hmac` | hex string | HMAC-SHA256 signature binding approval to the envelope |
+| Field           | Type               | Purpose                                                  |
+| --------------- | ------------------ | -------------------------------------------------------- |
+| `approved_by`   | string             | User approving the action                                |
+| `approved_at`   | ISO 8601 timestamp | Approval time; must be within Â±5 minutes of server time |
+| `approval_hmac` | hex string         | HMAC-SHA256 signature binding approval to the envelope   |
 
 ### 15.3 Signature Validation
 
@@ -1892,6 +1970,7 @@ detected)").
 ### 15.7 Implementation Details
 
 **Signing secret generation:**
+
 ```bash
 # Generate a 48-byte (384-bit) random hex string
 openssl rand -hex 24 > ~/.config/runner-dashboard/dispatch_signing_key
@@ -1900,15 +1979,18 @@ export DISPATCH_SIGNING_SECRET=$(cat ~/.config/runner-dashboard/dispatch_signing
 ```
 
 **Signing algorithm:**
+
 - Canonical JSON of the envelope (with `signature` field omitted)
 - HMAC-SHA256 with the deployment signing secret
 - Hex-encoded result
 
 **Signature binding:**
+
 - CommandEnvelope.from_dict() auto-verifies the signature in `__post_init__`
 - DispatchConfirmation.approval_hmac binds the approval to the envelope_id
 
 **Database schema:**
+
 ```sql
 CREATE TABLE processed_envelopes (
   envelope_id TEXT PRIMARY KEY,
@@ -1945,16 +2027,16 @@ The default position is right.
 All sidebar preferences are stored in `localStorage` under the `assistant:`
 prefix:
 
-| Key | Description | Default |
-|-----|-------------|---------|
-| `assistant:open` | Whether sidebar is currently open | `false` |
-| `assistant:position` | Dock side (`"left"` or `"right"`) | `"right"` |
-| `assistant:width` | Sidebar width in pixels | `360` |
-| `assistant:transcript` | Conversation history, written only when history saving is enabled (capped at 200 messages) | `[]` |
-| `assistant:transcript:ts` | Unix-ms timestamp used to expire saved conversation history after 24 hours | unset |
-| `assistant:saveHistory` | Opt-in preference for saving assistant chat history | `false` |
-| `assistant:openByDefault` | Open automatically on load | `false` |
-| `assistant:includeContext` | Send page context with each message | `true` |
+| Key                        | Description                                                                                | Default   |
+| -------------------------- | ------------------------------------------------------------------------------------------ | --------- |
+| `assistant:open`           | Whether sidebar is currently open                                                          | `false`   |
+| `assistant:position`       | Dock side (`"left"` or `"right"`)                                                          | `"right"` |
+| `assistant:width`          | Sidebar width in pixels                                                                    | `360`     |
+| `assistant:transcript`     | Conversation history, written only when history saving is enabled (capped at 200 messages) | `[]`      |
+| `assistant:transcript:ts`  | Unix-ms timestamp used to expire saved conversation history after 24 hours                 | unset     |
+| `assistant:saveHistory`    | Opt-in preference for saving assistant chat history                                        | `false`   |
+| `assistant:openByDefault`  | Open automatically on load                                                                 | `false`   |
+| `assistant:includeContext` | Send page context with each message                                                        | `true`    |
 
 Assistant chat history is privacy-preserving by default: transcripts remain
 in memory unless the operator enables the `Save chat history` control in the
@@ -2033,6 +2115,7 @@ proper authentication and CSRF protection:
 **After:** 166 passed, 1 xfailed âœ“
 
 The 8 previously failing tests required these headers:
+
 - Tests on routes that validate Bearer tokens
 - Tests on routes that enforce CSRF protection
 - Tests that mock state-changing operations
@@ -2058,6 +2141,7 @@ recovery actions logged for audit.
 with systemd/status-UI fallback.
 
 **Platforms:**
+
 - **Windows/macOS:** Custom protocol handler (one-time registration during setup)
 - **Linux:** Systemd service auto-restart + status UI fallback
 
@@ -2092,6 +2176,7 @@ PowerShell script that handles `runner-dashboard://start` protocol:
 6. All actions logged to `~/.config/runner-dashboard/launcher.log`
 
 **Usage from frontend:**
+
 ```html
 <a href="runner-dashboard://start">Start Dashboard</a>
 ```
@@ -2140,8 +2225,8 @@ const [backendHealthy, setBackendHealthy] = useState(true);
 useEffect(() => {
   const interval = setInterval(async () => {
     try {
-      const resp = await fetch('http://localhost:8321/health', {
-        timeout: 3000
+      const resp = await fetch("http://localhost:8321/health", {
+        timeout: 3000,
       });
       setBackendHealthy(resp.ok);
     } catch (err) {
@@ -2165,6 +2250,7 @@ useEffect(() => {
 ### 17.5 Security Considerations
 
 **Protocol Handler:**
+
 - âœ… Only `runner-dashboard://` scheme (no collision with other apps)
 - âœ… Script is local, operator-controlled, no network access
 - âœ… Operator approves handler installation once during setup
@@ -2172,11 +2258,13 @@ useEffect(() => {
 - âœ… Launcher script has hardcoded paths (no shell expansion)
 
 **Health Endpoint:**
+
 - âœ… No authentication required (internal localhost:8321 only)
 - âœ… Returns minimal data (status + timestamp)
 - âœ… No secrets or operational state exposed
 
 **Recovery UI:**
+
 - âœ… "Manual Instructions" path requires operator terminal use
 - âœ… Protocol handler requires operator browser approval
 - âœ… No automatic remediation; all actions explicit
@@ -2184,6 +2272,7 @@ useEffect(() => {
 ### 17.6 Deployment
 
 **During `deploy/setup.sh` (Windows):**
+
 ```bash
 if [[ "$OS" == "Windows_NT" ]]; then
   powershell -ExecutionPolicy Bypass \
@@ -2194,6 +2283,7 @@ fi
 **Operator sees:** "Allow runner-dashboard to launch an app?" â†’ Click "Allow"
 
 **Manual re-registration (if needed):**
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File deploy/register-protocol.ps1
 ```
@@ -2201,6 +2291,7 @@ powershell -ExecutionPolicy Bypass -File deploy/register-protocol.ps1
 ### 17.7 Operator Documentation
 
 See [`docs/pwa-launcher-design.md`](docs/pwa-launcher-design.md) for:
+
 - Detailed architecture evaluation (Options 1â€“4)
 - Implementation checklist
 - Troubleshooting guide
@@ -2221,6 +2312,7 @@ The dashboard uses a multi-principal identity model where every authenticated
 request is attributed to a `Principal` (human or bot).
 
 **Principal Model:**
+
 - `id`: Unique identifier (e.g., `dashboard-operator`, `runner-bot`)
 - `type`: `human` or `bot`
 - `roles`: List of roles (e.g., `admin`, `operator`, `viewer`, `bot`)
@@ -2231,13 +2323,14 @@ request is attributed to a `Principal` (human or bot).
 Quotas prevent any single principal from monopolizing fleet resources or
 depleting API budgets.
 
-| Resource | Default | Description |
-|---|---|---|
-| `max_runners` | 2 | Maximum concurrent runners leased by this principal |
-| `agent_spend_usd_day` | $10.00 | Maximum daily spend on paid agent dispatches ($0.10/dispatch) |
-| `local_app_slots` | 1 | Maximum local application slots |
+| Resource              | Default | Description                                                   |
+| --------------------- | ------- | ------------------------------------------------------------- |
+| `max_runners`         | 2       | Maximum concurrent runners leased by this principal           |
+| `agent_spend_usd_day` | $10.00  | Maximum daily spend on paid agent dispatches ($0.10/dispatch) |
+| `local_app_slots`     | 1       | Maximum local application slots                               |
 
 **Enforcement:**
+
 - **Dispatch check:** `quota_enforcement.py` validates remaining spend and
   runner slots before allowing a dispatch.
 - **Bulk truncation:** Bulk PR/issue dispatches are automatically truncated
@@ -2272,6 +2365,7 @@ principals:
 New principals can be added by editing this file; the dashboard reloads it
 automatically. Service tokens for bot principals can be minted via the
 Identity Manager (`identity_manager.mint_service_token`).
+
 <!-- spec-trigger-145 -->
 
 ### 18.6 CI Action Pinning & Tool Version Parity (Issue #390)
@@ -2294,18 +2388,18 @@ enforces two invariants:
 ### 18.5 Cross-Fleet Coherence & Admin API (Wave 4)
 
 To ensure identity and quotas are respected across the entire fleet:
+
 - **Cross-Node Principal Propagation**: The \CommandEnvelope\ in \dispatch_contract.py\ includes \principal\, \on_behalf_of\, and \correlation_id\. These fields are now included in the canonical JSON payload used to generate the HMAC-SHA256 signature, ensuring that malicious actors cannot forge identities during cross-node dispatch.
 - **Hub-Side Merged Audit View**: A new endpoint \/api/fleet/audit\ aggregates orchestration audit logs from all nodes in the \FLEET_NODES\ configuration. It supports filtering by \principal\ and merges entries sorted by timestamp. Local audit logs can be retrieved via \/api/audit\.
-- **Admin API**: The \/api/admin/*\ router provides endpoints for managing the identity system:
+- **Admin API**: The \/api/admin/\*\ router provides endpoints for managing the identity system:
   - \GET /api/admin/principals\: List all registered principals and their quotas.
   - \GET /api/admin/tokens\: List all active service token hashes.
   - \POST /api/admin/principals/{id}/token\: Mint a new service token for a bot principal.
   - \DELETE /api/admin/tokens/{token_hash}\: Revoke a service token.
   - \PATCH /api/admin/principals/{id}/quota\: Update quotas (\max_runners\, \gent_spend_usd_day\, \local_app_slots\) for a specific principal.
-< ! - -   U p d a t e d :   2 0 2 6 - 0 4 - 2 9 T 1 8 : 3 8 : 1 6   - - > 
- 
- 
-
+    < ! - -   U p d a t e d :   2 0 2 6 - 0 4 - 2 9 T 1 8 : 3 8 : 1 6   - - > 
+     
+     
 
 ### 18.6 Consistent Error Envelope (issue #406)
 
@@ -2322,37 +2416,40 @@ to `ErrorResponse` (`backend/error_models.py`):
 
 Standard error codes:
 
-| Code | HTTP status | Meaning |
-|------|-------------|---------|
-| `not_found` | 404 | Resource does not exist |
-| `forbidden` | 403 | Permission denied |
-| `validation_error` | 422 | Invalid request input |
-| `rate_limited` | 429 | GitHub rate limit hit |
-| `conflict` | 409 | State conflict (e.g. already stopped) |
-| `bad_gateway` | 502 | Upstream GitHub API error |
-| `server_error` | 500 | Internal server error |
-| `service_error` | 500/404/403 | systemd service lifecycle failure |
+| Code               | HTTP status | Meaning                               |
+| ------------------ | ----------- | ------------------------------------- |
+| `not_found`        | 404         | Resource does not exist               |
+| `forbidden`        | 403         | Permission denied                     |
+| `validation_error` | 422         | Invalid request input                 |
+| `rate_limited`     | 429         | GitHub rate limit hit                 |
+| `conflict`         | 409         | State conflict (e.g. already stopped) |
+| `bad_gateway`      | 502         | Upstream GitHub API error             |
+| `server_error`     | 500         | Internal server error                 |
+| `service_error`    | 500/404/403 | systemd service lifecycle failure     |
 
 Service lifecycle failures (`start`, `stop`, `restart`) additionally map
 stderr text to semantic status codes via `service_stderr_to_status()`:
+
 - "not loaded" / "Unit not found" → 404
 - "permission denied" / "access denied" → 403
 - anything else → 500
+
 ### 18.7 Typed GitHub Payload Models (issue #407)
 
 GitHub API response dicts are now parsed at the boundary into typed Pydantic
 view-models defined in `backend/models/github_payloads.py`:
 
-| Model | Replaces |
-|-------|---------|
+| Model           | Replaces                                                                |
+| --------------- | ----------------------------------------------------------------------- |
 | `GhWorkflowRun` | `run.get("id")`, `(run.get("repository") or {}).get("name", "")` chains |
-| `GhJob` | `j.get("runner_name")`, label dicts vs strings |
-| `GhRunner` | `runner["labels"][i]["name"]`, `runner.get("busy")` |
-| `GhRepository` | nested repository sub-dict |
-| `GhActor` | `triggering_actor.get("login")` |
+| `GhJob`         | `j.get("runner_name")`, label dicts vs strings                          |
+| `GhRunner`      | `runner["labels"][i]["name"]`, `runner.get("busy")`                     |
+| `GhRepository`  | nested repository sub-dict                                              |
+| `GhActor`       | `triggering_actor.get("login")`                                         |
 
 All models use `extra="ignore"` so new GitHub API fields never break
-existing handlers.  Handlers receive flat, typed objects (Law of Demeter).
+existing handlers. Handlers receive flat, typed objects (Law of Demeter).
+
 ### 18.8 Pooled GitHub API Client (issue #352)
 
 A new `backend/gh_client.py` module replaces the hottest
@@ -2360,17 +2457,20 @@ A new `backend/gh_client.py` module replaces the hottest
 `httpx.AsyncClient` that reuses TLS connections and caches the Bearer token.
 
 **Key design:**
+
 - Token loaded once from `GH_TOKEN` / `GITHUB_TOKEN` and cached in memory.
 - Typed exceptions: `GhAuthError`, `GhRateLimited`, `GhNotFound`, `GhServerError`.
 - `paginate(path)` async iterator follows GitHub Link headers automatically.
 - `gh` CLI subprocess retained as fallback when token is absent.
 - `gh_utils.gh_api()` delegates to `gh_client.get()` transparently; all
   existing call-sites continue to work without changes.
+
 ### 18.9 Log Shipping: Vector Sidecar + Retention Policy (issue #418)
 
 Log aggregation sidecar configuration for the runner-dashboard fleet.
 
 **Files added:**
+
 - `deploy/observability/vector.toml` — Vector config shipping journald +
   Docker container logs to Loki; 7-day retention for app logs, 30-day for errors
 - `deploy/observability/journald-retention.conf` — journald drop-in limiting
@@ -2382,15 +2482,17 @@ Log aggregation sidecar configuration for the runner-dashboard fleet.
 
 **Retention tiers:**
 
-| Tier | Storage | Retention |
-|------|---------|-----------|
-| info/warn application logs | Loki | 7 days |
-| error/critical logs | Loki | 30 days |
-| Journald on-host | systemd-journald | 1 GB max / 30 days |
-| Docker json-file | local | 7 × 100 MB |
+| Tier                       | Storage          | Retention          |
+| -------------------------- | ---------------- | ------------------ |
+| info/warn application logs | Loki             | 7 days             |
+| error/critical logs        | Loki             | 30 days            |
+| Journald on-host           | systemd-journald | 1 GB max / 30 days |
+| Docker json-file           | local            | 7 × 100 MB         |
+
 ## Security Fixes (issues #315, #317, #318)
 
 ### Auth loopback bypass (issue #315)
+
 The loopback bypass that granted automatic admin access to requests from
 127.0.0.1 or ::1 is now gated on the environment variable
 DASHBOARD_LOOPBACK_AUTH=1. This variable must never be set in production;
@@ -2398,6 +2500,7 @@ it is intended solely for local single-user development where the dashboard
 is not reachable beyond the loopback interface.
 
 ### HMAC payload signing (issue #317)
+
 The dispatch envelope HMAC signature now includes a SHA-256 hash of the
 payload field (payload_hash). This prevents capture-and-replay attacks
 where an attacker captures a valid signed envelope and replays it with a
@@ -2405,6 +2508,7 @@ different payload. All new envelopes are signed with payload_hash in the
 canonical JSON; the signing secret is DISPATCH_SIGNING_SECRET.
 
 ### approval_hmac binding (issue #318)
+
 DispatchConfirmation.approval_hmac must be bound to the specific
 envelope_id and action of the request it approves. The canonical
 HMAC message is approve:<envelope_id>:<action>. If approval_hmac is

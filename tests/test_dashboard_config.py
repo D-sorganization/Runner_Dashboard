@@ -123,6 +123,59 @@ def test_port_from_env(monkeypatch) -> None:
 
 
 # ---------------------------------------------------------------------------
+# HOST (bind interface)
+#
+# Added 2026-05-22 to resolve the recurring WSL-mirrored crash loop where
+# uvicorn fails to bind 0.0.0.0:8321 because Windows tailscaled is already
+# listening on the Tailscale interface IP. Under mirrored networking, the
+# WSL guest shares the Windows network namespace, so 0.0.0.0 collides with
+# any specific-IP listener Windows holds. Binding to 127.0.0.1 in that
+# topology lets the Tailscale serve proxy still reach the dashboard via
+# loopback without contending for the wildcard.
+# ---------------------------------------------------------------------------
+
+
+def test_host_default(monkeypatch) -> None:
+    env = {k: v for k, v in os.environ.items() if k != "DASHBOARD_HOST"}
+    monkeypatch.setattr(os, "environ", env)
+    importlib.reload(dashboard_config)
+    # Default preserves historical behaviour (binds all interfaces).
+    assert dashboard_config.HOST == "0.0.0.0"
+
+
+def test_host_from_env(monkeypatch) -> None:
+    env = os.environ.copy()
+    env["DASHBOARD_HOST"] = "127.0.0.1"
+    monkeypatch.setattr(os, "environ", env)
+    importlib.reload(dashboard_config)
+    assert dashboard_config.HOST == "127.0.0.1"
+
+
+def test_host_strips_whitespace(monkeypatch) -> None:
+    env = os.environ.copy()
+    env["DASHBOARD_HOST"] = "  ::1  "
+    monkeypatch.setattr(os, "environ", env)
+    importlib.reload(dashboard_config)
+    assert dashboard_config.HOST == "::1"
+
+
+def test_host_empty_falls_back_to_default(monkeypatch) -> None:
+    # An empty value (operator set DASHBOARD_HOST= with no value) is
+    # invalid — uvicorn would fail with an unhelpful error. Fall back to
+    # the documented default rather than propagate the empty string.
+    env = os.environ.copy()
+    env["DASHBOARD_HOST"] = "   "
+    monkeypatch.setattr(os, "environ", env)
+    importlib.reload(dashboard_config)
+    assert dashboard_config.HOST == "0.0.0.0"
+
+
+def test_host_in_all_exports() -> None:
+    importlib.reload(dashboard_config)
+    assert "HOST" in dashboard_config.__all__
+
+
+# ---------------------------------------------------------------------------
 # runner_limit
 # ---------------------------------------------------------------------------
 

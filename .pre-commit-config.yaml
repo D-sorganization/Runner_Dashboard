@@ -107,7 +107,10 @@ repos:
           - pydantic
           - fastapi
           - uvicorn
-          - psutil-stubs
+          # PyPI publishes psutil's stubs as ``types-psutil`` (PyPA naming
+          # convention), not ``psutil-stubs``. The latter never resolved
+          # and broke every pre-push for everyone.
+          - types-psutil
         args: [--ignore-missing-imports]
         types: [python]
         files: ^backend/

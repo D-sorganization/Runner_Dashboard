@@ -614,9 +614,7 @@ if _AUTODERIVE_FLEET and not FLEET_NODES:
                 validate_fleet_node_url(_candidate_url)
                 FLEET_NODES[_name] = _candidate_url
             except ValueError as _e:
-                log.warning(
-                    "Skipping derived FLEET_NODES entry %s=%s: %s", _name, _candidate_url, _e
-                )
+                log.warning("Skipping derived FLEET_NODES entry %s=%s: %s", _name, _candidate_url, _e)
         if FLEET_NODES:
             FLEET_NODES_SOURCE = "registry"
             log.info("FLEET_NODES auto-derived from registry: %s", ", ".join(FLEET_NODES.keys()))
@@ -2214,16 +2212,14 @@ def _diagnostics_payload() -> dict:
             "loaded": True,
             "machines": machines_count,
             "version": _registry.get("version"),
-            "path": os.environ.get("MACHINE_REGISTRY_PATH")
-            or str(Path(__file__).with_name("machine_registry.yml")),
+            "path": os.environ.get("MACHINE_REGISTRY_PATH") or str(Path(__file__).with_name("machine_registry.yml")),
         }
     except Exception as exc:  # noqa: BLE001
         registry_err = str(exc)
         registry_status = {
             "loaded": False,
             "error": registry_err,
-            "path": os.environ.get("MACHINE_REGISTRY_PATH")
-            or str(Path(__file__).with_name("machine_registry.yml")),
+            "path": os.environ.get("MACHINE_REGISTRY_PATH") or str(Path(__file__).with_name("machine_registry.yml")),
         }
 
     # Fleet federation status (config only — peer reachability is /api/fleet/nodes)
@@ -2271,10 +2267,7 @@ def _diagnostics_payload() -> dict:
         cache_status = {"available": False}
 
     # Overall health summary so deploy-check.sh can grep one field
-    healthy = (
-        registry_status.get("loaded") is True
-        and (fleet_status["node_count"] > 0 or MACHINE_ROLE != "hub")
-    )
+    healthy = registry_status.get("loaded") is True and (fleet_status["node_count"] > 0 or MACHINE_ROLE != "hub")
 
     return {
         "ok": bool(healthy),
@@ -2789,10 +2782,11 @@ def _read_uvicorn_env_config() -> dict[str, int]:
 if __name__ == "__main__":
     import uvicorn
 
+    _bind_host = dashboard_config.HOST
     log.info("=" * 60)
     log.info("  D-sorganization Runner Dashboard v4.0")
     log.info("  Local:   http://localhost:%s", PORT)
-    log.info("  Network: http://0.0.0.0:%s", PORT)
+    log.info("  Network: http://%s:%s", _bind_host, PORT)
     log.info("  API docs: http://localhost:%s/docs", PORT)
     log.info("  Health:   http://localhost:%s/api/health", PORT)
     log.info("  Org: %s | Host: %s", ORG, HOSTNAME)
@@ -2811,7 +2805,13 @@ if __name__ == "__main__":
     _uvicorn_target: object = "server:app" if _uvicorn_cfg["workers"] > 1 else app
     uvicorn.run(
         _uvicorn_target,  # type: ignore[arg-type]
-        host="0.0.0.0",  # B104: intentionally binding to all interfaces; listed in bandit.yaml
+        # Default is 0.0.0.0 (binds all interfaces); override with the
+        # DASHBOARD_HOST env var. WSL-mirrored hosts that run a Windows-side
+        # Tailscale-serve listener on the same port must set 127.0.0.1 to
+        # avoid the recurring "[Errno 98] address already in use" crash loop
+        # (see dashboard_config._resolve_bind_host docstring).
+        # B104: 0.0.0.0 default is intentional and listed in bandit.yaml.
+        host=_bind_host,
         port=PORT,
         log_level="warning",  # FastAPI handles its own logging
         workers=_uvicorn_cfg["workers"],

@@ -94,6 +94,15 @@ else
         ok  "refresh-token.sh deployed"
     fi
 
+    if ! dry_run "cp wsl-mirrored-port-helper.sh -> $DEPLOY_DIR/wsl-mirrored-port-helper.sh"; then
+        # Idempotent no-op outside WSL-mirrored hosts; required on WSL hosts
+        # whose systemd unit invokes it from ExecStartPre/Post to dodge the
+        # Tailscale-serve port-conflict crash loop.
+        cp "$REPO/deploy/wsl-mirrored-port-helper.sh" "$DEPLOY_DIR/wsl-mirrored-port-helper.sh"
+        chmod +x "$DEPLOY_DIR/wsl-mirrored-port-helper.sh"
+        ok  "wsl-mirrored-port-helper.sh deployed"
+    fi
+
     info "Copying frontend..."
     if ! dry_run "sync_dir $REPO/runner-dashboard/frontend $DEPLOY_DIR/frontend"; then
         if [[ ! -d "$REPO/node_modules" ]]; then
