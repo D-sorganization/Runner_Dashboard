@@ -1,7 +1,6 @@
 from __future__ import annotations  # noqa: E402
 
 import ast
-import os
 import time
 from pathlib import Path  # noqa: E402
 
@@ -410,10 +409,7 @@ def test_validate_config_path_symlink_escape(tmp_path: Path) -> None:
     allowed_root = tmp_path / "allowed"
     allowed_root.mkdir(parents=True, exist_ok=True)
     symlink = allowed_root / "config.yml"
-    try:
-        symlink.symlink_to(evil_file)
-    except OSError as exc:
-        pytest.skip(f"symlink creation is unavailable on this platform: {exc}")
+    symlink.symlink_to(evil_file)
 
     # The resolved path escapes the allowed root, so it's rejected
     with pytest.raises(ValueError, match="escapes allowed roots"):
@@ -431,21 +427,23 @@ def test_validate_config_path_symlink_safe(tmp_path: Path) -> None:
 
     # Create symlink within same root
     symlink = allowed_root / "config.yml"
-    try:
-        symlink.symlink_to(target_file)
-    except OSError as exc:
-        pytest.skip(f"symlink creation is unavailable on this platform: {exc}")
+    symlink.symlink_to(target_file)
 
     result = security.validate_config_path(symlink, allowed_roots=[allowed_root])
     assert result == target_file.resolve()
 
 
-def test_validate_config_path_world_writable(tmp_path: Path) -> None:
-    """Test that world-writable files are rejected."""
+def test_validate_config_path_world_writable(monkeypatch, tmp_path: Path) -> None:
+    """Test that world-writable files are rejected on a POSIX-honouring FS.
+
+    The non-POSIX skip in ``_filesystem_preserves_posix_perms`` would short-
+    circuit this check on Windows / DrvFs hosts and mask the rejection,
+    so force the helper True for this test only — it asserts the substance
+    of the world-writable rejection itself.
+    """
     import stat
 
-    if os.name == "nt":
-        pytest.skip("POSIX world-writable mode bits are not enforceable on Windows")
+    monkeypatch.setattr(security, "_filesystem_preserves_posix_perms", lambda _p: True)
 
     config_file = tmp_path / "config.yml"
     config_file.write_text("key: value")
@@ -454,11 +452,8 @@ def test_validate_config_path_world_writable(tmp_path: Path) -> None:
     current_mode = config_file.stat().st_mode
     config_file.chmod(current_mode | stat.S_IWOTH)
 
-    if os.name == "nt":
+    with pytest.raises(ValueError, match="world-writable"):
         security.validate_config_path(config_file, allowed_roots=[tmp_path], check_mode=True)
-    else:
-        with pytest.raises(ValueError, match="world-writable"):
-            security.validate_config_path(config_file, allowed_roots=[tmp_path], check_mode=True)
 
 
 def test_validate_config_path_non_existent(tmp_path: Path) -> None:
@@ -540,3 +535,108 @@ def test_check_symlink_safe(tmp_path: Path) -> None:
 
     result = security._check_symlink(config_file, allowed_roots=[tmp_path])
     assert result is True
+
+
+# ---------------------------------------------------------------------------
+# _filesystem_preserves_posix_perms — cross-platform mode-check safety
+#
+# The world-writable bit (S_IWOTH) is meaningless on filesystems that cannot
+# faithfully represent POSIX permissions: native Windows NTFS via Python
+# (returns ACL-derived modes that don't map to ugo+w), WSL ``/mnt/c`` via
+# DrvFs / 9p (exposes every NTFS file as 0777), and remote CIFS / SMB
+# mounts. Without the skip, every Windows-based contributor hit the
+# spurious "Config file is world-writable" rejection on pre-push, which
+# blocked tests/api/test_auth_loopback.py at collection time because
+# identity.py instantiates IdentityManager() at module import. Origin:
+# Runner_Dashboard#695 ``--no-verify`` postmortem.
+# ---------------------------------------------------------------------------
+
+
+def test_filesystem_preserves_posix_perms_on_windows_returns_false(monkeypatch, tmp_path: Path) -> None:
+    import os as _os
+
+    monkeypatch.setattr(_os, "name", "nt")
+    assert security._filesystem_preserves_posix_perms(tmp_path) is False
+
+
+def test_filesystem_preserves_posix_perms_default_linux_returns_true(monkeypatch, tmp_path: Path) -> None:
+    """On native Linux with an ext4-style mount, mode bits are meaningful."""
+    import os as _os
+    import sys as _sys
+
+    monkeypatch.setattr(_os, "name", "posix")
+    monkeypatch.setattr(_sys, "platform", "linux")
+
+    fake_mounts = "/dev/sda1 / ext4 rw,relatime 0 0\nproc /proc proc rw 0 0\n"
+    monkeypatch.setattr(
+        security,
+        "_read_proc_mounts",
+        lambda: fake_mounts,
+    )
+    assert security._filesystem_preserves_posix_perms(tmp_path) is True
+
+
+@pytest.mark.parametrize(
+    "fs_type",
+    ["9p", "drvfs", "cifs", "smbfs", "ntfs", "ntfs-3g", "vfat", "exfat", "msdos"],
+)
+def test_filesystem_preserves_posix_perms_rejects_known_non_posix(monkeypatch, tmp_path: Path, fs_type: str) -> None:
+    """Every known non-POSIX FS type must be detected."""
+    import os as _os
+    import sys as _sys
+
+    monkeypatch.setattr(_os, "name", "posix")
+    monkeypatch.setattr(_sys, "platform", "linux")
+
+    # Mount the tmp_path under a fake mount of the non-POSIX fs type.
+    mount_point = str(tmp_path).rstrip("/")
+    monkeypatch.setattr(
+        security,
+        "_read_proc_mounts",
+        lambda: f"//server/share {mount_point} {fs_type} rw 0 0\n/dev/sda1 / ext4 rw 0 0\n",
+    )
+    assert security._filesystem_preserves_posix_perms(tmp_path) is False
+
+
+def test_filesystem_preserves_posix_perms_falls_back_when_proc_mounts_unreadable(monkeypatch, tmp_path: Path) -> None:
+    """A read failure on /proc/mounts must NOT incorrectly disable the check."""
+    import os as _os
+    import sys as _sys
+
+    monkeypatch.setattr(_os, "name", "posix")
+    monkeypatch.setattr(_sys, "platform", "linux")
+    monkeypatch.setattr(security, "_read_proc_mounts", lambda: None)
+    # Fail safe: assume POSIX. Better to surface a false positive than to
+    # silently disable the security check on a real Linux box.
+    assert security._filesystem_preserves_posix_perms(tmp_path) is True
+
+
+def test_check_file_mode_skips_on_non_posix_fs(monkeypatch, tmp_path: Path, caplog) -> None:
+    """The mode check must short-circuit and log a WARNING on non-POSIX FS."""
+    import logging
+    import os as _os
+
+    monkeypatch.setattr(_os, "name", "nt")
+
+    config_file = tmp_path / "config.yml"
+    config_file.write_text("key: value")
+
+    with caplog.at_level(logging.WARNING):
+        result = security._check_file_mode(config_file)
+    assert result is True
+    assert any("does not preserve POSIX permissions" in record.getMessage() for record in caplog.records)
+
+
+def test_validate_config_path_does_not_reject_on_non_posix_fs(monkeypatch, tmp_path: Path) -> None:
+    """End-to-end: validate_config_path succeeds on a non-POSIX FS even if
+    the mode bits look "world-writable"."""
+    import os as _os
+
+    monkeypatch.setattr(_os, "name", "nt")
+
+    config_file = tmp_path / "config.yml"
+    config_file.write_text("key: value")
+    # On real Windows we couldn't actually set S_IWOTH, but the skip
+    # happens before any mode read so the test exercises the right path.
+    result = security.validate_config_path(config_file, allowed_roots=[tmp_path], check_mode=True)
+    assert result == config_file.resolve()

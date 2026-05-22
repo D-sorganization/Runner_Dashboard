@@ -2,8 +2,22 @@
 
 **Spec Version:** 2.5.26
 **Application Version:** 4.1.0 (see `VERSION`)
-**Last Updated:** 2026-05-22T00:00:00Z
+**Last Updated:** 2026-05-22T17:45:00Z
 **Status:** Active
+
+### Recent Spec Updates
+
+- **2026-05-22 (2.5.26):** Added `DASHBOARD_HOST` env var
+  (`dashboard_config.HOST`) for uvicorn bind interface; default preserves
+  historical `0.0.0.0` behaviour. Added `deploy/wsl-mirrored-port-helper.sh`
+  invoked from the systemd unit's `ExecStartPre`/`ExecStartPost` to dodge
+  the recurring WSL-mirrored Tailscale-serve port conflict that crash-looped
+  the dashboard after every WSL cold-restart. Added `deploy/wsl-keepalive.ps1`
+  Windows watchdog with responsiveness probe, structured JSONL logging, and
+  exponential backoff. Added host-wide Windows resource metrics for WSL
+  dashboard telemetry and autoscaler decisions so runner scaling uses the same
+  CPU/RAM values operators see in Task Manager. See
+  `docs/wsl-mirrored-port-conflict.md`.
 
 ---
 

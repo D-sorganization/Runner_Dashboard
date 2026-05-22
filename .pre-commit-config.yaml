@@ -107,6 +107,10 @@ repos:
           - pydantic
           - fastapi
           - uvicorn
+          # PyPI publishes psutil's stubs as ``types-psutil`` (PyPA naming
+          # convention), not ``psutil-stubs``. The latter never resolved
+          # and broke every pre-push for everyone.
+          - types-psutil
         args: [--ignore-missing-imports]
         types: [python]
         files: ^backend/
@@ -119,7 +123,7 @@ repos:
       - id: bandit
         name: "bandit (Python security)"
         stages: [pre-push]
-        args: ["-r", "backend/", "-lll", "-i", "-x", "tests/,.github/"]
+        args: ["-r", "backend/", "-ll", "-ii", "-x", "tests/,.github/"]
         pass_filenames: false
         types: [python]
 
@@ -130,23 +134,24 @@ repos:
         name: "pytest (Python tests)"
         stages: [pre-push]
         entry: pytest
-        args: ["--co", "-q", "tests/"]
-        language: python
-        additional_dependencies:
-          - anthropic==0.97.0
-          - fastapi==0.136.1
-          - httpx==0.28.1
-          - itsdangerous==2.2.0
-          - psutil==7.2.2
-          - pydantic==2.13.3
-          - pytest-asyncio==1.3.0
-          - pytest-cov
-          - pytest-rerunfailures==14.0
-          - pytest-xdist==3.6.1
-          - PyYAML==6.0.3
-          - requests==2.33.1
-          - respx==0.21.1
-          - uvicorn[standard]==0.46.0
+        args:
+          [
+            "tests/",
+            "-x",
+            "-q",
+            "--tb=short",
+            "-m",
+            "not slow and not integration",
+          ]
+        # ``language: system`` runs pytest from the user's activated venv
+        # (or PATH-resolved pytest). The previous config used
+        # ``language: python`` with ``additional_dependencies: [pytest,
+        # pytest-cov]``, which spun up an isolated venv with ONLY those
+        # two packages — so any test that touched fastapi, pydantic,
+        # identity, etc. errored at import on every push from any host.
+        # Contract: contributors must have the project venv activated
+        # (or run ``pip install -e ".[dev]"`` once) before pushing.
+        language: system
         pass_filenames: false
         types: [python]
 

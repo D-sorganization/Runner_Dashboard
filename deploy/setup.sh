@@ -203,6 +203,16 @@ else
     cp "${SCRIPT_DIR}/deploy/refresh-token.sh" "${REFRESH_SCRIPT}"
     sed -i 's/\r$//' "${REFRESH_SCRIPT}"
     chmod +x "${REFRESH_SCRIPT}"
+
+    # Deploy the WSL-mirrored port helper used by the systemd unit's
+    # ExecStartPre/Post hooks. No-op outside WSL-mirrored hosts; safe to
+    # install everywhere so the systemd unit template can reference it
+    # unconditionally.
+    PORT_HELPER="${HOME}/actions-runners/dashboard/wsl-mirrored-port-helper.sh"
+    cp "${SCRIPT_DIR}/deploy/wsl-mirrored-port-helper.sh" "${PORT_HELPER}"
+    sed -i 's/\r$//' "${PORT_HELPER}"
+    chmod +x "${PORT_HELPER}"
+
     ok "Dashboard deployed to ${DEPLOY_DIR}"
 fi
 
