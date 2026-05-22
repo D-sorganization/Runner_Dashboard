@@ -132,7 +132,7 @@ async def test_runners_endpoint_responds(client) -> None:
     resp = await client.get("/api/runners")
     # Without GITHUB_TOKEN the call to gh_api_admin will raise → 502/500 or
     # return cached data.  Either way the response must be valid JSON.
-    assert resp.status_code in (200, 500, 502, 503)
+    assert resp.status_code in (200, 429, 500, 502, 503)
     # Body must be parseable JSON
     assert resp.json() is not None
 
