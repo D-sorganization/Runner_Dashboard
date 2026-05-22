@@ -53,6 +53,16 @@ class StaleRun:
     branch: str
     created_at: str
     age_minutes: int
+    html_url: str = ""
+    event: str = ""
+    head_sha: str = ""
+    pull_request_number: int | None = None
+    current_pr_head_sha: str = ""
+    pr_head_superseded: bool = False
+    supersession_reason: str = ""
+    reason: str = "age_threshold"
+    reason_detail: str = "queued run exceeded the configured age threshold"
+    safe_to_cancel: bool = False
     cancelled: bool = False
     cancel_error: str = ""
 
@@ -147,6 +157,7 @@ async def _queued_stale_for_repo(
         age = now - created
         if age < min_age:
             continue
+        supersession = await classify_pr_head_supersession(org, repo, run)
         stale.append(
             StaleRun(
                 repo=repo,
@@ -155,9 +166,90 @@ async def _queued_stale_for_repo(
                 branch=run.get("head_branch", "?"),
                 created_at=raw_ts,
                 age_minutes=int(age.total_seconds() / 60),
+                html_url=run.get("html_url", ""),
+                event=run.get("event", ""),
+                head_sha=run.get("head_sha", ""),
+                pull_request_number=supersession["pull_request_number"],
+                current_pr_head_sha=supersession["current_pr_head_sha"],
+                pr_head_superseded=supersession["pr_head_superseded"],
+                supersession_reason=supersession["supersession_reason"],
+                reason="superseded_pr_head" if supersession["pr_head_superseded"] else "age_threshold",
+                reason_detail=(
+                    "PR head advanced beyond this queued run"
+                    if supersession["pr_head_superseded"]
+                    else "queued run exceeded the configured age threshold"
+                ),
+                safe_to_cancel=bool(supersession["pr_head_superseded"]),
             )
         )
     return stale
+
+
+def _single_pr_number_for_run(run: dict) -> int | None:
+    """Return the run's single PR number, or None when the evidence is ambiguous."""
+    pull_requests = run.get("pull_requests") or []
+    if len(pull_requests) != 1:
+        return None
+    number = pull_requests[0].get("number")
+    return number if isinstance(number, int) else None
+
+
+async def classify_pr_head_supersession(org: str, repo: str, run: dict) -> dict:
+    """Conservatively classify whether a queued PR run is superseded by a newer PR head.
+
+    The classifier only returns ``pr_head_superseded=True`` when all evidence is
+    exact: the workflow run has one PR number, the run has a head SHA, the PR is
+    still open, GitHub returns the current PR head SHA, and those SHAs differ.
+    Missing or ambiguous evidence is annotated but never treated as superseded.
+    """
+    result = {
+        "pull_request_number": None,
+        "current_pr_head_sha": "",
+        "pr_head_superseded": False,
+        "supersession_reason": "not-pr-run",
+    }
+
+    if run.get("event") not in {"pull_request", "pull_request_target"}:
+        return result
+
+    pr_number = _single_pr_number_for_run(run)
+    result["pull_request_number"] = pr_number
+    if pr_number is None:
+        result["supersession_reason"] = "ambiguous-pr"
+        return result
+
+    run_head_sha = run.get("head_sha") or ""
+    if not run_head_sha:
+        result["supersession_reason"] = "missing-run-head-sha"
+        return result
+
+    pr = await _gh_json(
+        "api",
+        f"/repos/{org}/{repo}/pulls/{pr_number}",
+        default={},
+        timeout=15,
+    )
+    if not pr:
+        result["supersession_reason"] = "pr-lookup-failed"
+        return result
+
+    if pr.get("state") != "open":
+        result["supersession_reason"] = "pr-not-open"
+        return result
+
+    current_head_sha = ((pr.get("head") or {}).get("sha")) or ""
+    result["current_pr_head_sha"] = current_head_sha
+    if not current_head_sha:
+        result["supersession_reason"] = "missing-current-pr-head-sha"
+        return result
+
+    if current_head_sha == run_head_sha:
+        result["supersession_reason"] = "current-pr-head"
+        return result
+
+    result["pr_head_superseded"] = True
+    result["supersession_reason"] = "pr-head-advanced"
+    return result
 
 
 async def find_stale_runs(
@@ -214,6 +306,12 @@ async def purge_stale_runs(
     min_age_minutes: int = DEFAULT_MIN_AGE_MINUTES,
     *,
     dry_run: bool = False,
+    superseded_only: bool = False,
+    repo: str | None = None,
+    workflow: str | None = None,
+    reason: str | None = None,
+    safe_only: bool = False,
+    max_count: int | None = None,
 ) -> dict:
     """Find stale runs and optionally cancel them all.
 
@@ -221,10 +319,21 @@ async def purge_stale_runs(
     When *dry_run* is True the runs are listed but nothing is cancelled.
     """
     stale = await find_stale_runs(org, min_age_minutes)
+    purge_candidates = [r for r in stale if r.pr_head_superseded] if superseded_only else stale
+    if repo:
+        purge_candidates = [r for r in purge_candidates if r.repo == repo]
+    if workflow:
+        purge_candidates = [r for r in purge_candidates if r.workflow == workflow]
+    if reason:
+        purge_candidates = [r for r in purge_candidates if r.reason == reason]
+    if safe_only:
+        purge_candidates = [r for r in purge_candidates if r.safe_to_cancel]
+    if max_count is not None and max_count > 0:
+        purge_candidates = purge_candidates[:max_count]
     cancelled_count = 0
     errors: list[str] = []
 
-    if not dry_run and stale:
+    if not dry_run and purge_candidates:
         sem = asyncio.Semaphore(_CANCEL_CONCURRENCY)
 
         async def bounded_cancel(run: StaleRun) -> None:
@@ -235,13 +344,15 @@ async def purge_stale_runs(
                 else:
                     errors.append(f"{run.repo}#{run.run_id}: {run.cancel_error}")
 
-        await asyncio.gather(*[bounded_cancel(r) for r in stale])
+        await asyncio.gather(*[bounded_cancel(r) for r in purge_candidates])
 
     return {
         "org": org,
         "min_age_minutes": min_age_minutes,
         "dry_run": dry_run,
+        "superseded_only": superseded_only,
         "stale_count": len(stale),
+        "purge_candidate_count": len(purge_candidates),
         "cancelled_count": cancelled_count if not dry_run else 0,
         "errors": errors,
         "runs": [r.as_dict() for r in stale],

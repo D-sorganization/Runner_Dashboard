@@ -128,7 +128,7 @@ function Collapse(p: any) {
         p.icon,
         p.title,
         p.badge
-          ? h(Badge, { tone: "neutral" }, p.badge)
+          ? h(Badge, { tone: "neutral", children: p.badge })
           : null,
       ),
       h(
@@ -141,6 +141,547 @@ function Collapse(p: any) {
       "div",
       { className: "section-body" + (o ? "" : " collapsed") },
       p.children,
+    ),
+  );
+}
+
+var STALE_REASONS = [
+  "superseded_pr_head",
+  "closed_or_deleted_ref",
+  "unsatisfiable_runner_labels",
+  "age_threshold",
+  "unknown",
+];
+
+type StaleMessage = { type: "error" | "success"; text: string } | null;
+
+interface NormalizedStalePayload {
+  org?: string;
+  min_age_minutes: number;
+  stale_count: number;
+  cancelled_count: number;
+  errors: string[];
+  reason_counts: Record<string, number>;
+  runs: any[];
+}
+
+function formatReason(reason: string): string {
+  return String(reason || "unknown").replace(/_/g, " ");
+}
+
+function normalizeStaleRun(run: any): any {
+  var repo =
+    run.repo ||
+    run.repository ||
+    (run.repository && run.repository.name) ||
+    "unknown";
+  return Object.assign({}, run, {
+    repo: repo,
+    run_id: run.run_id || run.id,
+    workflow: run.workflow || run.workflow_name || run.name || "?",
+    branch: run.branch || run.head_branch || "?",
+    reason: run.reason || "unknown",
+    safe_to_cancel: run.safe_to_cancel === true,
+    age_minutes:
+      run.age_minutes != null
+        ? run.age_minutes
+        : run.age != null
+          ? run.age
+          : null,
+    run_url: run.run_url || run.html_url || "",
+    pr_number: run.pr_number || run.pull_request_number || null,
+    current_head_sha: run.current_head_sha || run.current_pr_head_sha || run.current_sha || "",
+    run_head_sha: run.run_head_sha || run.head_sha || "",
+  });
+}
+
+function normalizeStalePayload(payload: any): NormalizedStalePayload {
+  var rawRuns =
+    (payload && (payload.runs || payload.candidates || payload.stale_runs)) || [];
+  var runs = rawRuns.map(normalizeStaleRun);
+  var reasonCounts: any = {};
+  STALE_REASONS.forEach(function (reason) {
+    reasonCounts[reason] = 0;
+  });
+  if (payload && payload.reason_counts) {
+    Object.keys(payload.reason_counts).forEach(function (reason) {
+      reasonCounts[reason] = payload.reason_counts[reason] || 0;
+    });
+  } else {
+    runs.forEach(function (run: any) {
+      var reason = run.reason || "unknown";
+      reasonCounts[reason] = (reasonCounts[reason] || 0) + 1;
+    });
+  }
+  return {
+    org: payload && payload.org,
+    min_age_minutes:
+      payload && payload.min_age_minutes != null ? payload.min_age_minutes : 60,
+    stale_count:
+      payload && payload.stale_count != null ? payload.stale_count : runs.length,
+    cancelled_count: (payload && payload.cancelled_count) || 0,
+    errors: (payload && payload.errors) || [],
+    reason_counts: reasonCounts,
+    runs: runs,
+  };
+}
+
+function StaleCleanupPanel(p: any) {
+  var onRefresh = p.onRefresh;
+  var mas = React.useState("60");
+  var minAge = mas[0],
+    setMinAge = mas[1];
+  var rs = React.useState("");
+  var repoFilter = rs[0],
+    setRepoFilter = rs[1];
+  var ws = React.useState("");
+  var workflowFilter = ws[0],
+    setWorkflowFilter = ws[1];
+  var mcs = React.useState("25");
+  var maxCount = mcs[0],
+    setMaxCount = mcs[1];
+  var ps = React.useState<NormalizedStalePayload | null>(null);
+  var preview = ps[0],
+    setPreview = ps[1];
+  var ls = React.useState(false);
+  var loading = ls[0],
+    setLoading = ls[1];
+  var prs = React.useState(false);
+  var purging = prs[0],
+    setPurging = prs[1];
+  var cfs = React.useState(false);
+  var confirming = cfs[0],
+    setConfirming = cfs[1];
+  var ms = React.useState<StaleMessage>(null);
+  var message = ms[0],
+    setMessage = ms[1];
+  var detailState = React.useState<Record<string, boolean>>({});
+  var expanded = detailState[0],
+    setExpanded = detailState[1];
+
+  var runs: any[] = preview && preview.runs ? preview.runs : [];
+  var safeRuns = runs.filter(function (run: any) {
+    return run.safe_to_cancel === true;
+  });
+  var max = Math.max(0, Number(maxCount) || 0);
+  var purgeTargets = max > 0 ? safeRuns.slice(0, max) : [];
+
+  function filters() {
+    return {
+      min_age_minutes: Math.max(1, Number(minAge) || 60),
+      repo: repoFilter.trim(),
+      workflow: workflowFilter.trim(),
+      max_count: max,
+      safe_only: true,
+    };
+  }
+
+  function previewStale() {
+    var f = filters();
+    var params = new URLSearchParams();
+    params.set("min_age_minutes", String(f.min_age_minutes));
+    if (f.repo) params.set("repo", f.repo);
+    if (f.workflow) params.set("workflow", f.workflow);
+    if (f.max_count > 0) params.set("max_count", String(f.max_count));
+    params.set("safe_only", "true");
+    setLoading(true);
+    setConfirming(false);
+    setMessage(null);
+    fetch("/api/queue/stale?" + params.toString(), {
+      headers: { "X-Requested-With": "XMLHttpRequest" },
+    })
+      .then(function (r) {
+        if (!r.ok) throw new Error("Preview failed");
+        return r.json();
+      })
+      .then(function (d) {
+        setPreview(normalizeStalePayload(d));
+        setLoading(false);
+      })
+      .catch(function () {
+        setLoading(false);
+        setMessage({ type: "error", text: "Stale preview failed" });
+      });
+  }
+
+  function purgeStale() {
+    if (!confirming) {
+      setConfirming(true);
+      setTimeout(function () {
+        setConfirming(function (cur: boolean) {
+          return cur ? false : cur;
+        });
+      }, 6000);
+      return;
+    }
+    var f = filters();
+    setPurging(true);
+    setConfirming(false);
+    setMessage(null);
+    fetch("/api/queue/purge-stale", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+      },
+      body: JSON.stringify({
+        min_age_minutes: f.min_age_minutes,
+        repo: f.repo || null,
+        workflow: f.workflow || null,
+        max_count: f.max_count,
+        safe_only: true,
+        dry_run: false,
+        run_ids: purgeTargets.map(function (run: any) {
+          return run.run_id;
+        }),
+      }),
+    })
+      .then(function (r) {
+        if (!r.ok) throw new Error("Purge failed");
+        return r.json();
+      })
+      .then(function (d) {
+        var normalized = normalizeStalePayload(d);
+        setPreview(normalized);
+        setPurging(false);
+        setMessage({
+          type: normalized.errors.length > 0 ? "error" : "success",
+          text:
+            "Cancelled " +
+            normalized.cancelled_count +
+            " stale run(s)" +
+            (normalized.errors.length > 0
+              ? " with " + normalized.errors.length + " error(s)"
+              : ""),
+        });
+        if (onRefresh) setTimeout(onRefresh, 1500);
+      })
+      .catch(function () {
+        setPurging(false);
+        setMessage({ type: "error", text: "Stale purge failed" });
+      });
+  }
+
+  function input(label: string, value: string, setter: any, type?: string) {
+    return h(
+      "label",
+      { style: { display: "grid", gap: 4, fontSize: 12, color: "var(--text-muted)" } },
+      label,
+      h("input", {
+        value: value,
+        type: type || "text",
+        onChange: function (e: any) {
+          setter(e.target.value);
+        },
+        style: {
+          minWidth: 120,
+          padding: "7px 9px",
+          borderRadius: 6,
+          border: "1px solid var(--border)",
+          background: "var(--bg-primary)",
+          color: "var(--text-primary)",
+        },
+      }),
+    );
+  }
+
+  function renderReasonCounts() {
+    var counts: Record<string, number> =
+      (preview && preview.reason_counts) || {};
+    return h(
+      "div",
+      {
+        style: {
+          display: "flex",
+          gap: 8,
+          flexWrap: "wrap",
+          marginTop: 10,
+        },
+      },
+      STALE_REASONS.map(function (reason) {
+        return h(
+          "span",
+          {
+            key: reason,
+            style: {
+              padding: "3px 8px",
+              borderRadius: 4,
+              border: "1px solid var(--border)",
+              color: "var(--text-secondary)",
+              fontSize: 12,
+            },
+          },
+          formatReason(reason),
+          ": ",
+          h("b", null, counts[reason] || 0),
+        );
+      }),
+    );
+  }
+
+  function renderRun(run: any, mobile: boolean) {
+    var key = run.repo + "/" + run.run_id;
+    var open = !!expanded[key];
+    var safe = run.safe_to_cancel === true;
+    var reasonBadge = h(
+      Badge,
+      { tone: safe ? "success" : "warning", children: formatReason(run.reason) },
+    );
+    if (mobile) {
+      return h(
+        "div",
+        { key: "stale-mobile-" + key, className: "mobile-run-card" },
+        h(
+          "button",
+          {
+            type: "button",
+            onClick: function () {
+              setExpanded(function (prev: any) {
+                var next = Object.assign({}, prev);
+                next[key] = !next[key];
+                return next;
+              });
+            },
+            style: {
+              width: "100%",
+              textAlign: "left",
+              background: "none",
+              border: 0,
+              color: "inherit",
+              padding: 0,
+              cursor: "pointer",
+            },
+          },
+          h("div", { className: "mobile-run-title" }, run.workflow),
+          h(
+            "div",
+            { className: "mobile-run-meta" },
+            h("span", null, run.repo),
+            h("span", null, run.branch),
+            h("span", null, run.age_minutes != null ? run.age_minutes + "m" : "-"),
+          ),
+          h(
+            "div",
+            { style: { display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" } },
+            reasonBadge,
+            h(Badge, {
+              tone: safe ? "success" : "danger",
+              children: safe ? "safe to cancel" : "review first",
+            }),
+          ),
+        ),
+        open
+          ? h(
+              "div",
+              { style: { marginTop: 10, fontSize: 12, color: "var(--text-muted)" } },
+              h("div", null, "PR: ", run.pr_number || "-"),
+              h("div", null, "Run SHA: ", run.run_head_sha || "-"),
+              h("div", null, "Current SHA: ", run.current_head_sha || "-"),
+            )
+          : null,
+      );
+    }
+    return h(
+      "tr",
+      { key: "stale-" + key },
+      h("td", null, run.repo),
+      h("td", null, run.workflow),
+      h("td", null, run.branch),
+      h("td", null, run.pr_number || "-"),
+      h("td", null, run.age_minutes != null ? run.age_minutes + "m" : "-"),
+      h("td", null, reasonBadge),
+      h("td", null, h(Badge, {
+        tone: safe ? "success" : "danger",
+        children: safe ? "safe" : "blocked",
+      })),
+      h("td", { style: { color: "var(--text-muted)", fontSize: 12 } }, run.current_head_sha || "-"),
+      h("td", { style: { color: "var(--text-muted)", fontSize: 12 } }, run.run_head_sha || "-"),
+      h(
+        "td",
+        null,
+        run.run_url
+          ? h(
+              "a",
+              {
+                href: run.run_url,
+                target: "_blank",
+                rel: "noopener",
+                style: { color: "var(--accent-blue)", textDecoration: "none", fontSize: 12 },
+              },
+              "View",
+            )
+          : "-",
+      ),
+    );
+  }
+
+  return h(
+    Collapse,
+    {
+      title: "Stale Cleanup",
+      icon: h("span", {
+        className: "queue-dot waiting",
+        style: { marginRight: 4 },
+      }),
+      badge: preview ? preview.stale_count + " stale" : "preview",
+      defaultOpen: true,
+    },
+    h(
+      "div",
+      null,
+      message
+        ? h(
+            "div",
+            {
+              role: "alert",
+              style: {
+                margin: "0 0 12px",
+                padding: "10px 12px",
+                borderRadius: 6,
+                background:
+                  message.type === "error"
+                    ? "rgba(248,81,73,0.15)"
+                    : "rgba(63,185,80,0.15)",
+                color:
+                  message.type === "error"
+                    ? "var(--accent-red)"
+                    : "var(--accent-green)",
+                border:
+                  "1px solid " +
+                  (message.type === "error"
+                    ? "var(--accent-red)"
+                    : "var(--accent-green)"),
+                fontSize: 13,
+              },
+            },
+            message.text,
+          )
+        : null,
+      h(
+        "div",
+        {
+          style: {
+            display: "flex",
+            gap: 10,
+            flexWrap: "wrap",
+            alignItems: "end",
+          },
+        },
+        input("Min age (minutes)", minAge, setMinAge, "number"),
+        input("Repo filter", repoFilter, setRepoFilter),
+        input("Workflow filter", workflowFilter, setWorkflowFilter),
+        input("Max cancellations", maxCount, setMaxCount, "number"),
+        h(
+          "button",
+          { className: "btn", onClick: previewStale, disabled: loading },
+          loading ? h("span", { className: "spinner" }) : "Preview stale",
+        ),
+        h(
+          "button",
+          {
+            className: "btn",
+            onClick: purgeStale,
+            disabled: purging || purgeTargets.length === 0,
+            style: {
+              border: "1px solid var(--accent-red)",
+              color: confirming ? "#fff" : "var(--accent-red)",
+              background: confirming ? "var(--accent-red)" : "var(--bg-secondary)",
+            },
+          },
+          purging
+            ? h("span", { className: "spinner" })
+            : confirming
+              ? "Confirm purge"
+              : "Purge safe stale",
+        ),
+      ),
+      preview
+        ? h(
+            "div",
+            {
+              className: "mobile-kpi-strip",
+              "aria-label": "Stale cleanup summary",
+              style: { marginTop: 12 },
+            },
+            [
+              { label: "Stale", value: preview.stale_count },
+              { label: "Safe", value: safeRuns.length },
+              { label: "Selected", value: purgeTargets.length },
+            ].map(function (item: any) {
+              return h(
+                "div",
+                { key: item.label, className: "mobile-kpi" },
+                h("div", { className: "mobile-kpi-label" }, item.label),
+                h("div", { className: "mobile-kpi-value" }, item.value),
+              );
+            }),
+          )
+        : null,
+      preview ? renderReasonCounts() : null,
+      preview && preview.errors && preview.errors.length > 0
+        ? h(
+            "div",
+            { style: { marginTop: 10, color: "var(--accent-red)", fontSize: 12 } },
+            "Errors: ",
+            preview.errors.join(", "),
+          )
+        : null,
+      preview && runs.length === 0
+        ? h(
+            "div",
+            { style: { padding: 20, color: "var(--text-muted)", textAlign: "center" } },
+            "No stale queued runs match these filters",
+          )
+        : null,
+      preview && runs.length > 0
+        ? h(
+            React.Fragment,
+            null,
+            h(
+              "div",
+              { className: "queue-desktop-table", style: { overflowX: "auto", marginTop: 12 } },
+              h(
+                "table",
+                { className: "data-table" },
+                h(
+                  "thead",
+                  null,
+                  h(
+                    "tr",
+                    null,
+                    h("th", null, "Repo"),
+                    h("th", null, "Workflow"),
+                    h("th", null, "Branch"),
+                    h("th", null, "PR"),
+                    h("th", null, "Age"),
+                    h("th", null, "Reason"),
+                    h("th", null, "Safe"),
+                    h("th", null, "Current SHA"),
+                    h("th", null, "Run SHA"),
+                    h("th", null, ""),
+                  ),
+                ),
+                h(
+                  "tbody",
+                  null,
+                  runs.map(function (run: any) {
+                    return renderRun(run, false);
+                  }),
+                ),
+              ),
+            ),
+            h(
+              "div",
+              {
+                className: "mobile-card-list",
+                "aria-label": "Mobile stale cleanup candidates",
+              },
+              runs.map(function (run: any) {
+                return renderRun(run, true);
+              }),
+            ),
+          )
+        : null,
     ),
   );
 }
@@ -409,6 +950,7 @@ export function QueueTab(p: QueueTabProps) {
         );
       }),
     ),
+    h(StaleCleanupPanel, { onRefresh: onRefresh }),
     qu.length > 0
       ? h(
           "div",
@@ -850,8 +1392,7 @@ export function QueueTab(p: QueueTabProps) {
                       null,
                       h(
                         Badge,
-                        { tone: "warning" },
-                        "running",
+                        { tone: "warning", children: "running" },
                       ),
                     ),
                     h("td", null, r.name),

@@ -14,20 +14,62 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from typing import Annotated, Any, cast
 
 from cache_utils import cache_delete, cache_get, cache_set
 from dashboard_config import ORG
 from error_models import bad_gateway, validation_error
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from identity import Principal, require_scope
 from models.github_payloads import GhWorkflowRun
 from proxy_utils import proxy_to_hub, should_proxy_fleet_to_hub
+from queue_cleanup import DEFAULT_MIN_AGE_MINUTES, find_stale_runs, purge_stale_runs
 from run_timing import annotate_runs_with_timing
 from security import validate_repo_slug
 from system_utils import run_cmd
 
 log = logging.getLogger("dashboard.queue")
 router = APIRouter(tags=["queue"])
+
+
+def _reason_counts(runs: list[dict]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for run in runs:
+        reason = str(run.get("reason") or "unknown")
+        counts[reason] = counts.get(reason, 0) + 1
+    return counts
+
+
+def _filter_stale_runs(
+    runs: list[dict],
+    *,
+    repo: str | None = None,
+    workflow: str | None = None,
+    reason: str | None = None,
+    safe_only: bool = False,
+    max_count: int | None = None,
+) -> list[dict]:
+    filtered = runs
+    if repo:
+        repo = validate_repo_slug(repo)
+        filtered = [run for run in filtered if run.get("repo") == repo]
+    if workflow:
+        filtered = [run for run in filtered if run.get("workflow") == workflow]
+    if reason:
+        filtered = [run for run in filtered if run.get("reason") == reason]
+    if safe_only:
+        filtered = [run for run in filtered if run.get("safe_to_cancel") is True]
+    if max_count is not None and max_count > 0:
+        filtered = filtered[:max_count]
+    return filtered
+
+
+async def _json_body_or_empty(request: Request) -> dict[str, Any]:
+    try:
+        body = await request.json()
+    except Exception:
+        return {}
+    return body if isinstance(body, dict) else {}
 
 
 # ─── Internal helpers ─────────────────────────────────────────────────────────
@@ -130,7 +172,7 @@ async def _queue_impl() -> dict:
     if not repos:
         # No repos visible at all; try the stale cache before giving up.
         stale = cache_get(_QUEUE_STALE_KEY, _QUEUE_STALE_TTL)
-        return stale if stale is not None else _empty_queue_result()
+        return cast(dict[Any, Any], stale) if stale is not None else _empty_queue_result()
 
     async def fetch_active_runs(repo_name: str) -> list[dict]:
         results: list[dict] = []
@@ -144,13 +186,13 @@ async def _queue_impl() -> dict:
         return_exceptions=True,
     )
 
-    all_runs: list[dict] = []
+    all_runs: list[dict[Any, Any]] = []
     failures: list[str] = []
-    for repo, result in zip(sample, fetched, strict=True):
-        if isinstance(result, BaseException):
-            failures.append(f"{repo['name']}: {result!r}")
+    for repo, fetched_result in zip(sample, fetched, strict=True):
+        if isinstance(fetched_result, BaseException):
+            failures.append(f"{repo['name']}: {fetched_result!r}")
             continue
-        all_runs.extend(result)
+        all_runs.extend(fetched_result)
 
     if failures:
         log.warning(
@@ -165,7 +207,7 @@ async def _queue_impl() -> dict:
         stale = cache_get(_QUEUE_STALE_KEY, _QUEUE_STALE_TTL)
         if stale is not None:
             log.warning("queue aggregation: all repos failed; serving stale cache")
-            return stale
+            return cast(dict[Any, Any], stale)
         return _empty_queue_result()
 
     queued = sorted(
@@ -177,7 +219,7 @@ async def _queue_impl() -> dict:
         key=lambda r: r.get("run_started_at") or r.get("created_at", ""),
     )
 
-    result_payload = {
+    payload: dict[Any, Any] = {
         "queued": queued,
         "in_progress": in_progress,
         "total": len(queued) + len(in_progress),
@@ -188,9 +230,9 @@ async def _queue_impl() -> dict:
             "repos_failed": len(failures),
         },
     }
-    cache_set(_QUEUE_CACHE_KEY, result_payload)
-    cache_set(_QUEUE_STALE_KEY, result_payload)
-    return result_payload
+    cache_set(_QUEUE_CACHE_KEY, payload)
+    cache_set(_QUEUE_STALE_KEY, payload)
+    return payload
 
 
 # ─── Queue Routes ─────────────────────────────────────────────────────────────
@@ -234,6 +276,93 @@ async def get_queue_status(request: Request) -> dict:
         return await proxy_to_hub(request)
     raw = await _queue_impl()
     return annotate_runs_with_timing(raw)
+
+
+@router.get("/api/queue/stale")
+async def get_stale_queue_runs(
+    request: Request,
+    min_age_minutes: Annotated[int, Query(ge=1, le=60 * 24 * 14)] = DEFAULT_MIN_AGE_MINUTES,
+    repo: str | None = None,
+    workflow: str | None = None,
+    reason: str | None = None,
+    safe_only: bool = False,
+    max_count: Annotated[int | None, Query(ge=1, le=500)] = None,
+) -> dict:
+    """List queued workflow runs older than ``min_age_minutes`` across the org."""
+    if should_proxy_fleet_to_hub(request):
+        return await proxy_to_hub(request)
+    runs = await find_stale_runs(ORG, min_age_minutes=min_age_minutes)
+    run_dicts = [run.as_dict() for run in runs]
+    filtered_runs = _filter_stale_runs(
+        run_dicts,
+        repo=repo,
+        workflow=workflow,
+        reason=reason,
+        safe_only=safe_only,
+        max_count=max_count,
+    )
+    return {
+        "org": ORG,
+        "min_age_minutes": min_age_minutes,
+        "stale_count": len(runs),
+        "superseded_count": sum(1 for run in runs if run.pr_head_superseded),
+        "safe_count": sum(1 for run in run_dicts if run.get("safe_to_cancel") is True),
+        "reason_counts": _reason_counts(run_dicts),
+        "filtered_count": len(filtered_runs),
+        "runs": filtered_runs,
+    }
+
+
+@router.post("/api/queue/purge-stale")
+async def purge_stale_queue_runs(
+    request: Request,
+    *,
+    principal: Principal = Depends(require_scope("workflows.control")),  # noqa: B008
+    min_age_minutes: Annotated[int, Query(ge=1, le=60 * 24 * 14)] = DEFAULT_MIN_AGE_MINUTES,
+    dry_run: bool = True,
+    superseded_only: bool = True,
+    repo: str | None = None,
+    workflow: str | None = None,
+    reason: str | None = None,
+    safe_only: bool = True,
+    max_count: Annotated[int | None, Query(ge=1, le=500)] = None,
+) -> dict:
+    """Cancel stale queued workflow runs.
+
+    By default this mutating endpoint only purges stale PR runs whose PR head
+    has advanced beyond the queued run's head SHA.
+    """
+    if should_proxy_fleet_to_hub(request):
+        return await proxy_to_hub(request)
+    body = await _json_body_or_empty(request)
+    min_age_minutes = int(body.get("min_age_minutes", body.get("min_age", min_age_minutes)))
+    dry_run = bool(body.get("dry_run", dry_run))
+    repo = body.get("repo", repo) or None
+    workflow = body.get("workflow", body.get("workflow_name", workflow)) or None
+    reason = body.get("reason", reason) or None
+    safe_only = bool(body.get("safe_only", safe_only))
+    max_count = body.get("max_count", body.get("max_cancel", max_count))
+    max_count = int(max_count) if max_count else None
+    superseded_only = bool(body.get("superseded_only", superseded_only))
+    if safe_only:
+        superseded_only = True
+    result = await purge_stale_runs(
+        ORG,
+        min_age_minutes=min_age_minutes,
+        dry_run=dry_run,
+        superseded_only=superseded_only,
+        repo=validate_repo_slug(repo) if repo else None,
+        workflow=workflow,
+        reason=reason,
+        safe_only=safe_only,
+        max_count=max_count,
+    )
+    result["reason_counts"] = _reason_counts(list(result.get("runs", [])))
+    if result.get("cancelled_count", 0):
+        cache_delete("queue")
+        cache_delete("queue:stale")
+        cache_delete("diagnose")
+    return result
 
 
 @router.post("/api/runs/{repo}/cancel/{run_id}")
