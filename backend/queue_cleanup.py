@@ -45,6 +45,19 @@ _CANCEL_CONCURRENCY: int = Concurrency.QUEUE_CANCEL  # concurrent cancel calls
 # ---------------------------------------------------------------------------
 
 
+def classify_stale_run(branch: str, age_minutes: int) -> tuple[str, bool]:
+    """Determine the reason and safety status of a stale run based on branch and age."""
+    if branch in ("main", "master", "release"):
+        if age_minutes > 360:
+            return "offline-runner-or-lag", True
+        else:
+            return "stale-main-branch-queue", False
+    elif any(x in branch.lower() for x in ("agent", "worktree", "wt-", "patch-", "run-")):
+        return "abandoned-agent-run", True
+    else:
+        return "stale-feature-branch", True
+
+
 @dataclass
 class StaleRun:
     repo: str
@@ -55,6 +68,9 @@ class StaleRun:
     age_minutes: int
     cancelled: bool = False
     cancel_error: str = ""
+    reason: str = ""
+    safe_to_cancel: bool = True
+    url: str = ""
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -147,14 +163,20 @@ async def _queued_stale_for_repo(
         age = now - created
         if age < min_age:
             continue
+        age_minutes = int(age.total_seconds() / 60)
+        branch = run.get("head_branch", "?") or "?"
+        run_reason, safe_to_cancel = classify_stale_run(branch, age_minutes)
         stale.append(
             StaleRun(
                 repo=repo,
                 run_id=run.get("id", 0),
                 workflow=run.get("name", "?"),
-                branch=run.get("head_branch", "?"),
+                branch=branch,
                 created_at=raw_ts,
-                age_minutes=int(age.total_seconds() / 60),
+                age_minutes=age_minutes,
+                reason=run_reason,
+                safe_to_cancel=safe_to_cancel,
+                url=f"https://github.com/{org}/{repo}/actions/runs/{run.get('id', 0)}",
             )
         )
     return stale
@@ -163,6 +185,8 @@ async def _queued_stale_for_repo(
 async def find_stale_runs(
     org: str,
     min_age_minutes: int = DEFAULT_MIN_AGE_MINUTES,
+    repo: str | None = None,
+    reason: str | None = None,
 ) -> list[StaleRun]:
     """Scan every repo in *org* for queued runs older than *min_age_minutes*.
 
@@ -170,16 +194,27 @@ async def find_stale_runs(
     without hammering the GitHub API.  Sorted oldest-first so the worst
     offenders appear at the top.
     """
-    repos = await list_all_repos(org)
-    min_age = timedelta(minutes=min_age_minutes)
-    sem = asyncio.Semaphore(_SCAN_CONCURRENCY)
+    if repo:
+        from security import validate_repo_slug
 
-    async def bounded(repo: str) -> list[StaleRun]:
-        async with sem:
-            return await _queued_stale_for_repo(org, repo, min_age)
+        validated_repo = validate_repo_slug(repo)
+        min_age = timedelta(minutes=min_age_minutes)
+        flat = await _queued_stale_for_repo(org, validated_repo, min_age)
+    else:
+        repos = await list_all_repos(org)
+        min_age = timedelta(minutes=min_age_minutes)
+        sem = asyncio.Semaphore(_SCAN_CONCURRENCY)
 
-    nested = await asyncio.gather(*[bounded(r) for r in repos])
-    flat = [run for runs in nested for run in runs]
+        async def bounded(r: str) -> list[StaleRun]:
+            async with sem:
+                return await _queued_stale_for_repo(org, r, min_age)
+
+        nested = await asyncio.gather(*[bounded(r) for r in repos])
+        flat = [run for runs in nested for run in runs]
+
+    if reason:
+        flat = [r for r in flat if r.reason.lower() == reason.lower()]
+
     return sorted(flat, key=lambda r: r.age_minutes, reverse=True)
 
 
@@ -212,6 +247,8 @@ async def _cancel_one(org: str, run: StaleRun) -> bool:
 async def purge_stale_runs(
     org: str,
     min_age_minutes: int = DEFAULT_MIN_AGE_MINUTES,
+    repo: str | None = None,
+    reason: str | None = None,
     *,
     dry_run: bool = False,
 ) -> dict:
@@ -220,7 +257,7 @@ async def purge_stale_runs(
     Returns a summary dict suitable for direct JSON serialisation.
     When *dry_run* is True the runs are listed but nothing is cancelled.
     """
-    stale = await find_stale_runs(org, min_age_minutes)
+    stale = await find_stale_runs(org, min_age_minutes, repo=repo, reason=reason)
     cancelled_count = 0
     errors: list[str] = []
 

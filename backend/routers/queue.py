@@ -22,6 +22,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from identity import Principal, require_scope
 from models.github_payloads import GhWorkflowRun
 from proxy_utils import proxy_to_hub, should_proxy_fleet_to_hub
+from queue_cleanup import find_stale_runs, purge_stale_runs
 from run_timing import annotate_runs_with_timing
 from security import validate_repo_slug
 from system_utils import run_cmd
@@ -146,11 +147,11 @@ async def _queue_impl() -> dict:
 
     all_runs: list[dict] = []
     failures: list[str] = []
-    for repo, result in zip(sample, fetched, strict=True):
-        if isinstance(result, BaseException):
-            failures.append(f"{repo['name']}: {result!r}")
+    for repo, res in zip(sample, fetched, strict=True):
+        if isinstance(res, BaseException):
+            failures.append(f"{repo['name']}: {res!r}")
             continue
-        all_runs.extend(result)
+        all_runs.extend(res)
 
     if failures:
         log.warning(
@@ -358,3 +359,113 @@ async def cancel_workflow_runs(
         "cancelled": cancelled,
         "errors": errors,
     }
+
+
+@router.get("/api/queue/stale")
+async def get_stale_queue(
+    request: Request,
+    min_age_minutes: int = 60,
+    reason: str | None = None,
+    repo: str | None = None,
+) -> dict:
+    """Preview stale runs in the queue across the organization."""
+    if should_proxy_fleet_to_hub(request):
+        return await proxy_to_hub(request)
+
+    # Validate repo slug if provided
+    if repo:
+        try:
+            repo = validate_repo_slug(repo)
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    try:
+        runs = await find_stale_runs(
+            org=ORG,
+            min_age_minutes=min_age_minutes,
+            repo=repo,
+            reason=reason,
+        )
+        return {
+            "org": ORG,
+            "min_age_minutes": min_age_minutes,
+            "stale_count": len(runs),
+            "runs": [r.as_dict() for r in runs],
+        }
+    except Exception as exc:
+        log.exception("Failed to fetch stale runs")
+        raise HTTPException(
+            status_code=502,
+            detail=bad_gateway(f"Failed to fetch stale runs: {exc}").model_dump(exclude_none=True),
+        ) from exc
+
+
+@router.post("/api/queue/purge-stale")
+async def purge_stale_queue(
+    request: Request,
+    *,
+    principal: Principal = Depends(require_scope("workflows.control")),  # noqa: B008
+    min_age_minutes: int | None = None,
+    reason: str | None = None,
+    repo: str | None = None,
+    dry_run: bool = True,
+) -> dict:
+    """Purge stale runs in the queue across the organization."""
+    if should_proxy_fleet_to_hub(request):
+        return await proxy_to_hub(request)
+
+    # In a POST request, parameters can also be passed via a JSON body.
+    # Default dry_run to True as required.
+    body = {}
+    if request.headers.get("content-type") == "application/json":
+        try:
+            body = await request.json()
+        except Exception:
+            pass
+
+    # Merge body and query parameters, preferring query parameters if both are provided.
+    req_min_age = min_age_minutes if min_age_minutes is not None else body.get("min_age_minutes")
+    if req_min_age is None:
+        req_min_age = 60
+    else:
+        try:
+            req_min_age = int(req_min_age)
+        except ValueError:
+            req_min_age = 60
+
+    req_reason = reason if reason is not None else body.get("reason")
+    req_repo = repo if repo is not None else body.get("repo")
+
+    # We must default to dry_run = True. If dry_run is provided as False (either via query or body), we check it.
+    req_dry_run = True
+    if dry_run is False or str(dry_run).lower() == "false":
+        req_dry_run = False
+    elif body.get("dry_run") is False or str(body.get("dry_run")).lower() == "false":
+        req_dry_run = False
+
+    # Validate repo slug if provided
+    if req_repo:
+        try:
+            req_repo = validate_repo_slug(req_repo)
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    try:
+        result = await purge_stale_runs(
+            org=ORG,
+            min_age_minutes=req_min_age,
+            repo=req_repo,
+            reason=req_reason,
+            dry_run=req_dry_run,
+        )
+        # Invalidate cache if we actually purged
+        if not req_dry_run and result.get("cancelled_count", 0) > 0:
+            cache_delete("queue")
+            cache_delete("diagnose")
+        return result
+    except Exception as exc:
+        log.exception("Failed to purge stale runs")
+        raise HTTPException(
+            status_code=502,
+            detail=bad_gateway(f"Failed to purge stale runs: {exc}").model_dump(exclude_none=True),
+        ) from exc

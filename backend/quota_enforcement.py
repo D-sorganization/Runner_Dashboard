@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import contextlib
-import fcntl
 import logging
 import time
 from pathlib import Path
@@ -15,6 +14,11 @@ from runner_lease import lease_manager
 from security import safe_yaml_load, validate_config_path
 
 log = logging.getLogger("dashboard.quota_enforcement")
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - Windows development/runtime path.
+    fcntl = None
 
 
 @contextlib.contextmanager
@@ -28,17 +32,19 @@ def _locked_yaml_file(path: Path, mode: str = "r+"):
     """
     path.touch()
     with open(path, mode) as fh:
-        try:
-            fcntl.flock(fh, fcntl.LOCK_EX)
-        except (AttributeError, OSError):
-            pass
+        if fcntl is not None:
+            try:
+                fcntl.flock(fh, fcntl.LOCK_EX)
+            except OSError:
+                pass
         try:
             yield fh
         finally:
-            try:
-                fcntl.flock(fh, fcntl.LOCK_UN)
-            except (AttributeError, OSError):
-                pass
+            if fcntl is not None:
+                try:
+                    fcntl.flock(fh, fcntl.LOCK_UN)
+                except OSError:
+                    pass
 
 
 class QuotaEnforcement:

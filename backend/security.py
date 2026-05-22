@@ -118,10 +118,7 @@ def validate_fleet_node_url(url: str) -> str:
             raise
         # hostname – allow localhost, .local, .internal, .ts.net (Tailscale MagicDNS)
         if not (
-            host == "localhost"
-            or host.endswith(".local")
-            or host.endswith(".internal")
-            or host.endswith(".ts.net")
+            host == "localhost" or host.endswith(".local") or host.endswith(".internal") or host.endswith(".ts.net")
         ):
             raise ValueError(f"Fleet node hostname not allowed: {host}") from exc
     return url
@@ -290,6 +287,8 @@ def _check_file_mode(path: Path) -> bool:
     Returns True if file mode is safe.
     Returns False if file is world-writable.
     """
+    if os.name == "nt":
+        return True
     try:
         import stat
 
