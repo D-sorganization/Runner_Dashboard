@@ -49,6 +49,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
+    JSONResponse,
 )
 from fastapi.staticfiles import StaticFiles
 from identity import Principal, require_scope  # noqa: B008
@@ -69,6 +70,7 @@ import config_schema as config_schema  # noqa: E402
 import dashboard_config as dashboard_config  # noqa: E402
 import deployment_drift as deployment_drift  # noqa: E402
 import dispatch_contract as dispatch_contract  # noqa: E402
+import gh_utils as gh_utils  # noqa: E402
 import health as _health_router  # noqa: E402
 import issue_inventory as issue_inventory  # noqa: E402
 import lease_synchronizer as lease_synchronizer  # noqa: E402
@@ -363,6 +365,23 @@ app = FastAPI(
     version="4.0.0",
     description="Monitor and control self-hosted GitHub Actions runners",
 )
+
+
+@app.exception_handler(gh_utils.RateLimitedError)
+async def _github_rate_limited_handler(_request: Request, exc: gh_utils.RateLimitedError) -> JSONResponse:
+    """Return a structured 429 instead of logging rate-limit breakers as crashes."""
+    return JSONResponse(
+        status_code=429,
+        headers={"Retry-After": str(exc.retry_after_seconds)},
+        content={
+            "detail": exc.detail,
+            "status": "rate_limited",
+            "endpoint": exc.endpoint,
+            "resource_class": exc.resource_class,
+            "retry_after_seconds": exc.retry_after_seconds,
+        },
+    )
+
 
 # Issue #331 — request_id correlation middleware (outermost so all subsequent
 # middleware and handlers have access to the request_id context var).
@@ -1231,28 +1250,14 @@ def get_runner_service_name(runner_num: int) -> str | None:
 DEFAULT_RUNNER_SCHEDULE = {
     "enabled": True,
     "timezone": os.environ.get("RUNNER_SCHEDULE_TIMEZONE", "America/Los_Angeles"),
-    "default_count": min(NUM_RUNNERS, int(os.environ.get("RUNNER_SCHEDULE_DEFAULT", "4"))),
+    "default_count": min(NUM_RUNNERS, int(os.environ.get("RUNNER_SCHEDULE_DEFAULT", str(NUM_RUNNERS)))),
     "schedules": [
         {
-            "name": "day",
-            "days": ["mon", "tue", "wed", "thu", "fri"],
-            "start": "07:00",
-            "end": "22:00",
-            "runners": min(NUM_RUNNERS, 4),
-        },
-        {
-            "name": "overnight",
+            "name": "always-on",
             "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
-            "start": "22:00",
-            "end": "07:00",
+            "start": "00:00",
+            "end": "23:59",
             "runners": NUM_RUNNERS,
-        },
-        {
-            "name": "weekend",
-            "days": ["sat", "sun"],
-            "start": "07:00",
-            "end": "22:00",
-            "runners": min(NUM_RUNNERS, 6),
         },
     ],
 }

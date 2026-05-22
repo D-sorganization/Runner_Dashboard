@@ -42,8 +42,9 @@ def test_get_today_spend_zero_for_new_principal(tmp_path: Path) -> None:
 
 def test_add_spend_accumulates(tmp_path: Path) -> None:
     qenf = _make_enforcer(tmp_path)
-    qenf.add_spend("p1", 1.5)
-    qenf.add_spend("p1", 2.0)
+    with patch("quota_enforcement.validate_config_path"):
+        qenf.add_spend("p1", 1.5)
+        qenf.add_spend("p1", 2.0)
     assert qenf.get_today_spend("p1") == pytest.approx(3.5)
 
 

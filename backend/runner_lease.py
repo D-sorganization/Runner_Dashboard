@@ -39,18 +39,21 @@ def _locked_yaml_file(path: Path, mode: str = "r+"):
     """
     path.touch()
     with open(path, mode) as fh:
-        if fcntl is not None:
+        flock = getattr(fcntl, "flock", None) if fcntl is not None else None
+        lock_ex = getattr(fcntl, "LOCK_EX", None) if fcntl is not None else None
+        lock_un = getattr(fcntl, "LOCK_UN", None) if fcntl is not None else None
+        if flock is not None and lock_ex is not None:
             try:
-                fcntl.flock(fh, fcntl.LOCK_EX)
-            except (AttributeError, OSError):
+                flock(fh, lock_ex)
+            except OSError:
                 pass
         try:
             yield fh
         finally:
-            if fcntl is not None:
+            if flock is not None and lock_un is not None:
                 try:
-                    fcntl.flock(fh, fcntl.LOCK_UN)
-                except (AttributeError, OSError):
+                    flock(fh, lock_un)
+                except OSError:
                     pass
 
 

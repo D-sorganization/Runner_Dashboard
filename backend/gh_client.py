@@ -27,6 +27,7 @@ import logging
 import os
 import time
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -35,11 +36,34 @@ log = logging.getLogger("dashboard.gh_client")
 
 _GITHUB_API_BASE = "https://api.github.com"
 _DEFAULT_RETRY_AFTER = 60
-_MAX_RETRIES = 5
 
 # ── Token cache ──────────────────────────────────────────────────────────────
 
 _cached_token: str | None = None
+_last_status: dict[str, Any] = {
+    "status": "unknown",
+    "detail": "No GitHub API request has completed in this process.",
+    "endpoint": "",
+    "retry_after_seconds": 0,
+    "updated_at": None,
+}
+
+
+def _set_status(status: str, detail: str, *, endpoint: str = "", retry_after_seconds: int = 0) -> None:
+    _last_status.update(
+        {
+            "status": status,
+            "detail": detail[:500],
+            "endpoint": endpoint,
+            "retry_after_seconds": max(0, int(retry_after_seconds)),
+            "updated_at": datetime.now(UTC).isoformat(),
+        }
+    )
+
+
+def get_status() -> dict[str, Any]:
+    """Return the last observed GitHub API health state for dashboard display."""
+    return dict(_last_status)
 
 
 def _get_token() -> str:
@@ -53,6 +77,7 @@ def _get_token() -> str:
         return _cached_token
     token = os.environ.get("GH_TOKEN", "").strip() or os.environ.get("GITHUB_TOKEN", "").strip()
     if not token:
+        _set_status("auth_missing", "GH_TOKEN / GITHUB_TOKEN is not set")
         raise GhAuthError("GH_TOKEN / GITHUB_TOKEN not set; cannot use httpx GitHub client")
     _cached_token = token
     return token
@@ -149,6 +174,17 @@ def _parse_retry_after(resp: httpx.Response) -> int:
     return _DEFAULT_RETRY_AFTER
 
 
+def _is_rate_limited_response(resp: httpx.Response) -> bool:
+    body = resp.text.lower()
+    return (
+        resp.status_code == 429
+        or resp.headers.get("X-RateLimit-Remaining") == "0"
+        or "api rate limit exceeded" in body
+        or "secondary rate limit" in body
+        or "rate limit exceeded" in body
+    )
+
+
 async def _request(method: str, path: str, *, json: Any = None) -> httpx.Response:
     """Execute one authenticated GitHub API request with retry on 429.
 
@@ -160,35 +196,35 @@ async def _request(method: str, path: str, *, json: Any = None) -> httpx.Respons
     """
     client = _get_client()
     headers = _auth_headers()
-    for attempt in range(_MAX_RETRIES):
-        resp = await client.request(method, path, headers=headers, json=json)
-        if resp.status_code == 200:
-            return resp
-        if resp.status_code == 204:
-            return resp
-        if resp.status_code == 404:
-            raise GhNotFound(path)
-        if resp.status_code == 429 or resp.headers.get("X-RateLimit-Remaining") == "0":
-            retry_after = _parse_retry_after(resp)
-            if attempt < _MAX_RETRIES - 1:
-                log.warning(
-                    "gh_client: rate limited on %s, waiting %ds (attempt %d/%d)",
-                    path,
-                    retry_after,
-                    attempt + 1,
-                    _MAX_RETRIES,
-                )
-                import asyncio
-
-                jitter = min(retry_after, 10) * (0.5 + 0.5 * (attempt / _MAX_RETRIES))
-                await asyncio.sleep(jitter)
-                continue
-            raise GhRateLimited(retry_after_seconds=retry_after, endpoint=path)
-        if resp.status_code >= 500:
-            raise GhServerError(resp.status_code, path, resp.text)
-        # Other client error (403, 422, etc.) — surface as GhServerError with real status
+    resp = await client.request(method, path, headers=headers, json=json)
+    if resp.status_code == 200:
+        _set_status("ok", "GitHub API requests are succeeding.", endpoint=path)
+        return resp
+    if resp.status_code == 204:
+        _set_status("ok", "GitHub API requests are succeeding.", endpoint=path)
+        return resp
+    if resp.status_code in (401, 403) and not _is_rate_limited_response(resp):
+        _set_status("auth_error", f"GitHub API returned {resp.status_code}: {resp.text}", endpoint=path)
         raise GhServerError(resp.status_code, path, resp.text)
-    raise GhRateLimited(endpoint=path)
+    if resp.status_code == 404:
+        _set_status("not_found", f"GitHub API returned 404 for {path}", endpoint=path)
+        raise GhNotFound(path)
+    if _is_rate_limited_response(resp):
+        retry_after = _parse_retry_after(resp)
+        _set_status(
+            "rate_limited",
+            f"GitHub API rate limited this dashboard process; retry after {retry_after}s.",
+            endpoint=path,
+            retry_after_seconds=retry_after,
+        )
+        log.warning("gh_client: rate limited on %s; retry after %ds", path, retry_after)
+        raise GhRateLimited(retry_after_seconds=retry_after, endpoint=path)
+    if resp.status_code >= 500:
+        _set_status("server_error", f"GitHub API returned {resp.status_code}: {resp.text}", endpoint=path)
+        raise GhServerError(resp.status_code, path, resp.text)
+    # Other client error (403, 422, etc.) — surface as GhServerError with real status
+    _set_status("client_error", f"GitHub API returned {resp.status_code}: {resp.text}", endpoint=path)
+    raise GhServerError(resp.status_code, path, resp.text)
 
 
 # ── Public API ────────────────────────────────────────────────────────────────

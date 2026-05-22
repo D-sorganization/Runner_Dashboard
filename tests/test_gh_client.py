@@ -105,6 +105,20 @@ def test_gh_server_error() -> None:
     assert exc.status_code == 503
 
 
+def test_github_status_records_rate_limit() -> None:
+    import httpx
+    from gh_client import _is_rate_limited_response, get_status
+
+    resp = httpx.Response(
+        403,
+        headers={"X-RateLimit-Remaining": "0", "X-RateLimit-Reset": "9999999999"},
+        text="API rate limit exceeded",
+    )
+    assert _is_rate_limited_response(resp) is True
+    status = get_status()
+    assert "status" in status
+
+
 # ---------------------------------------------------------------------------
 # gh_utils.gh_api delegates to gh_client when token is present
 # ---------------------------------------------------------------------------

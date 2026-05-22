@@ -27,6 +27,8 @@ def _bash_path(path: Path) -> str:
         return str(path)
     resolved = path.resolve()
     drive = resolved.drive.rstrip(":").lower()
+    if BASH and "Git\\usr\\bin" in BASH:
+        return f"/{drive}{resolved.as_posix()[2:]}"
     return f"/mnt/{drive}{resolved.as_posix()[2:]}"
 
 

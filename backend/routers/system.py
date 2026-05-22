@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -48,6 +49,12 @@ _POWERSHELL_CANDIDATES = (
     "powershell.exe",
     "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe",
 )
+
+
+def _float_metric(value: object, default: float) -> float:
+    if isinstance(value, int | float):
+        return float(value)
+    return default
 
 
 def _windows_host_resource_snapshot() -> dict | None:
@@ -299,6 +306,11 @@ def set_host_memory_gb(host_memory_gb: float | None) -> None:
 @router.get("/api/system")
 async def get_system_metrics():
     """Real-time system resource metrics."""
+    return await asyncio.to_thread(_get_system_metrics_sync)
+
+
+def _get_system_metrics_sync() -> dict[str, Any]:
+    """Build system metrics without blocking the FastAPI event loop."""
     cpu_freq = psutil.cpu_freq()
     mem = psutil.virtual_memory()
     swap = psutil.swap_memory()
@@ -401,11 +413,11 @@ async def get_system_metrics():
             pass
 
     # Use the more critical disk for the top-level pressure signal.
-    windows_pct = (windows_disk or {}).get("percent", 0)
+    windows_pct = _float_metric((windows_disk or {}).get("percent"), 0.0)
     effective_pct = max(disk_percent, windows_pct)
     effective_free = min(
         disk_free_gb,
-        (windows_disk or {}).get("free_gb", disk_free_gb),
+        _float_metric((windows_disk or {}).get("free_gb"), disk_free_gb),
     )
     disk_pressure = _disk_pressure_snapshot(
         path=disk_path,
