@@ -63,7 +63,7 @@ env:
 
 jobs:
   intelligent-repair:
-    runs-on: d-sorg-fleet
+    runs-on: d-sorg-fleet-14core
     timeout-minutes: 30
     # Prevent multiple repairs on same branch simultaneously
     concurrency:
@@ -159,7 +159,7 @@ jobs:
         if: steps.branch.outputs.skip != 'true' && steps.limits.outputs.exceeded != 'true'
         with:
           python-version: "3.12"
-          cache: 'pip'
+          cache: "pip"
 
       - name: Install Tools
         if: steps.branch.outputs.skip != 'true' && steps.limits.outputs.exceeded != 'true'

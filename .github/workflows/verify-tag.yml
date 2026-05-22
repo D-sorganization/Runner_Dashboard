@@ -22,7 +22,7 @@ concurrency:
 jobs:
   verify:
     name: Validate tag was created by release workflow
-    runs-on: d-sorg-fleet
+    runs-on: d-sorg-fleet-14core
     timeout-minutes: 5
     env:
       EXPECTED_HEADER: "Auto-generated release notes (release.yml)"
