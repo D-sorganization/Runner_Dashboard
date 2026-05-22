@@ -6,11 +6,19 @@ Enforces per-principal runner quotas and tracks active leases to ensure fair sha
 from __future__ import annotations
 
 import contextlib
-import fcntl
 import logging
 import time
 from pathlib import Path
 from typing import Any
+
+# fcntl is Unix-only; degrade gracefully on Windows so module import
+# succeeds. The usage sites already catch AttributeError/OSError, so this
+# only matters for module-load on Windows clones — see the matching
+# tolerant import in backend/quota_enforcement.py for the longer rationale.
+try:
+    import fcntl  # type: ignore[import-not-found,unused-ignore]
+except ImportError:  # pragma: no cover - Windows-only path
+    fcntl = None  # type: ignore[assignment]
 
 import yaml
 from identity import Principal
@@ -31,17 +39,19 @@ def _locked_yaml_file(path: Path, mode: str = "r+"):
     """
     path.touch()
     with open(path, mode) as fh:
-        try:
-            fcntl.flock(fh, fcntl.LOCK_EX)
-        except (AttributeError, OSError):
-            pass
+        if fcntl is not None:
+            try:
+                fcntl.flock(fh, fcntl.LOCK_EX)
+            except (AttributeError, OSError):
+                pass
         try:
             yield fh
         finally:
-            try:
-                fcntl.flock(fh, fcntl.LOCK_UN)
-            except (AttributeError, OSError):
-                pass
+            if fcntl is not None:
+                try:
+                    fcntl.flock(fh, fcntl.LOCK_UN)
+                except (AttributeError, OSError):
+                    pass
 
 
 class LeaseRecord(BaseModel):

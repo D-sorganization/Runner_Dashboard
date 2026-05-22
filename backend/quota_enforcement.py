@@ -3,10 +3,21 @@
 from __future__ import annotations
 
 import contextlib
-import fcntl
 import logging
 import time
 from pathlib import Path
+
+# fcntl is a Unix-only module. The docstring on ``_locked_yaml_file`` already
+# promises "Degrades gracefully on platforms that lack fcntl (e.g. Windows
+# dev env)", but the historical ``import fcntl`` at module top fired before
+# that comment ever ran, breaking Python collection on Windows clones
+# (pytest, mypy, ruff all failed at import). The try/except at usage sites
+# already catches ``AttributeError`` from ``None.flock(...)`` and ``OSError``,
+# so the runtime behaviour is unchanged on POSIX hosts.
+try:
+    import fcntl  # type: ignore[import-not-found,unused-ignore]
+except ImportError:  # pragma: no cover - Windows-only path
+    fcntl = None  # type: ignore[assignment]
 
 import yaml
 from identity import Principal
@@ -28,17 +39,19 @@ def _locked_yaml_file(path: Path, mode: str = "r+"):
     """
     path.touch()
     with open(path, mode) as fh:
-        try:
-            fcntl.flock(fh, fcntl.LOCK_EX)
-        except (AttributeError, OSError):
-            pass
+        if fcntl is not None:
+            try:
+                fcntl.flock(fh, fcntl.LOCK_EX)
+            except (AttributeError, OSError):
+                pass
         try:
             yield fh
         finally:
-            try:
-                fcntl.flock(fh, fcntl.LOCK_UN)
-            except (AttributeError, OSError):
-                pass
+            if fcntl is not None:
+                try:
+                    fcntl.flock(fh, fcntl.LOCK_UN)
+                except (AttributeError, OSError):
+                    pass
 
 
 class QuotaEnforcement:
