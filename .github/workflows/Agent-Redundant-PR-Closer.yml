@@ -55,7 +55,7 @@ concurrency:
 
 jobs:
   close-redundant:
-    runs-on: d-sorg-fleet
+    runs-on: d-sorg-fleet-16core
     timeout-minutes: 10
     steps:
       - name: Check Jules app credentials
@@ -94,7 +94,7 @@ jobs:
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: "3.11"
-          cache: 'pip'
+          cache: "pip"
 
       - name: Close redundant agent PRs
         if: steps.app-creds.outputs.configured == 'true'

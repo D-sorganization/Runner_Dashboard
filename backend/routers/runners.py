@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any
 
 from cache_utils import cache_get, cache_set
 from dashboard_config import ORG
-from error_models import bad_gateway, not_found, rate_limited, service_error, service_stderr_to_status
+from error_models import bad_gateway, not_found, service_error, service_stderr_to_status
 from fastapi import APIRouter, Depends, HTTPException, Request
 from gh_utils import RateLimitedError, gh_api_admin
 from identity import Principal, require_scope
@@ -101,9 +101,11 @@ async def get_runners(request: Request) -> dict[str, Any]:
         log.warning("GitHub rate limit while fetching runners: retry_after=%d", exc.retry_after_seconds)
         raise HTTPException(
             status_code=429,
-            detail=rate_limited(f"GitHub rate limited; retry after {exc.retry_after_seconds}s").model_dump(
-                exclude_none=True
-            ),
+            detail={
+                "error": "github_rate_limited",
+                "retry_after_seconds": exc.retry_after_seconds,
+                "resource_class": exc.resource_class,
+            },
             headers={"Retry-After": str(exc.retry_after_seconds)},
         ) from exc
     except Exception as exc:

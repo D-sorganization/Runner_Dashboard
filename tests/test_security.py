@@ -1,6 +1,7 @@
 from __future__ import annotations  # noqa: E402
 
 import ast
+import os
 import time
 from pathlib import Path  # noqa: E402
 
@@ -84,20 +85,14 @@ def test_validate_fleet_node_url_tailscale_cgnat_low() -> None:
     no Tailscale-routed peer can be configured as a fleet node — which broke
     federation on every host whose machine_registry.yml used the canonical
     100.x IPs Tailscale assigns. Pin the low end of the range."""
-    assert (
-        security.validate_fleet_node_url("http://100.64.0.1:8321")
-        == "http://100.64.0.1:8321"
-    )
+    assert security.validate_fleet_node_url("http://100.64.0.1:8321") == "http://100.64.0.1:8321"
 
 
 def test_validate_fleet_node_url_tailscale_cgnat_high() -> None:
     """Pin the high end of 100.64.0.0/10. Anything inside this range must
     pass; anything outside must fail.
     """
-    assert (
-        security.validate_fleet_node_url("http://100.127.255.254:8321")
-        == "http://100.127.255.254:8321"
-    )
+    assert security.validate_fleet_node_url("http://100.127.255.254:8321") == "http://100.127.255.254:8321"
 
 
 def test_validate_fleet_node_url_just_above_cgnat_rejected() -> None:
@@ -415,7 +410,10 @@ def test_validate_config_path_symlink_escape(tmp_path: Path) -> None:
     allowed_root = tmp_path / "allowed"
     allowed_root.mkdir(parents=True, exist_ok=True)
     symlink = allowed_root / "config.yml"
-    symlink.symlink_to(evil_file)
+    try:
+        symlink.symlink_to(evil_file)
+    except OSError as exc:
+        pytest.skip(f"symlink creation is unavailable on this platform: {exc}")
 
     # The resolved path escapes the allowed root, so it's rejected
     with pytest.raises(ValueError, match="escapes allowed roots"):
@@ -433,7 +431,10 @@ def test_validate_config_path_symlink_safe(tmp_path: Path) -> None:
 
     # Create symlink within same root
     symlink = allowed_root / "config.yml"
-    symlink.symlink_to(target_file)
+    try:
+        symlink.symlink_to(target_file)
+    except OSError as exc:
+        pytest.skip(f"symlink creation is unavailable on this platform: {exc}")
 
     result = security.validate_config_path(symlink, allowed_roots=[allowed_root])
     assert result == target_file.resolve()
@@ -442,6 +443,9 @@ def test_validate_config_path_symlink_safe(tmp_path: Path) -> None:
 def test_validate_config_path_world_writable(tmp_path: Path) -> None:
     """Test that world-writable files are rejected."""
     import stat
+
+    if os.name == "nt":
+        pytest.skip("POSIX world-writable mode bits are not enforceable on Windows")
 
     config_file = tmp_path / "config.yml"
     config_file.write_text("key: value")

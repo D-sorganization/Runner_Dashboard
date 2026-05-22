@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   refresh:
-    runs-on: d-sorg-fleet
+    runs-on: d-sorg-fleet-16core
     timeout-minutes: 15
     steps:
       - name: Preflight Jules app credentials
@@ -85,7 +85,7 @@ jobs:
         if: steps.credential-preflight.outputs.credentials-present == 'true'
         with:
           python-version: "3.11"
-          cache: 'pip'
+          cache: "pip"
 
       - name: Generate dashboard
         if: steps.credential-preflight.outputs.credentials-present == 'true'

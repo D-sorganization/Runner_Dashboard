@@ -34,8 +34,8 @@ on:
 
 permissions:
   contents: write
-  id-token: write  # required for cosign OIDC and attest-build-provenance
-  attestations: write  # required for actions/attest-build-provenance
+  id-token: write # required for cosign OIDC and attest-build-provenance
+  attestations: write # required for actions/attest-build-provenance
 
 concurrency:
   group: release-${{ github.ref }}
@@ -44,7 +44,7 @@ concurrency:
 jobs:
   release:
     name: Build release, sign, attest, and publish
-    runs-on: d-sorg-fleet
+    runs-on: d-sorg-fleet-16core
     timeout-minutes: 30
     env:
       GH_TOKEN: ${{ github.token }}

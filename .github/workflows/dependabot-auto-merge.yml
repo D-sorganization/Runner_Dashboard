@@ -28,12 +28,12 @@ permissions:
 
 concurrency:
   group: dependabot-auto-merge-${{ github.event.pull_request.number }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   auto-merge:
     if: ${{ github.event.pull_request.user.login == 'dependabot[bot]' }}
-    runs-on: d-sorg-fleet
+    runs-on: d-sorg-fleet-16core
     timeout-minutes: 5
     steps:
       - name: Fetch Dependabot metadata

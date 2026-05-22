@@ -1,4 +1,5 @@
 # ruff: noqa: B008
+import ipaddress
 import logging
 import os
 import secrets
@@ -186,6 +187,28 @@ auth_header = APIKeyHeader(name="Authorization", auto_error=False)
 auth_cookie = APIKeyCookie(name="dashboard_session", auto_error=False)
 
 
+def _loopback_auth_enabled() -> bool:
+    return os.environ.get("DASHBOARD_LOOPBACK_AUTH") == "1"
+
+
+def _is_loopback_request(request: Request) -> bool:
+    if not request.client:
+        return False
+    try:
+        return ipaddress.ip_address(request.client.host).is_loopback
+    except ValueError:
+        return False
+
+
+def _loopback_principal() -> Principal:
+    return Principal(
+        id="__loopback__",
+        type="human",
+        name="Loopback development admin",
+        roles=["admin"],
+    )
+
+
 def require_principal(
     request: Request,
     header_token: str | None = Depends(auth_header),
@@ -206,6 +229,11 @@ def require_principal(
             if session_id and not sm.touch_session(session_id):
                 raise HTTPException(status_code=401, detail="Session revoked or expired")
             prin = identity_manager.principals[principal_id]
+
+    # 3. Optional local development bypass. Disabled by default and only grants
+    # access to the transport peer address, never forwarded headers.
+    if not prin and _loopback_auth_enabled() and _is_loopback_request(request):
+        prin = _loopback_principal()
 
     if not prin:
         # Fail closed — all callers must present valid credentials (issue #315)

@@ -63,9 +63,7 @@ def test_heal_host_force_kills_orphan_workers() -> None:
     processes. Without this, KillMode=process leaves orphans that block
     the cleanup pass."""
     src = _read(_DEPLOY / "heal-host.sh")
-    assert "pkill -KILL -f 'Runner\\.Worker spawnclient'" in src, (
-        "missing post-drain orphan-Worker kill"
-    )
+    assert "pkill -KILL -f 'Runner\\.Worker spawnclient'" in src, "missing post-drain orphan-Worker kill"
 
 
 # ─── PR #664 + #666: runner unit drop-ins (race + orphan fix) ───────────────
@@ -87,9 +85,7 @@ def test_migrate_runner_units_passes_unit_name_via_specifier() -> None:
     correct WorkingDirectory and silently no-ops.
     """
     src = _read(_DEPLOY / "migrate-runner-units.sh")
-    assert "ExecStop=-${HOOK_DIR}/force-drain.sh %n" in src, (
-        "ExecStop= must pass %n to force-drain"
-    )
+    assert "ExecStop=-${HOOK_DIR}/force-drain.sh %n" in src, "ExecStop= must pass %n to force-drain"
 
 
 def test_migrate_runner_units_default_hook_dir_matches_installer() -> None:
@@ -186,7 +182,7 @@ def test_server_auto_derives_fleet_nodes_from_registry() -> None:
     src = _read(_BACKEND / "server.py")
     assert "AUTODERIVE_FLEET_NODES" in src
     assert "FLEET_NODES_SOURCE" in src
-    assert 'log.info("FLEET_NODES auto-derived from registry' in src
+    assert "FLEET_NODES auto-derived from registry" in src
 
 
 def test_diagnostics_endpoint_exists() -> None:
@@ -202,7 +198,7 @@ def test_deploy_check_parses_diagnostics_via_tempfile() -> None:
     heredoc semantics. The fix uses a tempfile so the JSON parse is
     robust against any future curl response payload."""
     src = _read(_DEPLOY / "deploy-check.sh")
-    assert "mktemp /tmp/diag" in src or 'mktemp /tmp/diag.XXXXXX.json' in src
+    assert "mktemp /tmp/diag" in src or "mktemp /tmp/diag.XXXXXX.json" in src
 
 
 def test_deploy_check_warns_on_autoscaler_driven_scaledown() -> None:

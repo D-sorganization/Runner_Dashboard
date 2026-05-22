@@ -464,23 +464,17 @@ class TestRunnerBusyViaPickupDir:
         monkeypatch.setattr(ra, "_runner_workdir_for_unit", lambda _u: "")
         assert ra._runner_busy_via_pickup_dir(self.UNIT) is False
 
-    def test_no_pickup_dir_returns_false(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_no_pickup_dir_returns_false(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(ra, "_runner_workdir_for_unit", lambda _u: str(tmp_path))
         assert ra._runner_busy_via_pickup_dir(self.UNIT) is False
 
-    def test_fresh_pickup_dir_returns_true(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_fresh_pickup_dir_returns_true(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(ra, "_runner_workdir_for_unit", lambda _u: str(tmp_path))
         fc = tmp_path / "_work" / "_temp" / "_runner_file_commands"
         fc.mkdir(parents=True)
         assert ra._runner_busy_via_pickup_dir(self.UNIT) is True
 
-    def test_stale_pickup_dir_returns_false(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_stale_pickup_dir_returns_false(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Stale residue must NOT mark the runner as busy.
 
         If we returned True here, cleanup could never touch a corrupted
@@ -496,9 +490,7 @@ class TestRunnerBusyViaPickupDir:
         _os.utime(fc, (old, old))
         assert ra._runner_busy_via_pickup_dir(self.UNIT) is False
 
-    def test_pickup_dir_short_circuits_is_busy(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_pickup_dir_short_circuits_is_busy(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """A fresh pickup dir must mark busy BEFORE MainPID inspection.
 
         That's the whole point of Strategy 1: it has to fire in the
@@ -518,15 +510,11 @@ class TestRunnerBusyViaLockfile:
     UNIT = "actions.runner.D-sorganization.d-sorg-local-ControlTower-3.service"
     RUNNER_NAME = "d-sorg-local-ControlTower-3"
 
-    def test_no_lockfile_returns_false(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_no_lockfile_returns_false(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(ra, "RUNNER_BUSY_LOCK_DIR", tmp_path)
         assert ra._runner_busy_via_lockfile(self.UNIT) is False
 
-    def test_fresh_lockfile_returns_true(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_fresh_lockfile_returns_true(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(ra, "RUNNER_BUSY_LOCK_DIR", tmp_path)
         (tmp_path / (self.RUNNER_NAME + ".lock")).write_text("pid=1\n")
         assert ra._runner_busy_via_lockfile(self.UNIT) is True
@@ -606,9 +594,7 @@ class TestAutoscalerLockPathFallback:
                         fd.close()
                         fd = None
                     continue
-            assert chosen == str(writable), (
-                "lock acquisition must skip unwritable candidates and use the next"
-            )
+            assert chosen == str(writable), "lock acquisition must skip unwritable candidates and use the next"
         finally:
             if fd is not None:
                 fd.close()
@@ -663,12 +649,8 @@ class TestGracefulDrainDropin:
         content = self._read_script()
         # The drop-in block must reference TimeoutStopSec with a value derived
         # from RUNNER_STOP_TIMEOUT (default 600).
-        assert "TimeoutStopSec" in content, (
-            "install-autoscaler.sh must set TimeoutStopSec in the graceful-stop drop-in"
-        )
-        assert "600" in content, (
-            "Default RUNNER_STOP_TIMEOUT must be 600 (seconds) in install-autoscaler.sh"
-        )
+        assert "TimeoutStopSec" in content, "install-autoscaler.sh must set TimeoutStopSec in the graceful-stop drop-in"
+        assert "600" in content, "Default RUNNER_STOP_TIMEOUT must be 600 (seconds) in install-autoscaler.sh"
 
     def test_dropin_sets_kill_mode_mixed(self) -> None:
         """KillMode=mixed must be present — it lets Worker children finish naturally."""
@@ -681,9 +663,7 @@ class TestGracefulDrainDropin:
     def test_dropin_applied_to_runner_units(self) -> None:
         """The drop-in must target actions.runner units, not the autoscaler itself."""
         content = self._read_script()
-        assert "actions.runner" in content, (
-            "install-autoscaler.sh must write the drop-in for actions.runner.* units"
-        )
+        assert "actions.runner" in content, "install-autoscaler.sh must write the drop-in for actions.runner.* units"
 
     def test_stop_unit_uses_systemctl_stop(self) -> None:
         """_stop_unit must use 'systemctl stop', delegating kill timing to the drop-in.
@@ -703,8 +683,10 @@ class TestGracefulDrainDropin:
         assert isinstance(func_def, ast.FunctionDef)
         # Reconstruct source without the leading docstring node.
         non_doc_nodes = func_def.body
-        if non_doc_nodes and isinstance(non_doc_nodes[0], ast.Expr) and isinstance(
-            non_doc_nodes[0].value, ast.Constant
+        if (
+            non_doc_nodes
+            and isinstance(non_doc_nodes[0], ast.Expr)
+            and isinstance(non_doc_nodes[0].value, ast.Constant)
         ):
             non_doc_nodes = non_doc_nodes[1:]
         code_src = ast.unparse(ast.Module(body=non_doc_nodes, type_ignores=[]))  # type: ignore[attr-defined]
@@ -712,8 +694,7 @@ class TestGracefulDrainDropin:
         assert "systemctl" in code_src, "_stop_unit must call systemctl"
         assert "stop" in code_src, "_stop_unit must use systemctl stop"
         assert "SIGKILL" not in code_src, (
-            "_stop_unit must not hard-code SIGKILL in its executable code; "
-            "let systemd's TimeoutStopSec handle it"
+            "_stop_unit must not hard-code SIGKILL in its executable code; let systemd's TimeoutStopSec handle it"
         )
         assert "systemctl kill" not in code_src, (
             "_stop_unit must not use systemctl kill; that bypasses the graceful-drain drop-in"

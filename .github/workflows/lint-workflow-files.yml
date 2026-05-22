@@ -3,7 +3,7 @@ name: Lint Workflow Files
 on:
   pull_request:
     paths:
-      - '.github/workflows/**'
+      - ".github/workflows/**"
 
 permissions:
   contents: read
@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   lint:
-    runs-on: d-sorg-fleet
+    runs-on: d-sorg-fleet-16core
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6

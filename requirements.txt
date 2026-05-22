@@ -43,7 +43,7 @@ httpx==0.28.1
     # via
     #   anthropic
     #   runner-dashboard
-idna==3.13
+idna==3.15
     # via
     #   anyio
     #   httpx

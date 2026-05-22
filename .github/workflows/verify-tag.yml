@@ -17,12 +17,12 @@ permissions:
 
 concurrency:
   group: verify-tag-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   verify:
     name: Validate tag was created by release workflow
-    runs-on: d-sorg-fleet
+    runs-on: d-sorg-fleet-16core
     timeout-minutes: 5
     env:
       EXPECTED_HEADER: "Auto-generated release notes (release.yml)"

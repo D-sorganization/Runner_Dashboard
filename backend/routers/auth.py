@@ -1,6 +1,7 @@
 # ruff: noqa: B008
 import os
 import secrets
+import time
 from typing import Any
 
 import httpx
@@ -16,7 +17,14 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 GITHUB_CLIENT_ID = os.environ.get("GITHUB_CLIENT_ID", "")
 GITHUB_CLIENT_SECRET = os.environ.get("GITHUB_CLIENT_SECRET", "")
 # When set, only members of this GitHub org may complete OAuth login (fixes #354).
-REQUIRED_GITHUB_ORG = os.environ.get("REQUIRED_GITHUB_ORG", "")
+GITHUB_ORG = os.environ.get("GITHUB_ORG", os.environ.get("REQUIRED_GITHUB_ORG", ""))
+REQUIRED_GITHUB_ORG = GITHUB_ORG
+_OAUTH_STATE_TTL_SECONDS = 10 * 60
+
+
+def _clear_oauth_state(request: Request) -> None:
+    request.session.pop("oauth_state", None)
+    request.session.pop("oauth_state_ts", None)
 
 
 @router.get("/github")
@@ -28,6 +36,7 @@ async def github_login(request: Request):
 
     state = secrets.token_urlsafe(16)
     request.session["oauth_state"] = state
+    request.session["oauth_state_ts"] = time.time()
     redirect_uri = (
         f"https://github.com/login/oauth/authorize?client_id={GITHUB_CLIENT_ID}&state={state}&scope=read:user"
     )
@@ -40,51 +49,65 @@ async def github_callback(request: Request, code: str, state: str):
     check_auth_rate_limit(request)  # issue #320: 5 attempts / 5 min per IP
     saved_state = request.session.get("oauth_state")
     if not saved_state or state != saved_state:
+        _clear_oauth_state(request)
         raise HTTPException(status_code=400, detail="Invalid state")
+    state_ts = float(request.session.get("oauth_state_ts") or 0)
+    if time.time() - state_ts > _OAUTH_STATE_TTL_SECONDS:
+        _clear_oauth_state(request)
+        raise HTTPException(status_code=400, detail="OAuth state expired")
     # Invalidate the state after single use to prevent replay attacks (#354).
-    del request.session["oauth_state"]
+    _clear_oauth_state(request)
 
-    async with httpx.AsyncClient() as client:
-        # Exchange code for token
-        token_resp = await client.post(
-            "https://github.com/login/oauth/access_token",
-            data={
-                "client_id": GITHUB_CLIENT_ID,
-                "client_secret": GITHUB_CLIENT_SECRET,
-                "code": code,
-            },
-            headers={"Accept": "application/json"},
-        )
-        token_data = token_resp.json()
-        access_token = token_data.get("access_token")
-        if not access_token:
-            raise HTTPException(status_code=400, detail="Failed to get access token")
+    try:
+        async with httpx.AsyncClient() as client:
+            # Exchange code for token
+            token_resp = await client.post(
+                "https://github.com/login/oauth/access_token",
+                data={
+                    "client_id": GITHUB_CLIENT_ID,
+                    "client_secret": GITHUB_CLIENT_SECRET,
+                    "code": code,
+                },
+                headers={"Accept": "application/json"},
+            )
+            try:
+                token_data = token_resp.json()
+            except ValueError as exc:
+                raise HTTPException(status_code=502, detail="Malformed GitHub OAuth token response") from exc
+            access_token = token_data.get("access_token")
+            if not access_token:
+                raise HTTPException(status_code=400, detail="Failed to get access token")
 
-        # Get user info
-        user_resp = await client.get(
-            "https://api.github.com/user",
-            headers={
-                "Authorization": f"Bearer {access_token}",
-                "Accept": "application/json",
-            },
-        )
-        user_data = user_resp.json()
-        github_login = user_data.get("login")
-
-        # Verify org membership when REQUIRED_GITHUB_ORG is configured (#354).
-        if REQUIRED_GITHUB_ORG:
-            org_resp = await client.get(
-                f"https://api.github.com/orgs/{REQUIRED_GITHUB_ORG}/members/{github_login}",
+            # Get user info
+            user_resp = await client.get(
+                "https://api.github.com/user",
                 headers={
                     "Authorization": f"Bearer {access_token}",
                     "Accept": "application/json",
                 },
             )
-            if org_resp.status_code != 204:
-                raise HTTPException(
-                    status_code=403,
-                    detail=f"You must be a member of the {REQUIRED_GITHUB_ORG} GitHub organisation to log in.",
+            user_data = user_resp.json()
+            github_login = user_data.get("login")
+
+            # Verify org membership when REQUIRED_GITHUB_ORG is configured (#354).
+            required_org = GITHUB_ORG or REQUIRED_GITHUB_ORG
+            if required_org:
+                org_resp = await client.get(
+                    f"https://api.github.com/orgs/{required_org}/members/{github_login}",
+                    headers={
+                        "Authorization": f"Bearer {access_token}",
+                        "Accept": "application/json",
+                    },
                 )
+                if org_resp.status_code != 204:
+                    raise HTTPException(
+                        status_code=403,
+                        detail=f"You must be a member of the {required_org} GitHub organisation to log in.",
+                    )
+    except HTTPException:
+        raise
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail="GitHub OAuth request failed") from exc
 
     # Find principal by github username
     matched_principal = None
@@ -159,7 +182,9 @@ async def get_me(principal: Principal = Depends(require_principal)):  # noqa: B0
 
 
 @router.get("/sessions")
-async def list_sessions(principal: Principal = Depends(require_principal)):  # noqa: B008
+async def list_sessions(
+    principal: Principal = Depends(require_principal),
+):  # noqa: B008
     """List active sessions for the current user."""
     sessions = sm.list_sessions_for_principal(principal.id)
     return {

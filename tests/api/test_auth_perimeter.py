@@ -166,14 +166,11 @@ def test_conftest_make_authed_client_works(make_authed_client) -> None:
 
 def test_loopback_denied_when_env_var_not_set() -> None:
     """require_principal must raise 401 for 127.0.0.1 when DASHBOARD_LOOPBACK_AUTH is not set (issue #315)."""
-    import importlib
     import os
 
     # Ensure the env var is absent
     os.environ.pop("DASHBOARD_LOOPBACK_AUTH", None)
     import identity as _identity
-
-    importlib.reload(_identity)
 
     mock_request = MagicMock()
     mock_request.client.host = "127.0.0.1"
@@ -187,20 +184,14 @@ def test_loopback_denied_when_env_var_not_set() -> None:
 
     assert exc_info.value.status_code == 401
 
-    # Re-enable to keep original module state for other tests
-    importlib.reload(_identity)
-
 
 def test_loopback_allowed_when_env_var_set() -> None:
     """require_principal must allow 127.0.0.1 when DASHBOARD_LOOPBACK_AUTH=1 (issue #315)."""
-    import importlib
     import os
 
     os.environ["DASHBOARD_LOOPBACK_AUTH"] = "1"
     try:
         import identity as _identity
-
-        importlib.reload(_identity)
 
         mock_request = MagicMock()
         mock_request.client.host = "127.0.0.1"
@@ -212,4 +203,3 @@ def test_loopback_allowed_when_env_var_set() -> None:
         assert prin.id == "__loopback__"
     finally:
         os.environ.pop("DASHBOARD_LOOPBACK_AUTH", None)
-        importlib.reload(_identity)

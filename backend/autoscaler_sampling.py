@@ -13,8 +13,10 @@ import logging
 import os
 import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
+from typing import Any
 
 import yaml
 from autoscaler_config import (
@@ -25,6 +27,26 @@ from autoscaler_config import (
 )
 
 log = logging.getLogger("runner-autoscaler")
+_DEFAULT_RUNNER_SCHEDULER_BIN = RUNNER_SCHEDULER_BIN
+_DEFAULT_PSUTIL = psutil
+
+
+def _runner_scheduler_bin() -> str:
+    if RUNNER_SCHEDULER_BIN != _DEFAULT_RUNNER_SCHEDULER_BIN:
+        return RUNNER_SCHEDULER_BIN
+    runner_autoscaler = sys.modules.get("runner_autoscaler")
+    if runner_autoscaler is not None:
+        return str(getattr(runner_autoscaler, "RUNNER_SCHEDULER_BIN", RUNNER_SCHEDULER_BIN))
+    return RUNNER_SCHEDULER_BIN
+
+
+def _psutil_dep() -> Any:
+    if psutil is not _DEFAULT_PSUTIL:
+        return psutil
+    runner_autoscaler = sys.modules.get("runner_autoscaler")
+    if runner_autoscaler is not None:
+        return getattr(runner_autoscaler, "psutil", psutil)
+    return psutil
 
 
 def _leased_runners() -> set[str]:
@@ -52,13 +74,14 @@ def _leased_runners() -> set[str]:
 
 def _scheduled_desired_count(default: int) -> int:
     """Read the schedule service's current desired capacity when installed."""
-    if not os.path.exists(RUNNER_SCHEDULER_BIN):
+    scheduler_bin = _runner_scheduler_bin()
+    if not os.path.exists(scheduler_bin):
         return default
     try:
         env = os.environ.copy()
         env["RUNNER_SCHEDULE_CONFIG"] = RUNNER_SCHEDULE_CONFIG
         result = subprocess.run(
-            [RUNNER_SCHEDULER_BIN, "--dry-run", "--json"],
+            [scheduler_bin, "--dry-run", "--json"],
             capture_output=True,
             text=True,
             timeout=20,
@@ -80,15 +103,16 @@ def _scheduled_desired_count(default: int) -> int:
 
 def _sample() -> tuple[float, float, float, float, float]:
     """Return (cpu_percent, mem_percent, load_per_core, disk_percent, disk_free_gb)."""
-    if psutil is None:
+    psutil_mod = _psutil_dep()
+    if psutil_mod is None:
         raise RuntimeError("psutil is required for runner-autoscaler")
-    cpu = psutil.cpu_percent(interval=1.0)
-    mem = psutil.virtual_memory().percent
+    cpu = psutil_mod.cpu_percent(interval=1.0)
+    mem = psutil_mod.virtual_memory().percent
     try:
         load1 = os.getloadavg()[0]  # type: ignore[attr-defined]
-    except OSError:
+    except (AttributeError, OSError):
         load1 = 0.0
-    cores = psutil.cpu_count(logical=True) or 1
+    cores = psutil_mod.cpu_count(logical=True) or 1
     disk_path = RUNNER_BASE_DIR if os.path.exists(RUNNER_BASE_DIR) else "/"
     usage = shutil.disk_usage(disk_path)
     disk_percent = usage.used / usage.total * 100

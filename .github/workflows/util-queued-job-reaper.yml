@@ -68,7 +68,7 @@ concurrency:
 
 jobs:
   reap:
-    runs-on: [self-hosted, d-sorg-fleet]
+    runs-on: [self-hosted, d-sorg-fleet-16core]
     timeout-minutes: 13
     steps:
       - name: Preflight Jules app credentials

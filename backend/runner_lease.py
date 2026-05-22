@@ -6,7 +6,7 @@ Enforces per-principal runner quotas and tracks active leases to ensure fair sha
 from __future__ import annotations
 
 import contextlib
-import fcntl
+import importlib
 import logging
 import time
 from pathlib import Path
@@ -18,6 +18,11 @@ from pydantic import BaseModel, Field
 from security import safe_yaml_load, validate_config_path
 
 log = logging.getLogger("dashboard.runner_lease")
+
+try:
+    _fcntl: Any = importlib.import_module("fcntl")
+except ImportError:  # pragma: no cover - exercised on Windows
+    _fcntl = None
 
 
 @contextlib.contextmanager
@@ -32,14 +37,16 @@ def _locked_yaml_file(path: Path, mode: str = "r+"):
     path.touch()
     with open(path, mode) as fh:
         try:
-            fcntl.flock(fh, fcntl.LOCK_EX)
+            if _fcntl is not None:
+                _fcntl.flock(fh, _fcntl.LOCK_EX)
         except (AttributeError, OSError):
             pass
         try:
             yield fh
         finally:
             try:
-                fcntl.flock(fh, fcntl.LOCK_UN)
+                if _fcntl is not None:
+                    _fcntl.flock(fh, _fcntl.LOCK_UN)
             except (AttributeError, OSError):
                 pass
 
@@ -60,14 +67,18 @@ class LeaseManager:
         self.leases: list[LeaseRecord] = []
         self.load_leases()
 
+    @property
+    def _allowed_roots(self) -> list[Path]:
+        return [self.config_dir.resolve()]
+
     def load_leases(self):
         if not self.leases_path.exists():
             self.leases = []
             return
 
         try:
-            validate_config_path(self.leases_path)
-            data = safe_yaml_load(self.leases_path)
+            validate_config_path(self.leases_path, allowed_roots=self._allowed_roots)
+            data = safe_yaml_load(self.leases_path, allowed_roots=self._allowed_roots)
             if not data or "leases" not in data:
                 self.leases = []
                 return
@@ -80,7 +91,7 @@ class LeaseManager:
         """Save leases with security validation (issue #355)."""
         try:
             self.config_dir.mkdir(parents=True, exist_ok=True)
-            validate_config_path(self.leases_path.parent)
+            validate_config_path(self.leases_path.parent, allowed_roots=self._allowed_roots)
             with open(self.leases_path, "w") as f:
                 yaml.dump({"leases": [lease.model_dump() for lease in self.leases]}, f)
         except Exception as exc:
@@ -95,7 +106,7 @@ class LeaseManager:
         mutation is applied (fixes issue #327).
         """
         self.config_dir.mkdir(parents=True, exist_ok=True)
-        validate_config_path(self.leases_path.parent)
+        validate_config_path(self.leases_path.parent, allowed_roots=self._allowed_roots)
 
         with _locked_yaml_file(self.leases_path, "r+") as fh:
             fh.seek(0)
@@ -163,7 +174,12 @@ class LeaseManager:
                         )
                         records[i] = updated
                         result.append(updated)
-                        log.info("Lease UPDATED principal=%s runner=%s task=%s", principal.id, runner_id, task_id)
+                        log.info(
+                            "Lease UPDATED principal=%s runner=%s task=%s",
+                            principal.id,
+                            runner_id,
+                            task_id,
+                        )
                         return records
                     raise ValueError(f"Runner {runner_id} is already leased by {lease.principal_id}")
 
@@ -183,7 +199,12 @@ class LeaseManager:
             )
             records.append(record)
             result.append(record)
-            log.info("Lease ACQUIRED principal=%s runner=%s task=%s", principal.id, runner_id, task_id)
+            log.info(
+                "Lease ACQUIRED principal=%s runner=%s task=%s",
+                principal.id,
+                runner_id,
+                task_id,
+            )
             return records
 
         self._atomic_read_modify_write(_mutate)
