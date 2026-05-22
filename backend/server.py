@@ -1882,6 +1882,10 @@ async def _watchdog_status_impl() -> dict:
 # ─── System Metrics ──────────────────────────────────────────────────────────
 
 
+_FLEET_NODES_CACHE_TTL_S = 10.0
+_FLEET_REMOTE_FANOUT_TIMEOUT_S = 3.0
+
+
 async def _collect_live_fleet_nodes() -> list[dict]:
     """Collect the live fleet node payload before registry metadata is merged."""
 
@@ -1965,7 +1969,29 @@ async def _collect_live_fleet_nodes() -> list[dict]:
     ]
 
     if FLEET_NODES:
-        remote = await asyncio.gather(*[fetch_node(name, url) for name, url in FLEET_NODES.items()])
+        try:
+            remote = await asyncio.wait_for(
+                asyncio.gather(*[fetch_node(name, url) for name, url in FLEET_NODES.items()]),
+                timeout=_FLEET_REMOTE_FANOUT_TIMEOUT_S,
+            )
+        except TimeoutError:
+            remote = [
+                {
+                    "name": name,
+                    "url": url,
+                    "online": False,
+                    "dashboard_reachable": False,
+                    "is_local": False,
+                    "role": "node",
+                    "system": {},
+                    "health": {},
+                    "last_seen": None,
+                    "error": f"fleet node fanout exceeded {_FLEET_REMOTE_FANOUT_TIMEOUT_S:.1f}s",
+                    "offline_reason": "timeout",
+                    "offline_detail": "Remote node probe timed out before the dashboard budget expired.",
+                }
+                for name, url in FLEET_NODES.items()
+            ]
         nodes.extend(remote)
 
     return nodes
@@ -2138,6 +2164,10 @@ async def _get_fleet_nodes_impl() -> dict:
     queried concurrently over Tailscale using FLEET_NODES config.
     Offline nodes are included with online=False so the UI can show them.
     """
+    cached = _cache_get("fleet_nodes", _FLEET_NODES_CACHE_TTL_S)
+    if cached is not None:
+        return cached
+
     nodes = await _collect_live_fleet_nodes()
     try:
         registry = load_machine_registry()
@@ -2148,7 +2178,7 @@ async def _get_fleet_nodes_impl() -> dict:
     nodes = [{**node, **_node_visibility_snapshot(node)} for node in nodes]
     online = sum(1 for n in nodes if n["online"])
     total_runners = sum(n["health"].get("runners_registered", 0) for n in nodes)
-    return {
+    result = {
         "nodes": nodes,
         "count": len(nodes),
         "online_count": online,
@@ -2159,6 +2189,8 @@ async def _get_fleet_nodes_impl() -> dict:
             "machines": len(registry.get("machines", [])),
         },
     }
+    _cache_set("fleet_nodes", result)
+    return result
 
 
 # /api/fleet/nodes/{node_name}/system extracted to routers/orchestration.py (issue #359).
