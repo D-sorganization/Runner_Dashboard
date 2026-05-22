@@ -17,7 +17,7 @@ concurrency:
 jobs:
   frontend-scope:
     name: Determine frontend validation scope
-    runs-on: d-sorg-fleet-14core
+    runs-on: d-sorg-fleet-16core
     timeout-minutes: 5
     outputs:
       run_frontend_tests: ${{ steps.scope.outputs.run_frontend_tests }}
@@ -86,7 +86,7 @@ jobs:
     name: Vitest + Coverage
     needs: frontend-scope
     if: needs.frontend-scope.outputs.run_frontend_tests == 'true'
-    runs-on: d-sorg-fleet-14core
+    runs-on: d-sorg-fleet-16core
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -118,7 +118,7 @@ jobs:
 
   playwright-e2e:
     name: Playwright E2E smoke tests
-    runs-on: d-sorg-fleet-14core
+    runs-on: d-sorg-fleet-16core
     timeout-minutes: 20
     needs:
       - frontend-scope

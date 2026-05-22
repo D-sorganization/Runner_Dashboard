@@ -63,7 +63,7 @@ env:
 
 jobs:
   intelligent-repair:
-    runs-on: d-sorg-fleet-14core
+    runs-on: d-sorg-fleet-16core
     timeout-minutes: 30
     # Prevent multiple repairs on same branch simultaneously
     concurrency:

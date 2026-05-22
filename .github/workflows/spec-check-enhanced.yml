@@ -15,7 +15,7 @@ concurrency:
 jobs:
   spec-freshness:
     name: Verify SPEC.md freshness
-    runs-on: d-sorg-fleet-14core
+    runs-on: d-sorg-fleet-16core
     if: ${{ !contains(github.event.pull_request.labels.*.name, 'spec-exempt') }}
     timeout-minutes: 15
     steps:

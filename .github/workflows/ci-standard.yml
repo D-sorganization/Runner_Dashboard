@@ -34,7 +34,7 @@ concurrency:
 jobs:
   # â”€â”€ Fleet-wide CI health gate (issue #154) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   ci-health-check:
-    runs-on: d-sorg-fleet-14core
+    runs-on: d-sorg-fleet-16core
     timeout-minutes: 10
     outputs:
       run_python_tests: ${{ steps.python-scope.outputs.run_python_tests }}
@@ -224,7 +224,7 @@ jobs:
   quality-gate:
     needs: [ci-health-check]
     if: needs.ci-health-check.outputs.run_python_tests == 'true'
-    runs-on: d-sorg-fleet-14core
+    runs-on: d-sorg-fleet-16core
     timeout-minutes: 25
     env:
       PIP_CACHE_DIR: /home/dieterolson/actions-runners/.shared-tool-cache/pip
@@ -356,7 +356,7 @@ jobs:
   security-scan:
     needs: [ci-health-check]
     if: needs.ci-health-check.outputs.run_python_tests == 'true'
-    runs-on: d-sorg-fleet-14core
+    runs-on: d-sorg-fleet-16core
     timeout-minutes: 20
     env:
       PIP_CACHE_DIR: /home/dieterolson/actions-runners/.shared-tool-cache/pip
@@ -387,7 +387,7 @@ jobs:
       - ci-health-check
       - quality-gate
     if: needs.ci-health-check.outputs.run_python_tests == 'true'
-    runs-on: d-sorg-fleet-14core
+    runs-on: d-sorg-fleet-16core
     timeout-minutes: 10
     env:
       PIP_CACHE_DIR: /home/dieterolson/actions-runners/.shared-tool-cache/pip
