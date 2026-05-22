@@ -2799,10 +2799,11 @@ def _read_uvicorn_env_config() -> dict[str, int]:
 if __name__ == "__main__":
     import uvicorn
 
+    _bind_host = dashboard_config.HOST
     log.info("=" * 60)
     log.info("  D-sorganization Runner Dashboard v4.0")
     log.info("  Local:   http://localhost:%s", PORT)
-    log.info("  Network: http://0.0.0.0:%s", PORT)
+    log.info("  Network: http://%s:%s", _bind_host, PORT)
     log.info("  API docs: http://localhost:%s/docs", PORT)
     log.info("  Health:   http://localhost:%s/api/health", PORT)
     log.info("  Org: %s | Host: %s", ORG, HOSTNAME)
@@ -2821,7 +2822,13 @@ if __name__ == "__main__":
     _uvicorn_target: object = "server:app" if _uvicorn_cfg["workers"] > 1 else app
     uvicorn.run(
         _uvicorn_target,  # type: ignore[arg-type]
-        host="0.0.0.0",  # B104: intentionally binding to all interfaces; listed in bandit.yaml
+        # Default is 0.0.0.0 (binds all interfaces); override with the
+        # DASHBOARD_HOST env var. WSL-mirrored hosts that run a Windows-side
+        # Tailscale-serve listener on the same port must set 127.0.0.1 to
+        # avoid the recurring "[Errno 98] address already in use" crash loop
+        # (see dashboard_config._resolve_bind_host docstring).
+        # B104: 0.0.0.0 default is intentional and listed in bandit.yaml.
+        host=_bind_host,
         port=PORT,
         log_level="warning",  # FastAPI handles its own logging
         workers=_uvicorn_cfg["workers"],

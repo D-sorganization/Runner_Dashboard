@@ -57,6 +57,24 @@ DISK_MIN_FREE_GB = float(
 # API / Port
 PORT = int(os.environ.get("DASHBOARD_PORT", "8321"))
 HOSTNAME = os.environ.get("DISPLAY_NAME") or platform.node()
+
+
+def _resolve_bind_host() -> str:
+    """Return the interface uvicorn should bind for incoming HTTP.
+
+    Default is ``0.0.0.0`` (historical, binds all interfaces).
+    Operators on WSL-mirrored hosts should set ``DASHBOARD_HOST=127.0.0.1``
+    to avoid colliding with a Windows-side Tailscale-serve listener that
+    has already claimed the Tailscale IP on the same port.
+
+    Postcondition: returns a non-empty string; whitespace-only values fall
+    back to the default so uvicorn never receives an invalid bind target.
+    """
+    raw = os.environ.get("DASHBOARD_HOST", "").strip()
+    return raw or "0.0.0.0"
+
+
+HOST = _resolve_bind_host()
 MAXWELL_PORT = int(os.environ.get("MAXWELL_PORT", "8322"))
 MAXWELL_URL = (os.environ.get("MAXWELL_URL", "") or f"http://localhost:{MAXWELL_PORT}").rstrip("/")
 MAXWELL_API_TOKEN = os.environ.get("MAXWELL_API_TOKEN", "maxwell-local-secret")
@@ -217,6 +235,7 @@ __all__ = [
     "EXPECTED_VERSION_FILE",
     "FLEET_NODES",
     "HEAVY_TEST_REPOS",
+    "HOST",
     "HOSTNAME",
     "HUB_URL",
     "MACHINE_ROLE",

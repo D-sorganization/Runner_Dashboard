@@ -2,8 +2,28 @@
 
 **Spec Version:** 2.5.26
 **Application Version:** 4.1.0 (see `VERSION`)
-**Last Updated:** 2026-05-22T00:00:00Z
+**Last Updated:** 2026-05-22T15:05:00Z
 **Status:** Active
+
+### Recent Spec Updates
+
+- **2026-05-22 (2.5.26):** Added `DASHBOARD_HOST` env var
+  (`dashboard_config.HOST`) for uvicorn bind interface; default preserves
+  historical `0.0.0.0` behaviour. Added `deploy/wsl-mirrored-port-helper.sh`
+  invoked from the systemd unit's `ExecStartPre`/`ExecStartPost` to dodge
+  the recurring WSL-mirrored Tailscale-serve port conflict that crash-looped
+  the dashboard after every WSL cold-restart. Added `deploy/wsl-keepalive.ps1`
+  Windows watchdog with responsiveness probe, structured JSONL logging, and
+  exponential backoff (replaces the prior 8-line script that only detected
+  "WSL stopped", missing the more common "WSL running but unresponsive"
+  failure mode). See `docs/wsl-mirrored-port-conflict.md`. Hardened
+  `backend/security.py` to skip POSIX mode-bit validation on non-POSIX
+  filesystems (9p/drvfs/cifs/ntfs/etc.), where NTFS-via-DrvFs reports 0777
+  unconditionally and previously caused config-load failures on Windows
+  hosts. Made `fcntl` imports tolerant in `quota_enforcement.py` and
+  `runner_lease.py` so the backend can be imported on Windows for tests.
+  Pytest pre-push hook switched to `language: system` to reuse the project
+  venv instead of an isolated env missing every runtime dep.
 
 ---
 
@@ -1102,11 +1122,25 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 ## 7. Changelog
 
-### 2.5.26 - 2026-05-21
+### 2.5.26 - 2026-05-22
 
 - ci: added a documented workflow concurrency policy allowlist for
   `cancel-in-progress: false` exceptions and intentional PR-singleton
   workflows, with shared lint/test enforcement and operator triage guidance.
+- ops(wsl): added `dashboard_config.HOST` env-configurable bind interface
+  and `deploy/wsl-mirrored-port-helper.sh` invoked from the systemd unit's
+  `ExecStartPre`/`ExecStartPost` to dodge the recurring WSL-mirrored
+  Tailscale-serve port conflict. Replaced the prior 8-line keepalive with
+  `deploy/wsl-keepalive.ps1` (responsiveness probe + JSONL logging +
+  exponential backoff). See `docs/wsl-mirrored-port-conflict.md`.
+- fix(security): `_check_file_mode` now skips POSIX mode-bit validation on
+  non-POSIX filesystems (DrvFs/9p/CIFS/NTFS/FAT family) where NTFS-via-DrvFs
+  reports 0777 unconditionally and previously blocked config loads on
+  Windows hosts. `fcntl` imports in `quota_enforcement.py` and
+  `runner_lease.py` made tolerant so the backend imports on Windows for
+  tests. Pytest pre-push hook switched to `language: system` to reuse the
+  project venv. mypy hook gains `types-psutil` (PyPI), replacing the
+  non-existent `psutil-stubs`.
 
 ### 2.5.25 - 2026-05-07
 

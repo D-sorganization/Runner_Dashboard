@@ -3,11 +3,21 @@
 from __future__ import annotations
 
 import contextlib
-import importlib
 import logging
 import time
 from pathlib import Path
-from typing import Any
+
+# fcntl is a Unix-only module. The docstring on ``_locked_yaml_file`` already
+# promises "Degrades gracefully on platforms that lack fcntl (e.g. Windows
+# dev env)", but the historical ``import fcntl`` at module top fired before
+# that comment ever ran, breaking Python collection on Windows clones
+# (pytest, mypy, ruff all failed at import). The try/except at usage sites
+# already catches ``AttributeError`` from ``None.flock(...)`` and ``OSError``,
+# so the runtime behaviour is unchanged on POSIX hosts.
+try:
+    import fcntl  # type: ignore[import-not-found,unused-ignore]
+except ImportError:  # pragma: no cover - Windows-only path
+    fcntl = None  # type: ignore[assignment]
 
 import yaml
 from identity import Principal
@@ -16,11 +26,6 @@ from runner_lease import lease_manager
 from security import safe_yaml_load, validate_config_path
 
 log = logging.getLogger("dashboard.quota_enforcement")
-
-try:
-    _fcntl: Any = importlib.import_module("fcntl")
-except ImportError:  # pragma: no cover - exercised on Windows
-    _fcntl = None
 
 
 @contextlib.contextmanager
@@ -34,19 +39,19 @@ def _locked_yaml_file(path: Path, mode: str = "r+"):
     """
     path.touch()
     with open(path, mode) as fh:
-        try:
-            if _fcntl is not None:
-                _fcntl.flock(fh, _fcntl.LOCK_EX)
-        except (AttributeError, OSError):
-            pass
+        if fcntl is not None:
+            try:
+                fcntl.flock(fh, fcntl.LOCK_EX)
+            except (AttributeError, OSError):
+                pass
         try:
             yield fh
         finally:
-            try:
-                if _fcntl is not None:
-                    _fcntl.flock(fh, _fcntl.LOCK_UN)
-            except (AttributeError, OSError):
-                pass
+            if fcntl is not None:
+                try:
+                    fcntl.flock(fh, fcntl.LOCK_UN)
+                except (AttributeError, OSError):
+                    pass
 
 
 class QuotaEnforcement:

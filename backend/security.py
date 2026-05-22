@@ -10,9 +10,11 @@ Provides:
 from __future__ import annotations
 
 import ipaddress
+import logging
 import os
 import re
 import shlex
+import sys
 import time
 from collections import defaultdict
 from pathlib import Path
@@ -281,13 +283,100 @@ def _check_symlink(path: Path, allowed_roots: list[Path]) -> bool:
     return False
 
 
+#: Filesystem types that cannot faithfully represent POSIX permission bits.
+#: On these, ``stat.S_IWOTH`` is meaningless — Windows-backed mounts expose
+#: every file as 0777 because NTFS ACLs don't map onto ``ugo+w``, and
+#: remote SMB/CIFS mounts inherit the same problem from their server-side
+#: ACLs. The world-writable check must skip these mounts (with a WARNING
+#: for auditability) or every Windows-based contributor will hit spurious
+#: rejections on pre-push. Tracked in Runner_Dashboard PR follow-up to #695.
+_NON_POSIX_FS_TYPES = frozenset(
+    {
+        "9p",  # WSL2 mirrored / 9P over hvsock
+        "drvfs",  # WSL1 Windows drive mounts
+        "cifs",  # SMB shares on Linux
+        "smbfs",  # macOS SMB
+        "ntfs",  # NTFS read-only
+        "ntfs-3g",  # NTFS read-write
+        "vfat",  # FAT32
+        "fat",
+        "fat32",
+        "exfat",
+        "msdos",
+    }
+)
+
+
+def _read_proc_mounts() -> str | None:
+    """Return the contents of ``/proc/mounts``, or None if unreadable.
+
+    Split out for test mocking; do not inline.
+    """
+    try:
+        return Path("/proc/mounts").read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return None
+
+
+def _filesystem_preserves_posix_perms(path: Path) -> bool:
+    """Return True iff ``path``'s underlying filesystem honours POSIX mode bits.
+
+    Returns False for:
+      * Native Windows (``os.name == "nt"``): ``os.stat()`` returns ACL-derived
+        modes that don't map to ``ugo+w`` checks.
+      * WSL / Linux mounts whose ``/proc/mounts`` filesystem type is in
+        :data:`_NON_POSIX_FS_TYPES` (DrvFs, 9p, CIFS, NTFS, FAT family).
+
+    Returns True everywhere else, including when ``/proc/mounts`` is
+    unreadable — failing **safe** matters more than failing convenient
+    when the OS surface is ambiguous.
+
+    Fleet note: this is the only place that "knows" about filesystem
+    semantics. Do not duplicate the FS-type list elsewhere; import this
+    helper or extend :data:`_NON_POSIX_FS_TYPES` here.
+    """
+    if os.name == "nt":
+        return False
+    if sys.platform != "linux":
+        # macOS APFS / *BSD UFS preserve perms; unknown POSIX assumes yes.
+        return True
+
+    mounts = _read_proc_mounts()
+    if mounts is None:
+        return True  # fail safe
+
+    resolved = str(path.resolve())
+    best_mount_point = ""
+    best_fs_type = ""
+    for raw in mounts.splitlines():
+        parts = raw.split()
+        if len(parts) < 3:
+            continue
+        mount_point, fs_type = parts[1], parts[2]
+        # Longest-prefix match: the most specific mount wins (matters when
+        # /mnt/c is mounted under /).
+        if (resolved == mount_point or resolved.startswith(mount_point.rstrip("/") + "/")) and len(mount_point) > len(
+            best_mount_point
+        ):
+            best_mount_point = mount_point
+            best_fs_type = fs_type
+
+    return best_fs_type.lower() not in _NON_POSIX_FS_TYPES
+
+
 def _check_file_mode(path: Path) -> bool:
     """Check if file has safe permissions (not world-writable).
 
-    Returns True if file mode is safe.
-    Returns False if file is world-writable.
+    Returns True if file mode is safe **or** if the filesystem cannot
+    represent POSIX permissions (see :func:`_filesystem_preserves_posix_perms`).
+    Returns False if the file is world-writable on a POSIX-honouring
+    filesystem. Logs a WARNING when skipping so audit trails stay honest.
     """
-    if os.name == "nt":
+    if not _filesystem_preserves_posix_perms(path):
+        logging.getLogger("security").warning(
+            "Skipping world-writable mode check for %s: filesystem does not preserve POSIX permissions",
+            path,
+        )
         return True
 
     try:
