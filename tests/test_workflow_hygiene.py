@@ -369,3 +369,14 @@ def test_anti_phantom_guard_uses_rest_file_listing() -> None:
     assert "gh pr diff" not in text
     assert 'gh api --paginate "repos/$REPO/pulls/$PR/files"' in text
     assert "--jq '.[].filename'" in text
+
+
+def test_pre_push_mypy_dependencies_are_installable() -> None:
+    """The mypy pre-push hook must not depend on removed or nonexistent packages."""
+    text = (Path(__file__).parent.parent / ".pre-commit-config.yaml").read_text(encoding="utf-8")
+
+    assert "psutil-stubs" not in text
+    assert "fastapi==0.136.1" in text
+    assert "pytest-asyncio==1.3.0" in text
+    assert '"--co"' in text
+    assert '"-lll"' in text

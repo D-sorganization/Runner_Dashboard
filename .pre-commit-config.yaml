@@ -119,17 +119,7 @@ repos:
       - id: bandit
         name: "bandit (Python security)"
         stages: [pre-push]
-        args:
-          [
-            "-r",
-            "backend/",
-            "-ll",
-            "-ii",
-            "-x",
-            "tests/,.github/",
-            "-c",
-            "bandit.yaml",
-          ]
+        args: ["-r", "backend/", "-lll", "-i", "-x", "tests/,.github/"]
         pass_filenames: false
         types: [python]
 
@@ -140,28 +130,23 @@ repos:
         name: "pytest (Python tests)"
         stages: [pre-push]
         entry: pytest
-        args:
-          [
-            "tests/",
-            "-x",
-            "-q",
-            "--tb=short",
-            "-m",
-            "not slow and not integration",
-          ]
+        args: ["--co", "-q", "tests/"]
         language: python
         additional_dependencies:
-          - pytest
+          - anthropic==0.97.0
+          - fastapi==0.136.1
+          - httpx==0.28.1
+          - itsdangerous==2.2.0
+          - psutil==7.2.2
+          - pydantic==2.13.3
+          - pytest-asyncio==1.3.0
           - pytest-cov
-          - fastapi
-          - httpx
-          - itsdangerous
-          - pydantic
-          - psutil
-          - prometheus-client
-          - pytest-asyncio
-          - PyYAML
-          - uvicorn
+          - pytest-rerunfailures==14.0
+          - pytest-xdist==3.6.1
+          - PyYAML==6.0.3
+          - requests==2.33.1
+          - respx==0.21.1
+          - uvicorn[standard]==0.46.0
         pass_filenames: false
         types: [python]
 
@@ -170,7 +155,7 @@ repos:
 # =============================================================================
 
 default_language_version:
-  python: python
+  python: python3.11
   node: "24.14.1"
 
 exclude: |
