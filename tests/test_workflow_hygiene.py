@@ -373,7 +373,8 @@ def test_pre_push_mypy_dependencies_are_installable() -> None:
     text = (Path(__file__).parent.parent / ".pre-commit-config.yaml").read_text(encoding="utf-8")
 
     assert "psutil-stubs" not in text
-    assert "fastapi==0.136.1" in text
-    assert "pytest-asyncio==1.3.0" in text
-    assert '"--co"' in text
-    assert '"-lll"' in text
+    assert "types-psutil" in text
+    assert "language: system" in text
+    assert '"tests/"' in text
+    assert '"-ll"' in text
+    assert '"-ii"' in text

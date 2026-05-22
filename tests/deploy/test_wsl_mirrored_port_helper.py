@@ -8,6 +8,7 @@ host with bash available.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -21,10 +22,18 @@ BASH = shutil.which("bash")
 BASH_REQUIRED = pytest.mark.skipif(BASH is None, reason="bash not available on this runner")
 
 
+def _bash_path(path: Path) -> str:
+    if os.name != "nt":
+        return str(path)
+    resolved = path.resolve()
+    drive = resolved.drive.rstrip(":").lower()
+    return f"/mnt/{drive}{resolved.as_posix()[2:]}"
+
+
 def _run(args: list[str]) -> subprocess.CompletedProcess[str]:
     assert BASH is not None
     return subprocess.run(
-        [BASH, str(SCRIPT), *args],
+        [BASH, _bash_path(SCRIPT), *args],
         capture_output=True,
         text=True,
         check=False,

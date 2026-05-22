@@ -1,11 +1,22 @@
 from __future__ import annotations  # noqa: E402
 
 import ast
+import os
 import time
 from pathlib import Path  # noqa: E402
 
 import pytest  # noqa: E402
 import security  # noqa: E402
+
+
+def _symlink_or_skip(link: Path, target: Path) -> None:
+    try:
+        link.symlink_to(target)
+    except OSError as exc:
+        if os.name == "nt" and getattr(exc, "winerror", None) == 1314:
+            pytest.skip("Windows symlink privilege is unavailable")
+        raise
+
 
 # ---------------------------------------------------------------------------
 # sanitize_log_value
@@ -409,7 +420,7 @@ def test_validate_config_path_symlink_escape(tmp_path: Path) -> None:
     allowed_root = tmp_path / "allowed"
     allowed_root.mkdir(parents=True, exist_ok=True)
     symlink = allowed_root / "config.yml"
-    symlink.symlink_to(evil_file)
+    _symlink_or_skip(symlink, evil_file)
 
     # The resolved path escapes the allowed root, so it's rejected
     with pytest.raises(ValueError, match="escapes allowed roots"):
@@ -427,7 +438,7 @@ def test_validate_config_path_symlink_safe(tmp_path: Path) -> None:
 
     # Create symlink within same root
     symlink = allowed_root / "config.yml"
-    symlink.symlink_to(target_file)
+    _symlink_or_skip(symlink, target_file)
 
     result = security.validate_config_path(symlink, allowed_roots=[allowed_root])
     assert result == target_file.resolve()
