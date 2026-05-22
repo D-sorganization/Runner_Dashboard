@@ -18,6 +18,14 @@ _ROOT = Path(__file__).parent.parent
 _SCRIPT = _ROOT / "deploy" / "scheduled-dashboard-maintenance.sh"
 
 
+def _bash_path(path: Path) -> str:
+    if os.name != "nt":
+        return str(path)
+    resolved = path.resolve()
+    drive = resolved.drive.rstrip(":").lower()
+    return f"/mnt/{drive}{resolved.as_posix()[2:]}"
+
+
 def _run_bash_or_skip(args: list[str], **kwargs) -> subprocess.CompletedProcess[str]:
     if shutil.which("bash") is None:
         pytest.skip("bash unavailable")
@@ -42,7 +50,7 @@ def test_script_exists() -> None:
 
 
 def test_script_passes_bash_syntax_check() -> None:
-    result = _run_bash_or_skip(["-n", str(_SCRIPT)])
+    result = _run_bash_or_skip(["-n", _bash_path(_SCRIPT)])
     assert result.returncode == 0, result.stderr
 
 
@@ -84,14 +92,14 @@ def test_dry_run_lists_paths_and_creates_no_tarball(tmp_path: Path) -> None:
     shutil.copytree(_ROOT / "deploy", fake_dashboard / "deploy")
 
     env = dict(os.environ)
-    env["BACKUP_DIR"] = str(backup_dir)
-    env["HOME"] = str(tmp_path / "home")
+    env["BACKUP_DIR"] = _bash_path(backup_dir)
+    env["HOME"] = _bash_path(tmp_path / "home")
     (tmp_path / "home").mkdir()
     (tmp_path / "home" / ".config" / "runner-dashboard").mkdir(parents=True)
 
     script = fake_dashboard / "deploy" / "scheduled-dashboard-maintenance.sh"
     result = _run_bash_or_skip(
-        [str(script), "--dry-run", "--backup-only"],
+        [_bash_path(script), "--dry-run", "--backup-only"],
         env=env,
         cwd=str(fake_dashboard),
     )

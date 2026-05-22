@@ -1,10 +1,12 @@
 # Dockerfile for runner-dashboard
 # Provides a reproducible, hardened container environment.
 #
-# Base image: python:3.11.10-slim pinned to a Docker Hub sha256 digest.
+# Base image: python:3.12-slim
+# Python 3.12 has full binary wheel availability for all common packages
+# (pydantic-core, uvloop, watchfiles, httptools, jiter, etc.).
 # To regenerate requirements.lock.txt:  uv export --no-dev -o requirements.lock.txt
 
-FROM python:3.11.10-slim@sha256:efc99f05ec45381aac55e2803c9a0245ea5b8c74965264498338e24e4bf66cc7
+FROM python:3.12-slim@sha256:090ba77e2958f6af52a5341f788b50b032dd4ca28377d2893dcf1ecbdfdfe203
 
 WORKDIR /app
 
@@ -20,14 +22,19 @@ RUN groupadd --gid 10001 appuser \
 
 # Copy requirements first for layer caching; install with hash verification
 COPY requirements.lock.txt .
-RUN pip install --no-cache-dir --require-hashes -r requirements.lock.txt && \
-    pip install --no-cache-dir setuptools==80.9.0 wheel==0.46.2 jaraco.context==6.1.0 && \
-    rm -rf /usr/local/lib/python3.11/site-packages/wheel-0.45.1.dist-info \
-           /usr/local/lib/python3.11/site-packages/jaraco.context-5.3.0.dist-info \
-           /usr/local/lib/python3.11/site-packages/jaraco_context-5.3.0.dist-info \
-           /usr/local/lib/python3.11/site-packages/setuptools-65.5.1.dist-info \
-           /usr/local/lib/python3.11/site-packages/setuptools/_vendor/jaraco.context-5.3.0.dist-info \
-           /usr/local/lib/python3.11/site-packages/setuptools/_vendor/wheel-0.45.1.dist-info
+RUN pip install --no-cache-dir --upgrade \
+        pip==26.1.1 \
+        setuptools==82.0.1 \
+        wheel==0.47.0 \
+        jaraco.context==6.1.2 && \
+    pip install --no-cache-dir --require-hashes -r requirements.lock.txt && \
+    rm -rf /usr/local/lib/python3.12/site-packages/wheel-0.45.1.dist-info \
+           /usr/local/lib/python3.12/site-packages/jaraco.context-5.3.0.dist-info \
+           /usr/local/lib/python3.12/site-packages/jaraco_context-5.3.0.dist-info \
+           /usr/local/lib/python3.12/site-packages/pip-25.0.1.dist-info \
+           /usr/local/lib/python3.12/site-packages/setuptools-79.0.1.dist-info \
+           /usr/local/lib/python3.12/site-packages/setuptools/_vendor/jaraco.context-5.3.0.dist-info \
+           /usr/local/lib/python3.12/site-packages/setuptools/_vendor/wheel-0.45.1.dist-info
 
 
 # Copy application code and set ownership

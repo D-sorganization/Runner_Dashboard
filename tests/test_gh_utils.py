@@ -53,3 +53,23 @@ def test_rate_limited_error_min_retry() -> None:
     """retry_after_seconds must be at least 1."""
     err = gu.RateLimitedError(retry_after_seconds=0, endpoint="/x", resource_class="core")
     assert err.retry_after_seconds >= 1
+
+
+def test_rate_limit_status_reports_open_breaker() -> None:
+    gu.clear_rate_limit_breakers()
+    gu._record_rate_limit("/repos/org/repo/actions/runs", 60)
+
+    status = gu.get_rate_limit_status()
+
+    assert status["status"] == "rate_limited"
+    assert status["retry_after_seconds"] > 0
+    assert "actions" in status["detail"]
+
+
+def test_rate_limit_status_ok_without_breaker() -> None:
+    gu.clear_rate_limit_breakers()
+
+    status = gu.get_rate_limit_status()
+
+    assert status["status"] == "ok"
+    assert status["retry_after_seconds"] == 0

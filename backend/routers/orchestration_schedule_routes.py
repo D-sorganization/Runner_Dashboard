@@ -55,13 +55,13 @@ def set_dependencies(
 @router.get("/api/fleet/schedule")
 async def get_runner_schedule() -> dict:
     """Return this machine's local runner capacity schedule and live state."""
-    return _get_runner_capacity_snapshot()  # type: ignore[misc]
+    return await asyncio.to_thread(_get_runner_capacity_snapshot)  # type: ignore[arg-type]
 
 
 @router.get("/api/fleet/capacity")
 async def get_fleet_capacity() -> dict:
     """Compatibility endpoint for dashboard capacity summaries."""
-    return _get_runner_capacity_snapshot()  # type: ignore[misc]
+    return await asyncio.to_thread(_get_runner_capacity_snapshot)  # type: ignore[arg-type]
 
 
 @router.post("/api/fleet/schedule")
@@ -113,5 +113,5 @@ async def update_runner_schedule(
         "saved": True,
         "applied": apply_now,
         "apply_result": apply_result,
-        **_get_runner_capacity_snapshot(),  # type: ignore[misc]
+        **await asyncio.to_thread(_get_runner_capacity_snapshot),  # type: ignore[arg-type]
     }

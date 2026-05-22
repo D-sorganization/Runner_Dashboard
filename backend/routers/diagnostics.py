@@ -136,6 +136,31 @@ async def get_diagnostics_summary() -> dict:
     return summary
 
 
+@router.get("/api/github/status")
+async def get_github_status() -> dict[str, Any]:
+    """Return the last observed GitHub API health state for dashboard banners."""
+    try:
+        import gh_utils
+
+        rate_limit_status = gh_utils.get_rate_limit_status()
+        if rate_limit_status.get("status") == "rate_limited":
+            return rate_limit_status
+
+        import gh_client
+
+        return gh_client.get_status()
+    except Exception as exc:  # noqa: BLE001
+        if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+            raise
+        return {
+            "status": "unknown",
+            "detail": f"GitHub API status unavailable: {exc}",
+            "endpoint": "",
+            "retry_after_seconds": 0,
+            "updated_at": None,
+        }
+
+
 @router.post("/api/diagnostics/restart-service")
 async def restart_dashboard_service(
     request: Request,
@@ -150,7 +175,17 @@ async def restart_dashboard_service(
     try:
         result = await asyncio.to_thread(
             subprocess.run,
-            [SYSTEMCTL_BIN, "--user", "restart", "runner-dashboard"],
+            [
+                "sudo",
+                "-n",
+                "systemd-run",
+                "--unit=runner-dashboard-self-restart",
+                "--on-active=1",
+                "--collect",
+                "/bin/systemctl",
+                "restart",
+                "runner-dashboard.service",
+            ],
             capture_output=True,
             text=True,
             timeout=30,
@@ -189,7 +224,7 @@ async def generate_launchers(
 
     restart = output_dir / "Restart-Dashboard-Service.ps1"
     restart.write_text(
-        'wsl -e bash -c "systemctl --user restart runner-dashboard && echo Service restarted"\n',
+        'wsl -d Ubuntu -e bash -lc "sudo -n systemctl restart runner-dashboard.service && echo Service restarted"\n',
         encoding="utf-8",
     )
     launchers_created.append(str(restart))

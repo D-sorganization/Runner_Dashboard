@@ -7,88 +7,120 @@ stuck in `queued` or `in_progress` long past their normal duration.
 
 - Queue Health tab shows persistent or growing `queued_count` /
   `in_progress_count`.
-- Dashboard's `/api/queue` returns runs older than the configured stale
-  threshold (default driven by `backend/queue_cleanup.py`).
-- Workflow_dispatch agent jobs never start, even with idle runners visible.
-- "Stale runs" badge appears in the Queue Health tab.
+- Dashboard `/api/queue/status` shows old queued runs with long
+  `queue_wait_seconds`.
+- Dashboard stale preview or the queued-job reaper reports
+  `unsatisfiable_runner_labels` or `superseded_pr_head` candidates.
+- Workflow dispatch jobs never start even with idle runners visible.
 
 ## Severity
 
-**P1** if no work is draining at all (full queue stall).
-**P2** if some labels drain but a specific subset is stuck and CI work
-is partially blocked.
-**P3** if a single old run is stuck but the rest of the queue flows.
+**P1** if no work is draining at all.
+**P2** if one runner label, repo, or workflow family is stuck.
+**P3** if only a few old, superseded runs are stuck.
+
+## Stale Reasons
+
+- `unsatisfiable_runner_labels`: no online self-hosted runner advertises the
+  requested labels. These are safe to cancel once older than the configured
+  threshold because they cannot start until the workflow or runner labels are
+  repaired.
+- `superseded_pr_head`: a queued PR run targets an older head SHA while a newer
+  run exists for the same PR/workflow. These are safe to cancel only when the
+  classifier marks `safe_to_cancel=true`; never cancel the current PR head.
+- Busy but current-head jobs are not stale. Leave them alone unless an operator
+  has confirmed the run is not required.
+
+Do not cancel current-head required checks, release/tag workflows, deployment
+workflows, or running jobs as part of routine queue cleanup.
 
 ## Detection
 
-- Queue Health tab highlights stale runs.
-- `curl -fsS http://localhost:8321/api/queue/stale` returns a non-empty list
-  (this endpoint is backed by `backend/queue_cleanup.find_stale_runs`).
-- `curl -fsS http://localhost:8321/api/queue/diagnose` shows runs older than
-  the threshold.
-- `gh run list --status queued --limit 50` shows runs older than ~30 min.
-- Operators on slack/Discord report jobs not starting.
-
-## Diagnosis
-
 ```bash
-# 1. Get the dashboard's view of stale runs (uses queue_cleanup.py helpers).
-curl -fsS http://localhost:8321/api/queue/stale | jq '.'
+# 1. Current queue with timing data.
+curl -fsS http://localhost:8321/api/queue/status | jq '.'
 
-# 2. Drill into queue diagnostics for cross-repo summary.
-curl -fsS http://localhost:8321/api/queue/diagnose | jq '.'
+# 2. Stale API preview, when the endpoint is available on the deployed build.
+curl -fsS 'http://localhost:8321/api/queue/stale?min_age_minutes=30' | jq '.'
 
-# 3. Direct GitHub query for any queued/in-progress runs older than 30 min.
+# 3. Direct GitHub query for queued runs older than 30 minutes.
 gh api -X GET 'repos/D-sorganization/Runner_Dashboard/actions/runs' \
-  -f status=queued --jq '.workflow_runs[] | {id,name,created_at,status}'
+  -f status=queued --jq '.workflow_runs[] | {id,name,head_branch,head_sha,created_at,status}'
 
-# 4. Are runners idle while jobs queue? (label mismatch is the usual cause.)
+# 4. Are runners idle while jobs queue?
 gh api orgs/D-sorganization/actions/runners \
   --jq '.runners[] | {name, status, busy, labels: [.labels[].name]}'
 
-# 5. Inspect recent dashboard logs for cancellation failures.
+# 5. Inspect dashboard logs for stale/cancel API failures.
 sudo journalctl -u runner-dashboard -n 200 --no-pager | grep -i 'queue\|cancel\|stale'
 ```
 
 ## Mitigation
 
+Always preview before cancellation.
+
 ```bash
-# A. Use the dashboard's bulk purge (calls queue_cleanup.purge_stale_runs).
-#    The Queue Health tab "Purge stale" button calls the same endpoint.
-curl -fsS -X POST http://localhost:8321/api/queue/purge-stale | jq '.'
+# Preview stale jobs older than 30 minutes.
+curl -fsS -X POST http://localhost:8321/api/queue/purge-stale \
+  -H 'Content-Type: application/json' \
+  -d '{"min_age": 30, "dry_run": true}' | jq '.'
 
-# B. Cancel a single specific run via the dashboard.
-curl -fsS -X POST \
-  http://localhost:8321/api/runs/<repo>/cancel/<run_id>
+# In workflow form, preview only unsatisfiable label candidates.
+gh workflow run util-queued-job-reaper.yml \
+  -f dry-run=true \
+  -f min-age-minutes=30 \
+  -f reason-filter=unsatisfiable_runner_labels \
+  -f max-cancel=10
 
-# C. Cancel directly via gh as a fallback.
-gh run cancel <run_id> --repo D-sorganization/<repo>
+# Cancel only if the stale API/reaper preview marks the candidates safe.
+gh workflow run util-queued-job-reaper.yml \
+  -f dry-run=false \
+  -f min-age-minutes=30 \
+  -f reason-filter=unsatisfiable_runner_labels \
+  -f max-cancel=5
 
-# D. If the stall is caused by missing label coverage, scale runners up.
+# Cancel a specific run after confirming it is not current-head required CI.
+curl -fsS -X POST http://localhost:8321/api/runs/<repo>/cancel/<run_id>
+
+# Missing-label stalls need runner/workflow repair, not broad cancellation.
 sudo systemctl restart runner-autoscaler
-# or manually start an idle runner unit
 sudo systemctl start 'actions.runner.D-sorganization-<repo>.<runner>.service'
 ```
 
-The hourly `deploy/scheduled-dashboard-maintenance.sh` cron also performs
-stale-queue purges; if cron was disabled, re-enable it.
+If the deployed build does not expose `/api/queue/stale`, use the workflow
+dry-run summary and direct `gh` inspection. `deploy/scheduled-dashboard-maintenance.sh`
+will warn instead of silently claiming stale cleanup succeeded.
 
-## Resolution
+## Scheduled Maintenance
 
-- Tune the staleness threshold in `backend/queue_cleanup.py` if real long
-  jobs are being false-positived as stale.
-- If a workflow consistently produces stuck runs, add a `timeout-minutes:`
-  cap to the job and a regression test in `tests/api/` covering the cancel
-  path.
-- Confirm `deploy/scheduled-dashboard-maintenance.sh` is in cron and ran in
-  the last hour:
-  ```bash
-  crontab -l | grep scheduled-dashboard-maintenance
-  ls -lt ~/.cache/runner-dashboard/maintenance.log | head -3
-  ```
-- If a label-mismatch caused the stall, fix workflow `runs-on:` or update
-  `backend/machine_registry.yml` so dispatch targets a label that exists.
-- File a postmortem if the stall affected more than one repo.
+`deploy/scheduled-dashboard-maintenance.sh` runs stale cleanup in safe-preview
+mode by default:
+
+```bash
+STALE_QUEUE_DRY_RUN=1 STALE_QUEUE_AGE_MINUTES=120 \
+  bash deploy/scheduled-dashboard-maintenance.sh --skip-git
+```
+
+For an incident run, set `STALE_QUEUE_MAX_CANCEL` and a reason filter before
+enabling cancellation. If the dashboard or fallback script cannot enforce caps,
+the maintenance script refuses an uncapped purge.
+
+```bash
+STALE_QUEUE_DRY_RUN=0 \
+STALE_QUEUE_AGE_MINUTES=30 \
+STALE_QUEUE_REASON_FILTER=superseded_pr_head \
+STALE_QUEUE_MAX_CANCEL=5 \
+  bash deploy/scheduled-dashboard-maintenance.sh --skip-git
+```
+
+## Post-Incident Checklist
+
+1. Refresh `/api/queue/status` and confirm queue depth is falling.
+2. Re-run stale preview and confirm only expected reasons remain.
+3. Check runner idle/busy count and label coverage.
+4. Verify alerts or stale badges auto-close after the next dashboard poll.
+5. If `superseded_pr_head` repeats, add or fix workflow concurrency for that
+   PR workflow instead of relying on cleanup.
 
 ## Postmortem Template
 

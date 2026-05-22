@@ -81,7 +81,7 @@ describe("RecoveryDialog", () => {
     expect(alert.textContent ?? "").not.toMatch(/protocol handler requires https context/i);
     // The replacement is actionable: tells the user what to do and which URL
     // is being probed.
-    expect(alert).toHaveTextContent(/systemctl --user restart runner-dashboard/);
+    expect(alert).toHaveTextContent(/sudo systemctl restart runner-dashboard\.service/);
     expect(alert).toHaveTextContent("https://example.ts.net/health");
 
     alertSpy.mockRestore();
@@ -95,7 +95,7 @@ describe("RecoveryDialog", () => {
     // The restart command must be visible up-front — clicking Start Now is
     // best-effort and frequently does nothing (handler not registered).
     expect(
-      screen.getByText(/systemctl --user restart runner-dashboard/),
+      screen.getByText(/sudo systemctl restart runner-dashboard\.service/),
     ).toBeInTheDocument();
   });
 

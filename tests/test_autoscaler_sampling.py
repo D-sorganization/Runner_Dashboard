@@ -64,6 +64,61 @@ def test_sample_raises_without_psutil(monkeypatch: pytest.MonkeyPatch) -> None:
         samp._sample()
 
 
+def test_sample_uses_windows_host_cpu_and_memory(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakePsutil:
+        @staticmethod
+        def cpu_percent(interval=0.0, percpu=False):  # noqa: ARG004
+            return 4.0
+
+        @staticmethod
+        def virtual_memory():
+            return type("Mem", (), {"percent": 3.0})()
+
+        @staticmethod
+        def cpu_count(logical=True):  # noqa: ARG004
+            return 8
+
+    monkeypatch.setattr(samp, "psutil", FakePsutil)
+    monkeypatch.setattr(samp, "_windows_host_resource_snapshot", lambda: (42.0, 61.0))
+    monkeypatch.setattr(samp.os, "getloadavg", lambda: (4.0, 0.0, 0.0), raising=False)
+    monkeypatch.setattr(
+        samp.shutil,
+        "disk_usage",
+        lambda _p: type("Disk", (), {"used": 10, "total": 100, "free": 50})(),
+    )
+
+    cpu, mem, load, disk_percent, disk_free = samp._sample()
+
+    assert cpu == pytest.approx(42.0)
+    assert mem == pytest.approx(61.0)
+    assert load == pytest.approx(0.5)
+    assert disk_percent == pytest.approx(10.0)
+    assert disk_free > 0
+
+
+def test_windows_host_snapshot_uses_absolute_powershell_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        samp.platform,
+        "uname",
+        lambda: type("Uname", (), {"release": "5.15.0-microsoft-standard-WSL2"})(),
+    )
+    calls = []
+
+    def fake_run(args, **_kwargs):
+        calls.append(args[0])
+        if args[0] == "powershell.exe":
+            raise OSError("PATH unavailable under systemd")
+        return _cp(json.dumps({"cpu_percent": 13.0, "memory_percent": 35.0}))
+
+    monkeypatch.setattr(samp.subprocess, "run", fake_run)
+
+    assert samp._windows_host_resource_snapshot() == (13.0, 35.0)
+    assert calls == [
+        "powershell.exe",
+        "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe",
+    ]
+
+
 def test_leased_runners_no_file() -> None:
     """_leased_runners returns empty set when leases.yml does not exist."""
     with patch.object(Path, "exists", return_value=False):

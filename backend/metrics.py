@@ -30,6 +30,7 @@ async def get_system_metrics():
         _disk_pressure_snapshot,
         _get_runner_capacity_snapshot,
         _local_hardware_specs,
+        _windows_host_resource_snapshot,
         _workload_capacity_from_specs,
         get_gpu_info,
         get_per_runner_resources,
@@ -164,6 +165,9 @@ async def get_system_metrics():
     # Per-CPU usage
     per_cpu = psutil.cpu_percent(interval=0, percpu=True)
     current_cpu = psutil.cpu_percent(interval=0)
+    host_resources = _windows_host_resource_snapshot()
+    if host_resources:
+        current_cpu = host_resources["cpu_percent"]
     _cpu_history.append(current_cpu)
     cpu_avg_1m = round(sum(_cpu_history) / len(_cpu_history), 1) if _cpu_history else current_cpu
 
@@ -194,10 +198,17 @@ async def get_system_metrics():
         "memory": {
             "host_total_gb": HOST_MEMORY_GB,
             "wsl_total_gb": round(mem.total / (1024**3), 1),
-            "total_gb": HOST_MEMORY_GB or round(mem.total / (1024**3), 1),
-            "used_gb": round(mem.used / (1024**3), 1),
-            "available_gb": round(mem.available / (1024**3), 1),
-            "percent": mem.percent,
+            "total_gb": (
+                host_resources["memory_total_gb"]
+                if host_resources
+                else HOST_MEMORY_GB or round(mem.total / (1024**3), 1)
+            ),
+            "used_gb": host_resources["memory_used_gb"] if host_resources else round(mem.used / (1024**3), 1),
+            "available_gb": (
+                host_resources["memory_available_gb"] if host_resources else round(mem.available / (1024**3), 1)
+            ),
+            "percent": host_resources["memory_percent"] if host_resources else mem.percent,
+            "source": "windows-host" if host_resources else "wsl",
             "swap_total_gb": round(swap.total / (1024**3), 1),
             "swap_used_gb": round(swap.used / (1024**3), 1),
             "swap_percent": swap.percent,
