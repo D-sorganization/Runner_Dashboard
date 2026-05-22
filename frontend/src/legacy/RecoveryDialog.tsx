@@ -101,7 +101,7 @@ export function RecoveryDialog({ onClose, healthUrl }: RecoveryDialogProps) {
     setProtocolError(
       `If nothing happened: the runner-dashboard:// handler is not registered on this device, ` +
         `or the page (${origin}) is not allowed to invoke it. ` +
-        `Run "systemctl --user restart runner-dashboard" on the dashboard host, then click Refresh. ` +
+        `Run "sudo systemctl restart runner-dashboard.service" on the dashboard host, then click Refresh. ` +
         `Backend health URL: ${resolvedHealthUrl}`,
     );
   };
@@ -156,7 +156,7 @@ export function RecoveryDialog({ onClose, healthUrl }: RecoveryDialogProps) {
               : "The dashboard backend is not responding. To restart the service, run this command on the dashboard host:"}
           </p>
           <pre style={{ background: "var(--bg-secondary)", padding: "12px", borderRadius: 4, margin: "0 0 16px 0", fontSize: "13px", overflow: "auto", color: "var(--text-primary)" }}>
-            {"systemctl --user restart runner-dashboard\n\nThen click Refresh."}
+            {"sudo systemctl restart runner-dashboard.service\n\nThen click Refresh."}
           </pre>
           <p style={{ margin: "0 0 16px 0", color: "var(--text-tertiary, var(--text-secondary))", fontSize: "12px" }}>
             Health probe: <code>{resolvedHealthUrl}</code>

@@ -150,7 +150,17 @@ async def restart_dashboard_service(
     try:
         result = await asyncio.to_thread(
             subprocess.run,
-            [SYSTEMCTL_BIN, "--user", "restart", "runner-dashboard"],
+            [
+                "sudo",
+                "-n",
+                "systemd-run",
+                "--unit=runner-dashboard-self-restart",
+                "--on-active=1",
+                "--collect",
+                "/bin/systemctl",
+                "restart",
+                "runner-dashboard.service",
+            ],
             capture_output=True,
             text=True,
             timeout=30,
@@ -189,7 +199,7 @@ async def generate_launchers(
 
     restart = output_dir / "Restart-Dashboard-Service.ps1"
     restart.write_text(
-        'wsl -e bash -c "systemctl --user restart runner-dashboard && echo Service restarted"\n',
+        'wsl -d Ubuntu -e bash -lc "sudo -n systemctl restart runner-dashboard.service && echo Service restarted"\n',
         encoding="utf-8",
     )
     launchers_created.append(str(restart))

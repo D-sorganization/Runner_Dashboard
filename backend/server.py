@@ -2579,7 +2579,7 @@ async def generate_launchers(
 
     restart = output_dir / "Restart-Dashboard-Service.ps1"
     restart.write_text(
-        'wsl -e bash -c "systemctl --user restart runner-dashboard && echo Service restarted"\n',
+        'wsl -d Ubuntu -e bash -lc "sudo -n systemctl restart runner-dashboard.service && echo Service restarted"\n',
         encoding="utf-8",
     )
     launchers_created.append(str(restart))
