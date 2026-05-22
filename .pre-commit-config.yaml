@@ -123,15 +123,7 @@ repos:
       - id: bandit
         name: "bandit (Python security)"
         stages: [pre-push]
-        args:
-          [
-            "-r",
-            "backend/",
-            "-ll",
-            "-ii",
-            "-x",
-            "tests/,.github/",
-          ]
+        args: ["-r", "backend/", "-ll", "-ii", "-x", "tests/,.github/"]
         pass_filenames: false
         types: [python]
 
@@ -151,8 +143,15 @@ repos:
             "-m",
             "not slow and not integration",
           ]
-        language: python
-        additional_dependencies: [pytest, pytest-cov]
+        # ``language: system`` runs pytest from the user's activated venv
+        # (or PATH-resolved pytest). The previous config used
+        # ``language: python`` with ``additional_dependencies: [pytest,
+        # pytest-cov]``, which spun up an isolated venv with ONLY those
+        # two packages — so any test that touched fastapi, pydantic,
+        # identity, etc. errored at import on every push from any host.
+        # Contract: contributors must have the project venv activated
+        # (or run ``pip install -e ".[dev]"`` once) before pushing.
+        language: system
         pass_filenames: false
         types: [python]
 
