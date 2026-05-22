@@ -146,3 +146,107 @@ def test_pr_autofix_preserves_branch_safety_and_status_contract() -> None:
     assert "Cannot auto-fix protected branch" in text
     for status in ("passed", "failed", "deferred", "manual_required"):
         assert status in text
+
+
+# Allowlists for PR-triggered workflows that do not cancel-in-progress or use a singleton group.
+
+# PR-triggered workflows where cancel-in-progress: false is intentional.
+# Must map workflow filename to a clear rationale.
+FALSE_CANCEL_PR_ALLOWLIST: dict[str, str] = {}
+
+# PR-triggered workflows that collapse all PRs into a single concurrency group.
+# Must map workflow filename to a clear rationale why it is an intentional singleton.
+SINGLETON_PR_ALLOWLIST: dict[str, str] = {
+    "Agent-Redundant-PR-Closer.yml": (
+        "Closes redundant agent PRs across the repository. It scans the entire pool of open PRs, "
+        "so running it as a global singleton avoids race conditions, API rate limits, "
+        "and duplicate comments."
+    ),
+    "Jules-Control-Tower.yml": (
+        "The central orchestrator/dispatcher for automated remediation and triage. Running "
+        "as a repository singleton avoids race conditions and duplicate dispatches."
+    ),
+}
+
+
+def _is_pr_triggered(data: dict) -> bool:
+    """Check if a workflow is triggered by pull_request or pull_request_target events."""
+    triggers = data.get(True) or data.get("on")
+    if not triggers:
+        return False
+    if isinstance(triggers, str):
+        return triggers in ("pull_request", "pull_request_target")
+    if isinstance(triggers, list):
+        return any(t in ("pull_request", "pull_request_target") for t in triggers)
+    if isinstance(triggers, dict):
+        return "pull_request" in triggers or "pull_request_target" in triggers
+    return False
+
+
+@pytest.mark.parametrize(
+    "workflow_path",
+    _workflow_files(),
+    ids=lambda p: p.name,
+)
+def test_pr_workflows_cancel_in_progress_policy(workflow_path: Path) -> None:
+    """PR-triggered workflows must have cancel-in-progress: true unless allowlisted."""
+    data = _load_workflow(workflow_path)
+    if not _is_pr_triggered(data):
+        pytest.skip(f"Workflow {workflow_path.name} is not PR-triggered.")
+
+    concurrency = data.get("concurrency")
+    assert concurrency is not None, f"{workflow_path.name}: PR-triggered workflow must have a concurrency block."
+
+    cancel_in_progress = concurrency.get("cancel-in-progress")
+    if workflow_path.name in FALSE_CANCEL_PR_ALLOWLIST:
+        assert cancel_in_progress is False, (
+            f"{workflow_path.name} is allowlisted to have cancel-in-progress: false, "
+            f"but it is set to {cancel_in_progress}."
+        )
+    else:
+        assert cancel_in_progress is True, (
+            f"{workflow_path.name}: PR-triggered workflow must have cancel-in-progress: true. "
+            f"If false is intentional, add it to FALSE_CANCEL_PR_ALLOWLIST with a clear rationale."
+        )
+
+
+@pytest.mark.parametrize(
+    "workflow_path",
+    _workflow_files(),
+    ids=lambda p: p.name,
+)
+def test_pr_workflows_concurrency_group_uniqueness(workflow_path: Path) -> None:
+    """PR-triggered workflows must not collapse all PRs into a single group unless allowlisted as a singleton."""
+    data = _load_workflow(workflow_path)
+    if not _is_pr_triggered(data):
+        pytest.skip(f"Workflow {workflow_path.name} is not PR-triggered.")
+
+    concurrency = data.get("concurrency")
+    assert concurrency is not None, f"{workflow_path.name}: PR-triggered workflow must have a concurrency block."
+
+    group = concurrency.get("group")
+    assert isinstance(group, str), f"{workflow_path.name}: concurrency group must be a string."
+
+    # A concurrency group collapses all PRs if it does not contain a variable that varies by PR or ref
+    ref_vars = [
+        "github.event.pull_request.number",
+        "github.ref",
+        "github.ref_name",
+        "github.head_ref",
+        "github.sha",
+        "github.event.number",
+        "inputs.branch",
+    ]
+    has_ref_var = any(var in group for var in ref_vars)
+
+    if workflow_path.name in SINGLETON_PR_ALLOWLIST:
+        assert not has_ref_var, (
+            f"{workflow_path.name} is allowlisted as a singleton, but it has a dynamic group name "
+            f"containing a ref variable: {group}"
+        )
+    else:
+        assert has_ref_var, (
+            f"{workflow_path.name}: PR-triggered workflow concurrency group '{group}' collapses all PRs. "
+            f"Add a dynamic variable like '${{{{ github.ref }}}}' or '${{{{ github.event.pull_request.number }}}}' "
+            f"to the concurrency group, or add the workflow to SINGLETON_PR_ALLOWLIST with a clear rationale."
+        )

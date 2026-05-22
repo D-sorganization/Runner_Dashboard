@@ -9,17 +9,18 @@ canonical contract lives in
 [`Repository_Management/docs/sibling-repos.md`](https://github.com/D-sorganization/Repository_Management/blob/main/docs/sibling-repos.md).
 Read it before adding any cross-repo surface.
 
-| Repo                      | Role                                                   |
-| ------------------------- | ------------------------------------------------------ |
-| [`Repository_Management`](https://github.com/D-sorganization/Repository_Management) | Fleet orchestrator (workflows, skills, templates, agent coordination). |
-| `runner-dashboard` (here) | Operator console — backend, frontend, deploy, every dashboard tab and `/api/*` endpoint. |
-| [`Maxwell-Daemon`](https://github.com/D-sorganization/Maxwell-Daemon) | Autonomous local AI control plane consumed by the Maxwell tab over HTTP. |
+| Repo                                                                                | Role                                                                                     |
+| ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| [`Repository_Management`](https://github.com/D-sorganization/Repository_Management) | Fleet orchestrator (workflows, skills, templates, agent coordination).                   |
+| `runner-dashboard` (here)                                                           | Operator console — backend, frontend, deploy, every dashboard tab and `/api/*` endpoint. |
+| [`Maxwell-Daemon`](https://github.com/D-sorganization/Maxwell-Daemon)               | Autonomous local AI control plane consumed by the Maxwell tab over HTTP.                 |
 
 **Owned here:** every dashboard tab (Fleet, Org, Heavy, Workflows,
 Remediation, Maxwell, Assessments, Feature Requests, Credentials, Reports,
 Queue Health), every `/api/*` endpoint, dispatch envelope/contract, deployment
-+ rollout machinery, the frontend bundle, stale-queue cleanup, dashboard-only
-docs.
+
+- rollout machinery, the frontend bundle, stale-queue cleanup, dashboard-only
+  docs.
 
 **Not owned here:** fleet-wide CI workflows (live in `Repository_Management`),
 agent claim/lease protocol (lives in `Repository_Management`), the Maxwell AI
@@ -237,12 +238,57 @@ change without a SPEC.md update, the check fails. Apply `spec-exempt` label
 to bypass.
 
 Agent workflows:
+
 - **Jules Control Tower** — orchestrates CI remediation and weekly maintenance
 - **Jules PR AutoFix** — iteratively fixes CI failures by pushing to PR branches
 - **Jules Auto-Repair** — worker called by Control Tower for complex repairs
 - **Agent Redundant PR Closer** — closes duplicate agent PRs by priority
 - **Agent Lease Reaper** — sweeps expired coordination leases every 30 min
 - **Agent Fleet Dashboard** — regenerates `docs/fleet-in-flight.md` every 15 min
+
+### Workflow Concurrency Governance
+
+All workflows must define a top-level `concurrency:` block. The concurrency rules are:
+
+1. **PR-triggered Validation Workflows**:
+
+   - MUST use `cancel-in-progress: true` to abort superseded runs.
+   - MUST use a concurrency group that distinguishes the PR or branch (e.g. using `github.ref` or `github.event.pull_request.number`) to avoid canceling jobs across different PRs.
+   - Example:
+     ```yaml
+     concurrency:
+       group: ${{ github.workflow }}-${{ github.ref }}
+       cancel-in-progress: true
+     ```
+
+2. **Deploy, Release, and Tag Publishing Workflows**:
+
+   - MUST use `cancel-in-progress: false` to ensure tag validation, publishing, and deployments are not left in an incomplete state.
+   - Example:
+     ```yaml
+     concurrency:
+       group: ${{ github.workflow }}-${{ github.ref }}
+       cancel-in-progress: false
+     ```
+
+3. **Repository-wide Coordination Singletons**:
+
+   - Workflows that coordinate automation or remediations globally across the repository (e.g., `Jules Control Tower`, `Agent Redundant PR Closer`) MUST use a repository-scoped singleton group to prevent concurrent race conditions.
+   - Example:
+     ```yaml
+     concurrency:
+       group: jules-control-tower-${{ github.repository }}
+       cancel-in-progress: true
+     ```
+
+4. **Automation / Remediation Workflows**:
+
+   - Workflows that dispatch repairs/remediations (e.g., `Jules Auto-Repair`, `Jules PR AutoFix`) MUST define concurrency scopes that target the specific branch or PR under repair.
+   - They MUST NOT use global/repository-wide concurrency groups that cancel unrelated branches/runs.
+   - Use job-level concurrency (e.g., `group: auto-repair-${{ inputs.branch }}`) with `cancel-in-progress: false` to allow the in-flight repair to complete safely without race conditions.
+
+5. **Allowlists**:
+   - Any exceptions to these concurrency rules (e.g., PR-triggered workflows using `cancel-in-progress: false` or using singleton groups) must be formally allowlisted with a clear rationale in `tests/test_workflow_hygiene.py`.
 
 ## Coding Conventions
 
