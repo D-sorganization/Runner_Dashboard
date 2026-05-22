@@ -89,6 +89,7 @@ class TestGetStaleQueue:
             min_age_minutes=90,
             repo="test-repo",
             reason="abandoned-agent-run",
+            safe_to_cancel_only=False,
         )
 
     def test_get_stale_queue_invalid_repo(
@@ -170,6 +171,8 @@ class TestPurgeStaleQueue:
             repo=None,
             reason=None,
             dry_run=True,
+            max_cancel=None,
+            safe_to_cancel_only=False,
         )
 
     def test_purge_stale_queue_parameters_query(
@@ -191,6 +194,8 @@ class TestPurgeStaleQueue:
             repo="test-repo",
             reason="abandoned-agent-run",
             dry_run=False,
+            max_cancel=None,
+            safe_to_cancel_only=False,
         )
 
     def test_purge_stale_queue_parameters_body(
@@ -218,6 +223,8 @@ class TestPurgeStaleQueue:
             repo="test-repo",
             reason="stale-feature-branch",
             dry_run=False,
+            max_cancel=None,
+            safe_to_cancel_only=False,
         )
 
     def test_purge_stale_queue_cache_invalidation_on_purge(

@@ -614,9 +614,7 @@ if _AUTODERIVE_FLEET and not FLEET_NODES:
                 validate_fleet_node_url(_candidate_url)
                 FLEET_NODES[_name] = _candidate_url
             except ValueError as _e:
-                log.warning(
-                    "Skipping derived FLEET_NODES entry %s=%s: %s", _name, _candidate_url, _e
-                )
+                log.warning("Skipping derived FLEET_NODES entry %s=%s: %s", _name, _candidate_url, _e)
         if FLEET_NODES:
             FLEET_NODES_SOURCE = "registry"
             log.info("FLEET_NODES auto-derived from registry: %s", ", ".join(FLEET_NODES.keys()))
@@ -2214,16 +2212,14 @@ def _diagnostics_payload() -> dict:
             "loaded": True,
             "machines": machines_count,
             "version": _registry.get("version"),
-            "path": os.environ.get("MACHINE_REGISTRY_PATH")
-            or str(Path(__file__).with_name("machine_registry.yml")),
+            "path": os.environ.get("MACHINE_REGISTRY_PATH") or str(Path(__file__).with_name("machine_registry.yml")),
         }
     except Exception as exc:  # noqa: BLE001
         registry_err = str(exc)
         registry_status = {
             "loaded": False,
             "error": registry_err,
-            "path": os.environ.get("MACHINE_REGISTRY_PATH")
-            or str(Path(__file__).with_name("machine_registry.yml")),
+            "path": os.environ.get("MACHINE_REGISTRY_PATH") or str(Path(__file__).with_name("machine_registry.yml")),
         }
 
     # Fleet federation status (config only — peer reachability is /api/fleet/nodes)
@@ -2271,10 +2267,7 @@ def _diagnostics_payload() -> dict:
         cache_status = {"available": False}
 
     # Overall health summary so deploy-check.sh can grep one field
-    healthy = (
-        registry_status.get("loaded") is True
-        and (fleet_status["node_count"] > 0 or MACHINE_ROLE != "hub")
-    )
+    healthy = registry_status.get("loaded") is True and (len(FLEET_NODES) > 0 or MACHINE_ROLE != "hub")
 
     return {
         "ok": bool(healthy),

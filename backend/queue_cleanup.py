@@ -25,9 +25,11 @@ import asyncio
 import datetime as _dt
 import json
 import logging
+import threading
 from dataclasses import asdict, dataclass
 from datetime import timedelta
 from enum import Enum
+from pathlib import Path
 
 from dashboard_config.timeouts import Concurrency
 
@@ -59,6 +61,7 @@ class StaleReason(str, Enum):
     STALE_FEATURE_BRANCH = "stale-feature-branch"
     OFFLINE_RUNNER_OR_LAG = "offline-runner-or-lag"
     STALE_MAIN_BRANCH = "stale-main-branch-queue"
+    UNSATISFIABLE_LABELS = "unsatisfiable_labels"
     UNKNOWN = "unknown"
 
 
@@ -137,6 +140,75 @@ async def _gh_json(*args: str, default=None, timeout: int = 30):
         return default
 
 
+def parse_concatenated_json(s: str) -> list[dict]:
+    """Safely parse concatenated JSON documents (e.g. from gh api --paginate)."""
+    decoder = json.JSONDecoder()
+    s = s.strip()
+    results = []
+    pos = 0
+    while pos < len(s):
+        # Skip leading whitespace
+        while pos < len(s) and s[pos].isspace():
+            pos += 1
+        if pos >= len(s):
+            break
+        try:
+            doc, idx = decoder.raw_decode(s, pos)
+            results.append(doc)
+            pos = idx
+        except json.JSONDecodeError:
+            break
+    return results
+
+
+async def get_online_runners(org: str) -> list[dict]:
+    """Fetch online self-hosted runners from GitHub.
+    Returns a list of runners, each with a lowercased list of labels.
+    """
+    code, stdout, stderr = await _gh(
+        "api",
+        "--paginate",
+        f"/orgs/{org}/actions/runners",
+        timeout=30,
+    )
+    if code != 0:
+        log.warning("Failed to fetch runners: %s", stderr)
+        return []
+
+    docs = parse_concatenated_json(stdout)
+    runners = []
+    for doc in docs:
+        for runner in doc.get("runners", []):
+            if runner.get("status") == "online":
+                labels = [lbl["name"].lower() for lbl in runner.get("labels", []) if "name" in lbl]
+                runners.append({"name": runner.get("name"), "labels": labels})
+    return runners
+
+
+def is_hosted_label(label: str) -> bool:
+    """Check if a label belongs to GitHub-hosted runners."""
+    label = label.lower()
+    return (
+        label.startswith("ubuntu-")
+        or label.startswith("windows-")
+        or label.startswith("macos-")
+        or label in ("ubuntu", "windows", "macos")
+    )
+
+
+def is_job_unsatisfiable(job_labels: list[str], online_runners: list[dict]) -> bool:
+    """Check if a self-hosted job's labels are not a subset of any online runner's labels."""
+    if any(is_hosted_label(lbl) for lbl in job_labels):
+        return False
+    if not job_labels:
+        return False
+    job_labels_set = set(job_labels)
+    for runner in online_runners:
+        if job_labels_set.issubset(runner["labels"]):
+            return False
+    return True
+
+
 # ---------------------------------------------------------------------------
 # Repo discovery
 # ---------------------------------------------------------------------------
@@ -180,13 +252,53 @@ async def fetch_pr_details(org: str, repo: str, pr_number: int) -> dict | None:
 
 
 def is_protected_target(branch: str, event: str, workflow: str) -> bool:
-    """Check if the run targets main, release, tags, or scheduled maintenance."""
+    """Check if the run targets main, master, release, tags, or scheduled/deploy/release workflows."""
+    if not branch:
+        branch = ""
+    if not workflow:
+        workflow = ""
+    workflow_lower = workflow.lower()
+
     if branch in ("main", "master", "release"):
         return True
-    if event == "release" or (branch and (branch.startswith("v") or "/" in branch and "tags" in branch)):
+    if event == "release" or branch.startswith("v") or ("tags/" in branch) or ("/tags" in branch):
         return True
-    if event == "schedule" or (workflow and "maintenance" in workflow.lower()):
+    if (
+        event == "schedule"
+        or "maintenance" in workflow_lower
+        or "deploy" in workflow_lower
+        or "release" in workflow_lower
+    ):
         return True
+    return False
+
+
+def is_forbidden_by_rule_6(branch: str, event: str, workflow: str, is_current: bool) -> bool:
+    """Rule 6: Do not cancel current-head required checks, releases, tag workflows, or deploys."""
+    if not branch:
+        branch = ""
+    if not workflow:
+        workflow = ""
+    workflow_lower = workflow.lower()
+
+    # Releases: event is release, or workflow name contains "release"
+    if event == "release" or "release" in workflow_lower:
+        return True
+
+    # Tag workflows: branch starts with v, or contains tags/ or /tags, or event is release
+    if branch.startswith("v") or ("tags/" in branch) or ("/tags" in branch):
+        return True
+
+    # Deploys: workflow name contains "deploy"
+    if "deploy" in workflow_lower:
+        return True
+
+    # Current-head required checks:
+    # If it is a current-head run (is_current is True) AND it's a push or pull_request event
+    # (meaning it is a check run triggered by code changes, which could be required).
+    if is_current and event in ("pull_request", "push"):
+        return True
+
     return False
 
 
@@ -194,6 +306,7 @@ async def _queued_stale_for_repo(
     org: str,
     repo: str,
     min_age: timedelta,
+    online_runners: list[dict] | None = None,
 ) -> list[StaleRun]:
     now = _get_now()
 
@@ -228,11 +341,71 @@ async def _queued_stale_for_repo(
 
     stale: list[StaleRun] = []
     pr_cache: dict[int, dict | None] = {}
+    branch_sha_cache: dict[tuple[str, str], str | None] = {}
 
-    # Group structure: (workflow, pr_number) -> list of runs
-    pr_groups: dict[tuple[str, int], list[dict]] = {}
-    non_pr_runs: list[dict] = []
+    async def get_branch_head_sha(b: str) -> str | None:
+        key = (repo, b)
+        if key in branch_sha_cache:
+            return branch_sha_cache[key]
+        data = await _gh_json(
+            "api",
+            f"/repos/{org}/{repo}/branches/{b}",
+            default=None,
+            timeout=10,
+        )
+        sha = data.get("commit", {}).get("sha") if data else None
+        branch_sha_cache[key] = sha
+        return sha
 
+    # Fetch jobs for queued runs in parallel to check for unsatisfiable labels
+    queued_runs = [r for r in unique_runs if r.get("status") == "queued"]
+    run_jobs_map: dict[int, list[dict]] = {}
+
+    if online_runners is not None and queued_runs:
+        job_sem = asyncio.Semaphore(10)
+
+        async def fetch_jobs(r_id: int) -> list[dict]:
+            async with job_sem:
+                data = await _gh_json(
+                    "api",
+                    f"/repos/{org}/{repo}/actions/runs/{r_id}/jobs?filter=latest",
+                    default={},
+                    timeout=15,
+                )
+                return data.get("jobs", [])
+
+        jobs_results = await asyncio.gather(*[fetch_jobs(r["id"]) for r in queued_runs])
+        run_jobs_map = {r["id"]: jobs for r, jobs in zip(queued_runs, jobs_results, strict=True)}
+
+    async def fetch_pr_details_cached(pr_num: int) -> dict | None:
+        if pr_num not in pr_cache:
+            pr_cache[pr_num] = await fetch_pr_details(org, repo, pr_num)
+        return pr_cache[pr_num]
+
+    async def check_current_head(run_obj: dict) -> bool:
+        branch = run_obj.get("head_branch") or "?"
+        event = run_obj.get("event", "")
+        pull_requests = run_obj.get("pull_requests") or []
+        is_pr = bool(pull_requests) or (event == "pull_request")
+
+        current_sha = None
+        if is_pr:
+            if pull_requests:
+                pr_number = pull_requests[0].get("number")
+                if pr_number is not None:
+                    pr_details = await fetch_pr_details_cached(pr_number)
+                    if pr_details:
+                        current_sha = pr_details.get("head", {}).get("sha") or pr_details.get("headRefOid")
+        else:
+            if branch and branch != "?":
+                current_sha = await get_branch_head_sha(branch)
+
+        if not current_sha:
+            return False
+        return run_obj.get("head_sha") == current_sha
+
+    # Filter runs by age
+    runs_to_process = []
     for run in unique_runs:
         raw_ts = run.get("created_at", "")
         try:
@@ -242,15 +415,61 @@ async def _queued_stale_for_repo(
         age = now - created
         if age < min_age:
             continue
+        runs_to_process.append((run, created, age))
 
+    # Check unsatisfiable labels first
+    unsat_runs = set()
+    if online_runners is not None:
+        for run, _, age in runs_to_process:
+            r_id = run.get("id", 0)
+            status = run.get("status")
+            if status == "queued" and r_id in run_jobs_map:
+                jobs = run_jobs_map[r_id]
+                is_unsat = False
+                for job in jobs:
+                    job_labels = [lbl.lower() for lbl in job.get("labels", [])]
+                    if is_job_unsatisfiable(job_labels, online_runners):
+                        is_unsat = True
+                        break
+
+                if is_unsat:
+                    branch = run.get("head_branch", "?") or "?"
+                    event = run.get("event", "")
+                    workflow = run.get("name", "?")
+                    protected = is_protected_target(branch, event, workflow)
+                    is_current = await check_current_head(run)
+                    safe_to_cancel = not (protected or is_current)
+                    if is_forbidden_by_rule_6(branch, event, workflow, is_current):
+                        safe_to_cancel = False
+                    age_minutes = int(age.total_seconds() / 60)
+
+                    stale.append(
+                        StaleRun(
+                            repo=repo,
+                            run_id=r_id,
+                            workflow=workflow,
+                            branch=branch,
+                            created_at=run.get("created_at", ""),
+                            age_minutes=age_minutes,
+                            reason=StaleReason.UNSATISFIABLE_LABELS.value,
+                            safe_to_cancel=safe_to_cancel,
+                            url=f"https://github.com/{org}/{repo}/actions/runs/{r_id}",
+                        )
+                    )
+                    unsat_runs.add(r_id)
+
+    # Process remaining runs for PR or branch stale classification
+    remaining_runs = [(run, created, age) for run, created, age in runs_to_process if run.get("id") not in unsat_runs]
+
+    pr_groups: dict[tuple[str, int], list[dict]] = {}
+    non_pr_runs: list[dict] = []
+
+    for run, _, age in remaining_runs:
         branch = run.get("head_branch", "?") or "?"
         event = run.get("event", "")
         workflow = run.get("name", "?")
 
-        # Check if targets main, release, tags, or scheduled maintenance
         protected = is_protected_target(branch, event, workflow)
-
-        # Determine if it has PR metadata
         pull_requests = run.get("pull_requests") or []
         is_pr_run = bool(pull_requests) or (event == "pull_request")
 
@@ -261,7 +480,7 @@ async def _queued_stale_for_repo(
                     group_key = (workflow, pr_number)
                     pr_groups.setdefault(group_key, []).append(run)
                     continue
-            # If event == "pull_request" but pull_requests is empty/missing
+
             age_minutes = int(age.total_seconds() / 60)
             stale.append(
                 StaleRun(
@@ -269,7 +488,7 @@ async def _queued_stale_for_repo(
                     run_id=run.get("id", 0),
                     workflow=workflow,
                     branch=branch,
-                    created_at=raw_ts,
+                    created_at=run.get("created_at", ""),
                     age_minutes=age_minutes,
                     reason=StaleReason.UNKNOWN.value,
                     safe_to_cancel=False,
@@ -281,19 +500,17 @@ async def _queued_stale_for_repo(
 
     # Process PR groups
     for (workflow, pr_number), group_runs in pr_groups.items():
-        # Sort runs in group by created_at descending (newest first)
         group_runs.sort(key=lambda r: r.get("created_at", ""), reverse=True)
 
-        if pr_number not in pr_cache:
-            pr_cache[pr_number] = await fetch_pr_details(org, repo, pr_number)
-        pr_details = pr_cache[pr_number]
-
+        pr_details = await fetch_pr_details_cached(pr_number)
         if pr_details is None:
-            # Missing PR metadata
             for run in group_runs:
                 raw_ts = run.get("created_at", "")
-                created = _dt.datetime.fromisoformat(raw_ts.replace("Z", "+00:00"))
-                age_minutes = int((now - created).total_seconds() / 60)
+                try:
+                    created = _dt.datetime.fromisoformat(raw_ts.replace("Z", "+00:00"))
+                    age_minutes = int((now - created).total_seconds() / 60)
+                except Exception:
+                    age_minutes = 0
                 stale.append(
                     StaleRun(
                         repo=repo,
@@ -320,8 +537,11 @@ async def _queued_stale_for_repo(
         if is_closed or not ref_exists:
             for run in group_runs:
                 raw_ts = run.get("created_at", "")
-                created = _dt.datetime.fromisoformat(raw_ts.replace("Z", "+00:00"))
-                age_minutes = int((now - created).total_seconds() / 60)
+                try:
+                    created = _dt.datetime.fromisoformat(raw_ts.replace("Z", "+00:00"))
+                    age_minutes = int((now - created).total_seconds() / 60)
+                except Exception:
+                    age_minutes = 0
                 status = run.get("status", "queued")
                 stale.append(
                     StaleRun(
@@ -342,8 +562,11 @@ async def _queued_stale_for_repo(
 
         for idx, run in enumerate(group_runs):
             raw_ts = run.get("created_at", "")
-            created = _dt.datetime.fromisoformat(raw_ts.replace("Z", "+00:00"))
-            age_minutes = int((now - created).total_seconds() / 60)
+            try:
+                created = _dt.datetime.fromisoformat(raw_ts.replace("Z", "+00:00"))
+                age_minutes = int((now - created).total_seconds() / 60)
+            except Exception:
+                age_minutes = 0
             status = run.get("status", "queued")
             run_sha = run.get("head_sha")
 
@@ -351,13 +574,17 @@ async def _queued_stale_for_repo(
             matches_current = run_sha == current_sha
 
             if is_newest and matches_current:
-                # Retained / active run
                 continue
 
             if status == "queued":
                 safe_to_cancel = True
             else:
                 safe_to_cancel = age_minutes > IN_PROGRESS_STRICT_THRESHOLD_MINUTES
+
+            branch = run.get("head_branch", "?") or "?"
+            event = run.get("event", "")
+            if is_forbidden_by_rule_6(branch, event, workflow, is_current=False):
+                safe_to_cancel = False
 
             stale.append(
                 StaleRun(
@@ -376,12 +603,20 @@ async def _queued_stale_for_repo(
     # Process non-PR runs using fallback
     for run in non_pr_runs:
         raw_ts = run.get("created_at", "")
-        created = _dt.datetime.fromisoformat(raw_ts.replace("Z", "+00:00"))
-        age_minutes = int((now - created).total_seconds() / 60)
+        try:
+            created = _dt.datetime.fromisoformat(raw_ts.replace("Z", "+00:00"))
+            age_minutes = int((now - created).total_seconds() / 60)
+        except Exception:
+            age_minutes = 0
         branch = run.get("head_branch", "?") or "?"
+        event = run.get("event", "")
+        workflow = run.get("name", "?")
         status = run.get("status", "queued")
 
         run_reason, safe_to_cancel = classify_stale_run(branch, age_minutes)
+        is_current = await check_current_head(run)
+        if is_forbidden_by_rule_6(branch, event, workflow, is_current):
+            safe_to_cancel = False
         if status == "in_progress":
             safe_to_cancel = False
 
@@ -389,7 +624,7 @@ async def _queued_stale_for_repo(
             StaleRun(
                 repo=repo,
                 run_id=run.get("id", 0),
-                workflow=run.get("name", "?"),
+                workflow=workflow,
                 branch=branch,
                 created_at=raw_ts,
                 age_minutes=age_minutes,
@@ -399,6 +634,20 @@ async def _queued_stale_for_repo(
             )
         )
 
+    import prometheus_metrics as pm
+
+    for run in stale:
+        log.info(
+            "Stale run classified: repo=%s, run_id=%d, workflow=%s, branch=%s, reason=%s, safe_to_cancel=%s",
+            run.repo,
+            run.run_id,
+            run.workflow,
+            run.branch,
+            run.reason,
+            str(run.safe_to_cancel),
+        )
+        pm.record_stale_candidate(reason=run.reason)
+
     return stale
 
 
@@ -407,6 +656,8 @@ async def find_stale_runs(
     min_age_minutes: int = DEFAULT_MIN_AGE_MINUTES,
     repo: str | None = None,
     reason: str | None = None,
+    *,
+    safe_to_cancel_only: bool = False,
 ) -> list[StaleRun]:
     """Scan every repo in *org* for queued runs older than *min_age_minutes*.
 
@@ -414,12 +665,14 @@ async def find_stale_runs(
     without hammering the GitHub API.  Sorted oldest-first so the worst
     offenders appear at the top.
     """
+    online_runners = await get_online_runners(org)
+
     if repo:
         from security import validate_repo_slug
 
         validated_repo = validate_repo_slug(repo)
         min_age = timedelta(minutes=min_age_minutes)
-        flat = await _queued_stale_for_repo(org, validated_repo, min_age)
+        flat = await _queued_stale_for_repo(org, validated_repo, min_age, online_runners)
     else:
         repos = await list_all_repos(org)
         min_age = timedelta(minutes=min_age_minutes)
@@ -427,7 +680,7 @@ async def find_stale_runs(
 
         async def bounded(r: str) -> list[StaleRun]:
             async with sem:
-                return await _queued_stale_for_repo(org, r, min_age)
+                return await _queued_stale_for_repo(org, r, min_age, online_runners)
 
         nested = await asyncio.gather(*[bounded(r) for r in repos])
         flat = [run for runs in nested for run in runs]
@@ -435,12 +688,32 @@ async def find_stale_runs(
     if reason:
         flat = [r for r in flat if r.reason.lower() == reason.lower()]
 
+    if safe_to_cancel_only:
+        flat = [r for r in flat if r.safe_to_cancel]
+
+    # Calculate queue age stats from the found stale runs
+    import prometheus_metrics as pm
+
+    if flat:
+        ages = [r.age_minutes * 60 for r in flat]
+        oldest = max(ages)
+        pm.update_stale_queue_age(oldest)
+        # Calculate percentiles
+        sorted_ages = sorted(ages)
+        n = len(sorted_ages)
+
+        def pct(p):
+            idx = int(round(p * (n - 1)))
+            return sorted_ages[idx]
+
+        pm.update_stale_queue_age_percentiles(
+            {"0.5": float(pct(0.5)), "0.9": float(pct(0.9)), "0.95": float(pct(0.95)), "0.99": float(pct(0.99))}
+        )
+    else:
+        pm.update_stale_queue_age(0)
+        pm.update_stale_queue_age_percentiles({"0.5": 0.0, "0.9": 0.0, "0.95": 0.0, "0.99": 0.0})
+
     return sorted(flat, key=lambda r: r.age_minutes, reverse=True)
-
-
-# ---------------------------------------------------------------------------
-# Cancellation
-# ---------------------------------------------------------------------------
 
 
 async def _cancel_one(org: str, run: StaleRun) -> bool:
@@ -455,7 +728,6 @@ async def _cancel_one(org: str, run: StaleRun) -> bool:
     if code == 0:
         run.cancelled = True
         return True
-    # 409 = run already completed -- no longer in queue, treat as success
     if "409" in stderr or "Cannot cancel" in stderr or "already" in stderr.lower():
         run.cancelled = True
         run.cancel_error = "already-finished"
@@ -471,17 +743,46 @@ async def purge_stale_runs(
     reason: str | None = None,
     *,
     dry_run: bool = False,
+    max_cancel: int | None = None,
+    safe_to_cancel_only: bool = False,
 ) -> dict:
     """Find stale runs and optionally cancel them all.
 
     Returns a summary dict suitable for direct JSON serialisation.
     When *dry_run* is True the runs are listed but nothing is cancelled.
     """
-    stale = await find_stale_runs(org, min_age_minutes, repo=repo, reason=reason)
+    stale = await find_stale_runs(
+        org,
+        min_age_minutes,
+        repo=repo,
+        reason=reason,
+        safe_to_cancel_only=safe_to_cancel_only,
+    )
+
+    if max_cancel is not None and max_cancel > 0:
+        stale_to_process = stale[:max_cancel]
+    else:
+        stale_to_process = stale
+
     cancelled_count = 0
     errors: list[str] = []
 
-    if not dry_run and stale:
+    import prometheus_metrics as pm
+
+    if dry_run:
+        for run in stale_to_process:
+            log.info(
+                "Cancellation decision: repo=%s, run_id=%d, workflow=%s, branch=%s, "
+                "reason=%s, safe_to_cancel=%s, dry_run=True, cancelled=False, error=",
+                run.repo,
+                run.run_id,
+                run.workflow,
+                run.branch,
+                run.reason,
+                str(run.safe_to_cancel),
+            )
+
+    if not dry_run and stale_to_process:
         sem = asyncio.Semaphore(_CANCEL_CONCURRENCY)
 
         async def bounded_cancel(run: StaleRun) -> None:
@@ -489,17 +790,105 @@ async def purge_stale_runs(
             async with sem:
                 if await _cancel_one(org, run):
                     cancelled_count += 1
+                    pm.record_cancelled_stale_run(reason=run.reason)
+                    log.info(
+                        "Cancellation decision: repo=%s, run_id=%d, workflow=%s, branch=%s, "
+                        "reason=%s, safe_to_cancel=%s, dry_run=False, cancelled=True, error=",
+                        run.repo,
+                        run.run_id,
+                        run.workflow,
+                        run.branch,
+                        run.reason,
+                        str(run.safe_to_cancel),
+                    )
                 else:
                     errors.append(f"{run.repo}#{run.run_id}: {run.cancel_error}")
+                    pm.record_stale_queue_error(repo=run.repo, reason=run.reason)
+                    log.error(
+                        "Cancellation decision: repo=%s, run_id=%d, workflow=%s, branch=%s, "
+                        "reason=%s, safe_to_cancel=%s, dry_run=False, cancelled=False, error=%s",
+                        run.repo,
+                        run.run_id,
+                        run.workflow,
+                        run.branch,
+                        run.reason,
+                        str(run.safe_to_cancel),
+                        run.cancel_error,
+                    )
 
-        await asyncio.gather(*[bounded_cancel(r) for r in stale])
+        await asyncio.gather(*[bounded_cancel(r) for r in stale_to_process])
 
-    return {
-        "org": org,
-        "min_age_minutes": min_age_minutes,
+    from time_utils import utc_now_iso
+
+    audit_record = {
+        "timestamp": utc_now_iso(),
         "dry_run": dry_run,
         "stale_count": len(stale),
+        "processed_count": len(stale_to_process),
         "cancelled_count": cancelled_count if not dry_run else 0,
         "errors": errors,
-        "runs": [r.as_dict() for r in stale],
+        "runs": [r.as_dict() for r in stale_to_process],
     }
+    append_cleanup_audit(audit_record)
+
+    # Conditional push notification
+    stale_threshold = 5
+    has_errors = len(errors) > 0
+    if len(stale) >= stale_threshold or has_errors:
+        try:
+            from push import send_push
+
+            payload = {
+                "title": "Stale Queue Cleanup Report",
+                "body": (
+                    f"Stale candidates: {len(stale)}. "
+                    f"Cancelled: {cancelled_count if not dry_run else 0}. "
+                    f"Errors: {len(errors)}."
+                ),
+                "stale_count": len(stale),
+                "errors_count": len(errors),
+            }
+            await send_push("queue.stale", payload)
+        except Exception:
+            log.exception("Failed to send queue.stale push notification")
+
+    return audit_record
+
+
+# ---------------------------------------------------------------------------
+# Audit Trail Persistence
+# ---------------------------------------------------------------------------
+
+_audit_lock = threading.Lock()
+_AUDIT_FILE = Path(__file__).resolve().parent.parent / "data" / "queue_cleanup_audit.ndjson"
+
+
+def append_cleanup_audit(record: dict) -> None:
+    """Append a cleanup run record to the audit log."""
+    _AUDIT_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with _audit_lock:
+        with open(_AUDIT_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record) + "\n")
+
+
+def load_cleanup_audit(limit: int = 50) -> list[dict]:
+    """Retrieve the recent cleanup audit trail."""
+    if not _AUDIT_FILE.exists():
+        return []
+    records = []
+    with _audit_lock:
+        with open(_AUDIT_FILE, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    try:
+                        records.append(json.loads(line))
+                    except Exception:
+                        pass
+    return records[-limit:][::-1]
+
+
+def get_last_cleanup_result() -> dict | None:
+    """Retrieve the last cleanup audit entry."""
+    records = load_cleanup_audit(limit=1)
+    return records[0] if records else None

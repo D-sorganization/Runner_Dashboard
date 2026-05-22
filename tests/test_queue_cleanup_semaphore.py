@@ -39,7 +39,7 @@ def test_semaphore_actually_limits_concurrency() -> None:
     in_flight = 0
     peak = 0
 
-    async def fake_query(_org: str, _repo: str, _min_age):  # type: ignore[no-untyped-def]
+    async def fake_query(_org: str, _repo: str, _min_age, online_runners=None):  # type: ignore[no-untyped-def]
         nonlocal in_flight, peak
         in_flight += 1
         peak = max(peak, in_flight)

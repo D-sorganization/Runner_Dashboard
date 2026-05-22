@@ -207,6 +207,17 @@ def require_principal(
                 raise HTTPException(status_code=401, detail="Session revoked or expired")
             prin = identity_manager.principals[principal_id]
 
+    # 3. Check loopback bypass (issue #315)
+    if not prin and os.environ.get("DASHBOARD_LOOPBACK_AUTH") == "1":
+        client_host = getattr(request.client, "host", None) if request.client else None
+        if client_host in ("127.0.0.1", "::1"):
+            prin = Principal(
+                id="__loopback__",
+                type="bot",
+                name="Loopback Bypass",
+                roles=["admin"],
+            )
+
     if not prin:
         # Fail closed — all callers must present valid credentials (issue #315)
         raise HTTPException(status_code=401, detail="Authentication required")

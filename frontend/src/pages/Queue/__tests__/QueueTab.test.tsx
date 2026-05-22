@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect } from "vitest";
 import { vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { QueueTab } from "../index";
 
 describe("QueueTab Component", () => {
@@ -212,5 +212,50 @@ describe("QueueTab Component", () => {
 
     // The stale run should be visible
     expect(screen.getAllByText("Stale Workflow")[0]).toBeInTheDocument();
+  });
+
+  it("renders the last cleanup status when provided by the API", async () => {
+    const mockCleanup = {
+      timestamp: "2026-05-22T19:00:00Z",
+      dry_run: false,
+      stale_count: 5,
+      cancelled_count: 3,
+      errors: ["repo-1#123: rate limited"],
+    };
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (url.includes("/api/queue/stale")) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve({
+              runs: [],
+              last_cleanup: mockCleanup,
+            }),
+          } as Response);
+        }
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({}),
+        } as Response);
+      })
+    );
+
+    render(
+      <QueueTab queue={mockEmptyQueue} loading={false} />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Last Cleanup:")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Candidates:")).toBeInTheDocument();
+    expect(screen.getByText("5")).toBeInTheDocument();
+    expect(screen.getByText("Cancelled:")).toBeInTheDocument();
+    expect(screen.getByText("3")).toBeInTheDocument();
+    expect(screen.getByText("Errors: 1")).toBeInTheDocument();
   });
 });

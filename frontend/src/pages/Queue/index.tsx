@@ -234,6 +234,8 @@ export function QueueTab(p: QueueTabProps) {
   var confirmPurge = confirmPurgeState[0], setConfirmPurge = confirmPurgeState[1];
   var staleErrorState = React.useState<string | null>(null);
   var staleError = staleErrorState[0], setStaleError = staleErrorState[1];
+  var lastCleanupState = React.useState<any>(null);
+  var lastCleanup = lastCleanupState[0], setLastCleanup = lastCleanupState[1];
 
   function fetchStaleRuns() {
     setStaleLoading(true);
@@ -251,6 +253,7 @@ export function QueueTab(p: QueueTabProps) {
       })
       .then(function (data) {
         setStaleRuns(data.runs || []);
+        setLastCleanup(data.last_cleanup || null);
         setStaleLoading(false);
       })
       .catch(function (err) {
@@ -1589,6 +1592,50 @@ export function QueueTab(p: QueueTabProps) {
               },
             },
             "Error: " + staleError
+          ),
+        // Last Cleanup Panel
+        lastCleanup &&
+          h(
+            "div",
+            {
+              className: "last-cleanup-panel",
+              style: {
+                background: "var(--bg-secondary)",
+                border: "1px solid var(--border)",
+                borderRadius: 8,
+                padding: "10px 14px",
+                marginBottom: 12,
+                fontSize: 13,
+              },
+            },
+            h(
+              "div",
+              { style: { display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" } },
+              h("strong", null, "Last Cleanup:"),
+              h(
+                "span",
+                null,
+                h("span", { style: { color: "var(--text-muted)", marginRight: 4 } }, "Candidates:"),
+                h("strong", null, lastCleanup.stale_count)
+              ),
+              h(
+                "span",
+                null,
+                h("span", { style: { color: "var(--text-muted)", marginRight: 4 } }, "Cancelled:"),
+                h("strong", null, lastCleanup.cancelled_count)
+              ),
+              h(
+                "span",
+                null,
+                "Errors: " + ((lastCleanup.errors && lastCleanup.errors.length) || 0)
+              ),
+              lastCleanup.timestamp &&
+                h(
+                  "span",
+                  { style: { color: "var(--text-muted)", marginLeft: "auto" } },
+                  new Date(lastCleanup.timestamp).toLocaleString()
+                )
+            )
           ),
         // Metrics counts
         (function () {

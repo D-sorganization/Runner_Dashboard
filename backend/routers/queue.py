@@ -367,6 +367,8 @@ async def get_stale_queue(
     min_age_minutes: int = 60,
     reason: str | None = None,
     repo: str | None = None,
+    max_cancel: int | None = None,
+    safe_to_cancel_only: bool = False,
 ) -> dict:
     """Preview stale runs in the queue across the organization."""
     if should_proxy_fleet_to_hub(request):
@@ -385,12 +387,21 @@ async def get_stale_queue(
             min_age_minutes=min_age_minutes,
             repo=repo,
             reason=reason,
+            safe_to_cancel_only=safe_to_cancel_only,
         )
+        if max_cancel is not None and max_cancel > 0:
+            runs_to_return = runs[:max_cancel]
+        else:
+            runs_to_return = runs
+        from queue_cleanup import get_last_cleanup_result
+
         return {
             "org": ORG,
             "min_age_minutes": min_age_minutes,
             "stale_count": len(runs),
-            "runs": [r.as_dict() for r in runs],
+            "processed_count": len(runs_to_return),
+            "runs": [r.as_dict() for r in runs_to_return],
+            "last_cleanup": get_last_cleanup_result(),
         }
     except Exception as exc:
         log.exception("Failed to fetch stale runs")
@@ -398,6 +409,19 @@ async def get_stale_queue(
             status_code=502,
             detail=bad_gateway(f"Failed to fetch stale runs: {exc}").model_dump(exclude_none=True),
         ) from exc
+
+
+@router.get("/api/queue/cleanup-audit")
+async def get_cleanup_audit(
+    request: Request,
+    limit: int = 50,
+) -> list[dict]:
+    """Retrieve the recent queue cleanup audit trail."""
+    if should_proxy_fleet_to_hub(request):
+        return await proxy_to_hub(request)
+    from queue_cleanup import load_cleanup_audit
+
+    return load_cleanup_audit(limit=limit)
 
 
 @router.post("/api/queue/purge-stale")
@@ -409,6 +433,8 @@ async def purge_stale_queue(
     reason: str | None = None,
     repo: str | None = None,
     dry_run: bool = True,
+    max_cancel: int | None = None,
+    safe_to_cancel_only: bool = False,
 ) -> dict:
     """Purge stale runs in the queue across the organization."""
     if should_proxy_fleet_to_hub(request):
@@ -443,6 +469,19 @@ async def purge_stale_queue(
     elif body.get("dry_run") is False or str(body.get("dry_run")).lower() == "false":
         req_dry_run = False
 
+    req_max_cancel = max_cancel if max_cancel is not None else body.get("max_cancel")
+    if req_max_cancel is not None:
+        try:
+            req_max_cancel = int(req_max_cancel)
+        except ValueError:
+            req_max_cancel = None
+
+    req_safe_to_cancel_only = (
+        safe_to_cancel_only if safe_to_cancel_only is not None else body.get("safe_to_cancel_only", False)
+    )
+    if isinstance(req_safe_to_cancel_only, str):
+        req_safe_to_cancel_only = req_safe_to_cancel_only.lower() == "true"
+
     # Validate repo slug if provided
     if req_repo:
         try:
@@ -457,6 +496,8 @@ async def purge_stale_queue(
             repo=req_repo,
             reason=req_reason,
             dry_run=req_dry_run,
+            max_cancel=req_max_cancel,
+            safe_to_cancel_only=req_safe_to_cancel_only,
         )
         # Invalidate cache if we actually purged
         if not req_dry_run and result.get("cancelled_count", 0) > 0:

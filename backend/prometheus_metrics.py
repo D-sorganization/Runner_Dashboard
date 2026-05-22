@@ -100,6 +100,32 @@ if _PROMETHEUS_AVAILABLE:
         ["status", "github_api"],
         buckets=(0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
     )
+
+    # Stale queue metrics
+    STALE_CANDIDATES_TOTAL = Counter(
+        "dashboard_stale_candidates_total",
+        "Total stale run candidates classified by reason",
+        ["reason"],
+    )
+    CANCELLED_STALE_RUNS_TOTAL = Counter(
+        "dashboard_cancelled_stale_runs_total",
+        "Total cancelled stale runs by reason",
+        ["reason"],
+    )
+    STALE_QUEUE_ERRORS_TOTAL = Counter(
+        "dashboard_stale_queue_errors_total",
+        "Total stale queue cancellation errors by repository and reason",
+        ["repo", "reason"],
+    )
+    STALE_QUEUE_OLDEST_AGE_SECONDS = Gauge(
+        "dashboard_stale_queue_oldest_age_seconds",
+        "Oldest age of a queued run in seconds",
+    )
+    STALE_QUEUE_AGE_PERCENTILES = Gauge(
+        "dashboard_stale_queue_age_percentiles",
+        "Percentiles of queue age in seconds",
+        ["quantile"],
+    )
 else:  # pragma: no cover
     # Stub objects so imports don't fail when prometheus_client is absent
     class _Stub:  # type: ignore[override]
@@ -131,6 +157,11 @@ else:  # pragma: no cover
     CACHE_MISSES_TOTAL = _stub  # type: ignore[assignment]
     DASHBOARD_HEALTH_CHECKS_TOTAL = _stub  # type: ignore[assignment]
     DASHBOARD_HEALTH_DURATION = _stub  # type: ignore[assignment]
+    STALE_CANDIDATES_TOTAL = _stub  # type: ignore[assignment]
+    CANCELLED_STALE_RUNS_TOTAL = _stub  # type: ignore[assignment]
+    STALE_QUEUE_ERRORS_TOTAL = _stub  # type: ignore[assignment]
+    STALE_QUEUE_OLDEST_AGE_SECONDS = _stub  # type: ignore[assignment]
+    STALE_QUEUE_AGE_PERCENTILES = _stub  # type: ignore[assignment]
 
 
 # ─── Helpers for external callers ─────────────────────────────────────────────
@@ -166,6 +197,32 @@ def update_lease_gauge(active_count: int) -> None:
 def record_lease_expired(count: int = 1) -> None:
     """Record expired runner leases."""
     RUNNER_LEASES_EXPIRED_TOTAL.inc(count)
+
+
+def record_stale_candidate(reason: str) -> None:
+    """Record a stale candidate classification."""
+    STALE_CANDIDATES_TOTAL.labels(reason=reason).inc()
+
+
+def record_cancelled_stale_run(reason: str) -> None:
+    """Record a cancelled stale run."""
+    CANCELLED_STALE_RUNS_TOTAL.labels(reason=reason).inc()
+
+
+def record_stale_queue_error(repo: str, reason: str) -> None:
+    """Record a stale queue cancellation error."""
+    STALE_QUEUE_ERRORS_TOTAL.labels(repo=repo, reason=reason).inc()
+
+
+def update_stale_queue_age(oldest_seconds: float) -> None:
+    """Update the oldest queue age gauge."""
+    STALE_QUEUE_OLDEST_AGE_SECONDS.set(oldest_seconds)
+
+
+def update_stale_queue_age_percentiles(quantiles: dict[str, float]) -> None:
+    """Update the queue age percentiles gauges."""
+    for q, val in quantiles.items():
+        STALE_QUEUE_AGE_PERCENTILES.labels(quantile=q).set(val)
 
 
 # ─── ASGI middleware ──────────────────────────────────────────────────────────
