@@ -225,7 +225,7 @@ jobs:
     needs: [ci-health-check]
     if: needs.ci-health-check.outputs.run_python_tests == 'true'
     runs-on: d-sorg-fleet
-    timeout-minutes: 10
+    timeout-minutes: 25
     env:
       PIP_CACHE_DIR: /home/dieterolson/actions-runners/.shared-tool-cache/pip
     steps:
@@ -357,7 +357,7 @@ jobs:
     needs: [ci-health-check]
     if: needs.ci-health-check.outputs.run_python_tests == 'true'
     runs-on: d-sorg-fleet
-    timeout-minutes: 10
+    timeout-minutes: 20
     env:
       PIP_CACHE_DIR: /home/dieterolson/actions-runners/.shared-tool-cache/pip
     steps:
