@@ -27,6 +27,7 @@ import json
 import logging
 from dataclasses import asdict, dataclass
 from datetime import timedelta
+from enum import Enum
 
 from dashboard_config.timeouts import Concurrency
 
@@ -34,6 +35,12 @@ log = logging.getLogger(__name__)
 
 UTC = getattr(_dt, "UTC", _dt.timezone.utc)  # noqa: UP017
 DEFAULT_MIN_AGE_MINUTES: int = 60
+
+
+def _get_now() -> _dt.datetime:
+    return _dt.datetime.now(UTC)
+
+
 _MAX_REPOS: int = 200
 _MAX_RUNS_PER_REPO: int = 100
 _SCAN_CONCURRENCY: int = Concurrency.QUEUE_SCAN  # concurrent repo queries during scan (capped per #393)
@@ -41,21 +48,36 @@ _CANCEL_CONCURRENCY: int = Concurrency.QUEUE_CANCEL  # concurrent cancel calls
 
 
 # ---------------------------------------------------------------------------
-# Data
+# Data and Policies
 # ---------------------------------------------------------------------------
+
+
+class StaleReason(str, Enum):
+    SUPERSEDED_PR_HEAD = "superseded_pr_head"
+    CLOSED_OR_DELETED_REF = "closed_or_deleted_ref"
+    ABANDONED_AGENT = "abandoned-agent-run"
+    STALE_FEATURE_BRANCH = "stale-feature-branch"
+    OFFLINE_RUNNER_OR_LAG = "offline-runner-or-lag"
+    STALE_MAIN_BRANCH = "stale-main-branch-queue"
+    UNKNOWN = "unknown"
+
+
+# Policy configuration constants
+ALLOW_PROTECTED_PR_HEAD_STALE: bool = False
+IN_PROGRESS_STRICT_THRESHOLD_MINUTES: int = 120
 
 
 def classify_stale_run(branch: str, age_minutes: int) -> tuple[str, bool]:
     """Determine the reason and safety status of a stale run based on branch and age."""
     if branch in ("main", "master", "release"):
         if age_minutes > 360:
-            return "offline-runner-or-lag", True
+            return StaleReason.OFFLINE_RUNNER_OR_LAG.value, True
         else:
-            return "stale-main-branch-queue", False
+            return StaleReason.STALE_MAIN_BRANCH.value, False
     elif any(x in branch.lower() for x in ("agent", "worktree", "wt-", "patch-", "run-")):
-        return "abandoned-agent-run", True
+        return StaleReason.ABANDONED_AGENT.value, True
     else:
-        return "stale-feature-branch", True
+        return StaleReason.STALE_FEATURE_BRANCH.value, True
 
 
 @dataclass
@@ -141,20 +163,77 @@ async def list_all_repos(org: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
+async def branch_exists(org: str, repo: str, branch: str) -> bool:
+    """Check if a branch exists on remote using gh api."""
+    code, _, _ = await _gh("api", f"/repos/{org}/{repo}/branches/{branch}", timeout=10)
+    return code == 0
+
+
+async def fetch_pr_details(org: str, repo: str, pr_number: int) -> dict | None:
+    """Fetch details of a PR using gh api."""
+    return await _gh_json(
+        "api",
+        f"/repos/{org}/{repo}/pulls/{pr_number}",
+        default=None,
+        timeout=15,
+    )
+
+
+def is_protected_target(branch: str, event: str, workflow: str) -> bool:
+    """Check if the run targets main, release, tags, or scheduled maintenance."""
+    if branch in ("main", "master", "release"):
+        return True
+    if event == "release" or (branch and (branch.startswith("v") or "/" in branch and "tags" in branch)):
+        return True
+    if event == "schedule" or (workflow and "maintenance" in workflow.lower()):
+        return True
+    return False
+
+
 async def _queued_stale_for_repo(
     org: str,
     repo: str,
     min_age: timedelta,
 ) -> list[StaleRun]:
-    now = _dt.datetime.now(UTC)
-    data = await _gh_json(
+    now = _get_now()
+
+    # Fetch queued and in_progress runs
+    queued_data = await _gh_json(
         "api",
         f"/repos/{org}/{repo}/actions/runs?status=queued&per_page={_MAX_RUNS_PER_REPO}",
         default={},
         timeout=20,
     )
+    in_progress_data = await _gh_json(
+        "api",
+        f"/repos/{org}/{repo}/actions/runs?status=in_progress&per_page={_MAX_RUNS_PER_REPO}",
+        default={},
+        timeout=20,
+    )
+
+    runs = []
+    if queued_data and "workflow_runs" in queued_data:
+        runs.extend(queued_data["workflow_runs"])
+    if in_progress_data and "workflow_runs" in in_progress_data:
+        runs.extend(in_progress_data["workflow_runs"])
+
+    # Deduplicate runs by id
+    seen_ids = set()
+    unique_runs = []
+    for r in runs:
+        rid = r.get("id")
+        if rid is not None and rid not in seen_ids:
+            seen_ids.add(rid)
+            unique_runs.append(r)
+
     stale: list[StaleRun] = []
-    for run in (data or {}).get("workflow_runs", []):
+    pr_cache: dict[int, dict | None] = {}
+
+    # Group structure: (workflow, pr_number) -> list of runs
+    pr_groups: dict[tuple[str, int], list[dict]] = {}
+    non_pr_runs: list[dict] = []
+
+    for run in unique_runs:
         raw_ts = run.get("created_at", "")
         try:
             created = _dt.datetime.fromisoformat(raw_ts.replace("Z", "+00:00"))
@@ -163,9 +242,149 @@ async def _queued_stale_for_repo(
         age = now - created
         if age < min_age:
             continue
-        age_minutes = int(age.total_seconds() / 60)
+
         branch = run.get("head_branch", "?") or "?"
+        event = run.get("event", "")
+        workflow = run.get("name", "?")
+
+        # Check if targets main, release, tags, or scheduled maintenance
+        protected = is_protected_target(branch, event, workflow)
+
+        # Determine if it has PR metadata
+        pull_requests = run.get("pull_requests") or []
+        is_pr_run = bool(pull_requests) or (event == "pull_request")
+
+        if is_pr_run and (not protected or ALLOW_PROTECTED_PR_HEAD_STALE):
+            if pull_requests:
+                pr_number = pull_requests[0].get("number")
+                if pr_number is not None:
+                    group_key = (workflow, pr_number)
+                    pr_groups.setdefault(group_key, []).append(run)
+                    continue
+            # If event == "pull_request" but pull_requests is empty/missing
+            age_minutes = int(age.total_seconds() / 60)
+            stale.append(
+                StaleRun(
+                    repo=repo,
+                    run_id=run.get("id", 0),
+                    workflow=workflow,
+                    branch=branch,
+                    created_at=raw_ts,
+                    age_minutes=age_minutes,
+                    reason=StaleReason.UNKNOWN.value,
+                    safe_to_cancel=False,
+                    url=f"https://github.com/{org}/{repo}/actions/runs/{run.get('id', 0)}",
+                )
+            )
+        else:
+            non_pr_runs.append(run)
+
+    # Process PR groups
+    for (workflow, pr_number), group_runs in pr_groups.items():
+        # Sort runs in group by created_at descending (newest first)
+        group_runs.sort(key=lambda r: r.get("created_at", ""), reverse=True)
+
+        if pr_number not in pr_cache:
+            pr_cache[pr_number] = await fetch_pr_details(org, repo, pr_number)
+        pr_details = pr_cache[pr_number]
+
+        if pr_details is None:
+            # Missing PR metadata
+            for run in group_runs:
+                raw_ts = run.get("created_at", "")
+                created = _dt.datetime.fromisoformat(raw_ts.replace("Z", "+00:00"))
+                age_minutes = int((now - created).total_seconds() / 60)
+                stale.append(
+                    StaleRun(
+                        repo=repo,
+                        run_id=run.get("id", 0),
+                        workflow=workflow,
+                        branch=run.get("head_branch", "?") or "?",
+                        created_at=raw_ts,
+                        age_minutes=age_minutes,
+                        reason=StaleReason.UNKNOWN.value,
+                        safe_to_cancel=False,
+                        url=f"https://github.com/{org}/{repo}/actions/runs/{run.get('id', 0)}",
+                    )
+                )
+            continue
+
+        is_closed = pr_details.get("state") == "closed" or pr_details.get("merged") is True
+
+        ref_exists = True
+        if not is_closed:
+            head_branch = pr_details.get("head", {}).get("ref") or group_runs[0].get("head_branch")
+            if head_branch:
+                ref_exists = await branch_exists(org, repo, head_branch)
+
+        if is_closed or not ref_exists:
+            for run in group_runs:
+                raw_ts = run.get("created_at", "")
+                created = _dt.datetime.fromisoformat(raw_ts.replace("Z", "+00:00"))
+                age_minutes = int((now - created).total_seconds() / 60)
+                status = run.get("status", "queued")
+                stale.append(
+                    StaleRun(
+                        repo=repo,
+                        run_id=run.get("id", 0),
+                        workflow=workflow,
+                        branch=run.get("head_branch", "?") or "?",
+                        created_at=raw_ts,
+                        age_minutes=age_minutes,
+                        reason=StaleReason.CLOSED_OR_DELETED_REF.value,
+                        safe_to_cancel=(status == "queued"),
+                        url=f"https://github.com/{org}/{repo}/actions/runs/{run.get('id', 0)}",
+                    )
+                )
+            continue
+
+        current_sha = pr_details.get("head", {}).get("sha") or pr_details.get("headRefOid")
+
+        for idx, run in enumerate(group_runs):
+            raw_ts = run.get("created_at", "")
+            created = _dt.datetime.fromisoformat(raw_ts.replace("Z", "+00:00"))
+            age_minutes = int((now - created).total_seconds() / 60)
+            status = run.get("status", "queued")
+            run_sha = run.get("head_sha")
+
+            is_newest = idx == 0
+            matches_current = run_sha == current_sha
+
+            if is_newest and matches_current:
+                # Retained / active run
+                continue
+
+            if status == "queued":
+                safe_to_cancel = True
+            else:
+                safe_to_cancel = age_minutes > IN_PROGRESS_STRICT_THRESHOLD_MINUTES
+
+            stale.append(
+                StaleRun(
+                    repo=repo,
+                    run_id=run.get("id", 0),
+                    workflow=workflow,
+                    branch=run.get("head_branch", "?") or "?",
+                    created_at=raw_ts,
+                    age_minutes=age_minutes,
+                    reason=StaleReason.SUPERSEDED_PR_HEAD.value,
+                    safe_to_cancel=safe_to_cancel,
+                    url=f"https://github.com/{org}/{repo}/actions/runs/{run.get('id', 0)}",
+                )
+            )
+
+    # Process non-PR runs using fallback
+    for run in non_pr_runs:
+        raw_ts = run.get("created_at", "")
+        created = _dt.datetime.fromisoformat(raw_ts.replace("Z", "+00:00"))
+        age_minutes = int((now - created).total_seconds() / 60)
+        branch = run.get("head_branch", "?") or "?"
+        status = run.get("status", "queued")
+
         run_reason, safe_to_cancel = classify_stale_run(branch, age_minutes)
+        if status == "in_progress":
+            safe_to_cancel = False
+
         stale.append(
             StaleRun(
                 repo=repo,
@@ -179,6 +398,7 @@ async def _queued_stale_for_repo(
                 url=f"https://github.com/{org}/{repo}/actions/runs/{run.get('id', 0)}",
             )
         )
+
     return stale
 
 
