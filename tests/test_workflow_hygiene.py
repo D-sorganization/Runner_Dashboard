@@ -360,3 +360,12 @@ def test_queued_job_reaper_has_safe_stale_controls() -> None:
     assert "superseded_pr_head" in text
     assert "skipped (max-cancel reached)" in text
     assert "QUEUED_JOB_REAPER_DISABLED" in text
+
+
+def test_anti_phantom_guard_uses_rest_file_listing() -> None:
+    """Fleet runners may have older gh versions without `pr diff --name-only`."""
+    text = (_WORKFLOWS_DIR / "anti-phantom-merge.yml").read_text(encoding="utf-8")
+
+    assert "gh pr diff" not in text
+    assert 'gh api --paginate "repos/$REPO/pulls/$PR/files"' in text
+    assert "--jq '.[].filename'" in text

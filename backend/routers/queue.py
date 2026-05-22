@@ -14,7 +14,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 
 from cache_utils import cache_delete, cache_get, cache_set
 from dashboard_config import ORG
@@ -172,7 +172,7 @@ async def _queue_impl() -> dict:
     if not repos:
         # No repos visible at all; try the stale cache before giving up.
         stale = cache_get(_QUEUE_STALE_KEY, _QUEUE_STALE_TTL)
-        return stale if stale is not None else _empty_queue_result()
+        return cast(dict[Any, Any], stale) if stale is not None else _empty_queue_result()
 
     async def fetch_active_runs(repo_name: str) -> list[dict]:
         results: list[dict] = []
@@ -186,13 +186,13 @@ async def _queue_impl() -> dict:
         return_exceptions=True,
     )
 
-    all_runs: list[dict] = []
+    all_runs: list[dict[Any, Any]] = []
     failures: list[str] = []
-    for repo, result in zip(sample, fetched, strict=True):
-        if isinstance(result, BaseException):
-            failures.append(f"{repo['name']}: {result!r}")
+    for repo, fetched_result in zip(sample, fetched, strict=True):
+        if isinstance(fetched_result, BaseException):
+            failures.append(f"{repo['name']}: {fetched_result!r}")
             continue
-        all_runs.extend(result)
+        all_runs.extend(fetched_result)
 
     if failures:
         log.warning(
@@ -207,7 +207,7 @@ async def _queue_impl() -> dict:
         stale = cache_get(_QUEUE_STALE_KEY, _QUEUE_STALE_TTL)
         if stale is not None:
             log.warning("queue aggregation: all repos failed; serving stale cache")
-            return stale
+            return cast(dict[Any, Any], stale)
         return _empty_queue_result()
 
     queued = sorted(
@@ -219,7 +219,7 @@ async def _queue_impl() -> dict:
         key=lambda r: r.get("run_started_at") or r.get("created_at", ""),
     )
 
-    result_payload = {
+    payload: dict[Any, Any] = {
         "queued": queued,
         "in_progress": in_progress,
         "total": len(queued) + len(in_progress),
@@ -230,9 +230,9 @@ async def _queue_impl() -> dict:
             "repos_failed": len(failures),
         },
     }
-    cache_set(_QUEUE_CACHE_KEY, result_payload)
-    cache_set(_QUEUE_STALE_KEY, result_payload)
-    return result_payload
+    cache_set(_QUEUE_CACHE_KEY, payload)
+    cache_set(_QUEUE_STALE_KEY, payload)
+    return payload
 
 
 # ─── Queue Routes ─────────────────────────────────────────────────────────────

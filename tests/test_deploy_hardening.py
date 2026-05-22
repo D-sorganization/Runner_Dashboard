@@ -77,13 +77,13 @@ def test_setup_prefers_python_311_for_runtime_service() -> None:
 
 
 def test_dockerfile_pins_base_image_to_digest() -> None:
-    """FROM must reference python:3.11.x-slim pinned to a sha256 digest."""
+    """FROM must reference python:3.12-slim pinned to a sha256 digest."""
     content = _read(_DOCKERFILE)
-    # Must NOT use a floating tag like python:3.11-slim without a digest
-    assert "FROM python:3.11-slim\n" not in content
+    # Must NOT use a floating tag like python:3.12-slim without a digest.
+    assert "FROM python:3.12-slim\n" not in content
     # Must include a sha256 digest pin
-    assert re.search(r"FROM python:3\.11\.\d+-slim@sha256:[a-f0-9]{64}", content), (
-        "Dockerfile base image must be pinned to a specific sha256 digest, e.g. python:3.11.10-slim@sha256:<hash>"
+    assert re.search(r"FROM python:3\.12-slim@sha256:[a-f0-9]{64}", content), (
+        "Dockerfile base image must be pinned to a specific sha256 digest, e.g. python:3.12-slim@sha256:<hash>"
     )
 
 
