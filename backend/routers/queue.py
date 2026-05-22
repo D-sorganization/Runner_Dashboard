@@ -177,7 +177,7 @@ async def _queue_impl() -> dict:
         key=lambda r: r.get("run_started_at") or r.get("created_at", ""),
     )
 
-    result = {
+    result_payload = {
         "queued": queued,
         "in_progress": in_progress,
         "total": len(queued) + len(in_progress),
@@ -188,9 +188,9 @@ async def _queue_impl() -> dict:
             "repos_failed": len(failures),
         },
     }
-    cache_set(_QUEUE_CACHE_KEY, result)
-    cache_set(_QUEUE_STALE_KEY, result)
-    return result
+    cache_set(_QUEUE_CACHE_KEY, result_payload)
+    cache_set(_QUEUE_STALE_KEY, result_payload)
+    return result_payload
 
 
 # ─── Queue Routes ─────────────────────────────────────────────────────────────

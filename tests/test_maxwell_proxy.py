@@ -210,7 +210,7 @@ async def test_maxwell_pipeline_control_pause_returns_200(client) -> None:
     payload = {"action": "pause", "status": "paused"}
     mock_cm = _make_mock_client(post_return=_mock_httpx_response(payload))
     with patch("httpx.AsyncClient", return_value=mock_cm):
-        resp = await client.post("/api/maxwell/pipeline-control/pause", json={})
+        resp = await client.post("/api/maxwell/pipeline-control/pause", json={"confirmation_token": "test-token"})
     assert resp.status_code == 200
 
 
@@ -220,7 +220,7 @@ async def test_maxwell_pipeline_control_resume_returns_200(client) -> None:
     payload = {"action": "resume", "status": "resumed"}
     mock_cm = _make_mock_client(post_return=_mock_httpx_response(payload))
     with patch("httpx.AsyncClient", return_value=mock_cm):
-        resp = await client.post("/api/maxwell/pipeline-control/resume", json={})
+        resp = await client.post("/api/maxwell/pipeline-control/resume", json={"confirmation_token": "test-token"})
     assert resp.status_code == 200
 
 
@@ -232,16 +232,19 @@ async def test_maxwell_pipeline_control_badaction_returns_422(client) -> None:
 
 
 @pytest.mark.asyncio
-async def test_maxwell_pipeline_control_injects_token(client, monkeypatch) -> None:
-    """Pipeline-control injects the configured token into the canonical router request."""
+async def test_maxwell_pipeline_control_forwards_caller_token(client, monkeypatch) -> None:
+    """Pipeline-control forwards the caller confirmation token without injection."""
     monkeypatch.setattr("routers.maxwell.MAXWELL_API_TOKEN", "test-maxwell-token")
     mock_cm = _make_mock_client(post_return=_mock_httpx_response({"action": "abort", "status": "aborted"}))
     with patch("httpx.AsyncClient", return_value=mock_cm):
-        resp = await client.post("/api/maxwell/pipeline-control/abort", json={})
+        resp = await client.post(
+            "/api/maxwell/pipeline-control/abort",
+            json={"confirmation_token": "caller-token"},
+        )
     assert resp.status_code == 200
     sent_body = mock_cm.__aenter__.return_value.post.call_args.kwargs["content"]
     sent_headers = mock_cm.__aenter__.return_value.post.call_args.kwargs["headers"]
-    assert '"confirmation_token": "test-maxwell-token"' in sent_body
+    assert '"confirmation_token": "caller-token"' in sent_body
     assert sent_headers["Authorization"] == "Bearer test-maxwell-token"
 
 
@@ -250,7 +253,7 @@ async def test_maxwell_pipeline_control_daemon_unreachable_returns_503(client) -
     """When daemon is unreachable, the mounted router returns a proxy error."""
     mock_cm = _make_mock_client(post_side_effect=httpx.ConnectError("connection refused"))
     with patch("httpx.AsyncClient", return_value=mock_cm):
-        resp = await client.post("/api/maxwell/pipeline-control/abort", json={})
+        resp = await client.post("/api/maxwell/pipeline-control/abort", json={"confirmation_token": "test-token"})
     assert resp.status_code == 503
     assert resp.json()["detail"] == "maxwell connection error"
 
@@ -263,7 +266,10 @@ async def test_maxwell_dispatch_daemon_unreachable_returns_503(client) -> None:
     """When daemon is unreachable, the mounted router returns a proxy error."""
     mock_cm = _make_mock_client(post_side_effect=httpx.ConnectError("connection refused"))
     with patch("httpx.AsyncClient", return_value=mock_cm):
-        resp = await client.post("/api/maxwell/dispatch", json={"repo": "test-repo"})
+        resp = await client.post(
+            "/api/maxwell/dispatch",
+            json={"repo": "test-repo", "confirmation_token": "test-token"},
+        )
     assert resp.status_code == 503
     assert resp.json()["detail"] == "maxwell connection error"
 

@@ -386,10 +386,10 @@ def test_autoscaler_unit_load_per_core_matches_code_default() -> None:
         "fresh deploys would reintroduce the issue-#640 kill loop"
     )
 
-    code = _read(_ROOT / "backend" / "runner_autoscaler.py")
+    code = _read(_ROOT / "backend" / "autoscaler_config.py")
     code_match = re.search(r'AUTOSCALER_LOAD_PER_CORE",\s*([\d.]+)\s*\)', code)
     assert code_match is not None, "code default for AUTOSCALER_LOAD_PER_CORE not found"
     assert float(code_match.group(1)) == unit_value, (
         "deploy/runner-autoscaler.service Environment= value must match the code default in "
-        "backend/runner_autoscaler.py"
+        "backend/autoscaler_config.py"
     )

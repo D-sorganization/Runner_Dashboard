@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import contextlib
-import fcntl
+import importlib
 import logging
 import time
 from pathlib import Path
+from typing import Any
 
 import yaml
 from identity import Principal
@@ -15,6 +16,11 @@ from runner_lease import lease_manager
 from security import safe_yaml_load, validate_config_path
 
 log = logging.getLogger("dashboard.quota_enforcement")
+
+try:
+    _fcntl: Any = importlib.import_module("fcntl")
+except ImportError:  # pragma: no cover - exercised on Windows
+    _fcntl = None
 
 
 @contextlib.contextmanager
@@ -29,14 +35,16 @@ def _locked_yaml_file(path: Path, mode: str = "r+"):
     path.touch()
     with open(path, mode) as fh:
         try:
-            fcntl.flock(fh, fcntl.LOCK_EX)
+            if _fcntl is not None:
+                _fcntl.flock(fh, _fcntl.LOCK_EX)
         except (AttributeError, OSError):
             pass
         try:
             yield fh
         finally:
             try:
-                fcntl.flock(fh, fcntl.LOCK_UN)
+                if _fcntl is not None:
+                    _fcntl.flock(fh, _fcntl.LOCK_UN)
             except (AttributeError, OSError):
                 pass
 
@@ -48,12 +56,16 @@ class QuotaEnforcement:
         self.spend_records: dict[str, dict[str, float]] = {}
         self.load_spend()
 
+    @property
+    def _allowed_roots(self) -> list[Path]:
+        return [self.config_dir.resolve()]
+
     def load_spend(self):
         if not self.spend_path.exists():
             return
         try:
-            validate_config_path(self.spend_path)
-            data = safe_yaml_load(self.spend_path)
+            validate_config_path(self.spend_path, allowed_roots=self._allowed_roots)
+            data = safe_yaml_load(self.spend_path, allowed_roots=self._allowed_roots)
             if data and "spend" in data:
                 self.spend_records = data["spend"]
         except Exception as exc:
@@ -63,7 +75,7 @@ class QuotaEnforcement:
         """Save spend data with security validation (issue #355)."""
         try:
             self.config_dir.mkdir(parents=True, exist_ok=True)
-            validate_config_path(self.spend_path.parent)
+            validate_config_path(self.spend_path.parent, allowed_roots=self._allowed_roots)
             with open(self.spend_path, "w") as f:
                 yaml.dump({"spend": self.spend_records}, f)
         except Exception as exc:
@@ -81,7 +93,7 @@ class QuotaEnforcement:
         """
         today = time.strftime("%Y-%m-%d", time.gmtime())
         self.config_dir.mkdir(parents=True, exist_ok=True)
-        validate_config_path(self.spend_path.parent)
+        validate_config_path(self.spend_path.parent, allowed_roots=self._allowed_roots)
 
         with _locked_yaml_file(self.spend_path, "r+") as fh:
             fh.seek(0)
@@ -113,7 +125,10 @@ class QuotaEnforcement:
 
         active_leases = lease_manager.get_active_leases(principal.id)
         if len(active_leases) >= principal.quotas.max_runners:
-            return False, f"Runner quota reached ({len(active_leases)}/{principal.quotas.max_runners})"
+            return (
+                False,
+                f"Runner quota reached ({len(active_leases)}/{principal.quotas.max_runners})",
+            )
 
         return True, None
 
@@ -130,7 +145,10 @@ class QuotaEnforcement:
     def check_local_app_quota(self, principal: Principal) -> tuple[bool, str | None]:
         usage = self.get_local_app_usage(principal.id)
         if usage >= principal.quotas.local_app_slots:
-            return False, f"Local app slots reached ({usage}/{principal.quotas.local_app_slots})"
+            return (
+                False,
+                f"Local app slots reached ({usage}/{principal.quotas.local_app_slots})",
+            )
         return True, None
 
 

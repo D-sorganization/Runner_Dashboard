@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import subprocess
+import sys
 
 from autoscaler_config import (
     _SYSTEMCTL_TIMEOUT_S,
@@ -16,6 +17,13 @@ from autoscaler_config import (
 )
 
 log = logging.getLogger("runner-autoscaler")
+
+
+def _dry_run_enabled() -> bool:
+    runner_autoscaler = sys.modules.get("runner_autoscaler")
+    if runner_autoscaler is not None:
+        return DRY_RUN or bool(getattr(runner_autoscaler, "DRY_RUN", DRY_RUN))
+    return DRY_RUN
 
 
 def _list_runner_units() -> list[str]:
@@ -106,7 +114,7 @@ def _stop_unit(unit: str) -> bool:
 
     Returns True on success (or in dry-run), False if systemctl reports failure.
     """
-    if DRY_RUN:
+    if _dry_run_enabled():
         log.info("[dry-run] would stop %s", unit)
         return True
     r = subprocess.run(
@@ -127,7 +135,7 @@ def _start_unit(unit: str) -> bool:
 
     Returns True on success (or in dry-run), False if systemctl reports failure.
     """
-    if DRY_RUN:
+    if _dry_run_enabled():
         log.info("[dry-run] would start %s", unit)
         return True
     r = subprocess.run(

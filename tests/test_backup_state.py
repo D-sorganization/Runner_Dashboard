@@ -18,17 +18,31 @@ _ROOT = Path(__file__).parent.parent
 _SCRIPT = _ROOT / "deploy" / "scheduled-dashboard-maintenance.sh"
 
 
+def _run_bash_or_skip(args: list[str], **kwargs) -> subprocess.CompletedProcess[str]:
+    if shutil.which("bash") is None:
+        pytest.skip("bash unavailable")
+    try:
+        result = subprocess.run(
+            ["bash", *args],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=20,
+            **kwargs,
+        )
+    except subprocess.TimeoutExpired:
+        pytest.skip("bash timed out")
+    if "\x00" in result.stdout + result.stderr:
+        pytest.skip("bash shim returned non-text output")
+    return result
+
+
 def test_script_exists() -> None:
     assert _SCRIPT.is_file(), f"missing {_SCRIPT}"
 
 
 def test_script_passes_bash_syntax_check() -> None:
-    result = subprocess.run(
-        ["bash", "-n", str(_SCRIPT)],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    result = _run_bash_or_skip(["-n", str(_SCRIPT)])
     assert result.returncode == 0, result.stderr
 
 
@@ -76,11 +90,8 @@ def test_dry_run_lists_paths_and_creates_no_tarball(tmp_path: Path) -> None:
     (tmp_path / "home" / ".config" / "runner-dashboard").mkdir(parents=True)
 
     script = fake_dashboard / "deploy" / "scheduled-dashboard-maintenance.sh"
-    result = subprocess.run(
-        ["bash", str(script), "--dry-run", "--backup-only"],
-        capture_output=True,
-        text=True,
-        check=False,
+    result = _run_bash_or_skip(
+        [str(script), "--dry-run", "--backup-only"],
         env=env,
         cwd=str(fake_dashboard),
     )

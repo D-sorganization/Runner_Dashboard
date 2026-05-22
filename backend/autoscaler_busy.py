@@ -14,8 +14,10 @@ from __future__ import annotations
 
 import logging
 import subprocess
+import sys
 import time
 from pathlib import Path
+from typing import Any
 
 from autoscaler_config import (
     _SYSTEMCTL_TIMEOUT_S,
@@ -31,6 +33,40 @@ from autoscaler_systemd import (
 )
 
 log = logging.getLogger("runner-autoscaler")
+_DEFAULT_PSUTIL = psutil
+_DEFAULT_RUNNER_WORKDIR_FOR_UNIT = _runner_workdir_for_unit
+_DEFAULT_RUNNER_BUSY_LOCK_DIR = RUNNER_BUSY_LOCK_DIR
+_DEFAULT_RUNNER_BUSY_LOCK_MAX_AGE_SECONDS = RUNNER_BUSY_LOCK_MAX_AGE_SECONDS
+_DEFAULT_RUNNER_PICKUP_DIR_MAX_AGE_SECONDS = RUNNER_PICKUP_DIR_MAX_AGE_SECONDS
+
+
+def _public_attr(name: str, current: Any, original: Any) -> Any:
+    if current != original:
+        return current
+    runner_autoscaler = sys.modules.get("runner_autoscaler")
+    if runner_autoscaler is None:
+        return current
+    return getattr(runner_autoscaler, name, current)
+
+
+def _psutil_dep() -> Any:
+    if psutil is not _DEFAULT_PSUTIL:
+        return psutil
+    runner_autoscaler = sys.modules.get("runner_autoscaler")
+    if runner_autoscaler is not None:
+        return getattr(runner_autoscaler, "psutil", psutil)
+    return psutil
+
+
+def _runner_workdir_for_unit_public(unit: str) -> str:
+    if _runner_workdir_for_unit is not _DEFAULT_RUNNER_WORKDIR_FOR_UNIT:
+        return str(_runner_workdir_for_unit(unit))
+    runner_autoscaler = sys.modules.get("runner_autoscaler")
+    if runner_autoscaler is not None:
+        public_func = getattr(runner_autoscaler, "_runner_workdir_for_unit", None)
+        if public_func is not None and public_func is not _DEFAULT_RUNNER_WORKDIR_FOR_UNIT:
+            return str(public_func(unit))
+    return _runner_workdir_for_unit(unit)
 
 
 def _runner_busy_via_lockfile(unit: str) -> bool:
@@ -44,7 +80,8 @@ def _runner_busy_via_lockfile(unit: str) -> bool:
     considered busy on its account — the cleanup pass will GC it.
     """
     runner_name = _runner_name_for_unit(unit)
-    lock = RUNNER_BUSY_LOCK_DIR / f"{runner_name}.lock"
+    lock_dir = Path(_public_attr("RUNNER_BUSY_LOCK_DIR", RUNNER_BUSY_LOCK_DIR, _DEFAULT_RUNNER_BUSY_LOCK_DIR))
+    lock = lock_dir / f"{runner_name}.lock"
     try:
         stat = lock.stat()
     except FileNotFoundError:
@@ -53,11 +90,18 @@ def _runner_busy_via_lockfile(unit: str) -> bool:
         log.debug("lockfile stat failed unit=%s path=%s err=%s", unit, lock, exc)
         return False
     age = time.time() - stat.st_mtime
-    if age > RUNNER_BUSY_LOCK_MAX_AGE_SECONDS:
+    lock_max_age = int(
+        _public_attr(
+            "RUNNER_BUSY_LOCK_MAX_AGE_SECONDS",
+            RUNNER_BUSY_LOCK_MAX_AGE_SECONDS,
+            _DEFAULT_RUNNER_BUSY_LOCK_MAX_AGE_SECONDS,
+        )
+    )
+    if age > lock_max_age:
         log.info(
             "stale lockfile (age=%.0fs > max=%ds) — not treating as busy unit=%s",
             age,
-            RUNNER_BUSY_LOCK_MAX_AGE_SECONDS,
+            lock_max_age,
             unit,
         )
         return False
@@ -83,7 +127,7 @@ def _runner_busy_via_pickup_dir(unit: str) -> bool:
     the runner. mtime distinguishes active pickup (recent) from stale
     residue (old).
     """
-    work_dir = _runner_workdir_for_unit(unit)
+    work_dir = _runner_workdir_for_unit_public(unit)
     if not work_dir:
         return False
     fc = Path(work_dir) / "_work" / "_temp" / "_runner_file_commands"
@@ -95,15 +139,31 @@ def _runner_busy_via_pickup_dir(unit: str) -> bool:
         log.debug("pickup-dir stat failed unit=%s path=%s err=%s", unit, fc, exc)
         return False
     age = time.time() - stat.st_mtime
-    if age <= RUNNER_PICKUP_DIR_MAX_AGE_SECONDS:
+    pickup_max_age = int(
+        _public_attr(
+            "RUNNER_PICKUP_DIR_MAX_AGE_SECONDS",
+            RUNNER_PICKUP_DIR_MAX_AGE_SECONDS,
+            _DEFAULT_RUNNER_PICKUP_DIR_MAX_AGE_SECONDS,
+        )
+    )
+    if age <= pickup_max_age:
         log.info(
             "pickup-dir fresh (age=%.1fs <= %ds) — treating as busy unit=%s",
             age,
-            RUNNER_PICKUP_DIR_MAX_AGE_SECONDS,
+            pickup_max_age,
             unit,
         )
         return True
     return False
+
+
+def _runner_busy_via_pickup_dir_public(unit: str) -> bool:
+    runner_autoscaler = sys.modules.get("runner_autoscaler")
+    if runner_autoscaler is not None:
+        public_func = getattr(runner_autoscaler, "_runner_busy_via_pickup_dir", None)
+        if public_func is not None and public_func is not _runner_busy_via_pickup_dir:
+            return bool(public_func(unit))
+    return _runner_busy_via_pickup_dir(unit)
 
 
 def _runner_is_busy(unit: str) -> bool:
@@ -138,7 +198,7 @@ def _runner_is_busy(unit: str) -> bool:
     evidence the unit is inactive (e.g., ActiveState=inactive).
     """
     # ── Strategy 1: pickup-window directory (closes the pre-Worker race) ────
-    if _runner_busy_via_pickup_dir(unit):
+    if _runner_busy_via_pickup_dir_public(unit):
         return True
 
     # ── Strategy 2: lockfile (defense-in-depth for transient psutil misses) ─
@@ -163,16 +223,17 @@ def _runner_is_busy(unit: str) -> bool:
     except (ValueError, TypeError):
         pass
 
-    if main_pid is not None and psutil is not None:
+    psutil_mod = _psutil_dep()
+    if main_pid is not None and psutil_mod is not None:
         try:
-            proc = psutil.Process(main_pid)
+            proc = psutil_mod.Process(main_pid)
             for child in proc.children(recursive=True):
                 try:
                     if "Runner.Worker" in child.name() or "Runner.Worker" in " ".join(child.cmdline()):
                         return True
-                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                except (psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                     continue
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
+        except (psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
             pass
         # MainPID was valid but no Runner.Worker child found — not busy.
         return False

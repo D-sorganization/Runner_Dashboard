@@ -95,7 +95,11 @@ from machine_registry import (  # noqa: E402
     load_machine_registry,
     merge_registry_with_live_nodes,
 )
-from middleware import add_security_headers, csrf_check, max_body_size_check  # noqa: E402
+from middleware import (  # noqa: E402
+    add_security_headers,
+    csrf_check,
+    max_body_size_check,
+)
 from request_context import RequestIdMiddleware, configure_json_logging  # noqa: E402
 from routers import assessments as _assessments_router  # noqa: E402
 
@@ -615,11 +619,17 @@ if _AUTODERIVE_FLEET and not FLEET_NODES:
                 FLEET_NODES[_name] = _candidate_url
             except ValueError as _e:
                 log.warning(
-                    "Skipping derived FLEET_NODES entry %s=%s: %s", _name, _candidate_url, _e
+                    "Skipping derived FLEET_NODES entry %s=%s: %s",
+                    _name,
+                    _candidate_url,
+                    _e,
                 )
         if FLEET_NODES:
             FLEET_NODES_SOURCE = "registry"
-            log.info("FLEET_NODES auto-derived from registry: %s", ", ".join(FLEET_NODES.keys()))
+            log.info(
+                "FLEET_NODES auto-derived from registry: %s",
+                ", ".join(FLEET_NODES.keys()),
+            )
     except Exception as _exc:  # noqa: BLE001
         log.warning("FLEET_NODES auto-derive from registry failed: %s", _exc)
 
@@ -2214,16 +2224,14 @@ def _diagnostics_payload() -> dict:
             "loaded": True,
             "machines": machines_count,
             "version": _registry.get("version"),
-            "path": os.environ.get("MACHINE_REGISTRY_PATH")
-            or str(Path(__file__).with_name("machine_registry.yml")),
+            "path": os.environ.get("MACHINE_REGISTRY_PATH") or str(Path(__file__).with_name("machine_registry.yml")),
         }
     except Exception as exc:  # noqa: BLE001
         registry_err = str(exc)
         registry_status = {
             "loaded": False,
             "error": registry_err,
-            "path": os.environ.get("MACHINE_REGISTRY_PATH")
-            or str(Path(__file__).with_name("machine_registry.yml")),
+            "path": os.environ.get("MACHINE_REGISTRY_PATH") or str(Path(__file__).with_name("machine_registry.yml")),
         }
 
     # Fleet federation status (config only — peer reachability is /api/fleet/nodes)
@@ -2237,7 +2245,7 @@ def _diagnostics_payload() -> dict:
     # Background-task leader status (the leader-lock fix from #666)
     leader_status = {
         "is_leader": _leader_lock_fd is not None,
-        "lock_path": getattr(_leader_lock_fd, "name", None) if _leader_lock_fd else None,
+        "lock_path": (getattr(_leader_lock_fd, "name", None) if _leader_lock_fd else None),
     }
 
     # Deployment metadata (mtime of key files + git sha if available)
@@ -2264,17 +2272,16 @@ def _diagnostics_payload() -> dict:
         from cache_utils import _cache  # type: ignore[attr-defined]
 
         cache_status = {
-            "size": getattr(_cache, "size", lambda: None)() if callable(getattr(_cache, "size", None)) else None,
+            "size": (getattr(_cache, "size", lambda: None)() if callable(getattr(_cache, "size", None)) else None),
             "default_ttl_seconds": getattr(_cache, "default_ttl", None),
         }
     except Exception:  # noqa: BLE001
         cache_status = {"available": False}
 
     # Overall health summary so deploy-check.sh can grep one field
-    healthy = (
-        registry_status.get("loaded") is True
-        and (fleet_status["node_count"] > 0 or MACHINE_ROLE != "hub")
-    )
+    fleet_node_count_raw = fleet_status.get("node_count", 0)
+    fleet_node_count = fleet_node_count_raw if isinstance(fleet_node_count_raw, int) else 0
+    healthy = registry_status.get("loaded") is True and (fleet_node_count > 0 or MACHINE_ROLE != "hub")
 
     return {
         "ok": bool(healthy),
@@ -2745,7 +2752,10 @@ async def _startup() -> None:
                     _leader_lock_fd = None
                 continue
         if not acquired:
-            log.info("Could not acquire leader lock on any candidate path; running as follower: %s", last_err)
+            log.info(
+                "Could not acquire leader lock on any candidate path; running as follower: %s",
+                last_err,
+            )
     except ImportError:
         log.warning("fcntl not available on this platform, running without file lock")
         _runner_audit_router.start_audit_loop()

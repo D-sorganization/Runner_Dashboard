@@ -311,8 +311,10 @@ def test_session_secret_generated_and_persisted(monkeypatch, tmp_path: Path) -> 
     secret_file = tmp_path / "session_secret"
     assert secret_file.exists()
     assert secret_file.read_text(encoding="utf-8").strip() == dashboard_config.SESSION_SECRET
-    # File permissions must be 0o600.
-    assert oct(secret_file.stat().st_mode & 0o777) == oct(0o600)
+    # POSIX file permissions must be 0o600. Windows does not expose an
+    # equivalent chmod contract through st_mode.
+    if os.name != "nt":
+        assert oct(secret_file.stat().st_mode & 0o777) == oct(0o600)
 
 
 def test_session_secret_reused_from_persisted(monkeypatch, tmp_path: Path) -> None:

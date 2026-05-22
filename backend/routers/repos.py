@@ -129,6 +129,35 @@ def set_dependencies(  # type: ignore[no-untyped-def]
     _USAGE_MONITORING_TTL = usage_monitoring_ttl
 
 
+def _linear_router_dep() -> Any:
+    """Return the injected Linear router, with an import fallback for tests.
+
+    Some integration tests exercise the ASGI app without running startup
+    events, so ``set_dependencies`` has not populated module globals yet.
+    """
+    if _linear_router is not None:
+        return _linear_router
+    from . import linear as linear_router
+
+    return linear_router
+
+
+def _linear_inventory_dep() -> Any:
+    if _linear_inventory is not None:
+        return _linear_inventory
+    import linear_inventory
+
+    return linear_inventory
+
+
+def _unified_issue_inventory_dep() -> Any:
+    if _unified_issue_inventory is not None:
+        return _unified_issue_inventory
+    import unified_issue_inventory
+
+    return unified_issue_inventory
+
+
 @router.get("/api/repos")
 async def get_repos(request: Request) -> Any:
     """Get all org repos with open PRs, open issues, and last CI status."""
@@ -264,10 +293,20 @@ async def get_issues(
     limit: int = 500,
 ) -> dict:
     """Aggregate open issues across organisation repositories."""
+    if source in {"linear", "unified"}:
+        linear_router = _linear_router_dep()
+        linear_config = linear_router.load_linear_config()
+        if not linear_router.has_configured_linear_key(linear_config):
+            raise HTTPException(status_code=503, detail=linear_router.LINEAR_NOT_CONFIGURED_DETAIL)
+    else:
+        linear_config = None
+
     if repo:
         repos = list(repo)
+    elif source == "linear":
+        repos = []
     else:
-        org_repos = await _get_recent_org_repos(limit=50)
+        org_repos = await _get_recent_org_repos(limit=50) if _get_recent_org_repos is not None else []
         repos = [r["full_name"] for r in org_repos]
 
     labels = list(label) if label else None
@@ -288,13 +327,11 @@ async def get_issues(
             limit=limit,
         )
     elif source in {"linear", "unified"}:
-        linear_config = _linear_router.load_linear_config()
-        if not _linear_router.has_configured_linear_key(linear_config):
-            raise HTTPException(status_code=503, detail=_linear_router.LINEAR_NOT_CONFIGURED_DETAIL)
-        linear_client = _linear_router.build_linear_client(linear_config)
+        assert linear_config is not None
+        linear_client = linear_router.build_linear_client(linear_config)
         try:
             if source == "linear":
-                issues = await _linear_inventory.fetch_all_issues(
+                issues = await _linear_inventory_dep().fetch_all_issues(
                     linear_config,
                     linear_client,
                     state=state,
@@ -306,7 +343,7 @@ async def get_issues(
                 )
                 issues["stats"] = {"linear_total": len(issues.get("items", []))}
             else:
-                issues = await _unified_issue_inventory.fetch_unified_issues(
+                issues = await _unified_issue_inventory_dep().fetch_unified_issues(
                     github_repos=repos,
                     linear_config=linear_config,
                     linear_client=linear_client,
@@ -325,7 +362,7 @@ async def get_issues(
         raise HTTPException(status_code=422, detail="source must be one of github, linear, unified")
 
     sync_items = issues if isinstance(issues, list) else issues.get("items", [])
-    if isinstance(sync_items, list):
+    if isinstance(sync_items, list) and _lease_synchronizer is not None:
         await _lease_synchronizer.sync_github_leases(sync_items)
 
     return issues

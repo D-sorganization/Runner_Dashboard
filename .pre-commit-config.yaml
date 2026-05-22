@@ -119,7 +119,17 @@ repos:
       - id: bandit
         name: "bandit (Python security)"
         stages: [pre-push]
-        args: ["-r", "backend/", "-ll", "-ii", "-x", "tests/,.github/"]
+        args:
+          [
+            "-r",
+            "backend/",
+            "-ll",
+            "-ii",
+            "-x",
+            "tests/,.github/",
+            "-c",
+            "bandit.yaml",
+          ]
         pass_filenames: false
         types: [python]
 
@@ -140,7 +150,18 @@ repos:
             "not slow and not integration",
           ]
         language: python
-        additional_dependencies: [pytest, pytest-cov]
+        additional_dependencies:
+          - pytest
+          - pytest-cov
+          - fastapi
+          - httpx
+          - itsdangerous
+          - pydantic
+          - psutil
+          - prometheus-client
+          - pytest-asyncio
+          - PyYAML
+          - uvicorn
         pass_filenames: false
         types: [python]
 

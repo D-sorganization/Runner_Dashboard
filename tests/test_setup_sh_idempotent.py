@@ -26,7 +26,7 @@ SETUP_SH = REPO_ROOT / "deploy" / "setup.sh"
 @pytest.fixture(scope="module")
 def script_text() -> str:
     assert SETUP_SH.is_file(), f"deploy/setup.sh not found at {SETUP_SH}"
-    return SETUP_SH.read_text()
+    return SETUP_SH.read_text(encoding="utf-8")
 
 
 def test_setup_sh_syntax_check() -> None:
@@ -40,6 +40,8 @@ def test_setup_sh_syntax_check() -> None:
         text=True,
         check=False,
     )
+    if result.returncode != 0 and "Bash/Service/" in result.stdout.replace("\x00", ""):
+        pytest.skip(f"bash shim is unavailable: {result.stdout.replace(chr(0), '')}")
     assert result.returncode == 0, f"bash -n failed:\nstdout={result.stdout}\nstderr={result.stderr}"
 
 
@@ -76,7 +78,7 @@ def test_setup_sh_no_todo_fixme(script_text: str) -> None:
 
 def test_setup_sh_under_500_lines() -> None:
     """File must remain at or under 500 lines (CI constraint)."""
-    line_count = len(SETUP_SH.read_text().splitlines())
+    line_count = len(SETUP_SH.read_text(encoding="utf-8").splitlines())
     assert line_count <= 500, f"setup.sh is {line_count} lines, must be <=500"
 
 

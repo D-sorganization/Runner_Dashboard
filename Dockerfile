@@ -1,12 +1,10 @@
 # Dockerfile for runner-dashboard
 # Provides a reproducible, hardened container environment.
 #
-# Base image: python:3.12-slim
-# Python 3.12 has full binary wheel availability for all common packages
-# (pydantic-core, uvloop, watchfiles, httptools, jiter, etc.).
+# Base image: python:3.11.10-slim pinned to a Docker Hub sha256 digest.
 # To regenerate requirements.lock.txt:  uv export --no-dev -o requirements.lock.txt
 
-FROM python:3.14-slim
+FROM python:3.11.10-slim@sha256:e7f0d1d058a7b192c3ebdacdf9eac1adef4e3db9f83592cb853d581a7f154d15
 
 WORKDIR /app
 
@@ -24,11 +22,11 @@ RUN groupadd --gid 10001 appuser \
 COPY requirements.lock.txt .
 RUN pip install --no-cache-dir --require-hashes -r requirements.lock.txt && \
     pip install --no-cache-dir wheel==0.46.2 jaraco.context==6.1.0 && \
-    rm -rf /usr/local/lib/python3.12/site-packages/wheel-0.45.1.dist-info \
-           /usr/local/lib/python3.12/site-packages/jaraco.context-5.3.0.dist-info \
-           /usr/local/lib/python3.12/site-packages/jaraco_context-5.3.0.dist-info \
-           /usr/local/lib/python3.12/site-packages/setuptools/_vendor/jaraco.context-5.3.0.dist-info \
-           /usr/local/lib/python3.12/site-packages/setuptools/_vendor/wheel-0.45.1.dist-info
+    rm -rf /usr/local/lib/python3.11/site-packages/wheel-0.45.1.dist-info \
+           /usr/local/lib/python3.11/site-packages/jaraco.context-5.3.0.dist-info \
+           /usr/local/lib/python3.11/site-packages/jaraco_context-5.3.0.dist-info \
+           /usr/local/lib/python3.11/site-packages/setuptools/_vendor/jaraco.context-5.3.0.dist-info \
+           /usr/local/lib/python3.11/site-packages/setuptools/_vendor/wheel-0.45.1.dist-info
 
 
 # Copy application code and set ownership
