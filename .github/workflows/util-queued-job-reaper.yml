@@ -1,7 +1,10 @@
 name: Queued Job Reaper
 
-# Periodically cancels queued GitHub Actions jobs whose required runner
-# labels cannot be satisfied by any currently online self-hosted runner.
+# Periodically cancels stale queued GitHub Actions jobs. The current
+# self-contained policy cancels only `unsatisfiable_runner_labels`; when the
+# dashboard stale API exposes `safe_to_cancel=true` candidates, the same dry-run,
+# reason-filter, and max-cancel controls should be used for
+# `superseded_pr_head` candidates instead of growing more inline bash.
 #
 # Why: when a workflow specifies `runs-on: [self-hosted, <typo>]` and no
 # online runner advertises every requested label, the job sits queued
@@ -30,6 +33,14 @@ name: Queued Job Reaper
 # this workflow in the Actions tab, or set workflow_dispatch input
 # `dry-run: true` to force read-only mode without disabling the schedule.
 #
+# Safety policy:
+#   - Manual runs default to dry-run.
+#   - Scheduled runs are capped by `max-cancel` and only cancel the built-in
+#     safe reason `unsatisfiable_runner_labels` until the stale API classifier
+#     owns richer reasons such as `superseded_pr_head`.
+#   - Current-head required checks, releases, tag workflows, and deploys are
+#     intentionally out of scope for the self-contained fallback.
+#
 # Token scopes required (org-admin to enumerate runners):
 #   - actions: write (cancel runs)
 #   - administration: read on the org (list org runners)
@@ -45,13 +56,23 @@ on:
       dry-run:
         description: "Read-only: log what would be cancelled, don't cancel."
         required: false
-        default: "false"
+        default: "true"
         type: choice
         options: ["true", "false"]
       min-age-minutes:
         description: "Only consider runs queued for at least this many minutes."
         required: false
         default: "20"
+        type: string
+      reason-filter:
+        description: "Optional stale reason to act on; currently supports unsatisfiable_runner_labels."
+        required: false
+        default: ""
+        type: string
+      max-cancel:
+        description: "Maximum number of runs to cancel in one execution."
+        required: false
+        default: "10"
         type: string
 
 permissions:
@@ -140,8 +161,23 @@ jobs:
           ORG: D-sorganization
           DRY_RUN: ${{ inputs.dry-run || 'false' }}
           MIN_AGE_MINUTES: ${{ inputs.min-age-minutes || '20' }}
+          REASON_FILTER: ${{ inputs.reason-filter || '' }}
+          MAX_CANCEL: ${{ inputs.max-cancel || '10' }}
         run: |
           set -uo pipefail
+          DEFAULT_SAFE_REASON="unsatisfiable_runner_labels"
+
+          if ! [[ "${MIN_AGE_MINUTES}" =~ ^[0-9]+$ ]] || [ "${MIN_AGE_MINUTES}" -lt 1 ]; then
+            echo "::error::min-age-minutes must be a positive integer."
+            exit 1
+          fi
+          if ! [[ "${MAX_CANCEL}" =~ ^[0-9]+$ ]] || [ "${MAX_CANCEL}" -lt 1 ]; then
+            echo "::error::max-cancel must be a positive integer."
+            exit 1
+          fi
+          if [ -n "${REASON_FILTER}" ] && [ "${REASON_FILTER}" != "${DEFAULT_SAFE_REASON}" ]; then
+            echo "::notice::reason-filter=${REASON_FILTER} is not handled by the self-contained fallback; no runs will be cancelled."
+          fi
 
           # -------- 1. Fetch online self-hosted runners --------
           # Each entry: {name, status, busy, labels:[{name},...]}
@@ -187,11 +223,13 @@ jobs:
             echo "- **Started:** $(date -Iseconds)"
             echo "- **Dry run:** ${DRY_RUN}"
             echo "- **Min queue age:** ${MIN_AGE_MINUTES} minutes"
+            echo "- **Reason filter:** ${REASON_FILTER:-${DEFAULT_SAFE_REASON}}"
+            echo "- **Max cancel:** ${MAX_CANCEL}"
             echo "- **Online runners:** ${online_count}"
             echo "- **Available labels:** ${available_labels:-(none)}"
             echo ""
-            echo "| Repo | Run | Workflow | Requested labels | Action |"
-            echo "|------|-----|----------|------------------|--------|"
+            echo "| Repo | Run | Workflow | Reason | Requested labels | Action |"
+            echo "|------|-----|----------|--------|------------------|--------|"
           } > "$summary_file"
 
           cutoff_epoch=$(( $(date +%s) - MIN_AGE_MINUTES*60 ))
@@ -263,11 +301,18 @@ jobs:
                 continue
               fi
 
+              reason_code="${DEFAULT_SAFE_REASON}"
+              if [ -n "${REASON_FILTER}" ] && [ "${REASON_FILTER}" != "${reason_code}" ]; then
+                continue
+              fi
+
               reason="requested labels [${unsatisfiable_labels}] have no matching online runner. Available labels: [${available_labels}]"
-              echo "::warning::Cancelling ${ORG}/${repo} run ${run_id}: ${reason}"
+              echo "::warning::Matched ${ORG}/${repo} run ${run_id}: ${reason_code}: ${reason}"
 
               if [ "$DRY_RUN" = "true" ]; then
                 action="would-cancel (dry-run)"
+              elif [ "$cancel_count" -ge "$MAX_CANCEL" ]; then
+                action="skipped (max-cancel reached)"
               else
                 if gh api -X POST "/repos/${ORG}/${repo}/actions/runs/${run_id}/cancel" >/dev/null 2>&1; then
                   action="cancelled"
@@ -280,8 +325,8 @@ jobs:
                 fi
               fi
 
-              printf '| %s | [%s](%s) | %s | `%s` | %s — %s |\n' \
-                "$repo" "$run_id" "$run_url" "$wf_name" "$unsatisfiable_labels" "$action" "$reason" \
+              printf '| %s | [%s](%s) | %s | `%s` | `%s` | %s — %s |\n' \
+                "$repo" "$run_id" "$run_url" "$wf_name" "$reason_code" "$unsatisfiable_labels" "$action" "$reason" \
                 >> "$summary_file"
             done < <(echo "$queued" | jq -r '.[] | [.id, .name, .created_at, .html_url] | @tsv')
           done

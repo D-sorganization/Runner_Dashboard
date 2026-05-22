@@ -16,6 +16,7 @@ from pathlib import Path
 _REPO = Path(__file__).resolve().parent.parent
 _DEPLOY = _REPO / "deploy"
 _BACKEND = _REPO / "backend"
+_RUNBOOKS = _REPO / "docs" / "runbooks"
 
 
 def _read(p: Path) -> str:
@@ -219,6 +220,38 @@ def test_update_deployed_chmods_yaml_for_security_validator() -> None:
     src = _read(_DEPLOY / "update-deployed.sh")
     assert "chmod 0644" in src
     assert "'*.yml'" in src and "'*.yaml'" in src and "'*.json'" in src
+
+
+# ─── Issues #688/#691: stale queue cleanup stays preview/capped ─────────────
+
+
+def test_scheduled_maintenance_prefers_stale_api_preview_with_caps() -> None:
+    """Maintenance must not silently fire an uncapped stale purge."""
+    src = _read(_DEPLOY / "scheduled-dashboard-maintenance.sh")
+    assert "STALE_QUEUE_DRY_RUN:-1" in src
+    assert "STALE_QUEUE_MAX_CANCEL:-10" in src
+    assert "STALE_QUEUE_REASON_FILTER" in src
+    assert "/api/queue/stale?min_age_minutes=" in src
+    assert '\\"dry_run\\": true' in src
+    assert "refusing uncapped purge" in src
+
+
+def test_queue_stuck_runbook_documents_safe_stale_policy() -> None:
+    """Runbook examples must match the stale API/reaper safety controls."""
+    src = _read(_RUNBOOKS / "queue-stuck.md")
+    for token in [
+        "/api/queue/status",
+        "/api/queue/stale?min_age_minutes=30",
+        "/api/queue/purge-stale",
+        '"dry_run": true',
+        "unsatisfiable_runner_labels",
+        "superseded_pr_head",
+        "safe_to_cancel=true",
+        "max-cancel=5",
+        "STALE_QUEUE_DRY_RUN=0",
+        "STALE_QUEUE_MAX_CANCEL=5",
+    ]:
+        assert token in src
 
 
 # ─── PR #668 follow-up: Tailscale CGNAT + .ts.net allowance ──────────────────

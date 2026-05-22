@@ -51,6 +51,29 @@ git diff --name-only origin/main...HEAD -- backend/ SPEC.md
 gh run rerun <run-id> --failed
 ```
 
+## Workflow Concurrency Pattern
+
+When a PR-triggered workflow is part of the problem, validate its concurrency
+contract before re-running jobs or pushing another workflow edit:
+
+- PR and `pull_request_target` workflows should default to
+  `cancel-in-progress: true` so a new push cancels superseded validation.
+- Concurrency groups for PR-triggered workflows should include a PR or ref
+  discriminator such as `github.ref`, `github.head_ref`, or PR number. Avoid
+  repo-wide singleton groups unless the workflow truly arbitrates repo-wide
+  state.
+- Intentional exceptions live in
+  `config/workflow_concurrency_policy.json`. That file is the single allowlist
+  for `cancel-in-progress: false` workflows and repo-wide PR singletons.
+
+Canonical fast-forward pattern:
+
+```yaml
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+```
+
 ## Mitigation
 
 ```bash

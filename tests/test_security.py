@@ -454,8 +454,11 @@ def test_validate_config_path_world_writable(tmp_path: Path) -> None:
     current_mode = config_file.stat().st_mode
     config_file.chmod(current_mode | stat.S_IWOTH)
 
-    with pytest.raises(ValueError, match="world-writable"):
+    if os.name == "nt":
         security.validate_config_path(config_file, allowed_roots=[tmp_path], check_mode=True)
+    else:
+        with pytest.raises(ValueError, match="world-writable"):
+            security.validate_config_path(config_file, allowed_roots=[tmp_path], check_mode=True)
 
 
 def test_validate_config_path_non_existent(tmp_path: Path) -> None:

@@ -1,10 +1,14 @@
 import React from "react";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import { vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueueTab } from "../index";
 
 describe("QueueTab Component", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   const mockQueue = {
     in_progress: [
       {
@@ -212,5 +216,225 @@ describe("QueueTab Component", () => {
 
     // The stale run should be visible
     expect(screen.getAllByText("Stale Workflow")[0]).toBeInTheDocument();
+  });
+
+  it("previews stale cleanup candidates with reason counts and safety state", async () => {
+    const fetchMock = vi.fn(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            stale_count: 2,
+            reason_counts: {
+              superseded_pr_head: 1,
+              closed_or_deleted_ref: 0,
+              unsatisfiable_runner_labels: 0,
+              age_threshold: 1,
+              unknown: 0,
+            },
+            runs: [
+              {
+                repo: "repo-safe",
+                run_id: 101,
+                workflow: "CI",
+                branch: "feature/stale",
+                pr_number: 44,
+                age_minutes: 120,
+                run_url: "https://github.com/org/repo-safe/actions/runs/101",
+                current_head_sha: "abc123",
+                run_head_sha: "def456",
+                reason: "superseded_pr_head",
+                safe_to_cancel: true,
+              },
+              {
+                repo: "repo-review",
+                run_id: 102,
+                workflow: "Deploy",
+                branch: "release",
+                age_minutes: 90,
+                reason: "age_threshold",
+                safe_to_cancel: false,
+              },
+            ],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<QueueTab queue={mockEmptyQueue} loading={false} />);
+    fireEvent.click(screen.getByRole("button", { name: /preview stale/i }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("/api/queue/stale?"),
+        expect.objectContaining({
+          headers: { "X-Requested-With": "XMLHttpRequest" },
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByText("repo-safe").length).toBeGreaterThan(0);
+    });
+    expect(screen.getAllByText("superseded pr head")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("safe")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("age threshold")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("blocked")[0]).toBeInTheDocument();
+  });
+
+  it("keeps stale purge disabled when no previewed candidates are safe", async () => {
+    const fetchMock = vi.fn(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            stale_count: 1,
+            runs: [
+              {
+                repo: "repo-review",
+                run_id: 102,
+                workflow: "Deploy",
+                branch: "release",
+                age_minutes: 90,
+                reason: "age_threshold",
+                safe_to_cancel: false,
+              },
+            ],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<QueueTab queue={mockEmptyQueue} loading={false} />);
+    fireEvent.click(screen.getByRole("button", { name: /preview stale/i }));
+    await waitFor(() => {
+      expect(screen.getAllByText("repo-review").length).toBeGreaterThan(0);
+    });
+
+    expect(screen.getByRole("button", { name: /purge safe stale/i })).toBeDisabled();
+  });
+
+  it("uses two-step confirmation and posts stale purge payload", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            stale_count: 1,
+            runs: [
+              {
+                repo: "repo-safe",
+                run_id: 101,
+                workflow: "CI",
+                branch: "feature/stale",
+                age_minutes: 120,
+                reason: "superseded_pr_head",
+                safe_to_cancel: true,
+              },
+            ],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            stale_count: 1,
+            cancelled_count: 1,
+            errors: [],
+            runs: [],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<QueueTab queue={mockEmptyQueue} loading={false} />);
+    fireEvent.change(screen.getByLabelText(/repo filter/i), {
+      target: { value: "repo-safe" },
+    });
+    fireEvent.change(screen.getByLabelText(/workflow filter/i), {
+      target: { value: "CI" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /preview stale/i }));
+    await waitFor(() => {
+      expect(screen.getAllByText("repo-safe").length).toBeGreaterThan(0);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /purge safe stale/i }));
+    expect(screen.getByRole("button", { name: /confirm purge/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /confirm purge/i }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/queue/purge-stale",
+        expect.objectContaining({
+          method: "POST",
+          headers: expect.objectContaining({
+            "Content-Type": "application/json",
+            "X-Requested-With": "XMLHttpRequest",
+          }),
+          body: expect.any(String),
+        }),
+      );
+    });
+    const body = JSON.parse(fetchMock.mock.calls[1][1].body);
+    expect(body).toEqual(
+      expect.objectContaining({
+        min_age_minutes: 60,
+        repo: "repo-safe",
+        workflow: "CI",
+        max_count: 25,
+        safe_only: true,
+        dry_run: false,
+        run_ids: [101],
+      }),
+    );
+    expect(await screen.findByText(/Cancelled 1 stale run/i)).toBeInTheDocument();
+  });
+
+  it("renders mobile stale cards with expandable run details", async () => {
+    const fetchMock = vi.fn(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            stale_count: 1,
+            runs: [
+              {
+                repo: "repo-mobile",
+                run_id: 201,
+                workflow: "Mobile CI",
+                branch: "mobile-branch",
+                pr_number: 12,
+                age_minutes: 150,
+                current_head_sha: "cur789",
+                run_head_sha: "run789",
+                reason: "closed_or_deleted_ref",
+                safe_to_cancel: true,
+              },
+            ],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { container } = render(<QueueTab queue={mockEmptyQueue} loading={false} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /preview stale/i }));
+    await waitFor(() => {
+      expect(screen.getAllByText("repo-mobile").length).toBeGreaterThan(0);
+    });
+
+    const mobileList = container.querySelector(
+      '[aria-label="Mobile stale cleanup candidates"]',
+    );
+    expect(mobileList).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Mobile CI/i }));
+
+    expect(await screen.findByText(/Run SHA:/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/run789/i).length).toBeGreaterThan(0);
   });
 });
