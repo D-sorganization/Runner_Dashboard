@@ -188,7 +188,7 @@ def _resolve_session_secret() -> tuple[str, str]:
     # Atomic write via temp file + rename so partial writes are never visible.
     fd, tmp_path_str = tempfile.mkstemp(dir=_SESSION_SECRET_DIR, prefix=".tmp-session_secret-")
     try:
-        os.chmod(fd, 0o600)
+        os.chmod(tmp_path_str, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             fh.write(new_secret)
         os.replace(tmp_path_str, _SESSION_SECRET_FILE)

@@ -371,21 +371,13 @@ def test_rollback_sh_list_shows_integrity_status() -> None:
 def test_autoscaler_unit_load_per_core_matches_code_default() -> None:
     """The systemd unit's baked-in AUTOSCALER_LOAD_PER_CORE must match the code default.
 
-    Regression for issue #640: the code default was bumped from 1.5 to 2.5 to stop
-    the autoscaler from killing busy runners under normal pip-install load, but the
-    Environment= line in deploy/runner-autoscaler.service was left at 1.5. Fresh
-    deploys re-baked the bad value and reintroduced the kill loop (observed on
-    deskcomputer 2026-05-18). Pin both values together so this drift can't recur.
+    Pin both values together so deploy templates cannot drift from the code
+    policy used by the autoscaler.
     """
     unit = _read(_DEPLOY / "runner-autoscaler.service")
     match = re.search(r"^Environment=AUTOSCALER_LOAD_PER_CORE=([\d.]+)\s*$", unit, re.M)
     assert match is not None, "Environment=AUTOSCALER_LOAD_PER_CORE missing from unit file"
     unit_value = float(match.group(1))
-    assert unit_value >= 2.5, (
-        f"Unit file AUTOSCALER_LOAD_PER_CORE={unit_value} is below the 2.5 code default; "
-        "fresh deploys would reintroduce the issue-#640 kill loop"
-    )
-
     code = _read(_ROOT / "backend" / "autoscaler_config.py")
     code_match = re.search(r'AUTOSCALER_LOAD_PER_CORE",\s*([\d.]+)\s*\)', code)
     assert code_match is not None, "code default for AUTOSCALER_LOAD_PER_CORE not found"

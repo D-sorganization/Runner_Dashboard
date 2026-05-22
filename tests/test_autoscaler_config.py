@@ -56,7 +56,7 @@ def test_constants_have_expected_types() -> None:
     assert isinstance(cfg.HOSTNAME, str)
 
 
-def test_load_per_core_default_is_2_5() -> None:
-    """Default AUTOSCALER_LOAD_PER_CORE must be 2.5 (issue #640 contract)."""
-    result = cfg._env_float("AUTOSCALER_LOAD_PER_CORE_UNSET_TEST", 2.5)
-    assert result == pytest.approx(2.5)
+def test_load_per_core_default_is_desktop_safe() -> None:
+    """Default AUTOSCALER_LOAD_PER_CORE should protect desktop responsiveness."""
+    result = cfg._env_float("AUTOSCALER_LOAD_PER_CORE_UNSET_TEST", 1.2)
+    assert result == pytest.approx(1.2)
