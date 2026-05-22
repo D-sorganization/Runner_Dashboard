@@ -10,10 +10,10 @@ permissions:
   contents: write
   pull-requests: write
 
-# Lockfile upgrade opens a PR; do not cancel an in-flight run mid-PR-creation.
+# Supersede stale lockfile maintenance runs so the runner queue stays current.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   upgrade:
