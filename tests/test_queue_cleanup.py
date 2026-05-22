@@ -168,7 +168,7 @@ def test_purge_stale_runs_can_limit_to_superseded(monkeypatch) -> None:
     ]
     cancelled: list[int] = []
 
-    async def fake_find_stale_runs(_org: str, _min_age_minutes: int) -> list[qc.StaleRun]:
+    async def fake_find_stale_runs(_org: str, _min_age_minutes: int, *args, **kwargs) -> list[qc.StaleRun]:
         return stale_runs
 
     async def fake_cancel_one(_org: str, run: qc.StaleRun) -> bool:

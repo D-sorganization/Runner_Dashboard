@@ -41,8 +41,8 @@ def queue_route_context(tmp_path, monkeypatch):
 def test_get_stale_queue_route_returns_annotated_runs(queue_route_context, monkeypatch) -> None:
     _app, queue_router, StaleRun, make_client = queue_route_context
 
-    async def fake_find_stale_runs(_org: str, min_age_minutes: int) -> list[StaleRun]:
-        assert min_age_minutes == 90
+    async def fake_find_stale_runs(*args, **kwargs) -> list[StaleRun]:
+        assert kwargs.get("min_age_minutes") == 90
         return [
             StaleRun(
                 repo="repo",

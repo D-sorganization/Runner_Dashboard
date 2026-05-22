@@ -1,5 +1,6 @@
 import React from "react";
 import { Badge } from "../../primitives/Badge";
+import { useToast } from "../../primitives/Toaster";
 
 const h = React.createElement;
 
@@ -689,35 +690,63 @@ function StaleCleanupPanel(p: any) {
 // ════════════════════════ QUEUE TAB ════════════════════════
 
 interface QueueTabProps {
-  queue: any;
-  loading: boolean;
+  queue?: any;
+  loading?: boolean;
   onRefresh?: () => void;
 }
 
 export function QueueTab(p: QueueTabProps) {
-  var q = p.queue || {};
-  var loading = p.loading;
-  var onRefresh = p.onRefresh;
+  var toastApi = useToast();
+  var [localQueue, setLocalQueue] = React.useState<any>(null);
+  var [localLoading, setLocalLoading] = React.useState(false);
+
+  function fetchLocalQueue() {
+    setLocalLoading(true);
+    fetch("/api/queue")
+      .then(function (r) {
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return r.json();
+      })
+      .then(function (data) {
+        setLocalQueue(data);
+        setLocalLoading(false);
+      })
+      .catch(function (err) {
+        console.error(err);
+        setLocalLoading(false);
+      });
+  }
+
+  React.useEffect(function () {
+    if (!p.queue) {
+      fetchLocalQueue();
+    }
+  }, [p.queue]);
+
+  var q = p.queue || localQueue || {};
+  var loading = p.queue ? p.loading : localLoading;
+  var onRefresh = p.onRefresh || (p.queue ? undefined : fetchLocalQueue);
+
   var ip = q.in_progress || [];
   var qu = q.queued || [];
-  var ds = React.useState(null);
+  var ds = React.useState<any>(null);
   var diag = ds[0],
     setDiag = ds[1];
   var dl = React.useState(false);
   var diagLoading = dl[0],
     setDiagLoading = dl[1];
-  var cs = React.useState({});
+  var cs = React.useState<any>({});
   var cancelling = cs[0],
     setCancelling = cs[1];
   // Two-step inline confirmation state for destructive actions (issue #7)
-  var cwcs = React.useState(null);
+  var cwcs = React.useState<any>(null);
   var confirmWorkflow = cwcs[0],
     setConfirmWorkflow = cwcs[1];
-  var crcs = React.useState(null);
+  var crcs = React.useState<any>(null);
   var confirmRun = crcs[0],
     setConfirmRun = crcs[1];
   // Inline status message replaces alert() (issue #51)
-  var cms = React.useState(null);
+  var cms = React.useState<any>(null);
   var cancelMsg = cms[0],
     setCancelMsg = cms[1];
   var ipSortState = React.useState({ key: "runningFor", dir: "desc" });
@@ -726,6 +755,107 @@ export function QueueTab(p: QueueTabProps) {
   var queueSortState = React.useState({ key: "waiting", dir: "desc" });
   var queueSort = queueSortState[0],
     setQueueSort = queueSortState[1];
+
+  // Stale Cleanup Panel State
+  var staleState = React.useState<any[]>([]);
+  var staleRuns = staleState[0], setStaleRuns = staleState[1];
+  var staleLoadingState = React.useState(false);
+  var staleLoading = staleLoadingState[0], setStaleLoading = staleLoadingState[1];
+  var minAgeState = React.useState(60);
+  var minAge = minAgeState[0], setMinAge = minAgeState[1];
+  var repoFilterState = React.useState("");
+  var repoFilter = repoFilterState[0], setRepoFilter = repoFilterState[1];
+  var workflowFilterState = React.useState("");
+  var workflowFilter = workflowFilterState[0], setWorkflowFilter = workflowFilterState[1];
+  var maxCancelState = React.useState(100);
+  var maxCancel = maxCancelState[0], setMaxCancel = maxCancelState[1];
+  var dryRunState = React.useState(true);
+  var dryRun = dryRunState[0], setDryRun = dryRunState[1];
+  var confirmPurgeState = React.useState(false);
+  var confirmPurge = confirmPurgeState[0], setConfirmPurge = confirmPurgeState[1];
+  var staleErrorState = React.useState<string | null>(null);
+  var staleError = staleErrorState[0], setStaleError = staleErrorState[1];
+
+  function fetchStaleRuns() {
+    setStaleLoading(true);
+    setStaleError(null);
+    var url = "/api/queue/stale?min_age_minutes=" + minAge;
+    if (repoFilter) {
+      url += "&repo=" + encodeURIComponent(repoFilter);
+    }
+    fetch(url)
+      .then(function (r) {
+        if (!r.ok) {
+          throw new Error("HTTP " + r.status);
+        }
+        return r.json();
+      })
+      .then(function (data) {
+        setStaleRuns(data.runs || []);
+        setStaleLoading(false);
+      })
+      .catch(function (err) {
+        setStaleError(err.message || "Failed to fetch stale runs");
+        setStaleLoading(false);
+      });
+  }
+
+  React.useEffect(function () {
+    fetchStaleRuns();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [minAge, repoFilter]);
+
+  function executeBulkPurge() {
+    if (!confirmPurge) {
+      setConfirmPurge(true);
+      setTimeout(function () {
+        setConfirmPurge(false);
+      }, 5000);
+      return;
+    }
+    setConfirmPurge(false);
+
+    var bodyData = {
+      min_age_minutes: minAge,
+      repo: repoFilter || null,
+      dry_run: dryRun,
+    };
+
+    fetch("/api/queue/purge-stale", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+      },
+      body: JSON.stringify(bodyData),
+    })
+      .then(function (r) {
+        if (!r.ok) {
+          throw new Error("HTTP " + r.status);
+        }
+        return r.json();
+      })
+      .then(function (data) {
+        var msg = "";
+        if (dryRun) {
+          msg = "Dry-run completed. Found " + data.stale_count + " stale runs.";
+          toastApi.showToast(msg, { variant: "info" });
+        } else {
+          msg = "Purged " + data.cancelled_count + " stale runs.";
+          if (data.errors && data.errors.length > 0) {
+            msg += " Errors: " + data.errors.join(", ");
+            toastApi.showToast(msg, { variant: "error" });
+          } else {
+            toastApi.showToast(msg, { variant: "success" });
+          }
+        }
+        fetchStaleRuns();
+        if (onRefresh) setTimeout(onRefresh, 1500);
+      })
+      .catch(function (err) {
+        toastApi.showToast(err.message || "Failed to purge stale runs", { variant: "error" });
+      });
+  }
   function elapsed(r: any) {
     var start = r.run_started_at || r.created_at;
     if (!start) return "-";
@@ -1829,6 +1959,414 @@ export function QueueTab(p: QueueTabProps) {
             },
             "Queue is empty — all runners idle",
           ),
+    ),
+    h(
+      Collapse,
+      {
+        title: "Stale Cleanup",
+        icon: h("span", {
+          className: "queue-dot waiting",
+          style: { marginRight: 4, background: "var(--accent-orange)" },
+        }),
+        badge: staleRuns.length + " stale candidate(s)",
+        defaultOpen: false,
+      },
+      h(
+        "div",
+        { style: { padding: "12px 0" } },
+        // Controls Row
+        h(
+          "div",
+          {
+            style: {
+              display: "flex",
+              gap: 16,
+              alignItems: "center",
+              flexWrap: "wrap",
+              marginBottom: 16,
+              background: "var(--bg-secondary)",
+              padding: 12,
+              borderRadius: 8,
+              border: "1px solid var(--border)",
+            },
+          },
+          h(
+            "div",
+            { style: { display: "flex", alignItems: "center", gap: 8 } },
+            h("span", { style: { fontSize: 13, color: "var(--text-secondary)" } }, "Min Age (m):"),
+            h("input", {
+              type: "number",
+              value: minAge,
+              onChange: function (e: any) {
+                setMinAge(Number(e.target.value) || 0);
+              },
+              onBlur: fetchStaleRuns,
+              style: {
+                width: 70,
+                padding: "4px 8px",
+                fontSize: 13,
+                borderRadius: 4,
+                border: "1px solid var(--border)",
+                background: "var(--bg-tertiary)",
+                color: "var(--text-primary)",
+              },
+            })
+          ),
+          h(
+            "div",
+            { style: { display: "flex", alignItems: "center", gap: 8 } },
+            h("span", { style: { fontSize: 13, color: "var(--text-secondary)" } }, "Repo:"),
+            h("input", {
+              type: "text",
+              value: repoFilter,
+              placeholder: "Filter repo...",
+              onChange: function (e: any) {
+                setRepoFilter(e.target.value);
+              },
+              onBlur: fetchStaleRuns,
+              style: {
+                width: 140,
+                padding: "4px 8px",
+                fontSize: 13,
+                borderRadius: 4,
+                border: "1px solid var(--border)",
+                background: "var(--bg-tertiary)",
+                color: "var(--text-primary)",
+              },
+            })
+          ),
+          h(
+            "div",
+            { style: { display: "flex", alignItems: "center", gap: 8 } },
+            h("span", { style: { fontSize: 13, color: "var(--text-secondary)" } }, "Workflow:"),
+            h("input", {
+              type: "text",
+              value: workflowFilter,
+              placeholder: "Filter workflow...",
+              onChange: function (e: any) {
+                setWorkflowFilter(e.target.value);
+              },
+              style: {
+                width: 140,
+                padding: "4px 8px",
+                fontSize: 13,
+                borderRadius: 4,
+                border: "1px solid var(--border)",
+                background: "var(--bg-tertiary)",
+                color: "var(--text-primary)",
+              },
+            })
+          ),
+          h(
+            "div",
+            { style: { display: "flex", alignItems: "center", gap: 8 } },
+            h("span", { style: { fontSize: 13, color: "var(--text-secondary)" } }, "Max Cancel:"),
+            h("input", {
+              type: "number",
+              value: maxCancel,
+              onChange: function (e: any) {
+                setMaxCancel(Number(e.target.value) || 0);
+              },
+              style: {
+                width: 70,
+                padding: "4px 8px",
+                fontSize: 13,
+                borderRadius: 4,
+                border: "1px solid var(--border)",
+                background: "var(--bg-tertiary)",
+                color: "var(--text-primary)",
+              },
+            })
+          ),
+          h(
+            "label",
+            {
+              style: {
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                fontSize: 13,
+                cursor: "pointer",
+                color: "var(--text-primary)",
+              },
+            },
+            h("input", {
+              type: "checkbox",
+              checked: dryRun,
+              onChange: function (e: any) {
+                setDryRun(e.target.checked);
+              },
+            }),
+            "Dry-run preview mode"
+          ),
+          h(
+            "button",
+            {
+              className: "btn",
+              onClick: fetchStaleRuns,
+              disabled: staleLoading,
+              style: {
+                padding: "4px 10px",
+                fontSize: 12,
+                borderRadius: 4,
+                background: "var(--bg-tertiary)",
+                border: "1px solid var(--border)",
+                color: "var(--text-primary)",
+                cursor: "pointer",
+                marginLeft: "auto",
+              },
+            },
+            staleLoading ? "Refreshing..." : "Refresh"
+          )
+        ),
+        // Error indicator
+        staleError &&
+          h(
+            "div",
+            {
+              style: {
+                color: "var(--accent-red)",
+                marginBottom: 12,
+                fontSize: 13,
+              },
+            },
+            "Error: " + staleError
+          ),
+        // Metrics counts
+        (function () {
+          var counts = {
+            superseded_pr_head: 0,
+            closed_or_deleted_ref: 0,
+            unsatisfiable_runner_labels: 0,
+            age_threshold: 0,
+            unknown: 0,
+          };
+          var filtered = staleRuns.filter(function (run) {
+            if (!workflowFilter) return true;
+            var name = run.workflow || "";
+            return name.toLowerCase().indexOf(workflowFilter.toLowerCase()) !== -1;
+          });
+          filtered.forEach(function (run) {
+            var reason = run.reason || "";
+            if (reason === "superseded_pr_head") {
+              counts.superseded_pr_head++;
+            } else if (reason === "closed_or_deleted_ref") {
+              counts.closed_or_deleted_ref++;
+            } else if (reason === "unsatisfiable_runner_labels") {
+              counts.unsatisfiable_runner_labels++;
+            } else if (
+              reason === "abandoned-agent-run" ||
+              reason === "stale-feature-branch" ||
+              reason === "stale-main-branch-queue" ||
+              reason === "offline-runner-or-lag"
+            ) {
+              counts.age_threshold++;
+            } else {
+              counts.unknown++;
+            }
+          });
+
+          return h(
+            "div",
+            {
+              style: {
+                display: "flex",
+                gap: 12,
+                flexWrap: "wrap",
+                marginBottom: 16,
+                padding: 12,
+                background: "var(--bg-secondary)",
+                borderRadius: 8,
+                border: "1px solid var(--border)",
+              },
+            },
+            h(
+              "div",
+              {
+                style: {
+                  fontSize: 13,
+                  fontWeight: 600,
+                  width: "100%",
+                  color: "var(--text-secondary)",
+                  marginBottom: 4,
+                },
+              },
+              "Grouped Reason Metrics (Filtered):"
+            ),
+            [
+              { label: "Superseded PR Head", count: counts.superseded_pr_head },
+              { label: "Closed/Deleted Ref", count: counts.closed_or_deleted_ref },
+              { label: "Unsatisfiable Labels", count: counts.unsatisfiable_runner_labels },
+              { label: "Age Threshold", count: counts.age_threshold },
+              { label: "Unknown", count: counts.unknown },
+            ].map(function (item) {
+              return h(
+                "div",
+                {
+                  key: item.label,
+                  style: {
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "4px 10px",
+                    borderRadius: 20,
+                    background: "var(--bg-tertiary)",
+                    border: "1px solid var(--border)",
+                    fontSize: 12,
+                  },
+                },
+                h("span", { style: { color: "var(--text-primary)", fontWeight: 500 } }, item.label),
+                h(Badge, { tone: item.count > 0 ? "warning" : "neutral", children: String(item.count) })
+              );
+            })
+          );
+        })(),
+        // Table Candidates
+        (function () {
+          var filtered = staleRuns.filter(function (run) {
+            if (!workflowFilter) return true;
+            var name = run.workflow || "";
+            return name.toLowerCase().indexOf(workflowFilter.toLowerCase()) !== -1;
+          });
+          var displayed = filtered.slice(0, maxCancel);
+          if (displayed.length === 0) {
+            return h(
+              "div",
+              {
+                style: {
+                  textAlign: "center",
+                  padding: 24,
+                  color: "var(--text-muted)",
+                  background: "var(--bg-secondary)",
+                  borderRadius: 8,
+                  border: "1px solid var(--border)",
+                },
+              },
+              "No stale candidates found matching current filters."
+            );
+          }
+          var displayedSafe = displayed.filter(function (run) {
+            return run.safe_to_cancel === true;
+          });
+
+          return h(
+            "div",
+            null,
+            h(
+              "div",
+              { style: { overflowX: "auto" } },
+              h(
+                "table",
+                { className: "data-table" },
+                h(
+                  "thead",
+                  null,
+                  h(
+                    "tr",
+                    null,
+                    h("th", null, "Repo"),
+                    h("th", null, "Workflow"),
+                    h("th", null, "Branch"),
+                    h("th", null, "PR #"),
+                    h("th", null, "Age"),
+                    h("th", null, "Current Head SHA"),
+                    h("th", null, "Run Head SHA"),
+                    h("th", null, "Reason"),
+                    h("th", null, "Safe to Cancel"),
+                    h("th", null, "Actions")
+                  )
+                ),
+                h(
+                  "tbody",
+                  null,
+                  displayed.map(function (run: any) {
+                    return h(
+                      "tr",
+                      { key: run.run_id },
+                      h("td", null, run.repo),
+                      h("td", null, run.workflow),
+                      h("td", { style: { color: "var(--text-secondary)" } }, run.branch),
+                      h("td", null, run.pr_number ?? "-"),
+                      h("td", null, run.age_minutes + "m"),
+                      h(
+                        "td",
+                        { style: { fontFamily: "monospace", fontSize: 11, color: "var(--text-muted)" } },
+                        run.current_head_sha ? run.current_head_sha.substring(0, 7) : "-"
+                      ),
+                      h(
+                        "td",
+                        { style: { fontFamily: "monospace", fontSize: 11, color: "var(--text-muted)" } },
+                        run.run_head_sha ? run.run_head_sha.substring(0, 7) : "-"
+                      ),
+                      h(
+                        "td",
+                        null,
+                        h(Badge, { tone: run.safe_to_cancel ? "info" : "neutral", children: run.reason })
+                      ),
+                      h(
+                        "td",
+                        null,
+                        h(Badge, { tone: run.safe_to_cancel ? "success" : "danger", children: run.safe_to_cancel ? "Safe" : "Unsafe" })
+                      ),
+                      h(
+                        "td",
+                        null,
+                        h(
+                          "a",
+                          {
+                            href: run.url,
+                            target: "_blank",
+                            rel: "noopener",
+                            style: { color: "var(--accent-blue)", textDecoration: "none", fontSize: 12 },
+                          },
+                          "View"
+                        )
+                      )
+                    );
+                  })
+                )
+              )
+            ),
+            // Bulk Purge Actions
+            h(
+              "div",
+              {
+                style: {
+                  marginTop: 16,
+                  display: "flex",
+                  gap: 12,
+                  alignItems: "center",
+                },
+              },
+              h(
+                "button",
+                {
+                  className: "btn",
+                  onClick: executeBulkPurge,
+                  disabled: staleLoading || displayedSafe.length === 0,
+                  style: {
+                    background: confirmPurge ? "var(--accent-red)" : "none",
+                    border: "1px solid " + (confirmPurge ? "var(--accent-red)" : "var(--accent-orange)"),
+                    color: confirmPurge ? "#fff" : "var(--accent-orange)",
+                    padding: "6px 12px",
+                    borderRadius: 4,
+                    cursor: displayedSafe.length === 0 ? "default" : "pointer",
+                  },
+                },
+                confirmPurge
+                  ? "Click again to confirm purge"
+                  : "Purge Stale Runs (" + displayedSafe.length + " safe)"
+              ),
+              confirmPurge &&
+                h(
+                  "span",
+                  { style: { color: "var(--accent-red)", fontSize: 12 } },
+                  "Warning: This will cancel all matching stale runs on the backend!"
+                )
+            )
+          );
+        })()
+      )
     ),
   );
 }

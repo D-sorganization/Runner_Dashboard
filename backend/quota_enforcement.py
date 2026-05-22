@@ -27,6 +27,11 @@ from security import safe_yaml_load, validate_config_path
 
 log = logging.getLogger("dashboard.quota_enforcement")
 
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - Windows development/runtime path.
+    fcntl = None
+
 
 @contextlib.contextmanager
 def _locked_yaml_file(path: Path, mode: str = "r+"):

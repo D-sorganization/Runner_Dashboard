@@ -24,8 +24,7 @@ from unittest.mock import patch
 _BACKEND_DIR = Path(__file__).parent.parent / "backend"
 sys.path.insert(0, str(_BACKEND_DIR))
 
-import run_timing as rt  # no identity / FastAPI deps
-
+import run_timing as rt  # no identity / FastAPI deps  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # parse_iso

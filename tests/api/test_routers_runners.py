@@ -519,6 +519,13 @@ class TestErrorHandling:
         del mock_cache
         gh_utils.clear_rate_limit_breakers()
 
+        import gh_client
+
+        async def fake_get(*args, **kwargs):
+            raise gh_client.GhAuthError("faked auth error")
+
+        monkeypatch.setattr(gh_client, "get", fake_get)
+
         async def fake_run_cmd(cmd: list[str]) -> tuple[int, str, str]:  # noqa: ARG001
             return (
                 1,

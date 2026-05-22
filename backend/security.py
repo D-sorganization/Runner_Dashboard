@@ -378,7 +378,6 @@ def _check_file_mode(path: Path) -> bool:
             path,
         )
         return True
-
     try:
         import stat
 

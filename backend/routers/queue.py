@@ -291,11 +291,33 @@ async def get_stale_queue_runs(
     """List queued workflow runs older than ``min_age_minutes`` across the org."""
     if should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
-    runs = await find_stale_runs(ORG, min_age_minutes=min_age_minutes)
+
+    # Validate repo slug if provided
+    validated_repo = repo
+    if repo:
+        try:
+            validated_repo = validate_repo_slug(repo)
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    try:
+        runs = await find_stale_runs(
+            org=ORG,
+            min_age_minutes=min_age_minutes,
+            repo=validated_repo,
+            reason=reason,
+        )
+    except Exception as exc:
+        log.exception("Failed to fetch stale runs")
+        raise HTTPException(
+            status_code=502,
+            detail=bad_gateway(f"Failed to fetch stale runs: {exc}").model_dump(exclude_none=True),
+        ) from exc
+
     run_dicts = [run.as_dict() for run in runs]
     filtered_runs = _filter_stale_runs(
         run_dicts,
-        repo=repo,
+        repo=validated_repo,
         workflow=workflow,
         reason=reason,
         safe_only=safe_only,
@@ -336,29 +358,71 @@ async def purge_stale_queue_runs(
         return await proxy_to_hub(request)
     body = await _json_body_or_empty(request)
     min_age_minutes = int(body.get("min_age_minutes", body.get("min_age", min_age_minutes)))
-    dry_run = bool(body.get("dry_run", dry_run))
+
+    # Safely decode dry_run
+    body_dry_run = body.get("dry_run")
+    if body_dry_run is not None:
+        dry_run = body_dry_run if isinstance(body_dry_run, bool) else (str(body_dry_run).lower() != "false")
+    else:
+        dry_run = dry_run
+
     repo = body.get("repo", repo) or None
     workflow = body.get("workflow", body.get("workflow_name", workflow)) or None
     reason = body.get("reason", reason) or None
-    safe_only = bool(body.get("safe_only", safe_only))
+
+    body_safe_only = body.get("safe_only")
+    if body_safe_only is not None:
+        if isinstance(body_safe_only, bool):
+            safe_only = body_safe_only
+        else:
+            safe_only = str(body_safe_only).lower() != "false"
+    else:
+        safe_only = safe_only
+
     max_count = body.get("max_count", body.get("max_cancel", max_count))
     max_count = int(max_count) if max_count else None
-    superseded_only = bool(body.get("superseded_only", superseded_only))
+
+    body_superseded_only = body.get("superseded_only")
+    if body_superseded_only is not None:
+        if isinstance(body_superseded_only, bool):
+            superseded_only = body_superseded_only
+        else:
+            superseded_only = str(body_superseded_only).lower() != "false"
+    else:
+        superseded_only = superseded_only
+
     if safe_only:
         superseded_only = True
-    result = await purge_stale_runs(
-        ORG,
-        min_age_minutes=min_age_minutes,
-        dry_run=dry_run,
-        superseded_only=superseded_only,
-        repo=validate_repo_slug(repo) if repo else None,
-        workflow=workflow,
-        reason=reason,
-        safe_only=safe_only,
-        max_count=max_count,
-    )
+
+    # Validate repo slug if provided
+    validated_repo = repo
+    if repo:
+        try:
+            validated_repo = validate_repo_slug(repo)
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    try:
+        result = await purge_stale_runs(
+            ORG,
+            min_age_minutes=min_age_minutes,
+            dry_run=dry_run,
+            superseded_only=superseded_only,
+            repo=validated_repo,
+            workflow=workflow,
+            reason=reason,
+            safe_only=safe_only,
+            max_count=max_count,
+        )
+    except Exception as exc:
+        log.exception("Failed to purge stale runs")
+        raise HTTPException(
+            status_code=502,
+            detail=bad_gateway(f"Failed to purge stale runs: {exc}").model_dump(exclude_none=True),
+        ) from exc
+
     result["reason_counts"] = _reason_counts(list(result.get("runs", [])))
-    if result.get("cancelled_count", 0):
+    if not dry_run and result.get("cancelled_count", 0):
         cache_delete("queue")
         cache_delete("queue:stale")
         cache_delete("diagnose")

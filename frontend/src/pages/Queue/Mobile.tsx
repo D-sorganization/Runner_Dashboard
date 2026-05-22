@@ -11,6 +11,8 @@ import type {
   FilterValue,
   QueueData,
   RunDetail,
+  StaleCandidate,
+  WorkflowRun,
 } from "./mobileTypes";
 import {
   FILTER_OPTIONS,
@@ -29,7 +31,31 @@ export function QueueMobile() {
   const [cancelling, setCancelling] = useState<Record<string, boolean>>({});
   const [cancelDone, setCancelDone] = useState<Record<string, boolean>>({});
 
+  const [staleData, setStaleData] = useState<StaleCandidate[]>([]);
+  const [minAge, setMinAge] = useState(60);
+  const [repoFilter, setRepoFilter] = useState("");
+  const [dryRun, setDryRun] = useState(true);
+  const [confirmPurge, setConfirmPurge] = useState(false);
+  const [purging, setPurging] = useState(false);
+
   const haptic = useHaptic();
+
+  const fetchStale = useCallback(async () => {
+    try {
+      let url = `/api/queue/stale?min_age_minutes=${minAge}`;
+      if (repoFilter) {
+        url += `&repo=${encodeURIComponent(repoFilter)}`;
+      }
+      const resp = await fetch(url);
+      if (resp.ok) {
+        const json = await resp.json();
+        setStaleData(json.runs || []);
+      }
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("Failed to fetch stale runs", e);
+    }
+  }, [minAge, repoFilter]);
 
   const fetchQueue = useCallback(async () => {
     try {
@@ -48,20 +74,62 @@ export function QueueMobile() {
     }
   }, []);
 
+  const executePurge = useCallback(async () => {
+    if (!confirmPurge) {
+      setConfirmPurge(true);
+      setTimeout(() => setConfirmPurge(false), 5000);
+      return;
+    }
+    setConfirmPurge(false);
+    setPurging(true);
+    haptic.medium();
+
+    try {
+      const resp = await fetch("/api/queue/purge-stale", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: JSON.stringify({
+          min_age_minutes: minAge,
+          repo: repoFilter || null,
+          dry_run: dryRun,
+        }),
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      haptic.success();
+      fetchStale();
+      fetchQueue();
+    } catch (e) {
+      haptic.error();
+      // eslint-disable-next-line no-console
+      console.error(e);
+    } finally {
+      setPurging(false);
+    }
+  }, [confirmPurge, minAge, repoFilter, dryRun, fetchStale, fetchQueue, haptic]);
+
   useEffect(() => {
     fetchQueue();
     const interval = setInterval(fetchQueue, POLL_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [fetchQueue]);
 
+  useEffect(() => {
+    fetchStale();
+    const interval = setInterval(fetchStale, POLL_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [fetchStale]);
+
   const handleRefresh = useCallback(async () => {
     haptic.medium();
     setRefreshing(true);
-    await fetchQueue();
+    await Promise.all([fetchQueue(), fetchStale()]);
     haptic.success();
-  }, [fetchQueue, haptic]);
+  }, [fetchQueue, fetchStale, haptic]);
 
-  // Flatten in_progress and queued into a unified list with status tags.
+  // Flatten in_progress, queued and stale into a unified list with status tags.
   const allRuns: RunDetail[] = useMemo(() => {
     const inProgress = (queueData.in_progress ?? []).map((run) => ({
       run,
@@ -75,10 +143,27 @@ export function QueueMobile() {
       repo: runRepo(run),
       elapsed: elapsedLabel(run),
     }));
-    // "failed" would require a separate API call; we surface the concept in the
-    // filter but show an empty state since the queue endpoint only returns active runs.
-    return [...inProgress, ...queued];
-  }, [queueData]);
+    const stale = (staleData ?? []).map((run) => ({
+      run: {
+        id: run.run_id,
+        name: run.workflow,
+        head_branch: run.branch,
+        html_url: run.url,
+        created_at: new Date(Date.now() - run.age_minutes * 60 * 1000).toISOString(),
+        repository: { name: run.repo },
+        stale_reason: run.reason,
+        safe_to_cancel: run.safe_to_cancel,
+        current_head_sha: run.current_head_sha,
+        run_head_sha: run.run_head_sha,
+        pr_number: run.pr_number,
+        age_minutes: run.age_minutes,
+      } as WorkflowRun,
+      status: "stale" as FilterValue,
+      repo: run.repo,
+      elapsed: `${run.age_minutes}m`,
+    }));
+    return [...inProgress, ...queued, ...stale];
+  }, [queueData, staleData]);
 
   const filtered = useMemo(() => {
     if (filter === "all") return allRuns;
@@ -210,8 +295,13 @@ export function QueueMobile() {
             color: "var(--accent-blue)",
           },
           {
+            label: "Stale",
+            value: staleData.length,
+            color: "var(--accent-orange)",
+          },
+          {
             label: "Total",
-            value: queueData.total ?? allRuns.length,
+            value: queueData.total ?? (allRuns.length - staleData.length),
             color: "var(--text-secondary)",
           },
         ].map(({ label, value, color }) => (
@@ -248,6 +338,97 @@ export function QueueMobile() {
         options={FILTER_OPTIONS}
         value={filter}
       />
+
+      {filter === "stale" && (
+        <div
+          style={{
+            background: "var(--bg-secondary)",
+            border: "1px solid var(--border)",
+            borderRadius: 10,
+            padding: 14,
+            marginTop: 14,
+            marginBottom: 0,
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
+          }}
+        >
+          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>
+            Stale Cleanup Controls
+          </div>
+          
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <div style={{ flex: "1 1 45%", display: "flex", flexDirection: "column", gap: 4 }}>
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Min Age (min)</span>
+              <input
+                type="number"
+                value={minAge}
+                onChange={(e) => setMinAge(Number(e.target.value) || 0)}
+                style={{
+                  padding: "6px 10px",
+                  fontSize: 13,
+                  borderRadius: 6,
+                  border: "1px solid var(--border)",
+                  background: "var(--bg-tertiary)",
+                  color: "var(--text-primary)",
+                }}
+              />
+            </div>
+            <div style={{ flex: "1 1 45%", display: "flex", flexDirection: "column", gap: 4 }}>
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Repo Filter</span>
+              <input
+                type="text"
+                placeholder="All repos"
+                value={repoFilter}
+                onChange={(e) => setRepoFilter(e.target.value)}
+                style={{
+                  padding: "6px 10px",
+                  fontSize: 13,
+                  borderRadius: 6,
+                  border: "1px solid var(--border)",
+                  background: "var(--bg-tertiary)",
+                  color: "var(--text-primary)",
+                }}
+              />
+            </div>
+          </div>
+
+          <label
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              fontSize: 13,
+              color: "var(--text-primary)",
+              cursor: "pointer",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={dryRun}
+              onChange={(e) => setDryRun(e.target.checked)}
+            />
+            Dry-run preview mode
+          </label>
+
+          <TouchButton
+            disabled={purging || staleData.filter(r => r.safe_to_cancel).length === 0}
+            onClick={executePurge}
+            variant={confirmPurge ? "danger" : "primary"}
+            style={{ minHeight: 40, width: "100%" }}
+          >
+            {confirmPurge
+              ? "Confirm Purge"
+              : `Purge Stale Runs (${staleData.filter(r => r.safe_to_cancel).length} safe)`}
+          </TouchButton>
+
+          {confirmPurge && (
+            <span style={{ color: "var(--accent-red)", fontSize: 11, textAlign: "center" }}>
+              Confirm within 5s. This will cancel all eligible stale runs.
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Run list */}
       <div aria-live="polite" style={{ marginTop: 14 }}>
