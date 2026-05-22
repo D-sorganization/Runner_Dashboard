@@ -4,7 +4,7 @@
 # Base image: python:3.11.10-slim pinned to a Docker Hub sha256 digest.
 # To regenerate requirements.lock.txt:  uv export --no-dev -o requirements.lock.txt
 
-FROM python:3.11.10-slim@sha256:e7f0d1d058a7b192c3ebdacdf9eac1adef4e3db9f83592cb853d581a7f154d15
+FROM python:3.11.10-slim@sha256:efc99f05ec45381aac55e2803c9a0245ea5b8c74965264498338e24e4bf66cc7
 
 WORKDIR /app
 
