@@ -44,7 +44,7 @@ concurrency:
 jobs:
   release:
     name: Build release, sign, attest, and publish
-    runs-on: d-sorg-fleet-16core
+    runs-on: d-sorg-fleet
     timeout-minutes: 30
     env:
       GH_TOKEN: ${{ github.token }}
