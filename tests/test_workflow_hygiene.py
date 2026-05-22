@@ -34,10 +34,7 @@ _PR_GROUP_TOKENS = (
 )
 
 _CANCEL_FALSE_ALLOWLIST: dict[str, str] = {
-    "dependabot-auto-merge.yml": "Arms auto-merge for one PR; cancelling mid-run can lose the policy note.",
-    "lockfile-upgrade.yml": "Creates or updates a dependency PR; cancelling mid-PR write is noisy.",
     "release.yml": "Publishes release artifacts and tags; never interrupt a release mid-stream.",
-    "verify-tag.yml": "Validates a pushed tag; tag verification should be immutable once started.",
 }
 
 _SINGLETON_GROUP_ALLOWLIST: dict[str, str] = {
