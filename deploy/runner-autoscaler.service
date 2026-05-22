@@ -3,6 +3,13 @@ Description=D-sorganization Runner Auto-scaler (performance-aware)
 Documentation=https://github.com/D-sorganization/Repository_Management/blob/main/runner-dashboard/README.md#performance-aware-auto-scaling
 After=network-online.target
 Wants=network-online.target
+# A1 — restart-burst containment. If the autoscaler crashes more than
+# StartLimitBurst times within StartLimitIntervalSec (e.g., lock-acquisition
+# failure on a non-root deploy), systemd holds the unit in `failed` state
+# until an operator intervenes. Pairs with the in-process sd_notify
+# WATCHDOG=1 heartbeat in _run_poll_loop.
+StartLimitIntervalSec=600
+StartLimitBurst=5
 
 # This file is a reference template. User, Group, WorkingDirectory, ExecStart,
 # and RUNNER_SCHEDULE_CONFIG are set to per-machine values by install-autoscaler.sh.
