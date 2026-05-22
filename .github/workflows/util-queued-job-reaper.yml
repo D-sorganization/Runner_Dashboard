@@ -45,7 +45,7 @@ on:
       dry-run:
         description: "Read-only: log what would be cancelled, don't cancel."
         required: false
-        default: "false"
+        default: "true"
         type: choice
         options: ["true", "false"]
       min-age-minutes:
@@ -53,6 +53,22 @@ on:
         required: false
         default: "20"
         type: string
+      reason-filter:
+        description: "Only consider runs with this stale reason."
+        required: false
+        default: ""
+        type: string
+      max-cancel:
+        description: "Cap the maximum number of runs to cancel in a single sweep."
+        required: false
+        default: ""
+        type: string
+      safe-to-cancel-only:
+        description: "Only cancel runs with reasons marked safe_to_cancel=true."
+        required: false
+        default: "true"
+        type: choice
+        options: ["true", "false"]
 
 permissions:
   contents: read
@@ -138,161 +154,10 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           ORG: D-sorganization
-          DRY_RUN: ${{ inputs.dry-run || 'false' }}
-          MIN_AGE_MINUTES: ${{ inputs.min-age-minutes || '20' }}
         run: |
-          set -uo pipefail
-
-          # -------- 1. Fetch online self-hosted runners --------
-          # Each entry: {name, status, busy, labels:[{name},...]}
-          # We consider a runner satisfying if status=="online" (busy
-          # runners are still satisfying — the job is just waiting).
-          runners_json=$(gh api --paginate "/orgs/${ORG}/actions/runners" \
-            --jq '[.runners[] | select(.status=="online") | {name, labels:[.labels[].name | ascii_downcase]}]' \
-            | jq -s 'add // []')
-          online_count=$(echo "$runners_json" | jq 'length')
-          echo "Found $online_count online self-hosted runners."
-
-          # Union of all online labels — used for the human-readable
-          # "available labels" diagnostic, not for the satisfiability test.
-          available_labels=$(echo "$runners_json" \
-            | jq -r '[.[].labels[]] | unique | join(", ")')
-
-          # Hosted-runner label prefixes we never touch.
-          is_hosted_label() {
-            case "$1" in
-              ubuntu-*|windows-*|macos-*|ubuntu|windows|macos) return 0 ;;
-              *) return 1 ;;
-            esac
-          }
-
-          # Returns 0 if some online runner advertises a superset of $1
-          # (a comma-separated, lowercased label list).
-          requested_satisfied_by_online() {
-            local requested_csv="$1"
-            echo "$runners_json" | jq -e --arg req "$requested_csv" '
-              ($req | split(",") | map(select(length>0))) as $r
-              | any(.[]; (.labels) as $have | ($r | all(. as $x | $have | index($x))))
-            ' >/dev/null
-          }
-
-          # -------- 2. Iterate repos --------
-          mapfile -t repos < <(gh repo list "$ORG" --no-archived --limit 200 --json name --jq '.[].name')
-          echo "Scanning ${#repos[@]} repos in $ORG."
-
-          summary_file="$(mktemp)"
-          {
-            echo "## Queued Job Reaper"
-            echo ""
-            echo "- **Started:** $(date -Iseconds)"
-            echo "- **Dry run:** ${DRY_RUN}"
-            echo "- **Min queue age:** ${MIN_AGE_MINUTES} minutes"
-            echo "- **Online runners:** ${online_count}"
-            echo "- **Available labels:** ${available_labels:-(none)}"
-            echo ""
-            echo "| Repo | Run | Workflow | Requested labels | Action |"
-            echo "|------|-----|----------|------------------|--------|"
-          } > "$summary_file"
-
-          cutoff_epoch=$(( $(date +%s) - MIN_AGE_MINUTES*60 ))
-          cancel_count=0
-          skip_busy_count=0
-          skip_hosted_count=0
-
-          for repo in "${repos[@]}"; do
-            # List queued runs; pagination via --paginate.
-            queued=$(gh api --paginate \
-              "/repos/${ORG}/${repo}/actions/runs?status=queued&per_page=100" \
-              --jq '[.workflow_runs[] | {id, name, created_at, html_url}]' \
-              | jq -s 'add // []' 2>/dev/null || echo "[]")
-
-            n=$(echo "$queued" | jq 'length')
-            [ "$n" -eq 0 ] && continue
-
-            echo "$repo: $n queued run(s)"
-
-            while IFS=$'\t' read -r run_id wf_name created_at run_url; do
-              [ -z "$run_id" ] && continue
-              created_epoch=$(date -d "$created_at" +%s 2>/dev/null || echo 0)
-              if [ "$created_epoch" -gt "$cutoff_epoch" ]; then
-                continue  # too young
-              fi
-
-              # Fetch jobs for this run. For a queued job the `labels`
-              # field carries the resolved runs-on label list.
-              jobs_json=$(gh api --paginate \
-                "/repos/${ORG}/${repo}/actions/runs/${run_id}/jobs?filter=latest" \
-                --jq '[.jobs[] | select(.status=="queued") | {name, labels:[.labels[] | ascii_downcase]}]' \
-                | jq -s 'add // []' 2>/dev/null || echo "[]")
-
-              n_jobs=$(echo "$jobs_json" | jq 'length')
-              [ "$n_jobs" -eq 0 ] && continue
-
-              unsatisfiable_labels=""
-              all_satisfied=true
-              all_hosted=true
-              while IFS= read -r labels_csv; do
-                [ -z "$labels_csv" ] && continue
-                # Hosted check: if any label is hosted-prefixed, treat the
-                # whole job as hosted and skip cancellation logic.
-                hosted_in_job=false
-                IFS=',' read -r -a lab_arr <<< "$labels_csv"
-                for l in "${lab_arr[@]}"; do
-                  if is_hosted_label "$l"; then
-                    hosted_in_job=true
-                    break
-                  fi
-                done
-                if $hosted_in_job; then
-                  continue
-                fi
-                all_hosted=false
-                if ! requested_satisfied_by_online "$labels_csv"; then
-                  all_satisfied=false
-                  unsatisfiable_labels="$labels_csv"
-                  break
-                fi
-              done < <(echo "$jobs_json" | jq -r '.[].labels | join(",")')
-
-              if $all_hosted; then
-                skip_hosted_count=$((skip_hosted_count+1))
-                continue
-              fi
-              if $all_satisfied; then
-                skip_busy_count=$((skip_busy_count+1))
-                continue
-              fi
-
-              reason="requested labels [${unsatisfiable_labels}] have no matching online runner. Available labels: [${available_labels}]"
-              echo "::warning::Cancelling ${ORG}/${repo} run ${run_id}: ${reason}"
-
-              if [ "$DRY_RUN" = "true" ]; then
-                action="would-cancel (dry-run)"
-              else
-                if gh api -X POST "/repos/${ORG}/${repo}/actions/runs/${run_id}/cancel" >/dev/null 2>&1; then
-                  action="cancelled"
-                  cancel_count=$((cancel_count+1))
-                  # Best-effort annotation comment on the commit, if pushable.
-                  # (Skipped: workflow_run has no canonical comment surface;
-                  # the step summary is the audit trail.)
-                else
-                  action="cancel-failed"
-                fi
-              fi
-
-              printf '| %s | [%s](%s) | %s | `%s` | %s — %s |\n' \
-                "$repo" "$run_id" "$run_url" "$wf_name" "$unsatisfiable_labels" "$action" "$reason" \
-                >> "$summary_file"
-            done < <(echo "$queued" | jq -r '.[] | [.id, .name, .created_at, .html_url] | @tsv')
-          done
-
-          {
-            echo ""
-            echo "- **Cancelled:** ${cancel_count}"
-            echo "- **Skipped (runner busy, satisfiable):** ${skip_busy_count}"
-            echo "- **Skipped (GitHub-hosted):** ${skip_hosted_count}"
-            echo "- **Finished:** $(date -Iseconds)"
-          } >> "$summary_file"
-
-          cat "$summary_file" >> "$GITHUB_STEP_SUMMARY"
-          echo "Done. cancelled=$cancel_count busy_skipped=$skip_busy_count hosted_skipped=$skip_hosted_count"
+          python3 scripts/reap_queued_jobs.py \
+            --dry-run "${{ github.event_name == 'schedule' && 'false' || inputs.dry-run || 'true' }}" \
+            --min-age-minutes "${{ inputs.min-age-minutes || '20' }}" \
+            --safe-to-cancel-only "${{ github.event_name == 'schedule' && 'true' || inputs.safe-to-cancel-only || 'true' }}" \
+            --reason-filter "${{ inputs.reason-filter || '' }}" \
+            --max-cancel "${{ inputs.max-cancel || '' }}"
