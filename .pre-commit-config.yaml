@@ -107,7 +107,6 @@ repos:
           - pydantic
           - fastapi
           - uvicorn
-          - psutil-stubs
         args: [--ignore-missing-imports]
         types: [python]
         files: ^backend/
@@ -120,15 +119,7 @@ repos:
       - id: bandit
         name: "bandit (Python security)"
         stages: [pre-push]
-        args:
-          [
-            "-r",
-            "backend/",
-            "-ll",
-            "-ii",
-            "-x",
-            "tests/,.github/",
-          ]
+        args: ["-r", "backend/", "-ll", "-ii", "-x", "tests/,.github/"]
         pass_filenames: false
         types: [python]
 
