@@ -1,9 +1,23 @@
-﻿# SPEC.md â€” D-sorganization Runner Dashboard
+# SPEC.md â€” D-sorganization Runner Dashboard
 
 **Spec Version:** 2.5.27
 **Application Version:** 4.1.0 (see `VERSION`)
 **Last Updated:** 2026-05-22T19:20:59Z
 **Status:** Active
+
+### Recent Spec Updates
+
+- **2026-05-22 (2.5.26):** Added `DASHBOARD_HOST` env var
+  (`dashboard_config.HOST`) for uvicorn bind interface; default preserves
+  historical `0.0.0.0` behaviour. Added `deploy/wsl-mirrored-port-helper.sh`
+  invoked from the systemd unit's `ExecStartPre`/`ExecStartPost` to dodge
+  the recurring WSL-mirrored Tailscale-serve port conflict that crash-looped
+  the dashboard after every WSL cold-restart. Added `deploy/wsl-keepalive.ps1`
+  Windows watchdog with responsiveness probe, structured JSONL logging, and
+  exponential backoff. Added host-wide Windows resource metrics for WSL
+  dashboard telemetry and autoscaler decisions so runner scaling uses the same
+  CPU/RAM values operators see in Task Manager. See
+  `docs/wsl-mirrored-port-conflict.md`.
 
 ---
 
@@ -1109,6 +1123,12 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 ---
 
 ## 7. Changelog
+
+### 2.5.26 - 2026-05-21
+
+- ci: added a documented workflow concurrency policy allowlist for
+  `cancel-in-progress: false` exceptions and intentional PR-singleton
+  workflows, with shared lint/test enforcement and operator triage guidance.
 
 ### 2.5.25 - 2026-05-07
 
@@ -2371,7 +2391,7 @@ Identity Manager (`identity_manager.mint_service_token`).
 
 <!-- spec-trigger-145 -->
 
-### 18.6 CI Action Pinning & Tool Version Parity (Issue #390)
+### 18.6 CI Action Pinning, Workflow Concurrency Policy & Tool Version Parity (Issues #390, #689)
 
 To prevent silent drift between local development and CI, the repository
 enforces two invariants:
@@ -2387,6 +2407,15 @@ enforces two invariants:
   `verify-tool-version-parity` step in `ci-standard.yml` enforces this,
   preventing `uv sync` from installing a newer linter/type-checker than
   CI uses.
+- **Workflow concurrency policy:** `config/workflow_concurrency_policy.json`
+  is the single allowlist for PR-triggered workflows that intentionally keep
+  `cancel-in-progress: false` and for repo-wide PR singleton concurrency
+  groups. `tests/test_workflow_hygiene.py` and
+  `.github/workflows/lint-workflow-files.yml` both enforce that PR workflows
+  default to `cancel-in-progress: true`, include a PR/ref discriminator in
+  their concurrency group unless explicitly allowlisted, and point operators
+  to `docs/runbooks/ci-failure-triage.md` for the canonical remediation
+  pattern.
 
 ### 18.5 Cross-Fleet Coherence & Admin API (Wave 4)
 

@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import errno
 import json
+import subprocess
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import httpx
 
@@ -18,6 +20,15 @@ _BACKEND_DIR = Path(__file__).parent.parent / "backend"
 sys.path.insert(0, str(_BACKEND_DIR))
 
 import system_utils  # noqa: E402
+
+
+def _cp(stdout: str = "", returncode: int = 0) -> MagicMock:
+    cp = MagicMock(spec=subprocess.CompletedProcess)
+    cp.stdout = stdout
+    cp.returncode = returncode
+    cp.stderr = ""
+    return cp
+
 
 # ---------------------------------------------------------------------------
 # get_workload_capacity_from_specs
@@ -176,6 +187,45 @@ def test_disk_pressure_path_passthrough() -> None:
         percent=20.0,
     )
     assert result["path"] == "/runners"
+
+
+def test_windows_host_resource_snapshot_uses_absolute_powershell_fallback(monkeypatch) -> None:
+    monkeypatch.setattr(
+        system_utils.platform,
+        "uname",
+        lambda: type("Uname", (), {"release": "6.6.87.2-microsoft-standard-WSL2"})(),
+    )
+    calls = []
+
+    def fake_run(args, **_kwargs):
+        calls.append(args[0])
+        if args[0] == "powershell.exe":
+            raise OSError("PATH unavailable under systemd")
+        return _cp(
+            json.dumps(
+                {
+                    "cpu_percent": 17.0,
+                    "memory_total_gb": 127.9,
+                    "memory_used_gb": 52.0,
+                    "memory_available_gb": 75.9,
+                    "memory_percent": 40.7,
+                }
+            )
+        )
+
+    monkeypatch.setattr(system_utils.subprocess, "run", fake_run)
+
+    assert system_utils._windows_host_resource_snapshot() == {
+        "cpu_percent": 17.0,
+        "memory_total_gb": 127.9,
+        "memory_used_gb": 52.0,
+        "memory_available_gb": 75.9,
+        "memory_percent": 40.7,
+    }
+    assert calls == [
+        "powershell.exe",
+        "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe",
+    ]
 
 
 # ---------------------------------------------------------------------------

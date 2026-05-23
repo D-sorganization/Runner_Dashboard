@@ -10,7 +10,10 @@
  */
 
 import { defineConfig, devices } from "@playwright/test";
-import viewportProfilesRaw from "./tests/frontend/mobile/viewport_profiles.json";
+import fs from "fs";
+const viewportProfilesRaw = JSON.parse(
+  fs.readFileSync(new URL("./tests/frontend/mobile/viewport_profiles.json", import.meta.url), "utf-8")
+);
 
 const BASE_URL = process.env.DASHBOARD_URL ?? "http://localhost:8321";
 

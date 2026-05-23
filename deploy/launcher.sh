@@ -41,10 +41,12 @@ log "HEALTH_CHECK\tBackend not responding, will start service"
 # Start the backend service
 log "START_SERVICE\tAttempting to start runner-dashboard service"
 
-if systemctl --user start runner-dashboard 2>/dev/null; then
-    log "START_SERVICE\tSystemd user service started"
-elif sudo systemctl start runner-dashboard 2>/dev/null; then
-    log "START_SERVICE\tSystemd system service started (with sudo)"
+if sudo -n systemctl restart runner-dashboard.service 2>/dev/null; then
+    log "START_SERVICE\tSystemd system service restarted"
+elif systemctl restart runner-dashboard.service 2>/dev/null; then
+    log "START_SERVICE\tSystemd system service restarted without sudo"
+elif systemctl --user restart runner-dashboard 2>/dev/null; then
+    log "START_SERVICE\tLegacy systemd user service restarted"
 else
     log "START_SERVICE\tSystemd not available"
     # Try to start manually if setup.sh exists

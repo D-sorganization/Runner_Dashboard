@@ -3,11 +3,21 @@
 from __future__ import annotations
 
 import contextlib
-import importlib
 import logging
 import time
 from pathlib import Path
-from typing import Any
+
+# fcntl is a Unix-only module. The docstring on ``_locked_yaml_file`` already
+# promises "Degrades gracefully on platforms that lack fcntl (e.g. Windows
+# dev env)", but the historical ``import fcntl`` at module top fired before
+# that comment ever ran, breaking Python collection on Windows clones
+# (pytest, mypy, ruff all failed at import). The try/except at usage sites
+# already catches ``AttributeError`` from ``None.flock(...)`` and ``OSError``,
+# so the runtime behaviour is unchanged on POSIX hosts.
+try:
+    import fcntl  # type: ignore[import-not-found,unused-ignore]
+except ImportError:  # pragma: no cover - Windows-only path
+    fcntl = None  # type: ignore[assignment]
 
 import yaml
 from identity import Principal
@@ -18,9 +28,9 @@ from security import safe_yaml_load, validate_config_path
 log = logging.getLogger("dashboard.quota_enforcement")
 
 try:
-    _fcntl: Any = importlib.import_module("fcntl")
-except ImportError:  # pragma: no cover - exercised on Windows
-    _fcntl = None
+    import fcntl
+except ImportError:  # pragma: no cover - Windows development/runtime path.
+    fcntl = None
 
 
 @contextlib.contextmanager
@@ -34,19 +44,22 @@ def _locked_yaml_file(path: Path, mode: str = "r+"):
     """
     path.touch()
     with open(path, mode) as fh:
-        try:
-            if _fcntl is not None:
-                _fcntl.flock(fh, _fcntl.LOCK_EX)
-        except (AttributeError, OSError):
-            pass
+        flock = getattr(fcntl, "flock", None) if fcntl is not None else None
+        lock_ex = getattr(fcntl, "LOCK_EX", None) if fcntl is not None else None
+        lock_un = getattr(fcntl, "LOCK_UN", None) if fcntl is not None else None
+        if flock is not None and lock_ex is not None:
+            try:
+                flock(fh, lock_ex)
+            except OSError:
+                pass
         try:
             yield fh
         finally:
-            try:
-                if _fcntl is not None:
-                    _fcntl.flock(fh, _fcntl.LOCK_UN)
-            except (AttributeError, OSError):
-                pass
+            if flock is not None and lock_un is not None:
+                try:
+                    flock(fh, lock_un)
+                except OSError:
+                    pass
 
 
 class QuotaEnforcement:
@@ -56,16 +69,12 @@ class QuotaEnforcement:
         self.spend_records: dict[str, dict[str, float]] = {}
         self.load_spend()
 
-    @property
-    def _allowed_roots(self) -> list[Path]:
-        return [self.config_dir.resolve()]
-
     def load_spend(self):
         if not self.spend_path.exists():
             return
         try:
-            validate_config_path(self.spend_path, allowed_roots=self._allowed_roots)
-            data = safe_yaml_load(self.spend_path, allowed_roots=self._allowed_roots)
+            validate_config_path(self.spend_path)
+            data = safe_yaml_load(self.spend_path)
             if data and "spend" in data:
                 self.spend_records = data["spend"]
         except Exception as exc:
@@ -75,7 +84,7 @@ class QuotaEnforcement:
         """Save spend data with security validation (issue #355)."""
         try:
             self.config_dir.mkdir(parents=True, exist_ok=True)
-            validate_config_path(self.spend_path.parent, allowed_roots=self._allowed_roots)
+            validate_config_path(self.spend_path.parent)
             with open(self.spend_path, "w") as f:
                 yaml.dump({"spend": self.spend_records}, f)
         except Exception as exc:
@@ -93,7 +102,7 @@ class QuotaEnforcement:
         """
         today = time.strftime("%Y-%m-%d", time.gmtime())
         self.config_dir.mkdir(parents=True, exist_ok=True)
-        validate_config_path(self.spend_path.parent, allowed_roots=self._allowed_roots)
+        validate_config_path(self.spend_path.parent)
 
         with _locked_yaml_file(self.spend_path, "r+") as fh:
             fh.seek(0)
@@ -125,10 +134,7 @@ class QuotaEnforcement:
 
         active_leases = lease_manager.get_active_leases(principal.id)
         if len(active_leases) >= principal.quotas.max_runners:
-            return (
-                False,
-                f"Runner quota reached ({len(active_leases)}/{principal.quotas.max_runners})",
-            )
+            return False, f"Runner quota reached ({len(active_leases)}/{principal.quotas.max_runners})"
 
         return True, None
 
@@ -145,10 +151,7 @@ class QuotaEnforcement:
     def check_local_app_quota(self, principal: Principal) -> tuple[bool, str | None]:
         usage = self.get_local_app_usage(principal.id)
         if usage >= principal.quotas.local_app_slots:
-            return (
-                False,
-                f"Local app slots reached ({usage}/{principal.quotas.local_app_slots})",
-            )
+            return False, f"Local app slots reached ({usage}/{principal.quotas.local_app_slots})"
         return True, None
 
 

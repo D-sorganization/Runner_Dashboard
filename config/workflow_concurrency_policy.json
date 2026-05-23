@@ -1,0 +1,9 @@
+{
+  "cancel_in_progress_false_allowlist": {
+    "release.yml": "Release publishing must not be interrupted after versioning and tag orchestration begin."
+  },
+  "pr_concurrency_singleton_allowlist": {
+    "Agent-Redundant-PR-Closer.yml": "Duplicate PR arbitration intentionally runs as one repo-wide singleton to compare all open PRs.",
+    "Jules-Control-Tower.yml": "The central orchestrator intentionally runs as one repo-wide singleton across PR and workflow_run triggers."
+  }
+}

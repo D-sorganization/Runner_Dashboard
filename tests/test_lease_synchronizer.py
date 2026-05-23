@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import lease_synchronizer as ls
 
 # ---------------------------------------------------------------------------
@@ -35,9 +37,6 @@ def test_parse_iso_ts_type_error_returns_none() -> None:
 # ---------------------------------------------------------------------------
 # sync_github_leases — no issues → no-op
 # ---------------------------------------------------------------------------
-
-
-import asyncio
 
 
 def test_sync_github_leases_empty_list_no_error() -> None:

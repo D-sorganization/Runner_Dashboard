@@ -23,6 +23,8 @@ import { test, expect } from "@playwright/test";
 // ---------------------------------------------------------------------------
 
 test.describe("Mobile shell bottom navigation", () => {
+  test.skip(({ isMobile }) => !isMobile, "Mobile viewport only");
+
   test("renders bottom tab bar at mobile viewport", async ({ page }) => {
     await page.goto("/");
     // MobileShell bottom nav should be visible at mobile widths
@@ -56,6 +58,8 @@ test.describe("Mobile shell bottom navigation", () => {
 // ---------------------------------------------------------------------------
 
 test.describe("Mobile 3-tap dispatch flow", () => {
+  test.skip(({ isMobile }) => !isMobile, "Mobile viewport only");
+
   test("Remediation tab is reachable via bottom nav", async ({ page }) => {
     await page.goto("/");
     const remediationTab = page.locator('[role="tab"]', {
@@ -72,6 +76,8 @@ test.describe("Mobile 3-tap dispatch flow", () => {
 // ---------------------------------------------------------------------------
 
 test.describe("Mobile accessibility", () => {
+  test.skip(({ isMobile }) => !isMobile, "Mobile viewport only");
+
   test("all bottom nav tabs have aria-label or accessible text", async ({
     page,
   }) => {

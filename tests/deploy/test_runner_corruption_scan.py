@@ -83,6 +83,34 @@ def _run_scan(runner_root: Path, prom_path: Path, host: str = "test-host") -> st
     env["PROM_FILE"] = _as_bash_path(prom_path)
     env["FLEET_NODE_NAME"] = host
     env["DIAG_PAGES_MIN_AGE_DAYS"] = "1"
+
+    if os.name == "nt" and BASH:
+        bash_path = Path(BASH)
+        extra_paths = []
+        if bash_path.parent.name == "bin":
+            usr_bin = bash_path.parent.parent / "usr" / "bin"
+            if usr_bin.exists():
+                extra_paths.append(str(usr_bin))
+        elif bash_path.parent.name == "usr" or bash_path.parent.parent.name == "usr":
+            extra_paths.append(str(bash_path.parent))
+        else:
+            usr_bin = bash_path.parent / "usr" / "bin"
+            if usr_bin.exists():
+                extra_paths.append(str(usr_bin))
+            usr_bin2 = bash_path.parent.parent / "usr" / "bin"
+            if usr_bin2.exists():
+                extra_paths.append(str(usr_bin2))
+
+        default_git_usr = Path(r"C:\Program Files\Git\usr\bin")
+        if default_git_usr.exists():
+            extra_paths.append(str(default_git_usr))
+
+        if extra_paths:
+            current_path = env.get("PATH", "")
+            env["PATH"] = (
+                os.pathsep.join(extra_paths + [current_path]) if current_path else os.pathsep.join(extra_paths)
+            )
+
     result = subprocess.run(
         [BASH or "bash", _as_bash_path(SCRIPT)],
         env=env,

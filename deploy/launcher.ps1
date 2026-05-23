@@ -45,15 +45,15 @@ try {
     # Start the backend service
     Log "START_SERVICE`tAttempting to start runner-dashboard service"
 
-    # Try systemd first (WSL/Linux on Windows)
+    # Try the deployed WSL system service first. Older installs used a
+    # user-level service named runner-dashboard; keep that as a fallback.
     try {
-        $wslCheck = wsl -e systemctl --user status runner-dashboard 2>$null
+        $restartCommand = "sudo -n systemctl restart runner-dashboard.service || systemctl restart runner-dashboard.service || systemctl --user restart runner-dashboard"
+        wsl.exe -d Ubuntu -e bash -lc $restartCommand
         if ($LASTEXITCODE -eq 0) {
-            Log "START_SERVICE`tUsing systemd via WSL"
-            wsl -e systemctl --user start runner-dashboard
-            Log "START_SERVICE`tSystemd start command sent"
+            Log "START_SERVICE`tWSL systemd restart command sent"
         } else {
-            throw "systemd not available"
+            throw "systemd restart failed with exit code $LASTEXITCODE"
         }
     } catch {
         # Try Windows Service
