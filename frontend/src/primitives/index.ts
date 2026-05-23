@@ -37,3 +37,6 @@ export type {
 
 export { BottomSheet } from "./BottomSheet";
 export type { BottomSheetProps } from "./BottomSheet";
+
+export { TimeAgo } from "./TimeAgo";
+export type { TimeAgoProps } from "./TimeAgo";

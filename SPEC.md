@@ -1,13 +1,13 @@
 # SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.27
+**Spec Version:** 2.5.28
 **Application Version:** 4.1.0 (see `VERSION`)
 **Last Updated:** 2026-05-23T08:20:00Z
 **Status:** Active
 
 ### Recent Spec Updates
 
-- **2026-05-23 (2.5.27):** Added B-series API contract hardening:
+- **2026-05-23 (2.5.28):** Added B-series API contract hardening:
   `backend/gh_client.py` now owns GitHub API retries, timeouts, and HTTP error
   normalization; backend code may not shell out to `gh api` for request paths.
   Request payloads for help chat and launcher generation are validated by
@@ -19,6 +19,13 @@
   implementation roots (`backend/` and `frontend/src/`) when validating
   feature PRs and issue path evidence.
 
+- **2026-05-22 (2.5.27):** Added relative-timestamp primitive (#725):
+  `frontend/src/hooks/useTimeAgo.ts` (`useTimeAgo`, `formatTimeAgo`) and
+  `frontend/src/primitives/TimeAgo.tsx` (`<TimeAgo iso={...} />`). Renders
+  semantic `<time>` with the raw ISO in `dateTime` + tooltip; future
+  timestamps render `"soon"`, invalid input degrades to the raw value with
+  a `console.warn`. Wired into `Reports/Mobile.tsx` "Modified" field as the
+  first call-site; remaining pages migrate in follow-ups.
 - **2026-05-22 (2.5.26):** Added `DASHBOARD_HOST` env var
   (`dashboard_config.HOST`) for uvicorn bind interface; default preserves
   historical `0.0.0.0` behaviour. Added `deploy/wsl-mirrored-port-helper.sh`
