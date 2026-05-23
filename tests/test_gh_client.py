@@ -160,6 +160,7 @@ async def test_gh_utils_falls_back_to_subprocess_when_no_token(monkeypatch: pyte
 
     assert result == expected
     mock_cmd.assert_called_once()
+    gh_utils.clear_rate_limit_breakers()
     gh_client.clear_token_cache()
     gh_utils.clear_rate_limit_breakers()
 
