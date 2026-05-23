@@ -68,6 +68,28 @@ class TestUnitIsActive:
             assert sd._unit_is_active("some.service") is False
 
 
+class TestUnitMetadata:
+    def test_unit_state_parses_active_and_substate(self) -> None:
+        with patch("subprocess.run", return_value=_cp("ActiveState=active\nSubState=running\n")):
+            assert sd._unit_state("some.service") == ("active", "running")
+
+    def test_runner_workdir_for_unit_returns_stdout(self) -> None:
+        with patch("subprocess.run", return_value=_cp("/srv/actions/runner\n")):
+            assert sd._runner_workdir_for_unit("some.service") == "/srv/actions/runner"
+
+
+class TestDryRunEnabled:
+    def test_module_flag_enables_dry_run(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(sd, "DRY_RUN", True)
+        assert sd._dry_run_enabled() is True
+
+    def test_runner_autoscaler_public_flag_enables_dry_run(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(sd, "DRY_RUN", False)
+        fake_public = type("FakeRunnerAutoscaler", (), {"DRY_RUN": True})()
+        monkeypatch.setitem(sd.sys.modules, "runner_autoscaler", fake_public)
+        assert sd._dry_run_enabled() is True
+
+
 class TestStopUnit:
     def test_happy(self) -> None:
         with patch("subprocess.run", return_value=_cp(returncode=0)):

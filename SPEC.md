@@ -1,12 +1,20 @@
 ﻿# SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.27
+**Spec Version:** 2.5.28
 **Application Version:** 4.1.0 (see `VERSION`)
-**Last Updated:** 2026-05-22T23:40:00Z
+**Last Updated:** 2026-05-23T15:52:00Z
 **Status:** Active
 
 ### Recent Spec Updates
 
+- **2026-05-23 (2.5.28):** Hardened autoscaler config parsing and module-level
+  test coverage for issue `#727`. `backend/autoscaler_config.py` now raises
+  `ValueError` at startup when autoscaler numeric env vars are malformed or
+  negative instead of silently falling back to defaults. Focused tests now pin
+  that contract plus the autoscaler sampling/systemd helpers, and the targeted
+  autoscaler coverage lane measures `autoscaler_busy=89%`,
+  `autoscaler_config=92%`, `autoscaler_sampling=92%`, and
+  `autoscaler_systemd=98%`.
 - **2026-05-22 (2.5.27):** Added relative-timestamp primitive (#725):
   `frontend/src/hooks/useTimeAgo.ts` (`useTimeAgo`, `formatTimeAgo`) and
   `frontend/src/primitives/TimeAgo.tsx` (`<TimeAgo iso={...} />`). Renders

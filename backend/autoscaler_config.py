@@ -23,20 +23,34 @@ except ImportError:  # When deployed standalone the package may not be on path.
     ResourceThreshold = None  # type: ignore[assignment,misc]
 
 
-def _env_float(name: str, default: float) -> float:
-    """Read an environment variable as float, returning *default* on missing/invalid."""
-    try:
-        return float(os.environ.get(name, default))
-    except ValueError:
-        return default
+def _env_float(name: str, default: float, *, minimum: float | None = None) -> float:
+    """Read an environment variable as float, validating optional lower bounds."""
+    raw = os.environ.get(name)
+    if raw is None:
+        value = default
+    else:
+        try:
+            value = float(raw)
+        except ValueError as exc:
+            raise ValueError(f"{name} must be a float, got {raw!r}") from exc
+    if minimum is not None and value < minimum:
+        raise ValueError(f"{name} must be >= {minimum}, got {value}")
+    return value
 
 
-def _env_int(name: str, default: int) -> int:
-    """Read an environment variable as int, returning *default* on missing/invalid."""
-    try:
-        return int(os.environ.get(name, default))
-    except ValueError:
-        return default
+def _env_int(name: str, default: int, *, minimum: int | None = None) -> int:
+    """Read an environment variable as int, validating optional lower bounds."""
+    raw = os.environ.get(name)
+    if raw is None:
+        value = default
+    else:
+        try:
+            value = int(raw)
+        except ValueError as exc:
+            raise ValueError(f"{name} must be an int, got {raw!r}") from exc
+    if minimum is not None and value < minimum:
+        raise ValueError(f"{name} must be >= {minimum}, got {value}")
+    return value
 
 
 _DEFAULT_CPU_HIGH = ResourceThreshold.DISK_WARN_PERCENT if ResourceThreshold else 85.0
@@ -44,20 +58,20 @@ _DEFAULT_MEM_HIGH = ResourceThreshold.DISK_WARN_PERCENT if ResourceThreshold els
 _DEFAULT_DISK_HIGH = ResourceThreshold.DISK_CRITICAL_PERCENT if ResourceThreshold else 92.0
 _DEFAULT_DISK_MIN_FREE_GB = ResourceThreshold.DISK_MIN_FREE_GB if ResourceThreshold else 25.0
 
-CPU_HIGH = _env_float("AUTOSCALER_CPU_HIGH", _DEFAULT_CPU_HIGH)
-CPU_LOW = _env_float("AUTOSCALER_CPU_LOW", 40.0)
-MEM_HIGH = _env_float("AUTOSCALER_MEM_HIGH", _DEFAULT_MEM_HIGH)
-DISK_HIGH = _env_float("AUTOSCALER_DISK_HIGH", _DEFAULT_DISK_HIGH)
-DISK_MIN_FREE_GB = _env_float("AUTOSCALER_DISK_MIN_FREE_GB", _DEFAULT_DISK_MIN_FREE_GB)
+CPU_HIGH = _env_float("AUTOSCALER_CPU_HIGH", _DEFAULT_CPU_HIGH, minimum=0.0)
+CPU_LOW = _env_float("AUTOSCALER_CPU_LOW", 40.0, minimum=0.0)
+MEM_HIGH = _env_float("AUTOSCALER_MEM_HIGH", _DEFAULT_MEM_HIGH, minimum=0.0)
+DISK_HIGH = _env_float("AUTOSCALER_DISK_HIGH", _DEFAULT_DISK_HIGH, minimum=0.0)
+DISK_MIN_FREE_GB = _env_float("AUTOSCALER_DISK_MIN_FREE_GB", _DEFAULT_DISK_MIN_FREE_GB, minimum=0.0)
 # 1.2 keeps a desktop-class host responsive under sustained runner load. The
 # sampler uses Windows host CPU/RAM when running in WSL, so this threshold now
 # reflects the machine the user sees in Task Manager rather than the WSL VM.
-LOAD_PER_CORE = _env_float("AUTOSCALER_LOAD_PER_CORE", 1.2)
-SUSTAIN_SECS = _env_int("AUTOSCALER_SUSTAIN_SECS", 45)
-POLL_SECONDS = _env_int("AUTOSCALER_POLL_SECONDS", 15)
-MIN_ONLINE = _env_int("AUTOSCALER_MIN_ONLINE", 1)
-MAX_STEP = _env_int("AUTOSCALER_MAX_SCALE_STEP", 2)
-DRY_RUN = bool(_env_int("AUTOSCALER_DRY_RUN", 0))
+LOAD_PER_CORE = _env_float("AUTOSCALER_LOAD_PER_CORE", 1.2, minimum=0.0)
+SUSTAIN_SECS = _env_int("AUTOSCALER_SUSTAIN_SECS", 45, minimum=0)
+POLL_SECONDS = _env_int("AUTOSCALER_POLL_SECONDS", 15, minimum=0)
+MIN_ONLINE = _env_int("AUTOSCALER_MIN_ONLINE", 1, minimum=0)
+MAX_STEP = _env_int("AUTOSCALER_MAX_SCALE_STEP", 2, minimum=0)
+DRY_RUN = bool(_env_int("AUTOSCALER_DRY_RUN", 0, minimum=0))
 RUNNER_SCHEDULER_BIN = os.environ.get("RUNNER_SCHEDULER_BIN", "/usr/local/bin/runner-scheduler")
 RUNNER_SCHEDULE_CONFIG = os.path.expanduser(
     os.environ.get(
@@ -88,12 +102,12 @@ RUNNER_BASE_DIR = os.path.expanduser(os.environ.get("RUNNER_BASE_DIR", "~/action
 # pre-Worker → Worker-running lifecycle without relying on log scraping.
 RUNNER_BUSY_LOCK_DIR = Path(os.environ.get("RUNNER_BUSY_LOCK_DIR", "/var/run/runner-busy"))
 RUNNER_BUSY_LOCK_MAX_AGE_SECONDS = _env_int(
-    "RUNNER_BUSY_LOCK_MAX_AGE_SECONDS", 24 * 60 * 60
+    "RUNNER_BUSY_LOCK_MAX_AGE_SECONDS", 24 * 60 * 60, minimum=0
 )  # 24h — stale lockfiles (Worker killed mid-job, never wrote completion hook)
 # are GC'd by deploy/runner-cleanup.sh; the autoscaler treats them as "stale,
 # not busy" to avoid permanently locking out a runner.
 RUNNER_PICKUP_DIR_MAX_AGE_SECONDS = _env_int(
-    "RUNNER_PICKUP_DIR_MAX_AGE_SECONDS", 30
+    "RUNNER_PICKUP_DIR_MAX_AGE_SECONDS", 30, minimum=0
 )  # Listener handoff to Worker should be sub-second; 30s headroom is generous.
 # Anything older than this is residue, not in-progress pickup.
 
