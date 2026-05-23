@@ -43,7 +43,7 @@ httpx==0.28.1
     # via
     #   anthropic
     #   runner-dashboard
-idna==3.15
+idna==3.16
     # via
     #   anyio
     #   httpx
@@ -52,6 +52,8 @@ itsdangerous==2.2.0
     # via runner-dashboard
 jiter==0.14.0
     # via anthropic
+prometheus-client==0.21.1
+    # via runner-dashboard
 psutil==7.2.2
     # via runner-dashboard
 pydantic==2.13.3
@@ -71,8 +73,10 @@ requests==2.33.1
     # via runner-dashboard
 sniffio==1.3.1
     # via anthropic
-starlette==0.52.1
-    # via fastapi
+starlette==1.0.1
+    # via
+    #   fastapi
+    #   runner-dashboard
 typing-extensions==4.15.0
     # via
     #   anthropic
@@ -96,10 +100,3 @@ watchfiles==1.1.1
     # via uvicorn
 websockets==16.0
     # via uvicorn
-
-prometheus-client==0.21.1
-pytest==9.0.3
-pytest-asyncio==1.3.0
-pytest-xdist==3.6.1
-pytest-rerunfailures==14.0
-respx==0.21.1
