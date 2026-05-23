@@ -23,6 +23,20 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 SETUP_SH = REPO_ROOT / "deploy" / "setup.sh"
 
 
+def _find_bash() -> str | None:
+    candidates = [
+        r"C:\Program Files\Git\usr\bin\bash.exe",
+        r"C:\Program Files\Git\bin\bash.exe",
+        shutil.which("bash"),
+    ]
+    for candidate in candidates:
+        if candidate and Path(candidate).exists():
+            if candidate.lower().endswith(r"system32\bash.exe"):
+                continue
+            return candidate
+    return None
+
+
 @pytest.fixture(scope="module")
 def script_text() -> str:
     assert SETUP_SH.is_file(), f"deploy/setup.sh not found at {SETUP_SH}"
@@ -31,14 +45,15 @@ def script_text() -> str:
 
 def test_setup_sh_syntax_check() -> None:
     """`bash -n deploy/setup.sh` must exit 0 (syntax-clean)."""
-    bash = shutil.which("bash")
+    bash = _find_bash()
     if bash is None:
         pytest.skip("bash not available on this system")
     result = subprocess.run(
-        [bash, "-n", str(SETUP_SH)],
+        [bash, "-n", "deploy/setup.sh"],
         capture_output=True,
         text=True,
         check=False,
+        cwd=str(REPO_ROOT),
     )
     if result.returncode != 0 and "Bash/Service/" in result.stdout.replace("\x00", ""):
         pytest.skip(f"bash shim is unavailable: {result.stdout.replace(chr(0), '')}")

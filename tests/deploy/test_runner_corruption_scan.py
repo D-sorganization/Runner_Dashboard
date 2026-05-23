@@ -79,6 +79,9 @@ def _as_bash_path(p: Path) -> str:
 def _run_scan(runner_root: Path, prom_path: Path, host: str = "test-host") -> str:
     """Invoke the scan script and return the file's contents."""
     env = os.environ.copy()
+    if BASH:
+        bash_bin = str(Path(BASH).resolve().parent)
+        env["PATH"] = os.pathsep.join([bash_bin, env.get("PATH", "")])
     env["RUNNER_ROOT"] = _as_bash_path(runner_root)
     env["PROM_FILE"] = _as_bash_path(prom_path)
     env["FLEET_NODE_NAME"] = host
