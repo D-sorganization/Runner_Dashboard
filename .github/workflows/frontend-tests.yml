@@ -143,7 +143,6 @@ jobs:
 
       - name: Install backend dependencies
         run: pip install -r requirements.txt
-        working-directory: backend
 
       - name: Start dashboard backend
         run: |
