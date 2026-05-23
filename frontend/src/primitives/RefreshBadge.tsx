@@ -12,9 +12,9 @@
  *  - The container has role="status" and aria-live="polite".
  */
 
-import React from 'react';
-import type { Staleness } from '../hooks/useStalenessWarning';
-import { TimeAgo } from './TimeAgo';
+import React from "react";
+import type { Staleness } from "../hooks/useStalenessWarning";
+import { TimeAgo } from "./TimeAgo";
 
 export interface RefreshBadgeProps {
   staleness: Staleness;
@@ -22,29 +22,39 @@ export interface RefreshBadgeProps {
 }
 
 const dotStyle: React.CSSProperties = {
-  display: 'inline-block',
-  width: '8px',
-  height: '8px',
-  borderRadius: '50%',
-  marginRight: '6px',
+  display: "inline-block",
+  width: "8px",
+  height: "8px",
+  borderRadius: "50%",
+  marginRight: "6px",
   flexShrink: 0,
 };
 
 const containerStyle: React.CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  fontSize: '0.8rem',
+  display: "inline-flex",
+  alignItems: "center",
+  fontSize: "0.8rem",
   fontWeight: 500,
 };
 
 export function RefreshBadge({ staleness, onRetry }: RefreshBadgeProps) {
   const { state, lastSuccessAt } = staleness;
 
-  if (state === 'fresh') {
+  if (state === "fresh") {
     return (
-      <span role="status" aria-live="polite" style={{ ...containerStyle, color: 'var(--status-healthy-fg, #3fb950)' }}>
+      <span
+        role="status"
+        aria-live="polite"
+        style={{
+          ...containerStyle,
+          color: "var(--status-healthy-fg, #3fb950)",
+        }}
+      >
         <span
-          style={{ ...dotStyle, background: 'var(--status-healthy-fg, #3fb950)' }}
+          style={{
+            ...dotStyle,
+            background: "var(--status-healthy-fg, #3fb950)",
+          }}
           aria-hidden="true"
         />
         Live now
@@ -52,17 +62,23 @@ export function RefreshBadge({ staleness, onRetry }: RefreshBadgeProps) {
     );
   }
 
-  if (state === 'stale') {
+  if (state === "stale") {
     return (
-      <span role="status" aria-live="polite" style={{ ...containerStyle, color: 'var(--text-secondary, #8b949e)' }}>
+      <span
+        role="status"
+        aria-live="polite"
+        style={{ ...containerStyle, color: "var(--text-secondary, #8b949e)" }}
+      >
         <span
-          style={{ ...dotStyle, background: 'var(--text-muted, #8b949e)' }}
+          style={{ ...dotStyle, background: "var(--text-muted, #8b949e)" }}
           aria-hidden="true"
         />
         {lastSuccessAt ? (
-          <>Updated <TimeAgo date={lastSuccessAt} live={false} /></>
+          <>
+            Updated <TimeAgo iso={lastSuccessAt} live={false} />
+          </>
         ) : (
-          'Not yet loaded'
+          "Not yet loaded"
         )}
       </span>
     );
@@ -70,24 +86,31 @@ export function RefreshBadge({ staleness, onRetry }: RefreshBadgeProps) {
 
   // state === 'error'
   return (
-    <span role="status" aria-live="polite" style={{ ...containerStyle, color: 'var(--status-critical-fg, #f85149)' }}>
+    <span
+      role="status"
+      aria-live="polite"
+      style={{ ...containerStyle, color: "var(--status-critical-fg, #f85149)" }}
+    >
       <span
-        style={{ ...dotStyle, background: 'var(--status-critical-fg, #f85149)' }}
+        style={{
+          ...dotStyle,
+          background: "var(--status-critical-fg, #f85149)",
+        }}
         aria-hidden="true"
       />
-      Network error{' · '}
+      Network error{" · "}
       <button
         onClick={onRetry}
         style={{
-          background: 'none',
-          border: 'none',
+          background: "none",
+          border: "none",
           padding: 0,
-          cursor: 'pointer',
-          color: 'var(--accent-blue, #58a6ff)',
-          fontSize: 'inherit',
-          fontWeight: 'inherit',
-          textDecoration: 'underline',
-          marginLeft: '2px',
+          cursor: "pointer",
+          color: "var(--accent-blue, #58a6ff)",
+          fontSize: "inherit",
+          fontWeight: "inherit",
+          textDecoration: "underline",
+          marginLeft: "2px",
         }}
       >
         Retry
