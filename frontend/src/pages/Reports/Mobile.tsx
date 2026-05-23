@@ -13,6 +13,7 @@ import { SkeletonCard, SkeletonLine } from "../../primitives/Skeleton";
 import { PullToRefresh } from "../../primitives/PullToRefresh";
 import { BottomSheet } from "../../primitives/BottomSheet";
 import { SegmentedControl } from "../../primitives/SegmentedControl";
+import { TimeAgo } from "../../primitives/TimeAgo";
 import { useHaptic } from "../../hooks/useHaptic";
 
 interface ReportFile {
@@ -158,7 +159,7 @@ function ReportDetailSheet({ report, onClose }: ReportDetailSheetProps) {
         </div>
         <div style={{ color: "var(--text-secondary)", fontSize: "13px" }}>
           <strong>Modified:</strong>{" "}
-          {new Date(report.modified).toLocaleString()}
+          <TimeAgo iso={report.modified} />
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: "8px", paddingTop: "8px" }}>

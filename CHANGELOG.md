@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `backend/pyproject.toml` and `backend/uv.lock` for reproducible backend dependency resolution.
 - Root-level `uv.lock` for reproducible project dependency resolution.
+- `useTimeAgo` hook (`frontend/src/hooks/useTimeAgo.ts`) and `<TimeAgo>` primitive
+  (`frontend/src/primitives/TimeAgo.tsx`) for relative timestamp rendering
+  (`"just now"`, `"2m ago"`, `"3h ago"`, `"yesterday"`, absolute dates beyond
+  48h). Future timestamps render `"soon"`; invalid input degrades to the raw
+  value. Wired into `Reports/Mobile.tsx` Modified field as first call-site.
+  Closes #725.
 
 ### Changed
 
