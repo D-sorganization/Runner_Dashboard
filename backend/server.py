@@ -426,6 +426,69 @@ async def _record_processed_envelope(envelope_id: str, ttl_seconds: int = 86400)
     _replay_store.record(envelope_id)
 
 
+async def _watchdog_heartbeat() -> None:
+    """Periodic systemd watchdog heartbeat task (issue #707).
+
+    Reads WATCHDOG_USEC from the environment (set by systemd when WatchdogSec
+    is configured) and calls sd_notify("WATCHDOG=1") at half the watchdog
+    period so the process always resets the watchdog before it expires.
+
+    Pre-condition: runs as a background asyncio task; never blocks.
+    Post-condition: task exits gracefully on ImportError or persistent errors.
+    """
+    watchdog_usec_str = os.environ.get("WATCHDOG_USEC", "")
+    if watchdog_usec_str:
+        try:
+            watchdog_usec = int(watchdog_usec_str)
+        except ValueError:
+            watchdog_usec = 120_000_000  # default 120s
+    else:
+        watchdog_usec = 120_000_000  # default 120s
+
+    interval_s = watchdog_usec / 1_000_000 / 2  # half-period
+
+    _notifier = _sd_notify
+    if _notifier is None:
+        log.debug("watchdog_heartbeat: sd_notify unavailable, task exiting")
+        return
+
+    log.info(
+        "watchdog_heartbeat: starting, period=%.1fs WATCHDOG_USEC=%s",
+        interval_s,
+        watchdog_usec_str or str(watchdog_usec),
+    )
+
+    while True:
+        await asyncio.sleep(interval_s)
+        try:
+            _notifier("WATCHDOG=1")
+        except Exception as exc:  # noqa: BLE001
+            log.warning("watchdog_heartbeat: sd_notify failed (%s), exiting task", exc)
+            return
+
+
+_LEASE_REAPER_INTERVAL_S: int = max(30, int(os.environ.get("LEASE_REAPER_INTERVAL_S", "300")))
+
+
+async def _lease_reaper_loop() -> None:
+    """Background task: prune expired runner leases periodically (issue #708).
+
+    Pre-condition: LEASE_REAPER_INTERVAL_S >= 30.
+    Post-condition: runs until the server shuts down; logs pruned count.
+    """
+    assert _LEASE_REAPER_INTERVAL_S >= 30, "LEASE_REAPER_INTERVAL_S must be >= 30"
+    while True:
+        try:
+            from runner_lease import lease_manager  # noqa: PLC0415
+
+            removed = lease_manager.prune_expired()
+            if removed:
+                log.info("lease_reaper: pruned %d expired leases", removed)
+        except Exception:  # noqa: BLE001
+            log.exception("lease_reaper: unexpected error")
+        await asyncio.sleep(_LEASE_REAPER_INTERVAL_S)
+
+
 async def _periodic_replay_purge() -> None:
     """Background task: purge expired replay-store entries every hour."""
     while True:
@@ -2738,6 +2801,12 @@ async def _startup() -> None:
     else:
         log.debug("systemd.daemon not available; omitting sd_notify")
 
+    # Start systemd watchdog heartbeat task (issue #707)
+    asyncio.create_task(_watchdog_heartbeat())
+
+    # Start background lease reaper task (issue #708)
+    asyncio.create_task(_lease_reaper_loop())
+
     # Replay-store purge runs on every node regardless of leader status.
     asyncio.create_task(_periodic_replay_purge())
 
@@ -2804,6 +2873,26 @@ async def _shutdown() -> None:
     """Close pooled HTTP clients on shutdown (issue #364)."""
     await shutdown_http_clients()
     log.info("Closed pooled HTTP clients")
+
+
+# ─── Drain mode (issue #711) ──────────────────────────────────────────────────
+
+_drain_mode: bool = False
+
+
+@app.post("/_drain")
+async def drain_endpoint(request: Request) -> dict:
+    """Activate drain mode: returns 503 from /healthz, rejects new POSTs (issue #711).
+
+    Pre-condition: caller must be on loopback (127.0.0.1, ::1, or localhost).
+    Post-condition: _drain_mode is True after successful call.
+    """
+    global _drain_mode
+    client_host = request.client.host if request.client else "unknown"
+    assert client_host in ("127.0.0.1", "::1", "localhost"), "drain only from loopback"
+    _drain_mode = True
+    log.info("/_drain activated by %s", client_host)
+    return {"status": "draining"}
 
 
 # ─── Main ─────────────────────────────────────────────────────────────────────

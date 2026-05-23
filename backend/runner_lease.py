@@ -135,12 +135,21 @@ class LeaseManager:
 
         self.leases = new_records
 
-    def prune_expired(self):
+    def prune_expired(self) -> int:
+        """Remove expired leases from the in-memory list and persist.
+
+        Pre-condition: self.leases is a list.
+        Post-condition: returns the count of removed leases (>= 0).
+        """
+        assert isinstance(self.leases, list), "leases must be a list"
         now = time.time()
         initial_count = len(self.leases)
         self.leases = [lease for lease in self.leases if lease.expires_at is None or lease.expires_at > now]
-        if len(self.leases) < initial_count:
+        removed = initial_count - len(self.leases)
+        assert removed >= 0, "removed count must be non-negative"
+        if removed:
             self.save_leases()
+        return removed
 
     def get_active_leases(self, principal_id: str | None = None) -> list[LeaseRecord]:
         self.prune_expired()

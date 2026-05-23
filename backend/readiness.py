@@ -18,8 +18,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import os
 import shutil
+import time
 from typing import Literal, Protocol, runtime_checkable
 
 log = logging.getLogger("dashboard.readiness")
@@ -129,6 +131,104 @@ class PushDbProbe:
 
 
 # ---------------------------------------------------------------------------
+# Runner health probe (issue #712)
+# ---------------------------------------------------------------------------
+
+_RUNNER_HEALTH_CACHE_TTL_S: float = float(os.environ.get("RUNNER_HEALTH_CACHE_TTL_S", "5"))
+_runner_health_cache: tuple[float, str, str | None, list[str]] | None = None
+_runner_health_lock: asyncio.Lock = asyncio.Lock()
+
+
+class RunnerHealthProbe:
+    """Check health of local actions.runner.* systemd units (issue #712)."""
+
+    name = "runner_health"
+
+    async def check(self) -> tuple[ProbeStatus, str | None]:
+        """Check runner unit health via systemctl list-units.
+
+        Pre-condition: subprocess timeout <= 5s (enforced via asyncio.wait_for).
+        Post-condition: always returns (status, detail) with detail never None on non-ok.
+        """
+        global _runner_health_cache
+
+        async with _runner_health_lock:
+            now = time.monotonic()
+            if _runner_health_cache is not None:
+                cached_at, status, detail, _failed = _runner_health_cache
+                if now - cached_at < _RUNNER_HEALTH_CACHE_TTL_S:
+                    return status, detail  # type: ignore[return-value]
+
+            try:
+                result = await asyncio.wait_for(
+                    _query_runner_units(),
+                    timeout=5.0,
+                )
+                total, active, failed_units = result
+            except asyncio.TimeoutError:
+                log.warning("runner_health probe timed out")
+                _runner_health_cache = (now, "degraded", "systemctl probe timed out", [])
+                return "degraded", "systemctl probe timed out"
+            except Exception as exc:  # noqa: BLE001
+                log.warning("runner_health probe error: %s", exc)
+                detail = f"probe error: {exc}"
+                _runner_health_cache = (now, "degraded", detail, [])
+                return "degraded", detail
+
+            failed_count = len(failed_units)
+
+            if failed_count == 0:
+                status: ProbeStatus = "ok"
+                detail = None
+            elif total > 0 and failed_count <= math.ceil(total * 0.1):
+                status = "degraded"
+                detail = f"{failed_count}/{total} runners failed: {failed_units}"
+            else:
+                status = "down"
+                detail = f"{failed_count}/{total} runners failed (>10%): {failed_units}"
+
+            _runner_health_cache = (now, status, detail, failed_units)
+            return status, detail
+
+
+async def _query_runner_units() -> tuple[int, int, list[str]]:
+    """Query systemctl for actions.runner.* unit states.
+
+    Returns (total, active, failed_unit_names).
+    """
+    proc = await asyncio.create_subprocess_exec(
+        "systemctl",
+        "list-units",
+        "--all",
+        "--plain",
+        "--no-legend",
+        "actions.runner.*",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, _ = await proc.communicate()
+    lines = stdout.decode().splitlines()
+
+    total = 0
+    active = 0
+    failed: list[str] = []
+
+    for line in lines:
+        parts = line.split()
+        if len(parts) < 3:
+            continue
+        unit_name = parts[0]
+        active_state = parts[2] if len(parts) > 2 else ""
+        total += 1
+        if active_state == "active":
+            active += 1
+        elif active_state == "failed":
+            failed.append(unit_name)
+
+    return total, active, failed
+
+
+# ---------------------------------------------------------------------------
 # Aggregate
 # ---------------------------------------------------------------------------
 
@@ -137,6 +237,7 @@ _DEFAULT_PROBES: list[Probe] = [
     GhCliProbe(),
     LeaseDbProbe(),
     PushDbProbe(),
+    RunnerHealthProbe(),
 ]
 
 

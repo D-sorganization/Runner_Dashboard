@@ -62,6 +62,53 @@ async def _check_quick_dispatch_rate() -> int | None:
         return None
 
 
+# ─── Health gate ──────────────────────────────────────────────────────────────
+
+
+class HealthGate:
+    """Cache-backed readiness gate for dispatch pre-flight (issue #709).
+
+    Checks the /readyz aggregate probe before allowing dispatch.
+    Results are cached for ``cache_ttl`` seconds to avoid hammering the probe.
+    Fails open if the probe itself raises an exception.
+    """
+
+    _cache_ttl: float
+    _last_check: float
+    _last_ok: bool
+    _lock: asyncio.Lock
+
+    def __init__(self, cache_ttl: float = 5.0) -> None:
+        assert cache_ttl > 0, "cache_ttl must be positive"
+        self._cache_ttl = cache_ttl
+        self._last_check = 0.0
+        self._last_ok = True
+        self._lock = asyncio.Lock()
+
+    async def is_ready(self) -> tuple[bool, str]:
+        """Return (ready, reason). Cached for cache_ttl seconds.
+
+        Pre-condition: cache_ttl > 0 (enforced in __init__).
+        Post-condition: always returns a (bool, str) tuple.
+        """
+        now = time.monotonic()
+        async with self._lock:
+            if now - self._last_check < self._cache_ttl:
+                return self._last_ok, ""
+            # Do actual check
+            try:
+                from readiness import aggregate, get_default_probes  # noqa: PLC0415
+
+                http_status, _ = await aggregate(get_default_probes())
+                self._last_ok = http_status == 200
+                self._last_check = now
+                return self._last_ok, "" if self._last_ok else "readyz_failed"
+            except Exception:  # noqa: BLE001
+                # Fail open: if the check itself errors, don't block dispatch
+                self._last_check = now
+                return True, ""
+
+
 # ─── Pydantic models ──────────────────────────────────────────────────────────
 
 
@@ -76,6 +123,7 @@ class QuickDispatchRequest(BaseModel):
     principal: str = Field(default="", max_length=200)
     on_behalf_of: str = Field(default="", max_length=200)
     correlation_id: str = Field(default="", max_length=100)
+    force: bool = Field(default=False, description="Bypass health gate and runner checks (audit-logged)")
 
 
 class QuickDispatchResponse(BaseModel):

@@ -273,7 +273,28 @@ def _run_poll_loop() -> None:
 
         except Exception as exc:  # noqa: BLE001
             log.exception("autoscaler tick failed: %s", exc)
+        _notify_watchdog()
         time.sleep(POLL_SECONDS)
+
+
+# systemd watchdog notification (issue #707)
+try:
+    from systemd.daemon import notify as _sd_notify_autoscaler  # type: ignore[import-not-found,unused-ignore]
+except ImportError:
+    _sd_notify_autoscaler = None  # type: ignore[assignment]
+
+
+def _notify_watchdog() -> None:
+    """Send WATCHDOG=1 to systemd if available (issue #707).
+
+    Pre-condition: none (safe to call unconditionally).
+    Post-condition: watchdog timer is reset when sd_notify is available.
+    """
+    if _sd_notify_autoscaler is not None:
+        try:
+            _sd_notify_autoscaler("WATCHDOG=1")
+        except Exception as exc:  # noqa: BLE001
+            log.warning("autoscaler: sd_notify WATCHDOG=1 failed: %s", exc)
 
 
 def main() -> None:
