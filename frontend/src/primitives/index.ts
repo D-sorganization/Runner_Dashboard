@@ -37,3 +37,23 @@ export type {
 
 export { BottomSheet } from "./BottomSheet";
 export type { BottomSheetProps } from "./BottomSheet";
+
+// D1 / issue #720: Per-tab error boundary
+export { TabErrorBoundary } from "./TabErrorBoundary";
+export type { TabErrorBoundaryProps } from "./TabErrorBoundary";
+
+// D2 / issue #721: Virtualized data table
+export { DataTable } from "./DataTable";
+export type { DataTableProps, Column } from "./DataTable";
+
+// D3 / issue #722: Refresh badge
+export { RefreshBadge } from "./RefreshBadge";
+export type { RefreshBadgeProps } from "./RefreshBadge";
+
+// D4 / issue #723: Command palette
+export { CommandPalette } from "./CommandPalette";
+export type { CommandPaletteProps, Command } from "./CommandPalette";
+
+// D6 / issue #725: Relative timestamp
+export { TimeAgo } from "./TimeAgo";
+export type { TimeAgoProps } from "./TimeAgo";
