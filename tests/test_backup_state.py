@@ -18,12 +18,34 @@ _ROOT = Path(__file__).parent.parent
 _SCRIPT = _ROOT / "deploy" / "scheduled-dashboard-maintenance.sh"
 
 
+def _find_bash() -> str | None:
+    candidates = [
+        os.environ.get("BASH"),
+        r"C:\Program Files\Git\usr\bin\bash.exe",
+        r"C:\Program Files\Git\bin\bash.exe",
+        "/usr/bin/bash",
+        "/bin/bash",
+        shutil.which("bash"),
+    ]
+    for candidate in candidates:
+        if candidate:
+            try:
+                p = Path(candidate)
+                if p.exists():
+                    if candidate.lower().endswith(r"system32\bash.exe"):
+                        continue
+                    return str(p)
+            except Exception:
+                pass
+    return None
+
+
 def _bash_path(path: Path) -> str:
     if os.name != "nt":
         return str(path)
     resolved = path.resolve()
     drive = resolved.drive.rstrip(":").lower()
-    bash_exe = shutil.which("bash")
+    bash_exe = _find_bash()
     if bash_exe and "system32" in bash_exe.lower():
         return f"/mnt/{drive}{resolved.as_posix()[2:]}"
     return f"/{drive}{resolved.as_posix()[2:]}"
@@ -37,11 +59,38 @@ def _bash_arg(value: str | Path) -> str:
 
 
 def _run_bash_or_skip(args: list[str], **kwargs) -> subprocess.CompletedProcess[str]:
-    if shutil.which("bash") is None:
+    bash = _find_bash()
+    if bash is None:
         pytest.skip("bash unavailable")
+
+    env = kwargs.get("env")
+    if env is None:
+        env = dict(os.environ)
+    else:
+        env = dict(env)
+
+    if os.name == "nt" and bash:
+        bash_path = Path(bash)
+        usr_bin = None
+        curr = bash_path.parent
+        for _ in range(3):
+            candidate = curr / "usr" / "bin"
+            if candidate.exists():
+                usr_bin = candidate
+                break
+            if curr.name == "Git":
+                break
+            curr = curr.parent
+        if usr_bin:
+            usr_bin_str = str(usr_bin)
+            existing_path = env.get("PATH", "")
+            if usr_bin_str not in existing_path:
+                env["PATH"] = f"{usr_bin_str}{os.pathsep}{existing_path}"
+    kwargs["env"] = env
+
     try:
         result = subprocess.run(
-            ["bash", *(_bash_arg(arg) for arg in args)],
+            [bash, *(_bash_arg(arg) for arg in args)],
             capture_output=True,
             text=True,
             check=False,
