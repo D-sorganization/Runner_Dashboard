@@ -138,15 +138,18 @@ class LeaseManager:
     def prune_expired(self) -> int:
         """Drop all expired leases from the in-memory store.
 
+        Pre-condition: ``self.leases`` is a list.
         Post-condition: returns the count of leases that were removed
         (always ``>= 0``, never ``None``). The background lease reaper
         in ``server.py`` relies on this contract to emit accurate metrics
         and to log only when work was actually done.
         """
+        assert isinstance(self.leases, list), "leases must be a list"
         now = time.time()
         initial_count = len(self.leases)
         self.leases = [lease for lease in self.leases if lease.expires_at is None or lease.expires_at > now]
         removed = initial_count - len(self.leases)
+        assert removed >= 0, "removed count must be non-negative"
         if removed > 0:
             self.save_leases()
         return removed

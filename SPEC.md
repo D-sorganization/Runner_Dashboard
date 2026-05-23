@@ -1,11 +1,17 @@
 # SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.28
+**Spec Version:** 2.5.29
 **Application Version:** 4.1.0 (see `VERSION`)
 **Last Updated:** 2026-05-23T08:20:00Z
 **Status:** Active
 
 ### Recent Spec Updates
+
+- **2026-05-23 (2.5.29):** Documented A-series infrastructure hardening:
+  Prometheus autoscaler and lease-reaper metrics, `/readyz` runner-health
+  probing, quick-dispatch health gating/backpressure, drain-mode deployment
+  controls, runner memory/restart systemd drop-ins, deployment preflight
+  checks, and the autoscaler Grafana dashboard.
 
 - **2026-05-23 (2.5.28):** Added B-series API contract hardening:
   `backend/gh_client.py` now owns GitHub API retries, timeouts, and HTTP error

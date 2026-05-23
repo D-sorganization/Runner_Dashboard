@@ -1,4 +1,4 @@
-"""Static contract tests for the systemd unit files (A1 — restart-burst).
+"""Static contract tests for the systemd unit files (A1 — restart-burst, #707).
 
 These tests are deliberately filesystem-only: they parse the .service files
 shipped in deploy/ as plain text and assert the directives we rely on for
@@ -12,6 +12,7 @@ future PR can't silently drop it.
 
 from __future__ import annotations
 
+import configparser
 import re
 from pathlib import Path
 
@@ -117,3 +118,44 @@ def test_unit_burst_window_is_self_consistent(unit_file: str) -> None:
         f"{unit_file}: burst={burst} × RestartSec={restart_sec}s "
         f"exceeds StartLimitIntervalSec={interval}s — burst can never trigger"
     )
+
+
+# ---------------------------------------------------------------------------
+# Drop-in supplementary tests (from A-series infra hardening)
+# ---------------------------------------------------------------------------
+
+
+def _parse_unit_cp(path: Path) -> configparser.ConfigParser:
+    """Parse a systemd unit / drop-in file into a ConfigParser.
+
+    Systemd unit files use [Unit], [Service], [Install] sections.
+    Drop-ins typically use [Unit] or [Service] sections too.
+    """
+    cp = configparser.ConfigParser(strict=False)
+    cp.read_string(path.read_text())
+    return cp
+
+
+def _get_from_any_section(cp: configparser.ConfigParser, key: str, fallback: str = "") -> str:
+    """Return the value of a key searching across all sections."""
+    for section in cp.sections():
+        val = cp.get(section, key, fallback=None)
+        if val is not None:
+            return val
+    return fallback
+
+
+def test_restart_burst_dropin_exists() -> None:
+    dropin = DEPLOY_DIR / "systemd-dropins" / "10-restart-burst.conf"
+    assert dropin.exists(), f"Missing drop-in: {dropin}"
+
+
+def test_restart_burst_dropin_has_limits() -> None:
+    dropin = DEPLOY_DIR / "systemd-dropins" / "10-restart-burst.conf"
+    cp = _parse_unit_cp(dropin)
+    val = _get_from_any_section(cp, "StartLimitIntervalSec", "")
+    assert val != "", "StartLimitIntervalSec missing"
+    assert int(val) >= 300, f"StartLimitIntervalSec too short: {val}"
+    burst = _get_from_any_section(cp, "StartLimitBurst", "")
+    assert burst != "", "StartLimitBurst missing"
+    assert 3 <= int(burst) <= 10, f"StartLimitBurst out of sane range: {burst}"
