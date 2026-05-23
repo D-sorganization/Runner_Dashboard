@@ -18,12 +18,17 @@ _ROOT = Path(__file__).parent.parent
 _SCRIPT = _ROOT / "deploy" / "scheduled-dashboard-maintenance.sh"
 
 
+def _bash_arg(value: str | Path) -> str:
+    text = str(value)
+    return text.replace("\\", "/") if os.name == "nt" else text
+
+
 def _run_bash_or_skip(args: list[str], **kwargs) -> subprocess.CompletedProcess[str]:
     if shutil.which("bash") is None:
         pytest.skip("bash unavailable")
     try:
         result = subprocess.run(
-            ["bash", *args],
+            ["bash", *(_bash_arg(arg) for arg in args)],
             capture_output=True,
             text=True,
             check=False,
@@ -42,7 +47,7 @@ def test_script_exists() -> None:
 
 
 def test_script_passes_bash_syntax_check() -> None:
-    result = _run_bash_or_skip(["-n", str(_SCRIPT)])
+    result = _run_bash_or_skip(["-n", "deploy/scheduled-dashboard-maintenance.sh"], cwd=str(_ROOT))
     assert result.returncode == 0, result.stderr
 
 
@@ -91,7 +96,7 @@ def test_dry_run_lists_paths_and_creates_no_tarball(tmp_path: Path) -> None:
 
     script = fake_dashboard / "deploy" / "scheduled-dashboard-maintenance.sh"
     result = _run_bash_or_skip(
-        [str(script), "--dry-run", "--backup-only"],
+        [str(Path("deploy") / script.name), "--dry-run", "--backup-only"],
         env=env,
         cwd=str(fake_dashboard),
     )
