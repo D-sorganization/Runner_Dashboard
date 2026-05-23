@@ -123,6 +123,10 @@ sudo systemctl restart runner-autoscaler
 sudo systemctl start 'actions.runner.D-sorganization-<repo>.<runner>.service'
 ```
 
+Confirm the preview response includes `"dry_run": true` before treating the
+output as non-destructive. Do not continue to cancellation unless every selected
+run is marked `safe_to_cancel=true` and matches the intended reason filter.
+
 When to use `dry_run` vs purge:
 
 - Always run `dry_run=true` first on production to verify the affected runs.

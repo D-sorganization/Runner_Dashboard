@@ -7,6 +7,7 @@ access. run_cmd is monkeypatched where needed.
 from __future__ import annotations
 
 import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -30,6 +31,14 @@ from diagnostics.keepalive_inspector import (  # noqa: E402
 _VALID_STATUSES = frozenset(
     {"ok", "missing", "invalid", "error", "healthy", "misconfigured", "unsupported", "unknown", "legacy"}
 )
+
+
+def _force_posix_systemd_probe(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Exercise the Linux/systemd branch even when pre-push hooks run on Windows."""
+    import os
+
+    monkeypatch.setattr(ki, "os", types.SimpleNamespace(name="posix", environ=os.environ))
+
 
 # ---------------------------------------------------------------------------
 # KeepaliveReport schema
@@ -137,8 +146,6 @@ def test_inspect_wslconfig_read_error(tmp_path: Path, monkeypatch: pytest.Monkey
 
 async def test_inspect_systemd_keepalive_windows_os(monkeypatch: pytest.MonkeyPatch) -> None:
     """On Windows (os.name == 'nt'), should return unsupported."""
-    import types
-
     fake_os = types.SimpleNamespace(name="nt", environ=__import__("os").environ)
     monkeypatch.setattr(ki, "os", fake_os)
     result = await _inspect_systemd_keepalive()
@@ -148,6 +155,7 @@ async def test_inspect_systemd_keepalive_windows_os(monkeypatch: pytest.MonkeyPa
 
 async def test_inspect_systemd_keepalive_systemd_not_available(monkeypatch: pytest.MonkeyPatch) -> None:
     """systemctl returns non-zero with 'system has not been booted with systemd'."""
+    _force_posix_systemd_probe(monkeypatch)
 
     async def fake_run_cmd(cmd, timeout=10):  # noqa: ANN001, ARG001
         return 1, "", "System has not been booted with systemd as init system (PID 1)."
@@ -159,6 +167,7 @@ async def test_inspect_systemd_keepalive_systemd_not_available(monkeypatch: pyte
 
 async def test_inspect_systemd_keepalive_service_active(monkeypatch: pytest.MonkeyPatch) -> None:
     """When LoadState=loaded, ActiveState=active, UnitFileState=enabled → healthy."""
+    _force_posix_systemd_probe(monkeypatch)
     systemctl_output = (
         "LoadState=loaded\n"
         "ActiveState=active\n"
@@ -179,6 +188,7 @@ async def test_inspect_systemd_keepalive_service_active(monkeypatch: pytest.Monk
 
 async def test_inspect_systemd_keepalive_service_inactive(monkeypatch: pytest.MonkeyPatch) -> None:
     """Service present but inactive → misconfigured."""
+    _force_posix_systemd_probe(monkeypatch)
     systemctl_output = (
         "LoadState=loaded\n"
         "ActiveState=inactive\n"
@@ -198,6 +208,7 @@ async def test_inspect_systemd_keepalive_service_inactive(monkeypatch: pytest.Mo
 
 async def test_inspect_systemd_keepalive_service_not_installed(monkeypatch: pytest.MonkeyPatch) -> None:
     """Service not found (LoadState=not-found) → missing."""
+    _force_posix_systemd_probe(monkeypatch)
     systemctl_output = "LoadState=not-found\nActiveState=inactive\nUnitFileState=\n"
 
     async def fake_run_cmd(cmd, timeout=10):  # noqa: ANN001, ARG001
@@ -369,6 +380,8 @@ def test_inspect_wslconfig_status_valid(monkeypatch: pytest.MonkeyPatch) -> None
 
 
 async def test_inspect_systemd_keepalive_status_valid(monkeypatch: pytest.MonkeyPatch) -> None:
+    _force_posix_systemd_probe(monkeypatch)
+
     async def fake_run_cmd(cmd, timeout=10):  # noqa: ANN001, ARG001
         return 1, "", "failed to connect to bus"
 

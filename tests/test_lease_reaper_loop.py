@@ -35,17 +35,23 @@ async def test_lease_reaper_calls_prune_expired_periodically(monkeypatch) -> Non
     pruner = MagicMock(return_value=0)
     monkeypatch.setattr(runner_lease.lease_manager, "prune_expired", pruner)
 
-    # Override the interval so the test takes ms, not minutes.
-    monkeypatch.setattr(server, "LEASE_REAPER_INTERVAL_S", 0.05)
+    # Preserve the production interval contract while making the async loop
+    # deterministic for tests.
+    monkeypatch.setattr(server, "_LEASE_REAPER_INTERVAL_S", 30)
+    sleeps = {"n": 0}
+
+    async def stop_after_three_ticks(_interval: float) -> None:
+        sleeps["n"] += 1
+        if sleeps["n"] >= 3:
+            raise asyncio.CancelledError
+
+    monkeypatch.setattr(server.asyncio, "sleep", stop_after_three_ticks)
 
     task = asyncio.create_task(server._lease_reaper_loop())
-    await asyncio.sleep(0.18)
-    task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
 
-    # Two or three ticks should have fired within 180ms at a 50ms interval.
-    assert pruner.call_count >= 2
+    assert pruner.call_count == 3
 
 
 @pytest.mark.asyncio
@@ -59,11 +65,14 @@ async def test_lease_reaper_logs_when_it_prunes(monkeypatch, caplog) -> None:
 
     caplog.set_level(logging.INFO, logger="dashboard")
     monkeypatch.setattr(runner_lease.lease_manager, "prune_expired", MagicMock(return_value=3))
-    monkeypatch.setattr(server, "LEASE_REAPER_INTERVAL_S", 0.02)
+    monkeypatch.setattr(server, "_LEASE_REAPER_INTERVAL_S", 30)
+
+    async def stop_after_one_tick(_interval: float) -> None:
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(server.asyncio, "sleep", stop_after_one_tick)
 
     task = asyncio.create_task(server._lease_reaper_loop())
-    await asyncio.sleep(0.05)
-    task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
 
@@ -88,11 +97,17 @@ async def test_lease_reaper_survives_prune_exception(monkeypatch) -> None:
         return 0
 
     monkeypatch.setattr(runner_lease.lease_manager, "prune_expired", flaky)
-    monkeypatch.setattr(server, "LEASE_REAPER_INTERVAL_S", 0.02)
+    monkeypatch.setattr(server, "_LEASE_REAPER_INTERVAL_S", 30)
+    sleeps = {"n": 0}
+
+    async def stop_after_two_ticks(_interval: float) -> None:
+        sleeps["n"] += 1
+        if sleeps["n"] >= 2:
+            raise asyncio.CancelledError
+
+    monkeypatch.setattr(server.asyncio, "sleep", stop_after_two_ticks)
 
     task = asyncio.create_task(server._lease_reaper_loop())
-    await asyncio.sleep(0.1)
-    task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
 
@@ -106,5 +121,5 @@ async def test_lease_reaper_interval_default_is_safe() -> None:
     """
     import server
 
-    assert hasattr(server, "LEASE_REAPER_INTERVAL_S"), "module must export the interval constant"
-    assert 30 <= server.LEASE_REAPER_INTERVAL_S <= 600
+    assert hasattr(server, "_LEASE_REAPER_INTERVAL_S"), "module must define the interval constant"
+    assert 30 <= server._LEASE_REAPER_INTERVAL_S <= 600
