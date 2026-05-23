@@ -625,9 +625,8 @@ def test_filesystem_preserves_posix_perms_falls_back_when_proc_mounts_unreadable
 def test_check_file_mode_skips_on_non_posix_fs(monkeypatch, tmp_path: Path, caplog) -> None:
     """The mode check must short-circuit and log a WARNING on non-POSIX FS."""
     import logging
-    import os as _os
 
-    monkeypatch.setattr(_os, "name", "nt")
+    monkeypatch.setattr(security, "_filesystem_preserves_posix_perms", lambda p: False)
 
     config_file = tmp_path / "config.yml"
     config_file.write_text("key: value")
@@ -641,9 +640,8 @@ def test_check_file_mode_skips_on_non_posix_fs(monkeypatch, tmp_path: Path, capl
 def test_validate_config_path_does_not_reject_on_non_posix_fs(monkeypatch, tmp_path: Path) -> None:
     """End-to-end: validate_config_path succeeds on a non-POSIX FS even if
     the mode bits look "world-writable"."""
-    import os as _os
 
-    monkeypatch.setattr(_os, "name", "nt")
+    monkeypatch.setattr(security, "_filesystem_preserves_posix_perms", lambda p: False)
 
     config_file = tmp_path / "config.yml"
     config_file.write_text("key: value")
