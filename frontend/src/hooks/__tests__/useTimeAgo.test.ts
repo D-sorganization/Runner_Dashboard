@@ -79,11 +79,11 @@ describe('useTimeAgo (hook)', () => {
     const iso = new Date(NOW - 30_000).toISOString();
     const { result } = renderHook(() => useTimeAgo(iso));
     expect(result.current).toBe('just now');
-    // Advance system clock by 90s — the hook's internal interval should fire
-    // and produce the updated relative string.
+    // Advance the fake-timer queue — vitest's advanceTimersByTime moves the
+    // mocked Date.now() forward in lockstep, so the 30s interval fires with
+    // a fresh "now". Total elapsed: 30s initial + 90s advance = 2m.
     act(() => {
-      vi.setSystemTime(NOW + 90_000);
-      vi.advanceTimersByTime(60_000);
+      vi.advanceTimersByTime(90_000);
     });
     expect(result.current).toBe('2m ago');
   });

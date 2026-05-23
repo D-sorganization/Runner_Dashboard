@@ -1,12 +1,19 @@
 ﻿# SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.26
+**Spec Version:** 2.5.27
 **Application Version:** 4.1.0 (see `VERSION`)
-**Last Updated:** 2026-05-22T17:45:00Z
+**Last Updated:** 2026-05-22T23:40:00Z
 **Status:** Active
 
 ### Recent Spec Updates
 
+- **2026-05-22 (2.5.27):** Added relative-timestamp primitive (#725):
+  `frontend/src/hooks/useTimeAgo.ts` (`useTimeAgo`, `formatTimeAgo`) and
+  `frontend/src/primitives/TimeAgo.tsx` (`<TimeAgo iso={...} />`). Renders
+  semantic `<time>` with the raw ISO in `dateTime` + tooltip; future
+  timestamps render `"soon"`, invalid input degrades to the raw value with
+  a `console.warn`. Wired into `Reports/Mobile.tsx` "Modified" field as the
+  first call-site; remaining pages migrate in follow-ups.
 - **2026-05-22 (2.5.26):** Added `DASHBOARD_HOST` env var
   (`dashboard_config.HOST`) for uvicorn bind interface; default preserves
   historical `0.0.0.0` behaviour. Added `deploy/wsl-mirrored-port-helper.sh`
