@@ -22,10 +22,10 @@ from platform_utils.wsl_paths import (  # noqa: E402
     _windows_path_to_wsl,
 )
 
-
 # ---------------------------------------------------------------------------
 # _windows_path_to_wsl
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.parametrize(
     "raw, expected",
@@ -85,6 +85,7 @@ def test_windows_path_to_wsl_whitespace_stripped() -> None:
 # _dedupe_paths
 # ---------------------------------------------------------------------------
 
+
 def test_dedupe_paths_removes_duplicates() -> None:
     paths = [Path("/a"), Path("/b"), Path("/a"), Path("/c"), Path("/b")]
     result = _dedupe_paths(paths)
@@ -110,6 +111,7 @@ def test_dedupe_paths_all_unique() -> None:
 # _candidate_wslconfig_paths
 # ---------------------------------------------------------------------------
 
+
 def test_candidate_wslconfig_paths_returns_list_of_paths() -> None:
     result = _candidate_wslconfig_paths()
     assert isinstance(result, list)
@@ -134,9 +136,7 @@ def test_candidate_wslconfig_paths_includes_env_var(monkeypatch: pytest.MonkeyPa
     assert custom in result
 
 
-def test_candidate_wslconfig_paths_userprofile_wsl_path(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_candidate_wslconfig_paths_userprofile_wsl_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """USERPROFILE env var should produce a /mnt/<drive>/…/.wslconfig candidate."""
     monkeypatch.setenv("USERPROFILE", r"C:\Users\TestUser")
     monkeypatch.delenv("HOMEDRIVE", raising=False)

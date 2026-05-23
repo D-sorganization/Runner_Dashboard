@@ -3,6 +3,7 @@
 These models enforce DbC preconditions at the API boundary so route handlers
 receive validated, typed data — never raw dicts.
 """
+
 from __future__ import annotations
 
 from typing import Annotated, Literal
@@ -53,9 +54,7 @@ class LauncherGenerateRequest(BaseModel):
 class FleetNodeControlRequest(BaseModel):
     """Request body for fleet node control endpoints."""
 
-    action: Literal["start", "stop", "restart"] = Field(
-        ..., description="Action to perform"
-    )
+    action: Literal["start", "stop", "restart"] = Field(..., description="Action to perform")
     runner_name: str = Field(..., min_length=1, max_length=200)
 
     model_config = {"extra": "forbid"}

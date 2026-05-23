@@ -1,4 +1,5 @@
 """Tests for autoscaler Prometheus metrics (issue #710)."""
+
 import sys
 from pathlib import Path
 

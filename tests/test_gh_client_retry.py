@@ -1,10 +1,11 @@
 """Tests for gh_client retry/timeout policy (issue #714)."""
-import asyncio
+
 import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
-import pytest
+
 import httpx
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
@@ -12,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 @pytest.fixture(autouse=True)
 def reset_gh_client():
     import gh_client
+
     gh_client._cached_token = "test_token"
     gh_client._client = None
     yield
@@ -40,9 +42,11 @@ async def test_retry_on_timeout_then_success():
 
     mock_client.request = side_effect
 
-    with patch("gh_client._get_client", return_value=mock_client), \
-         patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
-        result = await gh_client._request("GET", "/test")
+    with (
+        patch("gh_client._get_client", return_value=mock_client),
+        patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
+    ):
+        await gh_client._request("GET", "/test")
 
     assert call_count == 2
     assert mock_sleep.called  # backoff was applied
@@ -56,8 +60,7 @@ async def test_five_timeouts_raise_gh_client_error():
     mock_client = AsyncMock()
     mock_client.request = AsyncMock(side_effect=httpx.TimeoutException("timeout"))
 
-    with patch("gh_client._get_client", return_value=mock_client), \
-         patch("asyncio.sleep", new_callable=AsyncMock):
+    with patch("gh_client._get_client", return_value=mock_client), patch("asyncio.sleep", new_callable=AsyncMock):
         with pytest.raises(gh_client.GhClientError) as exc_info:
             await gh_client._request("GET", "/test")
 
@@ -86,9 +89,8 @@ async def test_connect_error_retries():
 
     mock_client.request = side_effect
 
-    with patch("gh_client._get_client", return_value=mock_client), \
-         patch("asyncio.sleep", new_callable=AsyncMock):
-        result = await gh_client._request("GET", "/test")
+    with patch("gh_client._get_client", return_value=mock_client), patch("asyncio.sleep", new_callable=AsyncMock):
+        await gh_client._request("GET", "/test")
 
     assert call_count == 2
 
@@ -124,9 +126,8 @@ async def test_429_with_retry_after_sleeps_and_succeeds():
     async def mock_sleep(t):
         sleep_calls.append(t)
 
-    with patch("gh_client._get_client", return_value=mock_client), \
-         patch("asyncio.sleep", side_effect=mock_sleep):
-        result = await gh_client._request("GET", "/test")
+    with patch("gh_client._get_client", return_value=mock_client), patch("asyncio.sleep", side_effect=mock_sleep):
+        await gh_client._request("GET", "/test")
 
     assert any(s >= 2 for s in sleep_calls), f"Expected sleep >= 2s, got {sleep_calls}"
 
@@ -144,8 +145,7 @@ async def test_five_429s_raise_gh_rate_limited():
     mock_client = AsyncMock()
     mock_client.request = AsyncMock(return_value=rate_resp)
 
-    with patch("gh_client._get_client", return_value=mock_client), \
-         patch("asyncio.sleep", new_callable=AsyncMock):
+    with patch("gh_client._get_client", return_value=mock_client), patch("asyncio.sleep", new_callable=AsyncMock):
         with pytest.raises(gh_client.GhRateLimited):
             await gh_client._request("GET", "/test")
 
@@ -175,8 +175,7 @@ async def test_5xx_retried_then_succeeds():
     mock_client = AsyncMock()
     mock_client.request = request_side_effect
 
-    with patch("gh_client._get_client", return_value=mock_client), \
-         patch("asyncio.sleep", new_callable=AsyncMock):
+    with patch("gh_client._get_client", return_value=mock_client), patch("asyncio.sleep", new_callable=AsyncMock):
         result = await gh_client._request("GET", "/test")
 
     assert result.status_code == 200
@@ -217,8 +216,7 @@ async def test_paginate_recovers_from_429_on_page_2():
     mock_client.get = mock_get
     mock_client.headers = {}
 
-    with patch("gh_client._get_client", return_value=mock_client), \
-         patch("asyncio.sleep", new_callable=AsyncMock):
+    with patch("gh_client._get_client", return_value=mock_client), patch("asyncio.sleep", new_callable=AsyncMock):
         items = [item async for item in gh_client.paginate("/repos/test/test/issues")]
 
     ids = [item["id"] for item in items]
@@ -238,8 +236,7 @@ async def test_exponential_backoff_increases():
     async def mock_sleep(t):
         sleep_calls.append(t)
 
-    with patch("gh_client._get_client", return_value=mock_client), \
-         patch("asyncio.sleep", side_effect=mock_sleep):
+    with patch("gh_client._get_client", return_value=mock_client), patch("asyncio.sleep", side_effect=mock_sleep):
         with pytest.raises(gh_client.GhClientError):
             await gh_client._request("GET", "/test")
 
@@ -247,19 +244,20 @@ async def test_exponential_backoff_increases():
     assert len(sleep_calls) == gh_client._MAX_RETRIES - 1
     # Should be non-decreasing (exponential backoff), with small tolerance for jitter
     for i in range(len(sleep_calls) - 1):
-        assert sleep_calls[i] <= sleep_calls[i + 1] + 2, \
-            f"Sleep not increasing: {sleep_calls}"
+        assert sleep_calls[i] <= sleep_calls[i + 1] + 2, f"Sleep not increasing: {sleep_calls}"
 
 
 def test_max_retries_constant_positive():
     """_MAX_RETRIES must be positive."""
     import gh_client
+
     assert gh_client._MAX_RETRIES > 0
 
 
 def test_gh_client_error_carries_metadata():
     """GhClientError carries kind and attempts metadata."""
     import gh_client
+
     err = gh_client.GhClientError("test error", kind="timeout", attempts=5, last_status=None)
     assert err.kind == "timeout"
     assert err.attempts == 5
@@ -269,6 +267,7 @@ def test_gh_client_error_carries_metadata():
 def test_gh_client_error_default_metadata():
     """GhClientError has sensible defaults."""
     import gh_client
+
     err = gh_client.GhClientError("some error")
     assert err.kind == "unknown"
     assert err.attempts == 0

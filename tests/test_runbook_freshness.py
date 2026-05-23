@@ -13,12 +13,8 @@ import pathlib
 import re
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
-RUNBOOK = (REPO_ROOT / "docs" / "runbooks" / "queue-stuck.md").read_text(
-    encoding="utf-8"
-)
-QUEUE_CLEANUP = (REPO_ROOT / "backend" / "queue_cleanup.py").read_text(
-    encoding="utf-8"
-)
+RUNBOOK = (REPO_ROOT / "docs" / "runbooks" / "queue-stuck.md").read_text(encoding="utf-8")
+QUEUE_CLEANUP = (REPO_ROOT / "backend" / "queue_cleanup.py").read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -73,13 +69,8 @@ def test_curl_examples_use_actual_param_names() -> None:
     curl_lines = [line for line in RUNBOOK.splitlines() if "curl" in line.lower()]
     assert len(curl_lines) >= 1, "Expected at least one curl example line."
     # At least one curl example should reference a real queue endpoint
-    queue_endpoints = [
-        l for l in curl_lines
-        if "/api/queue/stale" in l or "/api/queue/purge-stale" in l
-    ]
-    assert len(queue_endpoints) >= 1, (
-        "No curl examples reference /api/queue/stale or /api/queue/purge-stale."
-    )
+    queue_endpoints = [line for line in curl_lines if "/api/queue/stale" in line or "/api/queue/purge-stale" in line]
+    assert len(queue_endpoints) >= 1, "No curl examples reference /api/queue/stale or /api/queue/purge-stale."
 
 
 # ---------------------------------------------------------------------------
@@ -138,9 +129,7 @@ def test_post_incident_checklist_present() -> None:
 def test_checklist_has_actionable_items() -> None:
     """Checklist must contain at least 3 checkbox items (GitHub markdown [ ])."""
     checkboxes = re.findall(r"- \[[ x]\]", RUNBOOK)
-    assert len(checkboxes) >= 3, (
-        f"Expected at least 3 checklist items, found {len(checkboxes)}."
-    )
+    assert len(checkboxes) >= 3, f"Expected at least 3 checklist items, found {len(checkboxes)}."
 
 
 # ---------------------------------------------------------------------------
@@ -180,16 +169,14 @@ def test_superseded_vs_label_mismatch_distinction_documented() -> None:
 def test_queue_cleanup_exports_find_stale_runs() -> None:
     """queue_cleanup.py must still define find_stale_runs (not renamed/deleted)."""
     assert "find_stale_runs" in QUEUE_CLEANUP, (
-        "queue_cleanup.py no longer defines find_stale_runs — update the runbook "
-        "if the function was renamed."
+        "queue_cleanup.py no longer defines find_stale_runs — update the runbook if the function was renamed."
     )
 
 
 def test_queue_cleanup_exports_purge_stale_runs() -> None:
     """queue_cleanup.py must still define purge_stale_runs (not renamed/deleted)."""
     assert "purge_stale_runs" in QUEUE_CLEANUP, (
-        "queue_cleanup.py no longer defines purge_stale_runs — update the runbook "
-        "if the function was renamed."
+        "queue_cleanup.py no longer defines purge_stale_runs — update the runbook if the function was renamed."
     )
 
 
@@ -203,6 +190,4 @@ def test_queue_cleanup_has_min_age_minutes_param() -> None:
 
 def test_queue_cleanup_has_dry_run_param() -> None:
     """queue_cleanup.py must accept dry_run parameter."""
-    assert "dry_run" in QUEUE_CLEANUP, (
-        "queue_cleanup.py no longer uses dry_run — runbook examples need updating."
-    )
+    assert "dry_run" in QUEUE_CLEANUP, "queue_cleanup.py no longer uses dry_run — runbook examples need updating."

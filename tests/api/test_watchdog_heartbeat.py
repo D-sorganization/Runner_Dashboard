@@ -1,7 +1,9 @@
 """Tests for watchdog heartbeat task (issue #707)."""
+
 import asyncio
 from pathlib import Path
 from unittest.mock import MagicMock
+
 import pytest
 
 sys_path_backend = str(Path(__file__).resolve().parents[2] / "backend")

@@ -6,7 +6,6 @@ access. run_cmd is monkeypatched where needed.
 
 from __future__ import annotations
 
-import asyncio
 import sys
 from pathlib import Path
 
@@ -36,6 +35,7 @@ _VALID_STATUSES = frozenset(
 # KeepaliveReport schema
 # ---------------------------------------------------------------------------
 
+
 def test_keepalive_report_model_valid() -> None:
     report = KeepaliveReport(status="healthy", detail="all good")
     assert report.status == "healthy"
@@ -48,13 +48,14 @@ def test_keepalive_report_with_path() -> None:
 
 
 def test_keepalive_report_rejects_invalid_status() -> None:
-    with pytest.raises(Exception):
+    with pytest.raises(Exception):  # noqa: B017 - pydantic raises ValidationError
         KeepaliveReport(status="BAD_STATUS", detail="nope")
 
 
 # ---------------------------------------------------------------------------
 # _parse_vm_idle_timeout
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.parametrize(
     "text, expected",
@@ -75,6 +76,7 @@ def test_parse_vm_idle_timeout(text: str, expected: str | None) -> None:
 # ---------------------------------------------------------------------------
 # _inspect_wslconfig (sync, uses filesystem via tmp_path)
 # ---------------------------------------------------------------------------
+
 
 def test_inspect_wslconfig_file_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     """When no .wslconfig file exists, status is 'missing'."""
@@ -132,9 +134,11 @@ def test_inspect_wslconfig_read_error(tmp_path: Path, monkeypatch: pytest.Monkey
 # _inspect_systemd_keepalive (async)
 # ---------------------------------------------------------------------------
 
+
 async def test_inspect_systemd_keepalive_windows_os(monkeypatch: pytest.MonkeyPatch) -> None:
     """On Windows (os.name == 'nt'), should return unsupported."""
     import types
+
     fake_os = types.SimpleNamespace(name="nt", environ=__import__("os").environ)
     monkeypatch.setattr(ki, "os", fake_os)
     result = await _inspect_systemd_keepalive()
@@ -144,6 +148,7 @@ async def test_inspect_systemd_keepalive_windows_os(monkeypatch: pytest.MonkeyPa
 
 async def test_inspect_systemd_keepalive_systemd_not_available(monkeypatch: pytest.MonkeyPatch) -> None:
     """systemctl returns non-zero with 'system has not been booted with systemd'."""
+
     async def fake_run_cmd(cmd, timeout=10):  # noqa: ANN001, ARG001
         return 1, "", "System has not been booted with systemd as init system (PID 1)."
 
@@ -193,11 +198,7 @@ async def test_inspect_systemd_keepalive_service_inactive(monkeypatch: pytest.Mo
 
 async def test_inspect_systemd_keepalive_service_not_installed(monkeypatch: pytest.MonkeyPatch) -> None:
     """Service not found (LoadState=not-found) → missing."""
-    systemctl_output = (
-        "LoadState=not-found\n"
-        "ActiveState=inactive\n"
-        "UnitFileState=\n"
-    )
+    systemctl_output = "LoadState=not-found\nActiveState=inactive\nUnitFileState=\n"
 
     async def fake_run_cmd(cmd, timeout=10):  # noqa: ANN001, ARG001
         return 0, systemctl_output, ""
@@ -211,6 +212,7 @@ async def test_inspect_systemd_keepalive_service_not_installed(monkeypatch: pyte
 # ---------------------------------------------------------------------------
 # _inspect_windows_keepalive (async)
 # ---------------------------------------------------------------------------
+
 
 async def test_inspect_windows_keepalive_no_powershell(monkeypatch: pytest.MonkeyPatch) -> None:
     """When PowerShell is not found → unsupported."""
@@ -273,7 +275,9 @@ async def test_inspect_windows_keepalive_legacy_vbs(monkeypatch: pytest.MonkeyPa
         "task_name": "WSL-Runner-KeepAlive",
         "state": "Running",
         "actions": [{"Execute": "wscript.exe", "Arguments": "keepalive.vbs"}],
-        "startup_vbs_files": ["C:\\Users\\user\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\wsl-keepalive.vbs"],
+        "startup_vbs_files": [
+            "C:\\Users\\user\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\wsl-keepalive.vbs"
+        ],
     }
 
     async def fake_run_cmd(cmd, timeout=12):  # noqa: ANN001, ARG001
@@ -289,6 +293,7 @@ async def test_inspect_windows_keepalive_legacy_vbs(monkeypatch: pytest.MonkeyPa
 # ---------------------------------------------------------------------------
 # _detect_legacy_keepalive
 # ---------------------------------------------------------------------------
+
 
 def test_detect_legacy_keepalive_vbs_files() -> None:
     found, detail = _detect_legacy_keepalive([], ["C:\\Users\\user\\startup\\wsl-keepalive.vbs"])
@@ -319,6 +324,7 @@ def test_detect_legacy_keepalive_vbs_in_arguments() -> None:
 # _parse_task_action
 # ---------------------------------------------------------------------------
 
+
 def test_parse_task_action_normalizes_keys() -> None:
     action = {"Execute": "wsl.exe", "Arguments": "-d Ubuntu"}
     result = _parse_task_action(action)
@@ -335,6 +341,7 @@ def test_parse_task_action_handles_missing_keys() -> None:
 # ---------------------------------------------------------------------------
 # _probe_detail
 # ---------------------------------------------------------------------------
+
 
 def test_probe_detail_returns_detail_key() -> None:
     probe = {"detail": "things are good", "error": "ignored"}
@@ -353,6 +360,7 @@ def test_probe_detail_uses_fallback() -> None:
 # ---------------------------------------------------------------------------
 # Return value statuses conform to valid set
 # ---------------------------------------------------------------------------
+
 
 def test_inspect_wslconfig_status_valid(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(ki, "_candidate_wslconfig_paths", lambda: [])

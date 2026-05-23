@@ -1,10 +1,9 @@
 """Tests for background lease reaper (issue #708)."""
+
 import sys
 import tempfile
 import time
 from pathlib import Path
-
-import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
@@ -53,7 +52,7 @@ def test_prune_expired_removes_expired_from_list():
         mgr = LeaseManager(config_dir=Path(tmpdir))
         mgr.leases = [
             make_lease("runner-1", -100),  # expired
-            make_lease("runner-2", -50),   # expired
+            make_lease("runner-2", -50),  # expired
             make_lease("runner-3", 3600),  # active
         ]
         count = mgr.prune_expired()

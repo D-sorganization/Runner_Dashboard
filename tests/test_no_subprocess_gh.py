@@ -2,9 +2,9 @@
 
 This test will FAIL if anyone re-introduces gh_api() subprocess calls.
 """
+
 import re
 from pathlib import Path
-import pytest
 
 BACKEND_DIR = Path(__file__).resolve().parents[1] / "backend"
 
@@ -39,9 +39,7 @@ def test_no_subprocess_gh_api_calls():
     gh_utils.py is exempt as the legacy subprocess fallback compatibility layer.
     """
     # Match actual subprocess/run_cmd calls, not comments or docstring mentions
-    call_pattern = re.compile(
-        r'(?:subprocess\.\w+|run_cmd)\s*\(.*["\']gh["\'].*["\']api["\']'
-    )
+    call_pattern = re.compile(r'(?:subprocess\.\w+|run_cmd)\s*\(.*["\']gh["\'].*["\']api["\']')
     # gh_utils.py is the legacy wrapper with a subprocess fallback — exempt
     exempt = {"gh_utils.py"}
     violations = []
@@ -73,9 +71,7 @@ def test_no_subprocess_gh_api_calls():
                 continue
             if call_pattern.search(line):
                 violations.append(f"{py_file}:{lineno}: {line.strip()}")
-    assert not violations, (
-        "subprocess gh api calls found:\n" + "\n".join(violations)
-    )
+    assert not violations, "subprocess gh api calls found:\n" + "\n".join(violations)
 
 
 def test_no_gh_api_raw_calls():

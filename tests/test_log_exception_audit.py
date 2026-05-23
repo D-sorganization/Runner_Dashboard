@@ -3,8 +3,10 @@
 Any `except Exception as exc:` block that then does `log.warning("... %s", exc)`
 (single-line, no traceback) is a finding that must be converted to log.exception().
 """
+
 import re
 from pathlib import Path
+
 import pytest
 
 BACKEND_DIR = Path(__file__).resolve().parents[1] / "backend"
@@ -43,7 +45,6 @@ def test_server_py_no_swallowed_exceptions():
 
     findings = _find_swallowed_exceptions(server_py)
     # Allow up to 5 remaining (these may be intentional inspect-not-handle patterns)
-    assert len(findings) <= 5, (
-        f"Too many swallowed exceptions in server.py ({len(findings)} found):\n"
-        + "\n".join(findings[:10])
+    assert len(findings) <= 5, f"Too many swallowed exceptions in server.py ({len(findings)} found):\n" + "\n".join(
+        findings[:10]
     )

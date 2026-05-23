@@ -29,10 +29,10 @@ from workflows.run_enrichment import (  # noqa: E402
     _placement_from_jobs,
 )
 
-
 # ---------------------------------------------------------------------------
 # Pydantic models
 # ---------------------------------------------------------------------------
+
 
 def test_run_model_basic() -> None:
     run = Run(id=1, name="CI", status="completed", conclusion="success")
@@ -63,6 +63,7 @@ def test_enriched_run_model() -> None:
 # ---------------------------------------------------------------------------
 # _get_recent_org_repos (async)
 # ---------------------------------------------------------------------------
+
 
 async def test_get_recent_org_repos_returns_list(monkeypatch: pytest.MonkeyPatch) -> None:
     repos = [{"name": "repo-a"}, {"name": "repo-b"}]
@@ -96,6 +97,7 @@ async def test_get_recent_org_repos_empty_on_bad_json(monkeypatch: pytest.Monkey
 # ---------------------------------------------------------------------------
 # _fetch_repo_runs (async)
 # ---------------------------------------------------------------------------
+
 
 async def test_fetch_repo_runs_annotates_missing_repository(monkeypatch: pytest.MonkeyPatch) -> None:
     """Runs without a 'repository' key get one injected."""
@@ -135,6 +137,7 @@ async def test_fetch_repo_runs_empty_on_error(monkeypatch: pytest.MonkeyPatch) -
 # _fetch_run_jobs (async)
 # ---------------------------------------------------------------------------
 
+
 async def test_fetch_run_jobs_returns_jobs(monkeypatch: pytest.MonkeyPatch) -> None:
     payload = {"jobs": [{"id": 1, "name": "build", "runner_name": "d-sorg-local-host-1"}]}
 
@@ -159,6 +162,7 @@ async def test_fetch_run_jobs_empty_on_error(monkeypatch: pytest.MonkeyPatch) ->
 # ---------------------------------------------------------------------------
 # _fetch_failed_log_excerpt (async)
 # ---------------------------------------------------------------------------
+
 
 async def test_fetch_failed_log_excerpt_returns_text(monkeypatch: pytest.MonkeyPatch) -> None:
     async def fake_run_cmd(cmd, timeout=20):  # noqa: ANN001, ARG001
@@ -194,8 +198,16 @@ async def test_fetch_failed_log_excerpt_truncated(monkeypatch: pytest.MonkeyPatc
 # _placement_from_jobs
 # ---------------------------------------------------------------------------
 
+
 def test_placement_from_jobs_extracts_runner_name() -> None:
-    jobs = [{"runner_name": "d-sorg-local-myhost-2", "runner_id": 5, "runner_group_name": "Default", "labels": ["self-hosted"]}]
+    jobs = [
+        {
+            "runner_name": "d-sorg-local-myhost-2",
+            "runner_id": 5,
+            "runner_group_name": "Default",
+            "labels": ["self-hosted"],
+        }
+    ]
     result = _placement_from_jobs(jobs)
     assert result["runner_name"] == "d-sorg-local-myhost-2"
     assert result["machine_name"] == "myhost"
@@ -207,7 +219,10 @@ def test_placement_from_jobs_empty_list() -> None:
 
 
 def test_placement_from_jobs_skips_jobs_without_runner_name() -> None:
-    jobs = [{"runner_name": None}, {"runner_name": "d-sorg-local-host-1", "runner_id": 3, "runner_group_name": "Default", "labels": []}]
+    jobs = [
+        {"runner_name": None},
+        {"runner_name": "d-sorg-local-host-1", "runner_id": 3, "runner_group_name": "Default", "labels": []},
+    ]
     result = _placement_from_jobs(jobs)
     assert result["runner_name"] == "d-sorg-local-host-1"
 
@@ -215,6 +230,7 @@ def test_placement_from_jobs_skips_jobs_without_runner_name() -> None:
 # ---------------------------------------------------------------------------
 # _enrich_run_with_job_placement (async)
 # ---------------------------------------------------------------------------
+
 
 async def test_enrich_run_with_job_placement_adds_machine_name(monkeypatch: pytest.MonkeyPatch) -> None:
     jobs = [{"runner_name": "d-sorg-local-myhost-3", "runner_id": 9, "runner_group_name": "Default", "labels": []}]
@@ -231,6 +247,7 @@ async def test_enrich_run_with_job_placement_adds_machine_name(monkeypatch: pyte
 
 async def test_enrich_run_no_repo_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:
     """Run with no repository info gets machine_name='GitHub' fallback."""
+
     async def fake_fetch_run_jobs(repo_name, run_id):  # noqa: ANN001, ARG001
         return []
 

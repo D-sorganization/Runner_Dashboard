@@ -6,8 +6,8 @@ so new status tokens are introduced via CSS custom properties (--status-*)
 rather than inline rgba() literals scattered through component files.
 """
 
-import re
 import pathlib
+import re
 
 CSS_PATH = pathlib.Path("frontend/src/index.css")
 

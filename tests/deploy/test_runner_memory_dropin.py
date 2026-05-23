@@ -1,8 +1,7 @@
 """Tests for runner memory drop-in (issue #711)."""
+
 import configparser
 from pathlib import Path
-
-import pytest
 
 DEPLOY_DIR = Path(__file__).resolve().parents[2] / "deploy"
 

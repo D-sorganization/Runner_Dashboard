@@ -25,13 +25,15 @@ from runners.service_control import (  # noqa: E402
     runner_svc_path,
 )
 
-
 # ---------------------------------------------------------------------------
 # RunnerUnit model
 # ---------------------------------------------------------------------------
 
+
 def test_runner_unit_model() -> None:
-    unit = RunnerUnit(num=3, name="wsl-runner-keepalive.service", path=Path("/home/user/actions-runners/runner-3/svc.sh"))
+    unit = RunnerUnit(
+        num=3, name="wsl-runner-keepalive.service", path=Path("/home/user/actions-runners/runner-3/svc.sh")
+    )
     assert unit.num == 3
     assert isinstance(unit.path, Path)
 
@@ -39,6 +41,7 @@ def test_runner_unit_model() -> None:
 # ---------------------------------------------------------------------------
 # runner_svc_path
 # ---------------------------------------------------------------------------
+
 
 def test_runner_svc_path_returns_correct_path() -> None:
     path = runner_svc_path(1)
@@ -63,6 +66,7 @@ def test_runner_svc_path_parametrized(monkeypatch: pytest.MonkeyPatch, tmp_path:
 # run_runner_svc (async)
 # ---------------------------------------------------------------------------
 
+
 async def test_run_runner_svc_calls_run_cmd(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(sc, "RUNNER_BASE_DIR", tmp_path)
     captured: dict = {}
@@ -84,6 +88,7 @@ async def test_run_runner_svc_calls_run_cmd(monkeypatch: pytest.MonkeyPatch, tmp
 # ---------------------------------------------------------------------------
 # runner_num_from_id
 # ---------------------------------------------------------------------------
+
 
 def test_runner_num_from_id_matches_local_runner(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sc, "HOSTNAME", "myhost")
@@ -121,6 +126,7 @@ def test_runner_num_from_id_alias_match(monkeypatch: pytest.MonkeyPatch) -> None
 # _runner_limit
 # ---------------------------------------------------------------------------
 
+
 def test_runner_limit_returns_max(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sc, "NUM_RUNNERS", 8)
     monkeypatch.setattr(sc, "MAX_RUNNERS", 12)
@@ -136,6 +142,7 @@ def test_runner_limit_num_greater(monkeypatch: pytest.MonkeyPatch) -> None:
 # ---------------------------------------------------------------------------
 # _runner_sort_key
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.parametrize(
     "runners, expected_order",
@@ -169,9 +176,8 @@ def test_runner_sort_key_no_number_suffix() -> None:
 # get_runner_service_name
 # ---------------------------------------------------------------------------
 
-def test_get_runner_service_name_reads_dot_service_file(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+
+def test_get_runner_service_name_reads_dot_service_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(sc, "RUNNER_BASE_DIR", tmp_path)
     svc_dir = tmp_path / "runner-3"
     svc_dir.mkdir()
@@ -180,9 +186,7 @@ def test_get_runner_service_name_reads_dot_service_file(
     assert result == "actions.runner.org.runner-3.service"
 
 
-def test_get_runner_service_name_fallback(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_get_runner_service_name_fallback(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(sc, "RUNNER_BASE_DIR", tmp_path)
     monkeypatch.setattr(sc, "ORG", "D-sorganization")
     monkeypatch.setattr(sc, "HOSTNAME", "testhost")

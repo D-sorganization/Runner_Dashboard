@@ -1,11 +1,13 @@
 """Tests for unified ErrorResponse handler (issue #717)."""
+
 import sys
 from pathlib import Path
+
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
-from error_models import ErrorResponse, from_http_exception, not_ready, internal_error, upstream_error
+from error_models import ErrorResponse, from_http_exception, internal_error, not_ready, upstream_error
 
 
 class FakeHTTPException:
@@ -42,16 +44,20 @@ def test_from_http_exception_unknown_status():
 
 def test_from_http_exception_requires_status_code():
     """Pre-condition: exc must have status_code."""
+
     class BadExc:
         detail = "nope"
+
     with pytest.raises(AssertionError):
         from_http_exception(BadExc())
 
 
 def test_from_http_exception_requires_detail():
     """Pre-condition: exc must have detail attribute."""
+
     class BadExc:
         status_code = 404
+
     with pytest.raises(AssertionError):
         from_http_exception(BadExc())
 
@@ -79,10 +85,9 @@ def test_error_response_model_validates():
 
 
 def test_all_error_kinds_are_strings():
-    from error_models import (not_found, validation_error, server_error,
-                               bad_gateway, rate_limited, forbidden, conflict)
-    for factory in [not_found, validation_error, server_error, bad_gateway,
-                    rate_limited, forbidden, conflict]:
+    from error_models import bad_gateway, conflict, forbidden, not_found, rate_limited, server_error, validation_error
+
+    for factory in [not_found, validation_error, server_error, bad_gateway, rate_limited, forbidden, conflict]:
         result = factory("test detail")
         assert isinstance(result.error, str)
         assert len(result.error) > 0

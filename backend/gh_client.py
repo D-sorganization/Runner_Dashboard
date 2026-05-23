@@ -229,7 +229,7 @@ async def _request(method: str, path: str, *, json: Any = None) -> httpx.Respons
         try:
             resp = await client.request(method, path, headers=headers, json=json)
         except (httpx.TimeoutException, httpx.ConnectError) as exc:
-            backoff = min(2 ** attempt + random.uniform(0, 1), 32)
+            backoff = min(2**attempt + random.uniform(0, 1), 32)
             log.warning(
                 "gh_client: retry attempt=%d reason=%s path=%s backoff=%.1fs",
                 attempt + 1,
@@ -270,7 +270,7 @@ async def _request(method: str, path: str, *, json: Any = None) -> httpx.Respons
                 await asyncio.sleep(min(retry_after, 32))
             continue
         if resp.status_code >= 500:
-            backoff = min(2 ** attempt + random.uniform(0, 1), 32)
+            backoff = min(2**attempt + random.uniform(0, 1), 32)
             log.warning(
                 "gh_client: server error %d on %s (attempt=%d) backoff=%.1fs",
                 resp.status_code,
