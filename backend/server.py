@@ -49,6 +49,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
+    JSONResponse,
 )
 from fastapi.staticfiles import StaticFiles
 from identity import Principal, require_scope  # noqa: B008
@@ -69,6 +70,7 @@ import config_schema as config_schema  # noqa: E402
 import dashboard_config as dashboard_config  # noqa: E402
 import deployment_drift as deployment_drift  # noqa: E402
 import dispatch_contract as dispatch_contract  # noqa: E402
+import gh_utils as gh_utils  # noqa: E402
 import health as _health_router  # noqa: E402
 import issue_inventory as issue_inventory  # noqa: E402
 import lease_synchronizer as lease_synchronizer  # noqa: E402
@@ -363,6 +365,23 @@ app = FastAPI(
     version="4.0.0",
     description="Monitor and control self-hosted GitHub Actions runners",
 )
+
+
+@app.exception_handler(gh_utils.RateLimitedError)
+async def _github_rate_limited_handler(_request: Request, exc: gh_utils.RateLimitedError) -> JSONResponse:
+    """Return a structured 429 instead of logging rate-limit breakers as crashes."""
+    return JSONResponse(
+        status_code=429,
+        headers={"Retry-After": str(exc.retry_after_seconds)},
+        content={
+            "detail": exc.detail,
+            "status": "rate_limited",
+            "endpoint": exc.endpoint,
+            "resource_class": exc.resource_class,
+            "retry_after_seconds": exc.retry_after_seconds,
+        },
+    )
+
 
 # Issue #331 — request_id correlation middleware (outermost so all subsequent
 # middleware and handlers have access to the request_id context var).
@@ -1231,28 +1250,14 @@ def get_runner_service_name(runner_num: int) -> str | None:
 DEFAULT_RUNNER_SCHEDULE = {
     "enabled": True,
     "timezone": os.environ.get("RUNNER_SCHEDULE_TIMEZONE", "America/Los_Angeles"),
-    "default_count": min(NUM_RUNNERS, int(os.environ.get("RUNNER_SCHEDULE_DEFAULT", "4"))),
+    "default_count": min(NUM_RUNNERS, int(os.environ.get("RUNNER_SCHEDULE_DEFAULT", str(NUM_RUNNERS)))),
     "schedules": [
         {
-            "name": "day",
-            "days": ["mon", "tue", "wed", "thu", "fri"],
-            "start": "07:00",
-            "end": "22:00",
-            "runners": min(NUM_RUNNERS, 4),
-        },
-        {
-            "name": "overnight",
+            "name": "always-on",
             "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
-            "start": "22:00",
-            "end": "07:00",
+            "start": "00:00",
+            "end": "23:59",
             "runners": NUM_RUNNERS,
-        },
-        {
-            "name": "weekend",
-            "days": ["sat", "sun"],
-            "start": "07:00",
-            "end": "22:00",
-            "runners": min(NUM_RUNNERS, 6),
         },
     ],
 }
@@ -1877,6 +1882,10 @@ async def _watchdog_status_impl() -> dict:
 # ─── System Metrics ──────────────────────────────────────────────────────────
 
 
+_FLEET_NODES_CACHE_TTL_S = 10.0
+_FLEET_REMOTE_FANOUT_TIMEOUT_S = 3.0
+
+
 async def _collect_live_fleet_nodes() -> list[dict]:
     """Collect the live fleet node payload before registry metadata is merged."""
 
@@ -1960,7 +1969,29 @@ async def _collect_live_fleet_nodes() -> list[dict]:
     ]
 
     if FLEET_NODES:
-        remote = await asyncio.gather(*[fetch_node(name, url) for name, url in FLEET_NODES.items()])
+        try:
+            remote = await asyncio.wait_for(
+                asyncio.gather(*[fetch_node(name, url) for name, url in FLEET_NODES.items()]),
+                timeout=_FLEET_REMOTE_FANOUT_TIMEOUT_S,
+            )
+        except TimeoutError:
+            remote = [
+                {
+                    "name": name,
+                    "url": url,
+                    "online": False,
+                    "dashboard_reachable": False,
+                    "is_local": False,
+                    "role": "node",
+                    "system": {},
+                    "health": {},
+                    "last_seen": None,
+                    "error": f"fleet node fanout exceeded {_FLEET_REMOTE_FANOUT_TIMEOUT_S:.1f}s",
+                    "offline_reason": "timeout",
+                    "offline_detail": "Remote node probe timed out before the dashboard budget expired.",
+                }
+                for name, url in FLEET_NODES.items()
+            ]
         nodes.extend(remote)
 
     return nodes
@@ -2133,6 +2164,10 @@ async def _get_fleet_nodes_impl() -> dict:
     queried concurrently over Tailscale using FLEET_NODES config.
     Offline nodes are included with online=False so the UI can show them.
     """
+    cached = _cache_get("fleet_nodes", _FLEET_NODES_CACHE_TTL_S)
+    if cached is not None:
+        return cached
+
     nodes = await _collect_live_fleet_nodes()
     try:
         registry = load_machine_registry()
@@ -2143,7 +2178,7 @@ async def _get_fleet_nodes_impl() -> dict:
     nodes = [{**node, **_node_visibility_snapshot(node)} for node in nodes]
     online = sum(1 for n in nodes if n["online"])
     total_runners = sum(n["health"].get("runners_registered", 0) for n in nodes)
-    return {
+    result = {
         "nodes": nodes,
         "count": len(nodes),
         "online_count": online,
@@ -2154,6 +2189,8 @@ async def _get_fleet_nodes_impl() -> dict:
             "machines": len(registry.get("machines", [])),
         },
     }
+    _cache_set("fleet_nodes", result)
+    return result
 
 
 # /api/fleet/nodes/{node_name}/system extracted to routers/orchestration.py (issue #359).
@@ -2579,7 +2616,7 @@ async def generate_launchers(
 
     restart = output_dir / "Restart-Dashboard-Service.ps1"
     restart.write_text(
-        'wsl -e bash -c "systemctl --user restart runner-dashboard && echo Service restarted"\n',
+        'wsl -d Ubuntu -e bash -lc "sudo -n systemctl restart runner-dashboard.service && echo Service restarted"\n',
         encoding="utf-8",
     )
     launchers_created.append(str(restart))

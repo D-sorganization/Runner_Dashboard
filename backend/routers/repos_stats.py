@@ -20,6 +20,9 @@ from proxy_utils import proxy_to_hub, should_proxy_fleet_to_hub
 
 router = APIRouter(tags=["repos"])
 
+_STATS_FANOUT_TIMEOUT_S = 6.0
+_STATS_REPO_SAMPLE_LIMIT = 12
+
 
 def _state() -> Any:
     """Return the dependency state from :mod:`repos` lazily."""
@@ -51,13 +54,25 @@ async def get_stats(request: Request) -> Any:
     if cached is not None:
         return cached
 
+    degraded_reasons: list[str] = []
+
+    async def _with_budget(label: str, coro: Any, fallback: Any, timeout_s: float = _STATS_FANOUT_TIMEOUT_S) -> Any:
+        try:
+            return await asyncio.wait_for(coro, timeout=timeout_s)
+        except TimeoutError:
+            degraded_reasons.append(f"{label}_timeout")
+            return fallback
+        except Exception as exc:  # noqa: BLE001 - stats must degrade, not pin the event loop
+            degraded_reasons.append(f"{label}_error:{type(exc).__name__}")
+            return fallback
+
     runners_data = cache_get("runners", 25.0)
     if runners_data is None:
-        runners_data = await gh_api_admin(f"/orgs/{org}/actions/runners")
+        runners_data = await _with_budget("runners", gh_api_admin(f"/orgs/{org}/actions/runners"), {"runners": []})
         cache_set("runners", runners_data)
     runners = runners_data.get("runners", [])
 
-    repos = await get_recent_org_repos(limit=30)
+    repos = await _with_budget("recent_repos", get_recent_org_repos(limit=30), [])
 
     async def _fetch_repo_runs_local(repo_name: str, per_page: int = 10) -> list[dict]:
         code, stdout, _ = await run_cmd(
@@ -83,7 +98,12 @@ async def get_stats(request: Request) -> Any:
         except (json.JSONDecodeError, TypeError, ValueError):
             return 0
 
-    all_runs_nested = await asyncio.gather(*[_fetch_repo_runs_local(repo["name"], per_page=10) for repo in repos[:20]])
+    sampled_repos = repos[:_STATS_REPO_SAMPLE_LIMIT]
+    all_runs_nested = await _with_budget(
+        "workflow_runs",
+        asyncio.gather(*[_fetch_repo_runs_local(repo["name"], per_page=10) for repo in sampled_repos]),
+        [],
+    )
     runs = [run for repo_runs in all_runs_nested for run in repo_runs]
     runs.sort(key=lambda r: r.get("created_at", ""), reverse=True)
     runs = runs[:100]
@@ -94,11 +114,15 @@ async def get_stats(request: Request) -> Any:
     successes = sum(1 for r in completed if r["conclusion"] == "success")
     failures = sum(1 for r in completed if r["conclusion"] == "failure")
 
-    org_open_issues, org_open_prs, queue_data, fleet_data = await asyncio.gather(
-        _github_search_total_local(f"org:{org}+is:open+is:issue"),
-        _github_search_total_local(f"org:{org}+is:open+is:pr"),
-        queue_impl(),
-        get_fleet_nodes_impl(),
+    org_open_issues, org_open_prs, queue_data, fleet_data = await _with_budget(
+        "summary_fanout",
+        asyncio.gather(
+            _github_search_total_local(f"org:{org}+is:open+is:issue"),
+            _github_search_total_local(f"org:{org}+is:open+is:pr"),
+            queue_impl(),
+            get_fleet_nodes_impl(),
+        ),
+        (0, 0, {}, {}),
     )
 
     result = {
@@ -120,7 +144,9 @@ async def get_stats(request: Request) -> Any:
         "machines_total": fleet_data.get("count", 0),
         "machines_online": fleet_data.get("online_count", 0),
         "machines_offline": max(0, fleet_data.get("count", 0) - fleet_data.get("online_count", 0)),
-        "repos_sampled": len(repos[:20]),
+        "repos_sampled": len(sampled_repos),
+        "degraded": bool(degraded_reasons),
+        "degraded_reasons": degraded_reasons,
     }
     cache_set("stats", result)
     return result

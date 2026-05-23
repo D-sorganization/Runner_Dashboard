@@ -72,7 +72,7 @@ def test_migrate_legacy_json_array(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     # File should now be NDJSON (first char should not be '[')
     content = p.read_text(encoding="utf-8")
     assert not content.startswith("[")
-    lines = [l for l in content.splitlines() if l.strip()]
+    lines = [line for line in content.splitlines() if line.strip()]
     assert len(lines) == 2
 
 

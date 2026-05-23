@@ -18,7 +18,20 @@ _ROOT = Path(__file__).parent.parent
 _SCRIPT = _ROOT / "deploy" / "scheduled-dashboard-maintenance.sh"
 
 
+def _bash_path(path: Path) -> str:
+    if os.name != "nt":
+        return str(path)
+    resolved = path.resolve()
+    drive = resolved.drive.rstrip(":").lower()
+    bash_exe = shutil.which("bash")
+    if bash_exe and "system32" in bash_exe.lower():
+        return f"/mnt/{drive}{resolved.as_posix()[2:]}"
+    return f"/{drive}{resolved.as_posix()[2:]}"
+
+
 def _bash_arg(value: str | Path) -> str:
+    if isinstance(value, Path):
+        return _bash_path(value)
     text = str(value)
     return text.replace("\\", "/") if os.name == "nt" else text
 
@@ -89,8 +102,8 @@ def test_dry_run_lists_paths_and_creates_no_tarball(tmp_path: Path) -> None:
     shutil.copytree(_ROOT / "deploy", fake_dashboard / "deploy")
 
     env = dict(os.environ)
-    env["BACKUP_DIR"] = str(backup_dir)
-    env["HOME"] = str(tmp_path / "home")
+    env["BACKUP_DIR"] = _bash_path(backup_dir)
+    env["HOME"] = _bash_path(tmp_path / "home")
     (tmp_path / "home").mkdir()
     (tmp_path / "home" / ".config" / "runner-dashboard").mkdir(parents=True)
 

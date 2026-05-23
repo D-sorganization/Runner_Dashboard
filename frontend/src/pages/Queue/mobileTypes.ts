@@ -26,6 +26,26 @@ export interface WorkflowRun {
   repository?: { name?: string };
   /** Present when fetched from /api/queue/status. */
   timing?: RunTiming;
+  stale_reason?: string;
+  safe_to_cancel?: boolean;
+  current_head_sha?: string;
+  run_head_sha?: string;
+  pr_number?: number | null;
+  age_minutes?: number;
+}
+
+export interface StaleCandidate {
+  run_id: number;
+  workflow: string;
+  branch: string;
+  url: string;
+  repo: string;
+  reason: string;
+  safe_to_cancel: boolean;
+  current_head_sha: string;
+  run_head_sha: string;
+  pr_number: number | null;
+  age_minutes: number;
 }
 
 export interface QueueData {
@@ -34,7 +54,7 @@ export interface QueueData {
   total?: number;
 }
 
-export type FilterValue = "all" | "running" | "queued" | "failed";
+export type FilterValue = "all" | "running" | "queued" | "failed" | "stale";
 
 export interface RunDetail {
   run: WorkflowRun;
@@ -48,6 +68,7 @@ export const FILTER_OPTIONS = [
   { label: "Running", value: "running" },
   { label: "Queued", value: "queued" },
   { label: "Failed", value: "failed" },
+  { label: "Stale", value: "stale" },
 ];
 
 export const POLL_INTERVAL_MS = 15_000;
@@ -100,10 +121,11 @@ export function timingLabel(run: WorkflowRun): string {
 
 export function statusTone(
   status: FilterValue,
-): "warning" | "info" | "danger" | "neutral" {
+): "warning" | "info" | "danger" | "success" | "neutral" {
   if (status === "running") return "warning";
   if (status === "queued") return "info";
   if (status === "failed") return "danger";
+  if (status === "stale") return "neutral";
   return "neutral";
 }
 
@@ -111,5 +133,7 @@ export function statusLabel(status: FilterValue): string {
   if (status === "running") return "running";
   if (status === "queued") return "queued";
   if (status === "failed") return "failed";
+  if (status === "stale") return "stale";
   return "unknown";
 }
+

@@ -409,16 +409,16 @@ class TestRunnerIsBusy:
 
 
 # ---------------------------------------------------------------------------
-# LOAD_PER_CORE default raised to 2.5 (issue #640)
+# LOAD_PER_CORE default lowered for host-level desktop protection
 # ---------------------------------------------------------------------------
 
 
-def test_load_per_core_default_is_2_5(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Default AUTOSCALER_LOAD_PER_CORE must be 2.5 to avoid false positives."""
+def test_load_per_core_default_is_desktop_safe(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Default AUTOSCALER_LOAD_PER_CORE protects the desktop host under CI load."""
     monkeypatch.delenv("AUTOSCALER_LOAD_PER_CORE", raising=False)
     # The module constant is already loaded; test the helper with the new default.
-    result = ra._env_float("AUTOSCALER_LOAD_PER_CORE", 2.5)
-    assert result == pytest.approx(2.5)
+    result = ra._env_float("AUTOSCALER_LOAD_PER_CORE", 1.2)
+    assert result == pytest.approx(1.2)
 
 
 def test_load_per_core_configurable_via_env(monkeypatch: pytest.MonkeyPatch) -> None:

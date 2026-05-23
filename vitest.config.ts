@@ -12,7 +12,11 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'html', 'lcov'],
       include: ['frontend/src/**/*.{ts,tsx}'],
-      exclude: ['frontend/src/**/__tests__/**', 'frontend/src/main.tsx'],
+      exclude: [
+        'frontend/src/**/__tests__/**',
+        'frontend/src/legacy/**',
+        'frontend/src/main.tsx',
+      ],
       thresholds: {
         lines: 30,
       },

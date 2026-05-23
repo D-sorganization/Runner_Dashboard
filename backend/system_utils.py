@@ -34,26 +34,79 @@ log = logging.getLogger("dashboard.system")
 # CPU history ring-buffer: bounded by CPU_HISTORY_MAXLEN (default 60 ≈ 1 min at 1 Hz)
 _cpu_history: deque[float] = deque(maxlen=CPU_HISTORY_MAXLEN)
 BOOT_TIME = time.time()
+_POWERSHELL_CANDIDATES = (
+    "powershell.exe",
+    "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe",
+)
+
+
+def _run_windows_powershell_json(command: str) -> dict | None:
+    if "microsoft" not in platform.uname().release.lower():
+        return None
+    result = None
+    for powershell in _POWERSHELL_CANDIDATES:
+        try:
+            result = subprocess.run(
+                [powershell, "-NoProfile", "-Command", command],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                env=safe_subprocess_env(),
+            )
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if result.returncode == 0 and result.stdout.strip():
+            break
+    if result is None or result.returncode != 0 or not result.stdout.strip():
+        return None
+    try:
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _windows_host_resource_snapshot() -> dict | None:
+    command = r"""
+$cpu = (Get-CimInstance Win32_PerfFormattedData_PerfOS_Processor -Filter "Name='_Total'").PercentProcessorTime
+$os = Get-CimInstance Win32_OperatingSystem
+$total = [double]$os.TotalVisibleMemorySize * 1KB
+$free = [double]$os.FreePhysicalMemory * 1KB
+$used = $total - $free
+[pscustomobject]@{
+  cpu_percent = [math]::Round([double]$cpu, 1)
+  memory_total_gb = [math]::Round($total / 1GB, 1)
+  memory_used_gb = [math]::Round($used / 1GB, 1)
+  memory_available_gb = [math]::Round($free / 1GB, 1)
+  memory_percent = [math]::Round(($used / $total) * 100, 1)
+} | ConvertTo-Json -Compress
+"""
+    data = _run_windows_powershell_json(command)
+    if not data:
+        return None
+    try:
+        return {
+            "cpu_percent": float(data["cpu_percent"]),
+            "memory_total_gb": float(data["memory_total_gb"]),
+            "memory_used_gb": float(data["memory_used_gb"]),
+            "memory_available_gb": float(data["memory_available_gb"]),
+            "memory_percent": float(data["memory_percent"]),
+        }
+    except (TypeError, ValueError, KeyError):
+        return None
+
 
 # Host memory cache for WSL
 HOST_MEMORY_GB: float | None = None
 try:
     if "microsoft-standard" in platform.uname().release.lower():
         # Running in WSL -> try interop to get physical hardware capacity
-        result = subprocess.run(
-            [
-                "powershell.exe",
-                "-NoProfile",
-                "-Command",
-                "(Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            env=safe_subprocess_env(),
+        data = _run_windows_powershell_json(
+            "[pscustomobject]@{ total = (Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory } "
+            "| ConvertTo-Json -Compress"
         )
-        if result.returncode == 0:
-            HOST_MEMORY_GB = round(int(result.stdout.strip()) / (1024**3), 1)
+        if data:
+            HOST_MEMORY_GB = round(int(data["total"]) / (1024**3), 1)
 except (OSError, subprocess.SubprocessError, TimeoutError, ValueError):
     pass
 
@@ -270,6 +323,9 @@ async def get_system_metrics_snapshot(runner_limit: int | None = None) -> dict:
     net = psutil.net_io_counters()
     per_cpu = psutil.cpu_percent(interval=0, percpu=True)
     current_cpu = psutil.cpu_percent(interval=0)
+    host_resources = _windows_host_resource_snapshot()
+    if host_resources:
+        current_cpu = host_resources["cpu_percent"]
     _cpu_history.append(current_cpu)
     cpu_avg_1m = round(sum(_cpu_history) / len(_cpu_history), 1) if _cpu_history else current_cpu
 
@@ -306,10 +362,18 @@ async def get_system_metrics_snapshot(runner_limit: int | None = None) -> dict:
         },
         "memory": {
             "host_total_gb": HOST_MEMORY_GB,
-            "total_gb": round(mem.total / (1024**3), 1),
-            "used_gb": round(mem.used / (1024**3), 1),
-            "available_gb": round(mem.available / (1024**3), 1),
-            "percent": mem.percent,
+            "wsl_total_gb": round(mem.total / (1024**3), 1),
+            "total_gb": (
+                host_resources["memory_total_gb"]
+                if host_resources
+                else HOST_MEMORY_GB or round(mem.total / (1024**3), 1)
+            ),
+            "used_gb": host_resources["memory_used_gb"] if host_resources else round(mem.used / (1024**3), 1),
+            "available_gb": (
+                host_resources["memory_available_gb"] if host_resources else round(mem.available / (1024**3), 1)
+            ),
+            "percent": host_resources["memory_percent"] if host_resources else mem.percent,
+            "source": "windows-host" if host_resources else "wsl",
             "swap_total_gb": round(swap.total / (1024**3), 1),
             "swap_used_gb": round(swap.used / (1024**3), 1),
             "swap_percent": swap.percent,

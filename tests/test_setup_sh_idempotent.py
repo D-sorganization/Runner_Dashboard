@@ -13,6 +13,7 @@ The script must remain under 500 lines (CI constraint) and free of
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -25,8 +26,11 @@ SETUP_SH = REPO_ROOT / "deploy" / "setup.sh"
 
 def _find_bash() -> str | None:
     candidates = [
+        os.environ.get("BASH"),
         r"C:\Program Files\Git\usr\bin\bash.exe",
         r"C:\Program Files\Git\bin\bash.exe",
+        "/usr/bin/bash",
+        "/bin/bash",
         shutil.which("bash"),
     ]
     for candidate in candidates:

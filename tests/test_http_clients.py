@@ -12,7 +12,7 @@ BACKEND_DIR = Path(__file__).parent.parent / "backend"
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from http_clients import (
+from http_clients import (  # noqa: E402
     HttpClients,
     get_http_clients,
     initialize_http_clients,

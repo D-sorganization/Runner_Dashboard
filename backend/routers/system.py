@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 import os
 import platform
@@ -43,6 +45,60 @@ _host_memory_gb: float | None = None
 # CPU history ring-buffer: bounded by CPU_HISTORY_MAXLEN (default 60 ≈ 1 min at 1 Hz)
 assert CPU_HISTORY_MAXLEN > 0, "CPU_HISTORY_MAXLEN must be positive"  # DbC
 _cpu_history: deque[float] = deque(maxlen=CPU_HISTORY_MAXLEN)
+_POWERSHELL_CANDIDATES = (
+    "powershell.exe",
+    "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe",
+)
+
+
+def _float_metric(value: object, default: float) -> float:
+    if isinstance(value, int | float):
+        return float(value)
+    return default
+
+
+def _windows_host_resource_snapshot() -> dict | None:
+    """Return Windows host CPU/RAM metrics when this backend is running under WSL."""
+    if "microsoft" not in platform.uname().release.lower():
+        return None
+
+    command = r"""
+$cpu = (Get-CimInstance Win32_PerfFormattedData_PerfOS_Processor -Filter "Name='_Total'").PercentProcessorTime
+$os = Get-CimInstance Win32_OperatingSystem
+$total = [double]$os.TotalVisibleMemorySize * 1KB
+$free = [double]$os.FreePhysicalMemory * 1KB
+$used = $total - $free
+[pscustomobject]@{
+  cpu_percent = [math]::Round([double]$cpu, 1)
+  memory_total_gb = [math]::Round($total / 1GB, 1)
+  memory_used_gb = [math]::Round($used / 1GB, 1)
+  memory_available_gb = [math]::Round($free / 1GB, 1)
+  memory_percent = [math]::Round(($used / $total) * 100, 1)
+} | ConvertTo-Json -Compress
+"""
+    result = None
+    for powershell in _POWERSHELL_CANDIDATES:
+        try:
+            result = subprocess.run(
+                [powershell, "-NoProfile", "-Command", command],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                env=safe_subprocess_env(),
+            )
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if result.returncode == 0 and result.stdout.strip():
+            break
+    if result is None:
+        return None
+    if result.returncode != 0 or not result.stdout.strip():
+        return None
+    try:
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return None
+    return data if isinstance(data, dict) else None
 
 
 def _disk_pressure_snapshot(
@@ -250,6 +306,11 @@ def set_host_memory_gb(host_memory_gb: float | None) -> None:
 @router.get("/api/system")
 async def get_system_metrics():
     """Real-time system resource metrics."""
+    return await asyncio.to_thread(_get_system_metrics_sync)
+
+
+def _get_system_metrics_sync() -> dict[str, Any]:
+    """Build system metrics without blocking the FastAPI event loop."""
     cpu_freq = psutil.cpu_freq()
     mem = psutil.virtual_memory()
     swap = psutil.swap_memory()
@@ -352,11 +413,11 @@ async def get_system_metrics():
             pass
 
     # Use the more critical disk for the top-level pressure signal.
-    windows_pct = (windows_disk or {}).get("percent", 0)
+    windows_pct = _float_metric((windows_disk or {}).get("percent"), 0.0)
     effective_pct = max(disk_percent, windows_pct)
     effective_free = min(
         disk_free_gb,
-        (windows_disk or {}).get("free_gb", disk_free_gb),
+        _float_metric((windows_disk or {}).get("free_gb"), disk_free_gb),
     )
     disk_pressure = _disk_pressure_snapshot(
         path=disk_path,
@@ -378,6 +439,9 @@ async def get_system_metrics():
     # Per-CPU usage
     per_cpu = psutil.cpu_percent(interval=0, percpu=True)
     current_cpu = psutil.cpu_percent(interval=0)
+    host_resources = _windows_host_resource_snapshot()
+    if host_resources:
+        current_cpu = host_resources["cpu_percent"]
     _cpu_history.append(current_cpu)
     cpu_avg_1m = round(sum(_cpu_history) / len(_cpu_history), 1) if _cpu_history else current_cpu
 
@@ -408,10 +472,17 @@ async def get_system_metrics():
         "memory": {
             "host_total_gb": _host_memory_gb,
             "wsl_total_gb": round(mem.total / (1024**3), 1),
-            "total_gb": _host_memory_gb or round(mem.total / (1024**3), 1),
-            "used_gb": round(mem.used / (1024**3), 1),
-            "available_gb": round(mem.available / (1024**3), 1),
-            "percent": mem.percent,
+            "total_gb": (
+                host_resources["memory_total_gb"]
+                if host_resources
+                else _host_memory_gb or round(mem.total / (1024**3), 1)
+            ),
+            "used_gb": host_resources["memory_used_gb"] if host_resources else round(mem.used / (1024**3), 1),
+            "available_gb": (
+                host_resources["memory_available_gb"] if host_resources else round(mem.available / (1024**3), 1)
+            ),
+            "percent": host_resources["memory_percent"] if host_resources else mem.percent,
+            "source": "windows-host" if host_resources else "wsl",
             "swap_total_gb": round(swap.total / (1024**3), 1),
             "swap_used_gb": round(swap.used / (1024**3), 1),
             "swap_percent": swap.percent,
