@@ -1,11 +1,11 @@
-name: 'Verify Issue Resolution'
-description: 'Refuses to close an issue or merge a closer-PR unless the diff substantively matches the issue body claims.'
+name: "Verify Issue Resolution"
+description: "Refuses to close an issue or merge a closer-PR unless the diff substantively matches the issue body claims."
 inputs:
   pr_number:
-    description: 'PR number being merged or pointing at the issue'
+    description: "PR number being merged or pointing at the issue"
     required: true
   issue_number:
-    description: 'Issue number being closed'
+    description: "Issue number being closed"
     required: true
 runs:
   using: composite
@@ -32,15 +32,15 @@ runs:
         TITLE=$(gh pr view "$PR" --repo "$REPO" --json title --jq .title)
         if echo "$TITLE" | grep -qiE '^feat[(:]|Implement|System|Engine|Framework'; then
           PR_FILES=$(gh pr diff "$PR" --repo "$REPO" --name-only)
-          CODE=$(echo "$PR_FILES" | grep -cE '^(src/|rust_core/|api/)' || true)
+          CODE=$(echo "$PR_FILES" | grep -cE '^(backend/|frontend/src/|src/|rust_core/|api/)' || true)
           if [ "${CODE:-0}" -lt 1 ]; then
-            echo "::error::Refusing to resolve issue #$ISSUE: PR #$PR title claims a feature but touches no src/, rust_core/, or api/ files."
+            echo "::error::Refusing to resolve issue #$ISSUE: PR #$PR title claims a feature but touches no backend/, frontend/src/, src/, rust_core/, or api/ files."
             exit 1
           fi
         fi
 
         ISSUE_BODY=$(gh issue view "$ISSUE" --repo "$REPO" --json body --jq .body 2>/dev/null || echo "")
-        REF_PATHS=$(echo "$ISSUE_BODY" | grep -oE '(src|tests|rust_core|api)/[A-Za-z0-9_./-]+' | sort -u || true)
+        REF_PATHS=$(echo "$ISSUE_BODY" | grep -oE '(backend|frontend/src|src|tests|rust_core|api)/[A-Za-z0-9_./-]+' | sort -u || true)
         if [ -n "$REF_PATHS" ]; then
           PR_FILES=$(gh pr diff "$PR" --repo "$REPO" --name-only)
           MATCH=0

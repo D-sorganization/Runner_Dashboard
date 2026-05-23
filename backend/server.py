@@ -91,6 +91,7 @@ from dashboard_config.timeouts import (  # noqa: E402
     HttpTimeout,
     ResourceThreshold,
 )
+from error_models import from_http_exception, internal_error  # noqa: E402
 from http_clients import initialize_http_clients, shutdown_http_clients  # noqa: E402
 from local_app_monitoring import collect_local_apps  # noqa: E402
 from machine_registry import (  # noqa: E402
@@ -102,7 +103,6 @@ from middleware import (  # noqa: E402
     csrf_check,
     max_body_size_check,
 )
-from error_models import from_http_exception, internal_error  # noqa: E402
 from request_context import RequestIdMiddleware, configure_json_logging  # noqa: E402
 from routers import assessments as _assessments_router  # noqa: E402
 
@@ -388,10 +388,21 @@ async def _github_rate_limited_handler(_request: Request, exc: gh_utils.RateLimi
 async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
     """Convert all HTTPException instances to uniform ErrorResponse JSON (issue #717)."""
     request_id = getattr(request.state, "request_id", None)
+    if isinstance(exc.detail, dict):
+        content: dict[str, object] = {"detail": exc.detail}
+        if request_id is not None:
+            content["request_id"] = request_id
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=content,
+            headers=exc.headers,
+        )
+
     error_body = from_http_exception(exc, request_id=request_id)
     return JSONResponse(
         status_code=exc.status_code,
         content=error_body.model_dump(),
+        headers=exc.headers,
     )
 
 
@@ -405,9 +416,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
         request.url.path,
         extra={"request_id": request_id},
     )
-    error_body = internal_error(
-        "An unexpected error occurred. Please try again.", request_id=request_id
-    )
+    error_body = internal_error("An unexpected error occurred. Please try again.", request_id=request_id)
     return JSONResponse(
         status_code=500,
         content=error_body.model_dump(),

@@ -1,11 +1,23 @@
 ﻿# SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.26
+**Spec Version:** 2.5.27
 **Application Version:** 4.1.0 (see `VERSION`)
-**Last Updated:** 2026-05-22T17:45:00Z
+**Last Updated:** 2026-05-23T08:20:00Z
 **Status:** Active
 
 ### Recent Spec Updates
+
+- **2026-05-23 (2.5.27):** Added B-series API contract hardening:
+  `backend/gh_client.py` now owns GitHub API retries, timeouts, and HTTP error
+  normalization; backend code may not shell out to `gh api` for request paths.
+  Request payloads for help chat and launcher generation are validated by
+  Pydantic models in `backend/models/requests.py`, and API errors use the
+  shared `backend/error_models.py` envelope with structured audit coverage
+  while preserving structured HTTP exception details and response headers such
+  as `Retry-After`.
+  The anti-phantom issue-resolution guard now recognizes this repo's real
+  implementation roots (`backend/` and `frontend/src/`) when validating
+  feature PRs and issue path evidence.
 
 - **2026-05-22 (2.5.26):** Added `DASHBOARD_HOST` env var
   (`dashboard_config.HOST`) for uvicorn bind interface; default preserves
