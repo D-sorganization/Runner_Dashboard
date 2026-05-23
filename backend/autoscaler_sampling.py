@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -29,6 +30,10 @@ from autoscaler_config import (
 log = logging.getLogger("runner-autoscaler")
 _DEFAULT_RUNNER_SCHEDULER_BIN = RUNNER_SCHEDULER_BIN
 _DEFAULT_PSUTIL = psutil
+_POWERSHELL_CANDIDATES = (
+    "powershell.exe",
+    "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe",
+)
 
 
 def _runner_scheduler_bin() -> str:
@@ -101,6 +106,46 @@ def _scheduled_desired_count(default: int) -> int:
         return default
 
 
+def _windows_host_resource_snapshot() -> tuple[float, float] | None:
+    """Return (cpu_percent, memory_percent) for the Windows host from WSL."""
+    if "microsoft" not in platform.uname().release.lower():
+        return None
+
+    command = r"""
+$cpu = (Get-CimInstance Win32_PerfFormattedData_PerfOS_Processor -Filter "Name='_Total'").PercentProcessorTime
+$os = Get-CimInstance Win32_OperatingSystem
+$total = [double]$os.TotalVisibleMemorySize
+$free = [double]$os.FreePhysicalMemory
+$used = $total - $free
+[pscustomobject]@{
+  cpu_percent = [math]::Round([double]$cpu, 1)
+  memory_percent = [math]::Round(($used / $total) * 100, 1)
+} | ConvertTo-Json -Compress
+"""
+    result = None
+    for powershell in _POWERSHELL_CANDIDATES:
+        try:
+            result = subprocess.run(
+                [powershell, "-NoProfile", "-Command", command],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if result.returncode == 0 and result.stdout.strip():
+            break
+    if result is None:
+        return None
+    if result.returncode != 0 or not result.stdout.strip():
+        return None
+    try:
+        data = json.loads(result.stdout)
+        return float(data["cpu_percent"]), float(data["memory_percent"])
+    except (TypeError, ValueError, KeyError, json.JSONDecodeError):
+        return None
+
+
 def _sample() -> tuple[float, float, float, float, float]:
     """Return (cpu_percent, mem_percent, load_per_core, disk_percent, disk_free_gb)."""
     psutil_mod = _psutil_dep()
@@ -108,6 +153,9 @@ def _sample() -> tuple[float, float, float, float, float]:
         raise RuntimeError("psutil is required for runner-autoscaler")
     cpu = psutil_mod.cpu_percent(interval=1.0)
     mem = psutil_mod.virtual_memory().percent
+    host_resources = _windows_host_resource_snapshot()
+    if host_resources is not None:
+        cpu, mem = host_resources
     try:
         load1 = os.getloadavg()[0]  # type: ignore[attr-defined]
     except (AttributeError, OSError):

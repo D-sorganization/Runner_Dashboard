@@ -234,6 +234,7 @@ def _run_poll_loop() -> None:
             )
 
             scheduled_desired = _scheduled_desired_count(len(units))
+            surplus = max(0, len(active) - scheduled_desired)
 
             log.info(
                 "sample cpu=%.1f%% mem=%.1f%% load/core=%.2f disk=%.1f%% free=%.1fGB"
@@ -250,7 +251,11 @@ def _run_poll_loop() -> None:
                 scheduled_desired,
             )
 
-            if overloaded and len(active) > MIN_ONLINE:
+            if surplus and idle_active:
+                to_stop = idle_active[: min(MAX_STEP, surplus)]
+                for u in to_stop:
+                    _stop_unit(u)
+            elif overloaded and len(active) > MIN_ONLINE:
                 room = len(active) - MIN_ONLINE
                 to_stop = idle_active[: min(MAX_STEP, room)]
                 if not to_stop and busy:

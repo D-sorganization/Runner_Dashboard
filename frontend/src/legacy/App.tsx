@@ -14136,6 +14136,9 @@ function App({ initialTab, onTabChange }: { initialTab?: string; onTabChange?: (
   var wd = React.useState({});
   var watchdog = wd[0],
     setWatchdog = wd[1];
+  var ghs = React.useState({});
+  var githubStatus = ghs[0],
+    setGithubStatus = ghs[1];
   var ss = React.useState({});
   var system = ss[0],
     setSystem = ss[1];
@@ -14546,6 +14549,13 @@ function App({ initialTab, onTabChange }: { initialTab?: string; onTabChange?: (
         .catch(function () {
           return null;
         }),
+      fetch("/api/github/status")
+        .then(function (r) {
+          return r.json();
+        })
+        .catch(function () {
+          return null;
+        }),
     ])
       .then(function (r) {
         if (r[0] && r[0].runners) {
@@ -14560,6 +14570,9 @@ function App({ initialTab, onTabChange }: { initialTab?: string; onTabChange?: (
         }
         if (r[3]) {
           setRunnerCapacity(r[3]);
+        }
+        if (r[4]) {
+          setGithubStatus(r[4]);
         }
         setLastUpdate(new Date().toLocaleTimeString());
       })
@@ -16269,6 +16282,18 @@ function App({ initialTab, onTabChange }: { initialTab?: string; onTabChange?: (
           "span",
           {
             className: "section-badge",
+            title: githubStatus.detail || "GitHub API status",
+            style:
+              githubStatus.status === "rate_limited" || githubStatus.status === "auth_error"
+                ? { background: "rgba(240,136,62,0.18)", color: "var(--accent-orange)" }
+                : undefined,
+          },
+          "GitHub " + (githubStatus.status || "unknown"),
+        ),
+        h(
+          "span",
+          {
+            className: "section-badge",
             title: deployment.deployed_at || "Deployment revision",
           },
           "Build " + shortSha(deployment.git_sha),
@@ -16353,6 +16378,35 @@ function App({ initialTab, onTabChange }: { initialTab?: string; onTabChange?: (
             },
             "× Dismiss",
           ),
+        )
+      : null,
+    githubStatus && (githubStatus.status === "rate_limited" || githubStatus.status === "auth_error")
+      ? h(
+          "div",
+          {
+            id: "github-api-alert-banner",
+            style: {
+              background: "rgba(240,136,62,0.16)",
+              borderBottom: "1px solid var(--accent-orange)",
+              padding: "10px 24px",
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              fontSize: "13px",
+              color: "var(--text-primary)",
+            },
+          },
+          h("strong", { style: { color: "var(--accent-orange)" } }, "GitHub API degraded: "),
+          h(
+            "span",
+            { style: { flex: 1 } },
+            githubStatus.status === "rate_limited"
+              ? "Rate limited" +
+                  (githubStatus.retry_after_seconds ? " for about " + githubStatus.retry_after_seconds + "s" : "") +
+                  ". Cached local runner data may still be shown."
+              : "Authentication failed. Refresh the dashboard GitHub token before relying on GitHub-backed views.",
+          ),
+          githubStatus.endpoint ? h("code", null, githubStatus.endpoint) : null,
         )
       : null,
     h(
