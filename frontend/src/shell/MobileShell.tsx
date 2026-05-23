@@ -172,8 +172,11 @@ export function MobileShell({ children, currentTab, onTabChange, tabContent }: M
 
   return (
     <div className="mobile-shell">
+      {/* D7: Skip link — first focusable element for keyboard users */}
+      <a href="#main-content" className="skip-link">Skip to main content</a>
+
       {/* Main content area — native mobile component takes precedence when provided */}
-      <div className="mobile-shell__content">
+      <main id="main-content" className="mobile-shell__content">
         {nativeContent != null ? (
           <>
             {/* Keep legacy App mounted but hidden so it keeps its internal state */}
@@ -183,7 +186,7 @@ export function MobileShell({ children, currentTab, onTabChange, tabContent }: M
         ) : (
           children
         )}
-      </div>
+      </main>
       <div className="visually-hidden" aria-live="polite" aria-atomic="true">
         {drawerAnnouncement}
       </div>
