@@ -562,36 +562,10 @@ async def _periodic_replay_purge() -> None:
 #
 # These tasks are scheduled from ``_startup()``. Each is responsible for one
 # concern — Law of Demeter: they touch the lease manager / sd_notify / replay
-# store directly and nothing else.
-
-# A2: pollers reclaim stale leases left by crashed runners. The lease file
-# uses an fcntl lock so the reaper is safe to run alongside dispatch.
-# Lower bound (30s) protects the lease file from lock thrash; upper bound
-# (600s) ensures stale-lease impact on dispatch latency is bounded.
-LEASE_REAPER_INTERVAL_S: float = float(os.environ.get("LEASE_REAPER_INTERVAL_S", "300"))
-
-
-async def _lease_reaper_loop() -> None:
-    """Background task: prune expired leases from ``runner_lease`` periodically.
-
-    Pre-condition: ``LEASE_REAPER_INTERVAL_S`` is a positive number.
-    Post-condition: every iteration calls ``lease_manager.prune_expired()``
-    exactly once; transient prune failures are logged but never crash the loop.
-
-    The reaper iterates forever until cancelled at shutdown.
-    """
-    import runner_lease  # local import to keep startup-time import graph small
-
-    assert LEASE_REAPER_INTERVAL_S > 0, "LEASE_REAPER_INTERVAL_S must be positive"
-
-    while True:
-        await asyncio.sleep(LEASE_REAPER_INTERVAL_S)
-        try:
-            removed = runner_lease.lease_manager.prune_expired()
-            if removed:
-                log.info("lease_reaper: pruned %d expired lease(s)", removed)
-        except Exception:
-            log.exception("lease_reaper: prune_expired failed")
+# store directly and nothing else. The lease reaper itself is defined above as
+# ``_lease_reaper_loop`` (issue #708 + A2). The reaper polls every
+# ``_LEASE_REAPER_INTERVAL_S`` seconds; both an fcntl lock on the lease file
+# and the loop's exception handling protect against thrash and transient I/O.
 
 
 async def _systemd_watchdog_loop() -> None:
@@ -2357,11 +2331,6 @@ async def _startup() -> None:
 
     # Replay-store purge runs on every node regardless of leader status.
     asyncio.create_task(_periodic_replay_purge())
-
-    # A2: background reaper for stale runner leases (left behind by crashed
-    # runners). Runs on every node; the lease file's fcntl lock makes this
-    # safe even when multiple processes share the same config dir.
-    asyncio.create_task(_lease_reaper_loop())
 
     # A1: periodic systemd watchdog heartbeat. No-op outside systemd
     # (when _sd_notify is None or WATCHDOG_USEC is unset).
