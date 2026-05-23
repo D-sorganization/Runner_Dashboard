@@ -401,6 +401,24 @@ async def api_quick_dispatch(
         normalize_repository_fn=_normalize_repository_input,
     )
     if not resp.accepted:
+        if resp.error_code == "not_ready":
+            retry_after = resp.retry_after_seconds or 30
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "error": "not_ready",
+                    "reason": resp.reason or "readyz_failed",
+                    "retry_after_seconds": retry_after,
+                },
+                headers={"Retry-After": str(retry_after)},
+            )
+        if resp.error_code == "rate_limited":
+            retry_after = resp.retry_after_seconds or 1
+            raise HTTPException(
+                status_code=429,
+                detail={"reason": "rate_limited", "retry_after_seconds": retry_after},
+                headers={"Retry-After": str(retry_after)},
+            )
         reason = resp.reason or "rejected"
         if reason.startswith("rate_limited"):
             retry_after = 1
@@ -424,7 +442,7 @@ async def api_quick_dispatch(
         if reason.startswith("prompt_too_short"):
             raise HTTPException(status_code=400, detail=reason)
         raise HTTPException(status_code=409, detail={"accepted": False, "reason": reason})
-    return resp.model_dump()
+    return JSONResponse(status_code=202, content=resp.model_dump())
 
 
 # ─── Bulk PR / Issue Agent Dispatch ──────────────────────────────────────────
