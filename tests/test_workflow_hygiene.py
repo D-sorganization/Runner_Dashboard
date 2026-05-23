@@ -368,6 +368,19 @@ def test_anti_phantom_guard_uses_rest_file_listing() -> None:
     assert "--jq '.[].filename'" in text
 
 
+def test_anti_phantom_guard_recognizes_dashboard_code_roots() -> None:
+    """Feature PR checks must include this repo's real app roots."""
+    workflow = (_WORKFLOWS_DIR / "anti-phantom-merge.yml").read_text(encoding="utf-8")
+    action = (
+        Path(__file__).parent.parent / ".github" / "actions" / "verify-issue-resolution" / "action.yml"
+    ).read_text(encoding="utf-8")
+
+    for text in (workflow, action):
+        assert "backend/" in text
+        assert "frontend/src/" in text
+        assert "backend|frontend/src|src|tests|rust_core|api" in text
+
+
 def test_pre_push_mypy_dependencies_are_installable() -> None:
     """The mypy pre-push hook must not depend on removed or nonexistent packages."""
     text = (Path(__file__).parent.parent / ".pre-commit-config.yaml").read_text(encoding="utf-8")
