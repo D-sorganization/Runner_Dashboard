@@ -42,7 +42,7 @@ def test_script_exists() -> None:
 
 
 def test_script_passes_bash_syntax_check() -> None:
-    result = _run_bash_or_skip(["-n", str(_SCRIPT)])
+    result = _run_bash_or_skip(["-n", "deploy/scheduled-dashboard-maintenance.sh"], cwd=str(_ROOT))
     assert result.returncode == 0, result.stderr
 
 
@@ -89,9 +89,8 @@ def test_dry_run_lists_paths_and_creates_no_tarball(tmp_path: Path) -> None:
     (tmp_path / "home").mkdir()
     (tmp_path / "home" / ".config" / "runner-dashboard").mkdir(parents=True)
 
-    script = fake_dashboard / "deploy" / "scheduled-dashboard-maintenance.sh"
     result = _run_bash_or_skip(
-        [str(script), "--dry-run", "--backup-only"],
+        ["deploy/scheduled-dashboard-maintenance.sh", "--dry-run", "--backup-only"],
         env=env,
         cwd=str(fake_dashboard),
     )

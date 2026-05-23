@@ -373,7 +373,7 @@ async def api_quick_dispatch(
     request: Request,
     *,
     principal: Principal = Depends(require_scope("remediation.dispatch")),  # noqa: B008
-) -> dict:
+) -> dict | JSONResponse:
     """Dispatch an ad-hoc agent task via Agent-Quick-Dispatch.yml."""
     body = await request.json()
     if not isinstance(body, dict):
