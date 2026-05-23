@@ -13,6 +13,7 @@ The script must remain under 500 lines (CI constraint) and free of
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -23,6 +24,23 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 SETUP_SH = REPO_ROOT / "deploy" / "setup.sh"
 
 
+def _find_bash() -> str | None:
+    candidates = [
+        os.environ.get("BASH"),
+        r"C:\Program Files\Git\usr\bin\bash.exe",
+        r"C:\Program Files\Git\bin\bash.exe",
+        "/usr/bin/bash",
+        "/bin/bash",
+        shutil.which("bash"),
+    ]
+    for candidate in candidates:
+        if candidate and Path(candidate).exists():
+            if candidate.lower().endswith(r"system32\bash.exe"):
+                continue
+            return candidate
+    return None
+
+
 @pytest.fixture(scope="module")
 def script_text() -> str:
     assert SETUP_SH.is_file(), f"deploy/setup.sh not found at {SETUP_SH}"
@@ -31,11 +49,11 @@ def script_text() -> str:
 
 def test_setup_sh_syntax_check() -> None:
     """`bash -n deploy/setup.sh` must exit 0 (syntax-clean)."""
-    bash = shutil.which("bash")
+    bash = _find_bash()
     if bash is None:
         pytest.skip("bash not available on this system")
     result = subprocess.run(
-        [bash, "-n", str(SETUP_SH)],
+        [bash, "-n", SETUP_SH.as_posix()],
         capture_output=True,
         text=True,
         check=False,

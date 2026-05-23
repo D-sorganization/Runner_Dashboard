@@ -55,7 +55,7 @@ def test_lease_record_fields() -> None:
 def test_acquire_lease_happy(tmp_path: Path) -> None:
     mgr = _make_manager(tmp_path)
     principal = _make_principal()
-    with patch.object(mgr, "save_leases"):
+    with patch("runner_lease.validate_config_path"), patch.object(mgr, "save_leases"):
         rec = mgr.acquire_lease(principal, "runner-1")
     assert rec.principal_id == "p1"
     assert rec.runner_id == "runner-1"
@@ -70,7 +70,7 @@ def test_acquire_lease_happy(tmp_path: Path) -> None:
 def test_acquire_lease_quota_exceeded(tmp_path: Path) -> None:
     mgr = _make_manager(tmp_path)
     principal = _make_principal(max_runners=1)
-    with patch.object(mgr, "save_leases"):
+    with patch("runner_lease.validate_config_path"), patch.object(mgr, "save_leases"):
         mgr.acquire_lease(principal, "runner-1")
         with pytest.raises(PermissionError, match="quota"):
             mgr.acquire_lease(principal, "runner-2")
@@ -85,7 +85,7 @@ def test_acquire_lease_runner_already_leased(tmp_path: Path) -> None:
     mgr = _make_manager(tmp_path)
     p1 = _make_principal("p1", max_runners=5)
     p2 = _make_principal("p2", max_runners=5)
-    with patch.object(mgr, "save_leases"):
+    with patch("runner_lease.validate_config_path"), patch.object(mgr, "save_leases"):
         mgr.acquire_lease(p1, "runner-1")
         with pytest.raises(ValueError, match="already leased"):
             mgr.acquire_lease(p2, "runner-1")
@@ -99,7 +99,7 @@ def test_acquire_lease_runner_already_leased(tmp_path: Path) -> None:
 def test_release_lease_removes_entry(tmp_path: Path) -> None:
     mgr = _make_manager(tmp_path)
     principal = _make_principal()
-    with patch.object(mgr, "save_leases"):
+    with patch("runner_lease.validate_config_path"), patch.object(mgr, "save_leases"):
         mgr.acquire_lease(principal, "runner-1")
         mgr.release_lease("runner-1", "p1")
     assert mgr.get_active_leases("p1") == []

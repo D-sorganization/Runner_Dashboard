@@ -17,14 +17,32 @@ Type=notify
 # User, WorkingDirectory, ExecStart, and HOME are set by setup.sh at deploy time.
 User=YOUR_USER
 WorkingDirectory=/home/YOUR_USER/actions-runners/dashboard
+# Refresh GH token (existing) — must run first so the dashboard sees a valid token.
 ExecStartPre=/home/YOUR_USER/actions-runners/dashboard/refresh-token.sh
+# Clear any Windows-side Tailscale-serve binding on the dashboard port. Under
+# WSL2 mirrored networking the dashboard cannot bind a port that Windows
+# tailscaled is already serving (recurring crash loop, see
+# deploy/wsl-mirrored-port-helper.sh for the full story). No-op outside WSL.
+ExecStartPre=/home/YOUR_USER/actions-runners/dashboard/wsl-mirrored-port-helper.sh clear --port 8321
 ExecStart=/usr/bin/python3.11 /home/YOUR_USER/actions-runners/dashboard/backend/server.py
+# Restore the Tailnet bridge after the dashboard is bound. ``Type=notify``
+# means systemd only runs ExecStartPost after the dashboard signals
+# sd_notify(READY=1), so the bind has already succeeded by this point.
+ExecStartPost=/home/YOUR_USER/actions-runners/dashboard/wsl-mirrored-port-helper.sh restore --port 8321
 Restart=always
 RestartSec=5
 Environment=GITHUB_ORG=D-sorganization
 Environment=NUM_RUNNERS=12
 Environment=MAX_RUNNERS=16
 Environment=DASHBOARD_PORT=8321
+# DASHBOARD_HOST controls the uvicorn bind interface. Leave unset to keep the
+# documented default (0.0.0.0, all interfaces). WSL2 hosts with
+# ``networkingMode=mirrored`` and a Windows-side ``tailscale serve --tcp 8321``
+# bridge MUST set this to ``127.0.0.1`` — otherwise uvicorn fails with
+# ``[Errno 98] address already in use`` because the wildcard bind collides
+# with Tailscale's specific-IP listener on the shared network namespace.
+# Tailscale-serve still proxies external Tailnet traffic to 127.0.0.1:8321.
+#Environment=DASHBOARD_HOST=127.0.0.1
 Environment=DISPLAY_NAME=ControlTower
 Environment=RUNNER_ALIASES=controltower,control-tower-runner-monitoring
 Environment=RUNNER_SCHEDULE_CONFIG=/home/YOUR_USER/.config/runner-dashboard/runner-schedule.json

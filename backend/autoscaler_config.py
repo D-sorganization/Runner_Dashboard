@@ -49,14 +49,14 @@ CPU_LOW = _env_float("AUTOSCALER_CPU_LOW", 40.0)
 MEM_HIGH = _env_float("AUTOSCALER_MEM_HIGH", _DEFAULT_MEM_HIGH)
 DISK_HIGH = _env_float("AUTOSCALER_DISK_HIGH", _DEFAULT_DISK_HIGH)
 DISK_MIN_FREE_GB = _env_float("AUTOSCALER_DISK_MIN_FREE_GB", _DEFAULT_DISK_MIN_FREE_GB)
-# 2.5 is intentionally generous: 16 parallel runners each running pip-install
-# steps can briefly spike load without indicating true saturation. The old
-# default of 1.5 fired constantly in that scenario.  Override via env var.
-LOAD_PER_CORE = _env_float("AUTOSCALER_LOAD_PER_CORE", 2.5)
-SUSTAIN_SECS = _env_int("AUTOSCALER_SUSTAIN_SECS", 120)
+# 1.2 keeps a desktop-class host responsive under sustained runner load. The
+# sampler uses Windows host CPU/RAM when running in WSL, so this threshold now
+# reflects the machine the user sees in Task Manager rather than the WSL VM.
+LOAD_PER_CORE = _env_float("AUTOSCALER_LOAD_PER_CORE", 1.2)
+SUSTAIN_SECS = _env_int("AUTOSCALER_SUSTAIN_SECS", 45)
 POLL_SECONDS = _env_int("AUTOSCALER_POLL_SECONDS", 15)
 MIN_ONLINE = _env_int("AUTOSCALER_MIN_ONLINE", 1)
-MAX_STEP = _env_int("AUTOSCALER_MAX_SCALE_STEP", 1)
+MAX_STEP = _env_int("AUTOSCALER_MAX_SCALE_STEP", 2)
 DRY_RUN = bool(_env_int("AUTOSCALER_DRY_RUN", 0))
 RUNNER_SCHEDULER_BIN = os.environ.get("RUNNER_SCHEDULER_BIN", "/usr/local/bin/runner-scheduler")
 RUNNER_SCHEDULE_CONFIG = os.path.expanduser(

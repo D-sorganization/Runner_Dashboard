@@ -69,7 +69,14 @@ def test_dedupe_preserves_order() -> None:
 
 def test_merge_pair_labels_union() -> None:
     gh = {"labels": ["bug", "high"], "pickable": True, "pickable_blocked_by": [], "state": "open", "age_hours": 1}
-    linear = {"labels": ["high", "sprint-a"], "pickable": True, "pickable_blocked_by": [], "state": "open", "age_hours": 2, "linear": {}}
+    linear = {
+        "labels": ["high", "sprint-a"],
+        "pickable": True,
+        "pickable_blocked_by": [],
+        "state": "open",
+        "age_hours": 2,
+        "linear": {},
+    }
     result = uii._merge_pair(linear, gh, prefer_source="github")
     assert "bug" in result["labels"]
     assert "high" in result["labels"]

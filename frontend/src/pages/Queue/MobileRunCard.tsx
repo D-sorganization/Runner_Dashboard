@@ -56,8 +56,8 @@ export function MobileRunCard({
         >
           {run.name ?? "Workflow run"}
         </span>
-        <Badge tone={statusTone(status)} size="sm">
-          {statusLabel(status)}
+        <Badge tone={status === "stale" ? (run.safe_to_cancel ? "success" : "danger") : statusTone(status)} size="sm">
+          {status === "stale" ? (run.stale_reason || "stale") : statusLabel(status)}
         </Badge>
       </div>
       <div

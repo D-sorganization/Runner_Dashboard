@@ -121,6 +121,40 @@ def _record_rate_limit(endpoint: str, retry_after_seconds: int) -> RateLimitedEr
     )
 
 
+def get_rate_limit_status() -> dict:
+    """Return active GitHub rate-limit circuit-breaker state for the UI."""
+    active: list[dict[str, object]] = []
+    now = time.monotonic()
+    for (_token_fingerprint, resource_class), retry_until in list(_rate_limit_breakers.items()):
+        retry_after = int(retry_until - now)
+        if retry_after <= 0:
+            _rate_limit_breakers.pop((_token_fingerprint, resource_class), None)
+            continue
+        active.append({"resource_class": resource_class, "retry_after_seconds": retry_after})
+
+    if not active:
+        return {
+            "status": "ok",
+            "detail": "No GitHub API rate-limit circuit breakers are open.",
+            "endpoint": "",
+            "retry_after_seconds": 0,
+            "updated_at": datetime.now(UTC).isoformat(),
+        }
+
+    retry_after_seconds = max(
+        int(item["retry_after_seconds"]) for item in active if isinstance(item["retry_after_seconds"], int)
+    )
+    resource_classes = ", ".join(str(item["resource_class"]) for item in active)
+    return {
+        "status": "rate_limited",
+        "detail": f"GitHub API circuit breaker open for: {resource_classes}",
+        "endpoint": "",
+        "retry_after_seconds": retry_after_seconds,
+        "updated_at": datetime.now(UTC).isoformat(),
+        "resource_classes": active,
+    }
+
+
 async def gh_api(endpoint: str) -> dict:
     """Call the GitHub API, preferring the pooled httpx client over subprocess.
 

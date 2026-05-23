@@ -43,6 +43,23 @@ def test_runner_schedule_valid() -> None:
     assert result == data
 
 
+def test_default_runner_schedule_keeps_all_runners_online() -> None:
+    data = json.loads((Path(__file__).parent.parent / "config" / "runner-schedule.json").read_text(encoding="utf-8"))
+
+    result = config_schema.validate_runner_schedule_config(data)
+
+    assert result["default_count"] == 32
+    assert result["schedules"] == [
+        {
+            "name": "always-on",
+            "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+            "start": "00:00",
+            "end": "23:59",
+            "runners": 32,
+        }
+    ]
+
+
 def test_runner_schedule_negative_default_count() -> None:
     with pytest.raises(ValueError, match="default_count"):
         config_schema.validate_runner_schedule_config({"default_count": -1})
