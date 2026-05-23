@@ -102,6 +102,7 @@ from middleware import (  # noqa: E402
     csrf_check,
     max_body_size_check,
 )
+from error_models import from_http_exception, internal_error  # noqa: E402
 from request_context import RequestIdMiddleware, configure_json_logging  # noqa: E402
 from routers import assessments as _assessments_router  # noqa: E402
 
@@ -380,6 +381,36 @@ async def _github_rate_limited_handler(_request: Request, exc: gh_utils.RateLimi
             "resource_class": exc.resource_class,
             "retry_after_seconds": exc.retry_after_seconds,
         },
+    )
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
+    """Convert all HTTPException instances to uniform ErrorResponse JSON (issue #717)."""
+    request_id = getattr(request.state, "request_id", None)
+    error_body = from_http_exception(exc, request_id=request_id)
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=error_body.model_dump(),
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Convert unhandled exceptions to 500 ErrorResponse and log with traceback (issue #717)."""
+    request_id = getattr(request.state, "request_id", None)
+    log.exception(
+        "Unhandled exception for %s %s",
+        request.method,
+        request.url.path,
+        extra={"request_id": request_id},
+    )
+    error_body = internal_error(
+        "An unexpected error occurred. Please try again.", request_id=request_id
+    )
+    return JSONResponse(
+        status_code=500,
+        content=error_body.model_dump(),
     )
 
 
@@ -732,29 +763,10 @@ async def run_cmd(
         return -1, "", "Command timed out"
 
 
-async def gh_api(endpoint: str, timeout: int = HttpTimeout.GH_DISPATCH_S) -> dict:
-    """Call the GitHub API via gh CLI.
-
-    Uses GH_TOKEN env var when set (required for admin:org endpoints such as
-    /orgs/{org}/actions/runners).  GH_TOKEN must be a classic PAT with
-    scopes: repo, admin:org.  See docs/operations/fleet-machine-setup.md.
-    """
-    code, stdout, stderr = await run_cmd(["gh", "api", endpoint], timeout=timeout)
-    if code != 0:
-        raise HTTPException(status_code=502, detail=f"GitHub API error: {stderr}")
-    return json.loads(stdout)
-
-
-# gh_api_admin is an alias kept for call-site clarity; all calls use GH_TOKEN.
-gh_api_admin = gh_api
-
-
-async def gh_api_raw(endpoint: str) -> str:
-    """Call the GitHub API via gh CLI and return the raw body text."""
-    code, stdout, stderr = await run_cmd(["gh", "api", "-H", "Accept: application/vnd.github.raw", endpoint])
-    if code != 0:
-        raise HTTPException(status_code=502, detail=f"GitHub API error: {stderr}")
-    return stdout
+# gh_api and gh_api_raw subprocess wrappers removed (issue #715).
+# All GitHub API calls go through gh_utils.gh_api_admin (which delegates to
+# gh_client for pooled httpx requests) or gh_client directly.
+gh_api_admin = gh_utils.gh_api_admin
 
 
 async def _expected_dashboard_version_from_hub() -> str | None:
