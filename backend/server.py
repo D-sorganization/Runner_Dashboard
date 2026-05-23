@@ -438,6 +438,82 @@ async def _periodic_replay_purge() -> None:
             log.warning("replay_store: periodic purge failed: %s", exc)
 
 
+# ─── Background reapers and watchdogs (A1, A2) ────────────────────────────────
+#
+# These tasks are scheduled from ``_startup()``. Each is responsible for one
+# concern — Law of Demeter: they touch the lease manager / sd_notify / replay
+# store directly and nothing else.
+
+# A2: pollers reclaim stale leases left by crashed runners. The lease file
+# uses an fcntl lock so the reaper is safe to run alongside dispatch.
+# Lower bound (30s) protects the lease file from lock thrash; upper bound
+# (600s) ensures stale-lease impact on dispatch latency is bounded.
+LEASE_REAPER_INTERVAL_S: float = float(os.environ.get("LEASE_REAPER_INTERVAL_S", "300"))
+
+
+async def _lease_reaper_loop() -> None:
+    """Background task: prune expired leases from ``runner_lease`` periodically.
+
+    Pre-condition: ``LEASE_REAPER_INTERVAL_S`` is a positive number.
+    Post-condition: every iteration calls ``lease_manager.prune_expired()``
+    exactly once; transient prune failures are logged but never crash the loop.
+
+    The reaper iterates forever until cancelled at shutdown.
+    """
+    import runner_lease  # local import to keep startup-time import graph small
+
+    assert LEASE_REAPER_INTERVAL_S > 0, "LEASE_REAPER_INTERVAL_S must be positive"
+
+    while True:
+        await asyncio.sleep(LEASE_REAPER_INTERVAL_S)
+        try:
+            removed = runner_lease.lease_manager.prune_expired()
+            if removed:
+                log.info("lease_reaper: pruned %d expired lease(s)", removed)
+        except Exception:
+            log.exception("lease_reaper: prune_expired failed")
+
+
+async def _systemd_watchdog_loop() -> None:
+    """Background task: reset the systemd watchdog every ``WATCHDOG_USEC / 2``.
+
+    Without this heartbeat the dashboard appears hung to systemd after
+    ``WatchdogSec`` (declared in the unit file) and is SIGABRTed. We send
+    ``WATCHDOG=1`` at twice the watchdog frequency so a single missed beat
+    does not trip the kernel.
+
+    Pre-condition: ``WATCHDOG_USEC`` env var is set by systemd; absent that,
+    the loop is a no-op and exits cleanly (local ``python server.py`` works
+    outside systemd).
+
+    Post-condition: each successful tick emits exactly one ``WATCHDOG=1``;
+    notifier exceptions are logged but never kill the loop.
+    """
+    if _sd_notify is None:
+        return
+    raw = os.environ.get("WATCHDOG_USEC", "").strip()
+    if not raw:
+        return
+    try:
+        watchdog_usec = int(raw)
+    except ValueError:
+        log.warning("systemd_watchdog: WATCHDOG_USEC=%r is not an integer; skipping heartbeat", raw)
+        return
+    if watchdog_usec <= 0:
+        return
+
+    # Send twice as often as systemd's deadline so one stutter doesn't trip it.
+    interval_s = (watchdog_usec / 1_000_000) / 2.0
+    log.info("systemd_watchdog: heartbeat every %.2fs (WATCHDOG_USEC=%d)", interval_s, watchdog_usec)
+
+    while True:
+        await asyncio.sleep(interval_s)
+        try:
+            _sd_notify("WATCHDOG=1")
+        except Exception:
+            log.exception("systemd_watchdog: sd_notify failed; will retry next tick")
+
+
 # ── Bounded domain routers ────────────────────────────────────────────────────
 app.include_router(_dispatch_router.router)
 _dispatch_router.set_replay_functions(_is_envelope_replay, _record_processed_envelope)
@@ -2740,6 +2816,15 @@ async def _startup() -> None:
 
     # Replay-store purge runs on every node regardless of leader status.
     asyncio.create_task(_periodic_replay_purge())
+
+    # A2: background reaper for stale runner leases (left behind by crashed
+    # runners). Runs on every node; the lease file's fcntl lock makes this
+    # safe even when multiple processes share the same config dir.
+    asyncio.create_task(_lease_reaper_loop())
+
+    # A1: periodic systemd watchdog heartbeat. No-op outside systemd
+    # (when _sd_notify is None or WATCHDOG_USEC is unset).
+    asyncio.create_task(_systemd_watchdog_loop())
 
     # Inject org into the audit router so it can query GitHub (issue #298)
     _runner_audit_router.set_org(ORG)

@@ -40,6 +40,14 @@ import sys
 import time
 from collections import deque
 
+# systemd watchdog / ready notification (A1).
+# Importing inside a try/except keeps the autoscaler runnable outside
+# systemd (dev hosts, CI, WSL) without a hard dependency.
+try:
+    from systemd.daemon import notify as _sd_notify
+except ImportError:
+    _sd_notify = None  # type: ignore[assignment]
+
 # Re-export sub-module symbols so that callers (and existing tests) that do
 #   import runner_autoscaler as ra; ra._env_float(...); ra.DRY_RUN; ...
 # continue to work without modification.
@@ -180,12 +188,42 @@ def _acquire_lock() -> None:
         pass
 
 
+def _send_watchdog() -> None:
+    """Reset the systemd watchdog (A1).
+
+    Called once per poll iteration. Outside systemd (``_sd_notify is None``
+    or ``WATCHDOG_USEC`` unset) this is a no-op so the autoscaler runs
+    locally without modification. A failing notifier (rare, but possible
+    during shutdown) is swallowed — the next tick will retry.
+
+    Pre-condition: none. Post-condition: never raises.
+    """
+    if _sd_notify is None:
+        return
+    if not os.environ.get("WATCHDOG_USEC", "").strip():
+        return
+    try:
+        _sd_notify("WATCHDOG=1")
+    except Exception:  # noqa: BLE001
+        log.exception("autoscaler watchdog notification failed; will retry next tick")
+
+
 def _run_poll_loop() -> None:
     """Infinite poll loop: sample resources, classify runners, scale up/down."""
     history_len = max(3, SUSTAIN_SECS // max(POLL_SECONDS, 1))
     samples: deque[tuple[float, float, float, float, float]] = deque(maxlen=history_len)
 
+    # A1: notify systemd we're up. Pairs with the periodic _send_watchdog()
+    # call inside the loop body below.
+    if _sd_notify is not None:
+        try:
+            watchdog_usec = os.environ.get("WATCHDOG_USEC", "120000000")
+            _sd_notify(f"READY=1\nWATCHDOG_USEC={watchdog_usec}")
+        except Exception:  # noqa: BLE001
+            log.exception("autoscaler READY notification failed; continuing")
+
     while True:
+        _send_watchdog()
         try:
             cpu, mem, load, disk, disk_free = _sample()
             samples.append((cpu, mem, load, disk, disk_free))
