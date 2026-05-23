@@ -1,12 +1,17 @@
 ﻿# SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.26
+**Spec Version:** 2.5.27
 **Application Version:** 4.1.0 (see `VERSION`)
-**Last Updated:** 2026-05-22T17:45:00Z
+**Last Updated:** 2026-05-23T07:38:00Z
 **Status:** Active
 
 ### Recent Spec Updates
 
+- **2026-05-23 (2.5.27):** Documented A-series infrastructure hardening:
+  Prometheus autoscaler and lease-reaper metrics, `/readyz` runner-health
+  probing, quick-dispatch health gating/backpressure, drain-mode deployment
+  controls, runner memory/restart systemd drop-ins, deployment preflight
+  checks, and the autoscaler Grafana dashboard.
 - **2026-05-22 (2.5.26):** Added `DASHBOARD_HOST` env var
   (`dashboard_config.HOST`) for uvicorn bind interface; default preserves
   historical `0.0.0.0` behaviour. Added `deploy/wsl-mirrored-port-helper.sh`
