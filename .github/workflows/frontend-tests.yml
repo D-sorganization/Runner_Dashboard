@@ -142,7 +142,12 @@ jobs:
           python-version: "3.11"
 
       - name: Install backend dependencies
-        run: pip install -r requirements.txt
+        run: |
+          python -m venv "$RUNNER_TEMP/backend-venv"
+          source "$RUNNER_TEMP/backend-venv/bin/activate"
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          echo "$RUNNER_TEMP/backend-venv/bin" >> "$GITHUB_PATH"
 
       - name: Start dashboard backend
         run: |
