@@ -91,6 +91,14 @@ from dashboard_config.timeouts import (  # noqa: E402
     HttpTimeout,
     ResourceThreshold,
 )
+
+# Focused sub-modules extracted from server.py (issues #718, #719)
+from diagnostics.keepalive_inspector import (  # noqa: E402
+    _inspect_systemd_keepalive,
+    _inspect_windows_keepalive,
+    _inspect_wslconfig,
+    _probe_detail,
+)
 from http_clients import initialize_http_clients, shutdown_http_clients  # noqa: E402
 from local_app_monitoring import collect_local_apps  # noqa: E402
 from machine_registry import (  # noqa: E402
@@ -132,6 +140,12 @@ from routers import runs_workflows as _runs_workflows_router  # noqa: E402
 from routers import system as _system_router  # noqa: E402
 from routers import web_vitals as _web_vitals_router  # noqa: E402
 from routers.queue import _queue_impl  # noqa: E402
+from runners.service_control import (  # noqa: E402
+    _runner_limit,
+    run_runner_svc,
+    runner_num_from_id,
+    runner_svc_path,
+)
 from security import (  # noqa: E402
     safe_subprocess_env,  # noqa: E402
     validate_fleet_node_url,  # noqa: E402
@@ -139,6 +153,9 @@ from security import (  # noqa: E402
     validate_repo_slug,  # noqa: E402
 )
 from system_utils import get_system_metrics_snapshot  # noqa: E402
+from workflows.run_enrichment import (  # noqa: E402
+    _get_recent_org_repos,
+)
 
 # datetime.UTC added in Python 3.11; fall back to timezone.utc on older runtimes.
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
@@ -908,50 +925,7 @@ def _build_deployment_state(nodes: list[dict], expected_version: str) -> dict:
     }
 
 
-async def _get_recent_org_repos(limit: int = 30) -> list[dict]:
-    """Fetch recently updated organization repositories."""
-    code, stdout, _ = await run_cmd(
-        [
-            "gh",
-            "api",
-            f"/orgs/{ORG}/repos?per_page={limit}&sort=updated&direction=desc",
-        ],
-        timeout=20,
-    )
-    if code != 0:
-        return []
-    try:
-        return json.loads(stdout)
-    except (json.JSONDecodeError, ValueError):
-        return []
-
-
-async def _fetch_repo_runs(
-    repo_name: str,
-    *,
-    per_page: int = 10,
-    status: str | None = None,
-) -> list[dict]:
-    """Fetch workflow runs for one repository and annotate repository name."""
-    status_part = f"&status={status}" if status else ""
-    rc, out, _ = await run_cmd(
-        [
-            "gh",
-            "api",
-            f"/repos/{ORG}/{repo_name}/actions/runs?per_page={per_page}{status_part}",
-        ],
-        timeout=15,
-    )
-    if rc != 0:
-        return []
-    try:
-        runs = json.loads(out).get("workflow_runs", [])
-    except (json.JSONDecodeError, ValueError):
-        return []
-    for run in runs:
-        if "repository" not in run or not run["repository"]:
-            run["repository"] = {"name": repo_name}
-    return runs
+# _get_recent_org_repos and _fetch_repo_runs extracted to workflows/run_enrichment.py (#719)
 
 
 async def _github_search_total(query: str) -> int:
@@ -968,54 +942,8 @@ async def _github_search_total(query: str) -> int:
         return 0
 
 
-async def _fetch_run_jobs(repo_name: str, run_id: int | str) -> list[dict]:
-    """Fetch job-level data for one workflow run."""
-    rc, out, _ = await run_cmd(
-        [
-            "gh",
-            "api",
-            f"/repos/{ORG}/{repo_name}/actions/runs/{run_id}/jobs?per_page=100",
-        ],
-        timeout=10,
-    )
-    if rc != 0:
-        return []
-    try:
-        return json.loads(out).get("jobs", [])
-    except (json.JSONDecodeError, ValueError):
-        return []
-
-
-async def _fetch_failed_log_excerpt(repo_name: str, run_id: int | str) -> str:
-    """Best-effort failed-log excerpt for a workflow run."""
-    code, stdout, _ = await run_cmd(
-        [
-            "gh",
-            "run",
-            "view",
-            str(run_id),
-            "--repo",
-            f"{ORG}/{repo_name}",
-            "--log-failed",
-        ],
-        timeout=20,
-    )
-    if code != 0:
-        return ""
-    text = stdout.strip()
-    if not text:
-        return ""
-    return text[:12000]
-
-
-def _repo_name_from_run(run: dict) -> str | None:
-    """Return the repository name from either normalized or raw run payloads."""
-    repo = run.get("repository")
-    if isinstance(repo, dict) and repo.get("name"):
-        return str(repo["name"])
-    if run.get("_repo"):
-        return str(run["_repo"])
-    return None
+# _fetch_run_jobs, _fetch_failed_log_excerpt, _repo_name_from_run extracted to
+# workflows/run_enrichment.py (#719)
 
 
 def _normalize_repository_input(value: str) -> tuple[str, str]:
@@ -1037,50 +965,8 @@ def _normalize_repository_input(value: str) -> tuple[str, str]:
     return repo_name, f"{ORG}/{repo_name}"
 
 
-def _machine_name_from_runner_name(runner_name: str | None) -> str | None:
-    """Normalize fleet runner names to dashboard machine names."""
-    if not runner_name:
-        return None
-    name = str(runner_name).strip()
-    prefix = "d-sorg-local-"
-    if not name.startswith(prefix):
-        return name
-    stem = name.removeprefix(prefix)
-    machine, separator, suffix = stem.rpartition("-")
-    if separator and suffix.isdigit() and machine:
-        return machine
-    return stem
-
-
-def _placement_from_jobs(jobs: list[dict]) -> dict:
-    """Extract machine placement fields from a run's jobs."""
-    for job in jobs:
-        runner_name = job.get("runner_name")
-        if not runner_name:
-            continue
-        return {
-            "runner_id": job.get("runner_id"),
-            "runner_name": runner_name,
-            "runner_group_name": job.get("runner_group_name"),
-            "runner_labels": job.get("labels") or [],
-            "machine_name": _machine_name_from_runner_name(str(runner_name)),
-        }
-    return {}
-
-
-async def _enrich_run_with_job_placement(run: dict) -> dict:
-    """Attach job-level runner placement fields to a workflow run."""
-    item = dict(run)
-    repo_name = _repo_name_from_run(item)
-    run_id = item.get("id")
-    if repo_name and run_id:
-        placement = _placement_from_jobs(await _fetch_run_jobs(repo_name, run_id))
-        if placement:
-            item.update(placement)
-            return item
-    machine_name = _machine_name_from_runner_name(item.get("runner_name"))
-    item.setdefault("machine_name", machine_name or "GitHub")
-    return item
+# _machine_name_from_runner_name, _placement_from_jobs, _enrich_run_with_job_placement
+# extracted to workflows/run_enrichment.py (#719)
 
 
 def _classify_node_offline(exc: Exception | None = None, *, status_code: int | None = None) -> dict:
@@ -1198,53 +1084,8 @@ def _node_visibility_snapshot(node: dict) -> dict:
     }
 
 
-def runner_svc_path(runner_num: int) -> Path:
-    return RUNNER_BASE_DIR / f"runner-{runner_num}" / "svc.sh"
-
-
-async def run_runner_svc(runner_num: int, action: str, timeout: int = 30) -> tuple[int, str, str]:
-    """Run a generated GitHub runner svc.sh from its own runner directory."""
-    svc_path = runner_svc_path(runner_num)
-    return await run_cmd(["sudo", str(svc_path), action], timeout=timeout, cwd=svc_path.parent)
-
-
-def runner_num_from_id(runner_id: int, runners: list[dict]) -> int | None:
-    local_names = {
-        HOSTNAME.lower(),
-        platform.node().lower(),
-        *(alias.lower() for alias in RUNNER_ALIASES),
-    }
-    for r in runners:
-        name = r.get("name", "")
-        parts = name.rsplit("-", 1)
-        if len(parts) == 2 and parts[1].isdigit() and r["id"] == runner_id:
-            machine = parts[0].removeprefix("d-sorg-local-").lower()
-            if machine not in local_names:
-                return None
-            return int(parts[1])
-    return None
-
-
-def _runner_limit() -> int:
-    """Return the hard runner capacity this dashboard is allowed to manage."""
-    return max(NUM_RUNNERS, MAX_RUNNERS)
-
-
-def _runner_sort_key(runner: dict) -> tuple[str, int, str]:
-    """Sort runner names by machine and numeric suffix instead of alphabetically."""
-    name = str(runner.get("name", ""))
-    prefix, sep, suffix = name.rpartition("-")
-    number = int(suffix) if sep and suffix.isdigit() else 10**9
-    return (prefix.lower(), number, name.lower())
-
-
-def get_runner_service_name(runner_num: int) -> str | None:
-    """Get the systemd service name for a runner."""
-    svc_file = RUNNER_BASE_DIR / f"runner-{runner_num}" / ".service"
-    if svc_file.exists():
-        return svc_file.read_text().strip()
-    # Fall back to common naming pattern
-    return f"actions.runner.{ORG}.d-sorg-local-{HOSTNAME}-{runner_num}.service"
+# runner_svc_path, run_runner_svc, runner_num_from_id, _runner_limit,
+# _runner_sort_key, get_runner_service_name extracted to runners/service_control.py (#719)
 
 
 DEFAULT_RUNNER_SCHEDULE = {
@@ -1406,403 +1247,13 @@ def get_runner_capacity_snapshot() -> dict:
     }
 
 
-def _windows_path_to_wsl(raw_path: str) -> Path:
-    """Convert a Windows path to its WSL mount equivalent when possible."""
-    normalized = raw_path.strip().strip('"')
-    match = re.match(r"^([a-zA-Z]):[\\/](.*)$", normalized)
-    if not match:
-        return Path(normalized)
-    drive = match.group(1).lower()
-    tail = match.group(2).replace("\\", "/")
-    return Path("/mnt") / drive / tail
+# _windows_path_to_wsl, _dedupe_paths, _candidate_wslconfig_paths,
+# _resolve_powershell_executable extracted to platform_utils/wsl_paths.py (#718)
 
 
-def _dedupe_paths(paths: list[Path]) -> list[Path]:
-    """Return paths in order without duplicates."""
-    seen: set[str] = set()
-    deduped: list[Path] = []
-    for path in paths:
-        key = str(path)
-        if key in seen:
-            continue
-        seen.add(key)
-        deduped.append(path)
-    return deduped
-
-
-def _candidate_wslconfig_paths() -> list[Path]:
-    """Return plausible .wslconfig locations for the current user."""
-    candidates: list[Path] = []
-    for env_name in (
-        "WSL_KEEPALIVE_WSLCONFIG_PATH",
-        "WSL_CONFIG_PATH",
-    ):
-        raw = os.environ.get(env_name)
-        if raw:
-            candidates.append(Path(raw).expanduser())
-
-    profile = os.environ.get("USERPROFILE")
-    if profile:
-        profile_path = Path(profile).expanduser()
-        if os.name == "nt":
-            candidates.append(profile_path / ".wslconfig")
-        candidates.append(_windows_path_to_wsl(profile) / ".wslconfig")
-
-    home_drive = os.environ.get("HOMEDRIVE")
-    home_path = os.environ.get("HOMEPATH")
-    if home_drive and home_path:
-        windows_home = f"{home_drive}{home_path}"
-        if os.name == "nt":
-            candidates.append(Path(windows_home).expanduser() / ".wslconfig")
-        candidates.append(_windows_path_to_wsl(windows_home) / ".wslconfig")
-
-    users_root = Path("/mnt/c/Users")
-    try:
-        for profile_dir in users_root.iterdir():
-            if not profile_dir.is_dir():
-                continue
-            if profile_dir.name.lower() in {
-                "all users",
-                "default",
-                "default user",
-                "public",
-            }:
-                continue
-            candidates.append(profile_dir / ".wslconfig")
-    except OSError:
-        pass
-
-    return _dedupe_paths(candidates)
-
-
-def _resolve_powershell_executable() -> str | None:
-    """Find a PowerShell executable from WSL service environments."""
-    candidates = [
-        os.environ.get("POWERSHELL"),
-        "powershell.exe",
-        "pwsh.exe",
-        "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe",
-        "/mnt/c/Program Files/PowerShell/7/pwsh.exe",
-    ]
-    for candidate in candidates:
-        if not candidate:
-            continue
-        path = Path(candidate)
-        if path.is_absolute() and path.exists():
-            return str(path)
-        resolved = shutil.which(candidate)
-        if resolved:
-            return resolved
-    return None
-
-
-def _parse_vm_idle_timeout(text: str) -> str | None:
-    """Extract the vmIdleTimeout value from a .wslconfig file."""
-    match = re.search(
-        r"(?im)^\s*vmIdleTimeout\s*=\s*([^#;\r\n]+)",
-        text,
-    )
-    if not match:
-        return None
-    return match.group(1).strip()
-
-
-def _inspect_wslconfig() -> dict:
-    """Inspect .wslconfig for the vmIdleTimeout keepalive setting."""
-    checked_paths = [str(path) for path in _candidate_wslconfig_paths()]
-    for path in _candidate_wslconfig_paths():
-        if not path.exists():
-            continue
-        try:
-            content = path.read_text(encoding="utf-8", errors="ignore")
-        except OSError as exc:
-            return {
-                "status": "unknown",
-                "path": str(path),
-                "checked_paths": checked_paths,
-                "error": str(exc),
-                "configured": False,
-            }
-
-        vm_idle_timeout = _parse_vm_idle_timeout(content)
-        if vm_idle_timeout is None:
-            return {
-                "status": "misconfigured",
-                "path": str(path),
-                "checked_paths": checked_paths,
-                "configured": True,
-                "vm_idle_timeout": None,
-                "idle_shutdown_disabled": False,
-                "detail": "vmIdleTimeout was not found in .wslconfig.",
-            }
-
-        disabled = vm_idle_timeout == "-1"
-        return {
-            "status": "healthy" if disabled else "misconfigured",
-            "path": str(path),
-            "checked_paths": checked_paths,
-            "configured": True,
-            "vm_idle_timeout": vm_idle_timeout,
-            "idle_shutdown_disabled": disabled,
-            "detail": (
-                "vmIdleTimeout=-1 disables WSL idle shutdown."
-                if disabled
-                else f"vmIdleTimeout is {vm_idle_timeout}, not -1."
-            ),
-        }
-
-    return {
-        "status": "missing",
-        "path": None,
-        "checked_paths": checked_paths,
-        "configured": False,
-        "vm_idle_timeout": None,
-        "idle_shutdown_disabled": False,
-        "detail": "No .wslconfig file was found in the configured locations.",
-    }
-
-
-def _parse_task_action(action: dict) -> dict:
-    """Normalize a scheduled task action for downstream inspection."""
-    return {
-        "execute": action.get("Execute") or action.get("execute"),
-        "arguments": action.get("Arguments") or action.get("arguments"),
-    }
-
-
-def _probe_detail(probe: dict, fallback: str) -> str:
-    """Return human-readable probe detail even for partially failed probes."""
-    return str(probe.get("detail") or probe.get("error") or fallback)
-
-
-def _detect_legacy_keepalive(actions: list[dict], startup_vbs_files: list[str]) -> tuple[bool, str | None]:
-    """Detect the old VBS/fire-and-forget keepalive pattern."""
-    if startup_vbs_files:
-        return True, f"Legacy VBS file(s) still present: {', '.join(startup_vbs_files)}"
-
-    for action in actions:
-        execute = (action.get("execute") or "").lower()
-        arguments = (action.get("arguments") or "").lower()
-        if execute.endswith("wscript.exe") or execute.endswith("cscript.exe"):
-            return True, f"Task launches {execute.rsplit('/', 1)[-1]} directly."
-        if ".vbs" in execute or ".vbs" in arguments:
-            return True, "Task still references a .vbs keepalive script."
-
-    return False, None
-
-
-async def _inspect_systemd_keepalive() -> dict:
-    """Inspect the in-WSL systemd keepalive service."""
-    if os.name == "nt":
-        return {
-            "status": "unsupported",
-            "service": WSL_KEEPALIVE_SERVICE,
-            "configured": False,
-            "active": False,
-            "enabled": False,
-            "detail": (
-                "systemd keepalive is checked inside WSL; "
-                "this Windows fallback process cannot query systemctl directly."
-            ),
-        }
-
-    code, stdout, stderr = await run_cmd(
-        [
-            "systemctl",
-            "show",
-            WSL_KEEPALIVE_SERVICE,
-            "--property=LoadState,ActiveState,UnitFileState,FragmentPath,Description",
-            "--no-pager",
-        ],
-        timeout=10,
-    )
-
-    if code != 0:
-        lower = f"{stdout}\n{stderr}".lower()
-        if "system has not been booted with systemd" in lower or "failed to connect to bus" in lower:
-            return {
-                "status": "unsupported",
-                "service": WSL_KEEPALIVE_SERVICE,
-                "configured": False,
-                "active": False,
-                "enabled": False,
-                "detail": "systemd is not available in this WSL session.",
-            }
-        return {
-            "status": "unknown",
-            "service": WSL_KEEPALIVE_SERVICE,
-            "configured": False,
-            "active": False,
-            "enabled": False,
-            "error": stderr.strip() or stdout.strip() or "systemctl show failed",
-        }
-
-    props: dict[str, str] = {}
-    for line in stdout.splitlines():
-        if "=" in line:
-            key, value = line.split("=", 1)
-            props[key.strip()] = value.strip()
-
-    load_state = props.get("LoadState")
-    active_state = props.get("ActiveState")
-    unit_file_state = props.get("UnitFileState")
-    configured = load_state == "loaded"
-    active = active_state == "active"
-    enabled = unit_file_state == "enabled"
-    healthy = configured and active and enabled
-    if healthy:
-        detail = f"{WSL_KEEPALIVE_SERVICE} is active and enabled."
-        status = "healthy"
-    elif configured:
-        detail = f"{WSL_KEEPALIVE_SERVICE} is {active_state or 'unknown'} and {unit_file_state or 'unknown'}."
-        status = "misconfigured"
-    else:
-        detail = f"{WSL_KEEPALIVE_SERVICE} is not installed."
-        status = "missing"
-
-    return {
-        "status": status,
-        "service": WSL_KEEPALIVE_SERVICE,
-        "configured": configured,
-        "active": active,
-        "enabled": enabled,
-        "load_state": load_state,
-        "active_state": active_state,
-        "unit_file_state": unit_file_state,
-        "fragment_path": props.get("FragmentPath"),
-        "description": props.get("Description"),
-        "detail": detail,
-    }
-
-
-async def _inspect_windows_keepalive() -> dict:
-    """Inspect the Windows Scheduled Task and legacy keepalive artifacts."""
-    powershell = _resolve_powershell_executable()
-    if powershell is None:
-        return {
-            "status": "unsupported",
-            "task_name": WSL_KEEPALIVE_TASK_NAME,
-            "task_found": False,
-            "state": None,
-            "actions": [],
-            "startup_vbs_files": [],
-            "legacy_vbs_detected": False,
-            "detail": "PowerShell was not found; Windows Scheduled Task cannot be queried from this WSL session.",
-        }
-
-    _ps_get_legacy = (
-        "@(Get-ChildItem -Path $startup -Filter 'wsl-keepalive.vbs'"
-        " -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)"
-    )
-    _ps_get_actions = (
-        "@($task.Actions | ForEach-Object { [pscustomobject]@{ Execute = $_.Execute; Arguments = $_.Arguments } })"  # noqa: E501
-    )
-    script = f"""
-$ErrorActionPreference = 'Stop'
-$startup = [Environment]::GetFolderPath('Startup')
-$legacy = {_ps_get_legacy}
-$task = $null
-try {{
-    $task = Get-ScheduledTask -TaskName '{WSL_KEEPALIVE_TASK_NAME}' -ErrorAction Stop
-    $actions = {_ps_get_actions}
-    $result = [pscustomobject]@{{
-        task_found = $true
-        task_name = $task.TaskName
-        state = "$($task.State)"
-        actions = $actions
-        startup_vbs_files = $legacy
-    }}
-}} catch {{
-    $result = [pscustomobject]@{{
-        task_found = $false
-        task_name = '{WSL_KEEPALIVE_TASK_NAME}'
-        state = $null
-        actions = @()
-        startup_vbs_files = $legacy
-        error = $_.Exception.Message
-    }}
-}}
-$result | ConvertTo-Json -Depth 5
-"""
-    try:
-        code, stdout, stderr = await run_cmd(
-            [powershell, "-NoProfile", "-Command", script],
-            timeout=12,
-        )
-    except OSError as exc:
-        return {
-            "status": "unsupported",
-            "task_name": WSL_KEEPALIVE_TASK_NAME,
-            "task_found": False,
-            "state": None,
-            "actions": [],
-            "startup_vbs_files": [],
-            "legacy_vbs_detected": False,
-            "detail": f"PowerShell execution failed: {exc}",
-        }
-
-    if code != 0:
-        return {
-            "status": "unknown",
-            "task_name": WSL_KEEPALIVE_TASK_NAME,
-            "task_found": False,
-            "state": None,
-            "actions": [],
-            "startup_vbs_files": [],
-            "legacy_vbs_detected": False,
-            "detail": stderr.strip() or stdout.strip() or "Scheduled task query failed.",
-        }
-
-    try:
-        payload = json.loads(stdout)
-    except (json.JSONDecodeError, TypeError, ValueError):
-        payload = {}
-
-    raw_actions = payload.get("actions") or []
-    if isinstance(raw_actions, dict):
-        raw_actions = [raw_actions]
-    actions = [_parse_task_action(action) for action in raw_actions]
-    startup_vbs_files = payload.get("startup_vbs_files") or []
-    if isinstance(startup_vbs_files, str):
-        startup_vbs_files = [startup_vbs_files]
-
-    legacy_vbs_detected, legacy_detail = _detect_legacy_keepalive(
-        actions,
-        [str(item) for item in startup_vbs_files],
-    )
-
-    state = payload.get("state")
-    task_found = bool(payload.get("task_found"))
-    running = state == "Running"
-    ready = state == "Ready"
-    action_exec = actions[0]["execute"] if actions else None
-    action_args = actions[0]["arguments"] if actions else None
-    if task_found and running and not legacy_vbs_detected:
-        status = "healthy"
-        detail = f"{WSL_KEEPALIVE_TASK_NAME} is Running."
-    elif legacy_vbs_detected:
-        status = "legacy"
-        detail = legacy_detail or "Legacy VBS keepalive detected."
-    elif task_found:
-        status = "misconfigured" if ready else "unknown"
-        detail = f"{WSL_KEEPALIVE_TASK_NAME} is {state or 'unknown'}." + (
-            f" Action: {action_exec or 'n/a'} {action_args or ''}".rstrip()
-        )
-    else:
-        status = "missing"
-        detail = payload.get("error") or f"{WSL_KEEPALIVE_TASK_NAME} is not registered."
-
-    return {
-        "status": status,
-        "task_name": WSL_KEEPALIVE_TASK_NAME,
-        "task_found": task_found,
-        "state": state,
-        "actions": actions,
-        "startup_vbs_files": [str(item) for item in startup_vbs_files],
-        "legacy_vbs_detected": legacy_vbs_detected,
-        "legacy_vbs_detail": legacy_detail,
-        "detail": detail,
-    }
+# _parse_vm_idle_timeout, _inspect_wslconfig, _parse_task_action, _probe_detail,
+# _detect_legacy_keepalive, _inspect_systemd_keepalive, _inspect_windows_keepalive
+# extracted to diagnostics/keepalive_inspector.py (#718)
 
 
 async def _watchdog_status_impl() -> dict:
