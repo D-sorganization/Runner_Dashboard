@@ -50,25 +50,64 @@ gh api orgs/D-sorganization/actions/runners \
 sudo journalctl -u runner-dashboard -n 200 --no-pager | grep -i 'queue\|cancel\|stale'
 ```
 
+## Stale Run Classification
+
+The `backend/queue_cleanup.py` module classifies stale runs by root cause.
+Knowing the cause narrows remediation:
+
+| Cause | Description |
+|---|---|
+| `superseded_pr_head` | A newer commit pushed to the PR branch; old run will never start |
+| `closed_or_deleted_ref` | PR closed or branch deleted while run was queued |
+| `abandoned_agent` | Agent workflow dispatch that was never picked up (agent crashed) |
+| `stale_feature_branch` | Long-lived feature branch with no recent activity |
+| `offline_runner_or_lag` | Runner went offline or GitHub queuing lag |
+| `stale_main_branch` | Default-branch run queued for too long |
+| `unknown` | Does not match any heuristic above |
+
+Superseded PR-head runs differ from unsatisfiable runner label runs:
+a superseded run will never proceed regardless of runner availability, while an
+unsatisfiable label run would proceed if a matching runner came online.
+Use `dry_run=true` to preview which category each run falls into before purging.
+
 ## Mitigation
 
 ```bash
-# A. Use the dashboard's bulk purge (calls queue_cleanup.purge_stale_runs).
-#    The Queue Health tab "Purge stale" button calls the same endpoint.
-curl -fsS -X POST http://localhost:8321/api/queue/purge-stale | jq '.'
+# A. Preview stale runs without cancelling anything (dry-run).
+#    Use min_age_minutes to lower the age threshold for diagnosis.
+curl -fsS -X POST \
+  "http://localhost:8321/api/queue/purge-stale?dry_run=true&min_age_minutes=30" \
+  | jq '.'
 
-# B. Cancel a single specific run via the dashboard.
+# B. Bulk purge stale runs (calls queue_cleanup.purge_stale_runs).
+#    The Queue Health tab "Purge stale" button calls the same endpoint.
+#    Default min_age_minutes is 60 — increase to be conservative.
+curl -fsS -X POST \
+  "http://localhost:8321/api/queue/purge-stale?min_age_minutes=60" \
+  | jq '.'
+
+# C. List stale runs (read-only scan, no cancellations).
+curl -fsS \
+  "http://localhost:8321/api/queue/stale?min_age_minutes=30" \
+  | jq '.'
+
+# D. Cancel a single specific run via the dashboard.
 curl -fsS -X POST \
   http://localhost:8321/api/runs/<repo>/cancel/<run_id>
 
-# C. Cancel directly via gh as a fallback.
+# E. Cancel directly via gh as a fallback.
 gh run cancel <run_id> --repo D-sorganization/<repo>
 
-# D. If the stall is caused by missing label coverage, scale runners up.
+# F. If the stall is caused by missing label coverage, scale runners up.
 sudo systemctl restart runner-autoscaler
 # or manually start an idle runner unit
 sudo systemctl start 'actions.runner.D-sorganization-<repo>.<runner>.service'
 ```
+
+When to use `dry_run` vs purge:
+- Always run `dry_run=true` first on production to verify the affected runs.
+- Use purge only after confirming the dry-run list is correct.
+- Adjust `min_age_minutes` to match job duration expectations (default 60 min).
 
 The hourly `deploy/scheduled-dashboard-maintenance.sh` cron also performs
 stale-queue purges; if cron was disabled, re-enable it.
@@ -89,6 +128,23 @@ stale-queue purges; if cron was disabled, re-enable it.
 - If a label-mismatch caused the stall, fix workflow `runs-on:` or update
   `backend/machine_registry.yml` so dispatch targets a label that exists.
 - File a postmortem if the stall affected more than one repo.
+
+## Post-Incident Checklist
+
+After resolving a queue stall, verify the following:
+
+- [ ] `curl -fsS http://localhost:8321/api/queue/stale | jq 'length'` returns 0
+      (or a count you accept as baseline noise).
+- [ ] `curl -fsS http://localhost:8321/api/queue/diagnose | jq '.'` shows no
+      critical lag for any label.
+- [ ] `crontab -l | grep scheduled-dashboard-maintenance` — cron entry is present.
+- [ ] Most recent maintenance log is within the last 90 minutes:
+      `ls -lt ~/.cache/runner-dashboard/maintenance.log | head -3`
+- [ ] Runner label coverage is correct — all labels in active workflows have at
+      least one matching runner registered in `backend/machine_registry.yml`.
+- [ ] If a `superseded_pr_head` or `abandoned_agent` run caused the stall,
+      verify the responsible PR/branch has been cleaned up.
+- [ ] File a postmortem if the stall lasted > 30 minutes or affected > 1 repo.
 
 ## Postmortem Template
 
