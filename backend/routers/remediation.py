@@ -368,12 +368,12 @@ async def dispatch_agent_remediation(
 # ─── Quick Dispatch ───────────────────────────────────────────────────────────
 
 
-@router.post("/api/agents/quick-dispatch")
+@router.post("/api/agents/quick-dispatch", response_model=None)
 async def api_quick_dispatch(
     request: Request,
     *,
     principal: Principal = Depends(require_scope("remediation.dispatch")),  # noqa: B008
-) -> dict | JSONResponse:
+) -> JSONResponse:
     """Dispatch an ad-hoc agent task via Agent-Quick-Dispatch.yml."""
     body = await request.json()
     if not isinstance(body, dict):
