@@ -2,7 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Runner dashboard mobile viewport profiles",
   "type": "object",
-  "required": ["version", "playwright", "profiles", "smokePages", "visualRegression"],
+  "required": [
+    "version",
+    "playwright",
+    "profiles",
+    "smokePages",
+    "visualRegression"
+  ],
   "properties": {
     "version": { "type": "integer", "minimum": 1 },
     "playwright": {
@@ -27,7 +33,13 @@
     },
     "visualRegression": {
       "type": "object",
-      "required": ["state", "enabledInCi", "baselineDir", "updateFlag", "failureArtifacts"]
+      "required": [
+        "state",
+        "enabledInCi",
+        "baselineDir",
+        "updateFlag",
+        "failureArtifacts"
+      ]
     }
   }
 }

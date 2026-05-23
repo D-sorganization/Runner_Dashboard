@@ -44,15 +44,15 @@ Every non-epic issue **should** carry at minimum one label from each of the
 
 ### 1. Type (required, single-valued)
 
-| Label | Meaning |
-|---|---|
-| `type:epic` | Parent tracking issue. No direct work happens here. Children are linked as sub-issues. |
-| `type:task` | Ordinary unit of work. Default for most issues. |
-| `type:bug` | Defect in existing behavior. |
+| Label           | Meaning                                                                                                        |
+| --------------- | -------------------------------------------------------------------------------------------------------------- |
+| `type:epic`     | Parent tracking issue. No direct work happens here. Children are linked as sub-issues.                         |
+| `type:task`     | Ordinary unit of work. Default for most issues.                                                                |
+| `type:bug`      | Defect in existing behavior.                                                                                   |
 | `type:security` | Security finding. Often overlaps with `type:bug`; prefer `type:security` when the label `security` is present. |
-| `type:research` | Investigation / spike. Answer unknown; must investigate before implementation. |
-| `type:docs` | Documentation-only change. |
-| `type:chore` | Housekeeping: deps, CI, lint, formatting. |
+| `type:research` | Investigation / spike. Answer unknown; must investigate before implementation.                                 |
+| `type:docs`     | Documentation-only change.                                                                                     |
+| `type:chore`    | Housekeeping: deps, CI, lint, formatting.                                                                      |
 
 ### 2. Complexity (required, single-valued) — **skill required of the agent**
 
@@ -62,13 +62,13 @@ can be deep if it touches a subtle invariant.
 
 Agent names do not appear here — orchestrators map complexity → agent pool.
 
-| Label | Meaning | Typical work |
-|---|---|---|
-| `complexity:trivial` | Single-file mechanical change. No judgement, no architectural awareness. | Rename a symbol, fix a typo, delete dead code, update a constant, bump a pinned version. |
-| `complexity:routine` | Well-scoped change, clear spec, may touch multiple files within one subsystem. | Add a validated field to a request payload, add a test for a documented behavior, add a route that mirrors an existing one. |
-| `complexity:complex` | Cross-cutting change, architectural awareness needed. May require reading 10+ files and understanding conventions. | Add a new FastAPI dependency that threads request context; introduce a new lease type in the autoscaler. |
-| `complexity:deep` | Requires deep codebase knowledge and/or novel design. | Reshape the dispatch contract; redesign runner ownership; rework the frontend state model. |
-| `complexity:research` | The right answer is unknown. Must investigate and write up options **before** anyone implements. | "How should we authenticate bots?"; "Is Playwright viable for the SPA?". |
+| Label                 | Meaning                                                                                                            | Typical work                                                                                                                |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| `complexity:trivial`  | Single-file mechanical change. No judgement, no architectural awareness.                                           | Rename a symbol, fix a typo, delete dead code, update a constant, bump a pinned version.                                    |
+| `complexity:routine`  | Well-scoped change, clear spec, may touch multiple files within one subsystem.                                     | Add a validated field to a request payload, add a test for a documented behavior, add a route that mirrors an existing one. |
+| `complexity:complex`  | Cross-cutting change, architectural awareness needed. May require reading 10+ files and understanding conventions. | Add a new FastAPI dependency that threads request context; introduce a new lease type in the autoscaler.                    |
+| `complexity:deep`     | Requires deep codebase knowledge and/or novel design.                                                              | Reshape the dispatch contract; redesign runner ownership; rework the frontend state model.                                  |
+| `complexity:research` | The right answer is unknown. Must investigate and write up options **before** anyone implements.                   | "How should we authenticate bots?"; "Is Playwright viable for the SPA?".                                                    |
 
 ### 3. Effort (required, single-valued) — **size of the work**
 
@@ -76,18 +76,18 @@ Independent of complexity. A `complexity:trivial` ticket can be `effort:l` if
 it touches 200 files. A `complexity:deep` ticket can be `effort:s` if the
 change itself is small once you know what to change.
 
-| Label | Rough bound | Notes |
-|---|---|---|
-| `effort:xs` | < 1 hour | Single PR, single file usually. Candidate for `quick-win`. |
-| `effort:s` | < 4 hours | Bounded, clear scope. |
-| `effort:m` | < 1 day | Normal feature or bugfix. |
-| `effort:l` | 1–3 days | Decompose if possible, but acceptable as-is. |
-| `effort:xl` | > 3 days | **Should be an epic with children**, not a single ticket. |
+| Label       | Rough bound | Notes                                                      |
+| ----------- | ----------- | ---------------------------------------------------------- |
+| `effort:xs` | < 1 hour    | Single PR, single file usually. Candidate for `quick-win`. |
+| `effort:s`  | < 4 hours   | Bounded, clear scope.                                      |
+| `effort:m`  | < 1 day     | Normal feature or bugfix.                                  |
+| `effort:l`  | 1–3 days    | Decompose if possible, but acceptable as-is.               |
+| `effort:xl` | > 3 days    | **Should be an epic with children**, not a single ticket.  |
 
 ### 4. Quick win (optional, boolean)
 
-| Label | Meaning |
-|---|---|
+| Label       | Meaning                                                                                                                                                              |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `quick-win` | High perceived value, low effort. Surface these to new contributors and fast agents. Typically `effort:xs`/`effort:s` and `complexity:trivial`/`complexity:routine`. |
 
 ### 5. Judgement (required, single-valued) — **how much opinion is involved**
@@ -95,17 +95,17 @@ change itself is small once you know what to change.
 This is the dimension the orchestrator uses to decide whether to dispatch a
 single agent or request a panel review first.
 
-| Label | Meaning | Dispatch rule |
-|---|---|---|
-| `judgement:objective` | Most competent agents would agree on the correct implementation. A spec or failing test defines success. | Dispatch directly. |
-| `judgement:preference` | Multiple valid approaches. Style, ergonomics, or naming matters, but the differences are small. | Dispatch directly; human review on PR is enough. |
-| `judgement:design` | Architectural decision with durable consequences. Needs deliberate choice. | **Do not dispatch for implementation until a design has been chosen.** Request a panel review or a human decision. |
-| `judgement:contested` | Active disagreement is already on the issue. | **Hold.** Panel review required. |
+| Label                  | Meaning                                                                                                  | Dispatch rule                                                                                                      |
+| ---------------------- | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `judgement:objective`  | Most competent agents would agree on the correct implementation. A spec or failing test defines success. | Dispatch directly.                                                                                                 |
+| `judgement:preference` | Multiple valid approaches. Style, ergonomics, or naming matters, but the differences are small.          | Dispatch directly; human review on PR is enough.                                                                   |
+| `judgement:design`     | Architectural decision with durable consequences. Needs deliberate choice.                               | **Do not dispatch for implementation until a design has been chosen.** Request a panel review or a human decision. |
+| `judgement:contested`  | Active disagreement is already on the issue.                                                             | **Hold.** Panel review required.                                                                                   |
 
 ### 6. Panel review (optional, boolean)
 
-| Label | Meaning |
-|---|---|
+| Label          | Meaning                                                                                                                                                                                      |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `panel-review` | Periodic agent-panel review is requested or in progress. The panel workflow (see `.github/workflows/agent-panel-review.yml`) will post opinions as comments on these issues on its schedule. |
 
 Typically paired with `judgement:design` or `judgement:contested`. Can also be
@@ -145,12 +145,12 @@ Execution-order bucket, used by the meta-tracking issue #55. Values:
 These labels drive `Taxonomy Rollout` (`.github/workflows/taxonomy-rollout.yml`).
 Apply to an epic (not ordinary issues) to kick off a migration.
 
-| Label | Meaning |
-|---|---|
-| `rollout:taxonomy` | User-applied. Triggers the taxonomy rollout's **preview** stage (creates labels, runs backfill dry-run, posts preview comment). |
-| `rollout:taxonomy-apply` | User-applied **after reviewing the preview**. Triggers the **apply** stage (real label + sub-issue changes). |
-| `rollout:in-progress` | Workflow-managed. Indicates a rollout has started. Do not apply by hand. |
-| `rollout:done` | Workflow-managed. Indicates a rollout completed successfully. |
+| Label                    | Meaning                                                                                                                         |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| `rollout:taxonomy`       | User-applied. Triggers the taxonomy rollout's **preview** stage (creates labels, runs backfill dry-run, posts preview comment). |
+| `rollout:taxonomy-apply` | User-applied **after reviewing the preview**. Triggers the **apply** stage (real label + sub-issue changes).                    |
+| `rollout:in-progress`    | Workflow-managed. Indicates a rollout has started. Do not apply by hand.                                                        |
+| `rollout:done`           | Workflow-managed. Indicates a rollout completed successfully.                                                                   |
 
 The rollout chain is idempotent and reversible — labels are only added,
 sub-issue edges can be unlinked, and the manifest is editable.
@@ -288,6 +288,7 @@ Once the `Agent Panel Review` workflow is fully configured:
 ```
 
 **Rules:**
+
 - Post exactly one opinion per agent per issue
 - Opinions are advisory; maintainer makes final call
 - `stance` is your position: `support` (go ahead), `oppose` (don't), `modify` (approve with changes)
@@ -296,6 +297,7 @@ Once the `Agent Panel Review` workflow is fully configured:
 ### Relabeling to Unblock Implementation
 
 Maintainer's responsibility once opinions converge:
+
 - Change `judgement:design` → `judgement:objective` to unblock implementation
 - Or escalate to `judgement:contested` if there's genuine disagreement
 - Or close as `not planned` if consensus is "don't do this"
@@ -306,7 +308,8 @@ Maintainer's responsibility once opinions converge:
 
 Two real issues, showing how they should be labeled:
 
-**#16 — "No authentication on any /api/* endpoint"**
+**#16 — "No authentication on any /api/\* endpoint"**
+
 - `type:security`, `security`, `backend`, `critical`
 - `complexity:complex` (threading auth through 67 routes)
 - `effort:l`
@@ -315,6 +318,7 @@ Two real issues, showing how they should be labeled:
 - `wave:1`
 
 **#54 — "Assorted low-severity findings: hardcoded paths, log rotation, ..."**
+
 - `type:chore`, `code-quality`, `low`
 - `complexity:trivial`
 - `effort:s`

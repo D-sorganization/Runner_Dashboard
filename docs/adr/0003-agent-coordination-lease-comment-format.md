@@ -22,7 +22,7 @@ Each had drawbacks for this fleet:
 - A GitHub App needs an installation, secrets, and a maintainer with admin rights — too heavyweight for a coordination primitive.
 - Pure labels lose the timing information; the reaper cannot tell a healthy long-running agent from a crashed one.
 
-The project also wants the protocol to be *legible* — a human reading an issue should be able to see at a glance who is working on it and when their claim expires, without going to a separate dashboard.
+The project also wants the protocol to be _legible_ — a human reading an issue should be able to see at a glance who is working on it and when their claim expires, without going to a separate dashboard.
 
 ## Decision
 
@@ -45,14 +45,14 @@ Rules:
 5. When two agents race on the same issue, the priority order in `CLAUDE.md` resolves: `user > maxwell-daemon > claude > codex > jules > local > gaai`.
 6. The `Agent-Lease-Reaper.yml` workflow runs every 30 minutes, parses the latest lease comment, and removes the matching `claim:<agent>` label if the lease is expired and there is no open PR referencing the issue.
 
-The format is deliberately *not* YAML, JSON, or front-matter. It is a single self-describing line that:
+The format is deliberately _not_ YAML, JSON, or front-matter. It is a single self-describing line that:
 
 - A human can read at a glance.
 - A regex (`^lease:\s+(\S+)\s+expires\s+(\S+)`) can parse without a YAML library.
 - Cannot be ambiguous about which field is the agent and which is the timestamp.
 - Survives Markdown renderers, code-block wrapping, and copy-paste from chat.
 
-The richer "design opinion" structure used for `panel-review` issues *is* a structured (YAML-style) block, defined in `docs/issue-taxonomy.md`. That is intentional — opinions need fields like `verdict`, `risks`, `alternatives`. Leases need only an agent identifier and an expiry, so the format stays minimal.
+The richer "design opinion" structure used for `panel-review` issues _is_ a structured (YAML-style) block, defined in `docs/issue-taxonomy.md`. That is intentional — opinions need fields like `verdict`, `risks`, `alternatives`. Leases need only an agent identifier and an expiry, so the format stays minimal.
 
 ## Consequences
 

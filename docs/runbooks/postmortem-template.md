@@ -62,10 +62,10 @@ steps, unclear ownership, manual toil, etc.
 
 ## Action Items
 
-| # | Owner | Due | Description | Tracking issue |
-|---|-------|-----|-------------|----------------|
-| 1 |       |     |             |                |
-| 2 |       |     |             |                |
+| #   | Owner | Due | Description | Tracking issue |
+| --- | ----- | --- | ----------- | -------------- |
+| 1   |       |     |             |                |
+| 2   |       |     |             |                |
 
 Each action item must be:
 

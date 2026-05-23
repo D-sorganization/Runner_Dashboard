@@ -61,9 +61,7 @@
       "confidence": 0.86,
       "secret_handling": {
         "requires_secret": true,
-        "secret_env_vars": [
-          "GH_TOKEN"
-        ],
+        "secret_env_vars": ["GH_TOKEN"],
         "notes": "Store credentials in the service environment or secret manager; do not place tokens in the config file."
       }
     }

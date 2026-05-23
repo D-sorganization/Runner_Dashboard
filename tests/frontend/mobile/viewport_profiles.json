@@ -63,7 +63,10 @@
     {
       "name": "Credentials",
       "tabLabel": "Credentials",
-      "requiredMarkers": ["mobile-credentials-lock", "mobile-credentials-sheet"],
+      "requiredMarkers": [
+        "mobile-credentials-lock",
+        "mobile-credentials-sheet"
+      ],
       "goldenInteraction": "tap-locked-action"
     },
     {
@@ -75,13 +78,19 @@
     {
       "name": "Assessments",
       "tabLabel": "Assessments",
-      "requiredMarkers": ["assessment-mobile-card-list", "assessment-mobile-score"],
+      "requiredMarkers": [
+        "assessment-mobile-card-list",
+        "assessment-mobile-score"
+      ],
       "goldenInteraction": "tap-card"
     },
     {
       "name": "Feature Requests",
       "tabLabel": "Feature Requests",
-      "requiredMarkers": ["feature-request-mobile-list", "feature-request-mobile-card"],
+      "requiredMarkers": [
+        "feature-request-mobile-list",
+        "feature-request-mobile-card"
+      ],
       "goldenInteraction": "tap-card"
     },
     {

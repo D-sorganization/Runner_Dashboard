@@ -4,7 +4,7 @@ This directory records significant architectural decisions made in the
 `runner-dashboard` project. An **Architecture Decision Record** is a short,
 dated document that captures one architecturally significant choice, the
 context in which it was made, and the consequences (good and bad) of that
-choice. ADRs let future contributors — human or AI — understand *why* the
+choice. ADRs let future contributors — human or AI — understand _why_ the
 system looks the way it does without having to reverse-engineer the answer
 from the codebase.
 

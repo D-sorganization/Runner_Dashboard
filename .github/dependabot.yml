@@ -48,8 +48,6 @@ updates:
           - "minor"
           - "patch"
 
-
-
   # ── GitHub Actions ─────────────────────────────────────────────────────
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -77,8 +75,6 @@ updates:
           - "minor"
           - "patch"
 
-
-
   # ── Docker ─────────────────────────────────────────────────────────────
   - package-ecosystem: "docker"
     directory: "/"
@@ -105,5 +101,3 @@ updates:
         update-types:
           - "minor"
           - "patch"
-
-

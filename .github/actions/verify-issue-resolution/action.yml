@@ -1,11 +1,11 @@
-name: 'Verify Issue Resolution'
-description: 'Refuses to close an issue or merge a closer-PR unless the diff substantively matches the issue body claims.'
+name: "Verify Issue Resolution"
+description: "Refuses to close an issue or merge a closer-PR unless the diff substantively matches the issue body claims."
 inputs:
   pr_number:
-    description: 'PR number being merged or pointing at the issue'
+    description: "PR number being merged or pointing at the issue"
     required: true
   issue_number:
-    description: 'Issue number being closed'
+    description: "Issue number being closed"
     required: true
 runs:
   using: composite

@@ -723,8 +723,7 @@ Use repo-local context before broad exploration:
 - Do not commit `.codemap/` or `.codemap/index.db`. Codemap indexes are cache/artifact data and must stay ignored.
 - To audit local fleet posture, run `python -m scripts.codemap_context_inventory --root .. --format markdown` from `Repository_Management`. This is a local, network-free inventory; it is not a substitute for repo-specific validation.
 
-<!-- END FLEET-MANAGED: repo-context-codemap -->
----
+## <!-- END FLEET-MANAGED: repo-context-codemap -->
 
 ## Specification
 
@@ -740,7 +739,6 @@ affect documented functionality, features, or architecture.
 - **BATCHING**: If extracting remote information is absolutely necessary, use a single, focused, and batched query.
 - **SILENT FAILURES**: If an API rate limit is hit, HALT NETWORK ACTIVITY IMMEDIATELY. Do not write retry-loops that further punish the API endpoint. Alert the user and pivot to local technical-debt resolution.
 
-
 ## Closing issues — non-negotiable rule
 
 NEVER close a feature or bug issue without one of:
@@ -751,6 +749,7 @@ NEVER close a feature or bug issue without one of:
 The **Verify-Issue-Closure** workflow will automatically reopen any issue closed without evidence. Do not work around it.
 
 When implementing an issue:
+
 - Write or update tests FIRST (TDD: red → green → refactor)
 - Add Design-by-Contract preconditions/postconditions where it clarifies invariants
 - Respect Law of Demeter — don’t reach through three layers
@@ -760,11 +759,11 @@ When implementing an issue:
 
 ### How to close issues properly
 
-| Method | Example |
-|--------|---------|
-| Closing keyword in PR body | `Closes #1234` or `Fixes #5678` |
-| Closing keyword in PR title | `fix: resolve login crash (#1234)` |
-| Exempt label | Apply `wontfix`, `roadmap`, `duplicate`, `invalid`, or `not-planned` |
-| Bot + auto-generated label | Only for auto-generated issues closed by bots |
+| Method                      | Example                                                              |
+| --------------------------- | -------------------------------------------------------------------- |
+| Closing keyword in PR body  | `Closes #1234` or `Fixes #5678`                                      |
+| Closing keyword in PR title | `fix: resolve login crash (#1234)`                                   |
+| Exempt label                | Apply `wontfix`, `roadmap`, `duplicate`, `invalid`, or `not-planned` |
+| Bot + auto-generated label  | Only for auto-generated issues closed by bots                        |
 
 The workflow checks the PR timeline for cross-referenced merged PRs with closing keywords. If none are found and no exempt label is present, the issue is reopened with an explanatory comment.

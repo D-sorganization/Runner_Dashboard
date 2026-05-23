@@ -60,6 +60,7 @@ bash deploy/setup.sh --runners 8 --machine-name DeskComputer --runner-aliases de
 ```
 
 `setup.sh` will:
+
 1. Install Python dependencies.
 2. Copy the dashboard to `~/actions-runners/dashboard/`.
 3. Write the systemd unit file and enable the service.
@@ -84,6 +85,7 @@ bash deploy/update-deployed.sh
 ```
 
 The script will:
+
 1. Install/update Python dependencies via `pip_install` (sourced from `deploy/lib.sh`).
 2. Create a timestamped backup of the current deploy directory (`.bak.YYYYMMDD_HHMMSS`).
 3. Copy updated backend, frontend, deploy helpers, and `local_apps.json`.
@@ -123,6 +125,7 @@ DRY_RUN=true bash deploy/update-deployed.sh
 ```
 
 In dry-run mode:
+
 - No backup is created.
 - No files are copied or synced.
 - `systemctl restart` is not called.
@@ -184,12 +187,12 @@ The systemd service loads environment variables from:
 
 Required variables:
 
-| Variable | Description |
-|---|---|
-| `GH_TOKEN` | GitHub PAT with `admin:org`, `repo`, `workflow` scopes |
-| `GITHUB_ORG` | GitHub organization name (e.g. `D-sorganization`) |
-| `NUM_RUNNERS` | Expected runner count for this machine |
-| `DISPLAY_NAME` | Human-readable machine name shown in the UI |
+| Variable       | Description                                            |
+| -------------- | ------------------------------------------------------ |
+| `GH_TOKEN`     | GitHub PAT with `admin:org`, `repo`, `workflow` scopes |
+| `GITHUB_ORG`   | GitHub organization name (e.g. `D-sorganization`)      |
+| `NUM_RUNNERS`  | Expected runner count for this machine                 |
+| `DISPLAY_NAME` | Human-readable machine name shown in the UI            |
 
 Do not commit this file -- it is outside the repo tree and loaded only by systemd
 at service start. The file is owned by the runner user with mode `0600`.
@@ -205,11 +208,11 @@ explicit `ReadWritePaths=` entries.
 
 The current canonical list of paths the service must be able to write:
 
-| Path | Why it must be writable |
-|---|---|
-| `~/.config/runner-dashboard/` | Token cache, session secret, scheduler config, env file |
-| `~/.local/share/runner-dashboard/` | SQLite replay store for the Linear webhook receiver (issue #243) |
-| `~/actions-runners/dashboard/` | SQLite replay store for dispatch envelopes (issue #344), push-subscription DB, orchestration audit log |
+| Path                               | Why it must be writable                                                                                |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `~/.config/runner-dashboard/`      | Token cache, session secret, scheduler config, env file                                                |
+| `~/.local/share/runner-dashboard/` | SQLite replay store for the Linear webhook receiver (issue #243)                                       |
+| `~/actions-runners/dashboard/`     | SQLite replay store for dispatch envelopes (issue #344), push-subscription DB, orchestration audit log |
 
 These paths are baked into `deploy/runner-dashboard.service`, the template
 that `setup.sh` substitutes per machine. **If you upgraded an existing
@@ -238,10 +241,10 @@ database location, so an operator on a fleet machine with a constrained
 sandbox policy can move them onto an already-allowlisted path without
 editing the unit file:
 
-| Variable | Default | Used by |
-|---|---|---|
-| `RUNNER_DASHBOARD_REPLAY_DB` | `~/actions-runners/dashboard/replay.db` | dispatch envelope replay store (`backend/server.py`) |
-| `LINEAR_WEBHOOK_REPLAY_DB` | `~/.local/share/runner-dashboard/linear_webhook_replay.db` | Linear webhook replay store (`backend/routers/linear_webhook.py`) |
+| Variable                     | Default                                                    | Used by                                                           |
+| ---------------------------- | ---------------------------------------------------------- | ----------------------------------------------------------------- |
+| `RUNNER_DASHBOARD_REPLAY_DB` | `~/actions-runners/dashboard/replay.db`                    | dispatch envelope replay store (`backend/server.py`)              |
+| `LINEAR_WEBHOOK_REPLAY_DB`   | `~/.local/share/runner-dashboard/linear_webhook_replay.db` | Linear webhook replay store (`backend/routers/linear_webhook.py`) |
 
 Set these in `~/.config/runner-dashboard/env` (which is loaded by systemd at
 service start) to point both DBs at a single writable directory.
@@ -344,7 +347,7 @@ curl http://localhost:8321/api/health
 Expected response when fully connected:
 
 ```json
-{"status": "ok", "github_api": "connected", "runners_registered": 8}
+{ "status": "ok", "github_api": "connected", "runners_registered": 8 }
 ```
 
 Check the detailed system view:
@@ -424,10 +427,12 @@ sudo systemctl status runner-dashboard
 The dashboard can be installed as a Progressive Web App (PWA). If the backend service crashes or stops, the PWA shows a recovery modal with platform-specific recovery options.
 
 **Windows/macOS:**
+
 - Click "Start Now" to trigger the custom URL protocol handler (`runner-dashboard://start`)
 - The launcher script will start the backend service and open the dashboard
 
 **Linux:**
+
 - Use the "Refresh" button and run the systemctl command shown in the modal:
   ```bash
   systemctl --user restart runner-dashboard
@@ -438,6 +443,7 @@ The dashboard can be installed as a Progressive Web App (PWA). If the backend se
   ```
 
 **Launcher logs** (all platforms):
+
 ```bash
 cat ~/.config/runner-dashboard/launcher.log
 ```
@@ -460,14 +466,14 @@ curl -s http://localhost:8321/api/health | python3 -m json.tool
 
 All deploy scripts source `deploy/lib.sh` for shared utilities:
 
-| Function | Description |
-|---|---|
-| `ok`, `info`, `warn`, `fail` | Coloured log output |
-| `require_dir`, `require_file`, `require_cmd` | Guard assertions |
-| `pip_install <pkg...>` | pip3 install with `--break-system-packages` when supported |
-| `sync_dir <src> <dest>` | rsync with rm/cp fallback |
-| `backup_dir <path>` | Timestamped `cp -a` backup; prints backup path |
-| `dry_run "<description>"` | Returns 0 (skip) when `DRY_RUN=true` |
+| Function                                     | Description                                                |
+| -------------------------------------------- | ---------------------------------------------------------- |
+| `ok`, `info`, `warn`, `fail`                 | Coloured log output                                        |
+| `require_dir`, `require_file`, `require_cmd` | Guard assertions                                           |
+| `pip_install <pkg...>`                       | pip3 install with `--break-system-packages` when supported |
+| `sync_dir <src> <dest>`                      | rsync with rm/cp fallback                                  |
+| `backup_dir <path>`                          | Timestamped `cp -a` backup; prints backup path             |
+| `dry_run "<description>"`                    | Returns 0 (skip) when `DRY_RUN=true`                       |
 
 To add a new deploy script, start with:
 

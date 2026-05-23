@@ -15,12 +15,12 @@ to a central Loki endpoint. This runbook covers:
 
 ## Retention Policy
 
-| Log tier | Storage | Retention |
-|----------|---------|-----------|
-| Application logs (info/warn) | Loki | **7 days** |
-| Error / critical logs | Loki | 30 days |
-| Journald on-host | systemd-journald | Max 1 GB / 30 days |
-| Docker json-file driver | local | 7 × 100 MB rotated files |
+| Log tier                     | Storage          | Retention                |
+| ---------------------------- | ---------------- | ------------------------ |
+| Application logs (info/warn) | Loki             | **7 days**               |
+| Error / critical logs        | Loki             | 30 days                  |
+| Journald on-host             | systemd-journald | Max 1 GB / 30 days       |
+| Docker json-file driver      | local            | 7 × 100 MB rotated files |
 
 The `retention` Loki label is set by Vector's transform and used by the
 Loki compactor's retention rules. Configure compactor rules in your Loki
@@ -131,12 +131,12 @@ journalctl --disk-usage
 
 ## Troubleshooting
 
-| Symptom | Likely cause | Fix |
-|---------|-------------|-----|
-| Vector exits immediately | Bad TOML syntax | `vector validate /etc/vector/vector.toml` |
-| No logs in Loki | Wrong `LOKI_URL` | `curl $LOKI_URL/ready` must return 200 |
-| Journald filling disk | Drop-in not applied | Re-run the copy + restart steps above |
-| Docker socket permission denied | User not in `docker` group | `usermod -aG docker $(whoami)` |
+| Symptom                         | Likely cause               | Fix                                       |
+| ------------------------------- | -------------------------- | ----------------------------------------- |
+| Vector exits immediately        | Bad TOML syntax            | `vector validate /etc/vector/vector.toml` |
+| No logs in Loki                 | Wrong `LOKI_URL`           | `curl $LOKI_URL/ready` must return 200    |
+| Journald filling disk           | Drop-in not applied        | Re-run the copy + restart steps above     |
+| Docker socket permission denied | User not in `docker` group | `usermod -aG docker $(whoami)`            |
 
 ---
 

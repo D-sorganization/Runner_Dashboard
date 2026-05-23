@@ -14,13 +14,7 @@
     },
     "mobile_lighthouse": {
       "performance_min": 90,
-      "routes": [
-        "Fleet",
-        "Workflows",
-        "Remediation",
-        "Maxwell",
-        "Reports"
-      ]
+      "routes": ["Fleet", "Workflows", "Remediation", "Maxwell", "Reports"]
     },
     "field_timing": {
       "inp_p75_ms": 200,

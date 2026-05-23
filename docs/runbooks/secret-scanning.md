@@ -48,11 +48,11 @@ all findings are marked `false` (placeholder) or rotated.
 
 The pre-commit hook and the CI workflow both pin to a specific tagged SHA:
 
-| Location                           | Field                | Update together |
-| ---------------------------------- | -------------------- | --------------- |
-| `.pre-commit-config.yaml`          | `rev:` for gitleaks  | yes             |
-| `.github/workflows/ci-secrets.yml` | `GITLEAKS_VERSION`   | yes             |
-| `.github/workflows/ci-secrets.yml` | `GITLEAKS_SHA256`    | yes             |
+| Location                           | Field               | Update together |
+| ---------------------------------- | ------------------- | --------------- |
+| `.pre-commit-config.yaml`          | `rev:` for gitleaks | yes             |
+| `.github/workflows/ci-secrets.yml` | `GITLEAKS_VERSION`  | yes             |
+| `.github/workflows/ci-secrets.yml` | `GITLEAKS_SHA256`   | yes             |
 
 To bump:
 

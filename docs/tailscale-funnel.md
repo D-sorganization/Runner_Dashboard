@@ -77,7 +77,7 @@ Expected response:
 }
 ```
 
-## Same-origin /api/* passthrough
+## Same-origin /api/\* passthrough
 
 Because `tailscale funnel 8321` forwards **all** paths under the public HTTPS
 host to the local backend on port 8321, the dashboard's `/api/*` calls (and
@@ -93,23 +93,23 @@ even though the backend is healthy.
 
 ## Security Considerations
 
-| Control | Purpose |
-|---------|---------|
-| Tailscale Funnel | TLS termination + IP allow-list via Tailnet ACLs |
-| `Linear-Signature` HMAC-SHA256 | Payload authenticity |
-| Max-age check (300 s) | Replay protection |
-| Webhook ID deduplication | Idempotency |
-| No CSRF on webhook route | External service compatibility |
-| Sanitized logging | Prevents secret leakage |
+| Control                        | Purpose                                          |
+| ------------------------------ | ------------------------------------------------ |
+| Tailscale Funnel               | TLS termination + IP allow-list via Tailnet ACLs |
+| `Linear-Signature` HMAC-SHA256 | Payload authenticity                             |
+| Max-age check (300 s)          | Replay protection                                |
+| Webhook ID deduplication       | Idempotency                                      |
+| No CSRF on webhook route       | External service compatibility                   |
+| Sanitized logging              | Prevents secret leakage                          |
 
 ## Troubleshooting
 
-| Symptom | Cause | Fix |
-|---------|-------|-----|
-| `401 Signature verification failed` | Secret mismatch | Verify `LINEAR_WEBHOOK_SECRET` matches Linear console |
-| `400 Payload too old` | Clock skew | Sync NTP on both ends |
-| `200 replay: true` | Duplicate webhook ID | Normal — Linear retries; no action needed |
-| Funnel not reachable | Firewall / ACL | Ensure `tailscale status` shows ` funnel` next to the machine |
+| Symptom                             | Cause                | Fix                                                           |
+| ----------------------------------- | -------------------- | ------------------------------------------------------------- |
+| `401 Signature verification failed` | Secret mismatch      | Verify `LINEAR_WEBHOOK_SECRET` matches Linear console         |
+| `400 Payload too old`               | Clock skew           | Sync NTP on both ends                                         |
+| `200 replay: true`                  | Duplicate webhook ID | Normal — Linear retries; no action needed                     |
+| Funnel not reachable                | Firewall / ACL       | Ensure `tailscale status` shows ` funnel` next to the machine |
 
 ## Production Hardening
 

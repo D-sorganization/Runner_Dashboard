@@ -1,6 +1,7 @@
 Child issue for Epic #63. Implementing foundation for Identity and Authorization.
 
 **Tasks:**
+
 - Define `Principal` model and `config/principals.yml` schema + loader
 - FastAPI `require_principal()` dependency and auth middleware
 - GitHub OAuth login flow for human principals (callback, session cookie, CSRF-safe)

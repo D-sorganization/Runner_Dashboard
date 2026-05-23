@@ -3,7 +3,7 @@
 ## Overview
 
 `HUB_FLEET_TOKEN` is the intra-fleet bearer token used by spoke nodes when
-proxying requests to the hub node.  It replaces forwarding the caller's own
+proxying requests to the hub node. It replaces forwarding the caller's own
 `Authorization` / `Cookie` / `X-API-Key` headers (issue #347).
 
 ## Setting the token

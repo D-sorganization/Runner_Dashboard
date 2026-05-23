@@ -8,12 +8,14 @@
 ## Problem Statement
 
 The assistant should be able to take actions on behalf of the operator (not just chat), such as:
+
 - Rerun a failed workflow
 - Restart a runner
 - Dismiss an alert
 - Trigger remediation
 
 **User Story:**
+
 - Operator in chat: "Rerun the failed build"
 - Assistant interprets the request and calls appropriate APIs
 - Operator approves the action (or auto-approve for low-risk actions)
@@ -26,12 +28,14 @@ The assistant should be able to take actions on behalf of the operator (not just
 This is the source of the `judgement:contested` label. Different perspectives:
 
 **Perspective A: Full Agent Autonomy**
+
 - Assistant can execute any action without operator approval
 - Faster UX: "rerun the build" → immediately runs
 - Risk: Buggy prompt interpretation could cause unwanted actions
 - Example: "restart the database" misinterpreted as "restart all services"
 
 **Perspective B: Approval-Gate (Recommended)**
+
 - Assistant proposes action with full details
 - Operator must approve before execution
 - Safer: Operator can verify "yes, restart runner-5 not the hub"
@@ -67,6 +71,7 @@ Assistant proposes:
 ```
 
 Backend endpoint: `POST /api/assistant/propose-action`
+
 - Takes: prompt + context
 - Returns: proposed action (description, parameters, risk level)
 - No execution yet
@@ -98,14 +103,14 @@ Frontend → Display result in chat
 async def propose_action(request: Request) -> dict:
     """
     Ask assistant to propose an action based on user request.
-    
+
     Request:
     {
         "user_request": "restart runner-5",
         "context": { ... },  # Same as chat endpoint context
         "provider": "jules_api" (optional)
     }
-    
+
     Response:
     {
         "action_id": "uuid",
@@ -128,14 +133,14 @@ async def propose_action(request: Request) -> dict:
 async def execute_action(request: Request) -> dict:
     """
     Execute a proposed action after operator approval.
-    
+
     Request:
     {
         "action_id": "uuid",
         "approved": true,
         "operator_notes": "ok, proceed" (optional)
     }
-    
+
     Response:
     {
         "success": true,
@@ -173,16 +178,17 @@ class ActionProposal(BaseModel):
 
 Start with safe, non-destructive actions:
 
-| Action | Risk | Implementation |
-|--------|------|-----------------|
-| Get runner status | LOW | Calls existing `/api/runners/{id}` |
-| Get workflow status | LOW | Calls existing `/api/workflows/{id}` |
-| Rerun workflow | MEDIUM | Calls existing GitHub API |
-| Restart runner | MEDIUM | Calls existing `/api/fleet/control/restart` |
-| Dismiss alert | LOW | Updates internal state |
-| Run remediation | HIGH | Calls `/api/agent-remediation/dispatch` |
+| Action              | Risk   | Implementation                              |
+| ------------------- | ------ | ------------------------------------------- |
+| Get runner status   | LOW    | Calls existing `/api/runners/{id}`          |
+| Get workflow status | LOW    | Calls existing `/api/workflows/{id}`        |
+| Rerun workflow      | MEDIUM | Calls existing GitHub API                   |
+| Restart runner      | MEDIUM | Calls existing `/api/fleet/control/restart` |
+| Dismiss alert       | LOW    | Updates internal state                      |
+| Run remediation     | HIGH   | Calls `/api/agent-remediation/dispatch`     |
 
 Do NOT support in MVP:
+
 - Deleting runners
 - Force-killing processes
 - Changing fleet topology
@@ -196,8 +202,8 @@ The sidebar (from #87) needs:
 
 1. **Chat interface** (existing from #88)
    - Show user messages and assistant responses
-   
 2. **Action proposal cards**
+
    - Display proposed action with description
    - Show risk level (color-coded: green/yellow/red/black)
    - Action buttons: [Approve] [Reject] [Edit parameters]
@@ -235,17 +241,20 @@ Example UI:
 ## Security Considerations
 
 ### Action Validation
+
 - Validate action_id is real and pending approval
 - Verify operator has permission for the action (not MVP)
 - Audit log all proposed + executed actions
 - Rate limit action execution (e.g., max 5/minute)
 
 ### Dangerous Actions
+
 - HIGH/CRITICAL actions require explicit operator review
 - LOW actions can be pre-approved if operator enables "trust mode"
 - Never auto-execute without explicit approval
 
 ### AI Safety
+
 - AI must not hallucinate action types (only allow predefined list)
 - AI must not guess parameters (ask operator if ambiguous)
 - All proposed actions must be human-readable and verifiable
@@ -255,16 +264,19 @@ Example UI:
 ## Testing Plan
 
 ### Unit Tests
+
 - Action proposal generation (various prompts)
 - Parameter extraction and validation
 - Risk level assessment
 
 ### Integration Tests
+
 - Full proposal → approval → execution flow
 - Error handling (action fails, permission denied, etc.)
 - Operator can edit/reject proposals
 
 ### E2E Tests
+
 - End-to-end flow in sidebar UI
 - Verify action is actually executed in backend
 - Verify audit logs are created
@@ -273,12 +285,12 @@ Example UI:
 
 ## Files to Modify
 
-| File | Change | Size |
-|------|--------|------|
-| `backend/assistant_contract.py` | Add action models | ~60 lines |
-| `backend/server.py` | Add proposal + execution endpoints | ~80 lines |
-| `frontend/index.html` | Expand sidebar with action cards | ~100 lines |
-| `tests/api/test_assistant.py` | Action proposal + execution tests | ~120 lines |
+| File                            | Change                             | Size       |
+| ------------------------------- | ---------------------------------- | ---------- |
+| `backend/assistant_contract.py` | Add action models                  | ~60 lines  |
+| `backend/server.py`             | Add proposal + execution endpoints | ~80 lines  |
+| `frontend/index.html`           | Expand sidebar with action cards   | ~100 lines |
+| `tests/api/test_assistant.py`   | Action proposal + execution tests  | ~120 lines |
 
 ---
 
@@ -306,11 +318,13 @@ Example UI:
 ## Rollout Plan
 
 1. **Phase 1:** Proposal endpoint only (no execution)
+
    - Get feedback on action proposals
    - Verify AI correctly interprets requests
    - No risk: operator sees proposal but can't approve yet
 
 2. **Phase 2:** Add execution endpoint
+
    - Operator can now approve proposals
    - Start with LOW-risk actions only
    - Gather feedback on UX
