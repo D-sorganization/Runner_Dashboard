@@ -75,6 +75,8 @@ def test_script_documents_required_parameters() -> None:
         "LogDir",
         "MaxLogBytes",
         "LogBackups",
+        "DashboardPort",
+        "DashboardServiceName",
         "Once",
     ):
         assert f"${param}" in text, f"parameter ${param} not declared"
@@ -90,6 +92,15 @@ def test_script_validates_probe_timeout_relative_to_interval() -> None:
     text = SCRIPT.read_text(encoding="utf-8")
     assert "ProbeTimeoutSeconds" in text
     assert "must be < CheckIntervalSeconds" in text
+
+
+def test_script_validates_dashboard_recovery_parameters() -> None:
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert "DashboardPort must be in 1..65535" in text
+    assert "DashboardServiceName must be a non-empty string" in text
+    assert "dashboard_unhealthy_detected" in text
+    assert "dashboard_recovery_escalating_to_wsl_reset" in text
+    assert "Start-DashboardServiceOnly" in text
 
 
 # ---------------------------------------------------------------------------
