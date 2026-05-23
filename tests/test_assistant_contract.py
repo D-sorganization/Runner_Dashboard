@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import assistant_contract as ac
 import pytest
+from pydantic import ValidationError
 
 
 def test_assistant_context_required_fields() -> None:
@@ -22,7 +23,7 @@ def test_assistant_chat_request_valid() -> None:
 
 def test_assistant_chat_request_empty_prompt_raises() -> None:
     ctx = ac.AssistantContext(current_tab="fleet")
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         ac.AssistantChatRequest(prompt="", context=ctx)
 
 
