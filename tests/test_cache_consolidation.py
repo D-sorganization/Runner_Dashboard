@@ -192,7 +192,7 @@ class TestStampedeProtection:
         # First call — populates cache
         r1 = await c.get_or_set("k", ttl=0.001, factory=factory)
         # Wait for expiry
-        await asyncio.sleep(0.01)
+        await asyncio.sleep(0.05)
         # Second call — should re-invoke factory
         r2 = await c.get_or_set("k", ttl=0.001, factory=factory)
 
