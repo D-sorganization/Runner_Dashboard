@@ -4,6 +4,7 @@ from __future__ import annotations  # noqa: E402
 
 import sys  # noqa: E402
 from pathlib import Path  # noqa: E402
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch  # noqa: E402
 
 import pytest  # noqa: E402
@@ -17,6 +18,8 @@ from agent_dispatch_router import (  # noqa: E402
     DispatchSelection,
     IssueDispatchRequest,
     PRDispatchRequest,
+    _resolve_targets,
+    _validate_provider,
     dispatch_to_issues,
     dispatch_to_prs,
 )
@@ -181,6 +184,34 @@ async def test_dispatch_to_prs_gh_failure_populates_rejected() -> None:
     assert result.rejected[0]["reason"]
 
 
+# ─── Direct helper coverage for provider / target resolution ─────────────────
+
+
+def test_validate_provider_unknown_provider_returns_reason() -> None:
+    reason = _validate_provider("unknown_provider")
+    assert reason == "provider_unavailable: unknown provider 'unknown_provider'"
+
+
+def test_resolve_targets_repo_mode_requires_repository() -> None:
+    selection = DispatchSelection(mode="repo")
+    assert _resolve_targets(selection, _normalize, "D-sorganization") == "repo mode requires repository"
+
+
+def test_resolve_targets_repo_mode_returns_sentinel_target() -> None:
+    selection = DispatchSelection(mode="repo", repository="runner-dashboard")
+    assert _resolve_targets(selection, _normalize, "D-sorganization") == [("D-sorganization/runner-dashboard", -1)]
+
+
+def test_resolve_targets_list_mode_requires_items() -> None:
+    selection = DispatchSelection(mode="list")
+    assert _resolve_targets(selection, _normalize, "D-sorganization") == "list mode requires at least one item"
+
+
+def test_resolve_targets_unknown_mode_returns_error() -> None:
+    selection = SimpleNamespace(mode="mystery", repository="", number=None, items=[])
+    assert _resolve_targets(selection, _normalize, "D-sorganization") == "unknown selection mode: mystery"
+
+
 # ─── Issue dispatch tests ─────────────────────────────────────────────────────
 
 
@@ -221,6 +252,76 @@ async def test_dispatch_to_issues_invalid_number_rejected() -> None:
     assert result.accepted == 0
     assert len(result.rejected) == 1
     assert "not_pickable" in result.rejected[0]["reason"]
+
+
+@pytest.mark.asyncio
+async def test_dispatch_to_issues_anonymous_principal_rejected() -> None:
+    req = IssueDispatchRequest(
+        selection=DispatchSelection(
+            mode="single",
+            repository="D-sorganization/runner-dashboard",
+            number=42,
+        ),
+        provider="claude_code_cli",
+        prompt="Fix this issue",
+        principal="",
+    )
+    result = await dispatch_to_issues(
+        req,
+        run_cmd_fn=_make_run_cmd(0),
+        org="D-sorganization",
+        repo_root=Path("."),
+        normalize_repository_fn=_normalize,
+    )
+    assert isinstance(result, dict)
+    assert result["status_code"] == 422
+    assert "anonymous_principal" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_dispatch_to_issues_rate_limited_returns_retry_after(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def _deny(_principal: str) -> dict[str, int | bool | str]:
+        return {"allowed": False, "reason": "rate_limited", "retry_after": 17}
+
+    monkeypatch.setattr(dispatch_quota.quota, "check_and_record", _deny)
+    req = IssueDispatchRequest(
+        selection=DispatchSelection(
+            mode="single",
+            repository="D-sorganization/runner-dashboard",
+            number=42,
+        ),
+        provider="claude_code_cli",
+        prompt="Fix this issue",
+        principal="rate-limited-user",
+    )
+    result = await _dispatch_issues(req)
+    assert isinstance(result, dict)
+    assert result["status_code"] == 429
+    assert result["retry_after"] == 17
+
+
+@pytest.mark.asyncio
+async def test_dispatch_to_issues_gh_failure_populates_rejected() -> None:
+    req = IssueDispatchRequest(
+        selection=DispatchSelection(
+            mode="single",
+            repository="D-sorganization/runner-dashboard",
+            number=11,
+        ),
+        provider="claude_code_cli",
+        prompt="Fix this issue quickly",
+        force=True,
+    )
+    result = await _dispatch_issues(req, run_cmd_fn=_make_run_cmd(returncode=1, stderr="some gh error"))
+    assert isinstance(result, BulkDispatchResponse)
+    assert result.accepted == 0
+    assert result.rejected == [
+        {
+            "repository": "D-sorganization/runner-dashboard",
+            "number": 11,
+            "reason": "dispatch_failed: gh exited with code 1",
+        }
+    ]
 
 
 @pytest.mark.asyncio
