@@ -20,6 +20,15 @@ _BACKEND_DIR = Path(__file__).parent.parent / "backend"
 sys.path.insert(0, str(_BACKEND_DIR))
 
 
+@pytest.fixture(autouse=True)
+def _reset_gh_rate_limit_breakers() -> None:
+    import gh_utils
+
+    gh_utils.clear_rate_limit_breakers()
+    yield
+    gh_utils.clear_rate_limit_breakers()
+
+
 # ---------------------------------------------------------------------------
 # Token cache
 # ---------------------------------------------------------------------------

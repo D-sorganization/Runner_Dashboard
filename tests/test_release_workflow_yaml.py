@@ -3,7 +3,7 @@
 Validates `.github/workflows/release.yml` and `.github/workflows/verify-tag.yml`:
 
   1. Both workflow files exist.
-  2. Both workflows route to a `d-sorg-fleet*` runner label (not ubuntu-latest).
+  2. Both workflows route to a `d-sorg-fleet*` self-hosted runner label (not ubuntu-latest).
   3. Every `uses:` reference is pinned to a 40-char SHA.
   4. release.yml exposes both `workflow_dispatch` and `push` triggers.
   5. release.yml defines the `dry_run` input.

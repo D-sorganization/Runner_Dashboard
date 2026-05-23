@@ -1,8 +1,8 @@
-﻿# SPEC.md â€” D-sorganization Runner Dashboard
+# SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.26
+**Spec Version:** 2.5.27
 **Application Version:** 4.1.0 (see `VERSION`)
-**Last Updated:** 2026-05-22T17:45:00Z
+**Last Updated:** 2026-05-22T19:20:59Z
 **Status:** Active
 
 ### Recent Spec Updates
@@ -683,6 +683,14 @@ env var.
 | ------ | ---------------------------- | ------------------------------------------------------- |
 | GET    | `/api/agents/providers`      | Available agent providers and their availability status |
 | POST   | `/api/agents/quick-dispatch` | Dispatch an ad-hoc agent task to any repository         |
+
+`POST /api/agents/quick-dispatch` now performs a cached pre-flight backpressure
+gate before dispatching. If `GET /readyz` would fail or no online
+`d-sorg-fleet` runner is available, the route returns HTTP `503` with
+`{"error":"not_ready","reason":...,"retry_after_seconds":30}` and a
+`Retry-After` header. Successful accepts return HTTP `202`. Operators may
+override the gate with `force=true`, which is logged in the quick-dispatch
+audit trail.
 
 ### PR and Issue Dispatch
 
