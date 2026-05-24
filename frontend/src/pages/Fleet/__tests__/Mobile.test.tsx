@@ -119,10 +119,6 @@ describe("FleetMobile", () => {
     global.fetch = vi.fn(() => new Promise<Response>(() => {}));
     const { container } = render(<FleetMobile />);
     // During loading, skeleton cards should be present
-    const busyEl =
-      container.querySelector("[aria-busy='true']") ||
-      container.querySelector("[class*='skeleton']") ||
-      container.querySelector(".skeleton");
     expect(container.firstChild).not.toBeNull();
     // The fleet list section should not yet be present
     expect(screen.queryByRole("region", { name: /fleet/i })).toBeNull();

@@ -12,7 +12,7 @@
  */
 import "@testing-library/jest-dom/vitest";
 import React from "react";
-import { cleanup, render, screen, waitFor, fireEvent, act } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentDispatchPage } from "../AgentDispatch";
 
@@ -126,11 +126,6 @@ describe("AgentDispatchPage", () => {
     // Never resolves
     global.fetch = vi.fn(() => new Promise<Response>(() => {}));
     const { container } = render(<AgentDispatchPage />);
-    // Loading state should show skeleton or busy indicator
-    const busyEl =
-      container.querySelector("[aria-busy='true']") ||
-      container.querySelector(".skeleton") ||
-      container.querySelector("[class*='skeleton']");
     // The component renders something during loading
     expect(container.firstChild).not.toBeNull();
   });

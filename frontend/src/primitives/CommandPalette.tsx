@@ -70,6 +70,14 @@ export function CommandPalette({ commands }: CommandPaletteProps) {
 
   const filtered = useMemo(() => filterCommands(commands, query), [commands, query]);
 
+  const close = useCallback(() => {
+    setOpen(false);
+    // Restore focus
+    if (prevFocusRef.current instanceof HTMLElement) {
+      prevFocusRef.current.focus();
+    }
+  }, []);
+
   // Open with Ctrl+K / Cmd+K
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -96,7 +104,7 @@ export function CommandPalette({ commands }: CommandPaletteProps) {
     };
     document.addEventListener('keydown', handleEsc);
     return () => document.removeEventListener('keydown', handleEsc);
-  }, [open]);
+  }, [open, close]);
 
   // Focus input when opened
   useEffect(() => {
@@ -104,14 +112,6 @@ export function CommandPalette({ commands }: CommandPaletteProps) {
       requestAnimationFrame(() => inputRef.current?.focus());
     }
   }, [open]);
-
-  const close = useCallback(() => {
-    setOpen(false);
-    // Restore focus
-    if (prevFocusRef.current instanceof HTMLElement) {
-      prevFocusRef.current.focus();
-    }
-  }, []);
 
   const execute = useCallback(
     (cmd: Command) => {
