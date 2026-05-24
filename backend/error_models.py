@@ -21,6 +21,8 @@ the model and return it with the appropriate ``JSONResponse``.
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -101,3 +103,44 @@ def service_stderr_to_status(stderr: str) -> int:
     if "permission denied" in lower or "access denied" in lower or "operation not permitted" in lower:
         return 403
     return 500
+
+
+def not_ready(detail: str, reason: str = "", *, request_id: str | None = None) -> ErrorResponse:
+    """Return a 503 Service Unavailable error (not ready)."""
+    return ErrorResponse(error="not_ready", detail=detail, request_id=request_id)
+
+
+def upstream_error(detail: str, *, request_id: str | None = None) -> ErrorResponse:
+    """Return a 502 Upstream Error envelope."""
+    return ErrorResponse(error="upstream_error", detail=detail, request_id=request_id)
+
+
+def internal_error(detail: str, *, request_id: str | None = None) -> ErrorResponse:
+    """Return a 500 Internal Server Error envelope."""
+    return ErrorResponse(error="internal_error", detail=detail, request_id=request_id)
+
+
+def from_http_exception(exc: Any, *, request_id: str | None = None) -> ErrorResponse:
+    """Convert an HTTPException (or duck-typed equivalent) to an ErrorResponse.
+
+    Pre-condition: exc has status_code and detail attributes.
+    Post-condition: returns a valid ErrorResponse with a non-empty error code.
+    """
+    assert hasattr(exc, "status_code"), "exc must have status_code"
+    assert hasattr(exc, "detail"), "exc must have detail"
+
+    _status_to_kind: dict[int, str] = {
+        400: "validation_error",
+        401: "unauthorized",
+        403: "forbidden",
+        404: "not_found",
+        409: "conflict",
+        422: "validation_error",
+        429: "rate_limited",
+        500: "internal_error",
+        502: "bad_gateway",
+        503: "not_ready",
+    }
+    kind = _status_to_kind.get(exc.status_code, "server_error")
+    detail = str(exc.detail) if exc.detail else f"HTTP {exc.status_code}"
+    return ErrorResponse(error=kind, detail=detail, request_id=request_id)

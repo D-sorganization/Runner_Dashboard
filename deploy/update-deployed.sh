@@ -128,14 +128,55 @@ else
     fi
 fi
 
+# ── Pre-flight: syntax check + import test ───────────────────────────────────
+if [[ -z "$ARTIFACT_SOURCE" ]]; then
+    info "Running pre-flight syntax check on backend modules..."
+    VENV="${REPO}/.venv"
+    PYTHON="${VENV}/bin/python"
+    if [[ ! -x "$PYTHON" ]]; then
+        PYTHON="python3"
+    fi
+
+    if ! dry_run "py_compile backend/server.py backend/runner_autoscaler.py"; then
+        if ! "$PYTHON" -m py_compile "$REPO/backend/server.py" "$REPO/backend/runner_autoscaler.py" 2>&1; then
+            fail "Pre-flight FAILED: syntax error in backend Python files — aborting before restart"
+        fi
+    fi
+    ok "Pre-flight checks passed"
+fi
+
 info "Restarting $SERVICE..."
 if ! dry_run "sudo systemctl restart $SERVICE"; then
     sudo systemctl restart "$SERVICE"
 fi
 
+# ── Health-gate: verify service came up ──────────────────────────────────────
+_check_health() {
+    curl -fsS --max-time 10 http://localhost:8321/healthz >/dev/null 2>&1
+}
+
+_wait_healthy() {
+    local attempt=0 delays=(1 2 4 8 16)
+    for delay in "${delays[@]}"; do
+        if _check_health; then
+            return 0
+        fi
+        warn "Health check attempt $((attempt+1)) failed; retrying in ${delay}s..."
+        sleep "$delay"
+        ((attempt++)) || true
+    done
+    return 1
+}
+
 # Brief wait then check status — skipped in dry-run mode
 if [[ "$DRY_RUN" != "true" ]]; then
-    sleep 2
+    if ! _wait_healthy; then
+        warn "Service failed health checks — attempting rollback..."
+        if [[ -n "${_BACKUP:-}" && -d "$_BACKUP" ]]; then
+            "$(dirname "$0")/rollback-deployed.sh" --backup-dir "$_BACKUP" --deploy-dir "$DEPLOY_DIR"
+        fi
+        fail "Deploy failed health checks; rollback attempted"
+    fi
     if sudo systemctl is-active --quiet "$SERVICE"; then
         ok "Service is running"
         echo ""

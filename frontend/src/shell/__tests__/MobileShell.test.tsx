@@ -76,6 +76,26 @@ describe('MobileShell', () => {
     expect(tabs).toHaveLength(5)
   })
 
+  it('renders skip link and semantic shell landmarks', () => {
+    const handleTabChange = vi.fn()
+    const { container } = render(
+      <MobileShell currentTab="fleet" onTabChange={handleTabChange}>
+        <div>Test Content</div>
+      </MobileShell>
+    )
+
+    const firstFocusable = container.querySelector('a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])')
+    const skipLink = screen.getByText('Skip to main content')
+    const main = container.querySelector('main#main-content')
+
+    expect(firstFocusable).toBe(skipLink)
+    expect(skipLink).toHaveAttribute('href', '#main-content')
+    expect(container.querySelector('header[role="banner"]')).toBeInTheDocument()
+    expect(screen.getByRole('navigation', { name: 'Main navigation' })).toBeInTheDocument()
+    expect(main).toBeInTheDocument()
+    expect(main).toHaveAttribute('role', 'main')
+  })
+
   it('sets aria-selected on active tab only', () => {
     const handleTabChange = vi.fn()
     render(
@@ -345,6 +365,56 @@ describe('MobileShell', () => {
     expect(screen.queryByText('Fleet')).not.toBeInTheDocument()
   })
 })
+
+// D7 / issue #726: Accessibility improvements
+describe('MobileShell accessibility (D7)', () => {
+  beforeEach(() => {
+    // Ensure we are on a mobile breakpoint so MobileShell renders the full shell
+    breakpointMock.value = 'md';
+    window.matchMedia = vi.fn((query) => ({
+      matches: query === '(max-width: 767px)',
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    } as MediaQueryList));
+  });
+
+  it('skip link is present and is the first focusable element', () => {
+    render(
+      <MobileShell currentTab="fleet" onTabChange={vi.fn()}>
+        <div>Content</div>
+      </MobileShell>,
+    );
+    const skipLink = document.querySelector('.skip-link') as HTMLElement | null;
+    expect(skipLink).not.toBeNull();
+    expect(skipLink?.tagName.toLowerCase()).toBe('a');
+    expect(skipLink?.getAttribute('href')).toBe('#main-content');
+  });
+
+  it('has a <main> element with id="main-content"', () => {
+    render(
+      <MobileShell currentTab="fleet" onTabChange={vi.fn()}>
+        <div>Content</div>
+      </MobileShell>,
+    );
+    const main = document.querySelector('main#main-content');
+    expect(main).not.toBeNull();
+  });
+
+  it('nav has role="tablist" or role="navigation"', () => {
+    render(
+      <MobileShell currentTab="fleet" onTabChange={vi.fn()}>
+        <div>Content</div>
+      </MobileShell>,
+    );
+    const nav = document.querySelector('nav');
+    expect(nav).not.toBeNull();
+  });
+});
 
 // Test helper component
 function Counter() {

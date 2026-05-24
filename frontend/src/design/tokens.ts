@@ -233,3 +233,28 @@ export function toCssVariables(theme: "dark" | "light" = "dark"): string {
     .map(([name, value]) => `${name}: ${value};`)
     .join("\n");
 }
+
+// ---- Semantic status tokens (D5 / issue #724) --------------------------------
+
+export const statusTokens = {
+  healthy:  { bg: "rgba(63,185,80,0.15)",   fg: "#3fb950" },
+  warning:  { bg: "rgba(210,153,34,0.15)",  fg: "#d29922" },
+  critical: { bg: "rgba(248,81,73,0.15)",   fg: "#f85149" },
+  unknown:  { bg: "rgba(139,148,158,0.15)", fg: "#8b949e" },
+  info:     { bg: "rgba(88,166,255,0.15)",  fg: "#58a6ff" },
+} as const;
+
+export type StatusVariant = keyof typeof statusTokens;
+
+export const radii = {
+  sm:   "6px",
+  md:   "10px",
+  lg:   "14px",
+  pill: "9999px",
+} as const;
+
+export const shadows = {
+  soft:  "0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.08)",
+  card:  "0 4px 6px rgba(0,0,0,0.15), 0 1px 3px rgba(0,0,0,0.1)",
+  modal: "0 20px 60px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.2)",
+} as const;

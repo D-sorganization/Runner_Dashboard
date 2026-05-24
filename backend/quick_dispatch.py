@@ -22,9 +22,12 @@ from uuid import uuid4
 import agent_remediation
 import config_schema
 import quota_enforcement
+from cache_utils import cache_get, cache_set
 from dispatch_contract import DispatchAccess
+from gh_utils import gh_api_admin
 from identity import identity_manager
 from pydantic import BaseModel, Field
+from readiness import aggregate, get_default_probes
 
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 
@@ -32,8 +35,9 @@ log = logging.getLogger("dashboard.quick_dispatch")
 
 # ─── History path ─────────────────────────────────────────────────────────────
 
-_QUICK_DISPATCH_HISTORY_PATH = Path(os.environ.get("QUICK_DISPATCH_HISTORY_PATH", "")) or (
-    Path.home() / "actions-runners" / "dashboard" / "quick_dispatch_history.json"
+_QUICK_DISPATCH_HISTORY_PATH = Path(
+    os.environ.get("QUICK_DISPATCH_HISTORY_PATH")
+    or (Path.home() / "actions-runners" / "dashboard" / "quick_dispatch_history.json")
 )
 
 _quick_dispatch_history_lock: asyncio.Lock = asyncio.Lock()
@@ -45,6 +49,16 @@ _QUICK_DISPATCH_WINDOW_SECONDS = 60
 
 _quick_dispatch_timestamps: list[float] = []
 _quick_dispatch_rate_lock = asyncio.Lock()
+
+_QUICK_DISPATCH_HEALTH_CACHE_SECONDS = 5.0
+_QUICK_DISPATCH_HEALTH_RETRY_AFTER_SECONDS = 30
+_QUICK_DISPATCH_REQUIRED_LABELS = ("d-sorg-fleet",)
+
+_quick_dispatch_health_lock = asyncio.Lock()
+_quick_dispatch_health_cache: dict[
+    tuple[str, tuple[str, ...]],
+    tuple[float, QuickDispatchHealthGateResult],
+] = {}
 
 
 async def _check_quick_dispatch_rate() -> int | None:
@@ -62,6 +76,53 @@ async def _check_quick_dispatch_rate() -> int | None:
         return None
 
 
+# ─── Health gate ──────────────────────────────────────────────────────────────
+
+
+class HealthGate:
+    """Cache-backed readiness gate for dispatch pre-flight (issue #709).
+
+    Checks the /readyz aggregate probe before allowing dispatch.
+    Results are cached for ``cache_ttl`` seconds to avoid hammering the probe.
+    Fails open if the probe itself raises an exception.
+    """
+
+    _cache_ttl: float
+    _last_check: float
+    _last_ok: bool
+    _lock: asyncio.Lock
+
+    def __init__(self, cache_ttl: float = 5.0) -> None:
+        assert cache_ttl > 0, "cache_ttl must be positive"
+        self._cache_ttl = cache_ttl
+        self._last_check = 0.0
+        self._last_ok = True
+        self._lock = asyncio.Lock()
+
+    async def is_ready(self) -> tuple[bool, str]:
+        """Return (ready, reason). Cached for cache_ttl seconds.
+
+        Pre-condition: cache_ttl > 0 (enforced in __init__).
+        Post-condition: always returns a (bool, str) tuple.
+        """
+        now = time.monotonic()
+        async with self._lock:
+            if now - self._last_check < self._cache_ttl:
+                return self._last_ok, ""
+            # Do actual check
+            try:
+                from readiness import aggregate, get_default_probes  # noqa: PLC0415
+
+                http_status, _ = await aggregate(get_default_probes())
+                self._last_ok = http_status == 200
+                self._last_check = now
+                return self._last_ok, "" if self._last_ok else "readyz_failed"
+            except Exception:  # noqa: BLE001
+                # Fail open: if the check itself errors, don't block dispatch
+                self._last_check = now
+                return True, ""
+
+
 # ─── Pydantic models ──────────────────────────────────────────────────────────
 
 
@@ -76,6 +137,7 @@ class QuickDispatchRequest(BaseModel):
     principal: str = Field(default="", max_length=200)
     on_behalf_of: str = Field(default="", max_length=200)
     correlation_id: str = Field(default="", max_length=100)
+    force: bool = Field(default=False, description="Bypass health gate and runner checks (audit-logged)")
 
 
 class QuickDispatchResponse(BaseModel):
@@ -85,6 +147,14 @@ class QuickDispatchResponse(BaseModel):
     workflow_run_url: str = ""
     history_id: str = ""
     reason: str = ""
+    error_code: str = ""
+    retry_after_seconds: int = 0
+
+
+class QuickDispatchHealthGateResult(BaseModel):
+    ready: bool
+    reason: str = ""
+    retry_after_seconds: int = _QUICK_DISPATCH_HEALTH_RETRY_AFTER_SECONDS
 
 
 # ─── Core logic ───────────────────────────────────────────────────────────────
@@ -96,6 +166,87 @@ def _build_fingerprint(repository: str, provider: str, prompt: str) -> str:
     import hashlib  # noqa: PLC0415
 
     return hashlib.sha256(slug.encode()).hexdigest()[:16]
+
+
+def _runner_label_names(runner: dict[str, Any]) -> set[str]:
+    labels = runner.get("labels", [])
+    result: set[str] = set()
+    for label in labels:
+        if isinstance(label, dict):
+            name = str(label.get("name", "")).strip().lower()
+        else:
+            name = str(label).strip().lower()
+        if name:
+            result.add(name)
+    return result
+
+
+def _has_online_runner_with_labels(
+    runners: list[dict[str, Any]],
+    required_labels: tuple[str, ...],
+) -> bool:
+    expected = {label.strip().lower() for label in required_labels if label.strip()}
+    if not expected:
+        return True
+    for runner in runners:
+        if str(runner.get("status", "")).lower() != "online":
+            continue
+        labels = _runner_label_names(runner)
+        if expected.issubset(labels):
+            return True
+    return False
+
+
+async def _probe_quick_dispatch_health(
+    *,
+    org: str,
+    required_labels: tuple[str, ...],
+) -> QuickDispatchHealthGateResult:
+    http_status, _body = await aggregate(get_default_probes())
+    if http_status != 200:
+        return QuickDispatchHealthGateResult(
+            ready=False,
+            reason="readyz_failed",
+            retry_after_seconds=_QUICK_DISPATCH_HEALTH_RETRY_AFTER_SECONDS,
+        )
+
+    runners_data = cache_get("runners", _QUICK_DISPATCH_HEALTH_CACHE_SECONDS)
+    if runners_data is None:
+        runners_data = await gh_api_admin(f"/orgs/{org}/actions/runners")
+        cache_set("runners", runners_data)
+
+    runners = list(runners_data.get("runners", []) or [])
+    if not _has_online_runner_with_labels(runners, required_labels):
+        return QuickDispatchHealthGateResult(
+            ready=False,
+            reason="no_online_runners",
+            retry_after_seconds=_QUICK_DISPATCH_HEALTH_RETRY_AFTER_SECONDS,
+        )
+
+    return QuickDispatchHealthGateResult(ready=True)
+
+
+async def _get_cached_quick_dispatch_health(
+    *,
+    org: str,
+    required_labels: tuple[str, ...],
+    health_gate_fn: Any,
+) -> QuickDispatchHealthGateResult:
+    now = time.monotonic()
+    cache_key = (org, required_labels)
+    cached = _quick_dispatch_health_cache.get(cache_key)
+    if cached is not None and now - cached[0] < _QUICK_DISPATCH_HEALTH_CACHE_SECONDS:
+        return cached[1]
+
+    async with _quick_dispatch_health_lock:
+        cached = _quick_dispatch_health_cache.get(cache_key)
+        now = time.monotonic()
+        if cached is not None and now - cached[0] < _QUICK_DISPATCH_HEALTH_CACHE_SECONDS:
+            return cached[1]
+
+        result = await health_gate_fn(org=org, required_labels=required_labels)
+        _quick_dispatch_health_cache[cache_key] = (now, result)
+        return result
 
 
 async def _append_quick_dispatch_history(entry: dict[str, Any]) -> None:
@@ -157,6 +308,7 @@ async def quick_dispatch(
     org: str,
     repo_root: Path,
     normalize_repository_fn: Any,
+    health_gate_fn: Any | None = None,
 ) -> QuickDispatchResponse:
     """Core dispatch logic extracted for testability.
 
@@ -200,12 +352,35 @@ async def quick_dispatch(
             reason=f"provider_unavailable: {detail}",
         )
 
+    if req.force:
+        log.warning(
+            "dispatch.force_override requested_by=%s principal=%s repository=%s",
+            req.requested_by or "unknown",
+            req.principal or "unknown",
+            full_repository,
+        )
+    else:
+        health_result = await _get_cached_quick_dispatch_health(
+            org=org,
+            required_labels=_QUICK_DISPATCH_REQUIRED_LABELS,
+            health_gate_fn=health_gate_fn or _probe_quick_dispatch_health,
+        )
+        if not health_result.ready:
+            return QuickDispatchResponse(
+                accepted=False,
+                reason=health_result.reason,
+                error_code="not_ready",
+                retry_after_seconds=health_result.retry_after_seconds,
+            )
+
     # ── Rate limit ────────────────────────────────────────────────────────────
     retry_after = await _check_quick_dispatch_rate()
     if retry_after is not None:
         return QuickDispatchResponse(
             accepted=False,
             reason=f"rate_limited: retry_after_seconds={retry_after}",
+            error_code="rate_limited",
+            retry_after_seconds=retry_after,
         )
 
     # ── Check dispatch mode ───────────────────────────────────────────────────
@@ -319,6 +494,7 @@ async def quick_dispatch(
         principal=req.principal,
         on_behalf_of=req.on_behalf_of,
         correlation_id=req.correlation_id,
+        forced=req.force,
     )
     await _append_quick_dispatch_history(audit_entry)
 

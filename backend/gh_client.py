@@ -23,8 +23,10 @@ Typed exceptions
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
+import random
 import time
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
@@ -36,6 +38,11 @@ log = logging.getLogger("dashboard.gh_client")
 
 _GITHUB_API_BASE = "https://api.github.com"
 _DEFAULT_RETRY_AFTER = 60
+
+# ── Retry policy constants ────────────────────────────────────────────────────
+
+_MAX_RETRIES: int = 5
+assert _MAX_RETRIES > 0, "MAX_RETRIES must be positive"
 
 # ── Token cache ──────────────────────────────────────────────────────────────
 
@@ -125,6 +132,19 @@ async def close_client() -> None:
 class GhClientError(RuntimeError):
     """Base class for all GhClient errors."""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        kind: str = "unknown",
+        attempts: int = 0,
+        last_status: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.kind = kind
+        self.attempts = attempts
+        self.last_status = last_status
+
 
 class GhAuthError(GhClientError):
     """No GitHub token available."""
@@ -186,45 +206,106 @@ def _is_rate_limited_response(resp: httpx.Response) -> bool:
 
 
 async def _request(method: str, path: str, *, json: Any = None) -> httpx.Response:
-    """Execute one authenticated GitHub API request with retry on 429.
+    """Execute authenticated GitHub API request with retry on transient errors.
+
+    Pre-condition: path starts with '/' or is a full URL.
+    Post-condition: returns httpx.Response or raises a GhClientError subclass.
+
+    Retries on: TimeoutException, ConnectError, 5xx, 429.
+    Does NOT retry on: 4xx client errors (except 429).
 
     Raises:
         GhAuthError: token missing.
-        GhRateLimited: after max retries exhausted.
+        GhRateLimited: 429 after all retries exhausted.
         GhNotFound: 404.
-        GhServerError: non-retryable 5xx.
+        GhServerError: non-retryable client error or auth error.
+        GhClientError: timeout/connect error after all retries exhausted.
     """
     client = _get_client()
     headers = _auth_headers()
-    resp = await client.request(method, path, headers=headers, json=json)
-    if resp.status_code == 200:
-        _set_status("ok", "GitHub API requests are succeeding.", endpoint=path)
-        return resp
-    if resp.status_code == 204:
-        _set_status("ok", "GitHub API requests are succeeding.", endpoint=path)
-        return resp
-    if resp.status_code in (401, 403) and not _is_rate_limited_response(resp):
-        _set_status("auth_error", f"GitHub API returned {resp.status_code}: {resp.text}", endpoint=path)
+    last_exc: Exception | None = None
+
+    for attempt in range(_MAX_RETRIES):
+        try:
+            resp = await client.request(method, path, headers=headers, json=json)
+        except (httpx.TimeoutException, httpx.ConnectError) as exc:
+            backoff = min(2**attempt + random.uniform(0, 1), 32)
+            log.warning(
+                "gh_client: retry attempt=%d reason=%s path=%s backoff=%.1fs",
+                attempt + 1,
+                type(exc).__name__.lower(),
+                path,
+                backoff,
+            )
+            last_exc = exc
+            if attempt < _MAX_RETRIES - 1:
+                await asyncio.sleep(backoff)
+            continue
+
+        if resp.status_code in (200, 201, 204):
+            _set_status("ok", "GitHub API requests are succeeding.", endpoint=path)
+            return resp
+        if resp.status_code in (401, 403) and not _is_rate_limited_response(resp):
+            _set_status("auth_error", f"GitHub API returned {resp.status_code}", endpoint=path)
+            raise GhServerError(resp.status_code, path, resp.text)
+        if resp.status_code == 404:
+            _set_status("not_found", f"GitHub API returned 404 for {path}", endpoint=path)
+            raise GhNotFound(path)
+        if _is_rate_limited_response(resp):
+            retry_after = _parse_retry_after(resp)
+            _set_status(
+                "rate_limited",
+                f"Rate limited; retry after {retry_after}s",
+                endpoint=path,
+                retry_after_seconds=retry_after,
+            )
+            log.warning(
+                "gh_client: rate limited on %s; retry after %ds (attempt=%d)",
+                path,
+                retry_after,
+                attempt + 1,
+            )
+            last_exc = GhRateLimited(retry_after_seconds=retry_after, endpoint=path)
+            if attempt < _MAX_RETRIES - 1:
+                await asyncio.sleep(min(retry_after, 32))
+            continue
+        if resp.status_code >= 500:
+            backoff = min(2**attempt + random.uniform(0, 1), 32)
+            log.warning(
+                "gh_client: server error %d on %s (attempt=%d) backoff=%.1fs",
+                resp.status_code,
+                path,
+                attempt + 1,
+                backoff,
+            )
+            last_exc = GhServerError(resp.status_code, path, resp.text)
+            if attempt < _MAX_RETRIES - 1:
+                await asyncio.sleep(backoff)
+            continue
+        # Other client errors (422, etc.) — don't retry
+        _set_status("client_error", f"GitHub API returned {resp.status_code}", endpoint=path)
         raise GhServerError(resp.status_code, path, resp.text)
-    if resp.status_code == 404:
-        _set_status("not_found", f"GitHub API returned 404 for {path}", endpoint=path)
-        raise GhNotFound(path)
-    if _is_rate_limited_response(resp):
-        retry_after = _parse_retry_after(resp)
-        _set_status(
-            "rate_limited",
-            f"GitHub API rate limited this dashboard process; retry after {retry_after}s.",
-            endpoint=path,
-            retry_after_seconds=retry_after,
+
+    # All retries exhausted
+    if isinstance(last_exc, (httpx.TimeoutException, httpx.ConnectError)):
+        raise GhClientError(
+            f"GitHub API timeout/connection failed after {_MAX_RETRIES} attempts: {path}",
+            kind="timeout",
+            attempts=_MAX_RETRIES,
         )
-        log.warning("gh_client: rate limited on %s; retry after %ds", path, retry_after)
-        raise GhRateLimited(retry_after_seconds=retry_after, endpoint=path)
-    if resp.status_code >= 500:
-        _set_status("server_error", f"GitHub API returned {resp.status_code}: {resp.text}", endpoint=path)
-        raise GhServerError(resp.status_code, path, resp.text)
-    # Other client error (403, 422, etc.) — surface as GhServerError with real status
-    _set_status("client_error", f"GitHub API returned {resp.status_code}: {resp.text}", endpoint=path)
-    raise GhServerError(resp.status_code, path, resp.text)
+    if isinstance(last_exc, GhRateLimited):
+        raise last_exc
+    if isinstance(last_exc, GhServerError):
+        raise GhClientError(
+            f"GitHub API server error after {_MAX_RETRIES} attempts: {path}",
+            kind="server_error",
+            attempts=_MAX_RETRIES,
+            last_status=last_exc.status_code,
+        )
+    raise GhClientError(
+        f"GitHub API request failed after {_MAX_RETRIES} attempts: {path}",
+        attempts=_MAX_RETRIES,
+    )
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -282,13 +363,26 @@ async def paginate(path: str, *, per_page: int = 100) -> AsyncIterator[dict]:
     headers = _auth_headers()
 
     while url:
-        resp = await client.get(url, headers={**headers, **client.headers})
-        if resp.status_code == 404:
-            return
-        if resp.status_code == 429:
-            raise GhRateLimited(retry_after_seconds=_parse_retry_after(resp), endpoint=url)
-        if resp.status_code >= 400:
-            raise GhServerError(resp.status_code, url, resp.text)
+        page_attempt = 0
+        while True:
+            resp = await client.get(url, headers={**headers, **client.headers})
+            if resp.status_code == 404:
+                return
+            if resp.status_code == 429:
+                retry_after = _parse_retry_after(resp)
+                if retry_after <= 60 and page_attempt == 0:
+                    log.warning(
+                        "gh_client: paginate rate limited at %s; sleeping %ds",
+                        url,
+                        retry_after,
+                    )
+                    await asyncio.sleep(retry_after)
+                    page_attempt += 1
+                    continue
+                raise GhRateLimited(retry_after_seconds=retry_after, endpoint=url)
+            if resp.status_code >= 400:
+                raise GhServerError(resp.status_code, url, resp.text)
+            break
         body = resp.json()
         items: list[dict] = body if isinstance(body, list) else []
         for key in ("workflow_runs", "jobs", "runners", "items", "repositories"):

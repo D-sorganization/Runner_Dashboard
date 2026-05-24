@@ -25,6 +25,7 @@ import {
   Navigate,
 } from "react-router-dom"
 import { RootErrorBoundary } from "./primitives/RootErrorBoundary"
+import { TabErrorBoundary } from "./primitives/TabErrorBoundary"
 
 // ---- Lazy page chunks -------------------------------------------------------
 // Each import() becomes a separate Vite chunk (route-level code splitting).
@@ -70,8 +71,12 @@ function PageSpinner() {
   )
 }
 
-function withSuspense(element: React.ReactElement) {
-  return <Suspense fallback={<PageSpinner />}>{element}</Suspense>
+function withSuspense(element: React.ReactElement, tabName: string) {
+  return (
+    <TabErrorBoundary tabName={tabName}>
+      <Suspense fallback={<PageSpinner />}>{element}</Suspense>
+    </TabErrorBoundary>
+  );
 }
 
 // ---- Route definitions ------------------------------------------------------
@@ -83,27 +88,27 @@ export const router = createBrowserRouter([
     children: [
       {
         path: "/",
-        element: withSuspense(<LazyLegacyApp initialTab="overview" />),
+        element: withSuspense(<LazyLegacyApp initialTab="overview" />, "Fleet"),
       },
       {
         path: "/queue",
-        element: withSuspense(<LazyQueue />),
+        element: withSuspense(<LazyQueue />, "Queue"),
       },
       {
         path: "/dispatch",
-        element: withSuspense(<LazyAgentDispatch />),
+        element: withSuspense(<LazyAgentDispatch />, "Agent Dispatch"),
       },
       {
         path: "/settings/push",
-        element: withSuspense(<LazyPushSettings />),
+        element: withSuspense(<LazyPushSettings />, "Push Settings"),
       },
       {
         path: "/maxwell",
-        element: withSuspense(<LazyLegacyApp initialTab="maxwell" />),
+        element: withSuspense(<LazyLegacyApp initialTab="maxwell" />, "Maxwell"),
       },
       {
         path: "/remediate",
-        element: withSuspense(<LazyLegacyApp initialTab="remediation" />),
+        element: withSuspense(<LazyLegacyApp initialTab="remediation" />, "Remediation"),
       },
       // Catch-all: redirect unknown routes back to Fleet.
       {

@@ -156,7 +156,11 @@ class TestSensitiveFieldsNeverForwarded:
     """Stub returning sensitive fields must not appear in dashboard response."""
 
     def test_api_key_stripped_from_version(self) -> None:
-        raw = {"version": "1.0.0", "api_key": "sk-dangerous", "secret_token": "another"}  # pragma: allowlist secret
+        raw = {
+            "version": "1.0.0",
+            "api_key": "sk-dangerous",  # pragma: allowlist secret
+            "secret_token": "another",  # pragma: allowlist secret
+        }
         cleaned = mc.strip_sensitive(raw)
         result = mc.MaxwellVersionResponse.model_validate(cleaned).model_dump()
         assert "api_key" not in result

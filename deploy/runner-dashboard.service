@@ -5,6 +5,12 @@
 Description=D-sorganization Runner Dashboard
 After=network.target
 Wants=network-online.target
+# A1 — restart-burst containment. If the process crashes more than
+# StartLimitBurst times within StartLimitIntervalSec, systemd holds the
+# unit in `failed` state until an operator intervenes. This prevents the
+# old "infinite respawn on syntax error" failure mode.
+StartLimitIntervalSec=600
+StartLimitBurst=5
 
 [Service]
 Type=notify

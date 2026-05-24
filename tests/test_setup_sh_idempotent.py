@@ -53,10 +53,11 @@ def test_setup_sh_syntax_check() -> None:
     if bash is None:
         pytest.skip("bash not available on this system")
     result = subprocess.run(
-        [bash, "-n", SETUP_SH.as_posix()],
+        [bash, "-n", "deploy/setup.sh"],
         capture_output=True,
         text=True,
         check=False,
+        cwd=str(REPO_ROOT),
     )
     if result.returncode != 0 and "Bash/Service/" in result.stdout.replace("\x00", ""):
         pytest.skip(f"bash shim is unavailable: {result.stdout.replace(chr(0), '')}")

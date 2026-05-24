@@ -172,8 +172,13 @@ export function MobileShell({ children, currentTab, onTabChange, tabContent }: M
 
   return (
     <div className="mobile-shell">
+      <header className="mobile-shell__header" role="banner">
+        <a className="skip-link" href="#main-content">
+          Skip to main content
+        </a>
+      </header>
       {/* Main content area — native mobile component takes precedence when provided */}
-      <div className="mobile-shell__content">
+      <main id="main-content" className="mobile-shell__content" role="main" tabIndex={-1}>
         {nativeContent != null ? (
           <>
             {/* Keep legacy App mounted but hidden so it keeps its internal state */}
@@ -183,7 +188,7 @@ export function MobileShell({ children, currentTab, onTabChange, tabContent }: M
         ) : (
           children
         )}
-      </div>
+      </main>
       <div className="visually-hidden" aria-live="polite" aria-atomic="true">
         {drawerAnnouncement}
       </div>
@@ -191,31 +196,33 @@ export function MobileShell({ children, currentTab, onTabChange, tabContent }: M
       {/* Bottom Tab Bar — WAI-ARIA tablist */}
       <nav
         className="mobile-shell__nav"
-        role="tablist"
+        role="navigation"
         aria-label="Main navigation"
       >
-        {mainTabs.map((tab) => {
-          const isActive = currentTab === tab.id
-          const Icon = tab.Icon
-          return (
-            <button
-              key={tab.id}
-              ref={(el) => { tabRefs.current[tab.id] = el }}
-              onClick={() => handleTabClick(tab.id)}
-              onKeyDown={(e) => handleKeyDown(e, tab.id)}
-              className={`mobile-shell__tab ${isActive ? 'mobile-shell__tab--active' : ''}`}
-              role="tab"
-              aria-selected={isActive}
-              tabIndex={isActive ? 0 : -1}
-              title={tab.label}
-              type="button"
-            >
-              <span className="mobile-shell__tab-accent" aria-hidden="true" />
-              <Icon className="mobile-shell__tab-icon" />
-              <span className="mobile-shell__tab-label">{tab.label}</span>
-            </button>
-          )
-        })}
+        <div className="mobile-shell__tablist" role="tablist" aria-label="Main navigation">
+          {mainTabs.map((tab) => {
+            const isActive = currentTab === tab.id
+            const Icon = tab.Icon
+            return (
+              <button
+                key={tab.id}
+                ref={(el) => { tabRefs.current[tab.id] = el }}
+                onClick={() => handleTabClick(tab.id)}
+                onKeyDown={(e) => handleKeyDown(e, tab.id)}
+                className={`mobile-shell__tab ${isActive ? 'mobile-shell__tab--active' : ''}`}
+                role="tab"
+                aria-selected={isActive}
+                tabIndex={isActive ? 0 : -1}
+                title={tab.label}
+                type="button"
+              >
+                <span className="mobile-shell__tab-accent" aria-hidden="true" />
+                <Icon className="mobile-shell__tab-icon" />
+                <span className="mobile-shell__tab-label">{tab.label}</span>
+              </button>
+            )
+          })}
+        </div>
       </nav>
 
       {/* Floating Action Button — Quick dispatch agent */}

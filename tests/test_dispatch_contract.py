@@ -1,11 +1,14 @@
 """Unit tests for dispatch_contract.py — envelope validation and confirmation gating."""
 
-from dispatch_contract import (  # noqa: E402
+import pytest
+from dispatch_contract import (
     ALLOWLISTED_ACTIONS,
     CommandEnvelope,
     DispatchAccess,
     DispatchConfirmation,
     build_envelope,
+    command_preview,
+    migrate_envelope_v1_to_v2,
     validate_envelope,
 )
 
@@ -130,6 +133,31 @@ def test_validate_envelope_unknown_action_rejected() -> None:
     result = validate_envelope(env)
     assert result.accepted is False
     assert "allowlisted" in result.reason or "not allowlisted" in result.reason.lower()
+
+
+# ---------------------------------------------------------------------------
+# command_preview / migrate_envelope_v1_to_v2 compatibility shims
+# ---------------------------------------------------------------------------
+
+
+def test_command_preview_returns_prototype_for_standard_action() -> None:
+    preview = command_preview(_READ_ONLY_ACTION)
+    assert preview == ALLOWLISTED_ACTIONS[_READ_ONLY_ACTION].prototype_command
+
+
+def test_command_preview_builds_scheduler_modify_command() -> None:
+    preview = command_preview("scheduler.modify", {"enabled": False, "unit": "nightly-cleanup.timer"})
+    assert preview == ("sudo", "systemctl", "disable", "nightly-cleanup.timer")
+
+
+def test_command_preview_unknown_action_raises_key_error() -> None:
+    with pytest.raises(KeyError):
+        command_preview("not.a.real.action")
+
+
+def test_migrate_envelope_v1_to_v2_returns_same_envelope() -> None:
+    env = _base_envelope(_READ_ONLY_ACTION)
+    assert migrate_envelope_v1_to_v2(env) is env
 
 
 # ---------------------------------------------------------------------------

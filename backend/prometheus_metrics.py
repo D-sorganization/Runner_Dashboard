@@ -100,6 +100,52 @@ if _PROMETHEUS_AVAILABLE:
         ["status", "github_api"],
         buckets=(0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
     )
+
+    # Lease reaper (issue #708)
+    LEASE_REAPER_PRUNED_TOTAL = Counter(
+        "dashboard_lease_reaper_pruned_total",
+        "Total expired runner leases pruned by the background reaper",
+    )
+    LEASE_ACTIVE_TOTAL = Gauge(
+        "dashboard_lease_active_total",
+        "Number of active (non-expired) runner leases",
+    )
+
+    # Autoscaler (issue #710)
+    AUTOSCALER_SCALING_ACTIONS_TOTAL = Counter(
+        "autoscaler_scaling_actions_total",
+        "Autoscaler scaling actions by action and reason",
+        ["action", "reason"],
+    )
+    AUTOSCALER_BUSY_RUNNERS = Gauge(
+        "autoscaler_busy_runners",
+        "Number of runners currently busy",
+    )
+    AUTOSCALER_ACTIVE_RUNNERS = Gauge(
+        "autoscaler_active_runners",
+        "Number of runners currently active (started)",
+    )
+    AUTOSCALER_LOAD_RATIO = Gauge(
+        "autoscaler_load_ratio",
+        "Load average normalized by CPU core count",
+    )
+    AUTOSCALER_BUSY_CHECK_DURATION = Histogram(
+        "autoscaler_busy_check_duration_seconds",
+        "Time to run each busy-detection strategy",
+        ["strategy"],
+        buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0),
+    )
+    AUTOSCALER_DECISION_LOOP_DURATION = Histogram(
+        "autoscaler_decision_loop_duration_seconds",
+        "Time for one autoscaler decision loop iteration",
+        buckets=(0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0),
+    )
+    AUTOSCALER_SYSTEMD_ERRORS_TOTAL = Counter(
+        "autoscaler_systemd_action_errors_total",
+        "Systemd action errors in the autoscaler",
+        ["action", "unit"],
+    )
+
 else:  # pragma: no cover
     # Stub objects so imports don't fail when prometheus_client is absent
     class _Stub:  # type: ignore[override]
@@ -131,6 +177,15 @@ else:  # pragma: no cover
     CACHE_MISSES_TOTAL = _stub  # type: ignore[assignment]
     DASHBOARD_HEALTH_CHECKS_TOTAL = _stub  # type: ignore[assignment]
     DASHBOARD_HEALTH_DURATION = _stub  # type: ignore[assignment]
+    LEASE_REAPER_PRUNED_TOTAL = _stub  # type: ignore[assignment]
+    LEASE_ACTIVE_TOTAL = _stub  # type: ignore[assignment]
+    AUTOSCALER_SCALING_ACTIONS_TOTAL = _stub  # type: ignore[assignment]
+    AUTOSCALER_BUSY_RUNNERS = _stub  # type: ignore[assignment]
+    AUTOSCALER_ACTIVE_RUNNERS = _stub  # type: ignore[assignment]
+    AUTOSCALER_LOAD_RATIO = _stub  # type: ignore[assignment]
+    AUTOSCALER_BUSY_CHECK_DURATION = _stub  # type: ignore[assignment]
+    AUTOSCALER_DECISION_LOOP_DURATION = _stub  # type: ignore[assignment]
+    AUTOSCALER_SYSTEMD_ERRORS_TOTAL = _stub  # type: ignore[assignment]
 
 
 # ─── Helpers for external callers ─────────────────────────────────────────────
@@ -166,6 +221,27 @@ def update_lease_gauge(active_count: int) -> None:
 def record_lease_expired(count: int = 1) -> None:
     """Record expired runner leases."""
     RUNNER_LEASES_EXPIRED_TOTAL.inc(count)
+
+
+def record_autoscaler_action(action: str, reason: str) -> None:
+    """Record an autoscaler scaling action (issue #710).
+
+    Pre-condition: action must be 'start' or 'stop'.
+    Pre-condition: reason must be one of 'busy', 'idle', 'load', 'manual'.
+    """
+    assert action in ("start", "stop"), f"Invalid action: {action}"
+    assert reason in ("busy", "idle", "load", "manual"), f"Invalid reason: {reason}"
+    AUTOSCALER_SCALING_ACTIONS_TOTAL.labels(action=action, reason=reason).inc()
+
+
+def record_autoscaler_systemd_error(action: str, unit: str) -> None:
+    """Record a systemd error in the autoscaler (issue #710).
+
+    Pre-condition: action and unit must be non-empty strings.
+    """
+    assert action, "action must be non-empty"
+    assert unit, "unit must be non-empty"
+    AUTOSCALER_SYSTEMD_ERRORS_TOTAL.labels(action=action, unit=unit).inc()
 
 
 # ─── ASGI middleware ──────────────────────────────────────────────────────────
