@@ -85,19 +85,6 @@ export function CommandPalette({ commands }: CommandPaletteProps) {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Close on Escape
-  useEffect(() => {
-    if (!open) return;
-    const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        close();
-      }
-    };
-    document.addEventListener('keydown', handleEsc);
-    return () => document.removeEventListener('keydown', handleEsc);
-  }, [open]);
-
   // Focus input when opened
   useEffect(() => {
     if (open) {
@@ -112,6 +99,19 @@ export function CommandPalette({ commands }: CommandPaletteProps) {
       prevFocusRef.current.focus();
     }
   }, []);
+
+  // Close on Escape
+  useEffect(() => {
+    if (!open) return;
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        close();
+      }
+    };
+    document.addEventListener('keydown', handleEsc);
+    return () => document.removeEventListener('keydown', handleEsc);
+  }, [open, close]);
 
   const execute = useCallback(
     (cmd: Command) => {

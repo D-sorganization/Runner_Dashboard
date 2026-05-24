@@ -35,9 +35,10 @@ export function useStalenessWarning(
   query: StalenessQuery,
   freshMs = 60_000,
 ): Staleness {
-  // Precondition guard (dev-only)
   if (process.env.NODE_ENV !== 'production') {
-    console.assert(freshMs > 0, '[useStalenessWarning] freshMs must be positive');
+    if (freshMs <= 0) {
+      throw new Error('[useStalenessWarning] freshMs must be positive');
+    }
   }
 
   const { dataUpdatedAt, failureCount, isFetching } = query;
