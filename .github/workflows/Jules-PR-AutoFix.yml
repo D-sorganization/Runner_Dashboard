@@ -88,7 +88,7 @@ env:
 jobs:
   iterative-fix:
     name: Fix and Verify CI (Iterative)
-    runs-on: d-sorg-fleet-16core
+    runs-on: d-sorg-fleet
     timeout-minutes: 30
 
     outputs:

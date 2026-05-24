@@ -124,3 +124,49 @@ def test_prune_expired_removes_old_leases(tmp_path: Path) -> None:
     with patch.object(mgr, "save_leases"):
         mgr.prune_expired()
     assert not any(r.runner_id == "old-runner" for r in mgr.leases)
+
+
+# ---------------------------------------------------------------------------
+# prune_expired count return — A2 (lease reaper observability)
+# ---------------------------------------------------------------------------
+
+
+def test_prune_expired_returns_count_of_removed_leases(tmp_path: Path) -> None:
+    """A2: prune_expired must return the number of removed entries so the
+    background reaper can emit accurate metrics and log lines."""
+    mgr = _make_manager(tmp_path)
+    now = time.time()
+    mgr.leases.extend(
+        [
+            rl.LeaseRecord(principal_id="p1", runner_id="r-old-1", acquired_at=now - 7200, expires_at=now - 3600),
+            rl.LeaseRecord(principal_id="p1", runner_id="r-old-2", acquired_at=now - 7200, expires_at=now - 100),
+            rl.LeaseRecord(principal_id="p2", runner_id="r-fresh", acquired_at=now, expires_at=now + 3600),
+            rl.LeaseRecord(principal_id="p3", runner_id="r-perm", acquired_at=now, expires_at=None),
+        ]
+    )
+    with patch.object(mgr, "save_leases"):
+        removed = mgr.prune_expired()
+    # Post-condition: returns an int matching the number actually pruned.
+    assert isinstance(removed, int)
+    assert removed == 2
+    # And the in-memory list reflects the removal.
+    assert {r.runner_id for r in mgr.leases} == {"r-fresh", "r-perm"}
+
+
+def test_prune_expired_returns_zero_when_nothing_to_prune(tmp_path: Path) -> None:
+    """A2: when no leases are expired, the reaper must see 0 — never None."""
+    mgr = _make_manager(tmp_path)
+    now = time.time()
+    mgr.leases.append(rl.LeaseRecord(principal_id="p1", runner_id="r-fresh", acquired_at=now, expires_at=now + 3600))
+    with patch.object(mgr, "save_leases"):
+        removed = mgr.prune_expired()
+    assert removed == 0
+    assert len(mgr.leases) == 1
+
+
+def test_prune_expired_returns_zero_on_empty_store(tmp_path: Path) -> None:
+    """A2: empty lease store is a valid steady-state for the reaper."""
+    mgr = _make_manager(tmp_path)
+    with patch.object(mgr, "save_leases"):
+        removed = mgr.prune_expired()
+    assert removed == 0

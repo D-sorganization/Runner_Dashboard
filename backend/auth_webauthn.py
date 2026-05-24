@@ -206,7 +206,10 @@ async def assert_begin(
     if body.credential_id:
         credentials = [record for record in credentials if record.credential_id == body.credential_id]
     if not credentials:
-        raise HTTPException(status_code=404, detail="No active WebAuthn credential registered for this user")
+        raise HTTPException(
+            status_code=404,
+            detail="No active WebAuthn credential registered for this user",
+        )
     challenge = _new_challenge(request, principal, "assert")
     return {
         "challenge": challenge.challenge,
@@ -226,7 +229,9 @@ async def assert_complete(
 
 
 @router.get("/credentials")
-async def list_webauthn_credentials(principal: Principal = Depends(require_principal)) -> dict[str, Any]:  # noqa: B008
+async def list_webauthn_credentials(
+    principal: Principal = Depends(require_principal),  # noqa: B008
+) -> dict[str, Any]:
     """List active credential metadata for the current principal."""
     return {
         "credentials": [

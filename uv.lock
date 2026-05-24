@@ -924,6 +924,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "pyyaml" },
     { name = "requests" },
+    { name = "starlette" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -966,6 +967,7 @@ requires-dist = [
     { name = "pyyaml", specifier = "==6.0.3" },
     { name = "requests", specifier = "==2.33.1" },
     { name = "respx", marker = "extra == 'test'", specifier = "==0.21.1" },
+    { name = "starlette", specifier = "==1.0.1" },
     { name = "uvicorn", extras = ["standard"], specifier = "==0.46.0" },
 ]
 provides-extras = ["test"]

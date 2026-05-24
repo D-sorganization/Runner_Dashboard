@@ -8,22 +8,40 @@ documented in ``backend/dispatch/SCHEMA_MIGRATIONS.md``.
 Do not add new logic here — extend the submodules instead.
 """
 
-from dispatch import *  # noqa: F401, F403
-from dispatch import (
+from dispatch import (  # noqa: F401
+    ALLOWLISTED_ACTIONS,
+    ENVELOPE_VERSION,
+    MAX_ENVELOPE_VERSION,
+    MIN_ENVELOPE_VERSION,
+    SCHEMA_VERSION,
+    SUPPORTED_SCHEMA_VERSIONS,
     CommandEnvelope,
+    CryptoValidationResult,
+    DispatchAccess,
+    DispatchAction,
+    DispatchAuditLogEntry,
     DispatchConfirmation,
+    DispatchValidationResult,
+    TimestampValidationResult,
+    _compute_approval_hmac,
+    _hash_payload,
+    build_audit_log_entry,
     get_action,
+    requires_confirmation,
+    sign_payload,
+    validate_envelope,
+    validate_envelope_crypto,
+    validate_timestamp_freshness,
+    verify_approval_hmac,
+    verify_payload,
 )
 from dispatch.envelope import _ensure_dict, _required_string, _utc_now  # noqa: F401
 from dispatch.registry import _scheduler_modify_command
 from dispatch.signing import (  # noqa: F401
-    _compute_approval_hmac,
-    _hash_payload,
     _load_signing_secret,
     _sign_envelope_payload,
     _validate_timestamp_freshness,
     _verify_envelope_signature,
-    verify_approval_hmac,
 )
 
 

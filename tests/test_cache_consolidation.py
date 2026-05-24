@@ -190,11 +190,16 @@ class TestStampedeProtection:
             return call_count
 
         # First call — populates cache
-        r1 = await c.get_or_set("k", ttl=0.001, factory=factory)
-        # Wait for expiry
-        await asyncio.sleep(0.01)
-        # Second call — should re-invoke factory
-        r2 = await c.get_or_set("k", ttl=0.001, factory=factory)
+        r1 = await c.get_or_set("k", ttl=1.0, factory=factory)
+
+        # Mock time.monotonic to simulate time passing beyond the TTL
+        import time
+        import unittest.mock
+
+        now = time.monotonic()
+        with unittest.mock.patch("time.monotonic", return_value=now + 2.0):
+            # Second call — should re-invoke factory
+            r2 = await c.get_or_set("k", ttl=1.0, factory=factory)
 
         assert call_count == 2, f"Expected 2 factory calls, got {call_count}"
         assert r1 == 1

@@ -30,6 +30,18 @@
   --badge-neutral-bg: rgba(110, 118, 129, 0.15);
   --badge-neutral-fg: #8b949e;
   
+  /* Semantic status tokens — D5 / issue #724 */
+  --status-healthy-bg: rgba(63,185,80,0.15);
+  --status-healthy-fg: #3fb950;
+  --status-warning-bg: rgba(210,153,34,0.15);
+  --status-warning-fg: #d29922;
+  --status-critical-bg: rgba(248,81,73,0.15);
+  --status-critical-fg: #f85149;
+  --status-unknown-bg: rgba(139,148,158,0.15);
+  --status-unknown-fg: #8b949e;
+  --status-info-bg: rgba(88,166,255,0.15);
+  --status-info-fg: #58a6ff;
+
   /* Glassmorphism Tokens */
   --glass-bg: rgba(28, 33, 51, 0.7);
   --glass-border: rgba(255, 255, 255, 0.1);
@@ -158,7 +170,37 @@ code, pre, .code, kbd {
 :focus-visible {
   outline: 2px solid var(--accent-blue);
   outline-offset: 2px;
+  border-radius: 4px;
 }
+
+/* D7 / issue #726: Skip link — keyboard accessibility */
+.skip-link {
+  position: absolute;
+  top: -40px;
+  left: 0;
+  background: var(--accent-blue, #58a6ff);
+  color: #fff;
+  padding: 8px 16px;
+  z-index: 9999;
+  border-radius: 0 0 4px 0;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.875rem;
+  transition: top var(--motion-fast, 120ms) var(--easing-standard, ease);
+}
+.skip-link:focus {
+  top: 0;
+}
+
+/* D7 / issue #726: Reduced-motion — honour user preference for motion vars */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 0ms;
+    --motion-normal: 0ms;
+    --motion-slow: 0ms;
+  }
+}
+
 #root {
   min-height: 100vh;
 }
@@ -2620,6 +2662,29 @@ th.sortable.active .sort-indicator {
   background-color: var(--bg-primary);
 }
 
+.mobile-shell__header {
+  position: relative;
+  z-index: 300;
+}
+
+.skip-link {
+  background: var(--accent-blue);
+  border-radius: 4px;
+  color: var(--bg-primary);
+  font-weight: 700;
+  left: var(--space-3);
+  padding: 8px 12px;
+  position: fixed;
+  top: var(--space-3);
+  transform: translateY(-150%);
+  transition: transform 120ms ease;
+  z-index: 400;
+}
+
+.skip-link:focus-visible {
+  transform: translateY(0);
+}
+
 .mobile-shell__content {
   flex: 1;
   overflow: auto;
@@ -2639,6 +2704,14 @@ th.sortable.active .sort-indicator {
   right: 0;
   padding-bottom: env(safe-area-inset-bottom);
   z-index: 100;
+}
+
+.mobile-shell__tablist {
+  align-items: center;
+  display: flex;
+  height: 100%;
+  justify-content: space-around;
+  width: 100%;
 }
 
 .mobile-shell__tab {
