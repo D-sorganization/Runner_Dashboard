@@ -51,6 +51,13 @@
 .PARAMETER LogBackups
     Keep this many rotated backups. Default 3.
 
+.PARAMETER DashboardPort
+    Local runner-dashboard health port. Default 8321.
+
+.PARAMETER DashboardServiceName
+    systemd service to start when WSL is responsive but dashboard health fails.
+    Default ``runner-dashboard.service``.
+
 .PARAMETER Once
     Run a single probe + recovery cycle and exit. Used by the test
     suite and by ad-hoc operator invocation.
@@ -79,6 +86,8 @@ param(
     [string]$LogDir = (Join-Path $env:LOCALAPPDATA 'runner-dashboard'),
     [int]$MaxLogBytes = 5MB,
     [int]$LogBackups = 3,
+    [int]$DashboardPort = 8321,
+    [string]$DashboardServiceName = 'runner-dashboard.service',
     [switch]$Once
 )
 
@@ -109,6 +118,12 @@ if ($MaxLogBytes -lt 64KB) {
 }
 if ($LogBackups -lt 0) {
     throw "LogBackups must be >= 0 (got $LogBackups)"
+}
+if ($DashboardPort -lt 1 -or $DashboardPort -gt 65535) {
+    throw "DashboardPort must be in 1..65535 (got $DashboardPort)"
+}
+if ([string]::IsNullOrWhiteSpace($DashboardServiceName)) {
+    throw "DashboardServiceName must be a non-empty string"
 }
 
 # ---------- File layout ----------------------------------------------------
@@ -212,6 +227,64 @@ function Invoke-WslRecovery {
     return (Test-Responsive -Distro $Distro -TimeoutSeconds ($ProbeTimeoutSeconds * 3) -WslExe $WslExe)
 }
 
+function Test-DashboardHealth {
+    <#
+    .SYNOPSIS
+        Check the Windows-local dashboard health endpoint.
+
+    .OUTPUTS
+        [bool] $true iff /health returns HTTP 200 before timeout.
+    #>
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param(
+        [Parameter(Mandatory)][int]$Port,
+        [int]$TimeoutSeconds = 5
+    )
+    try {
+        $response = Invoke-WebRequest -Uri "http://127.0.0.1:$Port/health" -TimeoutSec $TimeoutSeconds -UseBasicParsing
+        return $response.StatusCode -eq 200
+    } catch {
+        return $false
+    }
+}
+
+function Start-DashboardServiceOnly {
+    <#
+    .SYNOPSIS
+        Start the dashboard service inside WSL without touching runner units.
+
+    .OUTPUTS
+        [bool] $true if the systemctl command exits successfully.
+    #>
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param(
+        [Parameter(Mandatory)][string]$Distro,
+        [Parameter(Mandatory)][string]$ServiceName,
+        [Parameter(Mandatory)][int]$TimeoutSeconds,
+        [string]$WslExe = 'wsl.exe'
+    )
+    $stdoutFile = [System.IO.Path]::GetTempFileName()
+    $stderrFile = [System.IO.Path]::GetTempFileName()
+    try {
+        $script = "systemctl reset-failed $ServiceName 2>/dev/null || true; systemctl start $ServiceName 2>/dev/null || true"
+        $args = @('-d', $Distro, '-u', 'root', '--exec', '/bin/bash', '-lc', $script)
+        $p = Start-Process -FilePath $WslExe -ArgumentList $args `
+            -NoNewWindow -PassThru `
+            -RedirectStandardOutput $stdoutFile `
+            -RedirectStandardError $stderrFile
+        if (-not $p.WaitForExit($TimeoutSeconds * 1000)) {
+            try { $p.Kill() } catch { }
+            return $false
+        }
+        return $p.ExitCode -eq 0
+    } finally {
+        Remove-Item -LiteralPath $stdoutFile -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $stderrFile -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Write-StateFile {
     <#
     .SYNOPSIS
@@ -294,7 +367,9 @@ function Invoke-OneCycle {
         [Parameter(Mandatory)][string]$StatePath,
         [Parameter(Mandatory)][string]$LogPath,
         [Parameter(Mandatory)][int]$MaxLogBytes,
-        [Parameter(Mandatory)][int]$LogBackups
+        [Parameter(Mandatory)][int]$LogBackups,
+        [Parameter(Mandatory)][int]$DashboardPort,
+        [Parameter(Mandatory)][string]$DashboardServiceName
     )
 
     # Load prior state (consecutive recovery counter, last_recovery_ts).
@@ -314,6 +389,58 @@ function Invoke-OneCycle {
     $now = Get-Date
 
     if ($responsive) {
+        $dashboardRecovered = $false
+        if (-not (Test-DashboardHealth -Port $DashboardPort)) {
+            Write-EventLine -LogPath $LogPath -MaxBytes $MaxLogBytes -Backups $LogBackups -Event @{
+                level = 'warn'
+                event = 'dashboard_unhealthy_detected'
+                distro = $Distro
+                port = $DashboardPort
+            }
+            $dashboardStartTimeout = [Math]::Max(60, $ProbeTimeoutSeconds * 3)
+            $dashboardRecovered = Start-DashboardServiceOnly `
+                -Distro $Distro `
+                -ServiceName $DashboardServiceName `
+                -TimeoutSeconds $dashboardStartTimeout
+            if ($dashboardRecovered -and -not (Test-DashboardHealth -Port $DashboardPort)) {
+                $dashboardRecovered = $false
+            }
+            Write-EventLine -LogPath $LogPath -MaxBytes $MaxLogBytes -Backups $LogBackups -Event @{
+                level = if ($dashboardRecovered) { 'info' } else { 'error' }
+                event = if ($dashboardRecovered) { 'dashboard_recovery_started' } else { 'dashboard_recovery_failed' }
+                distro = $Distro
+                service = $DashboardServiceName
+                port = $DashboardPort
+            }
+            if (-not $dashboardRecovered) {
+                Write-EventLine -LogPath $LogPath -MaxBytes $MaxLogBytes -Backups $LogBackups -Event @{
+                    level = 'warn'
+                    event = 'dashboard_recovery_escalating_to_wsl_reset'
+                    distro = $Distro
+                    service = $DashboardServiceName
+                    port = $DashboardPort
+                }
+                $wslRecovered = Invoke-WslRecovery -Distro $Distro -ProbeTimeoutSeconds $ProbeTimeoutSeconds
+                if ($wslRecovered) {
+                    $dashboardRecovered = Start-DashboardServiceOnly `
+                        -Distro $Distro `
+                        -ServiceName $DashboardServiceName `
+                        -TimeoutSeconds $dashboardStartTimeout
+                    if ($dashboardRecovered -and -not (Test-DashboardHealth -Port $DashboardPort)) {
+                        $dashboardRecovered = $false
+                    }
+                }
+                Write-EventLine -LogPath $LogPath -MaxBytes $MaxLogBytes -Backups $LogBackups -Event @{
+                    level = if ($dashboardRecovered) { 'info' } else { 'error' }
+                    event = if ($dashboardRecovered) { 'dashboard_recovery_after_wsl_reset_succeeded' } else { 'dashboard_recovery_after_wsl_reset_failed' }
+                    distro = $Distro
+                    service = $DashboardServiceName
+                    port = $DashboardPort
+                    wsl_recovered = $wslRecovered
+                }
+            }
+        }
+
         # If we have been healthy for a full HealthyGap window since the
         # last recovery, reset the consecutive counter.
         $newConsecutive = $prior.consecutive
@@ -329,9 +456,11 @@ function Invoke-OneCycle {
             last_recovery_ts = $prior.last_recovery_ts
             last_healthy_ts = $now.ToString('o')
             distro = $Distro
+            dashboard_checked = $true
+            dashboard_recovered = $dashboardRecovered
         }
         Write-StateFile -Path $StatePath -State $state
-        return @{ outcome = 'healthy'; consecutive = $newConsecutive }
+        return @{ outcome = 'healthy'; consecutive = $newConsecutive; dashboard_recovered = $dashboardRecovered }
     }
 
     # Unresponsive: decide whether to recover or give up.
@@ -396,7 +525,9 @@ if ($Once) {
         -StatePath $StatePath `
         -LogPath $LogPath `
         -MaxLogBytes $MaxLogBytes `
-        -LogBackups $LogBackups
+        -LogBackups $LogBackups `
+        -DashboardPort $DashboardPort `
+        -DashboardServiceName $DashboardServiceName
     Write-Output ($result | ConvertTo-Json -Compress)
     exit 0
 }
@@ -421,7 +552,9 @@ while ($true) {
             -StatePath $StatePath `
             -LogPath $LogPath `
             -MaxLogBytes $MaxLogBytes `
-            -LogBackups $LogBackups
+            -LogBackups $LogBackups `
+            -DashboardPort $DashboardPort `
+            -DashboardServiceName $DashboardServiceName
         # Backoff applies only after a recovery; healthy cycles use the
         # baseline interval. Keeps the script responsive when things are
         # fine and deliberate when WSL is sick.

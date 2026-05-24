@@ -1,11 +1,22 @@
 # SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.29
-**Application Version:** 4.1.0 (see `VERSION`)
-**Last Updated:** 2026-05-23T08:20:00Z
+**Spec Version:** 2.5.30
+**Application Version:** 4.1.1 (see `VERSION`)
+**Last Updated:** 2026-05-24T07:23:00-07:00
 **Status:** Active
 
 ### Recent Spec Updates
+
+- **2026-05-24 (2.5.30):** Hardened the Windows WSL keepalive watchdog for
+  runner-dashboard recovery. `deploy/wsl-keepalive.ps1` now accepts
+  `DashboardPort` and `DashboardServiceName`, validates both inputs, probes the
+  local `/health` endpoint, attempts a dashboard-only `systemctl start` when
+  WSL is responsive but the dashboard is unhealthy, and escalates to a full
+  WSL reset only if that targeted recovery still fails. The script logs the
+  new `dashboard_unhealthy_detected`, `dashboard_recovery_started`,
+  `dashboard_recovery_failed`, and `dashboard_recovery_after_wsl_reset_*`
+  events, and `tests/deploy/test_wsl_keepalive_script.py` asserts the new
+  parameter validation and recovery-path coverage.
 
 - **2026-05-23 (2.5.29):** Documented A-series infrastructure hardening:
   Prometheus autoscaler and lease-reaper metrics, `/readyz` runner-health
@@ -24,7 +35,6 @@
   The anti-phantom issue-resolution guard now recognizes this repo's real
   implementation roots (`backend/` and `frontend/src/`) when validating
   feature PRs and issue path evidence.
-
 - **2026-05-22 (2.5.27):** Added relative-timestamp primitive (#725):
   `frontend/src/hooks/useTimeAgo.ts` (`useTimeAgo`, `formatTimeAgo`) and
   `frontend/src/primitives/TimeAgo.tsx` (`<TimeAgo iso={...} />`). Renders
