@@ -39,7 +39,7 @@ jobs:
       - name: Install PyYAML
         run: pip install --disable-pip-version-check pyyaml==6.0.2
 
-      - name: Verify all workflows route to d-sorg-fleet-16core
+      - name: Verify all workflows route to d-sorg-fleet
         shell: python
         run: |
           import re
@@ -124,12 +124,12 @@ jobs:
                   for v in values:
                       v_clean = v.strip()
                       # Expressions that resolve at runtime to fleet labels are OK
-                      if "pick-runner" in v_clean or "d-sorg-fleet-16core" in v_clean or "self-hosted" in v_clean:
+                      if "pick-runner" in v_clean or "d-sorg-fleet" in v_clean or "self-hosted" in v_clean:
                           continue
                       if HOSTED.match(v_clean):
                           violations.append(
                               f"{wf.name}::{job_id}: runs-on '{v_clean}' is a hosted runner; "
-                              f"route to d-sorg-fleet-16core (or `${{{{ needs.pick-runner.outputs.runner }}}}`)."
+                              f"route to d-sorg-fleet (or `${{{{ needs.pick-runner.outputs.runner }}}}`)."
                           )
 
           if violations:
@@ -142,4 +142,4 @@ jobs:
               )
               sys.exit(1)
 
-          print("All workflows route to d-sorg-fleet-16core.")
+          print("All workflows route to d-sorg-fleet.")

@@ -33,7 +33,7 @@ concurrency:
 jobs:
   auto-merge:
     if: ${{ github.event.pull_request.user.login == 'dependabot[bot]' }}
-    runs-on: d-sorg-fleet-16core
+    runs-on: d-sorg-fleet
     timeout-minutes: 5
     steps:
       - name: Fetch Dependabot metadata

@@ -55,7 +55,7 @@ concurrency:
 
 jobs:
   close-redundant:
-    runs-on: d-sorg-fleet-16core
+    runs-on: d-sorg-fleet
     timeout-minutes: 10
     steps:
       - name: Check Jules app credentials
