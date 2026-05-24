@@ -53,7 +53,7 @@ jobs:
   route:
     # Decide what stage to run based on the triggering label (or dispatch
     # input). Exposed as outputs for downstream jobs.
-    runs-on: d-sorg-fleet-16core
+    runs-on: d-sorg-fleet
     timeout-minutes: 5
     outputs:
       epic: ${{ steps.decide.outputs.epic }}
@@ -90,7 +90,7 @@ jobs:
   preview:
     needs: route
     if: needs.route.outputs.should_run == 'true' && needs.route.outputs.stage == 'preview'
-    runs-on: d-sorg-fleet-16core
+    runs-on: d-sorg-fleet
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -201,7 +201,7 @@ jobs:
   apply:
     needs: route
     if: needs.route.outputs.should_run == 'true' && needs.route.outputs.stage == 'apply'
-    runs-on: d-sorg-fleet-16core
+    runs-on: d-sorg-fleet
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6

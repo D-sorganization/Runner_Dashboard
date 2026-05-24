@@ -76,6 +76,26 @@ describe('MobileShell', () => {
     expect(tabs).toHaveLength(5)
   })
 
+  it('renders skip link and semantic shell landmarks', () => {
+    const handleTabChange = vi.fn()
+    const { container } = render(
+      <MobileShell currentTab="fleet" onTabChange={handleTabChange}>
+        <div>Test Content</div>
+      </MobileShell>
+    )
+
+    const firstFocusable = container.querySelector('a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])')
+    const skipLink = screen.getByText('Skip to main content')
+    const main = container.querySelector('main#main-content')
+
+    expect(firstFocusable).toBe(skipLink)
+    expect(skipLink).toHaveAttribute('href', '#main-content')
+    expect(container.querySelector('header[role="banner"]')).toBeInTheDocument()
+    expect(screen.getByRole('navigation', { name: 'Main navigation' })).toBeInTheDocument()
+    expect(main).toBeInTheDocument()
+    expect(main).toHaveAttribute('role', 'main')
+  })
+
   it('sets aria-selected on active tab only', () => {
     const handleTabChange = vi.fn()
     render(
