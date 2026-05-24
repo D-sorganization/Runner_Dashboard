@@ -1,7 +1,7 @@
 # SPEC.md â€” D-sorganization Runner Dashboard
 
 **Spec Version:** 2.5.30
-**Application Version:** 4.1.0 (see `VERSION`)
+**Application Version:** 4.1.1 (see `VERSION`)
 **Last Updated:** 2026-05-24T07:30:00-07:00
 **Status:** Active
 
@@ -15,6 +15,17 @@
   autoscaler coverage lane measures `autoscaler_busy=89%`,
   `autoscaler_config=92%`, `autoscaler_sampling=92%`, and
   `autoscaler_systemd=98%`.
+
+- **2026-05-24 (2.5.30):** Hardened the Windows WSL keepalive watchdog for
+  runner-dashboard recovery. `deploy/wsl-keepalive.ps1` now accepts
+  `DashboardPort` and `DashboardServiceName`, validates both inputs, probes the
+  local `/health` endpoint, attempts a dashboard-only `systemctl start` when
+  WSL is responsive but the dashboard is unhealthy, and escalates to a full
+  WSL reset only if that targeted recovery still fails. The script logs the
+  new `dashboard_unhealthy_detected`, `dashboard_recovery_started`,
+  `dashboard_recovery_failed`, and `dashboard_recovery_after_wsl_reset_*`
+  events, and `tests/deploy/test_wsl_keepalive_script.py` asserts the new
+  parameter validation and recovery-path coverage.
 
 - **2026-05-23 (2.5.29):** Documented A-series infrastructure hardening:
   Prometheus autoscaler and lease-reaper metrics, `/readyz` runner-health
