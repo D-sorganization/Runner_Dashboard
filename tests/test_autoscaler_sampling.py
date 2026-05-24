@@ -123,3 +123,63 @@ def test_leased_runners_no_file() -> None:
     """_leased_runners returns empty set when leases.yml does not exist."""
     with patch.object(Path, "exists", return_value=False):
         assert samp._leased_runners() == set()
+
+
+def test_leased_runners_filters_expired_entries(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    (config_dir / "leases.yml").write_text(
+        "leases:\n"
+        "  - runner_id: live-runner\n"
+        "    expires_at: 9999999999\n"
+        "  - runner_id: expired-runner\n"
+        "    expires_at: 1\n"
+        "  - runner_id: sticky-runner\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(samp, "__file__", str(tmp_path / "backend" / "autoscaler_sampling.py"))
+    monkeypatch.setattr(samp.time, "time", lambda: 1000.0)
+
+    assert samp._leased_runners() == {"live-runner", "sticky-runner"}
+
+
+def test_leased_runners_invalid_file_returns_empty_set(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    (config_dir / "leases.yml").write_text("leases:\n  - runner_id: [\n", encoding="utf-8")
+    monkeypatch.setattr(samp, "__file__", str(tmp_path / "backend" / "autoscaler_sampling.py"))
+
+    assert samp._leased_runners() == set()
+
+
+def test_sample_uses_fallback_load_and_root_disk(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakePsutil:
+        @staticmethod
+        def cpu_percent(interval=0.0, percpu=False):  # noqa: ARG004
+            return 12.5
+
+        @staticmethod
+        def virtual_memory():
+            return type("Mem", (), {"percent": 40.0})()
+
+        @staticmethod
+        def cpu_count(logical=True):  # noqa: ARG004
+            return 0
+
+    monkeypatch.setattr(samp, "psutil", FakePsutil)
+    monkeypatch.setattr(samp, "_windows_host_resource_snapshot", lambda: None)
+    monkeypatch.setattr(samp.os, "getloadavg", lambda: (_ for _ in ()).throw(OSError("unsupported")), raising=False)
+    monkeypatch.setattr(samp.os.path, "exists", lambda _path: False)
+    monkeypatch.setattr(
+        samp.shutil,
+        "disk_usage",
+        lambda path: type("Disk", (), {"used": 25, "total": 100, "free": 75, "path": path})(),
+    )
+
+    cpu, mem, load, disk_percent, disk_free = samp._sample()
+
+    assert cpu == pytest.approx(12.5)
+    assert mem == pytest.approx(40.0)
+    assert load == pytest.approx(0.0)
+    assert disk_percent == pytest.approx(25.0)
+    assert disk_free > 0

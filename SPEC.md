@@ -2,10 +2,19 @@
 
 **Spec Version:** 2.5.30
 **Application Version:** 4.1.1 (see `VERSION`)
-**Last Updated:** 2026-05-24T07:23:00-07:00
+**Last Updated:** 2026-05-24T07:30:00-07:00
 **Status:** Active
 
 ### Recent Spec Updates
+
+- **2026-05-24 (2.5.30):** Hardened autoscaler config parsing and module-level
+  test coverage for issue `#727`. `backend/autoscaler_config.py` now raises
+  `ValueError` at startup when autoscaler numeric env vars are malformed or
+  negative instead of silently falling back to defaults. Focused tests now pin
+  that contract plus the autoscaler sampling/systemd helpers, and the targeted
+  autoscaler coverage lane measures `autoscaler_busy=89%`,
+  `autoscaler_config=92%`, `autoscaler_sampling=92%`, and
+  `autoscaler_systemd=98%`.
 
 - **2026-05-24 (2.5.30):** Hardened the Windows WSL keepalive watchdog for
   runner-dashboard recovery. `deploy/wsl-keepalive.ps1` now accepts

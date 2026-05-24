@@ -47,9 +47,10 @@ def test_env_float_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     assert ra._env_float("AUTOSCALER_CPU_HIGH", 85.0) == pytest.approx(72.5)
 
 
-def test_env_float_invalid_returns_default(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_env_float_invalid_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AUTOSCALER_CPU_HIGH", "not-a-number")
-    assert ra._env_float("AUTOSCALER_CPU_HIGH", 42.0) == pytest.approx(42.0)
+    with pytest.raises(ValueError, match="AUTOSCALER_CPU_HIGH"):
+        ra._env_float("AUTOSCALER_CPU_HIGH", 42.0)
 
 
 def test_env_int_default(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -62,9 +63,10 @@ def test_env_int_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     assert ra._env_int("AUTOSCALER_MIN_ONLINE", 1) == 5
 
 
-def test_env_int_invalid_returns_default(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_env_int_invalid_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AUTOSCALER_MIN_ONLINE", "bad")
-    assert ra._env_int("AUTOSCALER_MIN_ONLINE", 2) == 2
+    with pytest.raises(ValueError, match="AUTOSCALER_MIN_ONLINE"):
+        ra._env_int("AUTOSCALER_MIN_ONLINE", 2)
 
 
 # ---------------------------------------------------------------------------
