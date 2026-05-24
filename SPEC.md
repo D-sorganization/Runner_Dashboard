@@ -1,11 +1,29 @@
-﻿# SPEC.md â€” D-sorganization Runner Dashboard
+# SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.27
+**Spec Version:** 2.5.29
 **Application Version:** 4.1.0 (see `VERSION`)
-**Last Updated:** 2026-05-22T23:40:00Z
+**Last Updated:** 2026-05-23T08:20:00Z
 **Status:** Active
 
 ### Recent Spec Updates
+
+- **2026-05-23 (2.5.29):** Documented A-series infrastructure hardening:
+  Prometheus autoscaler and lease-reaper metrics, `/readyz` runner-health
+  probing, quick-dispatch health gating/backpressure, drain-mode deployment
+  controls, runner memory/restart systemd drop-ins, deployment preflight
+  checks, and the autoscaler Grafana dashboard.
+
+- **2026-05-23 (2.5.28):** Added B-series API contract hardening:
+  `backend/gh_client.py` now owns GitHub API retries, timeouts, and HTTP error
+  normalization; backend code may not shell out to `gh api` for request paths.
+  Request payloads for help chat and launcher generation are validated by
+  Pydantic models in `backend/models/requests.py`, and API errors use the
+  shared `backend/error_models.py` envelope with structured audit coverage
+  while preserving structured HTTP exception details and response headers such
+  as `Retry-After`.
+  The anti-phantom issue-resolution guard now recognizes this repo's real
+  implementation roots (`backend/` and `frontend/src/`) when validating
+  feature PRs and issue path evidence.
 
 - **2026-05-22 (2.5.27):** Added relative-timestamp primitive (#725):
   `frontend/src/hooks/useTimeAgo.ts` (`useTimeAgo`, `formatTimeAgo`) and
@@ -690,6 +708,14 @@ env var.
 | ------ | ---------------------------- | ------------------------------------------------------- |
 | GET    | `/api/agents/providers`      | Available agent providers and their availability status |
 | POST   | `/api/agents/quick-dispatch` | Dispatch an ad-hoc agent task to any repository         |
+
+`POST /api/agents/quick-dispatch` now performs a cached pre-flight backpressure
+gate before dispatching. If `GET /readyz` would fail or no online
+`d-sorg-fleet` runner is available, the route returns HTTP `503` with
+`{"error":"not_ready","reason":...,"retry_after_seconds":30}` and a
+`Retry-After` header. Successful accepts return HTTP `202`. Operators may
+override the gate with `force=true`, which is logged in the quick-dispatch
+audit trail.
 
 ### PR and Issue Dispatch
 

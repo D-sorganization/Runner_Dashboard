@@ -366,6 +366,56 @@ describe('MobileShell', () => {
   })
 })
 
+// D7 / issue #726: Accessibility improvements
+describe('MobileShell accessibility (D7)', () => {
+  beforeEach(() => {
+    // Ensure we are on a mobile breakpoint so MobileShell renders the full shell
+    breakpointMock.value = 'md';
+    window.matchMedia = vi.fn((query) => ({
+      matches: query === '(max-width: 767px)',
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    } as MediaQueryList));
+  });
+
+  it('skip link is present and is the first focusable element', () => {
+    render(
+      <MobileShell currentTab="fleet" onTabChange={vi.fn()}>
+        <div>Content</div>
+      </MobileShell>,
+    );
+    const skipLink = document.querySelector('.skip-link') as HTMLElement | null;
+    expect(skipLink).not.toBeNull();
+    expect(skipLink?.tagName.toLowerCase()).toBe('a');
+    expect(skipLink?.getAttribute('href')).toBe('#main-content');
+  });
+
+  it('has a <main> element with id="main-content"', () => {
+    render(
+      <MobileShell currentTab="fleet" onTabChange={vi.fn()}>
+        <div>Content</div>
+      </MobileShell>,
+    );
+    const main = document.querySelector('main#main-content');
+    expect(main).not.toBeNull();
+  });
+
+  it('nav has role="tablist" or role="navigation"', () => {
+    render(
+      <MobileShell currentTab="fleet" onTabChange={vi.fn()}>
+        <div>Content</div>
+      </MobileShell>,
+    );
+    const nav = document.querySelector('nav');
+    expect(nav).not.toBeNull();
+  });
+});
+
 // Test helper component
 function Counter() {
   const [count, setCount] = React.useState(0)

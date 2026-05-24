@@ -55,41 +55,88 @@ gh api orgs/D-sorganization/actions/runners \
 sudo journalctl -u runner-dashboard -n 200 --no-pager | grep -i 'queue\|cancel\|stale'
 ```
 
+## Stale Run Classification
+
+The `backend/queue_cleanup.py` module classifies stale runs by root cause.
+Knowing the cause narrows remediation:
+
+| Cause                   | Description                                                      |
+| ----------------------- | ---------------------------------------------------------------- |
+| `superseded_pr_head`    | A newer commit pushed to the PR branch; old run will never start |
+| `closed_or_deleted_ref` | PR closed or branch deleted while run was queued                 |
+| `abandoned_agent`       | Agent workflow dispatch that was never picked up (agent crashed) |
+| `stale_feature_branch`  | Long-lived feature branch with no recent activity                |
+| `offline_runner_or_lag` | Runner went offline or GitHub queuing lag                        |
+| `stale_main_branch`     | Default-branch run queued for too long                           |
+| `unknown`               | Does not match any heuristic above                               |
+
+Superseded PR-head runs differ from unsatisfiable runner label runs:
+a superseded run will never proceed regardless of runner availability, while an
+unsatisfiable label run would proceed if a matching runner came online.
+Use `dry_run=true` to preview which category each run falls into before purging.
+
 ## Mitigation
 
 Always preview before cancellation.
 
 ```bash
-# Preview stale jobs older than 30 minutes.
-curl -fsS -X POST http://localhost:8321/api/queue/purge-stale \
-  -H 'Content-Type: application/json' \
-  -d '{"min_age": 30, "dry_run": true}' | jq '.'
+# A. Preview stale jobs older than 30 minutes (dry-run, no cancellations).
+curl -fsS -X POST \
+  "http://localhost:8321/api/queue/purge-stale?dry_run=true&min_age_minutes=30" \
+  | jq '.'
 
-# In workflow form, preview only unsatisfiable label candidates.
+# B. Bulk purge stale runs (calls queue_cleanup.purge_stale_runs).
+#    The Queue Health tab "Purge stale" button calls the same endpoint.
+#    Default min_age_minutes is 60 — increase to be conservative.
+curl -fsS -X POST \
+  "http://localhost:8321/api/queue/purge-stale?min_age_minutes=60" \
+  | jq '.'
+
+# C. List stale runs (read-only scan, no cancellations).
+curl -fsS \
+  "http://localhost:8321/api/queue/stale?min_age_minutes=30" \
+  | jq '.'
+
+# D. In workflow form, preview only unsatisfiable label candidates.
 gh workflow run util-queued-job-reaper.yml \
   -f dry-run=true \
   -f min-age-minutes=30 \
   -f reason-filter=unsatisfiable_runner_labels \
   -f max-cancel=10
 
-# Cancel only if the stale API/reaper preview marks the candidates safe.
+# E. Cancel only if the stale API/reaper preview marks the candidates safe.
 gh workflow run util-queued-job-reaper.yml \
   -f dry-run=false \
   -f min-age-minutes=30 \
   -f reason-filter=unsatisfiable_runner_labels \
   -f max-cancel=5
 
-# Cancel a specific run after confirming it is not current-head required CI.
-curl -fsS -X POST http://localhost:8321/api/runs/<repo>/cancel/<run_id>
+# F. Cancel a single specific run via the dashboard.
+curl -fsS -X POST \
+  http://localhost:8321/api/runs/<repo>/cancel/<run_id>
+
+# G. Cancel directly via gh as a fallback.
+gh run cancel <run_id> --repo D-sorganization/<repo>
 
 # Missing-label stalls need runner/workflow repair, not broad cancellation.
 sudo systemctl restart runner-autoscaler
 sudo systemctl start 'actions.runner.D-sorganization-<repo>.<runner>.service'
 ```
 
+Confirm the preview response includes `"dry_run": true` before treating the
+output as non-destructive. Do not continue to cancellation unless every selected
+run is marked `safe_to_cancel=true` and matches the intended reason filter.
+
+When to use `dry_run` vs purge:
+
+- Always run `dry_run=true` first on production to verify the affected runs.
+- Use purge only after confirming the dry-run list is correct.
+- Adjust `min_age_minutes` to match job duration expectations (default 60 min).
+
 If the deployed build does not expose `/api/queue/stale`, use the workflow
-dry-run summary and direct `gh` inspection. `deploy/scheduled-dashboard-maintenance.sh`
-will warn instead of silently claiming stale cleanup succeeded.
+dry-run summary and direct `gh` inspection.
+`deploy/scheduled-dashboard-maintenance.sh` will warn instead of silently
+claiming stale cleanup succeeded. If cron was disabled, re-enable it.
 
 ## Scheduled Maintenance
 
@@ -121,6 +168,23 @@ STALE_QUEUE_MAX_CANCEL=5 \
 4. Verify alerts or stale badges auto-close after the next dashboard poll.
 5. If `superseded_pr_head` repeats, add or fix workflow concurrency for that
    PR workflow instead of relying on cleanup.
+
+## Post-Incident Checklist
+
+After resolving a queue stall, verify the following:
+
+- [ ] `curl -fsS http://localhost:8321/api/queue/stale | jq 'length'` returns 0
+      (or a count you accept as baseline noise).
+- [ ] `curl -fsS http://localhost:8321/api/queue/diagnose | jq '.'` shows no
+      critical lag for any label.
+- [ ] `crontab -l | grep scheduled-dashboard-maintenance` — cron entry is present.
+- [ ] Most recent maintenance log is within the last 90 minutes:
+      `ls -lt ~/.cache/runner-dashboard/maintenance.log | head -3`
+- [ ] Runner label coverage is correct — all labels in active workflows have at
+      least one matching runner registered in `backend/machine_registry.yml`.
+- [ ] If a `superseded_pr_head` or `abandoned_agent` run caused the stall,
+      verify the responsible PR/branch has been cleaned up.
+- [ ] File a postmortem if the stall lasted > 30 minutes or affected > 1 repo.
 
 ## Postmortem Template
 

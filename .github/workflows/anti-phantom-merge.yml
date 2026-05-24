@@ -66,16 +66,16 @@ jobs:
           fi
 
           if echo "$TITLE" | grep -qiE '^feat[(:]|Implement|System|Engine|Framework'; then
-            CODE_FILES=$(echo "$PR_FILES" | grep -cE '^(src/|rust_core/|api/)' || true)
+            CODE_FILES=$(echo "$PR_FILES" | grep -cE '^(backend/|frontend/src/|src/|rust_core/|api/)' || true)
             if [ "${CODE_FILES:-0}" -lt 1 ]; then
-              fail "Rule 2 (feature without code): title claims a feature but PR touches zero files under src/, rust_core/, or api/."
+              fail "Rule 2 (feature without code): title claims a feature but PR touches zero files under backend/, frontend/src/, src/, rust_core/, or api/."
             fi
           fi
 
           ISSUE_NUM=$(echo "$BODY" | grep -ioE '(Closes|Fixes|Resolves) #[0-9]+' | head -1 | grep -oE '[0-9]+' || true)
           if [ -n "$ISSUE_NUM" ]; then
             ISSUE_BODY=$(gh issue view "$ISSUE_NUM" --repo "$REPO" --json body --jq .body 2>/dev/null || echo "")
-            REF_PATHS=$(echo "$ISSUE_BODY" | grep -oE '(src|tests|rust_core|api)/[A-Za-z0-9_./-]+' | sort -u || true)
+            REF_PATHS=$(echo "$ISSUE_BODY" | grep -oE '(backend|frontend/src|src|tests|rust_core|api)/[A-Za-z0-9_./-]+' | sort -u || true)
             if [ -n "$REF_PATHS" ]; then
               MATCH=0
               while IFS= read -r path; do

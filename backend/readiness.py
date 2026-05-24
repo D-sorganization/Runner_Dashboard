@@ -17,10 +17,12 @@ showing the per-component status.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import shutil
-from typing import Literal, Protocol, runtime_checkable
+import time
+from typing import Final, Literal, Protocol, runtime_checkable
 
 log = logging.getLogger("dashboard.readiness")
 
@@ -128,6 +130,143 @@ class PushDbProbe:
             return "down", f"push db read failed: {exc}"
 
 
+class RunnerHealthProbe:
+    """Surface failed local `actions.runner.*` systemd units in /readyz (A6).
+
+    Without this probe, the dashboard can report `/readyz` = 200 while every
+    local runner unit is in `failed` state — operators have no programmatic
+    signal of fleet degradation. See findings H1/H2 of the runner-stability
+    audit.
+
+    The probe is **best-effort**: machines without systemd (WSL dev hosts,
+    docker, macOS) report `degraded` instead of `down`, because the dashboard
+    itself is still healthy — it just cannot observe local runners on that
+    platform.
+
+    Status mapping
+    --------------
+        no `actions.runner.*` units present                → ok
+        all units active, none failed                      → ok
+        0 < failed_units ≤ critical_failure_pct × total    → degraded
+        failed_units > critical_failure_pct × total        → down
+        subprocess timeout or systemctl missing            → degraded
+
+    Caching
+    -------
+    The probe caches its last result for ``cache_ttl_seconds`` so that frequent
+    `/readyz` polls do not fork-bomb ``systemctl``. Set ``cache_ttl_seconds=0``
+    in tests to disable caching.
+    """
+
+    # `name` is a settable attribute (not Final) so the class satisfies the
+    # `Probe` Protocol, which declares `name` as a writable variable.
+    name = "runner_health"
+
+    _SYSTEMCTL_ARGS: Final[tuple[str, ...]] = (
+        "list-units",
+        "actions.runner.*",
+        "--all",
+        "--no-legend",
+        "--output=json",
+    )
+
+    def __init__(
+        self,
+        cache_ttl_seconds: float = 5.0,
+        subprocess_timeout_seconds: float = 5.0,
+        critical_failure_pct: float = 0.10,
+        systemctl_bin: str = "systemctl",
+    ) -> None:
+        # Pre-conditions (DbC): probe configuration must be sane.
+        assert cache_ttl_seconds >= 0.0, "cache_ttl_seconds must be ≥ 0"
+        assert subprocess_timeout_seconds > 0.0, "subprocess_timeout_seconds must be > 0"
+        assert 0.0 < critical_failure_pct < 1.0, "critical_failure_pct must be in (0, 1)"
+
+        self._cache_ttl = cache_ttl_seconds
+        self._subprocess_timeout = subprocess_timeout_seconds
+        self._critical_pct = critical_failure_pct
+        self._systemctl_bin = systemctl_bin
+        self._cached: tuple[float, ProbeStatus, str | None] | None = None
+
+    async def check(self) -> tuple[ProbeStatus, str | None]:
+        # Serve from cache when TTL is still valid.
+        if self._cache_ttl > 0 and self._cached is not None:
+            ts, status, detail = self._cached
+            if (time.monotonic() - ts) < self._cache_ttl:
+                return status, detail
+
+        status, detail = await self._probe_systemd()
+        self._cached = (time.monotonic(), status, detail)
+        return status, detail
+
+    async def _probe_systemd(self) -> tuple[ProbeStatus, str | None]:
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                self._systemctl_bin,
+                *self._SYSTEMCTL_ARGS,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+        except FileNotFoundError:
+            # Dev/non-systemd hosts. Not a hard failure of the dashboard.
+            return "degraded", f"systemctl not available on this host ({self._systemctl_bin!r} not found)"
+        except OSError as exc:
+            return "degraded", f"systemctl could not start: {exc}"
+
+        try:
+            stdout, _stderr = await asyncio.wait_for(proc.communicate(), timeout=self._subprocess_timeout)
+        except TimeoutError:
+            # Best-effort kill so we don't leak a process. Any failure here
+            # (already-dead PID, no kill method, EPERM, etc.) is irrelevant —
+            # the probe outcome is "degraded" regardless.
+            try:
+                kill = getattr(proc, "kill", None)
+                if callable(kill):
+                    kill()
+            except Exception:  # noqa: BLE001
+                pass
+            return "degraded", f"systemctl list-units timeout after {self._subprocess_timeout}s"
+
+        return self._classify_output(stdout)
+
+    def _classify_output(self, stdout: bytes) -> tuple[ProbeStatus, str | None]:
+        try:
+            payload = json.loads(stdout.decode("utf-8") or "[]")
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            return "degraded", f"systemctl output not valid JSON: {exc}"
+
+        if not isinstance(payload, list):
+            return "degraded", "systemctl output was not a JSON array"
+
+        total = len(payload)
+        if total == 0:
+            # Nodes without local runners (e.g., dashboard-only hub) are healthy.
+            return "ok", None
+
+        failed_units: list[str] = []
+        for entry in payload:
+            if not isinstance(entry, dict):
+                continue
+            # systemctl reports failed units with active == "failed".
+            if str(entry.get("active", "")).lower() == "failed":
+                unit_name = str(entry.get("unit", "")) or "<unknown>"
+                failed_units.append(unit_name)
+
+        if not failed_units:
+            return "ok", None
+
+        # Post-condition: status reflects the failed-unit ratio per the
+        # configured threshold.
+        pct = len(failed_units) / total
+        summary = f"{len(failed_units)}/{total} runner units failed: {', '.join(failed_units[:5])}"
+        if len(failed_units) > 5:
+            summary += f" (+{len(failed_units) - 5} more)"
+
+        if pct > self._critical_pct:
+            return "down", summary
+        return "degraded", summary
+
+
 # ---------------------------------------------------------------------------
 # Aggregate
 # ---------------------------------------------------------------------------
@@ -137,6 +276,7 @@ _DEFAULT_PROBES: list[Probe] = [
     GhCliProbe(),
     LeaseDbProbe(),
     PushDbProbe(),
+    RunnerHealthProbe(),
 ]
 
 

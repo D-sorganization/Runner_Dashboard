@@ -20,6 +20,15 @@ _BACKEND_DIR = Path(__file__).parent.parent / "backend"
 sys.path.insert(0, str(_BACKEND_DIR))
 
 
+@pytest.fixture(autouse=True)
+def _reset_gh_rate_limit_breakers() -> None:
+    import gh_utils
+
+    gh_utils.clear_rate_limit_breakers()
+    yield
+    gh_utils.clear_rate_limit_breakers()
+
+
 # ---------------------------------------------------------------------------
 # Token cache
 # ---------------------------------------------------------------------------
@@ -160,6 +169,7 @@ async def test_gh_utils_falls_back_to_subprocess_when_no_token(monkeypatch: pyte
 
     assert result == expected
     mock_cmd.assert_called_once()
+    gh_utils.clear_rate_limit_breakers()
     gh_client.clear_token_cache()
     gh_utils.clear_rate_limit_breakers()
 
