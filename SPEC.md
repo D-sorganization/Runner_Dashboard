@@ -1,11 +1,18 @@
 # SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.30
+**Spec Version:** 2.5.31
 **Application Version:** 4.1.1 (see `VERSION`)
-**Last Updated:** 2026-05-24T07:30:00-07:00
+**Last Updated:** 2026-05-25T03:45:00-07:00
 **Status:** Active
 
 ### Recent Spec Updates
+
+- **2026-05-25 (2.5.31):** Fixed tautological rgba() budget assertion in
+  `tests/frontend/test_color_literal_budget.py`. The test previously recalculated
+  `BUDGET = count + 20` on every run, making `count <= count + 20` always true.
+  Changed to a hard-coded constant `RGBA_BUDGET = 73` (current baseline established
+  at D5 landing) so the test now enforces a real regression gate. Part of issue #706
+  (Epic: Dashboard Hardening & UX Overhaul), subtask D5.
 
 - **2026-05-24 (2.5.30):** Hardened autoscaler config parsing and module-level
   test coverage for issue `#727`. `backend/autoscaler_config.py` now raises
