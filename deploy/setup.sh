@@ -45,7 +45,8 @@ fail()  { echo -e "${RED}[FAIL]${NC} $*"; exit 1; }
 header(){ echo -e "\n${BOLD}═══ $* ═══${NC}"; }
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-DEPLOY_DIR="$HOME/actions-runners/dashboard"
+RUNNER_BASE_DIR="${RUNNER_BASE_DIR:-$HOME/actions-runners}"
+DEPLOY_DIR="${RUNNER_DASHBOARD_DEPLOY_DIR:-$HOME/actions-runners/dashboard}"
 PORT="${DASHBOARD_PORT:-8321}"
 USER="$(whoami)"
 NUM_RUNNERS="${NUM_RUNNERS:-4}"
@@ -116,6 +117,8 @@ while [[ $# -gt 0 ]]; do
         --role)         MACHINE_ROLE="$2";    shift 2 ;;
         --fleet-nodes)  FLEET_NODES_VAL="$2"; shift 2 ;;
         --hub-url)      HUB_URL_VAL="$2";     shift 2 ;;
+        --runner-base-dir) RUNNER_BASE_DIR="$2"; shift 2 ;;
+        --deploy-dir)    DEPLOY_DIR="$2"; shift 2 ;;
         --artifact)     ARTIFACT_SOURCE="$2"; shift 2 ;;
         --schedule-config) SCHEDULE_CONFIG_VAL="$2"; shift 2 ;;
         --force)        FORCE_RESTART=1;      shift ;;
@@ -147,6 +150,7 @@ systemctl is-active --quiet runner-dashboard.service 2>/dev/null && SERVICE_WAS_
 header "Runner Dashboard Production Setup"
 echo "Source:       ${SCRIPT_DIR}"
 echo "Deploy:       ${DEPLOY_DIR}"
+echo "Runner root:  ${RUNNER_BASE_DIR}"
 echo "Port:         ${PORT}"
 echo "User:         ${USER}"
 echo "Machine:      ${MACHINE_NAME}"
@@ -161,17 +165,27 @@ echo ""
 
 # ── Step 1: Install Python deps ──────────────────────────────────────────────
 header "Step 1/5: Python Dependencies"
-# Install uv if absent, then sync from the single root uv.lock (issue #333).
-# uv sync --frozen --no-dev ensures reproducible installs that match CI exactly.
+# Install uv if absent without writing into an externally-managed system Python,
+# then install locked runtime deps into the deployed venv used by systemd.
 if ! command -v uv &>/dev/null; then
-    "${PYTHON_BIN}" -m pip install --quiet uv
+    BOOTSTRAP_VENV="${HOME}/.local/share/runner-dashboard/uv-bootstrap"
+    "${PYTHON_BIN}" -m venv "${BOOTSTRAP_VENV}"
+    "${BOOTSTRAP_VENV}/bin/python" -m pip install --quiet --upgrade pip uv
+    mkdir -p "${HOME}/.local/bin"
+    ln -sf "${BOOTSTRAP_VENV}/bin/uv" "${HOME}/.local/bin/uv"
+    export PATH="${HOME}/.local/bin:${PATH}"
 fi
 if [[ -f "${SCRIPT_DIR}/uv.lock" ]]; then
-    uv sync --frozen --no-dev --project "${SCRIPT_DIR}"
+    mkdir -p "${DEPLOY_DIR}"
+    uv venv --python "${PYTHON_BIN}" "${DEPLOY_DIR}/.venv"
+    REQ_FILE="$(mktemp)"
+    uv export --frozen --no-dev --project "${SCRIPT_DIR}" --format requirements-txt --output-file "${REQ_FILE}"
+    uv pip install --python "${DEPLOY_DIR}/.venv/bin/python" -r "${REQ_FILE}"
+    rm -f "${REQ_FILE}"
 else
     fail "uv.lock missing — refusing to install with floating transitives. Re-run 'uv lock' and commit."
 fi
-ok "backend dependencies installed via uv sync --frozen --no-dev"
+ok "backend dependencies installed into ${DEPLOY_DIR}/.venv"
 
 # ── Step 2: Deploy dashboard files ───────────────────────────────────────────
 header "Step 2/5: Deploy Dashboard"
@@ -199,7 +213,7 @@ else
     cp "${SCRIPT_DIR}/deploy/register-protocol.ps1" "${DEPLOY_DIR}/register-protocol.ps1"
 
     # Deploy and configure the token refresh script
-    REFRESH_SCRIPT="${HOME}/actions-runners/dashboard/refresh-token.sh"
+    REFRESH_SCRIPT="${DEPLOY_DIR}/refresh-token.sh"
     cp "${SCRIPT_DIR}/deploy/refresh-token.sh" "${REFRESH_SCRIPT}"
     sed -i 's/\r$//' "${REFRESH_SCRIPT}"
     chmod +x "${REFRESH_SCRIPT}"
@@ -208,10 +222,15 @@ else
     # ExecStartPre/Post hooks. No-op outside WSL-mirrored hosts; safe to
     # install everywhere so the systemd unit template can reference it
     # unconditionally.
-    PORT_HELPER="${HOME}/actions-runners/dashboard/wsl-mirrored-port-helper.sh"
+    PORT_HELPER="${DEPLOY_DIR}/wsl-mirrored-port-helper.sh"
     cp "${SCRIPT_DIR}/deploy/wsl-mirrored-port-helper.sh" "${PORT_HELPER}"
     sed -i 's/\r$//' "${PORT_HELPER}"
     chmod +x "${PORT_HELPER}"
+
+    CRASH_DIAG="${DEPLOY_DIR}/collect-crash-diagnostics.sh"
+    cp "${SCRIPT_DIR}/deploy/collect-crash-diagnostics.sh" "${CRASH_DIAG}"
+    sed -i 's/\r$//' "${CRASH_DIAG}"
+    chmod +x "${CRASH_DIAG}"
 
     ok "Dashboard deployed to ${DEPLOY_DIR}"
 fi
@@ -286,7 +305,7 @@ fi
 # ── Step 3: Sudoers for runner control ───────────────────────────────────────
 header "Step 3/5: Sudoers Configuration"
 SUDOERS_FILE="/etc/sudoers.d/runner-dashboard"
-SUDOERS_LINE="${USER} ALL=(ALL) NOPASSWD: ${HOME}/actions-runners/runner-*/svc.sh"
+SUDOERS_LINE="${USER} ALL=(ALL) NOPASSWD: ${RUNNER_BASE_DIR}/runner-*/svc.sh"
 
 if [[ -f "${SUDOERS_FILE}" ]] && grep -qF "${SUDOERS_LINE}" "${SUDOERS_FILE}" 2>/dev/null; then
     ok "Sudoers rule already configured"
@@ -335,10 +354,14 @@ fi
 # CPUQuota=200%
 # TasksMax=512
 # WatchdogSec=120
+mkdir -p "${HOME}/.config/runner-dashboard" "${HOME}/.local/share/runner-dashboard" "${RUNNER_BASE_DIR}" "${DEPLOY_DIR}"
 sed -e "s|Description=D-sorganization Runner Dashboard|Description=D-sorganization Runner Dashboard (${MACHINE_NAME})|g" \
     -e "s|YOUR_USER|${USER}|g" \
     -e "s|/home/YOUR_USER|${HOME}|g" \
+    -e "s|${HOME}/actions-runners/dashboard|${DEPLOY_DIR}|g" \
     -e "s|/usr/bin/python3.11|${PYTHON_BIN}|g" \
+    -e "s|RUNNER_BASE_DIR=${HOME}/actions-runners|RUNNER_BASE_DIR=${RUNNER_BASE_DIR}|g" \
+    -e "s|ReadWritePaths=${HOME}/actions-runners$|ReadWritePaths=${RUNNER_BASE_DIR}|g" \
     -e "s|NUM_RUNNERS=12|NUM_RUNNERS=${NUM_RUNNERS}|g" \
     -e "s|DASHBOARD_PORT=8321|DASHBOARD_PORT=${PORT}|g" \
     -e "s|DISPLAY_NAME=ControlTower|DISPLAY_NAME=${DISPLAY_NAME_VAL}|g" \
@@ -390,7 +413,7 @@ fi
 
 if [[ -x "${SCRIPT_DIR}/deploy/install-runner-maintenance.sh" ]]; then
     RUNNER_SCHEDULE_CONFIG="${SCHEDULE_CONFIG_VAL}" \
-    RUNNER_ROOT="${HOME}/actions-runners" \
+    RUNNER_ROOT="${RUNNER_BASE_DIR}" \
     RUNNER_USER="${USER}" \
         bash "${SCRIPT_DIR}/deploy/install-runner-maintenance.sh"
 else

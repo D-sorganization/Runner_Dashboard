@@ -29,7 +29,12 @@ log = logging.getLogger("dashboard")
 # Paths
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 REPO_ROOT = Path(os.environ.get("RUNNER_DASHBOARD_REPO_ROOT", BACKEND_DIR.parents[0]))
-RUNNER_BASE_DIR = Path.home() / "actions-runners"
+RUNNER_BASE_DIR = Path(
+    os.environ.get(
+        "RUNNER_BASE_DIR",
+        str(Path.home() / "actions-runners"),
+    )
+).expanduser()
 RUNNER_WINDOWS_HOST_PATH = os.environ.get("RUNNER_WINDOWS_HOST_PATH", "").strip()
 
 # GitHub Org

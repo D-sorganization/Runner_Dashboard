@@ -268,7 +268,12 @@ _remediation_history_lock: asyncio.Lock = asyncio.Lock()
 # ─── Configuration ────────────────────────────────────────────────────────────
 ORG = os.environ.get("GITHUB_ORG", "D-sorganization")
 REPO_ROOT = Path(os.environ.get("RUNNER_DASHBOARD_REPO_ROOT", BACKEND_DIR.parents[1]))
-RUNNER_BASE_DIR = Path.home() / "actions-runners"
+RUNNER_BASE_DIR = Path(
+    os.environ.get(
+        "RUNNER_BASE_DIR",
+        str(Path.home() / "actions-runners"),
+    )
+).expanduser()
 DEFAULT_NUM_RUNNERS = 12
 REQUESTED_NUM_RUNNERS = int(os.environ.get("NUM_RUNNERS", str(DEFAULT_NUM_RUNNERS)))
 MAX_RUNNERS = int(os.environ.get("MAX_RUNNERS", str(REQUESTED_NUM_RUNNERS)))

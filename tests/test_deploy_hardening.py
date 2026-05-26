@@ -33,7 +33,7 @@ _NEW_HARDENING_DIRECTIVES_391 = (
     "MemoryMax=2G",
     "CPUQuota=200%",
     "TasksMax=512",
-    "WatchdogSec=120",
+    "WatchdogSec=0",
 )
 
 
@@ -67,8 +67,8 @@ def test_refresh_token_requires_more_than_prefix() -> None:
 def test_setup_prefers_python_311_for_runtime_service() -> None:
     content = _read(_DEPLOY / "setup.sh")
     assert "command -v python3.11 || command -v python3" in content
-    # setup.sh uses sed to substitute the Python path in the template file
-    assert "s|/usr/bin/python3.11|${PYTHON_BIN}|g" in content
+    assert 'uv venv --python "${PYTHON_BIN}" "${DEPLOY_DIR}/.venv"' in content
+    assert 'uv pip install --python "${DEPLOY_DIR}/.venv/bin/python"' in content
 
 
 # ---------------------------------------------------------------------------
@@ -190,13 +190,28 @@ def test_dashboard_service_has_tasks_max() -> None:
 
 def test_dashboard_service_has_watchdog_sec() -> None:
     content = _read(_DEPLOY / "runner-dashboard.service")
-    assert "WatchdogSec=120" in content
+    assert "WatchdogSec=0" in content
 
 
-def test_dashboard_service_type_is_notify() -> None:
+def test_dashboard_service_type_is_simple() -> None:
     content = _read(_DEPLOY / "runner-dashboard.service")
-    assert "Type=notify" in content
-    assert "\nType=simple\n" not in content
+    assert "Type=simple" in content
+    assert "\nType=notify\n" not in content
+
+
+def test_dashboard_service_ignores_tailscale_restore_failures() -> None:
+    content = _read(_DEPLOY / "runner-dashboard.service")
+    assert "ExecStartPost=-/home/YOUR_USER/actions-runners/dashboard/wsl-mirrored-port-helper.sh restore" in content
+
+
+def test_dashboard_service_collects_crash_diagnostics() -> None:
+    content = _read(_DEPLOY / "runner-dashboard.service")
+    assert "ExecStopPost=-/home/YOUR_USER/actions-runners/dashboard/collect-crash-diagnostics.sh" in content
+
+
+def test_dashboard_service_exposes_runner_base_dir() -> None:
+    content = _read(_DEPLOY / "runner-dashboard.service")
+    assert "Environment=RUNNER_BASE_DIR=/home/YOUR_USER/actions-runners" in content  # pragma: allowlist secret
 
 
 # ── Issue #391: runner-autoscaler.service template ───────────────────────────

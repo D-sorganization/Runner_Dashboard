@@ -87,15 +87,19 @@ def test_unit_declares_watchdog_sec(unit_file: str) -> None:
     raw = cfg.get("WatchdogSec")
     assert raw is not None, f"{unit_file} must declare WatchdogSec"
     seconds = int(re.sub(r"\D", "", raw))
+    if unit_file == "runner-dashboard.service" and cfg.get("Type") == "simple":
+        assert seconds == 0, "runner-dashboard.service Type=simple must disable WatchdogSec"
+        return
     assert 30 <= seconds <= 600, f"{unit_file}: WatchdogSec={raw} outside [30s, 600s]"
 
 
-def test_dashboard_unit_is_notify_type() -> None:
-    """The dashboard unit must use Type=notify so READY=1 and WATCHDOG=1
-    notifications take effect. Without this, WatchdogSec is a no-op.
+def test_dashboard_unit_is_simple_type() -> None:
+    """The dashboard unit runs under a deployment venv without systemd.daemon.
+
+    Type=simple keeps restart supervision active without requiring sd_notify.
     """
     cfg = _parse_unit(DEPLOY_DIR / "runner-dashboard.service")
-    assert cfg.get("Type") == "notify", "runner-dashboard.service must declare Type=notify"
+    assert cfg.get("Type") == "simple", "runner-dashboard.service must declare Type=simple"
 
 
 @pytest.mark.parametrize("unit_file", UNITS_UNDER_TEST)
