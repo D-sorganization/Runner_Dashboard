@@ -113,10 +113,7 @@ async def _health_impl() -> dict:
         # Reuse the runner cache so health checks don't add extra API calls.
         data = _cache_get("runners", 25.0)
         if data is None:
-            data = await gh_api_admin(
-                f"/orgs/{ORG}/actions/runners",
-                timeout=dashboard_config.HttpTimeout.HEALTH_GH_API_S,
-            )
+            data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
             _cache_set("runners", data)
         gh_ok = True
         runner_count = len(data.get("runners", []))
