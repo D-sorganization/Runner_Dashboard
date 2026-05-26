@@ -28,6 +28,7 @@ dev = [
     # `uv sync` cannot install a newer linter than CI uses (issue #390).
     "ruff==0.14.10",
     "mypy==1.13.0",
+    "bandit==1.7.7",
     "pip-audit>=2.10.0",
     "types-PyYAML",
     "types-requests",

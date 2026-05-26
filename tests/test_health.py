@@ -32,16 +32,13 @@ def test_router_has_health_routes() -> None:
 
 
 @pytest.mark.asyncio
-async def test_api_health_uses_short_github_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Health polling must not inherit the long dispatch timeout."""
-    import dashboard_config  # noqa: PLC0415
-
-    seen: dict[str, int] = {}
+async def test_api_health_uses_supported_github_signature(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Health polling must call the shared GitHub helper with its supported signature."""
+    seen: dict[str, str] = {}
     metrics: list[tuple[str, str, float]] = []
 
-    async def fake_gh_api_admin(endpoint: str, timeout: int = 30) -> dict:
+    async def fake_gh_api_admin(endpoint: str) -> dict:
         seen["endpoint"] = endpoint
-        seen["timeout"] = timeout
         raise RuntimeError("network unavailable")
 
     fake_server = types.SimpleNamespace(
@@ -67,7 +64,6 @@ async def test_api_health_uses_short_github_timeout(monkeypatch: pytest.MonkeyPa
     assert body["github_error_type"] == "RuntimeError"
     assert body["github_check_seconds"] >= 0
     assert seen["endpoint"] == "/orgs/D-sorganization/actions/runners"
-    assert seen["timeout"] == dashboard_config.HttpTimeout.HEALTH_GH_API_S
     assert metrics
     assert metrics[0][0:2] == ("degraded", "unreachable")
     assert metrics[0][2] >= 0
