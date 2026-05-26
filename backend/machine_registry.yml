@@ -21,6 +21,60 @@ machines:
       - Linux
       - X64
       - d-sorg-fleet
+    runner_pools:
+      - name: ControlTower-HDD
+        aliases:
+          - controltower-hdd
+          - control-tower-hdd
+        dashboard_url: http://100.95.177.68:8321
+        storage_tier: hdd
+        runner_base_dir: /home/dieterolson/actions-runners
+        runner_labels:
+          - self-hosted
+          - Linux
+          - X64
+          - d-sorg-fleet
+          - d-sorg-fleet-bulk
+        runners:
+          min: 2
+          default: 6
+          max: 8
+        storage:
+          host_drive: "D:"
+          windows_host_path: "D:\\WSL"
+          wsl_distro: Ubuntu
+          vhdx_path: "D:\\WSL\\ext4.vhdx"
+          disk_bus: SATA
+          disk_media_type: HDD
+          cache_budget_gb: 180
+      - name: ControlTower-NVMe
+        aliases:
+          - controltower-nvme
+          - control-tower-nvme
+          - controltower-fast
+        dashboard_url: http://100.95.177.68:8322
+        storage_tier: nvme
+        runner_base_dir: /home/dieterolson/actions-runners-nvme
+        runner_labels:
+          - self-hosted
+          - Linux
+          - X64
+          - d-sorg-fleet
+          - d-sorg-fleet-nvme
+          - d-sorg-fleet-fast-io
+          - d-sorg-fleet-docker
+        runners:
+          min: 1
+          default: 4
+          max: 8
+        storage:
+          host_drive: "C:"
+          windows_host_path: "C:\\WSL\\RunnerNVMe"
+          wsl_distro: RunnerNVMe
+          vhdx_path: "C:\\WSL\\RunnerNVMe\\ext4.vhdx"
+          disk_bus: NVMe
+          disk_media_type: SSD
+          cache_budget_gb: 120
     hardware:
       cpu_model: null
       cpu_physical_cores: null

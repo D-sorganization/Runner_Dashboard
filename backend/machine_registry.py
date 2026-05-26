@@ -101,6 +101,102 @@ def _normalize_hardware(entry: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
+def _normalize_storage(value: Any, *, field_prefix: str) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(f"Machine registry field '{field_prefix}' must be a mapping")
+
+    normalized = dict(value)
+    for field in (
+        "host_drive",
+        "windows_host_path",
+        "wsl_distro",
+        "vhdx_path",
+        "runner_base_dir",
+        "disk_bus",
+        "disk_media_type",
+    ):
+        if field in normalized and normalized[field] is not None:
+            normalized[field] = str(normalized[field]).strip()
+
+    for field in ("capacity_gb", "free_gb", "cache_budget_gb"):
+        if field in normalized:
+            normalized[field] = _coerce_number(
+                normalized[field],
+                field=f"{field_prefix}.{field}",
+            )
+
+    return normalized
+
+
+def _normalize_runner_counts(value: Any, *, field_prefix: str) -> dict[str, int]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(f"Machine registry field '{field_prefix}' must be a mapping")
+
+    normalized: dict[str, int] = {}
+    for field in ("default", "min", "max"):
+        if field not in value:
+            continue
+        count = _coerce_number(value[field], field=f"{field_prefix}.{field}")
+        if count is None:
+            continue
+        if not isinstance(count, int):
+            raise ValueError(f"Machine registry field '{field_prefix}.{field}' must be an integer")
+        if count < 0:
+            raise ValueError(f"Machine registry field '{field_prefix}.{field}' must be non-negative")
+        normalized[field] = count
+    return normalized
+
+
+def _normalize_runner_pool_entry(pool: dict[str, Any], *, parent_machine: str) -> dict[str, Any]:
+    normalized = dict(pool)
+
+    name = str(normalized.get("name", "")).strip()
+    if not name:
+        raise ValueError("Machine registry entries require non-empty 'runner_pools.name'")
+    normalized["name"] = name
+    normalized["parent_machine"] = parent_machine
+    normalized["role"] = normalized.get("role") or "runner_pool"
+
+    normalized["aliases"] = _coerce_str_list(normalized.get("aliases"))
+    if "runner_labels" in normalized:
+        normalized["runner_labels"] = _coerce_str_list(normalized.get("runner_labels"))
+    else:
+        normalized["runner_labels"] = []
+
+    for field in ("dashboard_url", "storage_tier", "runner_base_dir", "port"):
+        if field in normalized and normalized[field] is not None:
+            normalized[field] = str(normalized[field]).strip()
+
+    normalized["runners"] = _normalize_runner_counts(
+        normalized.get("runners"),
+        field_prefix=f"runner_pools.{name}.runners",
+    )
+    normalized["storage"] = _normalize_storage(
+        normalized.get("storage"),
+        field_prefix=f"runner_pools.{name}.storage",
+    )
+    return normalized
+
+
+def _normalize_runner_pools(entry: dict[str, Any], *, parent_machine: str) -> list[dict[str, Any]]:
+    pools = entry.get("runner_pools")
+    if pools is None:
+        return []
+    if not isinstance(pools, list):
+        raise ValueError("Machine registry field 'runner_pools' must be a list of mappings")
+
+    normalized: list[dict[str, Any]] = []
+    for pool in pools:
+        if not isinstance(pool, dict):
+            raise ValueError("Each item in 'runner_pools' must be a mapping")
+        normalized.append(_normalize_runner_pool_entry(pool, parent_machine=parent_machine))
+    return normalized
+
+
 def _workload_capacity_from_hardware(hardware: dict[str, Any]) -> dict[str, Any]:
     logical = hardware.get("cpu_logical_cores") or 0
     memory_gb = hardware.get("memory_gb") or 0
@@ -219,6 +315,8 @@ def _normalize_machine_entry(entry: dict[str, Any]) -> dict[str, Any]:
 
     normalized["hardware"] = _normalize_hardware(normalized)
     normalized["workload_capacity"] = _workload_capacity_from_hardware(normalized["hardware"])
+    normalized["storage"] = _normalize_storage(normalized.get("storage"), field_prefix="storage")
+    normalized["runner_pools"] = _normalize_runner_pools(normalized, parent_machine=name)
 
     return normalized
 
@@ -294,7 +392,27 @@ def build_machine_registry_index(
             token = _normalize_token(str(key))
             if token:
                 index[token] = entry
+        for pool in entry.get("runner_pools", []):
+            if not isinstance(pool, dict):
+                continue
+            pool_keys = [pool.get("name", ""), *pool.get("aliases", [])]
+            for key in pool_keys:
+                token = _normalize_token(str(key))
+                if token:
+                    index[token] = pool
     return index
+
+
+def _iter_registry_entries(registry: dict[str, Any]) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    for machine in registry.get("machines", []):
+        if not isinstance(machine, dict):
+            continue
+        entries.append(machine)
+        for pool in machine.get("runner_pools", []):
+            if isinstance(pool, dict):
+                entries.append(pool)
+    return entries
 
 
 def merge_registry_with_live_nodes(
@@ -327,12 +445,15 @@ def merge_registry_with_live_nodes(
             seen.add(_normalize_token(str(registry_entry.get("name", ""))))
         merged.append(merged_node)
 
-    for entry in registry.get("machines", []):
+    for entry in _iter_registry_entries(registry):
         if not isinstance(entry, dict):
             continue
         token = _normalize_token(str(entry.get("name", "")))
         if not token or token in seen:
             continue
+        role = entry.get("role", "node")
+        if entry.get("parent_machine") and role == "node":
+            role = "runner_pool"
         merged.append(
             {
                 "name": entry.get("name"),
@@ -340,7 +461,8 @@ def merge_registry_with_live_nodes(
                 "online": False,
                 "dashboard_reachable": False,
                 "is_local": False,
-                "role": entry.get("role", "node"),
+                "role": role,
+                "parent_machine": entry.get("parent_machine"),
                 "system": {},
                 "health": {},
                 "hardware_specs": entry.get("hardware", {}),
