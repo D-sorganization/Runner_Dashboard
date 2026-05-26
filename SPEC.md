@@ -1,11 +1,21 @@
 # SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.34
+**Spec Version:** 2.5.35
 **Application Version:** 4.1.1 (see `VERSION`)
-**Last Updated:** 2026-05-25T18:55:00-07:00
+**Last Updated:** 2026-05-26T12:13:00-07:00
 **Status:** Active
 
 ### Recent Spec Updates
+
+- **2026-05-26 (2.5.35):** Added the ControlTower workflow-routing policy
+  contract for issue `#757`. `config/workflow_runner_routing_policy.json`
+  now defines the future `d-sorg-fleet-bulk`, `d-sorg-fleet-fast-io`,
+  `d-sorg-fleet-docker`, and `d-sorg-fleet-nvme` label taxonomy, while
+  `scripts/check_workflow_runner_routing.py` performs an offline audit that
+  fails only on explicit tier misuse and reports neutral-label migration
+  recommendations. `docs/runbooks/runner-routing-labels.md` is the operator
+  guide for the transition from today's neutral `d-sorg-fleet` label to the
+  planned dual-tier NVMe/HDD host.
 
 - **2026-05-25 (2.5.34):** Restored the Docker runtime image to the pinned
   Python 3.12 base required by `pyproject.toml`, deployment hardening tests,
