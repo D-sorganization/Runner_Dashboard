@@ -1758,7 +1758,35 @@ async def _get_fleet_nodes_impl() -> dict:
     if cached is not None:
         return cached
 
-    nodes = await _collect_live_fleet_nodes()
+    partial = False
+    fleet_probe_error = None
+    try:
+        nodes = await _collect_live_fleet_nodes()
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Fleet node collection failed; returning local degraded node: %s", exc)
+        local_sys = await get_system_metrics_snapshot()
+        local_health = await _health_router._health_impl()
+        local_resource_reason = _resource_offline_reason(local_sys)
+        nodes = [
+            {
+                "name": HOSTNAME,
+                "url": f"http://localhost:{PORT}",
+                "online": True,
+                "dashboard_reachable": True,
+                "is_local": True,
+                "role": MACHINE_ROLE,
+                "system": local_sys,
+                "hardware_specs": local_sys.get("hardware_specs", {}),
+                "workload_capacity": local_sys.get("workload_capacity", {}),
+                "health": local_health,
+                "last_seen": datetime.now(UTC).isoformat(),
+                "error": None,
+                "offline_reason": (local_resource_reason["offline_reason"] if local_resource_reason else None),
+                "offline_detail": (local_resource_reason["offline_detail"] if local_resource_reason else None),
+            }
+        ]
+        partial = True
+        fleet_probe_error = str(exc)
     try:
         registry = load_machine_registry()
     except Exception as exc:  # noqa: BLE001
@@ -1768,11 +1796,19 @@ async def _get_fleet_nodes_impl() -> dict:
     nodes = [{**node, **_node_visibility_snapshot(node)} for node in nodes]
     online = sum(1 for n in nodes if n["online"])
     total_runners = sum(n["health"].get("runners_registered", 0) for n in nodes)
+    partial = partial or any(
+        n.get("error") or n.get("offline_reason") == "timeout"
+        for n in nodes
+        if not n.get("is_local")
+    )
     result = {
         "nodes": nodes,
         "count": len(nodes),
         "online_count": online,
         "total_runners": total_runners,
+        "partial": partial,
+        "degraded": partial,
+        "fleet_probe_error": fleet_probe_error,
         "registry": {
             "path": str(BACKEND_DIR / "machine_registry.yml"),
             "version": registry.get("version", 1),

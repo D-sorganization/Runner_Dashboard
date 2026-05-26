@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from cache_utils import cache_get, cache_set
@@ -54,6 +55,8 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("dashboard.runners")
 router = APIRouter(tags=["runners"])
+_RUNNERS_LIVE_FETCH_TIMEOUT_S = 8.0
+_last_successful_runners: dict[str, Any] | None = None
 
 
 # Lazy-loaded system metrics snapshot function (set by server.py)
@@ -64,6 +67,26 @@ def set_system_metrics_getter(getter: Callable[[], dict[str, Any]]) -> None:
     """Register the system metrics snapshot getter (called from server.py)."""
     global _get_system_metrics_snapshot
     _get_system_metrics_snapshot = getter
+
+
+def _runner_response(
+    data: dict[str, Any],
+    *,
+    source: str,
+    stale: bool = False,
+    error: str | None = None,
+) -> dict[str, Any]:
+    runners = sorted(data.get("runners", []) or [], key=runner_sort_key)
+    return {
+        **data,
+        "runners": runners,
+        "total_count": data.get("total_count", len(runners)),
+        "source": source,
+        "stale": stale,
+        "degraded": stale or error is not None,
+        "error": error,
+        "generated_at": datetime.now(UTC).isoformat(),
+    }
 
 
 @router.get("/api/runners")
@@ -87,18 +110,30 @@ async def get_runners(request: Request) -> dict[str, Any]:
 
     cached = cache_get("runners", 60.0)
     if cached is not None:
-        cached["runners"] = sorted(cached.get("runners", []), key=runner_sort_key)
+        cached = _runner_response(cached, source=cached.get("source", "cache"), stale=bool(cached.get("stale", False)))
         log.debug("returning cached runners list (count=%d)", len(cached.get("runners", [])))
         return cached
 
     try:
-        data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
-        data["runners"] = sorted(data.get("runners", []), key=runner_sort_key)
+        data = await asyncio.wait_for(
+            gh_api_admin(f"/orgs/{ORG}/actions/runners"),
+            timeout=_RUNNERS_LIVE_FETCH_TIMEOUT_S,
+        )
+        data = _runner_response(data, source="github", stale=False)
         cache_set("runners", data)
+        global _last_successful_runners
+        _last_successful_runners = data
         log.info("fetched runners list from GitHub API (count=%d)", len(data.get("runners", [])))
         return data
     except RateLimitedError as exc:
         log.warning("GitHub rate limit while fetching runners: retry_after=%d", exc.retry_after_seconds)
+        if _last_successful_runners is not None:
+            return _runner_response(
+                _last_successful_runners,
+                source="cache",
+                stale=True,
+                error=f"github_rate_limited: retry after {exc.retry_after_seconds}s",
+            )
         raise HTTPException(
             status_code=429,
             detail={
@@ -109,11 +144,15 @@ async def get_runners(request: Request) -> dict[str, Any]:
             headers={"Retry-After": str(exc.retry_after_seconds)},
         ) from exc
     except Exception as exc:
-        log.error("failed to fetch runners: %s", exc)
-        raise HTTPException(
-            status_code=502,
-            detail=bad_gateway(f"GitHub API error: {exc}").model_dump(exclude_none=True),
-        ) from exc
+        log.warning("failed to fetch live runners; returning degraded response: %s", exc)
+        if _last_successful_runners is not None:
+            return _runner_response(_last_successful_runners, source="cache", stale=True, error=str(exc))
+        return _runner_response(
+            {"total_count": 0, "runners": []},
+            source="unavailable",
+            stale=False,
+            error=f"GitHub API unavailable: {exc}",
+        )
 
 
 @router.get("/api/runners/matlab")

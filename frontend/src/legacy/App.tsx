@@ -14195,6 +14195,12 @@ function App({ initialTab, onTabChange }: { initialTab?: string; onTabChange?: (
   var ml = React.useState(false);
   var machinesLoading = ml[0],
     setMachinesLoading = ml[1];
+  var rfs = React.useState({ error: null, stale: false, lastSuccessful: null });
+  var runnerFetchState = rfs[0],
+    setRunnerFetchState = rfs[1];
+  var mfs = React.useState({ error: null, stale: false, lastSuccessful: null });
+  var machineFetchState = mfs[0],
+    setMachineFetchState = mfs[1];
   var sjs = React.useState({});
   var scheduledJobs = sjs[0],
     setScheduledJobs = sjs[1];
@@ -14560,7 +14566,19 @@ function App({ initialTab, onTabChange }: { initialTab?: string; onTabChange?: (
       .then(function (r) {
         if (r[0] && r[0].runners) {
           setRunners(r[0].runners);
-          setConnected(true);
+          setRunnerFetchState({
+            error: r[0].error || null,
+            stale: !!(r[0].stale || r[0].degraded),
+            lastSuccessful: new Date().toISOString(),
+          });
+          setConnected(!r[0].error);
+        } else {
+          setRunnerFetchState({
+            error: "Runner status unavailable; retaining last known data.",
+            stale: runners.length > 0,
+            lastSuccessful: runnerFetchState.lastSuccessful,
+          });
+          setConnected(false);
         }
         if (r[1] && r[1].workflow_runs) {
           setRuns(r[1].workflow_runs);
@@ -14651,10 +14669,28 @@ function App({ initialTab, onTabChange }: { initialTab?: string; onTabChange?: (
         return r.json();
       })
       .then(function (d) {
-        if (d) setMachinesData(d);
+        if (d) {
+          setMachinesData(d);
+          setMachineFetchState({
+            error: d.fleet_probe_error || null,
+            stale: !!(d.partial || d.degraded),
+            lastSuccessful: new Date().toISOString(),
+          });
+        } else {
+          setMachineFetchState({
+            error: "Machine health unavailable; retaining last known data.",
+            stale: (machinesData.nodes || []).length > 0,
+            lastSuccessful: machineFetchState.lastSuccessful,
+          });
+        }
         setMachinesLoading(false);
       })
       .catch(function () {
+        setMachineFetchState({
+          error: "Machine health unavailable; retaining last known data.",
+          stale: (machinesData.nodes || []).length > 0,
+          lastSuccessful: machineFetchState.lastSuccessful,
+        });
         setMachinesLoading(false);
       });
   }
@@ -15092,7 +15128,19 @@ function App({ initialTab, onTabChange }: { initialTab?: string; onTabChange?: (
       .then(function (r) {
         if (r[0] && r[0].runners) {
           setRunners(r[0].runners);
-          setConnected(true);
+          setRunnerFetchState({
+            error: r[0].error || null,
+            stale: !!(r[0].stale || r[0].degraded),
+            lastSuccessful: new Date().toISOString(),
+          });
+          setConnected(!r[0].error);
+        } else {
+          setRunnerFetchState({
+            error: "Runner status unavailable; retaining last known data.",
+            stale: runners.length > 0,
+            lastSuccessful: runnerFetchState.lastSuccessful,
+          });
+          setConnected(false);
         }
         if (r[1] && r[1].workflow_runs) {
           setRuns(r[1].workflow_runs);
@@ -15180,10 +15228,28 @@ function App({ initialTab, onTabChange }: { initialTab?: string; onTabChange?: (
         return r.json();
       })
       .then(function (d) {
-        if (d) setMachinesData(d);
+        if (d) {
+          setMachinesData(d);
+          setMachineFetchState({
+            error: d.fleet_probe_error || null,
+            stale: !!(d.partial || d.degraded),
+            lastSuccessful: new Date().toISOString(),
+          });
+        } else {
+          setMachineFetchState({
+            error: "Machine health unavailable; retaining last known data.",
+            stale: (machinesData.nodes || []).length > 0,
+            lastSuccessful: machineFetchState.lastSuccessful,
+          });
+        }
         setMachinesLoading(false);
       })
       .catch(function () {
+        setMachineFetchState({
+          error: "Machine health unavailable; retaining last known data.",
+          stale: (machinesData.nodes || []).length > 0,
+          lastSuccessful: machineFetchState.lastSuccessful,
+        });
         setMachinesLoading(false);
       });
   }
@@ -16377,6 +16443,41 @@ function App({ initialTab, onTabChange }: { initialTab?: string; onTabChange?: (
               onClick: function() { setAuditBannerDismissed(true); },
             },
             "× Dismiss",
+          ),
+        )
+      : null,
+    (runnerFetchState.error || runnerFetchState.stale || machineFetchState.error || machineFetchState.stale)
+      ? h(
+          "div",
+          {
+            id: "fleet-data-degraded-banner",
+            style: {
+              background: "rgba(240,136,62,0.16)",
+              borderBottom: "1px solid var(--accent-orange)",
+              padding: "10px 24px",
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              fontSize: "13px",
+              color: "var(--text-primary)",
+            },
+          },
+          h("strong", { style: { color: "var(--accent-orange)" } }, "Fleet telemetry degraded: "),
+          h(
+            "span",
+            { style: { flex: 1 } },
+            [
+              runnerFetchState.error
+                ? "Runner status is unavailable; showing last known or degraded data."
+                : runnerFetchState.stale
+                  ? "Runner status is stale."
+                  : null,
+              machineFetchState.error
+                ? "Machine health is partially unavailable; local data is kept when available."
+                : machineFetchState.stale
+                  ? "Machine health is partial."
+                  : null,
+            ].filter(Boolean).join(" "),
           ),
         )
       : null,
