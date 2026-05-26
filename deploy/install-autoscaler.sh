@@ -11,6 +11,9 @@
 #   `systemctl stop` sends SIGTERM (not SIGKILL) and gives running jobs
 #   up to 10 minutes to finish cleanly before the process is force-killed.
 #   (Fix 3 from issue #640.)
+# - Disables boot-time autostart for actions.runner.* units. The units remain
+#   startable, but runner capacity is restored by runner-autoscaler.service so
+#   WSL restarts do not stampede every runner onto the disk at once.
 # - Enables + starts the service.
 #
 # Run once per fleet machine:
@@ -107,7 +110,27 @@ for unit_path in /etc/systemd/system/actions.runner.*.service; do
     fi
 done
 
-# 5. Install + enable the systemd unit
+# 5. Keep runner units under autoscaler control on boot.
+#
+# GitHub's svc.sh installer enables every actions.runner.* unit by default.
+# That is unsafe on dense WSL hosts: after a WSL restart, systemd starts all
+# runners before the autoscaler can sample host pressure, producing a disk I/O
+# stampede that can pin Runner.Listener processes in uninterruptible sleep and
+# delay dashboard startup. Disabled units can still be started explicitly by
+# runner-autoscaler.service or an operator.
+echo "==> Disabling boot autostart for actions.runner.* units"
+mapfile -t RUNNER_UNITS < <(
+    systemctl list-unit-files --type=service --no-legend |
+        awk '$1 ~ /^actions\.runner\..*\.service$/ {print $1}'
+)
+if (( ${#RUNNER_UNITS[@]} > 0 )); then
+    sudo systemctl disable "${RUNNER_UNITS[@]}"
+    echo "    Disabled ${#RUNNER_UNITS[@]} runner unit(s); autoscaler will start capacity after boot"
+else
+    echo "    No runner units found"
+fi
+
+# 6. Install + enable the systemd unit
 echo "==> Installing systemd unit"
 
 TEMPLATE_FILE="$SCRIPT_DIR/runner-autoscaler.service"

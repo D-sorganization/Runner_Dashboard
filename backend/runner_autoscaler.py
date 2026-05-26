@@ -71,6 +71,7 @@ from autoscaler_config import (
     MEM_HIGH,
     MIN_ONLINE,
     POLL_SECONDS,
+    RECOVERY_MIN_ONLINE,
     RUNNER_BUSY_LOCK_DIR,
     RUNNER_BUSY_LOCK_MAX_AGE_SECONDS,
     RUNNER_PICKUP_DIR_MAX_AGE_SECONDS,
@@ -120,6 +121,7 @@ __all__ = [
     "MIN_ONLINE",
     "Path",
     "POLL_SECONDS",
+    "RECOVERY_MIN_ONLINE",
     "RUNNER_BUSY_LOCK_DIR",
     "RUNNER_BUSY_LOCK_MAX_AGE_SECONDS",
     "RUNNER_PICKUP_DIR_MAX_AGE_SECONDS",
@@ -144,6 +146,30 @@ __all__ = [
     "_sample",
     "_scheduled_desired_count",
 ]
+
+
+def _surplus_runner_count(active_count: int, scheduled_desired: int) -> int:
+    """Return how many active runners exceed schedule without breaching the floor."""
+
+    protected_target = max(MIN_ONLINE, scheduled_desired)
+    return max(0, active_count - protected_target)
+
+
+def _recovery_floor_target(scheduled_desired: int) -> int:
+    """Return the small pool restored after overload clears but before full recovery."""
+
+    scheduled_target = max(0, scheduled_desired)
+    if scheduled_target == 0:
+        return MIN_ONLINE
+    return max(MIN_ONLINE, min(RECOVERY_MIN_ONLINE, scheduled_target))
+
+
+def _should_restore_recovery_floor(*, overloaded: bool, active_count: int, scheduled_desired: int) -> bool:
+    """Return whether the autoscaler should rebuild the minimum working pool."""
+
+    return (
+        not overloaded and active_count < _recovery_floor_target(scheduled_desired) and active_count < scheduled_desired
+    )
 
 
 def _acquire_lock() -> None:
@@ -285,11 +311,12 @@ def _run_poll_loop() -> None:
             )
 
             scheduled_desired = _scheduled_desired_count(len(units))
-            surplus = max(0, len(active) - scheduled_desired)
+            surplus = _surplus_runner_count(len(active), scheduled_desired)
+            recovery_floor_target = _recovery_floor_target(scheduled_desired)
 
             log.info(
                 "sample cpu=%.1f%% mem=%.1f%% load/core=%.2f disk=%.1f%% free=%.1fGB io_full10=%.1f%%"
-                " active=%d busy=%d idle=%d inactive=%d scheduled=%d",
+                " active=%d busy=%d idle=%d inactive=%d scheduled=%d recovery_floor=%d min_online=%d",
                 avg_cpu,
                 avg_mem,
                 avg_load,
@@ -301,6 +328,8 @@ def _run_poll_loop() -> None:
                 len(idle_active),
                 len(inactive),
                 scheduled_desired,
+                recovery_floor_target,
+                MIN_ONLINE,
             )
 
             now = time.monotonic()
@@ -325,6 +354,25 @@ def _run_poll_loop() -> None:
                 acted = False
                 for u in to_stop:
                     acted = _stop_unit(u) or acted
+                if acted:
+                    last_scale_action_ts = now
+            elif (
+                _should_restore_recovery_floor(
+                    overloaded=overloaded,
+                    active_count=len(active),
+                    scheduled_desired=scheduled_desired,
+                )
+                and inactive
+            ):
+                room = max(0, recovery_floor_target - len(active))
+                to_start = inactive[: min(MAX_STEP, room)]
+                acted = False
+                log.info(
+                    "host no longer overloaded; restoring recovery floor target=%d",
+                    recovery_floor_target,
+                )
+                for u in to_start:
+                    acted = _start_unit(u) or acted
                 if acted:
                     last_scale_action_ts = now
             elif recovered and inactive and len(active) < scheduled_desired:
@@ -373,7 +421,8 @@ def main() -> None:
     log.info(
         "autoscaler start host=%s cpu_high=%s cpu_low=%s mem_high=%s "
         "disk_high=%s disk_min_free_gb=%s load_per_core=%s sustain=%ss "
-        "poll=%ss min_online=%s step=%s io_full_high=%s io_full_low=%s action_cooldown=%ss dry=%s",
+        "poll=%ss min_online=%s recovery_min_online=%s step=%s "
+        "io_full_high=%s io_full_low=%s action_cooldown=%ss dry=%s",
         HOSTNAME,
         CPU_HIGH,
         CPU_LOW,
@@ -384,6 +433,7 @@ def main() -> None:
         SUSTAIN_SECS,
         POLL_SECONDS,
         MIN_ONLINE,
+        RECOVERY_MIN_ONLINE,
         MAX_STEP,
         IO_PRESSURE_FULL_HIGH,
         IO_PRESSURE_FULL_LOW,

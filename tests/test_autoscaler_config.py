@@ -17,6 +17,7 @@ NUMERIC_ENV_CASES = [
     ("AUTOSCALER_SUSTAIN_SECS", "SUSTAIN_SECS", "99", 99),
     ("AUTOSCALER_POLL_SECONDS", "POLL_SECONDS", "12", 12),
     ("AUTOSCALER_MIN_ONLINE", "MIN_ONLINE", "2", 2),
+    ("AUTOSCALER_RECOVERY_MIN_ONLINE", "RECOVERY_MIN_ONLINE", "4", 4),
     ("AUTOSCALER_MAX_SCALE_STEP", "MAX_STEP", "4", 4),
     ("AUTOSCALER_DRY_RUN", "DRY_RUN", "1", True),
     ("RUNNER_BUSY_LOCK_MAX_AGE_SECONDS", "RUNNER_BUSY_LOCK_MAX_AGE_SECONDS", "600", 600),
@@ -82,6 +83,7 @@ def test_constants_have_expected_types() -> None:
     assert isinstance(cfg.SUSTAIN_SECS, int)
     assert isinstance(cfg.POLL_SECONDS, int)
     assert isinstance(cfg.MIN_ONLINE, int)
+    assert isinstance(cfg.RECOVERY_MIN_ONLINE, int)
     assert isinstance(cfg.MAX_STEP, int)
     assert isinstance(cfg.DRY_RUN, bool)
     assert isinstance(cfg.HOSTNAME, str)
