@@ -20,11 +20,31 @@ UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 datetime = _dt_mod.datetime
 
 
+def _resolve_windows_host_disk_path(configured_path: str | Path | None = None) -> Path | None:
+    """Return the mounted Windows path that backs this runner pool's WSL VHDX.
+
+    Operators can set RUNNER_WINDOWS_HOST_PATH for non-C: WSL installs such as
+    ControlTower-HDD on D:. The old hard-coded /mnt/c fallback remains for
+    existing deployments, but it is no longer treated as universally correct.
+    """
+    candidates: list[Path] = []
+    if configured_path:
+        configured = Path(configured_path)
+        candidates.append(configured)
+
+    candidates.append(Path("/mnt/c"))
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
+
+
 @router.get("/api/system")
 async def get_system_metrics():
     """Real-time system resource metrics."""
     # Lazy import to avoid circular dependency with server.py
-    from dashboard_config import HOSTNAME, RUNNER_BASE_DIR  # noqa: PLC0415
+    from dashboard_config import HOSTNAME, RUNNER_BASE_DIR, RUNNER_WINDOWS_HOST_PATH  # noqa: PLC0415
     from routers.system import (  # noqa: PLC0415
         _cpu_history,
         _disk_pressure_snapshot,
@@ -114,11 +134,12 @@ async def get_system_metrics():
             "runner_capacity": {},
         }
 
-    # On WSL, also report the Windows host disk (/mnt/c) where the VHDX lives.
+    # On WSL, also report the Windows host disk where the VHDX lives. Operators
+    # can set RUNNER_WINDOWS_HOST_PATH=/mnt/d for D:-backed runner pools.
     # The host disk is the binding constraint — if it fills up, WSL itself breaks.
     windows_disk = None
-    wsl_host_path = Path("/mnt/c")
-    if wsl_host_path.exists():
+    wsl_host_path = _resolve_windows_host_disk_path(RUNNER_WINDOWS_HOST_PATH)
+    if wsl_host_path is not None:
         try:
             wd = shutil.disk_usage(str(wsl_host_path))
             windows_disk = {
