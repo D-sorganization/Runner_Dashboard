@@ -561,7 +561,11 @@ class TestErrorHandling:
         monkeypatch.setattr(runners_router, "gh_api_admin", failing_api)
 
         response = client.get("/api/runners")
-        assert response.status_code == 502
+        assert response.status_code == 200
+        body = response.json()
+        assert body["source"] == "unavailable"
+        assert body["error"] == "GitHub API unavailable: GitHub API timeout"
+        assert body["runners"] == []
 
     def test_get_runners_rate_limit_returns_retry_after(
         self,

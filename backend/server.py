@@ -1763,7 +1763,7 @@ async def _get_fleet_nodes_impl() -> dict:
     try:
         nodes = await _collect_live_fleet_nodes()
     except Exception as exc:  # noqa: BLE001
-        log.warning("Fleet node collection failed; returning local degraded node: %s", exc)
+        log.exception("Fleet node collection failed; returning local degraded node: %s", exc)
         local_sys = await get_system_metrics_snapshot()
         local_health = await _health_router._health_impl()
         local_resource_reason = _resource_offline_reason(local_sys)
@@ -1790,7 +1790,7 @@ async def _get_fleet_nodes_impl() -> dict:
     try:
         registry = load_machine_registry()
     except Exception as exc:  # noqa: BLE001
-        log.warning("Machine registry load failed: %s", exc)
+        log.exception("Machine registry load failed: %s", exc)
         registry = {"version": 1, "machines": []}
     nodes = merge_registry_with_live_nodes(nodes, registry)
     nodes = [{**node, **_node_visibility_snapshot(node)} for node in nodes]

@@ -20,6 +20,14 @@
   and runner APIs report degraded fleet-node state instead of failing requests
   when remote runner hosts are unhealthy.
 
+- **2026-05-26 (2.5.35):** Clarified the `/api/health` contract after the
+  GitHub admin helper signature repair. Health polling now calls the shared
+  GitHub runner-list helper with its supported endpoint-only signature instead
+  of passing an unsupported timeout override. The endpoint continues to report
+  dashboard status plus GitHub connectivity fields such as
+  `github_api`, `github_check_seconds`, and `runners_registered`, and focused
+  tests pin both the helper-call contract and the API response shape.
+
 - **2026-05-25 (2.5.34):** Restored the Docker runtime image to the pinned
   Python 3.12 base required by `pyproject.toml`, deployment hardening tests,
   and the lockfile's binary wheel availability. This prevents Python 3.14
@@ -597,14 +605,14 @@ All endpoints are served under `http://localhost:8321/api/`.
 
 ### System and Health
 
-| Method | Path            | Description                                                                                                                                                          |
-| ------ | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/api/system`   | Host system metrics (CPU, RAM, disk, GPU)                                                                                                                            |
-| GET    | `/api/health`   | Simple health check — returns `{“status”: “ok”}`                                                                                                                     |
-| GET    | `/api/watchdog` | Watchdog status and last heartbeat                                                                                                                                   |
-| GET    | `/readyz`       | Readiness probe — runs dependency checks (GH_TOKEN, gh CLI, SQLite stores); returns 200 or 503 with `{status, checks}`                                               |
-| GET    | `/livez`        | Liveness probe — returns `{“status”:”ok”}` with no I/O; always 200 if process is up                                                                                  |
-| GET    | `/metrics`      | Prometheus text exposition — HTTP request counts/latency, GH API calls, active leases, cache sizes, uptime (issue #330). No auth gate; scrape from `localhost` only. |
+| Method | Path            | Description                                                                                                                                                             |
+| ------ | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/system`   | Host system metrics (CPU, RAM, disk, GPU)                                                                                                                               |
+| GET    | `/api/health`   | Dashboard health probe — returns `status` plus GitHub connectivity/runner fields such as `github_api`, `github_check_seconds`, and `runners_registered` when available. |
+| GET    | `/api/watchdog` | Watchdog status and last heartbeat                                                                                                                                      |
+| GET    | `/readyz`       | Readiness probe — runs dependency checks (GH_TOKEN, gh CLI, SQLite stores); returns 200 or 503 with `{status, checks}`                                                  |
+| GET    | `/livez`        | Liveness probe — returns `{“status”:”ok”}` with no I/O; always 200 if process is up                                                                                     |
+| GET    | `/metrics`      | Prometheus text exposition — HTTP request counts/latency, GH API calls, active leases, cache sizes, uptime (issue #330). No auth gate; scrape from `localhost` only.    |
 
 **Prometheus metrics (`/metrics`):**
 Implemented in `backend/instrumentation.py` using the `prometheus_client` library.

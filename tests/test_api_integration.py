@@ -76,6 +76,27 @@ async def test_health_endpoint_has_status_field(client) -> None:
     assert "status" in data
 
 
+@pytest.mark.asyncio
+async def test_health_endpoint_uses_gh_api_signature(client, app, monkeypatch) -> None:  # noqa: ARG001
+    """Health should call gh_api_admin with its supported endpoint-only signature."""
+    import server  # noqa: PLC0415
+
+    async def fake_gh_api_admin(endpoint: str) -> dict:
+        assert endpoint == "/orgs/D-sorganization/actions/runners"
+        return {"runners": [{"name": "runner-1"}]}
+
+    monkeypatch.setattr(server, "_cache_get", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(server, "_cache_set", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(server, "gh_api_admin", fake_gh_api_admin)
+
+    resp = await client.get("/api/health")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["github_api"] == "connected"
+    assert data["runners_registered"] == 1
+
+
 # ─── 2. Static file serving ───────────────────────────────────────────────────
 
 
