@@ -19,7 +19,7 @@
 #   bash deploy/deploy-host.sh                         # full deploy
 #   bash deploy/deploy-host.sh --dry-run               # preview
 #   bash deploy/deploy-host.sh --skip-pull             # skip 'git pull'
-#   bash deploy/deploy-host.sh --no-restart-units      # apply drop-ins but don't restart actions.runner.* units
+#   bash deploy/deploy-host.sh --restart-units         # drain/restart runner units after deploying drop-ins
 #
 # Environment overrides:
 #   REPO                  default: directory containing this script's parent
@@ -43,14 +43,17 @@ DEPLOY_DIR="${DEPLOY_DIR:-${HOME}/actions-runners/dashboard}"
 AUTOSCALER_SERVICE="${AUTOSCALER_SERVICE:-runner-autoscaler.service}"
 DASHBOARD_SERVICE="${DASHBOARD_SERVICE:-runner-dashboard.service}"
 SKIP_PULL=0
-NO_RESTART_UNITS=0
+RESTART_UNITS=0
 DRY_RUN=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --dry-run)          DRY_RUN=1; shift ;;
         --skip-pull)        SKIP_PULL=1; shift ;;
-        --no-restart-units) NO_RESTART_UNITS=1; shift ;;
+        --restart-units)    RESTART_UNITS=1; shift ;;
+        --no-restart-units)
+            printf 'INFO: --no-restart-units is now the default; ignoring\n' >&2
+            shift ;;
         -h|--help)
             sed -n '1,30p' "$0" | sed 's/^# \{0,1\}//'
             exit 0 ;;
@@ -112,7 +115,7 @@ else
 fi
 
 # ── 4. Optionally restart runner units to load any new drop-in changes ───────
-if [[ "$NO_RESTART_UNITS" != "1" && "$DRY_RUN" != "1" ]]; then
+if [[ "$RESTART_UNITS" == "1" && "$DRY_RUN" != "1" ]]; then
     section "Restarting actions.runner.*.service units (load latest drop-ins)"
     # Use heal-host so workers drain via ExecStop=force-drain.sh
     if [[ -x /usr/local/bin/heal-host ]]; then
@@ -125,6 +128,9 @@ if [[ "$NO_RESTART_UNITS" != "1" && "$DRY_RUN" != "1" ]]; then
             sudo systemctl restart "$u" || warn "restart $u failed"
         done
     fi
+else
+    section "Runner unit restart"
+    warn "skipped by default; runner-autoscaler.service will restore capacity after pressure checks"
 fi
 
 # ── 5. Verify ────────────────────────────────────────────────────────────────

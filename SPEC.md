@@ -1,11 +1,29 @@
 # SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.32
+**Spec Version:** 2.5.34
 **Application Version:** 4.1.1 (see `VERSION`)
-**Last Updated:** 2026-05-25T03:45:00-07:00
+**Last Updated:** 2026-05-25T18:55:00-07:00
 **Status:** Active
 
 ### Recent Spec Updates
+
+- **2026-05-25 (2.5.34):** Restored the Docker runtime image to the pinned
+  Python 3.12 base required by `pyproject.toml`, deployment hardening tests,
+  and the lockfile's binary wheel availability. This prevents Python 3.14
+  source builds for packages such as `pydantic-core`, `uvloop`, and
+  `watchfiles`, reducing CI I/O pressure and making Docker validation
+  deterministic again.
+
+- **2026-05-25 (2.5.33):** Hardened runner-autoscaler recovery after WSL I/O
+  pressure incidents. The autoscaler now protects a default two-runner online
+  floor, respects that floor even when scheduler desired capacity drops lower,
+  and restores a configurable four-runner recovery pool after overload clears
+  before waiting for full low-pressure recovery to rebuild the entire scheduled
+  pool. `AUTOSCALER_RECOVERY_MIN_ONLINE` exposes the recovery pool size, and
+  deploy/test coverage pins the default floor contract. Fleet deployment now
+  disables boot-time autostart for `actions.runner.*` units and makes bulk
+  runner restarts opt-in, so WSL restarts do not launch every runner before
+  the autoscaler can sample host pressure.
 
 - **2026-05-25 (2.5.32):** Hardened autoscaler overload detection for
   ControlTower WSL I/O stalls. `backend/autoscaler_sampling.py` now parses

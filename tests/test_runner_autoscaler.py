@@ -441,6 +441,50 @@ def test_autoscaler_exports_io_pressure_sampler() -> None:
     assert callable(ra._io_pressure_snapshot)
 
 
+def test_surplus_runner_count_respects_minimum_online_floor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(ra, "MIN_ONLINE", 2)
+
+    assert ra._surplus_runner_count(active_count=2, scheduled_desired=0) == 0
+    assert ra._surplus_runner_count(active_count=5, scheduled_desired=0) == 3
+    assert ra._surplus_runner_count(active_count=5, scheduled_desired=4) == 1
+
+
+def test_recovery_floor_target_restores_small_pool_before_full_scale_up(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(ra, "MIN_ONLINE", 2)
+    monkeypatch.setattr(ra, "RECOVERY_MIN_ONLINE", 4)
+
+    assert ra._recovery_floor_target(scheduled_desired=16) == 4
+    assert ra._recovery_floor_target(scheduled_desired=3) == 3
+    assert ra._recovery_floor_target(scheduled_desired=0) == 2
+
+
+def test_should_restore_recovery_floor_only_after_overload_clears(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(ra, "MIN_ONLINE", 2)
+    monkeypatch.setattr(ra, "RECOVERY_MIN_ONLINE", 4)
+
+    assert ra._should_restore_recovery_floor(
+        overloaded=False,
+        active_count=1,
+        scheduled_desired=16,
+    )
+    assert not ra._should_restore_recovery_floor(
+        overloaded=True,
+        active_count=1,
+        scheduled_desired=16,
+    )
+    assert not ra._should_restore_recovery_floor(
+        overloaded=False,
+        active_count=4,
+        scheduled_desired=16,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Job-pickup busy signals — issue #651 race-close coverage
 #
@@ -678,6 +722,13 @@ class TestGracefulDrainDropin:
         """The drop-in must target actions.runner units, not the autoscaler itself."""
         content = self._read_script()
         assert "actions.runner" in content, "install-autoscaler.sh must write the drop-in for actions.runner.* units"
+
+    def test_runner_units_are_disabled_at_boot(self) -> None:
+        """Runner units must not all autostart before the autoscaler samples host pressure."""
+        content = self._read_script()
+        assert "systemctl disable" in content
+        assert "runner-autoscaler.service" in content
+        assert "autoscaler will start capacity after boot" in content
 
     def test_stop_unit_uses_systemctl_stop(self) -> None:
         """_stop_unit must use 'systemctl stop', delegating kill timing to the drop-in.

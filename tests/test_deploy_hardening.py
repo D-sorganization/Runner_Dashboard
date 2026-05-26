@@ -385,3 +385,19 @@ def test_autoscaler_unit_load_per_core_matches_code_default() -> None:
         "deploy/runner-autoscaler.service Environment= value must match the code default in "
         "backend/autoscaler_config.py"
     )
+
+
+def test_autoscaler_unit_pins_recovery_floor_defaults() -> None:
+    """Deploy template must keep a minimum pool online and restore after pressure."""
+    unit = _read(_DEPLOY / "runner-autoscaler.service")
+    assert "Environment=AUTOSCALER_MIN_ONLINE=2" in unit
+    assert "Environment=AUTOSCALER_RECOVERY_MIN_ONLINE=4" in unit
+
+
+def test_deploy_host_does_not_restart_runner_units_by_default() -> None:
+    """Normal deployment must not stampede every runner after applying drop-ins."""
+    script = _read(_DEPLOY / "deploy-host.sh")
+    assert "RESTART_UNITS=0" in script
+    assert "--restart-units" in script
+    assert 'if [[ "$RESTART_UNITS" == "1"' in script
+    assert "runner-autoscaler.service will restore capacity after pressure checks" in script
