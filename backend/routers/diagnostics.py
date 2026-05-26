@@ -19,6 +19,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from dashboard_config import ORG
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from identity import require_scope
@@ -144,11 +145,25 @@ async def get_github_status() -> dict[str, Any]:
 
         rate_limit_status = gh_utils.get_rate_limit_status()
         if rate_limit_status.get("status") == "rate_limited":
-            return rate_limit_status
+            return {**rate_limit_status, "source": "rate_limit"}
 
         import gh_client
 
-        return gh_client.get_status()
+        status = gh_client.get_status()
+        if status.get("status") not in {None, "", "unknown"}:
+            return {**status, "source": "gh_client"}
+
+        health = await gh_utils.get_gh_health_summary(ORG)
+        if health.get("github_api") == "connected":
+            return {
+                "status": "ok",
+                "detail": "GitHub API health is connected via dashboard health probe.",
+                "endpoint": f"/orgs/{ORG}/actions/runners",
+                "retry_after_seconds": 0,
+                "updated_at": health.get("timestamp"),
+                "source": "health_cache",
+            }
+        return {**status, "source": "gh_client"}
     except Exception as exc:  # noqa: BLE001
         if isinstance(exc, (KeyboardInterrupt, SystemExit)):
             raise

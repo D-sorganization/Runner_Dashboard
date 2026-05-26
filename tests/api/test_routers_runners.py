@@ -181,6 +181,60 @@ class TestGetRunners:
         assert len(data["runners"]) == 1
         assert data["runners"][0]["id"] == 999
 
+    def test_get_runners_returns_degraded_payload_when_github_fails_without_cache(
+        self,
+        client: TestClient,
+        monkeypatch: pytest.MonkeyPatch,
+        mock_cache,
+    ) -> None:
+        """A GitHub outage must not turn into a 504 or a misleading healthy 0/0."""
+
+        async def failing_api(endpoint: str) -> dict:  # noqa: ARG001
+            raise TimeoutError("simulated GitHub timeout")
+
+        monkeypatch.setattr(runners_router, "_last_successful_runners", None, raising=False)
+        monkeypatch.setattr(runners_router, "gh_api_admin", failing_api, raising=False)
+
+        response = client.get("/api/runners")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["runners"] == []
+        assert data["source"] == "unavailable"
+        assert data["degraded"] is True
+        assert "GitHub API unavailable" in data["error"]
+
+    def test_get_runners_returns_stale_last_success_when_github_fails(
+        self,
+        client: TestClient,
+        monkeypatch: pytest.MonkeyPatch,
+        mock_cache,
+    ) -> None:
+        """If a previous runner payload exists, return it with explicit stale metadata."""
+
+        async def failing_api(endpoint: str) -> dict:  # noqa: ARG001
+            raise TimeoutError("simulated GitHub timeout")
+
+        monkeypatch.setattr(
+            runners_router,
+            "_last_successful_runners",
+            {
+                "total_count": 1,
+                "runners": [{"id": 42, "name": "cached-runner", "status": "online"}],
+            },
+            raising=False,
+        )
+        monkeypatch.setattr(runners_router, "gh_api_admin", failing_api, raising=False)
+
+        response = client.get("/api/runners")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["runners"][0]["id"] == 42
+        assert data["source"] == "cache"
+        assert data["stale"] is True
+        assert data["degraded"] is True
+
 
 class TestGetMatlabRunnerHealth:
     """Tests for GET /api/runners/matlab endpoint."""
@@ -507,7 +561,11 @@ class TestErrorHandling:
         monkeypatch.setattr(runners_router, "gh_api_admin", failing_api)
 
         response = client.get("/api/runners")
-        assert response.status_code == 502
+        assert response.status_code == 200
+        body = response.json()
+        assert body["source"] == "unavailable"
+        assert body["error"] == "GitHub API unavailable: GitHub API timeout"
+        assert body["runners"] == []
 
     def test_get_runners_rate_limit_returns_retry_after(
         self,

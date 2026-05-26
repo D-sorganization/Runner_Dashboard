@@ -2,10 +2,23 @@
 
 **Spec Version:** 2.5.35
 **Application Version:** 4.1.1 (see `VERSION`)
-**Last Updated:** 2026-05-26T09:31:00-07:00
+**Last Updated:** 2026-05-26T10:40:00-07:00
 **Status:** Active
 
 ### Recent Spec Updates
+
+- **2026-05-26 (2.5.35):** Hardened split-disk/NVMe dashboard deployments.
+  `deploy/setup.sh` now accepts `--runner-base-dir` and `--deploy-dir`, installs
+  locked runtime dependencies into the deployed `.venv`, and templates
+  `RUNNER_BASE_DIR` into the systemd unit so dashboard runner controls can point
+  at non-default runner roots. The dashboard service now runs as `Type=simple`,
+  tolerates mirrored-port restore failures, disables the unavailable sd_notify
+  watchdog path, and collects crash diagnostics through
+  `deploy/collect-crash-diagnostics.sh` on stop/failure. The Windows WSL
+  keepalive script and installer support a no-reset resident mode for keeping
+  the selected distro warm without restarting all WSL instances. The diagnostics
+  and runner APIs report degraded fleet-node state instead of failing requests
+  when remote runner hosts are unhealthy.
 
 - **2026-05-26 (2.5.35):** Clarified the `/api/health` contract after the
   GitHub admin helper signature repair. Health polling now calls the shared

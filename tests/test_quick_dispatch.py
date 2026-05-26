@@ -35,18 +35,22 @@ def _normalize(value: str) -> tuple[str, str]:
     return value, f"D-sorganization/{value}"
 
 
+def _available_provider_map() -> dict[str, object]:
+    return {
+        "claude_code_cli": type(
+            "A",
+            (),
+            {"available": True, "status": "available", "detail": "ready"},
+        )(),
+    }
+
+
 async def _call(req: QuickDispatchRequest, run_cmd_fn=None, extra_patches: dict | None = None):
     if run_cmd_fn is None:
         run_cmd_fn = _make_run_cmd(0)
     _quick_dispatch_health_cache.clear()
     with patch("quick_dispatch.agent_remediation.probe_provider_availability") as mock_avail:
-        mock_avail.return_value = {
-            "claude_code_cli": type(
-                "A",
-                (),
-                {"available": True, "status": "available", "detail": "ready"},
-            )(),
-        }
+        mock_avail.return_value = _available_provider_map()
         return await quick_dispatch(
             req,
             run_cmd_fn=run_cmd_fn,
@@ -162,20 +166,22 @@ async def test_not_ready_returns_structured_rejection() -> None:
         prompt="Fix the failing test in test_api.py",
         provider="claude_code_cli",
     )
-    resp = await quick_dispatch(
-        req,
-        run_cmd_fn=_make_run_cmd(0),
-        org="D-sorganization",
-        repo_root=Path("."),
-        normalize_repository_fn=_normalize,
-        health_gate_fn=AsyncMock(
-            return_value=QuickDispatchHealthGateResult(
-                ready=False,
-                reason="no_online_runners",
-                retry_after_seconds=30,
-            )
-        ),
-    )
+    with patch("quick_dispatch.agent_remediation.probe_provider_availability") as mock_avail:
+        mock_avail.return_value = _available_provider_map()
+        resp = await quick_dispatch(
+            req,
+            run_cmd_fn=_make_run_cmd(0),
+            org="D-sorganization",
+            repo_root=Path("."),
+            normalize_repository_fn=_normalize,
+            health_gate_fn=AsyncMock(
+                return_value=QuickDispatchHealthGateResult(
+                    ready=False,
+                    reason="no_online_runners",
+                    retry_after_seconds=30,
+                )
+            ),
+        )
     assert resp.accepted is False
     assert resp.error_code == "not_ready"
     assert resp.reason == "no_online_runners"
@@ -202,7 +208,11 @@ async def test_force_bypasses_health_gate_and_logs_override() -> None:
             retry_after_seconds=30,
         )
     )
-    with patch("quick_dispatch.log.warning") as mock_warning:
+    with (
+        patch("quick_dispatch.agent_remediation.probe_provider_availability") as mock_avail,
+        patch("quick_dispatch.log.warning") as mock_warning,
+    ):
+        mock_avail.return_value = _available_provider_map()
         resp = await quick_dispatch(
             req,
             run_cmd_fn=_make_run_cmd(0),
@@ -251,7 +261,11 @@ async def test_health_gate_cached_for_five_seconds() -> None:
             109.0,
         ]
     )
-    with patch("quick_dispatch.time.monotonic", side_effect=lambda: next(monotonic_values)):
+    with (
+        patch("quick_dispatch.agent_remediation.probe_provider_availability") as mock_avail,
+        patch("quick_dispatch.time.monotonic", side_effect=lambda: next(monotonic_values)),
+    ):
+        mock_avail.return_value = _available_provider_map()
         for _ in range(5):
             resp = await quick_dispatch(
                 req,

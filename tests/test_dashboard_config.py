@@ -19,6 +19,14 @@ def test_runner_base_dir() -> None:
     assert dashboard_config.RUNNER_BASE_DIR == Path.home() / "actions-runners"
 
 
+def test_runner_base_dir_env_override(monkeypatch) -> None:
+    env = os.environ.copy()
+    env["RUNNER_BASE_DIR"] = "/tmp/controltower-nvme-runners"
+    monkeypatch.setattr(os, "environ", env)
+    importlib.reload(dashboard_config)
+    assert dashboard_config.RUNNER_BASE_DIR == Path("/tmp/controltower-nvme-runners")
+
+
 # ---------------------------------------------------------------------------
 # Org & Runner limits
 # ---------------------------------------------------------------------------
