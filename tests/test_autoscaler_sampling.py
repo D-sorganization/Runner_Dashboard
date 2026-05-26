@@ -183,3 +183,31 @@ def test_sample_uses_fallback_load_and_root_disk(monkeypatch: pytest.MonkeyPatch
     assert load == pytest.approx(0.0)
     assert disk_percent == pytest.approx(25.0)
     assert disk_free > 0
+
+
+def test_parse_pressure_line_extracts_psi_metrics() -> None:
+    parsed = samp._parse_pressure_line("full avg10=65.54 avg60=65.38 avg300=70.93 total=1041918528")
+
+    assert parsed["avg10"] == pytest.approx(65.54)
+    assert parsed["avg60"] == pytest.approx(65.38)
+    assert parsed["avg300"] == pytest.approx(70.93)
+    assert parsed["total"] == pytest.approx(1041918528)
+
+
+def test_io_pressure_snapshot_reads_linux_psi(tmp_path: Path) -> None:
+    pressure = tmp_path / "io"
+    pressure.write_text(
+        "some avg10=72.94 avg60=71.94 avg300=75.64 total=1092529985\n"
+        "full avg10=65.54 avg60=65.38 avg300=70.93 total=1041918528\n",
+        encoding="utf-8",
+    )
+
+    snapshot = samp._io_pressure_snapshot(str(pressure))
+
+    assert snapshot is not None
+    assert snapshot["some_avg10"] == pytest.approx(72.94)
+    assert snapshot["full_avg10"] == pytest.approx(65.54)
+
+
+def test_io_pressure_snapshot_returns_none_when_psi_unavailable(tmp_path: Path) -> None:
+    assert samp._io_pressure_snapshot(str(tmp_path / "missing")) is None

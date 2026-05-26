@@ -57,12 +57,15 @@ from autoscaler_busy import (
     _runner_is_busy,
 )
 from autoscaler_config import (
+    ACTION_COOLDOWN_SECONDS,
     CPU_HIGH,
     CPU_LOW,
     DISK_HIGH,
     DISK_MIN_FREE_GB,
     DRY_RUN,  # noqa: PLC0414 (explicit re-export for tests)
     HOSTNAME,
+    IO_PRESSURE_FULL_HIGH,
+    IO_PRESSURE_FULL_LOW,
     LOAD_PER_CORE,
     MAX_STEP,
     MEM_HIGH,
@@ -80,6 +83,7 @@ from autoscaler_config import (
     psutil,
 )
 from autoscaler_sampling import (
+    _io_pressure_snapshot,
     _leased_runners,
     _sample,
     _scheduled_desired_count,
@@ -107,6 +111,9 @@ __all__ = [
     "DISK_MIN_FREE_GB",
     "DRY_RUN",
     "HOSTNAME",
+    "ACTION_COOLDOWN_SECONDS",
+    "IO_PRESSURE_FULL_HIGH",
+    "IO_PRESSURE_FULL_LOW",
     "LOAD_PER_CORE",
     "MAX_STEP",
     "MEM_HIGH",
@@ -133,6 +140,7 @@ __all__ = [
     "_runner_busy_via_pickup_dir",
     "_runner_is_busy",
     "_leased_runners",
+    "_io_pressure_snapshot",
     "_sample",
     "_scheduled_desired_count",
 ]
@@ -212,6 +220,7 @@ def _run_poll_loop() -> None:
     """Infinite poll loop: sample resources, classify runners, scale up/down."""
     history_len = max(3, SUSTAIN_SECS // max(POLL_SECONDS, 1))
     samples: deque[tuple[float, float, float, float, float]] = deque(maxlen=history_len)
+    last_scale_action_ts = 0.0
 
     # A1: notify systemd we're up. Pairs with the periodic _send_watchdog()
     # call inside the loop body below.
@@ -236,6 +245,8 @@ def _run_poll_loop() -> None:
             avg_load = sum(s[2] for s in samples) / len(samples)
             avg_disk = sum(s[3] for s in samples) / len(samples)
             min_disk_free = min(s[4] for s in samples)
+            io_pressure = _io_pressure_snapshot() or {}
+            io_full_avg10 = float(io_pressure.get("full_avg10", 0.0))
 
             units = _list_runner_units()
             if not units:
@@ -262,6 +273,7 @@ def _run_poll_loop() -> None:
                 or avg_load >= LOAD_PER_CORE
                 or avg_disk >= DISK_HIGH
                 or min_disk_free <= DISK_MIN_FREE_GB
+                or io_full_avg10 >= IO_PRESSURE_FULL_HIGH
             )
             recovered = (
                 avg_cpu <= CPU_LOW
@@ -269,19 +281,21 @@ def _run_poll_loop() -> None:
                 and avg_load < LOAD_PER_CORE * 0.7
                 and avg_disk < DISK_HIGH - 5
                 and min_disk_free > DISK_MIN_FREE_GB
+                and io_full_avg10 <= IO_PRESSURE_FULL_LOW
             )
 
             scheduled_desired = _scheduled_desired_count(len(units))
             surplus = max(0, len(active) - scheduled_desired)
 
             log.info(
-                "sample cpu=%.1f%% mem=%.1f%% load/core=%.2f disk=%.1f%% free=%.1fGB"
+                "sample cpu=%.1f%% mem=%.1f%% load/core=%.2f disk=%.1f%% free=%.1fGB io_full10=%.1f%%"
                 " active=%d busy=%d idle=%d inactive=%d scheduled=%d",
                 avg_cpu,
                 avg_mem,
                 avg_load,
                 avg_disk,
                 min_disk_free,
+                io_full_avg10,
                 len(active),
                 len(busy),
                 len(idle_active),
@@ -289,10 +303,17 @@ def _run_poll_loop() -> None:
                 scheduled_desired,
             )
 
-            if surplus and idle_active:
+            now = time.monotonic()
+            cooldown_remaining = max(0.0, ACTION_COOLDOWN_SECONDS - (now - last_scale_action_ts))
+            if cooldown_remaining > 0:
+                log.info("scale action cooldown active for %.0fs; holding runner state", cooldown_remaining)
+            elif surplus and idle_active:
                 to_stop = idle_active[: min(MAX_STEP, surplus)]
+                acted = False
                 for u in to_stop:
-                    _stop_unit(u)
+                    acted = _stop_unit(u) or acted
+                if acted:
+                    last_scale_action_ts = now
             elif overloaded and len(active) > MIN_ONLINE:
                 room = len(active) - MIN_ONLINE
                 to_stop = idle_active[: min(MAX_STEP, room)]
@@ -301,13 +322,19 @@ def _run_poll_loop() -> None:
                         "overloaded but all %d active runners busy — not interrupting jobs",
                         len(busy),
                     )
+                acted = False
                 for u in to_stop:
-                    _stop_unit(u)
+                    acted = _stop_unit(u) or acted
+                if acted:
+                    last_scale_action_ts = now
             elif recovered and inactive and len(active) < scheduled_desired:
                 room = max(0, scheduled_desired - len(active))
                 to_start = inactive[: min(MAX_STEP, room)]
+                acted = False
                 for u in to_start:
-                    _start_unit(u)
+                    acted = _start_unit(u) or acted
+                if acted:
+                    last_scale_action_ts = now
 
         except Exception as exc:  # noqa: BLE001
             log.exception("autoscaler tick failed: %s", exc)
@@ -346,7 +373,7 @@ def main() -> None:
     log.info(
         "autoscaler start host=%s cpu_high=%s cpu_low=%s mem_high=%s "
         "disk_high=%s disk_min_free_gb=%s load_per_core=%s sustain=%ss "
-        "poll=%ss min_online=%s step=%s dry=%s",
+        "poll=%ss min_online=%s step=%s io_full_high=%s io_full_low=%s action_cooldown=%ss dry=%s",
         HOSTNAME,
         CPU_HIGH,
         CPU_LOW,
@@ -358,6 +385,9 @@ def main() -> None:
         POLL_SECONDS,
         MIN_ONLINE,
         MAX_STEP,
+        IO_PRESSURE_FULL_HIGH,
+        IO_PRESSURE_FULL_LOW,
+        ACTION_COOLDOWN_SECONDS,
         DRY_RUN,
     )
     _run_poll_loop()

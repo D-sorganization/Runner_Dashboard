@@ -429,6 +429,18 @@ def test_load_per_core_configurable_via_env(monkeypatch: pytest.MonkeyPatch) -> 
     assert result == pytest.approx(3.0)
 
 
+def test_io_pressure_thresholds_are_configurable(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AUTOSCALER_IO_PRESSURE_FULL_HIGH", "55.5")
+    monkeypatch.setenv("AUTOSCALER_IO_PRESSURE_FULL_LOW", "12.5")
+
+    assert ra._env_float("AUTOSCALER_IO_PRESSURE_FULL_HIGH", 35.0) == pytest.approx(55.5)
+    assert ra._env_float("AUTOSCALER_IO_PRESSURE_FULL_LOW", 10.0) == pytest.approx(12.5)
+
+
+def test_autoscaler_exports_io_pressure_sampler() -> None:
+    assert callable(ra._io_pressure_snapshot)
+
+
 # ---------------------------------------------------------------------------
 # Job-pickup busy signals — issue #651 race-close coverage
 #
