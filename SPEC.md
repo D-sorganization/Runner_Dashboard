@@ -1,11 +1,20 @@
 # SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.31
+**Spec Version:** 2.5.32
 **Application Version:** 4.1.1 (see `VERSION`)
 **Last Updated:** 2026-05-25T03:45:00-07:00
 **Status:** Active
 
 ### Recent Spec Updates
+
+- **2026-05-25 (2.5.32):** Hardened autoscaler overload detection for
+  ControlTower WSL I/O stalls. `backend/autoscaler_sampling.py` now parses
+  Linux PSI data from `/proc/pressure/io`, and `backend/runner_autoscaler.py`
+  treats high `full avg10` I/O pressure as overload while blocking scale-up
+  recovery until I/O pressure drops. `AUTOSCALER_IO_PRESSURE_FULL_HIGH`,
+  `AUTOSCALER_IO_PRESSURE_FULL_LOW`, and
+  `AUTOSCALER_ACTION_COOLDOWN_SECONDS` make the thresholds configurable.
+  Focused tests cover the PSI parser and exported autoscaler contract.
 
 - **2026-05-25 (2.5.31):** Fixed tautological rgba() budget assertion in
   `tests/frontend/test_color_literal_budget.py`. The test previously recalculated
@@ -179,10 +188,10 @@ the fleet runner CLI version does not support that flag consistently.
 | `workflow_stats.py`       | Aggregate workflow success/failure statistics                                                       |
 | `report_files.py`         | Parse dated report files for the Reports tab                                                        |
 | `runner_autoscaler.py`    | Dynamic runner count scaling — main loop and public re-export facade                                |
-| `autoscaler_config.py`    | Autoscaler env-var helpers and all threshold constants                                              |
+| `autoscaler_config.py`    | Autoscaler env-var helpers and all threshold constants, including I/O pressure gates                |
 | `autoscaler_systemd.py`   | Autoscaler systemd unit enumeration, state inspection, start/stop                                   |
 | `autoscaler_busy.py`      | Autoscaler layered busy-detection (4 strategies, issue #651)                                        |
-| `autoscaler_sampling.py`  | Autoscaler resource sampling (CPU/mem/disk/load) and scheduler integration                          |
+| `autoscaler_sampling.py`  | Autoscaler resource sampling (CPU/mem/disk/load/I/O pressure) and scheduler integration             |
 | `config_schema.py`        | Config validation and atomic JSON writes                                                            |
 | `pr_inventory.py`         | Fetch and normalise open PRs across repos (issue #80)                                               |
 | `issue_inventory.py`      | Fetch and normalise open issues with taxonomy (issue #81)                                           |
@@ -1143,6 +1152,15 @@ contract and additionally garbage-collects stale lockfiles. The
 `/run/user/$UID/`, `~/.cache/`, and `/tmp/` fallbacks for the autoscaler's
 own self-lock are defined in `_acquire_lock()` (the hard-coded `/var/run/`
 path is unwritable for non-root deploys; see #664 follow-up).
+
+**I/O pressure contract.** The autoscaler samples Linux PSI metrics from
+`/proc/pressure/io` when available. `full avg10` above
+`AUTOSCALER_IO_PRESSURE_FULL_HIGH` is overload, even if CPU and RAM are below
+their limits, because it means all runnable work is blocked on filesystem I/O.
+Scale-up recovery is blocked until `full avg10` is below
+`AUTOSCALER_IO_PRESSURE_FULL_LOW`. After any start/stop action,
+`AUTOSCALER_ACTION_COOLDOWN_SECONDS` prevents another scale action until the
+host has had time to stabilize.
 
 ### 6.7 Runner Service Unit Template
 
