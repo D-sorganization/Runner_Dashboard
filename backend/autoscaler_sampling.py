@@ -34,6 +34,7 @@ _POWERSHELL_CANDIDATES = (
     "powershell.exe",
     "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe",
 )
+_PRESSURE_KEYS = ("avg10", "avg60", "avg300", "total")
 
 
 def _runner_scheduler_bin() -> str:
@@ -144,6 +145,44 @@ $used = $total - $free
         return float(data["cpu_percent"]), float(data["memory_percent"])
     except (TypeError, ValueError, KeyError, json.JSONDecodeError):
         return None
+
+
+def _parse_pressure_line(line: str) -> dict[str, float]:
+    """Parse one Linux PSI line, for example ``full avg10=65.5 ...``."""
+    parts = line.strip().split()
+    if not parts:
+        raise ValueError("pressure line is empty")
+    parsed: dict[str, float] = {}
+    for part in parts[1:]:
+        if "=" not in part:
+            continue
+        key, raw = part.split("=", 1)
+        if key in _PRESSURE_KEYS:
+            parsed[key] = float(raw)
+    return parsed
+
+
+def _io_pressure_snapshot(path: str = "/proc/pressure/io") -> dict[str, float] | None:
+    """Return Linux IO pressure stall metrics when available.
+
+    The values are percentages over the kernel's rolling windows. ``full_avg10``
+    is the critical ControlTower signal: during recent outages it stayed above
+    60%, meaning all runnable work was blocked on I/O for most of the window.
+    """
+    try:
+        lines = Path(path).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+
+    pressure: dict[str, float] = {}
+    for line in lines:
+        if line.startswith("some "):
+            parsed = _parse_pressure_line(line)
+            pressure.update({f"some_{key}": value for key, value in parsed.items()})
+        elif line.startswith("full "):
+            parsed = _parse_pressure_line(line)
+            pressure.update({f"full_{key}": value for key, value in parsed.items()})
+    return pressure or None
 
 
 def _sample() -> tuple[float, float, float, float, float]:

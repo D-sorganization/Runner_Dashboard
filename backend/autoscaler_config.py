@@ -63,6 +63,8 @@ CPU_LOW = _env_float("AUTOSCALER_CPU_LOW", 40.0, minimum=0.0)
 MEM_HIGH = _env_float("AUTOSCALER_MEM_HIGH", _DEFAULT_MEM_HIGH, minimum=0.0)
 DISK_HIGH = _env_float("AUTOSCALER_DISK_HIGH", _DEFAULT_DISK_HIGH, minimum=0.0)
 DISK_MIN_FREE_GB = _env_float("AUTOSCALER_DISK_MIN_FREE_GB", _DEFAULT_DISK_MIN_FREE_GB, minimum=0.0)
+IO_PRESSURE_FULL_HIGH = _env_float("AUTOSCALER_IO_PRESSURE_FULL_HIGH", 35.0, minimum=0.0)
+IO_PRESSURE_FULL_LOW = _env_float("AUTOSCALER_IO_PRESSURE_FULL_LOW", 10.0, minimum=0.0)
 # 1.2 keeps a desktop-class host responsive under sustained runner load. The
 # sampler uses Windows host CPU/RAM when running in WSL, so this threshold now
 # reflects the machine the user sees in Task Manager rather than the WSL VM.
@@ -71,6 +73,7 @@ SUSTAIN_SECS = _env_int("AUTOSCALER_SUSTAIN_SECS", 45, minimum=0)
 POLL_SECONDS = _env_int("AUTOSCALER_POLL_SECONDS", 15, minimum=0)
 MIN_ONLINE = _env_int("AUTOSCALER_MIN_ONLINE", 1, minimum=0)
 MAX_STEP = _env_int("AUTOSCALER_MAX_SCALE_STEP", 2, minimum=0)
+ACTION_COOLDOWN_SECONDS = _env_int("AUTOSCALER_ACTION_COOLDOWN_SECONDS", 120, minimum=0)
 DRY_RUN = bool(_env_int("AUTOSCALER_DRY_RUN", 0, minimum=0))
 RUNNER_SCHEDULER_BIN = os.environ.get("RUNNER_SCHEDULER_BIN", "/usr/local/bin/runner-scheduler")
 RUNNER_SCHEDULE_CONFIG = os.path.expanduser(
