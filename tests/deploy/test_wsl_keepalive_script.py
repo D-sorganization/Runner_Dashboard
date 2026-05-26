@@ -30,6 +30,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "deploy" / "wsl-keepalive.ps1"
+INSTALLER = REPO_ROOT / "deploy" / "install-wsl-keepalive-task.ps1"
 
 
 def _find_pwsh() -> str | None:
@@ -63,6 +64,10 @@ def test_script_exists() -> None:
     assert SCRIPT.is_file(), f"watchdog script missing: {SCRIPT}"
 
 
+def test_resident_task_installer_exists() -> None:
+    assert INSTALLER.is_file(), f"resident keepalive installer missing: {INSTALLER}"
+
+
 def test_script_documents_required_parameters() -> None:
     """Every parameter the docstring promises must actually be declared."""
     text = SCRIPT.read_text(encoding="utf-8")
@@ -77,6 +82,7 @@ def test_script_documents_required_parameters() -> None:
         "LogBackups",
         "DashboardPort",
         "DashboardServiceName",
+        "Mode",
         "Once",
     ):
         assert f"${param}" in text, f"parameter ${param} not declared"
@@ -100,7 +106,25 @@ def test_script_validates_dashboard_recovery_parameters() -> None:
     assert "DashboardServiceName must be a non-empty string" in text
     assert "dashboard_unhealthy_detected" in text
     assert "dashboard_recovery_escalating_to_wsl_reset" in text
+    assert "dashboard_recovery_failed_no_wsl_reset" in text
     assert "Start-DashboardServiceOnly" in text
+
+
+def test_script_has_resident_mode_without_wsl_reset() -> None:
+    """Split-disk runner pools need a keep-warm mode that never resets WSL."""
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert "[ValidateSet('Watchdog', 'Resident')]" in text
+    assert "Mode must be Watchdog or Resident" in text
+    assert "unresponsive_no_wsl_reset" in text
+
+
+def test_resident_task_installer_registers_no_reset_mode() -> None:
+    text = INSTALLER.read_text(encoding="utf-8")
+    assert "Register-ScheduledTask" in text
+    assert "'-Mode', 'Resident'" in text
+    assert "wsl --shutdown" not in text
+    assert "RunnerDashboard-WSL-Resident-KeepAlive" in text
+    assert "Start-ScheduledTask" in text
 
 
 # ---------------------------------------------------------------------------
@@ -114,6 +138,7 @@ def test_script_parses_cleanly() -> None:
     result = _run_ps(
         f". '{SCRIPT}' -Once -Distro 'no-such-distro' "
         f"-CheckIntervalSeconds 10 -ProbeTimeoutSeconds 2 "
+        f"-Mode Resident "
         f"-LogDir '{(REPO_ROOT / '.test-wsl-keepalive-junk').as_posix()}'"
     )
     # We don't care about the actual outcome of the probe (it will fail
@@ -121,6 +146,25 @@ def test_script_parses_cleanly() -> None:
     # accepted the script and the parameter validation did not throw.
     # A parser error would put "ParserError" in stderr.
     assert "ParserError" not in result.stderr, result.stderr
+
+
+@PWSH_REQUIRED
+def test_resident_task_installer_dry_run_parses_cleanly(tmp_path: Path) -> None:
+    """The scheduled-task installer must parse and expose the Resident command."""
+    script_copy = tmp_path / "wsl-keepalive.ps1"
+    script_copy.write_text(SCRIPT.read_text(encoding="utf-8"), encoding="utf-8")
+    result = _run_ps(
+        f"& '{INSTALLER.as_posix()}' -DryRun "
+        f"-ScriptPath '{script_copy.as_posix()}' "
+        "-TaskName 'UnitTest-WSL-KeepAlive' "
+        "-Distro 'WSL' "
+        "-CheckIntervalSeconds 10 "
+        "-ProbeTimeoutSeconds 3"
+    )
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["mode"] == "Resident"
+    assert "-Mode Resident" in payload["arguments"]
 
 
 @PWSH_REQUIRED
@@ -132,6 +176,7 @@ def test_backoff_helper_is_pure_and_capped(tmp_path: Path) -> None:
         f"""
         . '{SCRIPT.as_posix()}' -Once -Distro 'noop' `
             -CheckIntervalSeconds 10 -ProbeTimeoutSeconds 2 `
+            -Mode Resident `
             -LogDir '{(tmp_path / "logs").as_posix()}' *> $null
         for ($i = 0; $i -le 12; $i++) {{
             Write-Output (Get-BackoffSeconds -ConsecutiveRecoveries $i)
@@ -157,6 +202,7 @@ def test_state_file_is_written_and_parsable(tmp_path: Path) -> None:
         f". '{SCRIPT.as_posix()}' -Once "
         f"-Distro 'definitely-not-installed-{tmp_path.name}' "
         f"-CheckIntervalSeconds 10 -ProbeTimeoutSeconds 2 "
+        f"-Mode Resident "
         f"-LogDir '{log_dir.as_posix()}'"
     )
     assert result.returncode == 0, result.stderr
@@ -164,7 +210,8 @@ def test_state_file_is_written_and_parsable(tmp_path: Path) -> None:
     assert state_path.is_file(), result.stdout + result.stderr
     state = json.loads(state_path.read_text(encoding="utf-8"))
     assert state["distro"].startswith("definitely-not-installed-")
-    assert state["status"] in {"failed", "recovered"}, state
+    assert state["status"] in {"failed", "recovered", "unresponsive"}, state
+    assert state["mode"] == "Resident"
     assert isinstance(state["consecutive"], int)
 
 
@@ -176,6 +223,7 @@ def test_log_jsonl_event_is_written(tmp_path: Path) -> None:
         f". '{SCRIPT.as_posix()}' -Once "
         f"-Distro 'definitely-not-installed-{tmp_path.name}' "
         f"-CheckIntervalSeconds 10 -ProbeTimeoutSeconds 2 "
+        f"-Mode Resident "
         f"-LogDir '{log_dir.as_posix()}'"
     )
     log_path = log_dir / "wsl-keepalive.log"
@@ -184,7 +232,7 @@ def test_log_jsonl_event_is_written(tmp_path: Path) -> None:
     assert lines, "no log lines emitted"
     parsed = [json.loads(line) for line in lines]
     events = {row["event"] for row in parsed}
-    # We expect at least the unresponsive detection and a recovery
-    # outcome for a non-existent distro.
-    assert "unresponsive_detected" in events, parsed
-    assert events & {"recovery_failed", "recovery_succeeded"}, parsed
+    # Resident mode must not reset WSL for a non-existent distro.
+    assert "unresponsive_no_wsl_reset" in events, parsed
+    assert "recovery_failed" not in events, parsed
+    assert "recovery_succeeded" not in events, parsed

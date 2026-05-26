@@ -58,6 +58,13 @@
     systemd service to start when WSL is responsive but dashboard health fails.
     Default ``runner-dashboard.service``.
 
+.PARAMETER Mode
+    ``Watchdog`` preserves the legacy recovery behavior and may run
+    ``wsl --shutdown`` when the distro or dashboard is wedged. ``Resident``
+    keeps the selected distro warm with probes and dashboard-only recovery,
+    but never resets WSL. Use ``Resident`` for split-disk runner fleets where
+    one distro must not restart another pool.
+
 .PARAMETER Once
     Run a single probe + recovery cycle and exit. Used by the test
     suite and by ad-hoc operator invocation.
@@ -88,6 +95,8 @@ param(
     [int]$LogBackups = 3,
     [int]$DashboardPort = 8321,
     [string]$DashboardServiceName = 'runner-dashboard.service',
+    [ValidateSet('Watchdog', 'Resident')]
+    [string]$Mode = 'Watchdog',
     [switch]$Once
 )
 
@@ -124,6 +133,9 @@ if ($DashboardPort -lt 1 -or $DashboardPort -gt 65535) {
 }
 if ([string]::IsNullOrWhiteSpace($DashboardServiceName)) {
     throw "DashboardServiceName must be a non-empty string"
+}
+if ($Mode -notin @('Watchdog', 'Resident')) {
+    throw "Mode must be Watchdog or Resident (got $Mode)"
 }
 
 # ---------- File layout ----------------------------------------------------
@@ -369,7 +381,8 @@ function Invoke-OneCycle {
         [Parameter(Mandatory)][int]$MaxLogBytes,
         [Parameter(Mandatory)][int]$LogBackups,
         [Parameter(Mandatory)][int]$DashboardPort,
-        [Parameter(Mandatory)][string]$DashboardServiceName
+        [Parameter(Mandatory)][string]$DashboardServiceName,
+        [Parameter(Mandatory)][ValidateSet('Watchdog', 'Resident')][string]$Mode
     )
 
     # Load prior state (consecutive recovery counter, last_recovery_ts).
@@ -413,30 +426,41 @@ function Invoke-OneCycle {
                 port = $DashboardPort
             }
             if (-not $dashboardRecovered) {
-                Write-EventLine -LogPath $LogPath -MaxBytes $MaxLogBytes -Backups $LogBackups -Event @{
-                    level = 'warn'
-                    event = 'dashboard_recovery_escalating_to_wsl_reset'
-                    distro = $Distro
-                    service = $DashboardServiceName
-                    port = $DashboardPort
-                }
-                $wslRecovered = Invoke-WslRecovery -Distro $Distro -ProbeTimeoutSeconds $ProbeTimeoutSeconds
-                if ($wslRecovered) {
-                    $dashboardRecovered = Start-DashboardServiceOnly `
-                        -Distro $Distro `
-                        -ServiceName $DashboardServiceName `
-                        -TimeoutSeconds $dashboardStartTimeout
-                    if ($dashboardRecovered -and -not (Test-DashboardHealth -Port $DashboardPort)) {
-                        $dashboardRecovered = $false
+                if ($Mode -eq 'Resident') {
+                    Write-EventLine -LogPath $LogPath -MaxBytes $MaxLogBytes -Backups $LogBackups -Event @{
+                        level = 'error'
+                        event = 'dashboard_recovery_failed_no_wsl_reset'
+                        distro = $Distro
+                        service = $DashboardServiceName
+                        port = $DashboardPort
+                        mode = $Mode
                     }
-                }
-                Write-EventLine -LogPath $LogPath -MaxBytes $MaxLogBytes -Backups $LogBackups -Event @{
-                    level = if ($dashboardRecovered) { 'info' } else { 'error' }
-                    event = if ($dashboardRecovered) { 'dashboard_recovery_after_wsl_reset_succeeded' } else { 'dashboard_recovery_after_wsl_reset_failed' }
-                    distro = $Distro
-                    service = $DashboardServiceName
-                    port = $DashboardPort
-                    wsl_recovered = $wslRecovered
+                } else {
+                    Write-EventLine -LogPath $LogPath -MaxBytes $MaxLogBytes -Backups $LogBackups -Event @{
+                        level = 'warn'
+                        event = 'dashboard_recovery_escalating_to_wsl_reset'
+                        distro = $Distro
+                        service = $DashboardServiceName
+                        port = $DashboardPort
+                    }
+                    $wslRecovered = Invoke-WslRecovery -Distro $Distro -ProbeTimeoutSeconds $ProbeTimeoutSeconds
+                    if ($wslRecovered) {
+                        $dashboardRecovered = Start-DashboardServiceOnly `
+                            -Distro $Distro `
+                            -ServiceName $DashboardServiceName `
+                            -TimeoutSeconds $dashboardStartTimeout
+                        if ($dashboardRecovered -and -not (Test-DashboardHealth -Port $DashboardPort)) {
+                            $dashboardRecovered = $false
+                        }
+                    }
+                    Write-EventLine -LogPath $LogPath -MaxBytes $MaxLogBytes -Backups $LogBackups -Event @{
+                        level = if ($dashboardRecovered) { 'info' } else { 'error' }
+                        event = if ($dashboardRecovered) { 'dashboard_recovery_after_wsl_reset_succeeded' } else { 'dashboard_recovery_after_wsl_reset_failed' }
+                        distro = $Distro
+                        service = $DashboardServiceName
+                        port = $DashboardPort
+                        wsl_recovered = $wslRecovered
+                    }
                 }
             }
         }
@@ -458,9 +482,30 @@ function Invoke-OneCycle {
             distro = $Distro
             dashboard_checked = $true
             dashboard_recovered = $dashboardRecovered
+            mode = $Mode
         }
         Write-StateFile -Path $StatePath -State $state
         return @{ outcome = 'healthy'; consecutive = $newConsecutive; dashboard_recovered = $dashboardRecovered }
+    }
+
+    if ($Mode -eq 'Resident') {
+        Write-EventLine -LogPath $LogPath -MaxBytes $MaxLogBytes -Backups $LogBackups -Event @{
+            level = 'error'
+            event = 'unresponsive_no_wsl_reset'
+            consecutive = $prior.consecutive
+            distro = $Distro
+            mode = $Mode
+        }
+        $state = @{
+            status = 'unresponsive'
+            consecutive = $prior.consecutive
+            last_recovery_ts = $prior.last_recovery_ts
+            last_healthy_ts = $prior.last_healthy_ts
+            distro = $Distro
+            mode = $Mode
+        }
+        Write-StateFile -Path $StatePath -State $state
+        return @{ outcome = 'unresponsive_no_reset'; consecutive = $prior.consecutive }
     }
 
     # Unresponsive: decide whether to recover or give up.
@@ -478,6 +523,7 @@ function Invoke-OneCycle {
             last_recovery_ts = $prior.last_recovery_ts
             last_healthy_ts = $prior.last_healthy_ts
             distro = $Distro
+            mode = $Mode
         }
         Write-StateFile -Path $StatePath -State $state
         return @{ outcome = 'budget_exhausted'; consecutive = $prior.consecutive }
@@ -506,6 +552,7 @@ function Invoke-OneCycle {
         last_recovery_ts = $now.ToString('o')
         last_healthy_ts = if ($recovered) { $now.ToString('o') } else { $prior.last_healthy_ts }
         distro = $Distro
+        mode = $Mode
     }
     Write-StateFile -Path $StatePath -State $state
     return @{
@@ -527,7 +574,8 @@ if ($Once) {
         -MaxLogBytes $MaxLogBytes `
         -LogBackups $LogBackups `
         -DashboardPort $DashboardPort `
-        -DashboardServiceName $DashboardServiceName
+        -DashboardServiceName $DashboardServiceName `
+        -Mode $Mode
     Write-Output ($result | ConvertTo-Json -Compress)
     exit 0
 }
@@ -540,6 +588,7 @@ Write-EventLine -LogPath $LogPath -MaxBytes $MaxLogBytes -Backups $LogBackups -E
     interval_s = $CheckIntervalSeconds
     probe_timeout_s = $ProbeTimeoutSeconds
     max_consecutive = $MaxConsecutiveRecoveries
+    mode = $Mode
 }
 
 while ($true) {
@@ -554,7 +603,8 @@ while ($true) {
             -MaxLogBytes $MaxLogBytes `
             -LogBackups $LogBackups `
             -DashboardPort $DashboardPort `
-            -DashboardServiceName $DashboardServiceName
+            -DashboardServiceName $DashboardServiceName `
+            -Mode $Mode
         # Backoff applies only after a recovery; healthy cycles use the
         # baseline interval. Keeps the script responsive when things are
         # fine and deliberate when WSL is sick.
