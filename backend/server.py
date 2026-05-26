@@ -1797,9 +1797,7 @@ async def _get_fleet_nodes_impl() -> dict:
     online = sum(1 for n in nodes if n["online"])
     total_runners = sum(n["health"].get("runners_registered", 0) for n in nodes)
     partial = partial or any(
-        n.get("error") or n.get("offline_reason") == "timeout"
-        for n in nodes
-        if not n.get("is_local")
+        n.get("error") or n.get("offline_reason") == "timeout" for n in nodes if not n.get("is_local")
     )
     result = {
         "nodes": nodes,
