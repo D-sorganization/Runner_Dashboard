@@ -19,3 +19,13 @@ def test_router_is_apiRouter() -> None:
 def test_router_has_system_route() -> None:
     paths = [r.path for r in m.router.routes]  # type: ignore[attr-defined]
     assert "/api/system" in paths
+
+
+def test_resolve_windows_host_disk_path_prefers_configured_existing_path(tmp_path) -> None:
+    assert m._resolve_windows_host_disk_path(tmp_path) == tmp_path
+
+
+def test_resolve_windows_host_disk_path_returns_none_when_no_candidate_exists(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(m.Path, "exists", lambda self: False)
+
+    assert m._resolve_windows_host_disk_path(tmp_path / "missing") is None
