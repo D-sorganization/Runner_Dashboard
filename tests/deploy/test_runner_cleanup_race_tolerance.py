@@ -91,9 +91,7 @@ class TestRaceTolerantStop:
             (i for i, line in enumerate(lines) if "stop_rc" in line and "!=" in line),
             None,
         )
-        assert stop_rc_check_idx is not None, (
-            "runner-cleanup.sh must check stop_rc after the tolerant stop call"
-        )
+        assert stop_rc_check_idx is not None, "runner-cleanup.sh must check stop_rc after the tolerant stop call"
         # From the stop_rc check, look forward for 'continue' before the next
         # call to the per-runner cleanup helpers.
         found_continue = False

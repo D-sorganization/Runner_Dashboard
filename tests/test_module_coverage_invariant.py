@@ -28,9 +28,7 @@ def test_every_backend_module_has_a_test_file() -> None:
         if p.stem in EXEMPT:
             continue
         # Accept both tests/test_<stem>.py and tests/**/test_<stem>.py
-        if not (TESTS_DIR / f"test_{p.stem}.py").exists() and not list(
-            TESTS_DIR.glob(f"**/test_{p.stem}.py")
-        ):
+        if not (TESTS_DIR / f"test_{p.stem}.py").exists() and not list(TESTS_DIR.glob(f"**/test_{p.stem}.py")):
             missing.append(p.stem)
 
     assert not missing, (
