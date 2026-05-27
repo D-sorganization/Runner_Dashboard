@@ -201,6 +201,7 @@ jobs:
           pip install --upgrade pip
           pip install pytest==8.1.1
           if [ -f uv.lock ]; then
+            rm -rf .venv
             pip install uv
             uv sync --frozen
             # Use the uv-managed venv
@@ -244,6 +245,7 @@ jobs:
           source "$RUNNER_TEMP/ci-tools/bin/activate"
           python -m pip install --upgrade pip setuptools wheel
           if [ -f uv.lock ]; then
+            rm -rf .venv
             pip install uv
             uv sync --frozen
             echo "$(pwd)/.venv/bin" >> "$GITHUB_PATH"
@@ -374,6 +376,7 @@ jobs:
           source "$RUNNER_TEMP/security-venv/bin/activate"
           python -m pip install --upgrade pip setuptools wheel
           if [ -f uv.lock ]; then
+            rm -rf .venv
             pip install uv
             uv sync --frozen
             ./.venv/bin/pip-audit --progress-spinner=off
@@ -409,6 +412,7 @@ jobs:
           source "$RUNNER_TEMP/ci-venv/bin/activate"
           pip install --upgrade pip setuptools wheel
           if [ -f uv.lock ]; then
+            rm -rf .venv
             pip install uv
             uv sync --frozen
             echo "$(pwd)/.venv/bin" >> "$GITHUB_PATH"
