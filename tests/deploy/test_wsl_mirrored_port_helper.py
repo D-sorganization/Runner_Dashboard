@@ -18,8 +18,22 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "deploy" / "wsl-mirrored-port-helper.sh"
 
+
+def _check_bash_working() -> bool:
+    bash_path = shutil.which("bash")
+    if not bash_path:
+        return False
+    try:
+        # Verify bash can run a simple exit command without error
+        res = subprocess.run([bash_path, "-c", "exit 0"], capture_output=True, text=True, timeout=2)
+        return res.returncode == 0
+    except Exception:
+        return False
+
+
 BASH = shutil.which("bash")
-BASH_REQUIRED = pytest.mark.skipif(BASH is None, reason="bash not available on this runner")
+BASH_WORKING = _check_bash_working()
+BASH_REQUIRED = pytest.mark.skipif(not BASH_WORKING, reason="bash not working or not available on this runner")
 
 
 def _bash_path(path: Path) -> str:
