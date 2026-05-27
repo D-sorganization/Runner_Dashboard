@@ -1,12 +1,13 @@
 # SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.35
+**Spec Version:** 2.5.36
 **Application Version:** 4.1.1 (see `VERSION`)
 **Last Updated:** 2026-05-26T10:40:00-07:00
 **Status:** Active
 
 ### Recent Spec Updates
 
+- **2026-05-26 (2.5.36):** Comprehensive autoscaler-corruption recovery + VS Code blank-window fix. New `backend/runner_state_cleanup.py` module removes orphaned `$HOME/.gitconfig.lock` (and stale per-worktree git locks older than 60s) after every autoscaler stop — recovering from the fleet-wide outage signature where a SIGTERM mid-`git config --global` poisons every subsequent `actions/checkout` on the host (Runner_Dashboard#640). Cleanup is invoked from `_stop_unit` on every stop path (success, failure, or cleanup-itself-raises) and mirrored in `deploy/runner-hooks/job-started.sh` so the runner-side hook scrubs locks before any checkout, catching corruption from power loss / OOM / manual kill. `backend/routers/credentials.py` Cline detection uses a new `_resolve_vscode_cli` helper that prefers `code.cmd` over `Code.exe` on Windows and a `_vscode_has_extension` helper that passes `CREATE_NO_WINDOW` — stopping the dashboard from spawning new blank VS Code windows every few seconds while polling credential status. 7 new unit tests + 3 updated; 25/25 passing.
 - **2026-05-26 (2.5.35):** Hardened split-disk/NVMe dashboard deployments.
   `deploy/setup.sh` now accepts `--runner-base-dir` and `--deploy-dir`, installs
   locked runtime dependencies into the deployed `.venv`, and templates
