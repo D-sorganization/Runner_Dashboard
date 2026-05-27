@@ -26,10 +26,20 @@ sudo install -m 0755 "${SCRIPT_DIR}/heal-host.sh" /usr/local/bin/heal-host
 # drop-ins written by migrate-runner-units.sh. Installed at a stable
 # system path so the drop-ins don't depend on a repo checkout location.
 HOOK_INSTALL_DIR="/usr/local/bin/runner-hooks"
+HOOK_SRC_DIR_INSTALLED="/opt/runner-dashboard/deploy/runner-hooks"
 sudo install -d -m 0755 "${HOOK_INSTALL_DIR}"
 sudo install -m 0755 "${SCRIPT_DIR}/runner-hooks/job-started.sh"   "${HOOK_INSTALL_DIR}/job-started.sh"
 sudo install -m 0755 "${SCRIPT_DIR}/runner-hooks/job-completed.sh" "${HOOK_INSTALL_DIR}/job-completed.sh"
 sudo install -m 0755 "${SCRIPT_DIR}/runner-hooks/force-drain.sh"   "${HOOK_INSTALL_DIR}/force-drain.sh"
+# Self-heal pass — restores the three hook scripts if they go missing
+# between deploys. Idempotent; safe to run on a short timer. Wired up
+# below as runner-hooks-restore.{service,timer}. Root cause this
+# guards against: fleet outage 2026-05-27, where multiple runners
+# had ACTIONS_RUNNER_HOOK_JOB_COMPLETED env vars pointing at files
+# that had been removed from /usr/local/bin/runner-hooks/, producing
+# `##[error]File doesn't exist` on every job-completed callback and
+# stalling all CI fleet-wide.
+sudo install -m 0755 "${SCRIPT_DIR}/runner-hooks-restore.sh" /usr/local/bin/runner-hooks-restore
 # Lockfile dir consulted by job-started.sh, job-completed.sh, the
 # autoscaler busy-check (#664), and runner-cleanup.sh GC (#651).
 # Must be writable by the runner user.
@@ -136,6 +146,36 @@ Persistent=true
 WantedBy=timers.target
 TIMER
 
+sudo tee /etc/systemd/system/runner-hooks-restore.service > /dev/null <<SERVICE
+[Unit]
+Description=Restore /usr/local/bin/runner-hooks/*.sh if they go missing
+Documentation=https://github.com/D-sorganization/Runner_Dashboard/blob/main/deploy/runner-hooks-restore.sh
+After=local-fs.target
+
+[Service]
+Type=oneshot
+User=root
+Environment=HOOK_SRC_DIR=${HOOK_SRC_DIR_INSTALLED}
+Environment=HOOK_DIR=${HOOK_INSTALL_DIR}
+Environment=TEXTFILE_COLLECTOR_DIR=${TEXTFILE_COLLECTOR_DIR}
+ExecStart=/usr/local/bin/runner-hooks-restore
+Nice=10
+SERVICE
+
+sudo tee /etc/systemd/system/runner-hooks-restore.timer > /dev/null <<'TIMER'
+[Unit]
+Description=Self-heal the runner job-pickup hooks every five minutes
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=5min
+AccuracySec=15s
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+TIMER
+
 # Ensure runner-cleanup writes its textfile metric to the same collector
 # directory used by node_exporter. The cleanup script defaults to
 # /var/lib/node_exporter/textfile_collector but honours TEXTFILE_COLLECTOR_DIR.
@@ -146,7 +186,7 @@ Environment=TEXTFILE_COLLECTOR_DIR=${TEXTFILE_COLLECTOR_DIR}
 CONF
 
 sudo systemctl daemon-reload
-sudo systemctl enable --now runner-cleanup.timer runner-scheduler.timer runner-corruption-scan.timer
+sudo systemctl enable --now runner-cleanup.timer runner-scheduler.timer runner-corruption-scan.timer runner-hooks-restore.timer
 
 # Apply (or re-apply) the per-unit drop-ins from #664. Idempotent.
 # Passes the installed hook dir explicitly so the drop-ins reference the
@@ -161,4 +201,4 @@ echo "Installed:"
 systemctl list-timers runner-cleanup.timer runner-scheduler.timer runner-corruption-scan.timer --all
 echo ""
 echo "Binaries:"
-ls -l /usr/local/bin/runner-cleanup /usr/local/bin/heal-host /usr/local/bin/runner-corruption-scan "${HOOK_INSTALL_DIR}"/ | grep -v '^total'
+ls -l /usr/local/bin/runner-cleanup /usr/local/bin/heal-host /usr/local/bin/runner-corruption-scan /usr/local/bin/runner-hooks-restore "${HOOK_INSTALL_DIR}"/ | grep -v '^total'

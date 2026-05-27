@@ -91,19 +91,46 @@ class TestDryRunEnabled:
 
 
 class TestStopUnit:
-    def test_happy(self) -> None:
-        with patch("subprocess.run", return_value=_cp(returncode=0)):
+    def test_happy_invokes_cleanup(self) -> None:
+        with (
+            patch("subprocess.run", return_value=_cp(returncode=0)),
+            patch("runner_state_cleanup.cleanup_runner_state") as mock_clean,
+        ):
             assert sd._stop_unit("actions.runner.org.r.service") is True
+            mock_clean.assert_called_once_with("actions.runner.org.r.service")
 
-    def test_sudo_failure(self) -> None:
-        with patch("subprocess.run", return_value=_cp(returncode=1)):
+    def test_sudo_failure_still_cleans(self) -> None:
+        """Even when systemctl fails, cleanup runs so the next job has a clean home.
+
+        Regression for the fleet-wide ~/.gitconfig.lock corruption pattern
+        (Runner_Dashboard#640): a SIGTERM mid-`git config --global` leaves a
+        lock file behind even if systemctl reports a non-zero status because
+        the runner had already died. Cleanup must run on every stop path.
+        """
+        with (
+            patch("subprocess.run", return_value=_cp(returncode=1)),
+            patch("runner_state_cleanup.cleanup_runner_state") as mock_clean,
+        ):
             assert sd._stop_unit("actions.runner.org.r.service") is False
+            mock_clean.assert_called_once_with("actions.runner.org.r.service")
+
+    def test_cleanup_error_does_not_break_stop(self) -> None:
+        """If cleanup itself raises, _stop_unit still returns the stop status."""
+        with (
+            patch("subprocess.run", return_value=_cp(returncode=0)),
+            patch(
+                "runner_state_cleanup.cleanup_runner_state",
+                side_effect=RuntimeError("cleanup boom"),
+            ),
+        ):
+            assert sd._stop_unit("actions.runner.org.r.service") is True
 
     def test_dry_run(self, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[name-defined]
         monkeypatch.setattr(sd, "DRY_RUN", True)
-        with patch("subprocess.run") as mock_run:
+        with patch("subprocess.run") as mock_run, patch("runner_state_cleanup.cleanup_runner_state") as mock_clean:
             result = sd._stop_unit("actions.runner.org.r.service")
         mock_run.assert_not_called()
+        mock_clean.assert_not_called()
         assert result is True
 
 

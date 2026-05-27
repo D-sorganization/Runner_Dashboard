@@ -547,6 +547,30 @@ class TestAuthorizationRequirements:
 class TestErrorHandling:
     """Tests for error handling and edge cases."""
 
+    @pytest.fixture(autouse=True)
+    def _clear_runners_state(self):
+        """Reset module-level runners state between TestErrorHandling tests.
+
+        Earlier classes (notably TestGetRunners) issue real client.get()
+        calls that populate two pieces of module-level state:
+          1. `cache_utils.cache_clear()` — the 60s TTL cache.
+          2. `runners_router._last_successful_runners` — the last-known-good
+             response used as a degraded-mode fallback when the GitHub call
+             fails.
+
+        Without clearing both, the API-error / rate-limit tests here
+        receive `source: cache` instead of `unavailable` / 429 because
+        the endpoint falls back to the cached value when the (mocked-to-fail)
+        GitHub call fails. See backend/routers/runners.py:145–150.
+        """
+        import cache_utils  # noqa: PLC0415
+
+        cache_utils.cache_clear()
+        runners_router._last_successful_runners = None
+        yield
+        cache_utils.cache_clear()
+        runners_router._last_successful_runners = None
+
     def test_get_runners_api_error(
         self,
         client: TestClient,
