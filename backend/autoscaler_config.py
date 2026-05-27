@@ -85,6 +85,40 @@ RUNNER_SCHEDULE_CONFIG = os.path.expanduser(
 )
 RUNNER_BASE_DIR = os.path.expanduser(os.environ.get("RUNNER_BASE_DIR", "~/actions-runners"))
 
+# NVMe Pool Config
+NVME_PATTERN = os.environ.get("AUTOSCALER_NVME_PATTERN", "nvme")
+NVME_MIN_ONLINE = _env_int("AUTOSCALER_NVME_MIN_ONLINE", 1)
+NVME_MAX_ONLINE = _env_int("AUTOSCALER_NVME_MAX_ONLINE", 16)
+NVME_DEFAULT = _env_int("AUTOSCALER_NVME_DEFAULT", 4)
+NVME_LABELS = [x.strip() for x in os.environ.get("AUTOSCALER_NVME_LABELS", "nvme,fast-storage").split(",") if x.strip()]
+NVME_START_ENABLED = bool(_env_int("AUTOSCALER_NVME_START_ENABLED", 1))
+NVME_STOP_ENABLED = bool(_env_int("AUTOSCALER_NVME_STOP_ENABLED", 1))
+NVME_PATH = os.path.expanduser(os.environ.get("AUTOSCALER_NVME_PATH", "~/actions-runners/nvme"))
+NVME_MIN_FREE_GB = _env_float("AUTOSCALER_NVME_MIN_FREE_GB", 25.0)
+NVME_DISK_HIGH = _env_float("AUTOSCALER_NVME_DISK_HIGH", 90.0)
+NVME_CACHE_HIGH = _env_float("AUTOSCALER_NVME_CACHE_HIGH", 85.0)
+
+# HDD Pool Config
+HDD_PATTERN = os.environ.get("AUTOSCALER_HDD_PATTERN", "hdd")
+HDD_MIN_ONLINE = _env_int("AUTOSCALER_HDD_MIN_ONLINE", 1)
+HDD_MAX_ONLINE = _env_int("AUTOSCALER_HDD_MAX_ONLINE", 16)
+HDD_DEFAULT = _env_int("AUTOSCALER_HDD_DEFAULT", 4)
+HDD_LABELS = [x.strip() for x in os.environ.get("AUTOSCALER_HDD_LABELS", "hdd,bulk-storage").split(",") if x.strip()]
+HDD_START_ENABLED = bool(_env_int("AUTOSCALER_HDD_START_ENABLED", 1))
+HDD_STOP_ENABLED = bool(_env_int("AUTOSCALER_HDD_STOP_ENABLED", 1))
+HDD_PATH = os.path.expanduser(os.environ.get("AUTOSCALER_HDD_PATH", "~/actions-runners/hdd"))
+HDD_MIN_FREE_GB = _env_float("AUTOSCALER_HDD_MIN_FREE_GB", 25.0)
+HDD_DISK_HIGH = _env_float("AUTOSCALER_HDD_DISK_HIGH", 90.0)
+HDD_IO_HIGH = _env_float("AUTOSCALER_HDD_IO_HIGH", 85.0)
+HDD_DEVICE = os.environ.get("AUTOSCALER_HDD_DEVICE", "")
+
+# Start/stop label filters
+FILTER_START_LABELS = [x.strip() for x in os.environ.get("AUTOSCALER_FILTER_START_LABELS", "").split(",") if x.strip()]
+FILTER_STOP_LABELS = [x.strip() for x in os.environ.get("AUTOSCALER_FILTER_STOP_LABELS", "").split(",") if x.strip()]
+
+# Cooldown and recovery rules
+COOLDOWN_SECS = _env_int("AUTOSCALER_COOLDOWN_SECS", 180)
+
 # Issue #651: layered busy detection. The Runner.Worker child of MainPID is the
 # primary signal, but there is a 1-2s race window between job pickup (Listener
 # has accepted a job, written `_work/_temp/_runner_file_commands/`) and Worker

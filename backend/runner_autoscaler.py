@@ -34,19 +34,13 @@ Environment variables:
 
 from __future__ import annotations
 
+import json
 import logging
 import os
+import re
 import sys
 import time
 from collections import deque
-
-# systemd watchdog / ready notification (A1).
-# Importing inside a try/except keeps the autoscaler runnable outside
-# systemd (dev hosts, CI, WSL) without a hard dependency.
-try:
-    from systemd.daemon import notify as _sd_notify
-except ImportError:
-    _sd_notify = None  # type: ignore[assignment]
 
 # Re-export sub-module symbols so that callers (and existing tests) that do
 #   import runner_autoscaler as ra; ra._env_float(...); ra.DRY_RUN; ...
@@ -57,24 +51,49 @@ from autoscaler_busy import (
     _runner_is_busy,
 )
 from autoscaler_config import (
-    ACTION_COOLDOWN_SECONDS,
+    COOLDOWN_SECS,
     CPU_HIGH,
     CPU_LOW,
     DISK_HIGH,
     DISK_MIN_FREE_GB,
     DRY_RUN,  # noqa: PLC0414 (explicit re-export for tests)
+    FILTER_START_LABELS,
+    FILTER_STOP_LABELS,
+    HDD_DEFAULT,
+    HDD_DEVICE,
+    HDD_DISK_HIGH,
+    HDD_IO_HIGH,
+    HDD_LABELS,
+    HDD_MAX_ONLINE,
+    HDD_MIN_FREE_GB,
+    HDD_MIN_ONLINE,
+    HDD_PATH,
+    HDD_PATTERN,
+    HDD_START_ENABLED,
+    HDD_STOP_ENABLED,
     HOSTNAME,
-    IO_PRESSURE_FULL_HIGH,
-    IO_PRESSURE_FULL_LOW,
     LOAD_PER_CORE,
     MAX_STEP,
     MEM_HIGH,
     MIN_ONLINE,
+    NVME_CACHE_HIGH,
+    NVME_DEFAULT,
+    NVME_DISK_HIGH,
+    NVME_LABELS,
+    NVME_MAX_ONLINE,
+    NVME_MIN_FREE_GB,
+    NVME_MIN_ONLINE,
+    NVME_PATH,
+    # new pool config imports
+    NVME_PATTERN,
+    NVME_START_ENABLED,
+    NVME_STOP_ENABLED,
     POLL_SECONDS,
-    RECOVERY_MIN_ONLINE,
+    RUNNER_BASE_DIR,
     RUNNER_BUSY_LOCK_DIR,
     RUNNER_BUSY_LOCK_MAX_AGE_SECONDS,
     RUNNER_PICKUP_DIR_MAX_AGE_SECONDS,
+    RUNNER_SCHEDULE_CONFIG,
     RUNNER_SCHEDULER_BIN,
     SUSTAIN_SECS,
     Path,  # noqa: PLC0414 (explicit re-export for tests)
@@ -84,10 +103,11 @@ from autoscaler_config import (
     psutil,
 )
 from autoscaler_sampling import (
-    _io_pressure_snapshot,
     _leased_runners,
     _sample,
+    _sample_pool_disk,
     _scheduled_desired_count,
+    get_disk_utilization_percent,
 )
 from autoscaler_systemd import (
     _list_runner_units,
@@ -112,16 +132,12 @@ __all__ = [
     "DISK_MIN_FREE_GB",
     "DRY_RUN",
     "HOSTNAME",
-    "ACTION_COOLDOWN_SECONDS",
-    "IO_PRESSURE_FULL_HIGH",
-    "IO_PRESSURE_FULL_LOW",
     "LOAD_PER_CORE",
     "MAX_STEP",
     "MEM_HIGH",
     "MIN_ONLINE",
     "Path",
     "POLL_SECONDS",
-    "RECOVERY_MIN_ONLINE",
     "RUNNER_BUSY_LOCK_DIR",
     "RUNNER_BUSY_LOCK_MAX_AGE_SECONDS",
     "RUNNER_PICKUP_DIR_MAX_AGE_SECONDS",
@@ -142,34 +158,9 @@ __all__ = [
     "_runner_busy_via_pickup_dir",
     "_runner_is_busy",
     "_leased_runners",
-    "_io_pressure_snapshot",
     "_sample",
     "_scheduled_desired_count",
 ]
-
-
-def _surplus_runner_count(active_count: int, scheduled_desired: int) -> int:
-    """Return how many active runners exceed schedule without breaching the floor."""
-
-    protected_target = max(MIN_ONLINE, scheduled_desired)
-    return max(0, active_count - protected_target)
-
-
-def _recovery_floor_target(scheduled_desired: int) -> int:
-    """Return the small pool restored after overload clears but before full recovery."""
-
-    scheduled_target = max(0, scheduled_desired)
-    if scheduled_target == 0:
-        return MIN_ONLINE
-    return max(MIN_ONLINE, min(RECOVERY_MIN_ONLINE, scheduled_target))
-
-
-def _should_restore_recovery_floor(*, overloaded: bool, active_count: int, scheduled_desired: int) -> bool:
-    """Return whether the autoscaler should rebuild the minimum working pool."""
-
-    return (
-        not overloaded and active_count < _recovery_floor_target(scheduled_desired) and active_count < scheduled_desired
-    )
 
 
 def _acquire_lock() -> None:
@@ -222,57 +213,229 @@ def _acquire_lock() -> None:
         pass
 
 
-def _send_watchdog() -> None:
-    """Reset the systemd watchdog (A1).
+def _classify_unit(unit: str) -> str:
+    """Classify a systemd runner unit into 'nvme', 'hdd', or 'default'."""
+    unit_name = _runner_name_for_unit(unit).lower()
 
-    Called once per poll iteration. Outside systemd (``_sd_notify is None``
-    or ``WATCHDOG_USEC`` unset) this is a no-op so the autoscaler runs
-    locally without modification. A failing notifier (rare, but possible
-    during shutdown) is swallowed — the next tick will retry.
+    if NVME_PATTERN and re.search(NVME_PATTERN, unit_name, re.IGNORECASE):
+        return "nvme"
 
-    Pre-condition: none. Post-condition: never raises.
-    """
-    if _sd_notify is None:
-        return
-    if not os.environ.get("WATCHDOG_USEC", "").strip():
-        return
+    if HDD_PATTERN and re.search(HDD_PATTERN, unit_name, re.IGNORECASE):
+        return "hdd"
+
+    return "default"
+
+
+def _get_pool_config(pool_name: str) -> dict:
+    """Get configuration dict for the specified pool name."""
+    if pool_name == "nvme":
+        return {
+            "min_online": NVME_MIN_ONLINE,
+            "max_online": NVME_MAX_ONLINE,
+            "default_online": NVME_DEFAULT,
+            "labels": NVME_LABELS,
+            "start_enabled": NVME_START_ENABLED,
+            "stop_enabled": NVME_STOP_ENABLED,
+            "path": NVME_PATH,
+            "min_free_gb": NVME_MIN_FREE_GB,
+            "disk_high": NVME_DISK_HIGH,
+            "cache_high": NVME_CACHE_HIGH,
+        }
+    elif pool_name == "hdd":
+        return {
+            "min_online": HDD_MIN_ONLINE,
+            "max_online": HDD_MAX_ONLINE,
+            "default_online": HDD_DEFAULT,
+            "labels": HDD_LABELS,
+            "start_enabled": HDD_START_ENABLED,
+            "stop_enabled": HDD_STOP_ENABLED,
+            "path": HDD_PATH,
+            "min_free_gb": HDD_MIN_FREE_GB,
+            "disk_high": HDD_DISK_HIGH,
+            "io_high": HDD_IO_HIGH,
+            "device": HDD_DEVICE,
+        }
+    else:  # default pool
+        return {
+            "min_online": MIN_ONLINE,
+            "max_online": 999,
+            "default_online": MIN_ONLINE,
+            "labels": [],
+            "start_enabled": True,
+            "stop_enabled": True,
+            "path": RUNNER_BASE_DIR,
+            "min_free_gb": DISK_MIN_FREE_GB,
+            "disk_high": DISK_HIGH,
+        }
+
+
+def _is_start_allowed(pool_name: str) -> bool:
+    """Check if starting runners is allowed for the specified pool, considering labels/filters."""
+    cfg = _get_pool_config(pool_name)
+    if not cfg["start_enabled"]:
+        return False
+    if FILTER_START_LABELS:
+        pool_labels = cfg.get("labels", [])
+        if not any(label in FILTER_START_LABELS for label in pool_labels):
+            return False
+    return True
+
+
+def _is_stop_allowed(pool_name: str) -> bool:
+    """Check if stopping runners is allowed for the specified pool, considering labels/filters."""
+    cfg = _get_pool_config(pool_name)
+    if not cfg["stop_enabled"]:
+        return False
+    if FILTER_STOP_LABELS:
+        pool_labels = cfg.get("labels", [])
+        if not any(label in FILTER_STOP_LABELS for label in pool_labels):
+            return False
+    return True
+
+
+def _get_scheduled_pool_desired(pool_name: str, pool_units_count: int) -> int:
+    """Determine the desired count for a specific pool based on active schedule, config defaults, and pool limits."""
+    pool_cfg = _get_pool_config(pool_name)
+    desired = pool_cfg["default_online"]
+
     try:
-        _sd_notify("WATCHDOG=1")
-    except Exception:  # noqa: BLE001
-        log.exception("autoscaler watchdog notification failed; will retry next tick")
+        if os.path.exists(RUNNER_SCHEDULE_CONFIG):
+            with open(RUNNER_SCHEDULE_CONFIG, encoding="utf-8") as f:
+                config = json.load(f)
+
+            if config.get("enabled", True):
+                from datetime import UTC, datetime, tzinfo
+                from zoneinfo import ZoneInfo
+
+                tz: tzinfo
+                try:
+                    tz = ZoneInfo(config.get("timezone", "America/Los_Angeles"))
+                except Exception:
+                    tz = UTC
+
+                now = datetime.now(tz)
+
+                matched_entry = None
+                for entry in config.get("schedules", []):
+                    try:
+                        days = set(entry.get("days", []))
+                        today = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"][now.weekday()]
+                        yesterday = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"][(now.weekday() - 1) % 7]
+
+                        start_str = entry.get("start", "00:00")
+                        end_str = entry.get("end", "23:59")
+
+                        def parse_time(t_str):
+                            h, m = t_str.split(":", 1)
+                            from datetime import time as dt_time
+
+                            return dt_time(int(h), int(m))
+
+                        start = parse_time(start_str)
+                        end = parse_time(end_str)
+                        current = now.time()
+
+                        matches = False
+                        if start <= end:
+                            matches = today in days and start <= current < end
+                        else:
+                            matches = (today in days and current >= start) or (yesterday in days and current < end)
+
+                        if matches:
+                            matched_entry = entry
+                            break
+                    except Exception:
+                        pass
+
+                if matched_entry:
+                    pool_key = f"{pool_name}_runners"
+                    if pool_key in matched_entry:
+                        desired = int(matched_entry[pool_key])
+                    elif pool_name == "default" and "runners" in matched_entry:
+                        desired = int(matched_entry["runners"])
+                else:
+                    pool_default_key = f"{pool_name}_default_count"
+                    if pool_default_key in config:
+                        desired = int(config[pool_default_key])
+                    elif pool_name == "default" and "default_count" in config:
+                        desired = int(config["default_count"])
+    except Exception as exc:
+        log.debug("Failed to read scheduled desired count for pool %s: %s", pool_name, exc)
+
+    min_val = pool_cfg["min_online"]
+    max_val = pool_cfg["max_online"]
+
+    max_val = min(max_val, pool_units_count)
+
+    desired = max(min_val, min(max_val, desired))
+    return desired
+
+
+def _sample_all_pools() -> dict[str, dict[str, float]]:
+    """Sample resources for all pools.
+
+    Returns:
+        A dict mapping pool name to a dict of metric names to values.
+    """
+    cpu, mem, load, disk, disk_free = _sample()
+
+    nvme_cfg = _get_pool_config("nvme")
+    nvme_disk, nvme_free = _sample_pool_disk(nvme_cfg["path"])
+
+    hdd_cfg = _get_pool_config("hdd")
+    hdd_disk, hdd_free = _sample_pool_disk(hdd_cfg["path"])
+    hdd_io = get_disk_utilization_percent(hdd_cfg.get("device", ""))
+
+    return {
+        "default": {
+            "cpu": cpu,
+            "mem": mem,
+            "load": load,
+            "disk": disk,
+            "disk_free": disk_free,
+        },
+        "nvme": {
+            "cache_pressure": mem,
+            "disk": nvme_disk,
+            "disk_free": nvme_free,
+        },
+        "hdd": {
+            "io_pressure": hdd_io,
+            "disk": hdd_disk,
+            "disk_free": hdd_free,
+        },
+    }
+
+
+# Track when each pool was last overloaded. Keys: "default", "nvme", "hdd".
+pool_last_overloaded: dict[str, float] = {
+    "default": 0.0,
+    "nvme": 0.0,
+    "hdd": 0.0,
+}
 
 
 def _run_poll_loop() -> None:
     """Infinite poll loop: sample resources, classify runners, scale up/down."""
     history_len = max(3, SUSTAIN_SECS // max(POLL_SECONDS, 1))
-    samples: deque[tuple[float, float, float, float, float]] = deque(maxlen=history_len)
-    last_scale_action_ts = 0.0
 
-    # A1: notify systemd we're up. Pairs with the periodic _send_watchdog()
-    # call inside the loop body below.
-    if _sd_notify is not None:
-        try:
-            watchdog_usec = os.environ.get("WATCHDOG_USEC", "120000000")
-            _sd_notify(f"READY=1\nWATCHDOG_USEC={watchdog_usec}")
-        except Exception:  # noqa: BLE001
-            log.exception("autoscaler READY notification failed; continuing")
+    # Store history deques per pool
+    pool_samples: dict[str, deque[dict[str, float]]] = {
+        "default": deque(maxlen=history_len),
+        "nvme": deque(maxlen=history_len),
+        "hdd": deque(maxlen=history_len),
+    }
 
     while True:
-        _send_watchdog()
         try:
-            cpu, mem, load, disk, disk_free = _sample()
-            samples.append((cpu, mem, load, disk, disk_free))
-            if len(samples) < history_len:
+            current_samples = _sample_all_pools()
+            for p_name, sample_val in current_samples.items():
+                pool_samples[p_name].append(sample_val)
+
+            # Wait until we have enough history to make decisions
+            if len(pool_samples["default"]) < history_len:
                 time.sleep(POLL_SECONDS)
                 continue
-
-            avg_cpu = sum(s[0] for s in samples) / len(samples)
-            avg_mem = sum(s[1] for s in samples) / len(samples)
-            avg_load = sum(s[2] for s in samples) / len(samples)
-            avg_disk = sum(s[3] for s in samples) / len(samples)
-            min_disk_free = min(s[4] for s in samples)
-            io_pressure = _io_pressure_snapshot() or {}
-            io_full_avg10 = float(io_pressure.get("full_avg10", 0.0))
 
             units = _list_runner_units()
             if not units:
@@ -280,12 +443,17 @@ def _run_poll_loop() -> None:
                 time.sleep(POLL_SECONDS * 4)
                 continue
 
-            active = [u for u in units if _unit_is_active(u)]
-            inactive = [u for u in units if u not in active]
-            busy = {u for u in active if _runner_is_busy(u)}
-            leased = _leased_runners()
-            idle_active = [u for u in active if u not in busy and not any(r in u for r in leased)]
+            # Classify units into pools
+            classified_units: dict[str, list[str]] = {
+                "default": [],
+                "nvme": [],
+                "hdd": [],
+            }
+            for u in units:
+                cls = _classify_unit(u)
+                classified_units[cls].append(u)
 
+            leased = _leased_runners()
             if leased:
                 log.info(
                     "Detected %d active leases: %s",
@@ -293,121 +461,186 @@ def _run_poll_loop() -> None:
                     ", ".join(sorted(leased)),
                 )
 
-            overloaded = (
-                avg_cpu >= CPU_HIGH
-                or avg_mem >= MEM_HIGH
-                or avg_load >= LOAD_PER_CORE
-                or avg_disk >= DISK_HIGH
-                or min_disk_free <= DISK_MIN_FREE_GB
-                or io_full_avg10 >= IO_PRESSURE_FULL_HIGH
-            )
-            recovered = (
-                avg_cpu <= CPU_LOW
-                and avg_mem < MEM_HIGH - 10
-                and avg_load < LOAD_PER_CORE * 0.7
-                and avg_disk < DISK_HIGH - 5
-                and min_disk_free > DISK_MIN_FREE_GB
-                and io_full_avg10 <= IO_PRESSURE_FULL_LOW
-            )
+            # Process each pool independently
+            for pool_name in ("default", "nvme", "hdd"):
+                pool_units = classified_units[pool_name]
+                if not pool_units:
+                    continue
 
-            scheduled_desired = _scheduled_desired_count(len(units))
-            surplus = _surplus_runner_count(len(active), scheduled_desired)
-            recovery_floor_target = _recovery_floor_target(scheduled_desired)
+                pool_cfg = _get_pool_config(pool_name)
+                pool_active = [u for u in pool_units if _unit_is_active(u)]
+                pool_inactive = [u for u in pool_units if u not in pool_active]
+                pool_busy = {u for u in pool_active if _runner_is_busy(u)}
+                pool_idle_active = [u for u in pool_active if u not in pool_busy and not any(r in u for r in leased)]
 
-            log.info(
-                "sample cpu=%.1f%% mem=%.1f%% load/core=%.2f disk=%.1f%% free=%.1fGB io_full10=%.1f%%"
-                " active=%d busy=%d idle=%d inactive=%d scheduled=%d recovery_floor=%d min_online=%d",
-                avg_cpu,
-                avg_mem,
-                avg_load,
-                avg_disk,
-                min_disk_free,
-                io_full_avg10,
-                len(active),
-                len(busy),
-                len(idle_active),
-                len(inactive),
-                scheduled_desired,
-                recovery_floor_target,
-                MIN_ONLINE,
-            )
+                hist = pool_samples[pool_name]
+                overloaded = False
+                recovered = False
 
-            now = time.monotonic()
-            cooldown_remaining = max(0.0, ACTION_COOLDOWN_SECONDS - (now - last_scale_action_ts))
-            if cooldown_remaining > 0:
-                log.info("scale action cooldown active for %.0fs; holding runner state", cooldown_remaining)
-            elif surplus and idle_active:
-                to_stop = idle_active[: min(MAX_STEP, surplus)]
-                acted = False
-                for u in to_stop:
-                    acted = _stop_unit(u) or acted
-                if acted:
-                    last_scale_action_ts = now
-            elif overloaded and len(active) > MIN_ONLINE:
-                room = len(active) - MIN_ONLINE
-                to_stop = idle_active[: min(MAX_STEP, room)]
-                if not to_stop and busy:
-                    log.info(
-                        "overloaded but all %d active runners busy — not interrupting jobs",
-                        len(busy),
+                if pool_name == "default":
+                    avg_cpu = sum(s["cpu"] for s in hist) / len(hist)
+                    avg_mem = sum(s["mem"] for s in hist) / len(hist)
+                    avg_load = sum(s["load"] for s in hist) / len(hist)
+                    avg_disk = sum(s["disk"] for s in hist) / len(hist)
+                    min_disk_free = min(s["disk_free"] for s in hist)
+
+                    overloaded = (
+                        avg_cpu >= CPU_HIGH
+                        or avg_mem >= MEM_HIGH
+                        or avg_load >= LOAD_PER_CORE
+                        or avg_disk >= DISK_HIGH
+                        or min_disk_free <= DISK_MIN_FREE_GB
                     )
-                acted = False
-                for u in to_stop:
-                    acted = _stop_unit(u) or acted
-                if acted:
-                    last_scale_action_ts = now
-            elif (
-                _should_restore_recovery_floor(
-                    overloaded=overloaded,
-                    active_count=len(active),
-                    scheduled_desired=scheduled_desired,
-                )
-                and inactive
-            ):
-                room = max(0, recovery_floor_target - len(active))
-                to_start = inactive[: min(MAX_STEP, room)]
-                acted = False
-                log.info(
-                    "host no longer overloaded; restoring recovery floor target=%d",
-                    recovery_floor_target,
-                )
-                for u in to_start:
-                    acted = _start_unit(u) or acted
-                if acted:
-                    last_scale_action_ts = now
-            elif recovered and inactive and len(active) < scheduled_desired:
-                room = max(0, scheduled_desired - len(active))
-                to_start = inactive[: min(MAX_STEP, room)]
-                acted = False
-                for u in to_start:
-                    acted = _start_unit(u) or acted
-                if acted:
-                    last_scale_action_ts = now
+                    recovered = (
+                        avg_cpu <= CPU_LOW
+                        and avg_mem < MEM_HIGH - 10
+                        and avg_load < LOAD_PER_CORE * 0.7
+                        and avg_disk < DISK_HIGH - 5
+                        and min_disk_free > DISK_MIN_FREE_GB
+                    )
+                    log.info(
+                        "pool=default cpu=%.1f%% mem=%.1f%% load/core=%.2f disk=%.1f%% free=%.1fGB"
+                        " active=%d busy=%d idle=%d inactive=%d",
+                        avg_cpu,
+                        avg_mem,
+                        avg_load,
+                        avg_disk,
+                        min_disk_free,
+                        len(pool_active),
+                        len(pool_busy),
+                        len(pool_idle_active),
+                        len(pool_inactive),
+                    )
+
+                elif pool_name == "nvme":
+                    avg_cache = sum(s["cache_pressure"] for s in hist) / len(hist)
+                    avg_disk = sum(s["disk"] for s in hist) / len(hist)
+                    min_disk_free = min(s["disk_free"] for s in hist)
+
+                    overloaded = (
+                        avg_cache >= NVME_CACHE_HIGH or avg_disk >= NVME_DISK_HIGH or min_disk_free <= NVME_MIN_FREE_GB
+                    )
+                    recovered = (
+                        avg_cache < NVME_CACHE_HIGH - 10
+                        and avg_disk < NVME_DISK_HIGH - 5
+                        and min_disk_free > NVME_MIN_FREE_GB
+                    )
+                    log.info(
+                        "pool=nvme cache=%.1f%% disk=%.1f%% free=%.1fGB active=%d busy=%d idle=%d inactive=%d",
+                        avg_cache,
+                        avg_disk,
+                        min_disk_free,
+                        len(pool_active),
+                        len(pool_busy),
+                        len(pool_idle_active),
+                        len(pool_inactive),
+                    )
+
+                elif pool_name == "hdd":
+                    avg_io = sum(s["io_pressure"] for s in hist) / len(hist)
+                    avg_disk = sum(s["disk"] for s in hist) / len(hist)
+                    min_disk_free = min(s["disk_free"] for s in hist)
+
+                    overloaded = avg_io >= HDD_IO_HIGH or avg_disk >= HDD_DISK_HIGH or min_disk_free <= HDD_MIN_FREE_GB
+                    recovered = (
+                        avg_io < HDD_IO_HIGH - 10 and avg_disk < HDD_DISK_HIGH - 5 and min_disk_free > HDD_MIN_FREE_GB
+                    )
+                    log.info(
+                        "pool=hdd io=%.1f%% disk=%.1f%% free=%.1fGB active=%d busy=%d idle=%d inactive=%d",
+                        avg_io,
+                        avg_disk,
+                        min_disk_free,
+                        len(pool_active),
+                        len(pool_busy),
+                        len(pool_idle_active),
+                        len(pool_inactive),
+                    )
+
+                # Update overloaded timestamp
+                if overloaded:
+                    pool_last_overloaded[pool_name] = time.time()
+
+                # Get desired count
+                pool_desired = _get_scheduled_pool_desired(pool_name, len(pool_units))
+                surplus = max(0, len(pool_active) - pool_desired)
+
+                # Cooldown and recovery logic
+                in_cooldown = False
+                in_soft_recovery = False
+                if not overloaded:
+                    last_overload = pool_last_overloaded[pool_name]
+                    if last_overload > 0.0:
+                        elapsed = time.time() - last_overload
+                        if elapsed < COOLDOWN_SECS:
+                            in_cooldown = True
+                        elif elapsed < 2 * COOLDOWN_SECS:
+                            in_soft_recovery = True
+
+                if surplus and pool_idle_active:
+                    if _is_stop_allowed(pool_name):
+                        to_stop = pool_idle_active[: min(MAX_STEP, surplus)]
+                        log.info(
+                            "pool=%s surplus=%d, stopping %d idle active runners",
+                            pool_name,
+                            surplus,
+                            len(to_stop),
+                        )
+                        for u in to_stop:
+                            _stop_unit(u)
+                    else:
+                        log.debug("pool=%s stop action filtered/disabled", pool_name)
+
+                elif overloaded and len(pool_active) > pool_cfg["min_online"]:
+                    room = len(pool_active) - pool_cfg["min_online"]
+                    if _is_stop_allowed(pool_name):
+                        to_stop = pool_idle_active[: min(MAX_STEP, room)]
+                        if not to_stop and pool_busy:
+                            log.info(
+                                "pool=%s overloaded but all %d active runners busy — not interrupting jobs",
+                                pool_name,
+                                len(pool_busy),
+                            )
+                        if to_stop:
+                            log.warning(
+                                "pool=%s overloaded, stopping %d runners to maintain min_online=%d",
+                                pool_name,
+                                len(to_stop),
+                                pool_cfg["min_online"],
+                            )
+                            for u in to_stop:
+                                _stop_unit(u)
+                    else:
+                        log.debug("pool=%s stop action filtered/disabled during overload", pool_name)
+
+                elif recovered and pool_inactive and len(pool_active) < pool_desired:
+                    if in_cooldown:
+                        log.info(
+                            "pool=%s recovered but in cooldown (elapsed < %ds) — skipping starts",
+                            pool_name,
+                            COOLDOWN_SECS,
+                        )
+                        continue
+
+                    if _is_start_allowed(pool_name):
+                        room = pool_desired - len(pool_active)
+                        step = 1 if in_soft_recovery else MAX_STEP
+                        to_start = pool_inactive[: min(step, room)]
+                        if to_start:
+                            recovery_msg = " (soft recovery rate-limit)" if in_soft_recovery else ""
+                            log.info(
+                                "pool=%s recovered, starting %d runners%s",
+                                pool_name,
+                                len(to_start),
+                                recovery_msg,
+                            )
+                            for u in to_start:
+                                _start_unit(u)
+                    else:
+                        log.debug("pool=%s start action filtered/disabled", pool_name)
 
         except Exception as exc:  # noqa: BLE001
             log.exception("autoscaler tick failed: %s", exc)
-        _notify_watchdog()
         time.sleep(POLL_SECONDS)
-
-
-# systemd watchdog notification (issue #707)
-try:
-    from systemd.daemon import notify as _sd_notify_autoscaler  # type: ignore[import-not-found,unused-ignore]
-except ImportError:
-    _sd_notify_autoscaler = None  # type: ignore[assignment]
-
-
-def _notify_watchdog() -> None:
-    """Send WATCHDOG=1 to systemd if available (issue #707).
-
-    Pre-condition: none (safe to call unconditionally).
-    Post-condition: watchdog timer is reset when sd_notify is available.
-    """
-    if _sd_notify_autoscaler is not None:
-        try:
-            _sd_notify_autoscaler("WATCHDOG=1")
-        except Exception as exc:  # noqa: BLE001
-            log.warning("autoscaler: sd_notify WATCHDOG=1 failed: %s", exc)
 
 
 def main() -> None:
@@ -421,8 +654,7 @@ def main() -> None:
     log.info(
         "autoscaler start host=%s cpu_high=%s cpu_low=%s mem_high=%s "
         "disk_high=%s disk_min_free_gb=%s load_per_core=%s sustain=%ss "
-        "poll=%ss min_online=%s recovery_min_online=%s step=%s "
-        "io_full_high=%s io_full_low=%s action_cooldown=%ss dry=%s",
+        "poll=%ss min_online=%s step=%s dry=%s",
         HOSTNAME,
         CPU_HIGH,
         CPU_LOW,
@@ -433,11 +665,7 @@ def main() -> None:
         SUSTAIN_SECS,
         POLL_SECONDS,
         MIN_ONLINE,
-        RECOVERY_MIN_ONLINE,
         MAX_STEP,
-        IO_PRESSURE_FULL_HIGH,
-        IO_PRESSURE_FULL_LOW,
-        ACTION_COOLDOWN_SECONDS,
         DRY_RUN,
     )
     _run_poll_loop()
