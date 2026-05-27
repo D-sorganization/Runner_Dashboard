@@ -67,6 +67,19 @@ export function FleetMobile() {
     });
   }, [nodes, filter]);
 
+  const { controlTowerPools, otherNodes } = useMemo(() => {
+    const ctPools: Array<[string, FleetNode]> = [];
+    const others: Array<[string, FleetNode]> = [];
+    for (const [name, node] of filtered) {
+      if (name.startsWith("ControlTower")) {
+        ctPools.push([name, node]);
+      } else {
+        others.push([name, node]);
+      }
+    }
+    return { controlTowerPools: ctPools, otherNodes: others };
+  }, [filtered]);
+
   const haptic = useHaptic();
 
   const handleRefresh = useCallback(async () => {
@@ -130,22 +143,50 @@ export function FleetMobile() {
               No runners match the selected filter.
             </div>
           ) : (
-            filtered.map(([name, node]) => {
-              const s = node.status?.toLowerCase() || "offline";
-              const status = s === "online" ? "online" : s === "busy" || s === "running" ? "busy" : "offline";
-              return (
-                <RunnerCard
-                  key={name}
-                  cpuPercent={node.cpu_percent ?? 0}
-                  currentJob={node.current_job}
-                  machine={node.hostname || name}
-                  name={name}
-                  ramPercent={node.memory_percent ?? 0}
-                  status={status}
-                  uptimeSeconds={node.uptime_seconds ?? 0}
-                />
-              );
-            })
+            <>
+              {controlTowerPools.length > 0 && (
+                <div className="control-tower-pools-container" style={{ marginBottom: "16px" }}>
+                  <h4 style={{ margin: "0 0 8px 4px", fontSize: "14px", fontWeight: 600, color: "var(--text-secondary)" }}>
+                    ControlTower Pools
+                  </h4>
+                  <div style={{ display: "flex", gap: "8px", flexDirection: "row", flexWrap: "wrap" }}>
+                    {controlTowerPools.map(([name, node]) => {
+                      const s = node.status?.toLowerCase() || "offline";
+                      const status = s === "online" ? "online" : s === "busy" || s === "running" ? "busy" : "offline";
+                      return (
+                        <div key={name} style={{ flex: "1 1 calc(50% - 4px)", minWidth: "140px" }}>
+                          <RunnerCard
+                            cpuPercent={node.cpu_percent ?? 0}
+                            currentJob={node.current_job}
+                            machine={node.hostname || name}
+                            name={name}
+                            ramPercent={node.memory_percent ?? 0}
+                            status={status}
+                            uptimeSeconds={node.uptime_seconds ?? 0}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              {otherNodes.map(([name, node]) => {
+                const s = node.status?.toLowerCase() || "offline";
+                const status = s === "online" ? "online" : s === "busy" || s === "running" ? "busy" : "offline";
+                return (
+                  <RunnerCard
+                    key={name}
+                    cpuPercent={node.cpu_percent ?? 0}
+                    currentJob={node.current_job}
+                    machine={node.hostname || name}
+                    name={name}
+                    ramPercent={node.memory_percent ?? 0}
+                    status={status}
+                    uptimeSeconds={node.uptime_seconds ?? 0}
+                  />
+                );
+              })}
+            </>
           )}
         </div>
       </PullToRefresh>

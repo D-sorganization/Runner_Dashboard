@@ -7,6 +7,7 @@ import { QueueMobile } from './pages/Queue'
 import { MaxwellMobile } from './pages/Maxwell'
 import { ReportsMobile } from './pages/Reports'
 import { CredentialsMobile } from './pages/Credentials'
+import { FleetMobile } from './pages/Fleet'
 import { MobileShell, type TabId } from './shell/MobileShell'
 import { Toaster } from './primitives/Toaster'
 import { RootErrorBoundary } from './primitives/RootErrorBoundary'
@@ -193,6 +194,7 @@ function AppWithMobileShell({ initialTab }: { initialTab?: string }) {
   if (isMobile) {
     // M09-M13: native mobile views registered here.
     const mobileTabContent = {
+      fleet: <FleetMobile />,
       health: <QueueMobile />,
       maxwell: <MaxwellMobile />,
       reports: <ReportsMobile />,
