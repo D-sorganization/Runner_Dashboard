@@ -42,6 +42,18 @@ def test_update_script_has_preflight_check():
     )
 
 
+def test_update_script_syncs_dependencies_to_deployed_venv():
+    content = UPDATE_SCRIPT.read_text()
+    assert 'UV_PROJECT_ENVIRONMENT="${DEPLOY_DIR}/.venv" uv sync' in content
+    assert 'VENV="${DEPLOY_DIR}/.venv"' in content
+
+
+def test_update_script_uses_configured_dashboard_port():
+    content = UPDATE_SCRIPT.read_text()
+    assert 'DASHBOARD_PORT="${DASHBOARD_PORT:-8321}"' in content
+    assert "http://localhost:8321/api" not in content
+
+
 def test_update_script_has_rollback_trigger():
     content = UPDATE_SCRIPT.read_text()
     assert "rollback" in content.lower(), "update-deployed.sh must trigger rollback on failure"
