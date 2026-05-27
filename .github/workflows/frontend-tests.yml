@@ -145,9 +145,15 @@ jobs:
         run: |
           python -m venv "$RUNNER_TEMP/backend-venv"
           source "$RUNNER_TEMP/backend-venv/bin/activate"
-          pip install --upgrade pip
-          pip install -r requirements.txt
-          echo "$RUNNER_TEMP/backend-venv/bin" >> "$GITHUB_PATH"
+          python -m pip install --upgrade pip setuptools wheel
+          if [ -f uv.lock ]; then
+            pip install uv
+            uv sync --frozen
+            echo "$(pwd)/.venv/bin" >> "$GITHUB_PATH"
+          else
+            pip install -r requirements.txt
+            echo "$RUNNER_TEMP/backend-venv/bin" >> "$GITHUB_PATH"
+          fi
 
       - name: Start dashboard backend
         run: |
