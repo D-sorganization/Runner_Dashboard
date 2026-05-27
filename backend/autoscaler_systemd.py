@@ -113,6 +113,11 @@ def _stop_unit(unit: str) -> bool:
     """Stop *unit* via systemd, respecting DRY_RUN mode.
 
     Returns True on success (or in dry-run), False if systemctl reports failure.
+
+    After every stop attempt (whether systemctl returns success or failure)
+    invokes :func:`runner_state_cleanup.cleanup_runner_state` so that any
+    ``$HOME/.gitconfig.lock`` orphaned by an abrupt SIGTERM does not poison
+    the next job assigned to this host. See Runner_Dashboard#640.
     """
     if _dry_run_enabled():
         log.info("[dry-run] would stop %s", unit)
@@ -123,11 +128,21 @@ def _stop_unit(unit: str) -> bool:
         text=True,
         check=False,
     )
-    if r.returncode != 0:
+    success = r.returncode == 0
+    if not success:
         log.warning("Failed to stop %s: %s", unit, r.stderr.strip()[:200])
-        return False
-    log.warning("Autoscaler STOPPED %s (host overloaded)", unit)
-    return True
+    else:
+        log.warning("Autoscaler STOPPED %s (host overloaded)", unit)
+
+    # Recovery half of the stop contract — best-effort, never raises.
+    try:
+        from runner_state_cleanup import cleanup_runner_state  # noqa: PLC0415
+
+        cleanup_runner_state(unit)
+    except Exception as exc:  # noqa: BLE001 — must not break autoscaler loop
+        log.warning("cleanup_runner_state failed for %s: %s", unit, exc)
+
+    return success
 
 
 def _start_unit(unit: str) -> bool:

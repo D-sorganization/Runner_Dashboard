@@ -17,12 +17,85 @@ import platform
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 from routers.linear import list_workspace_summaries
 from security import safe_subprocess_env
+
+# Windows-only subprocess flag that prevents a new GUI window from appearing
+# when invoking a console-attached executable. On non-Windows it is unused.
+_CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
+def _resolve_vscode_cli() -> str | None:
+    """Return the path to the VS Code *CLI shim* (or None if not installed).
+
+    On Windows, ``shutil.which("code")`` resolves to ``Code.exe`` (the GUI
+    binary). Invoking ``Code.exe --list-extensions`` spawns a new blank
+    editor window every time — a known VS Code quirk. The headless shim is
+    ``code.cmd`` (alongside ``Code.exe`` in the install directory). We
+    prefer the shim and fall back to whatever ``shutil.which`` finds.
+
+    Tracking: chatgpt-codex-connector→Jules feedback loop investigation,
+    where the dashboard frontend polled credential status every few seconds
+    and each poll opened a new blank VS Code window.
+    """
+    if sys.platform == "win32":
+        # code.cmd is the CLI; Code.exe is the GUI. Look for the shim first.
+        cli = shutil.which("code.cmd")
+        if cli:
+            return cli
+    return shutil.which("code")
+
+
+async def _vscode_has_extension(extension_id: str) -> bool | None:
+    """Best-effort check whether *extension_id* is installed in VS Code.
+
+    Returns:
+        True  — extension confirmed installed via ``code --list-extensions``.
+        False — VS Code CLI is present and the extension is not listed.
+        None  — VS Code CLI not available (caller should fall back to other signals).
+
+    On Windows, runs the binary with ``CREATE_NO_WINDOW`` so even an
+    accidental GUI resolution (e.g. an old install where ``code.cmd`` was
+    never deployed) does not spawn a visible window.
+    """
+    cli = _resolve_vscode_cli()
+    if not cli:
+        return None
+    if not _should_probe_vscode_cli(cli):
+        return None
+
+    def _run_headless() -> subprocess.CompletedProcess[str]:
+        # Wrapper so the closure carries every kwarg as a real argument,
+        # which keeps mypy from having to type-check **kwargs through
+        # asyncio.to_thread → subprocess.run.
+        if sys.platform == "win32":
+            return subprocess.run(  # noqa: S603 — fixed-arg, trusted binary
+                [cli, "--list-extensions"],
+                capture_output=True,
+                text=True,
+                timeout=8,
+                check=False,
+                creationflags=_CREATE_NO_WINDOW,
+            )
+        return subprocess.run(  # noqa: S603 — fixed-arg, trusted binary
+            [cli, "--list-extensions"],
+            capture_output=True,
+            text=True,
+            timeout=8,
+            check=False,
+        )
+
+    try:
+        result = await asyncio.to_thread(_run_headless)
+    except (OSError, subprocess.SubprocessError, TimeoutError):
+        return None
+    return extension_id in (result.stdout or "")
+
 
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 datetime = _dt_mod.datetime
@@ -390,15 +463,17 @@ async def get_credentials(request: Request) -> dict:
         }
     )
 
-    # Cline (VS Code extension) — check globalStorage path and only use the VS
-    # Code CLI when it is explicitly safe. On WSL, the Windows `code` bridge
-    # can launch GUI windows even for read-looking extension probes.
+    # Cline (VS Code extension) — check globalStorage path first; only fall
+    # back to the CLI shim if the path check is inconclusive. The helper
+    # prefers code.cmd over Code.exe on Windows, suppresses visible windows,
+    # and skips unsafe WSL/Code.exe probes unless explicitly enabled.
     _cline_storage = Path.home() / ".config" / "Code" / "User" / "globalStorage" / "saoudrizwan.claude-dev"
     _cline_by_path = _cline_storage.exists()
-    _vscode_binary = shutil.which("code")
-    _cline_by_ext = (
-        await _vscode_extension_installed("saoudrizwan.claude-dev", _vscode_binary) if not _cline_by_path else False
-    )
+    _vscode_binary = _resolve_vscode_cli()
+    _cline_by_ext = False
+    if _vscode_binary and not _cline_by_path:
+        ext_check = await _vscode_has_extension("saoudrizwan.claude-dev")
+        _cline_by_ext = bool(ext_check)
     cline_installed = _cline_by_path or _cline_by_ext
     vscode_cli_probe_skipped = _vscode_binary is not None and not _should_probe_vscode_cli(_vscode_binary)
     _cline_detail = (
@@ -553,10 +628,11 @@ async def get_cline_status(request: Request) -> dict:
     _require_local_request(request)
     _cline_storage = Path.home() / ".config" / "Code" / "User" / "globalStorage" / "saoudrizwan.claude-dev"
     _cline_by_path = _cline_storage.exists()
-    _vscode_binary = shutil.which("code")
-    _cline_by_ext = (
-        await _vscode_extension_installed("saoudrizwan.claude-dev", _vscode_binary) if not _cline_by_path else False
-    )
+    _vscode_binary = _resolve_vscode_cli()
+    _cline_by_ext = False
+    if _vscode_binary and not _cline_by_path:
+        ext_check = await _vscode_has_extension("saoudrizwan.claude-dev")
+        _cline_by_ext = bool(ext_check)
     cline_installed = _cline_by_path or _cline_by_ext
     _compatible_key = _env_present("ANTHROPIC_API_KEY") or _env_present("OPENAI_API_KEY")
     vscode_cli_probe_skipped = _vscode_binary is not None and not _should_probe_vscode_cli(_vscode_binary)
