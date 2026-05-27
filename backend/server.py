@@ -45,6 +45,7 @@ except ImportError:
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import (
     FileResponse,
@@ -99,7 +100,7 @@ from diagnostics.keepalive_inspector import (  # noqa: E402
     _inspect_wslconfig,
     _probe_detail,
 )
-from error_models import from_http_exception, internal_error  # noqa: E402
+from error_models import from_http_exception, internal_error, validation_error  # noqa: E402
 from fleet_autoconfig import derive_fleet_nodes_from_registry  # noqa: E402
 from http_clients import initialize_http_clients, shutdown_http_clients  # noqa: E402
 from local_app_monitoring import collect_local_apps  # noqa: E402
@@ -112,6 +113,7 @@ from middleware import (  # noqa: E402
     csrf_check,
     max_body_size_check,
 )
+from models.requests import HelpChatRequest  # noqa: E402
 from request_context import RequestIdMiddleware, configure_json_logging  # noqa: E402
 from routers import assessments as _assessments_router  # noqa: E402
 
@@ -442,6 +444,24 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     error_body = internal_error("An unexpected error occurred. Please try again.", request_id=request_id)
     return JSONResponse(
         status_code=500,
+        content=error_body.model_dump(),
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    """Convert RequestValidationError to uniform ErrorResponse JSON."""
+    request_id = getattr(request.state, "request_id", None)
+    errors = exc.errors()
+    details = []
+    for err in errors:
+        loc = ".".join(str(x) for x in err.get("loc", []))
+        msg = err.get("msg", "validation error")
+        details.append(f"{loc}: {msg}")
+    detail_str = "; ".join(details)
+    error_body = validation_error(detail_str, request_id=request_id)
+    return JSONResponse(
+        status_code=422,
         content=error_body.model_dump(),
     )
 
@@ -2220,13 +2240,15 @@ DASHBOARD_FAQ: dict[str, str] = {
 
 
 @app.post("/api/help/chat")
-async def help_chat(request: Request, *, principal: Principal = Depends(require_scope("operator"))) -> dict:  # noqa: B008
+async def help_chat(
+    payload: HelpChatRequest,
+    request: Request,
+    *,
+    principal: Principal = Depends(require_scope("operator")),  # noqa: B008
+) -> dict:
     """Answer a dashboard help question. Uses local FAQ first, falls back to Claude API if available."""
-    body = await request.json()
-    question = str(body.get("question", "")).strip()
-    current_tab = str(body.get("current_tab", "")).strip()
-    if not question:
-        raise HTTPException(status_code=422, detail="question required")
+    question = payload.question
+    current_tab = payload.current_tab
 
     # Try local FAQ match first
     q_lower = question.lower()

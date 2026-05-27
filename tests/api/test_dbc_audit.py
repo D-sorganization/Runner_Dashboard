@@ -41,3 +41,44 @@ def test_models_are_pydantic_base_models():
 
     assert issubclass(HelpChatRequest, BaseModel)
     assert issubclass(LauncherGenerateRequest, BaseModel)
+
+
+def test_help_chat_endpoint_validation(mock_auth):
+    """Test help chat body validation and error handling format."""
+    import server
+    from fastapi.testclient import TestClient
+
+    client = TestClient(server.app, raise_server_exceptions=False)
+    headers = {"X-Requested-With": "XMLHttpRequest"}
+
+    # 1. Valid payload - should succeed
+    response = client.post(
+        "/api/help/chat",
+        json={"question": "fleet", "current_tab": "Fleet"},
+        headers=headers,
+    )
+    assert response.status_code == 200
+    assert "answer" in response.json()
+    assert response.json()["source"] == "faq"
+
+    # 2. Validation failure - empty question
+    response = client.post(
+        "/api/help/chat",
+        json={"question": "", "current_tab": "Fleet"},
+        headers=headers,
+    )
+    assert response.status_code == 422
+    err_json = response.json()
+    assert err_json["error"] == "validation_error"
+    assert "body.question" in err_json["detail"]
+
+    # 3. Validation failure - extra parameter forbidden
+    response = client.post(
+        "/api/help/chat",
+        json={"question": "fleet", "extra_param": "forbidden"},
+        headers=headers,
+    )
+    assert response.status_code == 422
+    err_json = response.json()
+    assert err_json["error"] == "validation_error"
+    assert "extra_param" in err_json["detail"]

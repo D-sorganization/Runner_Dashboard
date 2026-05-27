@@ -37,6 +37,11 @@ class HelpChatRequest(BaseModel):
         max_length=500,
         description="Question to ask the assistant",
     )
+    current_tab: str = Field(
+        default="",
+        max_length=128,
+        description="Active dashboard tab name",
+    )
 
     model_config = {"extra": "forbid", "str_strip_whitespace": True}
 
