@@ -95,3 +95,12 @@ def test_fleet_nodes_endpoint_has_cache_and_independent_remote_probes() -> None:
     assert '_cache_get("fleet_nodes", _FLEET_NODES_CACHE_TTL_S)' in source
     assert "await asyncio.gather(*[fetch_node(name, url) for name, url in FLEET_NODES.items()])" in source
     assert "fleet node fanout exceeded" not in source
+
+
+def test_fleet_node_probe_keeps_health_online_when_system_metrics_timeout() -> None:
+    """A slow /api/system must not make a healthy remote dashboard look dead."""
+    source = (_BACKEND_DIR / "server.py").read_text(encoding="utf-8")
+
+    assert "return_exceptions=True" in source
+    assert '"offline_reason": "metrics_unavailable"' in source
+    assert "Dashboard health is reachable, but /api/system failed" in source

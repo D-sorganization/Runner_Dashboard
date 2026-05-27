@@ -1482,14 +1482,58 @@ async def _collect_live_fleet_nodes() -> list[dict]:
     async def fetch_node(name: str, url: str) -> dict:
         try:
             async with httpx.AsyncClient(timeout=HttpTimeout.PROXY_NODE_SYSTEM_S) as client:
-                sys_r, health_r = await asyncio.gather(
+                sys_result, health_result = await asyncio.gather(
                     client.get(f"{url}/api/system"),
                     client.get(f"{url}/api/health"),
+                    return_exceptions=True,
                 )
-            if sys_r.status_code != 200 or health_r.status_code != 200:
-                status_code = sys_r.status_code if sys_r.status_code != 200 else health_r.status_code
+            sys_r = sys_result if isinstance(sys_result, httpx.Response) else None
+            health_r = health_result if isinstance(health_result, httpx.Response) else None
+            system_error = sys_result if isinstance(sys_result, Exception) else None
+            health_error = health_result if isinstance(health_result, Exception) else None
+            if health_r is None:
+                reason = _classify_node_offline(health_error or system_error)
+                return {
+                    "name": name,
+                    "url": url,
+                    "online": False,
+                    "dashboard_reachable": False,
+                    "is_local": False,
+                    "role": "node",
+                    "system": {},
+                    "health": {},
+                    "last_seen": None,
+                    "error": reason["offline_detail"],
+                    **reason,
+                }
+            if sys_r is None and health_r.status_code == 200:
+                health = health_r.json()
+                reason = _classify_node_offline(system_error)
+                return {
+                    "name": name,
+                    "url": url,
+                    "online": True,
+                    "dashboard_reachable": True,
+                    "is_local": False,
+                    "role": "node",
+                    "system": {},
+                    "health": health,
+                    "deployment": health.get("deployment", {}),
+                    "dashboard_version": (health.get("deployment") or {}).get("version"),
+                    "telemetry_schema": "missing",
+                    "last_seen": datetime.now(UTC).isoformat(),
+                    "error": f"System metrics unavailable: {reason['offline_detail']}",
+                    "offline_reason": "metrics_unavailable",
+                    "offline_detail": (
+                        f"Dashboard health is reachable, but /api/system failed: {reason['offline_detail']}"
+                    ),
+                }
+            if sys_r is None or sys_r.status_code != 200 or health_r.status_code != 200:
+                status_code = (
+                    sys_r.status_code if sys_r is not None and sys_r.status_code != 200 else health_r.status_code
+                )
                 reason = _classify_node_offline(status_code=status_code)
-                system = sys_r.json() if sys_r.status_code == 200 else {}
+                system = sys_r.json() if sys_r is not None and sys_r.status_code == 200 else {}
                 health = health_r.json() if health_r.status_code == 200 else {}
                 return {
                     "name": name,
