@@ -2315,10 +2315,59 @@ def _diagnostics_payload() -> dict:
     except Exception:  # noqa: BLE001
         cache_status = {"available": False}
 
+    # Quick database sharing violation check
+    db_paths = [
+        Path.home() / "actions-runners" / "dashboard" / "replay.db",
+        Path.home() / "actions-runners" / "dashboard" / "push.db",
+    ]
+    db_sharing_violation = False
+    violated_file = None
+    for db_path in db_paths:
+        if db_path.exists():
+            try:
+                # Try opening in append mode to check for sharing violations
+                with open(db_path, "a"):
+                    pass
+            except PermissionError as exc:
+                if getattr(exc, "winerror", None) == 32 or "sharing violation" in str(exc).lower():
+                    db_sharing_violation = True
+                    violated_file = str(db_path)
+                    break
+            except Exception:  # noqa: BLE001
+                pass
+
+    if db_sharing_violation:
+        storage_handle_incident = {
+            "detected": True,
+            "error_code": "ERROR_SHARING_VIOLATION",
+            "target_file": violated_file,
+            "message": (
+                "Storage handle conflict: SQLite database is locked by another process (ERROR_SHARING_VIOLATION)."
+            ),
+        }
+    else:
+        # Fallback to cached value which might have WSL VHDX sharing violation
+        storage_handle_incident = (
+            _diagnostics_router.get_cached_storage_handle_incident()
+            if _diagnostics_router
+            else {
+                "detected": False,
+                "error_code": None,
+                "target_file": None,
+                "message": None,
+            }
+        )
+
+    wsl_vhdx_status = _diagnostics_router.get_cached_wsl_vhdx_status() if _diagnostics_router else []
+
     # Overall health summary so deploy-check.sh can grep one field
     fleet_node_count_raw = fleet_status.get("node_count", 0)
     fleet_node_count = fleet_node_count_raw if isinstance(fleet_node_count_raw, int) else 0
-    healthy = registry_status.get("loaded") is True and (fleet_node_count > 0 or MACHINE_ROLE != "hub")
+    healthy = (
+        registry_status.get("loaded") is True
+        and (fleet_node_count > 0 or MACHINE_ROLE != "hub")
+        and not storage_handle_incident.get("detected", False)
+    )
 
     return {
         "ok": bool(healthy),
@@ -2329,6 +2378,8 @@ def _diagnostics_payload() -> dict:
         "leader": leader_status,
         "deployment": deploy_info,
         "cache": cache_status,
+        "wsl_vhdx_status": wsl_vhdx_status,
+        "storage_handle_incident": storage_handle_incident,
     }
 
 

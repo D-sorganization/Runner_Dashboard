@@ -47,9 +47,7 @@ def test_root_pyproject_has_tool_uv_section() -> None:
 def test_no_backend_uv_lock() -> None:
     """backend/uv.lock must not exist — root uv.lock is canonical."""
     backend_lock = REPO_ROOT / "backend" / "uv.lock"
-    assert not backend_lock.exists(), (
-        "backend/uv.lock must be deleted — use root uv.lock only (issue #333)"
-    )
+    assert not backend_lock.exists(), "backend/uv.lock must be deleted — use root uv.lock only (issue #333)"
 
 
 def test_root_uv_lock_exists() -> None:
@@ -136,7 +134,6 @@ def test_backend_requirements_versions_match_pyproject() -> None:
         if pkg in pyproject_deps and pyproject_deps[pkg] != req_ver:
             mismatches.append(f"{pkg}: requirements.txt={req_ver}, pyproject.toml={pyproject_deps[pkg]}")
 
-    assert not mismatches, (
-        "backend/requirements.txt versions diverge from root pyproject.toml:\n"
-        + "\n".join(mismatches)
+    assert not mismatches, "backend/requirements.txt versions diverge from root pyproject.toml:\n" + "\n".join(
+        mismatches
     )

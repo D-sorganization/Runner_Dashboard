@@ -205,8 +205,10 @@ def test_load_machine_registry_empty_yaml(tmp_path: Path, monkeypatch: pytest.Mo
     p = tmp_path / "registry.yml"
     _write_registry(p, {"version": 1, "machines": []})
     # Bypass path security checks to allow tmp_path
-    with patch("machine_registry.validate_config_path", return_value=p), \
-         patch("machine_registry.safe_yaml_load", return_value={"version": 1, "machines": []}):
+    with (
+        patch("machine_registry.validate_config_path", return_value=p),
+        patch("machine_registry.safe_yaml_load", return_value={"version": 1, "machines": []}),
+    ):
         result = mr.load_machine_registry(path=p)
     assert result["machines"] == []
     assert result["version"] == 1
@@ -216,8 +218,10 @@ def test_load_machine_registry_single_machine(tmp_path: Path, monkeypatch: pytes
     p = tmp_path / "registry.yml"
     _write_registry(p, {"version": 1, "machines": [{"name": "build-01"}]})
     raw = {"version": 1, "machines": [{"name": "build-01"}]}
-    with patch("machine_registry.validate_config_path", return_value=p), \
-         patch("machine_registry.safe_yaml_load", return_value=raw):
+    with (
+        patch("machine_registry.validate_config_path", return_value=p),
+        patch("machine_registry.safe_yaml_load", return_value=raw),
+    ):
         result = mr.load_machine_registry(path=p)
     assert len(result["machines"]) == 1
     assert result["machines"][0]["name"] == "build-01"
@@ -287,7 +291,6 @@ def test_merge_registry_offline_placeholder_included() -> None:
 # deployed installs (which are not git checkouts) every load silently failed
 # with "Config path escapes allowed roots", breaking fleet federation.
 # ---------------------------------------------------------------------------
-
 
 
 def test_load_machine_registry_from_module_dir(monkeypatch) -> None:

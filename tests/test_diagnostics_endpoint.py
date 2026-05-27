@@ -61,9 +61,7 @@ def test_diagnostics_schema_top_level_keys(diag_payload) -> None:
         "deployment",
         "cache",
     }
-    assert expected.issubset(diag_payload.keys()), (
-        f"missing keys: {expected - diag_payload.keys()}"
-    )
+    assert expected.issubset(diag_payload.keys()), f"missing keys: {expected - diag_payload.keys()}"
 
 
 def test_diagnostics_machine_registry_block(diag_payload) -> None:
