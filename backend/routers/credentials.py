@@ -65,20 +65,30 @@ async def _vscode_has_extension(extension_id: str) -> bool | None:
     cli = _resolve_vscode_cli()
     if not cli:
         return None
-    try:
-        kwargs: dict[str, object] = {
-            "capture_output": True,
-            "text": True,
-            "timeout": 8,
-            "check": False,
-        }
+
+    def _run_headless() -> subprocess.CompletedProcess[str]:
+        # Wrapper so the closure carries every kwarg as a real argument,
+        # which keeps mypy from having to type-check **kwargs through
+        # asyncio.to_thread → subprocess.run.
         if sys.platform == "win32":
-            kwargs["creationflags"] = _CREATE_NO_WINDOW
-        result = await asyncio.to_thread(
-            subprocess.run,
+            return subprocess.run(  # noqa: S603 — fixed-arg, trusted binary
+                [cli, "--list-extensions"],
+                capture_output=True,
+                text=True,
+                timeout=8,
+                check=False,
+                creationflags=_CREATE_NO_WINDOW,
+            )
+        return subprocess.run(  # noqa: S603 — fixed-arg, trusted binary
             [cli, "--list-extensions"],
-            **kwargs,
+            capture_output=True,
+            text=True,
+            timeout=8,
+            check=False,
         )
+
+    try:
+        result = await asyncio.to_thread(_run_headless)
     except (OSError, subprocess.SubprocessError, TimeoutError):
         return None
     return extension_id in (result.stdout or "")
