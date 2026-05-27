@@ -1,13 +1,14 @@
 # SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.36
+**Spec Version:** 2.5.37
 **Application Version:** 4.1.1 (see `VERSION`)
 **Last Updated:** 2026-05-26T10:40:00-07:00
 **Status:** Active
 
 ### Recent Spec Updates
 
-- **2026-05-26 (2.5.36):** Comprehensive autoscaler-corruption recovery + VS Code blank-window fix. New `backend/runner_state_cleanup.py` module removes orphaned `$HOME/.gitconfig.lock` (and stale per-worktree git locks older than 60s) after every autoscaler stop — recovering from the fleet-wide outage signature where a SIGTERM mid-`git config --global` poisons every subsequent `actions/checkout` on the host (Runner_Dashboard#640). Cleanup is invoked from `_stop_unit` on every stop path (success, failure, or cleanup-itself-raises) and mirrored in `deploy/runner-hooks/job-started.sh` so the runner-side hook scrubs locks before any checkout, catching corruption from power loss / OOM / manual kill. `backend/routers/credentials.py` Cline detection uses a new `_resolve_vscode_cli` helper that prefers `code.cmd` over `Code.exe` on Windows and a `_vscode_has_extension` helper that passes `CREATE_NO_WINDOW` — stopping the dashboard from spawning new blank VS Code windows every few seconds while polling credential status. 7 new unit tests + 3 updated; 25/25 passing.
+- **2026-05-26 (2.5.37):** Fixed pre-existing TestErrorHandling test pollution in `tests/api/test_routers_runners.py`. Earlier tests in `TestGetRunners` populate two pieces of module-level state — `cache_utils._cache` (TTL cache) and `runners_router._last_successful_runners` (degraded-mode fallback). Once populated, the API-error / rate-limit tests in `TestErrorHandling` received `source='cache'` instead of `'unavailable'`/`429`, because the endpoint falls back to the last-known-good response when the mocked GitHub call fails. The actual root cause was the global, not just the cache. Added an autouse fixture on `TestErrorHandling` that clears both pieces of state before and after each test. 33/33 passing locally (was 31 pass + 2 fail).
+- **2026-05-26 (2.5.36):** Comprehensive autoscaler-corruption recovery + VS Code blank-window fix. New `backend/runner_state_cleanup.py` module removes orphaned `$HOME/.gitconfig.lock` (and stale per-worktree git locks older than 60s) after every autoscaler stop — recovering from the fleet-wide outage signature where a SIGTERM mid-`git config --global` poisons every subsequent `actions/checkout` on the host (Runner_Dashboard#640). Cleanup is invoked from `_stop_unit` on every stop path and mirrored in `deploy/runner-hooks/job-started.sh`. `backend/routers/credentials.py` Cline detection uses a new `_resolve_vscode_cli` helper that prefers `code.cmd` over `Code.exe` on Windows and a `_vscode_has_extension` helper that passes `CREATE_NO_WINDOW`. 7 new unit tests + 3 updated; 25/25 passing.
 - **2026-05-26 (2.5.35):** Hardened split-disk/NVMe dashboard deployments.
   `deploy/setup.sh` now accepts `--runner-base-dir` and `--deploy-dir`, installs
   locked runtime dependencies into the deployed `.venv`, and templates
@@ -1071,10 +1072,11 @@ bash deploy/setup.sh --runners 4 --machine-name ControlTower --role hub
 Fleet node examples:
 
 ```bash
+bash deploy/setup.sh --runners 1 --machine-name Brick-Windows
 bash deploy/setup.sh --runners 8 --machine-name OG-Laptop
 bash deploy/setup.sh --runners 8 --machine-name DeskComputer --runner-aliases desktop
 bash deploy/setup.sh --runners 8 --machine-name ControlTower --role hub \
-  --fleet-nodes "OG-Laptop:http://100.64.12.7:8321,DeskComputer:http://100.64.12.9:8321"
+  --fleet-nodes "Brick-Windows:http://100.64.12.5:8321,OG-Laptop:http://100.64.12.7:8321,DeskComputer:http://100.64.12.9:8321"
 ```
 
 Node-specific runner counts in the setup script examples must reflect the
