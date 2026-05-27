@@ -32,6 +32,7 @@ jobs:
       - name: Install dependencies
         run: |
           if [ -f uv.lock ]; then
+            rm -rf .venv
             pip install uv
             uv sync --frozen
             echo "$(pwd)/.venv/bin" >> "$GITHUB_PATH"

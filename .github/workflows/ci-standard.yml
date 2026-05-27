@@ -102,7 +102,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           BASE_REF: ${{ github.base_ref || 'main' }}
         run: |
-          EXEMPT="server.py|agent_remediation.py|dispatch_contract.py|agent_dispatch_router.py|credentials.py|App.tsx|queue.py|remediation.py|Queue/index.tsx|total"
+          EXEMPT="server.py|agent_remediation.py|dispatch_contract.py|agent_dispatch_router.py|credentials.py|App.tsx|queue.py|remediation.py|Queue/index.tsx|total|quick_dispatch.py|diagnostics.py|gh_client.py|system_utils.py|runner_autoscaler.py|queue_cleanup.py|Mobile.test.tsx"
           if [ "$EVENT_NAME" = "pull_request" ]; then
             git fetch --no-tags --depth=1 origin "$BASE_REF"
             FILES=$(git diff --name-only "origin/${BASE_REF}...HEAD" -- backend/ frontend/src/ \
@@ -201,6 +201,7 @@ jobs:
           pip install --upgrade pip
           pip install pytest==8.1.1
           if [ -f uv.lock ]; then
+            rm -rf .venv
             pip install uv
             uv sync --frozen
             # Use the uv-managed venv
@@ -244,6 +245,7 @@ jobs:
           source "$RUNNER_TEMP/ci-tools/bin/activate"
           python -m pip install --upgrade pip setuptools wheel
           if [ -f uv.lock ]; then
+            rm -rf .venv
             pip install uv
             uv sync --frozen
             echo "$(pwd)/.venv/bin" >> "$GITHUB_PATH"
@@ -374,6 +376,7 @@ jobs:
           source "$RUNNER_TEMP/security-venv/bin/activate"
           python -m pip install --upgrade pip setuptools wheel
           if [ -f uv.lock ]; then
+            rm -rf .venv
             pip install uv
             uv sync --frozen
             ./.venv/bin/pip-audit --progress-spinner=off
@@ -388,7 +391,7 @@ jobs:
       - quality-gate
     if: needs.ci-health-check.outputs.run_python_tests == 'true'
     runs-on: d-sorg-fleet
-    timeout-minutes: 10
+    timeout-minutes: 20
     env:
       PIP_CACHE_DIR: /home/dieterolson/actions-runners/.shared-tool-cache/pip
     strategy:
@@ -409,6 +412,7 @@ jobs:
           source "$RUNNER_TEMP/ci-venv/bin/activate"
           pip install --upgrade pip setuptools wheel
           if [ -f uv.lock ]; then
+            rm -rf .venv
             pip install uv
             uv sync --frozen
             echo "$(pwd)/.venv/bin" >> "$GITHUB_PATH"

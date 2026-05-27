@@ -147,6 +147,7 @@ jobs:
           source "$RUNNER_TEMP/backend-venv/bin/activate"
           python -m pip install --upgrade pip setuptools wheel
           if [ -f uv.lock ]; then
+            rm -rf .venv
             pip install uv
             uv sync --frozen
             echo "$(pwd)/.venv/bin" >> "$GITHUB_PATH"
