@@ -12,6 +12,10 @@ os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
 os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
 
+# Disable autoderiving fleet nodes in tests to prevent network timeouts
+os.environ["AUTODERIVE_FLEET_NODES"] = "0"
+os.environ["FLEET_NODES"] = ""
+
 # matplotlib headless backend, set before any matplotlib import.
 os.environ.setdefault("MPLBACKEND", "Agg")
 

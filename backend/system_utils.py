@@ -414,42 +414,50 @@ def get_disk_pressure_snapshot(
 
 def get_per_runner_resources(runner_limit: int) -> list[dict]:
     """Get CPU and memory usage for each runner's worker processes."""
-    runner_procs = []
-    for i in range(1, runner_limit + 1):
-        runner_info: dict[str, Any] = {
+    runner_procs: list[dict[str, Any]] = [
+        {
             "runner_num": i,
             "cpu_percent": 0.0,
             "memory_mb": 0.0,
             "process_count": 0,
             "status": "stopped",
         }
+        for i in range(1, runner_limit + 1)
+    ]
 
-        # Find runner processes by looking at the runner directory
-        runner_dir = str(RUNNER_BASE_DIR / f"runner-{i}")
-        proc_fields = [
-            "pid",
-            "name",
-            "cmdline",
-            "cpu_percent",
-            "memory_info",
-        ]
-        for proc in psutil.process_iter(proc_fields):
-            try:
-                cmdline = " ".join(proc.info.get("cmdline") or [])
+    # Precompute path patterns to avoid redundant filesystem or string operations
+    runner_dirs = {i: str(RUNNER_BASE_DIR / f"runner-{i}") for i in range(1, runner_limit + 1)}
+
+    proc_fields = [
+        "pid",
+        "name",
+        "cmdline",
+        "cpu_percent",
+        "memory_info",
+    ]
+    for proc in psutil.process_iter(proc_fields):
+        try:
+            cmdline_list = proc.info.get("cmdline") or []
+            cmdline = " ".join(cmdline_list)
+            if not cmdline:
+                continue
+            for i in range(1, runner_limit + 1):
+                runner_dir = runner_dirs[i]
                 is_runner = runner_dir in cmdline or ("Runner.Listener" in cmdline and f"runner-{i}" in cmdline)
                 if is_runner:
+                    runner_info = runner_procs[i - 1]
                     runner_info["cpu_percent"] += proc.info.get("cpu_percent", 0) or 0
                     mem = proc.info.get("memory_info")
                     if mem:
                         runner_info["memory_mb"] += mem.rss / (1024 * 1024)
                     runner_info["process_count"] += 1
                     runner_info["status"] = "running"
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                continue
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
 
+    for runner_info in runner_procs:
         runner_info["cpu_percent"] = round(runner_info["cpu_percent"], 1)
         runner_info["memory_mb"] = round(runner_info["memory_mb"], 1)
-        runner_procs.append(runner_info)
     return runner_procs
 
 
