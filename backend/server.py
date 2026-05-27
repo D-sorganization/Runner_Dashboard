@@ -1475,6 +1475,17 @@ async def _watchdog_status_impl() -> dict:
 _FLEET_NODES_CACHE_TTL_S = 10.0
 
 
+def _fleet_node_schema_status(system: dict) -> str:
+    """Classify remote telemetry shape so stale deployments are visible."""
+    if not system:
+        return "missing"
+    memory = system.get("memory") if isinstance(system.get("memory"), dict) else {}
+    disk = system.get("disk") if isinstance(system.get("disk"), dict) else {}
+    if isinstance(memory.get("host"), dict) and isinstance(disk.get("storage_devices"), list):
+        return "current"
+    return "legacy"
+
+
 async def _collect_live_fleet_nodes() -> list[dict]:
     """Collect the live fleet node payload before registry metadata is merged."""
 
@@ -1488,6 +1499,8 @@ async def _collect_live_fleet_nodes() -> list[dict]:
             if sys_r.status_code != 200 or health_r.status_code != 200:
                 status_code = sys_r.status_code if sys_r.status_code != 200 else health_r.status_code
                 reason = _classify_node_offline(status_code=status_code)
+                system = sys_r.json() if sys_r.status_code == 200 else {}
+                health = health_r.json() if health_r.status_code == 200 else {}
                 return {
                     "name": name,
                     "url": url,
@@ -1495,13 +1508,17 @@ async def _collect_live_fleet_nodes() -> list[dict]:
                     "dashboard_reachable": True,
                     "is_local": False,
                     "role": "node",
-                    "system": sys_r.json() if sys_r.status_code == 200 else {},
-                    "health": health_r.json() if health_r.status_code == 200 else {},
+                    "system": system,
+                    "health": health,
+                    "deployment": health.get("deployment", {}),
+                    "dashboard_version": (health.get("deployment") or {}).get("version"),
+                    "telemetry_schema": _fleet_node_schema_status(system),
                     "last_seen": None,
                     "error": reason["offline_detail"],
                     **reason,
                 }
             system = sys_r.json()
+            health = health_r.json()
             resource_reason = _resource_offline_reason(system)
             return {
                 "name": name,
@@ -1513,7 +1530,10 @@ async def _collect_live_fleet_nodes() -> list[dict]:
                 "system": system,
                 "hardware_specs": system.get("hardware_specs", {}),
                 "workload_capacity": system.get("workload_capacity", {}),
-                "health": health_r.json(),
+                "health": health,
+                "deployment": health.get("deployment", {}),
+                "dashboard_version": (health.get("deployment") or {}).get("version"),
+                "telemetry_schema": _fleet_node_schema_status(system),
                 "last_seen": datetime.now(UTC).isoformat(),
                 "error": None,
                 "offline_reason": (resource_reason["offline_reason"] if resource_reason else None),
@@ -1550,6 +1570,9 @@ async def _collect_live_fleet_nodes() -> list[dict]:
             "hardware_specs": local_sys.get("hardware_specs", {}),
             "workload_capacity": local_sys.get("workload_capacity", {}),
             "health": local_health,
+            "deployment": local_health.get("deployment", {}),
+            "dashboard_version": (local_health.get("deployment") or {}).get("version"),
+            "telemetry_schema": _fleet_node_schema_status(local_sys),
             "last_seen": datetime.now(UTC).isoformat(),
             "error": None,
             "offline_reason": (local_resource_reason["offline_reason"] if local_resource_reason else None),
@@ -1760,6 +1783,9 @@ async def _get_fleet_nodes_impl() -> dict:
                 "hardware_specs": local_sys.get("hardware_specs", {}),
                 "workload_capacity": local_sys.get("workload_capacity", {}),
                 "health": local_health,
+                "deployment": local_health.get("deployment", {}),
+                "dashboard_version": (local_health.get("deployment") or {}).get("version"),
+                "telemetry_schema": _fleet_node_schema_status(local_sys),
                 "last_seen": datetime.now(UTC).isoformat(),
                 "error": None,
                 "offline_reason": (local_resource_reason["offline_reason"] if local_resource_reason else None),
