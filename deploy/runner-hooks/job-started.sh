@@ -27,6 +27,34 @@ set -u
 
 LOCK_DIR="${RUNNER_BUSY_LOCK_DIR:-/var/run/runner-busy}"
 RUNNER_NAME="${RUNNER_NAME:-${HOSTNAME}-unknown}"
+HOME_DIR="${HOME:-/home/$USER}"
+
+# -- Stale-git-lock cleanup (Runner_Dashboard#640) ---------------------------
+# Before this job's actions/checkout runs, scrub leftover lock files from a
+# prior job that was killed mid-`git config --global` (typical cause: the
+# autoscaler stopped a busy runner). One orphaned ~/.gitconfig.lock breaks
+# every runner sharing this HOME with cryptic "could not lock config file"
+# at the very first step of checkout. Best-effort — never exits non-zero.
+for _gclock in "$HOME_DIR/.gitconfig.lock" "$HOME_DIR/.gitconfig.lock.0"; do
+    if [ -f "$_gclock" ]; then
+        rm -f "$_gclock" 2>/dev/null && \
+            echo "[runner-cleanup] removed stale $_gclock" >&2
+    fi
+done
+# Per-worktree locks older than 1 minute (avoid racing concurrent git ops).
+_work_root="$HOME_DIR/actions-runners"
+if [ -d "$_work_root" ]; then
+    find "$_work_root" \
+        \( -path '*/.git/index.lock' -o \
+           -path '*/.git/HEAD.lock' -o \
+           -path '*/.git/config.lock' -o \
+           -path '*/.git/packed-refs.lock' \) \
+        -mmin +1 -print -delete 2>/dev/null | \
+        while IFS= read -r _l; do
+            echo "[runner-cleanup] removed stale worktree lock $_l" >&2
+        done || true
+fi
+# -- end cleanup -------------------------------------------------------------
 
 # Best-effort directory creation. Hook runs as the runner user; the
 # directory should be group-writable for that user (installer ensures it).
