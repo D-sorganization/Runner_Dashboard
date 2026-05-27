@@ -96,8 +96,8 @@ async def test_connect_error_retries():
 
 
 @pytest.mark.asyncio
-async def test_429_with_retry_after_sleeps_and_succeeds():
-    """429 with Retry-After: 2 → sleeps 2s then succeeds."""
+async def test_429_with_retry_after_raises_without_sleeping():
+    """429 with Retry-After fails fast so request handlers do not stall."""
     import gh_client
 
     rate_limited_resp = MagicMock()
@@ -127,9 +127,12 @@ async def test_429_with_retry_after_sleeps_and_succeeds():
         sleep_calls.append(t)
 
     with patch("gh_client._get_client", return_value=mock_client), patch("asyncio.sleep", side_effect=mock_sleep):
-        await gh_client._request("GET", "/test")
+        with pytest.raises(gh_client.GhRateLimited) as excinfo:
+            await gh_client._request("GET", "/test")
 
-    assert any(s >= 2 for s in sleep_calls), f"Expected sleep >= 2s, got {sleep_calls}"
+    assert excinfo.value.retry_after_seconds == 2
+    assert idx == 1
+    assert sleep_calls == []
 
 
 @pytest.mark.asyncio

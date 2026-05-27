@@ -289,7 +289,7 @@ def test_health_uses_named_github_timeout() -> None:
     call sites. The original 1 s value was too tight (gh api subprocess
     startup takes 5-8 s on a typical host); the constant now lives at
     10 s but the named-constant contract is what matters here."""
-    src = _read(_BACKEND / "health.py")
+    src = _read(_BACKEND / "dashboard_config" / "timeouts.py")
     assert "HEALTH_GH_API_S" in src
 
 
@@ -317,11 +317,9 @@ def test_health_gh_api_timeout_is_realistic() -> None:
 
 
 def test_metrics_imports_psutil_directly_not_through_server() -> None:
-    """metrics.py was importing psutil + stdlib FROM server.py. Any
-    change to server.py's top-level imports broke /api/system with
-    `ImportError: cannot import name 'psutil' from 'server'`."""
+    """metrics.py must not depend on server.py re-exporting psutil."""
     src = _read(_BACKEND / "metrics.py")
-    assert "import psutil" in src
+    assert "from routers.system import get_system_metrics" in src
     # The bad pattern was "from server import (... psutil, ...)" — make
     # sure psutil never appears in such a multi-line import block.
     assert "psutil," not in src
