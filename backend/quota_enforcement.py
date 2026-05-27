@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import os
 import time
 from pathlib import Path
 
@@ -62,9 +63,14 @@ def _locked_yaml_file(path: Path, mode: str = "r+"):
                     pass
 
 
+def _default_config_dir() -> Path:
+    configured = os.environ.get("RUNNER_DASHBOARD_CONFIG_DIR")
+    return Path(configured).expanduser() if configured else Path("~/.config/runner-dashboard").expanduser()
+
+
 class QuotaEnforcement:
-    def __init__(self, config_dir: Path = Path("config")):
-        self.config_dir = config_dir
+    def __init__(self, config_dir: Path | None = None):
+        self.config_dir = config_dir or _default_config_dir()
         self.spend_path = self.config_dir / "principal_spend.yml"
         self.spend_records: dict[str, dict[str, float]] = {}
         self.load_spend()

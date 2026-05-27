@@ -544,6 +544,8 @@ function canonicalMachineName(name) {
     controltower: "ControlTower",
     controltowernvme: "ControlTower",
     controltowerssd: "ControlTower",
+    controltowermatlab: "ControlTower",
+    controltowermatlabssd: "ControlTower",
     controltowerrunnermonitoring: "ControlTower",
   };
   return aliases[key] || raw || "Unknown";
@@ -597,6 +599,27 @@ function machineTelemetryForRunner(runner, nodesByName) {
     uptime: sys.uptime_seconds ? formatDuration(sys.uptime_seconds) : "no uptime",
     seen: node.last_seen ? timeAgo(node.last_seen) : "not seen",
   };
+}
+
+function nodeHasSystemMetrics(n) {
+  var sys = (n && n.system) || {};
+  return !!(
+    (sys.cpu && sys.cpu.percent != null) ||
+    (sys.memory && sys.memory.percent != null) ||
+    (sys.disk && sys.disk.percent != null)
+  );
+}
+
+function nodeQualityScore(n) {
+  var score = 0;
+  if (!n) return score;
+  if (n.is_local) score += 100;
+  if (n.dashboard_reachable !== false) score += 40;
+  if (n.online) score += 20;
+  if (nodeHasSystemMetrics(n)) score += 60;
+  if (n.role === "hub") score += 5;
+  if (n.role === "runner_pool") score -= 10;
+  return score;
 }
 
 function runnerCurrentRun(runner, runs) {
@@ -3490,6 +3513,7 @@ function ReportsTab(p) {
 // ════════════════════════ MACHINES TAB ════════════════════════
 function MachineCard(p) {
   var n = p.node;
+  var relatedNodes = p.relatedNodes || n.related_nodes || [n];
   var machineRunners = p.machineRunners || [];
   var sys = n.system || {};
   var busyCount = machineRunners.filter(function (r) {
@@ -3514,7 +3538,7 @@ function MachineCard(p) {
   var mColors = {
     ControlTower: "var(--accent-purple)",
     DeskComputer: "var(--accent-blue)",
-    Oglaptop: "var(--accent-orange)",
+    OGLaptop: "var(--accent-orange)",
   };
   var mColor = mColors[n.name] || "var(--accent-blue)";
   var dotClass = isLive
@@ -3669,7 +3693,11 @@ function MachineCard(p) {
           paddingTop: 12,
         },
       },
-      h(SystemResourcesPanel, { system: sys }),
+      h(SystemResourcesPanel, {
+        system: sys,
+        node: n,
+        relatedNodes: relatedNodes,
+      }),
     ),
 
     // Error
@@ -4090,27 +4118,48 @@ function MachinesTab(p) {
     return r.status === "online";
   }).length;
 
-  // Build machine list from runners even if fleet nodes aren't reachable.
-  // Runner names are title-case but FLEET_NODES keys are
-  // lowercase — match case-insensitively.
-  var machineNames = Object.keys(runnersByMachine).sort(function (a, b) {
+  var nodesByPhysicalName = {};
+  nodes.forEach(function (n) {
+    var physicalName = canonicalMachineName(n.parent_machine || n.name);
+    var key = physicalName.toLowerCase();
+    if (!nodesByPhysicalName[key]) nodesByPhysicalName[key] = [];
+    nodesByPhysicalName[key].push(n);
+  });
+
+  // Build machine list from both runners and registry/fleet nodes. Runner pool
+  // entries such as ControlTower-NVMe and ControlTower-SSD are folded into the
+  // same physical machine card, and the best live telemetry node wins.
+  var machineNameSet = {};
+  Object.keys(runnersByMachine).forEach(function (name) {
+    machineNameSet[canonicalMachineName(name)] = true;
+  });
+  Object.keys(nodesByPhysicalName).forEach(function (key) {
+    var group = nodesByPhysicalName[key] || [];
+    var display = canonicalMachineName(
+      (group[0] && (group[0].parent_machine || group[0].name)) || key,
+    );
+    machineNameSet[display] = true;
+  });
+  var machineNames = Object.keys(machineNameSet).sort(function (a, b) {
     return a === "ControlTower"
       ? -1
       : b === "ControlTower"
         ? 1
         : a.localeCompare(b);
   });
-  var nodesByName = {};
-  nodes.forEach(function (n) {
-    nodesByName[canonicalMachineName(n.name).toLowerCase()] = n;
-  });
 
-  // Ensure every machine with runners has a node entry (even if dashboard unreachable)
   var allNodes = machineNames.map(function (name) {
-    var node = nodesByName[name.toLowerCase()];
+    var related = (nodesByPhysicalName[name.toLowerCase()] || []).slice();
+    related.sort(function (a, b) {
+      return nodeQualityScore(b) - nodeQualityScore(a);
+    });
+    var node = related[0];
     if (node) {
-      // Use runner-derived display name (title-case) and preserve backend fields
-      return Object.assign({}, node, { name: name });
+      return Object.assign({}, node, {
+        name: name,
+        related_nodes: related,
+        physical_machine: name,
+      });
     }
     // Create a stub node from runner data (no backend entry at all)
     var mrs = runnersByMachine[name] || [];
@@ -4137,6 +4186,8 @@ function MachinesTab(p) {
         mOnline > 0
           ? "Dashboard not deployed on this machine — runners are healthy, but per-machine system metrics are unavailable. See docs/dashboard_deployment_guide.md for install steps."
           : "Offline",
+      related_nodes: [],
+      physical_machine: name,
     };
   });
   var gpuNodes = allNodes.filter(function (n) {
@@ -4211,6 +4262,7 @@ function MachinesTab(p) {
             return h(MachineCard, {
               key: n.name,
               node: n,
+              relatedNodes: n.related_nodes || [n],
               machineRunners: runnersByMachine[n.name] || [],
             });
           }),
@@ -4637,12 +4689,77 @@ function LocalAppsTab(p) {
 
 
 // ════════════════════════ SYSTEM RESOURCES PANEL ════════════════════════
+function collectStorageDevices(system, relatedNodes) {
+  var devices = [];
+  var seen = {};
+  function addDevice(device, fallbackLabel) {
+    if (!device) return;
+    var label = device.label || fallbackLabel || device.path || "Storage";
+    var key = [label, device.kind || "", device.path || ""].join("|");
+    if (seen[key]) return;
+    seen[key] = true;
+    devices.push(Object.assign({}, device, { label: label }));
+  }
+  function addFromSystem(sys, prefix) {
+    var disk = (sys && sys.disk) || {};
+    (disk.storage_devices || []).forEach(function (device) {
+      addDevice(device, device.label || prefix);
+    });
+    if ((!disk.storage_devices || disk.storage_devices.length === 0) && disk.windows_host) {
+      addDevice(disk.windows_host, prefix ? prefix + " Disk" : "Host Disk");
+    }
+    if ((!disk.storage_devices || disk.storage_devices.length === 0) && disk.percent != null) {
+      addDevice(disk, prefix ? prefix + " WSL" : "WSL Disk");
+    }
+  }
+  addFromSystem(system, "");
+  (relatedNodes || []).forEach(function (node) {
+    addFromSystem(node.system, node.name);
+  });
+  return devices;
+}
+
+function StorageDeviceMetric(p) {
+  var device = p.device || {};
+  var pct = boundedPercent(device.percent || 0);
+  return h(
+    "div",
+    { style: { marginBottom: 8 } },
+    h(
+      "div",
+      { className: "metric-row" },
+      h("span", { className: "metric-label" }, device.label || "Storage"),
+      h(
+        "span",
+        { className: "metric-value" },
+        device.used_gb +
+          " / " +
+          device.total_gb +
+          " GB (" +
+          device.percent +
+          "%)",
+      ),
+    ),
+    h(
+      "div",
+      { className: "progress-bar" },
+      h("div", {
+        className: "progress-fill " + pColor(pct),
+        style: { width: pct + "%" },
+        title: device.path || "",
+      }),
+    ),
+  );
+}
+
 function SystemResourcesPanel(p) {
   var sys = p.system || {};
+  var relatedNodes = p.relatedNodes || [];
   var cpu = sys.cpu || {};
   var mem = sys.memory || {};
   var disk = sys.disk || {};
   var diskPressure = disk.pressure || {};
+  var storageDevices = collectStorageDevices(sys, relatedNodes);
   var net = sys.network || {};
   var gpus = (sys.gpu && sys.gpu.gpus) || [];
   var rprocs = sys.runner_processes || [];
@@ -4731,7 +4848,8 @@ function SystemResourcesPanel(p) {
               { className: "metric-value" },
               (function() {
                 var usedPct = mem.total_gb ? Math.round((1 - mem.available_gb / mem.total_gb) * 100) : Math.round(mem.percent || 0);
-                return mem.used_gb + " / " + mem.total_gb + " GB (" + usedPct + "%)";
+                var label = mem.source === "wsl" ? "WSL" : "Host";
+                return label + " " + mem.used_gb + " / " + mem.total_gb + " GB (" + usedPct + "%)";
               })(),
             ),
           ),
@@ -4743,6 +4861,18 @@ function SystemResourcesPanel(p) {
               style: { width: (mem.total_gb ? Math.round((1 - mem.available_gb / mem.total_gb) * 100) : Math.round(mem.percent || 0)) + "%" },
             }),
           ),
+          mem.host && mem.wsl
+            ? h(
+                "div",
+                { className: "stat-sub", style: { marginTop: 4 } },
+                "WSL " +
+                  mem.wsl.used_gb +
+                  " / " +
+                  mem.wsl.total_gb +
+                  " GB" +
+                  (mem.host.stale ? " · host probe stale" : ""),
+              )
+            : null,
         )
       : null,
     mem.swap_total_gb > 0
@@ -4769,64 +4899,16 @@ function SystemResourcesPanel(p) {
           ),
         )
       : null,
-    disk.percent != null
+    storageDevices.length > 0
       ? h(
           "div",
           { style: { marginBottom: 12 } },
-          disk.windows_host
-            ? h(
-                "div",
-                { style: { marginBottom: 8 } },
-                h(
-                  "div",
-                  { className: "metric-row" },
-                  h("span", { className: "metric-label" }, "Disk (Windows C:)"),
-                  h(
-                    "span",
-                    { className: "metric-value" },
-                    disk.windows_host.used_gb +
-                      " / " +
-                      disk.windows_host.total_gb +
-                      " GB (" +
-                      disk.windows_host.percent +
-                      "%)",
-                  ),
-                ),
-                h(
-                  "div",
-                  { className: "progress-bar" },
-                  h("div", {
-                    className: "progress-fill " + pColor(disk.windows_host.percent),
-                    style: { width: disk.windows_host.percent + "%" },
-                  }),
-                ),
-              )
-            : null,
-          h(
-            "div",
-            { className: "metric-row" },
-            h("span", { className: "metric-label" }, disk.windows_host ? "Disk (WSL)" : "Disk"),
-            h(
-              "span",
-              { className: "metric-value" },
-              disk.used_gb +
-                " / " +
-                disk.total_gb +
-                " GB (" +
-                disk.percent +
-                "%)",
-            ),
-          ),
-          !disk.windows_host
-            ? h(
-                "div",
-                { className: "progress-bar" },
-                h("div", {
-                  className: "progress-fill " + pColor(disk.percent),
-                  style: { width: disk.percent + "%" },
-                }),
-              )
-            : null,
+          storageDevices.map(function (device) {
+            return h(StorageDeviceMetric, {
+              key: (device.label || "") + "|" + (device.path || ""),
+              device: device,
+            });
+          }),
           diskPressure.status && diskPressure.status !== "healthy"
             ? h(
                 "div",

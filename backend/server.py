@@ -899,8 +899,8 @@ async def run_cmd(
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         return (
             proc.returncode if proc.returncode is not None else -1,
-            stdout.decode(),
-            stderr.decode(),
+            stdout.decode("utf-8", errors="replace"),
+            stderr.decode("utf-8", errors="replace"),
         )
     except (TimeoutError, asyncio.TimeoutError):  # noqa: UP041
         proc.kill()
@@ -1536,7 +1536,7 @@ async def _collect_live_fleet_nodes() -> list[dict]:
                 **reason,
             }
 
-    local_sys = await get_system_metrics_snapshot()
+    local_sys = await _system_router.get_system_metrics()
     local_health = await _health_router._health_impl()
     local_resource_reason = _resource_offline_reason(local_sys)
     nodes: list[dict] = [
@@ -1764,7 +1764,7 @@ async def _get_fleet_nodes_impl() -> dict:
         nodes = await _collect_live_fleet_nodes()
     except Exception as exc:  # noqa: BLE001
         log.exception("Fleet node collection failed; returning local degraded node: %s", exc)
-        local_sys = await get_system_metrics_snapshot()
+        local_sys = await _system_router.get_system_metrics()
         local_health = await _health_router._health_impl()
         local_resource_reason = _resource_offline_reason(local_sys)
         nodes = [

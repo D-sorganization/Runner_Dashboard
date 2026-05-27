@@ -427,8 +427,8 @@ async def run_cmd(cmd: list[str], timeout: int = 30, cwd: Path | None = None) ->
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         return (
             proc.returncode if proc.returncode is not None else -1,
-            stdout.decode(),
-            stderr.decode(),
+            stdout.decode("utf-8", errors="replace"),
+            stderr.decode("utf-8", errors="replace"),
         )
     except FileNotFoundError as exc:
         return 127, "", str(exc)
