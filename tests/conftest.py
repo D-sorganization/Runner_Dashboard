@@ -41,10 +41,7 @@ def _no_real_network_in_unit_lane(request, monkeypatch):
     """Block real outbound HTTP from unit tests by default."""
     if "unit" not in request.keywords:
         return
-    if any(
-        m in request.keywords
-        for m in ("requires_network", "network", "integration", "e2e")
-    ):
+    if any(m in request.keywords for m in ("requires_network", "network", "integration", "e2e")):
         return
 
     def _refuse(*_a, **_kw):

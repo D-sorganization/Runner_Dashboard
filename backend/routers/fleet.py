@@ -87,7 +87,7 @@ async def _fleet_control_local(action: str) -> dict:
 
 
 @router.get("/api/fleet/status")
-async def get_fleet_status(request: Request):
+async def get_fleet_status(request: Request, exclude_pools: bool = False):
     """Get full system metrics state for all machines in the fleet network."""
     if should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
@@ -95,7 +95,19 @@ async def get_fleet_status(request: Request):
     responses = {}
     local_metrics = await get_system_metrics_snapshot()
     local_metrics["_role"] = "hub" if MACHINE_ROLE == "hub" else "node"
-    responses[HOSTNAME] = local_metrics
+
+    from dashboard_config import PORT
+
+    if PORT == 8322:
+        local_pool_name = "ControlTower-HDD"
+        peer_pool_name = "ControlTower-NVMe"
+        peer_port = 8321
+    else:
+        local_pool_name = "ControlTower-NVMe"
+        peer_pool_name = "ControlTower-HDD"
+        peer_port = 8322
+
+    responses[local_pool_name] = local_metrics
 
     async def fetch_node(name, url):
         try:
@@ -128,6 +140,31 @@ async def get_fleet_status(request: Request):
         results = await asyncio.gather(*[fetch_node(n, u) for n, u in FLEET_NODES.items()])
         for name, data in results:
             responses[name] = data
+
+    if not exclude_pools:
+        peer_url = f"http://localhost:{peer_port}/api/fleet/status?exclude_pools=true"
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(peer_url, timeout=5)
+                if resp.status_code == 200:
+                    peer_data = resp.json()
+                    for k, v in peer_data.items():
+                        responses[k] = v
+                else:
+                    reason = classify_node_offline(status_code=resp.status_code)
+                    responses[peer_pool_name] = {
+                        "status": "offline",
+                        "error": reason["offline_detail"],
+                        **reason,
+                    }
+        except Exception as e:
+            log.warning("Failed to query peer pool on port %d: %s", peer_port, e)
+            reason = classify_node_offline(e)
+            responses[peer_pool_name] = {
+                "status": "offline",
+                "error": reason["offline_detail"],
+                **reason,
+            }
 
     return responses
 
