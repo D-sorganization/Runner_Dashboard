@@ -100,6 +100,7 @@ from diagnostics.keepalive_inspector import (  # noqa: E402
     _probe_detail,
 )
 from error_models import from_http_exception, internal_error  # noqa: E402
+from fleet_autoconfig import derive_fleet_nodes_from_registry  # noqa: E402
 from http_clients import initialize_http_clients, shutdown_http_clients  # noqa: E402
 from local_app_monitoring import collect_local_apps  # noqa: E402
 from machine_registry import (  # noqa: E402
@@ -790,24 +791,13 @@ if _AUTODERIVE_FLEET and not FLEET_NODES:
         from machine_registry import load_machine_registry as _load_registry_for_fleet
 
         _registry = _load_registry_for_fleet()
-        _self = (os.environ.get("DISPLAY_NAME") or platform.node() or "").strip().lower()
-        for _machine in _registry.get("machines", []):
-            _name = str(_machine.get("name", "")).strip()
-            if not _name:
-                continue
-            _aliases = {str(a).strip().lower() for a in _machine.get("aliases", []) or []}
-            if _name.lower() == _self or _self in _aliases:
-                continue
-            # Prefer explicit dashboard_url; fall back to tailscale_nodes[].ip
-            _candidate_url = str(_machine.get("dashboard_url") or "").strip()
-            if not _candidate_url:
-                for _node in _machine.get("tailscale_nodes", []) or []:
-                    _ip = str(_node.get("ip", "")).strip()
-                    if _ip:
-                        _candidate_url = f"http://{_ip}:8321"
-                        break
-            if not _candidate_url:
-                continue
+        _derived_nodes = derive_fleet_nodes_from_registry(
+            _registry,
+            display_name=os.environ.get("DISPLAY_NAME"),
+            platform_node=platform.node(),
+            runner_aliases=os.environ.get("RUNNER_ALIASES"),
+        )
+        for _name, _candidate_url in _derived_nodes.items():
             try:
                 validate_fleet_node_url(_candidate_url)
                 FLEET_NODES[_name] = _candidate_url
@@ -899,8 +889,8 @@ async def run_cmd(
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         return (
             proc.returncode if proc.returncode is not None else -1,
-            stdout.decode(),
-            stderr.decode(),
+            stdout.decode("utf-8", errors="replace"),
+            stderr.decode("utf-8", errors="replace"),
         )
     except (TimeoutError, asyncio.TimeoutError):  # noqa: UP041
         proc.kill()
@@ -1473,7 +1463,17 @@ async def _watchdog_status_impl() -> dict:
 
 
 _FLEET_NODES_CACHE_TTL_S = 10.0
-_FLEET_REMOTE_FANOUT_TIMEOUT_S = 3.0
+
+
+def _fleet_node_schema_status(system: dict) -> str:
+    """Classify remote telemetry shape so stale deployments are visible."""
+    if not system:
+        return "missing"
+    memory = system.get("memory") if isinstance(system.get("memory"), dict) else {}
+    disk = system.get("disk") if isinstance(system.get("disk"), dict) else {}
+    if isinstance(memory.get("host"), dict) and isinstance(disk.get("storage_devices"), list):
+        return "current"
+    return "legacy"
 
 
 async def _collect_live_fleet_nodes() -> list[dict]:
@@ -1482,13 +1482,59 @@ async def _collect_live_fleet_nodes() -> list[dict]:
     async def fetch_node(name: str, url: str) -> dict:
         try:
             async with httpx.AsyncClient(timeout=HttpTimeout.PROXY_NODE_SYSTEM_S) as client:
-                sys_r, health_r = await asyncio.gather(
+                sys_result, health_result = await asyncio.gather(
                     client.get(f"{url}/api/system"),
                     client.get(f"{url}/api/health"),
+                    return_exceptions=True,
                 )
-            if sys_r.status_code != 200 or health_r.status_code != 200:
-                status_code = sys_r.status_code if sys_r.status_code != 200 else health_r.status_code
+            sys_r = sys_result if isinstance(sys_result, httpx.Response) else None
+            health_r = health_result if isinstance(health_result, httpx.Response) else None
+            system_error = sys_result if isinstance(sys_result, Exception) else None
+            health_error = health_result if isinstance(health_result, Exception) else None
+            if health_r is None:
+                reason = _classify_node_offline(health_error or system_error)
+                return {
+                    "name": name,
+                    "url": url,
+                    "online": False,
+                    "dashboard_reachable": False,
+                    "is_local": False,
+                    "role": "node",
+                    "system": {},
+                    "health": {},
+                    "last_seen": None,
+                    "error": reason["offline_detail"],
+                    **reason,
+                }
+            if sys_r is None and health_r.status_code == 200:
+                health = health_r.json()
+                reason = _classify_node_offline(system_error)
+                return {
+                    "name": name,
+                    "url": url,
+                    "online": True,
+                    "dashboard_reachable": True,
+                    "is_local": False,
+                    "role": "node",
+                    "system": {},
+                    "health": health,
+                    "deployment": health.get("deployment", {}),
+                    "dashboard_version": (health.get("deployment") or {}).get("version"),
+                    "telemetry_schema": "missing",
+                    "last_seen": datetime.now(UTC).isoformat(),
+                    "error": f"System metrics unavailable: {reason['offline_detail']}",
+                    "offline_reason": "metrics_unavailable",
+                    "offline_detail": (
+                        f"Dashboard health is reachable, but /api/system failed: {reason['offline_detail']}"
+                    ),
+                }
+            if sys_r is None or sys_r.status_code != 200 or health_r.status_code != 200:
+                status_code = (
+                    sys_r.status_code if sys_r is not None and sys_r.status_code != 200 else health_r.status_code
+                )
                 reason = _classify_node_offline(status_code=status_code)
+                system = sys_r.json() if sys_r is not None and sys_r.status_code == 200 else {}
+                health = health_r.json() if health_r.status_code == 200 else {}
                 return {
                     "name": name,
                     "url": url,
@@ -1496,13 +1542,17 @@ async def _collect_live_fleet_nodes() -> list[dict]:
                     "dashboard_reachable": True,
                     "is_local": False,
                     "role": "node",
-                    "system": sys_r.json() if sys_r.status_code == 200 else {},
-                    "health": health_r.json() if health_r.status_code == 200 else {},
+                    "system": system,
+                    "health": health,
+                    "deployment": health.get("deployment", {}),
+                    "dashboard_version": (health.get("deployment") or {}).get("version"),
+                    "telemetry_schema": _fleet_node_schema_status(system),
                     "last_seen": None,
                     "error": reason["offline_detail"],
                     **reason,
                 }
             system = sys_r.json()
+            health = health_r.json()
             resource_reason = _resource_offline_reason(system)
             return {
                 "name": name,
@@ -1514,7 +1564,10 @@ async def _collect_live_fleet_nodes() -> list[dict]:
                 "system": system,
                 "hardware_specs": system.get("hardware_specs", {}),
                 "workload_capacity": system.get("workload_capacity", {}),
-                "health": health_r.json(),
+                "health": health,
+                "deployment": health.get("deployment", {}),
+                "dashboard_version": (health.get("deployment") or {}).get("version"),
+                "telemetry_schema": _fleet_node_schema_status(system),
                 "last_seen": datetime.now(UTC).isoformat(),
                 "error": None,
                 "offline_reason": (resource_reason["offline_reason"] if resource_reason else None),
@@ -1536,7 +1589,7 @@ async def _collect_live_fleet_nodes() -> list[dict]:
                 **reason,
             }
 
-    local_sys = await get_system_metrics_snapshot()
+    local_sys = await _system_router.get_system_metrics()
     local_health = await _health_router._health_impl()
     local_resource_reason = _resource_offline_reason(local_sys)
     nodes: list[dict] = [
@@ -1551,6 +1604,9 @@ async def _collect_live_fleet_nodes() -> list[dict]:
             "hardware_specs": local_sys.get("hardware_specs", {}),
             "workload_capacity": local_sys.get("workload_capacity", {}),
             "health": local_health,
+            "deployment": local_health.get("deployment", {}),
+            "dashboard_version": (local_health.get("deployment") or {}).get("version"),
+            "telemetry_schema": _fleet_node_schema_status(local_sys),
             "last_seen": datetime.now(UTC).isoformat(),
             "error": None,
             "offline_reason": (local_resource_reason["offline_reason"] if local_resource_reason else None),
@@ -1559,29 +1615,11 @@ async def _collect_live_fleet_nodes() -> list[dict]:
     ]
 
     if FLEET_NODES:
-        try:
-            remote = await asyncio.wait_for(
-                asyncio.gather(*[fetch_node(name, url) for name, url in FLEET_NODES.items()]),
-                timeout=_FLEET_REMOTE_FANOUT_TIMEOUT_S,
-            )
-        except TimeoutError:
-            remote = [
-                {
-                    "name": name,
-                    "url": url,
-                    "online": False,
-                    "dashboard_reachable": False,
-                    "is_local": False,
-                    "role": "node",
-                    "system": {},
-                    "health": {},
-                    "last_seen": None,
-                    "error": f"fleet node fanout exceeded {_FLEET_REMOTE_FANOUT_TIMEOUT_S:.1f}s",
-                    "offline_reason": "timeout",
-                    "offline_detail": "Remote node probe timed out before the dashboard budget expired.",
-                }
-                for name, url in FLEET_NODES.items()
-            ]
+        # Each node probe already has its own httpx timeout. Avoid a shorter
+        # global gather timeout here: one slow machine should not make every
+        # remote node look offline or suppress metrics from a slow-but-live
+        # dashboard.
+        remote = await asyncio.gather(*[fetch_node(name, url) for name, url in FLEET_NODES.items()])
         nodes.extend(remote)
 
     return nodes
@@ -1764,7 +1802,7 @@ async def _get_fleet_nodes_impl() -> dict:
         nodes = await _collect_live_fleet_nodes()
     except Exception as exc:  # noqa: BLE001
         log.exception("Fleet node collection failed; returning local degraded node: %s", exc)
-        local_sys = await get_system_metrics_snapshot()
+        local_sys = await _system_router.get_system_metrics()
         local_health = await _health_router._health_impl()
         local_resource_reason = _resource_offline_reason(local_sys)
         nodes = [
@@ -1779,6 +1817,9 @@ async def _get_fleet_nodes_impl() -> dict:
                 "hardware_specs": local_sys.get("hardware_specs", {}),
                 "workload_capacity": local_sys.get("workload_capacity", {}),
                 "health": local_health,
+                "deployment": local_health.get("deployment", {}),
+                "dashboard_version": (local_health.get("deployment") or {}).get("version"),
+                "telemetry_schema": _fleet_node_schema_status(local_sys),
                 "last_seen": datetime.now(UTC).isoformat(),
                 "error": None,
                 "offline_reason": (local_resource_reason["offline_reason"] if local_resource_reason else None),

@@ -87,11 +87,20 @@ async def test_stats_endpoint_returns_degraded_payload_when_fanout_times_out(mon
     assert payload["queue_total"] == 0
 
 
-def test_fleet_nodes_endpoint_has_cache_and_remote_fanout_budget() -> None:
-    """Fleet node aggregation must have a short cache and a total remote budget."""
+def test_fleet_nodes_endpoint_has_cache_and_independent_remote_probes() -> None:
+    """Fleet node aggregation must cache and let each remote probe fail independently."""
     source = (_BACKEND_DIR / "server.py").read_text(encoding="utf-8")
 
     assert "_FLEET_NODES_CACHE_TTL_S" in source
     assert '_cache_get("fleet_nodes", _FLEET_NODES_CACHE_TTL_S)' in source
-    assert "asyncio.wait_for(" in source
-    assert "_FLEET_REMOTE_FANOUT_TIMEOUT_S" in source
+    assert "await asyncio.gather(*[fetch_node(name, url) for name, url in FLEET_NODES.items()])" in source
+    assert "fleet node fanout exceeded" not in source
+
+
+def test_fleet_node_probe_keeps_health_online_when_system_metrics_timeout() -> None:
+    """A slow /api/system must not make a healthy remote dashboard look dead."""
+    source = (_BACKEND_DIR / "server.py").read_text(encoding="utf-8")
+
+    assert "return_exceptions=True" in source
+    assert '"offline_reason": "metrics_unavailable"' in source
+    assert "Dashboard health is reachable, but /api/system failed" in source

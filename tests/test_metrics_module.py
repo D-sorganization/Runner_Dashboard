@@ -41,7 +41,14 @@ def test_server_registers_metrics_router() -> None:
 
 
 def test_metrics_imports_psutil_directly() -> None:
-    """metrics.py must not depend on server.py re-exporting psutil."""
+    """metrics.py must delegate /api/system to the canonical system router."""
     metrics_src = (_BACKEND_DIR / "metrics.py").read_text(encoding="utf-8")
-    assert "import psutil" in metrics_src
+    assert "from routers.system import get_system_metrics" in metrics_src
+    assert (
+        "from server import"
+        not in metrics_src.split('@router.get("/api/system")', 1)[1].split(
+            '@router.get("/api/fleet/status")',
+            1,
+        )[0]
+    )
     assert "psutil," not in metrics_src

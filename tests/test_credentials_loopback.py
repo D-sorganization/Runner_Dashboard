@@ -99,3 +99,39 @@ def test_require_local_request_function_rejects_non_local() -> None:
         _require_local_request(req)
 
     assert exc_info.value.status_code == 403
+
+
+def test_vscode_cli_probe_is_disabled_for_windows_code_bridge_on_wsl(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The credentials probe must not launch Windows VS Code from WSL."""
+    from types import SimpleNamespace  # noqa: PLC0415
+
+    from routers import credentials  # noqa: PLC0415
+
+    monkeypatch.delenv("RUNNER_DASHBOARD_ALLOW_VSCODE_CLI_PROBE", raising=False)
+    monkeypatch.setattr(
+        credentials.platform,
+        "uname",
+        lambda: SimpleNamespace(release="5.15.167.4-microsoft-standard-WSL2"),
+    )
+
+    windows_code = "/mnt/c/Users/diete/AppData/Local/Programs/Microsoft VS Code/bin/code"
+
+    assert credentials._should_probe_vscode_cli(windows_code) is False
+    assert credentials._should_probe_vscode_cli("/mnt/c/Windows/System32/code.exe") is False
+
+
+def test_vscode_cli_probe_can_be_explicitly_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    from types import SimpleNamespace  # noqa: PLC0415
+
+    from routers import credentials  # noqa: PLC0415
+
+    monkeypatch.setenv("RUNNER_DASHBOARD_ALLOW_VSCODE_CLI_PROBE", "1")
+    monkeypatch.setattr(
+        credentials.platform,
+        "uname",
+        lambda: SimpleNamespace(release="5.15.167.4-microsoft-standard-WSL2"),
+    )
+
+    windows_code = "/mnt/c/Users/diete/AppData/Local/Programs/Microsoft VS Code/bin/code"
+
+    assert credentials._should_probe_vscode_cli(windows_code)

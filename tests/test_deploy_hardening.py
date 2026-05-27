@@ -1,7 +1,7 @@
 """Static regression checks for deploy hardening.
 
 Includes regression tests for the directives added in issue #391:
-MemoryMax, CPUQuota, TasksMax, RestrictAddressFamilies, RestrictNamespaces,
+MemoryMax, CPUQuota, TasksMax, RestrictNamespaces,
 CapabilityBoundingSet, SystemCallFilter, LockPersonality,
 MemoryDenyWriteExecute, ProtectHostname, ProtectClock, ProtectProc,
 WatchdogSec, and the tightly-scoped sudoers drop-in.
@@ -21,7 +21,6 @@ _LOCK = _ROOT / "requirements.lock.txt"
 # These must appear in both the .service template files AND in the setup.sh
 # heredoc so that installed units stay in sync.
 _NEW_HARDENING_DIRECTIVES_391 = (
-    "RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX",
     "RestrictNamespaces=true",
     "CapabilityBoundingSet=",
     "SystemCallFilter=@system-service",
@@ -128,9 +127,11 @@ def test_requirements_lock_contains_hashes() -> None:
 # ── Issue #391: runner-dashboard.service template ────────────────────────────
 
 
-def test_dashboard_service_has_restrict_address_families() -> None:
+def test_dashboard_service_allows_wsl_interop_address_families() -> None:
     content = _read(_DEPLOY / "runner-dashboard.service")
-    assert "RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX" in content
+    assert "Environment=WSL_INTEROP=/run/WSL/1_interop" in content
+    assert "RestrictAddressFamilies=" in content
+    assert "RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX" not in content
 
 
 def test_dashboard_service_has_restrict_namespaces() -> None:

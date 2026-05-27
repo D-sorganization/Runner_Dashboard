@@ -52,12 +52,16 @@ Environment=RUNNER_SCHEDULER_BIN=/usr/local/bin/runner-scheduler
 Environment=MACHINE_ROLE=hub
 Environment=HOME=/home/YOUR_USER
 Environment=PATH=/usr/lib/wsl/lib:/home/YOUR_USER/.local/bin:/home/YOUR_USER/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# WSL systemd services do not inherit the interactive WSL interop socket, but
+# host metrics and cross-distro disk probes need Windows binary execution.
+# /run/WSL/1_interop is a stable symlink maintained by WSL on current hosts.
+Environment=WSL_INTEROP=/run/WSL/1_interop
 # Secrets loaded from a file readable only by the service user (chmod 600).
 # NOT stored in this world-readable unit file.
 # File: /home/YOUR_USER/.config/runner-dashboard/env
 # Contents:
 #   GH_TOKEN=ghp_<classic PAT with scopes: repo, admin:org>
-#   FLEET_NODES=Linux-Brick:http://100.x.x.a:8321,...   (once nodes are live)
+#   FLEET_NODES=OGLaptop:http://100.x.x.a:8321,...   (once nodes are live)
 EnvironmentFile=-/home/YOUR_USER/.config/runner-dashboard/env
 
 # Hardening (issue #391)
@@ -71,8 +75,10 @@ ProtectKernelModules=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true
 RemoveIPC=true
-# Network address-family restriction — only IPv4, IPv6, and Unix sockets.
-RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# WSL interop uses an address family outside the usual IPv4/IPv6/Unix set when
+# launching Windows binaries for host telemetry. RestrictAddressFamilies made
+# CPU/RAM probes silently fall back to WSL-only metrics, so leave it unset here.
+RestrictAddressFamilies=
 # Prevent kernel namespace creation.
 RestrictNamespaces=true
 # Drop all ambient/effective capabilities.

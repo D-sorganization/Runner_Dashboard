@@ -508,6 +508,10 @@ function SubTabs(p) {
   );
 }
 
+function isAnalysisTabKey(key) {
+  return ["analysis", "stats", "performance", "reports", "history"].indexOf(key) >= 0;
+}
+
 function Stat(p) {
   return h(
     "div",
@@ -541,10 +545,11 @@ function canonicalMachineName(name) {
     desk: "DeskComputer",
     oglaptop: "OGLaptop",
     og: "OGLaptop",
-    brick: "Brick",
-    brickwindows: "Brick",
-    bricklinux: "Brick",
     controltower: "ControlTower",
+    controltowernvme: "ControlTower",
+    controltowerssd: "ControlTower",
+    controltowermatlab: "ControlTower",
+    controltowermatlabssd: "ControlTower",
     controltowerrunnermonitoring: "ControlTower",
   };
   return aliases[key] || raw || "Unknown";
@@ -598,6 +603,27 @@ function machineTelemetryForRunner(runner, nodesByName) {
     uptime: sys.uptime_seconds ? formatDuration(sys.uptime_seconds) : "no uptime",
     seen: node.last_seen ? timeAgo(node.last_seen) : "not seen",
   };
+}
+
+function nodeHasSystemMetrics(n) {
+  var sys = (n && n.system) || {};
+  return !!(
+    (sys.cpu && sys.cpu.percent != null) ||
+    (sys.memory && sys.memory.percent != null) ||
+    (sys.disk && sys.disk.percent != null)
+  );
+}
+
+function nodeQualityScore(n) {
+  var score = 0;
+  if (!n) return score;
+  if (n.is_local) score += 100;
+  if (n.dashboard_reachable !== false) score += 40;
+  if (n.online) score += 20;
+  if (nodeHasSystemMetrics(n)) score += 60;
+  if (n.role === "hub") score += 5;
+  if (n.role === "runner_pool") score -= 10;
+  return score;
 }
 
 function runnerCurrentRun(runner, runs) {
@@ -3227,6 +3253,177 @@ function PerformanceTab(p) {
   );
 }
 
+function AnalysisOutcomesTab() {
+  var ds = React.useState({ sample_size: 0, success_rate: 0, workflows: [], machines: [], matrix: [], failure_reasons: {} });
+  var data = ds[0], setData = ds[1];
+  var ls = React.useState(false);
+  var loading = ls[0], setLoading = ls[1];
+
+  function fmtDur(seconds) {
+    if (seconds == null) return "-";
+    if (seconds < 60) return Math.round(seconds) + "s";
+    if (seconds < 3600) return (seconds / 60).toFixed(1) + "m";
+    return (seconds / 3600).toFixed(1) + "h";
+  }
+  function refresh() {
+    setLoading(true);
+    fetch("/api/analysis/workflow-machines?per_page=100")
+      .then(function (r) { return r.json(); })
+      .then(function (d) { setData(d || {}); setLoading(false); })
+      .catch(function () { setLoading(false); });
+  }
+  React.useEffect(function () { refresh(); }, []);
+
+  var machines = data.machines || [];
+  var workflows = data.workflows || [];
+  var matrix = data.matrix || [];
+  var failureReasons = Object.keys(data.failure_reasons || {});
+  var slowest = matrix.filter(function (row) { return row.avg_duration_seconds != null; }).slice(0, 10);
+  var weakest = workflows.slice(0, 10);
+  return h(
+    "div",
+    null,
+    h(
+      "div",
+      { className: "stat-row" },
+      h(Stat, { label: "Recent enriched runs", value: data.sample_size || 0, sub: "job placement sample" }),
+      h(Stat, { label: "Success rate", value: (data.success_rate || 0) + "%", sub: "recent completed sample" }),
+      h(Stat, { label: "Machines seen", value: machines.length }),
+      h(Stat, {
+        label: "Failure reasons",
+        value: failureReasons.length || 0,
+        sub: failureReasons.slice(0, 3).join(", ") || "none",
+      }),
+    ),
+    h(
+      "div",
+      { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" } },
+      h("div", { style: { color: "var(--text-muted)", fontSize: 13 } }, "Recent outcomes by workflow and runner machine. Use this to separate slow workflows from slow hosts."),
+      h("button", { className: "btn", onClick: refresh, disabled: loading }, loading ? "…" : "Refresh"),
+    ),
+    h(
+      "div",
+      { className: "grid-2" },
+      h(
+        "div",
+        { className: "card" },
+        h("h3", { style: { marginTop: 0 } }, "Machine Health From Jobs"),
+        machines.length === 0
+          ? h("div", { style: { color: "var(--text-muted)", padding: 20 } }, "No machine placement data yet.")
+          : h(
+              "table",
+              { className: "run-table", style: { width: "100%" } },
+              h("thead", null, h("tr", null, h("th", null, "Machine"), h("th", null, "Runs"), h("th", null, "Success"), h("th", null, "Avg duration"))),
+              h(
+                "tbody",
+                null,
+                machines.map(function (row) {
+                  return h(
+                    "tr",
+                    { key: row.machine_name },
+                    h("td", null, row.machine_name),
+                    h("td", null, row.count),
+                    h("td", null, row.success_rate + "%"),
+                    h("td", null, fmtDur(row.avg_duration_seconds)),
+                  );
+                }),
+              ),
+            ),
+      ),
+      h(
+        "div",
+        { className: "card" },
+        h("h3", { style: { marginTop: 0 } }, "Highest Attention Workflows"),
+        weakest.length === 0
+          ? h("div", { style: { color: "var(--text-muted)", padding: 20 } }, "No workflow outcome data yet.")
+          : h(
+              "table",
+              { className: "run-table", style: { width: "100%" } },
+              h("thead", null, h("tr", null, h("th", null, "Workflow"), h("th", null, "Runs"), h("th", null, "Failures"), h("th", null, "Avg duration"))),
+              h(
+                "tbody",
+                null,
+                weakest.map(function (row) {
+                  return h(
+                    "tr",
+                    { key: row.key },
+                    h("td", { title: row.repo + " / " + row.workflow_name }, row.workflow_name),
+                    h("td", null, row.count),
+                    h("td", null, row.failure || 0),
+                    h("td", null, fmtDur(row.avg_duration_seconds)),
+                  );
+                }),
+              ),
+            ),
+      ),
+    ),
+    h(
+      "div",
+      { className: "card", style: { marginTop: 12 } },
+      h("h3", { style: { marginTop: 0 } }, "Workflow x Machine Runtime"),
+      slowest.length === 0
+        ? h("div", { style: { color: "var(--text-muted)", padding: 20 } }, "No completed workflow-machine pairs in the current sample.")
+        : h(
+            "table",
+            { className: "run-table", style: { width: "100%" } },
+            h("thead", null, h("tr", null, h("th", null, "Repo"), h("th", null, "Workflow"), h("th", null, "Machine"), h("th", null, "Runs"), h("th", null, "Success"), h("th", null, "Avg duration"))),
+            h(
+              "tbody",
+              null,
+              slowest.map(function (row) {
+                return h(
+                  "tr",
+                  { key: row.key },
+                  h("td", null, row.repo),
+                  h("td", { title: row.workflow_name }, row.workflow_name),
+                  h("td", null, row.machine_name),
+                  h("td", null, row.count),
+                  h("td", null, row.success_rate + "%"),
+                  h("td", null, fmtDur(row.avg_duration_seconds)),
+                );
+              }),
+            ),
+          ),
+    ),
+  );
+}
+
+function AnalysisTab(p) {
+  var legacyKey = isAnalysisTabKey(p.activeTab) && p.activeTab !== "analysis" ? p.activeTab : null;
+  var initial = legacyKey || localStorage.getItem("analysis-subtab") || "outcomes";
+  var ss = React.useState(initial);
+  var subTab = ss[0], setSubTab = ss[1];
+  function changeSubTab(key) {
+    setSubTab(key);
+    try { localStorage.setItem("analysis-subtab", key); } catch (e) {}
+  }
+  return h(
+    "div",
+    null,
+    h(SubTabs, {
+      tabs: [
+        { key: "outcomes", label: "Outcomes" },
+        { key: "stats", label: "Durations" },
+        { key: "history", label: "History", badge: (p.runs || []).length || null },
+        { key: "performance", label: "Performance" },
+        { key: "reports", label: "Reports", badge: (p.reports || []).length || null },
+      ],
+      activeKey: subTab,
+      onChange: changeSubTab,
+      storageKey: "analysis-subtab",
+    }),
+    subTab === "outcomes"
+      ? h(AnalysisOutcomesTab, null)
+      : subTab === "stats"
+        ? h(StatsTab, null)
+        : subTab === "history"
+          ? h(HistoryTab, { runs: p.runs, runners: p.runners })
+          : subTab === "performance"
+            ? h(PerformanceTab, null)
+            : h(ReportsTab, { reports: p.reports, loading: p.reportsLoading }),
+  );
+}
+
 function ReportsTab(p) {
   var reports = p.reports;
   var loading = p.loading;
@@ -3491,6 +3688,7 @@ function ReportsTab(p) {
 // ════════════════════════ MACHINES TAB ════════════════════════
 function MachineCard(p) {
   var n = p.node;
+  var relatedNodes = p.relatedNodes || n.related_nodes || [n];
   var machineRunners = p.machineRunners || [];
   var sys = n.system || {};
   var busyCount = machineRunners.filter(function (r) {
@@ -3514,9 +3712,8 @@ function MachineCard(p) {
   })();
   var mColors = {
     ControlTower: "var(--accent-purple)",
-    Brick: "var(--accent-green)",
     DeskComputer: "var(--accent-blue)",
-    Oglaptop: "var(--accent-orange)",
+    OGLaptop: "var(--accent-orange)",
   };
   var mColor = mColors[n.name] || "var(--accent-blue)";
   var dotClass = isLive
@@ -3564,6 +3761,34 @@ function MachineCard(p) {
           },
           visibility.label,
         ),
+        n.telemetry_schema && n.telemetry_schema !== "current"
+          ? h(
+              "span",
+              {
+                className: "role-badge",
+                title:
+                  n.telemetry_schema === "legacy"
+                    ? "This node is reachable but is serving an older telemetry schema. Deploy the current dashboard to restore full metrics."
+                    : "This node is not returning system telemetry.",
+                style: {
+                  background: "rgba(210,153,34,0.12)",
+                  color: "var(--accent-yellow)",
+                  border: "1px solid rgba(210,153,34,0.3)",
+                },
+              },
+              n.telemetry_schema === "legacy" ? "legacy metrics" : "no metrics",
+            )
+          : null,
+        n.dashboard_version
+          ? h(
+              "span",
+              {
+                className: "role-badge",
+                title: "Dashboard version " + n.dashboard_version,
+              },
+              "v" + n.dashboard_version,
+            )
+          : null,
         n.is_local
           ? h(
               "span",
@@ -3671,7 +3896,11 @@ function MachineCard(p) {
           paddingTop: 12,
         },
       },
-      h(SystemResourcesPanel, { system: sys }),
+      h(SystemResourcesPanel, {
+        system: sys,
+        node: n,
+        relatedNodes: relatedNodes,
+      }),
     ),
 
     // Error
@@ -4092,27 +4321,48 @@ function MachinesTab(p) {
     return r.status === "online";
   }).length;
 
-  // Build machine list from runners even if fleet nodes aren't reachable.
-  // Runner names are title-case (e.g. "Brick") but FLEET_NODES keys are
-  // lowercase — match case-insensitively.
-  var machineNames = Object.keys(runnersByMachine).sort(function (a, b) {
+  var nodesByPhysicalName = {};
+  nodes.forEach(function (n) {
+    var physicalName = canonicalMachineName(n.parent_machine || n.name);
+    var key = physicalName.toLowerCase();
+    if (!nodesByPhysicalName[key]) nodesByPhysicalName[key] = [];
+    nodesByPhysicalName[key].push(n);
+  });
+
+  // Build machine list from both runners and registry/fleet nodes. Runner pool
+  // entries such as ControlTower-NVMe and ControlTower-SSD are folded into the
+  // same physical machine card, and the best live telemetry node wins.
+  var machineNameSet = {};
+  Object.keys(runnersByMachine).forEach(function (name) {
+    machineNameSet[canonicalMachineName(name)] = true;
+  });
+  Object.keys(nodesByPhysicalName).forEach(function (key) {
+    var group = nodesByPhysicalName[key] || [];
+    var display = canonicalMachineName(
+      (group[0] && (group[0].parent_machine || group[0].name)) || key,
+    );
+    machineNameSet[display] = true;
+  });
+  var machineNames = Object.keys(machineNameSet).sort(function (a, b) {
     return a === "ControlTower"
       ? -1
       : b === "ControlTower"
         ? 1
         : a.localeCompare(b);
   });
-  var nodesByName = {};
-  nodes.forEach(function (n) {
-    nodesByName[canonicalMachineName(n.name).toLowerCase()] = n;
-  });
 
-  // Ensure every machine with runners has a node entry (even if dashboard unreachable)
   var allNodes = machineNames.map(function (name) {
-    var node = nodesByName[name.toLowerCase()];
+    var related = (nodesByPhysicalName[name.toLowerCase()] || []).slice();
+    related.sort(function (a, b) {
+      return nodeQualityScore(b) - nodeQualityScore(a);
+    });
+    var node = related[0];
     if (node) {
-      // Use runner-derived display name (title-case) and preserve backend fields
-      return Object.assign({}, node, { name: name });
+      return Object.assign({}, node, {
+        name: name,
+        related_nodes: related,
+        physical_machine: name,
+      });
     }
     // Create a stub node from runner data (no backend entry at all)
     var mrs = runnersByMachine[name] || [];
@@ -4139,6 +4389,8 @@ function MachinesTab(p) {
         mOnline > 0
           ? "Dashboard not deployed on this machine — runners are healthy, but per-machine system metrics are unavailable. See docs/dashboard_deployment_guide.md for install steps."
           : "Offline",
+      related_nodes: [],
+      physical_machine: name,
     };
   });
   var gpuNodes = allNodes.filter(function (n) {
@@ -4213,6 +4465,7 @@ function MachinesTab(p) {
             return h(MachineCard, {
               key: n.name,
               node: n,
+              relatedNodes: n.related_nodes || [n],
               machineRunners: runnersByMachine[n.name] || [],
             });
           }),
@@ -4639,12 +4892,77 @@ function LocalAppsTab(p) {
 
 
 // ════════════════════════ SYSTEM RESOURCES PANEL ════════════════════════
+function collectStorageDevices(system, relatedNodes) {
+  var devices = [];
+  var seen = {};
+  function addDevice(device, fallbackLabel) {
+    if (!device) return;
+    var label = device.label || fallbackLabel || device.path || "Storage";
+    var key = [label, device.kind || "", device.path || ""].join("|");
+    if (seen[key]) return;
+    seen[key] = true;
+    devices.push(Object.assign({}, device, { label: label }));
+  }
+  function addFromSystem(sys, prefix) {
+    var disk = (sys && sys.disk) || {};
+    (disk.storage_devices || []).forEach(function (device) {
+      addDevice(device, device.label || prefix);
+    });
+    if ((!disk.storage_devices || disk.storage_devices.length === 0) && disk.windows_host) {
+      addDevice(disk.windows_host, prefix ? prefix + " Disk" : "Host Disk");
+    }
+    if ((!disk.storage_devices || disk.storage_devices.length === 0) && disk.percent != null) {
+      addDevice(disk, prefix ? prefix + " WSL" : "WSL Disk");
+    }
+  }
+  addFromSystem(system, "");
+  (relatedNodes || []).forEach(function (node) {
+    addFromSystem(node.system, node.name);
+  });
+  return devices;
+}
+
+function StorageDeviceMetric(p) {
+  var device = p.device || {};
+  var pct = boundedPercent(device.percent || 0);
+  return h(
+    "div",
+    { style: { marginBottom: 8 } },
+    h(
+      "div",
+      { className: "metric-row" },
+      h("span", { className: "metric-label" }, device.label || "Storage"),
+      h(
+        "span",
+        { className: "metric-value" },
+        device.used_gb +
+          " / " +
+          device.total_gb +
+          " GB (" +
+          device.percent +
+          "%)",
+      ),
+    ),
+    h(
+      "div",
+      { className: "progress-bar" },
+      h("div", {
+        className: "progress-fill " + pColor(pct),
+        style: { width: pct + "%" },
+        title: device.path || "",
+      }),
+    ),
+  );
+}
+
 function SystemResourcesPanel(p) {
   var sys = p.system || {};
+  var relatedNodes = p.relatedNodes || [];
   var cpu = sys.cpu || {};
   var mem = sys.memory || {};
   var disk = sys.disk || {};
   var diskPressure = disk.pressure || {};
+  var storageDevices = collectStorageDevices(sys, relatedNodes);
   var net = sys.network || {};
   var gpus = (sys.gpu && sys.gpu.gpus) || [];
   var rprocs = sys.runner_processes || [];
@@ -4733,7 +5051,8 @@ function SystemResourcesPanel(p) {
               { className: "metric-value" },
               (function() {
                 var usedPct = mem.total_gb ? Math.round((1 - mem.available_gb / mem.total_gb) * 100) : Math.round(mem.percent || 0);
-                return mem.used_gb + " / " + mem.total_gb + " GB (" + usedPct + "%)";
+                var label = mem.source === "wsl" ? "WSL" : "Host";
+                return label + " " + mem.used_gb + " / " + mem.total_gb + " GB (" + usedPct + "%)";
               })(),
             ),
           ),
@@ -4745,6 +5064,18 @@ function SystemResourcesPanel(p) {
               style: { width: (mem.total_gb ? Math.round((1 - mem.available_gb / mem.total_gb) * 100) : Math.round(mem.percent || 0)) + "%" },
             }),
           ),
+          mem.host && mem.wsl
+            ? h(
+                "div",
+                { className: "stat-sub", style: { marginTop: 4 } },
+                "WSL " +
+                  mem.wsl.used_gb +
+                  " / " +
+                  mem.wsl.total_gb +
+                  " GB" +
+                  (mem.host.stale ? " · host probe stale" : ""),
+              )
+            : null,
         )
       : null,
     mem.swap_total_gb > 0
@@ -4771,64 +5102,16 @@ function SystemResourcesPanel(p) {
           ),
         )
       : null,
-    disk.percent != null
+    storageDevices.length > 0
       ? h(
           "div",
           { style: { marginBottom: 12 } },
-          disk.windows_host
-            ? h(
-                "div",
-                { style: { marginBottom: 8 } },
-                h(
-                  "div",
-                  { className: "metric-row" },
-                  h("span", { className: "metric-label" }, "Disk (Windows C:)"),
-                  h(
-                    "span",
-                    { className: "metric-value" },
-                    disk.windows_host.used_gb +
-                      " / " +
-                      disk.windows_host.total_gb +
-                      " GB (" +
-                      disk.windows_host.percent +
-                      "%)",
-                  ),
-                ),
-                h(
-                  "div",
-                  { className: "progress-bar" },
-                  h("div", {
-                    className: "progress-fill " + pColor(disk.windows_host.percent),
-                    style: { width: disk.windows_host.percent + "%" },
-                  }),
-                ),
-              )
-            : null,
-          h(
-            "div",
-            { className: "metric-row" },
-            h("span", { className: "metric-label" }, disk.windows_host ? "Disk (WSL)" : "Disk"),
-            h(
-              "span",
-              { className: "metric-value" },
-              disk.used_gb +
-                " / " +
-                disk.total_gb +
-                " GB (" +
-                disk.percent +
-                "%)",
-            ),
-          ),
-          !disk.windows_host
-            ? h(
-                "div",
-                { className: "progress-bar" },
-                h("div", {
-                  className: "progress-fill " + pColor(disk.percent),
-                  style: { width: disk.percent + "%" },
-                }),
-              )
-            : null,
+          storageDevices.map(function (device) {
+            return h(StorageDeviceMetric, {
+              key: (device.label || "") + "|" + (device.path || ""),
+              device: device,
+            });
+          }),
           diskPressure.status && diskPressure.status !== "healthy"
             ? h(
                 "div",
@@ -5039,7 +5322,6 @@ function SystemResourcesPanel(p) {
 // ════════════════════════ HISTORY TAB ════════════════════════
 var MACHINE_COLORS = {
   ControlTower: "var(--accent-purple)",
-  Brick: "var(--accent-green)",
   DeskComputer: "var(--accent-blue)",
   Oglaptop: "var(--accent-orange)",
   GitHub: "var(--text-muted)",
@@ -15851,41 +16133,31 @@ function App({ initialTab, onTabChange }: { initialTab?: string; onTabChange?: (
         h(
           "button",
           {
-            className: "tab-btn" + (tab === "stats" ? " active" : ""),
+            className: "tab-btn" + (isAnalysisTabKey(tab) ? " active" : ""),
             role: "tab",
-            "aria-selected": tab === "stats",
+            "aria-selected": isAnalysisTabKey(tab),
             onClick: function () {
-              setTab("stats");
+              setTab("analysis");
+              fetchEnrichedRuns();
+              fetchReports();
             },
           },
           I.activity(14),
-          "Stats",
-        ),
-        h(
-          "button",
-          {
-            className: "tab-btn" + (tab === "performance" ? " active" : ""),
-            role: "tab",
-            "aria-selected": tab === "performance",
-            onClick: function () {
-              setTab("performance");
-            },
-          },
-          I.activity(14),
-          "Performance",
-        ),
-        h(
-          "button",
-          {
-            className: "tab-btn" + (tab === "reports" ? " active" : ""),
-            role: "tab",
-            "aria-selected": tab === "reports",
-            onClick: function () {
-              setTab("reports");
-            },
-          },
-          I.fileText(14),
-          "Reports",
+          "Analysis",
+          enrichedRuns.length > 0
+            ? h(
+                "span",
+                {
+                  className: "section-badge",
+                  style: {
+                    background: "rgba(136,108,228,0.15)",
+                    color: "var(--accent-purple)",
+                    marginLeft: 2,
+                  },
+                },
+                enrichedRuns.length,
+              )
+            : null,
         ),
         h(
           "button",
@@ -16004,34 +16276,6 @@ function App({ initialTab, onTabChange }: { initialTab?: string; onTabChange?: (
                   ? "\u2026"
                   : (deploymentState.rollout_state || {})
                       .machines_attention,
-              )
-            : null,
-        ),
-        h(
-          "button",
-          {
-            className: "tab-btn" + (tab === "history" ? " active" : ""),
-            role: "tab",
-            "aria-selected": tab === "history",
-            onClick: function () {
-              setTab("history");
-              fetchEnrichedRuns();
-            },
-          },
-          I.activity(14),
-          "History",
-          enrichedRuns.length > 0
-            ? h(
-                "span",
-                {
-                  className: "section-badge",
-                  style: {
-                    background: "rgba(136,108,228,0.15)",
-                    color: "var(--accent-purple)",
-                    marginLeft: 2,
-                  },
-                },
-                enrichedRuns.length,
               )
             : null,
         ),
@@ -16620,8 +16864,14 @@ function App({ initialTab, onTabChange }: { initialTab?: string; onTabChange?: (
                 onDispatch: dispatchRemediation,
                 history: remediationHistory,
               })
-            : tab === "history"
-              ? h(HistoryTab, { runs: enrichedRuns, runners: runners })
+            : isAnalysisTabKey(tab)
+              ? h(AnalysisTab, {
+                  activeTab: tab,
+                  runs: enrichedRuns,
+                  runners: runners,
+                  reports: reports,
+                  reportsLoading: reportsLoading,
+                })
               : tab === "queue"
                 ? h(QueueTab, {
                     queue: queue,
@@ -16646,16 +16896,7 @@ function App({ initialTab, onTabChange }: { initialTab?: string; onTabChange?: (
                           loading: testsLoading,
                           ciResults: ciResults,
                         })
-                      : tab === "stats"
-                        ? h(StatsTab, null)
-                        : tab === "performance"
-                          ? h(PerformanceTab, null)
-                        : tab === "reports"
-                          ? h(ReportsTab, {
-                              reports: reports,
-                              loading: reportsLoading,
-                            })
-                          : tab === "scheduled-jobs"
+                      : tab === "scheduled-jobs"
                             ? h(ScheduledJobsTab, {
                                 data: scheduledJobs,
                                 loading: scheduledJobsLoading,

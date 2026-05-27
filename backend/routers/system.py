@@ -24,6 +24,7 @@ from dashboard_config import (
     RUNNER_BASE_DIR,
 )
 from fastapi import APIRouter
+from machine_registry import load_machine_registry
 from security import safe_subprocess_env
 
 if TYPE_CHECKING:
@@ -48,7 +49,13 @@ _cpu_history: deque[float] = deque(maxlen=CPU_HISTORY_MAXLEN)
 _POWERSHELL_CANDIDATES = (
     "powershell.exe",
     "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe",
+    "pwsh.exe",
+    "/mnt/c/Program Files/PowerShell/7/pwsh.exe",
 )
+_WINDOWS_HOST_CACHE_TTL_S = 30.0
+_WINDOWS_HOST_LAST_GOOD_TTL_S = 300.0
+_windows_host_cache: dict[str, Any] = {"ts": 0.0, "data": None, "error": None}
+_storage_cache: dict[str, Any] = {"ts": 0.0, "data": None}
 
 
 def _float_metric(value: object, default: float) -> float:
@@ -57,10 +64,43 @@ def _float_metric(value: object, default: float) -> float:
     return default
 
 
+def _windows_interop_env() -> dict[str, str]:
+    """Return a subprocess env that can launch Windows binaries from WSL systemd."""
+    env = safe_subprocess_env()
+    if "microsoft" not in platform.uname().release.lower() or env.get("WSL_INTEROP"):
+        return env
+    interop_dir = Path("/run/WSL")
+    stable_candidates = [interop_dir / "1_interop", interop_dir / "2_interop"]
+    for candidate in stable_candidates:
+        try:
+            if candidate.exists():
+                env["WSL_INTEROP"] = str(candidate)
+                return env
+        except OSError:
+            continue
+    try:
+        sockets = sorted(
+            [path for path in interop_dir.glob("*_interop") if path.is_socket()],
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+    except OSError:
+        sockets = []
+    if sockets:
+        env["WSL_INTEROP"] = str(sockets[0])
+    return env
+
+
 def _windows_host_resource_snapshot() -> dict | None:
     """Return Windows host CPU/RAM metrics when this backend is running under WSL."""
     if "microsoft" not in platform.uname().release.lower():
         return None
+
+    now = time.monotonic()
+    cached = _windows_host_cache.get("data")
+    cache_age = now - float(_windows_host_cache.get("ts") or 0.0)
+    if cached and cache_age < _WINDOWS_HOST_CACHE_TTL_S:
+        return dict(cached)
 
     command = r"""
 $cpu = (Get-CimInstance Win32_PerfFormattedData_PerfOS_Processor -Filter "Name='_Total'").PercentProcessorTime
@@ -77,28 +117,232 @@ $used = $total - $free
 } | ConvertTo-Json -Compress
 """
     result = None
+    last_error = None
     for powershell in _POWERSHELL_CANDIDATES:
         try:
             result = subprocess.run(
                 [powershell, "-NoProfile", "-Command", command],
                 capture_output=True,
                 text=True,
-                timeout=5,
-                env=safe_subprocess_env(),
+                timeout=10,
+                env=_windows_interop_env(),
             )
-        except (OSError, subprocess.SubprocessError):
+        except (OSError, subprocess.SubprocessError) as exc:
+            last_error = str(exc)
             continue
         if result.returncode == 0 and result.stdout.strip():
             break
     if result is None:
+        _windows_host_cache["error"] = last_error or "PowerShell host probe unavailable"
+        if cached and cache_age < _WINDOWS_HOST_LAST_GOOD_TTL_S:
+            stale = dict(cached)
+            stale["stale"] = True
+            stale["probe_error"] = _windows_host_cache["error"]
+            return stale
         return None
     if result.returncode != 0 or not result.stdout.strip():
+        _windows_host_cache["error"] = (result.stderr or result.stdout or "PowerShell host probe failed").strip()[:500]
+        if cached and cache_age < _WINDOWS_HOST_LAST_GOOD_TTL_S:
+            stale = dict(cached)
+            stale["stale"] = True
+            stale["probe_error"] = _windows_host_cache["error"]
+            return stale
         return None
     try:
         data = json.loads(result.stdout)
     except json.JSONDecodeError:
+        _windows_host_cache["error"] = "PowerShell host probe returned invalid JSON"
+        if cached and cache_age < _WINDOWS_HOST_LAST_GOOD_TTL_S:
+            stale = dict(cached)
+            stale["stale"] = True
+            stale["probe_error"] = _windows_host_cache["error"]
+            return stale
         return None
-    return data if isinstance(data, dict) else None
+    if not isinstance(data, dict):
+        return None
+    try:
+        normalized = {
+            "cpu_percent": float(data["cpu_percent"]),
+            "memory_total_gb": float(data["memory_total_gb"]),
+            "memory_used_gb": float(data["memory_used_gb"]),
+            "memory_available_gb": float(data["memory_available_gb"]),
+            "memory_percent": float(data["memory_percent"]),
+            "stale": False,
+            "probe_error": None,
+        }
+    except (KeyError, TypeError, ValueError):
+        return None
+    _windows_host_cache.update({"ts": now, "data": normalized, "error": None})
+    return dict(normalized)
+
+
+def _usage_payload(label: str, path: str, *, kind: str, role: str, metadata: dict | None = None) -> dict | None:
+    try:
+        usage = shutil.disk_usage(path)
+    except OSError:
+        return None
+    total_gb = round(usage.total / (1024**3), 1)
+    used_gb = round(usage.used / (1024**3), 1)
+    free_gb = round(usage.free / (1024**3), 1)
+    percent = round(usage.used / usage.total * 100, 1) if usage.total else 0.0
+    payload = {
+        "label": label,
+        "kind": kind,
+        "role": role,
+        "path": path,
+        "total_gb": total_gb,
+        "used_gb": used_gb,
+        "free_gb": free_gb,
+        "percent": percent,
+        "pressure": _disk_pressure_snapshot(
+            path=path,
+            total_gb=total_gb,
+            used_gb=used_gb,
+            free_gb=free_gb,
+            percent=percent,
+        ),
+    }
+    if metadata:
+        payload.update(metadata)
+    return payload
+
+
+def _host_drive_mount(host_drive: str | None) -> str | None:
+    if not host_drive:
+        return None
+    letter = host_drive.strip().rstrip(":").lower()
+    if len(letter) != 1 or not letter.isalpha():
+        return None
+    mount = f"/mnt/{letter}"
+    return mount if Path(mount).exists() else None
+
+
+def _df_root_for_wsl_distro(distro: str) -> dict | None:
+    if "microsoft" not in platform.uname().release.lower():
+        return None
+    for wsl_bin in ("wsl.exe", "/mnt/c/Windows/System32/wsl.exe"):
+        try:
+            result = subprocess.run(
+                [wsl_bin, "-d", distro, "--", "df", "-Pk", "/"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                env=_windows_interop_env(),
+            )
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if result.returncode != 0 or not result.stdout.strip():
+            continue
+        lines = result.stdout.strip().splitlines()
+        if len(lines) < 2:
+            continue
+        parts = lines[-1].split()
+        if len(parts) < 6:
+            continue
+        try:
+            total = int(parts[1]) * 1024
+            used = int(parts[2]) * 1024
+            free = int(parts[3]) * 1024
+        except ValueError:
+            continue
+        total_gb = round(total / (1024**3), 1)
+        used_gb = round(used / (1024**3), 1)
+        free_gb = round(free / (1024**3), 1)
+        percent = round(used / total * 100, 1) if total else 0.0
+        return {
+            "total_gb": total_gb,
+            "used_gb": used_gb,
+            "free_gb": free_gb,
+            "percent": percent,
+        }
+    return None
+
+
+def _storage_devices_snapshot(*, disk_path: str, windows_disk: dict | None) -> list[dict]:
+    now = time.monotonic()
+    cached = _storage_cache.get("data")
+    if cached and now - float(_storage_cache.get("ts") or 0.0) < 30.0:
+        return list(cached)
+
+    devices: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+
+    def add(device: dict | None) -> None:
+        if not device:
+            return
+        key = (str(device.get("kind")), str(device.get("path")))
+        if key in seen:
+            return
+        seen.add(key)
+        devices.append(device)
+
+    if windows_disk:
+        add({**windows_disk, "label": "NVMe Disk", "kind": "host-disk", "role": "nvme"})
+    add(_usage_payload("NVMe WSL", disk_path, kind="wsl-root", role="nvme"))
+
+    try:
+        registry = load_machine_registry()
+    except Exception as exc:  # noqa: BLE001
+        log.warning("storage_devices registry load failed: %s", exc)
+        registry = {"machines": []}
+
+    hostname_token = "".join(ch for ch in HOSTNAME.lower() if ch.isalnum())
+    for machine in registry.get("machines", []):
+        machine_name = str(machine.get("name", ""))
+        machine_token = "".join(ch for ch in machine_name.lower() if ch.isalnum())
+        aliases = ["".join(ch for ch in str(a).lower() if ch.isalnum()) for a in machine.get("aliases", [])]
+        is_current_machine = (
+            hostname_token == machine_token
+            or hostname_token.startswith(machine_token)
+            or machine_token in hostname_token
+            or hostname_token in aliases
+        )
+        if not is_current_machine:
+            continue
+        for pool in machine.get("runner_pools", []):
+            storage = pool.get("storage") or {}
+            tier = str(pool.get("storage_tier") or storage.get("disk_bus") or pool.get("name") or "").lower()
+            label_prefix = "SSD" if "ssd" in tier and "nvme" not in tier else "NVMe"
+            host_mount = _host_drive_mount(storage.get("host_drive"))
+            if host_mount:
+                add(
+                    _usage_payload(
+                        f"{label_prefix} Disk",
+                        host_mount,
+                        kind="host-disk",
+                        role=label_prefix.lower(),
+                        metadata={
+                            "host_drive": storage.get("host_drive"),
+                            "disk_bus": storage.get("disk_bus"),
+                            "disk_media_type": storage.get("disk_media_type"),
+                        },
+                    )
+                )
+            distro = storage.get("wsl_distro")
+            current_distro_names = {os.environ.get("WSL_DISTRO_NAME"), "WSL"}
+            if distro and distro not in current_distro_names:
+                usage = _df_root_for_wsl_distro(str(distro))
+                if usage:
+                    usage.update(
+                        {
+                            "label": f"{label_prefix} WSL",
+                            "kind": "wsl-root",
+                            "role": label_prefix.lower(),
+                            "path": f"{distro}:/",
+                            "wsl_distro": distro,
+                            "pressure": _disk_pressure_snapshot(
+                                path=f"{distro}:/",
+                                total_gb=usage["total_gb"],
+                                used_gb=usage["used_gb"],
+                                free_gb=usage["free_gb"],
+                                percent=usage["percent"],
+                            ),
+                        }
+                    )
+                    add(usage)
+
+    _storage_cache.update({"ts": now, "data": list(devices)})
+    return devices
 
 
 def _disk_pressure_snapshot(
@@ -362,6 +606,15 @@ def _get_system_metrics_sync() -> dict[str, Any]:
                 "used_gb": round(mem.used / (1024**3), 1),
                 "available_gb": round(mem.available / (1024**3), 1),
                 "percent": mem.percent,
+                "source": "windows-host",
+                "host": {
+                    "total_gb": round(mem.total / (1024**3), 1),
+                    "used_gb": round(mem.used / (1024**3), 1),
+                    "available_gb": round(mem.available / (1024**3), 1),
+                    "percent": mem.percent,
+                    "stale": False,
+                },
+                "wsl": None,
                 "swap_total_gb": round(swap.total / (1024**3), 1),
                 "swap_used_gb": round(swap.used / (1024**3), 1),
                 "swap_percent": swap.percent,
@@ -374,6 +627,7 @@ def _get_system_metrics_sync() -> dict[str, Any]:
                 "percent": disk_percent,
                 "pressure": disk_pressure,
                 "windows_host": None,
+                "storage_devices": _storage_devices_snapshot(disk_path=disk_path, windows_disk=None),
             },
             "network": {
                 "bytes_sent": net.bytes_sent,
@@ -451,6 +705,25 @@ def _get_system_metrics_sync() -> dict[str, Any]:
     gpu = get_gpu_info()
     hardware_specs = _local_hardware_specs(gpu)
 
+    host_memory = (
+        {
+            "total_gb": host_resources["memory_total_gb"],
+            "used_gb": host_resources["memory_used_gb"],
+            "available_gb": host_resources["memory_available_gb"],
+            "percent": host_resources["memory_percent"],
+            "stale": bool(host_resources.get("stale")),
+            "probe_error": host_resources.get("probe_error"),
+        }
+        if host_resources
+        else None
+    )
+    wsl_memory = {
+        "total_gb": round(mem.total / (1024**3), 1),
+        "used_gb": round(mem.used / (1024**3), 1),
+        "available_gb": round(mem.available / (1024**3), 1),
+        "percent": mem.percent,
+    }
+
     return {
         "hostname": HOSTNAME,
         "platform": platform.platform(),
@@ -470,7 +743,7 @@ def _get_system_metrics_sync() -> dict[str, Any]:
             "load_avg_15m": round(load_avg[2], 2),
         },
         "memory": {
-            "host_total_gb": _host_memory_gb,
+            "host_total_gb": (host_resources["memory_total_gb"] if host_resources else _host_memory_gb),
             "wsl_total_gb": round(mem.total / (1024**3), 1),
             "total_gb": (
                 host_resources["memory_total_gb"]
@@ -482,7 +755,15 @@ def _get_system_metrics_sync() -> dict[str, Any]:
                 host_resources["memory_available_gb"] if host_resources else round(mem.available / (1024**3), 1)
             ),
             "percent": host_resources["memory_percent"] if host_resources else mem.percent,
-            "source": "windows-host" if host_resources else "wsl",
+            "source": (
+                "windows-host-stale"
+                if host_resources and host_resources.get("stale")
+                else "windows-host"
+                if host_resources
+                else "wsl"
+            ),
+            "host": host_memory,
+            "wsl": wsl_memory,
             "swap_total_gb": round(swap.total / (1024**3), 1),
             "swap_used_gb": round(swap.used / (1024**3), 1),
             "swap_percent": swap.percent,
@@ -495,6 +776,7 @@ def _get_system_metrics_sync() -> dict[str, Any]:
             "percent": disk_percent,
             "pressure": disk_pressure,
             "windows_host": windows_disk,
+            "storage_devices": _storage_devices_snapshot(disk_path=disk_path, windows_disk=windows_disk),
         },
         "network": {
             "bytes_sent": net.bytes_sent,

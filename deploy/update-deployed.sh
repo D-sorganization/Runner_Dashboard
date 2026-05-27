@@ -152,7 +152,7 @@ fi
 
 # ── Health-gate: verify service came up ──────────────────────────────────────
 _check_health() {
-    curl -fsS --max-time 10 http://localhost:8321/healthz >/dev/null 2>&1
+    curl -fsS --max-time 10 http://localhost:8321/health >/dev/null 2>&1
 }
 
 _wait_healthy() {

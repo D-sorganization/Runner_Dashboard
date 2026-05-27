@@ -1071,11 +1071,10 @@ bash deploy/setup.sh --runners 4 --machine-name ControlTower --role hub
 Fleet node examples:
 
 ```bash
-bash deploy/setup.sh --runners 1 --machine-name Brick-Windows
 bash deploy/setup.sh --runners 8 --machine-name OG-Laptop
 bash deploy/setup.sh --runners 8 --machine-name DeskComputer --runner-aliases desktop
 bash deploy/setup.sh --runners 8 --machine-name ControlTower --role hub \
-  --fleet-nodes "Brick-Windows:http://100.64.12.5:8321,OG-Laptop:http://100.64.12.7:8321,DeskComputer:http://100.64.12.9:8321"
+  --fleet-nodes "OG-Laptop:http://100.64.12.7:8321,DeskComputer:http://100.64.12.9:8321"
 ```
 
 Node-specific runner counts in the setup script examples must reflect the

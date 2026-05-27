@@ -443,6 +443,9 @@ def merge_registry_with_live_nodes(
             merged_node["hardware_specs"] = hardware_specs
             merged_node["workload_capacity"] = _workload_capacity_from_hardware(hardware_specs)
             seen.add(_normalize_token(str(registry_entry.get("name", ""))))
+            parent_machine = registry_entry.get("parent_machine")
+            if parent_machine:
+                seen.add(_normalize_token(str(parent_machine)))
         merged.append(merged_node)
 
     for entry in _iter_registry_entries(registry):
