@@ -56,7 +56,7 @@ machines:
           - controltower-ssd
           - control-tower-ssd
           - controltower-bulk
-        dashboard_url: http://100.95.177.68:8321
+        dashboard_url: http://127.0.0.1:8322
         storage_tier: ssd
         runner_base_dir: /home/dieterolson/actions-runners
         runner_labels:
