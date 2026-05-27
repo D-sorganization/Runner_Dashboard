@@ -195,6 +195,16 @@ def test_windows_host_resource_snapshot_uses_absolute_powershell_fallback(monkey
         "uname",
         lambda: type("Uname", (), {"release": "6.6.87.2-microsoft-standard-WSL2"})(),
     )
+    # Pin the candidate list so the test does not depend on the runner's
+    # actual /mnt/* drives (e.g. ControlTower-SSD runners mount /mnt/d).
+    monkeypatch.setattr(
+        system_utils,
+        "get_powershell_candidates",
+        lambda: [
+            "powershell.exe",
+            "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe",
+        ],
+    )
     calls = []
 
     def fake_run(args, **_kwargs):
