@@ -1,14 +1,23 @@
 # SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.37
+**Spec Version:** 2.5.38
 **Application Version:** 4.1.1 (see `VERSION`)
-**Last Updated:** 2026-05-26T10:40:00-07:00
+**Last Updated:** 2026-05-27T06:33:00-07:00
 **Status:** Active
 
 ### Recent Spec Updates
 
 - **2026-05-26 (2.5.37):** Fixed pre-existing TestErrorHandling test pollution in `tests/api/test_routers_runners.py`. Earlier tests in `TestGetRunners` populate two pieces of module-level state — `cache_utils._cache` (TTL cache) and `runners_router._last_successful_runners` (degraded-mode fallback). Once populated, the API-error / rate-limit tests in `TestErrorHandling` received `source='cache'` instead of `'unavailable'`/`429`, because the endpoint falls back to the last-known-good response when the mocked GitHub call fails. The actual root cause was the global, not just the cache. Added an autouse fixture on `TestErrorHandling` that clears both pieces of state before and after each test. 33/33 passing locally (was 31 pass + 2 fail).
 - **2026-05-26 (2.5.36):** Comprehensive autoscaler-corruption recovery + VS Code blank-window fix. New `backend/runner_state_cleanup.py` module removes orphaned `$HOME/.gitconfig.lock` (and stale per-worktree git locks older than 60s) after every autoscaler stop — recovering from the fleet-wide outage signature where a SIGTERM mid-`git config --global` poisons every subsequent `actions/checkout` on the host (Runner_Dashboard#640). Cleanup is invoked from `_stop_unit` on every stop path and mirrored in `deploy/runner-hooks/job-started.sh`. `backend/routers/credentials.py` Cline detection uses a new `_resolve_vscode_cli` helper that prefers `code.cmd` over `Code.exe` on Windows and a `_vscode_has_extension` helper that passes `CREATE_NO_WINDOW`. 7 new unit tests + 3 updated; 25/25 passing.
+- **2026-05-26 (2.5.35):** Added the ControlTower workflow-routing policy
+  contract for issue `#757`. `config/workflow_runner_routing_policy.json`
+  now defines the future `d-sorg-fleet-bulk`, `d-sorg-fleet-fast-io`,
+  `d-sorg-fleet-docker`, and `d-sorg-fleet-nvme` label taxonomy, while
+  `scripts/check_workflow_runner_routing.py` performs an offline audit that
+  fails only on explicit tier misuse and reports neutral-label migration
+  recommendations. `docs/runbooks/runner-routing-labels.md` is the operator
+  guide for the transition from today's neutral `d-sorg-fleet` label to the
+  planned dual-tier NVMe/HDD host.
 - **2026-05-26 (2.5.35):** Hardened split-disk/NVMe dashboard deployments.
   `deploy/setup.sh` now accepts `--runner-base-dir` and `--deploy-dir`, installs
   locked runtime dependencies into the deployed `.venv`, and templates
@@ -21,7 +30,6 @@
   the selected distro warm without restarting all WSL instances. The diagnostics
   and runner APIs report degraded fleet-node state instead of failing requests
   when remote runner hosts are unhealthy.
-
 - **2026-05-26 (2.5.35):** Clarified the `/api/health` contract after the
   GitHub admin helper signature repair. Health polling now calls the shared
   GitHub runner-list helper with its supported endpoint-only signature instead

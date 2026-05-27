@@ -1,0 +1,65 @@
+{
+  "neutral_labels": ["d-sorg-fleet", "self-hosted"],
+  "label_taxonomy": {
+    "d-sorg-fleet-bulk": {
+      "purpose": "Default HDD-tier label for lightweight audits, governance workflows, docs checks, and read-mostly maintenance."
+    },
+    "d-sorg-fleet-docker": {
+      "purpose": "Container-build label for Docker image builds, Trivy scans, and jobs that churn layered caches."
+    },
+    "d-sorg-fleet-fast-io": {
+      "purpose": "Capability label for workflows that need high local I/O without being Docker-specific."
+    },
+    "d-sorg-fleet-nvme": {
+      "purpose": "Physical NVMe-tier label for the fastest pool when jobs need explicit placement."
+    }
+  },
+  "workflow_classes": {
+    "bulk": {
+      "description": "Lightweight maintenance, governance, and read-mostly workflows should stay on the bulk tier once the dual-pool host is live.",
+      "recommended_labels": ["d-sorg-fleet-bulk"],
+      "forbidden_labels": [
+        "d-sorg-fleet-docker",
+        "d-sorg-fleet-fast-io",
+        "d-sorg-fleet-nvme"
+      ],
+      "workflows": [
+        "Agent-Fleet-Dashboard.yml",
+        "Agent-Lease-Reaper.yml",
+        "agent-panel-review.yml",
+        "Agent-Redundant-PR-Closer.yml",
+        "anti-phantom-merge.yml",
+        "ci-secrets.yml",
+        "ci-spec-check.yml",
+        "dependabot-auto-merge.yml",
+        "issue-taxonomy-backfill.yml",
+        "labels-sync.yml",
+        "lint-workflow-files.yml",
+        "spec-check-enhanced.yml",
+        "taxonomy-rollout.yml",
+        "Verify-Issue-Closure.yml",
+        "verify-tag.yml"
+      ]
+    },
+    "docker": {
+      "description": "Docker image builds and container security scans should avoid the HDD bulk tier.",
+      "recommended_labels": ["d-sorg-fleet-docker", "d-sorg-fleet-nvme"],
+      "forbidden_labels": ["d-sorg-fleet-bulk"],
+      "workflows": ["docker-build.yml"]
+    },
+    "fast-io": {
+      "description": "High-churn test/build workflows should prefer a fast-I/O or NVMe-capable label once tiered pools are available.",
+      "recommended_labels": ["d-sorg-fleet-fast-io", "d-sorg-fleet-nvme"],
+      "forbidden_labels": ["d-sorg-fleet-bulk"],
+      "workflows": [
+        "ci-nightly.yml",
+        "ci-standard.yml",
+        "frontend-tests.yml",
+        "Jules-Auto-Repair.yml",
+        "Jules-PR-AutoFix.yml",
+        "lockfile-upgrade.yml",
+        "release.yml"
+      ]
+    }
+  }
+}
