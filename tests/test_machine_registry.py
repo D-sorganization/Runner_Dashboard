@@ -197,15 +197,15 @@ def test_normalize_machine_entry_runner_pools() -> None:
             {
                 "name": "ControlTower-NVMe",
                 "aliases": "ct-fast",
-                "dashboard_url": "http://127.0.0.1:8322",
+                "dashboard_url": "http://127.0.0.1:8321",
                 "storage_tier": "nvme",
                 "runner_base_dir": "~/actions-runners-nvme",
                 "runner_labels": "d-sorg-fleet-nvme",
                 "runners": {"default": "4", "max": "8"},
                 "storage": {
                     "host_drive": "C:",
-                    "wsl_distro": "RunnerNVMe",
-                    "vhdx_path": "C:\\WSL\\RunnerNVMe\\ext4.vhdx",
+                    "wsl_distro": "WSL",
+                    "vhdx_path": "C:\\WSL\\ext4.vhdx",
                     "disk_bus": "NVMe",
                 },
             }
@@ -361,11 +361,11 @@ def test_merge_registry_runner_pool_placeholder_included() -> None:
                 "hardware": {},
                 "runner_pools": [
                     {
-                        "name": "ControlTower-HDD",
+                        "name": "ControlTower-SSD",
                         "aliases": [],
                         "dashboard_url": "http://127.0.0.1:8321",
                         "parent_machine": "ControlTower",
-                        "storage_tier": "hdd",
+                        "storage_tier": "ssd",
                     }
                 ],
             }
@@ -373,11 +373,11 @@ def test_merge_registry_runner_pool_placeholder_included() -> None:
     }
 
     merged = mr.merge_registry_with_live_nodes(live, registry)
-    pool = next(m for m in merged if m.get("name") == "ControlTower-HDD")
+    pool = next(m for m in merged if m.get("name") == "ControlTower-SSD")
 
     assert pool["role"] == "runner_pool"
     assert pool["parent_machine"] == "ControlTower"
-    assert pool["registry"]["storage_tier"] == "hdd"
+    assert pool["registry"]["storage_tier"] == "ssd"
 
 
 # ---------------------------------------------------------------------------

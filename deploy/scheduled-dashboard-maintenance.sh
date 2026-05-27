@@ -54,7 +54,7 @@ Options:
   --machine-name NAME          Machine display name (default: hostname)
   --role hub|node              Dashboard role (default: MACHINE_ROLE or node)
   --runners COUNT              Runner count hint for setup.sh (default: NUM_RUNNERS or 4)
-  --fleet-nodes CSV            Hub FLEET_NODES string, e.g. brick=http://100.x.x.x:8321
+  --fleet-nodes CSV            Hub FLEET_NODES string, e.g. oglaptop=http://100.x.x.x:8321
   --hub-url URL                Node HUB_URL for proxying GitHub/fleet APIs through hub
   --skip-git                   Do not git pull before deployment
   --skip-wsl-keepalive         Do not install/verify WSL keepalive layers
@@ -73,7 +73,7 @@ Scheduled-agent example:
   bash runner-dashboard/deploy/scheduled-dashboard-maintenance.sh \
     --role hub \
     --runners 8 \
-    --fleet-nodes "brick=http://100.96.15.94:8321,oglaptop=http://100.125.64.108:8321"
+    --fleet-nodes "oglaptop=http://100.125.64.108:8321,deskcomputer=http://100.122.254.109:8321"
 EOF
 }
 

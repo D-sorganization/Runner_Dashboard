@@ -541,10 +541,9 @@ function canonicalMachineName(name) {
     desk: "DeskComputer",
     oglaptop: "OGLaptop",
     og: "OGLaptop",
-    brick: "Brick",
-    brickwindows: "Brick",
-    bricklinux: "Brick",
     controltower: "ControlTower",
+    controltowernvme: "ControlTower",
+    controltowerssd: "ControlTower",
     controltowerrunnermonitoring: "ControlTower",
   };
   return aliases[key] || raw || "Unknown";
@@ -3514,7 +3513,6 @@ function MachineCard(p) {
   })();
   var mColors = {
     ControlTower: "var(--accent-purple)",
-    Brick: "var(--accent-green)",
     DeskComputer: "var(--accent-blue)",
     Oglaptop: "var(--accent-orange)",
   };
@@ -4093,7 +4091,7 @@ function MachinesTab(p) {
   }).length;
 
   // Build machine list from runners even if fleet nodes aren't reachable.
-  // Runner names are title-case (e.g. "Brick") but FLEET_NODES keys are
+  // Runner names are title-case but FLEET_NODES keys are
   // lowercase — match case-insensitively.
   var machineNames = Object.keys(runnersByMachine).sort(function (a, b) {
     return a === "ControlTower"
@@ -5039,7 +5037,6 @@ function SystemResourcesPanel(p) {
 // ════════════════════════ HISTORY TAB ════════════════════════
 var MACHINE_COLORS = {
   ControlTower: "var(--accent-purple)",
-  Brick: "var(--accent-green)",
   DeskComputer: "var(--accent-blue)",
   Oglaptop: "var(--accent-orange)",
   GitHub: "var(--text-muted)",

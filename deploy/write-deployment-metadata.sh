@@ -33,9 +33,35 @@ except OSError:
     print("unknown")
 PY
 )
-GIT_SHA=$(git -C "$SOURCE_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")
-GIT_BRANCH=$(git -C "$SOURCE_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
-GIT_DIRTY=$([ -z "$(git -C "$SOURCE_DIR" status --porcelain)" ] && echo "false" || echo "true")
+git_value() {
+  local git_dir=""
+  if [[ -f "$SOURCE_DIR/.git" ]]; then
+    git_dir=$(sed -n 's/^gitdir: //p' "$SOURCE_DIR/.git" | head -n 1)
+    if [[ "$git_dir" =~ ^([A-Za-z]):/(.*)$ ]]; then
+      local drive="${BASH_REMATCH[1],,}"
+      git_dir="/mnt/${drive}/${BASH_REMATCH[2]}"
+    elif [[ -n "$git_dir" && "$git_dir" != /* ]]; then
+      git_dir="$SOURCE_DIR/$git_dir"
+    fi
+  fi
+
+  if [[ -n "$git_dir" ]]; then
+    git --git-dir="$git_dir" --work-tree="$SOURCE_DIR" "$@" 2>/dev/null || true
+  else
+    git -C "$SOURCE_DIR" "$@" 2>/dev/null || true
+  fi
+}
+
+GIT_SHA=$(git_value rev-parse HEAD)
+GIT_BRANCH=$(git_value rev-parse --abbrev-ref HEAD)
+GIT_STATUS=$(git_value status --porcelain)
+GIT_SHA=${GIT_SHA:-unknown}
+GIT_BRANCH=${GIT_BRANCH:-unknown}
+if [[ "$GIT_STATUS" == "__git_unavailable__" ]]; then
+  GIT_DIRTY=true
+else
+  GIT_DIRTY=$([ -z "$GIT_STATUS" ] && echo "false" || echo "true")
+fi
 DEPLOYED_AT=$(date -Iseconds)
 HOSTNAME=$(hostname)
 ARTIFACT_SCHEMA="${RUNNER_DASHBOARD_ARTIFACT_SCHEMA:-runner-dashboard-artifact-v1}"

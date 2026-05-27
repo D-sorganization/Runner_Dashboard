@@ -57,7 +57,7 @@ Environment=PATH=/usr/lib/wsl/lib:/home/YOUR_USER/.local/bin:/home/YOUR_USER/.ca
 # File: /home/YOUR_USER/.config/runner-dashboard/env
 # Contents:
 #   GH_TOKEN=ghp_<classic PAT with scopes: repo, admin:org>
-#   FLEET_NODES=Linux-Brick:http://100.x.x.a:8321,...   (once nodes are live)
+#   FLEET_NODES=OGLaptop:http://100.x.x.a:8321,...   (once nodes are live)
 EnvironmentFile=-/home/YOUR_USER/.config/runner-dashboard/env
 
 # Hardening (issue #391)

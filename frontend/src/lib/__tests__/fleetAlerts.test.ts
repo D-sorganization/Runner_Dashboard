@@ -12,13 +12,12 @@ import {
 } from "../fleetAlerts";
 
 const baseState: FleetState = {
-  machineCount: 4,
-  machineOnline: 4,
+  machineCount: 3,
+  machineOnline: 3,
   machineNodes: [
     { name: "ControlTower", online: true },
     { name: "DeskComputer", online: true },
     { name: "OGLaptop", online: true },
-    { name: "Brick", online: true },
   ],
   watchdog: { status: "healthy" },
   stats: { success_rate: 95, runs_success: 95 },
@@ -49,12 +48,11 @@ describe("computeFleetAlerts — Rule 1: machines offline", () => {
   it("flags critical when one machine is offline", () => {
     const result = computeFleetAlerts({
       ...baseState,
-      machineOnline: 3,
+      machineOnline: 2,
       machineNodes: [
         { name: "ControlTower", online: true },
         { name: "DeskComputer", online: true },
-        { name: "OGLaptop", online: true },
-        { name: "Brick", online: false },
+        { name: "OGLaptop", online: false },
       ],
     });
     expect(result.level).toBe("critical");
@@ -62,29 +60,28 @@ describe("computeFleetAlerts — Rule 1: machines offline", () => {
     expect(result.alerts[0]).toMatchObject({
       level: "critical",
       title: "1 machine(s) offline",
-      detail: "Brick",
+      detail: "OGLaptop",
     });
   });
 
   it("lists multiple offline machine names in the detail", () => {
     const result = computeFleetAlerts({
       ...baseState,
-      machineOnline: 2,
+      machineOnline: 1,
       machineNodes: [
         { name: "ControlTower", online: true },
-        { name: "DeskComputer", online: true },
+        { name: "DeskComputer", online: false },
         { name: "OGLaptop", online: false },
-        { name: "Brick", online: false },
       ],
     });
     expect(result.alerts[0].title).toBe("2 machine(s) offline");
-    expect(result.alerts[0].detail).toBe("OGLaptop, Brick");
+    expect(result.alerts[0].detail).toBe("DeskComputer, OGLaptop");
   });
 
   it("falls back to a generic detail when no machine names are available", () => {
     const result = computeFleetAlerts({
       ...baseState,
-      machineOnline: 3,
+      machineOnline: 2,
       machineNodes: [],
     });
     expect(result.alerts[0].detail).toBe("see Machine Health below");
@@ -202,12 +199,11 @@ describe("computeFleetAlerts — severity rollup", () => {
   it("critical dominates warning when both are present", () => {
     const result = computeFleetAlerts({
       ...baseState,
-      machineOnline: 3, // critical
+      machineOnline: 2, // critical
       machineNodes: [
         { name: "ControlTower", online: true },
         { name: "DeskComputer", online: true },
-        { name: "OGLaptop", online: true },
-        { name: "Brick", online: false },
+        { name: "OGLaptop", online: false },
       ],
       runnerAudit: { violations: [{}] }, // warning
     });
@@ -218,9 +214,8 @@ describe("computeFleetAlerts — severity rollup", () => {
   it("emits alerts in stable rule order (machines → watchdog → success → hosted)", () => {
     const result = computeFleetAlerts({
       ...baseState,
-      machineOnline: 3,
+      machineOnline: 2,
       machineNodes: [
-        { name: "A", online: true },
         { name: "A", online: true },
         { name: "A", online: true },
         { name: "B", online: false },
