@@ -23,12 +23,12 @@ ExecStartPre=/home/YOUR_USER/actions-runners/dashboard/refresh-token.sh
 # WSL2 mirrored networking the dashboard cannot bind a port that Windows
 # tailscaled is already serving (recurring crash loop, see
 # deploy/wsl-mirrored-port-helper.sh for the full story). No-op outside WSL.
-ExecStartPre=/home/YOUR_USER/actions-runners/dashboard/wsl-mirrored-port-helper.sh clear --port 8321
+ExecStartPre=/home/YOUR_USER/actions-runners/dashboard/wsl-mirrored-port-helper.sh clear --port ${DASHBOARD_PORT}
 ExecStart=/home/YOUR_USER/actions-runners/dashboard/.venv/bin/python /home/YOUR_USER/actions-runners/dashboard/backend/server.py
 # Restore the Tailnet bridge after the dashboard is bound. ``Type=notify``
 # means systemd only runs ExecStartPost after the dashboard signals
 # sd_notify(READY=1), so the bind has already succeeded by this point.
-ExecStartPost=-/home/YOUR_USER/actions-runners/dashboard/wsl-mirrored-port-helper.sh restore --port 8321
+ExecStartPost=-/home/YOUR_USER/actions-runners/dashboard/wsl-mirrored-port-helper.sh restore --port ${DASHBOARD_PORT}
 ExecStopPost=-/home/YOUR_USER/actions-runners/dashboard/collect-crash-diagnostics.sh runner-dashboard.service
 Restart=always
 RestartSec=5
