@@ -46,21 +46,28 @@ class Probe(Protocol):
 
 
 class GhTokenProbe:
-    """Check that GH_TOKEN is present in the environment.
+    """Check that GitHub credentials are present in the environment.
 
     We do not make a live GitHub API call here — that would introduce I/O
     latency and a GitHub-outage → restart-loop regression (#332).  The probe
-    only verifies the token is loaded; actual API reachability is surfaced via
+    only verifies credentials are loaded; actual API reachability is surfaced via
     ``/api/health`` (the human-readable composite view).
     """
 
     name = "github_token"
 
     async def check(self) -> tuple[ProbeStatus, str | None]:
+        app_id = os.environ.get("GITHUB_APP_ID", "").strip()
+        installation_id = os.environ.get("GITHUB_APP_INSTALLATION_ID", "").strip()
+        private_key = os.environ.get("GITHUB_APP_PRIVATE_KEY", "").strip()
+        private_key_file = os.environ.get("GITHUB_APP_PRIVATE_KEY_FILE", "").strip()
+        if app_id and installation_id and (private_key or private_key_file):
+            return "ok", "GitHub App auth configured"
+
         token = os.environ.get("GH_TOKEN", "").strip()
         if token:
             return "ok", None
-        return "down", "GH_TOKEN env var not set"
+        return "down", "GitHub App auth or GH_TOKEN env var not set"
 
 
 class GhCliProbe:
