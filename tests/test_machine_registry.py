@@ -380,6 +380,40 @@ def test_merge_registry_runner_pool_placeholder_included() -> None:
     assert pool["registry"]["storage_tier"] == "ssd"
 
 
+def test_merge_registry_live_child_pool_satisfies_parent_machine() -> None:
+    live = [{"name": "ControlTower-NVMe", "online": True, "system": {}, "health": {}}]
+    registry = {
+        "machines": [
+            {
+                "name": "ControlTower",
+                "aliases": [],
+                "hardware": {},
+                "dashboard_url": "http://100.95.177.68:8321",
+                "runner_pools": [
+                    {
+                        "name": "ControlTower-NVMe",
+                        "aliases": [],
+                        "dashboard_url": "http://100.95.177.68:8321",
+                        "parent_machine": "ControlTower",
+                    },
+                    {
+                        "name": "ControlTower-SSD",
+                        "aliases": [],
+                        "dashboard_url": "http://100.95.177.68:8321",
+                        "parent_machine": "ControlTower",
+                    },
+                ],
+            }
+        ]
+    }
+
+    merged = mr.merge_registry_with_live_nodes(live, registry)
+
+    assert [node["name"] for node in merged] == ["ControlTower-NVMe", "ControlTower-SSD"]
+    assert merged[0]["registry"]["parent_machine"] == "ControlTower"
+    assert merged[1]["role"] == "runner_pool"
+
+
 # ---------------------------------------------------------------------------
 # Path validation — issue: the YAML ships under backend/ but the security
 # validator only allowed ~/.config/runner-dashboard/ + git-repo-root. On
