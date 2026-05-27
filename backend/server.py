@@ -1473,7 +1473,6 @@ async def _watchdog_status_impl() -> dict:
 
 
 _FLEET_NODES_CACHE_TTL_S = 10.0
-_FLEET_REMOTE_FANOUT_TIMEOUT_S = 3.0
 
 
 async def _collect_live_fleet_nodes() -> list[dict]:
@@ -1559,29 +1558,11 @@ async def _collect_live_fleet_nodes() -> list[dict]:
     ]
 
     if FLEET_NODES:
-        try:
-            remote = await asyncio.wait_for(
-                asyncio.gather(*[fetch_node(name, url) for name, url in FLEET_NODES.items()]),
-                timeout=_FLEET_REMOTE_FANOUT_TIMEOUT_S,
-            )
-        except TimeoutError:
-            remote = [
-                {
-                    "name": name,
-                    "url": url,
-                    "online": False,
-                    "dashboard_reachable": False,
-                    "is_local": False,
-                    "role": "node",
-                    "system": {},
-                    "health": {},
-                    "last_seen": None,
-                    "error": f"fleet node fanout exceeded {_FLEET_REMOTE_FANOUT_TIMEOUT_S:.1f}s",
-                    "offline_reason": "timeout",
-                    "offline_detail": "Remote node probe timed out before the dashboard budget expired.",
-                }
-                for name, url in FLEET_NODES.items()
-            ]
+        # Each node probe already has its own httpx timeout. Avoid a shorter
+        # global gather timeout here: one slow machine should not make every
+        # remote node look offline or suppress metrics from a slow-but-live
+        # dashboard.
+        remote = await asyncio.gather(*[fetch_node(name, url) for name, url in FLEET_NODES.items()])
         nodes.extend(remote)
 
     return nodes
