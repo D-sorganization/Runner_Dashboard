@@ -266,9 +266,11 @@ async def _request(method: str, path: str, *, json: Any = None) -> httpx.Respons
                 attempt + 1,
             )
             last_exc = GhRateLimited(retry_after_seconds=retry_after, endpoint=path)
-            if attempt < _MAX_RETRIES - 1:
-                await asyncio.sleep(min(retry_after, 32))
-            continue
+            # A dashboard request handler must not sleep for GitHub's reset
+            # window. Under fleet backlogs the UI fans out across many repos;
+            # retrying each call for 30s+ makes the backend look offline and
+            # multiplies pressure on the same exhausted token.
+            raise last_exc
         if resp.status_code >= 500:
             backoff = min(2**attempt + random.uniform(0, 1), 32)
             log.warning(

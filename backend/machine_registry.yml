@@ -1,5 +1,5 @@
 version: 1
-updated_at: 2026-04-17
+updated_at: 2026-05-27
 machines:
   - name: ControlTower
     aliases:
@@ -22,37 +22,12 @@ machines:
       - X64
       - d-sorg-fleet
     runner_pools:
-      - name: ControlTower-HDD
-        aliases:
-          - controltower-hdd
-          - control-tower-hdd
-        dashboard_url: http://100.95.177.68:8321
-        storage_tier: hdd
-        runner_base_dir: /home/dieterolson/actions-runners
-        runner_labels:
-          - self-hosted
-          - Linux
-          - X64
-          - d-sorg-fleet
-          - d-sorg-fleet-bulk
-        runners:
-          min: 2
-          default: 6
-          max: 8
-        storage:
-          host_drive: "D:"
-          windows_host_path: "D:\\WSL"
-          wsl_distro: Ubuntu
-          vhdx_path: "D:\\WSL\\ext4.vhdx"
-          disk_bus: SATA
-          disk_media_type: HDD
-          cache_budget_gb: 180
       - name: ControlTower-NVMe
         aliases:
           - controltower-nvme
           - control-tower-nvme
           - controltower-fast
-        dashboard_url: http://100.95.177.68:8322
+        dashboard_url: http://100.95.177.68:8321
         storage_tier: nvme
         runner_base_dir: /home/dieterolson/actions-runners-nvme
         runner_labels:
@@ -63,18 +38,48 @@ machines:
           - d-sorg-fleet-nvme
           - d-sorg-fleet-fast-io
           - d-sorg-fleet-docker
+          - d-sorg-fleet-4core
         runners:
-          min: 1
-          default: 4
+          min: 4
+          default: 8
           max: 8
         storage:
           host_drive: "C:"
-          windows_host_path: "C:\\WSL\\RunnerNVMe"
-          wsl_distro: RunnerNVMe
-          vhdx_path: "C:\\WSL\\RunnerNVMe\\ext4.vhdx"
+          windows_host_path: "C:\\WSL"
+          wsl_distro: WSL
+          vhdx_path: "C:\\WSL\\ext4.vhdx"
           disk_bus: NVMe
           disk_media_type: SSD
           cache_budget_gb: 120
+      - name: ControlTower-SSD
+        aliases:
+          - controltower-ssd
+          - control-tower-ssd
+          - controltower-bulk
+        dashboard_url: http://100.95.177.68:8321
+        storage_tier: ssd
+        runner_base_dir: /home/dieterolson/actions-runners
+        runner_labels:
+          - self-hosted
+          - Linux
+          - X64
+          - d-sorg-fleet
+          - d-sorg-fleet-ssd
+          - d-sorg-fleet-fast-io
+          - d-sorg-fleet-docker
+          - d-sorg-fleet-4core
+        runners:
+          min: 4
+          default: 8
+          max: 8
+        storage:
+          host_drive: "F:"
+          windows_host_path: "F:\\WSL\\ControlTower-SSD"
+          wsl_distro: ControlTower-SSD
+          vhdx_path: "F:\\WSL\\ControlTower-SSD\\ext4.vhdx"
+          disk_bus: SATA
+          disk_media_type: SSD
+          cache_budget_gb: 360
     hardware:
       cpu_model: null
       cpu_physical_cores: null
@@ -86,49 +91,16 @@ machines:
       workload_tags:
         - hub
         - control-plane
+        - fast-io
+        - parallel-ci
     maintenance:
       owner: fleet-ops
       allow_auto_stop: false
       preferred_window: Saturdays 10:00-12:00 UTC
-      notes: Keep the hub online; maintenance jobs should treat this as read-mostly.
-  - name: Brick
-    aliases:
-      - brick
-      - brick-linux
-      - brick-windows
-    display_name: Brick
-    role: node
-    dashboard_url: http://100.96.15.94:8321
-    tailscale_nodes:
-      - name: brick-linux
-        ip: 100.96.15.94
-        transport: wsl2
-        preferred: true
-      - name: brick-windows
-        ip: 100.109.127.61
-        transport: windows
-    runner_labels:
-      - self-hosted
-      - Linux
-      - X64
-      - d-sorg-fleet
-      - d-sorg-fleet-2core
-    hardware:
-      cpu_model: null
-      cpu_physical_cores: null
-      cpu_logical_cores: null
-      memory_gb: null
-      disk_total_gb: null
-      gpu_vram_gb: null
-      accelerators: []
-      workload_tags:
-        - small-ci
-        - node
-    maintenance:
-      owner: fleet-ops
-      allow_auto_stop: true
-      preferred_window: Sundays 10:00-14:00 UTC
-      notes: Use the WSL2 node as the stable dashboard target.
+      notes: >
+        Keep the hub online. The retired D: HDD pool has been removed from
+        the active registry; ControlTower now runs eight NVMe-backed runners
+        in the WSL distro and eight SSD-backed runners in ControlTower-SSD.
   - name: OGLaptop
     aliases:
       - og-laptop

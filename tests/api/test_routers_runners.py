@@ -559,6 +559,7 @@ class TestErrorHandling:
             raise RuntimeError(msg)
 
         monkeypatch.setattr(runners_router, "gh_api_admin", failing_api)
+        monkeypatch.setattr(runners_router, "_last_successful_runners", None)
 
         response = client.get("/api/runners")
         assert response.status_code == 200
@@ -576,6 +577,7 @@ class TestErrorHandling:
         """GitHub rate limits surface as 429 with machine-readable backoff."""
         del mock_cache
         gh_utils.clear_rate_limit_breakers()
+        monkeypatch.setattr(runners_router, "_last_successful_runners", None)
 
         import gh_client
 

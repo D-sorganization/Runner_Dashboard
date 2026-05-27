@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import os
 import time
 from pathlib import Path
 from typing import Any
@@ -71,9 +72,14 @@ class LeaseRecord(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+def _default_config_dir() -> Path:
+    configured = os.environ.get("RUNNER_DASHBOARD_CONFIG_DIR")
+    return Path(configured).expanduser() if configured else Path("~/.config/runner-dashboard").expanduser()
+
+
 class LeaseManager:
-    def __init__(self, config_dir: Path = Path("config")):
-        self.config_dir = config_dir
+    def __init__(self, config_dir: Path | None = None):
+        self.config_dir = config_dir or _default_config_dir()
         self.leases_path = self.config_dir / "leases.yml"
         self.leases: list[LeaseRecord] = []
         self.load_leases()

@@ -34,6 +34,7 @@ from models.github_payloads import GhJob, GhWorkflowRun
 from proxy_utils import proxy_to_hub, should_proxy_fleet_to_hub
 from security import validate_repo_slug
 from system_utils import run_cmd
+from workflow_analysis import infer_machine_from_runner_name, summarize_runs_by_workflow_and_machine
 
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 datetime = _dt_mod.datetime
@@ -91,7 +92,7 @@ async def _enrich_run_with_job_placement(run: dict) -> dict:
     repo = validate_repo_slug(repo)
     try:
         data = await gh_api(f"/repos/{ORG}/{repo}/actions/runs/{run_id}/jobs")
-        enriched["jobs"] = [
+        jobs = [
             {
                 "id": job.id,
                 "name": job.name,
@@ -104,6 +105,12 @@ async def _enrich_run_with_job_placement(run: dict) -> dict:
             }
             for job in (GhJob.from_api_dict(j) for j in data.get("jobs", []))
         ]
+        runner_names = [str(job["runner_name"]) for job in jobs if job.get("runner_name")]
+        enriched["jobs"] = jobs
+        enriched["runner_names"] = runner_names
+        if runner_names:
+            enriched["runner_name"] = runner_names[0]
+            enriched["machine_name"] = infer_machine_from_runner_name(runner_names[0])
     except Exception as e:  # noqa: BLE001
         if isinstance(e, (KeyboardInterrupt, SystemExit)):
             raise
@@ -217,6 +224,17 @@ async def get_enriched_runs(request: Request, per_page: int = 50) -> dict:
     result = {"workflow_runs": enriched, "total_count": len(enriched)}
     cache_set(cache_key, result)
     return result
+
+
+@router.get("/api/analysis/workflow-machines")
+async def get_workflow_machine_analysis(request: Request, per_page: int = 100) -> dict:
+    """Summarize recent workflow outcomes by machine and workflow."""
+    if should_proxy_fleet_to_hub(request):
+        return await proxy_to_hub(request)
+    bounded_per_page = max(10, min(per_page, 200))
+    data = await get_enriched_runs(request, per_page=bounded_per_page)
+    runs = data.get("workflow_runs", [])
+    return summarize_runs_by_workflow_and_machine(runs)
 
 
 @router.get("/api/runs/{repo}")

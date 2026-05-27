@@ -13,6 +13,7 @@ import asyncio
 import datetime as _dt_mod
 import logging
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -99,6 +100,44 @@ def _find_binary(name: str) -> str | None:
             return str(p)
 
     return None
+
+
+def _is_wsl() -> bool:
+    return "microsoft" in platform.uname().release.lower()
+
+
+def _should_probe_vscode_cli(binary: str | None) -> bool:
+    """Return true only when invoking ``code`` is safe and explicitly allowed.
+
+    On WSL, ``code`` usually resolves to the Windows VS Code bridge.  Even
+    read-looking commands such as ``code --list-extensions`` can start the GUI,
+    which caused repeated VS Code windows across runner hosts.  Keep the probe
+    filesystem-only by default; operators can opt in for an interactive machine.
+    """
+    if not binary:
+        return False
+    if os.environ.get("RUNNER_DASHBOARD_ALLOW_VSCODE_CLI_PROBE", "").lower() in {"1", "true", "yes"}:
+        return True
+    normalized = binary.replace("\\", "/").lower()
+    if _is_wsl() and (normalized.startswith("/mnt/") or normalized.endswith(".exe")):
+        return False
+    return not normalized.endswith(".exe")
+
+
+async def _vscode_extension_installed(extension_id: str, binary: str | None) -> bool:
+    if not _should_probe_vscode_cli(binary):
+        return False
+    try:
+        result = await asyncio.to_thread(
+            subprocess.run,
+            [binary or "code", "--list-extensions"],
+            capture_output=True,
+            text=True,
+            timeout=8,
+        )
+    except (OSError, subprocess.SubprocessError, TimeoutError):
+        return False
+    return extension_id in result.stdout
 
 
 def _env_source(key: str) -> str:
@@ -351,31 +390,28 @@ async def get_credentials(request: Request) -> dict:
         }
     )
 
-    # Cline (VS Code extension) — check globalStorage path AND `code --list-extensions`
+    # Cline (VS Code extension) — check globalStorage path and only use the VS
+    # Code CLI when it is explicitly safe. On WSL, the Windows `code` bridge
+    # can launch GUI windows even for read-looking extension probes.
     _cline_storage = Path.home() / ".config" / "Code" / "User" / "globalStorage" / "saoudrizwan.claude-dev"
     _cline_by_path = _cline_storage.exists()
-    _cline_by_ext = False
     _vscode_binary = shutil.which("code")
-    if _vscode_binary and not _cline_by_path:
-        try:
-            _ext_result = await asyncio.to_thread(
-                subprocess.run,
-                ["code", "--list-extensions"],
-                capture_output=True,
-                text=True,
-                timeout=8,
-            )
-            _cline_by_ext = "saoudrizwan.claude-dev" in _ext_result.stdout
-        except (OSError, subprocess.SubprocessError, TimeoutError):
-            pass
+    _cline_by_ext = (
+        await _vscode_extension_installed("saoudrizwan.claude-dev", _vscode_binary) if not _cline_by_path else False
+    )
     cline_installed = _cline_by_path or _cline_by_ext
+    vscode_cli_probe_skipped = _vscode_binary is not None and not _should_probe_vscode_cli(_vscode_binary)
     _cline_detail = (
         "VS Code extension installed (globalStorage)"
         if _cline_by_path
         else (
             "VS Code extension installed (code --list-extensions)"
             if _cline_by_ext
-            else ("VS Code found but Cline not installed" if _vscode_binary else "VS Code not found")
+            else (
+                "VS Code CLI probe skipped to avoid launching the desktop UI"
+                if vscode_cli_probe_skipped
+                else ("VS Code found but Cline not installed" if _vscode_binary else "VS Code not found")
+            )
         )
     )
     _cline_compatible_key = _env_present("ANTHROPIC_API_KEY") or _env_present("OPENAI_API_KEY")
@@ -386,6 +422,7 @@ async def get_credentials(request: Request) -> dict:
             "icon": "vscode",
             "installed": cline_installed,
             "vscode_found": _vscode_binary is not None,
+            "vscode_cli_probe_skipped": vscode_cli_probe_skipped,
             "compatible_key_set": _cline_compatible_key,
             "authenticated": cline_installed and _cline_compatible_key,
             "reachable": cline_installed,
@@ -516,22 +553,13 @@ async def get_cline_status(request: Request) -> dict:
     _require_local_request(request)
     _cline_storage = Path.home() / ".config" / "Code" / "User" / "globalStorage" / "saoudrizwan.claude-dev"
     _cline_by_path = _cline_storage.exists()
-    _cline_by_ext = False
     _vscode_binary = shutil.which("code")
-    if _vscode_binary and not _cline_by_path:
-        try:
-            _ext_result = await asyncio.to_thread(
-                subprocess.run,
-                ["code", "--list-extensions"],
-                capture_output=True,
-                text=True,
-                timeout=8,
-            )
-            _cline_by_ext = "saoudrizwan.claude-dev" in _ext_result.stdout
-        except (OSError, subprocess.SubprocessError, TimeoutError):
-            pass
+    _cline_by_ext = (
+        await _vscode_extension_installed("saoudrizwan.claude-dev", _vscode_binary) if not _cline_by_path else False
+    )
     cline_installed = _cline_by_path or _cline_by_ext
     _compatible_key = _env_present("ANTHROPIC_API_KEY") or _env_present("OPENAI_API_KEY")
+    vscode_cli_probe_skipped = _vscode_binary is not None and not _should_probe_vscode_cli(_vscode_binary)
     return {
         "status": (
             "extension_installed"
@@ -539,6 +567,7 @@ async def get_cline_status(request: Request) -> dict:
             else ("extension_installed" if cline_installed else "not_installed")
         ),
         "vscode_found": _vscode_binary is not None,
+        "vscode_cli_probe_skipped": vscode_cli_probe_skipped,
         "compatible_key_set": _compatible_key,
         "detail": (
             "Cline extension installed + compatible API key found"
@@ -546,7 +575,11 @@ async def get_cline_status(request: Request) -> dict:
             else (
                 "Cline extension installed; set ANTHROPIC_API_KEY or OPENAI_API_KEY"
                 if cline_installed
-                else "Cline not installed in VS Code"
+                else (
+                    "VS Code CLI probe skipped to avoid launching the desktop UI"
+                    if vscode_cli_probe_skipped
+                    else "Cline not installed in VS Code"
+                )
             )
         ),
     }

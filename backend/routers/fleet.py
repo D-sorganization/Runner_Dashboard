@@ -13,6 +13,7 @@ from dashboard_config import (
     MAX_RUNNERS,
     NUM_RUNNERS,
     ORG,
+    HttpTimeout,
 )
 from fastapi import APIRouter, Request
 from gh_utils import gh_api_admin
@@ -101,7 +102,7 @@ async def get_fleet_status(request: Request):
         try:
             async with httpx.AsyncClient() as client:
                 target = f"{url}/api/system"
-                resp = await client.get(target, timeout=5)
+                resp = await client.get(target, timeout=HttpTimeout.PROXY_NODE_SYSTEM_S)
                 if resp.status_code == 200:
                     data = resp.json()
                     data["_role"] = "node"
