@@ -222,6 +222,17 @@ def test_update_deployed_chmods_yaml_for_security_validator() -> None:
     assert "'*.yml'" in src and "'*.yaml'" in src and "'*.json'" in src
 
 
+def test_artifact_installer_chmods_yaml_for_security_validator() -> None:
+    """Artifact installs must also normalize copied config modes.
+
+    Otherwise a release artifact deployed from a Windows-mounted checkout can
+    pass CI and still break fleet federation at runtime.
+    """
+    src = _read(_DEPLOY / "install-dashboard-artifact.sh")
+    assert "chmod 0644" in src
+    assert "'*.yml'" in src and "'*.yaml'" in src and "'*.json'" in src
+
+
 # ─── Issues #688/#691: stale queue cleanup stays preview/capped ─────────────
 
 

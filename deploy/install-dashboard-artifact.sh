@@ -157,6 +157,9 @@ chmod +x "${DEPLOY_DIR}/refresh-token.sh"
 if [[ -d "${DEPLOY_DIR}/deploy" ]]; then
     find "${DEPLOY_DIR}/deploy" -maxdepth 1 -type f -name '*.sh' -exec chmod +x {} +
 fi
+find "${DEPLOY_DIR}/backend" -maxdepth 2 -type f \
+    \( -name '*.yml' -o -name '*.yaml' -o -name '*.json' \) \
+    -exec chmod 0644 {} + 2>/dev/null || true
 chmod 644 "${DEPLOY_DIR}/deployment.json"
 
 ok "Dashboard artifact installed to ${DEPLOY_DIR}"

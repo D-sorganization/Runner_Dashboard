@@ -100,6 +100,7 @@ from diagnostics.keepalive_inspector import (  # noqa: E402
     _probe_detail,
 )
 from error_models import from_http_exception, internal_error  # noqa: E402
+from fleet_autoconfig import derive_fleet_nodes_from_registry  # noqa: E402
 from http_clients import initialize_http_clients, shutdown_http_clients  # noqa: E402
 from local_app_monitoring import collect_local_apps  # noqa: E402
 from machine_registry import (  # noqa: E402
@@ -790,24 +791,13 @@ if _AUTODERIVE_FLEET and not FLEET_NODES:
         from machine_registry import load_machine_registry as _load_registry_for_fleet
 
         _registry = _load_registry_for_fleet()
-        _self = (os.environ.get("DISPLAY_NAME") or platform.node() or "").strip().lower()
-        for _machine in _registry.get("machines", []):
-            _name = str(_machine.get("name", "")).strip()
-            if not _name:
-                continue
-            _aliases = {str(a).strip().lower() for a in _machine.get("aliases", []) or []}
-            if _name.lower() == _self or _self in _aliases:
-                continue
-            # Prefer explicit dashboard_url; fall back to tailscale_nodes[].ip
-            _candidate_url = str(_machine.get("dashboard_url") or "").strip()
-            if not _candidate_url:
-                for _node in _machine.get("tailscale_nodes", []) or []:
-                    _ip = str(_node.get("ip", "")).strip()
-                    if _ip:
-                        _candidate_url = f"http://{_ip}:8321"
-                        break
-            if not _candidate_url:
-                continue
+        _derived_nodes = derive_fleet_nodes_from_registry(
+            _registry,
+            display_name=os.environ.get("DISPLAY_NAME"),
+            platform_node=platform.node(),
+            runner_aliases=os.environ.get("RUNNER_ALIASES"),
+        )
+        for _name, _candidate_url in _derived_nodes.items():
             try:
                 validate_fleet_node_url(_candidate_url)
                 FLEET_NODES[_name] = _candidate_url
