@@ -2,9 +2,10 @@
 # ==============================================================================
 # refresh-token.sh — Called by systemd ExecStartPre before the dashboard starts.
 #
-# Reads the current gh CLI token and writes it to the secrets EnvironmentFile.
-# This means re-authenticating with 'gh auth login' is all that's needed when
-# a token expires — no manual service file editing required.
+# Reads the current gh CLI token and writes it to the secrets EnvironmentFile as
+# a fallback credential. Normal dashboard GitHub API traffic should use GitHub
+# App installation auth when GITHUB_APP_ID, GITHUB_APP_INSTALLATION_ID, and a
+# private key path/value are present in the same EnvironmentFile.
 #
 # The token comes from gh's stored credentials (~/.config/gh/hosts.yml),
 # which are managed by Git Credential Manager (GCM) bridging to Windows
@@ -17,6 +18,12 @@ SECRETS_FILE="${HOME}/.config/runner-dashboard/env"
 mkdir -p "$(dirname "${SECRETS_FILE}")"
 touch "${SECRETS_FILE}"
 chmod 600 "${SECRETS_FILE}"
+
+if grep -Eq '^GITHUB_APP_ID=.+$' "${SECRETS_FILE}" \
+    && grep -Eq '^GITHUB_APP_INSTALLATION_ID=.+$' "${SECRETS_FILE}" \
+    && grep -Eq '^GITHUB_APP_PRIVATE_KEY(_FILE)?=.+$' "${SECRETS_FILE}"; then
+    echo "[refresh-token] GitHub App auth configured; refreshing GH_TOKEN fallback only" >&2
+fi
 
 TOKEN=$(gh auth token 2>/dev/null || echo "")
 

@@ -38,6 +38,10 @@ def test_get_token_reads_env(monkeypatch: pytest.MonkeyPatch) -> None:
     import gh_client
 
     gh_client.clear_token_cache()
+    monkeypatch.delenv("GITHUB_APP_ID", raising=False)
+    monkeypatch.delenv("GITHUB_APP_INSTALLATION_ID", raising=False)
+    monkeypatch.delenv("GITHUB_APP_PRIVATE_KEY", raising=False)
+    monkeypatch.delenv("GITHUB_APP_PRIVATE_KEY_FILE", raising=False)
     monkeypatch.setenv("GH_TOKEN", "test-token-abc")
     token = gh_client._get_token()
     assert token == "test-token-abc"
@@ -48,6 +52,10 @@ def test_get_token_cached(monkeypatch: pytest.MonkeyPatch) -> None:
     import gh_client
 
     gh_client.clear_token_cache()
+    monkeypatch.delenv("GITHUB_APP_ID", raising=False)
+    monkeypatch.delenv("GITHUB_APP_INSTALLATION_ID", raising=False)
+    monkeypatch.delenv("GITHUB_APP_PRIVATE_KEY", raising=False)
+    monkeypatch.delenv("GITHUB_APP_PRIVATE_KEY_FILE", raising=False)
     monkeypatch.setenv("GH_TOKEN", "tok1")
     gh_client._get_token()  # prime cache
     # change env — should not matter because token is cached
@@ -61,10 +69,46 @@ def test_get_token_raises_when_absent(monkeypatch: pytest.MonkeyPatch) -> None:
     import gh_client
 
     gh_client.clear_token_cache()
+    monkeypatch.delenv("GITHUB_APP_ID", raising=False)
+    monkeypatch.delenv("GITHUB_APP_INSTALLATION_ID", raising=False)
+    monkeypatch.delenv("GITHUB_APP_PRIVATE_KEY", raising=False)
+    monkeypatch.delenv("GITHUB_APP_PRIVATE_KEY_FILE", raising=False)
     monkeypatch.delenv("GH_TOKEN", raising=False)
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
     with pytest.raises(gh_client.GhAuthError):
         gh_client._get_token()
+    gh_client.clear_token_cache()
+
+
+def test_get_token_prefers_github_app(monkeypatch: pytest.MonkeyPatch) -> None:
+    import gh_client
+
+    gh_client.clear_token_cache()
+    monkeypatch.setenv("GITHUB_APP_ID", "12345")
+    monkeypatch.setenv("GITHUB_APP_INSTALLATION_ID", "67890")
+    monkeypatch.setenv("GITHUB_APP_PRIVATE_KEY", "fake-key")
+    monkeypatch.setenv("GH_TOKEN", "fallback-token")
+
+    with patch.object(gh_client, "_fetch_github_app_installation_token", return_value="installation-token"):
+        assert gh_client._get_token() == "installation-token"
+
+    assert gh_client.get_status()["auth_source"] == "github_app"
+    gh_client.clear_token_cache()
+
+
+def test_get_token_falls_back_when_github_app_exchange_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    import gh_client
+
+    gh_client.clear_token_cache()
+    monkeypatch.setenv("GITHUB_APP_ID", "12345")
+    monkeypatch.setenv("GITHUB_APP_INSTALLATION_ID", "67890")
+    monkeypatch.setenv("GITHUB_APP_PRIVATE_KEY", "fake-key")
+    monkeypatch.setenv("GH_TOKEN", "fallback-token")
+
+    with patch.object(gh_client, "_fetch_github_app_installation_token", side_effect=RuntimeError("boom")):
+        assert gh_client._get_token() == "fallback-token"
+
+    assert gh_client.get_status()["auth_source"] == "env_token"
     gh_client.clear_token_cache()
 
 

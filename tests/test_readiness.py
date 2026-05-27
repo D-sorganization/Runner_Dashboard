@@ -29,6 +29,10 @@ import readiness as r  # noqa: E402
 
 @pytest.mark.asyncio
 async def test_gh_token_probe_ok(monkeypatch) -> None:
+    monkeypatch.delenv("GITHUB_APP_ID", raising=False)
+    monkeypatch.delenv("GITHUB_APP_INSTALLATION_ID", raising=False)
+    monkeypatch.delenv("GITHUB_APP_PRIVATE_KEY", raising=False)
+    monkeypatch.delenv("GITHUB_APP_PRIVATE_KEY_FILE", raising=False)
     monkeypatch.setenv("GH_TOKEN", "fake-token-abc")
     probe = r.GhTokenProbe()
     status, detail = await probe.check()
@@ -37,7 +41,25 @@ async def test_gh_token_probe_ok(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_gh_token_probe_ok_with_github_app(monkeypatch) -> None:
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    monkeypatch.setenv("GITHUB_APP_ID", "123")
+    monkeypatch.setenv("GITHUB_APP_INSTALLATION_ID", "456")
+    monkeypatch.setenv("GITHUB_APP_PRIVATE_KEY_FILE", "/run/secrets/github-app.pem")
+
+    probe = r.GhTokenProbe()
+    status, detail = await probe.check()
+
+    assert status == "ok"
+    assert detail == "GitHub App auth configured"
+
+
+@pytest.mark.asyncio
 async def test_gh_token_probe_down(monkeypatch) -> None:
+    monkeypatch.delenv("GITHUB_APP_ID", raising=False)
+    monkeypatch.delenv("GITHUB_APP_INSTALLATION_ID", raising=False)
+    monkeypatch.delenv("GITHUB_APP_PRIVATE_KEY", raising=False)
+    monkeypatch.delenv("GITHUB_APP_PRIVATE_KEY_FILE", raising=False)
     monkeypatch.delenv("GH_TOKEN", raising=False)
     probe = r.GhTokenProbe()
     status, detail = await probe.check()
@@ -153,7 +175,11 @@ def test_livez_route_exists_in_health_router() -> None:
 
 @pytest.mark.asyncio
 async def test_readyz_503_when_gh_token_missing(monkeypatch) -> None:
-    """With GH_TOKEN absent, /readyz must return 503."""
+    """With all GitHub credentials absent, /readyz must return 503."""
+    monkeypatch.delenv("GITHUB_APP_ID", raising=False)
+    monkeypatch.delenv("GITHUB_APP_INSTALLATION_ID", raising=False)
+    monkeypatch.delenv("GITHUB_APP_PRIVATE_KEY", raising=False)
+    monkeypatch.delenv("GITHUB_APP_PRIVATE_KEY_FILE", raising=False)
     monkeypatch.delenv("GH_TOKEN", raising=False)
     with patch("readiness.shutil.which", return_value="/usr/bin/gh"):
         status, body = await r.aggregate([r.GhTokenProbe(), r.GhCliProbe()])

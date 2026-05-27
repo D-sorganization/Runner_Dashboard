@@ -46,6 +46,10 @@ def clear_rate_limit_breakers() -> None:
 
 
 def _github_token_fingerprint() -> str:
+    app_id = os.environ.get("GITHUB_APP_ID", "").strip()
+    installation_id = os.environ.get("GITHUB_APP_INSTALLATION_ID", "").strip()
+    if app_id and installation_id:
+        return sha256(f"github_app:{app_id}:{installation_id}".encode()).hexdigest()[:16]
     token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN") or ""
     if not token:
         return "anonymous"
