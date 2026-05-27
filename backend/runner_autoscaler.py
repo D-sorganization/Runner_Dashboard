@@ -51,6 +51,7 @@ from autoscaler_busy import (
     _runner_is_busy,
 )
 from autoscaler_config import (
+    ACTION_COOLDOWN_SECONDS,
     COOLDOWN_SECS,
     CPU_HIGH,
     CPU_LOW,
@@ -72,6 +73,8 @@ from autoscaler_config import (
     HDD_START_ENABLED,
     HDD_STOP_ENABLED,
     HOSTNAME,
+    IO_PRESSURE_FULL_HIGH,
+    IO_PRESSURE_FULL_LOW,
     LOAD_PER_CORE,
     MAX_STEP,
     MEM_HIGH,
@@ -89,6 +92,7 @@ from autoscaler_config import (
     NVME_START_ENABLED,
     NVME_STOP_ENABLED,
     POLL_SECONDS,
+    RECOVERY_MIN_ONLINE,
     RUNNER_BASE_DIR,
     RUNNER_BUSY_LOCK_DIR,
     RUNNER_BUSY_LOCK_MAX_AGE_SECONDS,
@@ -103,6 +107,7 @@ from autoscaler_config import (
     psutil,
 )
 from autoscaler_sampling import (
+    _io_pressure_snapshot,
     _leased_runners,
     _sample,
     _sample_pool_disk,
@@ -132,12 +137,16 @@ __all__ = [
     "DISK_MIN_FREE_GB",
     "DRY_RUN",
     "HOSTNAME",
+    "ACTION_COOLDOWN_SECONDS",
+    "IO_PRESSURE_FULL_HIGH",
+    "IO_PRESSURE_FULL_LOW",
     "LOAD_PER_CORE",
     "MAX_STEP",
     "MEM_HIGH",
     "MIN_ONLINE",
     "Path",
     "POLL_SECONDS",
+    "RECOVERY_MIN_ONLINE",
     "RUNNER_BUSY_LOCK_DIR",
     "RUNNER_BUSY_LOCK_MAX_AGE_SECONDS",
     "RUNNER_PICKUP_DIR_MAX_AGE_SECONDS",
@@ -158,9 +167,31 @@ __all__ = [
     "_runner_busy_via_pickup_dir",
     "_runner_is_busy",
     "_leased_runners",
+    "_io_pressure_snapshot",
     "_sample",
     "_scheduled_desired_count",
 ]
+
+
+def _surplus_runner_count(active_count: int, scheduled_desired: int) -> int:
+    """Return how many active runners exceed schedule without breaching the floor."""
+    protected_target = max(MIN_ONLINE, scheduled_desired)
+    return max(0, active_count - protected_target)
+
+
+def _recovery_floor_target(scheduled_desired: int) -> int:
+    """Return the small pool restored after overload clears but before full recovery."""
+    protected_target = max(0, scheduled_desired)
+    if protected_target == 0:
+        return MIN_ONLINE
+    return max(MIN_ONLINE, min(RECOVERY_MIN_ONLINE, protected_target))
+
+
+def _should_restore_recovery_floor(*, overloaded: bool, active_count: int, scheduled_desired: int) -> bool:
+    """Return whether the autoscaler should rebuild the minimum working pool."""
+    return (
+        not overloaded and active_count < _recovery_floor_target(scheduled_desired) and active_count < scheduled_desired
+    )
 
 
 def _acquire_lock() -> None:
@@ -426,7 +457,17 @@ def _run_poll_loop() -> None:
         "hdd": deque(maxlen=history_len),
     }
 
+    # A1: notify systemd we're up. Pairs with the periodic _send_watchdog()
+    # call inside the loop body below.
+    if _sd_notify is not None:
+        try:
+            watchdog_usec = os.environ.get("WATCHDOG_USEC", "120000000")
+            _sd_notify(f"READY=1\nWATCHDOG_USEC={watchdog_usec}")
+        except Exception:  # noqa: BLE001
+            log.exception("autoscaler READY notification failed; continuing")
+
     while True:
+        _send_watchdog()
         try:
             current_samples = _sample_all_pools()
             for p_name, sample_val in current_samples.items():
@@ -640,7 +681,45 @@ def _run_poll_loop() -> None:
 
         except Exception as exc:  # noqa: BLE001
             log.exception("autoscaler tick failed: %s", exc)
+        _notify_watchdog()
         time.sleep(POLL_SECONDS)
+
+
+# systemd watchdog notification (issue #707)
+try:
+    from systemd.daemon import notify as _sd_notify
+except ImportError:
+    _sd_notify = None  # type: ignore[assignment]
+
+_sd_notify_autoscaler = _sd_notify
+
+
+def _send_watchdog() -> None:
+    """Send WATCHDOG=1 to systemd if available (issue #707).
+
+    Pre-condition: none. Post-condition: never raises.
+    """
+    if _sd_notify is None:
+        return
+    if not os.environ.get("WATCHDOG_USEC", "").strip():
+        return
+    try:
+        _sd_notify("WATCHDOG=1")
+    except Exception:  # noqa: BLE001
+        log.exception("autoscaler watchdog notification failed; will retry next tick")
+
+
+def _notify_watchdog() -> None:
+    """Send WATCHDOG=1 to systemd if available (issue #707).
+
+    Pre-condition: none (safe to call unconditionally).
+    Post-condition: watchdog timer is reset when sd_notify is available.
+    """
+    if _sd_notify_autoscaler is not None:
+        try:
+            _sd_notify_autoscaler("WATCHDOG=1")
+        except Exception as exc:  # noqa: BLE001
+            log.warning("autoscaler: sd_notify WATCHDOG=1 failed: %s", exc)
 
 
 def main() -> None:
@@ -654,7 +733,8 @@ def main() -> None:
     log.info(
         "autoscaler start host=%s cpu_high=%s cpu_low=%s mem_high=%s "
         "disk_high=%s disk_min_free_gb=%s load_per_core=%s sustain=%ss "
-        "poll=%ss min_online=%s step=%s dry=%s",
+        "poll=%ss min_online=%s recovery_min_online=%s step=%s "
+        "io_full_high=%s io_full_low=%s action_cooldown=%ss dry=%s",
         HOSTNAME,
         CPU_HIGH,
         CPU_LOW,
@@ -665,7 +745,11 @@ def main() -> None:
         SUSTAIN_SECS,
         POLL_SECONDS,
         MIN_ONLINE,
+        RECOVERY_MIN_ONLINE,
         MAX_STEP,
+        IO_PRESSURE_FULL_HIGH,
+        IO_PRESSURE_FULL_LOW,
+        ACTION_COOLDOWN_SECONDS,
         DRY_RUN,
     )
     _run_poll_loop()
