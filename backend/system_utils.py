@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import time
 from collections import deque
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -34,17 +35,35 @@ log = logging.getLogger("dashboard.system")
 # CPU history ring-buffer: bounded by CPU_HISTORY_MAXLEN (default 60 ≈ 1 min at 1 Hz)
 _cpu_history: deque[float] = deque(maxlen=CPU_HISTORY_MAXLEN)
 BOOT_TIME = time.time()
-_POWERSHELL_CANDIDATES = (
-    "powershell.exe",
-    "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe",
-)
+_PHYSICAL_DISK_CACHE: dict[str, dict[str, str]] = {}
+_WSL_BASE_PATH_CACHE: str | None = None
+_WSL_BASE_PATH_LOOKED_UP: bool = False
 
 
-def _run_windows_powershell_json(command: str) -> dict | None:
+def get_powershell_candidates() -> list[str]:
+    """Dynamically build list of PowerShell executable candidates."""
+    candidates = ["powershell.exe"]
+    mnt_path = Path("/mnt")
+    if mnt_path.exists() and mnt_path.is_dir():
+        try:
+            for item in mnt_path.iterdir():
+                if item.is_dir() and len(item.name) == 1 and item.name.isalpha():
+                    candidates.append(str(item / "Windows/System32/WindowsPowerShell/v1.0/powershell.exe"))
+        except OSError:
+            pass
+    for letter in ("c", "d"):
+        p = f"/mnt/{letter}/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"
+        if p not in candidates:
+            candidates.append(p)
+    return candidates
+
+
+def _run_windows_powershell(command: str) -> str | None:
+    """Run a PowerShell command on the Windows host and return its stdout."""
     if "microsoft" not in platform.uname().release.lower():
         return None
-    result = None
-    for powershell in _POWERSHELL_CANDIDATES:
+    candidates = get_powershell_candidates()
+    for powershell in candidates:
         try:
             result = subprocess.run(
                 [powershell, "-NoProfile", "-Command", command],
@@ -53,20 +72,147 @@ def _run_windows_powershell_json(command: str) -> dict | None:
                 timeout=5,
                 env=safe_subprocess_env(),
             )
+            if result.returncode == 0 and result.stdout.strip():
+                return result.stdout.strip()
         except (OSError, subprocess.SubprocessError):
             continue
-        if result.returncode == 0 and result.stdout.strip():
-            break
-    if result is None or result.returncode != 0 or not result.stdout.strip():
+    return None
+
+
+def _run_windows_powershell_json(command: str) -> Any:
+    """Run a PowerShell command on the Windows host and parse its stdout as JSON."""
+    raw = _run_windows_powershell(command)
+    if not raw:
         return None
     try:
-        data = json.loads(result.stdout)
+        return json.loads(raw)
     except json.JSONDecodeError:
         return None
-    return data if isinstance(data, dict) else None
 
 
-def _windows_host_resource_snapshot() -> dict | None:
+def get_wsl_distro_registry_info() -> dict[str, Any] | None:
+    """Query Registry from WSL to find active distro details."""
+    command = r"""
+$distro = $env:WSL_DISTRO_NAME
+$lxssPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Lxss"
+$guid = (Get-ItemProperty -Path $lxssPath -ErrorAction SilentlyContinue).DefaultDistribution
+$basePath = $null
+if (Test-Path $lxssPath) {
+    Get-ChildItem -Path $lxssPath -ErrorAction SilentlyContinue | ForEach-Object {
+        $subKey = $_.PSChildName
+        $props = Get-ItemProperty -Path "$lxssPath\$subKey" -ErrorAction SilentlyContinue
+        if ($props) {
+            if ($distro -and $props.DistributionName -eq $distro) {
+                $basePath = $props.BasePath
+            }
+            elseif (-not $basePath -and $guid -and $subKey -eq $guid) {
+                $basePath = $props.BasePath
+            }
+        }
+    }
+    if (-not $basePath) {
+        $subkeys = Get-ChildItem -Path $lxssPath -ErrorAction SilentlyContinue
+        if ($subkeys -and $subkeys.Count -eq 1) {
+            $props = Get-ItemProperty -Path "$lxssPath\$($subkeys[0].PSChildName)" -ErrorAction SilentlyContinue
+            if ($props) {
+                $basePath = $props.BasePath
+            }
+        }
+    }
+}
+[pscustomobject]@{ BasePath = $basePath } | ConvertTo-Json -Compress
+"""
+    data = _run_windows_powershell_json(command)
+    if isinstance(data, dict):
+        return data
+    return None
+
+
+def get_wsl_vhdx_path(base_path: str | None) -> str | None:
+    """Return the Windows VHDX path for a WSL distribution base path."""
+    if not base_path:
+        return None
+    return base_path.rstrip("\\") + "\\ext4.vhdx"
+
+
+def get_wsl_host_disk_path(windows_path: str | None) -> str:
+    """Extract host disk drive letter and convert to WSL mount path."""
+    if windows_path and len(windows_path) >= 2 and windows_path[1] == ":":
+        drive_letter = windows_path[0].lower()
+        return f"/mnt/{drive_letter}"
+    return "/mnt/c"
+
+
+def get_windows_drive_physical_properties(drive_letter: str) -> dict[str, str]:
+    """Query physical disk properties (MediaType, BusType) for a drive letter."""
+    if not drive_letter or not drive_letter.isalpha():
+        return {"media_type": "Unknown", "bus_type": "Unknown"}
+    command = f"""
+$letter = "{drive_letter}"
+try {{
+    $partition = Get-Partition -DriveLetter $letter -ErrorAction SilentlyContinue
+    if ($partition) {{
+        $disk = Get-Disk -Number $partition.DiskNumber -ErrorAction SilentlyContinue
+        if ($disk) {{
+            $phys = Get-PhysicalDisk | Where-Object {{ $_.DeviceNumber -eq $disk.Number }} -ErrorAction SilentlyContinue
+            if ($phys) {{
+                [pscustomobject]@{{
+                    MediaType = $phys.MediaType.ToString()
+                    BusType = $phys.BusType.ToString()
+                }} | ConvertTo-Json -Compress
+                exit
+            }}
+            [pscustomobject]@{{
+                MediaType = $disk.MediaType.ToString()
+                BusType = $disk.BusType.ToString()
+            }} | ConvertTo-Json -Compress
+            exit
+        }}
+    }}
+}} catch {{}}
+try {{
+    $disk = Get-Disk -Number 0 -ErrorAction SilentlyContinue
+    if ($disk) {{
+        [pscustomobject]@{{
+            MediaType = $disk.MediaType.ToString()
+            BusType = $disk.BusType.ToString()
+        }} | ConvertTo-Json -Compress
+        exit
+    }}
+}} catch {{}}
+"@{{MediaType='Unknown'; BusType='Unknown'}}"
+"""
+    data = _run_windows_powershell_json(command)
+    res = {"media_type": "Unknown", "bus_type": "Unknown"}
+    if isinstance(data, dict):
+        if data.get("MediaType"):
+            res["media_type"] = str(data["MediaType"])
+        if data.get("BusType"):
+            res["bus_type"] = str(data["BusType"])
+    return res
+
+
+def get_cached_windows_drive_physical_properties(drive_letter: str) -> dict[str, str]:
+    """Get windows drive physical properties with caching."""
+    letter = drive_letter.upper()
+    if letter not in _PHYSICAL_DISK_CACHE:
+        _PHYSICAL_DISK_CACHE[letter] = get_windows_drive_physical_properties(letter)
+    return _PHYSICAL_DISK_CACHE[letter]
+
+
+def get_cached_wsl_base_path() -> str | None:
+    """Retrieve and cache active WSL BasePath from registry."""
+    global _WSL_BASE_PATH_CACHE, _WSL_BASE_PATH_LOOKED_UP
+    if not _WSL_BASE_PATH_LOOKED_UP:
+        info = get_wsl_distro_registry_info()
+        if info and "BasePath" in info:
+            _WSL_BASE_PATH_CACHE = info["BasePath"]
+        _WSL_BASE_PATH_LOOKED_UP = True
+    return _WSL_BASE_PATH_CACHE
+
+
+def _windows_host_resource_snapshot() -> dict[str, float] | None:
+    """Return Windows host CPU/RAM metrics when running under WSL."""
     command = r"""
 $cpu = (Get-CimInstance Win32_PerfFormattedData_PerfOS_Processor -Filter "Name='_Total'").PercentProcessorTime
 $os = Get-CimInstance Win32_OperatingSystem
@@ -82,7 +228,7 @@ $used = $total - $free
 } | ConvertTo-Json -Compress
 """
     data = _run_windows_powershell_json(command)
-    if not data:
+    if not data or not isinstance(data, dict):
         return None
     try:
         return {
@@ -100,12 +246,11 @@ $used = $total - $free
 HOST_MEMORY_GB: float | None = None
 try:
     if "microsoft-standard" in platform.uname().release.lower():
-        # Running in WSL -> try interop to get physical hardware capacity
         data = _run_windows_powershell_json(
             "[pscustomobject]@{ total = (Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory } "
             "| ConvertTo-Json -Compress"
         )
-        if data:
+        if data and isinstance(data, dict) and "total" in data:
             HOST_MEMORY_GB = round(int(data["total"]) / (1024**3), 1)
 except (OSError, subprocess.SubprocessError, TimeoutError, ValueError):
     pass
@@ -308,111 +453,302 @@ def get_per_runner_resources(runner_limit: int) -> list[dict]:
     return runner_procs
 
 
-async def get_system_metrics_snapshot(runner_limit: int | None = None) -> dict:
-    """Real-time system resource metrics."""
-    cpu_freq = psutil.cpu_freq()
-    mem = psutil.virtual_memory()
-    swap = psutil.swap_memory()
-    disk_path = str(RUNNER_BASE_DIR) if RUNNER_BASE_DIR.exists() else "/"
-    disk = shutil.disk_usage(disk_path)
-    disk_total_gb = round(disk.total / (1024**3), 1)
-    disk_used_gb = round(disk.used / (1024**3), 1)
-    disk_free_gb = round(disk.free / (1024**3), 1)
-    disk_percent = round(disk.used / disk.total * 100, 1)
-
-    net = psutil.net_io_counters()
-    per_cpu = psutil.cpu_percent(interval=0, percpu=True)
-    current_cpu = psutil.cpu_percent(interval=0)
-    host_resources = _windows_host_resource_snapshot()
-    if host_resources:
-        current_cpu = host_resources["cpu_percent"]
-    _cpu_history.append(current_cpu)
-    cpu_avg_1m = round(sum(_cpu_history) / len(_cpu_history), 1) if _cpu_history else current_cpu
-
+def get_io_pressure_snapshot() -> dict[str, Any] | None:
+    """Read and parse Linux PSI IO pressure from /proc/pressure/io."""
+    path = Path("/proc/pressure/io")
+    if not path.exists():
+        return None
     try:
-        uptime_seconds = time.time() - psutil.boot_time()
+        content = path.read_text(encoding="utf-8")
+        result = {}
+        for line in content.strip().split("\n"):
+            parts = line.split()
+            if not parts:
+                continue
+            kind = parts[0]  # "some" or "full"
+            metrics: dict[str, int | float] = {}
+            for part in parts[1:]:
+                if "=" in part:
+                    k, v = part.split("=", 1)
+                    if k == "total":
+                        metrics[k] = int(v)
+                    else:
+                        metrics[k] = float(v)
+            if metrics:
+                result[kind] = metrics
+        return result if result else None
+    except Exception as exc:
+        log.warning("Failed to parse /proc/pressure/io: %s", exc)
+        return None
+
+
+def get_storage_pools() -> list[dict[str, Any]]:
+    """Get system storage pools (WSL virtual disk + host disk, or native drive)."""
+    pools = []
+    disk_path = str(RUNNER_BASE_DIR) if RUNNER_BASE_DIR.exists() else "/"
+    try:
+        du = shutil.disk_usage(disk_path)
+        total_gb = round(du.total / (1024**3), 1)
+        used_gb = round(du.used / (1024**3), 1)
+        free_gb = round(du.free / (1024**3), 1)
+        percent = round(du.used / du.total * 100, 1) if du.total > 0 else 0.0
     except OSError:
-        uptime_seconds = 0
-    dashboard_uptime = time.time() - BOOT_TIME
+        total_gb = used_gb = free_gb = percent = 0.0
 
-    gpu_info = get_gpu_info()
-    disk_pressure = get_disk_pressure_snapshot(
+    pressure_state = get_disk_pressure_snapshot(
         path=disk_path,
-        total_gb=disk_total_gb,
-        used_gb=disk_used_gb,
-        free_gb=disk_free_gb,
-        percent=disk_percent,
+        total_gb=total_gb,
+        used_gb=used_gb,
+        free_gb=free_gb,
+        percent=percent,
     )
-    hardware_specs = get_local_hardware_specs(gpu_info)
 
-    metrics = {
-        "hostname": HOSTNAME,
-        "platform": platform.platform(),
-        "timestamp": datetime.now(UTC).isoformat(),
-        "uptime_seconds": int(uptime_seconds),
-        "dashboard_uptime_seconds": int(dashboard_uptime),
-        "cpu": {
-            "cores_physical": psutil.cpu_count(logical=False),
-            "cores_logical": psutil.cpu_count(logical=True),
-            "percent": current_cpu,
-            "percent_1m_avg": cpu_avg_1m,
-            "per_cpu_percent": per_cpu,
-            "freq_current_mhz": round(cpu_freq.current, 0) if cpu_freq else None,
-            "freq_max_mhz": round(cpu_freq.max, 0) if cpu_freq else None,
-        },
-        "memory": {
-            "host_total_gb": HOST_MEMORY_GB,
-            "wsl_total_gb": round(mem.total / (1024**3), 1),
-            "total_gb": (
-                host_resources["memory_total_gb"]
-                if host_resources
-                else HOST_MEMORY_GB or round(mem.total / (1024**3), 1)
-            ),
-            "used_gb": host_resources["memory_used_gb"] if host_resources else round(mem.used / (1024**3), 1),
-            "available_gb": (
-                host_resources["memory_available_gb"] if host_resources else round(mem.available / (1024**3), 1)
-            ),
-            "percent": host_resources["memory_percent"] if host_resources else mem.percent,
-            "source": "windows-host" if host_resources else "wsl",
-            "swap_total_gb": round(swap.total / (1024**3), 1),
-            "swap_used_gb": round(swap.used / (1024**3), 1),
-            "swap_percent": swap.percent,
-        },
-        "disk": {
-            "path": disk_path,
-            "total_gb": disk_total_gb,
-            "used_gb": disk_used_gb,
-            "free_gb": disk_free_gb,
-            "percent": disk_percent,
-            "pressure": disk_pressure,
-        },
-        "network": {
-            "bytes_sent": net.bytes_sent,
-            "bytes_recv": net.bytes_recv,
-            "packets_sent": net.packets_sent,
-            "packets_recv": net.packets_recv,
-        },
-        "gpu": gpu_info,
-        "hardware_specs": hardware_specs,
-        "workload_capacity": get_workload_capacity_from_specs(hardware_specs),
-        "runner_processes": get_per_runner_resources(runner_limit) if runner_limit else [],
-    }
+    is_wsl = "microsoft" in platform.uname().release.lower()
 
-    # On WSL, also report the Windows host disk (/mnt/c)
-    wsl_host_path = Path("/mnt/c")
-    if wsl_host_path.exists():
-        try:
-            wd = shutil.disk_usage(str(wsl_host_path))
-            metrics["disk"]["windows_host"] = {
-                "total_gb": round(wd.total / (1024**3), 1),
-                "used_gb": round(wd.used / (1024**3), 1),
-                "free_gb": round(wd.free / (1024**3), 1),
-                "percent": round(wd.used / wd.total * 100, 1),
+    if is_wsl:
+        base_path = get_cached_wsl_base_path()
+        vhdx_path = get_wsl_vhdx_path(base_path) if base_path else None
+
+        host_disk_path = "/mnt/c"
+        drive_letter = "C"
+        if base_path and len(base_path) >= 2 and base_path[1] == ":":
+            drive_letter = base_path[0].upper()
+            host_disk_path = f"/mnt/{drive_letter.lower()}"
+
+        phys = get_cached_windows_drive_physical_properties(drive_letter)
+        media_type = phys.get("media_type", "Unknown")
+        bus_type = phys.get("bus_type", "Unknown")
+
+        local_pool = {
+            "backing_disk_path": host_disk_path,
+            "vhdx_path": vhdx_path,
+            "bus_type": bus_type,
+            "media_type": media_type,
+            "total_gb": total_gb,
+            "used_gb": used_gb,
+            "free_gb": free_gb,
+            "percent": percent,
+            "pressure": pressure_state,
+        }
+        pools.append(local_pool)
+
+        if os.path.exists(host_disk_path):
+            try:
+                hdu = shutil.disk_usage(host_disk_path)
+                htotal_gb = round(hdu.total / (1024**3), 1)
+                hused_gb = round(hdu.used / (1024**3), 1)
+                hfree_gb = round(hdu.free / (1024**3), 1)
+                hpercent = round(hdu.used / hdu.total * 100, 1) if hdu.total > 0 else 0.0
+            except OSError:
+                htotal_gb = hused_gb = hfree_gb = hpercent = 0.0
+
+            hpressure_state = get_disk_pressure_snapshot(
+                path=host_disk_path,
+                total_gb=htotal_gb,
+                used_gb=hused_gb,
+                free_gb=hfree_gb,
+                percent=hpercent,
+            )
+
+            host_pool = {
+                "backing_disk_path": host_disk_path,
+                "vhdx_path": None,
+                "bus_type": bus_type,
+                "media_type": media_type,
+                "total_gb": htotal_gb,
+                "used_gb": hused_gb,
+                "free_gb": hfree_gb,
+                "percent": hpercent,
+                "pressure": hpressure_state,
             }
-        except (OSError, psutil.Error):
-            pass
+            pools.append(host_pool)
+    else:
+        media_type = "Unknown"
+        bus_type = "Unknown"
+        backing_disk_path = disk_path
 
-    return metrics
+        if os.name == "nt":
+            drive_letter = "C"
+            if len(disk_path) >= 2 and disk_path[1] == ":":
+                drive_letter = disk_path[0].upper()
+            backing_disk_path = f"{drive_letter}:"
+            phys = get_cached_windows_drive_physical_properties(drive_letter)
+            media_type = phys.get("media_type", "Unknown")
+            bus_type = phys.get("bus_type", "Unknown")
+
+        local_pool = {
+            "backing_disk_path": backing_disk_path,
+            "vhdx_path": None,
+            "bus_type": bus_type,
+            "media_type": media_type,
+            "total_gb": total_gb,
+            "used_gb": used_gb,
+            "free_gb": free_gb,
+            "percent": percent,
+            "pressure": pressure_state,
+        }
+        pools.append(local_pool)
+
+    return pools
+
+
+def get_overall_disk_pressure(pools: list[dict[str, Any]]) -> dict[str, Any]:
+    """Get the overall disk pressure based on the most constrained pool."""
+    if not pools:
+        return {
+            "status": "healthy",
+            "path": "/",
+            "total_gb": 0.0,
+            "used_gb": 0.0,
+            "free_gb": 0.0,
+            "percent": 0.0,
+            "warn_percent": DISK_WARN_PERCENT,
+            "critical_percent": DISK_CRITICAL_PERCENT,
+            "min_free_gb": DISK_MIN_FREE_GB,
+            "reasons": [],
+            "recommendations": [],
+        }
+
+    def status_rank(status: str) -> int:
+        if status == "critical":
+            return 3
+        if status == "warning":
+            return 2
+        return 1
+
+    most_constrained = pools[0]
+    for pool in pools[1:]:
+        rank_curr = status_rank(pool["pressure"]["status"])
+        rank_best = status_rank(most_constrained["pressure"]["status"])
+        if rank_curr > rank_best:
+            most_constrained = pool
+        elif rank_curr == rank_best:
+            if pool["percent"] > most_constrained["percent"]:
+                most_constrained = pool
+
+    return most_constrained["pressure"]
+
+
+async def get_system_metrics_snapshot(
+    runner_limit: int | None = None,
+    boot_time: float | None = None,
+    host_memory_gb: float | None = None,
+    get_runner_capacity_snapshot: Callable[[], dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Real-time system resource metrics."""
+
+    def _sync() -> dict[str, Any]:
+        cpu_freq = psutil.cpu_freq()
+        mem = psutil.virtual_memory()
+        swap = psutil.swap_memory()
+        disk_path = str(RUNNER_BASE_DIR) if RUNNER_BASE_DIR.exists() else "/"
+
+        net = psutil.net_io_counters()
+        per_cpu = psutil.cpu_percent(interval=0, percpu=True)
+        current_cpu = psutil.cpu_percent(interval=0)
+        host_resources = _windows_host_resource_snapshot()
+        if host_resources:
+            current_cpu = host_resources["cpu_percent"]
+        _cpu_history.append(current_cpu)
+        cpu_avg_1m = round(sum(_cpu_history) / len(_cpu_history), 1) if _cpu_history else current_cpu
+
+        try:
+            uptime_seconds = time.time() - psutil.boot_time()
+        except OSError:
+            uptime_seconds = 0
+        ref_boot = boot_time or BOOT_TIME
+        dashboard_uptime = time.time() - ref_boot
+
+        try:
+            load_avg = os.getloadavg() if hasattr(os, "getloadavg") else (0.0, 0.0, 0.0)
+        except OSError:
+            load_avg = (0.0, 0.0, 0.0)
+
+        gpu_info = get_gpu_info()
+        hardware_specs = get_local_hardware_specs(gpu_info)
+
+        # Storage Pools and Capacity Disk Pressure
+        pools = get_storage_pools()
+        overall_pressure = get_overall_disk_pressure(pools)
+        local_pool = pools[0]
+
+        windows_host = None
+        is_wsl = "microsoft" in platform.uname().release.lower()
+        if is_wsl:
+            for pool in pools:
+                if pool.get("vhdx_path") is None:
+                    windows_host = {
+                        "path": pool["backing_disk_path"],
+                        "total_gb": pool["total_gb"],
+                        "used_gb": pool["used_gb"],
+                        "free_gb": pool["free_gb"],
+                        "percent": pool["percent"],
+                        "pressure": pool["pressure"],
+                    }
+
+        metrics = {
+            "hostname": HOSTNAME,
+            "platform": platform.platform(),
+            "timestamp": datetime.now(UTC).isoformat(),
+            "uptime_seconds": int(uptime_seconds),
+            "dashboard_uptime_seconds": int(dashboard_uptime),
+            "cpu": {
+                "cores_physical": psutil.cpu_count(logical=False),
+                "cores_logical": psutil.cpu_count(logical=True),
+                "percent": current_cpu,
+                "percent_1m_avg": cpu_avg_1m,
+                "per_cpu_percent": per_cpu,
+                "freq_current_mhz": round(cpu_freq.current, 0) if cpu_freq else None,
+                "freq_max_mhz": round(cpu_freq.max, 0) if cpu_freq else None,
+                "load_avg_1m": round(load_avg[0], 2),
+                "load_avg_5m": round(load_avg[1], 2),
+                "load_avg_15m": round(load_avg[2], 2),
+            },
+            "memory": {
+                "host_total_gb": host_memory_gb or HOST_MEMORY_GB,
+                "wsl_total_gb": round(mem.total / (1024**3), 1),
+                "total_gb": (
+                    host_resources["memory_total_gb"]
+                    if host_resources
+                    else (host_memory_gb or HOST_MEMORY_GB) or round(mem.total / (1024**3), 1)
+                ),
+                "used_gb": host_resources["memory_used_gb"] if host_resources else round(mem.used / (1024**3), 1),
+                "available_gb": (
+                    host_resources["memory_available_gb"] if host_resources else round(mem.available / (1024**3), 1)
+                ),
+                "percent": host_resources["memory_percent"] if host_resources else mem.percent,
+                "source": "windows-host" if host_resources else "wsl",
+                "swap_total_gb": round(swap.total / (1024**3), 1),
+                "swap_used_gb": round(swap.used / (1024**3), 1),
+                "swap_percent": swap.percent,
+            },
+            "disk": {
+                "path": disk_path,
+                "total_gb": local_pool["total_gb"],
+                "used_gb": local_pool["used_gb"],
+                "free_gb": local_pool["free_gb"],
+                "percent": local_pool["percent"],
+                "pressure": overall_pressure,
+                "pools": pools,
+                "windows_host": windows_host,
+            },
+            "network": {
+                "bytes_sent": net.bytes_sent,
+                "bytes_recv": net.bytes_recv,
+                "packets_sent": net.packets_sent,
+                "packets_recv": net.packets_recv,
+            },
+            "gpu": gpu_info,
+            "hardware_specs": hardware_specs,
+            "workload_capacity": get_workload_capacity_from_specs(hardware_specs),
+            "runner_processes": get_per_runner_resources(runner_limit) if runner_limit else [],
+            "runner_capacity": get_runner_capacity_snapshot() if get_runner_capacity_snapshot else {},
+            "io_pressure": get_io_pressure_snapshot(),
+        }
+
+        return metrics
+
+    return await asyncio.to_thread(_sync)
 
 
 async def run_cmd(cmd: list[str], timeout: int = 30, cwd: Path | None = None) -> tuple[int, str, str]:

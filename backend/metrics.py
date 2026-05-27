@@ -8,6 +8,7 @@ from __future__ import annotations
 import datetime as _dt_mod
 from pathlib import Path
 
+import psutil  # noqa: F401
 from fastapi import APIRouter, Request
 
 router = APIRouter(tags=["metrics"])
