@@ -19,9 +19,26 @@ def test_github_token_fingerprint_anonymous(monkeypatch) -> None:
 
 def test_github_token_fingerprint_with_token(monkeypatch) -> None:
     monkeypatch.setenv("GH_TOKEN", "my-secret-token")
+    monkeypatch.delenv("GITHUB_APP_ID", raising=False)
+    monkeypatch.delenv("GITHUB_APP_INSTALLATION_ID", raising=False)
     result = gu._github_token_fingerprint()
     assert len(result) == 16
     assert result != "anonymous"
+
+
+def test_github_token_fingerprint_prefers_app_identity(monkeypatch) -> None:
+    monkeypatch.setenv("GITHUB_APP_ID", "123")
+    monkeypatch.setenv("GITHUB_APP_INSTALLATION_ID", "456")
+    monkeypatch.setenv("GH_TOKEN", "my-secret-token")
+
+    app_result = gu._github_token_fingerprint()
+
+    monkeypatch.delenv("GITHUB_APP_ID", raising=False)
+    monkeypatch.delenv("GITHUB_APP_INSTALLATION_ID", raising=False)
+    token_result = gu._github_token_fingerprint()
+
+    assert len(app_result) == 16
+    assert app_result != token_result
 
 
 def test_resource_class_actions_endpoint() -> None:

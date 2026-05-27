@@ -46,17 +46,25 @@ if [[ -z "$ARTIFACT_SOURCE" ]]; then
     [[ -d "$REPO/backend" && -d "$REPO/frontend" ]] || fail "Dashboard repo not found at $REPO — check the path."
 fi
 
-info "Installing/updating backend dependencies via uv sync (issue #333)..."
-# uv sync --frozen --no-dev ensures the install matches uv.lock exactly.
+DASHBOARD_PORT="${DASHBOARD_PORT:-}"
+if [[ -z "$DASHBOARD_PORT" ]] && command -v systemctl &>/dev/null; then
+    DASHBOARD_PORT=$(systemctl show "${SERVICE}.service" -p Environment --value 2>/dev/null \
+        | tr ' ' '\n' \
+        | awk -F= '$1 == "DASHBOARD_PORT" {print $2; exit}' || true)
+fi
+DASHBOARD_PORT="${DASHBOARD_PORT:-8321}"
+
+info "Installing/updating deployed backend dependencies via uv sync (issue #333)..."
+# uv sync --frozen --no-dev ensures the deployed service venv matches uv.lock exactly.
 if ! command -v uv &>/dev/null; then
     pip install --quiet uv
 fi
 if [[ -f "$REPO/uv.lock" ]]; then
-    uv sync --frozen --no-dev --project "$REPO"
+    UV_PROJECT_ENVIRONMENT="${DEPLOY_DIR}/.venv" uv sync --frozen --no-dev --project "$REPO"
 else
     fail "uv.lock missing at $REPO — refusing to install with floating transitives."
 fi
-ok "backend dependencies installed via uv sync --frozen --no-dev"
+ok "backend dependencies installed into ${DEPLOY_DIR}/.venv via uv sync --frozen --no-dev"
 
 if ! dry_run "backup $DEPLOY_DIR"; then
     info "Creating backup snapshot..."
@@ -131,7 +139,7 @@ fi
 # ── Pre-flight: syntax check + import test ───────────────────────────────────
 if [[ -z "$ARTIFACT_SOURCE" ]]; then
     info "Running pre-flight syntax check on backend modules..."
-    VENV="${REPO}/.venv"
+    VENV="${DEPLOY_DIR}/.venv"
     PYTHON="${VENV}/bin/python"
     if [[ ! -x "$PYTHON" ]]; then
         PYTHON="python3"
@@ -152,7 +160,7 @@ fi
 
 # ── Health-gate: verify service came up ──────────────────────────────────────
 _check_health() {
-    curl -fsS --max-time 10 http://localhost:8321/health >/dev/null 2>&1
+    curl -fsS --max-time 10 "http://localhost:${DASHBOARD_PORT}/health" >/dev/null 2>&1
 }
 
 _wait_healthy() {
@@ -180,10 +188,10 @@ if [[ "$DRY_RUN" != "true" ]]; then
     if sudo systemctl is-active --quiet "$SERVICE"; then
         ok "Service is running"
         echo ""
-        echo "  Dashboard: http://localhost:8321"
-        echo "  Health:    http://localhost:8321/api/health"
-        echo "  Runs:      http://localhost:8321/api/runs"
-        echo "  Queue:     http://localhost:8321/api/queue"
+        echo "  Dashboard: http://localhost:${DASHBOARD_PORT}"
+        echo "  Health:    http://localhost:${DASHBOARD_PORT}/api/health"
+        echo "  Runs:      http://localhost:${DASHBOARD_PORT}/api/runs"
+        echo "  Queue:     http://localhost:${DASHBOARD_PORT}/api/queue"
     else
         echo ""
         sudo systemctl status "$SERVICE" --no-pager
@@ -192,7 +200,7 @@ if [[ "$DRY_RUN" != "true" ]]; then
 
     # Check GitHub API connectivity first (most common failure point)
     info "Checking GitHub API connectivity..."
-    HEALTH_JSON=$(curl -s --max-time 8 http://localhost:8321/api/health 2>/dev/null || echo "{}")
+    HEALTH_JSON=$(curl -s --max-time 8 "http://localhost:${DASHBOARD_PORT}/api/health" 2>/dev/null || echo "{}")
     GH_STATUS=$(echo "$HEALTH_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('github_api','unknown'))" 2>/dev/null || echo "unknown")
     RUNNERS=$(echo "$HEALTH_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('runners_registered',0))" 2>/dev/null || echo "0")
 
@@ -220,7 +228,7 @@ if [[ "$DRY_RUN" != "true" ]]; then
             echo "  The token is valid but the 5000 req/hr limit is used up."
             echo "  Dashboard will reconnect automatically when the window resets."
             echo "  ${RESET_TIME} -- check with:"
-            echo "    curl -s http://localhost:8321/api/health | python3 -m json.tool"
+            echo "    curl -s http://localhost:${DASHBOARD_PORT}/api/health | python3 -m json.tool"
             echo ""
         else
             warn "GitHub API is NOT connected (status: $GH_STATUS)"
@@ -246,7 +254,7 @@ if [[ "$DRY_RUN" != "true" ]]; then
 
     # Smoke-test the runs endpoint
     info "Smoke-testing /api/runs..."
-    RUNS=$(curl -s --max-time 10 http://localhost:8321/api/runs 2>/dev/null \
+    RUNS=$(curl -s --max-time 10 "http://localhost:${DASHBOARD_PORT}/api/runs" 2>/dev/null \
            | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d.get('workflow_runs',[])))" 2>/dev/null || echo "0")
     if [[ "$GH_STATUS" == "connected" ]]; then
         ok "Endpoint returned $RUNS workflow runs"

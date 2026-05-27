@@ -9,7 +9,7 @@ Issue #332 — split /livez (no I/O) from /readyz (dependency checks).
           Kubernetes liveness probe.
 
 /readyz — readiness probe. Runs a set of lightweight dependency probes
-          (GH_TOKEN presence, gh CLI in PATH, SQLite stores readable).
+          (GitHub auth presence, gh CLI in PATH, SQLite stores readable).
           Returns 200 only when all probes pass; 503 otherwise with a
           structured ``{ status, checks }`` body.
 
@@ -65,7 +65,7 @@ async def readyz() -> JSONResponse:
     """Readiness probe.
 
     Runs lightweight checks for each required dependency:
-    - ``github_token`` — ``GH_TOKEN`` env var is present
+    - ``github_token`` — GitHub App auth or ``GH_TOKEN`` env var is present
     - ``gh_cli``       — ``gh`` binary is in PATH
     - ``lease_db``     — replay/lease SQLite store is readable
     - ``push_db``      — push-subscription SQLite store is readable
@@ -109,12 +109,17 @@ async def _health_impl() -> dict:
     )
 
     github_error_type = None
+    github_auth = {"auth_source": "unknown", "status": "unknown"}
     try:
+        import gh_client  # noqa: PLC0415
+
+        github_auth = gh_client.get_status()
         # Reuse the runner cache so health checks don't add extra API calls.
         data = _cache_get("runners", 25.0)
         if data is None:
             data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
             _cache_set("runners", data)
+            github_auth = gh_client.get_status()
         gh_ok = True
         runner_count = len(data.get("runners", []))
     except Exception as e:  # noqa: BLE001
@@ -135,6 +140,8 @@ async def _health_impl() -> dict:
         "hostname": HOSTNAME,
         "github_api": github_api,
         "github_error_type": github_error_type,
+        "github_auth_source": github_auth.get("auth_source", "unknown"),
+        "github_auth_status": github_auth.get("status", "unknown"),
         "github_check_seconds": round(duration_s, 3),
         "runners_registered": runner_count,
         "dashboard_uptime_seconds": int(time.time() - BOOT_TIME),

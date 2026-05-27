@@ -6,7 +6,7 @@
 #   1. Installs Python dependencies
 #   2. Copies dashboard to a stable location (~/.../dashboard/)
 #   3. Configures passwordless sudo for runner svc.sh commands
-#   4. Installs systemd service with GH_TOKEN and machine metadata
+#   4. Installs systemd service with GitHub App/fallback token and machine metadata
 #   5. Sets up Windows port forwarding instructions
 #
 # Usage (from WSL2, in the runner-dashboard directory):

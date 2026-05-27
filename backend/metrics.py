@@ -8,6 +8,7 @@ from __future__ import annotations
 import datetime as _dt_mod
 from pathlib import Path
 
+import psutil  # noqa: F401
 from fastapi import APIRouter, Request
 
 router = APIRouter(tags=["metrics"])
@@ -44,12 +45,12 @@ async def get_system_metrics():
 
 
 @router.get("/api/fleet/status")
-async def get_fleet_status(request: Request):
+async def get_fleet_status(request: Request, exclude_pools: bool = False):
     """Get full system metrics state for all machines in the fleet network."""
     # Lazy import to avoid circular dependency with server.py
+    from dashboard_config import PORT  # noqa: PLC0415
     from server import (  # noqa: PLC0415
         FLEET_NODES,
-        HOSTNAME,
         _classify_node_offline,
         _resource_offline_reason,
         _should_proxy_fleet_to_hub,
@@ -60,8 +61,19 @@ async def get_fleet_status(request: Request):
         return await proxy_to_hub(request)
 
     responses = {}
-    responses[HOSTNAME] = await get_system_metrics()
-    responses[HOSTNAME]["_role"] = "hub"
+    local_metrics = await get_system_metrics()
+    local_metrics["_role"] = "hub"
+
+    if PORT == 8322:
+        local_pool_name = "ControlTower-HDD"
+        peer_pool_name = "ControlTower-NVMe"
+        peer_port = 8321
+    else:
+        local_pool_name = "ControlTower-NVMe"
+        peer_pool_name = "ControlTower-HDD"
+        peer_port = 8322
+
+    responses[local_pool_name] = local_metrics
 
     async def fetch_node(name, url):
         import httpx  # noqa: PLC0415
@@ -97,5 +109,35 @@ async def get_fleet_status(request: Request):
         results = await asyncio.gather(*[fetch_node(n, u) for n, u in FLEET_NODES.items()])
         for name, data in results:
             responses[name] = data
+
+    if not exclude_pools:
+        import logging  # noqa: PLC0415
+
+        import httpx  # noqa: PLC0415
+
+        logger = logging.getLogger("dashboard.metrics")
+        peer_url = f"http://localhost:{peer_port}/api/fleet/status?exclude_pools=true"
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(peer_url, timeout=5)
+                if resp.status_code == 200:
+                    peer_data = resp.json()
+                    for k, v in peer_data.items():
+                        responses[k] = v
+                else:
+                    reason = _classify_node_offline(status_code=resp.status_code)
+                    responses[peer_pool_name] = {
+                        "status": "offline",
+                        "error": reason["offline_detail"],
+                        **reason,
+                    }
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Failed to query peer pool on port %d: %s", peer_port, e)
+            reason = _classify_node_offline(e)
+            responses[peer_pool_name] = {
+                "status": "offline",
+                "error": reason["offline_detail"],
+                **reason,
+            }
 
     return responses

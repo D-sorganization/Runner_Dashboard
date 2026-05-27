@@ -36,7 +36,7 @@ After a successful setup, the deployed dashboard lives at:
 Secrets are stored separately from the deploy tree:
 
 ```
-~/.config/runner-dashboard/env   # GH_TOKEN, GITHUB_ORG, etc. -- loaded by systemd
+~/.config/runner-dashboard/env   # GitHub App auth, fallback GH_TOKEN, etc. -- loaded by systemd
 ```
 
 ---
@@ -187,14 +187,41 @@ The systemd service loads environment variables from:
 ~/.config/runner-dashboard/env
 ```
 
+Preferred GitHub credentials are GitHub App installation credentials. This keeps
+dashboard polling on the GitHub App installation rate-limit bucket instead of a
+shared user/PAT bucket:
+
+```bash
+install -d -m 700 ~/.config/runner-dashboard
+install -m 600 /path/to/downloaded-app-private-key.pem \
+  ~/.config/runner-dashboard/github-app-private-key.pem
+
+cat >> ~/.config/runner-dashboard/env <<'EOF'
+GITHUB_APP_ID=123456
+GITHUB_APP_INSTALLATION_ID=98765432
+GITHUB_APP_PRIVATE_KEY_FILE=/home/dieterolson/.config/runner-dashboard/github-app-private-key.pem
+EOF
+
+chmod 600 ~/.config/runner-dashboard/env \
+  ~/.config/runner-dashboard/github-app-private-key.pem
+sudo systemctl restart runner-dashboard.service
+```
+
+The dashboard still accepts `GH_TOKEN` / `GITHUB_TOKEN` as a fallback while the
+App credential is rolled out, but normal production nodes should have the App
+variables above set.
+
 Required variables:
 
-| Variable       | Description                                            |
-| -------------- | ------------------------------------------------------ |
-| `GH_TOKEN`     | GitHub PAT with `admin:org`, `repo`, `workflow` scopes |
-| `GITHUB_ORG`   | GitHub organization name (e.g. `D-sorganization`)      |
-| `NUM_RUNNERS`  | Expected runner count for this machine                 |
-| `DISPLAY_NAME` | Human-readable machine name shown in the UI            |
+| Variable                      | Description                                                       |
+| ----------------------------- | ----------------------------------------------------------------- |
+| `GITHUB_APP_ID`               | Numeric GitHub App ID for dashboard API calls                     |
+| `GITHUB_APP_INSTALLATION_ID`  | Installation ID for the app on the org                            |
+| `GITHUB_APP_PRIVATE_KEY_FILE` | Path to the GitHub App private key PEM                            |
+| `GH_TOKEN`                    | Optional fallback PAT with `admin:org`, `repo`, `workflow` scopes |
+| `GITHUB_ORG`                  | GitHub organization name (e.g. `D-sorganization`)                 |
+| `NUM_RUNNERS`                 | Expected runner count for this machine                            |
+| `DISPLAY_NAME`                | Human-readable machine name shown in the UI                       |
 
 Do not commit this file -- it is outside the repo tree and loaded only by systemd
 at service start. The file is owned by the runner user with mode `0600`.

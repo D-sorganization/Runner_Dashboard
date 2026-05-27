@@ -195,6 +195,16 @@ def test_windows_host_resource_snapshot_uses_absolute_powershell_fallback(monkey
         "uname",
         lambda: type("Uname", (), {"release": "6.6.87.2-microsoft-standard-WSL2"})(),
     )
+    # Pin the candidate list so the test does not depend on the runner's
+    # actual /mnt/* drives (e.g. ControlTower-SSD runners mount /mnt/d).
+    monkeypatch.setattr(
+        system_utils,
+        "get_powershell_candidates",
+        lambda: [
+            "powershell.exe",
+            "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe",
+        ],
+    )
     calls = []
 
     def fake_run(args, **_kwargs):
@@ -409,3 +419,130 @@ def test_get_deployment_info_non_dict_file_falls_back(tmp_path: Path) -> None:
     bad_file.write_text("[1, 2, 3]", encoding="utf-8")
     result = system_utils.get_deployment_info("2.0.0", bad_file)
     assert result["source"] == "environment"
+
+
+# ---------------------------------------------------------------------------
+# get_wsl_host_disk_path
+# ---------------------------------------------------------------------------
+
+
+def test_get_wsl_host_disk_path() -> None:
+    assert system_utils.get_wsl_host_disk_path("D:\\WSL\\distro") == "/mnt/d"
+    assert system_utils.get_wsl_host_disk_path("d:\\WSL\\distro") == "/mnt/d"
+    assert system_utils.get_wsl_host_disk_path("C:\\WSL\\distro") == "/mnt/c"
+    assert system_utils.get_wsl_host_disk_path("c:\\WSL\\distro") == "/mnt/c"
+    assert system_utils.get_wsl_host_disk_path(None) == "/mnt/c"
+    assert system_utils.get_wsl_host_disk_path("xyz") == "/mnt/c"
+
+
+# ---------------------------------------------------------------------------
+# get_overall_disk_pressure
+# ---------------------------------------------------------------------------
+
+
+def test_get_overall_disk_pressure_empty() -> None:
+    result = system_utils.get_overall_disk_pressure([])
+    assert result["status"] == "healthy"
+
+
+def test_get_overall_disk_pressure_single_healthy() -> None:
+    pools = [
+        {
+            "percent": 50.0,
+            "pressure": {"status": "healthy", "reasons": []},
+        }
+    ]
+    result = system_utils.get_overall_disk_pressure(pools)
+    assert result["status"] == "healthy"
+
+
+def test_get_overall_disk_pressure_warning_vs_healthy() -> None:
+    pools = [
+        {
+            "percent": 50.0,
+            "pressure": {"status": "healthy", "reasons": []},
+        },
+        {
+            "percent": 86.0,
+            "pressure": {"status": "warning", "reasons": ["warning threshold exceeded"]},
+        },
+    ]
+    result = system_utils.get_overall_disk_pressure(pools)
+    assert result["status"] == "warning"
+    assert "warning threshold exceeded" in result["reasons"]
+
+
+def test_get_overall_disk_pressure_warning_vs_critical() -> None:
+    pools = [
+        {
+            "percent": 86.0,
+            "pressure": {"status": "warning", "reasons": ["warning threshold exceeded"]},
+        },
+        {
+            "percent": 95.0,
+            "pressure": {"status": "critical", "reasons": ["critical threshold exceeded"]},
+        },
+    ]
+    result = system_utils.get_overall_disk_pressure(pools)
+    assert result["status"] == "critical"
+    assert "critical threshold exceeded" in result["reasons"]
+
+
+def test_get_overall_disk_pressure_highest_percent_on_equal_status() -> None:
+    pools = [
+        {
+            "percent": 86.0,
+            "pressure": {"status": "warning", "reasons": ["warning threshold exceeded 1"]},
+        },
+        {
+            "percent": 88.0,
+            "pressure": {"status": "warning", "reasons": ["warning threshold exceeded 2"]},
+        },
+    ]
+    result = system_utils.get_overall_disk_pressure(pools)
+    assert result["status"] == "warning"
+    assert "warning threshold exceeded 2" in result["reasons"]
+
+
+# ---------------------------------------------------------------------------
+# get_io_pressure_snapshot
+# ---------------------------------------------------------------------------
+
+
+def test_get_io_pressure_snapshot_not_exists(tmp_path: Path, monkeypatch) -> None:
+    # Point the Path to a non-existent file
+    monkeypatch.setattr(system_utils, "Path", lambda *args, **kwargs: tmp_path / "nonexistent")
+    assert system_utils.get_io_pressure_snapshot() is None
+
+
+def test_get_io_pressure_snapshot_valid(tmp_path: Path, monkeypatch) -> None:
+    pressure_file = tmp_path / "io"
+    pressure_file.write_text(
+        "some avg10=0.15 avg60=0.08 avg300=0.02 total=123456\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(system_utils, "Path", lambda *args, **kwargs: pressure_file)
+    result = system_utils.get_io_pressure_snapshot()
+    assert result == {
+        "some": {
+            "avg10": 0.15,
+            "avg60": 0.08,
+            "avg300": 0.02,
+            "total": 123456,
+        },
+        "full": {
+            "avg10": 0.0,
+            "avg60": 0.0,
+            "avg300": 0.0,
+            "total": 0,
+        },
+    }
+
+
+def test_get_io_pressure_snapshot_malformed(tmp_path: Path, monkeypatch) -> None:
+    pressure_file = tmp_path / "io"
+    pressure_file.write_text("invalid content", encoding="utf-8")
+    monkeypatch.setattr(system_utils, "Path", lambda *args, **kwargs: pressure_file)
+    # Malformed lines shouldn't cause a crash, just return None or partial.
+    # In our parser, if no keys match, it returns None or empty dict.
+    assert system_utils.get_io_pressure_snapshot() is None

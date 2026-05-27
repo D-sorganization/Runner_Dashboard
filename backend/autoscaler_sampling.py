@@ -205,3 +205,75 @@ def _sample() -> tuple[float, float, float, float, float]:
     disk_percent = usage.used / usage.total * 100
     disk_free_gb = usage.free / (1024**3)
     return cpu, mem, load1 / cores, disk_percent, disk_free_gb
+
+
+_last_io_time: dict[str, float] = {}
+_last_io_timestamp: dict[str, float] = {}
+
+
+def _get_disk_io_time(device: str | None = None) -> float:
+    """Return the total disk time (busy_time, or read_time + write_time if busy_time not available) in ms."""
+    psutil_mod = _psutil_dep()
+    if psutil_mod is None:
+        return 0.0
+    try:
+        if device:
+            counters = psutil_mod.disk_io_counters(perdisk=True)
+            if counters and device in counters:
+                c = counters[device]
+                if hasattr(c, "busy_time"):
+                    return float(c.busy_time)
+                return float(c.read_time + c.write_time)
+        else:
+            c = psutil_mod.disk_io_counters(perdisk=False)
+            if c:
+                if hasattr(c, "busy_time"):
+                    return float(c.busy_time)
+                return float(c.read_time + c.write_time)
+    except Exception as exc:
+        log.debug("Failed to read disk IO counters: %s", exc)
+    return 0.0
+
+
+def get_disk_utilization_percent(device: str) -> float:
+    """Calculate the disk utilization percentage since the last sample."""
+    global _last_io_time, _last_io_timestamp
+    now = time.time()
+    curr_io = _get_disk_io_time(device)
+
+    prev_io = _last_io_time.get(device, 0.0)
+    prev_ts = _last_io_timestamp.get(device, 0.0)
+
+    _last_io_time[device] = curr_io
+    _last_io_timestamp[device] = now
+
+    if prev_ts == 0.0 or now <= prev_ts:
+        return 0.0
+
+    delta_io_ms = curr_io - prev_io
+    delta_time_ms = (now - prev_ts) * 1000.0
+
+    if delta_time_ms <= 0:
+        return 0.0
+
+    percent = (delta_io_ms / delta_time_ms) * 100.0
+    return max(0.0, min(100.0, percent))
+
+
+def _sample_pool_disk(path: str) -> tuple[float, float]:
+    """Return (disk_percent, disk_free_gb) for a given path."""
+    try:
+        resolved_path = Path(path).resolve()
+        # Find the first existing parent directory if path doesn't exist yet
+        while not resolved_path.exists():
+            parent = resolved_path.parent
+            if parent == resolved_path:
+                break
+            resolved_path = parent
+        usage = shutil.disk_usage(str(resolved_path))
+        disk_percent = usage.used / usage.total * 100
+        disk_free_gb = usage.free / (1024**3)
+        return disk_percent, disk_free_gb
+    except Exception as exc:
+        log.warning("Failed to get disk usage for path %s: %s", path, exc)
+        return 0.0, 0.0

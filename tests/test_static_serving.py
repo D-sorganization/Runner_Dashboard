@@ -22,9 +22,7 @@ from pathlib import Path
 # never import server, so they're safe on every platform (including
 # Windows-mounted filesystems where security.py's POSIX-mode check would
 # otherwise trip).
-_SERVER_SRC = (Path(__file__).resolve().parent.parent / "backend" / "server.py").read_text(
-    encoding="utf-8"
-)
+_SERVER_SRC = (Path(__file__).resolve().parent.parent / "backend" / "server.py").read_text(encoding="utf-8")
 
 
 def test_server_mounts_icons_dir() -> None:

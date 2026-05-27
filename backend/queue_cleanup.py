@@ -27,7 +27,7 @@ import json
 import logging
 from dataclasses import asdict, dataclass
 from datetime import timedelta
-from enum import Enum
+from enum import StrEnum
 
 from dashboard_config.timeouts import Concurrency
 
@@ -52,7 +52,7 @@ _CANCEL_CONCURRENCY: int = Concurrency.QUEUE_CANCEL  # concurrent cancel calls
 # ---------------------------------------------------------------------------
 
 
-class StaleReason(str, Enum):
+class StaleReason(StrEnum):
     SUPERSEDED_PR_HEAD = "superseded_pr_head"
     CLOSED_OR_DELETED_REF = "closed_or_deleted_ref"
     ABANDONED_AGENT = "abandoned-agent-run"

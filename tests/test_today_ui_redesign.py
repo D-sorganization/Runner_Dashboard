@@ -39,12 +39,8 @@ def test_fleet_quota_widget_not_reintroduced() -> None:
     assert "var quotaUsed" not in src, "mock quotaUsed variable reintroduced"
     assert "quotaTotal" not in src, "mock quotaTotal variable reintroduced"
     # Strip line comments before checking for the rendered widget label
-    non_comment = "\n".join(
-        line for line in src.splitlines() if not line.lstrip().startswith("//")
-    )
-    assert '"FLEET QUOTA"' not in non_comment, (
-        "the FLEET QUOTA widget string was reintroduced inside a render call"
-    )
+    non_comment = "\n".join(line for line in src.splitlines() if not line.lstrip().startswith("//"))
+    assert '"FLEET QUOTA"' not in non_comment, "the FLEET QUOTA widget string was reintroduced inside a render call"
 
 
 def test_grad_quota_css_token_not_reintroduced() -> None:
@@ -169,7 +165,7 @@ def test_stat_component_supports_subtitle_for_truncation_hover() -> None:
     accepts a subTitle prop for exactly this case."""
     src = _read(_APP_TSX)
     assert "p.subTitle" in src
-    assert 'title: p.subTitle' in src
+    assert "title: p.subTitle" in src
 
 
 def test_keepalive_card_passes_subtitle_with_full_message() -> None:
@@ -181,6 +177,4 @@ def test_keepalive_card_passes_subtitle_with_full_message() -> None:
     idx = src.find('label: "WSL Keepalive"')
     assert idx >= 0, "WSL Keepalive Stat not found"
     block = src[idx : idx + 1500]
-    assert "subTitle: watchdog.detail" in block, (
-        "WSL Keepalive must pass full watchdog.detail/summary as subTitle"
-    )
+    assert "subTitle: watchdog.detail" in block, "WSL Keepalive must pass full watchdog.detail/summary as subTitle"

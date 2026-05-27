@@ -29,10 +29,13 @@ import os
 import random
 import time
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from hashlib import sha256
+from pathlib import Path
 from typing import Any
 
 import httpx
+import jwt
 
 log = logging.getLogger("dashboard.gh_client")
 
@@ -47,11 +50,14 @@ assert _MAX_RETRIES > 0, "MAX_RETRIES must be positive"
 # ── Token cache ──────────────────────────────────────────────────────────────
 
 _cached_token: str | None = None
+_cached_token_expires_at: float = 0.0
+_cached_token_source: str = "unknown"
 _last_status: dict[str, Any] = {
     "status": "unknown",
     "detail": "No GitHub API request has completed in this process.",
     "endpoint": "",
     "retry_after_seconds": 0,
+    "auth_source": "unknown",
     "updated_at": None,
 }
 
@@ -63,6 +69,7 @@ def _set_status(status: str, detail: str, *, endpoint: str = "", retry_after_sec
             "detail": detail[:500],
             "endpoint": endpoint,
             "retry_after_seconds": max(0, int(retry_after_seconds)),
+            "auth_source": _cached_token_source,
             "updated_at": datetime.now(UTC).isoformat(),
         }
     )
@@ -74,26 +81,133 @@ def get_status() -> dict[str, Any]:
 
 
 def _get_token() -> str:
-    """Return a cached GitHub Bearer token from the environment.
+    """Return a cached GitHub Bearer token.
+
+    GitHub App installation auth is preferred when configured:
+    ``GITHUB_APP_ID`` + ``GITHUB_APP_INSTALLATION_ID`` +
+    ``GITHUB_APP_PRIVATE_KEY_FILE`` or ``GITHUB_APP_PRIVATE_KEY``.
+
+    ``GH_TOKEN`` / ``GITHUB_TOKEN`` remains a fallback so an App credential
+    rollout cannot take the dashboard offline.
 
     Raises:
         GhAuthError: when no token is available.
     """
-    global _cached_token
-    if _cached_token:
+    global _cached_token, _cached_token_expires_at, _cached_token_source
+    if _cached_token and (_cached_token_expires_at == 0.0 or time.time() < _cached_token_expires_at):
         return _cached_token
+
+    if _github_app_auth_configured():
+        try:
+            _cached_token = _fetch_github_app_installation_token()
+            _cached_token_source = "github_app"
+            _last_status["auth_source"] = _cached_token_source
+            return _cached_token
+        except Exception as exc:
+            _cached_token = None
+            _cached_token_expires_at = 0.0
+            _cached_token_source = "github_app_error"
+            _set_status("auth_error", f"GitHub App token exchange failed: {type(exc).__name__}: {exc}")
+            log.exception("GitHub App token exchange failed; falling back to GH_TOKEN when present")
+
     token = os.environ.get("GH_TOKEN", "").strip() or os.environ.get("GITHUB_TOKEN", "").strip()
     if not token:
-        _set_status("auth_missing", "GH_TOKEN / GITHUB_TOKEN is not set")
-        raise GhAuthError("GH_TOKEN / GITHUB_TOKEN not set; cannot use httpx GitHub client")
+        _cached_token_source = "missing"
+        _set_status(
+            "auth_missing",
+            "GitHub auth is not configured; set GitHub App env vars or GH_TOKEN / GITHUB_TOKEN",
+        )
+        raise GhAuthError("GitHub auth not configured; cannot use httpx GitHub client")
     _cached_token = token
+    _cached_token_expires_at = time.time() + 300
+    _cached_token_source = "env_token"
+    _last_status["auth_source"] = _cached_token_source
     return token
 
 
 def clear_token_cache() -> None:
     """Invalidate the cached token (e.g. after token rotation in tests)."""
-    global _cached_token
+    global _cached_token, _cached_token_expires_at, _cached_token_source
     _cached_token = None
+    _cached_token_expires_at = 0.0
+    _cached_token_source = "unknown"
+
+
+def get_auth_fingerprint() -> str:
+    """Return a non-secret auth identity for cache/rate-limit partitioning."""
+    app_id = os.environ.get("GITHUB_APP_ID", "").strip()
+    installation_id = os.environ.get("GITHUB_APP_INSTALLATION_ID", "").strip()
+    if app_id and installation_id and _github_app_private_key_configured():
+        return f"github_app:{app_id}:{installation_id}"
+    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN") or ""
+    if token:
+        return f"token:{sha256(token.encode()).hexdigest()[:16]}"
+    return "anonymous"
+
+
+def _github_app_auth_configured() -> bool:
+    return bool(
+        os.environ.get("GITHUB_APP_ID", "").strip()
+        and os.environ.get("GITHUB_APP_INSTALLATION_ID", "").strip()
+        and _github_app_private_key_configured()
+    )
+
+
+def _github_app_private_key_configured() -> bool:
+    return bool(
+        os.environ.get("GITHUB_APP_PRIVATE_KEY", "").strip()
+        or os.environ.get("GITHUB_APP_PRIVATE_KEY_FILE", "").strip()
+    )
+
+
+def _github_app_private_key() -> str:
+    key = os.environ.get("GITHUB_APP_PRIVATE_KEY", "").strip()
+    if key:
+        return key.replace("\\n", "\n")
+
+    key_file = os.environ.get("GITHUB_APP_PRIVATE_KEY_FILE", "").strip()
+    if not key_file:
+        return ""
+    return Path(key_file).expanduser().read_text(encoding="utf-8")
+
+
+def _build_app_jwt(now: datetime | None = None) -> str:
+    app_id = os.environ["GITHUB_APP_ID"].strip()
+    issued_at = now or datetime.now(UTC)
+    payload = {
+        "iat": int((issued_at - timedelta(seconds=60)).timestamp()),
+        "exp": int((issued_at + timedelta(minutes=9)).timestamp()),
+        "iss": app_id,
+    }
+    return jwt.encode(payload, _github_app_private_key(), algorithm="RS256")
+
+
+def _fetch_github_app_installation_token() -> str:
+    """Exchange a GitHub App JWT for an installation access token."""
+    global _cached_token_expires_at
+
+    installation_id = os.environ["GITHUB_APP_INSTALLATION_ID"].strip()
+    url = f"{_GITHUB_API_BASE}/app/installations/{installation_id}/access_tokens"
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "Authorization": f"Bearer {_build_app_jwt()}",
+    }
+    with httpx.Client(timeout=httpx.Timeout(connect=5.0, read=30.0, write=10.0, pool=5.0)) as client:
+        resp = client.post(url, headers=headers)
+    if resp.status_code not in (200, 201):
+        raise GhServerError(resp.status_code, "/app/installations/.../access_tokens", resp.text)
+    body = resp.json()
+    token = str(body.get("token", "")).strip()
+    if not token:
+        raise GhAuthError("GitHub App installation token response did not include token")
+    expires_at = str(body.get("expires_at", "")).strip()
+    try:
+        expiry = datetime.fromisoformat(expires_at.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        expiry = time.time() + 3300
+    _cached_token_expires_at = max(time.time() + 60, expiry - 300)
+    return token
 
 
 # ── Pooled client ─────────────────────────────────────────────────────────────
