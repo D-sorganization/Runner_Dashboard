@@ -104,6 +104,8 @@ class LeaseDbProbe:
             con.close()
             return "ok", None
         except Exception as exc:  # noqa: BLE001
+            if getattr(exc, "winerror", None) == 32 or "sharing violation" in str(exc).lower():
+                return "degraded", "storage-handle: database file sharing violation (ERROR_SHARING_VIOLATION)"
             return "down", f"sqlite read failed: {exc}"
 
 
@@ -127,6 +129,8 @@ class PushDbProbe:
             con.close()
             return "ok", None
         except Exception as exc:  # noqa: BLE001
+            if getattr(exc, "winerror", None) == 32 or "sharing violation" in str(exc).lower():
+                return "degraded", "storage-handle: database file sharing violation (ERROR_SHARING_VIOLATION)"
             return "down", f"push db read failed: {exc}"
 
 
