@@ -3,6 +3,8 @@
 Extracted from server.py (issue #360).
 Routes:
   GET  /api/diagnostics/summary
+  GET  /api/diagnostics/vhdx
+  GET  /api/diagnostics/pool-recovery
   POST /api/diagnostics/restart-service
   POST /api/launchers/generate
   GET  /api/runner-routing-audit
@@ -257,6 +259,85 @@ def generate_markdown_artifact_content(summary: dict[str, Any]) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Pool diagnostics helpers
+# ---------------------------------------------------------------------------
+
+#: Documented failure scenarios and their recovery runbooks (issue #756).
+_POOL_RECOVERY_SCENARIOS: list[dict[str, Any]] = [
+    {
+        "id": "vhdx_locked",
+        "title": "VHDX Locked / Sharing Violation (ERROR_SHARING_VIOLATION)",
+        "description": (
+            "The WSL VHDX file is held open by another process "
+            "(error 0x80070020 / ERROR_SHARING_VIOLATION). "
+            "This prevents Optimize-VHD / compact from running."
+        ),
+        "warning": (
+            "Do NOT restart WSL or LxssManager while Optimize-VHD / compact vdisk "
+            "is actively running — this will abort the compaction mid-pass and may "
+            "corrupt the disk image."
+        ),
+        "steps": [
+            "Check whether Optimize-VHD is already running: "
+            "Get-Process -Name 'OptimizeVHD' -ErrorAction SilentlyContinue",
+            "If compaction is active, wait for it to finish before taking any action.",
+            "Disable monitor tasks: Disable-ScheduledTask -TaskName 'WSL-Dashboard-Keepalive'",
+            "Shut down WSL gracefully: wsl --shutdown",
+            "Stop the LxssManager service: Stop-Service -Name 'LxssManager' -Force",
+            "Verify the VHDX is no longer attached: Get-DiskImage -ImagePath <path> | Select-Object Attached",
+            "If still attached, dismount explicitly: Dismount-VHD -Path <path>",
+            "Run compaction: Optimize-VHD -Path <path> -Mode Full (or diskpart compact vdisk)",
+            "Restart LxssManager: Start-Service -Name 'LxssManager'",
+            "Re-enable monitor tasks: Enable-ScheduledTask -TaskName 'WSL-Dashboard-Keepalive'",
+        ],
+    },
+    {
+        "id": "disk_full",
+        "title": "Host Disk Full",
+        "description": (
+            "The Windows host volume hosting the VHDX has insufficient free space. "
+            "Runners may fail to check out code or write artifacts."
+        ),
+        "warning": None,
+        "steps": [
+            "Check free space: Get-PSDrive C | Select-Object Used,Free",
+            "Identify large directories: Get-ChildItem C:\\ -Recurse -ErrorAction SilentlyContinue"
+            " | Sort-Object Length -Descending | Select-Object -First 20 FullName,Length",
+            "Clear GitHub Actions runner work directories if safe: "
+            "Remove-Item -Recurse -Force $HOME\\actions-runners\\*\\_work",
+            "Clear Windows Temp: Remove-Item -Recurse -Force $env:TEMP\\*",
+            "Run VHDX compaction after freeing space (see vhdx_locked scenario for safe steps).",
+            "If disk remains full after cleanup, consider moving the VHDX to a larger volume.",
+        ],
+    },
+    {
+        "id": "wsl_boot_failure",
+        "title": "WSL Boot Failure",
+        "description": (
+            "WSL fails to start the distribution — reported as 'stopped' or with a "
+            "non-zero exit code. The dashboard and runners cannot start until WSL recovers."
+        ),
+        "warning": (
+            "Do NOT attempt to compact the VHDX while troubleshooting a boot failure — "
+            "the root cause may be disk corruption that compaction would worsen."
+        ),
+        "steps": [
+            "Check WSL distribution state: wsl -l -v",
+            "Attempt a targeted restart: wsl -t Ubuntu && wsl -d Ubuntu -- echo ok",
+            "If the distro is in 'Stopped' or error state, check the Windows Event Log: "
+            "Get-EventLog -LogName System -Source *Lxss* -Newest 20",
+            "Check disk image integrity: Get-DiskImage -ImagePath <path> | Select-Object Attached,ImagePath,Size",
+            "If the VHDX is corrupt, restore from the most recent backup before restarting services.",
+            "If no corruption: Stop-Service LxssManager; Start-Service LxssManager",
+            "Restart the runner-dashboard service after WSL recovers: "
+            "wsl -d Ubuntu -e bash -lc 'sudo systemctl restart runner-dashboard.service'",
+            "Re-enable monitor tasks: Enable-ScheduledTask -TaskName 'WSL-Dashboard-Keepalive'",
+        ],
+    },
+]
+
+
+# ---------------------------------------------------------------------------
 # Injected dependencies (set by server.py after import)
 # ---------------------------------------------------------------------------
 
@@ -387,6 +468,84 @@ async def get_diagnostics_artifact() -> Response:
         media_type="text/markdown",
         headers={"Content-Disposition": "attachment; filename=diagnostics-artifact.md"},
     )
+
+
+@router.get("/api/diagnostics/vhdx")
+async def get_vhdx_diagnostics() -> dict[str, Any]:
+    """Return VHDX attachment status and sharing-violation detection for all WSL distributions.
+
+    Uses ``Get-DiskImage`` via ``powershell.exe`` when the Windows host is available.
+    Falls back gracefully when running in pure-Linux CI.
+
+    Returns a dict with:
+    - ``distributions``: list of per-distribution VHDX status entries
+    - ``storage_incident``: sharing-violation incident block (matches /api/diagnostics/summary)
+    - ``generated_at``: ISO-8601 timestamp
+    """
+    global _last_wsl_vhdx_status, _last_storage_handle_incident
+
+    vhdx_status = await query_wsl_vhdx_status()
+    _last_wsl_vhdx_status = vhdx_status
+
+    # Normalise the raw PowerShell output into lowercase-keyed dicts
+    distributions: list[dict[str, Any]] = []
+    for item in vhdx_status:
+        distributions.append(
+            {
+                "name": item.get("Distribution") or item.get("distribution") or "unknown",
+                "path": item.get("Path") or item.get("path") or "",
+                "attached": item.get("Attached") if item.get("Attached") is not None else item.get("attached"),
+            }
+        )
+
+    incident = detect_sharing_violations(vhdx_status, "")
+    _last_storage_handle_incident = incident
+
+    return {
+        "distributions": distributions,
+        "storage_incident": incident,
+        "generated_at": datetime.now(UTC).isoformat(),
+    }
+
+
+@router.get("/api/diagnostics/pool-recovery")
+async def get_pool_recovery_guidance() -> dict[str, Any]:
+    """Return structured recovery guidance for common pool-failure scenarios.
+
+    Scenarios covered:
+    - ``vhdx_locked``: VHDX held open by another process (ERROR_SHARING_VIOLATION)
+    - ``disk_full``: Host volume has insufficient free space
+    - ``wsl_boot_failure``: WSL distribution fails to boot
+
+    Each scenario includes operator action steps and, where applicable, a safety
+    warning (e.g. do not restart WSL during active Optimize-VHD compaction).
+
+    Returns:
+        Dict with ``scenarios`` list, ``runbook_url``, and ``generated_at``.
+    """
+    # Enrich vhdx_locked with a live Attached check so the caller can see
+    # whether compaction may be actively running.
+    vhdx_status = await query_wsl_vhdx_status()
+    any_attached = any(item.get("Attached") is True or item.get("attached") is True for item in vhdx_status)
+
+    # Build scenario list — clone constants to avoid mutation
+    scenarios: list[dict[str, Any]] = []
+    for scenario in _POOL_RECOVERY_SCENARIOS:
+        entry: dict[str, Any] = dict(scenario)
+        entry["steps"] = list(scenario["steps"])
+        if entry["id"] == "vhdx_locked" and any_attached:
+            # Surface an explicit warning when we can confirm Attached=True
+            entry["warning"] = (
+                "VHDX is currently Attached=True — Optimize-VHD may be actively running. "
+                + (entry.get("warning") or "")
+            ).strip()
+        scenarios.append(entry)
+
+    return {
+        "scenarios": scenarios,
+        "runbook_url": "docs/runbooks/wsl-vhdx-compaction.md",
+        "generated_at": datetime.now(UTC).isoformat(),
+    }
 
 
 @router.get("/api/github/status")
