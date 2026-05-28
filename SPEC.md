@@ -1,11 +1,27 @@
 # SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.39
+**Spec Version:** 2.5.40
 **Application Version:** 4.1.1 (see `VERSION`)
-**Last Updated:** 2026-05-27T22:04:00-07:00
+**Last Updated:** 2026-05-28T00:00:00-07:00
 **Status:** Active
 
 ### Recent Spec Updates
+
+- **2026-05-28 (2.5.40):** Storage-tier aware disk pressure metrics and classification (issue #754).
+  `backend/system_utils.py` gains two new pure helpers:
+  `get_host_disk_for_pool(pool)` — derives the correct Windows host drive mount path from pool registry
+  metadata (`storage.host_drive` preferred, falling back to the drive letter embedded in `storage.vhdx_path`),
+  correcting the prior hard-coded `/mnt/c` assumption that caused the D: HDD-backed VHDX incident to go
+  undetected; and `classify_disk_pressure_by_tier(storage_tier, percent, free_gb, io_pressure_full_avg10)` —
+  returns a four-level pressure status (`low` / `medium` / `high` / `critical`) and `binding_constraint`
+  (`io` / `capacity` / `none`) using tier-specific thresholds: NVMe pools treat IO saturation
+  (`io_pressure_full_avg10 >= 50`) as the primary constraint, while HDD/SSD pools treat capacity as
+  primary and limit IO-only escalation to `medium`. A new `GET /api/disk/pool-pressure` endpoint
+  in `backend/metrics.py` iterates all pools in `machine_registry.yml`, measures live disk usage at
+  each pool's `runner_base_dir`, and returns per-pool pressure reports with tier, backing disk path,
+  VHDX path, bus type, and capacity/IO metrics. Tests in `tests/test_system_utils.py` and
+  `tests/api/test_pool_disk_pressure.py` cover tier classification, host-disk path resolution,
+  and the endpoint response shape.
 
 - **2026-05-27 (2.5.39):** Optimized per-runner worker process resource metric collection in `backend/routers/system.py` and `backend/system_utils.py` by pre-computing path patterns and optimizing the process iteration loop to avoid filesystem lookup overhead, preventing CI Standard timeouts. Updated `.github/workflows/ci-standard.yml` to exempt newly expanded files from the 500-line check soft cap, and disabled autoderiving fleet nodes in tests (`tests/conftest.py`) to prevent network timeouts.
 - **2026-05-26 (2.5.37):** Fixed pre-existing TestErrorHandling test pollution in `tests/api/test_routers_runners.py`. Earlier tests in `TestGetRunners` populate two pieces of module-level state — `cache_utils._cache` (TTL cache) and `runners_router._last_successful_runners` (degraded-mode fallback). Once populated, the API-error / rate-limit tests in `TestErrorHandling` received `source='cache'` instead of `'unavailable'`/`429`, because the endpoint falls back to the last-known-good response when the mocked GitHub call fails. The actual root cause was the global, not just the cache. Added an autouse fixture on `TestErrorHandling` that clears both pieces of state before and after each test. 33/33 passing locally (was 31 pass + 2 fail).
