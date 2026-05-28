@@ -1,11 +1,31 @@
 # SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.39
+**Spec Version:** 2.5.40
 **Application Version:** 4.1.1 (see `VERSION`)
-**Last Updated:** 2026-05-27T22:04:00-07:00
+**Last Updated:** 2026-05-28T00:00:00-07:00
 **Status:** Active
 
 ### Recent Spec Updates
+
+- **2026-05-28 (2.5.40):** Added tier-aware autoscaler controls for ControlTower
+  NVMe and HDD pools (issue #755). New `backend/routers/autoscaler_pools.py`
+  exposes two endpoints:
+
+  - `GET /api/autoscaler/pools` — returns per-pool scaling state (pool name,
+    min/max/default online counts, systemd unit pattern, labels, start/stop
+    enabled flags, primary pressure metric name, cooldown secs, dry_run flag).
+    Response shape: `{pools: PoolScalingState[], cooldown_secs: int, dry_run: bool}`.
+  - `POST /api/autoscaler/pools/{pool}/config` — runtime override for a pool's
+    `min_online` / `max_online` counts. Applies by writing env vars
+    (`AUTOSCALER_{POOL}_MIN_ONLINE`, `AUTOSCALER_{POOL}_MAX_ONLINE`) into the
+    current process; a service reload propagates to the autoscaler loop. Accepts
+    `{min_online: int (>=0), max_online: int (>=1)}`. Returns 422 for unknown
+    pool names or when `min_online > max_online`. DbC postconditions assert env
+    vars were written. Existing autoscaler config constants (NVME*\*/HDD*\*
+    family) and `_get_pool_config` / `_classify_unit` pool dispatch logic remain
+    the single source of truth for pool parameters; the router only reads and
+    exposes them.
+    New tests: `tests/api/test_autoscaler_pools.py` (17 tests).
 
 - **2026-05-27 (2.5.39):** Optimized per-runner worker process resource metric collection in `backend/routers/system.py` and `backend/system_utils.py` by pre-computing path patterns and optimizing the process iteration loop to avoid filesystem lookup overhead, preventing CI Standard timeouts. Updated `.github/workflows/ci-standard.yml` to exempt newly expanded files from the 500-line check soft cap, and disabled autoderiving fleet nodes in tests (`tests/conftest.py`) to prevent network timeouts.
 - **2026-05-26 (2.5.37):** Fixed pre-existing TestErrorHandling test pollution in `tests/api/test_routers_runners.py`. Earlier tests in `TestGetRunners` populate two pieces of module-level state — `cache_utils._cache` (TTL cache) and `runners_router._last_successful_runners` (degraded-mode fallback). Once populated, the API-error / rate-limit tests in `TestErrorHandling` received `source='cache'` instead of `'unavailable'`/`429`, because the endpoint falls back to the last-known-good response when the mocked GitHub call fails. The actual root cause was the global, not just the cache. Added an autouse fixture on `TestErrorHandling` that clears both pieces of state before and after each test. 33/33 passing locally (was 31 pass + 2 fail).

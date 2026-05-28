@@ -119,6 +119,7 @@ from routers import assessments as _assessments_router  # noqa: E402
 
 # parse_report_metrics and sanitize_report_date moved to routers/reports.py (issue #358)
 from routers import assistant as _assistant_router  # noqa: E402
+from routers import autoscaler_pools as _autoscaler_pools_router  # noqa: E402  # issue #755
 from routers import credentials as _credentials_router  # noqa: E402
 from routers import deployment as _deployment_router  # noqa: E402
 from routers import diagnostics as _diagnostics_router  # noqa: E402
@@ -677,6 +678,7 @@ app.include_router(_runner_audit_router.router)  # batch 3 extraction (issue #29
 app.include_router(_linear_sync_router.router)  # Linear read sync (issue #236)
 app.include_router(_repos_router.router)  # issue #360
 app.include_router(_diagnostics_router.router)  # issue #360
+app.include_router(_autoscaler_pools_router.router)  # issue #755 tier-aware autoscaler
 
 app.add_middleware(
     SessionMiddleware,
