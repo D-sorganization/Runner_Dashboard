@@ -7,6 +7,19 @@
 
 ### Recent Spec Updates
 
+- **2026-05-28 (2.5.40):** Added workflow routing guidance API for issue #757.
+  `backend/routers/label_guidance.py` exposes two new endpoints:
+  `GET /api/runners/label-guidance` returns per-label workload guidance, copy-paste
+  `runs-on` snippets, and the full workflow-class taxonomy sourced from
+  `config/workflow_runner_routing_policy.json`.
+  `GET /api/runners/label-audit` runs the offline policy audit (no WSL required)
+  and returns structured violations and migration recommendations.
+  `frontend/src/pages/Fleet/LabelGuide.tsx` adds a Label Guide section to the
+  Fleet tab with a taxonomy table and copy buttons.
+  `docs/runner-labels.md` is the canonical label documentation.
+  Tests in `tests/api/test_label_guidance.py` and
+  `frontend/src/pages/Fleet/__tests__/LabelGuide.test.tsx` pin the contracts.
+
 - **2026-05-28 (2.5.40):** Added tier-aware autoscaler controls for ControlTower
   NVMe and HDD pools (issue #755). New `backend/routers/autoscaler_pools.py`
   exposes two endpoints:
