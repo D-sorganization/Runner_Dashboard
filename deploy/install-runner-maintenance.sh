@@ -71,20 +71,29 @@ User=root
 Environment=RUNNER_ROOT=${RUNNER_ROOT}
 Environment=RUNNER_ROOTS=${RUNNER_ROOTS}
 Environment=RUNNER_USER=${RUNNER_USER}
-Environment=RUNNER_WORK_DAYS=3
+Environment=RUNNER_WORK_DAYS=1
 Environment=RUNNER_TEMP_DAYS=1
 Environment=TOOL_CACHE_DAYS=21
-Environment=DOCKER_PRUNE_UNTIL=168h
+Environment=DOCKER_PRUNE_UNTIL=48h
 Environment=PRUNE_DOCKER_VOLUMES=0
+Environment=DISK_PRESSURE_PERCENT=65
+Environment=AGGRESSIVE_ON_PRESSURE=1
 ExecStart=/usr/local/bin/runner-cleanup
 SERVICE
 
 sudo tee /etc/systemd/system/runner-cleanup.timer > /dev/null <<'TIMER'
 [Unit]
-Description=Run GitHub runner cleanup daily
+Description=Run GitHub runner cleanup periodically — daily at 04:20 plus every 2h
 
 [Timer]
+# Daily anchor so a guaranteed pass happens during off-hours…
 OnCalendar=*-*-* 04:20:00
+# …plus a 2h cadence so multi-runner hosts (8+ concurrent runners chewing
+# through pip/npm/cargo caches) don't fill the disk between daily runs.
+# Aggressive prune kicks in at >=DISK_PRESSURE_PERCENT (default 65 since
+# 2026-05-28 nvme disk-fill incident).
+OnBootSec=10min
+OnUnitActiveSec=2h
 RandomizedDelaySec=30m
 Persistent=true
 
