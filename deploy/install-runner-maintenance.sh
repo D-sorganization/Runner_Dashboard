@@ -4,6 +4,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 RUNNER_ROOT="${RUNNER_ROOT:-$HOME/actions-runners}"
+# Colon-separated list of parent dirs to manage (see runner-cleanup.sh).
+# Defaults to RUNNER_ROOT for backwards compat. Hosts that serve runners
+# from multiple disks (e.g. HDD + NVMe) should set this explicitly, e.g.
+#   RUNNER_ROOTS="$HOME/actions-runners:$HOME/actions-runners-nvme"
+RUNNER_ROOTS="${RUNNER_ROOTS:-$RUNNER_ROOT}"
 RUNNER_USER="${RUNNER_USER:-$USER}"
 SCHEDULE_CONFIG="${RUNNER_SCHEDULE_CONFIG:-$HOME/.config/runner-dashboard/runner-schedule.json}"
 SYSTEMCTL_BIN="${SYSTEMCTL_BIN:-$(command -v systemctl)}"
@@ -64,6 +69,7 @@ Wants=docker.service
 Type=oneshot
 User=root
 Environment=RUNNER_ROOT=${RUNNER_ROOT}
+Environment=RUNNER_ROOTS=${RUNNER_ROOTS}
 Environment=RUNNER_USER=${RUNNER_USER}
 Environment=RUNNER_WORK_DAYS=3
 Environment=RUNNER_TEMP_DAYS=1

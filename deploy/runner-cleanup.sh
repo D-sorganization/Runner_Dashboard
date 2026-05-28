@@ -2,6 +2,17 @@
 set -Eeuo pipefail
 
 RUNNER_ROOT="${RUNNER_ROOT:-$HOME/actions-runners}"
+# RUNNER_ROOTS lets a single host serve runners from multiple parent
+# directories (e.g. one set under HDD storage, another set under NVMe).
+# Format: colon-separated absolute paths, each containing runner-<N>
+# subdirs. If unset, falls back to RUNNER_ROOT for backwards compat.
+# The cleanup pass accepts a runner workdir if it sits under ANY of
+# these roots. Guards against: 2026-05-28 disk fill where
+# /home/dieterolson/actions-runners-nvme/runner-*/_work grew unbounded
+# because the daily cleanup only knew about
+# /home/dieterolson/actions-runners/runner-* and silently skipped
+# every nvme unit with "unexpected WorkingDirectory".
+RUNNER_ROOTS="${RUNNER_ROOTS:-$RUNNER_ROOT}"
 RUNNER_USER="${RUNNER_USER:-${SUDO_USER:-$USER}}"
 LOG_DIR="${LOG_DIR:-/var/log/runner-cleanup}"
 RUNNER_WORK_DAYS="${RUNNER_WORK_DAYS:-3}"
@@ -277,8 +288,22 @@ cleanup_runners() {
     while read -r unit; do
         [[ -n "$unit" ]] || continue
         runner_dir="$(service_workdir "$unit")"
-        if [[ -z "$runner_dir" || ! -d "$runner_dir" || "$runner_dir" != "$RUNNER_ROOT"/runner-* ]]; then
+        if [[ -z "$runner_dir" || ! -d "$runner_dir" ]]; then
             log "skip $unit: unexpected WorkingDirectory '$runner_dir'"
+            continue
+        fi
+        # Accept the workdir if it sits directly under any configured runner root.
+        local _matched=0 _root
+        IFS=':' read -r -a _roots_arr <<<"$RUNNER_ROOTS"
+        for _root in "${_roots_arr[@]}"; do
+            [[ -n "$_root" ]] || continue
+            if [[ "$runner_dir" == "$_root"/runner-* ]]; then
+                _matched=1
+                break
+            fi
+        done
+        if (( _matched == 0 )); then
+            log "skip $unit: workdir '$runner_dir' not under any RUNNER_ROOTS entry ($RUNNER_ROOTS)"
             continue
         fi
         if runner_busy "$runner_dir"; then
