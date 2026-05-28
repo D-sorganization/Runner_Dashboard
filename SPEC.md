@@ -7,6 +7,8 @@
 
 ### Recent Spec Updates
 
+- **2026-05-28 (2.5.40):** Added operator diagnostics for VHDX compaction, WSL attach failures, and pool recovery (issue #756). New `GET /api/diagnostics/vhdx` endpoint exposes VHDX attachment status for all WSL distributions via `Get-DiskImage` (powershell.exe), including sharing-violation (ERROR_SHARING_VIOLATION) detection. New `GET /api/diagnostics/pool-recovery` endpoint returns structured recovery guidance for `vhdx_locked`, `disk_full`, and `wsl_boot_failure` scenarios — each with operator action steps and safety warnings (notably: do not restart WSL during active Optimize-VHD compaction). Both endpoints are implemented in `backend/routers/diagnostics.py` and tested in `tests/api/test_pool_diagnostics.py`.
+
 - **2026-05-28 (2.5.40):** Added workflow routing guidance API for issue #757.
   `backend/routers/label_guidance.py` exposes two new endpoints:
   `GET /api/runners/label-guidance` returns per-label workload guidance, copy-paste
@@ -1030,6 +1032,8 @@ audit trail.
 | ------ | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | GET    | `/api/diagnostics`                 | **Operator deploy-health endpoint.** Always 200. Reports machine_registry load status (including the error message if load failed), fleet_federation source + peer count, leader-lock status, key file mtimes, cache config. Used by `deploy/deploy-check.sh` and any external monitoring. Schema is a stable contract — adding fields OK, removing/renaming is a breaking change. |
 | GET    | `/api/diagnostics/summary`         | Consolidated diagnostics: PID, memory, WSL status, git commit, drift                                                                                                                                                                                                                                                                                                               |
+| GET    | `/api/diagnostics/vhdx`            | VHDX attachment status for all WSL distributions via `Get-DiskImage` (powershell.exe); includes sharing-violation detection. Returns `distributions[]` (name, path, attached), `storage_incident`, `generated_at`. Gracefully returns empty list when running on Linux CI. (issue #756)                                                                                            |
+| GET    | `/api/diagnostics/pool-recovery`   | Structured recovery guidance for pool failure scenarios: `vhdx_locked` (ERROR_SHARING_VIOLATION), `disk_full`, `wsl_boot_failure`. Each scenario has `id`, `title`, `description`, `warning` (nullable), and `steps[]`. Warns against restarting WSL during active Optimize-VHD compaction. Returns `scenarios[]`, `runbook_url`, `generated_at`. (issue #756)                     |
 | POST   | `/api/diagnostics/restart-service` | Restart runner-dashboard systemd service (localhost only)                                                                                                                                                                                                                                                                                                                          |
 
 ### Launchers
