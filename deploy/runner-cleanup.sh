@@ -22,6 +22,15 @@ DOCKER_PRUNE_UNTIL="${DOCKER_PRUNE_UNTIL:-168h}"
 JOURNAL_MAX_SIZE="${JOURNAL_MAX_SIZE:-1G}"
 DISK_PRESSURE_PERCENT="${DISK_PRESSURE_PERCENT:-85}"
 AGGRESSIVE_ON_PRESSURE="${AGGRESSIVE_ON_PRESSURE:-1}"
+# DISK_CRITICAL_PERCENT — when used% >= this threshold, the cleanup pass
+# overrides the busy-skip and force-stops runners (even mid-job) to reclaim
+# space. This is intentionally destructive: it interrupts in-flight jobs to
+# prevent the more catastrophic case where every runner crash-loops on
+# `No space left on device`. Set to 100 to disable (preserve legacy
+# behavior of always skipping busy runners). Guards against the 2026-05-28
+# disk-fill incident: 8 nvme runners stayed busy continuously, cleanup
+# could only ever touch the idle runner, and work-dirs grew unbounded.
+DISK_CRITICAL_PERCENT="${DISK_CRITICAL_PERCENT:-90}"
 PRUNE_DOCKER_VOLUMES="${PRUNE_DOCKER_VOLUMES:-0}"
 DRY_RUN="${DRY_RUN:-0}"
 COMPACT_VHD="${COMPACT_VHD:-0}"
@@ -284,7 +293,18 @@ cleanup_runners() {
     # happens when stop races with a job pickup on that unit and systemctl
     # reports "Job for ... canceled") tripped `set -e` and skipped runners 2..N.
     # Result: on busy hosts the cleanup was a silent no-op every night.
+    #
+    # When root_used >= DISK_CRITICAL_PERCENT, we override the busy-skip
+    # guard and force-clean every runner regardless of job state. In-flight
+    # jobs are interrupted but the cluster will recover; the alternative
+    # (disk-fill → every runner crash-loops → cluster dead) is worse.
     local unit runner_dir was_active stop_rc start_rc
+    local critical_mode=0 used_pct
+    used_pct="$(root_used_percent)"
+    if [[ "$used_pct" -ge "$DISK_CRITICAL_PERCENT" ]]; then
+        critical_mode=1
+        log "CRITICAL: root_used=${used_pct}% >= ${DISK_CRITICAL_PERCENT}% — overriding busy-skip and force-cleaning all runners"
+    fi
     while read -r unit; do
         [[ -n "$unit" ]] || continue
         runner_dir="$(service_workdir "$unit")"
@@ -307,8 +327,11 @@ cleanup_runners() {
             continue
         fi
         if runner_busy "$runner_dir"; then
-            log "skip $unit: runner is busy"
-            continue
+            if (( critical_mode == 0 )); then
+                log "skip $unit: runner is busy"
+                continue
+            fi
+            log "force-cleaning $unit despite busy state (critical disk mode)"
         fi
         was_active=0
         stop_rc=0
