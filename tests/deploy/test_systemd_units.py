@@ -163,3 +163,36 @@ def test_restart_burst_dropin_has_limits() -> None:
     burst = _get_from_any_section(cp, "StartLimitBurst", "")
     assert burst != "", "StartLimitBurst missing"
     assert 3 <= int(burst) <= 10, f"StartLimitBurst out of sane range: {burst}"
+
+
+# ---------------------------------------------------------------------------
+# docker-delayed-start.timer — keep Docker off the WSL boot-critical path so
+# systemd reaches its target inside WSL's ~10s WaitForBootProcess window.
+# ---------------------------------------------------------------------------
+
+
+def test_docker_delayed_start_timer_exists() -> None:
+    timer = DEPLOY_DIR / "docker-delayed-start.timer"
+    assert timer.is_file(), f"missing timer unit: {timer}"
+
+
+def test_docker_delayed_start_timer_fires_shortly_after_boot() -> None:
+    """The timer must use OnBootSec (boot-relative, off the critical path) with
+    a short, sane delay so Docker is available soon after boot but does not gate
+    the boot target.
+    """
+    cp = _parse_unit_cp(DEPLOY_DIR / "docker-delayed-start.timer")
+    on_boot = _get_from_any_section(cp, "OnBootSec", "")
+    assert on_boot != "", "docker-delayed-start.timer must declare OnBootSec"
+    seconds = int(re.sub(r"\D", "", on_boot))
+    assert 5 <= seconds <= 120, f"OnBootSec={on_boot} outside sane [5s, 120s]"
+
+
+def test_docker_delayed_start_timer_targets_docker_service() -> None:
+    cp = _parse_unit_cp(DEPLOY_DIR / "docker-delayed-start.timer")
+    assert _get_from_any_section(cp, "Unit", "") == "docker.service", (
+        "docker-delayed-start.timer must start docker.service"
+    )
+    assert _get_from_any_section(cp, "WantedBy", "") == "timers.target", (
+        "docker-delayed-start.timer must be WantedBy=timers.target so it is not on the boot-critical path"
+    )

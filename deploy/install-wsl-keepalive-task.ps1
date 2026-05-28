@@ -22,6 +22,7 @@ param(
     [string]$DashboardServiceName = 'runner-dashboard.service',
     [string]$ScriptPath = '',
     [string]$LogDir = (Join-Path $env:LOCALAPPDATA 'runner-dashboard'),
+    [string]$RunAsUser = ("{0}\{1}" -f $env:USERDOMAIN, $env:USERNAME),
     [switch]$DryRun
 )
 
@@ -75,6 +76,9 @@ if ($DryRun) {
         arguments = $arguments -join ' '
         mode = 'Resident'
         distro = $Distro
+        runas_user = $RunAsUser
+        logon_type = 'S4U'
+        run_level = 'Highest'
     } | ConvertTo-Json -Depth 4
     exit 0
 }
@@ -93,12 +97,22 @@ $settings = New-ScheduledTaskSettingsSet `
     -RestartInterval (New-TimeSpan -Minutes 1) `
     -StartWhenAvailable
 
+# Run whether or not the user is logged on (S4U: no stored password). This is
+# the keystone of split-disk fleet stability: the keepalive holds the host-side
+# handle that keeps the WSL2 utility VM resident. Under an interactive-only
+# logon trigger the task dies at logoff, the VM is torn down, and both distros
+# cold-boot together on next logon — racing WSL's ~10s WaitForBootProcess
+# timeout into the reboot(RB_POWER_OFF) crash loop. RunLevel Highest lets the
+# resident probes manage systemd units inside the distro.
+$principal = New-ScheduledTaskPrincipal -UserId $RunAsUser -LogonType S4U -RunLevel Highest
+
 if ($PSCmdlet.ShouldProcess($TaskName, 'Register WSL resident keepalive scheduled task')) {
     Register-ScheduledTask `
         -TaskName $TaskName `
         -Action $action `
         -Trigger $triggers `
         -Settings $settings `
+        -Principal $principal `
         -Description "Keeps WSL distro '$Distro' resident for runner-dashboard without WSL resets." `
         -Force | Out-Null
 

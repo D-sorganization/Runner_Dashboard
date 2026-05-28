@@ -127,6 +127,24 @@ def test_resident_task_installer_registers_no_reset_mode() -> None:
     assert "Start-ScheduledTask" in text
 
 
+def test_resident_task_installer_runs_when_logged_off() -> None:
+    """The keepalive holds the host-side handle that keeps the WSL VM resident.
+
+    It MUST survive logoff (S4U principal, run whether logged on or not),
+    otherwise the VM is torn down on logoff and both split-disk distros
+    cold-boot together on next logon, racing WSL's ~10s boot timeout into a
+    crash loop. It must also run unbounded (no 72h ExecutionTimeLimit kill) and
+    start at boot, not only at logon.
+    """
+    text = INSTALLER.read_text(encoding="utf-8")
+    assert "New-ScheduledTaskPrincipal" in text, "must register an explicit principal"
+    assert "-LogonType S4U" in text, "must use S4U so it runs whether logged on or not"
+    assert "-RunLevel Highest" in text
+    assert "-Principal $principal" in text, "principal must be passed to Register-ScheduledTask"
+    assert "[TimeSpan]::Zero" in text, "ExecutionTimeLimit must be unbounded (no 72h kill)"
+    assert "New-ScheduledTaskTrigger -AtStartup" in text, "must start at boot, not only logon"
+
+
 # ---------------------------------------------------------------------------
 # Behavioural checks (require pwsh)
 # ---------------------------------------------------------------------------

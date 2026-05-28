@@ -1,7 +1,7 @@
 # SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.40
-**Application Version:** 4.1.1 (see `VERSION`)
+**Spec Version:** 2.5.41
+**Application Version:** 4.1.2 (see `VERSION`)
 **Last Updated:** 2026-05-28T00:00:00-07:00
 **Status:** Active
 
@@ -482,6 +482,26 @@ mutations, replaces `/etc/sudoers.d/runner-dashboard` atomically via
 file untouched), and skips `systemctl restart runner-dashboard` when the
 deployed `git_sha` in `deployment.json` matches the current checkout unless
 `--force` is supplied.
+
+#### 2.3.1 WSL boot stability (split-disk hosts)
+
+Hosts that split runner storage across two physical disks run two systemd WSL2
+distros in one shared utility VM. Two hardening steps keep them out of the
+`WaitForBootProcess` crash loop (WSL aborts a distro boot — `reboot(RB_POWER_OFF)`
+— if systemd does not reach its default target within ~10s):
+
+- **`deploy/decouple-docker-boot.sh`** removes `docker.service` and
+  `containerd.service` from the boot transaction (they stay installed and are
+  not stopped), keeps `docker.socket` enabled for on-demand activation, and
+  installs **`deploy/docker-delayed-start.timer`** (`OnBootSec=20s`) so Docker
+  starts shortly after boot, off the critical path. On SSD-backed distros this
+  drops boot-ready from ~15s to ~4–5s. Effective on next boot; idempotent.
+- **`deploy/install-wsl-keepalive-task.ps1`** registers the resident keepalive
+  with an **S4U principal** (`-LogonType S4U -RunLevel Highest`) so it runs
+  whether or not the user is logged on, with an unbounded `ExecutionTimeLimit`
+  and an `AtStartup` trigger. This keeps the host-side handle that holds the WSL
+  VM resident across logoff, preventing the teardown that otherwise forces both
+  distros to cold-boot together and race the 10s window.
 
 ---
 
