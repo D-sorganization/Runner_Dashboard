@@ -1,11 +1,24 @@
 # SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.39
+**Spec Version:** 2.5.40
 **Application Version:** 4.1.1 (see `VERSION`)
-**Last Updated:** 2026-05-27T22:04:00-07:00
+**Last Updated:** 2026-05-28T00:00:00-07:00
 **Status:** Active
 
 ### Recent Spec Updates
+
+- **2026-05-28 (2.5.40):** Added workflow routing guidance API for issue #757.
+  `backend/routers/label_guidance.py` exposes two new endpoints:
+  `GET /api/runners/label-guidance` returns per-label workload guidance, copy-paste
+  `runs-on` snippets, and the full workflow-class taxonomy sourced from
+  `config/workflow_runner_routing_policy.json`.
+  `GET /api/runners/label-audit` runs the offline policy audit (no WSL required)
+  and returns structured violations and migration recommendations.
+  `frontend/src/pages/Fleet/LabelGuide.tsx` adds a Label Guide section to the
+  Fleet tab with a taxonomy table and copy buttons.
+  `docs/runner-labels.md` is the canonical label documentation.
+  Tests in `tests/api/test_label_guidance.py` and
+  `frontend/src/pages/Fleet/__tests__/LabelGuide.test.tsx` pin the contracts.
 
 - **2026-05-27 (2.5.39):** Optimized per-runner worker process resource metric collection in `backend/routers/system.py` and `backend/system_utils.py` by pre-computing path patterns and optimizing the process iteration loop to avoid filesystem lookup overhead, preventing CI Standard timeouts. Updated `.github/workflows/ci-standard.yml` to exempt newly expanded files from the 500-line check soft cap, and disabled autoderiving fleet nodes in tests (`tests/conftest.py`) to prevent network timeouts.
 - **2026-05-26 (2.5.37):** Fixed pre-existing TestErrorHandling test pollution in `tests/api/test_routers_runners.py`. Earlier tests in `TestGetRunners` populate two pieces of module-level state — `cache_utils._cache` (TTL cache) and `runners_router._last_successful_runners` (degraded-mode fallback). Once populated, the API-error / rate-limit tests in `TestErrorHandling` received `source='cache'` instead of `'unavailable'`/`429`, because the endpoint falls back to the last-known-good response when the mocked GitHub call fails. The actual root cause was the global, not just the cache. Added an autouse fixture on `TestErrorHandling` that clears both pieces of state before and after each test. 33/33 passing locally (was 31 pass + 2 fail).
