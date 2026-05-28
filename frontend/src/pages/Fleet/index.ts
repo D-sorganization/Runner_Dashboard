@@ -1,5 +1,6 @@
 export { FleetMobile } from "./Mobile";
 export { KpiHeader } from "./KpiHeader";
+export { LabelGuide } from "./LabelGuide";
 export { RunnerCard } from "./RunnerCard";
 export { StatusPill } from "./StatusPill";
 export type { KpiHeaderProps } from "./KpiHeader";
