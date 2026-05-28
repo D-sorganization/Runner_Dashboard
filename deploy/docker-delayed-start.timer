@@ -1,0 +1,17 @@
+[Unit]
+Description=Start Docker shortly after boot (off the WSL boot-critical path)
+Documentation=https://github.com/D-sorganization/Runner_Dashboard
+
+[Timer]
+# Fire 20s after boot. docker.service + containerd.service are disabled from
+# the boot transaction (see decouple-docker-boot.sh) so systemd reaches its
+# default target well inside WSL's ~10s WaitForBootProcess window; this timer
+# brings Docker up shortly afterwards, off the critical path. docker.socket
+# stays enabled, so anything that needs Docker before this fires activates it
+# on demand.
+OnBootSec=20s
+AccuracySec=1s
+Unit=docker.service
+
+[Install]
+WantedBy=timers.target
