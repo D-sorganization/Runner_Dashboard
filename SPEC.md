@@ -7,6 +7,26 @@
 
 ### Recent Spec Updates
 
+- **2026-05-28 (2.5.40):** Added tier-aware autoscaler controls for ControlTower
+  NVMe and HDD pools (issue #755). New `backend/routers/autoscaler_pools.py`
+  exposes two endpoints:
+
+  - `GET /api/autoscaler/pools` — returns per-pool scaling state (pool name,
+    min/max/default online counts, systemd unit pattern, labels, start/stop
+    enabled flags, primary pressure metric name, cooldown secs, dry_run flag).
+    Response shape: `{pools: PoolScalingState[], cooldown_secs: int, dry_run: bool}`.
+  - `POST /api/autoscaler/pools/{pool}/config` — runtime override for a pool's
+    `min_online` / `max_online` counts. Applies by writing env vars
+    (`AUTOSCALER_{POOL}_MIN_ONLINE`, `AUTOSCALER_{POOL}_MAX_ONLINE`) into the
+    current process; a service reload propagates to the autoscaler loop. Accepts
+    `{min_online: int (>=0), max_online: int (>=1)}`. Returns 422 for unknown
+    pool names or when `min_online > max_online`. DbC postconditions assert env
+    vars were written. Existing autoscaler config constants (NVME*\* / HDD*\*
+    family) and `_get_pool_config` / `_classify_unit` pool dispatch logic remain
+    the single source of truth for pool parameters; the router only reads and
+    exposes them.
+    New tests: `tests/api/test_autoscaler_pools.py` (17 tests).
+
 - **2026-05-28 (2.5.40):** Added multi-pool backend aggregation to
   `GET /api/fleet/status` (issue #753). When the dashboard runs on port 8321
   (ControlTower-NVMe), it automatically queries its peer on port 8322
