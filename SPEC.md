@@ -20,6 +20,39 @@
   Tests in `tests/api/test_label_guidance.py` and
   `frontend/src/pages/Fleet/__tests__/LabelGuide.test.tsx` pin the contracts.
 
+- **2026-05-28 (2.5.40):** Added tier-aware autoscaler controls for ControlTower
+  NVMe and HDD pools (issue #755). New `backend/routers/autoscaler_pools.py`
+  exposes two endpoints:
+
+  - `GET /api/autoscaler/pools` — returns per-pool scaling state (pool name,
+    min/max/default online counts, systemd unit pattern, labels, start/stop
+    enabled flags, primary pressure metric name, cooldown secs, dry_run flag).
+    Response shape: `{pools: PoolScalingState[], cooldown_secs: int, dry_run: bool}`.
+  - `POST /api/autoscaler/pools/{pool}/config` — runtime override for a pool's
+    `min_online` / `max_online` counts. Applies by writing env vars
+    (`AUTOSCALER_{POOL}_MIN_ONLINE`, `AUTOSCALER_{POOL}_MAX_ONLINE`) into the
+    current process; a service reload propagates to the autoscaler loop. Accepts
+    `{min_online: int (>=0), max_online: int (>=1)}`. Returns 422 for unknown
+    pool names or when `min_online > max_online`. DbC postconditions assert env
+    vars were written. Existing autoscaler config constants (NVME*\* / HDD*\*
+    family) and `_get_pool_config` / `_classify_unit` pool dispatch logic remain
+    the single source of truth for pool parameters; the router only reads and
+    exposes them.
+    New tests: `tests/api/test_autoscaler_pools.py` (17 tests).
+
+- **2026-05-28 (2.5.40):** Added multi-pool backend aggregation to
+  `GET /api/fleet/status` (issue #753). When the dashboard runs on port 8321
+  (ControlTower-NVMe), it automatically queries its peer on port 8322
+  (ControlTower-HDD) and merges both pool responses into a single JSON object
+  keyed by pool name. If the peer is unreachable the endpoint returns an
+  `"offline"` entry for that pool rather than failing the whole request,
+  preserving orthogonality. Pass `?exclude_pools=true` to suppress the peer
+  query (used internally so the peer does not recurse back). The Fleet tab
+  `Mobile.tsx` already renders ControlTower pool nodes in a dedicated
+  side-by-side section when their names start with `"ControlTower"`. Tests in
+  `tests/api/test_fleet_aggregator.py` cover the full-aggregate, peer-offline
+  fallback, and exclude_pools code paths.
+
 - **2026-05-27 (2.5.39):** Optimized per-runner worker process resource metric collection in `backend/routers/system.py` and `backend/system_utils.py` by pre-computing path patterns and optimizing the process iteration loop to avoid filesystem lookup overhead, preventing CI Standard timeouts. Updated `.github/workflows/ci-standard.yml` to exempt newly expanded files from the 500-line check soft cap, and disabled autoderiving fleet nodes in tests (`tests/conftest.py`) to prevent network timeouts.
 - **2026-05-26 (2.5.37):** Fixed pre-existing TestErrorHandling test pollution in `tests/api/test_routers_runners.py`. Earlier tests in `TestGetRunners` populate two pieces of module-level state — `cache_utils._cache` (TTL cache) and `runners_router._last_successful_runners` (degraded-mode fallback). Once populated, the API-error / rate-limit tests in `TestErrorHandling` received `source='cache'` instead of `'unavailable'`/`429`, because the endpoint falls back to the last-known-good response when the mocked GitHub call fails. The actual root cause was the global, not just the cache. Added an autouse fixture on `TestErrorHandling` that clears both pieces of state before and after each test. 33/33 passing locally (was 31 pass + 2 fail).
 - **2026-05-26 (2.5.36):** Comprehensive autoscaler-corruption recovery + VS Code blank-window fix. New `backend/runner_state_cleanup.py` module removes orphaned `$HOME/.gitconfig.lock` (and stale per-worktree git locks older than 60s) after every autoscaler stop — recovering from the fleet-wide outage signature where a SIGTERM mid-`git config --global` poisons every subsequent `actions/checkout` on the host (Runner_Dashboard#640). Cleanup is invoked from `_stop_unit` on every stop path and mirrored in `deploy/runner-hooks/job-started.sh`. `backend/routers/credentials.py` Cline detection uses a new `_resolve_vscode_cli` helper that prefers `code.cmd` over `Code.exe` on Windows and a `_vscode_has_extension` helper that passes `CREATE_NO_WINDOW`. 7 new unit tests + 3 updated; 25/25 passing.
@@ -443,6 +476,34 @@ deployed `git_sha` in `deployment.json` matches the current checkout unless
 Real-time view of all self-hosted runners. Displays runner name, status (idle,
 active, offline), current job, labels, and systemd service state. Provides
 start/stop controls per runner and bulk fleet controls.
+
+#### 3.1.1 Multi-Pool Fleet Status
+
+`GET /api/fleet/status` aggregates multiple co-located runner-pool backends
+into a single response. On a ControlTower host that runs two pool backends:
+
+- Port **8321** — `ControlTower-NVMe` (primary, hub role)
+- Port **8322** — `ControlTower-HDD` (secondary pool)
+
+The primary dashboard instance (8321) queries the secondary (`?exclude_pools=true`)
+and merges both pool entries under their pool names. If the secondary is
+unreachable, its entry is set to `{"status": "offline", ...}` so the primary
+view remains available. The `exclude_pools=true` query parameter prevents
+recursive peer queries.
+
+Response shape (keyed by pool name, plus any FLEET_NODES peers):
+
+```json
+{
+  "ControlTower-NVMe": { "status": "online", "hostname": "...", ... },
+  "ControlTower-HDD":  { "status": "online",  "hostname": "...", ... },
+  "OGLaptop":          { "status": "online",  "hostname": "...", ... }
+}
+```
+
+The Fleet tab `Mobile.tsx` renders entries whose names start with `"ControlTower"`
+in a dedicated **ControlTower Pools** section with a side-by-side card layout;
+all other fleet nodes render as standard runner cards below that section.
 
 ### 3.2 History Tab
 
