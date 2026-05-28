@@ -168,19 +168,72 @@ function Get-BackoffSeconds {
     return [int][Math]::Min($cap, $base * [Math]::Pow(2, $shift))
 }
 
+# The probe runs `id` (a single-token argument -- Start-Process -ArgumentList
+# does not quote multi-word elements, so `/bin/sh -c 'echo x'` would split and
+# run `sh -c echo` with no output). A healthy distro's `id` output always
+# contains this token; wsl.exe's own STDOUT diagnostics (e.g. "There is no
+# distribution with the supplied name.") never do -- so it cleanly separates a
+# live distro from both an offline one and the null-exit-code false positive.
+$script:ProbeCommand = 'id'
+$script:ProbeToken = 'uid='
+
+function Test-ProbeSuccess {
+    <#
+    .SYNOPSIS
+        Decide whether a responsiveness probe succeeded from its observable
+        results. Pure: no I/O, no globals, so it can be unit-tested directly.
+
+    .DESCRIPTION
+        Success is deliberately NOT derived from the process exit code.
+        ``Start-Process -PassThru`` does not reliably populate the exit code
+        when the watchdog runs non-interactively (``powershell -File`` from a
+        scheduled task): it comes back ``$null``. The old gate compared that
+        null code against zero, judged it non-zero, and declared a perfectly
+        healthy distro unresponsive on EVERY cycle. In Watchdog mode that drove
+        a ``wsl --shutdown`` reboot loop that took the whole runner fleet (and
+        the dashboard) offline; in Resident mode it spammed false
+        ``unresponsive`` reports.
+
+        A bare "non-empty stdout" check is also wrong: ``wsl.exe`` prints its
+        own errors (bad distro name, etc.) to STDOUT, so an offline distro
+        still yields output. The reliable signal is that the probe exited
+        within the timeout AND its stdout contains the sentinel the in-distro
+        command emits (the probe runs `id`, whose output always contains
+        "uid=") -- which wsl.exe diagnostics never include.
+
+    .OUTPUTS
+        [bool] $true iff the probe exited and its stdout contains ExpectedToken.
+    #>
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param(
+        [Parameter(Mandatory)][bool]$Exited,
+        [AllowNull()][AllowEmptyString()][string]$StdoutContent,
+        [Parameter(Mandatory)][string]$ExpectedToken
+    )
+    if (-not $Exited) { return $false }
+    if ([string]::IsNullOrEmpty($StdoutContent)) { return $false }
+    return $StdoutContent.Contains($ExpectedToken)
+}
+
 function Test-Responsive {
     <#
     .SYNOPSIS
         Run a trivial command inside the distro with a hard timeout.
 
     .OUTPUTS
-        [bool] $true iff the distro returned a non-empty stdout before timeout.
+        [bool] $true iff the distro echoed the probe sentinel before timeout.
 
     .NOTES
         Uses Start-Process + WaitForExit($ms) rather than a job because
         background jobs survive PowerShell crashes and we want hard
         cleanup. The output is captured via a temp file because Start-Process
         cannot stream stdout from a hidden window directly.
+
+        The success decision is delegated to Test-ProbeSuccess: clean exit +
+        stdout containing the probe sentinel. It does NOT read the process exit
+        code (Start-Process -PassThru leaves it null under non-interactive
+        execution) -- see that helper for the full incident rationale.
     #>
     [CmdletBinding()]
     [OutputType([bool])]
@@ -192,18 +245,19 @@ function Test-Responsive {
     $stdoutFile = [System.IO.Path]::GetTempFileName()
     $stderrFile = [System.IO.Path]::GetTempFileName()
     try {
-        $args = @('-d', $Distro, '--', '/bin/sh', '-c', 'echo alive')
+        $args = @('-d', $Distro, '--', $script:ProbeCommand)
         $p = Start-Process -FilePath $WslExe -ArgumentList $args `
             -NoNewWindow -PassThru `
             -RedirectStandardOutput $stdoutFile `
             -RedirectStandardError $stderrFile
-        if (-not $p.WaitForExit($TimeoutSeconds * 1000)) {
-            try { $p.Kill() } catch { }
-            return $false
+        $exited = $p.WaitForExit($TimeoutSeconds * 1000)
+        if (-not $exited) { try { $p.Kill() } catch { } }
+        $out = if ($exited) {
+            Get-Content -LiteralPath $stdoutFile -Raw -ErrorAction SilentlyContinue
+        } else {
+            $null
         }
-        if ($p.ExitCode -ne 0) { return $false }
-        $out = (Get-Content -LiteralPath $stdoutFile -Raw -ErrorAction SilentlyContinue)
-        return -not [string]::IsNullOrWhiteSpace($out)
+        return (Test-ProbeSuccess -Exited $exited -StdoutContent $out -ExpectedToken $script:ProbeToken)
     } finally {
         Remove-Item -LiteralPath $stdoutFile -Force -ErrorAction SilentlyContinue
         Remove-Item -LiteralPath $stderrFile -Force -ErrorAction SilentlyContinue

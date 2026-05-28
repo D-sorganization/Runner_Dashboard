@@ -118,6 +118,20 @@ def test_script_has_resident_mode_without_wsl_reset() -> None:
     assert "unresponsive_no_wsl_reset" in text
 
 
+def test_probe_does_not_gate_on_process_exit_code() -> None:
+    """Regression guard for the fleet-wide false-unresponsive bug.
+
+    ``Start-Process -PassThru`` leaves ``ExitCode`` null when the watchdog
+    runs non-interactively (scheduled task), so gating on ``$p.ExitCode -ne
+    0`` declared every healthy distro unresponsive. The probe must instead
+    decide success from clean exit + non-empty stdout via Test-ProbeSuccess.
+    """
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert "function Test-ProbeSuccess" in text, "pure success helper missing"
+    assert "Test-ProbeSuccess -Exited" in text, "Test-Responsive must delegate to Test-ProbeSuccess"
+    assert "$p.ExitCode -ne 0" not in text, "probe must not gate on process exit code"
+
+
 def test_resident_task_installer_registers_no_reset_mode() -> None:
     text = INSTALLER.read_text(encoding="utf-8")
     assert "Register-ScheduledTask" in text
@@ -210,6 +224,43 @@ def test_backoff_helper_is_pure_and_capped(tmp_path: Path) -> None:
     assert max(samples) == 1800, samples
     # monotonic non-decreasing
     assert samples == sorted(samples), samples
+
+
+@PWSH_REQUIRED
+def test_probe_success_helper_ignores_exit_code(tmp_path: Path) -> None:
+    """Test-ProbeSuccess must judge on exit + sentinel token, never exit code.
+
+    R1 is the decisive regression case: a probe that exited and echoed the
+    sentinel is healthy even though no exit code is supplied at all -- exactly
+    the scheduled-task scenario where ExitCode came back $null and the old
+    gate spuriously failed. R2 covers the other half of the bug: wsl.exe
+    writes "no distribution" errors to STDOUT, so a dead distro yields
+    non-empty output that must NOT be read as healthy.
+    """
+    token = "uid="
+    healthy_stdout = "uid=1000(runner) gid=1000(runner) groups=1000(runner)"
+    dead_distro_stdout = "There is no distribution with the supplied name."
+    driver = textwrap.dedent(
+        f"""
+        . '{SCRIPT.as_posix()}' -Once -Distro 'noop' `
+            -CheckIntervalSeconds 10 -ProbeTimeoutSeconds 2 `
+            -Mode Resident `
+            -LogDir '{(tmp_path / "logs").as_posix()}' *> $null
+        $tok = '{token}'
+        $ok = '{healthy_stdout}'
+        $dead = '{dead_distro_stdout}'
+        Write-Output ('R1=' + (Test-ProbeSuccess -Exited $true -StdoutContent $ok -ExpectedToken $tok))
+        Write-Output ('R2=' + (Test-ProbeSuccess -Exited $true -StdoutContent $dead -ExpectedToken $tok))
+        Write-Output ('R3=' + (Test-ProbeSuccess -Exited $true -StdoutContent $null -ExpectedToken $tok))
+        Write-Output ('R4=' + (Test-ProbeSuccess -Exited $false -StdoutContent $ok -ExpectedToken $tok))
+        """
+    )
+    result = _run_ps(driver)
+    out = result.stdout
+    assert "R1=True" in out, result.stdout + result.stderr
+    assert "R2=False" in out, result.stdout
+    assert "R3=False" in out, result.stdout
+    assert "R4=False" in out, result.stdout
 
 
 @PWSH_REQUIRED
