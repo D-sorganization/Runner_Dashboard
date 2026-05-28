@@ -600,6 +600,157 @@ def get_storage_pools() -> list[dict[str, Any]]:
     return pools
 
 
+def get_host_disk_for_pool(pool: dict[str, Any]) -> str:
+    """Return the WSL host mount path for a runner pool's backing disk.
+
+    Prefers the explicit ``storage.host_drive`` field (e.g. ``"D:"``).
+    Falls back to the drive letter embedded in ``storage.vhdx_path`` (e.g.
+    ``"D:\\WSL\\ext4.vhdx"`` → ``/mnt/d``).  Returns ``/mnt/c`` as a safe
+    default when neither field is present.
+
+    This corrects the prior assumption that all WSL distros live on C:, which
+    caused the D: HDD-backed ext4.vhdx incident to go undetected (issue #754).
+    """
+    storage = pool.get("storage") or {}
+
+    # Prefer explicitly declared host_drive
+    host_drive: str | None = storage.get("host_drive")
+    if host_drive and len(host_drive) >= 1 and host_drive[0].isalpha():
+        return f"/mnt/{host_drive[0].lower()}"
+
+    # Fall back to drive letter from vhdx_path
+    vhdx_path: str | None = storage.get("vhdx_path")
+    if vhdx_path and len(vhdx_path) >= 2 and vhdx_path[1] == ":" and vhdx_path[0].isalpha():
+        return f"/mnt/{vhdx_path[0].lower()}"
+
+    return "/mnt/c"
+
+
+# Tier-aware pressure thresholds
+_TIER_THRESHOLDS: dict[str, dict[str, float]] = {
+    "nvme": {
+        # NVMe: IO saturation is the primary failure mode.  Capacity thresholds
+        # are slightly relaxed vs HDD because NVMe handles high fill better.
+        "capacity_warn_percent": 85.0,
+        "capacity_critical_percent": 93.0,
+        "io_medium_threshold": 20.0,  # full avg10 >= 20 → medium
+        "io_high_threshold": 50.0,  # full avg10 >= 50 → high
+    },
+    "hdd": {
+        # HDD: capacity is the primary failure mode; IO saturation is a
+        # secondary signal because HDDs are inherently slower.
+        "capacity_warn_percent": 85.0,
+        "capacity_critical_percent": 93.0,
+        "io_medium_threshold": 50.0,  # higher threshold for HDD
+        "io_high_threshold": 999.0,  # IO alone cannot escalate HDD to high
+    },
+    "ssd": {
+        # SSD: same capacity-first model as HDD with slightly tighter IO.
+        "capacity_warn_percent": 85.0,
+        "capacity_critical_percent": 93.0,
+        "io_medium_threshold": 35.0,
+        "io_high_threshold": 999.0,
+    },
+}
+_DEFAULT_TIER_THRESHOLDS = _TIER_THRESHOLDS["hdd"]
+
+# Pressure level order for comparisons
+_PRESSURE_RANK: dict[str, int] = {"low": 0, "medium": 1, "high": 2, "critical": 3}
+
+
+def classify_disk_pressure_by_tier(
+    *,
+    storage_tier: str | None,
+    percent: float,
+    free_gb: float,
+    io_pressure_full_avg10: float,
+) -> dict[str, Any]:
+    """Classify disk pressure for a storage pool, tier-aware.
+
+    NVMe pools treat IO saturation as the primary pressure signal; HDD/SSD
+    pools treat capacity as the primary signal.
+
+    Returns a dict with:
+      - ``tier`` — the normalised tier name used
+      - ``status`` — one of ``low`` / ``medium`` / ``high`` / ``critical``
+      - ``binding_constraint`` — ``"io"``, ``"capacity"``, or ``"none"``
+      - ``capacity_warn_percent``, ``capacity_critical_percent``, ``io_high_threshold``
+        (thresholds used, for transparency)
+      - ``reasons`` — human-readable list of triggered constraints
+    """
+    normalised_tier = (storage_tier or "").strip().lower()
+    thresholds = _TIER_THRESHOLDS.get(normalised_tier, _DEFAULT_TIER_THRESHOLDS)
+
+    cap_warn = thresholds["capacity_warn_percent"]
+    cap_crit = thresholds["capacity_critical_percent"]
+    io_medium = thresholds["io_medium_threshold"]
+    io_high = thresholds["io_high_threshold"]
+
+    status = "low"
+    binding_constraint = "none"
+    reasons: list[str] = []
+
+    # --- Capacity pressure ---
+    cap_status = "low"
+    if percent >= cap_crit:
+        cap_status = "critical"
+        reasons.append(f"capacity {percent:.1f}% >= critical threshold {cap_crit:g}%")
+    elif percent >= cap_warn:
+        cap_status = "medium"
+        reasons.append(f"capacity {percent:.1f}% >= warn threshold {cap_warn:g}%")
+    elif free_gb <= DISK_MIN_FREE_GB:
+        cap_status = "medium"
+        reasons.append(f"free space {free_gb:.1f} GB <= minimum {DISK_MIN_FREE_GB:g} GB")
+
+    # --- IO pressure ---
+    io_status = "low"
+    if normalised_tier == "nvme":
+        # NVMe: IO is the primary constraint, can escalate all the way to critical.
+        if io_pressure_full_avg10 >= io_high:
+            io_status = "high"
+            reasons.append(f"IO saturation full.avg10={io_pressure_full_avg10:.1f} >= {io_high:g}")
+        elif io_pressure_full_avg10 >= io_medium:
+            io_status = "medium"
+            reasons.append(f"IO pressure full.avg10={io_pressure_full_avg10:.1f} >= {io_medium:g}")
+    else:
+        # HDD/SSD: IO can raise pressure to medium at most.
+        if io_pressure_full_avg10 >= io_medium:
+            io_status = "medium"
+            reasons.append(f"IO pressure full.avg10={io_pressure_full_avg10:.1f} >= {io_medium:g}")
+
+    # Combine: take the worst of capacity vs IO, then apply tier logic.
+    cap_rank = _PRESSURE_RANK.get(cap_status, 0)
+    io_rank = _PRESSURE_RANK.get(io_status, 0)
+
+    if cap_rank >= io_rank:
+        status = cap_status
+        binding_constraint = "capacity" if cap_status != "low" else "none"
+    else:
+        status = io_status
+        binding_constraint = "io" if io_status != "low" else "none"
+
+    # NVMe: critical capacity AND high IO => critical
+    if normalised_tier == "nvme" and cap_status == "critical" and io_status in ("high", "critical"):
+        status = "critical"
+        binding_constraint = "io"
+
+    # Map old 4-level scheme: HDD status at cap_crit is "critical" already
+    # but we use "high" as a discrete level for NVMe when only IO triggers.
+    # Ensure "high" is only emitted for NVMe IO pressure with healthy-ish capacity.
+    if status == "high" and normalised_tier != "nvme":
+        status = "critical"  # non-NVMe tiers go straight to critical at high IO
+
+    return {
+        "tier": normalised_tier or "hdd",
+        "status": status,
+        "binding_constraint": binding_constraint,
+        "reasons": reasons,
+        "capacity_warn_percent": cap_warn,
+        "capacity_critical_percent": cap_crit,
+        "io_high_threshold": io_high,
+    }
+
+
 def get_overall_disk_pressure(pools: list[dict[str, Any]]) -> dict[str, Any]:
     """Get the overall disk pressure based on the most constrained pool."""
     if not pools:

@@ -5,7 +5,21 @@
 **Last Updated:** 2026-05-28T00:00:00-07:00
 **Status:** Active
 
-### Recent Spec Updates
+- **2026-05-28 (2.5.40):** Storage-tier aware disk pressure metrics and classification (issue #754).
+  `backend/system_utils.py` gains two new pure helpers:
+  `get_host_disk_for_pool(pool)` — derives the correct Windows host drive mount path from pool registry
+  metadata (`storage.host_drive` preferred, falling back to the drive letter embedded in `storage.vhdx_path`),
+  correcting the prior hard-coded `/mnt/c` assumption that caused the D: HDD-backed VHDX incident to go
+  detected; and `classify_disk_pressure_by_tier(storage_tier, percent, free_gb, io_pressure_full_avg10)` —
+  returns a four-level pressure status (`low` / `medium` / `high` / `critical`) and `binding_constraint`
+  (`io` / `capacity` / `none`) using tier-specific thresholds: NVMe pools treat IO saturation
+  (`io_pressure_full_avg10 >= 50`) as the primary constraint, while HDD/SSD pools treat capacity as
+  primary and limit IO-only escalation to `medium`. A new `GET /api/disk/pool-pressure` endpoint
+  in `backend/metrics.py` iterates all pools in `machine_registry.yml`, measures live disk usage at
+  each pool's `runner_base_dir`, and returns per-pool pressure reports with tier, backing disk path,
+  VHDX path, bus type, and capacity/IO metrics. Tests in `tests/test_system_utils.py` and
+  `tests/api/test_pool_disk_pressure.py` cover tier classification, host-disk path resolution,
+  and the endpoint response shape.
 
 - **2026-05-28 (2.5.40):** Added operator diagnostics for VHDX compaction, WSL attach failures, and pool recovery (issue #756). New `GET /api/diagnostics/vhdx` endpoint exposes VHDX attachment status for all WSL distributions via `Get-DiskImage` (powershell.exe), including sharing-violation (ERROR_SHARING_VIOLATION) detection. New `GET /api/diagnostics/pool-recovery` endpoint returns structured recovery guidance for `vhdx_locked`, `disk_full`, and `wsl_boot_failure` scenarios — each with operator action steps and safety warnings (notably: do not restart WSL during active Optimize-VHD compaction). Both endpoints are implemented in `backend/routers/diagnostics.py` and tested in `tests/api/test_pool_diagnostics.py`.
 

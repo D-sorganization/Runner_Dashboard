@@ -546,3 +546,232 @@ def test_get_io_pressure_snapshot_malformed(tmp_path: Path, monkeypatch) -> None
     # Malformed lines shouldn't cause a crash, just return None or partial.
     # In our parser, if no keys match, it returns None or empty dict.
     assert system_utils.get_io_pressure_snapshot() is None
+
+
+# ---------------------------------------------------------------------------
+# classify_disk_pressure_by_tier  (issue #754)
+# ---------------------------------------------------------------------------
+
+
+def test_tier_nvme_healthy_at_low_usage() -> None:
+    """NVMe tier: 60% usage is healthy."""
+    result = system_utils.classify_disk_pressure_by_tier(
+        storage_tier="nvme",
+        percent=60.0,
+        free_gb=80.0,
+        io_pressure_full_avg10=2.0,
+    )
+    assert result["tier"] == "nvme"
+    assert result["status"] == "low"
+    assert result["binding_constraint"] == "none"
+
+
+def test_tier_nvme_io_saturation_triggers_high() -> None:
+    """NVMe tier: IO saturation (full avg10 >= 50) escalates to high even at low capacity usage."""
+    result = system_utils.classify_disk_pressure_by_tier(
+        storage_tier="nvme",
+        percent=40.0,
+        free_gb=200.0,
+        io_pressure_full_avg10=55.0,
+    )
+    assert result["tier"] == "nvme"
+    assert result["status"] in ("high", "critical")
+    assert result["binding_constraint"] == "io"
+
+
+def test_tier_nvme_medium_io_pressure() -> None:
+    """NVMe tier: moderate IO pressure (full avg10 20-49) triggers medium."""
+    result = system_utils.classify_disk_pressure_by_tier(
+        storage_tier="nvme",
+        percent=40.0,
+        free_gb=200.0,
+        io_pressure_full_avg10=30.0,
+    )
+    assert result["tier"] == "nvme"
+    assert result["status"] == "medium"
+    assert result["binding_constraint"] == "io"
+
+
+def test_tier_nvme_capacity_pressure_at_high_usage() -> None:
+    """NVMe tier: capacity > 90% triggers at least medium even with healthy IO."""
+    result = system_utils.classify_disk_pressure_by_tier(
+        storage_tier="nvme",
+        percent=92.0,
+        free_gb=10.0,
+        io_pressure_full_avg10=0.0,
+    )
+    assert result["tier"] == "nvme"
+    assert result["status"] in ("medium", "high", "critical")
+    assert result["binding_constraint"] == "capacity"
+
+
+def test_tier_nvme_critical_io_and_capacity() -> None:
+    """NVMe tier: both IO saturated and capacity critical => critical."""
+    result = system_utils.classify_disk_pressure_by_tier(
+        storage_tier="nvme",
+        percent=95.0,
+        free_gb=5.0,
+        io_pressure_full_avg10=70.0,
+    )
+    assert result["tier"] == "nvme"
+    assert result["status"] == "critical"
+
+
+def test_tier_hdd_healthy_at_low_usage() -> None:
+    """HDD tier: 50% usage with low IO is healthy."""
+    result = system_utils.classify_disk_pressure_by_tier(
+        storage_tier="hdd",
+        percent=50.0,
+        free_gb=200.0,
+        io_pressure_full_avg10=5.0,
+    )
+    assert result["tier"] == "hdd"
+    assert result["status"] == "low"
+    assert result["binding_constraint"] == "none"
+
+
+def test_tier_hdd_capacity_pressure_primary_signal() -> None:
+    """HDD tier: capacity > 85% triggers medium (capacity is primary signal for HDD)."""
+    result = system_utils.classify_disk_pressure_by_tier(
+        storage_tier="hdd",
+        percent=87.0,
+        free_gb=50.0,
+        io_pressure_full_avg10=5.0,
+    )
+    assert result["tier"] == "hdd"
+    assert result["status"] in ("medium", "high", "critical")
+    assert result["binding_constraint"] == "capacity"
+
+
+def test_tier_hdd_critical_capacity() -> None:
+    """HDD tier: capacity > 93% triggers critical."""
+    result = system_utils.classify_disk_pressure_by_tier(
+        storage_tier="hdd",
+        percent=95.0,
+        free_gb=15.0,
+        io_pressure_full_avg10=10.0,
+    )
+    assert result["tier"] == "hdd"
+    assert result["status"] == "critical"
+    assert result["binding_constraint"] == "capacity"
+
+
+def test_tier_hdd_io_pressure_does_not_alone_trigger_critical() -> None:
+    """HDD tier: IO saturation alone should not escalate to critical (capacity is primary)."""
+    result = system_utils.classify_disk_pressure_by_tier(
+        storage_tier="hdd",
+        percent=40.0,
+        free_gb=200.0,
+        io_pressure_full_avg10=80.0,
+    )
+    assert result["tier"] == "hdd"
+    # IO can raise to at most medium for HDD when capacity is fine
+    assert result["status"] in ("low", "medium")
+
+
+def test_tier_ssd_behaves_like_hdd() -> None:
+    """SSD tier defaults to HDD-style capacity-first pressure model."""
+    result = system_utils.classify_disk_pressure_by_tier(
+        storage_tier="ssd",
+        percent=90.0,
+        free_gb=20.0,
+        io_pressure_full_avg10=5.0,
+    )
+    assert result["tier"] == "ssd"
+    assert result["status"] in ("medium", "high", "critical")
+    assert result["binding_constraint"] == "capacity"
+
+
+def test_tier_unknown_falls_back_gracefully() -> None:
+    """Unknown/missing tier uses safe HDD-style defaults."""
+    result = system_utils.classify_disk_pressure_by_tier(
+        storage_tier=None,
+        percent=50.0,
+        free_gb=100.0,
+        io_pressure_full_avg10=5.0,
+    )
+    assert result["status"] == "low"
+    assert "tier" in result
+
+
+def test_tier_classification_includes_thresholds() -> None:
+    """Result always includes the thresholds used for transparency."""
+    result = system_utils.classify_disk_pressure_by_tier(
+        storage_tier="nvme",
+        percent=50.0,
+        free_gb=100.0,
+        io_pressure_full_avg10=5.0,
+    )
+    assert "capacity_warn_percent" in result
+    assert "capacity_critical_percent" in result
+    assert "io_high_threshold" in result
+
+
+def test_tier_classification_status_values_are_valid() -> None:
+    """Status must be one of the four defined levels."""
+    valid_statuses = {"low", "medium", "high", "critical"}
+    for tier in ("nvme", "hdd", "ssd", None):
+        result = system_utils.classify_disk_pressure_by_tier(
+            storage_tier=tier,
+            percent=50.0,
+            free_gb=100.0,
+            io_pressure_full_avg10=5.0,
+        )
+        assert result["status"] in valid_statuses, f"Invalid status for tier {tier!r}: {result['status']}"
+
+
+# ---------------------------------------------------------------------------
+# get_host_disk_for_pool  (issue #754)
+# ---------------------------------------------------------------------------
+
+
+def test_get_host_disk_for_pool_from_host_drive() -> None:
+    """Pool with host_drive='D:' should map to /mnt/d."""
+    pool = {"storage": {"host_drive": "D:", "vhdx_path": "D:\\WSL\\ext4.vhdx"}}
+    result = system_utils.get_host_disk_for_pool(pool)
+    assert result == "/mnt/d"
+
+
+def test_get_host_disk_for_pool_from_vhdx_path_fallback() -> None:
+    """Pool with no host_drive but vhdx_path on E: maps to /mnt/e."""
+    pool = {"storage": {"vhdx_path": "E:\\WSL\\ControlTower\\ext4.vhdx"}}
+    result = system_utils.get_host_disk_for_pool(pool)
+    assert result == "/mnt/e"
+
+
+def test_get_host_disk_for_pool_nvme_pool_c_drive() -> None:
+    """Pool with host_drive='C:' maps to /mnt/c (NVMe pool)."""
+    pool = {"storage": {"host_drive": "C:", "disk_bus": "NVMe"}}
+    result = system_utils.get_host_disk_for_pool(pool)
+    assert result == "/mnt/c"
+
+
+def test_get_host_disk_for_pool_no_storage_key_defaults_c() -> None:
+    """Pool with no storage key at all defaults to /mnt/c."""
+    result = system_utils.get_host_disk_for_pool({})
+    assert result == "/mnt/c"
+
+
+def test_get_host_disk_for_pool_empty_storage_defaults_c() -> None:
+    """Pool with empty storage dict defaults to /mnt/c."""
+    result = system_utils.get_host_disk_for_pool({"storage": {}})
+    assert result == "/mnt/c"
+
+
+def test_get_host_disk_for_pool_lowercase_drive() -> None:
+    """Pool with lowercase drive letter 'f:' maps to /mnt/f."""
+    pool = {"storage": {"host_drive": "f:"}}
+    result = system_utils.get_host_disk_for_pool(pool)
+    assert result == "/mnt/f"
+
+
+def test_get_host_disk_for_pool_host_drive_overrides_vhdx() -> None:
+    """host_drive takes precedence over vhdx_path when both present."""
+    pool = {
+        "storage": {
+            "host_drive": "C:",
+            "vhdx_path": "D:\\WSL\\ext4.vhdx",  # different drive in vhdx
+        }
+    }
+    result = system_utils.get_host_disk_for_pool(pool)
+    assert result == "/mnt/c"
