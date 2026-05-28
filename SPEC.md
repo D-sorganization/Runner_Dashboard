@@ -1,11 +1,24 @@
 # SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.39
+**Spec Version:** 2.5.40
 **Application Version:** 4.1.1 (see `VERSION`)
-**Last Updated:** 2026-05-27T22:04:00-07:00
+**Last Updated:** 2026-05-28T00:00:00-07:00
 **Status:** Active
 
 ### Recent Spec Updates
+
+- **2026-05-28 (2.5.40):** Added multi-pool backend aggregation to
+  `GET /api/fleet/status` (issue #753). When the dashboard runs on port 8321
+  (ControlTower-NVMe), it automatically queries its peer on port 8322
+  (ControlTower-HDD) and merges both pool responses into a single JSON object
+  keyed by pool name. If the peer is unreachable the endpoint returns an
+  `"offline"` entry for that pool rather than failing the whole request,
+  preserving orthogonality. Pass `?exclude_pools=true` to suppress the peer
+  query (used internally so the peer does not recurse back). The Fleet tab
+  `Mobile.tsx` already renders ControlTower pool nodes in a dedicated
+  side-by-side section when their names start with `"ControlTower"`. Tests in
+  `tests/api/test_fleet_aggregator.py` cover the full-aggregate, peer-offline
+  fallback, and exclude_pools code paths.
 
 - **2026-05-27 (2.5.39):** Optimized per-runner worker process resource metric collection in `backend/routers/system.py` and `backend/system_utils.py` by pre-computing path patterns and optimizing the process iteration loop to avoid filesystem lookup overhead, preventing CI Standard timeouts. Updated `.github/workflows/ci-standard.yml` to exempt newly expanded files from the 500-line check soft cap, and disabled autoderiving fleet nodes in tests (`tests/conftest.py`) to prevent network timeouts.
 - **2026-05-26 (2.5.37):** Fixed pre-existing TestErrorHandling test pollution in `tests/api/test_routers_runners.py`. Earlier tests in `TestGetRunners` populate two pieces of module-level state — `cache_utils._cache` (TTL cache) and `runners_router._last_successful_runners` (degraded-mode fallback). Once populated, the API-error / rate-limit tests in `TestErrorHandling` received `source='cache'` instead of `'unavailable'`/`429`, because the endpoint falls back to the last-known-good response when the mocked GitHub call fails. The actual root cause was the global, not just the cache. Added an autouse fixture on `TestErrorHandling` that clears both pieces of state before and after each test. 33/33 passing locally (was 31 pass + 2 fail).
@@ -430,6 +443,34 @@ deployed `git_sha` in `deployment.json` matches the current checkout unless
 Real-time view of all self-hosted runners. Displays runner name, status (idle,
 active, offline), current job, labels, and systemd service state. Provides
 start/stop controls per runner and bulk fleet controls.
+
+#### 3.1.1 Multi-Pool Fleet Status
+
+`GET /api/fleet/status` aggregates multiple co-located runner-pool backends
+into a single response. On a ControlTower host that runs two pool backends:
+
+- Port **8321** — `ControlTower-NVMe` (primary, hub role)
+- Port **8322** — `ControlTower-HDD` (secondary pool)
+
+The primary dashboard instance (8321) queries the secondary (`?exclude_pools=true`)
+and merges both pool entries under their pool names. If the secondary is
+unreachable, its entry is set to `{"status": "offline", ...}` so the primary
+view remains available. The `exclude_pools=true` query parameter prevents
+recursive peer queries.
+
+Response shape (keyed by pool name, plus any FLEET_NODES peers):
+
+```json
+{
+  "ControlTower-NVMe": { "status": "online", "hostname": "...", ... },
+  "ControlTower-HDD":  { "status": "online",  "hostname": "...", ... },
+  "OGLaptop":          { "status": "online",  "hostname": "...", ... }
+}
+```
+
+The Fleet tab `Mobile.tsx` renders entries whose names start with `"ControlTower"`
+in a dedicated **ControlTower Pools** section with a side-by-side card layout;
+all other fleet nodes render as standard runner cards below that section.
 
 ### 3.2 History Tab
 
