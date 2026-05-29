@@ -47,10 +47,7 @@ jobs:
             fi
           fi
 
-          STATS=$(gh pr view "$PR" --repo "$REPO" --json additions,deletions,changedFiles)
-          ADDS=$(echo "$STATS" | jq -r .additions)
-          DELS=$(echo "$STATS" | jq -r .deletions)
-          FILES=$(echo "$STATS" | jq -r .changedFiles)
+          FILES=$(gh pr view "$PR" --repo "$REPO" --json changedFiles --jq .changedFiles)
           TITLE=$(gh pr view "$PR" --repo "$REPO" --json title --jq .title)
           BODY=$(gh pr view "$PR" --repo "$REPO" --json body --jq .body)
           PR_FILES=$(
