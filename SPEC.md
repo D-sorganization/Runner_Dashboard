@@ -1,9 +1,18 @@
 # SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.42
+**Spec Version:** 2.5.43
 **Application Version:** 4.1.3 (see `VERSION`)
 **Last Updated:** 2026-05-29T00:00:00-07:00
 **Status:** Active
+
+- **2026-05-29 (2.5.43):** Hardened autoscaler scale-down against undeployed
+  runner drain drop-ins (issue #785). Before `backend/autoscaler_systemd.py`
+  calls `systemctl stop` for any `actions.runner.*` unit, it now verifies the
+  effective systemd stop contract reports `KillMode=mixed` and
+  `TimeoutStopUSec >= 120s`. If a host has the code but not the active
+  #640/#679 drop-in, the autoscaler refuses to stop the runner and logs the
+  deploy action instead of risking a mid-job shutdown. Focused tests cover the
+  systemd time-span parser, safe/unsafe contract decisions, and the stop guard.
 
 - **2026-05-28 (2.5.40):** Storage-tier aware disk pressure metrics and classification (issue #754).
   `backend/system_utils.py` gains two new pure helpers:

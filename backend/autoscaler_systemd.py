@@ -8,6 +8,7 @@ shell=True) and honour the configured timeout from autoscaler_config.
 from __future__ import annotations
 
 import logging
+import re
 import subprocess
 import sys
 
@@ -17,6 +18,7 @@ from autoscaler_config import (
 )
 
 log = logging.getLogger("runner-autoscaler")
+_MIN_SAFE_STOP_TIMEOUT_SECONDS = 120
 
 
 def _dry_run_enabled() -> bool:
@@ -109,6 +111,72 @@ def _runner_workdir_for_unit(unit: str) -> str:
     return (r.stdout or "").strip()
 
 
+def _systemd_timespan_seconds(value: str) -> float:
+    """Parse common systemd time spans into seconds."""
+    text = value.strip()
+    if not text:
+        return 0.0
+    if text.isdigit():
+        raw_value = float(text)
+        return raw_value / 1_000_000 if raw_value > 10_000 else raw_value
+
+    total = 0.0
+    multipliers = {
+        "usec": 0.000001,
+        "us": 0.000001,
+        "ms": 0.001,
+        "s": 1.0,
+        "min": 60.0,
+        "h": 3600.0,
+        "d": 86400.0,
+    }
+    for amount, unit in re.findall(r"(\d+(?:\.\d+)?)\s*(usec|us|ms|s|min|h|d)", text):
+        total += float(amount) * multipliers[unit]
+    return total
+
+
+def _unit_has_safe_stop_contract(unit: str) -> bool:
+    """Return True when stopping *unit* should not kill active jobs.
+
+    The autoscaler may only stop runner units whose effective systemd
+    configuration has the #640/#679 drain contract loaded. If the host was not
+    redeployed and still has the unsafe default, refusing scale-down is safer
+    than terminating a checkout or test step mid-job.
+    """
+    try:
+        r = subprocess.run(
+            ["systemctl", "show", unit, "--property=KillMode,TimeoutStopUSec"],
+            capture_output=True,
+            text=True,
+            timeout=_SYSTEMCTL_TIMEOUT_S,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        log.warning("Could not inspect stop contract for %s: %s", unit, exc)
+        return False
+
+    props: dict[str, str] = {}
+    for line in (r.stdout or "").splitlines():
+        if "=" in line:
+            key, value = line.split("=", 1)
+            props[key] = value.strip()
+
+    kill_mode = props.get("KillMode", "")
+    timeout_seconds = _systemd_timespan_seconds(props.get("TimeoutStopUSec", ""))
+    if kill_mode != "mixed" or timeout_seconds < _MIN_SAFE_STOP_TIMEOUT_SECONDS:
+        log.error(
+            "Refusing to stop %s: unsafe runner stop contract "
+            "(KillMode=%s TimeoutStopUSec=%s, need KillMode=mixed and timeout>=%ss). "
+            "Run deploy/install-runner-maintenance.sh or deploy/migrate-runner-units.sh.",
+            unit,
+            kill_mode or "?",
+            props.get("TimeoutStopUSec", "?"),
+            _MIN_SAFE_STOP_TIMEOUT_SECONDS,
+        )
+        return False
+    return True
+
+
 def _stop_unit(unit: str) -> bool:
     """Stop *unit* via systemd, respecting DRY_RUN mode.
 
@@ -122,6 +190,8 @@ def _stop_unit(unit: str) -> bool:
     if _dry_run_enabled():
         log.info("[dry-run] would stop %s", unit)
         return True
+    if not _unit_has_safe_stop_contract(unit):
+        return False
     r = subprocess.run(
         ["sudo", "-n", "systemctl", "stop", unit],
         capture_output=True,
