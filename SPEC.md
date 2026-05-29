@@ -2,7 +2,7 @@
 
 **Spec Version:** 2.5.41
 **Application Version:** 4.1.2 (see `VERSION`)
-**Last Updated:** 2026-05-28T00:00:00-07:00
+**Last Updated:** 2026-05-29T00:00:00-07:00
 **Status:** Active
 
 - **2026-05-28 (2.5.40):** Storage-tier aware disk pressure metrics and classification (issue #754).
