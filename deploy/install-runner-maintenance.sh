@@ -92,6 +92,40 @@ Persistent=true
 WantedBy=timers.target
 TIMER
 
+# Disk guard: a lightweight, runner-safe pass that reclaims docker + journal +
+# fstrim ONLY (never bounces runner units), going aggressive on docker when the
+# filesystem crosses DISK_PRESSURE_PERCENT. Runs hourly so docker bloat is
+# reclaimed long before the disk fills between daily full cleanups. This is the
+# control that prevents recurrence of the 2026-05-29 nvme disk-full outage.
+sudo tee /etc/systemd/system/runner-disk-guard.service > /dev/null <<SERVICE
+[Unit]
+Description=Reclaim Docker/journal disk space under pressure (runner-safe)
+After=docker.service
+Wants=docker.service
+
+[Service]
+Type=oneshot
+User=root
+Environment=RUNNER_ROOT=${RUNNER_ROOT}
+Environment=RUNNER_ROOTS=${RUNNER_ROOTS}
+Environment=RUNNER_USER=${RUNNER_USER}
+Environment=DISK_PRESSURE_PERCENT=85
+ExecStart=/usr/local/bin/runner-cleanup --disk-guard
+SERVICE
+
+sudo tee /etc/systemd/system/runner-disk-guard.timer > /dev/null <<'TIMER'
+[Unit]
+Description=Run runner disk guard hourly
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=5m
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+TIMER
+
 sudo tee /etc/systemd/system/runner-scheduler.service > /dev/null <<SERVICE
 [Unit]
 Description=Apply scheduled GitHub runner capacity
@@ -192,7 +226,7 @@ Environment=TEXTFILE_COLLECTOR_DIR=${TEXTFILE_COLLECTOR_DIR}
 CONF
 
 sudo systemctl daemon-reload
-sudo systemctl enable --now runner-cleanup.timer runner-scheduler.timer runner-corruption-scan.timer runner-hooks-restore.timer
+sudo systemctl enable --now runner-cleanup.timer runner-disk-guard.timer runner-scheduler.timer runner-corruption-scan.timer runner-hooks-restore.timer
 
 # Apply (or re-apply) the per-unit drop-ins from #664. Idempotent.
 # Passes the installed hook dir explicitly so the drop-ins reference the
@@ -204,7 +238,7 @@ if [[ -x "${SCRIPT_DIR}/migrate-runner-units.sh" ]]; then
 fi
 
 echo "Installed:"
-systemctl list-timers runner-cleanup.timer runner-scheduler.timer runner-corruption-scan.timer --all
+systemctl list-timers runner-cleanup.timer runner-disk-guard.timer runner-scheduler.timer runner-corruption-scan.timer --all
 echo ""
 echo "Binaries:"
 ls -l /usr/local/bin/runner-cleanup /usr/local/bin/heal-host /usr/local/bin/runner-corruption-scan /usr/local/bin/runner-hooks-restore "${HOOK_INSTALL_DIR}"/ | grep -v '^total'
