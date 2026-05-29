@@ -77,6 +77,21 @@ class TestUnitMetadata:
         with patch("subprocess.run", return_value=_cp("/srv/actions/runner\n")):
             assert sd._runner_workdir_for_unit("some.service") == "/srv/actions/runner"
 
+    def test_safe_stop_contract_accepts_mixed_with_long_timeout(self) -> None:
+        stdout = "KillMode=mixed\nTimeoutStopUSec=2min\n"
+        with patch("subprocess.run", return_value=_cp(stdout)):
+            assert sd._unit_has_safe_stop_contract("actions.runner.org.r.service") is True
+
+    def test_safe_stop_contract_rejects_process_kill_mode(self) -> None:
+        stdout = "KillMode=process\nTimeoutStopUSec=1min 30s\n"
+        with patch("subprocess.run", return_value=_cp(stdout)):
+            assert sd._unit_has_safe_stop_contract("actions.runner.org.r.service") is False
+
+    def test_safe_stop_contract_rejects_short_timeout(self) -> None:
+        stdout = "KillMode=mixed\nTimeoutStopUSec=90s\n"
+        with patch("subprocess.run", return_value=_cp(stdout)):
+            assert sd._unit_has_safe_stop_contract("actions.runner.org.r.service") is False
+
 
 class TestDryRunEnabled:
     def test_module_flag_enables_dry_run(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -93,7 +108,13 @@ class TestDryRunEnabled:
 class TestStopUnit:
     def test_happy_invokes_cleanup(self) -> None:
         with (
-            patch("subprocess.run", return_value=_cp(returncode=0)),
+            patch(
+                "subprocess.run",
+                side_effect=[
+                    _cp("KillMode=mixed\nTimeoutStopUSec=2min\n"),
+                    _cp(returncode=0),
+                ],
+            ),
             patch("runner_state_cleanup.cleanup_runner_state") as mock_clean,
         ):
             assert sd._stop_unit("actions.runner.org.r.service") is True
@@ -108,7 +129,13 @@ class TestStopUnit:
         the runner had already died. Cleanup must run on every stop path.
         """
         with (
-            patch("subprocess.run", return_value=_cp(returncode=1)),
+            patch(
+                "subprocess.run",
+                side_effect=[
+                    _cp("KillMode=mixed\nTimeoutStopUSec=2min\n"),
+                    _cp(returncode=1),
+                ],
+            ),
             patch("runner_state_cleanup.cleanup_runner_state") as mock_clean,
         ):
             assert sd._stop_unit("actions.runner.org.r.service") is False
@@ -117,13 +144,28 @@ class TestStopUnit:
     def test_cleanup_error_does_not_break_stop(self) -> None:
         """If cleanup itself raises, _stop_unit still returns the stop status."""
         with (
-            patch("subprocess.run", return_value=_cp(returncode=0)),
+            patch(
+                "subprocess.run",
+                side_effect=[
+                    _cp("KillMode=mixed\nTimeoutStopUSec=2min\n"),
+                    _cp(returncode=0),
+                ],
+            ),
             patch(
                 "runner_state_cleanup.cleanup_runner_state",
                 side_effect=RuntimeError("cleanup boom"),
             ),
         ):
             assert sd._stop_unit("actions.runner.org.r.service") is True
+
+    def test_refuses_stop_when_unit_lacks_safe_stop_contract(self) -> None:
+        with (
+            patch("subprocess.run", return_value=_cp("KillMode=process\nTimeoutStopUSec=90s\n")) as mock_run,
+            patch("runner_state_cleanup.cleanup_runner_state") as mock_clean,
+        ):
+            assert sd._stop_unit("actions.runner.org.r.service") is False
+            assert mock_run.call_count == 1
+            mock_clean.assert_not_called()
 
     def test_dry_run(self, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[name-defined]
         monkeypatch.setattr(sd, "DRY_RUN", True)

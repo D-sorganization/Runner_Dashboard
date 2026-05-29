@@ -116,7 +116,13 @@ def test_list_runner_units_timeout() -> None:
 
 
 def test_stop_unit_happy() -> None:
-    with patch("subprocess.run", return_value=_make_completed_process("", returncode=0)):
+    with patch(
+        "subprocess.run",
+        side_effect=[
+            _make_completed_process("KillMode=mixed\nTimeoutStopUSec=2min\n", returncode=0),
+            _make_completed_process("", returncode=0),
+        ],
+    ):
         result = ra._stop_unit("actions.runner.my-org.runner1.service")
     assert result is True
 
@@ -124,7 +130,13 @@ def test_stop_unit_happy() -> None:
 def test_stop_unit_sudo_failure() -> None:
     """The sudo-failure path: returncode != 0 returns False, does not raise."""
     cp = _make_completed_process("sudo: permission denied", returncode=1)
-    with patch("subprocess.run", return_value=cp):
+    with patch(
+        "subprocess.run",
+        side_effect=[
+            _make_completed_process("KillMode=mixed\nTimeoutStopUSec=2min\n", returncode=0),
+            cp,
+        ],
+    ):
         result = ra._stop_unit("actions.runner.my-org.runner1.service")
     assert result is False
 
