@@ -82,6 +82,7 @@ def _empty_queue_result() -> dict:
         "in_progress": [],
         "total": 0,
         "queued_count": 0,
+        "queued_jobs_count": 0,
         "in_progress_count": 0,
     }
 
@@ -135,6 +136,63 @@ async def _fetch_repo_runs(
         if "repository" not in run or not run["repository"]:
             run["repository"] = {"name": repo_name}
     return runs
+
+
+async def _count_queued_jobs_for_run(run: dict) -> int:
+    """Return the number of ``queued`` jobs inside a single workflow run.
+
+    GitHub Actions queues at the JOB level, not the run level: a multi-job run
+    flips its run-level status to ``in_progress`` the moment its first job
+    starts, while sibling jobs stay ``queued``. Counting only run-level
+    ``status == "queued"`` therefore undercounts true queue depth (those
+    queued sibling jobs become invisible). This helper fetches the run's jobs
+    and counts the ones still waiting for a runner.
+
+    On any failure (missing repo/id, gh api error, parse error) it raises so
+    the caller can fall back to the run-level assumption rather than silently
+    contributing 0 — mirroring the partial-failure handling in ``_queue_impl``.
+    """
+    repo_name = (run.get("repository") or {}).get("name")
+    run_id = run.get("id")
+    if not repo_name or run_id is None:
+        raise RuntimeError(f"run missing repo/id for job-level count: {run_id!r}")
+    repo_name = validate_repo_slug(repo_name)
+    rc, out, err = await run_cmd(
+        [
+            "gh",
+            "api",
+            f"/repos/{ORG}/{repo_name}/actions/runs/{run_id}/jobs?per_page=100",
+        ],
+        timeout=30,
+    )
+    if rc != 0:
+        raise RuntimeError(f"gh api jobs failed for {repo_name}#{run_id}: rc={rc} {err[:200]!r}")
+    jobs = json.loads(out).get("jobs", [])
+    return sum(1 for job in jobs if job.get("status") == "queued")
+
+
+async def _count_queued_jobs(runs: list[dict]) -> int:
+    """Aggregate job-level queued depth across active runs.
+
+    Fetches each run's jobs concurrently with ``return_exceptions=True`` so one
+    run's transient failure cannot zero the total. For any run whose job fetch
+    fails, we fall back to counting it as a single queued job if its run-level
+    status is ``queued`` (preserving the legacy lower bound), otherwise 0.
+    """
+    if not runs:
+        return 0
+    results = await asyncio.gather(
+        *[_count_queued_jobs_for_run(run) for run in runs],
+        return_exceptions=True,
+    )
+    total = 0
+    for run, result in zip(runs, results, strict=True):
+        if isinstance(result, BaseException):
+            log.warning("queued-jobs count failed for run %s: %r", run.get("id"), result)
+            total += 1 if run.get("status") == "queued" else 0
+        else:
+            total += result
+    return total
 
 
 # Cache TTL kept at 60s (down from 120s) so partial failures heal faster.
@@ -219,11 +277,18 @@ async def _queue_impl() -> dict:
         key=lambda r: r.get("run_started_at") or r.get("created_at", ""),
     )
 
+    # Job-level queue depth: count `queued` jobs across BOTH queued runs and
+    # in_progress runs (the latter can still have queued sibling jobs that the
+    # run-level `queued_count` misses). This is the figure the operator cares
+    # about — how many jobs are actually waiting for a runner.
+    queued_jobs_count = await _count_queued_jobs(queued + in_progress)
+
     payload: dict[Any, Any] = {
         "queued": queued,
         "in_progress": in_progress,
         "total": len(queued) + len(in_progress),
         "queued_count": len(queued),
+        "queued_jobs_count": queued_jobs_count,
         "in_progress_count": len(in_progress),
         "stats": {
             "repos_sampled": len(sample),
