@@ -5,6 +5,18 @@
 **Last Updated:** 2026-05-29T00:00:00-07:00
 **Status:** Active
 
+- **2026-05-29 (2.5.44):** Keep the WSL distro resident between keepalive probes
+  so the idle runner fleet stays online. A WSL2 distro is torn down a few seconds
+  after the last active `wsl.exe` session ends; in-distro systemd services
+  (including `wsl-runner-keepalive.service`'s `sleep 600`) do not keep it alive,
+  and the watchdog's periodic probe attaches/detaches each cycle, so an idle host
+  let the distro terminate between probes and dropped every runner offline.
+  `deploy/wsl-keepalive.ps1` now maintains exactly one persistent
+  `wsl --exec /bin/sleep infinity` session (new `Set-DistroPin` helper, called
+  every loop and restarted if a shutdown kills it). Complements #784 (correct
+  probe) and #783 (S4U task survives logoff; docker boot decouple) — neither
+  keeps the distro resident between probes. New static regression test
+  `test_script_pins_distro_with_persistent_session`.
 - **2026-05-29 (2.5.43):** Hardened autoscaler scale-down against undeployed
   runner drain drop-ins (issue #785). Before `backend/autoscaler_systemd.py`
   calls `systemctl stop` for any `actions.runner.*` unit, it now verifies the

@@ -634,6 +634,77 @@ if ($Once) {
     exit 0
 }
 
+function Set-DistroPin {
+    <#
+    .SYNOPSIS
+        Ensure exactly one persistent ``wsl --exec sleep infinity`` session is
+        attached to ``$Distro``, (re)starting it if absent.
+
+    .DESCRIPTION
+        A WSL2 distro is torn down a few seconds after the last ACTIVE
+        ``wsl.exe`` session ends. Background systemd services inside the distro
+        (even the ``wsl-runner-keepalive.service`` ``sleep 600`` unit) do NOT
+        keep it alive — only a host-side session does. The periodic probe in
+        this watchdog attaches and detaches each cycle, so on an idle host the
+        distro terminates between probes and the whole runner fleet drops
+        offline (runners only stay registered while the distro runs). Long jobs
+        masked this because a running job holds its own session.
+
+        Confirmed on OGLaptop 2026-05-29: with only the periodic probe, pid 1
+        (systemd) uptime stayed ~7-8s across samples 45s apart (the distro
+        re-initialised every cycle); a single persistent ``sleep infinity``
+        session made uptime climb monotonically and all 8 runners stay online.
+
+        Complements #783 (the S4U keepalive task survives logoff so THIS script
+        keeps running) and #784 (correct probe): neither keeps the distro
+        resident between probes — this does.
+
+    .OUTPUTS
+        [bool] $true if a pin session is present (already or newly started).
+    #>
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param(
+        [Parameter(Mandatory)][string]$Distro,
+        [Parameter(Mandatory)][string]$LogPath,
+        [Parameter(Mandatory)][int]$MaxBytes,
+        [Parameter(Mandatory)][int]$Backups,
+        [string]$WslExe = 'wsl.exe'
+    )
+    $pinned = $false
+    try {
+        foreach ($wp in (Get-CimInstance Win32_Process -Filter "Name='wsl.exe'" -ErrorAction Stop)) {
+            if ($wp.CommandLine -and $wp.CommandLine -like "*$Distro*" -and $wp.CommandLine -like "*sleep*infinity*") {
+                $pinned = $true
+                break
+            }
+        }
+    } catch {
+        # CIM unavailable -> fall through and (re)start a pin defensively.
+    }
+    if (-not $pinned) {
+        try {
+            Start-Process -FilePath $WslExe `
+                -ArgumentList @('-d', $Distro, '--exec', '/bin/sleep', 'infinity') `
+                -WindowStyle Hidden -ErrorAction Stop | Out-Null
+            Write-EventLine -LogPath $LogPath -MaxBytes $MaxBytes -Backups $Backups -Event @{
+                level = 'info'
+                event = 'distro_pin_started'
+                distro = $Distro
+            }
+            $pinned = $true
+        } catch {
+            Write-EventLine -LogPath $LogPath -MaxBytes $MaxBytes -Backups $Backups -Event @{
+                level = 'warn'
+                event = 'distro_pin_failed'
+                distro = $Distro
+                message = $_.Exception.Message
+            }
+        }
+    }
+    return $pinned
+}
+
 # Continuous mode: scheduled-task entry point.
 Write-EventLine -LogPath $LogPath -MaxBytes $MaxLogBytes -Backups $LogBackups -Event @{
     level = 'info'
@@ -647,6 +718,11 @@ Write-EventLine -LogPath $LogPath -MaxBytes $MaxLogBytes -Backups $LogBackups -E
 
 while ($true) {
     try {
+        # Keep the distro resident so the idle fleet stays online (see
+        # Set-DistroPin). Runs every cycle so a pin killed by a shutdown is
+        # re-established on the next pass.
+        $null = Set-DistroPin -Distro $Distro -LogPath $LogPath -MaxBytes $MaxLogBytes -Backups $LogBackups
+
         $result = Invoke-OneCycle `
             -Distro $Distro `
             -ProbeTimeoutSeconds $ProbeTimeoutSeconds `

@@ -118,6 +118,19 @@ def test_script_has_resident_mode_without_wsl_reset() -> None:
     assert "unresponsive_no_wsl_reset" in text
 
 
+def test_script_pins_distro_with_persistent_session() -> None:
+    """The idle fleet stays online only if a host-side session keeps the distro
+    resident. Periodic probes attach/detach and let the distro idle-terminate
+    between cycles; a persistent ``wsl --exec sleep infinity`` session does not.
+    Regression guard: the watchdog loop must maintain that pin.
+    """
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert "function Set-DistroPin" in text, "distro pin helper missing"
+    assert "Set-DistroPin -Distro" in text, "main loop must call Set-DistroPin every cycle"
+    assert "'/bin/sleep', 'infinity'" in text, "pin must hold a persistent sleep-infinity session"
+    assert "distro_pin_started" in text, "pin (re)starts should be logged"
+
+
 def test_probe_does_not_gate_on_process_exit_code() -> None:
     """Regression guard for the fleet-wide false-unresponsive bug.
 
