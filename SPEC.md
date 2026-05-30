@@ -1,9 +1,30 @@
 # SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.41
-**Application Version:** 4.1.2 (see `VERSION`)
-**Last Updated:** 2026-05-28T00:00:00-07:00
+**Spec Version:** 2.5.43
+**Application Version:** 4.1.3 (see `VERSION`)
+**Last Updated:** 2026-05-29T00:00:00-07:00
 **Status:** Active
+
+- **2026-05-29 (2.5.44):** Keep the WSL distro resident between keepalive probes
+  so the idle runner fleet stays online. A WSL2 distro is torn down a few seconds
+  after the last active `wsl.exe` session ends; in-distro systemd services
+  (including `wsl-runner-keepalive.service`'s `sleep 600`) do not keep it alive,
+  and the watchdog's periodic probe attaches/detaches each cycle, so an idle host
+  let the distro terminate between probes and dropped every runner offline.
+  `deploy/wsl-keepalive.ps1` now maintains exactly one persistent
+  `wsl --exec /bin/sleep infinity` session (new `Set-DistroPin` helper, called
+  every loop and restarted if a shutdown kills it). Complements #784 (correct
+  probe) and #783 (S4U task survives logoff; docker boot decouple) — neither
+  keeps the distro resident between probes. New static regression test
+  `test_script_pins_distro_with_persistent_session`.
+- **2026-05-29 (2.5.43):** Hardened autoscaler scale-down against undeployed
+  runner drain drop-ins (issue #785). Before `backend/autoscaler_systemd.py`
+  calls `systemctl stop` for any `actions.runner.*` unit, it now verifies the
+  effective systemd stop contract reports `KillMode=mixed` and
+  `TimeoutStopUSec >= 120s`. If a host has the code but not the active
+  #640/#679 drop-in, the autoscaler refuses to stop the runner and logs the
+  deploy action instead of risking a mid-job shutdown. Focused tests cover the
+  systemd time-span parser, safe/unsafe contract decisions, and the stop guard.
 
 - **2026-05-28 (2.5.40):** Storage-tier aware disk pressure metrics and classification (issue #754).
   `backend/system_utils.py` gains two new pure helpers:
@@ -502,6 +523,27 @@ distros in one shared utility VM. Two hardening steps keep them out of the
   and an `AtStartup` trigger. This keeps the host-side handle that holds the WSL
   VM resident across logoff, preventing the teardown that otherwise forces both
   distros to cold-boot together and race the 10s window.
+
+#### 2.3.2 Disk-pressure controls (`runner-cleanup.sh`)
+
+Docker (build cache + volumes + buildx builder containers) is the dominant disk
+consumer on runner hosts. Two controls keep a distro from filling to 100% (which
+crash-loops every runner with `No space left on device`):
+
+- **Aggressive docker prune under pressure.** When the root filesystem crosses
+  `DISK_PRESSURE_PERCENT` (default 85%), `runner-cleanup.sh` sets
+  `DOCKER_AGGRESSIVE=1`: it prunes **all** build cache (including `docker buildx`
+  builder caches), **all** unused images, and **dangling volumes**, ignoring the
+  routine `DOCKER_PRUNE_UNTIL` age window. Pruning only removes stopped
+  containers, unused images, dangling volumes, and idle cache, so running jobs
+  and in-use volumes are never affected. Below the threshold, the routine pass
+  keeps the age window so recent cache is preserved for build speed.
+- **Hourly disk guard.** `runner-cleanup.sh --disk-guard` is a lightweight,
+  runner-safe pass that reclaims docker + journal + `fstrim` **only** — it never
+  stops runner units, so `install-runner-maintenance.sh` schedules it on an
+  **hourly** `runner-disk-guard.timer` (the full cleanup, which bounces idle
+  runners to clear `_work`, stays daily). This catches docker bloat long before
+  the disk fills between daily cleanups.
 
 ---
 

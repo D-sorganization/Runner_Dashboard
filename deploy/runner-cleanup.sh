@@ -23,6 +23,19 @@ JOURNAL_MAX_SIZE="${JOURNAL_MAX_SIZE:-1G}"
 DISK_PRESSURE_PERCENT="${DISK_PRESSURE_PERCENT:-85}"
 AGGRESSIVE_ON_PRESSURE="${AGGRESSIVE_ON_PRESSURE:-1}"
 PRUNE_DOCKER_VOLUMES="${PRUNE_DOCKER_VOLUMES:-0}"
+# Set to 1 automatically when disk pressure is detected (see main()). When on,
+# cleanup_docker() ignores age windows and reclaims ALL build cache (incl.
+# buildx builders), unused images, and dangling volumes. Docker is the dominant
+# space consumer on these hosts (build cache + volumes), and the routine
+# age-windowed prune alone let the disk fill to 100% between daily runs
+# (2026-05-29 nvme outage). Pruning never stops/removes running containers or
+# in-use volumes, so live jobs are unaffected.
+DOCKER_AGGRESSIVE="${DOCKER_AGGRESSIVE:-0}"
+# Disk-guard mode: a lightweight, runner-safe pass that reclaims docker +
+# journal + fstrim ONLY. It never stops runner units, so it is safe to run
+# frequently (hourly timer) to catch docker bloat long before the daily full
+# cleanup. The full cleanup still bounces idle runners to clear _work.
+DISK_GUARD="${DISK_GUARD:-0}"
 DRY_RUN="${DRY_RUN:-0}"
 COMPACT_VHD="${COMPACT_VHD:-0}"
 COMPACT_VHD_ONLY="${COMPACT_VHD_ONLY:-0}"
@@ -48,17 +61,24 @@ while [[ $# -gt 0 ]]; do
         --compact-vhd-distro)
             COMPACT_VHD_DISTRO="${2:?--compact-vhd-distro requires a value}"
             shift 2 ;;
+        --disk-guard)        DISK_GUARD=1; shift ;;
         --dry-run)           DRY_RUN=1; shift ;;
         -h|--help)
             cat <<'EOF'
 Usage: runner-cleanup.sh [--compact-vhd] [--compact-vhd-only]
-                         [--compact-vhd-distro NAME] [--dry-run]
+                         [--compact-vhd-distro NAME] [--disk-guard] [--dry-run]
 
 Environment overrides: RUNNER_ROOT, RUNNER_USER, LOG_DIR, RUNNER_WORK_DAYS,
 RUNNER_TEMP_DAYS, TOOL_CACHE_DAYS, DOCKER_PRUNE_UNTIL, JOURNAL_MAX_SIZE,
 DISK_PRESSURE_PERCENT, AGGRESSIVE_ON_PRESSURE, PRUNE_DOCKER_VOLUMES,
-COMPACT_VHD, COMPACT_VHD_ONLY, COMPACT_VHD_DISTRO, DRY_RUN.
+DOCKER_AGGRESSIVE, DISK_GUARD, COMPACT_VHD, COMPACT_VHD_ONLY,
+COMPACT_VHD_DISTRO, DRY_RUN.
 
+--disk-guard        Lightweight, runner-safe pass: reclaim docker + journal +
+                    fstrim ONLY (never stops runner units). Goes aggressive on
+                    docker when used% >= DISK_PRESSURE_PERCENT. Safe to run
+                    frequently (hourly timer) to keep docker bloat in check
+                    between the daily full cleanups.
 --compact-vhd       After cleanup, invoke scripts/compact-wsl-vhd.sh to
                     shrink the WSL2 ext4.vhdx back to Windows.
                     Requires UAC elevation on the Windows host.
@@ -345,10 +365,27 @@ cleanup_docker() {
         log "docker unavailable; skipping docker cleanup"
         return 0
     fi
-    run docker container prune --force --filter "until=72h"
-    run docker builder prune --all --force --filter "until=${DOCKER_PRUNE_UNTIL}"
-    run docker image prune --force --filter "until=${DOCKER_PRUNE_UNTIL}"
-    [[ "$PRUNE_DOCKER_VOLUMES" == "1" ]] && run docker volume prune --force
+    if [[ "$DOCKER_AGGRESSIVE" == "1" ]]; then
+        # Disk pressure: reclaim everything reclaimable, ignoring age windows.
+        # `prune` only ever removes STOPPED containers, UNUSED images, DANGLING
+        # volumes, and idle build cache, so running jobs / in-use volumes /
+        # active buildx builders are never touched.
+        run docker container prune --force
+        run docker builder prune --all --force
+        # buildx builders keep their own cache pools; prune those too when the
+        # buildx plugin is present (the moby/buildkit builder containers on this
+        # host accumulate tens of GB of cache).
+        if docker buildx version >/dev/null 2>&1; then
+            run docker buildx prune --all --force
+        fi
+        run docker image prune --all --force
+        run docker volume prune --force
+    else
+        run docker container prune --force --filter "until=72h"
+        run docker builder prune --all --force --filter "until=${DOCKER_PRUNE_UNTIL}"
+        run docker image prune --force --filter "until=${DOCKER_PRUNE_UNTIL}"
+        [[ "$PRUNE_DOCKER_VOLUMES" == "1" ]] && run docker volume prune --force
+    fi
 }
 
 cleanup_common_caches() {
@@ -397,12 +434,22 @@ main() {
     used="$(root_used_percent)"
     log "runner cleanup starting root_used=${used}% root_size=$(bytes_human "$before") dry_run=$DRY_RUN"
     if [[ "$AGGRESSIVE_ON_PRESSURE" == "1" && "$used" -ge "$DISK_PRESSURE_PERCENT" ]]; then
-        log "disk pressure detected; lowering retention windows"
+        log "disk pressure detected (${used}% >= ${DISK_PRESSURE_PERCENT}%); pruning docker aggressively and lowering retention windows"
         RUNNER_WORK_DAYS=0
         RUNNER_TEMP_DAYS=0
         TOOL_CACHE_DAYS=7
+        DOCKER_AGGRESSIVE=1
     fi
-    if [[ "$COMPACT_VHD_ONLY" != "1" ]]; then
+    if [[ "$DISK_GUARD" == "1" ]]; then
+        # Runner-safe fast pass: reclaim docker + journal + trim only. Never
+        # touches runner units, so it can run on a frequent timer without
+        # bouncing idle runners every pass. Goes aggressive on docker when the
+        # pressure block above fired.
+        log "disk-guard mode: docker + journal + fstrim only (no runner bounce)"
+        cleanup_docker
+        command -v journalctl >/dev/null 2>&1 && run journalctl --vacuum-size="$JOURNAL_MAX_SIZE"
+        command -v fstrim >/dev/null 2>&1 && run fstrim -av
+    elif [[ "$COMPACT_VHD_ONLY" != "1" ]]; then
         cleanup_runners
         cleanup_docker
         cleanup_common_caches

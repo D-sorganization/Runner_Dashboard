@@ -168,19 +168,72 @@ function Get-BackoffSeconds {
     return [int][Math]::Min($cap, $base * [Math]::Pow(2, $shift))
 }
 
+# The probe runs `id` (a single-token argument -- Start-Process -ArgumentList
+# does not quote multi-word elements, so `/bin/sh -c 'echo x'` would split and
+# run `sh -c echo` with no output). A healthy distro's `id` output always
+# contains this token; wsl.exe's own STDOUT diagnostics (e.g. "There is no
+# distribution with the supplied name.") never do -- so it cleanly separates a
+# live distro from both an offline one and the null-exit-code false positive.
+$script:ProbeCommand = 'id'
+$script:ProbeToken = 'uid='
+
+function Test-ProbeSuccess {
+    <#
+    .SYNOPSIS
+        Decide whether a responsiveness probe succeeded from its observable
+        results. Pure: no I/O, no globals, so it can be unit-tested directly.
+
+    .DESCRIPTION
+        Success is deliberately NOT derived from the process exit code.
+        ``Start-Process -PassThru`` does not reliably populate the exit code
+        when the watchdog runs non-interactively (``powershell -File`` from a
+        scheduled task): it comes back ``$null``. The old gate compared that
+        null code against zero, judged it non-zero, and declared a perfectly
+        healthy distro unresponsive on EVERY cycle. In Watchdog mode that drove
+        a ``wsl --shutdown`` reboot loop that took the whole runner fleet (and
+        the dashboard) offline; in Resident mode it spammed false
+        ``unresponsive`` reports.
+
+        A bare "non-empty stdout" check is also wrong: ``wsl.exe`` prints its
+        own errors (bad distro name, etc.) to STDOUT, so an offline distro
+        still yields output. The reliable signal is that the probe exited
+        within the timeout AND its stdout contains the sentinel the in-distro
+        command emits (the probe runs `id`, whose output always contains
+        "uid=") -- which wsl.exe diagnostics never include.
+
+    .OUTPUTS
+        [bool] $true iff the probe exited and its stdout contains ExpectedToken.
+    #>
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param(
+        [Parameter(Mandatory)][bool]$Exited,
+        [AllowNull()][AllowEmptyString()][string]$StdoutContent,
+        [Parameter(Mandatory)][string]$ExpectedToken
+    )
+    if (-not $Exited) { return $false }
+    if ([string]::IsNullOrEmpty($StdoutContent)) { return $false }
+    return $StdoutContent.Contains($ExpectedToken)
+}
+
 function Test-Responsive {
     <#
     .SYNOPSIS
         Run a trivial command inside the distro with a hard timeout.
 
     .OUTPUTS
-        [bool] $true iff the distro returned a non-empty stdout before timeout.
+        [bool] $true iff the distro echoed the probe sentinel before timeout.
 
     .NOTES
         Uses Start-Process + WaitForExit($ms) rather than a job because
         background jobs survive PowerShell crashes and we want hard
         cleanup. The output is captured via a temp file because Start-Process
         cannot stream stdout from a hidden window directly.
+
+        The success decision is delegated to Test-ProbeSuccess: clean exit +
+        stdout containing the probe sentinel. It does NOT read the process exit
+        code (Start-Process -PassThru leaves it null under non-interactive
+        execution) -- see that helper for the full incident rationale.
     #>
     [CmdletBinding()]
     [OutputType([bool])]
@@ -192,18 +245,19 @@ function Test-Responsive {
     $stdoutFile = [System.IO.Path]::GetTempFileName()
     $stderrFile = [System.IO.Path]::GetTempFileName()
     try {
-        $args = @('-d', $Distro, '--', '/bin/sh', '-c', 'echo alive')
+        $args = @('-d', $Distro, '--', $script:ProbeCommand)
         $p = Start-Process -FilePath $WslExe -ArgumentList $args `
             -NoNewWindow -PassThru `
             -RedirectStandardOutput $stdoutFile `
             -RedirectStandardError $stderrFile
-        if (-not $p.WaitForExit($TimeoutSeconds * 1000)) {
-            try { $p.Kill() } catch { }
-            return $false
+        $exited = $p.WaitForExit($TimeoutSeconds * 1000)
+        if (-not $exited) { try { $p.Kill() } catch { } }
+        $out = if ($exited) {
+            Get-Content -LiteralPath $stdoutFile -Raw -ErrorAction SilentlyContinue
+        } else {
+            $null
         }
-        if ($p.ExitCode -ne 0) { return $false }
-        $out = (Get-Content -LiteralPath $stdoutFile -Raw -ErrorAction SilentlyContinue)
-        return -not [string]::IsNullOrWhiteSpace($out)
+        return (Test-ProbeSuccess -Exited $exited -StdoutContent $out -ExpectedToken $script:ProbeToken)
     } finally {
         Remove-Item -LiteralPath $stdoutFile -Force -ErrorAction SilentlyContinue
         Remove-Item -LiteralPath $stderrFile -Force -ErrorAction SilentlyContinue
@@ -580,6 +634,77 @@ if ($Once) {
     exit 0
 }
 
+function Set-DistroPin {
+    <#
+    .SYNOPSIS
+        Ensure exactly one persistent ``wsl --exec sleep infinity`` session is
+        attached to ``$Distro``, (re)starting it if absent.
+
+    .DESCRIPTION
+        A WSL2 distro is torn down a few seconds after the last ACTIVE
+        ``wsl.exe`` session ends. Background systemd services inside the distro
+        (even the ``wsl-runner-keepalive.service`` ``sleep 600`` unit) do NOT
+        keep it alive — only a host-side session does. The periodic probe in
+        this watchdog attaches and detaches each cycle, so on an idle host the
+        distro terminates between probes and the whole runner fleet drops
+        offline (runners only stay registered while the distro runs). Long jobs
+        masked this because a running job holds its own session.
+
+        Confirmed on OGLaptop 2026-05-29: with only the periodic probe, pid 1
+        (systemd) uptime stayed ~7-8s across samples 45s apart (the distro
+        re-initialised every cycle); a single persistent ``sleep infinity``
+        session made uptime climb monotonically and all 8 runners stay online.
+
+        Complements #783 (the S4U keepalive task survives logoff so THIS script
+        keeps running) and #784 (correct probe): neither keeps the distro
+        resident between probes — this does.
+
+    .OUTPUTS
+        [bool] $true if a pin session is present (already or newly started).
+    #>
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param(
+        [Parameter(Mandatory)][string]$Distro,
+        [Parameter(Mandatory)][string]$LogPath,
+        [Parameter(Mandatory)][int]$MaxBytes,
+        [Parameter(Mandatory)][int]$Backups,
+        [string]$WslExe = 'wsl.exe'
+    )
+    $pinned = $false
+    try {
+        foreach ($wp in (Get-CimInstance Win32_Process -Filter "Name='wsl.exe'" -ErrorAction Stop)) {
+            if ($wp.CommandLine -and $wp.CommandLine -like "*$Distro*" -and $wp.CommandLine -like "*sleep*infinity*") {
+                $pinned = $true
+                break
+            }
+        }
+    } catch {
+        # CIM unavailable -> fall through and (re)start a pin defensively.
+    }
+    if (-not $pinned) {
+        try {
+            Start-Process -FilePath $WslExe `
+                -ArgumentList @('-d', $Distro, '--exec', '/bin/sleep', 'infinity') `
+                -WindowStyle Hidden -ErrorAction Stop | Out-Null
+            Write-EventLine -LogPath $LogPath -MaxBytes $MaxBytes -Backups $Backups -Event @{
+                level = 'info'
+                event = 'distro_pin_started'
+                distro = $Distro
+            }
+            $pinned = $true
+        } catch {
+            Write-EventLine -LogPath $LogPath -MaxBytes $MaxBytes -Backups $Backups -Event @{
+                level = 'warn'
+                event = 'distro_pin_failed'
+                distro = $Distro
+                message = $_.Exception.Message
+            }
+        }
+    }
+    return $pinned
+}
+
 # Continuous mode: scheduled-task entry point.
 Write-EventLine -LogPath $LogPath -MaxBytes $MaxLogBytes -Backups $LogBackups -Event @{
     level = 'info'
@@ -593,6 +718,11 @@ Write-EventLine -LogPath $LogPath -MaxBytes $MaxLogBytes -Backups $LogBackups -E
 
 while ($true) {
     try {
+        # Keep the distro resident so the idle fleet stays online (see
+        # Set-DistroPin). Runs every cycle so a pin killed by a shutdown is
+        # re-established on the next pass.
+        $null = Set-DistroPin -Distro $Distro -LogPath $LogPath -MaxBytes $MaxLogBytes -Backups $LogBackups
+
         $result = Invoke-OneCycle `
             -Distro $Distro `
             -ProbeTimeoutSeconds $ProbeTimeoutSeconds `

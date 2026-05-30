@@ -120,6 +120,7 @@ from autoscaler_systemd import (
     _runner_workdir_for_unit,
     _start_unit,
     _stop_unit,
+    _unit_has_safe_stop_contract,
     _unit_is_active,
     _unit_state,
 )
@@ -161,6 +162,7 @@ __all__ = [
     "_runner_workdir_for_unit",
     "_start_unit",
     "_stop_unit",
+    "_unit_has_safe_stop_contract",
     "_unit_is_active",
     "_unit_state",
     "_runner_busy_via_lockfile",
