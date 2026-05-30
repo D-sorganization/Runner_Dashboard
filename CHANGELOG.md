@@ -30,6 +30,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Overview summary (`/api/stats`) showed false zeros for open PRs, queue depth,
+  and machines under partial GitHub failure. The PR/issue search, queue
+  fan-out, and fleet probe shared one timeout budget, so a slow search or
+  secondary rate-limit zeroed them all at once (while the toolstrip's
+  `/api/queue` stayed correct). Now each source is budgeted independently, the
+  queue is reused from its own resilient cache, and failed fields fall back to a
+  `stats:stale` last-known-good snapshot instead of zero (`backend/routers/repos_stats.py`).
 - Per-runner Python tool-cache isolation (`deploy/migrate-runner-units.sh`):
   every `actions.runner.*.service` drop-in now exports a private
   `RUNNER_TOOL_CACHE` (default `<WorkingDirectory>/_work/_tool`, overridable via

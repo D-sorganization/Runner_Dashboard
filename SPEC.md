@@ -1,10 +1,22 @@
-# SPEC.md â€” D-sorganization Runner Dashboard
+# SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.45
-**Application Version:** 4.2.2 (see `VERSION`)
+**Spec Version:** 2.5.46
+**Application Version:** 4.2.3 (see `VERSION`)
 **Last Updated:** 2026-05-30T00:00:00-07:00
 **Status:** Active
 
+- **2026-05-30 (2.5.46):** `/api/stats` (Overview summary) no longer publishes
+  false zeros under partial GitHub failure. Previously the org PR/issue search,
+  the 24-repo queue fan-out, and the fleet probe shared one timeout budget, so a
+  slow search or secondary rate-limit timed out the whole bundle and zeroed PRs,
+  queue, and machine counts together — even while the standalone `/api/queue`
+  (toolstrip) stayed correct. `backend/routers/repos_stats.py` now: (1) reuses
+  the resilient `/api/queue` cache instead of re-fanning-out, (2) budgets
+  runners, workflow-runs, PR search, issue search, and fleet **independently**,
+  (3) backfills any failed field from a `stats:stale` last-known-good snapshot
+  (24h TTL) that is only written on a fully-healthy compute, and (4) adds a
+  `stale` flag to the payload. 4 new tests in
+  `tests/test_stats_summary_resilience.py`.
 - **2026-05-30 (2.5.45):** Queue reaper now detects **unroutable** queued runs.
   `backend/queue_cleanup.py` adds `StaleReason.UNROUTABLE_LABEL` plus
   `is_routable()`, `fetch_online_runner_label_sets()`, and
