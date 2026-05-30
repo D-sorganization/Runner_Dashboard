@@ -131,6 +131,15 @@ def test_script_pins_distro_with_persistent_session() -> None:
     assert "distro_pin_started" in text, "pin (re)starts should be logged"
 
 
+def test_script_defaults_to_resident_mode() -> None:
+    """A runner-fleet host must default to the never-shutdown mode: a bare run
+    (or a legacy task that omits ``-Mode``) must not enter the Watchdog reboot
+    loop that hard-killed runners and corrupted the ext4 root on OGLaptop.
+    """
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert "[string]$Mode = 'Resident'" in text, "Mode must default to Resident"
+
+
 def test_probe_does_not_gate_on_process_exit_code() -> None:
     """Regression guard for the fleet-wide false-unresponsive bug.
 
