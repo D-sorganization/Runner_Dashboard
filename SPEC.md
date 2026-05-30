@@ -5,6 +5,13 @@
 **Last Updated:** 2026-05-29T00:00:00-07:00
 **Status:** Active
 
+- **2026-05-29 (2.5.45):** Default the WSL keepalive `-Mode` to `Resident` (was
+  `Watchdog`). The canonical installer already passes `-Mode Resident`
+  explicitly; this default is the safety net for a host that runs the bare
+  script or a legacy scheduled task that omits `-Mode`. Watchdog's nuclear
+  `wsl --shutdown` recovery hard-kills every runner + in-flight CI job and, on
+  hard kill mid-write, corrupted the OGLaptop ext4 root (415 shutdowns; e2fsck
+  found 48 errors). Regression test `test_script_defaults_to_resident_mode`.
 - **2026-05-29 (2.5.44):** Keep the WSL distro resident between keepalive probes
   so the idle runner fleet stays online. A WSL2 distro is torn down a few seconds
   after the last active `wsl.exe` session ends; in-distro systemd services
