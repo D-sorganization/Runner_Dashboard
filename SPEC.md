@@ -15,8 +15,12 @@
   `wsl --exec /bin/sleep infinity` session (new `Set-DistroPin` helper, called
   every loop and restarted if a shutdown kills it). Complements #784 (correct
   probe) and #783 (S4U task survives logoff; docker boot decouple) — neither
-  keeps the distro resident between probes. New static regression test
-  `test_script_pins_distro_with_persistent_session`.
+  keeps the distro resident between probes. Also flips the script default
+  `-Mode` from `Watchdog` to `Resident` so a host that runs the bare script (or
+  an installer that forgets `-Mode`) never enters the `wsl --shutdown` reboot
+  loop that hard-killed runners and corrupted the ext4 root on OGLaptop. New
+  static regression tests `test_script_pins_distro_with_persistent_session` and
+  `test_script_defaults_to_resident_mode`.
 - **2026-05-29 (2.5.43):** Hardened autoscaler scale-down against undeployed
   runner drain drop-ins (issue #785). Before `backend/autoscaler_systemd.py`
   calls `systemctl stop` for any `actions.runner.*` unit, it now verifies the

@@ -118,6 +118,15 @@ def test_script_has_resident_mode_without_wsl_reset() -> None:
     assert "unresponsive_no_wsl_reset" in text
 
 
+def test_script_defaults_to_resident_mode() -> None:
+    """A runner-fleet host must default to the never-shutdown mode: a bare run
+    (or an installer that forgets ``-Mode``) must not enter the Watchdog reboot
+    loop that hard-kills runners and corrupted the ext4 root on OGLaptop.
+    """
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert "[string]$Mode = 'Resident'" in text, "Mode must default to Resident"
+
+
 def test_script_pins_distro_with_persistent_session() -> None:
     """The idle fleet stays online only if a host-side session keeps the distro
     resident. Periodic probes attach/detach and let the distro idle-terminate

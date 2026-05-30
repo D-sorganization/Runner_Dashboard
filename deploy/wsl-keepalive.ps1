@@ -96,7 +96,13 @@ param(
     [int]$DashboardPort = 8321,
     [string]$DashboardServiceName = 'runner-dashboard.service',
     [ValidateSet('Watchdog', 'Resident')]
-    [string]$Mode = 'Watchdog',
+    # Default Resident: a runner-fleet host must never `wsl --shutdown` itself.
+    # Watchdog's nuclear recovery hard-kills every runner + in-flight CI job and
+    # (on hard kill mid-write) corrupts the ext4 root — root-caused on OGLaptop
+    # 2026-05-29 (415 shutdowns -> e2fsck found 48 errors). #784's runbook already
+    # migrates every host to Resident; defaulting to it means a host that runs the
+    # bare script (or an installer that forgets -Mode) is safe, not catastrophic.
+    [string]$Mode = 'Resident',
     [switch]$Once
 )
 
