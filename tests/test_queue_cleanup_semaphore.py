@@ -39,7 +39,7 @@ def test_semaphore_actually_limits_concurrency() -> None:
     in_flight = 0
     peak = 0
 
-    async def fake_query(_org: str, _repo: str, _min_age):  # type: ignore[no-untyped-def]
+    async def fake_query(_org: str, _repo: str, _min_age, _online=None):  # type: ignore[no-untyped-def]
         nonlocal in_flight, peak
         in_flight += 1
         peak = max(peak, in_flight)
@@ -50,17 +50,23 @@ def test_semaphore_actually_limits_concurrency() -> None:
     async def fake_list_repos(_org: str) -> list[str]:
         return repos
 
+    async def fake_label_sets(_org: str) -> list[frozenset[str]]:
+        return []
+
     async def run() -> None:
         # Patch the module-level helpers used inside find_stale_runs.
         orig_list = queue_cleanup.list_all_repos
         orig_query = queue_cleanup._queued_stale_for_repo
+        orig_labels = queue_cleanup.fetch_online_runner_label_sets
         queue_cleanup.list_all_repos = fake_list_repos  # type: ignore[assignment]
         queue_cleanup._queued_stale_for_repo = fake_query  # type: ignore[assignment]
+        queue_cleanup.fetch_online_runner_label_sets = fake_label_sets  # type: ignore[assignment]
         try:
             await queue_cleanup.find_stale_runs("dummy-org", min_age_minutes=60)
         finally:
             queue_cleanup.list_all_repos = orig_list  # type: ignore[assignment]
             queue_cleanup._queued_stale_for_repo = orig_query  # type: ignore[assignment]
+            queue_cleanup.fetch_online_runner_label_sets = orig_labels  # type: ignore[assignment]
 
     asyncio.run(run())
 

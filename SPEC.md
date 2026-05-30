@@ -1,10 +1,21 @@
 # SPEC.md â€” D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.43
-**Application Version:** 4.1.3 (see `VERSION`)
-**Last Updated:** 2026-05-29T00:00:00-07:00
+**Spec Version:** 2.5.45
+**Application Version:** 4.2.2 (see `VERSION`)
+**Last Updated:** 2026-05-30T00:00:00-07:00
 **Status:** Active
 
+- **2026-05-30 (2.5.45):** Queue reaper now detects **unroutable** queued runs.
+  `backend/queue_cleanup.py` adds `StaleReason.UNROUTABLE_LABEL` plus
+  `is_routable()`, `fetch_online_runner_label_sets()`, and
+  `required_labels_for_run()`. `find_stale_runs` fetches the online-runner label
+  inventory once per scan; `_queued_stale_for_repo` flags any queued run past the
+  age gate whose `runs-on` labels are a superset of no online runner's labels
+  (e.g. a removed/renamed tier like `d-sorg-fleet-16core`). These are
+  `safe_to_cancel=True` because they will never start regardless of age. The
+  check fails safe: an empty/unavailable runner inventory (transient API error)
+  or missing job metadata never flags a run, so no false-positive cancellations.
+  12 new unit tests in `tests/test_queue_cleanup_unroutable.py`.
 - **2026-05-29 (2.5.44):** Keep the WSL distro resident between keepalive probes
   so the idle runner fleet stays online. A WSL2 distro is torn down a few seconds
   after the last active `wsl.exe` session ends; in-distro systemd services

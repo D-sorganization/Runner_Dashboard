@@ -25,6 +25,7 @@ import asyncio
 import datetime as _dt
 import json
 import logging
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from datetime import timedelta
 from enum import StrEnum
@@ -59,6 +60,11 @@ class StaleReason(StrEnum):
     STALE_FEATURE_BRANCH = "stale-feature-branch"
     OFFLINE_RUNNER_OR_LAG = "offline-runner-or-lag"
     STALE_MAIN_BRANCH = "stale-main-branch-queue"
+    # A queued job whose required runs-on labels are not carried by ANY online
+    # runner. Unlike the age/branch reasons, these will never start no matter
+    # how long they wait (e.g. a removed/renamed runner label), so they are
+    # always safe to cancel once past the age gate. See is_routable().
+    UNROUTABLE_LABEL = "unroutable-label"
     UNKNOWN = "unknown"
 
 
@@ -78,6 +84,22 @@ def classify_stale_run(branch: str, age_minutes: int) -> tuple[str, bool]:
         return StaleReason.ABANDONED_AGENT.value, True
     else:
         return StaleReason.STALE_FEATURE_BRANCH.value, True
+
+
+def is_routable(required_labels: Iterable[str], online_label_sets: list[frozenset[str]]) -> bool:
+    """Return True if some online runner can satisfy *required_labels*.
+
+    A GitHub Actions job runs only on a runner whose label set is a SUPERSET of
+    the job's `runs-on` labels. So the job is routable iff at least one online
+    runner's labels ⊇ the required set.
+
+    Empty *required_labels* (job metadata not yet populated) returns True — we
+    do not have enough information to declare it stuck, so we never cancel it.
+    """
+    required = frozenset(label for label in required_labels if label)
+    if not required:
+        return True
+    return any(required <= labels for labels in online_label_sets)
 
 
 @dataclass
@@ -146,6 +168,52 @@ async def _gh_json(*args: str, default=None, timeout: int = 30):
 
 
 # ---------------------------------------------------------------------------
+# Runner-label routability
+# ---------------------------------------------------------------------------
+
+
+async def fetch_online_runner_label_sets(org: str) -> list[frozenset[str]]:
+    """Return one label set per ONLINE org runner.
+
+    Used to decide whether a queued job can ever be picked up. On failure (API
+    error, no runners visible) returns [] — callers treat an empty inventory as
+    "routability unknown" and skip cancellation, so a transient API hiccup never
+    causes a false-positive cancel.
+    """
+    data = await _gh_json(
+        "api",
+        f"/orgs/{org}/actions/runners?per_page=100",
+        default=None,
+        timeout=30,
+    )
+    if not data or "runners" not in data:
+        return []
+    sets: list[frozenset[str]] = []
+    for runner in data["runners"]:
+        if runner.get("status") == "online":
+            sets.append(frozenset(label["name"] for label in runner.get("labels", []) if label.get("name")))
+    return sets
+
+
+async def required_labels_for_run(org: str, repo: str, run_id: int) -> list[str]:
+    """Return the runs-on labels of a run's first still-queued job (or its first
+    job if none are queued). Empty when job metadata is not yet populated."""
+    data = await _gh_json(
+        "api",
+        f"/repos/{org}/{repo}/actions/runs/{run_id}/jobs",
+        default=None,
+        timeout=20,
+    )
+    if not data or "jobs" not in data:
+        return []
+    jobs = data["jobs"]
+    for job in jobs:
+        if job.get("status") == "queued":
+            return list(job.get("labels") or [])
+    return list(jobs[0].get("labels") or []) if jobs else []
+
+
+# ---------------------------------------------------------------------------
 # Repo discovery
 # ---------------------------------------------------------------------------
 
@@ -202,8 +270,11 @@ async def _queued_stale_for_repo(
     org: str,
     repo: str,
     min_age: timedelta,
+    online_label_sets: list[frozenset[str]] | None = None,
 ) -> list[StaleRun]:
     now = _get_now()
+    if online_label_sets is None:
+        online_label_sets = await fetch_online_runner_label_sets(org)
 
     # Fetch queued and in_progress runs
     queued_data = await _gh_json(
@@ -241,7 +312,52 @@ async def _queued_stale_for_repo(
     pr_groups: dict[tuple[str, int], list[dict]] = {}
     non_pr_runs: list[dict] = []
 
+    # Pre-pass: queued runs whose required runs-on labels match NO online runner
+    # will never start — regardless of branch or age — so flag them as
+    # unroutable and exclude them from the branch/PR classification below to
+    # avoid double-counting. Skipped entirely when the online-runner inventory
+    # is unavailable (empty), so a transient API failure cannot trigger a cancel.
+    unroutable_ids: set[int] = set()
+    if online_label_sets:
+        for run in unique_runs:
+            if run.get("status") != "queued":
+                continue
+            raw_ts = run.get("created_at", "")
+            try:
+                created = _dt.datetime.fromisoformat(raw_ts.replace("Z", "+00:00"))
+            except (ValueError, AttributeError):
+                continue
+            age = now - created
+            if age < min_age:
+                continue
+            run_id = run.get("id", 0)
+            required = await required_labels_for_run(org, repo, run_id)
+            if required and not is_routable(required, online_label_sets):
+                stale.append(
+                    StaleRun(
+                        repo=repo,
+                        run_id=run_id,
+                        workflow=run.get("name", "?"),
+                        branch=run.get("head_branch", "?") or "?",
+                        created_at=raw_ts,
+                        age_minutes=int(age.total_seconds() / 60),
+                        reason=StaleReason.UNROUTABLE_LABEL.value,
+                        reason_detail=(
+                            f"queued job requires runs-on labels {sorted(set(required))} "
+                            "but no online runner can satisfy them"
+                        ),
+                        safe_to_cancel=True,
+                        url=f"https://github.com/{org}/{repo}/actions/runs/{run_id}",
+                        html_url=run.get("html_url", ""),
+                        event=run.get("event", ""),
+                        head_sha=run.get("head_sha", ""),
+                    )
+                )
+                unroutable_ids.add(run_id)
+
     for run in unique_runs:
+        if run.get("id", 0) in unroutable_ids:
+            continue
         raw_ts = run.get("created_at", "")
         try:
             created = _dt.datetime.fromisoformat(raw_ts.replace("Z", "+00:00"))
@@ -502,12 +618,16 @@ async def find_stale_runs(
     without hammering the GitHub API.  Sorted oldest-first so the worst
     offenders appear at the top.
     """
+    # Fetch the online-runner label inventory ONCE for the whole scan so every
+    # repo shares it (used to flag jobs requesting labels no runner advertises).
+    online_label_sets = await fetch_online_runner_label_sets(org)
+
     if repo:
         from security import validate_repo_slug
 
         validated_repo = validate_repo_slug(repo)
         min_age = timedelta(minutes=min_age_minutes)
-        flat = await _queued_stale_for_repo(org, validated_repo, min_age)
+        flat = await _queued_stale_for_repo(org, validated_repo, min_age, online_label_sets)
     else:
         repos = await list_all_repos(org)
         min_age = timedelta(minutes=min_age_minutes)
@@ -515,7 +635,7 @@ async def find_stale_runs(
 
         async def bounded(r: str) -> list[StaleRun]:
             async with sem:
-                return await _queued_stale_for_repo(org, r, min_age)
+                return await _queued_stale_for_repo(org, r, min_age, online_label_sets)
 
         nested = await asyncio.gather(*[bounded(r) for r in repos])
         flat = [run for runs in nested for run in runs]

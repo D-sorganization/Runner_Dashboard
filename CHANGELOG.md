@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Queue reaper unroutable-job detection (`backend/queue_cleanup.py`): a new
+  `unroutable-label` stale reason flags queued runs whose `runs-on` labels are
+  carried by no online runner (e.g. a removed/renamed tier such as
+  `d-sorg-fleet-16core`). These previously sat queued indefinitely and were
+  invisible to the reaper. Marked `safe_to_cancel` since they can never start;
+  fails safe when the runner inventory or job metadata is unavailable.
 - `backend/pyproject.toml` and `backend/uv.lock` for reproducible backend dependency resolution.
 - Root-level `uv.lock` for reproducible project dependency resolution.
 - `useTimeAgo` hook (`frontend/src/hooks/useTimeAgo.ts`) and `<TimeAgo>` primitive
