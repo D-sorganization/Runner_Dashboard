@@ -852,6 +852,8 @@ async def proxy_to_hub(request: Request):
     """Proxy request to the designated HUB_URL for hub-spoke topology."""
     if not HUB_URL:
         raise HTTPException(status_code=502, detail="HUB_URL not configured")
+    from proxy_utils import _translate_upstream_response, mark_hub_unreachable, reset_hub_circuit
+
     async with httpx.AsyncClient(timeout=HttpTimeout.PROXY_TO_HUB_S) as client:
         url = f"{HUB_URL}{request.url.path}"
         if request.url.query:
@@ -864,14 +866,15 @@ async def proxy_to_hub(request: Request):
                 content=await request.body(),
             )
             resp = await client.send(req)
-            from proxy_utils import _translate_upstream_response
-
+            reset_hub_circuit()  # hub answered → close the breaker
             return _translate_upstream_response(resp, "Hub proxy")
         except httpx.TimeoutException as e:
             log.warning("Hub proxy timeout for %s: %s", request.url.path, e)
+            mark_hub_unreachable()  # open breaker → serve local until hub recovers
             raise HTTPException(status_code=504, detail="Hub timeout") from e
         except httpx.ConnectError as e:
             log.warning("Hub proxy connect error for %s: %s", request.url.path, e)
+            mark_hub_unreachable()  # open breaker → serve local until hub recovers
             raise HTTPException(status_code=503, detail="Hub connection error") from e
         except HTTPException:
             raise
@@ -886,8 +889,13 @@ def _should_proxy_fleet_to_hub(request: Request) -> bool:
     Local health, system metrics, watchdog, and runner schedule endpoints stay
     local. Fleet-wide endpoints can proxy to the hub, while hub fan-out calls
     can add ``?local=1`` to force a node-local action and avoid proxy loops.
+
+    If the hub circuit breaker is open (hub recently unreachable), we serve local
+    data instead of proxying, so a dead hub never blanks the dashboard.
     """
-    if MACHINE_ROLE != "node" or not HUB_URL:
+    from proxy_utils import hub_in_cooldown
+
+    if MACHINE_ROLE != "node" or not HUB_URL or hub_in_cooldown():
         return False
     local_value = request.query_params.get("local", "").lower()
     scope_value = request.query_params.get("scope", "").lower()

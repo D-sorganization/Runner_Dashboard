@@ -175,3 +175,37 @@ class TestSafeForwardHeaders:
         )
         result = proxy_utils._safe_forward_headers(req)
         assert not any(k.upper() in {"AUTHORIZATION", "COOKIE", "X-API-KEY"} for k in result)
+
+
+class TestHubCircuitBreaker:
+    """The hub circuit breaker makes a node serve local data when the hub is down."""
+
+    def teardown_method(self) -> None:
+        # Never leak open-breaker state into other tests.
+        proxy_utils.reset_hub_circuit()
+
+    def test_mark_then_in_cooldown(self) -> None:
+        proxy_utils.reset_hub_circuit()
+        assert proxy_utils.hub_in_cooldown() is False
+        proxy_utils.mark_hub_unreachable()
+        assert proxy_utils.hub_in_cooldown() is True
+
+    def test_reset_closes_breaker(self) -> None:
+        proxy_utils.mark_hub_unreachable()
+        proxy_utils.reset_hub_circuit()
+        assert proxy_utils.hub_in_cooldown() is False
+
+    def test_expired_cooldown_is_closed(self) -> None:
+        # A non-positive cooldown lands in the past, so the breaker is already closed.
+        proxy_utils.mark_hub_unreachable(cooldown_s=-1.0)
+        assert proxy_utils.hub_in_cooldown() is False
+
+    def test_open_breaker_forces_local_even_for_node_with_hub(self) -> None:
+        # Normally a node with a hub and no local/scope params proxies (returns True);
+        # with the breaker open it must serve local (False) instead.
+        with patch.object(proxy_utils, "MACHINE_ROLE", "node"):
+            with patch.object(proxy_utils, "HUB_URL", "http://hub.internal"):
+                req = _make_request({})
+                assert proxy_utils.should_proxy_fleet_to_hub(req) is True
+                proxy_utils.mark_hub_unreachable()
+                assert proxy_utils.should_proxy_fleet_to_hub(req) is False
