@@ -79,6 +79,30 @@ def test_migrate_runner_units_sets_kill_mode_mixed() -> None:
     assert "KillMode=mixed" in src, "drop-in must set KillMode=mixed"
 
 
+def test_update_deployed_ensures_runner_hardening() -> None:
+    """Routine deploys must re-apply the runner-unit hardening so a host
+    can never silently run KillMode=process.
+
+    install-runner-maintenance.sh applies the KillMode=mixed drop-ins, but
+    hosts set up before it existed (or where it never ran) keep
+    KillMode=process — which orphans Runner.Worker children and abruptly
+    kills in-flight jobs on stop. update-deployed.sh must idempotently
+    ensure the drop-ins exist on every deploy, without restarting busy
+    units (the drop-in takes effect on the unit's next natural restart).
+    Observed 2026-05-29 on DeskComputer: its runner units lacked the
+    drop-in entirely because no deploy step ever ensured it.
+    """
+    src = _read(_DEPLOY / "update-deployed.sh")
+    assert "ensure_runner_hardening" in src, "deploy must call ensure_runner_hardening"
+    assert "migrate-runner-units.sh" in src, "hardening must be applied via migrate-runner-units.sh"
+    assert "10-runner-dashboard-busy-lock.conf" in src, "must check for the drop-in file"
+    assert "KillMode=mixed" in src, "must verify KillMode=mixed presence"
+    # Must NOT restart units (busy runners are running jobs).
+    assert "--restart-units" not in src.split("ensure_runner_hardening()")[1].split("\n}")[0], (
+        "ensure_runner_hardening must not pass --restart-units (would kill in-flight jobs)"
+    )
+
+
 def test_migrate_runner_units_passes_unit_name_via_specifier() -> None:
     """The ExecStop= drop-in must pass %n (full unit name) to
     force-drain.sh as $1. systemd does NOT export $SYSTEMD_UNIT to

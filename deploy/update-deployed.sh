@@ -158,6 +158,51 @@ if ! dry_run "sudo systemctl restart $SERVICE"; then
     sudo systemctl restart "$SERVICE"
 fi
 
+# ── Ensure runner-unit hardening is present (idempotent) ─────────────────────
+# Hosts set up before deploy/migrate-runner-units.sh existed — or where
+# install-runner-maintenance.sh never ran — silently keep the runner units on
+# KillMode=process. On stop that orphans Runner.Worker children and abruptly
+# kills in-flight jobs instead of draining them. migrate-runner-units.sh writes
+# the KillMode=mixed + TimeoutStopSec=120 drop-ins; re-applying it on every
+# deploy means the hardening can never be silently missing on a host. It does
+# NOT restart any unit, so a busy runner's job is never interrupted — the
+# drop-in takes effect on the unit's next natural restart.
+ensure_runner_hardening() {
+    local migrate; migrate="$(dirname "$0")/migrate-runner-units.sh"
+    if [[ ! -x "$migrate" ]]; then
+        warn "migrate-runner-units.sh not found; skipping runner-unit hardening check"
+        return 0
+    fi
+
+    local missing=0 unit dropin
+    while IFS= read -r unit; do
+        [[ -n "$unit" ]] || continue
+        dropin="/etc/systemd/system/${unit}.d/10-runner-dashboard-busy-lock.conf"
+        grep -qs 'KillMode=mixed' "$dropin" || missing=1
+    done < <(systemctl list-unit-files --type=service --no-legend 2>/dev/null \
+        | awk '$1 ~ /^actions\.runner\..*\.service$/ {print $1}')
+
+    if [[ "$missing" == "0" ]]; then
+        ok "Runner units already hardened (KillMode=mixed drop-ins present)"
+        return 0
+    fi
+
+    if dry_run "sudo $migrate (apply KillMode=mixed runner hardening)"; then
+        return 0
+    fi
+    if sudo -n true 2>/dev/null; then
+        info "Applying runner-unit hardening (KillMode=mixed, TimeoutStopSec=120; no unit restart)..."
+        if sudo bash "$migrate"; then
+            ok "Runner-unit hardening applied (effective on each unit's next restart)"
+        else
+            warn "migrate-runner-units.sh failed; runner units may still be on KillMode=process"
+        fi
+    else
+        warn "Runner units missing KillMode=mixed hardening — run: sudo deploy/migrate-runner-units.sh"
+    fi
+}
+ensure_runner_hardening
+
 # ── Health-gate: verify service came up ──────────────────────────────────────
 _check_health() {
     curl -fsS --max-time 10 "http://localhost:${DASHBOARD_PORT}/health" >/dev/null 2>&1
