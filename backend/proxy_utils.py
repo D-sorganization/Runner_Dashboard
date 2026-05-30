@@ -4,12 +4,41 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 
 import httpx
 from dashboard_config import HUB_URL, MACHINE_ROLE
 from fastapi import HTTPException, Request
 
 log = logging.getLogger("dashboard.proxy")
+
+# ── Hub circuit breaker (issue: blank dashboard when the hub is offline) ──────
+# A spoke proxies fleet-wide endpoints to HUB_URL. If the hub is unreachable the
+# proxy used to raise 504/503 on EVERY request, so a dead hub blanked the whole
+# dashboard. We now open a short-lived circuit breaker on a hub failure: while it
+# is open, ``should_proxy_fleet_to_hub`` returns False so the node serves its OWN
+# local data instead of hammering (and timing out on) a dead hub. A successful
+# proxy closes the breaker immediately.
+HUB_CIRCUIT_COOLDOWN_S = 30.0
+_hub_unhealthy_until = 0.0  # monotonic-clock deadline; hub is "down" while now < this
+
+
+def mark_hub_unreachable(cooldown_s: float = HUB_CIRCUIT_COOLDOWN_S) -> None:
+    """Open the hub circuit breaker for ``cooldown_s`` seconds (hub is down)."""
+    global _hub_unhealthy_until
+    _hub_unhealthy_until = time.monotonic() + cooldown_s
+
+
+def hub_in_cooldown() -> bool:
+    """True while the hub circuit breaker is open (hub recently unreachable)."""
+    return time.monotonic() < _hub_unhealthy_until
+
+
+def reset_hub_circuit() -> None:
+    """Close the hub circuit breaker (called on a successful proxy / by tests)."""
+    global _hub_unhealthy_until
+    _hub_unhealthy_until = 0.0
+
 
 # Headers that must NEVER be forwarded to the hub (issue #347).
 # Forwarding these would allow credential laundering if HUB_URL is
@@ -82,12 +111,15 @@ async def proxy_to_hub(request: Request):
                 content=await request.body(),
             )
             resp = await client.send(req)
+            reset_hub_circuit()  # hub answered → close the breaker
             return _translate_upstream_response(resp, "Hub proxy")
         except httpx.TimeoutException as e:
             log.warning("Hub proxy timeout for %s: %s", request.url.path, e)
+            mark_hub_unreachable()  # open breaker → serve local until it recovers
             raise HTTPException(status_code=504, detail="Hub timeout") from e
         except httpx.ConnectError as e:
             log.warning("Hub proxy connect error for %s: %s", request.url.path, e)
+            mark_hub_unreachable()  # open breaker → serve local until it recovers
             raise HTTPException(status_code=503, detail="Hub connection error") from e
         except HTTPException:
             raise
@@ -97,8 +129,13 @@ async def proxy_to_hub(request: Request):
 
 
 def should_proxy_fleet_to_hub(request: Request) -> bool:
-    """Return True when this node should use the hub's fleet-wide view."""
-    if MACHINE_ROLE != "node" or not HUB_URL:
+    """Return True when this node should use the hub's fleet-wide view.
+
+    When the hub circuit breaker is open (hub recently unreachable) we return
+    False so the node serves its own local data instead of timing out on a dead
+    hub — preventing a blank dashboard fleet-wide.
+    """
+    if MACHINE_ROLE != "node" or not HUB_URL or hub_in_cooldown():
         return False
     local_value = request.query_params.get("local", "").lower()
     scope_value = request.query_params.get("scope", "").lower()

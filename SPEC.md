@@ -28,6 +28,17 @@
   check fails safe: an empty/unavailable runner inventory (transient API error)
   or missing job metadata never flags a run, so no false-positive cancellations.
   12 new unit tests in `tests/test_queue_cleanup_unroutable.py`.
+- **2026-05-30 (2.5.45):** Hub circuit breaker so a dead hub never blanks a spoke's
+  dashboard. Previously a `node` (spoke) proxied every fleet-wide endpoint
+  (`/api/runners`, `/api/runs`, `/api/queue`, `/api/stats`, `/api/fleet/nodes`) to
+  `HUB_URL`, and if the hub was unreachable `proxy_to_hub` raised 504/503 on every
+  request — so an offline hub rendered the whole dashboard blank fleet-wide. A hub
+  timeout/connect-error now opens a short-lived circuit breaker
+  (`mark_hub_unreachable` / `hub_in_cooldown` / `reset_hub_circuit` in
+  `backend/proxy_utils.py`, default 30s); while it is open `should_proxy_fleet_to_hub`
+  (both `backend/proxy_utils.py` and `backend/server.py`) returns False so the node
+  serves its OWN local data instead. A successful proxy closes the breaker
+  immediately. Tests in `tests/test_proxy_utils.py::TestHubCircuitBreaker`.
 - **2026-05-29 (2.5.44):** Keep the WSL distro resident between keepalive probes
   so the idle runner fleet stays online. A WSL2 distro is torn down a few seconds
   after the last active `wsl.exe` session ends; in-distro systemd services
