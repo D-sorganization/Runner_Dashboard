@@ -24,6 +24,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Per-runner Python tool-cache isolation (`deploy/migrate-runner-units.sh`):
+  every `actions.runner.*.service` drop-in now exports a private
+  `RUNNER_TOOL_CACHE` (default `<WorkingDirectory>/_work/_tool`, overridable via
+  `RUNNER_TOOL_CACHE_ROOT`). This eliminates the shared-`.shared-tool-cache`
+  race where concurrent jobs on one host corrupted `actions/setup-python`
+  ("Directory not empty", exit-127 "python: command not found",
+  "ModuleNotFoundError: No module named 'http'"). `deploy/runner-cleanup.sh`
+  already GCs `_work/_tool`, so the private caches stay bounded.
+- `deploy/runner-corruption-scan.sh` now emits a third Prometheus signal,
+  `kind="python_toolcache"`, counting incomplete Python tool-cache trees
+  (a `<version>/<arch>` dir missing the toolkit's `.complete` marker) so the
+  fleet can watch the corruption trend toward zero after rollout.
 - Corrected broken issue reference `#944` to `#161` in `pyproject.toml` and CI workflow.
 - Restored missing `PROVIDERS_WITH_MODEL` definition in frontend bundle.
 - Removed stale `agent_remediation_140.py` from repo root and added `/*_[0-9]*.py` to `.gitignore`.

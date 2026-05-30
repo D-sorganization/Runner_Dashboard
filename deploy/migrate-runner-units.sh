@@ -18,6 +18,13 @@
 #      Environment=RUNNER_NAME=<unit-derived> — so the hooks know which
 #      runner they belong to. The hook scripts maintain a lockfile that
 #      both the autoscaler and cleanup consult as a second busy signal.
+#   4. Environment=RUNNER_TOOL_CACHE=<per-runner dir> — gives every runner
+#      its OWN tool cache so concurrent jobs on one host never race on a
+#      shared .shared-tool-cache during actions/setup-python. That race
+#      corrupted the Python tree ("Directory not empty" during the old
+#      force-clean, exit-127 "python: command not found", and
+#      "ModuleNotFoundError: No module named 'http'"). Default cache dir is
+#      <WorkingDirectory>/_work/_tool; override via RUNNER_TOOL_CACHE_ROOT.
 #
 # Usage:
 #   sudo deploy/migrate-runner-units.sh                 # apply
@@ -39,6 +46,16 @@ LOCK_DIR="${LOCK_DIR:-/var/run/runner-busy}"
 TIMEOUT_STOP_SEC="${TIMEOUT_STOP_SEC:-120}"
 DRY_RUN="${DRY_RUN:-0}"
 RESTART_UNITS="${RESTART_UNITS:-0}"
+# Per-runner private tool cache. Each runner gets its OWN RUNNER_TOOL_CACHE so
+# concurrent jobs on the same host never race on a shared cache while
+# actions/setup-python extracts Python. The shared `.shared-tool-cache` design
+# let one job's clean/extract collide with another's, corrupting the Python
+# tree ("Directory not empty", exit-127 "python: command not found",
+# "ModuleNotFoundError: No module named 'http'"). When empty, the cache is
+# derived per-unit as <WorkingDirectory>/_work/_tool — the runner-local default
+# that deploy/runner-cleanup.sh already garbage-collects. Set this to override
+# with a per-runner-name dir under a custom root (e.g. a dedicated NVMe path).
+RUNNER_TOOL_CACHE_ROOT="${RUNNER_TOOL_CACHE_ROOT:-}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -106,8 +123,36 @@ for unit in "${units[@]}"; do
     log "migrating $unit (runner_name=$runner_name)"
     run install -d -m 0755 "$override_dir"
 
+    # Derive this runner's PRIVATE tool cache. Prefer an explicit
+    # RUNNER_TOOL_CACHE_ROOT/<runner_name>; otherwise use the runner-local
+    # default <WorkingDirectory>/_work/_tool (already GC'd by runner-cleanup.sh).
+    tool_cache_stanza=""
+    tool_cache_dir=""
+    if [[ -n "$RUNNER_TOOL_CACHE_ROOT" ]]; then
+        tool_cache_dir="${RUNNER_TOOL_CACHE_ROOT%/}/${runner_name}"
+    else
+        unit_workdir="$(systemctl show "$unit" --property=WorkingDirectory --value 2>/dev/null || true)"
+        if [[ -n "$unit_workdir" && "$unit_workdir" != "/" ]]; then
+            tool_cache_dir="${unit_workdir%/}/_work/_tool"
+        fi
+    fi
+    if [[ -n "$tool_cache_dir" ]]; then
+        # Create the cache dir owned by the runner user so the first job can
+        # populate it. Best-effort: a missing dir is recreated by setup-python.
+        run install -d -m 0755 -o "$runner_user" -g "$runner_user" "$tool_cache_dir" \
+            2>/dev/null || run mkdir -p "$tool_cache_dir" || true
+        tool_cache_stanza=$'# Per-runner private Python tool cache (RUNNER_TOOL_CACHE): each runner\n'
+        tool_cache_stanza+=$'# extracts Python into its OWN cache so concurrent jobs on this host never\n'
+        tool_cache_stanza+=$'# race on a shared .shared-tool-cache (which corrupted setup-python with\n'
+        tool_cache_stanza+=$'# dir-not-empty / "python: command not found" / missing-stdlib failures).\n'
+        tool_cache_stanza+="Environment=RUNNER_TOOL_CACHE=${tool_cache_dir}"
+    else
+        log "warn: $unit — could not resolve a tool-cache dir; RUNNER_TOOL_CACHE not set for this unit"
+    fi
+
     if [[ "$DRY_RUN" == "1" ]]; then
         log "[dry-run] would write ${override_file}"
+        [[ -n "$tool_cache_dir" ]] && log "[dry-run]   with RUNNER_TOOL_CACHE=${tool_cache_dir}"
     else
         cat > "$override_file" <<EOF
 # Managed by deploy/migrate-runner-units.sh — do not hand-edit.
@@ -126,6 +171,8 @@ Environment=ACTIONS_RUNNER_HOOK_JOB_STARTED=${HOOK_DIR}/job-started.sh
 Environment=ACTIONS_RUNNER_HOOK_JOB_COMPLETED=${HOOK_DIR}/job-completed.sh
 Environment=RUNNER_BUSY_LOCK_DIR=${LOCK_DIR}
 Environment=RUNNER_NAME=${runner_name}
+
+${tool_cache_stanza}
 
 # Belt-and-suspenders for WSL2 hosts where the cgroup-wide kill can
 # fail with EINVAL ("Failed to kill control group ...: Invalid argument").

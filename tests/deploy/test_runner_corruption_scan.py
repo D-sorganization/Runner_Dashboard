@@ -220,6 +220,55 @@ def test_multiple_runners_are_reported_independently(tmp_path: Path) -> None:
     assert _metric_value(content, "runner-b", "file_commands") == 4
 
 
+def _make_python_toolcache(runner_root: Path, runner: str, version: str, *, complete: bool, arch: str = "x64") -> None:
+    """Build a synthetic Python tool-cache tree for one runner+version.
+
+    Mirrors the actions/toolkit layout:
+        _work/_tool/Python/<version>/<arch>/      (extracted tree)
+        _work/_tool/Python/<version>/<arch>.complete (marker, present only
+                                                      after a successful cache)
+    """
+    arch_dir = runner_root / runner / "_work" / "_tool" / "Python" / version / arch
+    arch_dir.mkdir(parents=True)
+    (arch_dir / "python").write_text("#!/bin/sh\n")
+    if complete:
+        (arch_dir.parent / f"{arch}.complete").write_text("")
+
+
+def test_python_toolcache_zero_when_all_complete(tmp_path: Path) -> None:
+    runner_root = tmp_path / "runners"
+    _make_python_toolcache(runner_root, "runner-01", "3.11.9", complete=True)
+    _make_python_toolcache(runner_root, "runner-01", "3.12.4", complete=True)
+
+    prom = tmp_path / "out.prom"
+    content = _run_scan(runner_root, prom)
+    assert _metric_value(content, "runner-01", "python_toolcache") == 0
+
+
+def test_python_toolcache_counts_incomplete_trees(tmp_path: Path) -> None:
+    runner_root = tmp_path / "runners"
+    # One good extraction, two partial ones (missing .complete marker).
+    _make_python_toolcache(runner_root, "runner-01", "3.10.14", complete=True)
+    _make_python_toolcache(runner_root, "runner-01", "3.11.9", complete=False)
+    _make_python_toolcache(runner_root, "runner-01", "3.12.4", complete=False)
+
+    prom = tmp_path / "out.prom"
+    content = _run_scan(runner_root, prom)
+    assert _metric_value(content, "runner-01", "python_toolcache") == 2
+    # The other kinds must still report zero for this runner.
+    assert _metric_value(content, "runner-01", "file_commands") == 0
+
+
+def test_python_toolcache_absent_cache_reports_zero(tmp_path: Path) -> None:
+    runner_root = tmp_path / "runners"
+    # Runner exists (has a diag dir) but never provisioned a Python tool cache.
+    (runner_root / "runner-07" / "_diag" / "pages").mkdir(parents=True)
+
+    prom = tmp_path / "out.prom"
+    content = _run_scan(runner_root, prom)
+    assert _metric_value(content, "runner-07", "python_toolcache") == 0
+
+
 def test_emits_atomic_write(tmp_path: Path) -> None:
     """The script must write via a temp file then rename for atomicity.
 
