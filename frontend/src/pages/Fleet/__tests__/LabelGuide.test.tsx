@@ -115,12 +115,15 @@ describe("LabelGuide", () => {
       )
     );
     render(<LabelGuide />);
+    // Scope to the per-row label-name cell: the same label string also appears
+    // inside runs_on_snippet and the workflow-class recommended/forbidden lists,
+    // so a plain getByText would match multiple elements.
     await waitFor(() =>
-      expect(screen.getByText("d-sorg-fleet-nvme")).toBeInTheDocument()
+      expect(screen.getByTestId("label-name-d-sorg-fleet-nvme")).toBeInTheDocument()
     );
-    expect(screen.getByText("d-sorg-fleet-fast-io")).toBeInTheDocument();
-    expect(screen.getByText("d-sorg-fleet-docker")).toBeInTheDocument();
-    expect(screen.getByText("d-sorg-fleet-bulk")).toBeInTheDocument();
+    expect(screen.getByTestId("label-name-d-sorg-fleet-fast-io")).toBeInTheDocument();
+    expect(screen.getByTestId("label-name-d-sorg-fleet-docker")).toBeInTheDocument();
+    expect(screen.getByTestId("label-name-d-sorg-fleet-bulk")).toBeInTheDocument();
     vi.unstubAllGlobals();
   });
 
