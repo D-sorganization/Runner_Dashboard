@@ -16,7 +16,13 @@ from gh_utils import gh_api_admin
 from identity import Principal, require_scope
 from proxy_utils import proxy_to_hub, should_proxy_fleet_to_hub
 
-from .runner_helpers import UTC, run_runner_svc, runner_health_check, runner_num_from_id
+from .runner_helpers import (
+    UTC,
+    count_runner_capacity,
+    run_runner_svc,
+    runner_health_check,
+    runner_num_from_id,
+)
 
 log = logging.getLogger("dashboard.runners")
 router = APIRouter(tags=["runners"])
@@ -184,10 +190,11 @@ async def get_fleet_capacity(request: Request) -> dict[str, Any]:
         data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
         runners = data.get("runners", []) or []
 
-        online = sum(1 for r in runners if r.get("status") == "online")
-        busy = sum(1 for r in runners if r.get("busy"))
-        idle = online - busy
-        total = len(runners)
+        counts = count_runner_capacity(runners)
+        online = counts["online_runners"]
+        busy = counts["busy_runners"]
+        idle = counts["idle_runners"]
+        total = counts["total_runners"]
 
         # Get system metrics if available
         system_metrics = None
@@ -197,7 +204,7 @@ async def get_fleet_capacity(request: Request) -> dict[str, Any]:
             except Exception as e:
                 log.debug("Failed to get system metrics for capacity: %s", e)
 
-        utilization_percent = int((busy / online * 100) if online > 0 else 0)
+        utilization_percent = counts["utilization_percent"]
 
         # Scaling recommendations
         recommendations = []

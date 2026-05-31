@@ -78,6 +78,7 @@ import lease_synchronizer as lease_synchronizer  # noqa: E402
 import linear_inventory as linear_inventory  # noqa: E402
 import metrics as _metrics_router  # noqa: E402
 import orchestration_audit as orchestration_audit  # noqa: E402
+import orchestrator_api as _orchestrator_api  # noqa: E402  # Conductor integration (issue #1282)
 import pr_inventory as pr_inventory  # noqa: E402
 import prometheus_metrics as _prometheus_metrics_router  # noqa: E402
 import push as _push_router  # noqa: E402
@@ -681,6 +682,7 @@ app.include_router(_linear_sync_router.router)  # Linear read sync (issue #236)
 app.include_router(_repos_router.router)  # issue #360
 app.include_router(_diagnostics_router.router)  # issue #360
 app.include_router(_autoscaler_pools_router.router)  # issue #755 tier-aware autoscaler
+app.include_router(_orchestrator_api.router)  # Conductor admission gate (issue #1282)
 
 app.add_middleware(
     SessionMiddleware,
@@ -2423,6 +2425,26 @@ _orchestration_router.set_dependencies(
 )
 _system_router.set_host_memory_gb(HOST_MEMORY_GB)
 _system_router.set_runner_capacity_snapshot_func(get_runner_capacity_snapshot)
+
+
+# Conductor admission gate (issue #1282): wire the orchestrator capacity
+# provider to the SAME runner-counting logic as /api/runners/fleet/capacity
+# (DRY via routers.runner_helpers.count_runner_capacity). Synchronous wrapper
+# so the in-process lease lock stays simple; the gh call is cached upstream.
+async def _orchestrator_capacity_provider() -> dict[str, int]:
+    from gh_utils import gh_api_admin  # noqa: PLC0415
+    from routers.runner_helpers import count_runner_capacity  # noqa: PLC0415
+
+    try:
+        data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
+        runners = (data or {}).get("runners", []) or []
+        return count_runner_capacity(runners)
+    except Exception as exc:  # noqa: BLE001 — fail safe: report zero capacity
+        log.warning("orchestrator capacity provider failed, denying by default: %s", exc)
+        return {"idle_runners": 0, "online_runners": 0, "busy_runners": 0, "total_runners": 0}
+
+
+_orchestrator_api.set_capacity_provider(_orchestrator_capacity_provider)
 
 # Inject dependencies into deployment router
 _deployment_router.set_dependencies(
