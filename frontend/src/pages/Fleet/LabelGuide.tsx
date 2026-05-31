@@ -230,6 +230,7 @@ export function LabelGuide() {
               >
                 <td style={{ padding: "10px 14px", whiteSpace: "nowrap" }}>
                   <code
+                    data-testid={`label-name-${label}`}
                     style={{
                       fontSize: "12px",
                       background: "var(--surface-alt, #1e293b)",

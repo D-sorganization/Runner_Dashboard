@@ -1,6 +1,7 @@
 import React from "react"
 import * as fleetAlerts from "../lib/fleetAlerts"
 import { AgentDispatchPage } from "../pages/AgentDispatch"
+import { Conductor } from "../pages/Conductor"
 import { QueueTab } from "../pages/Queue"
 import { Badge } from "../primitives/Badge"
 import { Pill } from "../primitives/Pill"
@@ -14406,6 +14407,18 @@ function App({ initialTab, onTabChange }: { initialTab?: string; onTabChange?: (
     _setTabInternal(nextTab);
     if (onTabChange) onTabChange(nextTab);
   }, [onTabChange]);
+  // Conductor integration (issue #1282): probe the orchestrator surface once.
+  // The tab is only shown when the backend feature flag is enabled (the probe
+  // returns non-404). This keeps the surface inert/reversible by default and
+  // orthogonal — a probe failure never blocks other tabs.
+  var conductorState = React.useState(false);
+  var conductorEnabled = conductorState[0],
+    setConductorEnabled = conductorState[1];
+  React.useEffect(function () {
+    fetch("/api/orchestrator/queue", { headers: { "X-Requested-With": "XMLHttpRequest" } })
+      .then(function (r) { setConductorEnabled(r.status !== 404); })
+      .catch(function () { setConductorEnabled(false); });
+  }, []);
   var rs = React.useState([]);
   var runners = rs[0],
     setRunners = rs[1];
@@ -16076,6 +16089,21 @@ function App({ initialTab, onTabChange }: { initialTab?: string; onTabChange?: (
               )
             : null,
         ),
+        conductorEnabled
+          ? h(
+              "button",
+              {
+                className: "tab-btn" + (tab === "conductor" ? " active" : ""),
+                role: "tab",
+                "aria-selected": tab === "conductor",
+                onClick: function () {
+                  setTab("conductor");
+                },
+              },
+              I.queue(14),
+              "Conductor",
+            )
+          : null,
         h(
           "button",
           {
@@ -16843,6 +16871,8 @@ function App({ initialTab, onTabChange }: { initialTab?: string; onTabChange?: (
             })
           : tab === "agent-dispatch"
             ? h(AgentDispatchPage)
+            : tab === "conductor"
+            ? h(Conductor)
             : tab === "remediation"
             ? h(RemediationTab, {
                 config: remediationConfig,

@@ -73,6 +73,36 @@ def runner_num_from_id(runner_id: int, runners: list[dict]) -> int | None:
     return None
 
 
+def count_runner_capacity(runners: list[dict]) -> dict[str, int]:
+    """Compute fleet capacity counts from a list of GitHub runner dicts.
+
+    Single source of truth for the online/busy/idle/utilization arithmetic so
+    both ``/api/runners/fleet/capacity`` and the Conductor orchestrator
+    admission gate agree on what "idle" means (DRY — issue #1282).
+
+    Args:
+        runners: List of runner dicts from the GitHub Actions runners API.
+
+    Returns:
+        Flat dict of integer counts: ``total_runners``, ``online_runners``,
+        ``offline_runners``, ``busy_runners``, ``idle_runners``,
+        ``utilization_percent``.
+    """
+    total = len(runners)
+    online = sum(1 for r in runners if r.get("status") == "online")
+    busy = sum(1 for r in runners if r.get("busy"))
+    idle = max(online - busy, 0)
+    utilization_percent = int((busy / online * 100) if online > 0 else 0)
+    return {
+        "total_runners": total,
+        "online_runners": online,
+        "offline_runners": total - online,
+        "busy_runners": busy,
+        "idle_runners": idle,
+        "utilization_percent": utilization_percent,
+    }
+
+
 def runner_sort_key(runner: dict) -> tuple[str, int, str]:
     """Sort key for runners: status (online first), then local index, then name.
 
