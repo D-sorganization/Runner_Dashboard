@@ -71,11 +71,11 @@ export function SubTabs({
           },
           tab.label,
           tab.badge != null
-            ? React.createElement(
-                Badge,
-                { tone: activeKey === tab.key ? "info" : "neutral", size: "sm" },
-                tab.badge,
-              )
+            ? React.createElement(Badge, {
+                tone: activeKey === tab.key ? "info" : "neutral",
+                size: "sm",
+                children: tab.badge,
+              })
             : null,
         ),
       ),

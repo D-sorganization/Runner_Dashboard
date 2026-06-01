@@ -16,7 +16,12 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react'
 
 interface Props {
-  children: ReactNode
+  /**
+   * Subtree to render when no error has been caught. Optional because this
+   * boundary is also mounted standalone as a react-router `errorElement`,
+   * where the router renders it only on the error path (no children needed).
+   */
+  children?: ReactNode
   /** Optional request ID from the last failing backend call (X-Request-ID). */
   requestId?: string
 }

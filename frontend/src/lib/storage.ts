@@ -19,7 +19,12 @@ export const STORAGE_KEYS = {
   ASST_OPEN_BY_DEFAULT: { key: 'ASST_LS.openByDefault', version: 1 },
 } as const;
 
-export type StorageKeyDef = typeof STORAGE_KEYS[keyof typeof STORAGE_KEYS];
+// Each entry has a literal `key`/`version`; only some opt into sessionStorage
+// via `session: true`. Normalise the union so `.session` is always a readable
+// optional property (entries without it are treated as `session: undefined`).
+export type StorageKeyDef = typeof STORAGE_KEYS[keyof typeof STORAGE_KEYS] & {
+  readonly session?: boolean;
+};
 
 export type StorageKey = StorageKeyDef['key'];
 

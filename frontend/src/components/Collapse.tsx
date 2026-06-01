@@ -51,7 +51,7 @@ export function Collapse({ title, icon, badge, defaultOpen = true, children }: C
         icon,
         title,
         badge != null
-          ? React.createElement(Badge, { tone: "neutral" }, badge)
+          ? React.createElement(Badge, { tone: "neutral", children: badge })
           : null,
       ),
       React.createElement(

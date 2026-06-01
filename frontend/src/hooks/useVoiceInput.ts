@@ -11,15 +11,44 @@ import { useCallback, useEffect, useRef, useState } from 'react';
  * Runner_Dashboard issue #623.
  */
 
-interface SpeechRecognitionCtor {
-  new (): SpeechRecognition;
+// Minimal module-local typings for the Web Speech API. These interfaces are not
+// part of the standard TS DOM lib, so we declare just the surface this hook
+// uses. They are intentionally NOT global to avoid clashing with the similar
+// local declarations in components/VoiceInputButton.tsx.
+// (Web Speech API is non-standard; supported in Chrome/Edge.)
+interface SpeechRecognitionAlternative {
+  readonly transcript: string;
+  readonly confidence: number;
+}
+interface SpeechRecognitionResult {
+  readonly length: number;
+  readonly isFinal: boolean;
+  [index: number]: SpeechRecognitionAlternative;
+}
+interface SpeechRecognitionResultList {
+  readonly length: number;
+  [index: number]: SpeechRecognitionResult;
+}
+interface SpeechRecognitionEvent extends Event {
+  readonly results: SpeechRecognitionResultList;
+}
+interface SpeechRecognitionErrorEvent extends Event {
+  readonly error: string;
+  readonly message: string;
+}
+interface SpeechRecognition extends EventTarget {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((event: SpeechRecognitionEvent) => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
+  onend: (() => void) | null;
+  start(): void;
+  stop(): void;
 }
 
-declare global {
-  interface Window {
-    SpeechRecognition?: SpeechRecognitionCtor;
-    webkitSpeechRecognition?: SpeechRecognitionCtor;
-  }
+interface SpeechRecognitionCtor {
+  new (): SpeechRecognition;
 }
 
 export interface UseVoiceInputOptions {
@@ -38,7 +67,14 @@ export interface UseVoiceInputResult {
 
 function getSpeechRecognitionCtor(): SpeechRecognitionCtor | undefined {
   if (typeof window === 'undefined') return undefined;
-  return window.SpeechRecognition ?? window.webkitSpeechRecognition;
+  // `SpeechRecognition` is non-standard and absent from lib.dom; read it via a
+  // narrow local cast rather than a global Window augmentation (which would
+  // collide with the local declarations in components/VoiceInputButton.tsx).
+  const w = window as unknown as {
+    SpeechRecognition?: SpeechRecognitionCtor;
+    webkitSpeechRecognition?: SpeechRecognitionCtor;
+  };
+  return w.SpeechRecognition ?? w.webkitSpeechRecognition;
 }
 
 export function useVoiceInput({

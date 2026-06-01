@@ -111,12 +111,12 @@ function makeFetch(
 
 describe("FleetMobile", () => {
   it("renders without throwing (smoke test)", () => {
-    global.fetch = makeFetch();
+    globalThis.fetch = makeFetch();
     expect(() => render(<FleetMobile />)).not.toThrow();
   });
 
   it("shows loading skeleton while fetch is pending", () => {
-    global.fetch = vi.fn(() => new Promise<Response>(() => {}));
+    globalThis.fetch = vi.fn(() => new Promise<Response>(() => {}));
     const { container } = render(<FleetMobile />);
     // During loading, skeleton cards should be present
     expect(
@@ -130,7 +130,7 @@ describe("FleetMobile", () => {
   });
 
   it("renders Fleet section after successful fetch", async () => {
-    global.fetch = makeFetch(MOCK_FLEET);
+    globalThis.fetch = makeFetch(MOCK_FLEET);
     render(<FleetMobile />);
     await waitFor(() => {
       // The main fleet section has aria-label="Fleet"
@@ -139,7 +139,7 @@ describe("FleetMobile", () => {
   });
 
   it("renders status filter group with all/online/busy/offline pills", async () => {
-    global.fetch = makeFetch(MOCK_FLEET);
+    globalThis.fetch = makeFetch(MOCK_FLEET);
     render(<FleetMobile />);
     await waitFor(() => {
       const filterGroup = screen.getByRole("group", { name: /filter by status/i });
@@ -151,7 +151,7 @@ describe("FleetMobile", () => {
   });
 
   it("clicking Offline filter pill shows only offline runners", async () => {
-    global.fetch = makeFetch(MOCK_FLEET);
+    globalThis.fetch = makeFetch(MOCK_FLEET);
     render(<FleetMobile />);
     await waitFor(() => {
       expect(screen.getByRole("region", { name: "Fleet" })).toBeInTheDocument();
@@ -173,7 +173,7 @@ describe("FleetMobile", () => {
   });
 
   it("shows empty state message when no runners match the filter", async () => {
-    global.fetch = makeFetch(MOCK_SINGLE_ONLINE);
+    globalThis.fetch = makeFetch(MOCK_SINGLE_ONLINE);
     render(<FleetMobile />);
     await waitFor(() => {
       expect(screen.getByRole("region", { name: "Fleet" })).toBeInTheDocument();
@@ -194,7 +194,7 @@ describe("FleetMobile", () => {
   });
 
   it("renders with empty fleet data without crashing", async () => {
-    global.fetch = makeFetch(EMPTY_FLEET);
+    globalThis.fetch = makeFetch(EMPTY_FLEET);
     render(<FleetMobile />);
     await waitFor(() => {
       expect(screen.getByRole("region", { name: "Fleet" })).toBeInTheDocument();
@@ -204,7 +204,7 @@ describe("FleetMobile", () => {
   });
 
   it("shows error state when API call fails", async () => {
-    global.fetch = makeFetch({}, false, 500);
+    globalThis.fetch = makeFetch({}, false, 500);
     render(<FleetMobile />);
     await waitFor(() => {
       expect(document.body.textContent).toMatch(/error|failed|HTTP 500/i);
@@ -212,7 +212,7 @@ describe("FleetMobile", () => {
   });
 
   it("shows error state when fetch throws network error", async () => {
-    global.fetch = vi.fn(() => Promise.reject(new Error("Network error")));
+    globalThis.fetch = vi.fn(() => Promise.reject(new Error("Network error")));
     render(<FleetMobile />);
     await waitFor(() => {
       expect(document.body.textContent).toMatch(/error|failed|network error/i);
