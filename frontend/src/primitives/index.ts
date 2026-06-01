@@ -70,3 +70,11 @@ export type { CommandPaletteProps, Command } from "./CommandPalette";
 // D6 / issue #725: Relative timestamp
 export { TimeAgo } from "./TimeAgo";
 export type { TimeAgoProps } from "./TimeAgo";
+
+// #801 (epic #796): Accessible hover/focus tooltip
+export { Tooltip } from "./Tooltip";
+export type { TooltipProps, TooltipPlacement } from "./Tooltip";
+
+// #800 (epic #796): Accessible dropdown menu for grouped categories
+export { Dropdown } from "./Dropdown";
+export type { DropdownProps, DropdownItem } from "./Dropdown";
