@@ -1108,6 +1108,12 @@ string values (`task_classes`, `capabilities`, `auth_kinds`) are vendored in
 `backend/conductor_constants.py` (no cross-repo runtime import) and guarded
 against drift by `tests/api/test_conductor_constants.py`.
 
+CLI providers `claude-cli` and `codex-cli` authenticate via their interactive
+**subscription login** (`claude login` / `codex login`), not a model API key —
+the fleet deliberately injects no `ANTHROPIC_API_KEY`/`OPENAI_API_KEY`. Each
+provider's `setup_hint` reflects this so operators are never told to set a key
+the system does not use.
+
 Response shape (`schema_version` `1.0.0`):
 
 ```jsonc
