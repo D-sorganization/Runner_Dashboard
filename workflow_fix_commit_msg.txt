@@ -1,3 +1,0 @@
-fix: increase docker build timeout to 40m
-
-The docker-build-scan job was timing out at 20 minutes. Increasing to 40 minutes to allow both build and security scan to complete.
