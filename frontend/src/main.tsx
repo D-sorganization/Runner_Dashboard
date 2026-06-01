@@ -9,6 +9,8 @@ import { ReportsMobile } from './pages/Reports'
 import { CredentialsMobile } from './pages/Credentials'
 import { FleetMobile } from './pages/Fleet'
 import { MobileShell, type TabId } from './shell/MobileShell'
+import { DesktopShell, type ShellAction } from './shell/DesktopShell'
+import { resolveDesktopShellLayout, LAYOUT_STORAGE_KEY } from './shell/layoutFlag'
 import { Toaster } from './primitives/Toaster'
 import { RootErrorBoundary } from './primitives/RootErrorBoundary'
 import { BreakpointProvider, useBreakpoint } from './hooks/useBreakpoint'
@@ -171,6 +173,56 @@ function initialTabFromPathname(pathname: string): string | undefined {
  * Native mobile components (M12, M13, ...) are passed via tabContent so they
  * supersede the legacy App for their respective drawer tabs.
  */
+/**
+ * Build the modern desktop shell's action bar. These actions are deliberately
+ * self-contained (no reach into the legacy App internals) so the shell stays
+ * orthogonal and reversible: Refresh reloads dashboard data, Login/Logout
+ * toggles the GitHub session, and "Classic layout" pins the legacy shell via
+ * localStorage and reloads — the visible escape hatch back to the old UI.
+ */
+function buildShellActions(): ShellAction[] {
+  const isLoggedIn =
+    typeof document !== 'undefined' && document.cookie.includes('dashboard_session')
+  return [
+    {
+      id: 'refresh',
+      label: 'Refresh',
+      tooltip: 'Reload the dashboard to fetch the latest fleet, queue and run data.',
+      onClick: () => window.location.reload(),
+    },
+    {
+      id: 'auth',
+      label: isLoggedIn ? 'Logout' : 'Login',
+      tooltip: isLoggedIn
+        ? 'Sign out of the dashboard GitHub session.'
+        : 'Sign in with GitHub to enable runner and workflow controls.',
+      onClick: () => {
+        if (isLoggedIn) {
+          fetch('/api/auth/logout', {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+          }).then(() => window.location.reload())
+        } else {
+          window.location.href = '/api/auth/github'
+        }
+      },
+    },
+    {
+      id: 'classic-layout',
+      label: 'Classic layout',
+      tooltip: 'Switch back to the legacy top-toolstrip layout (reversible; stored per browser).',
+      onClick: () => {
+        try {
+          window.localStorage.setItem(LAYOUT_STORAGE_KEY, 'legacy')
+        } catch {
+          /* storage unavailable — non-fatal */
+        }
+        window.location.reload()
+      },
+    },
+  ]
+}
+
 function AppWithMobileShell({ initialTab }: { initialTab?: string }) {
   const breakpoint = useBreakpoint()
   const isMobile = breakpoint !== 'lg' && breakpoint !== 'xl'
@@ -179,6 +231,10 @@ function AppWithMobileShell({ initialTab }: { initialTab?: string }) {
     (initialTab && LEGACY_TO_TAB_ID[initialTab]) || 'fleet'
   const [mobileTab, setMobileTab] = useState<TabId>(resolvedInitialTabId)
 
+  // Desktop modern-shell navigation is keyed on the legacy App tab string so the
+  // sidebar / slim toolstrip and the mounted page body stay in lockstep.
+  const [desktopTab, setDesktopTab] = useState<string>(initialTab ?? 'overview')
+
   const handleMobileTabChange = useCallback((nextTab: TabId) => {
     setMobileTab(nextTab)
   }, [])
@@ -186,6 +242,7 @@ function AppWithMobileShell({ initialTab }: { initialTab?: string }) {
   const handleLegacyTabChange = useCallback((nextLegacyTab: string) => {
     const mapped = LEGACY_TO_TAB_ID[nextLegacyTab]
     if (mapped) setMobileTab(mapped)
+    setDesktopTab(nextLegacyTab)
   }, [])
 
   const legacyInitialTab =
@@ -215,7 +272,33 @@ function AppWithMobileShell({ initialTab }: { initialTab?: string }) {
     )
   }
 
-  return <App initialTab={legacyInitialTab} onTabChange={handleLegacyTabChange} />
+  // Desktop. The modern shell (#802) is the default but fully reversible: when
+  // the layout flag resolves to legacy (localStorage `dashboard.layout=legacy`
+  // or VITE_DESKTOP_SHELL opt-out) we render the untouched legacy App with its
+  // own top toolstrip. Otherwise the new DesktopShell (sidebar + slim toolstrip
+  // + tooltips) owns navigation and mounts the legacy App chromeless + tab-
+  // controlled, so every existing page renders unchanged inside <main>.
+  const env = (import.meta.env as Record<string, string | undefined>)?.VITE_DESKTOP_SHELL
+  const useModernShell = resolveDesktopShellLayout({ env })
+
+  if (!useModernShell) {
+    return <App initialTab={legacyInitialTab} onTabChange={handleLegacyTabChange} />
+  }
+
+  return (
+    <DesktopShell
+      activeTabId={desktopTab}
+      onSelect={setDesktopTab}
+      actions={buildShellActions()}
+    >
+      <App
+        initialTab={legacyInitialTab}
+        activeTab={desktopTab}
+        chromeless
+        onTabChange={handleLegacyTabChange}
+      />
+    </DesktopShell>
+  )
 }
 
 // Route tracer marker for the static integrity test:
