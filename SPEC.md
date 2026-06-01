@@ -1,41 +1,54 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.47
-**Application Version:** 4.3.0 (see `VERSION`)
+**Spec Version:** 2.5.48
+**Application Version:** 4.4.0 (see `VERSION`)
 **Last Updated:** 2026-05-31T00:00:00-07:00
 **Status:** Active
 
+- **2026-05-31 (2.5.48):** Modern shell — nav registry (epic #796 / issue #797).
+  `frontend/src/shell/navRegistry.ts` is now the single typed source of truth
+  for every navigable category: each `NavItem` carries `{ id, label, group,
+Icon, tooltip, tabId, frequent }`. Six ordered groups (Fleet & Runners,
+  Workflows & Jobs, Orchestration, AI & Agents, Reports & Analysis, Admin &
+  Settings) bucket all categories. `assertValidNavRegistry()` enforces the
+  Design-by-Contract invariants (unique ids/tabIds, non-empty tooltips, valid
+  group refs, every group non-empty, at least one — but not all — `frequent`)
+  and runs at module load so a malformed registry fails fast. Selectors
+  `frequentItems()`, `itemsByGroup()`, and `navItemById()` keep view code
+  declarative (LoD). Shared inline SVG icons live in
+  `frontend/src/shell/navIcons.tsx`. The sidebar (#798), slim toolstrip (#799),
+  and grouped dropdowns (#800) all render from this one registry (DRY).
 - **2026-05-31 (2.5.47):** Conductor dashboard integration — the admission-gate
-  + visibility surface the Conductor orchestrator (in `Repository_Management`,
-  epic #1273 / issue #1282) calls **over HTTP** to obtain CI dispatch slots and
-  to surface its tracked work. New module `backend/orchestrator_api.py`
-  registers four routes under `/api/orchestrator`:
-  `POST /lease` (admission gate — grants a dispatch slot when idle runners minus
-  a caller-supplied `reserve` still cover the requested `slots` **and** the queue
-  is in `running` mode; returns `granted=false` with a reason under saturation or
-  a manual pause/drain — this is the backpressure the orchestrator obeys, and
-  consumes capacity via a TTL lease, default 900 s, reaped lazily so a crashed
-  orchestrator cannot wedge the fleet), `POST /release` (frees a lease,
-  idempotent for unknown ids), `GET /queue` (mode, active leases, capacity,
-  work classification, provider mix, budget burn) and `POST /queue` (manual
-  pause / resume / drain). Capacity reuses the same arithmetic as
-  `/api/runners/fleet/capacity` via the new shared
-  `routers.runner_helpers.count_runner_capacity` helper (DRY); the fleet capacity
-  route was refactored onto it. DbC: pydantic request/response models with field
-  constraints + validators on every POST; the gate fails safe (denies) when the
-  capacity source is unwired. The whole surface is gated behind the
-  `DASHBOARD_ENABLE_CONDUCTOR` env flag (default off) — every route returns 404
-  and the frontend tab is hidden until enabled (reversible, orthogonal). A new
-  **Conductor tab** (`frontend/src/pages/Conductor.tsx`) shows planned/active/
-  blocked work, provider mix, budget burn, and pause/resume/drain controls; it
-  probes the endpoint once and only appears when the flag is on. 15 backend route
-  tests in `tests/api/test_orchestrator_api.py` and 6 frontend behaviour tests in
-  `frontend/src/pages/__tests__/Conductor.test.tsx`. **Conductor (RM) side must:**
-  call `POST /api/orchestrator/lease` before dispatching and obey `granted=false`;
-  send the CSRF sentinel header `X-Requested-With: XMLHttpRequest` on all POSTs;
-  `POST /api/orchestrator/release` when work completes; optional `provider` field
-  on the lease feeds the provider mix. Optional env: `CONDUCTOR_LEASE_TTL_SECONDS`,
-  `CONDUCTOR_DEFAULT_RESERVE`, `CONDUCTOR_BUDGET_LIMIT_USD`.
+  - visibility surface the Conductor orchestrator (in `Repository_Management`,
+    epic #1273 / issue #1282) calls **over HTTP** to obtain CI dispatch slots and
+    to surface its tracked work. New module `backend/orchestrator_api.py`
+    registers four routes under `/api/orchestrator`:
+    `POST /lease` (admission gate — grants a dispatch slot when idle runners minus
+    a caller-supplied `reserve` still cover the requested `slots` **and** the queue
+    is in `running` mode; returns `granted=false` with a reason under saturation or
+    a manual pause/drain — this is the backpressure the orchestrator obeys, and
+    consumes capacity via a TTL lease, default 900 s, reaped lazily so a crashed
+    orchestrator cannot wedge the fleet), `POST /release` (frees a lease,
+    idempotent for unknown ids), `GET /queue` (mode, active leases, capacity,
+    work classification, provider mix, budget burn) and `POST /queue` (manual
+    pause / resume / drain). Capacity reuses the same arithmetic as
+    `/api/runners/fleet/capacity` via the new shared
+    `routers.runner_helpers.count_runner_capacity` helper (DRY); the fleet capacity
+    route was refactored onto it. DbC: pydantic request/response models with field
+    constraints + validators on every POST; the gate fails safe (denies) when the
+    capacity source is unwired. The whole surface is gated behind the
+    `DASHBOARD_ENABLE_CONDUCTOR` env flag (default off) — every route returns 404
+    and the frontend tab is hidden until enabled (reversible, orthogonal). A new
+    **Conductor tab** (`frontend/src/pages/Conductor.tsx`) shows planned/active/
+    blocked work, provider mix, budget burn, and pause/resume/drain controls; it
+    probes the endpoint once and only appears when the flag is on. 15 backend route
+    tests in `tests/api/test_orchestrator_api.py` and 6 frontend behaviour tests in
+    `frontend/src/pages/__tests__/Conductor.test.tsx`. **Conductor (RM) side must:**
+    call `POST /api/orchestrator/lease` before dispatching and obey `granted=false`;
+    send the CSRF sentinel header `X-Requested-With: XMLHttpRequest` on all POSTs;
+    `POST /api/orchestrator/release` when work completes; optional `provider` field
+    on the lease feeds the provider mix. Optional env: `CONDUCTOR_LEASE_TTL_SECONDS`,
+    `CONDUCTOR_DEFAULT_RESERVE`, `CONDUCTOR_BUDGET_LIMIT_USD`.
 - **2026-05-30 (2.5.46):** `/api/stats` (Overview summary) no longer publishes
   false zeros under partial GitHub failure. Previously the org PR/issue search,
   the 24-repo queue fan-out, and the fleet probe shared one timeout budget, so a
