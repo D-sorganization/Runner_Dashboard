@@ -134,6 +134,7 @@ from routers import linear_sync as _linear_sync_router  # noqa: E402  # issue #2
 from routers import linear_webhook as _linear_webhook_router  # noqa: E402
 from routers import maxwell as _maxwell_router  # noqa: E402
 from routers import orchestration as _orchestration_router  # noqa: E402
+from routers import providers as _providers_router  # noqa: E402  # issue #810
 from routers import queue as _queue_router  # noqa: E402
 from routers import queue_diagnostics as _queue_diagnostics_router  # noqa: E402
 from routers import remediation as _remediation_router  # noqa: E402
@@ -642,6 +643,7 @@ app.include_router(_dispatch_router.router)
 _dispatch_router.set_replay_functions(_is_envelope_replay, _record_processed_envelope)
 app.include_router(_credentials_router.router)
 app.include_router(_remediation_router.router)
+app.include_router(_providers_router.router)  # shared provider registry (issue #810)
 app.include_router(_linear_router.router)
 app.include_router(_linear_webhook_router.router)
 app.include_router(_push_router.router)
@@ -1516,11 +1518,19 @@ async def _collect_live_fleet_nodes() -> list[dict]:
     async def fetch_node(name: str, url: str) -> dict:
         try:
             async with httpx.AsyncClient(timeout=HttpTimeout.PROXY_NODE_SYSTEM_S) as client:
-                sys_result, health_result = await asyncio.gather(
+                # Explicit annotation: mypy cannot infer the element types of an
+                # `asyncio.gather(..., return_exceptions=True)` unpack on its own
+                # (each element is a Response or a raised exception). gather with
+                # a fixed arg count is typed to return a tuple.
+                gathered: tuple[
+                    httpx.Response | BaseException,
+                    httpx.Response | BaseException,
+                ] = await asyncio.gather(
                     client.get(f"{url}/api/system"),
                     client.get(f"{url}/api/health"),
                     return_exceptions=True,
                 )
+                sys_result, health_result = gathered
             sys_r = sys_result if isinstance(sys_result, httpx.Response) else None
             health_r = health_result if isinstance(health_result, httpx.Response) else None
             system_error = sys_result if isinstance(sys_result, Exception) else None

@@ -1087,10 +1087,67 @@ env var.
 
 ### Quick Dispatch
 
-| Method | Path                         | Description                                             |
-| ------ | ---------------------------- | ------------------------------------------------------- |
-| GET    | `/api/agents/providers`      | Available agent providers and their availability status |
-| POST   | `/api/agents/quick-dispatch` | Dispatch an ad-hoc agent task to any repository         |
+| Method | Path                         | Description                                                                           |
+| ------ | ---------------------------- | ------------------------------------------------------------------------------------- |
+| GET    | `/api/providers/registry`    | Shared source-of-truth provider registry (dashboard + Conductor contract, issue #810) |
+| GET    | `/api/agents/providers`      | Available agent providers and their availability status (legacy/back-compat)          |
+| POST   | `/api/agents/quick-dispatch` | Dispatch an ad-hoc agent task to any repository                                       |
+
+#### `GET /api/providers/registry` (issue #810)
+
+The single source-of-truth provider registry consumed by both the dashboard UI
+and the Conductor orchestrator. It eliminates the previously-duplicated provider
+lists (dashboard `PROVIDERS`, Conductor `ProviderMeta`, and the ad-hoc
+`_PROVIDERS_WITH_MODEL_SELECTION` set) and bridges the underscore (dashboard)
+vs hyphen (Conductor) id mismatch by carrying _both_ ids on every entry.
+
+All static provider metadata derives from the one canonical table
+`backend/agent_remediation/provider_registry.py::PROVIDER_REGISTRY`; the legacy
+`agent_remediation.PROVIDERS` dict is generated from it. The Conductor enum
+string values (`task_classes`, `capabilities`, `auth_kinds`) are vendored in
+`backend/conductor_constants.py` (no cross-repo runtime import) and guarded
+against drift by `tests/api/test_conductor_constants.py`.
+
+Response shape (`schema_version` `1.0.0`):
+
+```jsonc
+{
+  "schema_version": "1.0.0",
+  "providers": [
+    {
+      "id": "claude-cli", // Conductor hyphen id
+      "dashboard_id": "claude_code_cli", // dashboard underscore id
+      "label": "Claude Code CLI",
+      "execution_mode": "local_exec",
+      "dispatch_mode": "github_actions",
+      "auth_mode": "github_app", // none | github_app | api_key | local
+      "resource": "runner", // runner | local
+      "capabilities": ["code_edit", "..."],
+      "cost_per_task": 0.05,
+      "max_concurrency": 1,
+      "models": ["claude-opus-4", "..."], // live for Ollama, curated for CLIs
+      "models_endpoint": null, // Ollama: .../api/tags
+      "login_status": "authenticated", // authenticated|unauthenticated|error|unknown
+      "login_detail": "Probe reports ready.",
+      "setup_hint": "...",
+      "experimental": false,
+      "editable": true,
+      "remote": false
+    }
+  ],
+  "auth_kinds": ["none", "github_app", "api_key", "local"],
+  "task_classes": ["format", "..."],
+  "capabilities": ["code_edit", "..."]
+}
+```
+
+`models[]` for the Ollama provider is fetched live from
+`http://localhost:11434/api/tags` via an injectable, resilient fetcher: a
+connection failure degrades to `models: []` and a reachability-reflecting
+`login_status` — the endpoint never returns `500`. CLI providers expose a small
+curated model list; `models.length > 0` is what now marks model-selection
+support. `login_status` is derived from the existing availability/credential
+probes and is contractually one of the four literals above.
 
 `POST /api/agents/quick-dispatch` now performs a cached pre-flight backpressure
 gate before dispatching. If `GET /readyz` would fail or no online

@@ -1,6 +1,12 @@
 """External provider registry and availability probing.
 
 Extracted from agent_remediation.py (issue #361).
+
+DRY refactor (issue #810): :data:`PROVIDERS` is no longer a hand-maintained
+second copy of provider identity/metadata. It is *generated* from the single
+canonical table in :mod:`agent_remediation.provider_registry`
+(``PROVIDER_REGISTRY``). To change a provider, edit that table — this module
+derives the legacy :class:`AgentProvider` shape from it for back-compat.
 """
 
 from __future__ import annotations
@@ -9,6 +15,8 @@ import os
 import shutil
 from dataclasses import asdict, dataclass, field
 from typing import Any
+
+from agent_remediation.provider_registry import PROVIDER_REGISTRY, ProviderEntry
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,78 +48,33 @@ class ProviderAvailability:
         return asdict(self)
 
 
+def _agent_provider_from_entry(entry: ProviderEntry) -> AgentProvider:
+    """Project a canonical :class:`ProviderEntry` onto the legacy shape.
+
+    The dashboard's historical ``availability_probe`` for the codex/claude/
+    gemini/cline providers probed the bare binary name, which is exactly the
+    first segment of the conductor id without the ``-cli`` suffix for some
+    providers. Rather than re-derive heuristically, the canonical table carries
+    ``availability_probe`` explicitly; we copy it through.
+    """
+    return AgentProvider(
+        provider_id=entry.dashboard_id,
+        label=entry.label,
+        execution_mode=entry.execution_mode,
+        dispatch_mode=entry.dispatch_mode,
+        availability_probe=entry.availability_probe,
+        required_env=entry.required_env,
+        editable=entry.editable,
+        remote=entry.remote,
+        experimental=entry.experimental,
+        notes=entry.notes,
+    )
+
+
+#: Generated from the single canonical table (DRY, issue #810). Do not edit by
+#: hand — edit ``agent_remediation.provider_registry.PROVIDER_REGISTRY``.
 PROVIDERS: dict[str, AgentProvider] = {
-    "jules_cli": AgentProvider(
-        provider_id="jules_cli",
-        label="Jules CLI",
-        execution_mode="remote_session",
-        dispatch_mode="dashboard_local",
-        availability_probe=("jules",),
-        editable=False,
-        remote=True,
-        notes="Best for an operator-triggered remote Jules session from the dashboard host.",
-    ),
-    "jules_api": AgentProvider(
-        provider_id="jules_api",
-        label="Jules API",
-        execution_mode="remote_session",
-        dispatch_mode="github_actions",
-        required_env=("JULES_API_KEY",),
-        editable=False,
-        remote=True,
-        notes="Best automation backend for GitHub Actions because the documented Jules CLI login flow is interactive.",
-    ),
-    "codex_cli": AgentProvider(
-        provider_id="codex_cli",
-        label="Codex CLI",
-        execution_mode="local_exec",
-        dispatch_mode="github_actions",
-        availability_probe=("codex",),
-        editable=True,
-        notes="Uses `codex exec` for branch-local remediation on a self-hosted runner.",
-    ),
-    "claude_code_cli": AgentProvider(
-        provider_id="claude_code_cli",
-        label="Claude Code CLI",
-        execution_mode="local_exec",
-        dispatch_mode="github_actions",
-        availability_probe=("claude",),
-        editable=True,
-        notes="Uses `claude -p` with auto permissions for branch-local remediation on a self-hosted runner.",
-    ),
-    "ollama": AgentProvider(
-        provider_id="ollama",
-        label="Ollama",
-        execution_mode="local_analysis",
-        dispatch_mode="future",
-        availability_probe=("ollama",),
-        editable=False,
-        experimental=True,
-        notes=(
-            "Useful as a low-cost analyzer or triage assistant; code-edit execution should stay gated"
-            " until a stronger local agent loop is selected."
-        ),
-    ),
-    "gemini_cli": AgentProvider(
-        provider_id="gemini_cli",
-        label="Gemini CLI",
-        execution_mode="local_exec",
-        dispatch_mode="github_actions",
-        availability_probe=("gemini",),
-        required_env=("GOOGLE_API_KEY",),
-        editable=True,
-        notes="Uses `gemini` CLI for local remediation and reasoning. Setup: https://aistudio.google.com/app/apikey",
-    ),
-    "cline": AgentProvider(
-        provider_id="cline",
-        label="Cline",
-        execution_mode="local_plugin",
-        dispatch_mode="future",
-        availability_probe=("cline",),
-        editable=False,
-        experimental=True,
-        notes="Reserved for future plugin-driven local remediation; no stable CLI contract is assumed here yet.",
-    ),
+    entry.dashboard_id: _agent_provider_from_entry(entry) for entry in PROVIDER_REGISTRY
 }
 
 
