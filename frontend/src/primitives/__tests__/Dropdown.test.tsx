@@ -109,6 +109,22 @@ describe("Dropdown", () => {
     await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
   });
 
+  it("marks the trigger aria-current when triggerActive is set", () => {
+    const { items: its } = items();
+    render(<Dropdown label="Menu" items={its} triggerActive />);
+    expect(
+      screen.getByRole("button", { name: /menu/i }),
+    ).toHaveAttribute("aria-current", "page");
+  });
+
+  it("does not mark the trigger aria-current by default", () => {
+    const { items: its } = items();
+    render(<Dropdown label="Menu" items={its} />);
+    expect(
+      screen.getByRole("button", { name: /menu/i }),
+    ).not.toHaveAttribute("aria-current");
+  });
+
   it("closes on outside click", async () => {
     const { items: its } = items();
     render(

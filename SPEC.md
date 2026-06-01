@@ -1,9 +1,29 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.50
-**Application Version:** 4.6.0 (see `VERSION`)
+**Spec Version:** 2.5.51
+**Application Version:** 4.7.0 (see `VERSION`)
 **Last Updated:** 2026-05-31T00:00:00-07:00
 **Status:** Active
+
+- **2026-05-31 (2.5.51):** Modern shell — slim top toolstrip (epic #796 / issue
+  #799). `frontend/src/shell/TopToolstrip.tsx` replaces the legacy ~24-button
+  toolstrip with just the registry's most-frequent categories (Fleet, Queue,
+  Remediation, Conductor — those with `frequent: true`) as direct buttons;
+  every other category collapses into a single accessible grouped "More"
+  `Dropdown` (#800), ordered by nav group. Rendered entirely from the nav
+  registry (DRY): the frequent buttons come from `frequentItems()` and the
+  overflow from the non-frequent remainder, so the toolstrip and sidebar never
+  drift. Each frequent button is wrapped in the `Tooltip` primitive (#801)
+  (hover + focus, `aria-describedby`) and the active category is marked
+  `aria-current="page"`; when the active tab lives in the overflow menu, the
+  "More" trigger itself carries `aria-current` (new optional `triggerActive`
+  prop on the `Dropdown` primitive). It is a labelled WAI-ARIA `toolbar` that
+  wraps responsively (`flex-wrap`); below 900px the text labels hide to icons
+  via `.slim-toolstrip__label`. LoD: flat `activeTabId` + `onSelect(tabId)`
+  props. Orthogonality: pure presentational nav, owns no page state. Exported
+  from `frontend/src/shell/index.ts`. 14 behaviour tests for the toolstrip plus
+  2 for the new `Dropdown.triggerActive` prop. Mounted as the default desktop
+  shell behind a layout flag in #802.
 
 - **2026-05-31 (2.5.50):** Modern shell — left Sidebar (epic #796 / issue #798).
   `frontend/src/shell/Sidebar.tsx` is a GitHub-style left navigation rendered

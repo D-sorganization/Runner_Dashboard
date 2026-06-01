@@ -276,6 +276,41 @@ code, pre, .code, kbd {
   -webkit-overflow-scrolling: touch;
   flex: 1;
 }
+
+/* Slim top toolstrip (issue #799) — frequent categories only + a More menu.
+ * Wraps responsively; on narrow widths the text labels collapse to icons. */
+.slim-toolstrip {
+  flex: 1;
+  min-width: 0;
+}
+.slim-toolstrip__btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+.slim-toolstrip__more {
+  background: none;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.slim-toolstrip__more:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+.slim-toolstrip__more[aria-current="page"] {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+@media (max-width: 900px) {
+  .slim-toolstrip__label {
+    display: none;
+  }
+}
 /* Hide scrollbar on the tab-bar — it's still scrollable but doesn't add a
  * persistent grey strip below the header. */
 .tab-bar::-webkit-scrollbar { height: 0; }

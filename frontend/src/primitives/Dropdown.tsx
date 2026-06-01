@@ -45,6 +45,11 @@ export interface DropdownProps {
   Icon?: (props: { className?: string }) => ReactElement;
   /** Optional extra class for the trigger button. */
   triggerClassName?: string;
+  /**
+   * Marks the trigger as the active surface (aria-current="page"), e.g. when
+   * the current selection lives inside this menu. Purely presentational.
+   */
+  triggerActive?: boolean;
 }
 
 export function Dropdown({
@@ -52,6 +57,7 @@ export function Dropdown({
   items,
   Icon,
   triggerClassName,
+  triggerActive,
 }: DropdownProps): ReactElement {
   const menuId = useId();
   const [open, setOpen] = useState(false);
@@ -158,6 +164,7 @@ export function Dropdown({
         className={triggerClassName}
         aria-haspopup="menu"
         aria-expanded={open}
+        aria-current={triggerActive ? "page" : undefined}
         aria-controls={open ? menuId : undefined}
         onClick={() => (open ? close(false) : openMenu())}
         onKeyDown={handleTriggerKeyDown}
