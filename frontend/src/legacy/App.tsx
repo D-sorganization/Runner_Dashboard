@@ -14399,10 +14399,16 @@ h("table", { className: "data-table", style: { width: "100%", borderCollapse: "c
   );
 }
 
-function App({ initialTab, onTabChange }: { initialTab?: string; onTabChange?: (tab: string) => void } = {}) {
+function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: string; onTabChange?: (tab: string) => void; activeTab?: string; chromeless?: boolean } = {}) {
+  // When `activeTab` is supplied the component is *controlled* by the new
+  // desktop shell (#802): the shell owns navigation (sidebar + slim toolstrip)
+  // and App just renders the page body for the requested tab. When it is
+  // omitted, App is uncontrolled and keeps its own internal tab state plus its
+  // legacy top toolstrip — preserving the reversible legacy shell.
   var ts = React.useState(initialTab ?? "overview");
-  var tab = ts[0],
+  var internalTab = ts[0],
     _setTabInternal = ts[1];
+  var tab = activeTab != null ? activeTab : internalTab;
   var setTab = React.useCallback(function(nextTab: string) {
     _setTabInternal(nextTab);
     if (onTabChange) onTabChange(nextTab);
@@ -15953,7 +15959,10 @@ function App({ initialTab, onTabChange }: { initialTab?: string; onTabChange?: (
   return h(
     "div",
     null,
-    h(
+    // In chromeless mode the new desktop shell (#802) supplies the navigation
+    // chrome (sidebar + slim toolstrip), so App suppresses its own legacy
+    // header/toolstrip and renders only the page body below.
+    chromeless ? null : h(
       "header",
       { className: "app-header app-header--rows" },
       h(
@@ -16787,7 +16796,10 @@ function App({ initialTab, onTabChange }: { initialTab?: string; onTabChange?: (
       { style: { display: "flex", flexDirection: asstPosition === "left" ? "row-reverse" : "row", alignItems: "flex-start", minHeight: "calc(100vh - 56px)" } },
       h(
         "div",
-        { className: "main-content", role: "main", style: { flex: 1, minWidth: 0 } },
+        // In chromeless mode the modern desktop shell (#802) already provides
+        // the single `main` landmark, so this inner region drops role="main" to
+        // avoid duplicate landmarks.
+        { className: "main-content", role: chromeless ? undefined : "main", style: { flex: 1, minWidth: 0 } },
         tab === "overview"
         ? h("div", null,
           h(FleetTab, {

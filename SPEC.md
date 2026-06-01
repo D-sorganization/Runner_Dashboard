@@ -1,9 +1,32 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.51
-**Application Version:** 4.7.0 (see `VERSION`)
+**Spec Version:** 2.5.52
+**Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-05-31T00:00:00-07:00
 **Status:** Active
+
+- **2026-05-31 (2.5.52):** Modern shell — default desktop layout, reversible
+  (epic #796 / issue #802). `frontend/src/shell/DesktopShell.tsx` composes the
+  three merged surfaces into a GitHub-style desktop layout, all driven by the
+  one nav registry (DRY): the left `Sidebar` (#798), the slim `TopToolstrip`
+  (#799), and the `Tooltip` primitive (#801) on every nav item and on every
+  shell action button. Navigation is flat typed props (LoD): `activeTabId`,
+  `onSelect(tabId)`, and a flat `ShellAction[]` (each with a required non-empty
+  `tooltip`, enforced by `assertActions` — DbC). The page body is mounted in the
+  `main` landmark, isolated from the nav chrome (orthogonality — a failing page
+  cannot remove navigation). The legacy `App` is now mountable _chromeless_ and
+  _tab-controlled_ (new optional `activeTab` + `chromeless` props): the shell
+  owns navigation while App renders only the requested page body, so every
+  existing page renders unchanged. `frontend/src/shell/layoutFlag.ts`
+  (`resolveDesktopShellLayout`) makes the modern shell the DEFAULT desktop layout
+  while keeping it fully reversible: `localStorage["dashboard.layout"]="legacy"`
+  (a visible "Classic layout" action button) or `VITE_DESKTOP_SHELL` opt-out
+  pins the untouched legacy shell. `frontend/src/main.tsx` selects the layout on
+  desktop. Every interactive control in the shell carries an accessible label or
+  tooltip — an a11y audit test asserts no `button`/`a[href]`/`role=button`/
+  `role=menuitem` lacks an accessible name. TDD: 10 `DesktopShell` behaviour +
+  audit tests and 6 `layoutFlag` tests. `vite build`, ESLint, and Vitest (391
+  tests) pass.
 
 - **2026-05-31 (2.5.51):** Modern shell — slim top toolstrip (epic #796 / issue
   #799). `frontend/src/shell/TopToolstrip.tsx` replaces the legacy ~24-button
