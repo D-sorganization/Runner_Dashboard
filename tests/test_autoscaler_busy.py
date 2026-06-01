@@ -96,3 +96,71 @@ def test_runner_is_busy_short_circuits_on_pickup_dir(
     fc.mkdir(parents=True)
     with patch("subprocess.run", side_effect=AssertionError("MainPID path reached")):
         assert busy._runner_is_busy(UNIT) is True
+
+
+class _FakeProc:
+    """Minimal psutil.Process stand-in exposing the .info dict process_iter sets."""
+
+    def __init__(self, cmdline: list[str]) -> None:
+        self.info = {"cmdline": cmdline}
+
+
+class _FakePsutil:
+    NoSuchProcess = ProcessLookupError
+    AccessDenied = PermissionError
+
+    def __init__(self, procs: list[_FakeProc]) -> None:
+        self._procs = procs
+
+    def process_iter(self, _attrs: list[str] | None = None) -> list[_FakeProc]:
+        return list(self._procs)
+
+
+class TestBusyViaWorkerScan:
+    """Strategy 3b — global Runner.Worker scan keyed on the runner's workdir."""
+
+    WORKDIR = "/home/runner/actions-runners-nvme/runner-4"
+
+    def test_no_workdir_returns_false(self, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[name-defined]
+        monkeypatch.setattr(busy, "_runner_workdir_for_unit", lambda _u: "")
+        assert busy._runner_busy_via_worker_scan(UNIT) is False
+
+    def test_no_psutil_returns_false(self, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[name-defined]
+        monkeypatch.setattr(busy, "_runner_workdir_for_unit", lambda _u: self.WORKDIR)
+        monkeypatch.setattr(busy, "psutil", None)
+        assert busy._runner_busy_via_worker_scan(UNIT) is False
+
+    def test_live_worker_for_workdir_returns_true(self, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[name-defined]
+        """A live Runner.Worker whose exec path is <workdir>/bin/Runner.Worker → busy.
+
+        Regression for PR #813: the OCI-export Worker that the MainPID child
+        walk missed is still ground-truth evidence the runner is busy.
+        """
+        monkeypatch.setattr(busy, "_runner_workdir_for_unit", lambda _u: self.WORKDIR)
+        fake = _FakePsutil(
+            [
+                _FakeProc(["/usr/bin/python3", "something"]),
+                _FakeProc([f"{self.WORKDIR}/bin/Runner.Worker", "spawnclient", "154", "157"]),
+            ]
+        )
+        monkeypatch.setattr(busy, "psutil", fake)
+        assert busy._runner_busy_via_worker_scan(UNIT) is True
+
+    def test_worker_for_other_runner_returns_false(self, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[name-defined]
+        """A Worker belonging to a *different* runner must not mark this one busy."""
+        monkeypatch.setattr(busy, "_runner_workdir_for_unit", lambda _u: self.WORKDIR)
+        other = "/home/runner/actions-runners-nvme/runner-9"
+        fake = _FakePsutil([_FakeProc([f"{other}/bin/Runner.Worker", "spawnclient", "1", "2"])])
+        monkeypatch.setattr(busy, "psutil", fake)
+        assert busy._runner_busy_via_worker_scan(UNIT) is False
+
+    def test_process_iter_error_is_swallowed(self, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[name-defined]
+        """Busy-detection must never raise: a scan failure yields False, not an error."""
+        monkeypatch.setattr(busy, "_runner_workdir_for_unit", lambda _u: self.WORKDIR)
+
+        class _BoomPsutil(_FakePsutil):
+            def process_iter(self, _attrs: list[str] | None = None) -> list[_FakeProc]:
+                raise RuntimeError("psutil exploded")
+
+        monkeypatch.setattr(busy, "psutil", _BoomPsutil([]))
+        assert busy._runner_busy_via_worker_scan(UNIT) is False

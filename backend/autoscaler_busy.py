@@ -4,10 +4,12 @@ Provides four layered strategies to determine whether a GitHub Actions runner
 is actively processing a job before the autoscaler stops it.
 
 Strategy ordering (any positive signal → busy):
-  1. Pickup-directory mtime  — closes the pre-Worker race window (#651)
-  2. Job-pickup lockfile      — defense-in-depth for transient psutil misses
-  3. MainPID child scan       — direct psutil check for Runner.Worker process
-  4. ActiveState/SubState     — conservative fallback when MainPID is 0
+  1.  Pickup-directory mtime  — closes the pre-Worker race window (#651)
+  2.  Job-pickup lockfile     — defense-in-depth for transient psutil misses
+  3.  MainPID child scan      — direct psutil check for Runner.Worker process
+  3b. Workdir Worker scan     — global Worker scan when the child walk misses
+                                a reparented/long-running Worker (#640/#813)
+  4.  ActiveState/SubState    — conservative fallback when MainPID is 0
 """
 
 from __future__ import annotations
@@ -166,6 +168,63 @@ def _runner_busy_via_pickup_dir_public(unit: str) -> bool:
     return _runner_busy_via_pickup_dir(unit)
 
 
+def _runner_busy_via_worker_scan(unit: str) -> bool:
+    """Return True if a live ``Runner.Worker`` belongs to *unit*'s workdir.
+
+    Strategy 3b (issue #640 / #813) — a global process scan keyed on the
+    runner's working directory, independent of the systemd MainPID. The
+    MainPID child-walk (Strategy 3) returns a false negative whenever the
+    Worker is not a *current* child of the unit's MainPID:
+
+      * The Worker reparented (systemd ``KillMode=mixed`` lets it outlive a
+        listener restart), so ``Process(MainPID).children()`` no longer sees it.
+      * systemd's MainPID transiently points only at the listener.
+
+    It also covers the case the pickup-dir mtime (Strategy 1) cannot: a long
+    step that emits no file-commands lets ``_runner_file_commands`` go stale
+    while the job is very much alive — e.g. a ~10-minute ``docker buildx`` OCI
+    export (the PR #813 cancellation). A live Worker whose executable path is
+    ``<workdir>/bin/Runner.Worker`` is ground truth that a job is in flight.
+
+    Best-effort: any error (no psutil, scan failure) yields *False* — this is a
+    *positive* signal layered on top of the other strategies, never the sole
+    arbiter of idleness.
+    """
+    work_dir = _runner_workdir_for_unit_public(unit)
+    if not work_dir:
+        return False
+    psutil_mod = _psutil_dep()
+    if psutil_mod is None:
+        return False
+    # POSIX join (not pathlib): the runner workdir comes from systemd on the
+    # Linux host, and we substring-match it against the Worker's argv. Using
+    # os-native Path() would emit backslashes when this check is exercised on
+    # Windows (e.g. the test suite), breaking the match. Mirror the literal
+    # concatenation used by deploy/runner-cleanup.sh's ps grep.
+    worker_path = work_dir.rstrip("/") + "/bin/Runner.Worker"
+    try:
+        for proc in psutil_mod.process_iter(["cmdline"]):
+            try:
+                cmdline = proc.info.get("cmdline") or []
+            except (psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
+                continue
+            if any(worker_path in (arg or "") for arg in cmdline):
+                log.info("live Runner.Worker for %s — treating as busy unit=%s", worker_path, unit)
+                return True
+    except Exception as exc:  # noqa: BLE001 — busy-detection must never raise
+        log.debug("worker-scan failed unit=%s err=%s", unit, exc)
+    return False
+
+
+def _runner_busy_via_worker_scan_public(unit: str) -> bool:
+    runner_autoscaler = sys.modules.get("runner_autoscaler")
+    if runner_autoscaler is not None:
+        public_func = getattr(runner_autoscaler, "_runner_busy_via_worker_scan", None)
+        if public_func is not None and public_func is not _runner_busy_via_worker_scan:
+            return bool(public_func(unit))
+    return _runner_busy_via_worker_scan(unit)
+
+
 def _runner_is_busy(unit: str) -> bool:
     """Best-effort: does the runner have an active job?
 
@@ -235,8 +294,21 @@ def _runner_is_busy(unit: str) -> bool:
                     continue
         except (psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
             pass
-        # MainPID was valid but no Runner.Worker child found — not busy.
+        # MainPID had no Runner.Worker *child*. Do NOT conclude "idle" yet:
+        # a long-running Worker can reparent away from the listener, and a
+        # job mid-pickup may not have forked its Worker under this PID. Fall
+        # through to a workdir-scoped global scan (Strategy 3b) before
+        # trusting the negative. See #640/#813.
+        if _runner_busy_via_worker_scan_public(unit):
+            return True
         return False
+
+    # ── Strategy 3b: global Runner.Worker scan keyed on the workdir ──────────
+    # Reached when MainPID is 0/empty (the child walk above never ran). A live
+    # Worker can still exist in this transient window, so scan for it before
+    # falling back to the coarse ActiveState check.
+    if psutil_mod is not None and _runner_busy_via_worker_scan_public(unit):
+        return True
 
     # ── Strategy 4: ActiveState/SubState fallback (MainPID == 0) ─────────────
     # MainPID=0 is a transient state: the listener is restarting, or systemd

@@ -48,6 +48,7 @@ from collections import deque
 from autoscaler_busy import (
     _runner_busy_via_lockfile,
     _runner_busy_via_pickup_dir,
+    _runner_busy_via_worker_scan,
     _runner_is_busy,
 )
 from autoscaler_config import (
@@ -167,6 +168,7 @@ __all__ = [
     "_unit_state",
     "_runner_busy_via_lockfile",
     "_runner_busy_via_pickup_dir",
+    "_runner_busy_via_worker_scan",
     "_runner_is_busy",
     "_leased_runners",
     "_io_pressure_snapshot",

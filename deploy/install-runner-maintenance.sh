@@ -48,7 +48,21 @@ sudo install -m 0755 "${SCRIPT_DIR}/runner-hooks-restore.sh" /usr/local/bin/runn
 # Lockfile dir consulted by job-started.sh, job-completed.sh, the
 # autoscaler busy-check (#664), and runner-cleanup.sh GC (#651).
 # Must be writable by the runner user.
-sudo install -d -m 0775 -o "${RUNNER_USER}" -g "${RUNNER_USER}" /var/run/runner-busy
+#
+# /run is tmpfs and is wiped on every reboot/WSL restart, so this install-time
+# mkdir does NOT survive a restart — and the JOB_STARTED hook runs as the
+# (non-root) runner user, which cannot mkdir under root-owned /run. Without a
+# boot-time recreation the lockfile busy-signal goes dead after every reboot
+# and the cleanup/autoscaler can stop a busy runner mid-job (#640). Install a
+# systemd-tmpfiles config so root recreates the dir on every boot, then
+# materialise it now.
+RUNNER_BUSY_TMPFILES=/etc/tmpfiles.d/runner-busy.conf
+sudo sed "s/__RUNNER_USER__/${RUNNER_USER}/g" \
+    "${SCRIPT_DIR}/tmpfiles.d/runner-busy.conf" \
+    | sudo tee "${RUNNER_BUSY_TMPFILES}" > /dev/null
+sudo chmod 0644 "${RUNNER_BUSY_TMPFILES}"
+sudo systemd-tmpfiles --create "${RUNNER_BUSY_TMPFILES}" 2>/dev/null \
+    || sudo install -d -m 0775 -o "${RUNNER_USER}" -g "${RUNNER_USER}" /run/runner-busy
 sudo install -d -m 0755 /var/log/runner-cleanup /var/lib/runner-scheduler "${TEXTFILE_COLLECTOR_DIR}"
 
 SCHEDULER_SUDOERS="/etc/sudoers.d/runner-dashboard-scheduler"

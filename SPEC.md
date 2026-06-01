@@ -2,9 +2,32 @@
 
 **Spec Version:** 2.5.52
 **Application Version:** 4.8.0 (see `VERSION`)
-**Last Updated:** 2026-05-31T00:00:00-07:00
+**Last Updated:** 2026-06-01T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-01 (2.5.53):** Hardened runner busy-detection against the recurring
+  "autoscaler/cleanup stops a busy runner mid-job" regression (Runner_Dashboard#640;
+  observed 2026-06-01 cancelling PR #813 `docker-build-scan` mid OCI-export, #814
+  `tests`, #815 `security-scan`). Three independent gaps were closed. (1)
+  `backend/autoscaler_busy.py` adds **Strategy 3b** — `_runner_busy_via_worker_scan`,
+  a global `Runner.Worker` scan keyed on the runner's `WorkingDirectory`. The
+  MainPID child-walk (Strategy 3) returns a false negative when the Worker has
+  reparented (`KillMode=mixed`) or systemd's MainPID transiently points only at the
+  listener; the pickup-dir mtime (Strategy 1) goes stale during a long step that
+  emits no file-commands (e.g. a ~10-min `docker buildx` export). A live Worker is
+  ground truth, so `_runner_is_busy` now falls through to 3b instead of concluding
+  "idle" after an empty child-walk, and also consults 3b in the MainPID=0 window
+  before the coarse ActiveState fallback. (2) The lockfile signal (Strategy 2) was
+  dead fleet-wide after any reboot: `/run` is tmpfs and the runner user cannot
+  `mkdir` under root-owned `/run`, so `/run/runner-busy` vanished and the JOB_STARTED
+  hook's sentinel was never written. New `deploy/tmpfiles.d/runner-busy.conf` (wired
+  into `deploy/install-runner-maintenance.sh`) recreates the dir as root on every
+  boot. (3) `deploy/runner-cleanup.sh` looked up the lockfile by the **workdir
+  basename** (`runner-4.lock`) while the hook writes the **registered runner name**
+  (`d-sorg-…-nvme-4.lock`) — a guaranteed miss; cleanup now derives the registered
+  name from the unit via `runner_name_for_unit`. New regression tests:
+  `TestRunnerIsBusyWorkerScan` (3) in `tests/test_runner_autoscaler.py` and
+  `TestBusyViaWorkerScan` (5) in `tests/test_autoscaler_busy.py`.
 - **2026-05-31 (2.5.52):** Modern shell — default desktop layout, reversible
   (epic #796 / issue #802). `frontend/src/shell/DesktopShell.tsx` composes the
   three merged surfaces into a GitHub-style desktop layout, all driven by the

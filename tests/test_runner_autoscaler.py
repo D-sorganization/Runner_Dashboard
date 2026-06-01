@@ -324,13 +324,18 @@ class TestRunnerIsBusy:
 
     @pytest.fixture(autouse=True)
     def _bypass_pickup_dir_strategy(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """The new Strategy 1 (pickup-window dir mtime) calls subprocess.run to
-        resolve WorkingDirectory. These MainPID-focused tests mock subprocess
-        with fixed-length side_effect lists, so an extra call would exhaust
-        the iterator. Force Strategy 1 to return False so the MainPID
-        strategy is what's under test here.
+        """Isolate the MainPID strategy under test here.
+
+        Strategy 1 (pickup-window dir mtime) and Strategy 3b (workdir Worker
+        scan) both call subprocess.run to resolve WorkingDirectory. These
+        MainPID-focused tests mock subprocess with fixed-length side_effect
+        lists, so an extra call would exhaust the iterator. Force both
+        auxiliary strategies to return False so only the MainPID path drives
+        the verdict. Strategy 3b is exercised on its own in
+        ``TestRunnerIsBusyWorkerScan`` and ``test_autoscaler_busy.py``.
         """
         monkeypatch.setattr(ra, "_runner_busy_via_pickup_dir", lambda _u: False)
+        monkeypatch.setattr(ra, "_runner_busy_via_worker_scan", lambda _u: False)
 
     def test_main_pid_zero_active_running_returns_true(self) -> None:
         """MainPID=0 + ActiveState=active/SubState=running → busy (conservative)."""
@@ -419,6 +424,91 @@ class TestRunnerIsBusy:
         state_resp = _make_state_proc("active", "running")
 
         with patch("subprocess.run", side_effect=[pid_resp, state_resp]), patch.object(ra, "psutil", None):
+            assert ra._runner_is_busy(self.UNIT) is True
+
+
+# ---------------------------------------------------------------------------
+# _runner_is_busy — Strategy 3b: workdir-scoped global Runner.Worker scan.
+# Regression for Runner_Dashboard#640 / PR #813: a long-running or reparented
+# Worker is missed by the MainPID child walk; the global scan must still mark
+# the runner busy so the autoscaler/cleanup does not stop it mid-job.
+# ---------------------------------------------------------------------------
+
+
+class TestRunnerIsBusyWorkerScan:
+    """Strategy 3b must rescue a busy runner the MainPID child walk misses."""
+
+    UNIT = "actions.runner.my-org.runner1.service"
+
+    @pytest.fixture(autouse=True)
+    def _force_early_strategies_false(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Force Strategies 1 and 2 to miss so the verdict is driven by the
+        # MainPID walk + the new global scan only.
+        monkeypatch.setattr(ra, "_runner_busy_via_pickup_dir", lambda _u: False)
+        monkeypatch.setattr(ra, "_runner_busy_via_lockfile", lambda _u: False)
+
+    def test_valid_main_pid_no_child_but_live_worker_returns_true(self) -> None:
+        """Valid MainPID, no Worker *child*, but a live Worker for the workdir.
+
+        This is the PR #813 case: a ~10-min docker export whose Worker
+        reparented away from the listener. The MainPID child walk comes back
+        empty; the global workdir scan finds the live Worker → busy.
+        """
+        pid_resp = _make_pid_proc("1234")
+
+        mock_psutil = MagicMock()
+        mock_proc = MagicMock()
+        mock_proc.children.return_value = []  # no child under MainPID
+        mock_psutil.Process.return_value = mock_proc
+        mock_psutil.NoSuchProcess = ProcessLookupError
+        mock_psutil.AccessDenied = PermissionError
+
+        with (
+            patch("subprocess.run", return_value=pid_resp),
+            patch.object(ra, "psutil", mock_psutil),
+            patch.object(ra, "_runner_busy_via_worker_scan", lambda _u: True),
+        ):
+            assert ra._runner_is_busy(self.UNIT) is True
+
+    def test_valid_main_pid_no_child_no_live_worker_returns_false(self) -> None:
+        """Valid MainPID, no child, and no live Worker anywhere → not busy."""
+        pid_resp = _make_pid_proc("1234")
+
+        mock_psutil = MagicMock()
+        mock_proc = MagicMock()
+        mock_proc.children.return_value = []
+        mock_psutil.Process.return_value = mock_proc
+        mock_psutil.NoSuchProcess = ProcessLookupError
+        mock_psutil.AccessDenied = PermissionError
+
+        with (
+            patch("subprocess.run", return_value=pid_resp),
+            patch.object(ra, "psutil", mock_psutil),
+            patch.object(ra, "_runner_busy_via_worker_scan", lambda _u: False),
+        ):
+            assert ra._runner_is_busy(self.UNIT) is False
+
+    def test_main_pid_zero_live_worker_returns_true_before_state_check(self) -> None:
+        """MainPID=0 but a live Worker exists → busy via 3b, no ActiveState read.
+
+        Closes the transient-restart window: the listener is mid-reconfig
+        (MainPID=0) while its Worker is still executing a job. Strategy 3b must
+        short-circuit before the coarse ActiveState/SubState fallback.
+        """
+        pid_resp = _make_pid_proc("0")
+        mock_psutil = MagicMock()
+        mock_psutil.NoSuchProcess = ProcessLookupError
+        mock_psutil.AccessDenied = PermissionError
+
+        def _state_must_not_run(_unit: str) -> tuple[str, str]:
+            raise AssertionError("ActiveState fallback reached despite live Worker")
+
+        with (
+            patch("subprocess.run", return_value=pid_resp),
+            patch.object(ra, "psutil", mock_psutil),
+            patch.object(ra, "_runner_busy_via_worker_scan", lambda _u: True),
+            patch("autoscaler_busy._unit_state", _state_must_not_run),
+        ):
             assert ra._runner_is_busy(self.UNIT) is True
 
 

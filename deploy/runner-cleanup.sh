@@ -199,6 +199,16 @@ runner_busy_via_pickup_dir() {
     return 1
 }
 
+runner_name_for_unit() {
+    # actions.runner.<org-or-repo>.<runner-name>.service -> <runner-name>
+    # Mirrors backend/autoscaler_systemd.py::_runner_name_for_unit. The
+    # JOB_STARTED hook keys its lockfile on the *registered* runner name
+    # (the unit's last dotted segment), NOT the workdir basename.
+    local unit="$1" stem
+    stem="${unit%.service}"
+    printf '%s' "${stem##*.}"
+}
+
 runner_busy_via_lockfile() {
     # Issue #651 defense-in-depth signal mirroring backend/runner_autoscaler.py's
     # _runner_busy_via_lockfile. The runner's JOB_STARTED hook writes
@@ -206,9 +216,13 @@ runner_busy_via_lockfile() {
     # as "busy". Stale ones (older than RUNNER_BUSY_LOCK_MAX_AGE_SECONDS)
     # are ignored AND garbage-collected here so a Worker killed mid-job
     # doesn't permanently lock its runner out of cleanup.
-    local runner_dir="$1"
-    local runner_name lock now mtime age
-    runner_name="$(basename "$runner_dir")"
+    #
+    # NOTE (#640): the argument is the *registered runner name* (e.g.
+    # d-sorg-local-ControlTower-nvme-4), not the workdir basename (runner-4).
+    # The hook writes ${RUNNER_NAME}.lock, so keying on the workdir basename
+    # never matched and this signal was silently dead.
+    local runner_name="$1"
+    local lock now mtime age
     lock="${RUNNER_BUSY_LOCK_DIR}/${runner_name}.lock"
     [[ -f "$lock" ]] || return 1
     now=$(date +%s)
@@ -223,15 +237,17 @@ runner_busy_via_lockfile() {
 }
 
 runner_busy() {
-    local runner_dir="$1"
-    # Layered signals (#651). ANY positive signal counts as busy:
-    #  1. Pickup-dir mtime  — Listener has accepted but Worker not yet forked
-    #  2. Lockfile          — Worker has fired JOB_STARTED hook
-    #  3. Process tree      — Runner.Worker child is alive
+    local unit="$1" runner_dir="$2"
+    local runner_name
+    runner_name="$(runner_name_for_unit "$unit")"
+    # Layered signals (#651/#640). ANY positive signal counts as busy:
+    #  1. Pickup-dir mtime  — recent file-command activity mid-job
+    #  2. Lockfile          — Worker has fired JOB_STARTED hook (whole-job span)
+    #  3. Process tree      — a live Runner.Worker for this workdir
     if runner_busy_via_pickup_dir "$runner_dir"; then
         return 0
     fi
-    if runner_busy_via_lockfile "$runner_dir"; then
+    if runner_busy_via_lockfile "$runner_name"; then
         return 0
     fi
     ps -eo args= | grep -F "${runner_dir}/bin/Runner.Worker" | grep -v 'grep -F' >/dev/null 2>&1
@@ -326,7 +342,7 @@ cleanup_runners() {
             log "skip $unit: workdir '$runner_dir' not under any RUNNER_ROOTS entry ($RUNNER_ROOTS)"
             continue
         fi
-        if runner_busy "$runner_dir"; then
+        if runner_busy "$unit" "$runner_dir"; then
             log "skip $unit: runner is busy"
             continue
         fi
