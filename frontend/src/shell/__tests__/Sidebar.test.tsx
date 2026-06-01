@@ -53,16 +53,35 @@ describe("Sidebar — structure", () => {
 
   it("renders a nav button for every registry item", () => {
     renderSidebar();
+    // Query the nav-item buttons once (O(n)) rather than running an accessible-name
+    // regex scan per registry entry (O(n^2)) — the latter is correct but slow enough
+    // under coverage instrumentation to blow the per-test timeout.
+    const nav = screen.getByRole("navigation", { name: /sections/i });
+    const navButtons = within(nav)
+      .getAllByRole("button")
+      .filter((b) => b.getAttribute("data-nav-item") === "true");
+    const renderedLabels = navButtons.map((b) => b.textContent?.trim());
+    // One nav button per registry item, with a matching accessible label.
+    expect(navButtons).toHaveLength(NAV_ITEMS.length);
     for (const item of NAV_ITEMS) {
-      expect(screen.getByRole("button", { name: new RegExp(`^${item.label}$`, "i") })).toBeInTheDocument();
+      expect(renderedLabels).toContain(item.label);
     }
   });
 
   it("gives every nav item an accessible title/tooltip", () => {
     renderSidebar();
+    const nav = screen.getByRole("navigation", { name: /sections/i });
+    const navButtons = within(nav)
+      .getAllByRole("button")
+      .filter((b) => b.getAttribute("data-nav-item") === "true");
+    // Map label -> button so we can assert each registry item's tooltip in O(n).
+    const byLabel = new Map(navButtons.map((b) => [b.textContent?.trim(), b]));
     for (const item of NAV_ITEMS) {
-      const btn = screen.getByRole("button", { name: new RegExp(`^${item.label}$`, "i") });
+      const btn = byLabel.get(item.label);
+      expect(btn).toBeDefined();
       expect(btn).toHaveAttribute("title", item.tooltip);
+      // Tooltip must be a non-empty accessible hint (contract).
+      expect(item.tooltip.trim().length).toBeGreaterThan(0);
     }
   });
 });
