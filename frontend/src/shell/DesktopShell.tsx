@@ -43,6 +43,12 @@ export interface DesktopShellProps {
   onSelect: (tabId: string) => void;
   /** Flat list of shell action buttons (refresh, chat, login, …). */
   actions: ShellAction[];
+  /**
+   * Optional persistent controls rendered in the topbar before the action
+   * buttons — e.g. the global ActiveProviderControl (#811). Kept as an opaque
+   * node so the shell stays orthogonal and does not reach into provider state.
+   */
+  headerExtra?: React.ReactNode;
   /** The page body for the active category. */
   children: React.ReactNode;
 }
@@ -97,6 +103,7 @@ export function DesktopShell({
   activeTabId,
   onSelect,
   actions,
+  headerExtra,
   children,
 }: DesktopShellProps): React.ReactElement {
   assertActions(actions);
@@ -137,6 +144,7 @@ export function DesktopShell({
             className="desktop-shell__actions"
             style={{ display: "flex", alignItems: "center", gap: 6, flex: "0 0 auto" }}
           >
+            {headerExtra}
             {actions.map((a) => (
               <ActionButton key={a.id} action={a} />
             ))}

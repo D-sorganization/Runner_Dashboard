@@ -27,6 +27,16 @@ export type LockState = "locked" | "unlocking" | "unlocked" | "error";
 
 export const INACTIVITY_TIMEOUT_MS = 60_000;
 
+/**
+ * Alias → canonical credential-provider name.
+ *
+ * The unified provider registry (`/api/providers/registry`, #811) is now the
+ * single source of truth for provider ids and the underscore<->hyphen id
+ * mapping; prefer `providerMapFromRegistry()` below when a registry is in hand.
+ * This static table is retained only for the extra human/vendor aliases the
+ * pinned contract does not express (e.g. `anthropic`→`claude`, `openai`→`codex`)
+ * and as a synchronous fallback before the registry has loaded.
+ */
 export const PROVIDER_MAP: Record<string, string> = {
   claude: "claude",
   claude_code_cli: "claude",
@@ -40,6 +50,25 @@ export const PROVIDER_MAP: Record<string, string> = {
   jules_api: "jules",
   linear: "linear",
 };
+
+import type { ProviderRegistry } from "../../lib/useProviderRegistry";
+
+/**
+ * Build the alias→canonical map from the shared registry so Credentials and the
+ * ProviderModelSelector agree on provider identity (DRY, #811). Registry-derived
+ * entries (both the hyphenated id and the dashboard id resolve to the dashboard
+ * id) are layered under the static vendor aliases above.
+ */
+export function providerMapFromRegistry(
+  registry: ProviderRegistry,
+): Record<string, string> {
+  const out: Record<string, string> = { ...PROVIDER_MAP };
+  for (const p of registry.providers) {
+    out[p.id] = p.dashboardId;
+    out[p.dashboardId] = p.dashboardId;
+  }
+  return out;
+}
 
 export function base64urlToBuffer(base64url: string): ArrayBuffer {
   const base64 = base64url.replace(/-/g, "+").replace(/_/g, "/");
