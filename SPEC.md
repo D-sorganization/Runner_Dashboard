@@ -1108,6 +1108,14 @@ string values (`task_classes`, `capabilities`, `auth_kinds`) are vendored in
 `backend/conductor_constants.py` (no cross-repo runtime import) and guarded
 against drift by `tests/api/test_conductor_constants.py`.
 
+The Ollama server whose models are listed defaults to `http://localhost:11434`
+and is overridable via the `DASHBOARD_OLLAMA_URL` environment variable. This is
+required when the dashboard runs in WSL but Ollama runs on the Windows host
+(WSL2 `localhost` does not reach the host) — the deployment sets it to a
+WSL-reachable address such as the host's Tailscale IP. The live fetch is
+resilient: if the server is unreachable, `models` is `[]` and `login_status`
+reflects the failure rather than erroring.
+
 CLI providers `claude-cli` and `codex-cli` authenticate via their interactive
 **subscription login** (`claude login` / `codex login`), not a model API key —
 the fleet deliberately injects no `ANTHROPIC_API_KEY`/`OPENAI_API_KEY`. Each

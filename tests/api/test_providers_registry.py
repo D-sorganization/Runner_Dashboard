@@ -172,6 +172,29 @@ class TestOllamaModels:
         resp = client.get("/api/providers/registry")
         assert resp.status_code == 200
 
+    def test_ollama_base_url_defaults_to_localhost(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import importlib
+
+        from agent_remediation import provider_registry
+
+        monkeypatch.delenv("DASHBOARD_OLLAMA_URL", raising=False)
+        reloaded = importlib.reload(provider_registry)
+        assert reloaded.OLLAMA_TAGS_ENDPOINT == "http://localhost:11434/api/tags"
+
+    def test_ollama_base_url_honors_env_override(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import importlib
+
+        from agent_remediation import provider_registry
+
+        # Trailing slash must be normalized away (deployment sets a bare base).
+        monkeypatch.setenv("DASHBOARD_OLLAMA_URL", "http://100.69.12.6:11434/")
+        reloaded = importlib.reload(provider_registry)
+        try:
+            assert reloaded.OLLAMA_TAGS_ENDPOINT == "http://100.69.12.6:11434/api/tags"
+        finally:
+            monkeypatch.delenv("DASHBOARD_OLLAMA_URL", raising=False)
+            importlib.reload(provider_registry)
+
 
 # ---------------------------------------------------------------------------
 # Model-selection support replaces hardcoded _PROVIDERS_WITH_MODEL_SELECTION
