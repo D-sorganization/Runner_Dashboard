@@ -1,9 +1,22 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.49
-**Application Version:** 4.5.0 (see `VERSION`)
+**Spec Version:** 2.5.50
+**Application Version:** 4.6.0 (see `VERSION`)
 **Last Updated:** 2026-05-31T00:00:00-07:00
 **Status:** Active
+
+- **2026-05-31 (2.5.50):** Modern shell — left Sidebar (epic #796 / issue #798).
+  `frontend/src/shell/Sidebar.tsx` is a GitHub-style left navigation rendered
+  entirely from the nav registry (DRY): one collapsible section per group, every
+  category as a nav button with the registry tooltip as its accessible `title`.
+  Active item is marked `aria-current="page"`. Per-group collapse and a
+  whole-sidebar icon-rail collapse both persist to `localStorage`
+  (`dashboard.sidebar.collapsedGroups`, `dashboard.sidebar.railCollapsed`).
+  Roving ArrowUp/Down keyboard navigation across visible items; the sidebar is a
+  labelled `navigation` landmark. It is purely presentational — flat
+  `activeTabId` + `onSelect(tabId)` props (LoD) — so a failing page cannot break
+  it (orthogonality). 10 behaviour tests. Not yet mounted in the desktop shell;
+  that is wired behind a layout flag in #802.
 
 - **2026-05-31 (2.5.49):** Modern shell — Tooltip + Dropdown primitives (epic
   #796 / issues #801, #800). `frontend/src/primitives/Tooltip.tsx` is a reusable
