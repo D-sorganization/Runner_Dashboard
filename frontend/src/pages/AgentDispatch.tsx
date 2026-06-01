@@ -1,36 +1,28 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react"
-import { Badge } from "../primitives/Badge";
 import { TouchButton } from "../primitives/TouchButton";
 import { useToast } from "../primitives/Toaster";
 import { SkeletonCard, SkeletonLine } from "../primitives/Skeleton";
+import {
+  ProviderModelSelector,
+  type ProviderModelSelection,
+} from "../primitives/ProviderModelSelector";
+import { useProviderRegistry } from "../lib/useProviderRegistry";
 
 /**
  * Agent Dispatch Page — Mobile Remediation + 3-tap Agent Dispatch flow
- * Issue #196 [M10]
+ * Issue #196 [M10]; refactored onto the unified provider registry (#811).
  *
  * 3-tap confirmation flow:
- *   1. Select agent
+ *   1. Select agent (provider) + model via the shared ProviderModelSelector
  *   2. Review dispatch details
  *   3. Confirm dispatch
+ *
+ * DRY: providers come from the single source of truth
+ * (GET /api/providers/registry via useProviderRegistry). The old hardcoded
+ * DEFAULT_PROVIDER_ORDER list has been removed (#809). The selected MODEL flows
+ * through to the dispatch payload; the dispatch `provider` uses the provider's
+ * dashboard id so the backend remediation contract is unchanged.
  */
-
-interface AgentProvider {
-  provider_id: string;
-  label: string;
-  execution_mode: string;
-  dispatch_mode: string;
-  notes: string;
-  experimental: boolean;
-  remote: boolean;
-  editable: boolean;
-}
-
-interface ProviderAvailability {
-  provider_id: string;
-  available: boolean;
-  status: string;
-  detail: string;
-}
 
 interface FailedRun {
   id: number;
@@ -46,25 +38,21 @@ interface FailedRun {
 
 type DispatchStep = "select" | "review" | "dispatch";
 
-const DEFAULT_PROVIDER_ORDER = [
-  "jules_api",
-  "codex_cli",
-  "claude_code_cli",
-  "gemini_cli",
-  "ollama",
-  "cline",
-];
+const EMPTY_SELECTION: ProviderModelSelection = {
+  providerId: null,
+  dashboardId: null,
+  model: null,
+};
 
 export function AgentDispatchPage() {
   const { showToast } = useToast();
-  const [providers, setProviders] = useState<Record<string, AgentProvider>>({});
-  const [availability, setAvailability] = useState<Record<string, ProviderAvailability>>({});
+  const { registry, loading: registryLoading, error: registryError } = useProviderRegistry();
   const [failedRuns, setFailedRuns] = useState<FailedRun[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [runsLoading, setRunsLoading] = useState(true);
+  const [runsError, setRunsError] = useState<string | null>(null);
 
   const [step, setStep] = useState<DispatchStep>("select");
-  const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
+  const [selection, setSelection] = useState<ProviderModelSelection>(EMPTY_SELECTION);
   const [selectedRun, setSelectedRun] = useState<FailedRun | null>(null);
   const [dispatching, setDispatching] = useState(false);
   const [dispatchResult, setDispatchResult] = useState<{
@@ -72,95 +60,58 @@ export function AgentDispatchPage() {
     message: string;
   } | null>(null);
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const fetchRuns = useCallback(async () => {
+    setRunsLoading(true);
+    setRunsError(null);
     try {
-      const provResp = await fetch("/api/agent-remediation/providers");
-      if (!provResp.ok) throw new Error(`Providers HTTP ${provResp.status}`);
-      const provData = await provResp.json();
-      setProviders(provData.providers || {});
-      setAvailability(provData.availability || {});
-
       const runsResp = await fetch("/api/runs?per_page=30");
       if (!runsResp.ok) throw new Error(`Runs HTTP ${runsResp.status}`);
       const runsData = await runsResp.json();
       setFailedRuns(
         (runsData.workflow_runs || []).filter(
-          (r: FailedRun) => r.conclusion === "failure"
-        )
+          (r: FailedRun) => r.conclusion === "failure",
+        ),
       );
     } catch (e) {
-      setError((e instanceof Error ? e.message : String(e)) || "Failed to load dispatch data");
+      setRunsError((e instanceof Error ? e.message : String(e)) || "Failed to load runs");
     } finally {
-      setLoading(false);
+      setRunsLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    fetchRuns();
+  }, [fetchRuns]);
 
-  const availableProviders = useMemo(() => {
-    const entries = Object.entries(providers);
-    if (entries.length === 0) {
-      return DEFAULT_PROVIDER_ORDER.map((id) => ({
-        id,
-        label: id,
-        available: false,
-        status: "loading",
-        detail: "",
-        experimental: false,
-        notes: "",
-      }));
-    }
-    return entries
-      .map(([id, provider]) => {
-        const avail = availability[id];
-        return {
-          id,
-          label: provider.label || id,
-          available: avail?.available ?? false,
-          status: avail?.status || "unknown",
-          detail: avail?.detail || "",
-          experimental: provider.experimental ?? false,
-          notes: provider.notes || "",
-        };
-      })
-      .sort((a, b) => {
-        const aAvail = a.available ? 1 : 0;
-        const bAvail = b.available ? 1 : 0;
-        if (aAvail !== bAvail) return bAvail - aAvail;
-        const aIndex = DEFAULT_PROVIDER_ORDER.indexOf(a.id);
-        const bIndex = DEFAULT_PROVIDER_ORDER.indexOf(b.id);
-        if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
-        if (aIndex !== -1) return -1;
-        if (bIndex !== -1) return 1;
-        return a.label.localeCompare(b.label);
-      });
-  }, [providers, availability]);
+  const loading = registryLoading || runsLoading;
+  const error = registryError || runsError;
 
-  const selectedProvider = useMemo(() => {
-    if (!selectedProviderId) return null;
-    return availableProviders.find((p) => p.id === selectedProviderId) || null;
-  }, [selectedProviderId, availableProviders]);
+  const selectedProvider = useMemo(
+    () => (registry && selection.providerId ? registry.byId(selection.providerId) ?? null : null),
+    [registry, selection.providerId],
+  );
 
-  function selectProvider(providerId: string) {
-    setSelectedProviderId(providerId);
-    setStep("review");
+  const handleSelectionChange = useCallback((next: ProviderModelSelection) => {
+    setSelection(next);
     setDispatchResult(null);
-  }
+  }, []);
+
+  const handleRequestLogin = useCallback(() => {
+    // Navigate to the Credentials surface to fix a provider's login (#812).
+    try {
+      window.location.assign("/?tab=credentials");
+    } catch {
+      /* navigation unavailable in test env — non-fatal */
+    }
+  }, []);
 
   function selectRun(run: FailedRun) {
     setSelectedRun(run);
-    if (step === "select") setStep("review");
   }
 
   function goBack() {
     if (step === "review") {
       setStep("select");
-      setSelectedProviderId(null);
-      setSelectedRun(null);
     } else if (step === "dispatch") {
       setStep("review");
       setDispatchResult(null);
@@ -168,7 +119,7 @@ export function AgentDispatchPage() {
   }
 
   async function confirmDispatch() {
-    if (!selectedProviderId || !selectedRun) return;
+    if (!selectedProvider || !selectedRun) return;
     setStep("dispatch");
     setDispatching(true);
     setDispatchResult(null);
@@ -178,10 +129,13 @@ export function AgentDispatchPage() {
         repository: repoName,
         workflow_name: selectedRun.workflow_name || selectedRun.name || "unknown",
         branch: selectedRun.head_branch || "main",
-        failure_reason: `Dispatching ${selectedProviderId} for failed run #${selectedRun.id}`,
+        failure_reason: `Dispatching ${selectedProvider.label} for failed run #${selectedRun.id}`,
         log_excerpt: `Run ${selectedRun.id} concluded with failure. Dispatched via mobile agent dispatch flow.`,
         run_id: selectedRun.id,
-        provider: selectedProviderId,
+        // Backend remediation contract keys on the dashboard (underscored) id.
+        provider: selectedProvider.dashboardId,
+        // Selected model flows through; null when the provider has no models.
+        model: selection.model,
         dispatch_origin: "manual",
       };
       const resp = await fetch("/api/agent-remediation/dispatch", {
@@ -196,7 +150,7 @@ export function AgentDispatchPage() {
       if (!resp.ok) throw new Error(data.detail || `Dispatch failed: HTTP ${resp.status}`);
       const successMessage =
         data.note ||
-        `Dispatch submitted for ${selectedProviderId} on ${repoName}. Waiting for agent heartbeat.`;
+        `Dispatch submitted for ${selectedProvider.label} on ${repoName}. Waiting for agent heartbeat.`;
       setDispatchResult({ status: "success", message: successMessage });
       showToast(successMessage, { variant: "success", title: "Dispatch submitted" });
     } catch (e) {
@@ -228,31 +182,25 @@ export function AgentDispatchPage() {
     );
   }
 
-  function renderProviderCard(provider: typeof availableProviders[number]) {
-    const isSelected = selectedProviderId === provider.id;
-    const isAvailable = provider.available;
-    return (
-      <button key={provider.id} aria-pressed={isSelected} data-touch-primitive="TouchButton" disabled={!isAvailable} onClick={() => selectProvider(provider.id)} className={`provider-card ${isSelected ? "selected" : ""} ${isAvailable ? "" : "unavailable"}`}>
-        <div className="provider-header">
-          <span className="label">{provider.label}</span>
-          <Badge tone={isAvailable ? "success" : "danger"}>
-            {isAvailable ? "Ready" : provider.status}
-          </Badge>
-        </div>
-        {provider.notes && <span className="notes">{provider.notes}</span>}
-        {provider.experimental && <Badge tone="warning">Experimental</Badge>}
-      </button>
-    );
-  }
-
   function renderSelectStep() {
+    const canReview = !!selectedProvider;
     return (
       <section aria-label="Mobile remediation dispatch">
         <h2>Select Agent</h2>
-        <p className="step-description">Choose an available agent to dispatch for CI remediation. Only agents marked Ready can be dispatched.</p>
-        <div className="provider-list">{availableProviders.map(renderProviderCard)}</div>
+        <p className="step-description">
+          Choose a provider and (where supported) a model to dispatch for CI remediation.
+        </p>
+        {registry && (
+          <ProviderModelSelector
+            registry={registry}
+            value={selection}
+            onChange={handleSelectionChange}
+            onRequestLogin={handleRequestLogin}
+            idPrefix="dispatch"
+          />
+        )}
         <h2>Failed Runs</h2>
-        <p className="step-description">Tap a failed run to associate it with the dispatch (optional).</p>
+        <p className="step-description">Tap a failed run to associate it with the dispatch.</p>
         {failedRuns.length === 0 ? (
           <div className="empty-state">No failed runs found.</div>
         ) : (
@@ -269,23 +217,26 @@ export function AgentDispatchPage() {
             })}
           </div>
         )}
-        {selectedProviderId && <TouchButton onClick={() => setStep("review")} pressed={false} style={{ width: "100%" }} variant="primary">Review Dispatch →</TouchButton>}
+        {canReview && <TouchButton onClick={() => setStep("review")} pressed={false} style={{ width: "100%" }} variant="primary">Review Dispatch →</TouchButton>}
       </section>
     );
   }
 
   function renderReviewStep() {
-    const provider = selectedProvider;
     const run = selectedRun;
+    const authed = selectedProvider?.loginStatus === "authenticated";
     return (
-      <section aria-label="Confirm mobile credential change">
+      <section aria-label="Confirm dispatch">
         <h2>Review Dispatch</h2>
         <p className="step-description">Preview the safety plan before dispatching the agent.</p>
         <div className="review-cards">
           <div className="review-card">
             <div className="label">Agent</div>
-            <div className="value">{provider?.label || selectedProviderId}</div>
-            {provider?.available ? <div className="available">Available — {provider.detail || "ready"}</div> : <div className="unavailable">Not available — {provider?.detail || provider?.status || "unknown"}</div>}
+            <div className="value">
+              {selectedProvider?.label || "—"}
+              {selection.model ? ` · ${selection.model}` : ""}
+            </div>
+            {authed ? <div className="available">Authenticated</div> : <div className="unavailable">Login required — {selectedProvider?.loginStatus || "unknown"}</div>}
           </div>
           {run ? (
             <div className="review-card">
@@ -293,11 +244,11 @@ export function AgentDispatchPage() {
               <div className="value">{run.repository?.name || "repo"} · {run.name || run.workflow_name} #{run.id}</div>
               <div className="meta">Branch {run.head_branch || "main"} · Run #{run.run_number || run.id}</div>
             </div>
-          ) : <div className="review-card dashed">No run selected — dispatch will target the default workflow.</div>}
+          ) : <div className="review-card dashed">No run selected — select a failed run first.</div>}
           <div className="safety-plan"><strong>Safety Plan Preview:</strong> The agent will attempt a minimal, safe fix. Protected branches require PR-based remediation. Loop guards prevent infinite retry cycles.</div>
         </div>
         <div className="action-buttons">
-          <TouchButton disabled={!provider?.available || dispatching} onClick={confirmDispatch} style={{ width: "100%" }} variant="primary">
+          <TouchButton disabled={!selectedProvider || !run || dispatching} onClick={confirmDispatch} style={{ width: "100%" }} variant="primary">
             {dispatching ? <span className="dispatching-spinner">Dispatching…</span> : "Confirm Dispatch"}
           </TouchButton>
           <TouchButton onClick={goBack} style={{ width: "100%" }} variant="default">← Back to Selection</TouchButton>
@@ -316,7 +267,7 @@ export function AgentDispatchPage() {
             <h2>{isSuccess ? "Dispatch Submitted" : "Dispatch Failed"}</h2>
             <p>{dispatchResult.message}</p>
             <div className="action-buttons">
-              <TouchButton onClick={() => { setStep("select"); setSelectedProviderId(null); setSelectedRun(null); setDispatchResult(null); }} style={{ width: "100%" }} variant="primary">New Dispatch</TouchButton>
+              <TouchButton onClick={() => { setStep("select"); setSelection(EMPTY_SELECTION); setSelectedRun(null); setDispatchResult(null); }} style={{ width: "100%" }} variant="primary">New Dispatch</TouchButton>
               <TouchButton onClick={goBack} style={{ width: "100%" }} variant="default">Back to Review</TouchButton>
             </div>
           </div>
@@ -350,7 +301,7 @@ export function AgentDispatchPage() {
       </div>
     );
   }
-  if (error && !loading) return <div aria-live="assertive" role="alert" style={{ padding: "24px", textAlign: "center", color: "var(--accent-red)", fontSize: "14px" }}><div style={{ marginBottom: "12px" }}>{error}</div><TouchButton onClick={fetchData} variant="primary">Retry</TouchButton></div>;
+  if (error && !loading) return <div aria-live="assertive" role="alert" style={{ padding: "24px", textAlign: "center", color: "var(--accent-red)", fontSize: "14px" }}><div style={{ marginBottom: "12px" }}>{error}</div><TouchButton onClick={fetchRuns} variant="primary">Retry</TouchButton></div>;
 
   return (
     <div className="agent-dispatch-page">

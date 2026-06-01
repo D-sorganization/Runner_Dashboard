@@ -10,7 +10,9 @@ import { CredentialsMobile } from './pages/Credentials'
 import { FleetMobile } from './pages/Fleet'
 import { MobileShell, type TabId } from './shell/MobileShell'
 import { DesktopShell, type ShellAction } from './shell/DesktopShell'
+import { ActiveProviderControl } from './shell/ActiveProviderControl'
 import { resolveDesktopShellLayout, LAYOUT_STORAGE_KEY } from './shell/layoutFlag'
+import { useProviderRegistry } from './lib/useProviderRegistry'
 import { Toaster } from './primitives/Toaster'
 import { RootErrorBoundary } from './primitives/RootErrorBoundary'
 import { BreakpointProvider, useBreakpoint } from './hooks/useBreakpoint'
@@ -223,6 +225,29 @@ function buildShellActions(): ShellAction[] {
   ]
 }
 
+/**
+ * Persistent/global provider control for the shell topbar (#811). Fetches the
+ * unified registry once and renders the always-visible ActiveProviderControl;
+ * renders nothing until the registry is available so the topbar never flashes a
+ * broken control. Clicking "Fix login" jumps to the Credentials tab.
+ */
+function ShellActiveProvider() {
+  const { registry } = useProviderRegistry()
+  if (!registry) return null
+  return (
+    <ActiveProviderControl
+      registry={registry}
+      onRequestLogin={() => {
+        try {
+          window.location.assign('/?tab=credentials')
+        } catch {
+          /* navigation unavailable — non-fatal */
+        }
+      }}
+    />
+  )
+}
+
 function AppWithMobileShell({ initialTab }: { initialTab?: string }) {
   const breakpoint = useBreakpoint()
   const isMobile = breakpoint !== 'lg' && breakpoint !== 'xl'
@@ -290,6 +315,7 @@ function AppWithMobileShell({ initialTab }: { initialTab?: string }) {
       activeTabId={desktopTab}
       onSelect={setDesktopTab}
       actions={buildShellActions()}
+      headerExtra={<ShellActiveProvider />}
     >
       <App
         initialTab={legacyInitialTab}

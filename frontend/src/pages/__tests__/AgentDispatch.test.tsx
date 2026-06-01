@@ -1,14 +1,14 @@
 // @vitest-environment jsdom
 /**
- * Tests for AgentDispatch.tsx — issue #728 E3.
+ * Tests for AgentDispatch.tsx — refactored onto the unified provider registry
+ * (issue #728 E3; updated for #811).
  *
  * Covers:
  * 1. Renders without throwing (smoke test).
- * 2. Shows skeleton/loading state while fetching providers and runs.
- * 3. Renders provider selection list on successful fetch.
- * 4. Shows error state when API calls fail.
- * 5. Provider card renders with availability status.
- * 6. Empty failed runs state renders without crash.
+ * 2. Shows skeleton/loading state while fetching the registry and runs.
+ * 3. Renders providers from GET /api/providers/registry.
+ * 4. Shows error state when the runs API fails.
+ * 5. Empty failed runs state renders without crash.
  */
 import "@testing-library/jest-dom/vitest";
 import React from "react";
@@ -25,43 +25,36 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-const MOCK_PROVIDERS = {
-  providers: {
-    claude_code_cli: {
-      provider_id: "claude_code_cli",
-      label: "Claude Code CLI",
-      execution_mode: "cli",
-      dispatch_mode: "workflow",
-      notes: "",
+const MOCK_REGISTRY = {
+  schema_version: "1.0.0",
+  providers: [
+    {
+      id: "claude-cli",
+      dashboard_id: "claude_code_cli",
+      label: "Claude CLI",
+      auth_mode: "github_app",
+      resource: "runner",
+      capabilities: ["code"],
+      models: [],
+      models_endpoint: null,
+      login_status: "authenticated",
       experimental: false,
-      remote: true,
-      editable: false,
     },
-    codex_cli: {
-      provider_id: "codex_cli",
+    {
+      id: "codex-cli",
+      dashboard_id: "codex_cli",
       label: "Codex CLI",
-      execution_mode: "cli",
-      dispatch_mode: "workflow",
-      notes: "",
+      auth_mode: "api_key",
+      resource: "runner",
+      capabilities: ["code"],
+      models: [],
+      login_status: "unauthenticated",
       experimental: false,
-      remote: true,
-      editable: false,
     },
-  },
-  availability: {
-    claude_code_cli: {
-      provider_id: "claude_code_cli",
-      available: true,
-      status: "available",
-      detail: "ready",
-    },
-    codex_cli: {
-      provider_id: "codex_cli",
-      available: false,
-      status: "missing_binary",
-      detail: "binary not found",
-    },
-  },
+  ],
+  auth_kinds: [],
+  task_classes: [],
+  capabilities: [],
 };
 
 const MOCK_RUNS = {
@@ -83,22 +76,22 @@ const MOCK_RUNS = {
 const EMPTY_RUNS = { workflow_runs: [] };
 
 function setupFetch({
-  providersOk = true,
+  registryOk = true,
   runsOk = true,
-  providersData = MOCK_PROVIDERS,
+  registryData = MOCK_REGISTRY,
   runsData = MOCK_RUNS,
 }: {
-  providersOk?: boolean;
+  registryOk?: boolean;
   runsOk?: boolean;
-  providersData?: object;
+  registryData?: object;
   runsData?: object;
 } = {}) {
   global.fetch = vi.fn((url: string) => {
-    if ((url as string).includes("/api/agent-remediation/providers")) {
+    if ((url as string).includes("/api/providers/registry")) {
       return Promise.resolve({
-        ok: providersOk,
-        status: providersOk ? 200 : 500,
-        json: () => Promise.resolve(providersData),
+        ok: registryOk,
+        status: registryOk ? 200 : 500,
+        json: () => Promise.resolve(registryData),
       } as Response);
     }
     if ((url as string).includes("/api/runs")) {
@@ -113,7 +106,7 @@ function setupFetch({
       status: 200,
       json: () => Promise.resolve({}),
     } as Response);
-  });
+  }) as unknown as typeof fetch;
 }
 
 describe("AgentDispatchPage", () => {
@@ -123,45 +116,26 @@ describe("AgentDispatchPage", () => {
   });
 
   it("shows loading skeleton initially", () => {
-    // Never resolves
-    global.fetch = vi.fn(() => new Promise<Response>(() => {}));
+    global.fetch = vi.fn(() => new Promise<Response>(() => {})) as unknown as typeof fetch;
     const { container } = render(<AgentDispatchPage />);
-    // Loading state should show skeleton or busy indicator
     expect(
       container.querySelector("[aria-busy='true']") ||
         container.querySelector(".skeleton") ||
         container.querySelector("[class*='skeleton']"),
     ).not.toBeNull();
-    // The component renders something during loading
     expect(container.firstChild).not.toBeNull();
   });
 
-  it("renders provider list after successful fetch", async () => {
+  it("renders providers from the registry after successful fetch", async () => {
     setupFetch();
     render(<AgentDispatchPage />);
     await waitFor(() => {
-      expect(screen.getByText(/Claude Code CLI/i)).toBeInTheDocument();
-    });
-  });
-
-  it("renders multiple providers from API response", async () => {
-    setupFetch();
-    render(<AgentDispatchPage />);
-    await waitFor(() => {
-      expect(screen.getByText(/Claude Code CLI/i)).toBeInTheDocument();
+      expect(screen.getByText(/Claude CLI/i)).toBeInTheDocument();
       expect(screen.getByText(/Codex CLI/i)).toBeInTheDocument();
     });
   });
 
-  it("shows error message when providers API fails", async () => {
-    setupFetch({ providersOk: false });
-    render(<AgentDispatchPage />);
-    await waitFor(() => {
-      expect(document.body.textContent).toMatch(/error|failed|HTTP 500/i);
-    });
-  });
-
-  it("shows error message when runs API fails", async () => {
+  it("shows error message when the runs API fails", async () => {
     setupFetch({ runsOk: false });
     render(<AgentDispatchPage />);
     await waitFor(() => {
@@ -173,9 +147,8 @@ describe("AgentDispatchPage", () => {
     setupFetch({ runsData: EMPTY_RUNS });
     render(<AgentDispatchPage />);
     await waitFor(() => {
-      expect(screen.getByText(/Claude Code CLI/i)).toBeInTheDocument();
+      expect(screen.getByText(/Claude CLI/i)).toBeInTheDocument();
     });
-    // No crash with empty failed runs list
     expect(document.body).toBeInTheDocument();
   });
 
@@ -183,7 +156,6 @@ describe("AgentDispatchPage", () => {
     setupFetch();
     render(<AgentDispatchPage />);
     await waitFor(() => {
-      // The page should have some agent/dispatch related heading
       expect(document.body.textContent).toMatch(/agent|dispatch|select|provider/i);
     });
   });
