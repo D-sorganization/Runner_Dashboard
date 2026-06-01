@@ -1520,8 +1520,12 @@ async def _collect_live_fleet_nodes() -> list[dict]:
             async with httpx.AsyncClient(timeout=HttpTimeout.PROXY_NODE_SYSTEM_S) as client:
                 # Explicit annotation: mypy cannot infer the element types of an
                 # `asyncio.gather(..., return_exceptions=True)` unpack on its own
-                # (each element is a Response or a raised exception).
-                gathered: list[httpx.Response | BaseException] = await asyncio.gather(
+                # (each element is a Response or a raised exception). gather with
+                # a fixed arg count is typed to return a tuple.
+                gathered: tuple[
+                    httpx.Response | BaseException,
+                    httpx.Response | BaseException,
+                ] = await asyncio.gather(
                     client.get(f"{url}/api/system"),
                     client.get(f"{url}/api/health"),
                     return_exceptions=True,
