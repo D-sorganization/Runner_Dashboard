@@ -29,6 +29,7 @@ fields and flat tuples directly and never traverse nested structure.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 
 from conductor_constants import AUTH_KINDS, CAPABILITIES, RESOURCES
@@ -93,7 +94,12 @@ class ProviderEntry:
 
 
 # Live-models endpoint for the local Ollama server (issue #810 item 3).
-OLLAMA_TAGS_ENDPOINT = "http://localhost:11434/api/tags"
+# Base URL defaults to localhost (correct when the dashboard runs on the same
+# host as Ollama). When the dashboard runs in WSL but Ollama runs on the Windows
+# host, set DASHBOARD_OLLAMA_URL to a WSL-reachable address (e.g. the host's
+# Tailscale IP) via the systemd unit. LoD: one configurable base, no nested lookups.
+OLLAMA_BASE_URL = os.environ.get("DASHBOARD_OLLAMA_URL", "http://localhost:11434").rstrip("/")
+OLLAMA_TAGS_ENDPOINT = f"{OLLAMA_BASE_URL}/api/tags"
 
 # Curated, current CLI model lists. ``models.length > 0`` is what now marks a
 # provider as supporting model selection (replacing the old hardcoded
