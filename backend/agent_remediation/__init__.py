@@ -39,6 +39,11 @@ from .policy import (
     load_policy,
     save_policy,
 )
+from .provider_registry import (
+    PROVIDER_REGISTRY,
+    ProviderEntry,
+    by_dashboard_id,
+)
 from .providers import (
     PROVIDERS,
     AgentProvider,
@@ -51,6 +56,9 @@ __all__ = [
     "AgentProvider",
     "ProviderAvailability",
     "PROVIDERS",
+    "PROVIDER_REGISTRY",
+    "ProviderEntry",
+    "by_dashboard_id",
     "probe_provider_availability",
     # policy
     "SCHEMA_VERSION",

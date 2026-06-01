@@ -614,7 +614,17 @@ async def get_remediation_history() -> dict:
     return {"history": list(reversed(history[-100:]))}  # newest first
 
 
-_PROVIDERS_WITH_MODEL_SELECTION: frozenset[str] = frozenset({"claude_code_cli", "codex_cli", "gemini_cli"})
+def _providers_with_model_selection() -> list[str]:
+    """Dashboard ids that support model selection, derived from the canonical
+    table (DRY, issue #810).
+
+    A provider supports model selection when it offers a non-empty curated
+    model list *or* a live models endpoint. This replaces the previously
+    hardcoded ``_PROVIDERS_WITH_MODEL_SELECTION`` set.
+    """
+    return sorted(
+        entry.dashboard_id for entry in agent_remediation.PROVIDER_REGISTRY if entry.models or entry.models_endpoint
+    )
 
 
 @router.get("/api/agents/providers")
@@ -624,5 +634,5 @@ async def get_agent_providers() -> dict:
     return {
         "providers": {pid: p.to_dict() for pid, p in agent_remediation.PROVIDERS.items()},
         "availability": {pid: s.to_dict() for pid, s in availability.items()},
-        "providers_with_model_selection": sorted(_PROVIDERS_WITH_MODEL_SELECTION),
+        "providers_with_model_selection": _providers_with_model_selection(),
     }
