@@ -1,10 +1,22 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.48
-**Application Version:** 4.4.0 (see `VERSION`)
+**Spec Version:** 2.5.49
+**Application Version:** 4.5.0 (see `VERSION`)
 **Last Updated:** 2026-05-31T00:00:00-07:00
 **Status:** Active
 
+- **2026-05-31 (2.5.49):** Modern shell — Tooltip + Dropdown primitives (epic
+  #796 / issues #801, #800). `frontend/src/primitives/Tooltip.tsx` is a reusable
+  accessible tooltip: shows on hover **or** keyboard focus after a small delay,
+  associates with its trigger via `aria-describedby`, and dismisses on
+  mouseleave / blur / Escape. It composes onto the child's own event handlers
+  (LoD) and renders nothing for blank content.
+  `frontend/src/primitives/Dropdown.tsx` is a reusable WAI-ARIA menu-button
+  dropdown (`aria-haspopup="menu"` / `aria-expanded`, `role="menu"` /
+  `menuitem`): ArrowUp/Down roving focus with wrap, Enter/Space activate,
+  Escape closes and restores trigger focus, click-outside closes. Both are
+  exported from `frontend/src/primitives/index.ts` and back every nav item and
+  action-button hover hint in the new shell (#802). 16 behaviour tests.
 - **2026-05-31 (2.5.48):** Modern shell — nav registry (epic #796 / issue #797).
   `frontend/src/shell/navRegistry.ts` is now the single typed source of truth
   for every navigable category: each `NavItem` carries `{ id, label, group,
