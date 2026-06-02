@@ -491,24 +491,55 @@ function SubTabs(p) {
     }
     if (p.onChange) p.onChange(key);
   }
+  // a11y (#833): the sub-tab strip is an ARIA tablist. Roving focus — only the
+  // active tab is tabbable; ←/→/Home/End move between tabs (WAI-ARIA tabs).
+  var enabledKeys = tabs.filter(function (t) { return !t.disabled; }).map(function (t) { return t.key; });
+  function onStripKeyDown(e) {
+    if (enabledKeys.length === 0) return;
+    var idx = enabledKeys.indexOf(activeKey);
+    var next = null;
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+      next = enabledKeys[(idx + 1 + enabledKeys.length) % enabledKeys.length];
+    } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+      next = enabledKeys[(idx - 1 + enabledKeys.length) % enabledKeys.length];
+    } else if (e.key === "Home") {
+      next = enabledKeys[0];
+    } else if (e.key === "End") {
+      next = enabledKeys[enabledKeys.length - 1];
+    }
+    if (next != null) {
+      e.preventDefault();
+      handleChange(next);
+    }
+  }
   return h(
     "div",
     { className: "subtabs" + (p.className ? " " + p.className : "") },
     h(
       "div",
-      { className: "subtabs-strip" },
+      {
+        className: "subtabs-strip",
+        role: "tablist",
+        "aria-label": p.ariaLabel || p.label || "Section tabs",
+        onKeyDown: onStripKeyDown,
+      },
       tabs.map(function (tab) {
+        var selected = activeKey === tab.key;
         return h(
           "button",
           {
             key: tab.key,
-            className: "subtab" + (activeKey === tab.key ? " active" : ""),
+            className: "subtab" + (selected ? " active" : ""),
+            role: "tab",
+            "aria-selected": selected ? "true" : "false",
+            "aria-disabled": tab.disabled ? "true" : undefined,
+            tabIndex: selected ? 0 : -1,
             disabled: tab.disabled || false,
             onClick: function () { if (!tab.disabled) handleChange(tab.key); },
           },
           tab.label,
           tab.badge != null
-            ? h(Badge, { tone: activeKey === tab.key ? "info" : "neutral", size: "sm" }, tab.badge)
+            ? h(Badge, { tone: selected ? "info" : "neutral", size: "sm" }, tab.badge)
             : null,
         );
       }),
@@ -713,13 +744,20 @@ function SortTh(p) {
       ((p.thProps && p.thProps.className) || "") +
       " sortable" +
       (active ? " active" : ""),
-    role: "button",
+    // a11y (#833): a <th> already has the implicit `columnheader` role, which
+    // is the only role on which `aria-sort` is permitted — applying
+    // role="button" here makes aria-sort an unsupported attribute (axe
+    // aria-allowed-attr violation). Keep the native role; expose interactivity
+    // via tabIndex + Enter/Space handling and an aria-label that announces the
+    // sort action to assistive tech.
+    scope: (p.thProps && p.thProps.scope) || "col",
     tabIndex: 0,
     "aria-sort": active
       ? dir === "desc"
         ? "descending"
         : "ascending"
       : "none",
+    "aria-label": "Sort by " + p.label,
     title: "Sort by " + p.label,
     onClick: function () {
       p.setSort(sortStateNext(p.sort, p.sortKey));
@@ -2077,7 +2115,7 @@ function OrgTab(p) {
                             className: "lang-dot",
                             style: {
                               background:
-                                LANG_COLORS[r.language] || "#8b949e",
+                                LANG_COLORS[r.language] || "var(--text-secondary)",
                             },
                           }),
                           r.language,
@@ -5024,7 +5062,7 @@ function SystemResourcesPanel(p) {
                   key: i,
                   style: {
                     background: cpuColor(v),
-                    color: v > 50 ? "#fff" : "var(--text-secondary)",
+                    color: v > 50 ? "var(--text-on-accent)" : "var(--text-secondary)",
                   },
                   title: "Core " + i + ": " + v + "%",
                 },
@@ -6926,10 +6964,18 @@ function PRsSubTab() {
             onClick: function (e) {
               if (e.target === e.currentTarget) setDispatchModal(null);
             },
+            onKeyDown: function (e) {
+              if (e.key === "Escape") setDispatchModal(null);
+            },
           },
           h(
             "div",
             {
+              // a11y (#833): a modal dialog — trap intent declared via
+              // aria-modal, labelled by its heading, Escape closes (above).
+              role: "dialog",
+              "aria-modal": "true",
+              "aria-labelledby": "dispatch-modal-title",
               style: {
                 background: "var(--bg-primary)",
                 border: "1px solid var(--border)",
@@ -6943,7 +6989,7 @@ function PRsSubTab() {
             },
             h(
               "div",
-              { style: { fontSize: 15, fontWeight: 600, marginBottom: 12 } },
+              { id: "dispatch-modal-title", style: { fontSize: 15, fontWeight: 600, marginBottom: 12 } },
               "Dispatch to " + dispatchModal.items.length + " PR(s)",
             ),
 
@@ -7239,39 +7285,44 @@ function IssuesSubTab() {
     setSelected(next);
   }
 
+  // Issue #826: issue-type / complexity / judgement badge colours are driven
+  // by the semantic --badge-* / --accent-* design tokens (defined per-theme in
+  // index.css) so they re-tint under non-default themes instead of being frozen
+  // to hardcoded hex. The CSS vars carry sensible fallbacks for environments
+  // where the stylesheet has not yet loaded.
   function getTypeStyle(type) {
     var map = {
-      epic: { background: 'rgba(110,118,129,0.2)', color: '#8b949e' },
-      task: { background: 'rgba(88,166,255,0.2)', color: '#58a6ff' },
-      bug: { background: 'rgba(248,81,73,0.2)', color: '#f85149' },
-      security: { background: 'rgba(248,81,73,0.2)', color: '#f85149' },
-      research: { background: 'rgba(188,140,255,0.2)', color: '#bc8cff' },
-      docs: { background: 'rgba(56,189,248,0.2)', color: '#38bdf8' },
-      chore: { background: 'rgba(110,118,129,0.2)', color: '#8b949e' },
+      epic: { background: 'var(--badge-neutral-bg)', color: 'var(--badge-neutral-fg)' },
+      task: { background: 'var(--badge-info-bg)', color: 'var(--badge-info-fg)' },
+      bug: { background: 'var(--badge-danger-bg)', color: 'var(--badge-danger-fg)' },
+      security: { background: 'var(--badge-danger-bg)', color: 'var(--badge-danger-fg)' },
+      research: { background: 'var(--badge-purple-bg)', color: 'var(--accent-purple)' },
+      docs: { background: 'var(--badge-info-bg)', color: 'var(--accent-blue)' },
+      chore: { background: 'var(--badge-neutral-bg)', color: 'var(--badge-neutral-fg)' },
     };
-    return map[type] || { background: 'rgba(110,118,129,0.15)', color: '#8b949e' };
+    return map[type] || { background: 'var(--badge-neutral-bg)', color: 'var(--badge-neutral-fg)' };
   }
 
   function getComplexityStyle(complexity) {
     var map = {
-      trivial: { background: 'rgba(63,185,80,0.2)', color: '#3fb950' },
-      routine: { background: 'rgba(88,166,255,0.2)', color: '#58a6ff' },
-      complex: { background: 'rgba(210,153,34,0.2)', color: '#d2993a' },
-      deep: { background: 'rgba(248,81,73,0.2)', color: '#f85149' },
-      research: { background: 'rgba(188,140,255,0.2)', color: '#bc8cff' },
+      trivial: { background: 'var(--badge-success-bg)', color: 'var(--badge-success-fg)' },
+      routine: { background: 'var(--badge-info-bg)', color: 'var(--badge-info-fg)' },
+      complex: { background: 'var(--badge-warning-bg)', color: 'var(--badge-warning-fg)' },
+      deep: { background: 'var(--badge-danger-bg)', color: 'var(--badge-danger-fg)' },
+      research: { background: 'var(--badge-purple-bg)', color: 'var(--accent-purple)' },
     };
-    return map[complexity] || { background: 'rgba(110,118,129,0.15)', color: '#8b949e' };
+    return map[complexity] || { background: 'var(--badge-neutral-bg)', color: 'var(--badge-neutral-fg)' };
   }
 
   function getJudgementStyle(judgement) {
     if (judgement === 'design' || judgement === 'contested') {
-      return { background: 'rgba(220,38,38,0.2)', color: '#ef4444' };
+      return { background: 'var(--badge-danger-bg)', color: 'var(--badge-danger-fg)' };
     }
     var map = {
-      objective: { background: 'rgba(63,185,80,0.15)', color: '#3fb950' },
-      preference: { background: 'rgba(210,153,34,0.15)', color: '#d2993a' },
+      objective: { background: 'var(--badge-success-bg)', color: 'var(--badge-success-fg)' },
+      preference: { background: 'var(--badge-warning-bg)', color: 'var(--badge-warning-fg)' },
     };
-    return map[judgement] || { background: 'rgba(110,118,129,0.15)', color: '#8b949e' };
+    return map[judgement] || { background: 'var(--badge-neutral-bg)', color: 'var(--badge-neutral-fg)' };
   }
 
   function pillStyle(style) {
@@ -7511,7 +7562,7 @@ function IssuesSubTab() {
                     sources.map(function (src) {
                       return h('span', {
                         key: src,
-                        style: pillStyle(src === 'linear' ? { background: 'rgba(99,102,241,0.18)', color: '#a5b4fc' } : { background: 'rgba(88,166,255,0.18)', color: '#58a6ff' }),
+                        style: pillStyle(src === 'linear' ? { background: 'rgba(99,102,241,0.18)', color: 'var(--accent-purple)' } : { background: 'rgba(88,166,255,0.18)', color: 'var(--accent-blue)' }),
                       }, src.toUpperCase());
                     }),
                     linearId
@@ -7523,7 +7574,7 @@ function IssuesSubTab() {
                         }, linearId)
                       : null
                   ),
-                  taxonomy.quick_win ? h('span', { style: { color: '#f0c040', marginRight: 4 } }, '★') : null,
+                  taxonomy.quick_win ? h('span', { style: { color: 'var(--accent-yellow)', marginRight: 4 } }, '★') : null,
                   h('span', { title: title }, truncTitle)
                 ),
                 h('td', { style: { padding: '6px 8px' } },
@@ -7547,8 +7598,8 @@ function IssuesSubTab() {
                 ),
                 h('td', { style: { padding: '6px 8px', textAlign: 'center' } },
                   selectable
-                    ? h('span', { style: { color: '#3fb950', fontSize: 14 } }, '✓')
-                    : h('span', { title: !dispatchable ? 'Linear-only items cannot be dispatched until linked to a GitHub issue.' : blockedBy.join(', '), style: { color: '#f85149', fontSize: 14, cursor: 'help' } }, '✗')
+                    ? h('span', { style: { color: 'var(--accent-green)', fontSize: 14 } }, '✓')
+                    : h('span', { title: !dispatchable ? 'Linear-only items cannot be dispatched until linked to a GitHub issue.' : blockedBy.join(', '), style: { color: 'var(--accent-red)', fontSize: 14, cursor: 'help' } }, '✗')
                 )
               );
             })
@@ -7615,8 +7666,13 @@ function IssuesSubTab() {
         zIndex: 1000,
       },
       onClick: function (e) { if (e.target === e.currentTarget) { setShowModal(false); } },
+      onKeyDown: function (e) { if (e.key === 'Escape') { setShowModal(false); } },
     },
       h('div', {
+        // a11y (#833): confirm-dispatch dialog.
+        role: 'dialog',
+        'aria-modal': 'true',
+        'aria-labelledby': 'confirm-dispatch-title',
         style: {
           background: 'var(--bg-primary)',
           border: '1px solid var(--border)',
@@ -7628,7 +7684,7 @@ function IssuesSubTab() {
           overflowY: 'auto',
         }
       },
-        h('h3', { style: { margin: '0 0 12px 0', fontSize: 15 } }, 'Confirm Dispatch'),
+        h('h3', { id: 'confirm-dispatch-title', style: { margin: '0 0 12px 0', fontSize: 15 } }, 'Confirm Dispatch'),
 
         hasDangerous ? h('div', {
           style: {
@@ -7636,7 +7692,7 @@ function IssuesSubTab() {
             padding: '8px 12px',
             borderRadius: 6,
             background: 'rgba(220,38,38,0.15)',
-            color: '#ef4444',
+            color: 'var(--accent-red)',
             fontSize: 12,
             fontWeight: 600,
           }
@@ -7663,7 +7719,7 @@ function IssuesSubTab() {
               h('strong', null, '#' + issue.number),
               ' — ',
               h('span', null, (issue.title || '').slice(0, 80)),
-              issue.pickable === false ? h('span', { style: { color: '#f85149', marginLeft: 6 } }, '(non-pickable)') : null
+              issue.pickable === false ? h('span', { style: { color: 'var(--accent-red)', marginLeft: 6 } }, '(non-pickable)') : null
             );
           })
         ),
@@ -7676,7 +7732,7 @@ function IssuesSubTab() {
             checked: forceDispatch,
             onChange: function (e) { setForceDispatch(e.target.checked); },
           }),
-          h('span', { style: { color: '#f85149', fontWeight: 600 } }, 'Force dispatch (include non-pickable issues)')
+          h('span', { style: { color: 'var(--accent-red)', fontWeight: 600 } }, 'Force dispatch (include non-pickable issues)')
         ) : null,
 
         h('div', { style: { display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 } },
@@ -9195,12 +9251,12 @@ function RemediationTab(p) {
                 var triggerType = entry.trigger_type || "dormant";
                 var triggerColor =
                   triggerType === "manual"
-                    ? "#58a6ff"
+                    ? "var(--accent-blue)"
                     : triggerType === "scheduled"
-                      ? "#a371f7"
+                      ? "var(--accent-purple)"
                       : triggerType === "workflow_run"
-                        ? "#8b949e"
-                        : "#e3b341";
+                        ? "var(--text-secondary)"
+                        : "var(--accent-yellow)";
                 var triggerBg =
                   triggerType === "manual"
                     ? "rgba(88,166,255,0.15)"
@@ -9326,7 +9382,7 @@ function RemediationTab(p) {
                                 borderRadius: 4,
                                 border: "1px solid #58a6ff",
                                 background: "rgba(88,166,255,0.1)",
-                                color: "#58a6ff",
+                                color: "var(--accent-blue)",
                                 cursor: "pointer",
                               },
                               onClick: function () {
@@ -10652,7 +10708,7 @@ function DashboardHelp(p) {
               height: 48,
               borderRadius: "50%",
               background: "var(--accent-purple, #886ce4)",
-              color: "#fff",
+              color: "var(--text-on-accent)",
               border: "none",
               cursor: "pointer",
               fontSize: 20,
@@ -11415,10 +11471,17 @@ function FleetOrchestrationTab(p) {
               if (e.target === e.currentTarget)
                 setDispatchModalOpen(false);
             },
+            onKeyDown: function (e) {
+              if (e.key === "Escape") setDispatchModalOpen(false);
+            },
           },
           h(
             "div",
             {
+              // a11y (#833): dispatch-workflow dialog.
+              role: "dialog",
+              "aria-modal": "true",
+              "aria-labelledby": "dispatch-workflow-title",
               style: {
                 background: "var(--bg-primary)",
                 border: "1px solid var(--border)",
@@ -11440,13 +11503,14 @@ function FleetOrchestrationTab(p) {
               },
               h(
                 "span",
-                { style: { fontWeight: 700, fontSize: 15 } },
+                { id: "dispatch-workflow-title", style: { fontWeight: 700, fontSize: 15 } },
                 "Dispatch Workflow",
               ),
               h(
                 "button",
                 {
                   className: "btn",
+                  "aria-label": "Close dispatch dialog",
                   onClick: function () {
                     setDispatchModalOpen(false);
                   },
@@ -13105,7 +13169,7 @@ function DiagnosticsTab() {
   var valStyle = { color: "var(--text-primary)", fontFamily: "monospace" };
   var btnStyle = {
     background: "var(--accent-blue)",
-    color: "#fff",
+    color: "var(--text-on-accent)",
     border: "none",
     borderRadius: 6,
     padding: "6px 14px",
@@ -13623,7 +13687,7 @@ function AssistantSidebar(props) {
             clearAssistantTranscriptHistory();
             setShowSettings(false);
           },
-          style: { background: "var(--accent-red)", color: "#fff", border: "none", borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontSize: 12, width: "100%", marginTop: 8 },
+          style: { background: "var(--accent-red)", color: "var(--text-on-accent)", border: "none", borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontSize: 12, width: "100%", marginTop: 8 },
         }, "Clear chat history"),
       )
     : null;
@@ -13638,7 +13702,7 @@ function AssistantSidebar(props) {
                 var bubbleStyle = {
                   alignSelf: isUser ? "flex-end" : "flex-start",
                   background: isUser ? "var(--accent-blue)" : "var(--bg-tertiary)",
-                  color: isUser ? "#fff" : "var(--text-primary)",
+                  color: isUser ? "var(--text-on-accent)" : "var(--text-primary)",
                   borderRadius: isUser ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
                   padding: "8px 12px",
                   maxWidth: "92%",
@@ -13681,7 +13745,7 @@ function AssistantSidebar(props) {
                 disabled: loading || !inputVal.trim(),
                 style: {
                   background: "var(--accent-blue)",
-                  color: "#fff",
+                  color: "var(--text-on-accent)",
                   border: "none",
                   borderRadius: 6,
                   padding: "5px 14px",
@@ -13696,7 +13760,15 @@ function AssistantSidebar(props) {
       )
     : null;
 
-  return h("div", { style: sidebarStyle, "aria-label": "Chat sidebar" },
+  return h("div", {
+    style: sidebarStyle,
+    // a11y (#833): a bare <div> may not carry aria-label (aria-prohibited-attr).
+    // Promote the chat panel to a complementary landmark so the label is valid
+    // and the region is reachable via the screen-reader landmark rotor.
+    role: "complementary",
+    "aria-label": "Chat sidebar",
+    "aria-hidden": open ? undefined : "true",
+  },
     open ? h("div", { style: dragHandleStyle, onMouseDown: startDrag }) : null,
     open ? h(React.Fragment, null,
       h("div", { style: headerStyle },
@@ -13725,11 +13797,14 @@ function AssistantSidebar(props) {
           h("button", {
             onClick: function () { setShowSettings(function (s) { return !s; }); },
             title: "Settings",
+            "aria-label": "Assistant settings",
+            "aria-expanded": showSettings ? "true" : "false",
             style: { background: "none", border: "none", color: showSettings ? "var(--accent-blue)" : "var(--text-muted)", cursor: "pointer", fontSize: 15, lineHeight: 1 },
           }, "⚙️"),
           h("button", {
             onClick: toggle,
             title: "Close",
+            "aria-label": "Close assistant",
             style: { background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 16, lineHeight: 1 },
           }, "×"),
         ),
@@ -16045,8 +16120,8 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
             h(
               "linearGradient",
               { id: "lg", x1: 0, y1: 0, x2: 1, y2: 1 },
-              h("stop", { offset: "0%", stopColor: "#4f8ff7" }),
-              h("stop", { offset: "100%", stopColor: "#a855f7" }),
+              h("stop", { offset: "0%", stopColor: "var(--accent-blue)" }),
+              h("stop", { offset: "100%", stopColor: "var(--accent-purple)" }),
             ),
           ),
           h("rect", { width: 32, height: 32, rx: 6, fill: "url(#lg)" }),
@@ -16310,7 +16385,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
                   className: "section-badge",
                   style: {
                     background: "rgba(88,166,255,0.15)",
-                    color: "#58a6ff",
+                    color: "var(--accent-blue)",
                     marginLeft: 2,
                   },
                 },
@@ -16716,7 +16791,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
         }),
         h("button", {
           className: "btn",
-          style: { marginLeft: 4, background: asstOpen ? "var(--accent-blue)" : undefined, color: asstOpen ? "#fff" : undefined },
+          style: { marginLeft: 4, background: asstOpen ? "var(--accent-blue)" : undefined, color: asstOpen ? "var(--text-on-accent)" : undefined },
           onClick: toggleAsst,
           title: "Toggle Chat sidebar",
         }, "💬 Chat"),

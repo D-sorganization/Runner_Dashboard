@@ -297,10 +297,12 @@ describe("QueueMobile", () => {
 
     render(<QueueMobile />);
 
+    // #837: failures now surface operator guidance (a polite live region with a
+    // Retry affordance) instead of a raw "HTTP 500".
     await waitFor(() => {
-      expect(screen.getByRole("alert")).toBeInTheDocument();
+      expect(screen.getByTestId("queue-error")).toBeInTheDocument();
     });
-
+    expect(screen.getByText(/backend error/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
   });
 });

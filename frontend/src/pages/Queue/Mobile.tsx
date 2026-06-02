@@ -3,7 +3,9 @@ import { SegmentedControl } from "../../primitives/SegmentedControl";
 import { TouchButton } from "../../primitives/TouchButton";
 import { SkeletonCard, SkeletonLine } from "../../primitives/Skeleton";
 import { PullToRefresh } from "../../primitives/PullToRefresh";
+import { EmptyState } from "../../primitives/EmptyState";
 import { useHaptic } from "../../hooks/useHaptic";
+import { guidanceForFailure, type ApiFailure } from "../../lib/apiErrorGuidance";
 
 import { MobileRunCard } from "./MobileRunCard";
 import { MobileRunDetail } from "./MobileRunDetail";
@@ -24,7 +26,8 @@ import {
 export function QueueMobile() {
   const [queueData, setQueueData] = useState<QueueData>({});
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // #837: structured failure → operator guidance instead of a raw status code.
+  const [failure, setFailure] = useState<ApiFailure | null>(null);
   const [filter, setFilter] = useState<FilterValue>("all");
   const [refreshing, setRefreshing] = useState(false);
   const [selectedRun, setSelectedRun] = useState<RunDetail | null>(null);
@@ -60,14 +63,15 @@ export function QueueMobile() {
   const fetchQueue = useCallback(async () => {
     try {
       const resp = await fetch("/api/queue/status");
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      if (!resp.ok) {
+        setFailure({ status: resp.status });
+        return;
+      }
       const json: QueueData = await resp.json();
       setQueueData(json);
-      setError(null);
+      setFailure(null);
     } catch (e: unknown) {
-      const message =
-        e instanceof Error ? e.message : "Failed to load queue data";
-      setError(message);
+      setFailure({ error: e });
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -244,23 +248,17 @@ export function QueueMobile() {
   }
 
   // Error state (only if no data at all)
-  if (error && allRuns.length === 0) {
+  if (failure && allRuns.length === 0) {
+    const guidance = guidanceForFailure(failure);
     return (
-      <div
-        aria-live="assertive"
-        className="queue-mobile-error"
-        role="alert"
-        style={{
-          color: "var(--accent-red)",
-          padding: "24px",
-          textAlign: "center",
-        }}
-      >
-        <div style={{ marginBottom: 12 }}>{error}</div>
-        <TouchButton onClick={fetchQueue} variant="primary">
-          Retry
-        </TouchButton>
-      </div>
+      <EmptyState
+        variant="error"
+        icon="⚠️"
+        title={guidance.title}
+        description={guidance.action}
+        onRetry={fetchQueue}
+        data-testid="queue-error"
+      />
     );
   }
 

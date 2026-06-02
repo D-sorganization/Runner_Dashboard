@@ -79,6 +79,14 @@ export type { TooltipProps, TooltipPlacement } from "./Tooltip";
 export { Dropdown } from "./Dropdown";
 export type { DropdownProps, DropdownItem } from "./Dropdown";
 
+// #837: reusable empty/error surface (idle-vs-unreachable + Retry)
+export { EmptyState } from "./EmptyState";
+export type { EmptyStateProps, EmptyStateVariant } from "./EmptyState";
+
+// #822: optional per-tab intro/orientation header
+export { IntroHeader } from "./IntroHeader";
+export type { IntroHeaderProps } from "./IntroHeader";
+
 // #819: Consolidated durable alert surface (status pill + ack/snooze drawer)
 export { AlertsCenter } from "./AlertsCenter";
 export type { AlertsCenterProps } from "./AlertsCenter";

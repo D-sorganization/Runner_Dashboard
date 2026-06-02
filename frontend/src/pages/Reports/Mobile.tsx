@@ -14,7 +14,9 @@ import { PullToRefresh } from "../../primitives/PullToRefresh";
 import { BottomSheet } from "../../primitives/BottomSheet";
 import { SegmentedControl } from "../../primitives/SegmentedControl";
 import { TimeAgo } from "../../primitives/TimeAgo";
+import { EmptyState } from "../../primitives/EmptyState";
 import { useHaptic } from "../../hooks/useHaptic";
+import { guidanceForFailure, type ApiFailure } from "../../lib/apiErrorGuidance";
 
 interface ReportFile {
   filename: string;
@@ -207,7 +209,9 @@ function ReportDetailSheet({ report, onClose }: ReportDetailSheetProps) {
 export function ReportsMobile() {
   const [reports, setReports] = useState<ReportFile[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // #837: keep the structured failure (status + error) so we can map it to
+  // operator guidance instead of surfacing a raw "HTTP 401".
+  const [failure, setFailure] = useState<ApiFailure | null>(null);
   const [filter, setFilter] = useState<ReportFilter>("all");
   const [refreshing, setRefreshing] = useState(false);
   const [selectedReport, setSelectedReport] = useState<ReportFile | null>(null);
@@ -217,12 +221,15 @@ export function ReportsMobile() {
   const fetchReports = useCallback(async () => {
     try {
       const resp = await fetch("/api/reports");
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      if (!resp.ok) {
+        setFailure({ status: resp.status });
+        return;
+      }
       const json = await resp.json();
       setReports(json.reports ?? []);
-      setError(null);
+      setFailure(null);
     } catch (e) {
-      setError((e instanceof Error ? e.message : String(e)) || "Failed to load reports");
+      setFailure({ error: e });
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -278,15 +285,17 @@ export function ReportsMobile() {
     );
   }
 
-  if (error && reports.length === 0) {
+  if (failure && reports.length === 0) {
+    const guidance = guidanceForFailure(failure);
     return (
-      <div
-        aria-live="assertive"
-        role="alert"
-        style={{ color: "var(--accent-red)", padding: "24px", textAlign: "center" }}
-      >
-        {error}
-      </div>
+      <EmptyState
+        variant="error"
+        icon="⚠️"
+        title={guidance.title}
+        description={guidance.action}
+        onRetry={fetchReports}
+        data-testid="reports-error"
+      />
     );
   }
 
@@ -317,23 +326,16 @@ export function ReportsMobile() {
       <PullToRefresh disabled={refreshing} onRefresh={handleRefresh}>
         <div style={{ marginTop: "12px", touchAction: "pan-y" }}>
           {filtered.length === 0 ? (
-            <div
-              aria-label="No reports found"
-              role="status"
-              style={{
-                color: "var(--text-muted)",
-                padding: "48px 16px",
-                textAlign: "center",
-              }}
-            >
-              <div style={{ fontSize: "36px", marginBottom: "12px" }}>📋</div>
-              <div style={{ fontSize: "15px", fontWeight: 600 }}>No reports found</div>
-              <div style={{ fontSize: "13px", marginTop: "6px" }}>
-                {filter !== "all"
+            <EmptyState
+              icon="📋"
+              title="No reports found"
+              description={
+                filter !== "all"
                   ? "Try switching to a different filter."
-                  : "Reports will appear here once generated."}
-              </div>
-            </div>
+                  : "Reports will appear here once generated."
+              }
+              data-testid="reports-empty"
+            />
           ) : (
             filtered.map((report) => (
               <ReportCard key={report.filename} onClick={handleCardClick} report={report} />

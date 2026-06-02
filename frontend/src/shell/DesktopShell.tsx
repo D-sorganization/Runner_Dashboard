@@ -49,6 +49,17 @@ export interface DesktopShellProps {
    * node so the shell stays orthogonal and does not reach into provider state.
    */
   headerExtra?: React.ReactNode;
+  /**
+   * Optional leading topbar node rendered before `headerExtra` — used for the
+   * Help/About '?' surface (#822). Opaque so the shell stays orthogonal.
+   */
+  helpAbout?: React.ReactNode;
+  /**
+   * Optional per-tab intro header (#822) rendered once at the top of the page
+   * body, above `children`. Opaque node so the shell does not reach into the
+   * nav registry or page state.
+   */
+  intro?: React.ReactNode;
   /** The page body for the active category. */
   children: React.ReactNode;
 }
@@ -104,6 +115,8 @@ export function DesktopShell({
   onSelect,
   actions,
   headerExtra,
+  helpAbout,
+  intro,
   children,
 }: DesktopShellProps): React.ReactElement {
   assertActions(actions);
@@ -144,6 +157,7 @@ export function DesktopShell({
             className="desktop-shell__actions"
             style={{ display: "flex", alignItems: "center", gap: 6, flex: "0 0 auto" }}
           >
+            {helpAbout}
             {headerExtra}
             {actions.map((a) => (
               <ActionButton key={a.id} action={a} />
@@ -157,6 +171,7 @@ export function DesktopShell({
           className="desktop-shell__main"
           style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: "auto" }}
         >
+          {intro}
           {children}
         </main>
       </div>
