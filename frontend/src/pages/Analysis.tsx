@@ -18,7 +18,10 @@ import React, { useEffect, useState } from "react";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { Stat } from "../components/Stat";
+import { SubTabs } from "../components/SubTabs";
 import { legacyFetch } from "../lib/api";
+import { isAnalysisTabKey } from "../lib/analysisTabs";
+import { HistoryTab } from "./History";
 
 // ── Shared helper ────────────────────────────────────────────────────────────
 
@@ -838,5 +841,65 @@ export function ReportsTab({ reports, loading }: ReportsTabProps): React.ReactEl
         </div>
       </div>
     </div>
+  );
+}
+
+// ════════════════════════ ANALYSIS TAB (orchestrator) ════════════════════════
+// The sub-tab strip + leaf-panel fan-out, extracted from the legacy `App.tsx`
+// monolith (decomposition #836, pass 12). The four leaf panels above render
+// inline; the "History" sub-tab still delegates to the legacy `HistoryTab`.
+
+const h = React.createElement;
+
+export interface AnalysisTabProps {
+  activeTab?: string;
+  runs?: unknown[];
+  runners?: unknown[];
+  reports?: ReportSummary[];
+  reportsLoading?: boolean;
+}
+
+export function AnalysisTab(p: AnalysisTabProps): React.ReactElement {
+  const legacyKey =
+    isAnalysisTabKey(p.activeTab) && p.activeTab !== "analysis"
+      ? p.activeTab
+      : null;
+  const initial =
+    legacyKey || localStorage.getItem("analysis-subtab") || "outcomes";
+  const ss = useState(initial);
+  const subTab = ss[0],
+    setSubTab = ss[1];
+  function changeSubTab(key: string) {
+    setSubTab(key);
+    try {
+      localStorage.setItem("analysis-subtab", key);
+    } catch (e) {
+      /* localStorage may be unavailable; ignore (legacy 1:1). */
+    }
+  }
+  return h(
+    "div",
+    null,
+    h(SubTabs, {
+      tabs: [
+        { key: "outcomes", label: "Outcomes" },
+        { key: "stats", label: "Durations" },
+        { key: "history", label: "History", badge: (p.runs || []).length || null },
+        { key: "performance", label: "Performance" },
+        { key: "reports", label: "Reports", badge: (p.reports || []).length || null },
+      ],
+      activeKey: subTab,
+      onChange: changeSubTab,
+      storageKey: "analysis-subtab",
+    }),
+    subTab === "outcomes"
+      ? h(AnalysisOutcomesTab, null)
+      : subTab === "stats"
+        ? h(StatsTab, null)
+        : subTab === "history"
+          ? h(HistoryTab, { runs: p.runs, runners: p.runners })
+          : subTab === "performance"
+            ? h(PerformanceTab, null)
+            : h(ReportsTab, { reports: p.reports || [], loading: p.reportsLoading }),
   );
 }

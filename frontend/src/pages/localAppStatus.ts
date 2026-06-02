@@ -35,3 +35,8 @@ export function localAppHasUpdateAvailable(a: LocalAppStatusLike): boolean {
 export function localAppUnhealthy(a: LocalAppStatusLike): boolean {
   return !!a.health && !!a.health.available && a.health.ok === false;
 }
+
+/** True when the app either has a pending update or is unhealthy. */
+export function localAppNeedsAttention(a: LocalAppStatusLike): boolean {
+  return localAppHasUpdateAvailable(a) || localAppUnhealthy(a);
+}
