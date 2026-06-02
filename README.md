@@ -11,21 +11,21 @@ This is the **operator console** in a three-repo fleet. The cross-repo
 contract is in
 [`Repository_Management/docs/sibling-repos.md`](https://github.com/D-sorganization/Repository_Management/blob/main/docs/sibling-repos.md).
 
-| Repo | Role |
-| --- | --- |
+| Repo                                                                                | Role                                                                      |
+| ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
 | [`Repository_Management`](https://github.com/D-sorganization/Repository_Management) | Fleet orchestrator — CI workflows, skills, templates, agent coordination. |
-| `runner-dashboard` (here) | Operator console — every dashboard tab and `/api/*` endpoint. |
-| [`Maxwell-Daemon`](https://github.com/D-sorganization/Maxwell-Daemon) | Autonomous AI control plane consumed by the Maxwell tab over HTTP. |
+| `runner-dashboard` (here)                                                           | Operator console — every dashboard tab and `/api/*` endpoint.             |
+| [`Maxwell-Daemon`](https://github.com/D-sorganization/Maxwell-Daemon)               | Autonomous AI control plane consumed by the Maxwell tab over HTTP.        |
 
 The Maxwell tab calls Maxwell-Daemon over HTTP using the contract documented
 in the sibling-repos doc. Maxwell-Daemon never calls back into the dashboard.
 
 ---
 
-
 The dashboard is a local FastAPI server that proxies the GitHub API and exposes
-system metrics. The frontend is a self-contained React SPA served directly as
-a static HTML file — no build step, no npm, no node_modules.
+system metrics. The frontend is a Vite-built React + TypeScript SPA: source
+lives in `frontend/src/`, and `vite build` produces a static bundle that the
+backend serves as assets.
 
 ## Security
 
@@ -95,14 +95,15 @@ The dashboard runs as `runner-dashboard.service` on port 8321. Logs:
 
 ```
 backend/     FastAPI server (Python 3.11+) — all /api/* routes
-frontend/    Self-contained React SPA — index.html, no build step
+frontend/    Vite-built React + TypeScript SPA — src/ source, vite build output
 deploy/      setup.sh, update-deployed.sh, systemd units, helpers
 config/      Runtime config (agent_remediation.json, runner-schedule.json)
 docs/        Documentation
 ```
 
-The frontend uses `h()` (React.createElement alias) instead of JSX. All
-dependencies are loaded from CDN. There is no build toolchain.
+The frontend is written in JSX/TSX (React + TypeScript). Dependencies are
+managed via `package.json` and installed with `npm`; the bundle is produced
+by the Vite build toolchain.
 
 See [SPEC.md](SPEC.md) for the full API catalogue, configuration reference,
 and architecture documentation.
@@ -110,9 +111,10 @@ and architecture documentation.
 ## Multi-Instance (Hub vs Node) State
 
 When deployed across multiple machines, the dashboard differentiates between "Hub" and "Node" operation:
+
 - **Hub (Leader)**: The central dashboard instance. Processes global actions, scheduled background tasks, stale queue cleanup, and autoscaler evaluations. If `WORKERS > 1` is configured, leader-election ensures only a single background task thread executes across all workers.
 - **Node (Follower)**: Run instances on edge runner hosts without the leader lock (`DASHBOARD_LEADER=0`). They provide the local `/api/system/metrics` endpoints that the Hub aggregates, and stream logs/metrics to the Hub.
-If two Hubs run concurrently without a shared lock directory, background scans (like queue purging) will run twice, but API operations remain idempotent.
+  If two Hubs run concurrently without a shared lock directory, background scans (like queue purging) will run twice, but API operations remain idempotent.
 
 ## Development
 
