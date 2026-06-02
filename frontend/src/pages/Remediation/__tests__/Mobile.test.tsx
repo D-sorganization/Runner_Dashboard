@@ -181,7 +181,7 @@ function Wrapper({ initial = [] }: WrapperProps) {
 
 // -- Tests --------------------------------------------------------------------
 
-describe.skip("RemediationMobile", () => {
+describe("RemediationMobile", () => {
   beforeEach(() => {
     vi.spyOn(console, "error").mockImplementation(() => {});
   });

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { z } from 'zod';
 import { storage, STORAGE_KEYS, StorageError } from '../storage';
 
-describe.skip('storage', () => {
+describe('storage', () => {
   beforeEach(() => {
     localStorage.clear();
     sessionStorage.clear();
@@ -29,12 +29,15 @@ describe.skip('storage', () => {
     expect(result).toEqual(value);
   });
 
-  it('should fall back to default on invalid JSON', () => {
+  it('should throw StorageError on invalid JSON', () => {
     const key = STORAGE_KEYS.ISSUES_SOURCE_FILTER;
     localStorage.setItem(key.key, 'invalid json');
-    
-    const result = storage.getItem(key, TestSchema, { name: 'default', count: 0 });
-    expect(result).toEqual({ name: 'default', count: 0 });
+
+    // Corrupted (non-JSON) data is surfaced as a StorageError rather than
+    // silently masked — only well-formed-but-schema-invalid data falls back.
+    expect(() => {
+      storage.getItem(key, TestSchema, { name: 'default', count: 0 });
+    }).toThrow(StorageError);
   });
 
   it('should fall back to default on schema mismatch', () => {
