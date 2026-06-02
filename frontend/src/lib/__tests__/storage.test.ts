@@ -60,29 +60,46 @@ describe('storage', () => {
     const key = STORAGE_KEYS.ISSUES_SOURCE_FILTER;
     const quotaError = new Error('Quota exceeded');
     quotaError.name = 'QuotaExceededError';
-    
-    // Mock localStorage.setItem to throw quota error
-    const originalSetItem = localStorage.setItem.bind(localStorage);
-    let callCount = 0;
-    localStorage.setItem = vi.fn((k: string, v: string) => {
-      callCount++;
-      if (callCount === 1) {
-        throw quotaError;
-      }
-      return originalSetItem(k, v);
-    });
-    
-    const value = { name: 'test', count: 42 };
-    expect(() => {
-      storage.setItem(key, TestSchema, value);
-    }).toThrow(StorageError);
-    
-    // Memory fallback should still work
-    const result = storage.getItem(key, TestSchema, { name: 'default', count: 0 });
-    expect(result).toEqual(value);
-    
-    // Restore
-    localStorage.setItem = originalSetItem;
+
+    // Swap in a fully-controlled localStorage stub for the duration of this
+    // test. The runtime's real localStorage backing varies by environment —
+    // jsdom's polyfill locally vs Node's built-in localStorage in CI, whose
+    // native setItem cannot be reassigned or spied — so replacing the whole
+    // object via vi.stubGlobal is the only env-independent way to force the
+    // quota-exceeded path. The first write throws; later writes succeed.
+    const backing = new Map<string, string>();
+    let firstWrite = true;
+    const stub: Storage = {
+      get length() {
+        return backing.size;
+      },
+      clear: () => backing.clear(),
+      getItem: (k: string) => backing.get(k) ?? null,
+      key: (i: number) => Array.from(backing.keys())[i] ?? null,
+      removeItem: (k: string) => backing.delete(k),
+      setItem: (k: string, v: string) => {
+        if (firstWrite) {
+          firstWrite = false;
+          throw quotaError;
+        }
+        backing.set(k, v);
+      },
+    };
+    vi.stubGlobal('localStorage', stub);
+
+    try {
+      const value = { name: 'test', count: 42 };
+      expect(() => {
+        storage.setItem(key, TestSchema, value);
+      }).toThrow(StorageError);
+
+      // The failed write routes the value into the in-memory fallback store,
+      // so a subsequent read still surfaces it.
+      const result = storage.getItem(key, TestSchema, { name: 'default', count: 0 });
+      expect(result).toEqual(value);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('should remove items correctly', () => {
