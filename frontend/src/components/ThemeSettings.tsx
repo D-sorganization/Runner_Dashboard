@@ -1,6 +1,6 @@
 import React from "react";
 import { useThemeContext } from "../design/ThemeContext";
-import type { ThemeMode } from "../hooks/useTheme";
+import { ThemeSelector } from "./ThemeSelector";
 
 const PRESET_ACCENTS = [
   { name: "Blue", color: "#58a6ff" },
@@ -22,26 +22,9 @@ export function ThemeSettings() {
       
       <div style={{ marginBottom: "24px" }}>
         <h4 style={{ fontSize: "13px", color: "var(--text-secondary)", marginBottom: "8px", textTransform: "uppercase" }}>Appearance</h4>
-        <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
-          {(["system", "light", "dark"] as ThemeMode[]).map((m) => (
-            <button
-              key={m}
-              onClick={() => setMode(m)}
-              style={{
-                padding: "8px 16px",
-                borderRadius: "6px",
-                border: `1px solid ${mode === m ? "var(--accent-blue)" : "var(--border)"}`,
-                background: mode === m ? "var(--bg-hover)" : "var(--bg-card)",
-                color: mode === m ? "var(--accent-blue)" : "var(--text-primary)",
-                cursor: "pointer",
-                fontWeight: 500,
-                textTransform: "capitalize"
-              }}
-            >
-              {m}
-            </button>
-          ))}
-        </div>
+        {/* All 13 fleet themes (+ System) are reachable here, not just the
+            previous hardcoded system/light/dark trio. */}
+        <ThemeSelector currentMode={mode} onThemeChange={setMode} />
       </div>
 
       <div>

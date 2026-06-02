@@ -75,13 +75,32 @@ function getStoredAccent(): string | null {
   }
 }
 
+/** CSS variables overridden by a custom accent color. */
+const ACCENT_VAR_KEYS = ['--accent-blue', '--badge-info-fg'] as const;
+
 /**
- * Apply fleet theme CSS variables to the document root.
+ * Apply fleet theme CSS variables to the document root, layering an optional
+ * custom accent color on top so accent overrides survive every theme switch.
+ *
+ * Single source of truth: this is the ONLY place CSS custom properties are
+ * written to the document. ThemeProvider no longer injects a competing
+ * <style> block, so precedence is well-defined.
  */
-function applyFleetCssVars(vars: Record<string, string>, isDark: boolean): void {
+function applyFleetCssVars(
+  vars: Record<string, string>,
+  isDark: boolean,
+  accentColor: string | null,
+): void {
   const root = document.documentElement;
   for (const [key, value] of Object.entries(vars)) {
     root.style.setProperty(key, value);
+  }
+  // Accent override layers on top of the resolved theme. Clearing it falls
+  // back to the theme's own accent (set in the loop above).
+  for (const key of ACCENT_VAR_KEYS) {
+    if (accentColor) {
+      root.style.setProperty(key, accentColor);
+    }
   }
   root.setAttribute('data-theme', isDark ? 'dark' : 'light');
 }
@@ -131,10 +150,11 @@ export function useTheme() {
     return () => mql.removeEventListener('change', handler);
   }, []);
 
-  // Apply CSS variables when theme changes
+  // Apply CSS variables when theme or accent changes. The accent override is
+  // re-layered on every theme switch so it never gets clobbered by a new theme.
   useEffect(() => {
-    applyFleetCssVars(cssVars, isDark);
-  }, [cssVars, isDark]);
+    applyFleetCssVars(cssVars, isDark, accentColor);
+  }, [cssVars, isDark, accentColor]);
 
   const setMode = useCallback((next: ThemeMode) => {
     setModeState(next);
