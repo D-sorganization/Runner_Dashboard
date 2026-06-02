@@ -70,3 +70,64 @@ export function ClockGlyph({ size }: GlyphProps): React.ReactElement {
     </Svg>
   );
 }
+
+/** Activity/pulse glyph (matches legacy `I.activity`). */
+export function ActivityGlyph({ size }: GlyphProps): React.ReactElement {
+  return (
+    <Svg size={size}>
+      <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+    </Svg>
+  );
+}
+
+/** Pull-request glyph (matches legacy `I.gitPR`). */
+export function GitPrGlyph({ size }: GlyphProps): React.ReactElement {
+  return (
+    <Svg size={size}>
+      <circle cx={18} cy={18} r={3} />
+      <circle cx={6} cy={6} r={3} />
+      <path d="M13 6h3a2 2 0 012 2v7M6 9v12" />
+    </Svg>
+  );
+}
+
+/** Issue (circle-with-bang) glyph (matches legacy `I.issue`). */
+export function IssueGlyph({ size }: GlyphProps): React.ReactElement {
+  return (
+    <Svg size={size}>
+      <circle cx={12} cy={12} r={10} />
+      <line x1={12} y1={8} x2={12} y2={12} />
+      <line x1={12} y1={16} x2={12.01} y2={16} />
+    </Svg>
+  );
+}
+
+/** Play/triangle glyph (matches legacy `I.play`). */
+export function PlayGlyph({ size }: GlyphProps): React.ReactElement {
+  return (
+    <Svg size={size}>
+      <path d="M5 3l14 9-14 9V3z" />
+    </Svg>
+  );
+}
+
+/** Flask/erlenmeyer glyph (matches legacy `I.flask`). */
+export function FlaskGlyph({ size }: GlyphProps): React.ReactElement {
+  return (
+    <Svg size={size}>
+      <path d="M9 3h6M10 3v7.4a2 2 0 01-.5 1.3L4 19a2 2 0 001.5 3h13a2 2 0 001.5-3l-5.5-7.3a2 2 0 01-.5-1.3V3" />
+    </Svg>
+  );
+}
+
+/** Docker-whale-ish stacked-boxes glyph (matches legacy `I.docker`). */
+export function DockerGlyph({ size }: GlyphProps): React.ReactElement {
+  return (
+    <Svg size={size}>
+      <rect x={1} y={10} width={22} height={10} rx={2} />
+      <rect x={5} y={6} width={4} height={4} />
+      <rect x={10} y={6} width={4} height={4} />
+      <rect x={10} y={2} width={4} height={4} />
+    </Svg>
+  );
+}
