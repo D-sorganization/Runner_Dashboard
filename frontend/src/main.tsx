@@ -1,29 +1,12 @@
-/* eslint-disable react-refresh/only-export-components -- main.tsx is the app entry point, not a component module */
-import React, { useState, useCallback } from 'react'
+import React from 'react'
 import ReactDOM from 'react-dom/client'
-import App from './legacy/App'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import PushSettings from './pages/PushSettings'
-import { QueueMobile } from './pages/Queue'
-import { MaxwellMobile } from './pages/Maxwell'
-import { ReportsMobile } from './pages/Reports'
-import { CredentialsMobile } from './pages/Credentials'
-import { FleetMobile } from './pages/Fleet'
-import { MobileShell, type TabId } from './shell/MobileShell'
-import { DesktopShell, type ShellAction } from './shell/DesktopShell'
-import { ActiveProviderControl } from './shell/ActiveProviderControl'
-import { HelpAbout } from './shell/HelpAbout'
-import { introForTab } from './shell/intro'
-import { IntroHeader } from './primitives/IntroHeader'
-import { useSession } from './hooks/useSession'
-import { resolveDesktopShellLayout, LAYOUT_STORAGE_KEY } from './shell/layoutFlag'
-import { useProviderRegistry } from './lib/useProviderRegistry'
+import { RoutedShell } from './shell/RoutedShell'
 import { Toaster } from './primitives/Toaster'
 import { RootErrorBoundary } from './primitives/RootErrorBoundary'
-import { BreakpointProvider, useBreakpoint } from './hooks/useBreakpoint'
+import { BreakpointProvider } from './hooks/useBreakpoint'
 import { ThemeProvider } from './design/ThemeProvider'
-import { useThemeContext } from './design/ThemeContext'
-import { ThemeSelector } from './components/ThemeSelector'
-import { DensityToggle } from './components/DensityToggle'
 import { SkeletonCard } from './primitives/Skeleton'
 import './index.css'
 // Web Vitals — send metrics to backend (issue #385)
@@ -128,238 +111,31 @@ const _win = window as any
 _win.__deferredPrompt = deferredPrompt
 _win.triggerInstallPrompt = triggerInstallPrompt
 
-// The MobileShell is now driven by the single nav registry (issue #821), so a
-// mobile TabId *is* the legacy App tab string — no translation table is needed.
-// A couple of legacy aliases are normalized to their canonical registry tabId.
-const TAB_ID_ALIASES: Record<string, string> = {
-  fleet: 'overview',
-  health: 'queue',
-}
-
-function normalizeTabId(tab: string): TabId {
-  return TAB_ID_ALIASES[tab] ?? tab
-}
-
-function isPushSettingsRoute(pathname: string): boolean {
-  const normalized = pathname.replace(/\/+$/, '') || '/'
-  return normalized === '/settings/push'
-}
-
-const PATHNAME_TO_TAB: Record<string, string> = {
-  '/dispatch': 'agent-dispatch',
-  '/queue': 'queue',
-  '/maxwell': 'maxwell',
-  '/remediate': 'remediation',
-}
-
-function initialTabFromPathname(pathname: string): string | undefined {
-  const normalized = pathname.replace(/\/+$/, '') || '/'
-  return PATHNAME_TO_TAB[normalized]
-}
-
 /**
- * AppWithMobileShell wraps the legacy App in a MobileShell on small viewports.
- * Native mobile components (M12, M13, ...) are passed via tabContent so they
- * supersede the legacy App for their respective drawer tabs.
- */
-/**
- * Build the modern desktop shell's action bar. These actions are deliberately
- * self-contained (no reach into the legacy App internals) so the shell stays
- * orthogonal and reversible: Refresh reloads dashboard data, Login/Logout
- * toggles the GitHub session, and "Classic layout" pins the legacy shell via
- * localStorage and reloads — the visible escape hatch back to the old UI.
+ * AppRoutes — the single navigation source of truth (issue #835).
  *
- * `isLoggedIn` is now passed in (derived from the reactive `useSession` hook,
- * issue #842) so the auth label flips correctly without a full page reload.
- * `onLoggedOut` lets the caller re-probe the session the moment logout
- * resolves, rather than relying on the reload.
+ * React Router owns the URL, so every navRegistry tab is a real, deep-linkable
+ * route: "/" lands on Fleet, "/t/:tabId" opens any tab, and "/settings/push"
+ * keeps its dedicated deep link. Selecting a tab pushes a URL (see
+ * RoutedShell), so bookmarks, sharing and browser back/forward all work. This
+ * replaces the previous hand-rolled `window.location.pathname` navigation; the
+ * old unmounted `router.tsx` has been retired in favour of this single source.
+ *
+ * The legacy App is loaded lazily inside RoutedShell, so the ~485KB monolith
+ * code-splits into its own chunk (issue #831).
  */
-export function buildShellActions(
-  isLoggedIn: boolean,
-  onLoggedOut: () => void = () => window.location.reload(),
-): ShellAction[] {
-  return [
-    {
-      id: 'refresh',
-      label: 'Refresh',
-      tooltip: 'Reload the dashboard to fetch the latest fleet, queue and run data.',
-      onClick: () => window.location.reload(),
-    },
-    {
-      id: 'auth',
-      label: isLoggedIn ? 'Logout' : 'Login',
-      tooltip: isLoggedIn
-        ? 'Sign out of the dashboard GitHub session.'
-        : 'Sign in with GitHub to enable runner and workflow controls.',
-      onClick: () => {
-        if (isLoggedIn) {
-          fetch('/api/auth/logout', {
-            method: 'POST',
-            headers: { 'X-Requested-With': 'XMLHttpRequest' },
-          })
-            .then(() => onLoggedOut())
-            .catch(() => onLoggedOut())
-        } else {
-          window.location.href = '/api/auth/github'
-        }
-      },
-    },
-    {
-      id: 'classic-layout',
-      label: 'Classic layout',
-      tooltip: 'Switch back to the legacy top-toolstrip layout (reversible; stored per browser).',
-      onClick: () => {
-        try {
-          window.localStorage.setItem(LAYOUT_STORAGE_KEY, 'legacy')
-        } catch {
-          /* storage unavailable — non-fatal */
-        }
-        window.location.reload()
-      },
-    },
-  ]
-}
-
-/**
- * Persistent/global provider control for the shell topbar (#811). Fetches the
- * unified registry once and renders the always-visible ActiveProviderControl;
- * renders nothing until the registry is available so the topbar never flashes a
- * broken control. Clicking "Fix login" jumps to the Credentials tab.
- */
-function ShellActiveProvider() {
-  const { registry } = useProviderRegistry()
-  if (!registry) return null
+export function AppRoutes() {
   return (
-    <ActiveProviderControl
-      registry={registry}
-      onRequestLogin={() => {
-        try {
-          window.location.assign('/?tab=credentials')
-        } catch {
-          /* navigation unavailable — non-fatal */
-        }
-      }}
-    />
+    <Routes>
+      <Route path="/settings/push" element={<PushSettings />} />
+      <Route path="/t/:tabId" element={<RoutedShell />} />
+      <Route path="/" element={<RoutedShell />} />
+      {/* Unknown routes fall back to Fleet, preserving prior behaviour. */}
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   )
 }
 
-/**
- * Persistent theme picker for the desktop shell header (#820). Reads the shared
- * theme context (single source of truth via ThemeProvider/useTheme) so all 13
- * fleet themes are reachable from the always-visible topbar.
- */
-function ShellThemeSelector() {
-  const { mode, setMode } = useThemeContext()
-  return <ThemeSelector currentMode={mode} onThemeChange={setMode} />
-}
-
-function AppWithMobileShell({ initialTab }: { initialTab?: string }) {
-  const breakpoint = useBreakpoint()
-  const isMobile = breakpoint !== 'lg' && breakpoint !== 'xl'
-
-  const resolvedInitialTabId: TabId = normalizeTabId(initialTab ?? 'overview')
-  const [mobileTab, setMobileTab] = useState<TabId>(resolvedInitialTabId)
-
-  // Desktop modern-shell navigation is keyed on the legacy App tab string so the
-  // sidebar / slim toolstrip and the mounted page body stay in lockstep.
-  const [desktopTab, setDesktopTab] = useState<string>(initialTab ?? 'overview')
-
-  // Reactive dashboard-session state (#842): the topbar Login/Logout label now
-  // derives from this hook instead of a one-shot cookie read, so it updates on
-  // focus / visibility / logout without a manual reload.
-  const { loggedIn, refresh: refreshSession } = useSession()
-
-  // Per-tab intro header dismissal (#822): operators can dismiss the orientation
-  // banner per tab for the session; navigating elsewhere shows that tab's intro.
-  const [dismissedIntros, setDismissedIntros] = useState<Record<string, boolean>>({})
-
-  const handleMobileTabChange = useCallback((nextTab: TabId) => {
-    setMobileTab(nextTab)
-  }, [])
-
-  const handleLegacyTabChange = useCallback((nextLegacyTab: string) => {
-    setMobileTab(normalizeTabId(nextLegacyTab))
-    setDesktopTab(nextLegacyTab)
-  }, [])
-
-  const legacyInitialTab = initialTab ?? resolvedInitialTabId
-
-  if (isMobile) {
-    // M09-M13: native mobile views registered here, keyed by registry tabId.
-    const mobileTabContent = {
-      overview: <FleetMobile />,
-      queue: <QueueMobile />,
-      maxwell: <MaxwellMobile />,
-      reports: <ReportsMobile />,
-      credentials: <CredentialsMobile />,
-    } as Partial<Record<TabId, React.ReactNode>>
-
-    return (
-      <MobileShell
-        currentTab={mobileTab}
-        onTabChange={handleMobileTabChange}
-        tabContent={mobileTabContent as Record<TabId, React.ReactNode>}
-      >
-        <App
-          initialTab={mobileTab}
-          onTabChange={handleLegacyTabChange}
-        />
-      </MobileShell>
-    )
-  }
-
-  // Desktop. The modern shell (#802) is the default but fully reversible: when
-  // the layout flag resolves to legacy (localStorage `dashboard.layout=legacy`
-  // or VITE_DESKTOP_SHELL opt-out) we render the untouched legacy App with its
-  // own top toolstrip. Otherwise the new DesktopShell (sidebar + slim toolstrip
-  // + tooltips) owns navigation and mounts the legacy App chromeless + tab-
-  // controlled, so every existing page renders unchanged inside <main>.
-  const env = (import.meta.env as Record<string, string | undefined>)?.VITE_DESKTOP_SHELL
-  const useModernShell = resolveDesktopShellLayout({ env })
-
-  if (!useModernShell) {
-    return <App initialTab={legacyInitialTab} onTabChange={handleLegacyTabChange} />
-  }
-
-  const intro = introForTab(desktopTab)
-  const introNode =
-    intro && !dismissedIntros[desktopTab] ? (
-      <IntroHeader
-        title={intro.title}
-        body={intro.body}
-        onDismiss={() =>
-          setDismissedIntros((prev) => ({ ...prev, [desktopTab]: true }))
-        }
-      />
-    ) : undefined
-
-  return (
-    <DesktopShell
-      activeTabId={desktopTab}
-      onSelect={setDesktopTab}
-      actions={buildShellActions(loggedIn, refreshSession)}
-      helpAbout={<HelpAbout onNavigate={setDesktopTab} />}
-      intro={introNode}
-      headerExtra={
-        <>
-          <DensityToggle />
-          <ShellThemeSelector />
-          <ShellActiveProvider />
-        </>
-      }
-    >
-      <App
-        initialTab={legacyInitialTab}
-        activeTab={desktopTab}
-        chromeless
-        onTabChange={handleLegacyTabChange}
-      />
-    </DesktopShell>
-  )
-}
-
-// Route tracer marker for the static integrity test:
-// isPushSettingsRoute(window.location.pathname) ? <PushSettings /> : <AppWithMobileShell />
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <React.Suspense
@@ -373,11 +149,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <ThemeProvider>
           <BreakpointProvider>
             <Toaster>
-              {isPushSettingsRoute(window.location.pathname) ? (
-                <PushSettings />
-              ) : (
-                <AppWithMobileShell initialTab={initialTabFromPathname(window.location.pathname)} />
-              )}
+              <BrowserRouter>
+                <AppRoutes />
+              </BrowserRouter>
             </Toaster>
           </BreakpointProvider>
         </ThemeProvider>

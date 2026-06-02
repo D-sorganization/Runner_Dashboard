@@ -134,6 +134,37 @@ jobs:
           path: coverage/
           retention-days: 7
 
+  perf-budget:
+    name: Frontend perf budget (real bundle)
+    needs: frontend-scope
+    if: needs.frontend-scope.outputs.run_frontend_tests == 'true'
+    runs-on: d-sorg-fleet
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "20"
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build production bundle
+        run: npm run build
+
+      # Enforce perf-budget.json against the REAL Vite-built JS bundle (issue
+      # #831): the entry chunk must stay small now that the legacy App is
+      # lazy-loaded and code-split out of first paint, and every non-vendor
+      # async chunk must stay within the per-chunk budget. Reverting the lazy
+      # boundary folds the monolith back into the entry and fails here.
+      - name: Enforce real-bundle perf budget
+        run: python scripts/check_frontend_perf_budget.py --bundle --json
+
   playwright-e2e:
     name: Playwright E2E smoke tests
     runs-on: d-sorg-fleet
