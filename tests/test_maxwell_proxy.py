@@ -289,3 +289,71 @@ async def test_maxwell_chat_daemon_unreachable_streams_fallback(client) -> None:
         resp = await client.post("/api/maxwell/chat", json={"message": "status"})
     assert resp.status_code == 200
     assert "Maxwell-Daemon is unreachable" in resp.text
+
+
+def _stream_cm(chunks: list[str], status_code: int = 200) -> MagicMock:
+    """Build a mock AsyncClient whose .stream() yields the given text chunks."""
+
+    async def _aiter_text():  # noqa: ANN202
+        for c in chunks:
+            yield c
+
+    stream_resp = MagicMock()
+    stream_resp.status_code = status_code
+    stream_resp.aiter_text = _aiter_text
+    stream_ctx = MagicMock()
+    stream_ctx.__aenter__ = AsyncMock(return_value=stream_resp)
+    stream_ctx.__aexit__ = AsyncMock(return_value=False)
+
+    mock_client = MagicMock()
+    mock_client.stream = MagicMock(return_value=stream_ctx)
+    mock_cm = MagicMock()
+    mock_cm.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_cm.__aexit__ = AsyncMock(return_value=False)
+    return mock_cm
+
+
+@pytest.mark.asyncio
+async def test_maxwell_chat_forwards_repo_and_repo_root(client) -> None:
+    """Codebase Q&A scoping fields (issue #838) are forwarded to the daemon."""
+    mock_cm = _stream_cm(["where queue is handled"])
+    with patch("httpx.AsyncClient", return_value=mock_cm):
+        resp = await client.post(
+            "/api/maxwell/chat",
+            json={
+                "message": "where is /api/queue handled?",
+                "repo": "Runner_Dashboard",
+                "repo_root": "/home/runner/Runner_Dashboard",
+            },
+        )
+    assert resp.status_code == 200
+    sent = mock_cm.__aenter__.return_value.stream.call_args.kwargs["json"]
+    assert sent["repo"] == "Runner_Dashboard"
+    assert sent["repo_root"] == "/home/runner/Runner_Dashboard"
+
+
+@pytest.mark.asyncio
+async def test_maxwell_chat_omits_repo_fields_when_absent(client) -> None:
+    """Fleet-status chat keeps an unchanged payload (no repo/repo_root keys)."""
+    mock_cm = _stream_cm(["ok"])
+    with patch("httpx.AsyncClient", return_value=mock_cm):
+        resp = await client.post("/api/maxwell/chat", json={"message": "status"})
+    assert resp.status_code == 200
+    sent = mock_cm.__aenter__.return_value.stream.call_args.kwargs["json"]
+    assert "repo" not in sent
+    assert "repo_root" not in sent
+
+
+@pytest.mark.asyncio
+async def test_maxwell_chat_501_degrades_gracefully_for_codebase(client) -> None:
+    """A reachable daemon without codebase support (Maxwell_Daemon#948) returns 501;
+    the proxy degrades it into a clear, actionable message, not a raw HTTP code."""
+    mock_cm = _stream_cm([], status_code=501)
+    with patch("httpx.AsyncClient", return_value=mock_cm):
+        resp = await client.post(
+            "/api/maxwell/chat",
+            json={"message": "where is X?", "repo": "Runner_Dashboard"},
+        )
+    assert resp.status_code == 200
+    assert "Codebase Q&A is not available" in resp.text
+    assert "HTTP 501" not in resp.text

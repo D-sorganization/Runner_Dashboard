@@ -65,4 +65,15 @@ describe("HelpAbout", () => {
     fireEvent.keyDown(document.body, { key: "?" });
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
   });
+
+  it("exposes an 'Ask the codebase' tab that mounts the codebase assistant (#838)", async () => {
+    render(<HelpAbout onNavigate={vi.fn()} fetchImpl={versionFetch()} />);
+    fireEvent.click(screen.getByRole("button", { name: /help and about/i }));
+    await screen.findByRole("dialog");
+    const chatTab = screen.getByRole("tab", { name: /ask the codebase/i });
+    fireEvent.click(chatTab);
+    expect(screen.getByRole("region", { name: /codebase assistant/i })).toBeInTheDocument();
+    // The codebase quick-chips are present once the assistant is mounted.
+    expect(screen.getByRole("button", { name: /what does \/api\/queue do\?/i })).toBeInTheDocument();
+  });
 });

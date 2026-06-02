@@ -49,8 +49,22 @@ class MaxwellPipelineControlBody(BaseModel):
 
 
 class MaxwellChatBody(BaseModel):
+    """Request body for POST /api/maxwell/chat.
+
+    ``repo``/``repo_root`` (issue #838) scope a codebase Q&A session to a single
+    repository. Both are optional so the existing fleet-status chat keeps working
+    unchanged; when supplied they are forwarded to Maxwell-Daemon, which jails its
+    agentic tools (read_file/grep_files/glob_files/run_bash) to that root. The
+    daemon-side capability is tracked in Maxwell_Daemon#948; until it ships the
+    daemon may answer 501 Not Implemented, which this proxy degrades gracefully.
+    """
+
     message: str = Field(..., max_length=4000)
     history: list[dict[str, str]] = Field(default_factory=list, max_length=20)
+    # Friendly repo identifier (e.g. "Runner_Dashboard") shown in the picker.
+    repo: str | None = Field(default=None, max_length=200)
+    # Absolute filesystem root the daemon jails its codebase tools to.
+    repo_root: str | None = Field(default=None, max_length=1000)
 
 
 def _maxwell_base_url() -> str:
@@ -307,13 +321,27 @@ async def maxwell_chat(
     *,
     principal: Principal = Depends(require_scope("operator")),  # noqa: B008
 ) -> StreamingResponse:
-    """Proxy chat messages to Maxwell-Daemon while preserving streamed output."""
+    """Proxy chat messages to Maxwell-Daemon while preserving streamed output.
+
+    When ``repo``/``repo_root`` are supplied (issue #838) they are forwarded so the
+    daemon scopes its agentic codebase tools to that repository. The companion
+    daemon capability is tracked in Maxwell_Daemon#948; if the running daemon does
+    not yet support codebase chat it answers ``501``, which we degrade into a clear,
+    actionable message rather than a dead-end "HTTP 501".
+    """
     path = "/api/chat"
-    payload = {
+    payload: dict[str, Any] = {
         "message": body.message,
         "history": body.history[-20:],
         "stream": True,
     }
+    # Forward codebase-scoping fields only when present, so the existing
+    # fleet-status chat payload is unchanged (additive, reversible — DbC).
+    if body.repo:
+        payload["repo"] = body.repo
+    if body.repo_root:
+        payload["repo_root"] = body.repo_root
+    codebase_scoped = bool(body.repo or body.repo_root)
 
     async def stream_daemon_response() -> Any:
         try:
@@ -325,15 +353,37 @@ async def maxwell_chat(
                     headers=_maxwell_headers(),
                 ) as resp:
                     log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
+                    if resp.status_code == 501 and codebase_scoped:
+                        # Daemon is reachable but the codebase Q&A capability
+                        # (Maxwell_Daemon#948) is not deployed yet. Degrade
+                        # gracefully instead of surfacing a raw 501.
+                        yield (
+                            "Codebase Q&A is not available on the connected Maxwell-Daemon yet. "
+                            "Update the daemon to a build with codebase tools (Maxwell_Daemon#948), "
+                            "or ask a fleet-status question instead."
+                        )
+                        return
                     if resp.status_code >= 400:
-                        yield f"Maxwell chat failed with HTTP {resp.status_code}."
+                        yield (
+                            f"Maxwell-Daemon rejected the chat request (HTTP {resp.status_code}). "
+                            "Check the daemon logs and that it is healthy, then retry."
+                        )
                         return
                     async for chunk in resp.aiter_text():
                         if chunk:
                             yield chunk
+        except httpx.TimeoutException:
+            log.info("maxwell_proxy: path=%s status=%s", path, "timeout")
+            yield "Maxwell-Daemon timed out while answering. It may be busy — retry in a moment."
+        except httpx.ConnectError:
+            log.info("maxwell_proxy: path=%s status=%s", path, "connect-error")
+            yield (
+                "Maxwell-Daemon is unreachable. Start it from Local Tools (or check its URL/token), "
+                "then retry — your chat history is preserved."
+            )
         except Exception as e:  # noqa: BLE001
             log.info("maxwell_proxy: path=%s status=%s", path, "error")
-            yield f"Maxwell-Daemon is unreachable: {str(e)[:120]}"
+            yield f"Maxwell-Daemon could not be reached: {str(e)[:120]}"
 
     return StreamingResponse(stream_daemon_response(), media_type="text/plain; charset=utf-8")
 
