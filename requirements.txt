@@ -69,7 +69,7 @@ pydantic==2.13.3
     #   runner-dashboard
 pydantic-core==2.46.3
     # via pydantic
-pyjwt==2.12.0
+pyjwt==2.13.0
     # via runner-dashboard
 python-dotenv==1.2.2
     # via uvicorn
