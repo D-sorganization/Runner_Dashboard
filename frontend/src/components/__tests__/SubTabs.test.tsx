@@ -88,3 +88,44 @@ describe("SubTabs (right badge)", () => {
     expect(screen.getByText("live")).toBeInTheDocument()
   })
 })
+
+describe("SubTabs (a11y — #833 tablist)", () => {
+  beforeEach(() => localStorage.clear())
+
+  it("exposes a tablist with roving focus and aria-selected", () => {
+    render(<SubTabs tabs={TABS} label="My sections" />)
+    const list = screen.getByRole("tablist", { name: "My sections" })
+    expect(list).toBeInTheDocument()
+    const alpha = screen.getByText("Alpha").closest("button")!
+    expect(alpha).toHaveAttribute("aria-selected", "true")
+    expect(alpha).toHaveAttribute("tabindex", "0")
+    const beta = screen.getByText("Beta").closest("button")!
+    expect(beta).toHaveAttribute("aria-selected", "false")
+    expect(beta).toHaveAttribute("tabindex", "-1")
+  })
+
+  it("moves between enabled tabs with arrow / Home / End keys (skipping disabled)", () => {
+    const onChange = vi.fn()
+    render(<SubTabs tabs={TABS} onChange={onChange} />)
+    const list = screen.getByRole("tablist")
+
+    fireEvent.keyDown(list, { key: "ArrowRight" })
+    expect(onChange).toHaveBeenLastCalledWith("b")
+
+    // Gamma is disabled, so wrapping from Beta lands back on Alpha (End would be
+    // Beta — the last *enabled* key).
+    fireEvent.keyDown(list, { key: "End" })
+    expect(onChange).toHaveBeenLastCalledWith("b")
+    fireEvent.keyDown(list, { key: "Home" })
+    expect(onChange).toHaveBeenLastCalledWith("a")
+    fireEvent.keyDown(list, { key: "ArrowLeft" })
+    expect(onChange).toHaveBeenLastCalledWith("b")
+  })
+
+  it("ignores unrelated keys", () => {
+    const onChange = vi.fn()
+    render(<SubTabs tabs={TABS} onChange={onChange} />)
+    fireEvent.keyDown(screen.getByRole("tablist"), { key: "x" })
+    expect(onChange).not.toHaveBeenCalled()
+  })
+})

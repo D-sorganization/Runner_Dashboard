@@ -12,9 +12,11 @@ interface StatProps {
   value: React.ReactNode
   color?: string
   sub?: React.ReactNode
+  /** Explicit tooltip for the sub-line; defaults to `sub` when it is a string. */
+  subTitle?: string
 }
 
-export function Stat({ label, value, color, sub }: StatProps) {
+export function Stat({ label, value, color, sub, subTitle }: StatProps) {
   return React.createElement(
     "div",
     { className: "stat-card" },
@@ -24,7 +26,17 @@ export function Stat({ label, value, color, sub }: StatProps) {
       { className: "stat-value", style: { color: color ?? "inherit" } },
       value,
     ),
-    sub ? React.createElement("div", { className: "stat-sub" }, sub) : null,
+    sub
+      ? React.createElement(
+          "div",
+          {
+            className: "stat-sub",
+            // Hover for the full text when the sub line has been truncated.
+            title: subTitle ?? (typeof sub === "string" ? sub : ""),
+          },
+          sub,
+        )
+      : null,
   )
 }
 
