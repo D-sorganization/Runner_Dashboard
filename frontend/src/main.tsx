@@ -17,6 +17,8 @@ import { Toaster } from './primitives/Toaster'
 import { RootErrorBoundary } from './primitives/RootErrorBoundary'
 import { BreakpointProvider, useBreakpoint } from './hooks/useBreakpoint'
 import { ThemeProvider } from './design/ThemeProvider'
+import { useThemeContext } from './design/ThemeContext'
+import { ThemeSelector } from './components/ThemeSelector'
 import './i18n'
 import './index.css'
 // Web Vitals — send metrics to backend (issue #385)
@@ -248,6 +250,16 @@ function ShellActiveProvider() {
   )
 }
 
+/**
+ * Persistent theme picker for the desktop shell header (#820). Reads the shared
+ * theme context (single source of truth via ThemeProvider/useTheme) so all 13
+ * fleet themes are reachable from the always-visible topbar.
+ */
+function ShellThemeSelector() {
+  const { mode, setMode } = useThemeContext()
+  return <ThemeSelector currentMode={mode} onThemeChange={setMode} />
+}
+
 function AppWithMobileShell({ initialTab }: { initialTab?: string }) {
   const breakpoint = useBreakpoint()
   const isMobile = breakpoint !== 'lg' && breakpoint !== 'xl'
@@ -315,7 +327,12 @@ function AppWithMobileShell({ initialTab }: { initialTab?: string }) {
       activeTabId={desktopTab}
       onSelect={setDesktopTab}
       actions={buildShellActions()}
-      headerExtra={<ShellActiveProvider />}
+      headerExtra={
+        <>
+          <ShellThemeSelector />
+          <ShellActiveProvider />
+        </>
+      }
     >
       <App
         initialTab={legacyInitialTab}
