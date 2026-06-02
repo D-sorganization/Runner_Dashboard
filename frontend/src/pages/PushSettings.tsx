@@ -137,7 +137,11 @@ export default function PushSettings() {
   );
 }
 
-function urlBase64ToUint8Array(base64String: string): Uint8Array {
+// Returns a Uint8Array explicitly backed by a plain ArrayBuffer so the result
+// is assignable to BufferSource (PushManager.subscribe.applicationServerKey).
+// Since TS 5.7 a bare `Uint8Array` is generic over ArrayBufferLike and no longer
+// satisfies BufferSource without this annotation.
+function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
   const rawData = window.atob(base64);

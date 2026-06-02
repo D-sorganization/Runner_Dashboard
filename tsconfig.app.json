@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "composite": true,
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+    "types": ["vite/client"]
+  },
+  "include": ["frontend/src"],
+  "exclude": [
+    "frontend/src/**/__tests__/**",
+    "frontend/src/**/*.test.ts",
+    "frontend/src/**/*.test.tsx",
+    "frontend/src/**/*.spec.ts",
+    "frontend/src/**/*.spec.tsx"
+  ]
+}

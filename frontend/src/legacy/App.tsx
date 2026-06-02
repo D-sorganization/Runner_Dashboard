@@ -1,3 +1,10 @@
+// @ts-nocheck
+/* eslint-disable */
+// NOTE: This directive MUST stay on line 1 — TypeScript only honors
+// `@ts-nocheck` when it is the first comment in the file (before any
+// statements). It was previously placed after the imports, so it was
+// silently ignored and the legacy file leaked ~1000 type errors into any
+// `tsc` run. Decomposition of this file is tracked separately (#403).
 import React from "react"
 import * as fleetAlerts from "../lib/fleetAlerts"
 import { AgentDispatchPage } from "../pages/AgentDispatch"
@@ -18,9 +25,6 @@ import {
 import { installWheelValueGuard } from "./wheelValueGuard"
 import { VoiceInputButton } from "../components/VoiceInputButton"
 import { ThemeSettings } from "../components/ThemeSettings"
-
-// @ts-nocheck
-/* eslint-disable */
 
 var h = React.createElement;
 var SERVICE_WORKER_CACHE_DENYLIST = [/^\/api\/credentials(?:\/|$)/];

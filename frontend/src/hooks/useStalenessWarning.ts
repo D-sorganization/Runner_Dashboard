@@ -35,8 +35,9 @@ export function useStalenessWarning(
   query: StalenessQuery,
   freshMs = 60_000,
 ): Staleness {
-  // Precondition guard (dev-only)
-  if (process.env.NODE_ENV !== 'production' && freshMs <= 0) {
+  // Precondition guard (dev-only). Use Vite's `import.meta.env` — `process`
+  // does not exist in the browser bundle.
+  if (!import.meta.env.PROD && freshMs <= 0) {
     throw new Error('[useStalenessWarning] freshMs must be positive');
   }
 
