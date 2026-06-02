@@ -1,9 +1,16 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.58
+**Spec Version:** 2.5.59
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-02T00:00:00-07:00
 **Status:** Active
+
+- **2026-06-02 (2.5.59):** Completed the PyJWT 2.13.0 security remediation by
+  bumping the pin in `requirements.txt` and `requirements.lock.txt`, which the
+  2.5.58 change left at 2.12.0 alongside the `pyproject.toml`/`uv.lock` updates.
+  `security-scan` (pip-audit on `requirements.txt`) and `quality-gate` now read
+  2.13.0 from every dependency manifest, fully clearing the PYSEC-2026 PyJWT
+  advisories across the resolved environment.
 
 - **2026-06-02 (2.5.58):** Security audit findings for PyJWT are remediated by
   upgrading `PyJWT[crypto]` from 2.12.0 to 2.13.0 in both `pyproject.toml` and
