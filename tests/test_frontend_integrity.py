@@ -118,7 +118,7 @@ def test_runner_facing_tables_use_sortable_headers() -> None:
     assert "function SortTh" in content
     assert "function sortRows" in content
     assert 'sortKey: "runner"' in content
-    assert 'sortKey: "waiting"' in content
+    assert 'sortKey: "waiting"' in content or 'sortKey="waiting"' in content
     assert 'sortKey: "machine"' in content
     assert 'sortKey: "when"' in content
 
