@@ -6,6 +6,7 @@
 // silently ignored and the legacy file leaked ~1000 type errors into any
 // `tsc` run. Decomposition of this file is tracked separately (#403).
 import React from "react"
+import { legacyFetch } from "../lib/api"
 import * as fleetAlerts from "../lib/fleetAlerts"
 import { AgentDispatchPage } from "../pages/AgentDispatch"
 import { Conductor } from "../pages/Conductor"
@@ -846,7 +847,7 @@ function FleetTab(p) {
   var driftState = React.useState(null);
   var driftInfo = driftState[0], setDriftInfo = driftState[1];
   React.useEffect(function () {
-    fetch("/api/deployment/git-drift")
+    legacyFetch("/api/deployment/git-drift")
       .then(function (r) { return r.json(); })
       .then(function (d) { setDriftInfo(d); })
       .catch(function () {});
@@ -2190,7 +2191,7 @@ function TestsTab(p) {
       n[repo] = "running";
       return n;
     });
-    fetch("/api/tests/rerun", {
+    legacyFetch("/api/tests/rerun", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
       body: JSON.stringify({ repo: repo, run_id: runId }),
@@ -2386,7 +2387,7 @@ function TestsTab(p) {
       method === "docker"
         ? "/api/heavy-tests/docker"
         : "/api/heavy-tests/dispatch";
-    fetch(url, {
+    legacyFetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
       body: JSON.stringify({
@@ -2739,7 +2740,7 @@ function StatsTab(p) {
   function refresh() {
     setLoading(true);
     var wfParams = new URLSearchParams({ days: days, group_by: groupBy });
-    fetch("/api/stats/workflows?" + wfParams)
+    legacyFetch("/api/stats/workflows?" + wfParams)
       .then(function (r) {
         return r.json();
       })
@@ -2763,7 +2764,7 @@ function StatsTab(p) {
     } else {
       tsParamObj.repo = row.repo;
     }
-    fetch("/api/stats/workflows/timeseries?" + new URLSearchParams(tsParamObj))
+    legacyFetch("/api/stats/workflows/timeseries?" + new URLSearchParams(tsParamObj))
       .then(function (r) {
         return r.json();
       })
@@ -2773,7 +2774,7 @@ function StatsTab(p) {
   }
   function collectNow() {
     setLoading(true);
-    fetch("/api/stats/workflows/collect", { method: "POST", headers: { "X-Requested-With": "XMLHttpRequest" } })
+    legacyFetch("/api/stats/workflows/collect", { method: "POST", headers: { "X-Requested-With": "XMLHttpRequest" } })
       .then(function (r) {
         return r.json();
       })
@@ -3191,7 +3192,7 @@ function PerformanceTab(p) {
 
   function refresh() {
     setLoading(true);
-    fetch("/api/metrics/web-vitals")
+    legacyFetch("/api/metrics/web-vitals")
       .then(function (r) { return r.json(); })
       .then(function (d) { setData(d || { routes: {} }); setLoading(false); })
       .catch(function () { setLoading(false); });
@@ -3262,7 +3263,7 @@ function AnalysisOutcomesTab() {
   }
   function refresh() {
     setLoading(true);
-    fetch("/api/analysis/workflow-machines?per_page=100")
+    legacyFetch("/api/analysis/workflow-machines?per_page=100")
       .then(function (r) { return r.json(); })
       .then(function (d) { setData(d || {}); setLoading(false); })
       .catch(function () { setLoading(false); });
@@ -3438,7 +3439,7 @@ function ReportsTab(p) {
   function loadReport(date) {
     setSelected(date);
     setRl(true);
-    fetch("/api/reports/" + date)
+    legacyFetch("/api/reports/" + date)
       .then(function (r) {
         return r.json();
       })
@@ -3971,7 +3972,7 @@ function DeploymentTab(p) {
       machine: machine,
       title: "Loading dry-run preview...",
     });
-    fetch("/api/deployment/update-signal", {
+    legacyFetch("/api/deployment/update-signal", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
       body: JSON.stringify({
@@ -4010,7 +4011,7 @@ function DeploymentTab(p) {
         confirming: true,
       }),
     );
-    fetch("/api/deployment/update-signal", {
+    legacyFetch("/api/deployment/update-signal", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
       body: JSON.stringify({
@@ -6382,7 +6383,7 @@ function PRsSubTab() {
   function fetchPRs() {
     setLoading(true);
     setFetchError(null);
-    fetch("/api/prs?limit=2000")
+    legacyFetch("/api/prs?limit=2000")
       .then(function (r) {
         if (!r.ok) throw new Error("HTTP " + r.status);
         return r.json();
@@ -6494,7 +6495,7 @@ function PRsSubTab() {
       prompt: modalPrompt,
       confirmation: { approved_by: (principal && principal.name) || "anonymous" },
     };
-    fetch("/api/prs/dispatch", {
+    legacyFetch("/api/prs/dispatch", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -7133,7 +7134,7 @@ function IssuesSubTab() {
     var activeSource = sourceFilter || 'github';
     setLoading(true);
     setFetchError(null);
-    fetch('/api/issues?limit=2000&source=' + encodeURIComponent(activeSource))
+    legacyFetch('/api/issues?limit=2000&source=' + encodeURIComponent(activeSource))
       .then(function (r) {
         if (!r.ok) { throw new Error('HTTP ' + r.status); }
         return r.json();
@@ -7151,7 +7152,7 @@ function IssuesSubTab() {
   }
 
   React.useEffect(function () {
-    fetch('/api/linear/workspaces')
+    legacyFetch('/api/linear/workspaces')
       .then(function (r) {
         if (!r.ok) { throw new Error('HTTP ' + r.status); }
         return r.json();
@@ -7289,7 +7290,7 @@ function IssuesSubTab() {
       return { repo: i.repo || i.repository || '', number: i.number };
     });
     setDispatchResult(null);
-    fetch('/api/issues/dispatch', {
+    legacyFetch('/api/issues/dispatch', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -9329,7 +9330,7 @@ function RemediationTab(p) {
                                 cursor: "pointer",
                               },
                               onClick: function () {
-                                fetch(
+                                legacyFetch(
                                   "/api/agent-remediation/dispatch-jules",
                                   {
                                     method: "POST",
@@ -10069,7 +10070,7 @@ function CredentialsTab(p) {
       lockMobileCredentials("This browser does not expose WebAuthn credentials.");
       return;
     }
-    fetch("/api/auth/webauthn/assert/begin", {
+    legacyFetch("/api/auth/webauthn/assert/begin", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
       body: "{}",
@@ -10093,7 +10094,7 @@ function CredentialsTab(p) {
         });
       })
       .then(function (credential) {
-        return fetch("/api/auth/webauthn/assert/complete", {
+        return legacyFetch("/api/auth/webauthn/assert/complete", {
           method: "POST",
           headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
           body: JSON.stringify({ credential: credentialToPayload(credential) }),
@@ -10366,7 +10367,7 @@ function MaxwellTab(p) {
 
   function fetchTasks() {
     setTasksLoading(true);
-    fetch("/api/maxwell/tasks?limit=10")
+    legacyFetch("/api/maxwell/tasks?limit=10")
       .then(function (r) { return r.json(); })
       .then(function (data) { setTasks(data.tasks || []); })
       .catch(function () { setTasks([]); })
@@ -10374,7 +10375,7 @@ function MaxwellTab(p) {
   }
 
   function fetchVersion() {
-    fetch("/api/maxwell/version")
+    legacyFetch("/api/maxwell/version")
       .then(function (r) { return r.json(); })
       .then(function (data) { setDaemonVersion(data.contract || data.daemon || ""); })
       .catch(function () { setDaemonVersion(""); });
@@ -10429,7 +10430,7 @@ function MaxwellTab(p) {
       ]);
     });
     setChatSending(true);
-    fetch("/api/maxwell/chat", {
+    legacyFetch("/api/maxwell/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
       body: JSON.stringify({ message: msg, history: chatMessages.slice(-12) }),
@@ -12087,7 +12088,7 @@ function ClineLauncherTab() {
   var busy = bs[0], setBusy = bs[1];
 
   function fetchStatus() {
-    fetch("/api/agent-launcher/status")
+    legacyFetch("/api/agent-launcher/status")
       .then(function (resp) {
         if (!resp.ok) throw new Error("HTTP " + resp.status);
         return resp.json();
@@ -12098,7 +12099,7 @@ function ClineLauncherTab() {
 
   function fetchRepos() {
     setLoading(true);
-    fetch("/api/agent-launcher/repos")
+    legacyFetch("/api/agent-launcher/repos")
       .then(function (resp) {
         if (resp.status === 503) {
           throw new Error(
@@ -12121,7 +12122,7 @@ function ClineLauncherTab() {
       opts.headers = { "Content-Type": "application/json" };
       opts.body = JSON.stringify(body);
     }
-    return fetch("/api/agent-launcher/" + verb, opts)
+    return legacyFetch("/api/agent-launcher/" + verb, opts)
       .then(function (resp) {
         return resp.json().then(function (j) {
           if (!resp.ok) throw new Error(j.detail || "HTTP " + resp.status);
@@ -13038,8 +13039,8 @@ function DiagnosticsTab() {
   function fetchDiagnostics() {
     setLoading(true);
     Promise.all([
-      fetch("/api/diagnostics/summary").then(function (r) { return r.json(); }),
-      fetch("/api/deployment/git-drift").then(function (r) { return r.json(); }),
+      legacyFetch("/api/diagnostics/summary").then(function (r) { return r.json(); }),
+      legacyFetch("/api/deployment/git-drift").then(function (r) { return r.json(); }),
     ])
       .then(function (results) {
         setData(results[0] || {});
@@ -13058,7 +13059,7 @@ function DiagnosticsTab() {
   function doRestartService() {
     setRestartLoading(true);
     setRestartResult(null);
-    fetch("/api/diagnostics/restart-service", { method: "POST" })
+    legacyFetch("/api/diagnostics/restart-service", { method: "POST" })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         setRestartResult(d);
@@ -13075,7 +13076,7 @@ function DiagnosticsTab() {
   function doGenerateLaunchers() {
     setLauncherLoading(true);
     setLauncherResult(null);
-    fetch("/api/launchers/generate", { method: "POST" })
+    legacyFetch("/api/launchers/generate", { method: "POST" })
       .then(function (r) { return r.json(); })
       .then(function (d) { setLauncherResult(d); setLauncherLoading(false); })
       .catch(function (e) {
@@ -13464,7 +13465,7 @@ function AssistantSidebar(props) {
       body.context.dashboard_state = ctx;
     }
 
-    fetch("/api/assistant/chat", {
+    legacyFetch("/api/assistant/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -13799,7 +13800,7 @@ function QuickDispatchPopover() {
   React.useEffect(function () {
     if (!open) return;
     if (repoList.length === 0) {
-      fetch("/api/repos")
+      legacyFetch("/api/repos")
         .then(function (r) { return r.json(); })
         .then(function (d) {
           var repos = (d && d.repos) ? d.repos : [];
@@ -13813,7 +13814,7 @@ function QuickDispatchPopover() {
         .catch(function () {});
     }
     if (providerList.length === 0) {
-      fetch("/api/agents/providers")
+      legacyFetch("/api/agents/providers")
         .then(function (r) { return r.json(); })
         .then(function (d) {
           var providers = d && d.providers ? Object.keys(d.providers) : ["claude_code_cli"];
@@ -13872,7 +13873,7 @@ function QuickDispatchPopover() {
     if (PROVIDERS_WITH_MODEL.indexOf(form.provider) !== -1 && form.model.trim()) {
       body.model = form.model.trim();
     }
-    fetch("/api/agents/quick-dispatch", {
+    legacyFetch("/api/agents/quick-dispatch", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
       body: JSON.stringify(body),
@@ -14148,7 +14149,7 @@ function PrincipalsTab() {
   var createdToken = createdTokenState[0], setCreatedToken = createdTokenState[1];
 
   function loadData() {
-    fetch("/api/admin/principals")
+    legacyFetch("/api/admin/principals")
 .then(function (r) {
   if (!r.ok) throw new Error("Failed to load principals");
   return r.json();
@@ -14156,7 +14157,7 @@ function PrincipalsTab() {
 .then(function (data) { setPrincipals(data.principals); })
 .catch(function (e) { setError(e.message); });
 
-    fetch("/api/admin/tokens")
+    legacyFetch("/api/admin/tokens")
 .then(function (r) {
   if (!r.ok) throw new Error("Failed to load tokens");
   return r.json();
@@ -14172,7 +14173,7 @@ function PrincipalsTab() {
   function saveQuota(e) {
     e.preventDefault();
     var q = editingQuota.quotas;
-    fetch("/api/admin/principals/" + editingQuota.principalId + "/quota", {
+    legacyFetch("/api/admin/principals/" + editingQuota.principalId + "/quota", {
 method: "PATCH",
 headers: { "Content-Type": "application/json" },
 body: JSON.stringify({
@@ -14196,7 +14197,7 @@ loadData();
     var body = { name: name };
     if (exp) body.expires_in_days = parseInt(exp);
 
-    fetch("/api/admin/principals/" + mintingToken + "/token", {
+    legacyFetch("/api/admin/principals/" + mintingToken + "/token", {
 method: "POST",
 headers: { "Content-Type": "application/json" },
 body: JSON.stringify(body)
@@ -14215,7 +14216,7 @@ loadData();
 
   function revokeToken(hash) {
     if(!confirm("Are you sure you want to revoke this token?")) return;
-    fetch("/api/admin/tokens/" + hash, { method: "DELETE" })
+    legacyFetch("/api/admin/tokens/" + hash, { method: "DELETE" })
 .then(function(r) {
   if(!r.ok) throw new Error("Failed to revoke token");
   loadData();
@@ -14415,7 +14416,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   var conductorEnabled = conductorState[0],
     setConductorEnabled = conductorState[1];
   React.useEffect(function () {
-    fetch("/api/orchestrator/queue", { headers: { "X-Requested-With": "XMLHttpRequest" } })
+    legacyFetch("/api/orchestrator/queue", { headers: { "X-Requested-With": "XMLHttpRequest" } })
       .then(function (r) { setConductorEnabled(r.status !== 404); })
       .catch(function () { setConductorEnabled(false); });
   }, []);
@@ -14655,7 +14656,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
 
   function fetchFleetOrchestration() {
     setFleetOrchLoading(true);
-    fetch("/api/fleet/orchestration")
+    legacyFetch("/api/fleet/orchestration")
       .then(function (r) {
         return r.json();
       })
@@ -14671,7 +14672,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   }
 
   function orchDispatch(params) {
-    return fetch("/api/fleet/orchestration/dispatch", {
+    return legacyFetch("/api/fleet/orchestration/dispatch", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
       body: JSON.stringify(params),
@@ -14684,7 +14685,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   }
 
   function orchDeploy(params) {
-    return fetch("/api/fleet/orchestration/deploy", {
+    return legacyFetch("/api/fleet/orchestration/deploy", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
       body: JSON.stringify(params),
@@ -14698,7 +14699,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
 
   function fetchCredentials() {
     setCredentialsLoading(true);
-    fetch("/api/credentials")
+    legacyFetch("/api/credentials")
       .then(function (r) {
         return r.json();
       })
@@ -14719,7 +14720,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
     var providerLabel = probe.label || probe.name || provider;
     if (!keyValue) return;
     if (!keyValue) return;
-    fetch("/api/credentials/set-key", {
+    legacyFetch("/api/credentials/set-key", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
       body: JSON.stringify({
@@ -14744,7 +14745,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
 
   function fetchWorkflowsList() {
     setWorkflowsListLoading(true);
-    fetch("/api/workflows/list")
+    legacyFetch("/api/workflows/list")
       .then(function (r) {
         return r.json();
       })
@@ -14759,7 +14760,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
       });
   }
   function dispatchWorkflow(params) {
-    return fetch("/api/workflows/dispatch", {
+    return legacyFetch("/api/workflows/dispatch", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
       body: JSON.stringify(params),
@@ -14782,7 +14783,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
 
   function fetchMaxwellStatus() {
     setMaxwellLoading(true);
-    fetch("/api/maxwell/status")
+    legacyFetch("/api/maxwell/status")
       .then(function (r) {
         return r.json();
       })
@@ -14797,7 +14798,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
       });
   }
   function maxwellControl(params) {
-    return fetch("/api/maxwell/control", {
+    return legacyFetch("/api/maxwell/control", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
       body: JSON.stringify(params),
@@ -14810,7 +14811,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   }
 
   function fetchOptionalStats() {
-    fetch("/api/stats")
+    legacyFetch("/api/stats")
       .then(function (r) {
         return r.json();
       })
@@ -14822,35 +14823,35 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   function fetchFleet() {
     fetchOptionalStats();
     Promise.all([
-      fetch("/api/runners")
+      legacyFetch("/api/runners")
         .then(function (r) {
           return r.json();
         })
         .catch(function () {
           return null;
         }),
-      fetch("/api/runs?per_page=30")
+      legacyFetch("/api/runs?per_page=30")
         .then(function (r) {
           return r.json();
         })
         .catch(function () {
           return null;
         }),
-      fetch("/api/system")
+      legacyFetch("/api/system")
         .then(function (r) {
           return r.json();
         })
         .catch(function () {
           return null;
         }),
-      fetch("/api/fleet/schedule")
+      legacyFetch("/api/fleet/schedule")
         .then(function (r) {
           return r.json();
         })
         .catch(function () {
           return null;
         }),
-      fetch("/api/github/status")
+      legacyFetch("/api/github/status")
         .then(function (r) {
           return r.json();
         })
@@ -14895,7 +14896,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   }
   function fetchRepos() {
     setReposLoading(true);
-    fetch("/api/repos")
+    legacyFetch("/api/repos")
       .then(function (r) {
         return r.json();
       })
@@ -14909,7 +14910,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   }
   function fetchTests() {
     setTestsLoading(true);
-    fetch("/api/heavy-tests/repos")
+    legacyFetch("/api/heavy-tests/repos")
       .then(function (r) {
         return r.json();
       })
@@ -14922,7 +14923,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
       });
   }
   function fetchCiResults() {
-    fetch("/api/tests/ci-results")
+    legacyFetch("/api/tests/ci-results")
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (d && d.results) setCiResults(d.results);
@@ -14931,7 +14932,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   }
   function fetchReports() {
     setReportsLoading(true);
-    fetch("/api/reports")
+    legacyFetch("/api/reports")
       .then(function (r) {
         return r.json();
       })
@@ -14945,7 +14946,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   }
   function fetchQueue() {
     setQueueLoading(true);
-    fetch("/api/queue")
+    legacyFetch("/api/queue")
       .then(function (r) {
         return r.json();
       })
@@ -14959,7 +14960,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   }
   function fetchMachines() {
     setMachinesLoading(true);
-    fetch("/api/fleet/nodes")
+    legacyFetch("/api/fleet/nodes")
       .then(function (r) {
         return r.json();
       })
@@ -14991,7 +14992,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   }
   function fetchLocalApps() {
     setLocalAppsLoading(true);
-    fetch("/api/local-apps")
+    legacyFetch("/api/local-apps")
       .then(function (r) {
         return r.json();
       })
@@ -15004,7 +15005,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
       });
   }
   function fetchEnrichedRuns() {
-    fetch("/api/runs/enriched?per_page=50")
+    legacyFetch("/api/runs/enriched?per_page=50")
       .then(function (r) {
         return r.json();
       })
@@ -15014,7 +15015,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
       .catch(function () {});
   }
   function fetchWatchdog() {
-    fetch("/api/watchdog")
+    legacyFetch("/api/watchdog")
       .then(function (r) {
         return r.json();
       })
@@ -15024,7 +15025,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
       .catch(function () {});
   }
   function fetchDeployment() {
-    fetch("/api/deployment")
+    legacyFetch("/api/deployment")
       .then(function (r) {
         return r.json();
       })
@@ -15035,7 +15036,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   }
   function fetchDeploymentState() {
     setDeploymentStateLoading(true);
-    fetch("/api/deployment/state")
+    legacyFetch("/api/deployment/state")
       .then(function (r) {
         return r.json();
       })
@@ -15050,13 +15051,13 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   function fetchRemediationConfig() {
     setRemediationLoading(true);
     Promise.all([
-      fetch("/api/agent-remediation/config").then(function (r) {
+      legacyFetch("/api/agent-remediation/config").then(function (r) {
         return r.json();
       }),
-      fetch("/api/agent-remediation/workflows").then(function (r) {
+      legacyFetch("/api/agent-remediation/workflows").then(function (r) {
         return r.json();
       }),
-      fetch("/api/agent-remediation/history")
+      legacyFetch("/api/agent-remediation/history")
         .then(function (r) {
           return r.json();
         })
@@ -15086,7 +15087,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   }
   function saveRemediationConfig(policy) {
     setRemediationLoading(true);
-    return fetch("/api/agent-remediation/config", {
+    return legacyFetch("/api/agent-remediation/config", {
       method: "PUT",
       headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
       body: JSON.stringify({ policy: policy }),
@@ -15139,7 +15140,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
     }
     setRemediationLoading(true);
     setRemediationDispatchState(null);
-    fetch("/api/agent-remediation/plan", {
+    legacyFetch("/api/agent-remediation/plan", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
       body: JSON.stringify(
@@ -15183,7 +15184,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
         payload.run_id +
         ". Waiting for agent heartbeat.",
     });
-    fetch("/api/agent-remediation/dispatch", {
+    legacyFetch("/api/agent-remediation/dispatch", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
       body: JSON.stringify(
@@ -15206,7 +15207,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
         setRemediationError(null);
         setRemediationLoading(false);
         // Refresh history after dispatch
-        fetch("/api/agent-remediation/history")
+        legacyFetch("/api/agent-remediation/history")
           .then(function (r) {
             return r.json();
           })
@@ -15225,7 +15226,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   }
   function fetchScheduledJobs() {
     setScheduledJobsLoading(true);
-    fetch("/api/scheduled-workflows")
+    legacyFetch("/api/scheduled-workflows")
       .then(function (r) {
         return r.json();
       })
@@ -15239,7 +15240,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   }
   function fetchRunnerCapacity() {
     setRunnerCapacityLoading(true);
-    fetch("/api/fleet/schedule")
+    legacyFetch("/api/fleet/schedule")
       .then(function (r) {
         return r.json();
       })
@@ -15253,7 +15254,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   }
   function saveRunnerCapacity(schedule, apply) {
     setRunnerCapacityLoading(true);
-    fetch("/api/fleet/schedule", {
+    legacyFetch("/api/fleet/schedule", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
       body: JSON.stringify({ schedule: schedule, apply: apply }),
@@ -15276,7 +15277,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   function fetchAssessments() {
     setAssessmentLoading(true);
     setAssessmentError(null);
-    fetch("/api/assessments/scores")
+    legacyFetch("/api/assessments/scores")
       .then(function (r) {
         return r.json();
       })
@@ -15291,7 +15292,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   }
 
   function dispatchAssessment(params) {
-    return fetch("/api/assessments/dispatch", {
+    return legacyFetch("/api/assessments/dispatch", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
       body: JSON.stringify(params),
@@ -15307,14 +15308,14 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   function fetchFeatureRequests() {
     setFeatureRequestsLoading(true);
     Promise.all([
-      fetch("/api/feature-requests")
+      legacyFetch("/api/feature-requests")
         .then(function (r) {
           return r.json();
         })
         .catch(function () {
           return { requests: [] };
         }),
-      fetch("/api/feature-requests/templates")
+      legacyFetch("/api/feature-requests/templates")
         .then(function (r) {
           return r.json();
         })
@@ -15332,7 +15333,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   }
 
   function dispatchFeatureRequest(params) {
-    return fetch("/api/feature-requests/dispatch", {
+    return legacyFetch("/api/feature-requests/dispatch", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
       body: JSON.stringify(params),
@@ -15346,7 +15347,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   }
 
   function savePromptTemplate(params) {
-    return fetch("/api/prompt-templates", {
+    return legacyFetch("/api/prompt-templates", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
       body: JSON.stringify(params),
@@ -15365,7 +15366,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   }
 
   function updatePromptNotes(params) {
-    return fetch("/api/settings/prompt-notes", {
+    return legacyFetch("/api/settings/prompt-notes", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(params),
@@ -15379,7 +15380,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   }
 
   function fetchOptionalStats() {
-    fetch("/api/stats")
+    legacyFetch("/api/stats")
       .then(function (r) {
         return r.json();
       })
@@ -15391,28 +15392,28 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   function fetchFleet() {
     fetchOptionalStats();
     Promise.all([
-      fetch("/api/runners")
+      legacyFetch("/api/runners")
         .then(function (r) {
           return r.json();
         })
         .catch(function () {
           return null;
         }),
-      fetch("/api/runs?per_page=30")
+      legacyFetch("/api/runs?per_page=30")
         .then(function (r) {
           return r.json();
         })
         .catch(function () {
           return null;
         }),
-      fetch("/api/system")
+      legacyFetch("/api/system")
         .then(function (r) {
           return r.json();
         })
         .catch(function () {
           return null;
         }),
-      fetch("/api/fleet/schedule")
+      legacyFetch("/api/fleet/schedule")
         .then(function (r) {
           return r.json();
         })
@@ -15454,7 +15455,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   }
   function fetchRepos() {
     setReposLoading(true);
-    fetch("/api/repos")
+    legacyFetch("/api/repos")
       .then(function (r) {
         return r.json();
       })
@@ -15468,7 +15469,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   }
   function fetchTests() {
     setTestsLoading(true);
-    fetch("/api/heavy-tests/repos")
+    legacyFetch("/api/heavy-tests/repos")
       .then(function (r) {
         return r.json();
       })
@@ -15481,7 +15482,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
       });
   }
   function fetchCiResults() {
-    fetch("/api/tests/ci-results")
+    legacyFetch("/api/tests/ci-results")
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (d && d.results) setCiResults(d.results);
@@ -15490,7 +15491,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   }
   function fetchReports() {
     setReportsLoading(true);
-    fetch("/api/reports")
+    legacyFetch("/api/reports")
       .then(function (r) {
         return r.json();
       })
@@ -15504,7 +15505,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   }
   function fetchQueue() {
     setQueueLoading(true);
-    fetch("/api/queue")
+    legacyFetch("/api/queue")
       .then(function (r) {
         return r.json();
       })
@@ -15518,7 +15519,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   }
   function fetchMachines() {
     setMachinesLoading(true);
-    fetch("/api/fleet/nodes")
+    legacyFetch("/api/fleet/nodes")
       .then(function (r) {
         return r.json();
       })
@@ -15550,7 +15551,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   }
   function fetchLocalApps() {
     setLocalAppsLoading(true);
-    fetch("/api/local-apps")
+    legacyFetch("/api/local-apps")
       .then(function (r) {
         return r.json();
       })
@@ -15563,7 +15564,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
       });
   }
   function fetchEnrichedRuns() {
-    fetch("/api/runs/enriched?per_page=50")
+    legacyFetch("/api/runs/enriched?per_page=50")
       .then(function (r) {
         return r.json();
       })
@@ -15573,7 +15574,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
       .catch(function () {});
   }
   function fetchWatchdog() {
-    fetch("/api/watchdog")
+    legacyFetch("/api/watchdog")
       .then(function (r) {
         return r.json();
       })
@@ -15583,7 +15584,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
       .catch(function () {});
   }
   function fetchDeployment() {
-    fetch("/api/deployment")
+    legacyFetch("/api/deployment")
       .then(function (r) {
         return r.json();
       })
@@ -15594,7 +15595,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   }
   function fetchDeploymentState() {
     setDeploymentStateLoading(true);
-    fetch("/api/deployment/state")
+    legacyFetch("/api/deployment/state")
       .then(function (r) {
         return r.json();
       })
@@ -15609,10 +15610,10 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   function fetchRemediationConfig() {
     setRemediationLoading(true);
     Promise.all([
-      fetch("/api/agent-remediation/config").then(function (r) {
+      legacyFetch("/api/agent-remediation/config").then(function (r) {
         return r.json();
       }),
-      fetch("/api/agent-remediation/workflows").then(function (r) {
+      legacyFetch("/api/agent-remediation/workflows").then(function (r) {
         return r.json();
       }),
     ])
@@ -15637,7 +15638,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   }
   function saveRemediationConfig(policy) {
     setRemediationLoading(true);
-    return fetch("/api/agent-remediation/config", {
+    return legacyFetch("/api/agent-remediation/config", {
       method: "PUT",
       headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
       body: JSON.stringify({ policy: policy }),
@@ -15695,7 +15696,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
     }
     setRemediationLoading(true);
     setRemediationDispatchState(null);
-    fetch("/api/agent-remediation/plan", {
+    legacyFetch("/api/agent-remediation/plan", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
       body: JSON.stringify(
@@ -15739,7 +15740,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
         payload.run_id +
         ". Waiting for agent heartbeat.",
     });
-    fetch("/api/agent-remediation/dispatch", {
+    legacyFetch("/api/agent-remediation/dispatch", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
       body: JSON.stringify(
@@ -15772,7 +15773,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   }
   function fetchScheduledJobs() {
     setScheduledJobsLoading(true);
-    fetch("/api/scheduled-workflows")
+    legacyFetch("/api/scheduled-workflows")
       .then(function (r) {
         return r.json();
       })
@@ -15786,7 +15787,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   }
   function fetchRunnerCapacity() {
     setRunnerCapacityLoading(true);
-    fetch("/api/fleet/schedule")
+    legacyFetch("/api/fleet/schedule")
       .then(function (r) {
         return r.json();
       })
@@ -15800,7 +15801,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   }
   function saveRunnerCapacity(schedule, apply) {
     setRunnerCapacityLoading(true);
-    fetch("/api/fleet/schedule", {
+    legacyFetch("/api/fleet/schedule", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
       body: JSON.stringify({ schedule: schedule, apply: apply }),
@@ -15820,14 +15821,14 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   }
 
   function fetchPrincipal() {
-    fetch("/api/auth/me")
+    legacyFetch("/api/auth/me")
       .then(function(r) { return r.ok ? r.json() : null; })
       .then(function(d) { setPrincipal(d); })
       .catch(function() { setPrincipal(null); });
   }
 
   function fetchRunnerAudit() {
-    fetch("/api/runner-routing-audit")
+    legacyFetch("/api/runner-routing-audit")
       .then(function(r) { return r.json(); })
       .then(function(d) {
         // NOTE (issue #819): we intentionally do NOT reset any dismissal here.
@@ -15842,7 +15843,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   }
 
   function triggerRunnerAuditRefresh() {
-    fetch("/api/runner-routing-audit/refresh", {
+    legacyFetch("/api/runner-routing-audit/refresh", {
       method: "POST",
       headers: { "X-Requested-With": "XMLHttpRequest" },
     })
@@ -15905,7 +15906,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
     var failureCount = 0;
     var maxFailures = 3;
     function checkHealth() {
-      fetch("/health", { method: "GET" })
+      legacyFetch("/health", { method: "GET" })
         .then(function (r) {
           if (r.ok) {
             failureCount = 0;
@@ -15930,7 +15931,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
 
   function onFleet(a) {
     setActionLoading(true);
-    fetch("/api/fleet/control/" + a, { method: "POST", headers: { "X-Requested-With": "XMLHttpRequest" } })
+    legacyFetch("/api/fleet/control/" + a, { method: "POST", headers: { "X-Requested-With": "XMLHttpRequest" } })
       .then(function () {
         setTimeout(fetchFleet, 2000);
       })
@@ -15942,7 +15943,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   }
   function onRunner(id, a) {
     setActionLoading(true);
-    fetch("/api/runners/" + id + "/" + a, { method: "POST", headers: { "X-Requested-With": "XMLHttpRequest" } })
+    legacyFetch("/api/runners/" + id + "/" + a, { method: "POST", headers: { "X-Requested-With": "XMLHttpRequest" } })
       .then(function () {
         setTimeout(fetchFleet, 2000);
       })
@@ -16649,7 +16650,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
             href: principal ? "#" : "/api/auth/github",
             onClick: principal ? function(e) {
               e.preventDefault();
-              fetch("/api/auth/logout", {method: "POST", headers: { "X-Requested-With": "XMLHttpRequest" }})
+              legacyFetch("/api/auth/logout", {method: "POST", headers: { "X-Requested-With": "XMLHttpRequest" }})
                 .then(function() { window.location.reload(); });
             } : undefined,
             className: "btn",
