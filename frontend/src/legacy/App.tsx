@@ -1126,10 +1126,20 @@ function FleetTab(p) {
             : null,
         ),
       ),
-      // Alert details now live in the consolidated, durable AlertsCenter
-      // surface (status pill + ack/snooze drawer) in the shell topbar — see
-      // issue #819. The hero keeps only the at-a-glance status + count above to
-      // avoid the old re-popping alert list duplicated across the screen.
+      h(
+        "div",
+        { className: "fleet-hero__alerts", "aria-label": "Fleet alerts" },
+        heroAlerts.length === 0
+          ? h("span", { className: "fleet-hero__alert fleet-hero__alert--ok" }, "No active fleet alerts")
+          : heroAlerts.slice(0, 3).map(function (alert) {
+              return h(
+                "div",
+                { key: alert.id, className: "fleet-hero__alert fleet-hero__alert--" + alert.level },
+                h("span", { className: "fleet-hero__alert-title" }, alert.title),
+                h("span", { className: "fleet-hero__alert-detail" }, alert.detail),
+              );
+            }),
+      ),
     ),
     h(
       "div",
