@@ -1435,11 +1435,12 @@ audit trail.
 
 ### Static Assets
 
-| Method | Path                    | Description              |
-| ------ | ----------------------- | ------------------------ |
-| GET    | `/`                     | Serves `dist/index.html` |
-| GET    | `/manifest.webmanifest` | PWA manifest             |
-| GET    | `/icon.svg`             | App icon                 |
+| Method | Path                    | Description                                                                                                                                                                                                                                                                  |
+| ------ | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/`                     | Serves `dist/index.html`                                                                                                                                                                                                                                                     |
+| GET    | `/manifest.webmanifest` | PWA manifest                                                                                                                                                                                                                                                                 |
+| GET    | `/icon.svg`             | App icon                                                                                                                                                                                                                                                                     |
+| GET    | `/{full_path:path}`     | SPA deep-link fallback — serves `dist/index.html` (`text/html`) for any unmatched non-`/api/`, non-static GET so React Router routes (`/t/:tabId`, `/settings/push`) load on a cold request. Registered last; `/api/*` and known static prefixes are excluded and still 404. |
 
 ---
 
