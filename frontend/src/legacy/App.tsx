@@ -12,6 +12,7 @@ import { Conductor } from "../pages/Conductor"
 import { QueueTab } from "../pages/Queue"
 import { Badge } from "../primitives/Badge"
 import { Pill } from "../primitives/Pill"
+import { AlertsCenter } from "../primitives/AlertsCenter"
 import { RecoveryDialog } from "./RecoveryDialog"
 import { SessionExpiredDialog } from "./SessionExpiredDialog"
 import { marked } from "marked"
@@ -1084,23 +1085,10 @@ function FleetTab(p) {
             : null,
         ),
       ),
-      heroAlerts.length > 0
-        ? h(
-            "ul",
-            { className: "fleet-hero__alerts", "aria-label": "Active alerts" },
-            heroAlerts.map(function (a, i) {
-              return h(
-                "li",
-                {
-                  key: "alert-" + i,
-                  className: "fleet-hero__alert fleet-hero__alert--" + a.level,
-                },
-                h("span", { className: "fleet-hero__alert-title" }, a.title),
-                h("span", { className: "fleet-hero__alert-detail" }, a.detail),
-              );
-            }),
-          )
-        : null,
+      // Alert details now live in the consolidated, durable AlertsCenter
+      // surface (status pill + ack/snooze drawer) in the shell topbar — see
+      // issue #819. The hero keeps only the at-a-glance status + count above to
+      // avoid the old re-popping alert list duplicated across the screen.
     ),
     h(
       "div",
@@ -14624,8 +14612,8 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   var sessionExpiredOpen = seS[0], setSessionExpiredOpen = seS[1];
   var rauS = React.useState({ violations: [], last_checked: null, error: null });
   var runnerAudit = rauS[0], setRunnerAudit = rauS[1];
-  var rauDismissS = React.useState(false);
-  var auditBannerDismissed = rauDismissS[0], setAuditBannerDismissed = rauDismissS[1];
+  // The standalone billing/audit dismiss state was removed in issue #819 — the
+  // alert now lives in the consolidated AlertsCenter with durable ack/snooze.
 
   React.useEffect(function () {
     var unsubscribe = subscribeSessionExpired(function () {
@@ -15840,8 +15828,13 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
     fetch("/api/runner-routing-audit")
       .then(function(r) { return r.json(); })
       .then(function(d) {
+        // NOTE (issue #819): we intentionally do NOT reset any dismissal here.
+        // The old `setAuditBannerDismissed(false)` ran on every poll and
+        // structurally undid the operator's Dismiss. Acknowledgement is now
+        // durable via lib/alertAck (keyed by alert id + contentHash), so a
+        // re-poll never re-surfaces an acknowledged alert unless its content
+        // materially changes.
         setRunnerAudit(d || { violations: [], last_checked: null, error: null });
-        setAuditBannerDismissed(false);
       })
       .catch(function() {});
   }
@@ -15959,6 +15952,71 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   }
 
   var asstPosition = lsGet(ASST_LS.position, "right");
+
+  // ─── Consolidated alert surface (issue #819) ────────────────────────────
+  // Roll the cross-cutting fleet signals into ONE durable, acknowledgeable
+  // surface (status pill + drawer) instead of the old hero list + three sticky
+  // banners that re-popped on every poll. Uses the same pure rollup as the
+  // FleetTab hero so the two stay in sync (DRY). Telemetry-degraded and GitHub
+  // API conditions are folded in as additional synthetic alerts so a single
+  // surface owns every cross-cutting signal.
+  var alertNodes = (machinesData.nodes || []);
+  var alertMachineCount = alertNodes.length;
+  var alertMachineOnline = alertNodes.filter(function (n) { return n.online; }).length;
+  var appAlertsResult = fleetAlerts.computeFleetAlerts({
+    machineCount: alertMachineCount,
+    machineOnline: alertMachineOnline,
+    machineNodes: alertNodes,
+    watchdog: watchdog,
+    stats: stats,
+    completedRuns: stats.runs_completed || 0,
+    runnerAudit: runnerAudit,
+  });
+  var appAlerts = appAlertsResult.alerts.slice();
+  // Fold the former "telemetry degraded" sticky banner into the surface.
+  if (runnerFetchState.error || runnerFetchState.stale || machineFetchState.error || machineFetchState.stale) {
+    var degradedDetail = [
+      runnerFetchState.error
+        ? "Runner status is unavailable; showing last known or degraded data."
+        : runnerFetchState.stale ? "Runner status is stale." : null,
+      machineFetchState.error
+        ? "Machine health is partially unavailable; local data is kept when available."
+        : machineFetchState.stale ? "Machine health is partial." : null,
+    ].filter(Boolean).join(" ");
+    appAlerts.push({
+      id: "telemetry-degraded",
+      level: "warning",
+      title: "Fleet telemetry degraded",
+      detail: degradedDetail || "Some fleet telemetry is unavailable.",
+      contentHash: fleetAlerts.alertContentHash({
+        id: "telemetry-degraded", level: "warning",
+        title: "Fleet telemetry degraded", detail: degradedDetail,
+      }),
+    });
+  }
+  // Fold the former "GitHub API degraded" sticky banner into the surface.
+  if (githubStatus && (githubStatus.status === "rate_limited" || githubStatus.status === "auth_error")) {
+    var ghDetail = githubStatus.status === "rate_limited"
+      ? ("Rate limited" + (githubStatus.retry_after_seconds ? " for about " + githubStatus.retry_after_seconds + "s" : "") + ". Cached local runner data may still be shown.")
+      : "Authentication failed. Refresh the dashboard GitHub token before relying on GitHub-backed views.";
+    appAlerts.push({
+      id: "github-api",
+      level: githubStatus.status === "auth_error" ? "critical" : "warning",
+      title: "GitHub API degraded",
+      detail: ghDetail,
+      contentHash: fleetAlerts.alertContentHash({
+        id: "github-api",
+        level: githubStatus.status === "auth_error" ? "critical" : "warning",
+        title: "GitHub API degraded", detail: ghDetail,
+      }),
+    });
+  }
+  function onAlertNavigate(alertId) {
+    if (alertId === "hosted-runners") { setTab("runner-audit"); return; }
+    if (alertId === "github-api") { setTab("runner-audit"); return; }
+    if (alertId === "machines-offline" || alertId === "telemetry-degraded") { setTab("machines"); return; }
+    setTab("overview");
+  }
 
   return h(
     "div",
@@ -16649,6 +16707,10 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
           },
           "Build " + shortSha(deployment.git_sha),
         ),
+        h(AlertsCenter, {
+          alerts: appAlerts,
+          onNavigate: onAlertNavigate,
+        }),
         h("button", {
           className: "btn",
           style: { marginLeft: 4, background: asstOpen ? "var(--accent-blue)" : undefined, color: asstOpen ? "#fff" : undefined },
@@ -16683,118 +16745,6 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
       ),
       ), // close app-header__row--secondary
     ),
-    (runnerAudit.violations && runnerAudit.violations.length > 0 && !auditBannerDismissed)
-      ? h(
-          "div",
-          {
-            id: "hosted-runner-alert-banner",
-            style: {
-              background: "linear-gradient(90deg, rgba(248,81,73,0.18) 0%, rgba(240,136,62,0.18) 100%)",
-              borderBottom: "2px solid var(--accent-red)",
-              padding: "10px 24px",
-              display: "flex",
-              alignItems: "center",
-              gap: "12px",
-              fontSize: "13px",
-              fontWeight: "500",
-              color: "var(--text-primary)",
-              zIndex: 90,
-              position: "sticky",
-              top: "56px",
-            },
-          },
-          h("span", { style: { fontSize: "18px" } }, "⚠️"),
-          h(
-            "span",
-            { style: { flex: 1 } },
-            h("strong", { style: { color: "var(--accent-red)" } }, "BILLING ALERT: "),
-            runnerAudit.violations.length + " workflow job(s) detected on GitHub-hosted runners. This incurs unexpected billing costs.",
-          ),
-          h(
-            "button",
-            {
-              className: "btn",
-              style: { background: "rgba(248,81,73,0.2)", color: "var(--accent-red)", border: "1px solid var(--accent-red)", fontSize: "12px" },
-              onClick: function() { setTab("runner-audit"); },
-            },
-            "View Details",
-          ),
-          h(
-            "button",
-            {
-              className: "btn",
-              style: { fontSize: "12px", marginLeft: 4 },
-              title: "Dismiss banner (violations still visible in Runner Audit tab)",
-              onClick: function() { setAuditBannerDismissed(true); },
-            },
-            "× Dismiss",
-          ),
-        )
-      : null,
-    (runnerFetchState.error || runnerFetchState.stale || machineFetchState.error || machineFetchState.stale)
-      ? h(
-          "div",
-          {
-            id: "fleet-data-degraded-banner",
-            style: {
-              background: "rgba(240,136,62,0.16)",
-              borderBottom: "1px solid var(--accent-orange)",
-              padding: "10px 24px",
-              display: "flex",
-              alignItems: "center",
-              gap: "12px",
-              fontSize: "13px",
-              color: "var(--text-primary)",
-            },
-          },
-          h("strong", { style: { color: "var(--accent-orange)" } }, "Fleet telemetry degraded: "),
-          h(
-            "span",
-            { style: { flex: 1 } },
-            [
-              runnerFetchState.error
-                ? "Runner status is unavailable; showing last known or degraded data."
-                : runnerFetchState.stale
-                  ? "Runner status is stale."
-                  : null,
-              machineFetchState.error
-                ? "Machine health is partially unavailable; local data is kept when available."
-                : machineFetchState.stale
-                  ? "Machine health is partial."
-                  : null,
-            ].filter(Boolean).join(" "),
-          ),
-        )
-      : null,
-    githubStatus && (githubStatus.status === "rate_limited" || githubStatus.status === "auth_error")
-      ? h(
-          "div",
-          {
-            id: "github-api-alert-banner",
-            style: {
-              background: "rgba(240,136,62,0.16)",
-              borderBottom: "1px solid var(--accent-orange)",
-              padding: "10px 24px",
-              display: "flex",
-              alignItems: "center",
-              gap: "12px",
-              fontSize: "13px",
-              color: "var(--text-primary)",
-            },
-          },
-          h("strong", { style: { color: "var(--accent-orange)" } }, "GitHub API degraded: "),
-          h(
-            "span",
-            { style: { flex: 1 } },
-            githubStatus.status === "rate_limited"
-              ? "Rate limited" +
-                  (githubStatus.retry_after_seconds ? " for about " + githubStatus.retry_after_seconds + "s" : "") +
-                  ". Cached local runner data may still be shown."
-              : "Authentication failed. Refresh the dashboard GitHub token before relying on GitHub-backed views.",
-          ),
-          githubStatus.endpoint ? h("code", null, githubStatus.endpoint) : null,
-        )
-      : null,
     h(
       "div",
       { style: { display: "flex", flexDirection: asstPosition === "left" ? "row-reverse" : "row", alignItems: "flex-start", minHeight: "calc(100vh - 56px)" } },
