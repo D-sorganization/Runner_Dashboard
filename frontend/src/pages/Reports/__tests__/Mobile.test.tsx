@@ -257,17 +257,21 @@ describe("ReportsMobile", () => {
     render(<ReportsMobile />);
 
     await waitFor(() => {
-      expect(screen.getByRole("status", { name: /no reports found/i })).toBeInTheDocument();
+      expect(screen.getByTestId("reports-empty")).toBeInTheDocument();
     });
+    expect(screen.getByText(/no reports found/i)).toBeInTheDocument();
   });
 
   it("shows error state when fetch fails", async () => {
     setupFetch({ ok: false });
     render(<ReportsMobile />);
 
+    // #837: failures surface operator guidance instead of a raw "HTTP 500".
     await waitFor(() => {
-      expect(screen.getByRole("alert")).toBeInTheDocument();
+      expect(screen.getByTestId("reports-error")).toBeInTheDocument();
     });
+    expect(screen.getByText(/backend error/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
   });
 
   it("shows report count in the header", async () => {

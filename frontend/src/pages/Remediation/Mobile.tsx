@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { SegmentedControl } from "../../primitives/SegmentedControl";
-import { TouchButton } from "../../primitives/TouchButton";
 import { SkeletonCard, SkeletonLine } from "../../primitives/Skeleton";
+import { EmptyState } from "../../primitives/EmptyState";
 import { useToast } from "../../primitives/Toaster";
+import { guidanceForFailure, type ApiFailure } from "../../lib/apiErrorGuidance";
 
 import { ActionSheet } from "./ActionSheet";
 import { AutomationsList, IssuesList, PRsList } from "./RemediationLists";
@@ -46,7 +47,8 @@ export function RemediationMobile({
   const [openPRs, setOpenPRs] = useState<OpenPR[]>([]);
   const [openIssues, setOpenIssues] = useState<OpenIssue[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // #837: structured failure → operator guidance instead of a raw status code.
+  const [failure, setFailure] = useState<ApiFailure | null>(null);
 
   const [actionSheetItem, setActionSheetItem] = useState<ActionSheetItem | null>(
     null,
@@ -57,7 +59,7 @@ export function RemediationMobile({
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
+    setFailure(null);
     try {
       const [provResp, runsResp, prsResp, issuesResp] = await Promise.all([
         fetch("/api/agent-remediation/providers"),
@@ -66,7 +68,10 @@ export function RemediationMobile({
         fetch("/api/issues?state=open&per_page=20"),
       ]);
 
-      if (!provResp.ok) throw new Error(`Providers HTTP ${provResp.status}`);
+      if (!provResp.ok) {
+        setFailure({ status: provResp.status });
+        return;
+      }
       const provData = await provResp.json();
       setProviders(provData.providers ?? {});
       setAvailability(provData.availability ?? {});
@@ -92,9 +97,7 @@ export function RemediationMobile({
         );
       }
     } catch (e: unknown) {
-      const message =
-        e instanceof Error ? e.message : "Failed to load remediation data";
-      setError(message);
+      setFailure({ error: e });
     } finally {
       setLoading(false);
     }
@@ -188,23 +191,17 @@ export function RemediationMobile({
     );
   }
 
-  if (error) {
+  if (failure) {
+    const guidance = guidanceForFailure(failure);
     return (
-      <div
-        aria-live="assertive"
-        className="remediation-mobile-error"
-        role="alert"
-        style={{
-          color: "var(--accent-red)",
-          padding: "24px",
-          textAlign: "center",
-        }}
-      >
-        <div style={{ marginBottom: 12 }}>{error}</div>
-        <TouchButton onClick={fetchData} variant="primary">
-          Retry
-        </TouchButton>
-      </div>
+      <EmptyState
+        variant="error"
+        icon="⚠️"
+        title={guidance.title}
+        description={guidance.action}
+        onRetry={fetchData}
+        data-testid="remediation-error"
+      />
     );
   }
 

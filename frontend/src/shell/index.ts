@@ -8,3 +8,10 @@ export {
   LAYOUT_STORAGE_KEY,
   type LayoutFlagInputs,
 } from './layoutFlag'
+export { HelpAbout, type HelpAboutProps, type VersionInfo } from './HelpAbout'
+export {
+  introForTab,
+  INTRO_OVERRIDES,
+  INTRO_OVERRIDE_IDS,
+  type TabIntro,
+} from './intro'
