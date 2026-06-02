@@ -254,7 +254,70 @@ export const radii = {
 } as const;
 
 export const shadows = {
-  soft:  "0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.08)",
-  card:  "0 4px 6px rgba(0,0,0,0.15), 0 1px 3px rgba(0,0,0,0.1)",
-  modal: "0 20px 60px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.2)",
+  soft:  "0 1px 3px rgba(0,0,0,0.28), 0 1px 2px rgba(0,0,0,0.22)",
+  card:  "0 4px 6px rgba(0,0,0,0.32), 0 1px 3px rgba(0,0,0,0.24)",
+  modal: "0 20px 60px rgba(0,0,0,0.5), 0 8px 24px rgba(0,0,0,0.38)",
 } as const;
+
+// ---- Elevation system: radius/shadow/status → CSS vars (issue #827) ----------
+// These maps make the radii/shadows/statusTokens above first-class CSS custom
+// properties so components stop hardcoding 6/8/10/12/14px radii and ad-hoc
+// rgba(0,0,0,.x) shadows. The mirror of these values lives in index.css :root;
+// this module is the typed single source of truth (DRY).
+
+export const radiiCssVars = {
+  "--radius-sm": radii.sm,
+  "--radius-md": radii.md,
+  "--radius-lg": radii.lg,
+  "--radius-pill": radii.pill,
+} as const;
+
+export const shadowsCssVars = {
+  "--shadow-soft": shadows.soft,
+  "--shadow-card": shadows.card,
+  "--shadow-modal": shadows.modal,
+} as const;
+
+export const statusCssVars = {
+  "--status-healthy-bg": statusTokens.healthy.bg,
+  "--status-healthy-fg": statusTokens.healthy.fg,
+  "--status-warning-bg": statusTokens.warning.bg,
+  "--status-warning-fg": statusTokens.warning.fg,
+  "--status-critical-bg": statusTokens.critical.bg,
+  "--status-critical-fg": statusTokens.critical.fg,
+  "--status-unknown-bg": statusTokens.unknown.bg,
+  "--status-unknown-fg": statusTokens.unknown.fg,
+  "--status-info-bg": statusTokens.info.bg,
+  "--status-info-fg": statusTokens.info.fg,
+} as const;
+
+/** Modular type scale (issue #828): 11/12/14/16/20/26/34 + display family. */
+export const typeScaleCssVars = {
+  "--font-micro": "11px",
+  "--font-meta": "12px",
+  "--font-body": "14px",
+  "--font-section-title": "16px",
+  "--font-title": "20px",
+  "--font-headline": "26px",
+  "--font-display": "34px",
+} as const;
+
+/**
+ * Theme-neutral elevation/type CSS variables. These are layered into the
+ * document root once (radius rhythm, shadow scale, status tints, type scale
+ * are independent of the active colour theme — per-theme shadow tuning is done
+ * via the `[data-theme="light"]` selector in index.css).
+ */
+export const elevationCssVars = {
+  ...radiiCssVars,
+  ...shadowsCssVars,
+  ...statusCssVars,
+  ...typeScaleCssVars,
+} as const;
+
+/** Serialise the theme-neutral elevation/type vars to a CSS declaration block. */
+export function elevationToCssVariables(): string {
+  return Object.entries(elevationCssVars)
+    .map(([name, value]) => `${name}: ${value};`)
+    .join("\n");
+}

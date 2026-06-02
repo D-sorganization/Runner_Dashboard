@@ -1,9 +1,21 @@
+/**
+ * Modular type scale (issue #828).
+ *
+ * Extends the original 5 flat sizes to a 7-step modular ratio
+ * (11/12/14/16/20/26/34) and reconciles the keys 1:1 with the `--font-*` CSS
+ * variables declared in `index.css` / `typeScaleCssVars`:
+ *   micro→--font-micro, meta→--font-meta, body→--font-body,
+ *   sectionTitle→--font-section-title, title→--font-title,
+ *   headline→--font-headline, display→--font-display.
+ */
 export const typeScale = {
-  title: "20px",
-  sectionTitle: "16px",
-  body: "14px",
-  meta: "12px",
   micro: "11px",
+  meta: "12px",
+  body: "14px",
+  sectionTitle: "16px",
+  title: "20px",
+  headline: "26px",
+  display: "34px",
 } as const;
 
 export const lineHeights = {
