@@ -45,6 +45,7 @@ import {
   BellIcon,
   ClipboardCheckIcon,
   HardDriveIcon,
+  ScrollTextIcon,
 } from "./navIcons";
 
 /** Ordered group identifiers used to bucket categories in the sidebar. */
@@ -161,6 +162,18 @@ export const NAV_ITEMS: readonly NavItem[] = [
     Icon: ShieldIcon,
     tooltip: "Hosted-runner billing audit and routing-policy violations.",
     tabId: "runner-audit",
+    frequent: false,
+    mobilePrimary: false,
+    mobileDrawer: true,
+  },
+  {
+    id: "events",
+    label: "Event Log",
+    group: "fleet",
+    Icon: ScrollTextIcon,
+    tooltip:
+      "Durable fleet event history + alarm center: runner offline/online, disk pressure, saturation, watchdog.",
+    tabId: "events",
     frequent: false,
     mobilePrimary: false,
     mobileDrawer: true,

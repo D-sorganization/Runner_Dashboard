@@ -125,6 +125,7 @@ from routers import credentials as _credentials_router  # noqa: E402
 from routers import deployment as _deployment_router  # noqa: E402
 from routers import diagnostics as _diagnostics_router  # noqa: E402
 from routers import dispatch as _dispatch_router  # noqa: E402
+from routers import events as _events_router  # noqa: E402  # issue #863
 from routers import feature_requests as _feature_requests_router  # noqa: E402
 from routers import fleet as _fleet_router  # noqa: E402
 from routers import heavy_tests as _heavy_tests_router  # noqa: E402
@@ -663,6 +664,7 @@ app.include_router(_agent_launcher_router.router)
 # Batch-2 extracted routers (epic #159)
 app.include_router(_system_router.router)
 app.include_router(_web_vitals_router.router)
+app.include_router(_events_router.router)  # issue #863 fleet event log
 app.include_router(_fleet_router.router)
 app.include_router(_queue_router.router)
 app.include_router(_queue_diagnostics_router.router)

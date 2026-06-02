@@ -90,3 +90,7 @@ export type { IntroHeaderProps } from "./IntroHeader";
 // #819: Consolidated durable alert surface (status pill + ack/snooze drawer)
 export { AlertsCenter } from "./AlertsCenter";
 export type { AlertsCenterProps } from "./AlertsCenter";
+
+// #863: Virtualized, filterable, append-only fleet event log
+export { EventLog } from "./EventLog";
+export type { EventLogProps } from "./EventLog";

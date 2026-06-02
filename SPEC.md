@@ -35,6 +35,11 @@
   matching the digest format the deploy-hardening test enforces and restoring a
   deterministic, wheel-only image build.
 
+- **2026-06-02 (2.5.58):** Cleared the dashboard security-audit gate by moving
+  `PyJWT[crypto]` to `2.13.0` and regenerating the uv lockfile. Queue mobile
+  coverage now asserts the component's current `Queue health summary`
+  accessible label so Vitest tracks the shipped UI contract.
+
 - **2026-06-02 (2.5.55):** Legacy dashboard accessibility and theme-token
   hygiene are hardened. `frontend/src/legacy/App.tsx` now exposes sub-tabs as a
   labelled ARIA tablist with roving keyboard focus, keeps sortable table headers
@@ -529,28 +534,29 @@ the fleet runner CLI version does not support that flag consistently.
 
 **Supporting modules (all in `backend/`):**
 
-| Module                    | Responsibility                                                                                      |
-| ------------------------- | --------------------------------------------------------------------------------------------------- |
-| `agent_remediation.py`    | AI agent dispatch plans, Jules/GAAI/Claude invocation                                               |
-| `dispatch_contract.py`    | Type contracts for workflow dispatch payloads                                                       |
-| `machine_registry.py`     | Multi-node fleet registry (load, merge with live data)                                              |
-| `scheduled_workflows.py`  | Inventory of scheduled workflow definitions                                                         |
-| `deployment_drift.py`     | Version drift detection between deployed and expected                                               |
-| `local_app_monitoring.py` | Health checks for local process/app registry                                                        |
-| `usage_monitoring.py`     | Per-runner CPU/RAM usage time-series collection                                                     |
-| `workflow_stats.py`       | Aggregate workflow success/failure statistics                                                       |
-| `report_files.py`         | Parse dated report files for the Reports tab                                                        |
-| `runner_autoscaler.py`    | Dynamic runner count scaling — main loop and public re-export facade                                |
-| `autoscaler_config.py`    | Autoscaler env-var helpers and all threshold constants, including I/O pressure gates                |
-| `autoscaler_systemd.py`   | Autoscaler systemd unit enumeration, state inspection, start/stop                                   |
-| `autoscaler_busy.py`      | Autoscaler layered busy-detection (4 strategies, issue #651)                                        |
-| `autoscaler_sampling.py`  | Autoscaler resource sampling (CPU/mem/disk/load/I/O pressure) and scheduler integration             |
-| `config_schema.py`        | Config validation and atomic JSON writes                                                            |
-| `pr_inventory.py`         | Fetch and normalise open PRs across repos (issue #80)                                               |
-| `issue_inventory.py`      | Fetch and normalise open issues with taxonomy (issue #81)                                           |
-| `linear_inventory.py`     | Fetch and normalise Linear issues into the canonical issue inventory shape                          |
-| `health.py`               | Health check endpoints (`/api/health`, `/health`) extracted from server.py (issue #159)             |
-| `metrics.py`              | System metrics endpoints (`/api/system`, `/api/fleet/status`) extracted from server.py (issue #159) |
+| Module                    | Responsibility                                                                                                                                                                                                            |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `agent_remediation.py`    | AI agent dispatch plans, Jules/GAAI/Claude invocation                                                                                                                                                                     |
+| `dispatch_contract.py`    | Type contracts for workflow dispatch payloads                                                                                                                                                                             |
+| `machine_registry.py`     | Multi-node fleet registry (load, merge with live data)                                                                                                                                                                    |
+| `scheduled_workflows.py`  | Inventory of scheduled workflow definitions                                                                                                                                                                               |
+| `deployment_drift.py`     | Version drift detection between deployed and expected                                                                                                                                                                     |
+| `local_app_monitoring.py` | Health checks for local process/app registry                                                                                                                                                                              |
+| `usage_monitoring.py`     | Per-runner CPU/RAM usage time-series collection                                                                                                                                                                           |
+| `workflow_stats.py`       | Aggregate workflow success/failure statistics                                                                                                                                                                             |
+| `report_files.py`         | Parse dated report files for the Reports tab                                                                                                                                                                              |
+| `runner_autoscaler.py`    | Dynamic runner count scaling — main loop and public re-export facade                                                                                                                                                      |
+| `autoscaler_config.py`    | Autoscaler env-var helpers and all threshold constants, including I/O pressure gates                                                                                                                                      |
+| `autoscaler_systemd.py`   | Autoscaler systemd unit enumeration, state inspection, start/stop                                                                                                                                                         |
+| `autoscaler_busy.py`      | Autoscaler layered busy-detection (4 strategies, issue #651)                                                                                                                                                              |
+| `autoscaler_sampling.py`  | Autoscaler resource sampling (CPU/mem/disk/load/I/O pressure) and scheduler integration                                                                                                                                   |
+| `config_schema.py`        | Config validation and atomic JSON writes                                                                                                                                                                                  |
+| `pr_inventory.py`         | Fetch and normalise open PRs across repos (issue #80)                                                                                                                                                                     |
+| `issue_inventory.py`      | Fetch and normalise open issues with taxonomy (issue #81)                                                                                                                                                                 |
+| `linear_inventory.py`     | Fetch and normalise Linear issues into the canonical issue inventory shape                                                                                                                                                |
+| `health.py`               | Health check endpoints (`/api/health`, `/health`) extracted from server.py (issue #159)                                                                                                                                   |
+| `metrics.py`              | System metrics endpoints (`/api/system`, `/api/fleet/status`) extracted from server.py (issue #159)                                                                                                                       |
+| `fleet_events.py`         | Fleet event log + alarm feed (issue #863): typed `FleetEvent`, pure `classify_fleet_events` (offline/online/low-disk/saturation/watchdog), bounded `EventStore` ring buffer, and `FleetEventPoller` driving `/api/events` |
 
 **Bounded domain routers (`backend/routers/`):**
 
@@ -558,16 +564,17 @@ Well-bounded API domains with no cross-domain shared state are extracted into
 `APIRouter` modules and registered with `app.include_router()`. This reduces
 coupling and makes each domain independently testable.
 
-| Router                   | Prefix                | Responsibility                                                              |
-| ------------------------ | --------------------- | --------------------------------------------------------------------------- |
-| `routers/deployment.py`  | `/api/deployment`     | Deployment metadata, expected-version, drift, git-drift (issue #357)        |
-| `routers/reports.py`     | `/api/reports`        | Report file listing and dated metric parsing (issue #358)                   |
-| `routers/heavy_tests.py` | `/api/heavy-tests`    | Heavy test run tracking and result storage (issue #358)                     |
-| `routers/assessments.py` | `/api/assessments`    | Repo assessment JSON listing and retrieval (issue #358)                     |
-| `routers/dispatch.py`    | `/api/fleet/dispatch` | Fleet agent dispatcher â€” allowlisted hub-to-node commands                 |
-| `routers/credentials.py` | `/api`                | Credential probe â€” tool/key presence without exposing values              |
-| `routers/linear.py`      | `/api/linear`         | Optional Linear read API for workspaces, teams, and issue inventory         |
-| `push.py`                | `/api/push`           | Web Push subscription storage, scoped unsubscribe, and test-send foundation |
+| Router                   | Prefix                | Responsibility                                                                       |
+| ------------------------ | --------------------- | ------------------------------------------------------------------------------------ |
+| `routers/deployment.py`  | `/api/deployment`     | Deployment metadata, expected-version, drift, git-drift (issue #357)                 |
+| `routers/reports.py`     | `/api/reports`        | Report file listing and dated metric parsing (issue #358)                            |
+| `routers/heavy_tests.py` | `/api/heavy-tests`    | Heavy test run tracking and result storage (issue #358)                              |
+| `routers/assessments.py` | `/api/assessments`    | Repo assessment JSON listing and retrieval (issue #358)                              |
+| `routers/dispatch.py`    | `/api/fleet/dispatch` | Fleet agent dispatcher â€” allowlisted hub-to-node commands                          |
+| `routers/credentials.py` | `/api`                | Credential probe â€” tool/key presence without exposing values                       |
+| `routers/linear.py`      | `/api/linear`         | Optional Linear read API for workspaces, teams, and issue inventory                  |
+| `push.py`                | `/api/push`           | Web Push subscription storage, scoped unsubscribe, and test-send foundation          |
+| `routers/events.py`      | `/api/events`         | Read-only fleet event-log feed backed by the `fleet_events` ring buffer (issue #863) |
 
 The migration from inline `@app.*` endpoints to bounded routers is ongoing.
 Remaining endpoint domains in `server.py` are tracked for extraction under issue #4.
@@ -994,14 +1001,15 @@ All endpoints are served under `http://localhost:8321/api/`.
 
 ### System and Health
 
-| Method | Path            | Description                                                                                                                                                             |
-| ------ | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/api/system`   | Host system metrics (CPU, RAM, disk, GPU)                                                                                                                               |
-| GET    | `/api/health`   | Dashboard health probe — returns `status` plus GitHub connectivity/runner fields such as `github_api`, `github_check_seconds`, and `runners_registered` when available. |
-| GET    | `/api/watchdog` | Watchdog status and last heartbeat                                                                                                                                      |
-| GET    | `/readyz`       | Readiness probe — runs dependency checks (GH_TOKEN, gh CLI, SQLite stores); returns 200 or 503 with `{status, checks}`                                                  |
-| GET    | `/livez`        | Liveness probe — returns `{“status”:”ok”}` with no I/O; always 200 if process is up                                                                                     |
-| GET    | `/metrics`      | Prometheus text exposition — HTTP request counts/latency, GH API calls, active leases, cache sizes, uptime (issue #330). No auth gate; scrape from `localhost` only.    |
+| Method | Path            | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ------ | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/system`   | Host system metrics (CPU, RAM, disk, GPU)                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| GET    | `/api/events`   | Fleet event-log feed (issue #863). Returns `{events:[{ts,severity,kind,title,detail,node?}], count, capacity}`, newest-first. `severity` ∈ info/warning/critical; `kind` ∈ runner_offline/runner_online/low_disk/saturation/watchdog. `limit` query param (1–500). Ring-buffered in `backend/fleet_events.py`; populated by the fleet-status poller, which classifies runner online/offline transitions (incl. offline-due-to-disk via per-node disk free GB / used %) and low-disk warnings. |
+| GET    | `/api/health`   | Dashboard health probe — returns `status` plus GitHub connectivity/runner fields such as `github_api`, `github_check_seconds`, and `runners_registered` when available.                                                                                                                                                                                                                                                                                                                       |
+| GET    | `/api/watchdog` | Watchdog status and last heartbeat                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| GET    | `/readyz`       | Readiness probe — runs dependency checks (GH_TOKEN, gh CLI, SQLite stores); returns 200 or 503 with `{status, checks}`                                                                                                                                                                                                                                                                                                                                                                        |
+| GET    | `/livez`        | Liveness probe — returns `{“status”:”ok”}` with no I/O; always 200 if process is up                                                                                                                                                                                                                                                                                                                                                                                                           |
+| GET    | `/metrics`      | Prometheus text exposition — HTTP request counts/latency, GH API calls, active leases, cache sizes, uptime (issue #330). No auth gate; scrape from `localhost` only.                                                                                                                                                                                                                                                                                                                          |
 
 **Prometheus metrics (`/metrics`):**
 Implemented in `backend/instrumentation.py` using the `prometheus_client` library.

@@ -46,6 +46,10 @@ export type {
   StatsResponse,
   UsageResponse,
 } from "./api-types";
+import type { EventsResponse } from "./fleetEvents";
+
+// Re-export the events feed type so consumers import from a single location.
+export type { EventsResponse, FleetEvent } from "./fleetEvents";
 
 // ── Error type ────────────────────────────────────────────────────────────────
 
@@ -216,6 +220,14 @@ export const api = {
   fleet: {
     status({ signal }: { signal?: AbortSignal } = {}): Promise<FleetStatusResponse> {
       return request<FleetStatusResponse>("/api/fleet/status", { signal });
+    },
+  },
+
+  // ── Events (issue #863) ────────────────────────────────────────────────────
+  events: {
+    list({ limit = 200, signal }: { limit?: number; signal?: AbortSignal } = {}): Promise<EventsResponse> {
+      const params = new URLSearchParams({ limit: String(limit) });
+      return request<EventsResponse>(`/api/events?${params}`, { signal });
     },
   },
 
