@@ -104,7 +104,7 @@ def test_tests_tab_function_present() -> None:
 
 def test_tests_tab_rerun_checks_response_ok_before_triggered_state() -> None:
     content = _read_index()
-    rerun_start = content.index('fetch("/api/tests/rerun"')
+    rerun_start = content.index('legacyFetch("/api/tests/rerun"')
     triggered_state = content.index('n[repo] = "triggered";', rerun_start)
     rerun_block = content[rerun_start:triggered_state]
 
