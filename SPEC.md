@@ -1,9 +1,20 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.56
+**Spec Version:** 2.5.57
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-02T00:00:00-07:00
 **Status:** Active
+
+- **2026-06-02 (2.5.57):** The legacy dashboard API migration now preserves the
+  shared frontend integrity contracts after the `legacyFetch` wrapper adoption.
+  `tests/test_frontend_integrity.py` accepts both legacy object-literal and TSX
+  prop source shapes for sortable headers and ARIA labels while still enforcing
+  the exact labels and response-check ordering. `frontend/src/pages/Queue/Mobile.tsx`
+  restores the "Queue health summary" accessible section label,
+  `frontend/src/main.tsx` restores the root Suspense "Loading dashboard..."
+  status text, and `frontend/src/legacy/App.tsx` again renders the
+  `fleet-hero__alerts` surface from the extracted fleet-alert rollup so the
+  overview hero keeps user-visible alert detail.
 
 - **2026-06-02 (2.5.56):** Restored the Docker runtime image to the pinned
   Python 3.12 base after a dependabot bump to `python:3.14-slim` re-broke the
