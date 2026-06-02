@@ -19,7 +19,6 @@ import { BreakpointProvider, useBreakpoint } from './hooks/useBreakpoint'
 import { ThemeProvider } from './design/ThemeProvider'
 import { useThemeContext } from './design/ThemeContext'
 import { ThemeSelector } from './components/ThemeSelector'
-import './i18n'
 import './index.css'
 // Web Vitals — send metrics to backend (issue #385)
 import { onCLS, onINP, onFCP, onLCP } from 'web-vitals'
