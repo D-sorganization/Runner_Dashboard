@@ -16,6 +16,10 @@ from dashboard_config import (
     HttpTimeout,
 )
 from fastapi import APIRouter, Request
+from fleet_events import (  # issue #863 — record runner/disk transitions
+    FleetEventPoller,
+    nodes_from_fleet_status,
+)
 from gh_utils import gh_api_admin
 from proxy_utils import proxy_to_hub, should_proxy_fleet_to_hub
 from routers.runners import run_runner_svc, runner_num_from_id, runner_svc_path
@@ -24,9 +28,34 @@ from system_utils import (
     get_system_metrics_snapshot,
     resource_offline_reason,
 )
+from time_utils import now_ms
 
 log = logging.getLogger("dashboard.fleet")
 router = APIRouter(tags=["fleet"])
+
+# Process-wide poller: diffs successive fleet snapshots into recorded events for
+# the event-log feed (GET /api/events). Stateful (holds the previous snapshot),
+# so it lives at module scope alongside the router.
+_event_poller = FleetEventPoller()
+
+
+def _record_fleet_events(responses: dict) -> None:
+    """Feed the latest fleet snapshot into the event poller (best-effort).
+
+    Never raises into the request path — event recording is observability, not
+    a hard dependency of fleet status (Orthogonality).
+    """
+    try:
+        nodes = nodes_from_fleet_status(responses)
+        online_count = sum(1 for n in nodes if n.online)
+        _event_poller.observe(
+            nodes,
+            ts=now_ms(),
+            capacity=len(nodes) or None,
+            online_count=online_count,
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        log.debug("Fleet event recording skipped: %s", exc)
 
 
 def _runner_limit() -> int:
@@ -167,6 +196,7 @@ async def get_fleet_status(request: Request, exclude_pools: bool = False):
                 **reason,
             }
 
+    _record_fleet_events(responses)
     return responses
 
 

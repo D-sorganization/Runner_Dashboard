@@ -15,6 +15,8 @@ import PushSettings from "../pages/PushSettings"
 import { Badge } from "../primitives/Badge"
 import { Pill } from "../primitives/Pill"
 import { AlertsCenter } from "../primitives/AlertsCenter"
+import { EventsTab, OverviewEventSection } from "../pages/Events"
+import { useFleetEvents } from "../hooks/useFleetEvents"
 import { RecoveryDialog } from "./RecoveryDialog"
 import { SessionExpiredDialog } from "./SessionExpiredDialog"
 import { marked } from "marked"
@@ -14486,6 +14488,13 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   // The tab is only shown when the backend feature flag is enabled (the probe
   // returns non-404). This keeps the surface inert/reversible by default and
   // orthogonal — a probe failure never blocks other tabs.
+
+  // Fleet event feed (issue #863): durable, persisted history of runner/disk
+  // events. The event-derived alerts (offline + disk pressure) are folded into
+  // the consolidated AlertsCenter pill so the header surfaces "runner(s)
+  // offline — disk pressure" without a screen-covering pop-up.
+  var fleetEvents = useFleetEvents();
+
   var conductorState = React.useState(false);
   var conductorEnabled = conductorState[0],
     setConductorEnabled = conductorState[1];
@@ -16088,10 +16097,20 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
       }),
     });
   }
+  // Fold the event-derived alerts (disk-pressure, runners-offline) into the
+  // consolidated surface (issue #863). De-dup by id so a rollup machines-offline
+  // and an event runners-offline don't both show; the event alert carries the
+  // richer "disk pressure" reason, so it wins where ids differ.
+  (fleetEvents.alerts || []).forEach(function (ea) {
+    if (!appAlerts.some(function (a) { return a.id === ea.id; })) {
+      appAlerts.push(ea);
+    }
+  });
   function onAlertNavigate(alertId) {
     if (alertId === "hosted-runners") { setTab("runner-audit"); return; }
     if (alertId === "github-api") { setTab("runner-audit"); return; }
     if (alertId === "machines-offline" || alertId === "telemetry-degraded") { setTab("machines"); return; }
+    if (alertId === "disk-pressure" || alertId === "runners-offline") { setTab("events"); return; }
     setTab("overview");
   }
 
@@ -16852,6 +16871,23 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
               fetchDeploymentState();
             },
           }),
+          // Issue #863: at-a-glance alarm panel + recent event log on Overview.
+          h("div", { className: "section", style: { marginTop: "24px" } },
+            h("div", { className: "section-header" },
+              h("div", { className: "section-title" },
+                I.activity(16),
+                "Alarms & Recent Events"
+              ),
+              h("button", {
+                className: "btn",
+                style: { marginLeft: "auto" },
+                onClick: function () { setTab("events"); },
+              }, "Open Event Log")
+            ),
+            h("div", { className: "section-body" },
+              h(OverviewEventSection, { rollupAlerts: appAlerts, onNavigate: onAlertNavigate })
+            )
+          ),
           h("div", { className: "section", style: { marginTop: "24px" } },
             h("div", { className: "section-header", style: { background: "var(--grad-fair)", color: "white" } },
               h("div", { className: "section-title" },
@@ -17159,7 +17195,9 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
                                                       ? h(LinearSetup, null)
                                                       : tab === "push-settings"
                                                         ? h(PushSettings, null)
-                                                        : null,
+                                                        : tab === "events"
+                                                          ? h(EventsTab, { rollupAlerts: appAlerts, onNavigate: onAlertNavigate })
+                                                          : null,
       ),
       h(AssistantSidebar, { currentTab: tab, open: asstOpen, onToggle: toggleAsst }),
     ),

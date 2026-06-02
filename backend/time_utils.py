@@ -24,3 +24,12 @@ def utc_now() -> datetime:
 def utc_now_iso() -> str:
     """Return the current UTC time as an ISO-8601 string ending in ``Z``."""
     return utc_now().isoformat().replace("+00:00", "Z")
+
+
+def now_ms() -> int:
+    """Return the current UTC time as integer epoch milliseconds.
+
+    Used by the fleet event log (issue #863) so event timestamps are compact,
+    JSON-cheap, and trivially sortable on the frontend.
+    """
+    return int(utc_now().timestamp() * 1000)
