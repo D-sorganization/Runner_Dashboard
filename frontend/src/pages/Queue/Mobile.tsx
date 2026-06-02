@@ -270,7 +270,7 @@ export function QueueMobile() {
     >
       {/* KPI strip */}
       <div
-        aria-label="Queue summary"
+        aria-label="Queue health summary"
         className="queue-mobile-kpi-strip"
         style={{
           display: "flex",

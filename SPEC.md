@@ -1,6 +1,6 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.56
+**Spec Version:** 2.5.58
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-02T00:00:00-07:00
 **Status:** Active
@@ -16,6 +16,11 @@
   `python:3.12-slim@sha256:090ba77e2958f6af52a5341f788b50b032dd4ca28377d2893dcf1ecbdfdfe203`,
   matching the digest format the deploy-hardening test enforces and restoring a
   deterministic, wheel-only image build.
+
+- **2026-06-02 (2.5.58):** Cleared the dashboard security-audit gate by moving
+  `PyJWT[crypto]` to `2.13.0` and regenerating the uv lockfile. Queue mobile
+  coverage now asserts the component's current `Queue health summary`
+  accessible label so Vitest tracks the shipped UI contract.
 
 - **2026-06-02 (2.5.55):** Legacy dashboard accessibility and theme-token
   hygiene are hardened. `frontend/src/legacy/App.tsx` now exposes sub-tabs as a
