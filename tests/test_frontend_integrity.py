@@ -479,11 +479,6 @@ def test_main_tsx_has_root_suspense_fallback() -> None:
     assert "Loading dashboard..." in main_tsx
 
 
-def test_i18n_disables_suspense_for_sync_resources() -> None:
-    i18n_ts = (_FRONTEND_DIR / "src" / "i18n.ts").read_text(encoding="utf-8")
-    assert "useSuspense: false" in i18n_ts
-
-
 # ---------------------------------------------------------------------------
 # Single source of truth enforcement (issue #3)
 # ---------------------------------------------------------------------------

@@ -15,7 +15,7 @@
  *
  * Locale handling: uses `Intl.RelativeTimeFormat` and `Intl.DateTimeFormat`
  * with the runtime locale (`document.documentElement.lang || navigator.language`)
- * so we honour the i18n configuration without coupling to react-i18next.
+ * so dates render in the operator's locale via the platform Intl APIs alone.
  */
 import { useEffect, useState } from 'react';
 
