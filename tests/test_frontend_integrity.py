@@ -331,16 +331,16 @@ def test_mobile_a11y_reduced_motion_contract_is_static_guarded() -> None:
 def test_mobile_a11y_dialogs_and_sections_are_labelled() -> None:
     content = _read_index()
 
-    for marker in [
-        '"aria-label": "Runner status filters"',
-        '"aria-label": "Mobile runner monitoring cards"',
-        '"aria-label": "Queue health summary"',
-        '"aria-label": "Stale queued runs"',
-        '"aria-label": "Mobile remediation dispatch"',
-        '"aria-label": "Confirm mobile credential change"',
-        '"aria-label": "Feature request history"',
+    for label in [
+        "Runner status filters",
+        "Mobile runner monitoring cards",
+        "Queue health summary",
+        "Stale queued runs",
+        "Mobile remediation dispatch",
+        "Confirm mobile credential change",
+        "Feature request history",
     ]:
-        assert marker in content
+        assert f'"aria-label": "{label}"' in content or f'aria-label="{label}"' in content
     assert content.count('"aria-modal": "true"') >= 2
 
 
