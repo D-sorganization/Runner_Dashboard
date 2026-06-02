@@ -17,6 +17,7 @@ import {
   screen,
   fireEvent,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QueueMobile } from "../Mobile";
@@ -79,7 +80,7 @@ function makeFetch(queueData: typeof MOCK_QUEUE_DATA | typeof MOCK_EMPTY_QUEUE) 
 
 // -- Tests ----------------------------------------------------------------------
 
-describe.skip("QueueMobile", () => {
+describe("QueueMobile", () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.spyOn(console, "error").mockImplementation(() => {});
@@ -215,15 +216,18 @@ describe.skip("QueueMobile", () => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
 
+    const dialog = screen.getByRole("dialog");
+
     // Dialog should show the run name as title.
     expect(
-      screen.getByRole("heading", { name: /CI Build/i }),
+      within(dialog).getByRole("heading", { name: /CI Build/i }),
     ).toBeInTheDocument();
 
-    // Detail fields visible.
-    expect(screen.getByText("runner-dashboard")).toBeInTheDocument();
-    expect(screen.getByText("main")).toBeInTheDocument();
-    expect(screen.getByText("alice")).toBeInTheDocument();
+    // Detail fields visible — scope to the dialog since the repo/branch labels
+    // also appear on the underlying run card behind the BottomSheet.
+    expect(within(dialog).getByText("runner-dashboard")).toBeInTheDocument();
+    expect(within(dialog).getByText("main")).toBeInTheDocument();
+    expect(within(dialog).getByText("alice")).toBeInTheDocument();
   });
 
   it("BottomSheet can be dismissed by clicking close button", async () => {
