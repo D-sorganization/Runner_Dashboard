@@ -8,6 +8,13 @@ export default defineConfig({
     setupFiles: ['./tests/setup.ts'],
     globals: false,
     include: ['frontend/src/**/__tests__/**/*.{test,spec}.{ts,tsx}'],
+    // v8 coverage instrumentation roughly doubles per-test wall time, and the
+    // CI runners are slower than dev machines. Synchronous render+query tests
+    // (e.g. Sidebar structure) occasionally brush the default 5s per-test
+    // timeout under `--coverage` on CI even though they assert nothing async.
+    // Lift the per-test timeout to 15s so legitimate tests aren't killed by
+    // environmental headroom; this does not relax any assertion.
+    testTimeout: 15000,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'lcov'],
