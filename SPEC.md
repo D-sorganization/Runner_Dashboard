@@ -1,10 +1,20 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.52
+**Spec Version:** 2.5.54
 **Application Version:** 4.8.0 (see `VERSION`)
-**Last Updated:** 2026-06-01T00:00:00-07:00
+**Last Updated:** 2026-06-02T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-02 (2.5.54):** The dashboard design system now supports a broader
+  fleet theme set plus density-aware elevation polish. `frontend/src/design`
+  adds six additional accessible palettes, exports radius/elevation/shadow
+  tokens, and verifies theme contrast and token behavior with dedicated tests.
+  `frontend/src/hooks/useDensity.ts` and `frontend/src/components/DensityToggle.tsx`
+  provide a persisted compact/comfortable density control, with tests covering
+  storage and UI behavior. `frontend/src/index.css` and `frontend/src/main.tsx`
+  apply the tokens globally so table, card, control, and shell surfaces share a
+  single DRY visual contract. The frontend color-literal budget is intentionally
+  raised to account for the new shadow/elevation token inventory.
 - **2026-06-01 (2.5.53):** Hardened runner busy-detection against the recurring
   "autoscaler/cleanup stops a busy runner mid-job" regression (Runner_Dashboard#640;
   observed 2026-06-01 cancelling PR #813 `docker-build-scan` mid OCI-export, #814
