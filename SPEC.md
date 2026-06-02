@@ -1,9 +1,21 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.55
+**Spec Version:** 2.5.56
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-02T00:00:00-07:00
 **Status:** Active
+
+- **2026-06-02 (2.5.56):** Restored the Docker runtime image to the pinned
+  Python 3.12 base after a dependabot bump to `python:3.14-slim` re-broke the
+  `docker-build-scan` job and the `test_dockerfile_pins_base_image_to_digest`
+  deploy-hardening check. Python 3.14 has no prebuilt wheels yet for
+  `pydantic-core`, `jiter`, `uvloop`, `watchfiles`, and `cffi`, so the image
+  build fell back to source compilation and failed; `pyproject.toml`
+  (`>=3.11,<3.14`) and `uv.lock` already constrain the runtime to 3.12. The
+  `Dockerfile` is now pinned to
+  `python:3.12-slim@sha256:090ba77e2958f6af52a5341f788b50b032dd4ca28377d2893dcf1ecbdfdfe203`,
+  matching the digest format the deploy-hardening test enforces and restoring a
+  deterministic, wheel-only image build.
 
 - **2026-06-02 (2.5.55):** Legacy dashboard accessibility and theme-token
   hygiene are hardened. `frontend/src/legacy/App.tsx` now exposes sub-tabs as a
