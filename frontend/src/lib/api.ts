@@ -113,6 +113,41 @@ async function request<T>(
   return resp.json() as Promise<T>;
 }
 
+// ── Migration bridge (issue #829) ──────────────────────────────────────────────
+
+/**
+ * Typed request helper, exported for callers that can adopt the structured
+ * `ApiClientError` / parsed-JSON contract directly. This is the same code path
+ * the `api` surface below uses, so every consumer shares one fetch wrapper
+ * (CSRF header + structured errors).
+ */
+export function apiRequest<T>(url: string, options: FetchOptions = {}): Promise<T> {
+  return request<T>(url, options);
+}
+
+/**
+ * Drop-in replacement for the native `fetch()` used by the hand-rolled calls in
+ * `legacy/App.tsx` (issue #829). It keeps the native fetch contract — it
+ * returns the raw `Response` so the existing `.then(r => r.json())` and
+ * `r.ok` chains in the legacy file keep working untouched (restructuring those
+ * chains is decomposition #836, deliberately out of scope here) — while
+ * guaranteeing the `X-Requested-With: XMLHttpRequest` CSRF sentinel header the
+ * backend enforces on every state-changing `/api/*` request
+ * (backend/middleware.py::csrf_check). Several legacy POST/PUT/DELETE/PATCH
+ * calls previously omitted that header and were silently 403-ing.
+ *
+ * A caller-supplied `X-Requested-With` (or any other header) is preserved;
+ * the sentinel is only added when absent. Header casing is normalised so a
+ * caller can never accidentally send two `X-Requested-With` variants.
+ */
+export function legacyFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(init.headers ?? {});
+  if (!headers.has("X-Requested-With")) {
+    headers.set("X-Requested-With", DEFAULT_HEADERS["X-Requested-With"]);
+  }
+  return fetch(url, { ...init, headers });
+}
+
 // ── API surface ───────────────────────────────────────────────────────────────
 
 interface ListRunsParams {

@@ -104,7 +104,7 @@ def test_tests_tab_function_present() -> None:
 
 def test_tests_tab_rerun_checks_response_ok_before_triggered_state() -> None:
     content = _read_index()
-    rerun_start = content.index('fetch("/api/tests/rerun"')
+    rerun_start = content.index('legacyFetch("/api/tests/rerun"')
     triggered_state = content.index('n[repo] = "triggered";', rerun_start)
     rerun_block = content[rerun_start:triggered_state]
 
@@ -118,7 +118,7 @@ def test_runner_facing_tables_use_sortable_headers() -> None:
     assert "function SortTh" in content
     assert "function sortRows" in content
     assert 'sortKey: "runner"' in content
-    assert 'sortKey: "waiting"' in content
+    assert 'sortKey: "waiting"' in content or 'sortKey="waiting"' in content
     assert 'sortKey: "machine"' in content
     assert 'sortKey: "when"' in content
 
@@ -331,16 +331,16 @@ def test_mobile_a11y_reduced_motion_contract_is_static_guarded() -> None:
 def test_mobile_a11y_dialogs_and_sections_are_labelled() -> None:
     content = _read_index()
 
-    for marker in [
-        '"aria-label": "Runner status filters"',
-        '"aria-label": "Mobile runner monitoring cards"',
-        '"aria-label": "Queue health summary"',
-        '"aria-label": "Stale queued runs"',
-        '"aria-label": "Mobile remediation dispatch"',
-        '"aria-label": "Confirm mobile credential change"',
-        '"aria-label": "Feature request history"',
+    for label in [
+        "Runner status filters",
+        "Mobile runner monitoring cards",
+        "Queue health summary",
+        "Stale queued runs",
+        "Mobile remediation dispatch",
+        "Confirm mobile credential change",
+        "Feature request history",
     ]:
-        assert marker in content
+        assert f'"aria-label": "{label}"' in content or f'aria-label="{label}"' in content
     assert content.count('"aria-modal": "true"') >= 2
 
 
