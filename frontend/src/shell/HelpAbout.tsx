@@ -25,6 +25,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Dialog, DialogTitle, DialogContent, DialogActions, DialogClose } from "../primitives/Dialog";
 import { Tooltip } from "../primitives/Tooltip";
 import { navItemById } from "./navRegistry";
+import { CodebaseChat } from "../pages/Maxwell";
 
 /** Shape of `GET /api/version` we care about (extra fields tolerated). */
 export interface VersionInfo {
@@ -94,6 +95,7 @@ export function HelpAbout({
   fetchImpl,
 }: HelpAboutProps): React.ReactElement {
   const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<"help" | "chat">("help");
   const [version, setVersion] = useState<VersionInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
@@ -177,6 +179,37 @@ export function HelpAbout({
       <Dialog open={open} onClose={() => setOpen(false)}>
         <DialogTitle>Runner Dashboard — Help &amp; About</DialogTitle>
         <DialogContent>
+          <div role="tablist" aria-label="Help and About sections" style={tablistStyle}>
+            <button
+              type="button"
+              role="tab"
+              id="help-tab-help"
+              aria-selected={tab === "help"}
+              aria-controls="help-panel-help"
+              onClick={() => setTab("help")}
+              style={tabStyle(tab === "help")}
+            >
+              Help &amp; About
+            </button>
+            <button
+              type="button"
+              role="tab"
+              id="help-tab-chat"
+              aria-selected={tab === "chat"}
+              aria-controls="help-panel-chat"
+              onClick={() => setTab("chat")}
+              style={tabStyle(tab === "chat")}
+            >
+              Ask the codebase
+            </button>
+          </div>
+
+          {tab === "chat" ? (
+            <div role="tabpanel" id="help-panel-chat" aria-labelledby="help-tab-chat">
+              <CodebaseChat fetchImpl={fetchImpl} />
+            </div>
+          ) : (
+            <div role="tabpanel" id="help-panel-help" aria-labelledby="help-tab-help">
           <p style={{ marginTop: 0 }}>
             The operator console for the self-hosted GitHub Actions runner fleet:
             monitor runner health, manage the job queue, dispatch AI remediation
@@ -229,6 +262,8 @@ export function HelpAbout({
               ))}
             </dl>
           </section>
+            </div>
+          )}
         </DialogContent>
         <DialogActions>
           <DialogClose>Close</DialogClose>
@@ -236,6 +271,26 @@ export function HelpAbout({
       </Dialog>
     </>
   );
+}
+
+const tablistStyle: React.CSSProperties = {
+  display: "flex",
+  gap: 4,
+  borderBottom: "1px solid var(--border)",
+  marginBottom: 12,
+};
+
+function tabStyle(active: boolean): React.CSSProperties {
+  return {
+    padding: "6px 12px",
+    border: "none",
+    borderBottom: active ? "2px solid var(--accent-blue)" : "2px solid transparent",
+    background: "transparent",
+    color: active ? "var(--text-primary)" : "var(--text-muted)",
+    fontSize: 13,
+    fontWeight: active ? 600 : 400,
+    cursor: "pointer",
+  };
 }
 
 const helpHeadingStyle: React.CSSProperties = {

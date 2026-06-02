@@ -38,6 +38,18 @@ export const QUICK_CHIPS = [
   "which runners are blocked?",
 ];
 
+/**
+ * Codebase-flavored quick-chips for the in-app Q&A assistant (issue #838).
+ * These prompt the daemon's agentic codebase tools (read_file/grep_files/…)
+ * once a repo is selected, rather than asking about live fleet state.
+ */
+export const CODEBASE_QUICK_CHIPS = [
+  "where is the job queue handled?",
+  "what does /api/queue do?",
+  "how does runner autoscaling work?",
+  "where are auth scopes enforced?",
+];
+
 export function elapsedLabel(task: MaxwellTask): string {
   if (task.elapsed_seconds !== undefined) {
     const s = Math.floor(task.elapsed_seconds);

@@ -973,6 +973,12 @@ dispatches multi-repo deployment plans, and monitors rolling deploy status.
 In-app help chat powered by the `/api/help/chat` endpoint. Provides contextual
 assistance about dashboard features and fleet operations.
 
+The shell Help/About surface (#822) also hosts an "Ask the codebase" tab (#838):
+a codebase Q&A assistant that reuses the streaming chat UI, lets the operator pick
+a repository and supply its local `repo_root`, and forwards both through
+`POST /api/maxwell/chat` so Maxwell-Daemon answers from the repository's source.
+It degrades gracefully when the daemon is unreachable or lacks codebase support.
+
 ---
 
 ## 4. API Endpoint Catalogue
@@ -1266,11 +1272,11 @@ audit trail.
 
 ### Maxwell
 
-| Method | Path                   | Description                                                     |
-| ------ | ---------------------- | --------------------------------------------------------------- |
-| GET    | `/api/maxwell/status`  | Maxwell daemon status and configuration                         |
-| POST   | `/api/maxwell/control` | Control Maxwell daemon (start/stop/configure)                   |
-| POST   | `/api/maxwell/chat`    | Proxy Maxwell chat messages over HTTP with streamed text output |
+| Method | Path                   | Description                                                                                                                                                                                                                                                                                                                                                                        |
+| ------ | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/maxwell/status`  | Maxwell daemon status and configuration                                                                                                                                                                                                                                                                                                                                            |
+| POST   | `/api/maxwell/control` | Control Maxwell daemon (start/stop/configure)                                                                                                                                                                                                                                                                                                                                      |
+| POST   | `/api/maxwell/chat`    | Proxy Maxwell chat messages over HTTP with streamed text output. Accepts optional `repo`/`repo_root` fields (issue #838) that scope a codebase Q&A session; they are forwarded to Maxwell-Daemon, which jails its agentic codebase tools to that root. If the daemon lacks codebase support (Maxwell_Daemon#948) it returns 501, which the proxy degrades into a readable message. |
 
 ### Assessments
 
