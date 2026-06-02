@@ -11,6 +11,10 @@ import { FleetMobile } from './pages/Fleet'
 import { MobileShell, type TabId } from './shell/MobileShell'
 import { DesktopShell, type ShellAction } from './shell/DesktopShell'
 import { ActiveProviderControl } from './shell/ActiveProviderControl'
+import { HelpAbout } from './shell/HelpAbout'
+import { introForTab } from './shell/intro'
+import { IntroHeader } from './primitives/IntroHeader'
+import { useSession } from './hooks/useSession'
 import { resolveDesktopShellLayout, LAYOUT_STORAGE_KEY } from './shell/layoutFlag'
 import { useProviderRegistry } from './lib/useProviderRegistry'
 import { Toaster } from './primitives/Toaster'
@@ -164,10 +168,16 @@ function initialTabFromPathname(pathname: string): string | undefined {
  * orthogonal and reversible: Refresh reloads dashboard data, Login/Logout
  * toggles the GitHub session, and "Classic layout" pins the legacy shell via
  * localStorage and reloads — the visible escape hatch back to the old UI.
+ *
+ * `isLoggedIn` is now passed in (derived from the reactive `useSession` hook,
+ * issue #842) so the auth label flips correctly without a full page reload.
+ * `onLoggedOut` lets the caller re-probe the session the moment logout
+ * resolves, rather than relying on the reload.
  */
-function buildShellActions(): ShellAction[] {
-  const isLoggedIn =
-    typeof document !== 'undefined' && document.cookie.includes('dashboard_session')
+export function buildShellActions(
+  isLoggedIn: boolean,
+  onLoggedOut: () => void = () => window.location.reload(),
+): ShellAction[] {
   return [
     {
       id: 'refresh',
@@ -186,7 +196,9 @@ function buildShellActions(): ShellAction[] {
           fetch('/api/auth/logout', {
             method: 'POST',
             headers: { 'X-Requested-With': 'XMLHttpRequest' },
-          }).then(() => window.location.reload())
+          })
+            .then(() => onLoggedOut())
+            .catch(() => onLoggedOut())
         } else {
           window.location.href = '/api/auth/github'
         }
@@ -252,6 +264,15 @@ function AppWithMobileShell({ initialTab }: { initialTab?: string }) {
   // sidebar / slim toolstrip and the mounted page body stay in lockstep.
   const [desktopTab, setDesktopTab] = useState<string>(initialTab ?? 'overview')
 
+  // Reactive dashboard-session state (#842): the topbar Login/Logout label now
+  // derives from this hook instead of a one-shot cookie read, so it updates on
+  // focus / visibility / logout without a manual reload.
+  const { loggedIn, refresh: refreshSession } = useSession()
+
+  // Per-tab intro header dismissal (#822): operators can dismiss the orientation
+  // banner per tab for the session; navigating elsewhere shows that tab's intro.
+  const [dismissedIntros, setDismissedIntros] = useState<Record<string, boolean>>({})
+
   const handleMobileTabChange = useCallback((nextTab: TabId) => {
     setMobileTab(nextTab)
   }, [])
@@ -300,11 +321,25 @@ function AppWithMobileShell({ initialTab }: { initialTab?: string }) {
     return <App initialTab={legacyInitialTab} onTabChange={handleLegacyTabChange} />
   }
 
+  const intro = introForTab(desktopTab)
+  const introNode =
+    intro && !dismissedIntros[desktopTab] ? (
+      <IntroHeader
+        title={intro.title}
+        body={intro.body}
+        onDismiss={() =>
+          setDismissedIntros((prev) => ({ ...prev, [desktopTab]: true }))
+        }
+      />
+    ) : undefined
+
   return (
     <DesktopShell
       activeTabId={desktopTab}
       onSelect={setDesktopTab}
-      actions={buildShellActions()}
+      actions={buildShellActions(loggedIn, refreshSession)}
+      helpAbout={<HelpAbout onNavigate={setDesktopTab} />}
+      intro={introNode}
       headerExtra={
         <>
           <DensityToggle />
