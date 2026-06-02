@@ -14,13 +14,7 @@
     },
     "mobile_lighthouse": {
       "performance_min": 90,
-      "routes": [
-        "Fleet",
-        "Workflows",
-        "Remediation",
-        "Maxwell",
-        "Reports"
-      ]
+      "routes": ["Fleet", "Workflows", "Remediation", "Maxwell", "Reports"]
     },
     "field_timing": {
       "inp_p75_ms": 200,
@@ -31,6 +25,12 @@
       "index_html_gzip_bytes": 112640,
       "inline_js_gzip_bytes": 204800,
       "inline_css_gzip_bytes": 51200
+    },
+    "built_bundle": {
+      "description": "Real Vite-built JS bundle budget (issue #831). The entry chunk (everything loaded on first paint, excluding shared vendor chunks) must stay under entry_js_gzip_bytes now that the legacy App is lazy-loaded and code-split out of the entry. The limit is set below the pre-split eager monolith entry (~120KB gzip) so reverting the lazy boundary fails CI. Every non-vendor async chunk (per-route/tab chunk) must stay under per_chunk_js_gzip_bytes. Enforced against dist/assets/*.js by scripts/check_frontend_perf_budget.py --bundle.",
+      "entry_js_gzip_bytes": 102400,
+      "per_chunk_js_gzip_bytes": 102400,
+      "vendor_chunk_prefixes": ["vendor-"]
     }
   },
   "change_control": {

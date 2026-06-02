@@ -458,25 +458,45 @@ def test_fleet_tab_has_mobile_runner_monitoring_cards() -> None:
     assert "new Date(node.last_seen).toLocaleString" not in content
 
 
-def test_push_settings_route_tracer_bullet_is_present() -> None:
+def test_router_is_the_single_nav_source_of_truth() -> None:
+    """main.tsx mounts React Router as the one nav source (issues #835, #831).
+
+    The previous hand-rolled `window.location.pathname` + AppWithMobileShell nav
+    has been retired: tabs are now real, deep-linkable routes. The push-settings
+    deep link is preserved as an explicit Route, and the URL<->tab mapping lives
+    in shell/routing.ts.
+    """
     main_tsx = (_FRONTEND_DIR / "src" / "main.tsx").read_text(encoding="utf-8")
 
     assert _PUSH_SETTINGS.exists()
     for marker in [
         "PushSettings",
-        "isPushSettingsRoute",
-        "window.location.pathname",
-        "normalized === '/settings/push'",
-        "isPushSettingsRoute(window.location.pathname) ? <PushSettings /> : <AppWithMobileShell />",
+        "BrowserRouter",
+        "<Routes>",
+        '<Route path="/settings/push"',
+        '<Route path="/t/:tabId"',
+        "RoutedShell",
     ]:
-        assert marker in main_tsx
+        assert marker in main_tsx, f"missing router marker: {marker!r}"
+
+    # The retired hand-rolled navigation must not reappear in the entry.
+    assert "AppWithMobileShell" not in main_tsx
+    assert "isPushSettingsRoute(window.location.pathname) ? <PushSettings />" not in main_tsx
+
+    # The unmounted parallel router was retired in favour of the mounted one.
+    assert not (_FRONTEND_DIR / "src" / "router.tsx").exists()
+
+    # The URL<->tab mapping is the single source of truth for routing.
+    routing_ts = (_FRONTEND_DIR / "src" / "shell" / "routing.ts").read_text(encoding="utf-8")
+    for marker in ["pathnameToTabId", "tabIdToPath", "isPushSettingsRoute"]:
+        assert marker in routing_ts, f"missing routing helper: {marker!r}"
 
 
 def test_main_tsx_has_root_suspense_fallback() -> None:
     main_tsx = (_FRONTEND_DIR / "src" / "main.tsx").read_text(encoding="utf-8")
     assert "<React.Suspense" in main_tsx
     assert 'role="status"' in main_tsx
-    assert "Loading dashboard..." in main_tsx
+    assert 'aria-label="Loading dashboard"' in main_tsx
 
 
 # ---------------------------------------------------------------------------
