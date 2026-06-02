@@ -6,6 +6,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  alertContentHash,
   computeFleetAlerts,
   fleetLevelLabel,
   type FleetState,
@@ -236,6 +237,96 @@ describe("computeFleetAlerts — severity rollup", () => {
     const a = computeFleetAlerts(baseState);
     const b = computeFleetAlerts(baseState);
     expect(a).toEqual(b);
+  });
+});
+
+describe("computeFleetAlerts — durable alert identity", () => {
+  const offlineState: FleetState = {
+    ...baseState,
+    machineOnline: 2,
+    machineNodes: [
+      { name: "ControlTower", online: true },
+      { name: "DeskComputer", online: true },
+      { name: "OGLaptop", online: false },
+    ],
+  };
+
+  it("assigns a stable per-rule id to each alert", () => {
+    const result = computeFleetAlerts({
+      ...offlineState,
+      watchdog: { status: "degraded" },
+      stats: { success_rate: 50, runs_success: 50 },
+      runnerAudit: { violations: [{}] },
+    });
+    expect(result.alerts.map((a) => a.id)).toEqual([
+      "machines-offline",
+      "wsl-keepalive",
+      "success-rate",
+      "hosted-runners",
+    ]);
+  });
+
+  it("keeps the same id but a NEW contentHash when the same rule's detail changes", () => {
+    const a = computeFleetAlerts(offlineState).alerts[0];
+    const b = computeFleetAlerts({
+      ...offlineState,
+      machineOnline: 1,
+      machineNodes: [
+        { name: "ControlTower", online: true },
+        { name: "DeskComputer", online: false },
+        { name: "OGLaptop", online: false },
+      ],
+    }).alerts[0];
+    expect(a.id).toBe(b.id);
+    expect(a.contentHash).not.toBe(b.contentHash);
+  });
+
+  it("produces an identical contentHash for identical content (pure)", () => {
+    const a = computeFleetAlerts(offlineState).alerts[0];
+    const b = computeFleetAlerts(offlineState).alerts[0];
+    expect(a.contentHash).toBe(b.contentHash);
+  });
+
+  it("every alert carries a non-empty contentHash matching alertContentHash()", () => {
+    const result = computeFleetAlerts(offlineState);
+    for (const a of result.alerts) {
+      expect(a.contentHash).toBeTruthy();
+      expect(a.contentHash).toBe(
+        alertContentHash({
+          id: a.id,
+          level: a.level,
+          title: a.title,
+          detail: a.detail,
+        }),
+      );
+    }
+  });
+});
+
+describe("alertContentHash", () => {
+  it("is deterministic for identical input", () => {
+    const parts = {
+      id: "machines-offline" as const,
+      level: "critical" as const,
+      title: "1 machine(s) offline",
+      detail: "OGLaptop",
+    };
+    expect(alertContentHash(parts)).toBe(alertContentHash(parts));
+  });
+
+  it("differs when any load-bearing field differs", () => {
+    const base = {
+      id: "machines-offline" as const,
+      level: "critical" as const,
+      title: "1 machine(s) offline",
+      detail: "OGLaptop",
+    };
+    expect(alertContentHash(base)).not.toBe(
+      alertContentHash({ ...base, detail: "DeskComputer" }),
+    );
+    expect(alertContentHash(base)).not.toBe(
+      alertContentHash({ ...base, level: "warning" }),
+    );
   });
 });
 

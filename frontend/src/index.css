@@ -593,6 +593,31 @@ code, pre, .code, kbd {
 .fleet-hero__alert--warning::before  { color: var(--accent-yellow); }
 .fleet-hero__alert-title { font-weight: 600; color: var(--text-primary); }
 .fleet-hero__alert-detail { color: var(--text-muted); }
+
+/* ── Consolidated alert surface — status pill + drawer (issue #819) ──────── */
+.alerts-pill { transition: border-color 120ms ease, background 120ms ease; }
+.alerts-pill:hover { background: var(--bg-secondary); }
+.alerts-pill:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
+}
+/* Draw operator attention without blocking: a gentle pulse on the red pill. */
+.alerts-pill--critical .alerts-pill__dot { animation: alerts-pill-pulse 2s ease-in-out infinite; }
+@keyframes alerts-pill-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(248, 81, 73, 0.5); }
+  50%      { box-shadow: 0 0 0 4px rgba(248, 81, 73, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .alerts-pill--critical .alerts-pill__dot { animation: none; }
+}
+.alerts-drawer__ack:hover,
+.alerts-drawer__snooze:hover,
+.alerts-drawer__unack:hover { background: var(--bg-secondary); }
+.alerts-drawer__navlink:hover { text-decoration-style: solid; }
+.alerts-drawer button:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
+}
 @media (max-width: 720px) {
   .fleet-hero {
     grid-template-columns: 1fr;

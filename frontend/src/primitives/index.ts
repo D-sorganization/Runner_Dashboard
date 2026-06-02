@@ -78,3 +78,7 @@ export type { TooltipProps, TooltipPlacement } from "./Tooltip";
 // #800 (epic #796): Accessible dropdown menu for grouped categories
 export { Dropdown } from "./Dropdown";
 export type { DropdownProps, DropdownItem } from "./Dropdown";
+
+// #819: Consolidated durable alert surface (status pill + ack/snooze drawer)
+export { AlertsCenter } from "./AlertsCenter";
+export type { AlertsCenterProps } from "./AlertsCenter";

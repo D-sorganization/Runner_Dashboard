@@ -55,13 +55,32 @@ export function useMutationQueue() {
     try {
       const replayed = await drain({
         onStale: async (entry) => {
-          // Entry older than MAX_ENTRY_AGE_MS — ask the user
+          // Entry older than MAX_ENTRY_AGE_MS — confirm via a NON-MODAL toast
+          // action instead of window.confirm (issue #819). The toast offers an
+          // explicit "Replay" action; if it is dismissed or times out without
+          // action, we default to NOT replaying the stale entry (safe default).
           const ageMin = Math.round((Date.now() - entry.queuedAt) / 60_000)
           return new Promise<boolean>((resolve) => {
-            const confirmed = window.confirm(
-              `A queued action for "${entry.url}" is ${ageMin} minutes old. Replay it now?`
+            let settled = false
+            const finish = (value: boolean, id?: number) => {
+              if (settled) return
+              settled = true
+              if (id !== undefined) toast.dismiss(id)
+              resolve(value)
+            }
+            const id = toast.showToast(
+              `A queued action for "${entry.url}" is ${ageMin} minutes old.`,
+              {
+                variant: "warning",
+                title: "Replay stale action?",
+                durationMs: 15_000,
+                actionLabel: "Replay",
+                onAction: () => finish(true, id),
+              },
             )
-            resolve(confirmed)
+            // If the toast auto-dismisses (timeout) without the user choosing,
+            // resolve false so a stale mutation is never silently replayed.
+            window.setTimeout(() => finish(false, id), 15_500)
           })
         },
         onProgress: (remaining) => setQueuedCount(remaining),
