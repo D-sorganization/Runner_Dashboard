@@ -1,9 +1,16 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.57
+**Spec Version:** 2.5.58
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-02T00:00:00-07:00
 **Status:** Active
+
+- **2026-06-02 (2.5.58):** Security audit findings for PyJWT are remediated by
+  upgrading `PyJWT[crypto]` from 2.12.0 to 2.13.0 in both `pyproject.toml` and
+  `uv.lock`, clearing the PYSEC-2026 advisories reported by `pip-audit` in
+  `quality-gate` and `security-scan`. The mobile queue Vitest coverage now
+  asserts the current `Queue health summary` accessibility label, matching the
+  dashboard integrity contract restored in 2.5.57.
 
 - **2026-06-02 (2.5.57):** The legacy dashboard API migration now preserves the
   shared frontend integrity contracts after the `legacyFetch` wrapper adoption.
