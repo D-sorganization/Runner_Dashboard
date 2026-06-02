@@ -24,7 +24,14 @@ CSS_PATH = pathlib.Path("frontend/src/index.css")
 # Hard-coded baseline established at D5 landing (issue #706).
 # Lowering this over time is encouraged as literals are migrated
 # to semantic custom properties (--status-*, --badge-*, --glass-*).
-RGBA_BUDGET = 73
+#
+# 2026-06-01 (PR #851, theming polish): raised 73 -> 86. The +13 rgba()
+# literals are NOT scattered inline colours — they are the rgba layers of the
+# new elevation shadow tokens (--shadow-soft/--shadow-card/--shadow-modal),
+# defined once per theme inside :root and consumed everywhere via
+# var(--shadow-*). This is exactly the semantic-token pattern this guard
+# promotes, so the baseline is raised to cover them. Maintainer-approved.
+RGBA_BUDGET = 86
 
 
 def test_rgba_budget() -> None:

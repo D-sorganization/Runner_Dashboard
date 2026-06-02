@@ -62,7 +62,13 @@ export type FleetThemeId =
   | 'ms-word'
   | 'ms-excel'
   | 'legal-pad'
-  | 'high-contrast';
+  | 'high-contrast'
+  | 'midnight'
+  | 'nord'
+  | 'solarized-dark'
+  | 'solarized-light'
+  | 'graphite'
+  | 'daylight-hc';
 
 /* ── Built-in Fleet Themes ──────────────────────────────────────────── */
 // Embedded from Tools/src/shared/theme-definitions/themes.json (v2.0)
@@ -131,9 +137,45 @@ export const FLEET_THEMES: Record<FleetThemeId, FleetThemeDef> = {
     semantic: { success: '#558b2f', warning: '#f9a825', error: '#c62828', info: '#0277bd', link: '#8b6914', link_hover: '#6b5000', selection_bg: '#b8860b', selection_text: '#ffffff' },
   },
   'high-contrast': {
+    // AAA-clean dark a11y theme. text_secondary is a distinct near-white
+    // (16:1 on black) rather than an exact dupe of text, and label uses a
+    // softer cyan than the focus/accent cyan so the three roles read apart.
     name: 'High Contrast', category: 'accessibility', isDark: true,
-    colors: { bg: '#000000', group_bg: '#1a1a1a', border: '#ffffff', text: '#ffffff', text_secondary: '#ffffff', label: '#00ffff', focus: '#00ffff', input_bg: '#000000', accent: '#00ffff', title_bg: '#333333', title_border: '#00ffff', table_header: '#333333', table_alt: '#1a1a1a', button_hover: '#00cccc' },
-    semantic: { success: '#00ff00', warning: '#ffff00', error: '#ff0000', info: '#00ffff', link: '#00ffff', link_hover: '#00cccc', selection_bg: '#00ffff', selection_text: '#000000' },
+    colors: { bg: '#000000', group_bg: '#1a1a1a', border: '#ffffff', text: '#ffffff', text_secondary: '#e6e6e6', label: '#7df9ff', focus: '#00ffff', input_bg: '#000000', accent: '#00ffff', title_bg: '#333333', title_border: '#00ffff', table_header: '#333333', table_alt: '#1a1a1a', button_hover: '#00cccc' },
+    semantic: { success: '#00ff00', warning: '#ffff00', error: '#ff4d4d', info: '#00ffff', link: '#00ffff', link_hover: '#00cccc', selection_bg: '#00ffff', selection_text: '#000000' },
+  },
+  // ── Issue #824: six cohesive palettes ──────────────────────────────────
+  midnight: {
+    name: 'Midnight', category: 'standard', isDark: true,
+    colors: { bg: '#0b1021', group_bg: '#141a32', border: '#2a3354', text: '#e4e8f7', text_secondary: '#aab3d4', label: '#8089ad', focus: '#7aa2ff', input_bg: '#080c1a', accent: '#9d7bff', title_bg: '#1a2142', title_border: '#3a4468', table_header: '#1a2142', table_alt: '#141a32', button_hover: '#1f274a' },
+    semantic: { success: '#56d364', warning: '#e3b341', error: '#ff6a6a', info: '#7aa2ff', link: '#7aa2ff', link_hover: '#a8c3ff', selection_bg: '#2a3a6e', selection_text: '#ffffff' },
+  },
+  nord: {
+    name: 'Nord', category: 'standard', isDark: true,
+    colors: { bg: '#2e3440', group_bg: '#3b4252', border: '#4c566a', text: '#eceff4', text_secondary: '#c8d0de', label: '#9aa5b8', focus: '#88c0d0', input_bg: '#272c36', accent: '#b48ead', title_bg: '#434c5e', title_border: '#5e81ac', table_header: '#434c5e', table_alt: '#3b4252', button_hover: '#434c5e' },
+    semantic: { success: '#a3be8c', warning: '#ebcb8b', error: '#bf616a', info: '#81a1c1', link: '#88c0d0', link_hover: '#8fbcbb', selection_bg: '#4c566a', selection_text: '#eceff4' },
+  },
+  'solarized-dark': {
+    name: 'Solarized Dark', category: 'standard', isDark: true,
+    colors: { bg: '#002b36', group_bg: '#073642', border: '#0a4b5a', text: '#eee8d5', text_secondary: '#bcc4be', label: '#93a1a1', focus: '#268bd2', input_bg: '#00212b', accent: '#6c71c4', title_bg: '#073642', title_border: '#268bd2', table_header: '#073642', table_alt: '#06303b', button_hover: '#0a4b5a' },
+    semantic: { success: '#859900', warning: '#b58900', error: '#dc322f', info: '#268bd2', link: '#268bd2', link_hover: '#2aa198', selection_bg: '#0a4b5a', selection_text: '#eee8d5' },
+  },
+  'solarized-light': {
+    name: 'Solarized Light', category: 'standard', isDark: false,
+    colors: { bg: '#fdf6e3', group_bg: '#eee8d5', border: '#d8d2bf', text: '#073642', text_secondary: '#586e75', label: '#657b83', focus: '#268bd2', input_bg: '#ffffff', accent: '#6c71c4', title_bg: '#eee8d5', title_border: '#93a1a1', table_header: '#eee8d5', table_alt: '#f5efdc', button_hover: '#dcd5c0' },
+    semantic: { success: '#657b00', warning: '#a57700', error: '#dc322f', info: '#268bd2', link: '#268bd2', link_hover: '#2aa198', selection_bg: '#cfd8bd', selection_text: '#073642' },
+  },
+  graphite: {
+    name: 'Graphite', category: 'standard', isDark: true,
+    colors: { bg: '#17181c', group_bg: '#202228', border: '#33363f', text: '#e8e9ed', text_secondary: '#b4b7c0', label: '#878b96', focus: '#a78bfa', input_bg: '#101116', accent: '#8b5cf6', title_bg: '#26282f', title_border: '#6d4fd6', table_header: '#26282f', table_alt: '#202228', button_hover: '#2b2e36' },
+    semantic: { success: '#4ade80', warning: '#fbbf24', error: '#f87171', info: '#818cf8', link: '#a78bfa', link_hover: '#c4b5fd', selection_bg: '#3b3160', selection_text: '#ffffff' },
+  },
+  'daylight-hc': {
+    // AAA light a11y theme: black text on white, deep saturated accents that
+    // all clear 7:1 on the white background.
+    name: 'Daylight High-Contrast', category: 'accessibility', isDark: false,
+    colors: { bg: '#ffffff', group_bg: '#f2f2f2', border: '#000000', text: '#000000', text_secondary: '#1a1a1a', label: '#3d3d3d', focus: '#0033cc', input_bg: '#ffffff', accent: '#5a189a', title_bg: '#e6e6e6', title_border: '#000000', table_header: '#e6e6e6', table_alt: '#f2f2f2', button_hover: '#d9d9d9' },
+    semantic: { success: '#006400', warning: '#8a5a00', error: '#b00020', info: '#0033cc', link: '#0033cc', link_hover: '#001a99', selection_bg: '#0033cc', selection_text: '#ffffff' },
   },
 };
 

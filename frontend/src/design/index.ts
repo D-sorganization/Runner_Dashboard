@@ -15,7 +15,18 @@ export {
   lightCssVariableMap,
   cssVariableMap,
   toCssVariables,
+  // Elevation system (issue #827) + type scale (issue #828)
+  radii,
+  shadows,
+  statusTokens,
+  radiiCssVars,
+  shadowsCssVars,
+  statusCssVars,
+  typeScaleCssVars,
+  elevationCssVars,
+  elevationToCssVariables,
 } from "./tokens";
+export type { StatusVariant } from "./tokens";
 
 export { breakpoints, viewportContracts, isMobile, isCompactMobile, getBreakpoint } from "./breakpoints";
 

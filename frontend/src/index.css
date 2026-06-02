@@ -42,6 +42,19 @@
   --status-info-bg: rgba(88,166,255,0.15);
   --status-info-fg: #58a6ff;
 
+  /* Elevation system — radius rhythm + shadow scale (issue #827).
+     Promotes design/tokens.ts `radii`/`shadows` (previously orphaned) to
+     theme-aware CSS vars. The 6/8/10/12/14px sprawl collapses onto these.
+     Shadows here are tuned for dark surfaces; [data-theme="light"] below
+     re-tunes them lighter so cards don't read heavy on light themes. */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 9999px;
+  --shadow-soft: 0 1px 3px rgba(0, 0, 0, 0.28), 0 1px 2px rgba(0, 0, 0, 0.22);
+  --shadow-card: 0 4px 6px rgba(0, 0, 0, 0.32), 0 1px 3px rgba(0, 0, 0, 0.24);
+  --shadow-modal: 0 20px 60px rgba(0, 0, 0, 0.5), 0 8px 24px rgba(0, 0, 0, 0.38);
+
   /* Glassmorphism Tokens */
   --glass-bg: rgba(28, 33, 51, 0.7);
   --glass-border: rgba(255, 255, 255, 0.1);
@@ -76,13 +89,22 @@
   --comfortable-hit-target: 48px;
   --bottom-nav-height: 64px;
   
-  /* Type Scale */
-  --font-title: 20px;
-  --font-section-title: 16px;
-  --font-body: 14px;
-  --font-meta: 12px;
+  /* Type Scale — modular ratio 11/12/14/16/20/26/34 (issue #828).
+     Reconciles design/type.ts with these vars; --font-display is the new
+     hero step used for stat values (replaces the hardcoded 24px). */
   --font-micro: 11px;
-  
+  --font-meta: 12px;
+  --font-body: 14px;
+  --font-section-title: 16px;
+  --font-title: 20px;
+  --font-headline: 26px;
+  --font-display: 34px;
+
+  /* Density multiplier (issue #828). 1 = Comfortable (default),
+     0.82 = Compact for dense operator tables. Consumers scale paddings via
+     calc(var(--space-N) * var(--density)). Set on <html> by the toggle. */
+  --density: 1;
+
   /* Line Heights */
   --line-height-tight: 1.2;
   --line-height-body: 1.5;
@@ -104,12 +126,83 @@
   --bp-md: 768px;
   --bp-lg: 1024px;
   --bp-xl: 1280px;
+
+  /* Display font family alias (issue #828). Falls back to the body UI stack
+     so the dashboard renders unchanged where a display face isn't installed. */
+  --font-display-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Helvetica, Arial, sans-serif;
+}
+
+/* Light-theme shadow re-tune (issue #827). useTheme sets data-theme=light for
+   every light fleet theme; here we soften the elevation shadows so cards stop
+   reading heavy on bright backgrounds. Radius/status vars are theme-neutral. */
+[data-theme="light"] {
+  --shadow-soft: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.10);
+  --shadow-card: 0 1px 3px rgba(16, 24, 40, 0.10), 0 4px 8px rgba(16, 24, 40, 0.08);
+  --shadow-modal: 0 8px 24px rgba(16, 24, 40, 0.12), 0 20px 48px rgba(16, 24, 40, 0.16);
+}
+
+/* Density toggle (issue #828). Compact tightens vertical rhythm in dense
+   operator tables without re-laying-out the whole app. */
+html[data-density="compact"] {
+  --density: 0.82;
+}
+html[data-density="compact"] .data-table th,
+html[data-density="compact"] .data-table td,
+html[data-density="compact"] .resource-table th,
+html[data-density="compact"] .resource-table td {
+  padding-top: calc(8px * var(--density));
+  padding-bottom: calc(8px * var(--density));
+}
+
+/* ── Micro-interactions (issue #828) ──────────────────────────────────────
+   Card hover-lift, button press, theme crossfade, tab-underline slide. Every
+   rule is wrapped by the global prefers-reduced-motion handler further down
+   (and the per-property reduced block here) so motion-averse users opt out. */
+.lift {
+  transition: transform var(--motion-fast, 120ms) var(--easing-standard, ease),
+    box-shadow var(--motion-normal, 180ms) var(--easing-standard, ease);
+}
+.lift:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-card);
+}
+.press {
+  transition: transform var(--motion-fast, 120ms) var(--easing-standard, ease);
+}
+.press:active {
+  transform: scale(0.97);
+}
+/* Theme crossfade: a brief background/color transition on the root so theme
+   switches glide instead of snapping. */
+:root,
+body {
+  transition: background-color var(--motion-slow, 240ms) var(--easing-standard, ease),
+    color var(--motion-slow, 240ms) var(--easing-standard, ease);
+}
+/* Animated tab underline — slides in from the active tab rather than popping. */
+.tab-btn.active::after {
+  transition: left var(--motion-normal, 180ms) var(--easing-emphasized, ease),
+    right var(--motion-normal, 180ms) var(--easing-emphasized, ease);
+}
+@media (prefers-reduced-motion: reduce) {
+  .lift,
+  .press,
+  :root,
+  body,
+  .tab-btn.active::after {
+    transition: none !important;
+  }
+  .lift:hover,
+  .press:active {
+    transform: none;
+  }
 }
 
 .glass-card {
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   box-shadow: var(--glass-shadow);
 }
 
@@ -294,7 +387,7 @@ code, pre, .code, kbd {
   font-size: 13px;
   font-weight: 500;
   padding: 6px 12px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   white-space: nowrap;
 }
@@ -390,7 +483,7 @@ code, pre, .code, kbd {
 .section {
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   margin-bottom: 16px;
   overflow: hidden;
 }
@@ -417,7 +510,7 @@ code, pre, .code, kbd {
   font-size: 11px;
   font-weight: 500;
   padding: 2px 8px;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: var(--bg-tertiary);
   color: var(--text-secondary);
 }
@@ -445,7 +538,7 @@ code, pre, .code, kbd {
 .stat-card {
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 14px;
 }
 .stat-label {
@@ -456,9 +549,12 @@ code, pre, .code, kbd {
   margin-bottom: 4px;
 }
 .stat-value {
-  font-size: 24px;
+  font-size: var(--font-headline);
+  font-family: var(--font-display-family);
   font-weight: 700;
-  line-height: 1.2;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
 }
 .stat-sub {
   font-size: 11px;
@@ -490,10 +586,10 @@ code, pre, .code, kbd {
   gap: 16px 24px;
   padding: 18px 22px;
   margin-bottom: 18px;
-  border-radius: 14px;
+  border-radius: var(--radius-lg);
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--shadow-soft);
 }
 .fleet-hero--ok      { border-left: 4px solid var(--accent-green); }
 .fleet-hero--warning { border-left: 4px solid var(--accent-yellow); }
@@ -535,7 +631,7 @@ code, pre, .code, kbd {
   padding: 10px 14px;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   text-align: left;
   cursor: pointer;
   transition: background 0.15s, transform 0.1s;
@@ -657,7 +753,7 @@ code, pre, .code, kbd {
 .deployment-state-machine {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 12px;
 }
 .deployment-state-machine-head {
@@ -700,7 +796,7 @@ code, pre, .code, kbd {
 .deployment-preview {
   background: var(--bg-tertiary);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 12px;
   margin: 12px 0;
 }
@@ -727,7 +823,7 @@ code, pre, .code, kbd {
 .runner-card {
   background: var(--bg-tertiary);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 12px;
   display: flex;
   flex-direction: column;
@@ -749,7 +845,7 @@ code, pre, .code, kbd {
   font-size: 11px;
   font-weight: 500;
   padding: 2px 8px;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   text-transform: capitalize;
 }
 .runner-status-badge.online {
@@ -790,7 +886,7 @@ code, pre, .code, kbd {
 .fleet-mobile-kpi {
   background: var(--bg-tertiary);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 9px 10px;
   min-width: 0;
 }
@@ -817,7 +913,7 @@ code, pre, .code, kbd {
 }
 .mobile-kpi {
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--bg-card);
   padding: 9px 10px;
   min-width: 0;
@@ -839,7 +935,7 @@ code, pre, .code, kbd {
 }
 .mobile-run-card {
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--bg-card);
   padding: 10px;
   min-width: 0;
@@ -886,7 +982,7 @@ code, pre, .code, kbd {
 }
 .fleet-status-pill {
   align-items: center;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   display: inline-flex;
   gap: 6px;
   min-height: 30px;
@@ -899,7 +995,7 @@ code, pre, .code, kbd {
 }
 .mobile-runner-card {
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--bg-card);
   padding: 10px;
   min-width: 0;
@@ -946,7 +1042,7 @@ code, pre, .code, kbd {
 .mobile-runner-meter-track {
   background: var(--bg-tertiary);
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   height: 7px;
   overflow: hidden;
 }
@@ -960,7 +1056,7 @@ code, pre, .code, kbd {
   font-size: 12px;
   font-weight: 500;
   padding: 5px 12px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: var(--bg-tertiary);
   color: var(--text-primary);
@@ -1136,7 +1232,7 @@ th.sortable.active .sort-indicator {
   font-size: 11px;
   font-weight: 500;
   padding: 2px 8px;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   text-transform: capitalize;
 }
 .conclusion-badge.success {
@@ -1233,7 +1329,7 @@ th.sortable.active .sort-indicator {
   font-size: 10px;
   font-weight: 500;
   padding: 1px 6px;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
   color: var(--text-muted);
 }
@@ -1241,7 +1337,7 @@ th.sortable.active .sort-indicator {
 .gpu-card {
   background: var(--bg-tertiary);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 14px;
   margin-top: 8px;
 }
@@ -1278,7 +1374,7 @@ th.sortable.active .sort-indicator {
 .search-bar {
   background: var(--bg-tertiary);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 8px 12px;
   color: var(--text-primary);
   font-size: 13px;
@@ -1326,7 +1422,7 @@ th.sortable.active .sort-indicator {
 .report-content {
   background: var(--bg-tertiary);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 20px;
   font-size: 14px;
   line-height: 1.7;
@@ -1376,7 +1472,7 @@ th.sortable.active .sort-indicator {
 .report-content pre {
   background: var(--bg-primary);
   padding: 12px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   overflow-x: auto;
   font-size: 12px;
   margin: 8px 0;
@@ -1465,7 +1561,7 @@ th.sortable.active .sort-indicator {
 .assessment-mobile-card,
 .feature-request-mobile-card {
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--bg-secondary);
   padding: 12px;
 }
@@ -1500,7 +1596,7 @@ th.sortable.active .sort-indicator {
 }
 .assessment-mobile-chip,
 .feature-request-mobile-chip {
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--bg-tertiary);
   color: var(--text-muted);
   font-size: 11px;
@@ -1514,7 +1610,7 @@ th.sortable.active .sort-indicator {
 .test-card {
   background: var(--bg-tertiary);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 20px;
   margin-bottom: 16px;
 }
@@ -1550,7 +1646,7 @@ th.sortable.active .sort-indicator {
 .form-select {
   background: var(--bg-primary);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 6px 12px;
   color: var(--text-primary);
   font-size: 13px;
@@ -1562,7 +1658,7 @@ th.sortable.active .sort-indicator {
 .form-input {
   background: var(--bg-primary);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 6px 12px;
   color: var(--text-primary);
   font-size: 13px;
@@ -1581,7 +1677,7 @@ th.sortable.active .sort-indicator {
 .output-box {
   background: var(--bg-primary);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 12px;
   font-family: monospace;
   font-size: 12px;
@@ -1601,7 +1697,7 @@ th.sortable.active .sort-indicator {
 .machine-card {
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   padding: 16px;
   display: flex;
   flex-direction: column;
@@ -1635,7 +1731,7 @@ th.sortable.active .sort-indicator {
   font-size: 10px;
   font-weight: 600;
   padding: 2px 7px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -1643,7 +1739,7 @@ th.sortable.active .sort-indicator {
   font-size: 10px;
   font-weight: 600;
   padding: 2px 7px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   white-space: nowrap;
@@ -1714,7 +1810,7 @@ th.sortable.active .sort-indicator {
 .machine-gpu {
   background: var(--bg-tertiary);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 10px;
   margin-top: 2px;
 }
@@ -1759,12 +1855,12 @@ th.sortable.active .sort-indicator {
   padding: 12px;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
 }
 .maxwell-chat-bubble {
   max-width: 86%;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 9px 11px;
   font-size: 13px;
   line-height: 1.45;
@@ -1954,7 +2050,7 @@ th.sortable.active .sort-indicator {
   }
   .report-item {
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     background: var(--bg-secondary);
     min-height: 56px;
   }
@@ -1966,7 +2062,7 @@ th.sortable.active .sort-indicator {
   }
   .report-content {
     max-height: calc(100dvh - 184px);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     line-height: 1.65;
   }
   .report-content table {
@@ -2074,7 +2170,7 @@ th.sortable.active .sort-indicator {
   align-items: center;
   background: var(--bg-tertiary);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   color: var(--text-primary);
   cursor: pointer;
   display: inline-flex;
@@ -2116,7 +2212,7 @@ th.sortable.active .sort-indicator {
 .segmented-control {
   background: var(--bg-tertiary);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   display: inline-flex;
   gap: 4px;
   padding: 4px;
@@ -2125,7 +2221,7 @@ th.sortable.active .sort-indicator {
 .segmented-control-option {
   background: transparent;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   color: var(--text-secondary);
   cursor: pointer;
   font: inherit;
@@ -2144,7 +2240,7 @@ th.sortable.active .sort-indicator {
 .subtab { background: none; border: none; border-bottom: 2px solid transparent; padding: 8px 14px; color: var(--text-muted); cursor: pointer; font-size: 13px; font-weight: 500; }
 .subtab:hover { color: var(--text-primary); }
 .subtab.active { color: var(--text-primary); border-bottom-color: var(--accent-blue); }
-.subtab-badge { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 10px; font-size: 11px; background: var(--bg-tertiary); color: var(--text-muted); }
+.subtab-badge { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: var(--radius-md); font-size: 11px; background: var(--bg-tertiary); color: var(--text-muted); }
 .subtab.active .subtab-badge { background: rgba(88,166,255,0.15); color: var(--accent-blue); }
 .subtab:disabled { opacity: 0.5; cursor: not-allowed; }
 .subtabs-right { display: flex; align-items: center; }
@@ -2171,7 +2267,7 @@ th.sortable.active .sort-indicator {
 .mobile-credentials-lock {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 16px;
 }
 .mobile-credentials-sheet {
@@ -2198,13 +2294,13 @@ th.sortable.active .sort-indicator {
   margin: 0 0 12px;
   padding: 12px;
   border: 1px solid rgba(88, 166, 255, 0.35);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: rgba(88, 166, 255, 0.08);
 }
 @media (max-width: 768px) {
   .subtabs.remediation-mobile-tabs {
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     padding: 4px;
     margin-bottom: 12px;
     background: var(--bg-secondary);
@@ -2216,7 +2312,7 @@ th.sortable.active .sort-indicator {
   }
   .subtabs.remediation-mobile-tabs .subtab {
     border: 0;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     padding: 8px 6px;
     min-width: 0;
   }
@@ -2363,7 +2459,7 @@ th.sortable.active .sort-indicator {
   gap: 6px;
   width: 100%;
   padding: 14px 16px;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   border: 2px solid var(--border);
   background: var(--bg-secondary);
   text-align: left;
@@ -2400,7 +2496,7 @@ th.sortable.active .sort-indicator {
   font-size: 11px;
   font-weight: 500;
   padding: 2px 8px;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
 }
 
 .agent-dispatch-page .provider-card .status.ready {
@@ -2438,7 +2534,7 @@ th.sortable.active .sort-indicator {
   gap: 4px;
   width: 100%;
   padding: 12px 14px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   border: 2px solid var(--border);
   background: var(--bg-secondary);
   text-align: left;
@@ -2472,7 +2568,7 @@ th.sortable.active .sort-indicator {
   color: var(--text-muted);
   font-size: 13px;
   border: 1px dashed var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
 }
 
 .agent-dispatch-page .review-cards {
@@ -2484,7 +2580,7 @@ th.sortable.active .sort-indicator {
 
 .agent-dispatch-page .review-card {
   padding: 14px 16px;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
   background: var(--bg-secondary);
 }
@@ -2530,7 +2626,7 @@ th.sortable.active .sort-indicator {
 
 .agent-dispatch-page .safety-plan {
   padding: 12px 14px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   border: 1px solid rgba(210, 153, 34, 0.3);
   background: rgba(210, 153, 34, 0.08);
   color: var(--accent-yellow);
@@ -2657,7 +2753,7 @@ th.sortable.active .sort-indicator {
   gap: 8px;
   padding: 16px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--bg-card);
 }
 
@@ -2671,7 +2767,7 @@ th.sortable.active .sort-indicator {
   gap: 6px;
   padding: 12px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--bg-card);
 }
 
@@ -3010,7 +3106,7 @@ th.sortable.active .sort-indicator {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
 }
 
 .mobile-shell__sheet-close:hover,

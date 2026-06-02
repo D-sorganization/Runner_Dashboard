@@ -19,6 +19,8 @@ import { BreakpointProvider, useBreakpoint } from './hooks/useBreakpoint'
 import { ThemeProvider } from './design/ThemeProvider'
 import { useThemeContext } from './design/ThemeContext'
 import { ThemeSelector } from './components/ThemeSelector'
+import { DensityToggle } from './components/DensityToggle'
+import { SkeletonCard } from './primitives/Skeleton'
 import './index.css'
 // Web Vitals — send metrics to backend (issue #385)
 import { onCLS, onINP, onFCP, onLCP } from 'web-vitals'
@@ -328,6 +330,7 @@ function AppWithMobileShell({ initialTab }: { initialTab?: string }) {
       actions={buildShellActions()}
       headerExtra={
         <>
+          <DensityToggle />
           <ShellThemeSelector />
           <ShellActiveProvider />
         </>
@@ -347,7 +350,13 @@ function AppWithMobileShell({ initialTab }: { initialTab?: string }) {
 // isPushSettingsRoute(window.location.pathname) ? <PushSettings /> : <AppWithMobileShell />
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <React.Suspense fallback={<div role="status" className="app-loading">Loading dashboard...</div>}>
+    <React.Suspense
+      fallback={
+        <div role="status" aria-label="Loading dashboard" className="app-loading" style={{ padding: 24, maxWidth: 1440, margin: '0 auto' }}>
+          <SkeletonCard lines={4} />
+        </div>
+      }
+    >
       <RootErrorBoundary>
         <ThemeProvider>
           <BreakpointProvider>
