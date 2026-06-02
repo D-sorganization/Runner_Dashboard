@@ -3,6 +3,11 @@
  *
  * Supports controlled (activeKey + onChange) and uncontrolled usage,
  * optional localStorage persistence via storageKey, and a right badge slot.
+ *
+ * a11y (#833): the strip is an ARIA tablist with roving focus — only the
+ * active tab is tabbable, and ←/→/↑/↓/Home/End move between enabled tabs
+ * (WAI-ARIA tabs pattern). This mirrors the live legacy `App.tsx` copy that
+ * this component supersedes (decomp pass 11, #836).
  */
 
 import React from "react"
@@ -22,6 +27,10 @@ interface SubTabsProps {
   storageKey?: string
   className?: string
   rightBadge?: React.ReactNode
+  /** Accessible name for the tablist (falls back to `label`, then a default). */
+  ariaLabel?: string
+  /** Alias for `ariaLabel`, preserved from the legacy call sites. */
+  label?: string
 }
 
 export function SubTabs({
@@ -31,6 +40,8 @@ export function SubTabs({
   storageKey,
   className,
   rightBadge,
+  ariaLabel,
+  label,
 }: SubTabsProps) {
   const initialKey = storageKey
     ? (localStorage.getItem(storageKey) ?? tabs[0]?.key)
@@ -52,18 +63,49 @@ export function SubTabs({
     onChange?.(key)
   }
 
+  const enabledKeys = tabs.filter((t) => !t.disabled).map((t) => t.key)
+
+  function onStripKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (enabledKeys.length === 0) return
+    const idx = activeKey != null ? enabledKeys.indexOf(activeKey) : -1
+    let next: string | null = null
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+      next = enabledKeys[(idx + 1 + enabledKeys.length) % enabledKeys.length]
+    } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+      next = enabledKeys[(idx - 1 + enabledKeys.length) % enabledKeys.length]
+    } else if (e.key === "Home") {
+      next = enabledKeys[0]
+    } else if (e.key === "End") {
+      next = enabledKeys[enabledKeys.length - 1]
+    }
+    if (next != null) {
+      e.preventDefault()
+      handleChange(next)
+    }
+  }
+
   return React.createElement(
     "div",
     { className: "subtabs" + (className ? " " + className : "") },
     React.createElement(
       "div",
-      { className: "subtabs-strip" },
-      tabs.map((tab) =>
-        React.createElement(
+      {
+        className: "subtabs-strip",
+        role: "tablist",
+        "aria-label": ariaLabel || label || "Section tabs",
+        onKeyDown: onStripKeyDown,
+      },
+      tabs.map((tab) => {
+        const selected = activeKey === tab.key
+        return React.createElement(
           "button",
           {
             key: tab.key,
-            className: "subtab" + (activeKey === tab.key ? " active" : ""),
+            className: "subtab" + (selected ? " active" : ""),
+            role: "tab",
+            "aria-selected": selected ? "true" : "false",
+            "aria-disabled": tab.disabled ? "true" : undefined,
+            tabIndex: selected ? 0 : -1,
             disabled: tab.disabled ?? false,
             onClick: () => {
               if (!tab.disabled) handleChange(tab.key)
@@ -72,13 +114,13 @@ export function SubTabs({
           tab.label,
           tab.badge != null
             ? React.createElement(Badge, {
-                tone: activeKey === tab.key ? "info" : "neutral",
+                tone: selected ? "info" : "neutral",
                 size: "sm",
                 children: tab.badge,
               })
             : null,
-        ),
-      ),
+        )
+      }),
     ),
     rightBadge
       ? React.createElement("div", { className: "subtabs-right" }, rightBadge)

@@ -120,6 +120,16 @@ export function FlaskGlyph({ size }: GlyphProps): React.ReactElement {
   );
 }
 
+/** Gear/settings glyph (matches legacy `I.settings`). */
+export function SettingsGlyph({ size }: GlyphProps): React.ReactElement {
+  return (
+    <Svg size={size}>
+      <circle cx={12} cy={12} r={3} />
+      <path d="M19.4 15a1.7 1.7 0 00.34 1.87l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.7 1.7 0 00-1.87-.34 1.7 1.7 0 00-1 1.54V21a2 2 0 11-4 0v-.09a1.7 1.7 0 00-1-1.54 1.7 1.7 0 00-1.87.34l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.7 1.7 0 00.34-1.87 1.7 1.7 0 00-1.54-1H3a2 2 0 110-4h.09a1.7 1.7 0 001.54-1 1.7 1.7 0 00-.34-1.87l-.06-.06a2 2 0 112.83-2.83l.06.06a1.7 1.7 0 001.87.34H9a1.7 1.7 0 001-1.54V3a2 2 0 114 0v.09a1.7 1.7 0 001 1.54 1.7 1.7 0 001.87-.34l.06-.06a2 2 0 112.83 2.83l-.06.06a1.7 1.7 0 00-.34 1.87V9c.25.61.85 1 1.54 1H21a2 2 0 110 4h-.09a1.7 1.7 0 00-1.54 1z" />
+    </Svg>
+  );
+}
+
 /** Docker-whale-ish stacked-boxes glyph (matches legacy `I.docker`). */
 export function DockerGlyph({ size }: GlyphProps): React.ReactElement {
   return (
