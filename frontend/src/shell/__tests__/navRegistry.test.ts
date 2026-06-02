@@ -14,6 +14,8 @@ import {
   frequentItems,
   itemsByGroup,
   navItemById,
+  mobilePrimaryItems,
+  mobileDrawerItems,
   assertValidNavRegistry,
   type NavItem,
   type NavGroupId,
@@ -73,6 +75,45 @@ describe("nav registry — DbC invariants", () => {
     expect(new Set(tabIds).size).toBe(tabIds.length);
   });
 
+  it("gives every item a unique icon (issue #840)", () => {
+    const icons = NAV_ITEMS.map((i) => i.Icon);
+    expect(new Set(icons).size).toBe(icons.length);
+  });
+
+  it("declares mutually-exclusive mobile flags on every item (issue #821)", () => {
+    for (const item of NAV_ITEMS) {
+      expect(typeof item.mobilePrimary).toBe("boolean");
+      expect(typeof item.mobileDrawer).toBe("boolean");
+      expect(item.mobilePrimary && item.mobileDrawer).toBe(false);
+    }
+  });
+
+  it("marks at least one mobilePrimary item and not all of them", () => {
+    const primary = NAV_ITEMS.filter((i) => i.mobilePrimary);
+    expect(primary.length).toBeGreaterThanOrEqual(1);
+    expect(primary.length).toBeLessThan(NAV_ITEMS.length);
+  });
+
+  it("surfaces the on-call operator controls in the mobile drawer (issue #821)", () => {
+    const drawerTabIds = NAV_ITEMS.filter((i) => i.mobileDrawer).map((i) => i.tabId);
+    for (const expected of ["conductor", "agent-dispatch"]) {
+      expect(drawerTabIds).toContain(expected);
+    }
+  });
+
+  it("un-orphans LinearSetup and PushSettings via admin nav entries (issue #825)", () => {
+    const byTab = (t: string) => NAV_ITEMS.find((i) => i.tabId === t);
+    expect(byTab("linear-setup")?.group).toBe("admin");
+    expect(byTab("push-settings")?.group).toBe("admin");
+  });
+
+  it("exposes a literal Reports item under the analysis group (issue #840)", () => {
+    const reports = NAV_ITEMS.find((i) => i.tabId === "reports");
+    expect(reports).toBeDefined();
+    expect(reports?.label).toBe("Reports");
+    expect(reports?.group).toBe("analysis");
+  });
+
   it("marks at least one frequent item and not all of them", () => {
     const freq = NAV_ITEMS.filter((i) => i.frequent);
     expect(freq.length).toBeGreaterThanOrEqual(1);
@@ -115,6 +156,21 @@ describe("assertValidNavRegistry — contract enforcement", () => {
     const bad: NavItem[] = [{ ...NAV_ITEMS[0], tooltip: "" }];
     expect(() => assertValidNavRegistry(bad, NAV_GROUPS)).toThrow();
   });
+
+  it("throws on a duplicate icon (issue #840)", () => {
+    const dup: NavItem[] = [
+      NAV_ITEMS[0],
+      { ...NAV_ITEMS[1], id: "x", tabId: "x", Icon: NAV_ITEMS[0].Icon },
+    ];
+    expect(() => assertValidNavRegistry(dup, NAV_GROUPS)).toThrow(/duplicate icon/);
+  });
+
+  it("throws when an item is both mobilePrimary and mobileDrawer (issue #821)", () => {
+    const bad: NavItem[] = [
+      { ...NAV_ITEMS[0], mobilePrimary: true, mobileDrawer: true },
+    ];
+    expect(() => assertValidNavRegistry(bad, NAV_GROUPS)).toThrow();
+  });
 });
 
 describe("nav registry — selectors", () => {
@@ -145,5 +201,21 @@ describe("nav registry — selectors", () => {
     const first = NAV_ITEMS[0];
     expect(navItemById(first.id)?.id).toBe(first.id);
     expect(navItemById("does-not-exist")).toBeUndefined();
+  });
+
+  it("mobilePrimaryItems returns only mobilePrimary items, in order", () => {
+    const p = mobilePrimaryItems();
+    expect(p.every((i) => i.mobilePrimary)).toBe(true);
+    expect(p.map((i) => i.id)).toEqual(
+      NAV_ITEMS.filter((i) => i.mobilePrimary).map((i) => i.id),
+    );
+  });
+
+  it("mobileDrawerItems returns only mobileDrawer items, in order", () => {
+    const d = mobileDrawerItems();
+    expect(d.every((i) => i.mobileDrawer)).toBe(true);
+    expect(d.map((i) => i.id)).toEqual(
+      NAV_ITEMS.filter((i) => i.mobileDrawer).map((i) => i.id),
+    );
   });
 });

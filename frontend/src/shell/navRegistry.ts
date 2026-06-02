@@ -37,6 +37,14 @@ import {
   SettingsIcon,
   UsersIcon,
   StethoscopeIcon,
+  CpuIcon,
+  NetworkIcon,
+  PackageIcon,
+  FileTextIcon,
+  LinearIcon,
+  BellIcon,
+  ClipboardCheckIcon,
+  HardDriveIcon,
 } from "./navIcons";
 
 /** Ordered group identifiers used to bucket categories in the sidebar. */
@@ -70,6 +78,20 @@ export interface NavItem {
   tabId: string;
   /** True if the item belongs in the slim top toolstrip (most-frequent). */
   frequent: boolean;
+  /**
+   * True if the item is one of the bottom-bar primary tabs on the mobile shell
+   * (issue #821). Exactly the small set an on-call operator reaches for first.
+   * The mobile shell reserves a final slot for the "More" drawer trigger, so the
+   * number of `mobilePrimary` items must stay small (see the contract below).
+   */
+  mobilePrimary: boolean;
+  /**
+   * True if the item is surfaced in the mobile "More" drawer (issue #821).
+   * Primary and drawer are mutually exclusive: a primary tab is already on the
+   * bottom bar, so it must not also appear in the drawer. Items that are neither
+   * are intentionally desktop-only.
+   */
+  mobileDrawer: boolean;
 }
 
 /** Declared groups, in the order they appear in the sidebar. */
@@ -78,7 +100,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
   { id: "workflows", label: "Workflows & Jobs" },
   { id: "orchestration", label: "Orchestration" },
   { id: "agents", label: "AI & Agents" },
-  { id: "analysis", label: "Reports & Analysis" },
+  { id: "analysis", label: "Reports & Insights" },
   { id: "admin", label: "Admin & Settings" },
 ] as const;
 
@@ -96,6 +118,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
     tooltip: "Live fleet overview: runner health, status, and key metrics.",
     tabId: "overview",
     frequent: true,
+    mobilePrimary: true,
+    mobileDrawer: false,
   },
   {
     id: "queue",
@@ -105,15 +129,19 @@ export const NAV_ITEMS: readonly NavItem[] = [
     tooltip: "Queued and in-progress workflow runs across the fleet.",
     tabId: "queue",
     frequent: true,
+    mobilePrimary: true,
+    mobileDrawer: false,
   },
   {
     id: "machines",
     label: "Machines",
     group: "fleet",
-    Icon: ServerIcon,
+    Icon: CpuIcon,
     tooltip: "Heavy / multi-node runner machines and their capacity.",
     tabId: "machines",
     frequent: false,
+    mobilePrimary: false,
+    mobileDrawer: true,
   },
   {
     id: "runner-schedule",
@@ -123,6 +151,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
     tooltip: "Scheduled runner on/off plan and desired-capacity state.",
     tabId: "runner-schedule",
     frequent: false,
+    mobilePrimary: false,
+    mobileDrawer: true,
   },
   {
     id: "runner-audit",
@@ -132,6 +162,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
     tooltip: "Hosted-runner billing audit and routing-policy violations.",
     tabId: "runner-audit",
     frequent: false,
+    mobilePrimary: false,
+    mobileDrawer: true,
   },
 
   // ── Workflows & Jobs ─────────────────────────────────────────────────────
@@ -143,6 +175,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
     tooltip: "Failed runs and AI-assisted remediation actions.",
     tabId: "remediation",
     frequent: true,
+    mobilePrimary: true,
+    mobileDrawer: false,
   },
   {
     id: "workflows",
@@ -152,6 +186,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
     tooltip: "Workflow inventory across the organization.",
     tabId: "workflows",
     frequent: false,
+    mobilePrimary: false,
+    mobileDrawer: true,
   },
   {
     id: "scheduled-jobs",
@@ -161,6 +197,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
     tooltip: "Scheduled (cron) workflows and their next-run times.",
     tabId: "scheduled-jobs",
     frequent: false,
+    mobilePrimary: false,
+    mobileDrawer: true,
   },
 
   // ── Orchestration ────────────────────────────────────────────────────────
@@ -169,9 +207,13 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: "Conductor",
     group: "orchestration",
     Icon: ConductorIcon,
-    tooltip: "Conductor admission gate: dispatch visibility and control.",
+    tooltip: "Conductor admission gate: pause, drain and budget controls.",
     tabId: "conductor",
     frequent: true,
+    // The on-call incident controls (pause/drain/budget) an operator needs on a
+    // phone — surfaced as a first-class mobile drawer entry (issue #821).
+    mobilePrimary: false,
+    mobileDrawer: true,
   },
   {
     id: "agent-dispatch",
@@ -181,24 +223,31 @@ export const NAV_ITEMS: readonly NavItem[] = [
     tooltip: "Dispatch AI agents to remediate failures or run tasks.",
     tabId: "agent-dispatch",
     frequent: false,
+    // AgentDispatch as a first-class mobile drawer tab (issue #821).
+    mobilePrimary: false,
+    mobileDrawer: true,
   },
   {
     id: "fleet-orchestration",
     label: "Fleet Orchestration",
     group: "orchestration",
-    Icon: ConductorIcon,
+    Icon: NetworkIcon,
     tooltip: "Cross-node fleet orchestration and coordination state.",
     tabId: "fleet-orchestration",
     frequent: false,
+    mobilePrimary: false,
+    mobileDrawer: true,
   },
   {
     id: "deployment",
     label: "Deployment",
     group: "orchestration",
-    Icon: RocketIcon,
+    Icon: PackageIcon,
     tooltip: "Deployment rollout state and version drift across machines.",
     tabId: "deployment",
     frequent: false,
+    mobilePrimary: false,
+    mobileDrawer: true,
   },
 
   // ── AI & Agents ──────────────────────────────────────────────────────────
@@ -210,6 +259,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
     tooltip: "Maxwell autonomous AI control plane: status and tasks.",
     tabId: "maxwell",
     frequent: false,
+    mobilePrimary: true,
+    mobileDrawer: false,
   },
   {
     id: "cline-launcher",
@@ -219,26 +270,43 @@ export const NAV_ITEMS: readonly NavItem[] = [
     tooltip: "Launch Cline agent sessions against the fleet.",
     tabId: "cline-launcher",
     frequent: false,
+    mobilePrimary: false,
+    mobileDrawer: true,
   },
 
-  // ── Reports & Analysis ───────────────────────────────────────────────────
+  // ── Reports & Insights ───────────────────────────────────────────────────
+  {
+    id: "reports",
+    label: "Reports",
+    group: "analysis",
+    Icon: FileTextIcon,
+    tooltip: "Saved report files: open, browse, and download fleet reports.",
+    tabId: "reports",
+    frequent: false,
+    mobilePrimary: false,
+    mobileDrawer: true,
+  },
   {
     id: "analysis",
     label: "Analysis",
     group: "analysis",
     Icon: ChartIcon,
-    tooltip: "Enriched run analysis and historical reports.",
+    tooltip: "Enriched run analysis and historical trends.",
     tabId: "analysis",
     frequent: false,
+    mobilePrimary: false,
+    mobileDrawer: true,
   },
   {
     id: "assessments",
     label: "Assessments",
     group: "analysis",
-    Icon: ActivityIcon,
+    Icon: ClipboardCheckIcon,
     tooltip: "Repository health assessments and graded scores.",
     tabId: "assessments",
     frequent: false,
+    mobilePrimary: false,
+    mobileDrawer: true,
   },
   {
     id: "feature-requests",
@@ -248,6 +316,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
     tooltip: "Incoming feature requests and their triage status.",
     tabId: "feature-requests",
     frequent: false,
+    mobilePrimary: false,
+    mobileDrawer: true,
   },
   {
     id: "org",
@@ -257,6 +327,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
     tooltip: "Organization-wide repository and runner overview.",
     tabId: "org",
     frequent: false,
+    mobilePrimary: false,
+    mobileDrawer: true,
   },
 
   // ── Admin & Settings ─────────────────────────────────────────────────────
@@ -268,15 +340,41 @@ export const NAV_ITEMS: readonly NavItem[] = [
     tooltip: "Stored credentials and their readiness state.",
     tabId: "credentials",
     frequent: false,
+    mobilePrimary: false,
+    mobileDrawer: true,
+  },
+  {
+    id: "linear-setup",
+    label: "Linear Setup",
+    group: "admin",
+    Icon: LinearIcon,
+    tooltip: "Connect Linear workspaces and configure issue-sync webhooks.",
+    tabId: "linear-setup",
+    frequent: false,
+    mobilePrimary: false,
+    mobileDrawer: false,
+  },
+  {
+    id: "push-settings",
+    label: "Notifications",
+    group: "admin",
+    Icon: BellIcon,
+    tooltip: "Web-push notification settings: subscribe and choose alert topics.",
+    tabId: "push-settings",
+    frequent: false,
+    mobilePrimary: false,
+    mobileDrawer: true,
   },
   {
     id: "local-apps",
     label: "Local Tools",
     group: "admin",
-    Icon: TerminalIcon,
+    Icon: HardDriveIcon,
     tooltip: "Local application processes and their health.",
     tabId: "local-apps",
     frequent: false,
+    mobilePrimary: false,
+    mobileDrawer: false,
   },
   {
     id: "tests",
@@ -286,6 +384,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
     tooltip: "Test suites and their latest results.",
     tabId: "tests",
     frequent: false,
+    mobilePrimary: false,
+    mobileDrawer: false,
   },
   {
     id: "diagnostics",
@@ -295,6 +395,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
     tooltip: "Dashboard diagnostics and self-checks.",
     tabId: "diagnostics",
     frequent: false,
+    mobilePrimary: false,
+    mobileDrawer: false,
   },
   {
     id: "principals",
@@ -304,6 +406,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
     tooltip: "Authenticated principals and acting-as identities.",
     tabId: "principals",
     frequent: false,
+    mobilePrimary: false,
+    mobileDrawer: false,
   },
   {
     id: "settings",
@@ -313,6 +417,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
     tooltip: "Dashboard settings and preferences.",
     tabId: "settings",
     frequent: false,
+    mobilePrimary: false,
+    mobileDrawer: true,
   },
 ] as const;
 
@@ -324,10 +430,13 @@ export const NAV_ITEMS: readonly NavItem[] = [
  * Preconditions enforced:
  *  - every item has non-empty id, label, tooltip, and tabId;
  *  - ids and tabIds are unique;
+ *  - icons are unique (one distinct glyph per category — issue #840);
  *  - group ids are unique;
  *  - every item.group references a declared group;
  *  - every declared group has at least one item;
- *  - at least one (but not all) items are `frequent`.
+ *  - at least one (but not all) items are `frequent`;
+ *  - `mobilePrimary` and `mobileDrawer` are mutually exclusive booleans, and at
+ *    least one (but not all) items are `mobilePrimary` (issue #821).
  *
  * Postcondition: if this returns, all consumers may assume the above hold.
  */
@@ -355,6 +464,7 @@ export function assertValidNavRegistry(
 
   const seenIds = new Set<string>();
   const seenTabIds = new Set<string>();
+  const seenIcons = new Set<NavIcon>();
   for (const it of items) {
     if (!it.id) throw new Error("navRegistry: item missing id");
     if (!it.label) throw new Error(`navRegistry: item "${it.id}" missing label`);
@@ -368,6 +478,17 @@ export function assertValidNavRegistry(
     if (typeof it.frequent !== "boolean") {
       throw new Error(`navRegistry: item "${it.id}" frequent must be boolean`);
     }
+    if (typeof it.mobilePrimary !== "boolean") {
+      throw new Error(`navRegistry: item "${it.id}" mobilePrimary must be boolean`);
+    }
+    if (typeof it.mobileDrawer !== "boolean") {
+      throw new Error(`navRegistry: item "${it.id}" mobileDrawer must be boolean`);
+    }
+    if (it.mobilePrimary && it.mobileDrawer) {
+      throw new Error(
+        `navRegistry: item "${it.id}" cannot be both mobilePrimary and mobileDrawer`,
+      );
+    }
     if (!groupIds.has(it.group)) {
       throw new Error(
         `navRegistry: item "${it.id}" references unknown group "${it.group}"`,
@@ -379,8 +500,12 @@ export function assertValidNavRegistry(
     if (seenTabIds.has(it.tabId)) {
       throw new Error(`navRegistry: duplicate tabId "${it.tabId}"`);
     }
+    if (seenIcons.has(it.Icon)) {
+      throw new Error(`navRegistry: duplicate icon used by item "${it.id}"`);
+    }
     seenIds.add(it.id);
     seenTabIds.add(it.tabId);
+    seenIcons.add(it.Icon);
   }
 
   for (const g of groups) {
@@ -395,6 +520,14 @@ export function assertValidNavRegistry(
   }
   if (freqCount === items.length) {
     throw new Error("navRegistry: not all items may be frequent");
+  }
+
+  const mobilePrimaryCount = items.filter((it) => it.mobilePrimary).length;
+  if (mobilePrimaryCount === 0) {
+    throw new Error("navRegistry: at least one item must be mobilePrimary");
+  }
+  if (mobilePrimaryCount === items.length) {
+    throw new Error("navRegistry: not all items may be mobilePrimary");
   }
 }
 
@@ -423,4 +556,21 @@ export function itemsByGroup(): Record<NavGroupId, NavItem[]> {
 /** Look up a single item by id. */
 export function navItemById(id: string): NavItem | undefined {
   return NAV_ITEMS.find((it) => it.id === id);
+}
+
+/**
+ * Mobile bottom-bar primary items, in registry order — feeds the mobile shell's
+ * tablist (issue #821). The shell appends its own "More" trigger after these.
+ */
+export function mobilePrimaryItems(): NavItem[] {
+  return NAV_ITEMS.filter((it) => it.mobilePrimary);
+}
+
+/**
+ * Mobile "More" drawer items, in registry order — feeds the mobile drawer
+ * (issue #821). Includes the previously desktop-only operator controls
+ * (Conductor pause/drain/budget, AgentDispatch, …).
+ */
+export function mobileDrawerItems(): NavItem[] {
+  return NAV_ITEMS.filter((it) => it.mobileDrawer);
 }

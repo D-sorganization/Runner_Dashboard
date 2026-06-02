@@ -167,3 +167,92 @@ export const StethoscopeIcon = svg(
     <circle cx="20" cy="10" r="2" />
   </>,
 );
+
+// ── Distinct glyphs introduced to de-duplicate the nav rail (issue #840) ──────
+
+/** Heavy / multi-node runner machines (was sharing ServerIcon with Fleet). */
+export const CpuIcon = svg(
+  <>
+    <rect x="4" y="4" width="16" height="16" rx="2" />
+    <rect x="9" y="9" width="6" height="6" />
+    <line x1="9" y1="1" x2="9" y2="4" />
+    <line x1="15" y1="1" x2="15" y2="4" />
+    <line x1="9" y1="20" x2="9" y2="23" />
+    <line x1="15" y1="20" x2="15" y2="23" />
+    <line x1="20" y1="9" x2="23" y2="9" />
+    <line x1="20" y1="14" x2="23" y2="14" />
+    <line x1="1" y1="9" x2="4" y2="9" />
+    <line x1="1" y1="14" x2="4" y2="14" />
+  </>,
+);
+
+/** Cross-node fleet orchestration (was sharing ConductorIcon with Conductor). */
+export const NetworkIcon = svg(
+  <>
+    <circle cx="12" cy="5" r="2.5" />
+    <circle cx="5" cy="19" r="2.5" />
+    <circle cx="19" cy="19" r="2.5" />
+    <line x1="12" y1="7.5" x2="6" y2="16.8" />
+    <line x1="12" y1="7.5" x2="18" y2="16.8" />
+    <line x1="7.5" y1="19" x2="16.5" y2="19" />
+  </>,
+);
+
+/** Deployment rollout / version drift (was sharing RocketIcon with Dispatch). */
+export const PackageIcon = svg(
+  <>
+    <path d="M16.5 9.4 7.55 4.24" />
+    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+    <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+    <line x1="12" y1="22.08" x2="12" y2="12" />
+  </>,
+);
+
+/** Distinct "Reports" document glyph (issue #840: a literal Reports item). */
+export const FileTextIcon = svg(
+  <>
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <polyline points="14 2 14 8 20 8" />
+    <line x1="16" y1="13" x2="8" y2="13" />
+    <line x1="16" y1="17" x2="8" y2="17" />
+    <line x1="10" y1="9" x2="8" y2="9" />
+  </>,
+);
+
+/** Linear workspace integration setup (issue #825). */
+export const LinearIcon = svg(
+  <>
+    <path d="M3 12.5 11.5 21" />
+    <path d="M3 8 16 21" />
+    <path d="M4 4.5 19.5 20" />
+    <path d="M9 3 21 15" />
+    <path d="M14.5 3 21 9.5" />
+  </>,
+);
+
+/** Repository health assessments / graded scorecards (issue #840). */
+export const ClipboardCheckIcon = svg(
+  <>
+    <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+    <rect x="8" y="2" width="8" height="4" rx="1" />
+    <path d="m9 14 2 2 4-4" />
+  </>,
+);
+
+/** Local application processes / on-box tools (issue #840: distinct from Cline). */
+export const HardDriveIcon = svg(
+  <>
+    <line x1="22" y1="12" x2="2" y2="12" />
+    <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+    <line x1="6" y1="16" x2="6.01" y2="16" />
+    <line x1="10" y1="16" x2="10.01" y2="16" />
+  </>,
+);
+
+/** Push / notification settings bell (issue #825). */
+export const BellIcon = svg(
+  <>
+    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+    <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+  </>,
+);

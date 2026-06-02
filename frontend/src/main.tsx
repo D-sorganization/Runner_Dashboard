@@ -124,36 +124,16 @@ const _win = window as any
 _win.__deferredPrompt = deferredPrompt
 _win.triggerInstallPrompt = triggerInstallPrompt
 
-// Map legacy App tab strings to MobileShell TabIds.
-const LEGACY_TO_TAB_ID: Record<string, TabId> = {
-  overview: 'fleet',
-  fleet: 'fleet',
-  workflows: 'workflows',
-  remediation: 'remediation',
-  maxwell: 'maxwell',
-  org: 'org',
-  machines: 'heavy',
-  assessments: 'assessments',
-  'feature-requests': 'requests',
-  credentials: 'credentials',
-  reports: 'reports',
-  queue: 'health',
-  health: 'health',
+// The MobileShell is now driven by the single nav registry (issue #821), so a
+// mobile TabId *is* the legacy App tab string — no translation table is needed.
+// A couple of legacy aliases are normalized to their canonical registry tabId.
+const TAB_ID_ALIASES: Record<string, string> = {
+  fleet: 'overview',
+  health: 'queue',
 }
 
-// Inverse map: MobileShell TabId → legacy App tab string.
-const TAB_ID_TO_LEGACY: Partial<Record<TabId, string>> = {
-  fleet: 'overview',
-  workflows: 'workflows',
-  remediation: 'remediation',
-  maxwell: 'maxwell',
-  org: 'org',
-  heavy: 'machines',
-  assessments: 'assessments',
-  requests: 'feature-requests',
-  credentials: 'credentials',
-  reports: 'reports',
-  health: 'queue',
+function normalizeTabId(tab: string): TabId {
+  return TAB_ID_ALIASES[tab] ?? tab
 }
 
 function isPushSettingsRoute(pathname: string): boolean {
@@ -265,8 +245,7 @@ function AppWithMobileShell({ initialTab }: { initialTab?: string }) {
   const breakpoint = useBreakpoint()
   const isMobile = breakpoint !== 'lg' && breakpoint !== 'xl'
 
-  const resolvedInitialTabId: TabId =
-    (initialTab && LEGACY_TO_TAB_ID[initialTab]) || 'fleet'
+  const resolvedInitialTabId: TabId = normalizeTabId(initialTab ?? 'overview')
   const [mobileTab, setMobileTab] = useState<TabId>(resolvedInitialTabId)
 
   // Desktop modern-shell navigation is keyed on the legacy App tab string so the
@@ -278,19 +257,17 @@ function AppWithMobileShell({ initialTab }: { initialTab?: string }) {
   }, [])
 
   const handleLegacyTabChange = useCallback((nextLegacyTab: string) => {
-    const mapped = LEGACY_TO_TAB_ID[nextLegacyTab]
-    if (mapped) setMobileTab(mapped)
+    setMobileTab(normalizeTabId(nextLegacyTab))
     setDesktopTab(nextLegacyTab)
   }, [])
 
-  const legacyInitialTab =
-    initialTab ?? TAB_ID_TO_LEGACY[resolvedInitialTabId] ?? 'overview'
+  const legacyInitialTab = initialTab ?? resolvedInitialTabId
 
   if (isMobile) {
-    // M09-M13: native mobile views registered here.
+    // M09-M13: native mobile views registered here, keyed by registry tabId.
     const mobileTabContent = {
-      fleet: <FleetMobile />,
-      health: <QueueMobile />,
+      overview: <FleetMobile />,
+      queue: <QueueMobile />,
       maxwell: <MaxwellMobile />,
       reports: <ReportsMobile />,
       credentials: <CredentialsMobile />,
@@ -303,7 +280,7 @@ function AppWithMobileShell({ initialTab }: { initialTab?: string }) {
         tabContent={mobileTabContent as Record<TabId, React.ReactNode>}
       >
         <App
-          initialTab={TAB_ID_TO_LEGACY[mobileTab] ?? legacyInitialTab}
+          initialTab={mobileTab}
           onTabChange={handleLegacyTabChange}
         />
       </MobileShell>
