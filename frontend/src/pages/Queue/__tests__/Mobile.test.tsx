@@ -273,11 +273,11 @@ describe("QueueMobile", () => {
 
     render(<QueueMobile />);
 
-    await waitFor(() => {
-      expect(screen.getByLabelText("Queue health summary")).toBeInTheDocument();
-    });
-
-    const strip = screen.getByLabelText("Queue health summary");
+    const strip = await screen.findByLabelText(
+      "Queue health summary",
+      {},
+      { timeout: 5000 },
+    );
     expect(strip).toHaveTextContent("Running");
     expect(strip).toHaveTextContent("Queued");
     expect(strip).toHaveTextContent("Total");
