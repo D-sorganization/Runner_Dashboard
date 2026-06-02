@@ -16,7 +16,11 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, render, screen, fireEvent, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LocalAppsTab, type LocalApp, type LocalAppsData } from "../LocalApps";
-import { localAppHasUpdateAvailable, localAppUnhealthy } from "../localAppStatus";
+import {
+  localAppHasUpdateAvailable,
+  localAppNeedsAttention,
+  localAppUnhealthy,
+} from "../localAppStatus";
 
 afterEach(cleanup);
 
@@ -104,6 +108,11 @@ describe("LocalAppsTab", () => {
     expect(localAppHasUpdateAvailable(APPS[0])).toBe(false);
     expect(localAppUnhealthy(APPS[1])).toBe(true);
     expect(localAppUnhealthy(APPS[0])).toBe(false);
+    // needs-attention is the disjunction of the two predicates.
+    expect(localAppNeedsAttention(APPS[1])).toBe(true);
+    expect(localAppNeedsAttention(APPS[0])).toBe(false);
+    expect(localAppNeedsAttention({ drift: { behind: 2, ahead: 0 } })).toBe(true);
+    expect(localAppNeedsAttention({ health: { available: true, ok: false } })).toBe(true);
   });
 
   it("degrades to a Retry affordance when a row throws during render", () => {

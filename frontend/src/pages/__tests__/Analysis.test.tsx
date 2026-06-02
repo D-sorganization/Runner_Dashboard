@@ -15,6 +15,7 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  AnalysisTab,
   StatsTab,
   PerformanceTab,
   AnalysisOutcomesTab,
@@ -236,5 +237,59 @@ describe("ReportsTab", () => {
     await waitFor(() => expect(screen.getByText("latest report body")).toBeInTheDocument());
     fireEvent.click(screen.getByText("2026-05-31"));
     await waitFor(() => expect(screen.getByText("older report body")).toBeInTheDocument());
+  });
+});
+
+describe("AnalysisTab orchestrator", () => {
+  it("defaults to the Outcomes sub-tab and renders its panel", async () => {
+    localStorage.clear();
+    routeFetch([["/api/analysis/outcomes", { rows: [] }]]);
+    render(<AnalysisTab runs={[]} runners={[]} reports={[]} />);
+    // The SubTabs strip exposes the five sub-tab labels.
+    expect(screen.getByText("Outcomes")).toBeInTheDocument();
+    expect(screen.getByText("Durations")).toBeInTheDocument();
+    expect(screen.getByText("Reports")).toBeInTheDocument();
+  });
+
+  it("honours a legacy deep-link activeTab over the stored sub-tab", async () => {
+    localStorage.setItem("analysis-subtab", "outcomes");
+    routeFetch([["/api/reports", []]]);
+    render(<AnalysisTab activeTab="reports" runs={[]} runners={[]} reports={[]} />);
+    // Reports panel shows its "select a report" empty hint.
+    await waitFor(() =>
+      expect(screen.getByText(/Select a report/i)).toBeInTheDocument(),
+    );
+  });
+
+  it("switches sub-tabs and persists the selection to localStorage", async () => {
+    localStorage.clear();
+    routeFetch([
+      ["/api/analysis/outcomes", { rows: [] }],
+      ["/api/stats/workflows", { rows: [] }],
+    ]);
+    render(<AnalysisTab runs={[]} runners={[]} reports={[]} />);
+    fireEvent.click(screen.getByText("Durations"));
+    await waitFor(() =>
+      expect(localStorage.getItem("analysis-subtab")).toBe("stats"),
+    );
+  });
+
+  it("badges History and Reports sub-tabs with their counts", () => {
+    localStorage.clear();
+    routeFetch([["/api/analysis/outcomes", { rows: [] }]]);
+    const reports: ReportSummary[] = [
+      { date: "2026-06-01", size_kb: 1 },
+      { date: "2026-05-31", size_kb: 2 },
+    ];
+    render(
+      <AnalysisTab
+        runs={[{ id: 1 }, { id: 2 }, { id: 3 }]}
+        runners={[]}
+        reports={reports}
+      />,
+    );
+    // History badge = 3 runs, Reports badge = 2 reports.
+    expect(screen.getByText("3")).toBeInTheDocument();
+    expect(screen.getByText("2")).toBeInTheDocument();
   });
 });

@@ -141,3 +141,30 @@ export function DockerGlyph({ size }: GlyphProps): React.ReactElement {
     </Svg>
   );
 }
+
+/** Stop/square glyph (matches legacy `I.stop`). */
+export function StopGlyph({ size }: GlyphProps): React.ReactElement {
+  return (
+    <Svg size={size}>
+      <rect x={6} y={6} width={12} height={12} rx={1} />
+    </Svg>
+  );
+}
+
+/** Up-arrow glyph (matches legacy `I.arrowUp`). */
+export function ArrowUpGlyph({ size }: GlyphProps): React.ReactElement {
+  return (
+    <Svg size={size}>
+      <path d="M12 19V5M5 12l7-7 7 7" />
+    </Svg>
+  );
+}
+
+/** Down-arrow glyph (matches legacy `I.arrowDown`). */
+export function ArrowDownGlyph({ size }: GlyphProps): React.ReactElement {
+  return (
+    <Svg size={size}>
+      <path d="M12 5v14M5 12l7 7 7-7" />
+    </Svg>
+  );
+}
