@@ -9,6 +9,10 @@
   --text-primary: #e6edf3;
   --text-secondary: #8b949e;
   --text-muted: #6e7681;
+  /* Issue #826: high-contrast foreground for text/icons rendered on top of a
+     saturated accent fill (buttons, chat bubbles, heatmap cells). Replaces the
+     scattered hardcoded #fff literals so it can be re-tinted per theme. */
+  --text-on-accent: #ffffff;
   --accent-blue: #58a6ff;
   --accent-green: #3fb950;
   --accent-red: #f85149;
@@ -29,17 +33,24 @@
   --badge-info-fg: #58a6ff;
   --badge-neutral-bg: rgba(110, 118, 129, 0.15);
   --badge-neutral-fg: #8b949e;
-  
-  /* Semantic status tokens — D5 / issue #724 */
-  --status-healthy-bg: rgba(63,185,80,0.15);
+  /* Issue #826: purple badge tint for research-type issues/complexity, so the
+     legacy issue-type badge map can drop its hardcoded purple literal. */
+  --badge-purple-bg: rgba(188, 140, 255, 0.15);
+  --badge-purple-fg: #bc8cff;
+
+  /* Semantic status tokens — D5 / issue #724.
+     Issue #826: the *-bg tints are identical to the matching --badge-*-bg
+     tints, so they now alias them (DRY) instead of duplicating the rgba()
+     literals. A theme that re-tints a badge automatically re-tints status. */
+  --status-healthy-bg: var(--badge-success-bg);
   --status-healthy-fg: #3fb950;
-  --status-warning-bg: rgba(210,153,34,0.15);
+  --status-warning-bg: var(--badge-warning-bg);
   --status-warning-fg: #d29922;
-  --status-critical-bg: rgba(248,81,73,0.15);
+  --status-critical-bg: var(--badge-danger-bg);
   --status-critical-fg: #f85149;
   --status-unknown-bg: rgba(139,148,158,0.15);
   --status-unknown-fg: #8b949e;
-  --status-info-bg: rgba(88,166,255,0.15);
+  --status-info-bg: var(--badge-info-bg);
   --status-info-fg: #58a6ff;
 
   /* Elevation system — radius rhythm + shadow scale (issue #827).

@@ -54,9 +54,11 @@ function CopyButton({ text }: { text: string }) {
         fontSize: "11px",
         fontWeight: 500,
         cursor: "pointer",
-        background: copied ? "var(--accent, #22c55e)" : "var(--surface-alt, #1e293b)",
-        color: copied ? "#fff" : "var(--text-secondary, #94a3b8)",
-        border: "1px solid var(--border, #334155)",
+        background: copied
+          ? "var(--accent-green, #3fb950)"
+          : "var(--bg-tertiary, #1c2333)",
+        color: copied ? "var(--bg-primary, #0f1117)" : "var(--text-secondary, #8b949e)",
+        border: "1px solid var(--border, #30363d)",
         borderRadius: "4px",
         transition: "background 0.2s, color 0.2s",
       }}
@@ -103,7 +105,7 @@ export function LabelGuide() {
   if (loading) {
     return (
       <section aria-label="Label Guide loading" style={{ padding: "16px" }}>
-        <p style={{ color: "var(--text-secondary, #94a3b8)" }}>
+        <p style={{ color: "var(--text-secondary, #8b949e)" }}>
           Loading label guidance…
         </p>
       </section>
@@ -113,7 +115,7 @@ export function LabelGuide() {
   if (error || !data) {
     return (
       <section aria-label="Label Guide error" style={{ padding: "16px" }}>
-        <p style={{ color: "var(--danger, #ef4444)" }}>
+        <p style={{ color: "var(--accent-red, #f85149)" }}>
           Failed to load label guidance: {error ?? "unknown error"}
         </p>
       </section>
@@ -148,7 +150,7 @@ export function LabelGuide() {
           fontSize: "16px",
           fontWeight: 700,
           marginBottom: "4px",
-          color: "var(--text-primary, #f1f5f9)",
+          color: "var(--text-primary, #e6edf3)",
         }}
       >
         Runner Label Guide
@@ -156,7 +158,7 @@ export function LabelGuide() {
       <p
         style={{
           fontSize: "13px",
-          color: "var(--text-secondary, #94a3b8)",
+          color: "var(--text-secondary, #8b949e)",
           marginBottom: "20px",
         }}
       >
@@ -176,7 +178,7 @@ export function LabelGuide() {
         style={{
           overflowX: "auto",
           borderRadius: "8px",
-          border: "1px solid var(--border, #334155)",
+          border: "1px solid var(--border, #30363d)",
           marginBottom: "24px",
         }}
       >
@@ -185,13 +187,13 @@ export function LabelGuide() {
             width: "100%",
             borderCollapse: "collapse",
             fontSize: "13px",
-            color: "var(--text-primary, #f1f5f9)",
+            color: "var(--text-primary, #e6edf3)",
           }}
         >
           <thead>
             <tr
               style={{
-                background: "var(--surface-alt, #1e293b)",
+                background: "var(--bg-tertiary, #1c2333)",
                 textAlign: "left",
               }}
             >
@@ -205,8 +207,8 @@ export function LabelGuide() {
                       fontSize: "12px",
                       textTransform: "uppercase",
                       letterSpacing: "0.05em",
-                      color: "var(--text-secondary, #94a3b8)",
-                      borderBottom: "1px solid var(--border, #334155)",
+                      color: "var(--text-secondary, #8b949e)",
+                      borderBottom: "1px solid var(--border, #30363d)",
                       whiteSpace: "nowrap",
                     }}
                   >
@@ -223,8 +225,8 @@ export function LabelGuide() {
                 style={{
                   background:
                     idx % 2 === 0
-                      ? "var(--surface, #0f172a)"
-                      : "var(--surface-alt, #1e293b)",
+                      ? "var(--bg-secondary, #161b22)"
+                      : "var(--bg-tertiary, #1c2333)",
                   verticalAlign: "top",
                 }}
               >
@@ -233,10 +235,10 @@ export function LabelGuide() {
                     data-testid={`label-name-${label}`}
                     style={{
                       fontSize: "12px",
-                      background: "var(--surface-alt, #1e293b)",
+                      background: "var(--bg-tertiary, #1c2333)",
                       padding: "2px 6px",
                       borderRadius: "4px",
-                      border: "1px solid var(--border, #334155)",
+                      border: "1px solid var(--border, #30363d)",
                     }}
                   >
                     {label}
@@ -245,7 +247,7 @@ export function LabelGuide() {
                 <td
                   style={{
                     padding: "10px 14px",
-                    color: "var(--text-primary, #f1f5f9)",
+                    color: "var(--text-primary, #e6edf3)",
                     maxWidth: "220px",
                   }}
                 >
@@ -254,7 +256,7 @@ export function LabelGuide() {
                 <td
                   style={{
                     padding: "10px 14px",
-                    color: "var(--text-secondary, #94a3b8)",
+                    color: "var(--text-secondary, #8b949e)",
                     maxWidth: "200px",
                   }}
                 >
@@ -264,10 +266,10 @@ export function LabelGuide() {
                   <code
                     style={{
                       fontSize: "12px",
-                      background: "var(--surface-alt, #1e293b)",
+                      background: "var(--bg-tertiary, #1c2333)",
                       padding: "2px 6px",
                       borderRadius: "4px",
-                      border: "1px solid var(--border, #334155)",
+                      border: "1px solid var(--border, #30363d)",
                     }}
                   >
                     {info.runs_on_snippet}
@@ -288,7 +290,7 @@ export function LabelGuide() {
               fontSize: "14px",
               fontWeight: 700,
               marginBottom: "12px",
-              color: "var(--text-primary, #f1f5f9)",
+              color: "var(--text-primary, #e6edf3)",
             }}
           >
             Workflow Class Routing
@@ -305,8 +307,8 @@ export function LabelGuide() {
               <div
                 key={cls}
                 style={{
-                  background: "var(--surface-alt, #1e293b)",
-                  border: "1px solid var(--border, #334155)",
+                  background: "var(--bg-tertiary, #1c2333)",
+                  border: "1px solid var(--border, #30363d)",
                   borderRadius: "8px",
                   padding: "14px",
                 }}
@@ -318,7 +320,7 @@ export function LabelGuide() {
                     marginBottom: "6px",
                     textTransform: "uppercase",
                     letterSpacing: "0.05em",
-                    color: "var(--text-primary, #f1f5f9)",
+                    color: "var(--text-primary, #e6edf3)",
                   }}
                 >
                   {cls}
@@ -326,7 +328,7 @@ export function LabelGuide() {
                 <p
                   style={{
                     fontSize: "12px",
-                    color: "var(--text-secondary, #94a3b8)",
+                    color: "var(--text-secondary, #8b949e)",
                     marginBottom: "10px",
                     lineHeight: "1.5",
                   }}
@@ -339,7 +341,7 @@ export function LabelGuide() {
                       style={{
                         fontSize: "11px",
                         fontWeight: 600,
-                        color: "var(--success, #22c55e)",
+                        color: "var(--accent-green, #3fb950)",
                         textTransform: "uppercase",
                         letterSpacing: "0.05em",
                         marginRight: "6px",
@@ -352,12 +354,12 @@ export function LabelGuide() {
                         key={l}
                         style={{
                           fontSize: "11px",
-                          background: "var(--surface, #0f172a)",
+                          background: "var(--bg-secondary, #161b22)",
                           padding: "1px 5px",
                           borderRadius: "3px",
                           marginRight: "4px",
-                          border: "1px solid var(--border, #334155)",
-                          color: "var(--text-primary, #f1f5f9)",
+                          border: "1px solid var(--border, #30363d)",
+                          color: "var(--text-primary, #e6edf3)",
                         }}
                       >
                         {l}
@@ -371,7 +373,7 @@ export function LabelGuide() {
                       style={{
                         fontSize: "11px",
                         fontWeight: 600,
-                        color: "var(--danger, #ef4444)",
+                        color: "var(--accent-red, #f85149)",
                         textTransform: "uppercase",
                         letterSpacing: "0.05em",
                         marginRight: "6px",
@@ -384,12 +386,12 @@ export function LabelGuide() {
                         key={l}
                         style={{
                           fontSize: "11px",
-                          background: "var(--surface, #0f172a)",
+                          background: "var(--bg-secondary, #161b22)",
                           padding: "1px 5px",
                           borderRadius: "3px",
                           marginRight: "4px",
-                          border: "1px solid var(--border, #334155)",
-                          color: "var(--text-secondary, #94a3b8)",
+                          border: "1px solid var(--border, #30363d)",
+                          color: "var(--text-secondary, #8b949e)",
                         }}
                       >
                         {l}
@@ -406,7 +408,7 @@ export function LabelGuide() {
       <p
         style={{
           fontSize: "11px",
-          color: "var(--text-secondary, #94a3b8)",
+          color: "var(--text-secondary, #8b949e)",
           marginTop: "8px",
         }}
       >

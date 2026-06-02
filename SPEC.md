@@ -1,10 +1,21 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.54
+**Spec Version:** 2.5.55
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-02T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-02 (2.5.55):** Legacy dashboard accessibility and theme-token
+  hygiene are hardened. `frontend/src/legacy/App.tsx` now exposes sub-tabs as a
+  labelled ARIA tablist with roving keyboard focus, keeps sortable table headers
+  on their native `columnheader` role while preserving keyboard sorting, labels
+  the dispatch modal as an `aria-modal` dialog, and routes legacy issue/status
+  badge colors through semantic theme tokens. `frontend/src/pages/Fleet/LabelGuide.tsx`
+  aligns its fallback colors with the dashboard token contract, and
+  `tests/frontend/test_color_literal_budget.py` tracks the remaining literal
+  budget so legacy color debt cannot silently grow. `tests/e2e/a11y.spec.ts`
+  adds Playwright + axe coverage for critical pages, with `@axe-core/playwright`
+  recorded in the frontend dev dependencies.
 - **2026-06-02 (2.5.54):** The dashboard design system now supports a broader
   fleet theme set plus density-aware elevation polish. `frontend/src/design`
   adds six additional accessible palettes, exports radius/elevation/shadow
