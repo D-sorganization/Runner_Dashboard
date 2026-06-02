@@ -2645,6 +2645,39 @@ def _read_uvicorn_env_config() -> dict[str, int]:
     }
 
 
+# ─── SPA deep-link fallback ───────────────────────────────────────────────────
+# React Router (frontend/src/main.tsx) serves bookmarkable client-side routes —
+# "/" (Fleet), "/t/:tabId" for every nav tab, and "/settings/push". A cold HTTP
+# GET to one of those paths (a shared link or a bookmark opened fresh) has no
+# matching backend route and would otherwise fall through to FastAPI's default
+# 404, breaking the deep link on first load. The service worker doesn't paper
+# over it either: frontend/public/sw.js answers navigations network-first and
+# falls back to OFFLINE_URL, not index.html.
+#
+# This catch-all is registered LAST, so every explicit route and StaticFiles
+# mount above (including the /assets and /icons mounts and the single-file
+# routes for favicon/sw.js/manifest/etc.) takes precedence; only genuinely
+# unmatched GETs reach here. We still 404 /api/* and known static prefixes so a
+# typo'd endpoint or missing asset returns a real 404 instead of the SPA shell.
+_SPA_FALLBACK_EXCLUDED_PREFIXES = ("api/", "assets/", "icons/", "docs", "openapi.json")
+
+
+@app.get("/{full_path:path}")
+async def serve_spa_fallback(full_path: str):
+    """Serve the SPA shell (dist/index.html) for client-side routes so deep
+    links like /t/queue and /settings/push load on a cold request.
+
+    Excludes /api/* and known static prefixes, which must surface their own
+    404 rather than be masked by the HTML shell.
+    """
+    if full_path.startswith(_SPA_FALLBACK_EXCLUDED_PREFIXES):
+        raise HTTPException(status_code=404, detail="Not Found")
+    index_path = FRONTEND_DIR / "index.html"
+    if not index_path.exists():
+        raise HTTPException(status_code=404, detail="Frontend index.html not found")
+    return FileResponse(index_path, media_type="text/html")
+
+
 if __name__ == "__main__":
     import uvicorn
 
