@@ -141,6 +141,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.Suspense
       fallback={
         <div role="status" aria-label="Loading dashboard" className="app-loading" style={{ padding: 24, maxWidth: 1440, margin: '0 auto' }}>
+          <span>Loading dashboard...</span>
           <SkeletonCard lines={4} />
         </div>
       }
