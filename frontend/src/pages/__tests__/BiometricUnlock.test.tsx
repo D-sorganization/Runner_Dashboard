@@ -12,7 +12,13 @@
  */
 import "@testing-library/jest-dom/vitest";
 import React from "react";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BiometricUnlock } from "../BiometricUnlock";
 
@@ -131,6 +137,88 @@ describe("BiometricUnlock", () => {
     expect(() => render(<BiometricUnlock />)).not.toThrow();
     await waitFor(() => {
       expect(document.body).toBeInTheDocument();
+    });
+  });
+
+  it("registers via typed navigator.credentials.create and handles 501 stub", async () => {
+    // Mark WebAuthn as supported so the buttons become enabled.
+    const origPkc = (window as Record<string, unknown>).PublicKeyCredential;
+    (window as Record<string, unknown>).PublicKeyCredential = {
+      isUserVerifyingPlatformAuthenticatorAvailable: () =>
+        Promise.resolve(true),
+    };
+
+    // Mock the typed WebAuthn credential the component now narrows to
+    // PublicKeyCredential / AuthenticatorAttestationResponse.
+    const fakeBuffer = new ArrayBuffer(4);
+    const createMock = vi.fn(() =>
+      Promise.resolve({
+        id: "new-cred-id",
+        type: "public-key",
+        rawId: fakeBuffer,
+        response: {
+          clientDataJSON: fakeBuffer,
+          attestationObject: fakeBuffer,
+        },
+      }),
+    );
+    const origCreds = (navigator as Record<string, unknown>).credentials;
+    Object.defineProperty(navigator, "credentials", {
+      configurable: true,
+      value: { create: createMock, get: vi.fn() },
+    });
+
+    global.fetch = vi.fn((url: string) => {
+      if (url.includes("/register/begin")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              challenge: "AAAA",
+              rp: { name: "Runner Dashboard", id: "localhost" },
+              user: { id: "user-1", name: "operator" },
+              timeout_ms: 60000,
+            }),
+        } as Response);
+      }
+      if (url.includes("/register/complete")) {
+        return Promise.resolve({
+          ok: false,
+          status: 501,
+          json: () => Promise.resolve({ detail: "not implemented" }),
+        } as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(EMPTY_CREDENTIALS),
+      } as Response);
+    }) as typeof fetch;
+
+    render(<BiometricUnlock />);
+    const registerBtn = await screen.findByRole("button", {
+      name: /register device/i,
+    });
+    await waitFor(() => expect(registerBtn).not.toBeDisabled());
+    fireEvent.click(registerBtn);
+
+    await waitFor(() => {
+      expect(createMock).toHaveBeenCalledTimes(1);
+      expect(
+        screen.getByText(/Backend verification is not yet implemented/i),
+      ).toBeInTheDocument();
+    });
+
+    // Restore globals
+    if (origPkc !== undefined) {
+      (window as Record<string, unknown>).PublicKeyCredential = origPkc;
+    } else {
+      delete (window as Record<string, unknown>).PublicKeyCredential;
+    }
+    Object.defineProperty(navigator, "credentials", {
+      configurable: true,
+      value: origCreds,
     });
   });
 });

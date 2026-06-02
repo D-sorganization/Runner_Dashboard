@@ -1,39 +1,73 @@
-/* eslint-disable @typescript-eslint/no-explicit-any -- WebAuthn API lacks complete TypeScript definitions */
 import { useCallback, useEffect, useState } from "react";
 
 type UnlockStatus = "idle" | "prompting" | "success" | "error";
+
+/** A stored WebAuthn credential as returned by the backend listing endpoint. */
+interface StoredCredential {
+  credential_id: string;
+  label: string | null;
+  created_at: number;
+}
+
+/** Begin-registration options returned by the server. */
+interface RegisterBeginOptions {
+  challenge: string;
+  rp: PublicKeyCredentialRpEntity;
+  user: { id: string; name: string };
+  timeout_ms?: number;
+}
+
+/** Begin-assertion options returned by the server. */
+interface AssertBeginOptions {
+  challenge: string;
+  allow_credentials?: Array<{ id: string; type: PublicKeyCredentialType }>;
+  timeout_ms?: number;
+}
+
+/**
+ * Narrow the `PublicKeyCredential` constructor that exposes
+ * `isUserVerifyingPlatformAuthenticatorAvailable`. The static method is part of
+ * the WebAuthn spec but is declared on the constructor rather than instances.
+ */
+function getPlatformAuthenticatorChecker():
+  | (() => Promise<boolean>)
+  | null {
+  if (typeof window === "undefined" || !("PublicKeyCredential" in window)) {
+    return null;
+  }
+  const pkc = window.PublicKeyCredential;
+  if (
+    typeof pkc?.isUserVerifyingPlatformAuthenticatorAvailable === "function"
+  ) {
+    return () => pkc.isUserVerifyingPlatformAuthenticatorAvailable();
+  }
+  return null;
+}
 
 export function BiometricUnlock() {
   const [status, setStatus] = useState<UnlockStatus>("idle");
   const [message, setMessage] = useState<string | null>(null);
   const [isSupported, setIsSupported] = useState<boolean | null>(null);
-  const [credentials, setCredentials] = useState<
-    Array<{ credential_id: string; label: string | null; created_at: number }>
-  >([]);
+  const [credentials, setCredentials] = useState<StoredCredential[]>([]);
 
   useEffect(() => {
     // Check if WebAuthn is supported in this browser
-    const supported =
-      typeof window !== "undefined" &&
-      "PublicKeyCredential" in window &&
-      typeof (window as any).PublicKeyCredential?.isUserVerifyingPlatformAuthenticatorAvailable === "function";
-    setIsSupported(supported);
+    const checkAvailable = getPlatformAuthenticatorChecker();
+    setIsSupported(checkAvailable !== null);
 
-    if (supported) {
-      (window as any).PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable().then(
-        (available: boolean) => setIsSupported(available)
-      );
+    if (checkAvailable) {
+      checkAvailable().then((available) => setIsSupported(available));
     }
 
     // Load existing credentials
     fetch("/api/auth/webauthn/credentials", {
       headers: { "X-Requested-With": "XMLHttpRequest" },
     })
-      .then((r) => {
-        if (!r.ok) return { credentials: [] };
+      .then((r): Promise<{ credentials?: StoredCredential[] }> => {
+        if (!r.ok) return Promise.resolve({ credentials: [] });
         return r.json();
       })
-      .then((data) => setCredentials(data.credentials || []))
+      .then((data) => setCredentials(data.credentials ?? []))
       .catch(() => setCredentials([]));
   }, []);
 
@@ -61,10 +95,10 @@ export function BiometricUnlock() {
         const err = await beginResp.json();
         throw new Error(err.detail || "Registration begin failed");
       }
-      const options = await beginResp.json();
+      const options: RegisterBeginOptions = await beginResp.json();
 
       // Step 2: Call navigator.credentials.create with server options
-      const credential = await (navigator as any).credentials.create({
+      const created = await navigator.credentials.create({
         publicKey: {
           challenge: base64urlToBuffer(options.challenge),
           rp: options.rp,
@@ -82,9 +116,12 @@ export function BiometricUnlock() {
         },
       });
 
-      if (!credential) {
+      if (!created) {
         throw new Error("Credential creation was cancelled");
       }
+      const credential = created as PublicKeyCredential;
+      const attestation =
+        credential.response as AuthenticatorAttestationResponse;
 
       // Step 3: Complete registration (backend is stubbed — will 501 until verifier is pinned)
       const completeResp = await fetch("/api/auth/webauthn/register/complete", {
@@ -99,11 +136,9 @@ export function BiometricUnlock() {
             rawId: bufferToBase64url(credential.rawId),
             type: credential.type,
             response: {
-              clientDataJSON: bufferToBase64url(
-                (credential.response as any).clientDataJSON
-              ),
+              clientDataJSON: bufferToBase64url(attestation.clientDataJSON),
               attestationObject: bufferToBase64url(
-                (credential.response as any).attestationObject
+                attestation.attestationObject
               ),
             },
           },
@@ -164,13 +199,13 @@ export function BiometricUnlock() {
         const err = await beginResp.json();
         throw new Error(err.detail || "Assertion begin failed");
       }
-      const options = await beginResp.json();
+      const options: AssertBeginOptions = await beginResp.json();
 
       // Step 2: Call navigator.credentials.get
-      const assertion = await (navigator as any).credentials.get({
+      const asserted = await navigator.credentials.get({
         publicKey: {
           challenge: base64urlToBuffer(options.challenge),
-          allowCredentials: (options.allow_credentials || []).map((c: any) => ({
+          allowCredentials: (options.allow_credentials || []).map((c) => ({
             id: base64urlToBuffer(c.id),
             type: c.type,
           })),
@@ -179,9 +214,12 @@ export function BiometricUnlock() {
         },
       });
 
-      if (!assertion) {
+      if (!asserted) {
         throw new Error("Assertion was cancelled");
       }
+      const assertion = asserted as PublicKeyCredential;
+      const assertionResponse =
+        assertion.response as AuthenticatorAssertionResponse;
 
       // Step 3: Complete assertion (backend is stubbed — will 501 until verifier is pinned)
       const completeResp = await fetch("/api/auth/webauthn/assert/complete", {
@@ -197,16 +235,14 @@ export function BiometricUnlock() {
             type: assertion.type,
             response: {
               authenticatorData: bufferToBase64url(
-                (assertion.response as any).authenticatorData
+                assertionResponse.authenticatorData
               ),
               clientDataJSON: bufferToBase64url(
-                (assertion.response as any).clientDataJSON
+                assertionResponse.clientDataJSON
               ),
-              signature: bufferToBase64url(
-                (assertion.response as any).signature
-              ),
-              userHandle: (assertion.response as any).userHandle
-                ? bufferToBase64url((assertion.response as any).userHandle)
+              signature: bufferToBase64url(assertionResponse.signature),
+              userHandle: assertionResponse.userHandle
+                ? bufferToBase64url(assertionResponse.userHandle)
                 : null,
             },
           },
