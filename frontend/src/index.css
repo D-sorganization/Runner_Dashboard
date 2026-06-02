@@ -8,7 +8,12 @@
   --border-light: #3d444d;
   --text-primary: #e6edf3;
   --text-secondary: #8b949e;
-  --text-muted: #6e7681;
+  /* Issue #833/#857: raised from #6e7681 so muted text clears WCAG AA (4.5:1)
+     for normal-size text on every dark surface (--bg-primary/secondary/card/
+     tertiary). The old value sat at 3.4–4.1:1 and was the sole reason the axe
+     `color-contrast` rule had to be disabled. Still a full step dimmer than
+     --text-secondary (#8b949e) so the muted/secondary hierarchy reads. */
+  --text-muted: #868e98;
   /* Issue #826: high-contrast foreground for text/icons rendered on top of a
      saturated accent fill (buttons, chat bubbles, heatmap cells). Replaces the
      scattered hardcoded #fff literals so it can be re-tinted per theme. */

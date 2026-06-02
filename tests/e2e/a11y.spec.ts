@@ -14,11 +14,11 @@
  * issue hardens, not the app-shell chrome (navigation sidebar etc.), which is
  * owned and evolved separately.
  *
- * Excluded rule — `color-contrast`: the remaining serious findings are muted
- * text (`--text-muted`) on dark cards. That is a shared design-token luminance
- * concern tracked with the theming work (#818/#826 token system), NOT an
- * ARIA/keyboard defect, and re-tuning the token globally is out of scope for
- * the surgical ARIA backfill. Every other serious/critical rule is enforced.
+ * `color-contrast` is now ENFORCED. The muted-text findings that originally
+ * forced this rule off were a shared design-token luminance concern (#818/#826);
+ * they were resolved by raising `--text-muted` (and auditing `--text-secondary`)
+ * to clear WCAG AA 4.5:1 against every surface, in `:root`, `[data-theme="light"]`,
+ * and every fleet theme in `frontend/src/design/fleetThemes.ts` (#833/#857).
  *
  * Run locally:
  *   DASHBOARD_PORT=8799 GH_TOKEN=dummy python backend/server.py   # backend
@@ -36,8 +36,8 @@ const BLOCKING_IMPACTS = new Set(["serious", "critical"]);
 // Region the shell renders tab content into; the focus of issue #833.
 const CONTENT_SELECTOR = "#main-content";
 
-// See file header — contrast is a token-luminance concern, tracked separately.
-const DISABLED_RULES = ["color-contrast"];
+// No axe rules are disabled — color-contrast is enforced (see file header).
+const DISABLED_RULES: string[] = [];
 
 /**
  * Run axe against the legacy content region and assert there are no
@@ -79,19 +79,45 @@ async function expectNoSeriousA11yViolations(
   ).toEqual([]);
 }
 
+/**
+ * Navigate to the app and wait for the SPA to actually mount before auditing.
+ *
+ * `page.goto("/")` only resolves on the `load` event; React then hydrates and
+ * renders `#main-content` a tick later. Served as the production bundle (vs. the
+ * Vite dev server used in CI) that paint lands slightly later, so a fixed
+ * `waitForTimeout` is racy — axe would throw "no elements found for include"
+ * when `#main-content` is not attached yet. Wait for the real mount signal
+ * (the content region + the shell's nav/tablist) instead.
+ */
+async function gotoApp(
+  page: import("@playwright/test").Page,
+): Promise<void> {
+  await page.goto("/");
+  await page.waitForSelector(CONTENT_SELECTOR, {
+    state: "attached",
+    timeout: 15000,
+  });
+  // getByRole resolves implicit ARIA roles (a bare <nav>/<ul role=tablist>),
+  // unlike a CSS [role=...] selector which only matches explicit attributes.
+  await page
+    .getByRole("navigation")
+    .or(page.getByRole("tablist"))
+    .first()
+    .waitFor({ state: "visible", timeout: 15000 });
+}
+
 test.describe("accessibility (axe-core)", () => {
   test("root / default tab has no serious a11y violations", async ({
     page,
   }, testInfo) => {
-    await page.goto("/");
-    await page.waitForTimeout(600);
+    await gotoApp(page);
     await expectNoSeriousA11yViolations(page, testInfo, "root");
   });
 
   test("Fleet tab has no serious a11y violations", async ({
     page,
   }, testInfo) => {
-    await page.goto("/");
+    await gotoApp(page);
     const fleet = page
       .getByRole("button", { name: /fleet/i })
       .or(page.getByRole("tab", { name: /fleet/i }));
@@ -105,7 +131,7 @@ test.describe("accessibility (axe-core)", () => {
   test("Queue tab has no serious a11y violations", async ({
     page,
   }, testInfo) => {
-    await page.goto("/");
+    await gotoApp(page);
     const queue = page
       .getByRole("button", { name: /queue/i })
       .or(page.getByRole("tab", { name: /queue/i }));
@@ -122,16 +148,12 @@ test.describe("accessibility (axe-core)", () => {
     await page.goto("/");
     // The desktop shell exposes a navigation landmark; the legacy/mobile
     // surface exposes a tablist. At least one must be present and visible so
-    // keyboard and screen-reader users can move between sections.
-    const nav = page.getByRole("navigation");
-    const tablist = page.getByRole("tablist");
-    const navCount = await nav.count();
-    const tablistCount = await tablist.count();
-    expect(navCount + tablistCount).toBeGreaterThan(0);
-    if (navCount > 0) {
-      await expect(nav.first()).toBeVisible({ timeout: 5000 });
-    } else {
-      await expect(tablist.first()).toBeVisible({ timeout: 5000 });
-    }
+    // keyboard and screen-reader users can move between sections. Use a
+    // web-first assertion so it waits for the shell to mount rather than
+    // racing the initial paint with an instantaneous count().
+    const navOrTablist = page
+      .getByRole("navigation")
+      .or(page.getByRole("tablist"));
+    await expect(navOrTablist.first()).toBeVisible({ timeout: 15000 });
   });
 });

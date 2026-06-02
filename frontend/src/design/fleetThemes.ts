@@ -74,17 +74,39 @@ export type FleetThemeId =
 // Embedded from Tools/src/shared/theme-definitions/themes.json (v2.0)
 // This avoids a runtime dependency on the Tools repo; the canonical
 // source is themes.json and any additions there should be mirrored here.
+//
+// Issue #833/#857 (a11y, coordinate w/ #818/#826): several `label`
+// (→ --text-muted), `text_secondary` (→ --text-secondary) and `semantic.*`
+// (→ --accent-*/--badge-*-fg) values were nudged from the upstream
+// themes.json so normal-size text and badge foregrounds clear WCAG AA
+// (4.5:1) against this theme's surfaces AND against the 15%-tint badge
+// background derived from each semantic colour. Hue/saturation are
+// preserved; only lightness moved (darker on light themes, lighter on dark).
+// These are deliberate local overrides — when re-syncing themes.json, push
+// the contrast fix upstream rather than reverting. Semantic colours stay
+// vivid where they back non-text fills (status dots, progress bars).
+//   light.label   #6c757d → #60666d     (muted text, was 4.45:1)
+//   light.success #28a745 → #1b722f     (badge/stat text, was 2.55:1 on tint)
+//   light.warning #ffc107 → #7f5f00     (was 1.54:1 — yellow-on-white)
+//   light.error   #dc3545 → #bf2130     (was 3.48:1 on tint)
+//   light.info    #17a2b8 → #106e7d
+//   dark.label    #8b949e → #a6adb5     (was 4.46:1 on hero-KPI; neutral badge)
+//   dark.error    #f85149 → #fa7973     (was 3.75:1 on tint)
+//   monokai.text_secondary #ae81ff → #bd9bff   (was 3.85:1 on group_bg)
+//   nord.label             #9aa5b8 → #a8b2c4   (was 4.05:1 on group_bg)
+//   solarized-light.text_secondary #586e75 → #536970 (was 4.39:1)
+//   solarized-light.label          #657b83 → #566a71 (was 3.64:1)
 
 export const FLEET_THEMES: Record<FleetThemeId, FleetThemeDef> = {
   light: {
     name: 'Light', category: 'standard', isDark: false,
-    colors: { bg: '#ffffff', group_bg: '#f8f9fa', border: '#ced4da', text: '#212529', text_secondary: '#495057', label: '#6c757d', focus: '#80bdff', input_bg: '#ffffff', accent: '#5a8fc4', title_bg: '#e3f2fd', title_border: '#90caf9', table_header: '#e9ecef', table_alt: '#f8f9fa', button_hover: '#4a7ba7' },
-    semantic: { success: '#28a745', warning: '#ffc107', error: '#dc3545', info: '#17a2b8', link: '#0066cc', link_hover: '#004499', selection_bg: '#0078d4', selection_text: '#ffffff' },
+    colors: { bg: '#ffffff', group_bg: '#f8f9fa', border: '#ced4da', text: '#212529', text_secondary: '#495057', label: '#60666d', focus: '#80bdff', input_bg: '#ffffff', accent: '#5a8fc4', title_bg: '#e3f2fd', title_border: '#90caf9', table_header: '#e9ecef', table_alt: '#f8f9fa', button_hover: '#4a7ba7' },
+    semantic: { success: '#1b722f', warning: '#7f5f00', error: '#bf2130', info: '#106e7d', link: '#0066cc', link_hover: '#004499', selection_bg: '#0078d4', selection_text: '#ffffff' },
   },
   dark: {
     name: 'Dark', category: 'standard', isDark: true,
-    colors: { bg: '#1a1d23', group_bg: '#24272e', border: '#3a3f4a', text: '#e1e4e8', text_secondary: '#c9d1d9', label: '#8b949e', focus: '#58a6ff', input_bg: '#0d1117', accent: '#4a7ba7', title_bg: '#2d3748', title_border: '#4a7ba7', table_header: '#2d3748', table_alt: '#24272e', button_hover: '#5a8fc4' },
-    semantic: { success: '#3fb950', warning: '#d29922', error: '#f85149', info: '#58a6ff', link: '#58a6ff', link_hover: '#79b8ff', selection_bg: '#264f78', selection_text: '#ffffff' },
+    colors: { bg: '#1a1d23', group_bg: '#24272e', border: '#3a3f4a', text: '#e1e4e8', text_secondary: '#c9d1d9', label: '#a6adb5', focus: '#58a6ff', input_bg: '#0d1117', accent: '#4a7ba7', title_bg: '#2d3748', title_border: '#4a7ba7', table_header: '#2d3748', table_alt: '#24272e', button_hover: '#5a8fc4' },
+    semantic: { success: '#3fb950', warning: '#d29922', error: '#fa7973', info: '#58a6ff', link: '#58a6ff', link_hover: '#79b8ff', selection_bg: '#264f78', selection_text: '#ffffff' },
   },
   'slate-gray': {
     name: 'Slate Gray', category: 'neutral', isDark: false,
@@ -103,7 +125,7 @@ export const FLEET_THEMES: Record<FleetThemeId, FleetThemeDef> = {
   },
   monokai: {
     name: 'Monokai', category: 'editor', isDark: true,
-    colors: { bg: '#272822', group_bg: '#3e3d32', border: '#75715e', text: '#f8f8f2', text_secondary: '#ae81ff', label: '#e6db74', focus: '#a6e22e', input_bg: '#171814', accent: '#f92672', title_bg: '#383830', title_border: '#f92672', table_header: '#3e3d32', table_alt: '#272822', button_hover: '#e6db74' },
+    colors: { bg: '#272822', group_bg: '#3e3d32', border: '#75715e', text: '#f8f8f2', text_secondary: '#bd9bff', label: '#e6db74', focus: '#a6e22e', input_bg: '#171814', accent: '#f92672', title_bg: '#383830', title_border: '#f92672', table_header: '#3e3d32', table_alt: '#272822', button_hover: '#e6db74' },
     semantic: { success: '#a6e22e', warning: '#e6db74', error: '#f92672', info: '#66d9ef', link: '#66d9ef', link_hover: '#ae81ff', selection_bg: '#49483e', selection_text: '#f8f8f2' },
   },
   dracula: {
@@ -152,7 +174,7 @@ export const FLEET_THEMES: Record<FleetThemeId, FleetThemeDef> = {
   },
   nord: {
     name: 'Nord', category: 'standard', isDark: true,
-    colors: { bg: '#2e3440', group_bg: '#3b4252', border: '#4c566a', text: '#eceff4', text_secondary: '#c8d0de', label: '#9aa5b8', focus: '#88c0d0', input_bg: '#272c36', accent: '#b48ead', title_bg: '#434c5e', title_border: '#5e81ac', table_header: '#434c5e', table_alt: '#3b4252', button_hover: '#434c5e' },
+    colors: { bg: '#2e3440', group_bg: '#3b4252', border: '#4c566a', text: '#eceff4', text_secondary: '#c8d0de', label: '#a8b2c4', focus: '#88c0d0', input_bg: '#272c36', accent: '#b48ead', title_bg: '#434c5e', title_border: '#5e81ac', table_header: '#434c5e', table_alt: '#3b4252', button_hover: '#434c5e' },
     semantic: { success: '#a3be8c', warning: '#ebcb8b', error: '#bf616a', info: '#81a1c1', link: '#88c0d0', link_hover: '#8fbcbb', selection_bg: '#4c566a', selection_text: '#eceff4' },
   },
   'solarized-dark': {
@@ -162,7 +184,7 @@ export const FLEET_THEMES: Record<FleetThemeId, FleetThemeDef> = {
   },
   'solarized-light': {
     name: 'Solarized Light', category: 'standard', isDark: false,
-    colors: { bg: '#fdf6e3', group_bg: '#eee8d5', border: '#d8d2bf', text: '#073642', text_secondary: '#586e75', label: '#657b83', focus: '#268bd2', input_bg: '#ffffff', accent: '#6c71c4', title_bg: '#eee8d5', title_border: '#93a1a1', table_header: '#eee8d5', table_alt: '#f5efdc', button_hover: '#dcd5c0' },
+    colors: { bg: '#fdf6e3', group_bg: '#eee8d5', border: '#d8d2bf', text: '#073642', text_secondary: '#536970', label: '#566a71', focus: '#268bd2', input_bg: '#ffffff', accent: '#6c71c4', title_bg: '#eee8d5', title_border: '#93a1a1', table_header: '#eee8d5', table_alt: '#f5efdc', button_hover: '#dcd5c0' },
     semantic: { success: '#657b00', warning: '#a57700', error: '#dc322f', info: '#268bd2', link: '#268bd2', link_hover: '#2aa198', selection_bg: '#cfd8bd', selection_text: '#073642' },
   },
   graphite: {
