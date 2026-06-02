@@ -54,8 +54,7 @@
       "files": [
         "frontend/src/components/SortTh.tsx",
         "frontend/src/components/SubTabs.tsx",
-        "frontend/src/components/formatters.ts",
-        "frontend/src/pages/Queue/index.tsx"
+        "frontend/src/components/formatters.ts"
       ],
       "rules": {
         "no-var": "off",
