@@ -10,6 +10,8 @@ import * as fleetAlerts from "../lib/fleetAlerts"
 import { AgentDispatchPage } from "../pages/AgentDispatch"
 import { Conductor } from "../pages/Conductor"
 import { QueueTab } from "../pages/Queue"
+import { LinearSetup } from "../pages/LinearSetup"
+import PushSettings from "../pages/PushSettings"
 import { Badge } from "../primitives/Badge"
 import { Pill } from "../primitives/Pill"
 import { AlertsCenter } from "../primitives/AlertsCenter"
@@ -17078,7 +17080,11 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
                                                   ? h(PrincipalsTab, null)
                                                   : tab === "settings"
                                                     ? h(ThemeSettings, null)
-                                                    : null,
+                                                    : tab === "linear-setup"
+                                                      ? h(LinearSetup, null)
+                                                      : tab === "push-settings"
+                                                        ? h(PushSettings, null)
+                                                        : null,
       ),
       h(AssistantSidebar, { currentTab: tab, open: asstOpen, onToggle: toggleAsst }),
     ),

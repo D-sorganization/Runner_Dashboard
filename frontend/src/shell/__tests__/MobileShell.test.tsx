@@ -1,8 +1,9 @@
 import React from 'react'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import '@testing-library/jest-dom/vitest'
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react'
 import { MobileShell } from '../MobileShell'
+import { mobilePrimaryItems, mobileDrawerItems } from '../navRegistry'
 
 const breakpointMock = vi.hoisted(() => ({ value: 'md' }))
 
@@ -10,10 +11,20 @@ vi.mock('../../hooks/useBreakpoint', () => ({
   useBreakpoint: () => breakpointMock.value,
 }))
 
+// The mobile shell is registry-driven (issue #821): its bottom bar renders the
+// mobilePrimary items + a trailing "More" trigger, and the drawer renders the
+// mobileDrawer items. Derive expectations from the single source of truth so
+// the test cannot drift from the registry.
+const PRIMARY = mobilePrimaryItems()
+const DRAWER = mobileDrawerItems()
+const PRIMARY_LABELS = PRIMARY.map((i) => i.label)
+const FIRST = PRIMARY[0] // Fleet / overview
+const SECOND = PRIMARY[1] // Queue / queue
+const LAST_PRIMARY = PRIMARY[PRIMARY.length - 1] // Maxwell / maxwell
+
 describe('MobileShell', () => {
   beforeEach(() => {
     breakpointMock.value = 'md'
-    // Mock window.matchMedia for viewport detection
     window.matchMedia = vi.fn((query) => ({
       matches: query === '(max-width: 767px)',
       media: query,
@@ -30,30 +41,27 @@ describe('MobileShell', () => {
     cleanup()
   })
 
-  it('renders bottom tabs on mobile viewport', () => {
-    const handleTabChange = vi.fn()
+  it('renders every mobilePrimary item plus a More trigger as bottom tabs', () => {
     render(
-      <MobileShell currentTab="fleet" onTabChange={handleTabChange}>
+      <MobileShell currentTab={FIRST.tabId} onTabChange={vi.fn()}>
         <div>Test Content</div>
       </MobileShell>
     )
 
-    expect(screen.getByText('Fleet')).toBeInTheDocument()
-    expect(screen.getByText('Workflows')).toBeInTheDocument()
-    expect(screen.getByText('Remediation')).toBeInTheDocument()
-    expect(screen.getByText('Maxwell')).toBeInTheDocument()
+    for (const label of PRIMARY_LABELS) {
+      expect(screen.getByText(label)).toBeInTheDocument()
+    }
     expect(screen.getByText('More')).toBeInTheDocument()
+    expect(screen.getAllByRole('tab')).toHaveLength(PRIMARY.length + 1)
   })
 
   it('uses SVG icons instead of emoji', () => {
-    const handleTabChange = vi.fn()
     render(
-      <MobileShell currentTab="fleet" onTabChange={handleTabChange}>
+      <MobileShell currentTab={FIRST.tabId} onTabChange={vi.fn()}>
         <div>Test Content</div>
       </MobileShell>
     )
 
-    // Each tab should have an SVG icon with aria-hidden="true"
     const svgs = screen.getAllByRole('tab').map((tab) =>
       tab.querySelector('svg[aria-hidden="true"]')
     )
@@ -61,9 +69,8 @@ describe('MobileShell', () => {
   })
 
   it('exposes role=tablist and role=tab semantics', () => {
-    const handleTabChange = vi.fn()
     render(
-      <MobileShell currentTab="workflows" onTabChange={handleTabChange}>
+      <MobileShell currentTab={SECOND.tabId} onTabChange={vi.fn()}>
         <div>Test Content</div>
       </MobileShell>
     )
@@ -72,14 +79,12 @@ describe('MobileShell', () => {
     expect(tablist).toBeInTheDocument()
     expect(tablist).toHaveAttribute('aria-label', 'Main navigation')
 
-    const tabs = screen.getAllByRole('tab')
-    expect(tabs).toHaveLength(5)
+    expect(screen.getAllByRole('tab')).toHaveLength(PRIMARY.length + 1)
   })
 
   it('renders skip link and semantic shell landmarks', () => {
-    const handleTabChange = vi.fn()
     const { container } = render(
-      <MobileShell currentTab="fleet" onTabChange={handleTabChange}>
+      <MobileShell currentTab={FIRST.tabId} onTabChange={vi.fn()}>
         <div>Test Content</div>
       </MobileShell>
     )
@@ -97,9 +102,8 @@ describe('MobileShell', () => {
   })
 
   it('sets aria-selected on active tab only', () => {
-    const handleTabChange = vi.fn()
     render(
-      <MobileShell currentTab="workflows" onTabChange={handleTabChange}>
+      <MobileShell currentTab={SECOND.tabId} onTabChange={vi.fn()}>
         <div>Test Content</div>
       </MobileShell>
     )
@@ -108,7 +112,7 @@ describe('MobileShell', () => {
     tabs.forEach((tab) => {
       const label = tab.querySelector('.mobile-shell__tab-label')?.textContent
       const isSelected = tab.getAttribute('aria-selected') === 'true'
-      if (label === 'Workflows') {
+      if (label === SECOND.label) {
         expect(isSelected).toBe(true)
       } else {
         expect(isSelected).toBe(false)
@@ -117,27 +121,35 @@ describe('MobileShell', () => {
   })
 
   it('sets tabIndex=0 on active tab and -1 on inactive tabs', () => {
-    const handleTabChange = vi.fn()
     render(
-      <MobileShell currentTab="fleet" onTabChange={handleTabChange}>
+      <MobileShell currentTab={FIRST.tabId} onTabChange={vi.fn()}>
         <div>Test Content</div>
       </MobileShell>
     )
 
     const tabs = screen.getAllByRole('tab')
-    const fleetTab = tabs.find((t) => t.textContent?.includes('Fleet'))
-    const otherTabs = tabs.filter((t) => !t.textContent?.includes('Fleet'))
+    const firstTab = tabs.find((t) => t.textContent?.includes(FIRST.label))!
+    const otherTabs = tabs.filter((t) => t !== firstTab)
 
-    expect(fleetTab).toHaveAttribute('tabIndex', '0')
+    expect(firstTab).toHaveAttribute('tabIndex', '0')
     otherTabs.forEach((tab) => {
       expect(tab).toHaveAttribute('tabIndex', '-1')
     })
   })
 
-  it('renders 2px top accent bar for color-blind active cue', () => {
-    const handleTabChange = vi.fn()
+  it('marks the More trigger active when the current tab lives in the drawer', () => {
     render(
-      <MobileShell currentTab="workflows" onTabChange={handleTabChange}>
+      <MobileShell currentTab={DRAWER[0].tabId} onTabChange={vi.fn()}>
+        <div>Test Content</div>
+      </MobileShell>
+    )
+    const moreTab = screen.getByRole('tab', { name: /more/i })
+    expect(moreTab).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('renders 2px top accent bar for color-blind active cue', () => {
+    render(
+      <MobileShell currentTab={SECOND.tabId} onTabChange={vi.fn()}>
         <div>Test Content</div>
       </MobileShell>
     )
@@ -146,198 +158,174 @@ describe('MobileShell', () => {
       (t) => t.getAttribute('aria-selected') === 'true'
     )
     expect(activeTab).toBeTruthy()
-
-    const accent = activeTab!.querySelector('.mobile-shell__tab-accent')
-    expect(accent).toBeInTheDocument()
+    expect(activeTab!.querySelector('.mobile-shell__tab-accent')).toBeInTheDocument()
   })
 
-  it('calls onTabChange when tab is clicked', () => {
+  it('calls onTabChange with the registry tabId when a primary tab is clicked', () => {
     const handleTabChange = vi.fn()
     render(
-      <MobileShell currentTab="fleet" onTabChange={handleTabChange}>
+      <MobileShell currentTab={FIRST.tabId} onTabChange={handleTabChange}>
         <div>Test Content</div>
       </MobileShell>
     )
 
-    const workflowsTab = screen.getByText('Workflows')
-    fireEvent.click(workflowsTab)
-
-    expect(handleTabChange).toHaveBeenCalledWith('workflows')
+    fireEvent.click(screen.getByText(SECOND.label))
+    expect(handleTabChange).toHaveBeenCalledWith(SECOND.tabId)
   })
 
   it('cycles focus with ArrowRight keyboard', () => {
     const handleTabChange = vi.fn()
     render(
-      <MobileShell currentTab="fleet" onTabChange={handleTabChange}>
+      <MobileShell currentTab={FIRST.tabId} onTabChange={handleTabChange}>
         <div>Test Content</div>
       </MobileShell>
     )
 
-    const tabs = screen.getAllByRole('tab')
-    const fleetTab = tabs.find((t) => t.textContent?.includes('Fleet'))!
-
-    fireEvent.keyDown(fleetTab, { key: 'ArrowRight' })
-
-    expect(handleTabChange).toHaveBeenCalledWith('workflows')
+    const firstTab = screen.getAllByRole('tab').find((t) => t.textContent?.includes(FIRST.label))!
+    fireEvent.keyDown(firstTab, { key: 'ArrowRight' })
+    expect(handleTabChange).toHaveBeenCalledWith(SECOND.tabId)
   })
 
-  it('cycles focus with ArrowLeft keyboard wrapping to end', () => {
+  it('cycles focus with ArrowLeft keyboard wrapping to the More trigger', () => {
     const handleTabChange = vi.fn()
     render(
-      <MobileShell currentTab="fleet" onTabChange={handleTabChange}>
+      <MobileShell currentTab={FIRST.tabId} onTabChange={handleTabChange}>
         <div>Test Content</div>
       </MobileShell>
     )
 
-    const tabs = screen.getAllByRole('tab')
-    const fleetTab = tabs.find((t) => t.textContent?.includes('Fleet'))!
-
-    fireEvent.keyDown(fleetTab, { key: 'ArrowLeft' })
-
-    expect(handleTabChange).toHaveBeenCalledWith('more')
+    const firstTab = screen.getAllByRole('tab').find((t) => t.textContent?.includes(FIRST.label))!
+    // Wrapping left from the first tab lands on the trailing "More" trigger,
+    // which is a pseudo-tab and does not navigate.
+    fireEvent.keyDown(firstTab, { key: 'ArrowLeft' })
+    expect(handleTabChange).not.toHaveBeenCalled()
   })
 
   it('cycles to first tab with Home key', () => {
     const handleTabChange = vi.fn()
     render(
-      <MobileShell currentTab="maxwell" onTabChange={handleTabChange}>
+      <MobileShell currentTab={LAST_PRIMARY.tabId} onTabChange={handleTabChange}>
         <div>Test Content</div>
       </MobileShell>
     )
 
-    const tabs = screen.getAllByRole('tab')
-    const maxwellTab = tabs.find((t) => t.textContent?.includes('Maxwell'))!
-
-    fireEvent.keyDown(maxwellTab, { key: 'Home' })
-
-    expect(handleTabChange).toHaveBeenCalledWith('fleet')
+    const lastTab = screen.getAllByRole('tab').find((t) => t.textContent?.includes(LAST_PRIMARY.label))!
+    fireEvent.keyDown(lastTab, { key: 'Home' })
+    expect(handleTabChange).toHaveBeenCalledWith(FIRST.tabId)
   })
 
-  it('cycles to last tab with End key', () => {
+  it('cycles to the More trigger with End key (no navigation)', () => {
     const handleTabChange = vi.fn()
     render(
-      <MobileShell currentTab="fleet" onTabChange={handleTabChange}>
+      <MobileShell currentTab={FIRST.tabId} onTabChange={handleTabChange}>
         <div>Test Content</div>
       </MobileShell>
     )
 
-    const tabs = screen.getAllByRole('tab')
-    const fleetTab = tabs.find((t) => t.textContent?.includes('Fleet'))!
-
-    fireEvent.keyDown(fleetTab, { key: 'End' })
-
-    expect(handleTabChange).toHaveBeenCalledWith('more')
+    const firstTab = screen.getAllByRole('tab').find((t) => t.textContent?.includes(FIRST.label))!
+    fireEvent.keyDown(firstTab, { key: 'End' })
+    // End lands on the trailing "More" pseudo-tab — focus only, no navigation.
+    expect(handleTabChange).not.toHaveBeenCalled()
   })
 
-  it('opens drawer when More tab is clicked', async () => {
-    const handleTabChange = vi.fn()
+  it('opens drawer with all mobileDrawer items when More is clicked', async () => {
     render(
-      <MobileShell currentTab="fleet" onTabChange={handleTabChange}>
+      <MobileShell currentTab={FIRST.tabId} onTabChange={vi.fn()}>
         <div>Test Content</div>
       </MobileShell>
     )
 
-    const moreTab = screen.getByText('More')
-    fireEvent.click(moreTab)
+    fireEvent.click(screen.getByText('More'))
 
     await waitFor(() => {
-      expect(screen.getByText('Org')).toBeInTheDocument()
-      expect(screen.getByText('Queue Health')).toBeInTheDocument()
+      const drawer = screen.getByRole('dialog', { name: /more options/i })
+      for (const item of DRAWER) {
+        expect(within(drawer).getByText(item.label)).toBeInTheDocument()
+      }
+    })
+  })
+
+  it('surfaces Conductor and Dispatch operator controls in the mobile drawer (issue #821)', async () => {
+    render(
+      <MobileShell currentTab={FIRST.tabId} onTabChange={vi.fn()}>
+        <div>Test Content</div>
+      </MobileShell>
+    )
+
+    fireEvent.click(screen.getByText('More'))
+
+    await waitFor(() => {
+      const drawer = screen.getByRole('dialog', { name: /more options/i })
+      expect(within(drawer).getByText('Conductor')).toBeInTheDocument()
+      expect(within(drawer).getByText('Dispatch')).toBeInTheDocument()
     })
   })
 
   it('calls onTabChange once for each drawer tab and announces selection', async () => {
     const handleTabChange = vi.fn()
     render(
-      <MobileShell currentTab="fleet" onTabChange={handleTabChange}>
+      <MobileShell currentTab={FIRST.tabId} onTabChange={handleTabChange}>
         <div>Test Content</div>
       </MobileShell>
     )
 
-    const drawerTabs = [
-      { id: 'org', label: 'Org' },
-      { id: 'heavy', label: 'Heavy Runners' },
-      { id: 'assessments', label: 'Assessments' },
-      { id: 'requests', label: 'Feature Requests' },
-      { id: 'credentials', label: 'Credentials' },
-      { id: 'reports', label: 'Reports' },
-      { id: 'health', label: 'Queue Health' },
-    ] as const
-
-    for (const tab of drawerTabs) {
+    for (const item of DRAWER) {
       fireEvent.click(screen.getByText('More'))
 
-      await waitFor(() => {
-        expect(screen.getByText(tab.label)).toBeInTheDocument()
-      })
+      const drawer = await screen.findByRole('dialog', { name: /more options/i })
+      const btn = within(drawer).getByText(item.label)
 
       handleTabChange.mockClear()
-      fireEvent.click(screen.getByText(tab.label))
+      fireEvent.click(btn)
 
       expect(handleTabChange).toHaveBeenCalledTimes(1)
-      expect(handleTabChange).toHaveBeenCalledWith(tab.id)
-      expect(screen.getByText(`${tab.label} selected`)).toBeInTheDocument()
+      expect(handleTabChange).toHaveBeenCalledWith(item.tabId)
+      expect(screen.getByText(`${item.label} selected`)).toBeInTheDocument()
 
       await waitFor(() => {
-        expect(screen.queryByText(tab.label)).not.toBeInTheDocument()
+        expect(screen.queryByRole('dialog', { name: /more options/i })).not.toBeInTheDocument()
       })
     }
   })
 
   it('closes drawer when backdrop is clicked', async () => {
-    const handleTabChange = vi.fn()
     const { container } = render(
-      <MobileShell currentTab="fleet" onTabChange={handleTabChange}>
+      <MobileShell currentTab={FIRST.tabId} onTabChange={vi.fn()}>
         <div>Test Content</div>
       </MobileShell>
     )
 
-    // Open drawer
-    const moreTab = screen.getByText('More')
-    fireEvent.click(moreTab)
+    fireEvent.click(screen.getByText('More'))
+    await screen.findByRole('dialog', { name: /more options/i })
 
-    await waitFor(() => {
-      expect(screen.getByText('Org')).toBeInTheDocument()
-    })
-
-    // Click backdrop
     const overlay = container.querySelector('.mobile-shell__drawer-overlay')
-    if (overlay) {
-      fireEvent.click(overlay)
-    }
+    if (overlay) fireEvent.click(overlay)
 
     await waitFor(() => {
-      expect(screen.queryByText('Org')).not.toBeInTheDocument()
+      expect(screen.queryByRole('dialog', { name: /more options/i })).not.toBeInTheDocument()
     })
   })
 
   it('preserves component state when switching tabs', () => {
-    const handleTabChange = vi.fn()
     const { rerender } = render(
-      <MobileShell currentTab="fleet" onTabChange={handleTabChange}>
+      <MobileShell currentTab={FIRST.tabId} onTabChange={vi.fn()}>
         <Counter />
       </MobileShell>
     )
 
-    // Increment counter
     const incrementBtn = screen.getByText('+')
     fireEvent.click(incrementBtn)
     fireEvent.click(incrementBtn)
-
     expect(screen.getByText('Count: 2')).toBeInTheDocument()
 
-    // Switch to different tab
-    const workflowsTab = screen.getByText('Workflows')
-    fireEvent.click(workflowsTab)
+    fireEvent.click(screen.getByText(SECOND.label))
 
-    // Re-render with same component mounted
     rerender(
-      <MobileShell currentTab="workflows" onTabChange={handleTabChange}>
+      <MobileShell currentTab={SECOND.tabId} onTabChange={vi.fn()}>
         <Counter />
       </MobileShell>
     )
 
-    // State should be preserved
     expect(screen.getByText('Count: 2')).toBeInTheDocument()
   })
 
@@ -354,22 +342,19 @@ describe('MobileShell', () => {
       dispatchEvent: vi.fn(),
     }) as MediaQueryList)
 
-    const handleTabChange = vi.fn()
     render(
-      <MobileShell currentTab="fleet" onTabChange={handleTabChange}>
+      <MobileShell currentTab={FIRST.tabId} onTabChange={vi.fn()}>
         <div>Test Content</div>
       </MobileShell>
     )
 
-    // Mobile nav should not be present on desktop
-    expect(screen.queryByText('Fleet')).not.toBeInTheDocument()
+    expect(screen.queryByText(FIRST.label)).not.toBeInTheDocument()
   })
 })
 
 // D7 / issue #726: Accessibility improvements
 describe('MobileShell accessibility (D7)', () => {
   beforeEach(() => {
-    // Ensure we are on a mobile breakpoint so MobileShell renders the full shell
     breakpointMock.value = 'md';
     window.matchMedia = vi.fn((query) => ({
       matches: query === '(max-width: 767px)',
@@ -383,9 +368,13 @@ describe('MobileShell accessibility (D7)', () => {
     } as MediaQueryList));
   });
 
+  afterEach(() => {
+    cleanup()
+  })
+
   it('skip link is present and is the first focusable element', () => {
     render(
-      <MobileShell currentTab="fleet" onTabChange={vi.fn()}>
+      <MobileShell currentTab={FIRST.tabId} onTabChange={vi.fn()}>
         <div>Content</div>
       </MobileShell>,
     );
@@ -397,22 +386,20 @@ describe('MobileShell accessibility (D7)', () => {
 
   it('has a <main> element with id="main-content"', () => {
     render(
-      <MobileShell currentTab="fleet" onTabChange={vi.fn()}>
+      <MobileShell currentTab={FIRST.tabId} onTabChange={vi.fn()}>
         <div>Content</div>
       </MobileShell>,
     );
-    const main = document.querySelector('main#main-content');
-    expect(main).not.toBeNull();
+    expect(document.querySelector('main#main-content')).not.toBeNull();
   });
 
   it('nav has role="tablist" or role="navigation"', () => {
     render(
-      <MobileShell currentTab="fleet" onTabChange={vi.fn()}>
+      <MobileShell currentTab={FIRST.tabId} onTabChange={vi.fn()}>
         <div>Content</div>
       </MobileShell>,
     );
-    const nav = document.querySelector('nav');
-    expect(nav).not.toBeNull();
+    expect(document.querySelector('nav')).not.toBeNull();
   });
 });
 

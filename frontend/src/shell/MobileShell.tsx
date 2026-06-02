@@ -1,11 +1,32 @@
+/**
+ * MobileShell.tsx — the mobile application shell (issue #821, part of #818).
+ *
+ * Driven entirely by the single nav registry (DRY): the bottom tab bar renders
+ * `mobilePrimary` items, and the "More" drawer renders `mobileDrawer` items.
+ * This replaces the previously hand-synced 12-entry list that had drifted from
+ * the 24-tab desktop registry, restoring ~13 missing mobile features — most
+ * importantly the Conductor pause/drain/budget controls and AgentDispatch as a
+ * first-class drawer entry that an on-call operator needs on a phone.
+ *
+ * Tab identity is the registry `tabId` (the legacy App tab string), so the
+ * mobile shell and the legacy App stay in lockstep without a translation table.
+ *
+ * LoD: flat typed props only — `currentTab`, `onTabChange(tabId)`, optional
+ * `tabContent` keyed by tabId. Orthogonality: a pure presentational nav that
+ * owns no page state.
+ */
 import React, { useState, ReactNode, useCallback, useEffect, useRef } from 'react'
 import { useBreakpoint } from '../hooks/useBreakpoint'
 import { FloatingActionButton } from '../primitives/FloatingActionButton'
 import { AgentDispatchPage } from '../pages/AgentDispatch'
+import {
+  mobilePrimaryItems,
+  mobileDrawerItems,
+  type NavItem,
+} from './navRegistry'
 
-type MainTabId = 'fleet' | 'workflows' | 'remediation' | 'maxwell' | 'more'
-type DrawerTabId = 'org' | 'heavy' | 'assessments' | 'requests' | 'credentials' | 'reports' | 'health'
-export type TabId = MainTabId | DrawerTabId
+/** A mobile tab is identified by the registry tabId (legacy App tab string). */
+export type TabId = string
 
 export interface MobileShellProps {
   children: ReactNode
@@ -14,41 +35,9 @@ export interface MobileShellProps {
   tabContent?: Record<TabId, ReactNode>
 }
 
-// Inline SVG icons — aria-hidden so screen readers skip them.
-function FleetIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-    </svg>
-  )
-}
-
-function WorkflowsIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="3" />
-      <path d="M12 1v6m0 6v6m4.22-10.22l4.24-4.24M6.34 6.34L2.1 2.1m17.9 17.9l-4.24-4.24M6.34 17.66l-4.24 4.24" />
-    </svg>
-  )
-}
-
-function RemediationIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
-    </svg>
-  )
-}
-
-function MaxwellIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-      <line x1="3" y1="9" x2="21" y2="9" />
-      <line x1="9" y1="21" x2="9" y2="9" />
-    </svg>
-  )
-}
+// "More" pseudo-tab id — the bottom bar's final slot opens the drawer rather
+// than navigating to a page.
+const MORE_TAB_ID = '__more__'
 
 function MoreIcon({ className }: { className?: string }) {
   return (
@@ -60,25 +49,32 @@ function MoreIcon({ className }: { className?: string }) {
   )
 }
 
-// Tab configuration
-const mainTabs: Array<{ id: MainTabId; label: string; Icon: typeof FleetIcon }> = [
-  { id: 'fleet', label: 'Fleet', Icon: FleetIcon },
-  { id: 'workflows', label: 'Workflows', Icon: WorkflowsIcon },
-  { id: 'remediation', label: 'Remediation', Icon: RemediationIcon },
-  { id: 'maxwell', label: 'Maxwell', Icon: MaxwellIcon },
-  { id: 'more', label: 'More', Icon: MoreIcon },
+// Tab bar entries: the registry's mobilePrimary items plus the trailing "More"
+// trigger. Derived once from the single source of truth (DRY).
+interface BottomTab {
+  id: TabId
+  label: string
+  Icon: NavItem['Icon']
+  isMore: boolean
+}
+
+const PRIMARY_TABS: BottomTab[] = mobilePrimaryItems().map((it) => ({
+  id: it.tabId,
+  label: it.label,
+  Icon: it.Icon,
+  isMore: false,
+}))
+
+const MAIN_TABS: BottomTab[] = [
+  ...PRIMARY_TABS,
+  { id: MORE_TAB_ID, label: 'More', Icon: MoreIcon, isMore: true },
 ]
 
-// Additional tabs in drawer
-const drawerTabs: Array<{ id: DrawerTabId; label: string }> = [
-  { id: 'org', label: 'Org' },
-  { id: 'heavy', label: 'Heavy Runners' },
-  { id: 'assessments', label: 'Assessments' },
-  { id: 'requests', label: 'Feature Requests' },
-  { id: 'credentials', label: 'Credentials' },
-  { id: 'reports', label: 'Reports' },
-  { id: 'health', label: 'Queue Health' },
-]
+const DRAWER_ITEMS = mobileDrawerItems()
+
+// FAB visibility: the operator-action surfaces where a quick agent dispatch
+// makes sense. Keyed on registry tabIds.
+const FAB_TABS = new Set<TabId>(['overview', 'workflows', 'remediation', 'queue'])
 
 export function MobileShell({ children, currentTab, onTabChange, tabContent }: MobileShellProps) {
   const breakpoint = useBreakpoint()
@@ -105,45 +101,40 @@ export function MobileShell({ children, currentTab, onTabChange, tabContent }: M
 
   // Determine whether to show the FAB.
   // Visible on Fleet, Workflows, Remediation, Queue. Hidden on AgentDispatch itself.
-  const showDispatchFab = !dispatchOpen && ['fleet', 'workflows', 'remediation', 'queue'].includes(currentTab)
+  const showDispatchFab = !dispatchOpen && FAB_TABS.has(currentTab)
 
-  const tabRefs = useRef<Record<MainTabId, HTMLButtonElement | null>>({
-    fleet: null,
-    workflows: null,
-    remediation: null,
-    maxwell: null,
-    more: null,
-  })
+  const tabRefs = useRef<Record<TabId, HTMLButtonElement | null>>({})
 
-  const handleTabClick = useCallback((tabId: MainTabId) => {
-    onTabChange(tabId)
-    if (tabId === 'more') {
+  const handleTabClick = useCallback((tab: BottomTab) => {
+    if (tab.isMore) {
       setDrawerOpen(true)
+      return
     }
+    onTabChange(tab.id)
   }, [onTabChange])
 
-  const handleDrawerTabClick = useCallback((tabId: DrawerTabId, label: string) => {
+  const handleDrawerTabClick = useCallback((tabId: TabId, label: string) => {
     onTabChange(tabId)
     setDrawerAnnouncement(`${label} selected`)
     setDrawerOpen(false)
   }, [onTabChange])
 
   // Arrow-key cycling per WAI-ARIA tablist pattern
-  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLButtonElement>, tabId: MainTabId) => {
-    const tabs = mainTabs.map((t) => t.id)
-    const idx = tabs.indexOf(tabId)
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLButtonElement>, tabId: TabId) => {
+    const ids = MAIN_TABS.map((t) => t.id)
+    const idx = ids.indexOf(tabId)
     let nextIdx = idx
 
     switch (e.key) {
       case 'ArrowLeft':
       case 'ArrowUp':
         e.preventDefault()
-        nextIdx = idx === 0 ? tabs.length - 1 : idx - 1
+        nextIdx = idx === 0 ? ids.length - 1 : idx - 1
         break
       case 'ArrowRight':
       case 'ArrowDown':
         e.preventDefault()
-        nextIdx = idx === tabs.length - 1 ? 0 : idx + 1
+        nextIdx = idx === ids.length - 1 ? 0 : idx + 1
         break
       case 'Home':
         e.preventDefault()
@@ -151,15 +142,15 @@ export function MobileShell({ children, currentTab, onTabChange, tabContent }: M
         break
       case 'End':
         e.preventDefault()
-        nextIdx = tabs.length - 1
+        nextIdx = ids.length - 1
         break
       default:
         return
     }
 
-    const nextTab = tabs[nextIdx]
-    onTabChange(nextTab)
-    tabRefs.current[nextTab]?.focus()
+    const nextTab = MAIN_TABS[nextIdx]
+    if (!nextTab.isMore) onTabChange(nextTab.id)
+    tabRefs.current[nextTab.id]?.focus()
   }, [onTabChange])
 
   // Only show mobile shell on small viewports
@@ -169,6 +160,10 @@ export function MobileShell({ children, currentTab, onTabChange, tabContent }: M
 
   // Resolve native content for the active tab, if provided.
   const nativeContent = tabContent?.[currentTab]
+
+  // The active bottom tab is whichever primary tab matches; otherwise the
+  // selection lives in the drawer, so the "More" trigger carries the active cue.
+  const activeIsPrimary = PRIMARY_TABS.some((t) => t.id === currentTab)
 
   return (
     <div className="mobile-shell">
@@ -200,14 +195,14 @@ export function MobileShell({ children, currentTab, onTabChange, tabContent }: M
         aria-label="Main navigation"
       >
         <div className="mobile-shell__tablist" role="tablist" aria-label="Main navigation">
-          {mainTabs.map((tab) => {
-            const isActive = currentTab === tab.id
+          {MAIN_TABS.map((tab) => {
+            const isActive = tab.isMore ? !activeIsPrimary : currentTab === tab.id
             const Icon = tab.Icon
             return (
               <button
                 key={tab.id}
                 ref={(el) => { tabRefs.current[tab.id] = el }}
-                onClick={() => handleTabClick(tab.id)}
+                onClick={() => handleTabClick(tab)}
                 onKeyDown={(e) => handleKeyDown(e, tab.id)}
                 className={`mobile-shell__tab ${isActive ? 'mobile-shell__tab--active' : ''}`}
                 role="tab"
@@ -282,16 +277,23 @@ export function MobileShell({ children, currentTab, onTabChange, tabContent }: M
               </button>
             </div>
             <div className="mobile-shell__drawer-content">
-              {drawerTabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  className="mobile-shell__drawer-item"
-                  onClick={() => handleDrawerTabClick(tab.id, tab.label)}
-                  type="button"
-                >
-                  {tab.label}
-                </button>
-              ))}
+              {DRAWER_ITEMS.map((item) => {
+                const Icon = item.Icon
+                const isActive = currentTab === item.tabId
+                return (
+                  <button
+                    key={item.tabId}
+                    className={`mobile-shell__drawer-item ${isActive ? 'mobile-shell__drawer-item--active' : ''}`}
+                    onClick={() => handleDrawerTabClick(item.tabId, item.label)}
+                    aria-current={isActive ? 'page' : undefined}
+                    title={item.tooltip}
+                    type="button"
+                  >
+                    <Icon className="mobile-shell__drawer-item-icon" />
+                    <span>{item.label}</span>
+                  </button>
+                )
+              })}
             </div>
           </div>
         </div>
