@@ -60,3 +60,13 @@ export function ServerGlyph({ size }: GlyphProps): React.ReactElement {
     </Svg>
   );
 }
+
+/** Clock-face glyph (matches legacy `I.clock`). */
+export function ClockGlyph({ size }: GlyphProps): React.ReactElement {
+  return (
+    <Svg size={size}>
+      <circle cx={12} cy={12} r={10} />
+      <path d="M12 6v6l4 2" />
+    </Svg>
+  );
+}
