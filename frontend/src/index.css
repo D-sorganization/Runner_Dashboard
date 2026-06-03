@@ -2044,6 +2044,79 @@ th.sortable.active .sort-indicator {
 }
 
 /* ── Heavy tests ── */
+.tests-tab__ci-section {
+  margin-bottom: 24px;
+}
+
+.tests-tab__section-heading {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.tests-tab__section-title {
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.tests-tab__table-wrap {
+  overflow-x: auto;
+}
+
+.tests-tab__link {
+  color: var(--accent-blue);
+  text-decoration: none;
+}
+
+.tests-tab__link:hover {
+  text-decoration: underline;
+}
+
+.tests-tab__action-button,
+.tests-tab__view-link {
+  font-size: 12px;
+  min-height: 32px;
+  padding: 4px 12px;
+}
+
+.tests-tab__view-link {
+  display: inline-flex;
+}
+
+.tests-tab__dispatch-button {
+  min-height: 40px;
+}
+
+.tests-tab__dispatch-status {
+  align-items: center;
+  color: var(--text-secondary);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 12px;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.tests-tab__muted-cell {
+  color: var(--text-muted);
+}
+
+.tests-tab__run-link {
+  font-size: 12px;
+}
+
+.tests-tab__heavy-header {
+  border-top: 1px solid var(--border);
+  margin: 0 0 20px;
+  padding-top: 20px;
+}
+
+.tests-tab__heavy-title {
+  margin-bottom: 12px;
+}
+
 .test-card {
   background: var(--bg-tertiary);
   border: 1px solid var(--border);

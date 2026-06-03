@@ -98,6 +98,8 @@ describe("TestsTab", () => {
     render(<TestsTab testRepos={[]} loading={false} ciResults={CI} />);
     expect(screen.getByText("alpha")).toBeInTheDocument();
     expect(screen.getByText("beta")).toBeInTheDocument();
+    expect(screen.getByText("failure")).toHaveAttribute("data-touch-primitive", "Badge");
+    expect(screen.getByText("success")).toHaveAttribute("data-touch-primitive", "Badge");
     // alpha (failure) gets a re-run button; beta (success) gets View.
     expect(screen.getByRole("button", { name: /Re-run Failed/i })).toBeInTheDocument();
   });
@@ -163,5 +165,19 @@ describe("TestsTab", () => {
     render(<TestsTab testRepos={REPOS} loading={false} ciResults={CI} />);
     const statRow = document.querySelector(".stat-row") as HTMLElement;
     expect(within(statRow).getByText(/Heavy Test Repos/i)).toBeInTheDocument();
+  });
+
+  it("uses shared primitives and scoped tests tab classes", () => {
+    render(<TestsTab testRepos={REPOS} loading={false} ciResults={CI} />);
+    expect(document.querySelector(".tests-tab__ci-section")).toBeInTheDocument();
+    expect(document.querySelector(".tests-tab__table-wrap")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Re-run Failed/i })).toHaveAttribute(
+      "data-touch-primitive",
+      "TouchButton",
+    );
+    expect(screen.getByRole("button", { name: /Run via GitHub Actions/i })).toHaveAttribute(
+      "data-touch-primitive",
+      "TouchButton",
+    );
   });
 });

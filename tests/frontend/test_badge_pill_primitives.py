@@ -151,3 +151,17 @@ def test_runner_schedule_consumes_badge_empty_state_and_touch_button() -> None:
     assert "<TouchButton" in source
     assert 'className="runner-schedule__actions"' in source
     assert "style={{" not in source
+
+
+def test_tests_tab_consumes_badge_empty_state_and_touch_button() -> None:
+    """Issue #834 migration: Tests tab should use shared primitives."""
+    source = _read(SRC_DIR / "pages" / "Tests.tsx")
+    assert 'from "../primitives/Badge"' in source
+    assert 'from "../primitives/EmptyState"' in source
+    assert 'from "../primitives/TouchButton"' in source
+    assert "<Badge" in source
+    assert "<EmptyState" in source
+    assert "<TouchButton" in source
+    assert 'className="tests-tab__ci-section"' in source
+    assert "conclusion-badge" not in source
+    assert "style={{" not in source

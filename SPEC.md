@@ -1,10 +1,15 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.60
+**Spec Version:** 2.5.61
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-03T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-03 (2.5.61):** Migrated the Tests tab onto the #834 primitive/token
+  path. CI status, heavy-test dispatch state, and recent-run conclusions now
+  render through `Badge`; CI loading uses `EmptyState`; rerun and heavy dispatch
+  actions use `TouchButton`; and scoped `tests-tab__*` classes own table wraps,
+  links, headings, and status presentation instead of page-level inline styles.
 - **2026-06-03 (2.5.60):** Migrated the Runner Schedule capacity editor onto
   the #834 primitive/token path. The page now uses `Badge` for scheduler and
   saving state, `TouchButton` for refresh/save/apply actions, `EmptyState` for
@@ -886,6 +891,11 @@ Unified testing hub with two sections:
    (MuJoCo, Drake, Pinocchio physics stacks). Lists repos eligible for heavy
    testing, dispatches parameterized workflows, and optionally triggers
    Docker-based test environments.
+
+The tab uses shared `Badge`, `EmptyState`, and `TouchButton` primitives for
+status labels, loading state, rerun actions, and heavy-test dispatch controls.
+Token-backed `tests-tab__*` classes own table wrappers, links, headings, and
+dispatch status metadata.
 
 ### 3.7 Stats Tab
 
