@@ -28,8 +28,20 @@ afterEach(() => {
 const DATA: RunnerScheduleData = {
   schedule: {
     schedules: [
-      { name: "weekdays", days: ["Mon", "Tue"], start: "09:00", end: "17:00", runners: 4 },
-      { name: "weekend", days: ["Sat"], start: "00:00", end: "23:59", runners: 1 },
+      {
+        name: "weekdays",
+        days: ["Mon", "Tue"],
+        start: "09:00",
+        end: "17:00",
+        runners: 4,
+      },
+      {
+        name: "weekend",
+        days: ["Sat"],
+        start: "00:00",
+        end: "23:59",
+        runners: 1,
+      },
     ],
   },
   state: {
@@ -46,12 +58,17 @@ const DATA: RunnerScheduleData = {
   machine: "DeskComputer",
   max_runners: 8,
   config_path: "/etc/runner-schedule.json",
-  timers: { "runner-scheduler.timer": "active", "runner-cleanup.timer": "active" },
+  timers: {
+    "runner-scheduler.timer": "active",
+    "runner-cleanup.timer": "active",
+  },
 };
 
 describe("RunnerScheduleTab", () => {
   it("renders without throwing (smoke test)", () => {
-    expect(() => render(<RunnerScheduleTab data={{}} loading={false} onSave={() => {}} />)).not.toThrow();
+    expect(() =>
+      render(<RunnerScheduleTab data={{}} loading={false} onSave={() => {}} />),
+    ).not.toThrow();
   });
 
   it("reflects state in the stat row", () => {
@@ -60,6 +77,10 @@ describe("RunnerScheduleTab", () => {
     expect(screen.getByText("schedule window")).toBeInTheDocument();
     expect(screen.getByText("Online")).toBeInTheDocument();
     expect(screen.getByText("Offline")).toBeInTheDocument();
+    expect(screen.getByText("scheduler installed")).toHaveAttribute(
+      "data-touch-primitive",
+      "Badge",
+    );
   });
 
   it("renders a row per schedule entry", () => {
@@ -94,7 +115,10 @@ describe("RunnerScheduleTab", () => {
 
   it("disables Save and Apply while loading", () => {
     render(<RunnerScheduleTab data={DATA} loading={true} onSave={() => {}} />);
-    expect(screen.getByText("Saving...")).toBeInTheDocument();
+    expect(screen.getByText("Saving...")).toHaveAttribute(
+      "data-touch-primitive",
+      "Badge",
+    );
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
   });
 
@@ -108,11 +132,17 @@ describe("RunnerScheduleTab", () => {
 
   it("Refresh invokes onRefresh", () => {
     const onRefresh = vi.fn();
-    render(<RunnerScheduleTab data={DATA} loading={false} onRefresh={onRefresh} onSave={() => {}} />);
-    // The refresh button is the icon-only button (no Save/Apply text).
-    const buttons = screen.getAllByRole("button");
-    const refreshBtn = buttons.find((b) => b.textContent === "");
-    fireEvent.click(refreshBtn as HTMLElement);
+    render(
+      <RunnerScheduleTab
+        data={DATA}
+        loading={false}
+        onRefresh={onRefresh}
+        onSave={() => {}}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Refresh runner capacity" }),
+    );
     expect(onRefresh).toHaveBeenCalledTimes(1);
   });
 
@@ -130,5 +160,25 @@ describe("RunnerScheduleTab", () => {
     );
     expect(screen.getByText(/scheduler missing/)).toBeInTheDocument();
     expect(screen.getByText("scheduler not installed")).toBeInTheDocument();
+    expect(document.querySelector(".empty-state")).toBeInTheDocument();
+  });
+
+  it("uses shared touch primitives and scoped schedule classes", () => {
+    render(<RunnerScheduleTab data={DATA} loading={false} onSave={() => {}} />);
+    expect(
+      document.querySelector(".runner-schedule__actions"),
+    ).toBeInTheDocument();
+    expect(
+      document.querySelector(".runner-schedule__table"),
+    ).toBeInTheDocument();
+    expect(
+      screen
+        .getAllByRole("button")
+        .every((button) => button.dataset.touchPrimitive === "TouchButton"),
+    ).toBe(true);
+    expect(screen.getByText("scheduler installed")).toHaveAttribute(
+      "data-touch-primitive",
+      "Badge",
+    );
   });
 });

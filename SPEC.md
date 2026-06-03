@@ -1,10 +1,15 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.59
+**Spec Version:** 2.5.60
 **Application Version:** 4.8.0 (see `VERSION`)
-**Last Updated:** 2026-06-02T00:00:00-07:00
+**Last Updated:** 2026-06-03T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-03 (2.5.60):** Migrated the Runner Schedule capacity editor onto
+  the #834 primitive/token path. The page now uses `Badge` for scheduler and
+  saving state, `TouchButton` for refresh/save/apply actions, `EmptyState` for
+  missing schedule/error surfaces, and scoped `runner-schedule__*` classes for
+  table/input/footer presentation instead of page-level inline styles.
 - **2026-06-02 (2.5.59):** Completed the PyJWT 2.13.0 security remediation by
   bumping the pin in `requirements.txt` and `requirements.lock.txt`, which the
   2.5.58 change left at 2.12.0 alongside the `pyproject.toml`/`uv.lock` updates.
@@ -908,6 +913,9 @@ design-token system.
 
 Fleet autoscaler configuration. Displays current runner count, scaling policy,
 schedule-based on/off windows, and allows adjusting the target runner count.
+The Runner Schedule capacity editor uses shared `Badge`, `TouchButton`, and
+`EmptyState` primitives plus token-backed `runner-schedule__*` classes for
+scheduler status, save/apply actions, table inputs, and empty/error states.
 
 ### 3.11 Local Apps Tab
 

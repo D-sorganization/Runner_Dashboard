@@ -138,3 +138,16 @@ def test_runner_audit_consumes_badge_empty_state_and_touch_button() -> None:
     assert "thStyle" not in source
     assert 'background: "rgba(248,81,73' not in source
     assert "style={{" not in source
+
+
+def test_runner_schedule_consumes_badge_empty_state_and_touch_button() -> None:
+    """Issue #834 migration: RunnerSchedule should use shared primitives."""
+    source = _read(SRC_DIR / "pages" / "RunnerSchedule.tsx")
+    assert 'from "../primitives/Badge"' in source
+    assert 'from "../primitives/EmptyState"' in source
+    assert 'from "../primitives/TouchButton"' in source
+    assert "<Badge" in source
+    assert "<EmptyState" in source
+    assert "<TouchButton" in source
+    assert 'className="runner-schedule__actions"' in source
+    assert "style={{" not in source
