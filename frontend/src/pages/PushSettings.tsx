@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
+import { EmptyState } from "../primitives/EmptyState";
+import { TouchButton } from "../primitives/TouchButton";
 
 const PUSH_TOPICS = [
   { id: "agent.completed", label: "Agent completed" },
@@ -85,34 +87,31 @@ export default function PushSettings() {
 
   if (notConfigured) {
     return (
-      <div className="glass-card" style={{ padding: "16px", margin: "16px" }}>
-        <h2 style={{ fontSize: "16px", marginBottom: "12px" }}>Push Notifications</h2>
-        <div style={{ fontSize: "14px" }}>
-          Push notifications not configured by operator
-        </div>
+      <div className="glass-card push-settings">
+        <h2 className="push-settings__title">Push Notifications</h2>
+        <EmptyState
+          title="Push notifications not configured by operator"
+          description="Configure VAPID credentials before enabling browser subscriptions."
+        />
       </div>
     );
   }
 
   return (
-    <div className="glass-card" style={{ padding: "16px", margin: "16px" }}>
-      <h2 style={{ fontSize: "16px", marginBottom: "12px" }}>Push Notifications</h2>
+    <div className="glass-card push-settings">
+      <h2 className="push-settings__title">Push Notifications</h2>
       {error && (
-        <div style={{ color: "var(--accent-red)", fontSize: "12px", marginBottom: "8px" }}>
-          {error}
-        </div>
+        <EmptyState
+          variant="error"
+          title="Push notification setup failed"
+          description={error}
+        />
       )}
-      <div style={{ marginBottom: "12px" }}>
+      <div className="push-settings__topics">
         {PUSH_TOPICS.map((t) => (
           <label
             key={t.id}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              marginBottom: "8px",
-              fontSize: "14px",
-            }}
+            className="push-settings__topic"
           >
             <input
               checked={!!topics[t.id]}
@@ -125,13 +124,13 @@ export default function PushSettings() {
         ))}
       </div>
       {subscribed ? (
-        <button className="touch-button touch-button-danger" onClick={unsubscribe} type="button">
+        <TouchButton onClick={unsubscribe} variant="danger">
           Unsubscribe
-        </button>
+        </TouchButton>
       ) : (
-        <button className="touch-button touch-button-primary" disabled={!publicKey} onClick={subscribe} type="button">
+        <TouchButton disabled={!publicKey} onClick={subscribe} variant="primary">
           Subscribe
-        </button>
+        </TouchButton>
       )}
     </div>
   );

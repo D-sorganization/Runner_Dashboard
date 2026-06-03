@@ -3130,8 +3130,29 @@ th.sortable.active .sort-indicator {
 
 /* ── Push Settings ── */
 .push-settings {
-  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   margin: 16px;
+  padding: 16px;
+}
+
+.push-settings__title {
+  font-size: 16px;
+  margin: 0;
+}
+
+.push-settings__topics {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.push-settings__topic {
+  align-items: center;
+  display: flex;
+  font-size: 14px;
+  gap: 8px;
 }
 
 /* ── Agent Dispatch Page (issue #196) ── */
