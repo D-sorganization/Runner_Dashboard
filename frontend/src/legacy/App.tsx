@@ -2161,12 +2161,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
             ? h(
                 "span",
                 {
-                  className: "section-badge",
-                  style: {
-                    background: "rgba(248,81,73,0.15)",
-                    color: "var(--accent-red)",
-                    marginLeft: 2,
-                  },
+                  className: "section-badge section-badge--danger section-badge--offset",
                 },
                 runs.filter(function (run) {
                   return run.conclusion === "failure";
@@ -2193,12 +2188,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
             ? h(
                 "span",
                 {
-                  className: "section-badge",
-                  style: {
-                    background: "rgba(248,81,73,0.15)",
-                    color: "var(--accent-red)",
-                    marginLeft: 2,
-                  },
+                  className: "section-badge section-badge--danger section-badge--offset",
                 },
                 runs.filter(function (run) {
                   return run.conclusion === "failure";
@@ -2223,12 +2213,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
             ? h(
                 "span",
                 {
-                  className: "section-badge",
-                  style: {
-                    background: "rgba(88,166,255,0.2)",
-                    color: "var(--accent-blue)",
-                    marginLeft: 2,
-                  },
+                  className: "section-badge section-badge--info section-badge--offset",
                 },
                 queue.total || 0,
               )
@@ -2266,12 +2251,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
             ? h(
                 "span",
                 {
-                  className: "section-badge",
-                  style: {
-                    background: "rgba(63,185,80,0.15)",
-                    color: "var(--accent-green)",
-                    marginLeft: 2,
-                  },
+                  className: "section-badge section-badge--success section-badge--offset",
                 },
                 machinesData.count || 0,
               )
@@ -2321,12 +2301,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
             ? h(
                 "span",
                 {
-                  className: "section-badge",
-                  style: {
-                    background: "rgba(136,108,228,0.15)",
-                    color: "var(--accent-purple)",
-                    marginLeft: 2,
-                  },
+                  className: "section-badge section-badge--purple section-badge--offset",
                 },
                 enrichedRuns.length,
               )
@@ -2350,12 +2325,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
             ? h(
                 "span",
                 {
-                  className: "section-badge",
-                  style: {
-                    background: "rgba(88,166,255,0.2)",
-                    color: "var(--accent-blue)",
-                    marginLeft: 2,
-                  },
+                  className: "section-badge section-badge--info section-badge--offset",
                 },
                 scheduledJobs.scheduled_workflow_count,
               )
@@ -2378,12 +2348,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
             ? h(
                 "span",
                 {
-                  className: "section-badge",
-                  style: {
-                    background: "rgba(88,166,255,0.15)",
-                    color: "var(--accent-blue)",
-                    marginLeft: 2,
-                  },
+                  className: "section-badge section-badge--info section-badge--offset",
                 },
                 workflowsList.length,
               )
@@ -2407,12 +2372,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
             ? h(
                 "span",
                 {
-                  className: "section-badge",
-                  style: {
-                    background: "rgba(63,185,80,0.15)",
-                    color: "var(--accent-green)",
-                    marginLeft: 2,
-                  },
+                  className: "section-badge section-badge--success section-badge--offset",
                 },
                 runnerCapacity.state.desired || 0,
               )
@@ -2438,12 +2398,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
             ? h(
                 "span",
                 {
-                  className: "section-badge",
-                  style: {
-                    background: "rgba(210,153,34,0.2)",
-                    color: "var(--accent-yellow)",
-                    marginLeft: 2,
-                  },
+                  className: "section-badge section-badge--warning section-badge--offset",
                 },
                 deploymentStateLoading
                   ? "\u2026"
@@ -2473,12 +2428,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
               ? h(
                   "span",
                   {
-                    className: "section-badge",
-                    style: {
-                      background: "rgba(210,153,34,0.2)",
-                      color: "var(--accent-yellow)",
-                      marginLeft: 2,
-                    },
+                    className: "section-badge section-badge--warning section-badge--offset",
                   },
                   n,
                 )
@@ -2503,12 +2453,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
             ? h(
                 "span",
                 {
-                  className: "section-badge",
-                  style: {
-                    background: "rgba(210,153,34,0.15)",
-                    color: "var(--accent-yellow)",
-                    marginLeft: 2,
-                  },
+                  className: "section-badge section-badge--warning section-badge--offset",
                 },
                 credentialsData.summary.not_ready,
               )
@@ -2563,12 +2508,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
             ? h(
                 "span",
                 {
-                  className: "section-badge",
-                  style: {
-                    background: "rgba(136,108,228,0.15)",
-                    color: "var(--accent-purple)",
-                    marginLeft: 2,
-                  },
+                  className: "section-badge section-badge--purple section-badge--offset",
                 },
                 featureRequests.length,
               )
@@ -2605,12 +2545,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
             ? h(
                 "span",
                 {
-                  className: "section-badge",
-                  style: {
-                    background: "rgba(63,185,80,0.15)",
-                    color: "var(--accent-green)",
-                    marginLeft: 2,
-                  },
+                  className: "section-badge section-badge--success section-badge--offset",
                 },
                 "on",
               )
@@ -2618,12 +2553,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
               ? h(
                   "span",
                   {
-                    className: "section-badge",
-                    style: {
-                      background: "rgba(248,81,73,0.15)",
-                      color: "var(--accent-red)",
-                      marginLeft: 2,
-                    },
+                    className: "section-badge section-badge--danger section-badge--offset",
                   },
                   "off",
                 )
@@ -2646,12 +2576,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
             ? h(
                 "span",
                 {
-                  className: "section-badge",
-                  style: {
-                    background: "rgba(248,81,73,0.2)",
-                    color: "var(--accent-red)",
-                    marginLeft: 2,
-                  },
+                  className: "section-badge section-badge--danger section-badge--offset",
                 },
                 runnerAudit.violations.length,
               )
@@ -2712,7 +2637,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
         // from /api/fleet/nodes), not as another mock here.
         principal ? h(
           "span",
-          { className: "section-badge", style: { background: "rgba(88,166,255,0.15)", color: "var(--accent-blue)" } },
+          { className: "section-badge section-badge--info" },
           "Acting as: " + principal.name
         ) : null,
         h(
@@ -2724,8 +2649,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
               legacyFetch("/api/auth/logout", {method: "POST", headers: { "X-Requested-With": "XMLHttpRequest" }})
                 .then(function() { window.location.reload(); });
             } : undefined,
-            className: "btn",
-            style: { textDecoration: "none", marginRight: "12px", height: "24px", lineHeight: "12px", fontSize: "11px" }
+            className: "btn legacy-toolstrip-link",
           },
           principal ? "Logout" : "Login"
         ),
@@ -2764,12 +2688,12 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
         h(
           "span",
           {
-            className: "section-badge",
             title: githubStatus.detail || "GitHub API status",
-            style:
-              githubStatus.status === "rate_limited" || githubStatus.status === "auth_error"
-                ? { background: "rgba(240,136,62,0.18)", color: "var(--accent-orange)" }
-                : undefined,
+            className:
+              "section-badge" +
+              (githubStatus.status === "rate_limited" || githubStatus.status === "auth_error"
+                ? " section-badge--orange"
+                : ""),
           },
           "GitHub " + (githubStatus.status || "unknown"),
         ),
@@ -2786,8 +2710,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
           onNavigate: onAlertNavigate,
         }),
         h("button", {
-          className: "btn",
-          style: { marginLeft: 4, background: asstOpen ? "var(--accent-blue)" : undefined, color: asstOpen ? "var(--text-on-accent)" : undefined },
+          className: "btn legacy-toolstrip-button" + (asstOpen ? " legacy-toolstrip-button--active" : ""),
           onClick: toggleAsst,
           title: "Toggle Chat sidebar",
         }, "💬 Chat"),
@@ -2795,8 +2718,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
         h(
           "button",
           {
-            className: "btn",
-            style: { marginLeft: 4 },
+            className: "btn legacy-toolstrip-button",
             onClick: function () {
               fetchFleet();
               fetchRepos();
@@ -2821,13 +2743,17 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
     ),
     h(
       "div",
-      { style: { display: "flex", flexDirection: asstPosition === "left" ? "row-reverse" : "row", alignItems: "flex-start", minHeight: "calc(100vh - 56px)" } },
+      {
+        className:
+          "legacy-dashboard-layout" +
+          (asstPosition === "left" ? " legacy-dashboard-layout--assistant-left" : ""),
+      },
       h(
         "div",
         // In chromeless mode the modern desktop shell (#802) already provides
         // the single `main` landmark, so this inner region drops role="main" to
         // avoid duplicate landmarks.
-        { className: "main-content", role: chromeless ? undefined : "main", style: { flex: 1, minWidth: 0 } },
+        { className: "main-content legacy-dashboard-layout__main", role: chromeless ? undefined : "main" },
         tab === "overview"
         ? h("div", null,
           h(FleetTab, {
@@ -2850,15 +2776,14 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
             },
           }),
           // Issue #863: at-a-glance alarm panel + recent event log on Overview.
-          h("div", { className: "section", style: { marginTop: "24px" } },
+          h("div", { className: "section section--stacked" },
             h("div", { className: "section-header" },
               h("div", { className: "section-title" },
                 I.activity(16),
                 "Alarms & Recent Events"
               ),
               h("button", {
-                className: "btn",
-                style: { marginLeft: "auto" },
+                className: "btn section-header__action",
                 onClick: function () { setTab("events"); },
               }, "Open Event Log")
             ),

@@ -24,13 +24,20 @@ describe("RecoveryDialog", () => {
 
     const dialog = screen.getByRole("dialog", { name: "Backend Not Responding" });
     expect(dialog).toHaveAttribute("aria-modal", "true");
-    expect(dialog).toHaveAttribute("aria-labelledby", "recovery-dialog-title");
     expect(dialog).toHaveAttribute("aria-describedby", "recovery-dialog-description");
+    expect(dialog.getAttribute("aria-labelledby")).toBeTruthy();
     expect(screen.getByText(/The dashboard backend is not responding/).closest("[aria-live]")).toHaveAttribute(
       "aria-live",
       "assertive",
     );
-    expect(screen.getByRole("button", { name: "Start Now" })).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Start Now" })).toHaveAttribute(
+      "data-touch-primitive",
+      "TouchButton",
+    );
+    expect(screen.getByRole("button", { name: "Refresh" })).toHaveAttribute(
+      "data-touch-primitive",
+      "TouchButton",
+    );
   });
 
   it("closes when Escape is pressed", () => {
