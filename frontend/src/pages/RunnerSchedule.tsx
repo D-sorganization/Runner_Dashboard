@@ -17,6 +17,9 @@
  */
 import React, { useEffect, useState } from "react";
 import { Stat } from "../components/Stat";
+import { Badge } from "../primitives/Badge";
+import { EmptyState } from "../primitives/EmptyState";
+import { TouchButton } from "../primitives/TouchButton";
 import { ClockGlyph, PlayGlyph, RefreshGlyph } from "./decompIcons";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -81,7 +84,11 @@ export function RunnerScheduleTab({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [d.config_path, state.timestamp]);
 
-  function updateSchedule(index: number, key: keyof RunnerScheduleEntry, value: string): void {
+  function updateSchedule(
+    index: number,
+    key: keyof RunnerScheduleEntry,
+    value: string,
+  ): void {
     const next: ScheduleConfig = Object.assign({}, effectiveDraft, {
       schedules: schedules.map((entry, i) => {
         if (i !== index) return entry;
@@ -99,7 +106,7 @@ export function RunnerScheduleTab({
   }
 
   return (
-    <div>
+    <div className="runner-schedule">
       <div className="stat-row">
         <Stat
           label="Desired"
@@ -130,92 +137,133 @@ export function RunnerScheduleTab({
         <span className="section-title">
           <ClockGlyph size={14} /> Runner Capacity
         </span>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          {loading ? <span style={{ fontSize: 11, color: "var(--fg-muted)" }}>Saving...</span> : null}
-          <button className="btn" onClick={onRefresh}>
+        <div className="runner-schedule__actions">
+          {loading ? (
+            <Badge tone="neutral" size="sm">
+              Saving...
+            </Badge>
+          ) : null}
+          <TouchButton
+            aria-label="Refresh runner capacity"
+            className="runner-schedule__icon-button"
+            onClick={onRefresh}
+          >
             <RefreshGlyph size={12} />
-          </button>
-          <button
-            className="btn"
+          </TouchButton>
+          <TouchButton
+            className="runner-schedule__action-button"
             onClick={() => {
               onSave(effectiveDraft, false);
             }}
             disabled={loading || !effectiveDraft.schedules}
           >
             Save
-          </button>
-          <button
-            className="btn"
+          </TouchButton>
+          <TouchButton
+            className="runner-schedule__action-button"
             onClick={() => {
               onSave(effectiveDraft, true);
             }}
             disabled={loading || !effectiveDraft.schedules}
+            variant="primary"
           >
             <PlayGlyph size={12} />
             Apply Now
-          </button>
+          </TouchButton>
         </div>
       </div>
-      <div className="card" style={{ marginBottom: 12 }}>
-        <div style={{ fontSize: 13, color: "var(--fg-muted)", marginBottom: 12 }}>
-          {(d.machine || "Local machine") +
-            (d.aliases && d.aliases.length ? " aliases: " + d.aliases.join(", ") : "") +
-            " | scheduler " +
-            (state.available ? "installed" : "missing")}
+      <div className="card runner-schedule__card">
+        <div className="runner-schedule__meta">
+          <span>
+            {(d.machine || "Local machine") +
+              (d.aliases && d.aliases.length
+                ? " aliases: " + d.aliases.join(", ")
+                : "")}
+          </span>
+          <Badge tone={state.available ? "success" : "warning"} size="sm">
+            {state.available ? "scheduler installed" : "scheduler missing"}
+          </Badge>
         </div>
         {state.error ? (
-          <div style={{ color: "var(--accent-orange)", fontSize: 12, marginBottom: 12 }}>{state.error}</div>
+          <EmptyState
+            variant="error"
+            title={state.error}
+            description="Check the scheduler service and save a valid runner-capacity schedule before applying changes."
+          />
         ) : null}
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Days</th>
-              <th>Start</th>
-              <th>End</th>
-              <th>Runners</th>
-            </tr>
-          </thead>
-          <tbody>
-            {schedules.map((entry, index) => (
-              <tr key={entry.name + index}>
-                <td>{entry.name}</td>
-                <td style={{ fontSize: 12 }}>{(entry.days || []).join(", ")}</td>
-                <td>
-                  <input
-                    value={entry.start}
-                    onInput={(e) => {
-                      updateSchedule(index, "start", (e.target as HTMLInputElement).value);
-                    }}
-                    style={{ width: 76 }}
-                  />
-                </td>
-                <td>
-                  <input
-                    value={entry.end}
-                    onInput={(e) => {
-                      updateSchedule(index, "end", (e.target as HTMLInputElement).value);
-                    }}
-                    style={{ width: 76 }}
-                  />
-                </td>
-                <td>
-                  <input
-                    type="number"
-                    min={0}
-                    max={d.max_runners || 99}
-                    value={entry.runners}
-                    onInput={(e) => {
-                      updateSchedule(index, "runners", (e.target as HTMLInputElement).value);
-                    }}
-                    style={{ width: 64 }}
-                  />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <div style={{ fontSize: 12, color: "var(--fg-muted)", marginTop: 12 }}>
+        {schedules.length ? (
+          <div className="runner-schedule__table-wrap">
+            <table className="table runner-schedule__table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Days</th>
+                  <th>Start</th>
+                  <th>End</th>
+                  <th>Runners</th>
+                </tr>
+              </thead>
+              <tbody>
+                {schedules.map((entry, index) => (
+                  <tr key={entry.name + index}>
+                    <td>{entry.name}</td>
+                    <td className="runner-schedule__days-cell">
+                      {(entry.days || []).join(", ")}
+                    </td>
+                    <td>
+                      <input
+                        className="runner-schedule__time-input"
+                        value={entry.start}
+                        onInput={(e) => {
+                          updateSchedule(
+                            index,
+                            "start",
+                            (e.target as HTMLInputElement).value,
+                          );
+                        }}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        className="runner-schedule__time-input"
+                        value={entry.end}
+                        onInput={(e) => {
+                          updateSchedule(
+                            index,
+                            "end",
+                            (e.target as HTMLInputElement).value,
+                          );
+                        }}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        className="runner-schedule__runner-input"
+                        type="number"
+                        min={0}
+                        max={d.max_runners || 99}
+                        value={entry.runners}
+                        onInput={(e) => {
+                          updateSchedule(
+                            index,
+                            "runners",
+                            (e.target as HTMLInputElement).value,
+                          );
+                        }}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <EmptyState
+            title="No runner capacity windows"
+            description="Add schedule entries in the runner configuration before saving or applying capacity changes."
+          />
+        )}
+        <div className="runner-schedule__footer">
           {"Config: " +
             (d.config_path || "-") +
             " | timers: scheduler " +

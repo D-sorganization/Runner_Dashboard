@@ -722,6 +722,64 @@ code, pre, .code, kbd {
 .runner-audit__run-link:hover {
   text-decoration: underline;
 }
+.runner-schedule__actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.runner-schedule__icon-button {
+  min-height: 32px;
+  padding: 4px 10px;
+}
+
+.runner-schedule__action-button {
+  font-size: 12px;
+  min-height: 32px;
+  padding: 4px 12px;
+}
+
+.runner-schedule__card {
+  margin-bottom: 12px;
+}
+
+.runner-schedule__meta {
+  align-items: center;
+  color: var(--fg-muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 13px;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.runner-schedule__table-wrap {
+  overflow-x: auto;
+}
+
+.runner-schedule__table {
+  width: 100%;
+}
+
+.runner-schedule__days-cell {
+  font-size: 12px;
+}
+
+.runner-schedule__time-input {
+  width: 76px;
+}
+
+.runner-schedule__runner-input {
+  width: 64px;
+}
+
+.runner-schedule__footer {
+  color: var(--fg-muted);
+  font-size: 12px;
+  margin-top: 12px;
+}
 
 .stat-row {
   display: grid;
