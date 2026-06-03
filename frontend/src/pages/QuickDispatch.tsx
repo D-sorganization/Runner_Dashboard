@@ -14,6 +14,7 @@
 import React from "react";
 import { legacyFetch } from "../lib/api";
 import { PROVIDER_MODELS, PROVIDERS_WITH_MODEL } from "../lib/providerModels";
+import { TouchButton } from "../primitives/TouchButton";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const h = React.createElement as any;
@@ -189,43 +190,19 @@ export function QuickDispatchPopover() {
 
   const showModel = PROVIDERS_WITH_MODEL.indexOf(form.provider) !== -1;
 
-  const labelStyle: any = {
-    fontSize: 12,
-    color: "var(--text-muted)",
-    marginBottom: 3,
-    display: "block",
-  };
-  const inputStyle: any = {
-    width: "100%",
-    background: "var(--bg-primary)",
-    border: "1px solid var(--border)",
-    borderRadius: 6,
-    padding: "5px 10px",
-    color: "var(--text-primary)",
-    fontSize: 13,
-    outline: "none",
-    boxSizing: "border-box",
-  };
-  const rowStyle: any = { marginBottom: 10 };
-
   return h(
     "div",
-    { style: { position: "relative", display: "inline-block" } },
+    { className: "quick-dispatch" },
     h(
-      "button",
+      TouchButton,
       {
         ref: triggerRef,
-        className: "btn btn-blue",
-        style: {
-          fontSize: 13,
-          padding: "6px 12px",
-          fontWeight: 600,
-          background: "rgba(88,166,255,0.15)",
-        },
+        className: "quick-dispatch__trigger",
         onClick: handleToggle,
         title: "Open Quick Dispatch",
         "aria-label": "Open Quick Dispatch",
         "aria-expanded": open,
+        variant: "primary",
       },
       "⚡ Quick Dispatch ▾",
     ),
@@ -237,33 +214,21 @@ export function QuickDispatchPopover() {
             role: "dialog",
             "aria-modal": "true",
             "aria-label": "Quick Dispatch",
-            style: {
-              position: "fixed",
-              right: 16,
-              top: 64,
-              width: "calc(100vw - 32px)",
-              maxWidth: 320,
-              background: "var(--bg-secondary)",
-              border: "1px solid var(--border)",
-              borderRadius: 8,
-              boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
-              zIndex: 9000,
-              padding: 16,
-            },
+            className: "quick-dispatch__popover",
           },
           h(
             "div",
-            { style: { fontWeight: 700, fontSize: 14, marginBottom: 14, color: "var(--text-primary)" } },
+            { className: "quick-dispatch__heading" },
             "⚡ Quick Dispatch",
           ),
           h(
             "div",
-            { style: rowStyle },
-            h("label", { style: labelStyle }, "Repository"),
+            { className: "quick-dispatch__field" },
+            h("label", { className: "quick-dispatch__label" }, "Repository"),
             h(
               "select",
               {
-                style: inputStyle,
+                className: "quick-dispatch__input",
                 value: form.repository,
                 onChange: function (e: any) { handleFormChange("repository", e.target.value); },
               },
@@ -277,12 +242,12 @@ export function QuickDispatchPopover() {
           ),
           h(
             "div",
-            { style: rowStyle },
-            h("label", { style: labelStyle }, "Provider"),
+            { className: "quick-dispatch__field" },
+            h("label", { className: "quick-dispatch__label" }, "Provider"),
             h(
               "select",
               {
-                style: inputStyle,
+                className: "quick-dispatch__input",
                 value: form.provider,
                 onChange: function (e: any) { handleFormChange("provider", e.target.value); },
               },
@@ -304,13 +269,13 @@ export function QuickDispatchPopover() {
           showModel
             ? h(
                 "div",
-                { style: rowStyle },
-                h("label", { style: labelStyle }, "Model"),
+                { className: "quick-dispatch__field" },
+                h("label", { className: "quick-dispatch__label" }, "Model"),
                 (function() {
                   const modelOpts = PROVIDER_MODELS[form.provider];
                   if (modelOpts && modelOpts.length > 0) {
                     return h("select", {
-                      style: inputStyle,
+                      className: "quick-dispatch__input",
                       value: form.model,
                       onChange: function (e: any) { handleFormChange("model", e.target.value); },
                     },
@@ -321,7 +286,7 @@ export function QuickDispatchPopover() {
                   }
                   return h("input", {
                     type: "text",
-                    style: inputStyle,
+                    className: "quick-dispatch__input",
                     value: form.model,
                     placeholder: "model name",
                     onChange: function (e: any) { handleFormChange("model", e.target.value); },
@@ -331,11 +296,11 @@ export function QuickDispatchPopover() {
             : null,
           h(
             "div",
-            { style: rowStyle },
-            h("label", { style: labelStyle }, "Branch ref"),
+            { className: "quick-dispatch__field" },
+            h("label", { className: "quick-dispatch__label" }, "Branch ref"),
             h("input", {
               type: "text",
-              style: inputStyle,
+              className: "quick-dispatch__input",
               value: form.ref,
               placeholder: "main",
               onChange: function (e: any) { handleFormChange("ref", e.target.value); },
@@ -343,11 +308,11 @@ export function QuickDispatchPopover() {
           ),
           h(
             "div",
-            { style: rowStyle },
-            h("label", { style: labelStyle }, "Prompt"),
+            { className: "quick-dispatch__field" },
+            h("label", { className: "quick-dispatch__label" }, "Prompt"),
             h("textarea", {
               rows: 4,
-              style: Object.assign({}, inputStyle, { resize: "vertical", fontFamily: "inherit" }),
+              className: "quick-dispatch__input quick-dispatch__textarea",
               value: form.prompt,
               placeholder: "Describe the task for the agent…",
               onChange: function (e: any) { handleFormChange("prompt", e.target.value); },
@@ -356,52 +321,31 @@ export function QuickDispatchPopover() {
           error
             ? h(
                 "div",
-                {
-                  style: {
-                    fontSize: 12,
-                    color: "var(--accent-red)",
-                    marginBottom: 10,
-                    padding: "6px 10px",
-                    background: "rgba(248,81,73,0.1)",
-                    borderRadius: 4,
-                    border: "1px solid rgba(248,81,73,0.3)",
-                  },
-                },
+                { className: "quick-dispatch__status quick-dispatch__status--error" },
                 error,
               )
             : null,
           successMsg
             ? h(
                 "div",
-                {
-                  style: {
-                    fontSize: 12,
-                    color: "var(--accent-green)",
-                    marginBottom: 10,
-                    padding: "6px 10px",
-                    background: "rgba(63,185,80,0.1)",
-                    borderRadius: 4,
-                    border: "1px solid rgba(63,185,80,0.3)",
-                  },
-                },
+                { className: "quick-dispatch__status quick-dispatch__status--success" },
                 successMsg,
               )
             : null,
           h(
             "div",
-            { style: { display: "flex", justifyContent: "flex-end", gap: 8 } },
+            { className: "quick-dispatch__actions" },
             h(
-              "button",
-              { className: "btn", onClick: handleCancel, disabled: loading },
+              TouchButton,
+              { onClick: handleCancel, disabled: loading },
               "Cancel",
             ),
             h(
-              "button",
+              TouchButton,
               {
-                className: "btn btn-blue",
-                style: { background: "rgba(88,166,255,0.2)", fontWeight: 600 },
                 onClick: handleDispatch,
                 disabled: loading,
+                variant: "primary",
               },
               loading ? "Dispatching…" : "⚡ Dispatch",
             ),

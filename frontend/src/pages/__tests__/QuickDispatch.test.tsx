@@ -82,9 +82,10 @@ describe("QuickDispatchPopover", () => {
   it("renders only the trigger when closed", () => {
     mockFetch();
     render(<QuickDispatchPopover />);
-    expect(
-      screen.getByRole("button", { name: "Open Quick Dispatch" }),
-    ).toBeInTheDocument();
+    const trigger = screen.getByRole("button", { name: "Open Quick Dispatch" });
+    expect(trigger).toBeInTheDocument();
+    expect(trigger).toHaveAttribute("data-touch-primitive", "TouchButton");
+    expect(trigger).toHaveClass("quick-dispatch__trigger");
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
@@ -92,6 +93,9 @@ describe("QuickDispatchPopover", () => {
     const { fn } = mockFetch();
     render(<QuickDispatchPopover />);
     await openPopover();
+    expect(screen.getByRole("dialog", { name: "Quick Dispatch" })).toHaveClass(
+      "quick-dispatch__popover",
+    );
     await waitFor(() => {
       const urls = fn.mock.calls.map((c) => String(c[0]));
       expect(urls.some((u) => u.includes("/api/repos"))).toBe(true);
@@ -111,9 +115,9 @@ describe("QuickDispatchPopover", () => {
       target: { value: "short" },
     });
     fireEvent.click(screen.getByRole("button", { name: "⚡ Dispatch" }));
-    expect(
-      await screen.findByText("Prompt must be at least 10 characters."),
-    ).toBeInTheDocument();
+    const message = await screen.findByText("Prompt must be at least 10 characters.");
+    expect(message).toBeInTheDocument();
+    expect(message).toHaveClass("quick-dispatch__status--error");
   });
 
   it("dispatches with a model field for a model-capable provider", async () => {
@@ -125,7 +129,8 @@ describe("QuickDispatchPopover", () => {
       target: { value: "please do the thing properly" },
     });
     fireEvent.click(screen.getByRole("button", { name: "⚡ Dispatch" }));
-    await screen.findByText("✓ Dispatched!");
+    const success = await screen.findByText("✓ Dispatched!");
+    expect(success).toHaveClass("quick-dispatch__status--success");
     const dispatch = calls.find((c) => c.url.includes("/api/agents/quick-dispatch"));
     expect(dispatch).toBeTruthy();
     const body = JSON.parse(String(dispatch!.init!.body));

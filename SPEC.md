@@ -1,10 +1,15 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.65
+**Spec Version:** 2.5.66
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-03T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-03 (2.5.66):** Migrated the header Quick Dispatch popover onto
+  the #834 primitive/token path. The trigger and action controls now render
+  through `TouchButton`, the primitive accepts button refs for popover
+  outside-click handling, and scoped `quick-dispatch__*` classes own popover,
+  field, and status presentation instead of inline style objects.
 - **2026-06-03 (2.5.65):** Migrated the Push Notifications settings surface
   onto the #834 primitive/token path. Unsupported/config-missing and load-failure
   states now render through `EmptyState`; subscribe/unsubscribe actions use
