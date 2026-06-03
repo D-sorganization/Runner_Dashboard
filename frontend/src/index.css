@@ -4003,6 +4003,158 @@ th.sortable.active .sort-indicator {
   border: 0;
 }
 
+.event-log__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.event-log__filters {
+  display: flex;
+  gap: 6px;
+}
+
+.event-log__filter {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  min-height: 28px;
+  padding: 3px 10px;
+}
+
+.event-log__filter--active {
+  background: var(--accent-control-bg);
+  color: var(--accent-control-fg);
+}
+
+.event-log__count {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.event-log__scroll {
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  height: 360px;
+}
+
+.event-log__empty {
+  color: var(--text-secondary);
+  font-size: 13px;
+  margin: 16px;
+  text-align: center;
+}
+
+.event-log__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.event-log__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  height: 56px;
+  box-sizing: border-box;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.event-log__row--info {
+  border-left: 3px solid var(--accent-blue);
+}
+
+.event-log__row--warning {
+  border-left: 3px solid var(--accent-yellow);
+}
+
+.event-log__row--critical {
+  border-left: 3px solid var(--accent-red);
+}
+
+.event-log__chip {
+  flex-shrink: 0;
+  align-self: center;
+  color: var(--text-on-accent);
+  border-radius: 9999px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0;
+  padding: 2px 8px;
+  min-width: 56px;
+  text-align: center;
+}
+
+.event-log__chip--info {
+  background: var(--accent-blue);
+}
+
+.event-log__chip--warning {
+  background: var(--accent-yellow);
+}
+
+.event-log__chip--critical {
+  background: var(--accent-red);
+}
+
+.event-log__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.event-log__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.event-log__node {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+.event-log__detail {
+  font-size: 12px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.event-log__ts {
+  flex-shrink: 0;
+  align-self: center;
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.event-log__virtual-size {
+  height: 0;
+  overflow: hidden;
+}
+
 /* ── MobileShell a11y refactor (issue #373) ──────────────────── */
 
 .mobile-shell {

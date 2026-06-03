@@ -1,10 +1,15 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.72
+**Spec Version:** 2.5.73
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-03T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-03 (2.5.73):** Migrated the `EventLog` primitive onto the #834
+  scoped-class path. Toolbar, filter, row, chip, detail, empty-state, and
+  accessibility presentation now render through `event-log__*` and
+  `visually-hidden` classes instead of JSX style helpers, while virtualization
+  dimensions remain isolated behind refs.
 - **2026-06-03 (2.5.72):** Migrated the Events tab wrapper onto the #834
   scoped-class path. The dedicated Events tab and compact Overview event
   section now own layout, title, and degraded-state presentation through
