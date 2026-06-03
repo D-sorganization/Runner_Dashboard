@@ -3030,6 +3030,19 @@ th.sortable.active .sort-indicator {
   margin: 0 auto;
 }
 
+.agent-dispatch-loading {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+}
+
+.agent-dispatch-error {
+  margin: 16px auto;
+  max-width: 560px;
+  padding: 0 12px;
+}
+
 .agent-dispatch-page .step-indicator {
   display: flex;
   align-items: center;
@@ -3288,6 +3301,10 @@ th.sortable.active .sort-indicator {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.agent-dispatch__full-width-action {
+  width: 100%;
 }
 
 .agent-dispatch-page .dispatch-result {

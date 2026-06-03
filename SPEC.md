@@ -1,10 +1,15 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.62
+**Spec Version:** 2.5.63
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-03T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-03 (2.5.63):** Migrated the Agent Dispatch mobile remediation
+  flow onto the #834 primitive/token path. Failed-run empty state and load
+  failures now render through `EmptyState`; dispatch/retry actions use
+  `TouchButton` without inline width styles; and scoped `agent-dispatch__*`
+  classes own loading, error, and full-width action presentation.
 - **2026-06-03 (2.5.62):** Migrated the Conductor admission-gate surface onto
   the #834 primitive/token path. Queue mode and provider mix now render through
   `Badge`; disabled/error states use `EmptyState`; pause/resume/drain actions
