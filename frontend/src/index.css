@@ -2981,6 +2981,135 @@ th.sortable.active .sort-indicator {
   font-size: 13px;
 }
 
+/* ── Alarm Panel ── */
+.alarm-panel {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: var(--radius-md);
+  padding: 16px;
+}
+
+.alarm-panel--ok {
+  border-left-color: var(--accent-green);
+}
+
+.alarm-panel--warning {
+  border-left-color: var(--accent-yellow);
+}
+
+.alarm-panel--critical {
+  border-left-color: var(--accent-red);
+}
+
+.alarm-panel__header {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.alarm-panel__dot {
+  border-radius: 50%;
+  flex-shrink: 0;
+  height: 14px;
+  width: 14px;
+}
+
+.alarm-panel__dot--ok {
+  background: var(--accent-green);
+}
+
+.alarm-panel__dot--warning {
+  background: var(--accent-yellow);
+}
+
+.alarm-panel__dot--critical {
+  background: var(--accent-red);
+}
+
+.alarm-panel__status {
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.alarm-panel__headline,
+.alarm-panel__empty,
+.alarm-panel__detail {
+  color: var(--text-secondary);
+}
+
+.alarm-panel__headline,
+.alarm-panel__detail {
+  font-size: 12px;
+}
+
+.alarm-panel__empty {
+  font-size: 13px;
+  margin: 0;
+}
+
+.alarm-panel__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.alarm-panel__row {
+  align-items: flex-start;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+}
+
+.alarm-panel__row--warning {
+  border-left-color: var(--accent-yellow);
+}
+
+.alarm-panel__row--critical {
+  border-left-color: var(--accent-red);
+}
+
+.alarm-panel__content {
+  flex: 1;
+  min-width: 0;
+}
+
+.alarm-panel__title {
+  font-weight: 600;
+}
+
+.alarm-panel__detail {
+  display: block;
+}
+
+.alarm-panel__chip {
+  align-self: center;
+  flex-shrink: 0;
+  text-transform: uppercase;
+}
+
+.alarm-panel__navlink {
+  background: transparent;
+  border: 0;
+  color: var(--text-primary);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  padding: 0;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+}
+
 /* ── Theme Settings ── */
 .theme-settings {
   margin-bottom: 16px;

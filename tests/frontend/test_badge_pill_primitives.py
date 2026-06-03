@@ -256,3 +256,15 @@ def test_theme_settings_consumes_touch_button_and_scoped_styles() -> None:
     assert "theme-settings__accent-swatch" in source
     assert "PRESET_ACCENTS" not in source
     assert "style={{" not in source
+
+
+def test_alarm_panel_consumes_badge_and_scoped_styles() -> None:
+    """Issue #834 migration: AlarmPanel should use shared primitives."""
+    source = _read(SRC_DIR / "components" / "AlarmPanel.tsx")
+    assert 'from "../primitives/Badge"' in source
+    assert "<Badge" in source
+    assert "alarm-panel__dot--" in source
+    assert "LEVEL_COLOR" not in source
+    assert "CSSProperties" not in source
+    assert "style={{" not in source
+    assert "style=" not in source

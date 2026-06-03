@@ -49,6 +49,8 @@ describe("AlarmPanel", () => {
     expect(screen.getByText(/disk pressure/i)).toBeInTheDocument();
     // Critical severity raises the panel state.
     expect(screen.getByText("Critical")).toBeInTheDocument();
+    expect(screen.getByText("critical")).toHaveAttribute("data-touch-primitive", "Badge");
+    expect(screen.getByText("critical")).toHaveClass("badge-tone-danger");
   });
 
   it("invokes onNavigate when an alarm row is activated", () => {
