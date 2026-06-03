@@ -78,13 +78,13 @@ function VersionLine({
   loading: boolean;
   error: boolean;
 }): React.ReactElement {
-  if (loading) return <span style={{ color: "var(--text-muted)" }}>checking…</span>;
-  if (error || !version) return <span style={{ color: "var(--text-muted)" }}>unavailable</span>;
+  if (loading) return <span className="help-about__muted">checking…</span>;
+  if (error || !version) return <span className="help-about__muted">unavailable</span>;
   const sha = version.git_sha && version.git_sha !== "unknown" ? version.git_sha.slice(0, 7) : null;
   return (
-    <span style={{ fontVariantNumeric: "tabular-nums" }}>
+    <span className="help-about__version">
       {version.dashboard ?? "unknown"}
-      {sha ? <span style={{ color: "var(--text-muted)" }}> ({sha})</span> : null}
+      {sha ? <span className="help-about__muted"> ({sha})</span> : null}
     </span>
   );
 }
@@ -157,20 +157,6 @@ export function HelpAbout({
           aria-label="Open Help and About panel"
           aria-haspopup="dialog"
           onClick={() => setOpen(true)}
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: 28,
-            height: 28,
-            borderRadius: 6,
-            border: "1px solid var(--border, #30363d)",
-            background: "var(--bg-primary, #0f1117)",
-            color: "var(--text-secondary, #8b949e)",
-            fontSize: 14,
-            fontWeight: 700,
-            cursor: "pointer",
-          }}
         >
           ?
         </button>
@@ -179,7 +165,7 @@ export function HelpAbout({
       <Dialog open={open} onClose={() => setOpen(false)}>
         <DialogTitle>Runner Dashboard — Help &amp; About</DialogTitle>
         <DialogContent>
-          <div role="tablist" aria-label="Help and About sections" style={tablistStyle}>
+          <div role="tablist" aria-label="Help and About sections" className="help-about__tabs">
             <button
               type="button"
               role="tab"
@@ -187,7 +173,7 @@ export function HelpAbout({
               aria-selected={tab === "help"}
               aria-controls="help-panel-help"
               onClick={() => setTab("help")}
-              style={tabStyle(tab === "help")}
+              className={`help-about__tab ${tab === "help" ? "help-about__tab--active" : ""}`}
             >
               Help &amp; About
             </button>
@@ -198,7 +184,7 @@ export function HelpAbout({
               aria-selected={tab === "chat"}
               aria-controls="help-panel-chat"
               onClick={() => setTab("chat")}
-              style={tabStyle(tab === "chat")}
+              className={`help-about__tab ${tab === "chat" ? "help-about__tab--active" : ""}`}
             >
               Ask the codebase
             </button>
@@ -210,58 +196,58 @@ export function HelpAbout({
             </div>
           ) : (
             <div role="tabpanel" id="help-panel-help" aria-labelledby="help-tab-help">
-          <p style={{ marginTop: 0 }}>
-            The operator console for the self-hosted GitHub Actions runner fleet:
-            monitor runner health, manage the job queue, dispatch AI remediation
-            agents, and orchestrate the fleet from one place.
-          </p>
+              <p className="help-about__intro">
+                The operator console for the self-hosted GitHub Actions runner fleet:
+                monitor runner health, manage the job queue, dispatch AI remediation
+                agents, and orchestrate the fleet from one place.
+              </p>
 
-          <dl style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "4px 12px", margin: "12px 0" }}>
-            <dt style={{ color: "var(--text-muted)" }}>Version</dt>
-            <dd style={{ margin: 0 }}>
-              <VersionLine version={version} loading={loading} error={error} />
-            </dd>
-          </dl>
+              <dl className="help-about__meta">
+                <dt className="help-about__muted">Version</dt>
+                <dd className="help-about__meta-value">
+                  <VersionLine version={version} loading={loading} error={error} />
+                </dd>
+              </dl>
 
-          <section aria-label="Key tabs" style={{ marginTop: 16 }}>
-            <h3 style={helpHeadingStyle}>Key tabs</h3>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {quickLinks.map((it) => (
-                <button
-                  key={it.id}
-                  type="button"
-                  onClick={() => go(it.tabId)}
-                  title={it.tooltip}
-                  style={quickLinkStyle}
-                >
-                  {it.label}
-                </button>
-              ))}
-            </div>
-          </section>
+              <section aria-label="Key tabs" className="help-about__section">
+                <h3 className="help-about__heading">Key tabs</h3>
+                <div className="help-about__quick-links">
+                  {quickLinks.map((it) => (
+                    <button
+                      key={it.id}
+                      type="button"
+                      onClick={() => go(it.tabId)}
+                      title={it.tooltip}
+                      className="help-about__quick-link"
+                    >
+                      {it.label}
+                    </button>
+                  ))}
+                </div>
+              </section>
 
-          <section aria-label="First things to check" style={{ marginTop: 16 }}>
-            <h3 style={helpHeadingStyle}>First things to check</h3>
-            <ol style={{ margin: 0, paddingLeft: 20, display: "grid", gap: 4 }}>
-              {FIRST_CHECKS.map((line) => (
-                <li key={line}>{line}</li>
-              ))}
-            </ol>
-          </section>
+              <section aria-label="First things to check" className="help-about__section">
+                <h3 className="help-about__heading">First things to check</h3>
+                <ol className="help-about__checklist">
+                  {FIRST_CHECKS.map((line) => (
+                    <li key={line}>{line}</li>
+                  ))}
+                </ol>
+              </section>
 
-          <section aria-label="Keyboard shortcuts" style={{ marginTop: 16 }}>
-            <h3 style={helpHeadingStyle}>Keyboard shortcuts</h3>
-            <dl style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "4px 12px", margin: 0 }}>
-              {SHORTCUTS.map((s) => (
-                <React.Fragment key={s.keys}>
-                  <dt>
-                    <kbd style={kbdStyle}>{s.keys}</kbd>
-                  </dt>
-                  <dd style={{ margin: 0 }}>{s.label}</dd>
-                </React.Fragment>
-              ))}
-            </dl>
-          </section>
+              <section aria-label="Keyboard shortcuts" className="help-about__section">
+                <h3 className="help-about__heading">Keyboard shortcuts</h3>
+                <dl className="help-about__shortcuts">
+                  {SHORTCUTS.map((s) => (
+                    <React.Fragment key={s.keys}>
+                      <dt>
+                        <kbd className="help-about__kbd">{s.keys}</kbd>
+                      </dt>
+                      <dd className="help-about__shortcut-label">{s.label}</dd>
+                    </React.Fragment>
+                  ))}
+                </dl>
+              </section>
             </div>
           )}
         </DialogContent>
@@ -272,54 +258,3 @@ export function HelpAbout({
     </>
   );
 }
-
-const tablistStyle: React.CSSProperties = {
-  display: "flex",
-  gap: 4,
-  borderBottom: "1px solid var(--border)",
-  marginBottom: 12,
-};
-
-function tabStyle(active: boolean): React.CSSProperties {
-  return {
-    padding: "6px 12px",
-    border: "none",
-    borderBottom: active ? "2px solid var(--accent-blue)" : "2px solid transparent",
-    background: "transparent",
-    color: active ? "var(--text-primary)" : "var(--text-muted)",
-    fontSize: 13,
-    fontWeight: active ? 600 : 400,
-    cursor: "pointer",
-  };
-}
-
-const helpHeadingStyle: React.CSSProperties = {
-  margin: "0 0 6px 0",
-  fontSize: 12,
-  fontWeight: 600,
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
-  color: "var(--text-muted)",
-};
-
-const quickLinkStyle: React.CSSProperties = {
-  padding: "4px 10px",
-  borderRadius: 6,
-  border: "1px solid var(--border)",
-  background: "var(--bg-primary)",
-  color: "var(--accent-blue)",
-  fontSize: 12,
-  cursor: "pointer",
-};
-
-const kbdStyle: React.CSSProperties = {
-  display: "inline-block",
-  padding: "1px 6px",
-  borderRadius: 4,
-  border: "1px solid var(--border)",
-  background: "var(--bg-tertiary, #0d1117)",
-  fontSize: 11,
-  fontFamily: "monospace",
-  color: "var(--text-primary)",
-  whiteSpace: "nowrap",
-};

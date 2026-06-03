@@ -472,6 +472,122 @@ code, pre, .code, kbd {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.shell-help-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border, #30363d);
+  background: var(--bg-primary, #0f1117);
+  color: var(--text-secondary, #8b949e);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.help-about__tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+
+.help-about__tab {
+  padding: 6px 12px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 400;
+  cursor: pointer;
+}
+
+.help-about__tab--active {
+  border-bottom-color: var(--accent-blue);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.help-about__intro {
+  margin-top: 0;
+}
+
+.help-about__meta,
+.help-about__shortcuts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin: 12px 0;
+}
+
+.help-about__meta-value,
+.help-about__shortcut-label {
+  margin: 0;
+}
+
+.help-about__muted {
+  color: var(--text-muted);
+}
+
+.help-about__version {
+  font-variant-numeric: tabular-nums;
+}
+
+.help-about__section {
+  margin-top: 16px;
+}
+
+.help-about__heading {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.help-about__quick-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.help-about__quick-link {
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-primary);
+  color: var(--accent-blue);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.help-about__checklist {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 20px;
+}
+
+.help-about__shortcuts {
+  margin: 0;
+}
+
+.help-about__kbd {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary, #0d1117);
+  font-size: 11px;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
 .status-dot {
   width: 8px;
   height: 8px;

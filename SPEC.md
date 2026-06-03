@@ -1,10 +1,14 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.74
+**Spec Version:** 2.5.75
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-03T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-03 (2.5.75):** Migrated the Help/About dialog shell onto the #834
+  scoped-class path. The trigger, dialog tabs, version metadata, quick-link
+  chips, checklist, and keyboard shortcut rows now render through
+  `help-about__*` classes instead of inline JSX styles.
 - **2026-06-03 (2.5.74):** Migrated the Analysis Reports panel onto the #834
   scoped-class path. The report sidebar title, empty states, reader header,
   selected-date badge, chart frame, and loading placeholder now use
