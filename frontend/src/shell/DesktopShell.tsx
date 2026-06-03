@@ -84,24 +84,9 @@ function ActionButton({ action }: { action: ShellAction }): React.ReactElement {
     <Tooltip content={action.tooltip} placement="bottom">
       <button
         type="button"
-        className="shell-action"
+        className={`shell-action ${action.active ? "shell-action--active" : ""}`}
         aria-pressed={action.active ? true : undefined}
         onClick={action.onClick}
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 6,
-          padding: "5px 10px",
-          borderRadius: 6,
-          border: "1px solid var(--border, #30363d)",
-          background: action.active
-            ? "var(--accent-blue, #58a6ff)"
-            : "var(--bg-primary, #0f1117)",
-          color: action.active ? "#fff" : "var(--text-secondary, #8b949e)",
-          fontSize: 12,
-          cursor: "pointer",
-          whiteSpace: "nowrap",
-        }}
       >
         {Icon ? <Icon /> : null}
         <span>{action.label}</span>
@@ -122,41 +107,18 @@ export function DesktopShell({
   assertActions(actions);
 
   return (
-    <div
-      className="desktop-shell"
-      style={{ display: "flex", height: "100vh", minHeight: 0 }}
-    >
+    <div className="desktop-shell">
       <Sidebar activeTabId={activeTabId} onSelect={onSelect} />
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          flex: 1,
-          minWidth: 0,
-          minHeight: 0,
-        }}
-      >
+      <div className="desktop-shell__body">
         <header
           className="desktop-shell__topbar"
           role="banner"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            padding: "8px 12px",
-            borderBottom: "1px solid var(--border, #30363d)",
-            background: "var(--bg-secondary, #161b22)",
-            flex: "0 0 auto",
-          }}
         >
           <a className="skip-link" href="#main-content">
             Skip to main content
           </a>
           <TopToolstrip activeTabId={activeTabId} onSelect={onSelect} />
-          <div
-            className="desktop-shell__actions"
-            style={{ display: "flex", alignItems: "center", gap: 6, flex: "0 0 auto" }}
-          >
+          <div className="desktop-shell__actions">
             {helpAbout}
             {headerExtra}
             {actions.map((a) => (
@@ -169,7 +131,6 @@ export function DesktopShell({
           role="main"
           tabIndex={-1}
           className="desktop-shell__main"
-          style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: "auto" }}
         >
           {intro}
           {children}

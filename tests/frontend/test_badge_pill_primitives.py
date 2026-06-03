@@ -340,3 +340,17 @@ def test_help_about_uses_scoped_classes() -> None:
     assert "style={{" not in source
     assert "style=" not in source
     assert "style:" not in source
+
+
+def test_desktop_shell_uses_scoped_classes() -> None:
+    """Issue #834 migration: DesktopShell should avoid inline shell styles."""
+    source = _read(SRC_DIR / "shell" / "DesktopShell.tsx")
+    assert "desktop-shell__body" in source
+    assert "desktop-shell__topbar" in source
+    assert "desktop-shell__actions" in source
+    assert "desktop-shell__main" in source
+    assert "shell-action--active" in source
+    assert "CSSProperties" not in source
+    assert "style={{" not in source
+    assert "style=" not in source
+    assert "style:" not in source
