@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
+import { Badge } from "../primitives/Badge";
+import { EmptyState } from "../primitives/EmptyState";
 import { SkeletonCard, SkeletonLine } from "../primitives/Skeleton";
+import { TouchButton } from "../primitives/TouchButton";
 
 interface WorkspaceSummary {
   id: string;
@@ -49,14 +52,7 @@ export function LinearSetup() {
       <div
         aria-busy="true"
         aria-label="Loading Linear workspace configuration"
-        className="glass-card"
-        style={{
-          padding: "16px",
-          margin: "16px",
-          display: "flex",
-          flexDirection: "column",
-          gap: "12px",
-        }}
+        className="glass-card linear-setup linear-setup--loading"
       >
         <SkeletonLine height={18} width="55%" />
         <SkeletonCard lines={2} />
@@ -66,167 +62,85 @@ export function LinearSetup() {
   }
 
   return (
-    <div className="glass-card" style={{ padding: "16px", margin: "16px" }}>
-      <h2 style={{ fontSize: "16px", marginBottom: "12px" }}>Linear Integration Setup</h2>
+    <div className="glass-card linear-setup">
+      <h2 className="linear-setup__title">Linear Integration Setup</h2>
 
       {error && (
-        <div
-          style={{
-            color: "var(--accent-red)",
-            fontSize: "12px",
-            marginBottom: "8px",
-            padding: "8px",
-            background: "rgba(239, 68, 68, 0.08)",
-            borderRadius: "4px",
-          }}
-        >
-          {error}
-        </div>
+        <EmptyState
+          variant="error"
+          title="Failed to load Linear workspaces"
+          description={error}
+        />
       )}
 
       {saveMsg && (
-        <div
-          style={{
-            color: "var(--accent-green)",
-            fontSize: "12px",
-            marginBottom: "8px",
-            padding: "8px",
-            background: "rgba(34, 197, 94, 0.08)",
-            borderRadius: "4px",
-          }}
-        >
+        <div className="linear-setup__success" role="status">
           {saveMsg}
         </div>
       )}
 
       {/* Webhook URL section */}
-      <div
-        style={{
-          marginBottom: "16px",
-          padding: "12px",
-          border: "1px solid var(--border)",
-          borderRadius: "6px",
-          background: "var(--bg-secondary)",
-        }}
-      >
-        <div style={{ fontSize: "13px", fontWeight: 600, marginBottom: "6px" }}>
+      <section className="linear-setup__panel">
+        <div className="linear-setup__section-title">
           Dashboard Webhook URL
         </div>
-        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-          <code
-            style={{
-              flex: 1,
-              fontSize: "12px",
-              background: "var(--bg-primary)",
-              padding: "6px 8px",
-              borderRadius: "4px",
-              wordBreak: "break-all",
-            }}
-          >
+        <div className="linear-setup__webhook-row">
+          <code className="linear-setup__webhook-code">
             {webhookUrl}
           </code>
-          <button
+          <TouchButton
             onClick={copyWebhookUrl}
-            className="btn btn-sm btn-blue"
-            style={{ whiteSpace: "nowrap", fontSize: "12px", padding: "4px 8px" }}
+            className="linear-setup__copy-button"
+            variant="primary"
           >
             Copy
-          </button>
+          </TouchButton>
         </div>
-        <p style={{ fontSize: "11px", color: "var(--text-secondary)", marginTop: "6px" }}>
+        <p className="linear-setup__hint">
           Paste this URL into your Linear workspace webhook settings.
         </p>
-      </div>
+      </section>
 
       {/* Workspaces list */}
-      <div style={{ marginBottom: "12px" }}>
-        <div style={{ fontSize: "13px", fontWeight: 600, marginBottom: "8px" }}>
+      <section className="linear-setup__section">
+        <div className="linear-setup__section-title">
           Configured Workspaces ({workspaces.length})
         </div>
 
         {workspaces.length === 0 && (
-          <p style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
-            No workspaces configured. Add a workspace in <code>config/linear.json</code>.
-          </p>
+          <EmptyState
+            title="No workspaces configured"
+            description="Add a workspace in config/linear.json."
+          />
         )}
 
         {workspaces.map((ws) => (
-          <div
-            key={ws.id}
-            style={{
-              marginBottom: "12px",
-              padding: "10px",
-              border: "1px solid var(--border)",
-              borderRadius: "6px",
-              background: "var(--bg-secondary)",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                marginBottom: "6px",
-              }}
-            >
-              <span style={{ fontSize: "13px", fontWeight: 600 }}>{ws.id}</span>
-              <span
-                style={{
-                  fontSize: "11px",
-                  padding: "2px 6px",
-                  borderRadius: "4px",
-                  background:
-                    ws.auth_status === "ok"
-                      ? "rgba(34, 197, 94, 0.12)"
-                      : "rgba(239, 68, 68, 0.12)",
-                  color:
-                    ws.auth_status === "ok" ? "var(--accent-green)" : "var(--accent-red)",
-                }}
+          <article key={ws.id} className="linear-setup__workspace">
+            <div className="linear-setup__workspace-header">
+              <span className="linear-setup__workspace-id">{ws.id}</span>
+              <Badge
+                tone={ws.auth_status === "ok" || ws.auth_status === "active" ? "success" : "danger"}
+                size="sm"
               >
                 {ws.auth_status}
-              </span>
+              </Badge>
             </div>
 
-            <div style={{ fontSize: "12px", color: "var(--text-secondary)", marginBottom: "4px" }}>
-              Auth: <strong style={{ color: "var(--text-primary)" }}>{ws.auth_kind}</strong>
-            </div>
-
-            <div style={{ fontSize: "12px", color: "var(--text-secondary)", marginBottom: "4px" }}>
-              Teams: <strong style={{ color: "var(--text-primary)" }}>{ws.teams_filter.join(", ")}</strong>
-            </div>
-
-            <div style={{ fontSize: "12px", color: "var(--text-secondary)", marginBottom: "4px" }}>
-              Trigger label: <strong style={{ color: "var(--text-primary)" }}>{ws.trigger_label || "—"}</strong>
-            </div>
-
-            <div style={{ fontSize: "12px", color: "var(--text-secondary)", marginBottom: "4px" }}>
-              Default repository: <strong style={{ color: "var(--text-primary)" }}>{ws.default_repository || "—"}</strong>
-            </div>
-
-            <div style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
-              Prefer source: <strong style={{ color: "var(--text-primary)" }}>{ws.prefer_source}</strong>
-            </div>
-          </div>
+            <WorkspaceField label="Auth" value={ws.auth_kind} />
+            <WorkspaceField label="Teams" value={ws.teams_filter.join(", ")} />
+            <WorkspaceField label="Trigger label" value={ws.trigger_label || "—"} />
+            <WorkspaceField label="Default repository" value={ws.default_repository || "—"} />
+            <WorkspaceField label="Prefer source" value={ws.prefer_source} />
+          </article>
         ))}
-      </div>
+      </section>
 
       {/* Setup instructions */}
-      <div
-        style={{
-          marginTop: "16px",
-          padding: "12px",
-          border: "1px solid var(--border)",
-          borderRadius: "6px",
-          background: "var(--bg-secondary)",
-          fontSize: "12px",
-          color: "var(--text-secondary)",
-          lineHeight: 1.6,
-        }}
-      >
-        <div style={{ fontWeight: 600, marginBottom: "6px", color: "var(--text-primary)" }}>
+      <section className="linear-setup__panel linear-setup__instructions">
+        <div className="linear-setup__section-title">
           Setup Steps
         </div>
-        <ol style={{ paddingLeft: "16px", margin: 0 }}>
+        <ol className="linear-setup__steps">
           <li>
             Create <code>config/linear.json</code> with workspace definitions.
           </li>
@@ -240,7 +154,15 @@ export function LinearSetup() {
             Paste the webhook URL above into your Linear workspace settings.
           </li>
         </ol>
-      </div>
+      </section>
+    </div>
+  );
+}
+
+function WorkspaceField({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="linear-setup__field">
+      {label}: <strong>{value}</strong>
     </div>
   );
 }

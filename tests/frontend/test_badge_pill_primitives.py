@@ -193,3 +193,17 @@ def test_agent_dispatch_consumes_empty_state_and_touch_button() -> None:
     assert "agent-dispatch-error" in source
     assert 'className="btn' not in source
     assert "style={{" not in source
+
+
+def test_linear_setup_consumes_badge_empty_state_and_touch_button() -> None:
+    """Issue #834 migration: LinearSetup should use shared primitives."""
+    source = _read(SRC_DIR / "pages" / "LinearSetup.tsx")
+    assert 'from "../primitives/Badge"' in source
+    assert 'from "../primitives/EmptyState"' in source
+    assert 'from "../primitives/TouchButton"' in source
+    assert "<Badge" in source
+    assert "<EmptyState" in source
+    assert "<TouchButton" in source
+    assert "linear-setup__workspace" in source
+    assert 'className="btn' not in source
+    assert "style={{" not in source

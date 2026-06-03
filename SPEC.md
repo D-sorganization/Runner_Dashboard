@@ -1,10 +1,15 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.63
+**Spec Version:** 2.5.64
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-03T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-03 (2.5.64):** Migrated the Linear Integration Setup surface onto
+  the #834 primitive/token path. Workspace auth status now renders through
+  `Badge`; load failures and empty workspace states use `EmptyState`; webhook
+  copy uses `TouchButton`; and scoped `linear-setup__*` classes own panel,
+  workspace, field, loading, and instruction presentation.
 - **2026-06-03 (2.5.63):** Migrated the Agent Dispatch mobile remediation
   flow onto the #834 primitive/token path. Failed-run empty state and load
   failures now render through `EmptyState`; dispatch/retry actions use

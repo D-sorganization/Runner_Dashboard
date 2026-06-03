@@ -80,6 +80,7 @@ describe("LinearSetup", () => {
     });
     // Webhook URL section should be visible
     expect(screen.getByText(/Dashboard Webhook URL/i)).toBeInTheDocument();
+    expect(document.querySelector("[data-touch-primitive='Badge']")).toHaveTextContent("active");
   });
 
   it("renders empty workspace list without crashing", async () => {
@@ -90,6 +91,8 @@ describe("LinearSetup", () => {
     });
     // The page should still render the webhook URL section
     expect(screen.getByText(/Dashboard Webhook URL/i)).toBeInTheDocument();
+    expect(screen.getByText(/No workspaces configured/i)).toBeInTheDocument();
+    expect(document.querySelector(".empty-state")).toBeInTheDocument();
   });
 
   it("shows error message when API call fails (HTTP error)", async () => {
@@ -101,6 +104,7 @@ describe("LinearSetup", () => {
     // Error message visible
     const errorEl = document.body.textContent;
     expect(errorEl).toMatch(/HTTP 500|failed|error/i);
+    expect(document.querySelector(".empty-state")).toHaveAttribute("data-variant", "error");
   });
 
   it("shows error message when fetch throws network error", async () => {
@@ -120,6 +124,7 @@ describe("LinearSetup", () => {
     });
     const copyBtn = screen.getByText(/copy/i);
     expect(copyBtn).toBeInTheDocument();
+    expect(copyBtn).toHaveAttribute("data-touch-primitive", "TouchButton");
   });
 
   it("clicking copy triggers clipboard.writeText and shows confirmation", async () => {
