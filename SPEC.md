@@ -1,10 +1,15 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.66
+**Spec Version:** 2.5.67
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-03T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-03 (2.5.67):** Migrated the desktop shell Density Toggle onto the
+  #834 primitive/token path. The compact/comfortable control now renders
+  through `TouchButton`, preserves `aria-pressed` via the primitive `pressed`
+  prop, and uses scoped `density-toggle__*` classes instead of inline spacing
+  and label styles.
 - **2026-06-03 (2.5.66):** Migrated the header Quick Dispatch popover onto
   the #834 primitive/token path. The trigger and action controls now render
   through `TouchButton`, the primitive accepts button refs for popover
