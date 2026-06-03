@@ -110,3 +110,17 @@ def test_index_css_declares_badge_css_variables() -> None:
     for tone in ("success", "warning", "danger", "info", "neutral"):
         assert f"--badge-{tone}-bg:" in source
         assert f"--badge-{tone}-fg:" in source
+
+
+def test_scheduled_jobs_consumes_badge_empty_state_and_skeleton() -> None:
+    """Issue #834 migration: ScheduledJobs should use shared primitives."""
+    source = _read(SRC_DIR / "pages" / "ScheduledJobs.tsx")
+    assert 'from "../primitives/Badge"' in source
+    assert 'from "../primitives/EmptyState"' in source
+    assert 'from "../primitives/Skeleton"' in source
+    assert "<Badge" in source
+    assert "<EmptyState" in source
+    assert "<SkeletonCard" in source
+    assert "pillBase" not in source
+    assert "rgba(139,148,158" not in source
+    assert "rgba(88,166,255" not in source

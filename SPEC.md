@@ -899,7 +899,10 @@ Open raw link exposes the underlying report API response as a fallback.
 
 Inventory of all cron-scheduled workflows across the org. Shows next/previous
 run times, schedule expressions, and allows manual dispatch of any scheduled
-workflow.
+workflow. Status and latest-run conclusions render through the shared `Badge`
+primitive, first-load placeholders use `SkeletonCard`, and empty/no-filter-match
+states use the shared `EmptyState` surface so the tab follows the dashboard
+design-token system.
 
 ### 3.10 Runner Plan Tab
 

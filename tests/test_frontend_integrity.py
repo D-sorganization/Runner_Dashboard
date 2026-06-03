@@ -13,22 +13,38 @@ import pytest  # noqa: E402
 
 _FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 _HTML_SHELL = _FRONTEND_DIR / "index.html"
-_INDEX_HTML = _FRONTEND_DIR / "src" / "legacy" / "App.tsx"
-_QUEUE_INDEX = _FRONTEND_DIR / "src" / "pages" / "Queue" / "index.tsx"
+_SRC_DIR = _FRONTEND_DIR / "src"
+_INDEX_HTML = _SRC_DIR / "legacy" / "App.tsx"
+_QUEUE_INDEX = _SRC_DIR / "pages" / "Queue" / "index.tsx"
 _PUSH_SETTINGS = _FRONTEND_DIR / "src" / "pages" / "PushSettings.tsx"
 _DESIGN_DIR = _FRONTEND_DIR / "src" / "design"
 _PRIMITIVES_DIR = _FRONTEND_DIR / "src" / "primitives"
 
 
 def _read_index() -> str:
-    content = _INDEX_HTML.read_text(encoding="utf-8")
-    if _QUEUE_INDEX.exists():
-        content += "\n" + _QUEUE_INDEX.read_text(encoding="utf-8")
-    return content
+    """Return concatenated runtime frontend source.
+
+    The dashboard has been decomposed from one legacy/App.tsx monolith into
+    Vite source modules. Static integrity checks should follow the runtime
+    source graph rather than a stale single-file assumption.
+    """
+    parts: list[str] = []
+    for path in sorted(_SRC_DIR.rglob("*")):
+        if path.suffix not in {".ts", ".tsx"}:
+            continue
+        rel_parts = set(path.relative_to(_SRC_DIR).parts)
+        if "__tests__" in rel_parts:
+            continue
+        parts.append(path.read_text(encoding="utf-8"))
+    return "\n".join(parts)
 
 
 def _read_html_shell() -> str:
     return _HTML_SHELL.read_text(encoding="utf-8")
+
+
+def _read_legacy_app() -> str:
+    return _INDEX_HTML.read_text(encoding="utf-8")
 
 
 def _index_lines() -> list[str]:
@@ -52,8 +68,8 @@ _REQUIRED_FUNCTIONS = [
     "function TestsTab",
     "function StatsTab",
     "function ReportsTab",
-    "function ScheduledJobsTab",
-    "function LocalAppsTab",
+    "function ScheduledJobs",
+    "class LocalAppsTab",
     "function RemediationTab",
     "function WorkflowsTab",
     "function CredentialsTab",
@@ -105,7 +121,7 @@ def test_tests_tab_function_present() -> None:
 def test_tests_tab_rerun_checks_response_ok_before_triggered_state() -> None:
     content = _read_index()
     rerun_start = content.index('legacyFetch("/api/tests/rerun"')
-    triggered_state = content.index('n[repo] = "triggered";', rerun_start)
+    triggered_state = content.index('[repo]: "triggered"', rerun_start)
     rerun_block = content[rerun_start:triggered_state]
 
     assert "if (!r.ok)" in rerun_block
@@ -243,7 +259,7 @@ def test_mobile_credentials_mutations_require_bottom_sheet_confirmation() -> Non
 
 
 def test_credentials_api_is_excluded_from_frontend_cache_contract() -> None:
-    content = _read_index()
+    content = _read_legacy_app()
     assert "SERVICE_WORKER_CACHE_DENYLIST" in content
     assert "/^\\/api\\/credentials(?:\\/|$)/" in content
     assert "shouldBypassServiceWorkerCache(url)" in content

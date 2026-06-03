@@ -9,11 +9,22 @@ VIEWPORTS = MOBILE_DIR / "viewport_profiles.json"
 VIEWPORT_SCHEMA = MOBILE_DIR / "viewport_profiles.schema.json"
 TOUCH_HELPERS = MOBILE_DIR / "touch_helpers.js"
 INDEX_HTML = ROOT / "frontend" / "index.html"
-LEGACY_SOURCE = ROOT / "frontend" / "src" / "legacy" / "App.tsx"
+FRONTEND_SRC = ROOT / "frontend" / "src"
 
 
 def _viewport_config() -> dict:
     return json.loads(VIEWPORTS.read_text(encoding="utf-8"))
+
+
+def _frontend_runtime_source() -> str:
+    parts = [INDEX_HTML.read_text(encoding="utf-8")]
+    for path in sorted(FRONTEND_SRC.rglob("*")):
+        if path.suffix not in {".css", ".ts", ".tsx"}:
+            continue
+        if "__tests__" in path.relative_to(FRONTEND_SRC).parts:
+            continue
+        parts.append(path.read_text(encoding="utf-8"))
+    return "\n".join(parts)
 
 
 def test_mobile_viewport_profiles_lock_required_issue_202_dimensions() -> None:
@@ -43,11 +54,7 @@ def test_mobile_viewport_profiles_lock_required_issue_202_dimensions() -> None:
 
 def test_mobile_smoke_page_contract_targets_existing_frontend_markers() -> None:
     config = _viewport_config()
-    html = INDEX_HTML.read_text(encoding="utf-8")
-    js = LEGACY_SOURCE.read_text(encoding="utf-8")
-    queue_index = ROOT / "frontend" / "src" / "pages" / "Queue" / "index.tsx"
-    if queue_index.exists():
-        js += "\n" + queue_index.read_text(encoding="utf-8")
+    frontend_source = _frontend_runtime_source()
 
     smoke_pages = config["smokePages"]
     assert {page["name"] for page in smoke_pages} >= {
@@ -65,8 +72,8 @@ def test_mobile_smoke_page_contract_targets_existing_frontend_markers() -> None:
         assert page["goldenInteraction"], f"{page['name']} must describe one golden mobile action"
         assert page["requiredMarkers"], f"{page['name']} must include static frontend markers"
         for marker in page["requiredMarkers"]:
-            assert marker in html or marker in js, (
-                f"{page['name']} marker {marker!r} is missing from frontend/index.html or frontend/src/legacy/App.tsx"
+            assert marker in frontend_source, (
+                f"{page['name']} marker {marker!r} is missing from runtime frontend source"
             )
 
 

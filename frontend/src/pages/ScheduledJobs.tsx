@@ -13,6 +13,9 @@
  */
 import React, { useCallback, useEffect, useState } from "react";
 import { legacyFetch } from "../lib/api";
+import { Badge, type BadgeTone } from "../primitives/Badge";
+import { EmptyState } from "../primitives/EmptyState";
+import { SkeletonCard } from "../primitives/Skeleton";
 import { ClockGlyph, RefreshGlyph } from "./decompIcons";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -73,60 +76,39 @@ function timeAgo(d?: string | null): string {
   return Math.floor(s / 86400) + "d ago";
 }
 
-function conclusionColor(c?: string | null): string {
-  if (c === "success") return "var(--accent-green)";
-  if (c === "failure") return "var(--accent-red)";
-  if (c === "cancelled") return "var(--fg-muted)";
-  return "var(--accent-orange)";
+function conclusionTone(conclusion?: string | null): BadgeTone {
+  if (conclusion === "success") return "success";
+  if (conclusion === "failure") return "danger";
+  if (conclusion === "cancelled") return "neutral";
+  return "warning";
 }
-
-const pillBase: React.CSSProperties = {
-  fontSize: 11,
-  padding: "2px 6px",
-  borderRadius: 4,
-};
 
 function StatusCell({ wf }: { wf: FlatWorkflow }): React.ReactElement {
   if (!wf.enabled) {
-    return (
-      <span style={{ ...pillBase, background: "rgba(139,148,158,0.15)", color: "var(--fg-muted)" }}>
-        disabled
-      </span>
-    );
+    return <Badge tone="neutral" size="sm">disabled</Badge>;
   }
   const lr = wf.latest_run;
   if (!lr) {
-    return (
-      <span style={{ ...pillBase, background: "rgba(139,148,158,0.1)", color: "var(--fg-muted)" }}>
-        no runs
-      </span>
-    );
+    return <Badge tone="neutral" size="sm">no runs</Badge>;
   }
   if (lr.conclusion) {
-    const cc = conclusionColor(lr.conclusion);
-    return (
-      <span style={{ ...pillBase, background: cc + "22", color: cc }}>{lr.conclusion}</span>
-    );
+    return <Badge tone={conclusionTone(lr.conclusion)} size="sm">{lr.conclusion}</Badge>;
   }
-  return (
-    <span style={{ ...pillBase, background: "rgba(88,166,255,0.15)", color: "var(--accent-blue)" }}>
-      {lr.status || "running"}
-    </span>
-  );
+  return <Badge tone="info" size="sm">{lr.status || "running"}</Badge>;
 }
 
 function Stat({
   label,
   value,
-  color,
+  tone,
 }: {
   label: string;
   value: number;
-  color: string;
+  tone: "blue" | "purple" | "green" | "orange" | "red";
 }): React.ReactElement {
   return (
     <div className="stat">
-      <div className="stat-value" style={{ color }}>
+      <div className={`stat-value scheduled-jobs__stat-value scheduled-jobs__stat-value--${tone}`}>
         {value}
       </div>
       <div className="stat-label">{label}</div>
@@ -194,20 +176,20 @@ export default function ScheduledJobs(): React.ReactElement {
   return (
     <div>
       <div className="stat-row">
-        <Stat label="Scheduled Workflows" value={totalScheduled} color="var(--accent-blue)" />
+        <Stat label="Scheduled Workflows" value={totalScheduled} tone="blue" />
         <Stat
           label="Repos w/ Schedules"
           value={reposWithSchedules.length}
-          color="var(--accent-purple)"
+          tone="purple"
         />
         {julesCount > 0 ? (
-          <Stat label="Jules Schedules" value={julesCount} color="var(--accent-green)" />
+          <Stat label="Jules Schedules" value={julesCount} tone="green" />
         ) : null}
         {disabledCount > 0 ? (
-          <Stat label="Disabled" value={disabledCount} color="var(--accent-orange)" />
+          <Stat label="Disabled" value={disabledCount} tone="orange" />
         ) : null}
         {dryRunSteps > 0 ? (
-          <Stat label="Dry-Run Actions" value={dryRunSteps} color="var(--accent-red)" />
+          <Stat label="Dry-Run Actions" value={dryRunSteps} tone="red" />
         ) : null}
       </div>
 
@@ -215,47 +197,25 @@ export default function ScheduledJobs(): React.ReactElement {
         <span className="section-title">
           <ClockGlyph size={14} /> Scheduled Workflows
           {allWorkflows.length > 0 ? (
-            <span
-              className="section-badge"
-              style={{
-                background: "rgba(88,166,255,0.2)",
-                color: "var(--accent-blue)",
-                marginLeft: 4,
-              }}
-            >
+            <span className="section-badge scheduled-jobs__count-badge">
               {filtered.length}
             </span>
           ) : null}
         </span>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <div className="scheduled-jobs__toolbar">
           <input
             type="text"
             aria-label="Filter scheduled workflows by name or repo"
             placeholder={"Filter by name or repo…"}
             value={filterText}
             onChange={(e) => setFilterText(e.target.value)}
-            style={{
-              fontSize: 12,
-              padding: "3px 8px",
-              borderRadius: 4,
-              border: "1px solid var(--border)",
-              background: "var(--bg-card)",
-              color: "var(--fg)",
-              width: 180,
-            }}
+            className="scheduled-jobs__filter"
           />
           <select
             aria-label="Filter scheduled workflows by repository"
             value={filterRepo}
             onChange={(e) => setFilterRepo(e.target.value)}
-            style={{
-              fontSize: 12,
-              padding: "3px 8px",
-              borderRadius: 4,
-              border: "1px solid var(--border)",
-              background: "var(--bg-card)",
-              color: "var(--fg)",
-            }}
+            className="scheduled-jobs__repo-select"
           >
             <option value="all">All repos</option>
             {reposWithSchedules.map((r) => (
@@ -265,10 +225,10 @@ export default function ScheduledJobs(): React.ReactElement {
             ))}
           </select>
           {loading ? (
-            <span style={{ fontSize: 11, color: "var(--fg-muted)" }}>Loading…</span>
+            <span className="scheduled-jobs__meta">Loading…</span>
           ) : null}
           {data.generated_at ? (
-            <span style={{ fontSize: 11, color: "var(--fg-muted)" }}>
+            <span className="scheduled-jobs__meta">
               {"Updated " + timeAgo(data.generated_at)}
             </span>
           ) : null}
@@ -284,15 +244,23 @@ export default function ScheduledJobs(): React.ReactElement {
       </div>
 
       {loading && allWorkflows.length === 0 ? (
-        <div style={{ textAlign: "center", padding: "40px 0", color: "var(--fg-muted)" }}>
-          Loading scheduled workflows…
+        <div className="scheduled-jobs__loading" role="status" aria-label="Loading scheduled workflows">
+          <SkeletonCard lines={4} />
         </div>
       ) : filtered.length === 0 ? (
-        <div style={{ textAlign: "center", padding: "40px 0", color: "var(--fg-muted)" }}>
-          {allWorkflows.length === 0
-            ? "No scheduled workflows found."
-            : "No workflows match the current filter."}
-        </div>
+        <EmptyState
+          title={
+            allWorkflows.length === 0
+              ? "No scheduled workflows found."
+              : "No workflows match the current filter."
+          }
+          description={
+            allWorkflows.length === 0
+              ? "Scheduled workflow inventory will appear here after the next successful scan."
+              : "Adjust the name or repository filter to broaden the result set."
+          }
+          data-testid="scheduled-jobs-empty"
+        />
       ) : (
         <table className="table">
           <thead>
@@ -314,11 +282,7 @@ export default function ScheduledJobs(): React.ReactElement {
                   <td>
                     {isJules ? (
                       <span
-                        style={{
-                          color: "var(--accent-purple)",
-                          fontWeight: 600,
-                          marginRight: 4,
-                        }}
+                        className="scheduled-jobs__jules-marker"
                         title="Jules workflow"
                       >
                         {"◆"}
@@ -326,18 +290,18 @@ export default function ScheduledJobs(): React.ReactElement {
                     ) : null}
                     {wf.workflow_name}
                   </td>
-                  <td style={{ color: "var(--fg-muted)", fontSize: 12 }}>{wf.repo}</td>
-                  <td style={{ fontFamily: "monospace", fontSize: 11, color: "var(--fg-muted)" }}>
+                  <td className="scheduled-jobs__muted-cell">{wf.repo}</td>
+                  <td className="scheduled-jobs__code-cell">
                     {wf.cron_expressions && wf.cron_expressions.length > 0 ? (
                       wf.cron_expressions.join(", ")
                     ) : (
-                      <span style={{ color: "var(--fg-muted)" }}>{"—"}</span>
+                      <span className="scheduled-jobs__muted-cell">{"—"}</span>
                     )}
                   </td>
                   <td>
                     <StatusCell wf={wf} />
                   </td>
-                  <td style={{ fontSize: 12, color: "var(--fg-muted)" }}>
+                  <td className="scheduled-jobs__muted-cell">
                     {lr ? timeAgo(lr.created_at) : "—"}
                   </td>
                   <td>
@@ -346,12 +310,12 @@ export default function ScheduledJobs(): React.ReactElement {
                         href={lr.html_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        style={{ color: "var(--accent-blue)", fontSize: 12 }}
+                        className="scheduled-jobs__run-link"
                       >
                         {lr.conclusion || lr.status || "in progress"}
                       </a>
                     ) : (
-                      <span style={{ color: "var(--fg-muted)", fontSize: 12 }}>{"—"}</span>
+                      <span className="scheduled-jobs__muted-cell">{"—"}</span>
                     )}
                   </td>
                 </tr>
@@ -363,21 +327,14 @@ export default function ScheduledJobs(): React.ReactElement {
 
       {dryRunSteps > 0 && data.dry_run_plan ? (
         <div>
-          <div className="section-header" style={{ marginTop: 16 }}>
+          <div className="section-header scheduled-jobs__dry-run-header">
             <span className="section-title">
               Dry-Run Plan
-              <span
-                className="section-badge"
-                style={{
-                  background: "rgba(255,165,0,0.15)",
-                  color: "var(--accent-orange)",
-                  marginLeft: 4,
-                }}
-              >
+              <span className="section-badge scheduled-jobs__dry-run-badge">
                 {dryRunSteps}
               </span>
             </span>
-            <span style={{ fontSize: 11, color: "var(--fg-muted)" }}>
+            <span className="scheduled-jobs__meta">
               {"Read-only — no write actions will be performed"}
             </span>
           </div>
@@ -394,11 +351,11 @@ export default function ScheduledJobs(): React.ReactElement {
               {(data.dry_run_plan.steps ?? []).map((step, idx) => (
                 <tr key={idx}>
                   <td>
-                    <code style={{ fontSize: 11 }}>{step.action}</code>
+                    <code className="scheduled-jobs__action-code">{step.action}</code>
                   </td>
-                  <td style={{ fontSize: 12 }}>{step.workflow_name}</td>
-                  <td style={{ fontSize: 12, color: "var(--fg-muted)" }}>{step.repository}</td>
-                  <td style={{ fontSize: 11, color: "var(--fg-muted)", maxWidth: 320 }}>
+                  <td className="scheduled-jobs__compact-cell">{step.workflow_name}</td>
+                  <td className="scheduled-jobs__muted-cell">{step.repository}</td>
+                  <td className="scheduled-jobs__reason-cell">
                     {step.reason}
                   </td>
                 </tr>
