@@ -31,7 +31,7 @@ export function renderMarkdown(text: string) {
         codeLines.push(lines[i]);
         i++;
       }
-      out.push(h("pre", { key: out.length, style: { background: "var(--bg-tertiary)", borderRadius: 6, padding: "10px 12px", overflowX: "auto", fontSize: 12, margin: "6px 0" } },
+      out.push(h("pre", { key: out.length, className: "assistant-markdown__code-block" },
         h("code", null, codeLines.join("\n"))
       ));
       i++;
@@ -44,7 +44,7 @@ export function renderMarkdown(text: string) {
         listItems.push(h("li", { key: i }, inlineMarkdown(lines[i].slice(2))));
         i++;
       }
-      out.push(h("ul", { key: out.length, style: { paddingLeft: 18, margin: "4px 0" } }, listItems));
+      out.push(h("ul", { key: out.length, className: "assistant-markdown__list" }, listItems));
       continue;
     }
     // Ordered list item
@@ -54,7 +54,7 @@ export function renderMarkdown(text: string) {
         olItems.push(h("li", { key: i }, inlineMarkdown(lines[i].replace(/^\d+\. /, ""))));
         i++;
       }
-      out.push(h("ol", { key: out.length, style: { paddingLeft: 18, margin: "4px 0" } }, olItems));
+      out.push(h("ol", { key: out.length, className: "assistant-markdown__list" }, olItems));
       continue;
     }
     // Heading
@@ -62,7 +62,7 @@ export function renderMarkdown(text: string) {
     if (hm) {
       const lvl = hm[1].length;
       const tag = "h" + (lvl + 3);
-      out.push(h(tag, { key: out.length, style: { margin: "8px 0 4px", fontWeight: 600, fontSize: lvl === 1 ? 15 : lvl === 2 ? 13 : 12 } }, inlineMarkdown(hm[2])));
+      out.push(h(tag, { key: out.length, className: `assistant-markdown__heading assistant-markdown__heading--${lvl}` }, inlineMarkdown(hm[2])));
       i++;
       continue;
     }
@@ -73,7 +73,7 @@ export function renderMarkdown(text: string) {
       continue;
     }
     // Paragraph
-    out.push(h("p", { key: out.length, style: { margin: "2px 0" } }, inlineMarkdown(line)));
+    out.push(h("p", { key: out.length, className: "assistant-markdown__paragraph" }, inlineMarkdown(line)));
     i++;
   }
   return out;
@@ -88,13 +88,13 @@ export function inlineMarkdown(text: string) {
     if (m.index > last) parts.push(text.slice(last, m.index));
     const tok = m[0];
     if (tok.startsWith("`")) {
-      parts.push(h("code", { key: parts.length, style: { background: "var(--bg-tertiary)", borderRadius: 3, padding: "1px 5px", fontSize: "0.9em", fontFamily: "monospace" } }, tok.slice(1, -1)));
+      parts.push(h("code", { key: parts.length, className: "assistant-markdown__inline-code" }, tok.slice(1, -1)));
     } else if (tok.startsWith("**")) {
       parts.push(h("strong", { key: parts.length }, tok.slice(2, -2)));
     } else if (tok.startsWith("*")) {
       parts.push(h("em", { key: parts.length }, tok.slice(1, -1)));
     } else {
-      parts.push(h("a", { key: parts.length, href: m[3], target: "_blank", rel: "noopener noreferrer", style: { color: "var(--accent-blue)" } }, m[2]));
+      parts.push(h("a", { key: parts.length, href: m[3], target: "_blank", rel: "noopener noreferrer", className: "assistant-markdown__link" }, m[2]));
     }
     last = re.lastIndex;
   }

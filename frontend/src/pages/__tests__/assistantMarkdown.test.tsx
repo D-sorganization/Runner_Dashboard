@@ -29,11 +29,13 @@ describe("renderMarkdown", () => {
     const { container } = renderBlocks("```\nconst x = 1;\nconst y = 2;\n```");
     const code = container.querySelector("pre code");
     expect(code?.textContent).toBe("const x = 1;\nconst y = 2;");
+    expect(container.querySelector("pre")).toHaveClass("assistant-markdown__code-block");
   });
 
   it("renders an unordered list", () => {
     const { container } = renderBlocks("- one\n- two");
     const items = container.querySelectorAll("ul li");
+    expect(container.querySelector("ul")).toHaveClass("assistant-markdown__list");
     expect(items).toHaveLength(2);
     expect(items[0].textContent).toBe("one");
     expect(items[1].textContent).toBe("two");
@@ -42,6 +44,7 @@ describe("renderMarkdown", () => {
   it("renders an ordered list", () => {
     const { container } = renderBlocks("1. first\n2. second");
     const items = container.querySelectorAll("ol li");
+    expect(container.querySelector("ol")).toHaveClass("assistant-markdown__list");
     expect(items).toHaveLength(2);
     expect(items[0].textContent).toBe("first");
   });
@@ -49,8 +52,11 @@ describe("renderMarkdown", () => {
   it("maps heading levels 1-3 to h4-h6", () => {
     const { container } = renderBlocks("# H1\n## H2\n### H3");
     expect(container.querySelector("h4")?.textContent).toBe("H1");
+    expect(container.querySelector("h4")).toHaveClass("assistant-markdown__heading--1");
     expect(container.querySelector("h5")?.textContent).toBe("H2");
+    expect(container.querySelector("h5")).toHaveClass("assistant-markdown__heading--2");
     expect(container.querySelector("h6")?.textContent).toBe("H3");
+    expect(container.querySelector("h6")).toHaveClass("assistant-markdown__heading--3");
   });
 
   it("emits a <br> for blank lines", () => {
@@ -69,6 +75,7 @@ describe("inlineMarkdown", () => {
     expect(container.querySelector("strong")?.textContent).toBe("b");
     expect(container.querySelector("em")?.textContent).toBe("i");
     expect(container.querySelector("code")?.textContent).toBe("c");
+    expect(container.querySelector("code")).toHaveClass("assistant-markdown__inline-code");
   });
 
   it("renders a link with safe rel/target attributes", () => {
@@ -78,6 +85,7 @@ describe("inlineMarkdown", () => {
     expect(a?.getAttribute("href")).toBe("https://example.com");
     expect(a?.getAttribute("rel")).toBe("noopener noreferrer");
     expect(a?.getAttribute("target")).toBe("_blank");
+    expect(a).toHaveClass("assistant-markdown__link");
   });
 
   it("passes through plain text untouched", () => {

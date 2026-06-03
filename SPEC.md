@@ -1,10 +1,14 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.70
+**Spec Version:** 2.5.71
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-03T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-03 (2.5.71):** Migrated the assistant Markdown renderer onto the
+  #834 scoped-class path. Code blocks, lists, headings, paragraphs, inline code,
+  and links now render through `assistant-markdown__*` classes instead of inline
+  style objects, with renderer tests and static guards covering the contract.
 - **2026-06-03 (2.5.70):** Migrated the shared `Stat` metric card value
   coloring onto the #834 token-class path. Known accent token values now map to
   scoped `stat-value--accent-*` classes, removing the remaining inline value
