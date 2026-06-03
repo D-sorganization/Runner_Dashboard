@@ -165,3 +165,18 @@ def test_tests_tab_consumes_badge_empty_state_and_touch_button() -> None:
     assert 'className="tests-tab__ci-section"' in source
     assert "conclusion-badge" not in source
     assert "style={{" not in source
+
+
+def test_conductor_consumes_badge_empty_state_and_touch_button() -> None:
+    """Issue #834 migration: Conductor should use shared primitives."""
+    source = _read(SRC_DIR / "pages" / "Conductor.tsx")
+    assert 'from "../primitives/Badge"' in source
+    assert 'from "../primitives/EmptyState"' in source
+    assert 'from "../primitives/TouchButton"' in source
+    assert "<Badge" in source
+    assert "<EmptyState" in source
+    assert "<TouchButton" in source
+    assert 'className="conductor__stats"' in source
+    assert "MODE_COLORS" not in source
+    assert 'className="btn' not in source
+    assert "style={{" not in source

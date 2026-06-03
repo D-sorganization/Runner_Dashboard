@@ -1,10 +1,15 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.61
+**Spec Version:** 2.5.62
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-03T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-03 (2.5.62):** Migrated the Conductor admission-gate surface onto
+  the #834 primitive/token path. Queue mode and provider mix now render through
+  `Badge`; disabled/error states use `EmptyState`; pause/resume/drain actions
+  use `TouchButton`; and scoped `conductor__*` classes own stat, budget, section,
+  and control presentation instead of page-level inline styles.
 - **2026-06-03 (2.5.61):** Migrated the Tests tab onto the #834 primitive/token
   path. CI status, heavy-test dispatch state, and recent-run conclusions now
   render through `Badge`; CI loading uses `EmptyState`; rerun and heavy dispatch
@@ -205,7 +210,10 @@ Icon, tooltip, tabId, frequent }`. Six ordered groups (Fleet & Runners,
     and the frontend tab is hidden until enabled (reversible, orthogonal). A new
     **Conductor tab** (`frontend/src/pages/Conductor.tsx`) shows planned/active/
     blocked work, provider mix, budget burn, and pause/resume/drain controls; it
-    probes the endpoint once and only appears when the flag is on. 15 backend route
+    probes the endpoint once and only appears when the flag is on. Its visible
+    state badges, disabled/error states, and pause/resume/drain controls use the
+    shared `Badge`, `EmptyState`, and `TouchButton` primitives with scoped
+    `conductor__*` token classes. 15 backend route
     tests in `tests/api/test_orchestrator_api.py` and 6 frontend behaviour tests in
     `frontend/src/pages/__tests__/Conductor.test.tsx`. **Conductor (RM) side must:**
     call `POST /api/orchestrator/lease` before dispatching and obey `granted=false`;

@@ -722,6 +722,146 @@ code, pre, .code, kbd {
 .runner-audit__run-link:hover {
   text-decoration: underline;
 }
+
+.conductor {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 16px;
+  padding: 16px;
+}
+
+.conductor--loading {
+  min-height: 180px;
+}
+
+.conductor__header,
+.conductor__stats,
+.conductor__capacity,
+.conductor__provider-list,
+.conductor__controls {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.conductor__header {
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.conductor__title {
+  font-size: 16px;
+  margin: 0;
+}
+
+.conductor__mode {
+  text-transform: uppercase;
+}
+
+.conductor__stats {
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.conductor__stat {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  flex: 1 1 120px;
+  padding: 10px;
+  text-align: center;
+}
+
+.conductor__stat-value {
+  color: var(--text-primary);
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.conductor__stat--accent .conductor__stat-value {
+  color: var(--accent-red);
+}
+
+.conductor__stat-label {
+  color: var(--text-secondary);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.conductor__section {
+  margin-bottom: 4px;
+}
+
+.conductor__section-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.conductor__capacity {
+  font-size: 13px;
+  gap: 16px;
+}
+
+.conductor__provider-list,
+.conductor__controls {
+  gap: 8px;
+}
+
+.conductor__provider-badge {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
+}
+
+.conductor__muted {
+  color: var(--text-secondary);
+  font-size: 13px;
+  margin: 0;
+}
+
+.conductor__budget-copy {
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.conductor__budget-meter {
+  appearance: none;
+  background: var(--bg-secondary);
+  border: 0;
+  border-radius: var(--radius-pill);
+  display: block;
+  height: 6px;
+  overflow: hidden;
+  width: 100%;
+}
+
+.conductor__budget-meter::-webkit-progress-bar {
+  background: var(--bg-secondary);
+}
+
+.conductor__budget-meter::-webkit-progress-value {
+  background: var(--accent-green);
+  border-radius: var(--radius-pill);
+}
+
+.conductor__budget-meter::-moz-progress-bar {
+  background: var(--accent-green);
+  border-radius: var(--radius-pill);
+}
+
+.conductor__budget-meter--danger::-webkit-progress-value {
+  background: var(--accent-red);
+}
+
+.conductor__budget-meter--danger::-moz-progress-bar {
+  background: var(--accent-red);
+}
+
+.conductor__action-button {
+  font-size: 12px;
+  min-height: 32px;
+  padding: 4px 12px;
+}
 .runner-schedule__actions {
   align-items: center;
   display: flex;

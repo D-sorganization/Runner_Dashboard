@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
+import type { ReactNode } from "react";
+import { Badge } from "../primitives/Badge";
+import { EmptyState } from "../primitives/EmptyState";
 import { SkeletonCard, SkeletonLine } from "../primitives/Skeleton";
+import { TouchButton } from "../primitives/TouchButton";
 
 /**
  * Conductor tab — Repository_Management epic #1273, issue #1282.
@@ -49,10 +53,10 @@ const XHR_HEADERS = {
   "X-Requested-With": "XMLHttpRequest",
 };
 
-const MODE_COLORS: Record<QueueStatus["mode"], string> = {
-  running: "var(--accent-green)",
-  paused: "var(--accent-yellow, #eab308)",
-  draining: "var(--accent-red)",
+const MODE_TONES: Record<QueueStatus["mode"], "success" | "warning" | "danger"> = {
+  running: "success",
+  paused: "warning",
+  draining: "danger",
 };
 
 export function Conductor() {
@@ -64,10 +68,12 @@ export function Conductor() {
 
   const load = useCallback(() => {
     setLoading(true);
+    setError(null);
     fetch("/api/orchestrator/queue", { headers: { "X-Requested-With": "XMLHttpRequest" } })
       .then((r) => {
         if (r.status === 404) {
           setDisabled(true);
+          setStatus(null);
           setLoading(false);
           return null;
         }
@@ -93,6 +99,7 @@ export function Conductor() {
 
   const sendAction = useCallback((action: QueueAction) => {
     setBusy(true);
+    setError(null);
     fetch("/api/orchestrator/queue", {
       method: "POST",
       headers: XHR_HEADERS,
@@ -117,10 +124,9 @@ export function Conductor() {
       <div
         aria-busy="true"
         aria-label="Loading Conductor orchestrator status"
-        className="glass-card"
-        style={{ padding: "16px", margin: "16px", display: "flex", flexDirection: "column", gap: "12px" }}
+        className="glass-card conductor conductor--loading"
       >
-        <div style={{ fontSize: "13px", color: "var(--text-secondary)" }}>Loading Conductor…</div>
+        <div className="conductor__muted">Loading Conductor...</div>
         <SkeletonLine height={18} width="45%" />
         <SkeletonCard lines={3} />
         <SkeletonCard lines={2} />
@@ -130,34 +136,24 @@ export function Conductor() {
 
   if (disabled) {
     return (
-      <div className="glass-card" style={{ padding: "16px", margin: "16px" }}>
-        <h2 style={{ fontSize: "16px", marginBottom: "8px" }}>Conductor</h2>
-        <p style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
-          Conductor integration is disabled. Set <code>DASHBOARD_ENABLE_CONDUCTOR=1</code> on the dashboard
-          server to enable the orchestrator admission gate.
-        </p>
+      <div className="glass-card conductor">
+        <EmptyState
+          title="Conductor integration is disabled"
+          description="Set DASHBOARD_ENABLE_CONDUCTOR=1 on the dashboard server to enable the orchestrator admission gate."
+        />
       </div>
     );
   }
 
   if (error || !status) {
     return (
-      <div className="glass-card" style={{ padding: "16px", margin: "16px" }}>
-        <h2 style={{ fontSize: "16px", marginBottom: "8px" }}>Conductor</h2>
-        <div
-          style={{
-            color: "var(--accent-red)",
-            fontSize: "12px",
-            padding: "8px",
-            background: "rgba(239, 68, 68, 0.08)",
-            borderRadius: "4px",
-          }}
-        >
-          Failed to load Conductor status{error ? `: ${error}` : ""}.
-        </div>
-        <button onClick={load} className="btn btn-sm btn-blue" style={{ marginTop: "8px", fontSize: "12px" }}>
-          Retry
-        </button>
+      <div className="glass-card conductor">
+        <EmptyState
+          variant="error"
+          title="Failed to load Conductor status"
+          description={error ?? "The queue status response was empty."}
+          onRetry={load}
+        />
       </div>
     );
   }
@@ -167,24 +163,16 @@ export function Conductor() {
   const budgetPct = budget.limit_usd > 0 ? Math.min(100, (budget.spent_usd / budget.limit_usd) * 100) : 0;
 
   return (
-    <div className="glass-card" style={{ padding: "16px", margin: "16px" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
-        <h2 style={{ fontSize: "16px", margin: 0 }}>Conductor</h2>
-        <span
-          style={{
-            fontSize: "12px",
-            fontWeight: 600,
-            color: MODE_COLORS[mode],
-            textTransform: "uppercase",
-            letterSpacing: "0.04em",
-          }}
-        >
+    <div className="glass-card conductor">
+      <div className="conductor__header">
+        <h2 className="conductor__title">Conductor</h2>
+        <Badge className="conductor__mode" tone={MODE_TONES[mode]} size="sm">
           {mode}
-        </span>
+        </Badge>
       </div>
 
       {/* Work classification */}
-      <div style={{ display: "flex", gap: "12px", marginBottom: "16px" }}>
+      <div className="conductor__stats">
         <Stat testid="work-planned" label="Planned" value={work.planned} />
         <Stat testid="work-active" label="Active" value={work.active} />
         <Stat testid="work-blocked" label="Blocked" value={work.blocked} accent={work.blocked > 0} />
@@ -192,7 +180,7 @@ export function Conductor() {
 
       {/* Capacity */}
       <Section title="Fleet capacity">
-        <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", fontSize: "13px" }}>
+        <div className="conductor__capacity">
           <span>Idle: <strong>{capacity.idle_runners}</strong></span>
           <span>Busy: <strong>{capacity.busy_runners}</strong></span>
           <span>Online: <strong>{capacity.online_runners}</strong></span>
@@ -203,22 +191,13 @@ export function Conductor() {
       {/* Provider mix */}
       <Section title="Provider mix">
         {providerEntries.length === 0 ? (
-          <p style={{ fontSize: "12px", color: "var(--text-secondary)", margin: 0 }}>No active leases.</p>
+          <p className="conductor__muted">No active leases.</p>
         ) : (
-          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+          <div className="conductor__provider-list">
             {providerEntries.map(([provider, count]) => (
-              <span
-                key={provider}
-                style={{
-                  fontSize: "12px",
-                  padding: "3px 8px",
-                  borderRadius: "999px",
-                  background: "var(--bg-secondary)",
-                  border: "1px solid var(--border)",
-                }}
-              >
+              <Badge key={provider} className="conductor__provider-badge" tone="neutral" size="sm">
                 {provider}: {count}
-              </span>
+              </Badge>
             ))}
           </div>
         )}
@@ -226,50 +205,46 @@ export function Conductor() {
 
       {/* Budget burn */}
       <Section title="Budget burn">
-        <div style={{ fontSize: "13px", marginBottom: "6px" }}>
+        <div className="conductor__budget-copy">
           <strong>${budget.spent_usd.toFixed(2)}</strong>
           {budget.limit_usd > 0 ? ` / $${budget.limit_usd.toFixed(2)}` : " (no limit configured)"}
         </div>
         {budget.limit_usd > 0 && (
-          <div style={{ height: "6px", background: "var(--bg-secondary)", borderRadius: "999px", overflow: "hidden" }}>
-            <div
-              style={{
-                height: "100%",
-                width: `${budgetPct}%`,
-                background: budgetPct > 90 ? "var(--accent-red)" : "var(--accent-green)",
-              }}
-            />
-          </div>
+          <progress
+            aria-label="Conductor budget burn"
+            className={budgetPct > 90 ? "conductor__budget-meter conductor__budget-meter--danger" : "conductor__budget-meter"}
+            max={100}
+            value={budgetPct}
+          />
         )}
       </Section>
 
       {/* Controls */}
       <Section title="Controls">
-        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-          <button
+        <div className="conductor__controls">
+          <TouchButton
+            className="conductor__action-button"
             onClick={() => sendAction("pause")}
             disabled={busy || mode === "paused"}
-            className="btn btn-sm"
-            style={{ fontSize: "12px" }}
           >
             Pause
-          </button>
-          <button
+          </TouchButton>
+          <TouchButton
+            className="conductor__action-button"
             onClick={() => sendAction("resume")}
             disabled={busy || mode === "running"}
-            className="btn btn-sm btn-blue"
-            style={{ fontSize: "12px" }}
+            variant="primary"
           >
             Resume
-          </button>
-          <button
+          </TouchButton>
+          <TouchButton
+            className="conductor__action-button"
             onClick={() => sendAction("drain")}
             disabled={busy || mode === "draining"}
-            className="btn btn-sm btn-red"
-            style={{ fontSize: "12px" }}
+            variant="danger"
           >
             Drain
-          </button>
+          </TouchButton>
         </div>
       </Section>
     </div>
@@ -288,33 +263,21 @@ function Stat({
   accent?: boolean;
 }) {
   return (
-    <div
-      style={{
-        flex: 1,
-        padding: "10px",
-        border: "1px solid var(--border)",
-        borderRadius: "6px",
-        background: "var(--bg-secondary)",
-        textAlign: "center",
-      }}
-    >
-      <div
-        data-testid={testid}
-        style={{ fontSize: "20px", fontWeight: 700, color: accent ? "var(--accent-red)" : "var(--text-primary)" }}
-      >
+    <div className={accent ? "conductor__stat conductor__stat--accent" : "conductor__stat"}>
+      <div data-testid={testid} className="conductor__stat-value">
         {value}
       </div>
-      <div style={{ fontSize: "11px", color: "var(--text-secondary)", textTransform: "uppercase" }}>{label}</div>
+      <div className="conductor__stat-label">{label}</div>
     </div>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div style={{ marginBottom: "16px" }}>
-      <div style={{ fontSize: "13px", fontWeight: 600, marginBottom: "8px" }}>{title}</div>
+    <section className="conductor__section">
+      <div className="conductor__section-title">{title}</div>
       {children}
-    </div>
+    </section>
   );
 }
 
