@@ -213,10 +213,13 @@ describe("ReportsTab", () => {
     // List entries for both reports ("2026-06-01" also shows in the Latest stat).
     expect(screen.getAllByText("2026-06-01").length).toBeGreaterThan(0);
     expect(screen.getByText("2026-05-31")).toBeInTheDocument();
+    expect(screen.getByText("Reports")).toHaveClass("reports-section-title");
     // KPI cards reflect the auto-loaded latest report.
     await waitFor(() => expect(screen.getByText("PRs Merged")).toBeInTheDocument());
     await waitFor(() => expect(screen.getByText("5")).toBeInTheDocument());
     expect(screen.getByText("B+")).toBeInTheDocument();
+    expect(document.querySelector(".report-selected-badge")).toHaveTextContent("2026-06-01");
+    expect(screen.getByAltText("Assessment Scores")).toHaveClass("report-chart__image");
     // Rendered markdown content.
     await waitFor(() => expect(screen.getByText("Daily Report")).toBeInTheDocument());
   });
@@ -224,8 +227,8 @@ describe("ReportsTab", () => {
   it("shows the empty placeholder when there are no reports", () => {
     routeFetch([]);
     render(<ReportsTab reports={[]} loading={false} />);
-    expect(screen.getByText("No reports found")).toBeInTheDocument();
-    expect(screen.getByText("Select a report from the list")).toBeInTheDocument();
+    expect(screen.getByText("No reports found")).toHaveClass("report-list-empty");
+    expect(screen.getByText("Select a report from the list")).toHaveClass("reports-empty");
   });
 
   it("loads a different report when its list entry is clicked", async () => {

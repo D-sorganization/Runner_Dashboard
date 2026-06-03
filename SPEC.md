@@ -1,10 +1,14 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.73
+**Spec Version:** 2.5.74
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-03T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-03 (2.5.74):** Migrated the Analysis Reports panel onto the #834
+  scoped-class path. The report sidebar title, empty states, reader header,
+  selected-date badge, chart frame, and loading placeholder now use
+  `reports-*` and `report-*` classes instead of inline layout styles.
 - **2026-06-03 (2.5.73):** Migrated the `EventLog` primitive onto the #834
   scoped-class path. Toolbar, filter, row, chip, detail, empty-state, and
   accessibility presentation now render through `event-log__*` and

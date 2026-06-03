@@ -310,3 +310,19 @@ def test_event_log_uses_scoped_classes() -> None:
     assert "CSSProperties" not in source
     assert "style={{" not in source
     assert "style:" not in source
+
+
+def test_reports_tab_uses_scoped_classes() -> None:
+    """Issue #834 migration: ReportsTab should avoid inline report-shell styles."""
+    source = _read(SRC_DIR / "pages" / "Analysis.tsx")
+    start = source.index("export function ReportsTab")
+    end = source.index("// ════════════════════════ ANALYSIS TAB", start)
+    reports_source = source[start:end]
+    assert "reports-section-title" in reports_source
+    assert "report-list-empty" in reports_source
+    assert "reports-reader__header" in reports_source
+    assert "report-selected-badge" in reports_source
+    assert "report-chart__image" in reports_source
+    assert "reports-empty" in reports_source
+    assert "style={{" not in reports_source
+    assert "style:" not in reports_source

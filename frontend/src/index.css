@@ -2251,6 +2251,50 @@ th.sortable.active .sort-indicator {
   flex: 1;
   min-width: 0;
 }
+
+.reports-section-title {
+  padding: 12px 16px;
+  font-weight: 600;
+  font-size: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.report-list-empty,
+.reports-empty,
+.reports-loading {
+  padding: 40px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.report-list-empty {
+  padding: 20px;
+}
+
+.reports-reader__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.report-selected-badge {
+  max-width: 70%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.report-chart {
+  margin-bottom: 16px;
+}
+
+.report-chart__image {
+  max-width: 100%;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
 .report-open-raw {
   color: var(--accent-blue);
   font-size: 12px;
