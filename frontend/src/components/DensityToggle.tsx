@@ -7,23 +7,23 @@
  */
 import React from 'react'
 import { useDensity } from '../hooks/useDensity'
+import { TouchButton } from '../primitives/TouchButton'
 
 export const DensityToggle: React.FC = () => {
   const { density, toggleDensity } = useDensity()
   const isCompact = density === 'compact'
   return (
-    <button
+    <TouchButton
       type="button"
       id="density-toggle"
-      className="btn press"
+      className="density-toggle"
       onClick={toggleDensity}
-      aria-pressed={isCompact}
+      pressed={isCompact}
       title={
         isCompact
           ? 'Switch to comfortable density'
           : 'Switch to compact density for dense tables'
       }
-      style={{ gap: '6px' }}
     >
       <span aria-hidden="true">
         {/* Density rows glyph — denser bars when compact is active. */}
@@ -34,7 +34,7 @@ export const DensityToggle: React.FC = () => {
           {isCompact && <rect x="2" y="11" width="12" height="1.6" rx="0.8" fill="currentColor" />}
         </svg>
       </span>
-      <span style={{ fontSize: '13px' }}>{isCompact ? 'Compact' : 'Comfortable'}</span>
-    </button>
+      <span className="density-toggle__label">{isCompact ? 'Compact' : 'Comfortable'}</span>
+    </TouchButton>
   )
 }

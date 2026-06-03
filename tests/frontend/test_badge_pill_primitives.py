@@ -235,3 +235,13 @@ def test_quick_dispatch_consumes_touch_button_and_scoped_styles() -> None:
     assert "rowStyle" not in source
     assert "labelStyle" not in source
     assert "inputStyle" not in source
+
+
+def test_density_toggle_consumes_touch_button_and_scoped_styles() -> None:
+    """Issue #834 migration: DensityToggle should use shared primitives."""
+    source = _read(SRC_DIR / "components" / "DensityToggle.tsx")
+    assert "from '../primitives/TouchButton'" in source
+    assert "<TouchButton" in source
+    assert 'className="density-toggle"' in source
+    assert 'className="btn' not in source
+    assert "style={{" not in source

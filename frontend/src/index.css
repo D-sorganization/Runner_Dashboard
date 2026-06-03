@@ -2970,6 +2970,15 @@ th.sortable.active .sort-indicator {
   color: var(--accent-red);
 }
 
+/* ── Density Toggle ── */
+.density-toggle {
+  gap: var(--space-3);
+}
+
+.density-toggle__label {
+  font-size: 13px;
+}
+
 /* ── Quick Dispatch ── */
 .quick-dispatch {
   display: inline-block;
