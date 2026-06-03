@@ -3125,6 +3125,54 @@ th.sortable.active .sort-indicator {
   text-decoration-style: dotted;
 }
 
+/* ── Assistant Markdown ── */
+.assistant-markdown__code-block {
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  margin: 6px 0;
+  overflow-x: auto;
+  padding: 10px 12px;
+}
+
+.assistant-markdown__list {
+  margin: 4px 0;
+  padding-left: 18px;
+}
+
+.assistant-markdown__heading {
+  font-weight: 600;
+  margin: 8px 0 4px;
+}
+
+.assistant-markdown__heading--1 {
+  font-size: 15px;
+}
+
+.assistant-markdown__heading--2 {
+  font-size: 13px;
+}
+
+.assistant-markdown__heading--3 {
+  font-size: 12px;
+}
+
+.assistant-markdown__paragraph {
+  margin: 2px 0;
+}
+
+.assistant-markdown__inline-code {
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+  font-family: monospace;
+  font-size: 0.9em;
+  padding: 1px 5px;
+}
+
+.assistant-markdown__link {
+  color: var(--accent-blue);
+}
+
 /* ── Theme Settings ── */
 .theme-settings {
   margin-bottom: 16px;
