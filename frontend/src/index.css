@@ -862,6 +862,117 @@ code, pre, .code, kbd {
   min-height: 32px;
   padding: 4px 12px;
 }
+
+.linear-setup {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 16px;
+  padding: 16px;
+}
+
+.linear-setup--loading {
+  min-height: 180px;
+}
+
+.linear-setup__title {
+  font-size: 16px;
+  margin: 0;
+}
+
+.linear-setup__panel,
+.linear-setup__workspace {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px;
+}
+
+.linear-setup__success {
+  background: var(--badge-success-bg);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  color: var(--badge-success-fg);
+  font-size: 12px;
+  padding: 8px;
+}
+
+.linear-setup__section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.linear-setup__section-title {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.linear-setup__webhook-row,
+.linear-setup__workspace-header {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.linear-setup__webhook-code {
+  background: var(--bg-primary);
+  border-radius: var(--radius-sm);
+  flex: 1;
+  font-size: 12px;
+  padding: 6px 8px;
+  word-break: break-all;
+}
+
+.linear-setup__copy-button {
+  font-size: 12px;
+  min-height: 32px;
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+
+.linear-setup__hint,
+.linear-setup__field,
+.linear-setup__instructions {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.linear-setup__hint {
+  margin: 6px 0 0;
+}
+
+.linear-setup__workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.linear-setup__workspace-header {
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.linear-setup__workspace-id {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.linear-setup__field strong {
+  color: var(--text-primary);
+}
+
+.linear-setup__instructions {
+  line-height: 1.6;
+  margin-top: 4px;
+}
+
+.linear-setup__steps {
+  margin: 0;
+  padding-left: 16px;
+}
 .runner-schedule__actions {
   align-items: center;
   display: flex;
