@@ -219,3 +219,19 @@ def test_push_settings_consumes_empty_state_and_touch_button() -> None:
     assert "push-settings__topic" in source
     assert 'className="btn' not in source
     assert "style={{" not in source
+
+
+def test_quick_dispatch_consumes_touch_button_and_scoped_styles() -> None:
+    """Issue #834 migration: QuickDispatch should use shared primitives."""
+    source = _read(SRC_DIR / "pages" / "QuickDispatch.tsx")
+    assert 'from "../primitives/TouchButton"' in source
+    assert "TouchButton" in source
+    assert "quick-dispatch__popover" in source
+    assert "quick-dispatch__status--error" in source
+    assert "quick-dispatch__status--success" in source
+    assert 'className: "btn' not in source
+    assert "style={{" not in source
+    assert "style:" not in source
+    assert "rowStyle" not in source
+    assert "labelStyle" not in source
+    assert "inputStyle" not in source

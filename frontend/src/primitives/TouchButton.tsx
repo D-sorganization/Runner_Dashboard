@@ -1,3 +1,4 @@
+import { forwardRef } from "react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
 export type TouchButtonVariant = "default" | "primary" | "danger";
@@ -8,14 +9,14 @@ export interface TouchButtonProps extends ButtonHTMLAttributes<HTMLButtonElement
   pressed?: boolean;
 }
 
-export function TouchButton({
+export const TouchButton = forwardRef<HTMLButtonElement, TouchButtonProps>(function TouchButton({
   children,
   className = "",
   type = "button",
   variant = "default",
   pressed,
   ...props
-}: TouchButtonProps) {
+}: TouchButtonProps, ref) {
   const classes = ["touch-button", `touch-button-${variant}`, className]
     .filter(Boolean)
     .join(" ");
@@ -23,6 +24,7 @@ export function TouchButton({
   return (
     <button
       {...props}
+      ref={ref}
       aria-pressed={pressed}
       className={classes}
       data-touch-primitive="TouchButton"
@@ -31,4 +33,4 @@ export function TouchButton({
       {children}
     </button>
   );
-}
+});
