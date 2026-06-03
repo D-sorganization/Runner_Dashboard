@@ -22,6 +22,17 @@ def _read(p: Path) -> str:
     return p.read_text(encoding="utf-8")
 
 
+def _read_runtime_source() -> str:
+    parts: list[str] = []
+    for path in sorted(_FRONTEND_SRC.rglob("*")):
+        if path.suffix not in {".css", ".ts", ".tsx"}:
+            continue
+        if "__tests__" in path.relative_to(_FRONTEND_SRC).parts:
+            continue
+        parts.append(path.read_text(encoding="utf-8"))
+    return "\n".join(parts)
+
+
 # ─── PR #672 regression guard: FLEET QUOTA stays removed ─────────────────────
 
 
@@ -59,14 +70,14 @@ def test_app_header_uses_two_row_variant() -> None:
     actions into a 56px row, forcing horizontal scroll. The .app-header
     must opt into the .app-header--rows variant which lays out children
     in two stacked rows."""
-    src = _read(_APP_TSX)
+    src = _read_runtime_source()
     assert '"app-header app-header--rows"' in src
 
 
 def test_app_header_has_primary_and_secondary_rows() -> None:
     """The two-row split must use the documented class names so the CSS
     can target them. Renaming either side would break the layout."""
-    src = _read(_APP_TSX)
+    src = _read_runtime_source()
     assert "app-header__row--primary" in src
     assert "app-header__row--secondary" in src
 
@@ -96,7 +107,7 @@ def test_overview_renders_fleet_hero_section() -> None:
     """The Overview tab must render the fleet-hero section above the
     KPI grid. This is the user-facing 'system health' surface they
     asked for."""
-    src = _read(_APP_TSX)
+    src = _read_runtime_source()
     assert '"fleet-hero fleet-hero--"' in src or '"fleet-hero"' in src
     assert "fleet-hero__status" in src
     assert "fleet-hero__kpis" in src
@@ -107,7 +118,7 @@ def test_fleet_hero_kpi_buttons_navigate_to_tabs() -> None:
     """The hero KPI tiles must be click-through buttons that navigate
     to the matching tab (machines, queue, overview). Just rendering
     static numbers misses the 'jump to detail' affordance."""
-    src = _read(_APP_TSX)
+    src = _read_runtime_source()
     # The four KPI buttons each have an onClick: function () { setTab(...); }
     assert 'setTab("machines"); }' in src
     assert 'setTab("queue"); }' in src
@@ -117,7 +128,7 @@ def test_fleet_hero_uses_extracted_alerts_module() -> None:
     """The rollup logic must call the extracted, unit-tested
     fleetAlerts module rather than reintroducing inline rules in the
     legacy h()-tree. That's the whole point of the extraction."""
-    src = _read(_APP_TSX)
+    src = _read_runtime_source()
     assert 'from "../lib/fleetAlerts"' in src
     assert "fleetAlerts.computeFleetAlerts" in src
     assert "fleetAlerts.fleetLevelLabel" in src
@@ -163,15 +174,15 @@ def test_stat_component_supports_subtitle_for_truncation_hover() -> None:
     """When the visible sub line has been truncated, the full text must
     still be reachable via the title attribute. The Stat component
     accepts a subTitle prop for exactly this case."""
-    src = _read(_APP_TSX)
-    assert "p.subTitle" in src
-    assert "title: p.subTitle" in src
+    src = _read_runtime_source()
+    assert "subTitle" in src
+    assert "title: subTitle" in src or "title: p.subTitle" in src
 
 
 def test_keepalive_card_passes_subtitle_with_full_message() -> None:
     """The WSL Keepalive card must pass the FULL watchdog message via
     subTitle so the truncated visible text can be expanded on hover."""
-    src = _read(_APP_TSX)
+    src = _read_runtime_source()
     # Find the WSL Keepalive Stat block and check subTitle is supplied
     # within ~30 lines of "label: \"WSL Keepalive\""
     idx = src.find('label: "WSL Keepalive"')

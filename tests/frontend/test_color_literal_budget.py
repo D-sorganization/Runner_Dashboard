@@ -88,16 +88,20 @@ def test_tsx_hex_literal_budget() -> None:
     )
 
 
-def test_legacy_app_badge_map_uses_tokens() -> None:
-    """Regression for #826: the legacy App.tsx issue-badge maps are tokenised.
+def test_remediation_badge_maps_use_tokens() -> None:
+    """Regression for #826: remediation issue-badge maps are tokenised.
 
-    The getTypeStyle / getComplexityStyle / getJudgementStyle colour maps must
-    not reintroduce raw rgba()/hex; they must reference var(--badge-*) tokens.
+    The getTypeStyle / getComplexityStyle / getJudgementStyle colour maps moved
+    out of legacy/App.tsx during decomposition. They must not reintroduce raw
+    rgba()/hex; they must reference var(--badge-*) tokens.
     """
+    maps = pathlib.Path("frontend/src/pages/remediationDispatch.ts").read_text(encoding="utf-8")
+    assert "var(--badge-neutral-bg)" in maps, "badge map lost its --badge-* tokens"
+    assert "var(--badge-danger-bg)" in maps, "badge map lost semantic danger tokens"
+
     app = pathlib.Path("frontend/src/legacy/App.tsx").read_text(encoding="utf-8")
-    # The badge helpers reference semantic tokens.
-    assert "var(--badge-neutral-bg)" in app, "badge map lost its --badge-* tokens"
-    assert "var(--text-on-accent)" in app, "#fff-on-accent literals not tokenised"
+    css = pathlib.Path("frontend/src/index.css").read_text(encoding="utf-8")
+    assert "--text-on-accent" in css, "#fff-on-accent token missing from CSS"
     # No quoted hex colour survives outside the allowlisted LANG_COLORS map.
     stripped = _LANG_COLORS_BLOCK.sub("", app)
     leftover = _HEX_LITERAL.findall(stripped)

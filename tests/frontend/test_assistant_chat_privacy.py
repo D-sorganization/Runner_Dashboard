@@ -7,9 +7,14 @@ constructs are present without spinning up a browser.
 from pathlib import Path
 
 
-def _read_app() -> str:
+def _read_sidebar() -> str:
     repo = Path(__file__).resolve().parents[2]
-    return (repo / "frontend/src/legacy/App.tsx").read_text(encoding="utf-8")
+    return (repo / "frontend/src/pages/AssistantSidebar.tsx").read_text(encoding="utf-8")
+
+
+def _read_storage() -> str:
+    repo = Path(__file__).resolve().parents[2]
+    return (repo / "frontend/src/lib/assistantStorage.ts").read_text(encoding="utf-8")
 
 
 def _read_privacy_doc() -> str:
@@ -23,22 +28,22 @@ def _read_privacy_doc() -> str:
 
 
 def test_save_history_key_defined() -> None:
-    src = _read_app()
+    src = _read_storage()
     assert 'saveHistory: "assistant:saveHistory"' in src
 
 
 def test_save_history_defaults_false() -> None:
-    src = _read_app()
+    src = _read_sidebar()
     assert "lsGet(ASST_LS.saveHistory, false)" in src
 
 
 def test_save_history_checkbox_label() -> None:
-    src = _read_app()
+    src = _read_sidebar()
     assert '"Save chat history"' in src
 
 
 def test_save_history_header_toggle_present() -> None:
-    src = _read_app()
+    src = _read_sidebar()
     assert 'title: "Save chat history"' in src
     assert '"aria-label": "Save chat history"' in src
 
@@ -49,18 +54,18 @@ def test_save_history_header_toggle_present() -> None:
 
 
 def test_24h_ttl_constant_defined() -> None:
-    src = _read_app()
+    src = _read_storage()
     assert "ASST_HISTORY_TTL_MS" in src
     assert "24 * 60 * 60 * 1000" in src
 
 
 def test_transcript_timestamp_key_defined() -> None:
-    src = _read_app()
+    src = _read_storage()
     assert 'transcriptTimestamp: "assistant:transcript:ts"' in src
 
 
 def test_ls_load_transcript_checks_expiry() -> None:
-    src = _read_app()
+    src = _read_storage()
     assert "lsLoadTranscript" in src
     assert "ASST_HISTORY_TTL_MS" in src
 
@@ -91,15 +96,18 @@ def test_privacy_doc_mentions_24h_expiry() -> None:
 
 
 def test_clear_chat_history_button_present() -> None:
-    src = _read_app()
+    src = _read_sidebar()
     assert '"Clear chat history"' in src
 
 
 def test_clear_button_removes_transcript_from_ls() -> None:
-    src = _read_app()
-    # The clear button handler must call localStorage.removeItem for the transcript key
-    assert "localStorage.removeItem(ASST_LS.transcript)" in src
-    assert "localStorage.removeItem(ASST_LS.transcriptTimestamp)" in src
+    sidebar = _read_sidebar()
+    storage = _read_storage()
+    # The clear button delegates to the shared storage helper, and the helper
+    # must remove both transcript keys.
+    assert "clearAssistantTranscriptHistory()" in sidebar
+    assert "localStorage.removeItem(ASST_LS.transcript)" in storage
+    assert "localStorage.removeItem(ASST_LS.transcriptTimestamp)" in storage
 
 
 # ---------------------------------------------------------------------------
@@ -108,12 +116,12 @@ def test_clear_button_removes_transcript_from_ls() -> None:
 
 
 def test_transcript_persist_guarded_by_save_history() -> None:
-    src = _read_app()
+    src = _read_sidebar()
     # The effect that persists the transcript must check saveHistory
     assert "if (!saveHistory)" in src
 
 
 def test_transcript_not_loaded_when_save_history_off() -> None:
-    src = _read_app()
+    src = _read_sidebar()
     # Transcript initialised conditionally on saveHistory
     assert "saveHistory ? lsLoadTranscript()" in src

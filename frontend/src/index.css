@@ -545,6 +545,77 @@ code, pre, .code, kbd {
   display: none;
 }
 
+/* Scheduled jobs page primitive/token migration (issue #834). */
+.scheduled-jobs__toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.scheduled-jobs__filter,
+.scheduled-jobs__repo-select {
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--fg);
+}
+.scheduled-jobs__filter {
+  width: min(180px, 100%);
+}
+.scheduled-jobs__meta,
+.scheduled-jobs__muted-cell {
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+.scheduled-jobs__count-badge {
+  margin-left: 4px;
+  background: var(--badge-info-bg);
+  color: var(--badge-info-fg);
+}
+.scheduled-jobs__dry-run-badge {
+  margin-left: 4px;
+  background: var(--badge-warning-bg);
+  color: var(--badge-warning-fg);
+}
+.scheduled-jobs__dry-run-header {
+  margin-top: 16px;
+}
+.scheduled-jobs__loading {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 32px 0;
+}
+.scheduled-jobs__jules-marker {
+  color: var(--accent-purple);
+  font-weight: 600;
+  margin-right: 4px;
+}
+.scheduled-jobs__code-cell,
+.scheduled-jobs__action-code {
+  font-family: monospace;
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+.scheduled-jobs__compact-cell {
+  font-size: 12px;
+}
+.scheduled-jobs__reason-cell {
+  font-size: 11px;
+  color: var(--fg-muted);
+  max-width: 320px;
+}
+.scheduled-jobs__run-link {
+  color: var(--accent-blue);
+  font-size: 12px;
+}
+.scheduled-jobs__stat-value--blue { color: var(--accent-blue); }
+.scheduled-jobs__stat-value--purple { color: var(--accent-purple); }
+.scheduled-jobs__stat-value--green { color: var(--accent-green); }
+.scheduled-jobs__stat-value--orange { color: var(--accent-orange); }
+.scheduled-jobs__stat-value--red { color: var(--accent-red); }
+
 .stat-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));

@@ -121,6 +121,7 @@ describe("ScheduledJobs", () => {
     await waitFor(() => {
       expect(screen.getByText(/No scheduled workflows found/i)).toBeInTheDocument();
     });
+    expect(screen.getByTestId("scheduled-jobs-empty")).toHaveClass("empty-state");
   });
 
   it("filters rows by the text filter", async () => {
@@ -144,6 +145,7 @@ describe("ScheduledJobs", () => {
     const filter = screen.getByLabelText(/Filter scheduled workflows by name or repo/i);
     fireEvent.change(filter, { target: { value: "zzz-no-match" } });
     expect(screen.getByText(/No workflows match the current filter/i)).toBeInTheDocument();
+    expect(screen.getByTestId("scheduled-jobs-empty")).toHaveClass("empty-state");
   });
 
   it("renders headline stats from the payload", async () => {
@@ -190,6 +192,29 @@ describe("ScheduledJobs", () => {
     await waitFor(() => {
       expect(tableRow("Jules Sweep")).toBeInTheDocument();
     });
-    expect(within(tableRow("Jules Sweep")).getByText("disabled")).toBeInTheDocument();
+    const disabled = within(tableRow("Jules Sweep")).getByText("disabled");
+    expect(disabled).toHaveAttribute("data-touch-primitive", "Badge");
+    expect(disabled).toHaveClass("badge-tone-neutral");
+  });
+
+  it("renders latest-run conclusions through the Badge primitive", async () => {
+    global.fetch = mockFetch(SAMPLE);
+    render(<ScheduledJobs />);
+    await waitFor(() => {
+      expect(tableRow("Nightly Build")).toBeInTheDocument();
+    });
+    const success = Array.from(within(tableRow("Nightly Build")).getAllByText("success")).find(
+      (node) => node.getAttribute("data-touch-primitive") === "Badge",
+    );
+    expect(success).toBeDefined();
+    expect(success).toHaveAttribute("data-touch-primitive", "Badge");
+    expect(success).toHaveClass("badge-tone-success");
+  });
+
+  it("uses the Skeleton primitive while the first fetch is pending", () => {
+    global.fetch = vi.fn(() => new Promise<Response>(() => {}));
+    render(<ScheduledJobs />);
+    expect(screen.getByRole("status", { name: /Loading scheduled workflows/i })).toBeInTheDocument();
+    expect(document.querySelector(".skeleton-card")).toBeInTheDocument();
   });
 });
