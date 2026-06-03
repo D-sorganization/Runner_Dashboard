@@ -222,10 +222,10 @@ const toolbarStyle: CSSProperties = {
 
 function filterBtnStyle(active: boolean): CSSProperties {
   return {
-    background: active ? "var(--accent-blue)" : "transparent",
+    background: active ? "var(--accent-control-bg, #0078d4)" : "transparent",
     border: "1px solid var(--border)",
     borderRadius: 6,
-    color: active ? "var(--text-on-accent)" : "var(--text-secondary)",
+    color: active ? "var(--accent-control-fg, #ffffff)" : "var(--text-secondary)",
     cursor: "pointer",
     fontSize: 12,
     fontWeight: 600,

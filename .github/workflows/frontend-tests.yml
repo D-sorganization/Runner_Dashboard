@@ -206,24 +206,44 @@ jobs:
             echo "$RUNNER_TEMP/backend-venv/bin" >> "$GITHUB_PATH"
           fi
 
+      - name: Allocate dashboard test port
+        run: |
+          python - <<'PY' >> "$GITHUB_ENV"
+          import socket
+
+          with socket.socket() as sock:
+              sock.bind(("127.0.0.1", 0))
+              print(f"DASHBOARD_PORT={sock.getsockname()[1]}")
+          PY
+
       - name: Start dashboard backend
         run: |
           cd backend
-          GH_TOKEN=dummy python server.py &
-          echo "BACKEND_PID=$!" >> "$GITHUB_ENV"
+          GH_TOKEN=dummy DASHBOARD_PORT="$DASHBOARD_PORT" python server.py &
+          echo "$!" > "$RUNNER_TEMP/dashboard-backend.pid"
           # Wait for backend to be ready
           for i in $(seq 1 30); do
-            if curl -sf http://localhost:8321/api/health > /dev/null 2>&1; then
+            if curl -sf "http://localhost:${DASHBOARD_PORT}/api/health" > /dev/null 2>&1; then
               echo "Backend ready after ${i}s"
-              break
+              exit 0
             fi
             sleep 1
           done
+          echo "Backend did not become ready on port ${DASHBOARD_PORT}" >&2
+          exit 1
 
       - name: Run Playwright e2e smoke tests
-        env:
-          DASHBOARD_URL: http://localhost:8321
-        run: npm run test:e2e -- --project=chromium-desktop
+        run: |
+          DASHBOARD_URL="http://localhost:5173" \
+          VITE_BACKEND_URL="http://127.0.0.1:${DASHBOARD_PORT}" \
+          npm run test:e2e -- --project=chromium-desktop
+
+      - name: Stop dashboard backend
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/dashboard-backend.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/dashboard-backend.pid")" || true
+          fi
 
       - name: Upload Playwright test results
         if: always()

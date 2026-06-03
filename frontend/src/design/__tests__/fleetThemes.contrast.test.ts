@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { FLEET_THEMES, getFleetThemeIds } from '../fleetThemes'
+import { FLEET_THEMES, fleetThemeToCssVars, getFleetThemeIds } from '../fleetThemes'
 
 /**
  * Issue #824 — WCAG AA contrast guarantee for every fleet theme.
@@ -87,4 +87,21 @@ describe('fleet theme WCAG AA contrast', () => {
       ).toBeGreaterThanOrEqual(AAA_NORMAL)
     },
   )
+
+  it('maps the light theme to contrast-safe link and active-control tokens', () => {
+    const vars = fleetThemeToCssVars(FLEET_THEMES.light)
+
+    expect(
+      contrastRatio(FLEET_THEMES.light.colors.focus, FLEET_THEMES.light.semantic.selection_text),
+      `light: focus ${FLEET_THEMES.light.colors.focus} with selection text ${FLEET_THEMES.light.semantic.selection_text}`,
+    ).toBeGreaterThanOrEqual(AA_NORMAL)
+    expect(
+      contrastRatio(vars['--accent-blue'], vars['--bg-secondary']),
+      `light: --accent-blue ${vars['--accent-blue']} on --bg-secondary ${vars['--bg-secondary']}`,
+    ).toBeGreaterThanOrEqual(AA_NORMAL)
+    expect(
+      contrastRatio(vars['--accent-control-fg'], vars['--accent-control-bg']),
+      `light: --accent-control-fg ${vars['--accent-control-fg']} on --accent-control-bg ${vars['--accent-control-bg']}`,
+    ).toBeGreaterThanOrEqual(AA_NORMAL)
+  })
 })

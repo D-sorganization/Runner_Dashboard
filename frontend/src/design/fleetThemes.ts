@@ -85,6 +85,7 @@ export type FleetThemeId =
 // These are deliberate local overrides — when re-syncing themes.json, push
 // the contrast fix upstream rather than reverting. Semantic colours stay
 // vivid where they back non-text fills (status dots, progress bars).
+//   light.focus   #80bdff → #0969da     (small active controls, was 1.97:1 with white)
 //   light.label   #6c757d → #60666d     (muted text, was 4.45:1)
 //   light.success #28a745 → #1b722f     (badge/stat text, was 2.55:1 on tint)
 //   light.warning #ffc107 → #7f5f00     (was 1.54:1 — yellow-on-white)
@@ -100,7 +101,7 @@ export type FleetThemeId =
 export const FLEET_THEMES: Record<FleetThemeId, FleetThemeDef> = {
   light: {
     name: 'Light', category: 'standard', isDark: false,
-    colors: { bg: '#ffffff', group_bg: '#f8f9fa', border: '#ced4da', text: '#212529', text_secondary: '#495057', label: '#60666d', focus: '#80bdff', input_bg: '#ffffff', accent: '#5a8fc4', title_bg: '#e3f2fd', title_border: '#90caf9', table_header: '#e9ecef', table_alt: '#f8f9fa', button_hover: '#4a7ba7' },
+    colors: { bg: '#ffffff', group_bg: '#f8f9fa', border: '#ced4da', text: '#212529', text_secondary: '#495057', label: '#60666d', focus: '#0969da', input_bg: '#ffffff', accent: '#5a8fc4', title_bg: '#e3f2fd', title_border: '#90caf9', table_header: '#e9ecef', table_alt: '#f8f9fa', button_hover: '#4a7ba7' },
     semantic: { success: '#1b722f', warning: '#7f5f00', error: '#bf2130', info: '#106e7d', link: '#0066cc', link_hover: '#004499', selection_bg: '#0078d4', selection_text: '#ffffff' },
   },
   dark: {
@@ -237,7 +238,9 @@ export function fleetThemeToCssVars(theme: FleetThemeDef): Record<string, string
     '--text-primary': c.text,
     '--text-secondary': c.text_secondary,
     '--text-muted': c.label,
-    '--accent-blue': c.focus,
+    '--accent-blue': s.link,
+    '--accent-control-bg': s.selection_bg,
+    '--accent-control-fg': s.selection_text,
     '--accent-green': s.success,
     '--accent-red': s.error,
     '--accent-yellow': s.warning,
