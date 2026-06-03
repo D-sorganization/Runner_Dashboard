@@ -616,6 +616,113 @@ code, pre, .code, kbd {
 .scheduled-jobs__stat-value--orange { color: var(--accent-orange); }
 .scheduled-jobs__stat-value--red { color: var(--accent-red); }
 
+.runner-audit {
+  padding: 24px;
+}
+
+.runner-audit__header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.runner-audit__title-icon {
+  font-size: 18px;
+  margin-right: 8px;
+}
+
+.runner-audit__actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.runner-audit__meta,
+.runner-audit__time-cell,
+.runner-audit__run-link {
+  font-size: 12px;
+}
+
+.runner-audit__meta,
+.runner-audit__time-cell {
+  color: var(--text-muted);
+}
+
+.runner-audit__refresh {
+  font-size: 12px;
+  min-height: 32px;
+  padding: 4px 12px;
+}
+
+.runner-audit__error {
+  color: var(--accent-red);
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.runner-audit__warning {
+  background: var(--badge-danger-bg);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  margin-bottom: 12px;
+  padding: 10px 14px;
+}
+
+.runner-audit__warning-count {
+  color: var(--badge-danger-fg);
+}
+
+.runner-audit__table-wrap {
+  overflow-x: auto;
+}
+
+.runner-audit__table {
+  border-collapse: collapse;
+  font-size: 13px;
+  width: 100%;
+}
+
+.runner-audit__table th,
+.runner-audit__table td {
+  border-bottom: 1px solid var(--border);
+  padding: 8px 12px;
+}
+
+.runner-audit__table th {
+  color: var(--text-secondary);
+  font-weight: 600;
+  text-align: left;
+}
+
+.runner-audit__table tbody tr:nth-child(even) {
+  background: var(--bg-secondary);
+}
+
+.runner-audit__repo-cell {
+  font-weight: 500;
+}
+
+.runner-audit__muted-cell {
+  color: var(--text-secondary);
+}
+
+.runner-audit__runner-badge {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
+}
+
+.runner-audit__run-link {
+  color: var(--accent-blue);
+  text-decoration: none;
+}
+
+.runner-audit__run-link:hover {
+  text-decoration: underline;
+}
+
 .stat-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));

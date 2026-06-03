@@ -1295,6 +1295,12 @@ audit trail.
 | GET    | `/api/runner-routing-audit`         | Recent workflow runs on GitHub-hosted runners (billing alert) |
 | POST   | `/api/runner-routing-audit/refresh` | Trigger an immediate audit refresh                            |
 
+The Runner Audit UI renders its not-yet-run/all-clear states through the shared
+`EmptyState` primitive, its hosted-runner labels through `Badge`, and its refresh
+action through `TouchButton`. Scoped `runner-audit__*` classes carry the table,
+warning, metadata, and link presentation through design tokens instead of
+inline style objects.
+
 ### Maxwell
 
 | Method | Path                   | Description                                                                                                                                                                                                                                                                                                                                                                        |
