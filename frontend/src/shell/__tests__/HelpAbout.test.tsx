@@ -28,8 +28,10 @@ describe("HelpAbout", () => {
     render(<HelpAbout onNavigate={vi.fn()} fetchImpl={versionFetch()} />);
     const trigger = screen.getByRole("button", { name: /help and about/i });
     expect(trigger).toHaveAttribute("aria-haspopup", "dialog");
+    expect(trigger).toHaveClass("shell-help-trigger");
     fireEvent.click(trigger);
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByRole("tablist", { name: /help and about sections/i })).toHaveClass("help-about__tabs");
   });
 
   it("fetches and shows the dashboard version when opened", async () => {
@@ -39,6 +41,7 @@ describe("HelpAbout", () => {
     await waitFor(() => expect(screen.getByText(/9\.9\.9/)).toBeInTheDocument());
     // Short (7-char) git sha is surfaced too.
     expect(screen.getByText(/1234567/)).toBeInTheDocument();
+    expect(screen.getByText(/9\.9\.9/)).toHaveClass("help-about__version");
   });
 
   it("navigates and closes when a quick-link is clicked", async () => {
@@ -72,6 +75,7 @@ describe("HelpAbout", () => {
     await screen.findByRole("dialog");
     const chatTab = screen.getByRole("tab", { name: /ask the codebase/i });
     fireEvent.click(chatTab);
+    expect(chatTab).toHaveClass("help-about__tab--active");
     expect(screen.getByRole("region", { name: /codebase assistant/i })).toBeInTheDocument();
     // The codebase quick-chips are present once the assistant is mounted.
     expect(screen.getByRole("button", { name: /what does \/api\/queue do\?/i })).toBeInTheDocument();
