@@ -3173,6 +3173,31 @@ th.sortable.active .sort-indicator {
   color: var(--accent-blue);
 }
 
+/* ── Events Tab ── */
+.events-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.events-tab__title {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0 0 8px;
+}
+
+.events-tab__degraded {
+  color: var(--accent-yellow);
+  font-size: 12px;
+  margin: 0 0 8px;
+}
+
+.overview-event-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
 /* ── Theme Settings ── */
 .theme-settings {
   margin-bottom: 16px;
