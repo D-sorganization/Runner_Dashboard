@@ -268,3 +268,12 @@ def test_alarm_panel_consumes_badge_and_scoped_styles() -> None:
     assert "CSSProperties" not in source
     assert "style={{" not in source
     assert "style=" not in source
+
+
+def test_stat_maps_token_colours_to_scoped_classes() -> None:
+    """Issue #834 migration: Stat should avoid inline value colours."""
+    source = _read(SRC_DIR / "components" / "Stat.tsx")
+    assert "VALUE_COLOR_CLASS" in source
+    assert "stat-value--accent-yellow" in source
+    assert "style:" not in source
+    assert "style={{" not in source

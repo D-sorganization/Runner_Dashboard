@@ -1,10 +1,14 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.69
+**Spec Version:** 2.5.70
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-03T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-03 (2.5.70):** Migrated the shared `Stat` metric card value
+  coloring onto the #834 token-class path. Known accent token values now map to
+  scoped `stat-value--accent-*` classes, removing the remaining inline value
+  color style from `components/Stat.tsx`.
 - **2026-06-03 (2.5.69):** Migrated AlarmPanel onto the #834 primitive/token
   path. Fleet alarm severity chips now render through `Badge`, status/row/dot
   severity styling is owned by scoped `alarm-panel__*` classes, and the

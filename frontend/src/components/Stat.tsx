@@ -16,6 +16,18 @@ interface StatProps {
   subTitle?: string
 }
 
+const VALUE_COLOR_CLASS: Record<string, string> = {
+  "var(--accent-blue)": "stat-value--accent-blue",
+  "var(--accent-green)": "stat-value--accent-green",
+  "var(--accent-orange)": "stat-value--accent-orange",
+  "var(--accent-red)": "stat-value--accent-red",
+  "var(--accent-yellow)": "stat-value--accent-yellow",
+}
+
+function valueClassName(color?: string): string {
+  return ["stat-value", color ? VALUE_COLOR_CLASS[color] : ""].filter(Boolean).join(" ")
+}
+
 export function Stat({ label, value, color, sub, subTitle }: StatProps) {
   return React.createElement(
     "div",
@@ -23,7 +35,7 @@ export function Stat({ label, value, color, sub, subTitle }: StatProps) {
     React.createElement("div", { className: "stat-label" }, label),
     React.createElement(
       "div",
-      { className: "stat-value", style: { color: color ?? "inherit" } },
+      { className: valueClassName(color) },
       value,
     ),
     sub

@@ -1061,6 +1061,21 @@ code, pre, .code, kbd {
   letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums;
 }
+.stat-value--accent-blue {
+  color: var(--accent-blue);
+}
+.stat-value--accent-green {
+  color: var(--accent-green);
+}
+.stat-value--accent-orange {
+  color: var(--accent-orange);
+}
+.stat-value--accent-red {
+  color: var(--accent-red);
+}
+.stat-value--accent-yellow {
+  color: var(--accent-yellow);
+}
 .stat-sub {
   font-size: 11px;
   color: var(--text-muted);

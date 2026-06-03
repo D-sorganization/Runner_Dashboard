@@ -38,8 +38,8 @@ describe("Stat", () => {
     expect(sub).toHaveAttribute("title", "full text")
   })
 
-  it("applies the color style to the value", () => {
-    render(<Stat label="L" value="9" color="rgb(255, 0, 0)" />)
-    expect(screen.getByText("9")).toHaveStyle({ color: "rgb(255, 0, 0)" })
+  it("maps token color values onto scoped classes", () => {
+    render(<Stat label="L" value="9" color="var(--accent-yellow)" />)
+    expect(screen.getByText("9")).toHaveClass("stat-value--accent-yellow")
   })
 })
