@@ -24,6 +24,9 @@ import React, { useState } from "react";
 import { Collapse } from "../components/Collapse";
 import { Stat } from "../components/Stat";
 import { legacyFetch } from "../lib/api";
+import { Badge, type BadgeTone } from "../primitives/Badge";
+import { EmptyState } from "../primitives/EmptyState";
+import { TouchButton } from "../primitives/TouchButton";
 import { ActivityGlyph, DockerGlyph, FlaskGlyph, PlayGlyph } from "./decompIcons";
 
 function timeAgo(d?: string | null): string {
@@ -35,13 +38,13 @@ function timeAgo(d?: string | null): string {
   return Math.floor(s / 86400) + "d ago";
 }
 
-const CONCLUSION_COLOR: Record<string, string> = {
-  success: "var(--accent-green)",
-  failure: "var(--accent-red)",
-  cancelled: "var(--text-secondary)",
-  skipped: "var(--text-secondary)",
-  in_progress: "var(--accent-yellow)",
-  queued: "var(--accent-yellow)",
+const CONCLUSION_TONE: Record<string, BadgeTone> = {
+  success: "success",
+  failure: "danger",
+  cancelled: "neutral",
+  skipped: "neutral",
+  in_progress: "warning",
+  queued: "warning",
 };
 
 /** A single CI result row (latest run per repo). */
@@ -121,18 +124,16 @@ function CiSection({ ciResults }: { ciResults: CiResult[] }): React.ReactElement
   }
 
   return (
-    <div style={{ marginBottom: 24 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-        <span style={{ fontWeight: 700, fontSize: 16, color: "var(--text-primary)" }}>
+    <div className="tests-tab__ci-section">
+      <div className="tests-tab__section-heading">
+        <span className="tests-tab__section-title">
           <ActivityGlyph size={16} /> CI Tests — Fleet Repos
         </span>
       </div>
       {ciResults.length === 0 ? (
-        <div style={{ color: "var(--text-secondary)", fontSize: 13, padding: "12px 0" }}>
-          {"Loading CI results…"}
-        </div>
+        <EmptyState title="Loading CI results…" description="Fleet repository test status will appear here." />
       ) : (
-        <div style={{ overflowX: "auto" }}>
+        <div className="tests-tab__table-wrap">
           <table className="data-table">
             <thead>
               <tr>
@@ -147,7 +148,6 @@ function CiSection({ ciResults }: { ciResults: CiResult[] }): React.ReactElement
             <tbody>
               {ciResults.map((r) => {
                 const concl = r.conclusion || r.status || "unknown";
-                const color = CONCLUSION_COLOR[concl] || "var(--text-secondary)";
                 const rerunSt = rerunState[r.repo];
                 const canRerun =
                   !!r.run_id &&
@@ -160,7 +160,7 @@ function CiSection({ ciResults }: { ciResults: CiResult[] }): React.ReactElement
                           href={r.html_url}
                           target="_blank"
                           rel="noopener"
-                          style={{ color: "var(--accent-blue)" }}
+                          className="tests-tab__link"
                         >
                           {r.repo}
                         </a>
@@ -169,20 +169,20 @@ function CiSection({ ciResults }: { ciResults: CiResult[] }): React.ReactElement
                       )}
                     </td>
                     <td>
-                      <span className={"conclusion-badge " + concl} style={{ color }}>
+                      <Badge tone={CONCLUSION_TONE[concl] || "neutral"} size="sm">
                         {concl}
-                      </span>
+                      </Badge>
                     </td>
                     <td>{r.head_branch || "main"}</td>
                     <td>{r.run_number ? "#" + r.run_number : "—"}</td>
                     <td>{r.updated_at ? new Date(r.updated_at).toLocaleString() : "—"}</td>
                     <td>
                       {canRerun ? (
-                        <button
-                          className="btn btn-sm btn-blue"
-                          type="button"
+                        <TouchButton
+                          className="tests-tab__action-button"
                           disabled={rerunSt === "running"}
                           onClick={() => rerunFailed(r.repo, r.run_id)}
+                          variant="primary"
                         >
                           {rerunSt === "running" ? (
                             <span className="spinner" />
@@ -190,14 +190,13 @@ function CiSection({ ciResults }: { ciResults: CiResult[] }): React.ReactElement
                             <PlayGlyph size={12} />
                           )}
                           {rerunSt === "triggered" ? " Triggered" : " Re-run Failed"}
-                        </button>
+                        </TouchButton>
                       ) : r.run_id ? (
                         <a
                           href={r.html_url ?? undefined}
                           target="_blank"
                           rel="noopener"
-                          className="btn btn-sm"
-                          style={{ textDecoration: "none" }}
+                          className="touch-button tests-tab__view-link"
                         >
                           View
                         </a>
@@ -231,6 +230,13 @@ function dispatchBadgeClass(status: string | undefined, kind: "github" | "docker
     : status === "error" || status === "failed"
       ? "failure"
       : "in_progress";
+}
+
+function dispatchBadgeTone(status: string | undefined, kind: "github" | "docker"): BadgeTone {
+  const klass = dispatchBadgeClass(status, kind);
+  if (klass === "success") return "success";
+  if (klass === "failure") return "danger";
+  return "warning";
 }
 
 function TestRepoCard({ repo }: { repo: TestRepo }): React.ReactElement {
@@ -300,11 +306,11 @@ function TestRepoCard({ repo }: { repo: TestRepo }): React.ReactElement {
         />
       </div>
       <div className="dispatch-actions">
-        <button
-          className="btn btn-lg btn-blue"
-          type="button"
+        <TouchButton
+          className="tests-tab__dispatch-button"
           disabled={ghState.status === "dispatching"}
           onClick={() => dispatch("github", pyVer, branch)}
+          variant="primary"
         >
           {ghState.status === "dispatching" ? (
             <span className="spinner" />
@@ -312,12 +318,12 @@ function TestRepoCard({ repo }: { repo: TestRepo }): React.ReactElement {
             <PlayGlyph size={14} />
           )}
           {" Run via GitHub Actions"}
-        </button>
-        <button
-          className="btn btn-lg btn-purple"
-          type="button"
+        </TouchButton>
+        <TouchButton
+          className="tests-tab__dispatch-button"
           disabled={dkState.status === "dispatching"}
           onClick={() => dispatch("docker", pyVer, branch)}
+          variant="primary"
         >
           {dkState.status === "dispatching" ? (
             <span className="spinner" />
@@ -325,30 +331,26 @@ function TestRepoCard({ repo }: { repo: TestRepo }): React.ReactElement {
             <DockerGlyph size={14} />
           )}
           {" Run in Docker (Local)"}
-        </button>
+        </TouchButton>
       </div>
       {ghState.output ? (
         <div>
-          <div
-            style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 12 }}
-          >
+          <div className="tests-tab__dispatch-status">
             {"GitHub Actions: "}
-            <span className={"conclusion-badge " + dispatchBadgeClass(ghState.status, "github")}>
+            <Badge tone={dispatchBadgeTone(ghState.status, "github")} size="sm">
               {ghState.status}
-            </span>
+            </Badge>
           </div>
           <div className="output-box">{ghState.output}</div>
         </div>
       ) : null}
       {dkState.output ? (
         <div>
-          <div
-            style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 12 }}
-          >
+          <div className="tests-tab__dispatch-status">
             {"Docker: "}
-            <span className={"conclusion-badge " + dispatchBadgeClass(dkState.status, "docker")}>
+            <Badge tone={dispatchBadgeTone(dkState.status, "docker")} size="sm">
               {dkState.status}
-            </span>
+            </Badge>
           </div>
           <div className="output-box">{dkState.output}</div>
         </div>
@@ -360,7 +362,7 @@ function TestRepoCard({ repo }: { repo: TestRepo }): React.ReactElement {
           badge={repo.recent_runs.length + " runs"}
           defaultOpen={false}
         >
-          <div style={{ overflowX: "auto" }}>
+          <div className="tests-tab__table-wrap">
             <table className="data-table">
               <thead>
                 <tr>
@@ -379,11 +381,13 @@ function TestRepoCard({ repo }: { repo: TestRepo }): React.ReactElement {
                     <tr key={run.id}>
                       <td>{run.run_number}</td>
                       <td>
-                        <span className={"conclusion-badge " + c}>{c}</span>
+                        <Badge tone={CONCLUSION_TONE[c] || "neutral"} size="sm">
+                          {c}
+                        </Badge>
                       </td>
                       <td>{run.head_branch}</td>
                       <td>{run.triggering_actor || "-"}</td>
-                      <td style={{ color: "var(--text-muted)" }}>
+                      <td className="tests-tab__muted-cell">
                         {timeAgo(run.updated_at)}
                       </td>
                       <td>
@@ -391,11 +395,7 @@ function TestRepoCard({ repo }: { repo: TestRepo }): React.ReactElement {
                           href={run.html_url ?? undefined}
                           target="_blank"
                           rel="noopener"
-                          style={{
-                            color: "var(--accent-blue)",
-                            textDecoration: "none",
-                            fontSize: 12,
-                          }}
+                          className="tests-tab__link tests-tab__run-link"
                         >
                           View
                         </a>
@@ -417,23 +417,10 @@ function TestRepoCard({ repo }: { repo: TestRepo }): React.ReactElement {
 export function TestsTab({ testRepos, ciResults }: TestsProps): React.ReactElement {
   const results = ciResults ?? [];
   return (
-    <div>
+    <div className="tests-tab">
       <CiSection ciResults={results} />
-      <div
-        style={{
-          borderTop: "1px solid var(--border)",
-          margin: "0 0 20px 0",
-          paddingTop: 20,
-        }}
-      >
-        <div
-          style={{
-            fontWeight: 700,
-            fontSize: 16,
-            color: "var(--text-primary)",
-            marginBottom: 12,
-          }}
-        >
+      <div className="tests-tab__heavy-header">
+        <div className="tests-tab__section-title tests-tab__heavy-title">
           <FlaskGlyph size={16} /> Integration Tests — Heavy Test Suite
         </div>
       </div>
