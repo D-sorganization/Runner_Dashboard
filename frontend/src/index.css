@@ -24,6 +24,8 @@
   --accent-yellow: #d29922;
   --accent-purple: #bc8cff;
   --accent-orange: #f0883e;
+  --accent-pink: #ff7b72;
+  --accent-teal: #56d364;
   --mobile-hit-target: 44px;
 
   /* Badge tints — paired bg/fg colours used by <Badge /> primitive.
@@ -2977,6 +2979,89 @@ th.sortable.active .sort-indicator {
 
 .density-toggle__label {
   font-size: 13px;
+}
+
+/* ── Theme Settings ── */
+.theme-settings {
+  margin-bottom: 16px;
+  padding: 16px;
+}
+
+.theme-settings__title {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 16px;
+}
+
+.theme-settings__group {
+  margin-bottom: 24px;
+}
+
+.theme-settings__group-title {
+  color: var(--text-secondary);
+  font-size: 13px;
+  margin: 0 0 8px;
+  text-transform: uppercase;
+}
+
+.theme-settings__accent-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.theme-settings__default-accent {
+  font-weight: 500;
+}
+
+.theme-settings__default-accent[aria-pressed="true"] {
+  border-color: var(--border-light);
+}
+
+.theme-settings__accent-swatch {
+  border: 2px solid transparent;
+  border-radius: 50%;
+  box-shadow: var(--shadow-soft);
+  cursor: pointer;
+  height: 36px;
+  padding: 0;
+  width: 36px;
+}
+
+.theme-settings__accent-swatch[aria-pressed="true"] {
+  border-color: var(--text-primary);
+}
+
+.theme-settings__accent-swatch--blue {
+  background: var(--accent-blue);
+}
+
+.theme-settings__accent-swatch--green {
+  background: var(--accent-green);
+}
+
+.theme-settings__accent-swatch--red {
+  background: var(--accent-red);
+}
+
+.theme-settings__accent-swatch--yellow {
+  background: var(--accent-yellow);
+}
+
+.theme-settings__accent-swatch--purple {
+  background: var(--accent-purple);
+}
+
+.theme-settings__accent-swatch--orange {
+  background: var(--accent-orange);
+}
+
+.theme-settings__accent-swatch--pink {
+  background: var(--accent-pink);
+}
+
+.theme-settings__accent-swatch--teal {
+  background: var(--accent-teal);
 }
 
 /* ── Quick Dispatch ── */
