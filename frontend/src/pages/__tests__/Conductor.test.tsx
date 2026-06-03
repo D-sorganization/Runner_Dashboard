@@ -77,10 +77,17 @@ describe("Conductor", () => {
     mockFetch(MOCK_QUEUE);
     render(<Conductor />);
     await waitFor(() => expect(screen.getByText(/running/i)).toBeInTheDocument());
+    expect(document.querySelector(".conductor__mode")).toHaveAttribute(
+      "data-touch-primitive",
+      "Badge",
+    );
     // capacity section surfaced
     expect(screen.getByText("Fleet capacity")).toBeInTheDocument();
     // budget burn surfaced (dollar amounts)
     expect(screen.getByText(/\$12\.50/)).toBeInTheDocument();
+    expect(
+      screen.getByRole("progressbar", { name: /conductor budget burn/i }),
+    ).toHaveAttribute("value", "25");
   });
 
   it("renders planned / active / blocked work", async () => {
@@ -89,6 +96,9 @@ describe("Conductor", () => {
     await waitFor(() => expect(screen.getByTestId("work-planned")).toHaveTextContent("5"));
     expect(screen.getByTestId("work-active")).toHaveTextContent("2");
     expect(screen.getByTestId("work-blocked")).toHaveTextContent("1");
+    expect(document.querySelector(".conductor__stat--accent")).toContainElement(
+      screen.getByTestId("work-blocked"),
+    );
   });
 
   it("pause control POSTs the pause action with CSRF header", async () => {
@@ -122,17 +132,23 @@ describe("Conductor", () => {
       expect(JSON.parse(postOpts.body as string)).toEqual({ action: "pause" });
       expect((postOpts.headers as Record<string, string>)["X-Requested-With"]).toBe("XMLHttpRequest");
     });
+    expect(screen.getByRole("button", { name: /pause/i })).toHaveAttribute(
+      "data-touch-primitive",
+      "TouchButton",
+    );
   });
 
   it("renders an inert notice when the surface is disabled", async () => {
     mockFetch({ detail: "Conductor integration is disabled" }, 404);
     render(<Conductor />);
     await waitFor(() => expect(screen.getByText(/conductor integration is disabled/i)).toBeInTheDocument());
+    expect(document.querySelector(".empty-state")).toBeInTheDocument();
   });
 
   it("shows an error state when the fetch rejects (no crash)", async () => {
     vi.stubGlobal("fetch", vi.fn(() => Promise.reject(new Error("network error"))));
     render(<Conductor />);
     await waitFor(() => expect(screen.getByText(/failed to load conductor/i)).toBeInTheDocument());
+    expect(document.querySelector(".empty-state")).toHaveAttribute("data-variant", "error");
   });
 });
