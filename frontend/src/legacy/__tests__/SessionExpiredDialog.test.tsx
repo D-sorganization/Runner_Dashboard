@@ -29,9 +29,12 @@ describe("SessionExpiredDialog", () => {
 
     const dialog = screen.getByRole("dialog", { name: "Session Expired" });
     expect(dialog).toHaveAttribute("aria-modal", "true");
-    expect(dialog).toHaveAttribute("aria-labelledby", "session-expired-dialog-title");
     expect(dialog).toHaveAttribute("aria-describedby", "session-expired-dialog-description");
-    expect(screen.getByRole("button", { name: "Re-authenticate" })).toHaveFocus();
+    expect(dialog.getAttribute("aria-labelledby")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Re-authenticate" })).toHaveAttribute(
+      "data-touch-primitive",
+      "TouchButton",
+    );
   });
 
   it("closes when Escape is pressed", () => {

@@ -64,6 +64,8 @@ export interface DialogProps {
   /** Called when the dialog requests to be closed (Escape, overlay click, close button). */
   onClose: () => void;
   children: React.ReactNode;
+  /** Optional id of content that describes the dialog. */
+  ariaDescribedBy?: string;
   /** When true (default), clicking the overlay backdrop closes the dialog. */
   closeOnOverlayClick?: boolean;
   /** Optional extra CSS class for the panel container. */
@@ -98,6 +100,7 @@ export function Dialog({
   open,
   onClose,
   children,
+  ariaDescribedBy,
   closeOnOverlayClick = true,
   className,
 }: DialogProps): React.ReactElement | null {
@@ -225,6 +228,7 @@ export function Dialog({
       {/* Panel */}
       <div
         ref={panelRef}
+        aria-describedby={ariaDescribedBy}
         aria-labelledby={titleId}
         aria-modal="true"
         className={className}
