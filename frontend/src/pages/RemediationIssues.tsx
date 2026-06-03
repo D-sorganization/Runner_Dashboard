@@ -13,14 +13,12 @@
  */
 import React, { useCallback, useEffect, useState } from "react";
 import { legacyFetch } from "../lib/api";
+import { Badge, type BadgeTone } from "../primitives/Badge";
+import { EmptyState } from "../primitives/EmptyState";
 import { RefreshGlyph } from "./decompIcons";
 import {
-  getComplexityStyle,
-  getJudgementStyle,
-  getTypeStyle,
   issueKey,
   issueMatchesFilters,
-  pillStyle,
   type IssueRecord,
 } from "./remediationDispatch";
 
@@ -58,6 +56,27 @@ const PROVIDER_OPTIONS = [
   "ollama",
   "cline",
 ];
+
+function issueTypeTone(type?: string): BadgeTone {
+  if (type === "bug" || type === "security") return "danger";
+  if (type === "task" || type === "docs") return "info";
+  return "neutral";
+}
+
+function complexityTone(complexity?: string): BadgeTone {
+  if (complexity === "trivial") return "success";
+  if (complexity === "routine") return "info";
+  if (complexity === "complex") return "warning";
+  if (complexity === "deep") return "danger";
+  return "neutral";
+}
+
+function judgementTone(judgement?: string): BadgeTone {
+  if (judgement === "design" || judgement === "contested") return "danger";
+  if (judgement === "objective") return "success";
+  if (judgement === "preference") return "warning";
+  return "neutral";
+}
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -288,34 +307,15 @@ export function RemediationIssuesSubTab({
   }
 
   return (
-    <div style={{ padding: "0 0 16px 0" }}>
-      <div
-        style={{
-          display: "flex",
-          gap: 8,
-          alignItems: "center",
-          flexWrap: "wrap",
-          marginBottom: 12,
-          padding: "10px 12px",
-          background: "var(--bg-secondary)",
-          borderRadius: 8,
-          border: "1px solid var(--border)",
-        }}
-      >
+    <div className="remediation-issues">
+      <div className="remediation-issues__filters">
         <select
           value={sourceFilter || "github"}
           onChange={(e) => {
             setSourceFilter(e.target.value);
             setSelected({});
           }}
-          style={{
-            fontSize: 12,
-            padding: "3px 6px",
-            background: "var(--bg-input)",
-            color: "var(--text-primary)",
-            border: "1px solid var(--border)",
-            borderRadius: 4,
-          }}
+          className="remediation-issues__control"
         >
           {sourceOptions.map((option) => (
             <option key={option.value} value={option.value}>
@@ -329,14 +329,7 @@ export function RemediationIssuesSubTab({
             setRepoFilter(e.target.value);
             setSelected({});
           }}
-          style={{
-            fontSize: 12,
-            padding: "3px 6px",
-            background: "var(--bg-input)",
-            color: "var(--text-primary)",
-            border: "1px solid var(--border)",
-            borderRadius: 4,
-          }}
+          className="remediation-issues__control"
         >
           <option value="">All repos</option>
           {repos.map((r) => (
@@ -351,14 +344,7 @@ export function RemediationIssuesSubTab({
             setComplexFilter(e.target.value);
             setSelected({});
           }}
-          style={{
-            fontSize: 12,
-            padding: "3px 6px",
-            background: "var(--bg-input)",
-            color: "var(--text-primary)",
-            border: "1px solid var(--border)",
-            borderRadius: 4,
-          }}
+          className="remediation-issues__control"
         >
           <option value="">All complexity</option>
           {["trivial", "routine", "complex", "deep", "research"].map((c) => (
@@ -373,14 +359,7 @@ export function RemediationIssuesSubTab({
             setJudgeFilter(e.target.value);
             setSelected({});
           }}
-          style={{
-            fontSize: 12,
-            padding: "3px 6px",
-            background: "var(--bg-input)",
-            color: "var(--text-primary)",
-            border: "1px solid var(--border)",
-            borderRadius: 4,
-          }}
+          className="remediation-issues__control"
         >
           <option value="">All judgement</option>
           {["objective", "preference", "design", "contested"].map((j) => (
@@ -389,16 +368,7 @@ export function RemediationIssuesSubTab({
             </option>
           ))}
         </select>
-        <label
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 4,
-            fontSize: 12,
-            cursor: "pointer",
-            userSelect: "none",
-          }}
-        >
+        <label className="remediation-issues__checkbox-label">
           <input
             type="checkbox"
             checked={pickableOnly}
@@ -410,9 +380,8 @@ export function RemediationIssuesSubTab({
           Pickable only
         </label>
         <button
-          className="btn"
+          className="btn remediation-issues__refresh"
           onClick={fetchIssues}
-          style={{ marginLeft: "auto" }}
         >
           <RefreshGlyph size={12} />
           Refresh
@@ -441,17 +410,7 @@ export function RemediationIssuesSubTab({
       ) : null}
 
       {sourceFilter === "unified" && issueStats ? (
-        <div
-          style={{
-            marginBottom: 10,
-            padding: "8px 12px",
-            borderRadius: 6,
-            fontSize: 12,
-            background: "var(--bg-secondary)",
-            border: "1px solid var(--border)",
-            color: "var(--text-secondary)",
-          }}
-        >
+        <div className="remediation-issues__summary">
           {(issueStats.unified_total || filtered.length) +
             " issues - " +
             (issueStats.github_total || 0) +
@@ -464,54 +423,32 @@ export function RemediationIssuesSubTab({
       ) : null}
 
       {loading ? (
-        <div
-          style={{
-            color: "var(--text-muted)",
-            fontSize: 12,
-            padding: "12px 0",
-          }}
-        >
+        <div className="remediation-issues__loading">
           Loading issues...
         </div>
       ) : null}
       {fetchError ? (
-        <div
-          style={{
-            padding: "10px 12px",
-            borderRadius: 8,
-            background: "rgba(248,81,73,0.12)",
-            color: "var(--accent-red)",
-            fontSize: 12,
-          }}
-        >
-          {fetchError}
-        </div>
+        <EmptyState
+          variant="error"
+          title="Issues unavailable"
+          description={fetchError}
+          retryLabel="Retry"
+          onRetry={fetchIssues}
+        />
       ) : null}
 
       {!loading && !fetchError ? (
-        <div style={{ overflowX: "auto" }}>
+        <div className="remediation-issues__table-wrap">
           {filtered.length === 0 ? (
-            <div
-              style={{
-                color: "var(--text-muted)",
-                fontSize: 13,
-                padding: "24px 0",
-                textAlign: "center",
-              }}
-            >
-              No issues match the current filters.
-            </div>
+            <EmptyState
+              title="No issues match the current filters."
+              description="Adjust filters or refresh the source."
+            />
           ) : (
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                fontSize: 12,
-              }}
-            >
+            <table className="remediation-issues__table">
               <thead>
-                <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                  <th style={{ padding: "6px 8px", textAlign: "center", width: 28 }}>
+                <tr className="remediation-issues__row">
+                  <th className="remediation-issues__cell remediation-issues__cell--select">
                     <input
                       type="checkbox"
                       onChange={(e) => toggleAll(e.target.checked)}
@@ -528,18 +465,18 @@ export function RemediationIssuesSubTab({
                       }
                     />
                   </th>
-                  <th style={{ padding: "6px 8px", textAlign: "left" }}>Repo</th>
-                  <th style={{ padding: "6px 8px", textAlign: "left" }}>#</th>
-                  <th style={{ padding: "6px 8px", textAlign: "left" }}>Title</th>
-                  <th style={{ padding: "6px 8px", textAlign: "left" }}>Type</th>
-                  <th style={{ padding: "6px 8px", textAlign: "left" }}>
+                  <th className="remediation-issues__cell">Repo</th>
+                  <th className="remediation-issues__cell">#</th>
+                  <th className="remediation-issues__cell">Title</th>
+                  <th className="remediation-issues__cell">Type</th>
+                  <th className="remediation-issues__cell">
                     Complexity
                   </th>
-                  <th style={{ padding: "6px 8px", textAlign: "left" }}>Effort</th>
-                  <th style={{ padding: "6px 8px", textAlign: "left" }}>
+                  <th className="remediation-issues__cell">Effort</th>
+                  <th className="remediation-issues__cell">
                     Judgement
                   </th>
-                  <th style={{ padding: "6px 8px", textAlign: "center" }}>
+                  <th className="remediation-issues__cell remediation-issues__cell--center">
                     Pickable
                   </th>
                 </tr>
@@ -564,11 +501,7 @@ export function RemediationIssuesSubTab({
                       ? "https://github.com/" + repo + "/issues/" + issue.number
                       : "#");
                   const repoUrl = "https://github.com/" + repo;
-                  const typeStyle = getTypeStyle(
-                    taxonomy.type || taxonomy.issue_type,
-                  );
-                  const complexityStyle = getComplexityStyle(taxonomy.complexity);
-                  const judgementStyle = getJudgementStyle(taxonomy.judgement);
+                  const issueType = taxonomy.type || taxonomy.issue_type;
                   const isDangerous =
                     taxonomy.judgement === "design" ||
                     taxonomy.judgement === "contested";
@@ -585,15 +518,13 @@ export function RemediationIssuesSubTab({
                   return (
                     <tr
                       key={key}
-                      style={{
-                        borderBottom: "1px solid var(--border)",
-                        opacity: selectable ? 1 : 0.7,
-                        background: selectable
-                          ? "transparent"
-                          : "rgba(255,0,0,0.04)",
-                      }}
+                      className={
+                        selectable
+                          ? "remediation-issues__row"
+                          : "remediation-issues__row remediation-issues__row--blocked"
+                      }
                     >
-                      <td style={{ padding: "6px 8px", textAlign: "center" }}>
+                      <td className="remediation-issues__cell remediation-issues__cell--select">
                         <input
                           type="checkbox"
                           checked={isSelected}
@@ -615,35 +546,29 @@ export function RemediationIssuesSubTab({
                           }}
                         />
                       </td>
-                      <td style={{ padding: "6px 8px", whiteSpace: "nowrap" }}>
+                      <td className="remediation-issues__cell remediation-issues__cell--nowrap">
                         {repo ? (
                           <a
                             href={repoUrl}
                             target="_blank"
                             rel="noreferrer"
-                            style={{
-                              color: "var(--text-secondary)",
-                              textDecoration: "none",
-                            }}
+                            className="remediation-issues__repo-link"
                           >
                             {repo}
                           </a>
                         ) : (
-                          <span style={{ color: "var(--text-muted)" }}>
+                          <span className="remediation-issues__muted">
                             {linearId || "Linear-only"}
                           </span>
                         )}
                       </td>
-                      <td style={{ padding: "6px 8px", whiteSpace: "nowrap" }}>
+                      <td className="remediation-issues__cell remediation-issues__cell--nowrap">
                         {issue.number != null ? (
                           <a
                             href={issueUrl}
                             target="_blank"
                             rel="noreferrer"
-                            style={{
-                              color: "var(--accent-blue)",
-                              textDecoration: "none",
-                            }}
+                            className="remediation-issues__issue-link"
                           >
                             {"#" + issue.number}
                           </a>
@@ -652,106 +577,81 @@ export function RemediationIssuesSubTab({
                             href={linearUrl || issueUrl}
                             target="_blank"
                             rel="noreferrer"
-                            style={{
-                              color: "var(--accent-blue)",
-                              textDecoration: "none",
-                            }}
+                            className="remediation-issues__issue-link"
                           >
                             {linearId || "Linear"}
                           </a>
                         )}
                       </td>
-                      <td style={{ padding: "6px 8px", maxWidth: 300 }}>
-                        <div
-                          style={{
-                            display: "flex",
-                            gap: 6,
-                            flexWrap: "wrap",
-                            alignItems: "center",
-                            marginBottom: 4,
-                          }}
-                        >
+                      <td className="remediation-issues__cell remediation-issues__title-cell">
+                        <div className="remediation-issues__source-row">
                           {sources.map((src) => (
-                            <span
+                            <Badge
                               key={src}
-                              style={pillStyle(
-                                src === "linear"
-                                  ? {
-                                      background: "rgba(99,102,241,0.18)",
-                                      color: "var(--accent-purple)",
-                                    }
-                                  : {
-                                      background: "rgba(88,166,255,0.18)",
-                                      color: "var(--accent-blue)",
-                                    },
-                              )}
+                              size="sm"
+                              tone={src === "linear" ? "neutral" : "info"}
                             >
                               {src.toUpperCase()}
-                            </span>
+                            </Badge>
                           ))}
                           {linearId ? (
                             <a
                               href={linearUrl || issueUrl}
                               target="_blank"
                               rel="noreferrer"
-                              style={{
-                                color: "var(--accent-purple)",
-                                textDecoration: "none",
-                                fontWeight: 600,
-                              }}
+                              className="remediation-issues__linear-link"
                             >
                               {linearId}
                             </a>
                           ) : null}
                         </div>
                         {taxonomy.quick_win ? (
-                          <span
-                            style={{
-                              color: "var(--accent-yellow)",
-                              marginRight: 4,
-                            }}
-                          >
+                          <span className="remediation-issues__quick-win">
                             ★
                           </span>
                         ) : null}
                         <span title={title}>{truncTitle}</span>
                       </td>
-                      <td style={{ padding: "6px 8px" }}>
-                        {taxonomy.type || taxonomy.issue_type ? (
-                          <span style={pillStyle(typeStyle)}>
-                            {taxonomy.type || taxonomy.issue_type}
-                          </span>
+                      <td className="remediation-issues__cell">
+                        {issueType ? (
+                          <Badge size="sm" tone={issueTypeTone(issueType)}>
+                            {issueType}
+                          </Badge>
                         ) : (
-                          <span style={{ color: "var(--text-muted)" }}>—</span>
+                          <span className="remediation-issues__muted">—</span>
                         )}
                       </td>
-                      <td style={{ padding: "6px 8px" }}>
+                      <td className="remediation-issues__cell">
                         {taxonomy.complexity ? (
-                          <span style={pillStyle(complexityStyle)}>
+                          <Badge
+                            size="sm"
+                            tone={complexityTone(taxonomy.complexity)}
+                          >
                             {taxonomy.complexity}
-                          </span>
+                          </Badge>
                         ) : (
-                          <span style={{ color: "var(--text-muted)" }}>—</span>
+                          <span className="remediation-issues__muted">—</span>
                         )}
                       </td>
-                      <td style={{ padding: "6px 8px", whiteSpace: "nowrap" }}>
+                      <td className="remediation-issues__cell remediation-issues__cell--nowrap">
                         {taxonomy.effort || "—"}
                       </td>
-                      <td style={{ padding: "6px 8px" }}>
+                      <td className="remediation-issues__cell">
                         {taxonomy.judgement ? (
-                          <span style={pillStyle(judgementStyle)}>
+                          <Badge
+                            size="sm"
+                            tone={judgementTone(taxonomy.judgement)}
+                          >
                             {isDangerous ? "🛑 " : ""}
                             {taxonomy.judgement}
-                          </span>
+                          </Badge>
                         ) : (
-                          <span style={{ color: "var(--text-muted)" }}>—</span>
+                          <span className="remediation-issues__muted">—</span>
                         )}
                       </td>
-                      <td style={{ padding: "6px 8px", textAlign: "center" }}>
+                      <td className="remediation-issues__cell remediation-issues__cell--center">
                         {selectable ? (
-                          <span
-                            style={{ color: "var(--accent-green)", fontSize: 14 }}
-                          >
+                          <span className="remediation-issues__pickable">
                             ✓
                           </span>
                         ) : (
@@ -761,11 +661,7 @@ export function RemediationIssuesSubTab({
                                 ? "Linear-only items cannot be dispatched until linked to a GitHub issue."
                                 : blockedBy.join(", ")
                             }
-                            style={{
-                              color: "var(--accent-red)",
-                              fontSize: 14,
-                              cursor: "help",
-                            }}
+                            className="remediation-issues__blocked"
                           >
                             ✗
                           </span>

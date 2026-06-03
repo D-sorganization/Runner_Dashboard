@@ -16,6 +16,14 @@ const viewportProfilesRaw = JSON.parse(
 );
 
 const BASE_URL = process.env.DASHBOARD_URL ?? "http://localhost:8321";
+const WEB_SERVER_ENV = Object.fromEntries(
+  Object.entries(process.env).filter(
+    (entry): entry is [string, string] => typeof entry[1] === "string",
+  ),
+);
+WEB_SERVER_ENV.VITE_BACKEND_URL =
+  process.env.VITE_BACKEND_URL ??
+  `http://127.0.0.1:${process.env.DASHBOARD_PORT ?? "5001"}`;
 
 /** Desktop project — standard 1280×720 Chromium. */
 const desktopProject = {
@@ -63,6 +71,7 @@ export default defineConfig({
     ? {
         webServer: {
           command: "npm run dev -- --port 5173",
+          env: WEB_SERVER_ENV,
           url: "http://localhost:5173",
           reuseExistingServer: !process.env.CI,
           timeout: 60_000,
