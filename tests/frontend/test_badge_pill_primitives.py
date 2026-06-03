@@ -245,3 +245,14 @@ def test_density_toggle_consumes_touch_button_and_scoped_styles() -> None:
     assert 'className="density-toggle"' in source
     assert 'className="btn' not in source
     assert "style={{" not in source
+
+
+def test_theme_settings_consumes_touch_button_and_scoped_styles() -> None:
+    """Issue #834 migration: ThemeSettings should use shared primitives."""
+    source = _read(SRC_DIR / "components" / "ThemeSettings.tsx")
+    assert 'from "../primitives/TouchButton"' in source
+    assert "<TouchButton" in source
+    assert 'className="section theme-settings"' in source
+    assert "theme-settings__accent-swatch" in source
+    assert "PRESET_ACCENTS" not in source
+    assert "style={{" not in source

@@ -1,10 +1,15 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.67
+**Spec Version:** 2.5.68
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-03T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-03 (2.5.68):** Migrated Theme Settings onto the #834
+  primitive/token path. The default accent action now uses `TouchButton`, accent
+  swatches render through scoped `theme-settings__*` classes backed by theme
+  tokens, and concrete accent preset values live in `design/accentPresets.ts`
+  instead of inline TSX style/color literals.
 - **2026-06-03 (2.5.67):** Migrated the desktop shell Density Toggle onto the
   #834 primitive/token path. The compact/comfortable control now renders
   through `TouchButton`, preserves `aria-pressed` via the primitive `pressed`
