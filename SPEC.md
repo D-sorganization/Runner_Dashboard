@@ -1,10 +1,15 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.64
+**Spec Version:** 2.5.65
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-03T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-03 (2.5.65):** Migrated the Push Notifications settings surface
+  onto the #834 primitive/token path. Unsupported/config-missing and load-failure
+  states now render through `EmptyState`; subscribe/unsubscribe actions use
+  `TouchButton`; and scoped `push-settings__*` classes own page and topic
+  presentation instead of inline styles or hand-written touch button classes.
 - **2026-06-03 (2.5.64):** Migrated the Linear Integration Setup surface onto
   the #834 primitive/token path. Workspace auth status now renders through
   `Badge`; load failures and empty workspace states use `EmptyState`; webhook

@@ -69,6 +69,7 @@ describe("PushSettings", () => {
         screen.getByText(/not configured by operator/i),
       ).toBeInTheDocument();
     });
+    expect(document.querySelector(".empty-state")).toBeInTheDocument();
   });
 
   it("renders topic toggles after VAPID key is loaded", async () => {
@@ -86,6 +87,7 @@ describe("PushSettings", () => {
     await waitFor(() => {
       expect(document.body.textContent).toMatch(/failed to load vapid key|network fail/i);
     });
+    expect(document.querySelector(".empty-state")).toHaveAttribute("data-variant", "error");
   });
 
   it("shows all predefined push topics", async () => {
@@ -109,7 +111,7 @@ describe("PushSettings", () => {
     // The toggle is a div/button, not a native checkbox — clicking it should
     // not throw and should update the UI state.
     const agentCompletedLabel = screen.getByText(/Agent completed/i);
-    const topicRow = agentCompletedLabel.closest("[style]") as HTMLElement;
+    const topicRow = agentCompletedLabel.closest(".push-settings__topic") as HTMLElement;
     if (topicRow) {
       await act(async () => {
         fireEvent.click(topicRow);
@@ -117,5 +119,12 @@ describe("PushSettings", () => {
     }
     // No crash = component handles click correctly
     expect(screen.getByText(/Agent completed/i)).toBeInTheDocument();
+  });
+
+  it("renders subscribe through the touch button primitive", async () => {
+    global.fetch = makeVapidFetch(200, "BNbxyz123");
+    render(<PushSettings />);
+    const subscribeButton = await screen.findByRole("button", { name: /subscribe/i });
+    expect(subscribeButton).toHaveAttribute("data-touch-primitive", "TouchButton");
   });
 });
