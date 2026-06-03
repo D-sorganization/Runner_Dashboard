@@ -124,3 +124,17 @@ def test_scheduled_jobs_consumes_badge_empty_state_and_skeleton() -> None:
     assert "pillBase" not in source
     assert "rgba(139,148,158" not in source
     assert "rgba(88,166,255" not in source
+
+
+def test_runner_audit_consumes_badge_empty_state_and_touch_button() -> None:
+    """Issue #834 migration: RunnerAudit should use shared primitives."""
+    source = _read(SRC_DIR / "pages" / "RunnerAudit.tsx")
+    assert 'from "../primitives/Badge"' in source
+    assert 'from "../primitives/EmptyState"' in source
+    assert 'from "../primitives/TouchButton"' in source
+    assert "<Badge" in source
+    assert "<EmptyState" in source
+    assert "<TouchButton" in source
+    assert "thStyle" not in source
+    assert 'background: "rgba(248,81,73' not in source
+    assert "style={{" not in source

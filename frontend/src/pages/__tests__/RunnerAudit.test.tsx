@@ -26,15 +26,24 @@ describe("RunnerAudit", () => {
 
   it("shows the audit heading", () => {
     render(<RunnerAudit audit={{ violations: [] }} onRefresh={() => {}} />);
-    expect(screen.getByText(/Hosted-Runner Billing Audit/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Hosted-Runner Billing Audit/i),
+    ).toBeInTheDocument();
   });
 
   it("shows the not-yet-checked state when last_checked is null", () => {
     render(
-      <RunnerAudit audit={{ violations: [], last_checked: null }} onRefresh={() => {}} />,
+      <RunnerAudit
+        audit={{ violations: [], last_checked: null }}
+        onRefresh={() => {}}
+      />,
     );
     expect(screen.getByText(/Audit has not run yet/i)).toBeInTheDocument();
     expect(screen.getByText(/Not yet checked/i)).toBeInTheDocument();
+    expect(document.querySelector(".empty-state")).toBeInTheDocument();
+    expect(
+      document.querySelector("[data-touch-primitive='Badge']"),
+    ).toHaveTextContent("Not yet checked");
   });
 
   it("shows the all-clear state when checked with no violations", () => {
@@ -71,6 +80,10 @@ describe("RunnerAudit", () => {
     expect(screen.getByText(/1 violation\(s\) found/i)).toBeInTheDocument();
     expect(screen.getByText("D-sorg/foo")).toBeInTheDocument();
     expect(screen.getByText("ubuntu-latest")).toBeInTheDocument();
+    expect(document.querySelector(".runner-audit__table")).toBeInTheDocument();
+    expect(
+      document.querySelector(".runner-audit__runner-badge"),
+    ).toHaveAttribute("data-touch-primitive", "Badge");
     const link = screen.getByRole("link", { name: /View Run/i });
     expect(link).toHaveAttribute("href", "https://example.com/run/1");
     expect(link).toHaveAttribute("rel", "noopener noreferrer");
@@ -103,7 +116,13 @@ describe("RunnerAudit", () => {
   it("invokes onRefresh when the Refresh button is clicked", () => {
     const onRefresh = vi.fn();
     render(<RunnerAudit audit={{ violations: [] }} onRefresh={onRefresh} />);
-    fireEvent.click(screen.getByRole("button", { name: /Refresh runner audit now/i }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /Refresh runner audit now/i }),
+    );
     expect(onRefresh).toHaveBeenCalledTimes(1);
+    expect(document.querySelector(".runner-audit__refresh")).toHaveAttribute(
+      "data-touch-primitive",
+      "TouchButton",
+    );
   });
 });
