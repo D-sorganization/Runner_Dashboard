@@ -1,10 +1,14 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.68
+**Spec Version:** 2.5.69
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-03T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-03 (2.5.69):** Migrated AlarmPanel onto the #834 primitive/token
+  path. Fleet alarm severity chips now render through `Badge`, status/row/dot
+  severity styling is owned by scoped `alarm-panel__*` classes, and the
+  component no longer carries inline `CSSProperties` style helpers.
 - **2026-06-03 (2.5.68):** Migrated Theme Settings onto the #834
   primitive/token path. The default accent action now uses `TouchButton`, accent
   swatches render through scoped `theme-settings__*` classes backed by theme
