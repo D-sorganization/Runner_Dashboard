@@ -141,6 +141,11 @@ describe("AgentDispatchPage", () => {
     await waitFor(() => {
       expect(document.body.textContent).toMatch(/error|failed|HTTP 500/i);
     });
+    expect(document.querySelector(".empty-state")).toHaveAttribute("data-variant", "error");
+    expect(screen.getByRole("button", { name: /retry/i })).toHaveAttribute(
+      "data-touch-primitive",
+      "TouchButton",
+    );
   });
 
   it("renders empty failed runs state without crashing", async () => {
@@ -149,6 +154,8 @@ describe("AgentDispatchPage", () => {
     await waitFor(() => {
       expect(screen.getByText(/Claude CLI/i)).toBeInTheDocument();
     });
+    expect(screen.getByText(/No failed runs found/i)).toBeInTheDocument();
+    expect(document.querySelector(".empty-state")).toBeInTheDocument();
     expect(document.body).toBeInTheDocument();
   });
 

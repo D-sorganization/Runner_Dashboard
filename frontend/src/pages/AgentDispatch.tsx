@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react"
+import { EmptyState } from "../primitives/EmptyState";
 import { TouchButton } from "../primitives/TouchButton";
 import { useToast } from "../primitives/Toaster";
 import { SkeletonCard, SkeletonLine } from "../primitives/Skeleton";
@@ -202,7 +203,7 @@ export function AgentDispatchPage() {
         <h2>Failed Runs</h2>
         <p className="step-description">Tap a failed run to associate it with the dispatch.</p>
         {failedRuns.length === 0 ? (
-          <div className="empty-state">No failed runs found.</div>
+          <EmptyState title="No failed runs found" description="Recent workflow runs do not need manual agent dispatch." />
         ) : (
           <div className="run-list">
             {failedRuns.map((run) => {
@@ -217,7 +218,7 @@ export function AgentDispatchPage() {
             })}
           </div>
         )}
-        {canReview && <TouchButton onClick={() => setStep("review")} pressed={false} style={{ width: "100%" }} variant="primary">Review Dispatch →</TouchButton>}
+        {canReview && <TouchButton className="agent-dispatch__full-width-action" onClick={() => setStep("review")} pressed={false} variant="primary">Review Dispatch →</TouchButton>}
       </section>
     );
   }
@@ -248,10 +249,10 @@ export function AgentDispatchPage() {
           <div className="safety-plan"><strong>Safety Plan Preview:</strong> The agent will attempt a minimal, safe fix. Protected branches require PR-based remediation. Loop guards prevent infinite retry cycles.</div>
         </div>
         <div className="action-buttons">
-          <TouchButton disabled={!selectedProvider || !run || dispatching} onClick={confirmDispatch} style={{ width: "100%" }} variant="primary">
+          <TouchButton className="agent-dispatch__full-width-action" disabled={!selectedProvider || !run || dispatching} onClick={confirmDispatch} variant="primary">
             {dispatching ? <span className="dispatching-spinner">Dispatching…</span> : "Confirm Dispatch"}
           </TouchButton>
-          <TouchButton onClick={goBack} style={{ width: "100%" }} variant="default">← Back to Selection</TouchButton>
+          <TouchButton className="agent-dispatch__full-width-action" onClick={goBack} variant="default">← Back to Selection</TouchButton>
         </div>
       </section>
     );
@@ -267,8 +268,8 @@ export function AgentDispatchPage() {
             <h2>{isSuccess ? "Dispatch Submitted" : "Dispatch Failed"}</h2>
             <p>{dispatchResult.message}</p>
             <div className="action-buttons">
-              <TouchButton onClick={() => { setStep("select"); setSelection(EMPTY_SELECTION); setSelectedRun(null); setDispatchResult(null); }} style={{ width: "100%" }} variant="primary">New Dispatch</TouchButton>
-              <TouchButton onClick={goBack} style={{ width: "100%" }} variant="default">Back to Review</TouchButton>
+              <TouchButton className="agent-dispatch__full-width-action" onClick={() => { setStep("select"); setSelection(EMPTY_SELECTION); setSelectedRun(null); setDispatchResult(null); }} variant="primary">New Dispatch</TouchButton>
+              <TouchButton className="agent-dispatch__full-width-action" onClick={goBack} variant="default">Back to Review</TouchButton>
             </div>
           </div>
         </section>
@@ -292,7 +293,6 @@ export function AgentDispatchPage() {
         aria-live="polite"
         className="agent-dispatch-loading"
         role="status"
-        style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "12px" }}
       >
         <span className="visually-hidden">Loading dispatch data…</span>
         <SkeletonLine height={20} width="50%" />
@@ -301,7 +301,13 @@ export function AgentDispatchPage() {
       </div>
     );
   }
-  if (error && !loading) return <div aria-live="assertive" role="alert" style={{ padding: "24px", textAlign: "center", color: "var(--accent-red)", fontSize: "14px" }}><div style={{ marginBottom: "12px" }}>{error}</div><TouchButton onClick={fetchRuns} variant="primary">Retry</TouchButton></div>;
+  if (error && !loading) {
+    return (
+      <div className="agent-dispatch-error">
+        <EmptyState variant="error" title="Failed to load dispatch data" description={error} onRetry={fetchRuns} />
+      </div>
+    );
+  }
 
   return (
     <div className="agent-dispatch-page">

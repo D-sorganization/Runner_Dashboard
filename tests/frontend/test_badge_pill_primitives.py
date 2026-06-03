@@ -180,3 +180,16 @@ def test_conductor_consumes_badge_empty_state_and_touch_button() -> None:
     assert "MODE_COLORS" not in source
     assert 'className="btn' not in source
     assert "style={{" not in source
+
+
+def test_agent_dispatch_consumes_empty_state_and_touch_button() -> None:
+    """Issue #834 migration: AgentDispatch should use shared primitives."""
+    source = _read(SRC_DIR / "pages" / "AgentDispatch.tsx")
+    assert 'from "../primitives/EmptyState"' in source
+    assert 'from "../primitives/TouchButton"' in source
+    assert "<EmptyState" in source
+    assert "<TouchButton" in source
+    assert "agent-dispatch__full-width-action" in source
+    assert "agent-dispatch-error" in source
+    assert 'className="btn' not in source
+    assert "style={{" not in source
