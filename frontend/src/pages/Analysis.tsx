@@ -750,14 +750,7 @@ export function ReportsTab({ reports, loading }: ReportsTabProps): React.ReactEl
       <div className="reports-shell">
         <div className="reports-sidebar">
           <div className="section">
-            <div
-              style={{
-                padding: "12px 16px",
-                fontWeight: 600,
-                fontSize: 14,
-                borderBottom: "1px solid var(--border)",
-              }}
-            >
+            <div className="reports-section-title">
               Reports {loading ? <span className="spinner" /> : null}
             </div>
             <ul className="report-list">
@@ -779,7 +772,7 @@ export function ReportsTab({ reports, loading }: ReportsTabProps): React.ReactEl
                 </li>
               ))}
               {reports.length === 0 ? (
-                <li style={{ padding: 20, textAlign: "center", color: "var(--text-muted)" }}>
+                <li className="report-list-empty">
                   No reports found
                 </li>
               ) : null}
@@ -789,18 +782,9 @@ export function ReportsTab({ reports, loading }: ReportsTabProps): React.ReactEl
         <div className="reports-reader">
           {selected ? (
             <div>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  gap: 12,
-                  marginBottom: 10,
-                }}
-              >
+              <div className="reports-reader__header">
                 <span
-                  className="section-badge"
-                  style={{ maxWidth: "70%", overflow: "hidden", textOverflow: "ellipsis" }}
+                  className="section-badge report-selected-badge"
                 >
                   {selected}
                 </span>
@@ -814,16 +798,16 @@ export function ReportsTab({ reports, loading }: ReportsTabProps): React.ReactEl
                 </a>
               </div>
               {reports.filter((r) => r.date === selected && r.has_chart).length > 0 ? (
-                <div style={{ marginBottom: 16 }}>
+                <div className="report-chart">
                   <img
                     src={"/api/reports/" + selected + "/chart"}
                     alt="Assessment Scores"
-                    style={{ maxWidth: "100%", borderRadius: 8, border: "1px solid var(--border)" }}
+                    className="report-chart__image"
                   />
                 </div>
               ) : null}
               {rl ? (
-                <div style={{ textAlign: "center", padding: 40 }}>
+                <div className="reports-loading">
                   <span className="spinner" />
                 </div>
               ) : (
@@ -834,7 +818,7 @@ export function ReportsTab({ reports, loading }: ReportsTabProps): React.ReactEl
               )}
             </div>
           ) : (
-            <div style={{ padding: 40, textAlign: "center", color: "var(--text-muted)" }}>
+            <div className="reports-empty">
               Select a report from the list
             </div>
           )}
