@@ -215,7 +215,7 @@ describe("ReportsTab", () => {
     expect(screen.getByText("2026-05-31")).toBeInTheDocument();
     // KPI cards reflect the auto-loaded latest report.
     await waitFor(() => expect(screen.getByText("PRs Merged")).toBeInTheDocument());
-    expect(screen.getByText("5")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("5")).toBeInTheDocument());
     expect(screen.getByText("B+")).toBeInTheDocument();
     // Rendered markdown content.
     await waitFor(() => expect(screen.getByText("Daily Report")).toBeInTheDocument());

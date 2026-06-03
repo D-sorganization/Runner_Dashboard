@@ -35,6 +35,10 @@ describe("EventLog", () => {
     );
     expect(screen.getByRole("log", { name: /fleet event history/i })).toBeInTheDocument();
     expect(screen.getByText("N1 offline — disk pressure")).toBeInTheDocument();
+    expect(screen.getByText("critical")).toHaveClass("event-log__chip--critical");
+    expect(screen.getByText("N1 offline — disk pressure").closest("li")).toHaveClass(
+      "event-log__row--critical",
+    );
     // The node tag appears.
     expect(screen.getAllByText("N1").length).toBeGreaterThan(0);
   });
@@ -52,6 +56,9 @@ describe("EventLog", () => {
     expect(screen.getByText("info event")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Critical" }));
+    expect(screen.getByRole("button", { name: "Critical" })).toHaveClass(
+      "event-log__filter--active",
+    );
     expect(screen.getByText("crit event")).toBeInTheDocument();
     expect(screen.queryByText("info event")).toBeNull();
   });
@@ -64,6 +71,7 @@ describe("EventLog", () => {
     );
     const live = screen.getByTestId("event-log-live");
     expect(live).toHaveAttribute("aria-live", "polite");
+    expect(live).toHaveClass("visually-hidden");
     expect(within(live).getByText(/critical: disk/i)).toBeInTheDocument();
   });
 

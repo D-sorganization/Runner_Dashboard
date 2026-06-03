@@ -297,3 +297,16 @@ def test_events_tab_uses_scoped_classes() -> None:
     assert "overview-event-section" in source
     assert "style={{" not in source
     assert "style:" not in source
+
+
+def test_event_log_uses_scoped_classes() -> None:
+    """Issue #834 migration: EventLog should avoid inline style helpers."""
+    source = _read(SRC_DIR / "primitives" / "EventLog.tsx")
+    assert "event-log__toolbar" in source
+    assert "event-log__filter--active" in source
+    assert "event-log__row--" in source
+    assert "event-log__chip--" in source
+    assert "visually-hidden" in source
+    assert "CSSProperties" not in source
+    assert "style={{" not in source
+    assert "style:" not in source
