@@ -50,7 +50,12 @@ Object.defineProperty(global, "matchMedia", {
   }),
 });
 import { cleanup } from "@testing-library/react";
-import { afterEach } from "vitest";
+import { afterEach, vi } from "vitest";
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  if (typeof document !== "undefined") {
+    Object.defineProperty(document, "hidden", { value: false, configurable: true });
+  }
 });

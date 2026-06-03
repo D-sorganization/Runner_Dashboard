@@ -287,3 +287,13 @@ def test_assistant_markdown_uses_scoped_classes() -> None:
     assert "assistant-markdown__link" in source
     assert "style:" not in source
     assert "style={{" not in source
+
+
+def test_events_tab_uses_scoped_classes() -> None:
+    """Issue #834 migration: Events tab should avoid inline layout styles."""
+    source = _read(SRC_DIR / "pages" / "Events.tsx")
+    assert "events-tab__title" in source
+    assert "events-tab__degraded" in source
+    assert "overview-event-section" in source
+    assert "style={{" not in source
+    assert "style:" not in source

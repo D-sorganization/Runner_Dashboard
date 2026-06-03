@@ -1,10 +1,14 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.71
+**Spec Version:** 2.5.72
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-03T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-03 (2.5.72):** Migrated the Events tab wrapper onto the #834
+  scoped-class path. The dedicated Events tab and compact Overview event
+  section now own layout, title, and degraded-state presentation through
+  `events-tab__*` and `overview-event-section` classes instead of inline styles.
 - **2026-06-03 (2.5.71):** Migrated the assistant Markdown renderer onto the
   #834 scoped-class path. Code blocks, lists, headings, paragraphs, inline code,
   and links now render through `assistant-markdown__*` classes instead of inline

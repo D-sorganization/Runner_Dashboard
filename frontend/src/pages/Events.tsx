@@ -38,14 +38,14 @@ export function EventsTab({ rollupAlerts = [], onNavigate }: EventsTabProps) {
   const alerts = unifyAlerts(rollupAlerts, derivedAlerts);
 
   return (
-    <div className="events-tab" style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+    <div className="events-tab">
       <AlarmPanel alerts={alerts} onNavigate={onNavigate} />
       <div>
-        <h2 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 8px" }}>
+        <h2 className="events-tab__title">
           Event log
         </h2>
         {error ? (
-          <p style={{ color: "var(--accent-yellow)", fontSize: 12, margin: "0 0 8px" }}>
+          <p className="events-tab__degraded">
             Live updates degraded: {error}. Showing retained history.
           </p>
         ) : null}
@@ -68,10 +68,7 @@ export function OverviewEventSection({
   const alerts = unifyAlerts(rollupAlerts, derivedAlerts);
 
   return (
-    <div
-      className="overview-event-section"
-      style={{ display: "flex", flexDirection: "column", gap: 16 }}
-    >
+    <div className="overview-event-section">
       <AlarmPanel alerts={alerts} onNavigate={onNavigate} />
       <EventLog events={events} height={280} />
     </div>
