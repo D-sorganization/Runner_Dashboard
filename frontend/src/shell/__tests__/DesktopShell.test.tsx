@@ -62,6 +62,7 @@ describe("DesktopShell — structure", () => {
   it("renders the page body in a main landmark", () => {
     renderShell();
     const main = screen.getByRole("main");
+    expect(main).toHaveClass("desktop-shell__main");
     expect(within(main).getByTestId("page-body")).toBeInTheDocument();
   });
 });
@@ -91,8 +92,23 @@ describe("DesktopShell — navigation", () => {
 describe("DesktopShell — action buttons", () => {
   it("renders each action with its accessible name", () => {
     renderShell();
-    expect(screen.getByRole("button", { name: /^Refresh$/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^Chat$/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Refresh$/i })).toHaveClass("shell-action");
+    expect(screen.getByRole("button", { name: /^Chat$/i })).toHaveClass("shell-action");
+  });
+
+  it("marks active actions with a scoped class", () => {
+    renderShell({
+      actions: [
+        {
+          id: "chat",
+          label: "Chat",
+          tooltip: "Toggle the assistant chat sidebar.",
+          onClick: vi.fn(),
+          active: true,
+        },
+      ],
+    });
+    expect(screen.getByRole("button", { name: /^Chat$/i })).toHaveClass("shell-action--active");
   });
 
   it("fires the action onClick", () => {

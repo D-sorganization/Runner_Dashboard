@@ -473,19 +473,70 @@ code, pre, .code, kbd {
   white-space: nowrap;
 }
 
-.shell-help-trigger {
+.desktop-shell {
+  display: flex;
+  height: 100vh;
+  min-height: 0;
+}
+
+.desktop-shell__body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.desktop-shell__topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border, #30363d);
+  background: var(--bg-secondary, #161b22);
+  flex: 0 0 auto;
+}
+
+.desktop-shell__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.desktop-shell__main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.shell-action {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
+  gap: 6px;
+  padding: 5px 10px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border, #30363d);
   background: var(--bg-primary, #0f1117);
   color: var(--text-secondary, #8b949e);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.shell-action--active {
+  background: var(--accent-blue, #58a6ff);
+  color: var(--text-on-accent, #fff);
+}
+
+.shell-help-trigger {
+  width: 28px;
+  height: 28px;
+  justify-content: center;
+  padding: 0;
   font-size: 14px;
   font-weight: 700;
-  cursor: pointer;
 }
 
 .help-about__tabs {

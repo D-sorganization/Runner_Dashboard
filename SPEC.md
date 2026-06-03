@@ -1,10 +1,14 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.75
+**Spec Version:** 2.5.76
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-03T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-03 (2.5.76):** Migrated the modern `DesktopShell` chrome onto the
+  #834 scoped-class path. Shell layout, topbar, action cluster, main scrolling
+  region, and active action state now render through `desktop-shell__*` and
+  `shell-action--active` classes instead of inline JSX styles.
 - **2026-06-03 (2.5.75):** Migrated the Help/About dialog shell onto the #834
   scoped-class path. The trigger, dialog tabs, version metadata, quick-link
   chips, checklist, and keyboard shortcut rows now render through
