@@ -57,6 +57,15 @@ RESTART_UNITS="${RESTART_UNITS:-0}"
 # with a per-runner-name dir under a custom root (e.g. a dedicated NVMe path).
 RUNNER_TOOL_CACHE_ROOT="${RUNNER_TOOL_CACHE_ROOT:-}"
 
+# Cap pytest-xdist `-n auto` workers per job. The ControlTower utility VM has
+# 16 cores shared by up to 8 concurrent runners; uncapped `-n auto` spawns ~one
+# worker per core (~16) per job, so 8 busy runners = ~128 workers on 16 cores
+# (~8x oversubscription) — the measured load-40 that caused fleet-wide pytest
+# timeouts and OOM. PYTEST_XDIST_AUTO_NUM_WORKERS overrides `-n auto`/`-n logical`
+# for every job WITHOUT editing any repo workflow. Default 2 = cores(16)/runners(8);
+# set to 1 if the host runs 16 concurrent runners (both distros).
+PYTEST_XDIST_WORKERS="${PYTEST_XDIST_WORKERS:-2}"
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --dry-run)         DRY_RUN=1; shift ;;
@@ -171,6 +180,11 @@ Environment=ACTIONS_RUNNER_HOOK_JOB_STARTED=${HOOK_DIR}/job-started.sh
 Environment=ACTIONS_RUNNER_HOOK_JOB_COMPLETED=${HOOK_DIR}/job-completed.sh
 Environment=RUNNER_BUSY_LOCK_DIR=${LOCK_DIR}
 Environment=RUNNER_NAME=${runner_name}
+
+# Cap pytest-xdist \`-n auto\` workers (see PYTEST_XDIST_WORKERS in
+# deploy/migrate-runner-units.sh) so concurrent jobs on this shared-core
+# host don't oversubscribe the CPU (the load-40 / timeout / OOM root cause).
+Environment=PYTEST_XDIST_AUTO_NUM_WORKERS=${PYTEST_XDIST_WORKERS}
 
 ${tool_cache_stanza}
 
