@@ -1,4 +1,7 @@
-# Force LF line endings for shell scripts in this directory.
+# Force LF line endings for deploy scripts in this directory.
 # Prevents CRLF→LF sed-strip from showing as a local modification
 # when the repo is cloned on Windows and then used from WSL2.
+# (runner-scheduler.py shipped CRLF and broke its systemd unit with
+#  `/usr/bin/env: 'python3\r'` exit 127 — *.py must be LF too.)
 *.sh text eol=lf
+*.py text eol=lf
