@@ -400,7 +400,7 @@ cleanup_docker() {
         run docker container prune --force --filter "until=72h"
         run docker builder prune --all --force --filter "until=${DOCKER_PRUNE_UNTIL}"
         run docker image prune --force --filter "until=${DOCKER_PRUNE_UNTIL}"
-        [[ "$PRUNE_DOCKER_VOLUMES" == "1" ]] && run docker volume prune --force
+        if [[ "$PRUNE_DOCKER_VOLUMES" == "1" ]]; then run docker volume prune --force; fi
     fi
 }
 
