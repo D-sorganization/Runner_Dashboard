@@ -10,6 +10,7 @@ import os
 import platform
 import shutil
 import subprocess
+import threading
 import time
 from collections import deque
 from collections.abc import Callable
@@ -39,6 +40,78 @@ _PHYSICAL_DISK_CACHE: dict[str, dict[str, str]] = {}
 _WSL_BASE_PATH_CACHE: str | None = None
 _WSL_BASE_PATH_LOOKED_UP: bool = False
 
+# ---------------------------------------------------------------------------
+# Persistent hardware-facts cache (issue: cold-start /api/fleet/status 504)
+# ---------------------------------------------------------------------------
+# ``get_storage_pools`` queries Windows ``Get-PhysicalDisk`` (media/bus type)
+# and the WSL distro registry (BasePath) via PowerShell. These cold probes
+# take ~10 s and ~1.3 s respectively on the WSL host, and together with the
+# 2.8 s Windows host-resource snapshot they blow the 15 s ``PROXY_TO_HUB_S``
+# budget on the FIRST request after every ``systemctl restart`` — surfacing as
+# HTTP 504 "Hub timeout" on ``/api/fleet/status``.
+#
+# The values are *static hardware facts* (a drive's media type / bus type and
+# the distro's VHDX base path do not change between restarts), so we persist
+# them to a small JSON file. After the first warm-up the cold path is served
+# from disk in microseconds, and the live PowerShell probe only re-runs when
+# the persisted value is missing. Persisted facts are reused even across
+# process restarts, so a fresh service never pays the 13 s cold tax again.
+_HARDWARE_FACTS_DIR = Path(
+    os.environ.get(
+        "RUNNER_DASHBOARD_STATE_DIR",
+        Path.home() / ".config" / "runner-dashboard",
+    )
+)
+_HARDWARE_FACTS_FILE = _HARDWARE_FACTS_DIR / "hardware_facts.json"
+
+# Hard wall-clock budget for any single blocking PowerShell hardware probe.
+# Kept well under PROXY_TO_HUB_S (15 s) so even a pathologically slow cold
+# probe degrades to "Unknown" rather than timing out the whole endpoint.
+_HW_PROBE_TIMEOUT_S = 4.0
+
+# How long a probe result (including an "Unknown" failure) stays valid in the
+# persistent cache before we re-probe. On some hosts ``Get-PhysicalDisk`` is
+# both slow (~10 s) and returns nothing useful, so persisting the negative
+# result for a day keeps every restart fast instead of re-paying the cold tax;
+# we still re-probe daily in case the host configuration changes.
+_HW_FACTS_TTL_S = 24 * 3600
+
+# Live Windows host CPU/RAM is fetched via a ~2 s PowerShell ``Get-CimInstance``
+# fork on EVERY ``/api/system`` and ``/api/fleet/status`` call (the latter also
+# nests a local ``/api/system``). On a busy host that fork balloons to 5-7 s, and
+# the frontend's steady polling means almost every poll pays it fresh — pushing
+# the endpoint past its 15 s budget and surfacing as HTTP 504. A freshness window
+# lets all callers within the window share a single fork. 10 s keeps the figures
+# live enough for a fleet dashboard (CPU is also shown as a 1-minute rolling
+# average) while collapsing the fork rate by an order of magnitude. Tunable via
+# RUNNER_DASHBOARD_HOST_SNAPSHOT_TTL_S.
+_HOST_SNAPSHOT_TTL_S = float(os.environ.get("RUNNER_DASHBOARD_HOST_SNAPSHOT_TTL_S", "10.0"))
+_host_snapshot_cache: tuple[dict[str, float] | None, float] | None = None
+_host_snapshot_lock = threading.Lock()
+
+
+def _load_hardware_facts() -> dict[str, Any]:
+    """Return persisted static hardware facts (best-effort, never raises)."""
+    try:
+        if _HARDWARE_FACTS_FILE.exists():
+            payload = json.loads(_HARDWARE_FACTS_FILE.read_text(encoding="utf-8"))
+            if isinstance(payload, dict):
+                return payload
+    except (OSError, json.JSONDecodeError) as exc:
+        log.debug("hardware_facts: load failed: %s", exc)
+    return {}
+
+
+def _save_hardware_facts(facts: dict[str, Any]) -> None:
+    """Persist static hardware facts atomically (best-effort, never raises)."""
+    try:
+        _HARDWARE_FACTS_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = _HARDWARE_FACTS_FILE.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(facts), encoding="utf-8")
+        tmp.replace(_HARDWARE_FACTS_FILE)
+    except OSError as exc:
+        log.debug("hardware_facts: save failed: %s", exc)
+
 
 def get_powershell_candidates() -> list[str]:
     """Dynamically build list of PowerShell executable candidates."""
@@ -58,18 +131,33 @@ def get_powershell_candidates() -> list[str]:
     return candidates
 
 
-def _run_windows_powershell(command: str) -> str | None:
-    """Run a PowerShell command on the Windows host and return its stdout."""
+def _run_windows_powershell(command: str, *, deadline: float | None = None) -> str | None:
+    """Run a PowerShell command on the Windows host and return its stdout.
+
+    ``deadline`` is an optional ``time.monotonic()`` wall-clock budget for the
+    whole call. Without it, a fully-failing probe iterates every PowerShell
+    candidate at 5 s each (~10 s observed cold), which on its own can blow the
+    15 s endpoint budget. With a deadline, each candidate's subprocess timeout
+    is clamped to the remaining budget and the loop stops once it is exhausted,
+    so the call degrades fast instead of hanging the request.
+    """
     if "microsoft" not in platform.uname().release.lower():
         return None
     candidates = get_powershell_candidates()
     for powershell in candidates:
+        if deadline is not None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            timeout = min(5.0, remaining)
+        else:
+            timeout = 5.0
         try:
             result = subprocess.run(
                 [powershell, "-NoProfile", "-Command", command],
                 capture_output=True,
                 text=True,
-                timeout=5,
+                timeout=timeout,
                 env=safe_subprocess_env(),
             )
             if result.returncode == 0 and result.stdout.strip():
@@ -79,9 +167,9 @@ def _run_windows_powershell(command: str) -> str | None:
     return None
 
 
-def _run_windows_powershell_json(command: str) -> Any:
+def _run_windows_powershell_json(command: str, *, deadline: float | None = None) -> Any:
     """Run a PowerShell command on the Windows host and parse its stdout as JSON."""
-    raw = _run_windows_powershell(command)
+    raw = _run_windows_powershell(command, deadline=deadline)
     if not raw:
         return None
     try:
@@ -122,7 +210,7 @@ if (Test-Path $lxssPath) {
 }
 [pscustomobject]@{ BasePath = $basePath } | ConvertTo-Json -Compress
 """
-    data = _run_windows_powershell_json(command)
+    data = _run_windows_powershell_json(command, deadline=time.monotonic() + _HW_PROBE_TIMEOUT_S)
     if isinstance(data, dict):
         return data
     return None
@@ -182,7 +270,7 @@ try {{
 }} catch {{}}
 "@{{MediaType='Unknown'; BusType='Unknown'}}"
 """
-    data = _run_windows_powershell_json(command)
+    data = _run_windows_powershell_json(command, deadline=time.monotonic() + _HW_PROBE_TIMEOUT_S)
     res = {"media_type": "Unknown", "bus_type": "Unknown"}
     if isinstance(data, dict):
         if data.get("MediaType"):
@@ -193,26 +281,80 @@ try {{
 
 
 def get_cached_windows_drive_physical_properties(drive_letter: str) -> dict[str, str]:
-    """Get windows drive physical properties with caching."""
+    """Get windows drive physical properties with caching.
+
+    Three-tier lookup so a cold process never pays the ~10 s ``Get-PhysicalDisk``
+    probe inside the request budget more than once per host lifetime:
+
+    1. In-memory cache (fastest, per-process).
+    2. Persistent ``hardware_facts.json`` — media/bus type is static hardware,
+       so a value learned before the last restart is still valid.
+    3. Live PowerShell probe (bounded by ``_HW_PROBE_TIMEOUT_S``); only reached
+       on a genuine cache miss. A successful probe is persisted for next time.
+
+    A probe that times out or fails returns ``Unknown`` and is NOT persisted, so
+    it will be retried (and the endpoint stays responsive in the meantime).
+    """
     letter = drive_letter.upper()
-    if letter not in _PHYSICAL_DISK_CACHE:
-        _PHYSICAL_DISK_CACHE[letter] = get_windows_drive_physical_properties(letter)
-    return _PHYSICAL_DISK_CACHE[letter]
+    if letter in _PHYSICAL_DISK_CACHE:
+        return _PHYSICAL_DISK_CACHE[letter]
+
+    facts = _load_hardware_facts()
+    disks = facts.get("physical_disks")
+    if isinstance(disks, dict) and isinstance(disks.get(letter), dict):
+        entry = disks[letter]
+        fetched_at = entry.get("_fetched_at", 0)
+        if isinstance(fetched_at, int | float) and (time.time() - fetched_at) < _HW_FACTS_TTL_S:
+            cached = {
+                "media_type": str(entry.get("media_type", "Unknown")),
+                "bus_type": str(entry.get("bus_type", "Unknown")),
+            }
+            _PHYSICAL_DISK_CACHE[letter] = cached
+            return cached
+
+    props = get_windows_drive_physical_properties(letter)
+    _PHYSICAL_DISK_CACHE[letter] = props
+    # Persist the result — including an "Unknown" failure — with a timestamp so
+    # restarts stay fast. The TTL (see _HW_FACTS_TTL_S) ensures we re-probe
+    # periodically in case the host's disk topology changes.
+    if not isinstance(disks, dict):
+        disks = {}
+    disks[letter] = {**props, "_fetched_at": time.time()}
+    facts["physical_disks"] = disks
+    _save_hardware_facts(facts)
+    return props
 
 
 def get_cached_wsl_base_path() -> str | None:
-    """Retrieve and cache active WSL BasePath from registry."""
+    """Retrieve and cache active WSL BasePath from registry.
+
+    Mirrors :func:`get_cached_windows_drive_physical_properties`: the distro's
+    VHDX base path is static, so it is served from the persistent
+    ``hardware_facts.json`` before falling back to the ~1.3 s registry probe.
+    """
     global _WSL_BASE_PATH_CACHE, _WSL_BASE_PATH_LOOKED_UP
-    if not _WSL_BASE_PATH_LOOKED_UP:
-        info = get_wsl_distro_registry_info()
-        if info and "BasePath" in info:
-            _WSL_BASE_PATH_CACHE = info["BasePath"]
+    if _WSL_BASE_PATH_LOOKED_UP:
+        return _WSL_BASE_PATH_CACHE
+
+    facts = _load_hardware_facts()
+    persisted = facts.get("wsl_base_path")
+    if isinstance(persisted, str) and persisted:
+        _WSL_BASE_PATH_CACHE = persisted
         _WSL_BASE_PATH_LOOKED_UP = True
+        return _WSL_BASE_PATH_CACHE
+
+    info = get_wsl_distro_registry_info()
+    if info and "BasePath" in info:
+        _WSL_BASE_PATH_CACHE = info["BasePath"]
+    _WSL_BASE_PATH_LOOKED_UP = True
+    if isinstance(_WSL_BASE_PATH_CACHE, str) and _WSL_BASE_PATH_CACHE:
+        facts["wsl_base_path"] = _WSL_BASE_PATH_CACHE
+        _save_hardware_facts(facts)
     return _WSL_BASE_PATH_CACHE
 
 
-def _windows_host_resource_snapshot() -> dict[str, float] | None:
-    """Return Windows host CPU/RAM metrics when running under WSL."""
+def _windows_host_resource_snapshot_uncached() -> dict[str, float] | None:
+    """Fork PowerShell to read live Windows host CPU/RAM (no caching)."""
     command = r"""
 $cpu = (Get-CimInstance Win32_PerfFormattedData_PerfOS_Processor -Filter "Name='_Total'").PercentProcessorTime
 $os = Get-CimInstance Win32_OperatingSystem
@@ -227,7 +369,7 @@ $used = $total - $free
   memory_percent = [math]::Round(($used / $total) * 100, 1)
 } | ConvertTo-Json -Compress
 """
-    data = _run_windows_powershell_json(command)
+    data = _run_windows_powershell_json(command, deadline=time.monotonic() + _HW_PROBE_TIMEOUT_S)
     if not data or not isinstance(data, dict):
         return None
     try:
@@ -240,6 +382,38 @@ $used = $total - $free
         }
     except (TypeError, ValueError, KeyError):
         return None
+
+
+def _windows_host_resource_snapshot() -> dict[str, float] | None:
+    """Return live Windows host CPU/RAM metrics with a short freshness cache.
+
+    The underlying PowerShell fork costs ~2 s and runs on every metrics request.
+    A ``_HOST_SNAPSHOT_TTL_S`` window lets concurrent/rapid callers (frontend
+    polling + the fleet-status peer fan-out) share one fork, which keeps
+    ``/api/system`` and ``/api/fleet/status`` comfortably inside the 15 s budget
+    on a busy host. A single in-process lock collapses a concurrent miss into one
+    fork; if the fresh probe fails it returns ``None`` (callers fall back to
+    psutil/WSL figures) without poisoning the cache.
+    """
+    global _host_snapshot_cache  # noqa: PLW0603
+    now = time.monotonic()
+    cached = _host_snapshot_cache
+    if cached is not None and (now - cached[1]) < _HOST_SNAPSHOT_TTL_S:
+        return cached[0]
+
+    with _host_snapshot_lock:
+        # Re-check: another thread may have refreshed while we waited.
+        cached = _host_snapshot_cache
+        now = time.monotonic()
+        if cached is not None and (now - cached[1]) < _HOST_SNAPSHOT_TTL_S:
+            return cached[0]
+        data = _windows_host_resource_snapshot_uncached()
+        if data is not None:
+            _host_snapshot_cache = (data, time.monotonic())
+            return data
+        # Probe failed: serve a slightly-stale prior value if we have one rather
+        # than dropping to the WSL fallback mid-spike; otherwise return None.
+        return cached[0] if cached is not None else None
 
 
 # Host memory cache for WSL

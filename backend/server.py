@@ -1383,7 +1383,7 @@ def _unit_active_sync(unit: str) -> bool:
     return result.returncode == 0
 
 
-def get_runner_capacity_snapshot() -> dict:
+def _build_runner_capacity_snapshot() -> dict:
     config_error = None
     try:
         config = _load_runner_schedule_config()
@@ -1412,6 +1412,25 @@ def get_runner_capacity_snapshot() -> dict:
         "schedule": config,
         "state": state,
     }
+
+
+def get_runner_capacity_snapshot() -> dict:
+    """Return the runner-capacity snapshot, cached for ``CacheTtl.RUNNER_CAPACITY_S``.
+
+    This snapshot is embedded in every ``/api/system`` and ``/api/fleet/status``
+    response. Building it forks the runner-scheduler binary plus two
+    ``systemctl is-active`` calls (~2-3 s of blocking subprocess work on a busy
+    WSL host), which dominated endpoint latency and pushed
+    ``/api/fleet/status`` past its 15 s budget (HTTP 504). The schedule/timer
+    state changes on the order of minutes, so a short TTL keeps the panel
+    effectively live while collapsing the per-poll fork cost to near zero.
+    """
+    cached = _cache_get("runner_capacity", float(CacheTtl.RUNNER_CAPACITY_S))
+    if cached is not None:
+        return cached
+    snapshot = _build_runner_capacity_snapshot()
+    _cache_set("runner_capacity", snapshot)
+    return snapshot
 
 
 # _windows_path_to_wsl, _dedupe_paths, _candidate_wslconfig_paths,

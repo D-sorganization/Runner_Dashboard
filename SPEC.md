@@ -1,10 +1,13 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.76
+**Spec Version:** 2.5.77
 **Application Version:** 4.8.0 (see `VERSION`)
-**Last Updated:** 2026-06-03T00:00:00-07:00
+**Last Updated:** 2026-06-10T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-10 (2.5.77):** Added a non-matrix `tests` aggregate CI context
+  after the Python matrix job so branch protection consumes the same green test
+  result as `tests (3.11)` without synthetic statuses.
 - **2026-06-03 (2.5.76):** Migrated the modern `DesktopShell` chrome onto the
   #834 scoped-class path. Shell layout, topbar, action cluster, main scrolling
   region, and active action state now render through `desktop-shell__*` and
@@ -897,6 +900,45 @@ Response shape (keyed by pool name, plus any FLEET_NODES peers):
 The Fleet tab `Mobile.tsx` renders entries whose names start with `"ControlTower"`
 in a dedicated **ControlTower Pools** section with a side-by-side card layout;
 all other fleet nodes render as standard runner cards below that section.
+
+#### 3.1.2 Persistent hardware-facts cache (cold-start budget)
+
+`GET /api/fleet/status` and `GET /api/system` build their disk/storage-pool
+section via `system_utils.get_storage_pools()`, which on WSL hosts probes the
+Windows host for **static hardware facts** — a drive's `MediaType`/`BusType`
+(`Get-PhysicalDisk`) and the distro's VHDX `BasePath` (Lxss registry). These
+PowerShell probes can take ~10 s and ~1.3 s respectively on a cold cache. Since
+the in-memory cache is empty after every `systemctl restart`, the first request
+previously paid the full ~13 s and, together with the live Windows
+host-resource snapshot, exceeded the 15 s `PROXY_TO_HUB_S` budget — surfacing as
+HTTP 504 "Hub timeout".
+
+Because these facts are static, they are persisted to
+`~/.config/runner-dashboard/hardware_facts.json` (override the directory with
+`RUNNER_DASHBOARD_STATE_DIR`). After the first warm-up the cold path is served
+from disk in microseconds, so restarts no longer pay the probe tax. Each entry
+carries a `_fetched_at` timestamp and is re-probed once per `_HW_FACTS_TTL_S`
+(24 h) in case host topology changes; even a `Unknown/Unknown` failure result is
+persisted so hosts where `Get-PhysicalDisk` is slow-but-empty stay fast. Every
+live PowerShell probe is additionally bounded by a `_HW_PROBE_TIMEOUT_S` (4 s)
+wall-clock deadline that clamps each candidate's subprocess timeout and stops
+iterating candidates once exhausted, so a slow probe degrades to `Unknown`
+instead of blocking the endpoint. The returned metric shape is unchanged.
+
+Two further per-request subprocess costs in the same metrics path are bounded by
+short-TTL caches so steady-state polling never re-pays them:
+
+- **Live Windows host CPU/RAM** (`_windows_host_resource_snapshot`) forks a ~2 s
+  PowerShell `Get-CimInstance` on every call. A `_HOST_SNAPSHOT_TTL_S` window
+  (10 s, override `RUNNER_DASHBOARD_HOST_SNAPSHOT_TTL_S`) lets concurrent and
+  successive callers share one fork; on a refresh failure the last good value is
+  served rather than dropping to the WSL fallback.
+- **Runner-capacity snapshot** (`get_runner_capacity_snapshot`) forks the
+  runner-scheduler binary (`--dry-run --json`) plus two `systemctl is-active`
+  calls (~2-3 s on a busy host). It is cached for `CacheTtl.RUNNER_CAPACITY_S`
+  (15 s); the underlying schedule/timer state changes on the order of minutes,
+  so the panel stays effectively live. Both the metrics endpoints and the
+  orchestration schedule routes share the cache.
 
 ### 3.2 History Tab
 

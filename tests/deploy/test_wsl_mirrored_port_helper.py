@@ -46,13 +46,17 @@ def _bash_path(path: Path) -> str:
     return f"/mnt/{drive}{resolved.as_posix()[2:]}"
 
 
-def _run(args: list[str]) -> subprocess.CompletedProcess[str]:
+def _run(args: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     assert BASH is not None
+    run_env = os.environ.copy()
+    if env:
+        run_env.update(env)
     return subprocess.run(
         [BASH, _bash_path(SCRIPT), *args],
         capture_output=True,
         text=True,
         check=False,
+        env=run_env,
     )
 
 
@@ -95,13 +99,19 @@ def test_port_too_large_rejected() -> None:
 
 @BASH_REQUIRED
 def test_outside_wsl_is_a_noop_for_clear() -> None:
-    """On a non-WSL host the script must exit 0 without touching anything.
+    """Unavailable Windows interop tools must make clear a no-op.
 
-    The host running the test may or may not be WSL. If it is WSL but
-    ``tailscale.exe`` isn't present, the script also returns 0. Either
-    way the only acceptable outcome is success.
+    Self-hosted CI runners can be WSL-like and may expose Windows binaries.
+    Force the existing override hooks to non-existent commands so this
+    contract stays hermetic and never touches host Tailscale state.
     """
-    result = _run(["clear", "--port", "8321"])
+    result = _run(
+        ["clear", "--port", "8321"],
+        env={
+            "WSL_MIRRORED_PORT_HELPER_POWERSHELL_EXE": "__missing_powershell_for_test__",
+            "WSL_MIRRORED_PORT_HELPER_TAILSCALE_EXE": "__missing_tailscale_for_test__",
+        },
+    )
     assert result.returncode == 0, result.stderr
 
 
@@ -109,3 +119,20 @@ def test_outside_wsl_is_a_noop_for_clear() -> None:
 def test_unknown_flag_rejected() -> None:
     result = _run(["clear", "--port", "8321", "--surprise"])
     assert result.returncode == 2
+
+
+def test_clear_removes_windows_portproxy_before_tailscale_binding() -> None:
+    """Regression for WSL2 mirrored networking bind churn.
+
+    A Windows ``netsh interface portproxy`` listener appears in WSL as an
+    invisible ``svchost`` port holder, so the helper must clear it before
+    systemd starts uvicorn.
+    """
+    content = SCRIPT.read_text(encoding="utf-8")
+    assert 'TAILSCALE_EXE="${WSL_MIRRORED_PORT_HELPER_TAILSCALE_EXE:-' in content
+    assert 'POWERSHELL_EXE="${WSL_MIRRORED_PORT_HELPER_POWERSHELL_EXE:-powershell.exe}"' in content
+    assert "WSL_MIRRORED_PORT_HELPER_ASSUME_WSL:-0" in content
+    assert "clear_windows_portproxy" in content
+    assert "foreach (\\$addr in @('0.0.0.0', '127.0.0.1'))" in content
+    assert "& netsh interface portproxy delete v4tov4 listenport=$PORT listenaddress=\\$addr" in content
+    assert content.index("clear_windows_portproxy") < content.index("tailscale serve --tcp=$PORT off")
