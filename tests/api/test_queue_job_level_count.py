@@ -13,9 +13,9 @@ runs), while leaving the legacy run-level ``queued_count`` untouched.
 
 from __future__ import annotations
 
-import json
 import os
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -41,12 +41,12 @@ def _run(repo: str, run_id: int, status: str) -> dict[str, Any]:
     }
 
 
-def _jobs_payload(statuses: list[str]) -> str:
-    return json.dumps({"jobs": [{"id": i, "status": s} for i, s in enumerate(statuses)]})
+def _jobs_payload(statuses: list[str]) -> dict[str, list[dict[str, Any]]]:
+    return {"jobs": [{"id": i, "status": s} for i, s in enumerate(statuses)]}
 
 
 @pytest.fixture
-def queue_app(monkeypatch):
+def queue_app(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     """Build a tiny app around the queue router and stub gh api calls."""
     from routers import queue as queue_router  # noqa: PLC0415
 
@@ -58,23 +58,26 @@ def queue_app(monkeypatch):
     #   - run 100: run-level "queued"      -> 1 queued job
     #   - run 200: run-level "in_progress" -> but 2 of its 3 jobs are STILL queued
     # Run-level queued_count == 1; true job-level queued depth == 3.
-    async def fake_run_cmd(cmd: list[str], timeout: int = 30, cwd=None):  # noqa: ANN001, ARG001
-        url = cmd[-1]
+    async def fake_gh_api(url: str) -> Any:
         if "/orgs/" in url and "/repos" in url:
-            return (0, json.dumps([{"name": "RepoA"}]), "")
+            return [{"name": "RepoA"}]
         if "/jobs" in url:
             if "/100/jobs" in url:
-                return (0, _jobs_payload(["queued"]), "")
+                return _jobs_payload(["queued"])
             if "/200/jobs" in url:
-                return (0, _jobs_payload(["in_progress", "queued", "queued"]), "")
-            return (0, _jobs_payload([]), "")
+                return _jobs_payload(["in_progress", "queued", "queued"])
+            return _jobs_payload([])
         if "status=queued" in url:
-            return (0, json.dumps({"workflow_runs": [_run("RepoA", 100, "queued")]}), "")
+            return {"workflow_runs": [_run("RepoA", 100, "queued")]}
         if "status=in_progress" in url:
-            return (0, json.dumps({"workflow_runs": [_run("RepoA", 200, "in_progress")]}), "")
-        return (0, json.dumps({"workflow_runs": []}), "")
+            return {"workflow_runs": [_run("RepoA", 200, "in_progress")]}
+        return {"workflow_runs": []}
 
-    monkeypatch.setattr(queue_router, "run_cmd", fake_run_cmd)
+    async def fail_run_cmd(*_args: Any, **_kwargs: Any) -> tuple[int, str, str]:
+        raise AssertionError("/api/queue read path must not shell out through gh")
+
+    monkeypatch.setattr(queue_router, "_gh_api", fake_gh_api)
+    monkeypatch.setattr(queue_router, "run_cmd", fail_run_cmd)
 
     app = FastAPI()
     app.include_router(queue_router.router)
@@ -95,26 +98,29 @@ def test_queue_surfaces_job_level_queued_depth(queue_app: TestClient) -> None:
     assert data["queued_jobs_count"] == 3
 
 
-def test_queue_job_count_falls_back_when_jobs_fetch_fails(monkeypatch) -> None:
+def test_queue_job_count_falls_back_when_jobs_fetch_fails(monkeypatch: pytest.MonkeyPatch) -> None:
     """If the per-run jobs fetch fails, we must not zero the queued depth."""
     from routers import queue as queue_router  # noqa: PLC0415
 
     monkeypatch.setattr(queue_router, "cache_get", lambda *a, **k: None)
     monkeypatch.setattr(queue_router, "cache_set", lambda *a, **k: None)
 
-    async def fake_run_cmd(cmd: list[str], timeout: int = 30, cwd=None):  # noqa: ANN001, ARG001
-        url = cmd[-1]
+    async def fake_gh_api(url: str) -> Any:
         if "/orgs/" in url and "/repos" in url:
-            return (0, json.dumps([{"name": "RepoA"}]), "")
+            return [{"name": "RepoA"}]
         if "/jobs" in url:
-            return (1, "", "boom")  # jobs fetch fails
+            raise RuntimeError("boom")  # jobs fetch fails
         if "status=queued" in url:
-            return (0, json.dumps({"workflow_runs": [_run("RepoA", 100, "queued")]}), "")
+            return {"workflow_runs": [_run("RepoA", 100, "queued")]}
         if "status=in_progress" in url:
-            return (0, json.dumps({"workflow_runs": []}), "")
-        return (0, json.dumps({"workflow_runs": []}), "")
+            return {"workflow_runs": []}
+        return {"workflow_runs": []}
 
-    monkeypatch.setattr(queue_router, "run_cmd", fake_run_cmd)
+    async def fail_run_cmd(*_args: Any, **_kwargs: Any) -> tuple[int, str, str]:
+        raise AssertionError("/api/queue read path must not shell out through gh")
+
+    monkeypatch.setattr(queue_router, "_gh_api", fake_gh_api)
+    monkeypatch.setattr(queue_router, "run_cmd", fail_run_cmd)
 
     app = FastAPI()
     app.include_router(queue_router.router)
