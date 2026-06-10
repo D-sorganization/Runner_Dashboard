@@ -216,10 +216,12 @@ async def gh_api_raw(endpoint: str) -> str:
 async def get_gh_health_summary(org: str) -> dict:
     """Core health logic for GitHub runners and dashboard state."""
     try:
+        from runner_inventory import fetch_org_runners  # noqa: PLC0415
+
         # Reuse the runner cache so health checks don't add extra API calls.
         data = cache_get("runners", 25.0)
         if data is None:
-            data = await gh_api_admin(f"/orgs/{org}/actions/runners")
+            data = await fetch_org_runners(gh_api_admin, org)
             cache_set("runners", data)
         gh_ok = True
         runner_count = len(data.get("runners", []))

@@ -1717,7 +1717,9 @@ async def get_watchdog_status(request: Request):
 
 async def _fleet_control_local(action: str) -> dict:
     """Scale runners on this machine only."""
-    data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
+    from runner_inventory import fetch_org_runners  # noqa: PLC0415
+
+    data = await fetch_org_runners(gh_api_admin, ORG)
     runners = data.get("runners", [])
     results = []
 
@@ -2465,9 +2467,10 @@ _system_router.set_runner_capacity_snapshot_func(get_runner_capacity_snapshot)
 async def _orchestrator_capacity_provider() -> dict[str, int]:
     from gh_utils import gh_api_admin  # noqa: PLC0415
     from routers.runner_helpers import count_runner_capacity  # noqa: PLC0415
+    from runner_inventory import fetch_org_runners  # noqa: PLC0415
 
     try:
-        data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
+        data = await fetch_org_runners(gh_api_admin, ORG)
         runners = (data or {}).get("runners", []) or []
         return count_runner_capacity(runners)
     except Exception as exc:  # noqa: BLE001 — fail safe: report zero capacity

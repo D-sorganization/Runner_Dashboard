@@ -63,7 +63,7 @@ async def test_api_health_uses_supported_github_signature(monkeypatch: pytest.Mo
     assert body["github_api"] == "unreachable"
     assert body["github_error_type"] == "RuntimeError"
     assert body["github_check_seconds"] >= 0
-    assert seen["endpoint"] == "/orgs/D-sorganization/actions/runners"
+    assert seen["endpoint"] == "/orgs/D-sorganization/actions/runners?per_page=100&page=1"
     assert metrics
     assert metrics[0][0:2] == ("degraded", "unreachable")
     assert metrics[0][2] >= 0

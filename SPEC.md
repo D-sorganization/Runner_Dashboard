@@ -1,10 +1,20 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.80
+**Spec Version:** 2.5.81
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-10T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-10 (2.5.81):** Fixed runner inventory visibility for fleets larger
+  than GitHub's default first page. Dashboard runner, health, stats, quick
+  dispatch, fleet control, diagnostics, group, and orchestration capacity paths
+  now share a paginated GitHub runner inventory helper, so `/api/runners` and
+  `/api/health` report all registered runners instead of stopping at 30 when
+  the organization has additional DeskComputer/OGLaptop/MATLAB capacity. CI
+  routing now keeps Python dependency-heavy jobs on `d-sorg-fleet-fast-io` and
+  Docker image scans on runners with both `d-sorg-fleet-docker` and
+  `d-sorg-fleet-fast-io`, preventing broad-fleet dispatch onto light laptop
+  runners that lack healthy Docker or cache state.
 - **2026-06-10 (2.5.80):** Routed queue-read GitHub calls through the shared
   GitHub App API client instead of shelling out to `gh api`. The dashboard queue
   view now uses the same authenticated client path as health checks, preserves

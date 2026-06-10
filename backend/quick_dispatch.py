@@ -28,6 +28,7 @@ from gh_utils import gh_api_admin
 from identity import identity_manager
 from pydantic import BaseModel, Field
 from readiness import aggregate, get_default_probes
+from runner_inventory import fetch_org_runners
 
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 
@@ -212,7 +213,7 @@ async def _probe_quick_dispatch_health(
 
     runners_data = cache_get("runners", _QUICK_DISPATCH_HEALTH_CACHE_SECONDS)
     if runners_data is None:
-        runners_data = await gh_api_admin(f"/orgs/{org}/actions/runners")
+        runners_data = await fetch_org_runners(gh_api_admin, org)
         cache_set("runners", runners_data)
 
     runners = list(runners_data.get("runners", []) or [])

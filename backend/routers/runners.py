@@ -27,6 +27,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from gh_utils import RateLimitedError, gh_api_admin
 from identity import Principal, require_scope
 from proxy_utils import proxy_to_hub, should_proxy_fleet_to_hub
+from runner_inventory import fetch_org_runners
 
 from .runner_helpers import (
     is_matlab_runner,
@@ -116,7 +117,7 @@ async def get_runners(request: Request) -> dict[str, Any]:
 
     try:
         data = await asyncio.wait_for(
-            gh_api_admin(f"/orgs/{ORG}/actions/runners"),
+            fetch_org_runners(gh_api_admin, ORG),
             timeout=_RUNNERS_LIVE_FETCH_TIMEOUT_S,
         )
         data = _runner_response(data, source="github", stale=False)
@@ -180,7 +181,7 @@ async def get_matlab_runner_health(request: Request) -> dict[str, Any]:
         return cached
 
     try:
-        data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
+        data = await fetch_org_runners(gh_api_admin, ORG)
         all_runners = data.get("runners", []) or []
     except Exception as exc:
         log.warning("failed to fetch runners for MATLAB health check: %s", exc)
@@ -224,7 +225,7 @@ async def start_runner(
         HTTPException: If runner not found or start fails.
     """
     try:
-        data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
+        data = await fetch_org_runners(gh_api_admin, ORG)
         runners = data.get("runners", [])
         num = runner_num_from_id(runner_id, runners)
 
@@ -278,7 +279,7 @@ async def stop_runner(
         HTTPException: If runner not found or stop fails.
     """
     try:
-        data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
+        data = await fetch_org_runners(gh_api_admin, ORG)
         runners = data.get("runners", [])
         num = runner_num_from_id(runner_id, runners)
 
@@ -332,7 +333,7 @@ async def restart_runner(
         HTTPException: If runner not found or restart fails.
     """
     try:
-        data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
+        data = await fetch_org_runners(gh_api_admin, ORG)
         runners = data.get("runners", [])
         num = runner_num_from_id(runner_id, runners)
 
@@ -401,7 +402,7 @@ async def get_runner_status(request: Request, runner_id: int) -> dict[str, Any]:
         HTTPException: If runner not found.
     """
     try:
-        data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
+        data = await fetch_org_runners(gh_api_admin, ORG)
         runners = data.get("runners", [])
 
         runner = next((r for r in runners if r.get("id") == runner_id), None)

@@ -98,6 +98,7 @@ async def _health_impl() -> dict:
     """Core health logic, callable both from the HTTP endpoint and internally."""
     start = time.perf_counter()
     # Lazy import to avoid circular dependency with server.py
+    from runner_inventory import fetch_org_runners  # noqa: PLC0415
     from server import (  # noqa: PLC0415
         BOOT_TIME,
         HOSTNAME,
@@ -117,7 +118,7 @@ async def _health_impl() -> dict:
         # Reuse the runner cache so health checks don't add extra API calls.
         data = _cache_get("runners", 25.0)
         if data is None:
-            data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
+            data = await fetch_org_runners(gh_api_admin, ORG)
             _cache_set("runners", data)
             github_auth = gh_client.get_status()
         gh_ok = True

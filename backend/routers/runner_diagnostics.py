@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from gh_utils import gh_api_admin
 from identity import Principal, require_scope
 from proxy_utils import proxy_to_hub, should_proxy_fleet_to_hub
+from runner_inventory import fetch_org_runners
 
 from .runner_helpers import (
     UTC,
@@ -54,7 +55,7 @@ async def get_runners_diagnostics_summary(request: Request) -> dict[str, Any]:
         from . import runners as runners_router
 
         api_admin = getattr(runners_router, "gh_api_admin", gh_api_admin)
-        data = await api_admin(f"/orgs/{ORG}/actions/runners")
+        data = await fetch_org_runners(api_admin, ORG)
         runners = data.get("runners", []) or []
 
         online_count = sum(1 for r in runners if r.get("status") == "online")
@@ -116,7 +117,7 @@ async def get_runner_diagnostics(request: Request, runner_id: int) -> dict[str, 
     try:
         from dashboard_config import ORG
 
-        data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
+        data = await fetch_org_runners(gh_api_admin, ORG)
         runners = data.get("runners", [])
 
         runner = next((r for r in runners if r.get("id") == runner_id), None)
@@ -187,7 +188,7 @@ async def get_fleet_capacity(request: Request) -> dict[str, Any]:
 
         from dashboard_config import HOSTNAME, ORG
 
-        data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
+        data = await fetch_org_runners(gh_api_admin, ORG)
         runners = data.get("runners", []) or []
 
         counts = count_runner_capacity(runners)
@@ -266,7 +267,7 @@ async def schedule_fleet_scale(
     try:
         from dashboard_config import ORG
 
-        data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
+        data = await fetch_org_runners(gh_api_admin, ORG)
         runners = data.get("runners", []) or []
 
         online = sum(1 for r in runners if r.get("status") == "online")
@@ -334,7 +335,7 @@ async def troubleshoot_runner(
     try:
         from dashboard_config import ORG
 
-        data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
+        data = await fetch_org_runners(gh_api_admin, ORG)
         runners = data.get("runners", [])
 
         runner = next((r for r in runners if r.get("id") == runner_id), None)

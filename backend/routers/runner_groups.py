@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from gh_utils import gh_api_admin
 from identity import Principal, require_scope
 from proxy_utils import proxy_to_hub, should_proxy_fleet_to_hub
+from runner_inventory import fetch_org_runners
 
 from .runner_helpers import run_runner_svc, runner_num_from_id, runner_sort_key
 
@@ -40,7 +41,7 @@ async def get_runner_group(request: Request, group_label: str) -> dict[str, Any]
 
         from dashboard_config import ORG
 
-        data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
+        data = await fetch_org_runners(gh_api_admin, ORG)
         all_runners = data.get("runners", [])
 
         # Filter runners with the specified label
@@ -87,7 +88,7 @@ async def start_runner_group(
     try:
         from dashboard_config import ORG
 
-        data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
+        data = await fetch_org_runners(gh_api_admin, ORG)
         all_runners = data.get("runners", [])
 
         grouped = [
@@ -147,7 +148,7 @@ async def stop_runner_group(
     try:
         from dashboard_config import ORG
 
-        data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
+        data = await fetch_org_runners(gh_api_admin, ORG)
         all_runners = data.get("runners", [])
 
         grouped = [
