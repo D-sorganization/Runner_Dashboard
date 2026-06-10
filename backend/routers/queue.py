@@ -12,7 +12,6 @@ Covers:
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 from typing import Annotated, Any, cast
 
@@ -20,6 +19,7 @@ from cache_utils import cache_delete, cache_get, cache_set
 from dashboard_config import ORG
 from error_models import bad_gateway, validation_error
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from gh_utils import gh_api
 from identity import Principal, require_scope
 from models.github_payloads import GhWorkflowRun
 from proxy_utils import proxy_to_hub, should_proxy_fleet_to_hub
@@ -30,6 +30,7 @@ from system_utils import run_cmd
 
 log = logging.getLogger("dashboard.queue")
 router = APIRouter(tags=["queue"])
+_gh_api = gh_api
 
 
 def _reason_counts(runs: list[dict]) -> dict[str, int]:
@@ -89,20 +90,8 @@ def _empty_queue_result() -> dict:
 
 async def _get_recent_org_repos(limit: int = 30) -> list[dict]:
     """Fetch recently updated organization repositories."""
-    code, stdout, _ = await run_cmd(
-        [
-            "gh",
-            "api",
-            f"/orgs/{ORG}/repos?per_page={limit}&sort=updated&direction=desc",
-        ],
-        timeout=20,
-    )
-    if code != 0:
-        return []
-    try:
-        return json.loads(stdout)
-    except (json.JSONDecodeError, ValueError):
-        return []
+    data = await _gh_api(f"/orgs/{ORG}/repos?per_page={limit}&sort=updated&direction=desc")
+    return data if isinstance(data, list) else data.get("items", [])
 
 
 async def _fetch_repo_runs(
@@ -113,7 +102,7 @@ async def _fetch_repo_runs(
 ) -> list[dict]:
     """Fetch workflow runs for one repository and annotate repository name.
 
-    Failures (non-zero exit, JSON parse error) raise instead of returning [].
+    GitHub API failures raise instead of returning [].
     Callers that aggregate across many repos must use return_exceptions=True
     so one repo's transient failure cannot silently zero its contribution to
     the org-wide queue total — that was the root cause of the dashboard
@@ -121,17 +110,8 @@ async def _fetch_repo_runs(
     """
     repo_name = validate_repo_slug(repo_name)
     status_part = f"&status={status}" if status else ""
-    rc, out, err = await run_cmd(
-        [
-            "gh",
-            "api",
-            f"/repos/{ORG}/{repo_name}/actions/runs?per_page={per_page}{status_part}",
-        ],
-        timeout=30,
-    )
-    if rc != 0:
-        raise RuntimeError(f"gh api failed for {repo_name} (status={status}): rc={rc} {err[:200]!r}")
-    runs = json.loads(out).get("workflow_runs", [])
+    data = await _gh_api(f"/repos/{ORG}/{repo_name}/actions/runs?per_page={per_page}{status_part}")
+    runs = data.get("workflow_runs", [])
     for run in runs:
         if "repository" not in run or not run["repository"]:
             run["repository"] = {"name": repo_name}
@@ -157,17 +137,8 @@ async def _count_queued_jobs_for_run(run: dict) -> int:
     if not repo_name or run_id is None:
         raise RuntimeError(f"run missing repo/id for job-level count: {run_id!r}")
     repo_name = validate_repo_slug(repo_name)
-    rc, out, err = await run_cmd(
-        [
-            "gh",
-            "api",
-            f"/repos/{ORG}/{repo_name}/actions/runs/{run_id}/jobs?per_page=100",
-        ],
-        timeout=30,
-    )
-    if rc != 0:
-        raise RuntimeError(f"gh api jobs failed for {repo_name}#{run_id}: rc={rc} {err[:200]!r}")
-    jobs = json.loads(out).get("jobs", [])
+    data = await _gh_api(f"/repos/{ORG}/{repo_name}/actions/runs/{run_id}/jobs?per_page=100")
+    jobs = data.get("jobs", [])
     return sum(1 for job in jobs if job.get("status") == "queued")
 
 

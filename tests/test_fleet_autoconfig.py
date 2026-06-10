@@ -66,6 +66,7 @@ def test_derive_fleet_nodes_skips_parent_when_current_dashboard_is_runner_pool()
             },
             {
                 "name": "OGLaptop",
+                "dashboard_url": "http://oglaptop.tail2bbcc7.ts.net:8321",
                 "tailscale_nodes": [{"ip": "100.125.64.108"}],
             },
         ],
@@ -80,5 +81,5 @@ def test_derive_fleet_nodes_skips_parent_when_current_dashboard_is_runner_pool()
 
     assert nodes == {
         "DeskComputer": "http://100.122.254.109:8321",
-        "OGLaptop": "http://100.125.64.108:8321",
+        "OGLaptop": "http://oglaptop.tail2bbcc7.ts.net:8321",
     }
