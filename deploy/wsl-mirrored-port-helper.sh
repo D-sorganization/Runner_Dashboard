@@ -52,9 +52,9 @@ usage() {
 Usage: $PROG <clear|restore> --port <N>
 
 Modes:
-  clear     Remove any Windows ``tailscale serve --tcp <port>`` binding so
+  clear     Remove any Windows ``tailscale serve`` binding on ``<port>`` so
             a WSL service can bind the same port without conflict.
-  restore   Re-add the ``tailscale serve --tcp <port> tcp://127.0.0.1:<port>``
+  restore   Re-add the ``tailscale serve --http <port> http://127.0.0.1:<port>``
             bridge so the bound WSL service is reachable on the Tailnet.
 EOF
 }
@@ -167,11 +167,23 @@ status_output() {
 }
 
 port_is_configured() {
-    # The serve table prints lines like ``tcp://...:8321`` for each entry.
+    # The serve table prints lines like ``http://...:8321`` for each entry.
     # A literal ":${PORT}" hit anywhere in the listing is a reliable
     # "this port is currently served" signal — false positives are
     # acceptable because ``serve off`` is itself idempotent.
     status_output | grep -q ":${PORT}\\b"
+}
+
+port_has_tcp_binding() {
+    status_output | grep -q "tcp://.*:${PORT}\\b"
+}
+
+port_has_http_binding() {
+    status_output | grep -q "http://.*:${PORT}\\b"
+}
+
+port_has_https_binding() {
+    status_output | grep -q "https://.*:${PORT}\\b"
 }
 
 case "$MODE" in
@@ -182,8 +194,34 @@ case "$MODE" in
             exit 0
         fi
         log "clearing tailscale serve binding for port $PORT"
-        if ! "$TAILSCALE_EXE" serve --tcp="${PORT}" off >/dev/null 2>&1; then
-            log "ERROR: 'tailscale serve --tcp=$PORT off' failed"
+        cleared=0
+        failed=0
+        if port_has_tcp_binding; then
+            if "$TAILSCALE_EXE" serve --tcp="${PORT}" off >/dev/null 2>&1; then
+                cleared=1
+            else
+                log "WARN: 'tailscale serve --tcp=$PORT off' failed"
+                failed=1
+            fi
+        fi
+        if port_has_http_binding; then
+            if "$TAILSCALE_EXE" serve --http="${PORT}" off >/dev/null 2>&1; then
+                cleared=1
+            else
+                log "WARN: 'tailscale serve --http=$PORT off' failed"
+                failed=1
+            fi
+        fi
+        if port_has_https_binding; then
+            if "$TAILSCALE_EXE" serve --https="${PORT}" off >/dev/null 2>&1; then
+                cleared=1
+            else
+                log "WARN: 'tailscale serve --https=$PORT off' failed"
+                failed=1
+            fi
+        fi
+        if [[ "$cleared" == "0" && "$failed" == "1" ]]; then
+            log "ERROR: failed to clear all detected tailscale serve bindings for port $PORT"
             exit 3
         fi
         # Give the Windows TCP stack a moment to actually release the port
@@ -216,9 +254,9 @@ case "$MODE" in
             log "tailscale serve already has a binding for port $PORT; not re-adding"
             exit 0
         fi
-        log "restoring tailscale serve bridge: port $PORT -> tcp://127.0.0.1:$PORT"
-        if ! "$TAILSCALE_EXE" serve --tcp "${PORT}" --bg --yes "tcp://127.0.0.1:${PORT}" >/dev/null 2>&1; then
-            log "ERROR: 'tailscale serve --tcp $PORT --bg --yes tcp://127.0.0.1:$PORT' failed"
+        log "restoring tailscale serve bridge: http port $PORT -> http://127.0.0.1:$PORT"
+        if ! "$TAILSCALE_EXE" serve --http "${PORT}" --bg --yes "http://127.0.0.1:${PORT}" >/dev/null 2>&1; then
+            log "ERROR: 'tailscale serve --http $PORT --bg --yes http://127.0.0.1:$PORT' failed"
             exit 3
         fi
         log "restored"

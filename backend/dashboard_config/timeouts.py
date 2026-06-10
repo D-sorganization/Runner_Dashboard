@@ -29,8 +29,10 @@ class HttpTimeout:
     SYSTEMCTL_S: int = 5
 
     # Cross-node system probes go through the Tailscale mesh and may queue
-    # behind a busy CPU; 8 s gives the remote dashboard time to respond.
-    PROXY_NODE_SYSTEM_S: float = 8.0
+    # behind a busy CPU while the remote dashboard enumerates runner processes.
+    # DeskComputer has been observed taking 20-25 s under full CI load, so use
+    # a larger budget here and keep the gather fan-out independent per node.
+    PROXY_NODE_SYSTEM_S: float = 30.0
 
     # Hub-bound proxies and the default ``gh api`` budget. 15 s tolerates
     # GitHub API tail latency without holding workers too long.

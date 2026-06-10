@@ -1,5 +1,5 @@
 version: 1
-updated_at: 2026-05-27
+updated_at: 2026-06-09
 machines:
   - name: ControlTower
     aliases:
@@ -7,15 +7,16 @@ machines:
       - control-tower-runner-monitoring
     display_name: ControlTower
     role: hub
-    dashboard_url: http://100.95.177.68:8321
+    dashboard_url: http://controltower.tail2bbcc7.ts.net:8321
     tailscale_nodes:
       - name: control-tower-runner-monitoring
         ip: 100.95.177.68
         transport: wsl2
-        preferred: true
+        preferred: false
       - name: controltower
         ip: 100.69.12.6
         transport: windows
+        preferred: true
     runner_labels:
       - self-hosted
       - Linux
@@ -27,7 +28,7 @@ machines:
           - controltower-nvme
           - control-tower-nvme
           - controltower-fast
-        dashboard_url: http://100.95.177.68:8321
+        dashboard_url: http://controltower.tail2bbcc7.ts.net:8321
         storage_tier: nvme
         runner_base_dir: /home/dieterolson/actions-runners-nvme
         runner_labels:
@@ -56,7 +57,7 @@ machines:
           - controltower-ssd
           - control-tower-ssd
           - controltower-bulk
-        dashboard_url: http://127.0.0.1:8322
+        dashboard_url: http://controltower.tail2bbcc7.ts.net:8322
         storage_tier: ssd
         runner_base_dir: /home/dieterolson/actions-runners
         runner_labels:
