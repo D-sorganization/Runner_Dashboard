@@ -1,10 +1,20 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.77
+**Spec Version:** 2.5.78
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-10T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-10 (2.5.78):** Hardened fleet dashboard routing for the
+  GitHub-primary/Forgejo-ready fleet posture. `backend/machine_registry.yml`
+  now routes ControlTower pool dashboards through Tailscale MagicDNS
+  (`controltower.tail2bbcc7.ts.net`) instead of stale local/offline addresses,
+  marks the live ControlTower host as preferred, and keeps the legacy monitoring
+  node non-preferred. Node-system proxy calls now have a 30 s budget so loaded
+  DeskComputer and ControlTower runner hosts can finish process enumeration
+  without false 504s. `deploy/wsl-mirrored-port-helper.sh` now detects and
+  clears Tailscale Serve HTTP/HTTPS/TCP bindings by protocol before restoring
+  the WSL dashboard HTTP binding.
 - **2026-06-10 (2.5.77):** Added a non-matrix `tests` aggregate CI context
   after the Python matrix job so branch protection consumes the same green test
   result as `tests (3.11)` without synthetic statuses.
@@ -887,12 +897,23 @@ unreachable, its entry is set to `{"status": "offline", ...}` so the primary
 view remains available. The `exclude_pools=true` query parameter prevents
 recursive peer queries.
 
+In the fleet deployment, dashboard-to-dashboard routing must prefer Tailscale
+MagicDNS hostnames over ephemeral WSL-local or stale tailnet IP addresses. The
+ControlTower pool URLs are canonicalized as:
+
+- `http://controltower.tail2bbcc7.ts.net:8321` for `ControlTower-NVMe`
+- `http://controltower.tail2bbcc7.ts.net:8322` for `ControlTower-SSD`
+
+The per-node system proxy budget is 30 s for remote node telemetry. This keeps
+loaded Windows hosts, especially DeskComputer during full runner load, from
+being marked unhealthy while enumerating runner processes and host metrics.
+
 Response shape (keyed by pool name, plus any FLEET_NODES peers):
 
 ```json
 {
   "ControlTower-NVMe": { "status": "online", "hostname": "...", ... },
-  "ControlTower-HDD":  { "status": "online",  "hostname": "...", ... },
+  "ControlTower-SSD":  { "status": "online",  "hostname": "...", ... },
   "OGLaptop":          { "status": "online",  "hostname": "...", ... }
 }
 ```
@@ -1630,6 +1651,21 @@ This removes the historical foot-gun of leaving `FLEET_NODES` unset in systemd
 Environment= lines and the dashboard silently showing only the local machine.
 The `/api/diagnostics` endpoint reports the effective source (`env`, `registry`,
 or `empty`) so deploy validation can confirm it.
+
+Registry entries may retain historical nodes for audit or rollback, but exactly
+one live entry per physical host should be marked `preferred: true`. For the
+ControlTower host, the preferred entry is the Windows/Tailscale node
+`controltower.tail2bbcc7.ts.net`, and any obsolete WSL monitoring node remains
+non-preferred. Dashboard URLs should be stable HTTP URLs reachable from the
+tailnet and should not use loopback except for same-host-only helper endpoints.
+
+The WSL mirrored-port helper is responsible for preserving those HTTP URLs
+across WSL cold starts. Before dashboard startup it inspects `tailscale serve
+status`, clears any conflicting binding with the matching protocol
+(`--http`, `--https`, or `--tcp`), removes the Windows portproxy entry, and
+restores the dashboard as an HTTP Tailscale Serve binding after startup.
+Protocol-aware clearing is required because an HTTP Serve binding is not
+removed by a TCP-only clear command.
 
 Example structure:
 
