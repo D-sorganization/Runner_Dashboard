@@ -14,7 +14,10 @@
   DeskComputer and ControlTower runner hosts can finish process enumeration
   without false 504s. `deploy/wsl-mirrored-port-helper.sh` now detects and
   clears Tailscale Serve HTTP/HTTPS/TCP bindings by protocol before restoring
-  the WSL dashboard HTTP binding.
+  the WSL dashboard HTTP binding. The `security-scan` CI job now runs
+  `pip-audit` from an isolated no-cache audit venv against `requirements.txt`,
+  avoiding runner-side project-venv cache corruption while preserving the
+  dependency audit gate.
 - **2026-06-10 (2.5.77):** Added a non-matrix `tests` aggregate CI context
   after the Python matrix job so branch protection consumes the same green test
   result as `tests (3.11)` without synthetic statuses.

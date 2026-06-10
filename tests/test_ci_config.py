@@ -17,12 +17,8 @@ pyproject.toml satisfy the non-blocking/blocking policy introduced in #400:
 from __future__ import annotations
 
 import re
+import tomllib
 from pathlib import Path
-
-try:
-    import tomllib
-except ModuleNotFoundError:
-    import tomli as tomllib  # Python < 3.11
 
 ROOT = Path(__file__).resolve().parent.parent
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci-standard.yml"
@@ -88,6 +84,21 @@ def test_pip_audit_reads_ignore_file() -> None:
     assert "requirements-audit-ignore.txt" in step_window, (
         "pip-audit step must read requirements-audit-ignore.txt for MEDIUM/LOW waivers"
     )
+
+
+def test_security_scan_uses_isolated_no_cache_pip_audit() -> None:
+    """security-scan must not execute pip-audit from the cache-backed project venv."""
+    text = _workflow_text()
+    scan_idx = text.find("security-scan:")
+    tests_idx = text.find("\n  tests:", scan_idx)
+    assert scan_idx != -1, "security-scan job not found in ci-standard.yml"
+    assert tests_idx != -1, "tests job not found after security-scan in ci-standard.yml"
+    scan_job = text[scan_idx:tests_idx]
+
+    assert 'PIP_NO_CACHE_DIR: "1"' in scan_job
+    assert "--no-cache-dir pip-audit" in scan_job
+    assert "-r requirements.txt" in scan_job
+    assert "./.venv/bin/python -m pip_audit" not in scan_job
 
 
 # ---------------------------------------------------------------------------
