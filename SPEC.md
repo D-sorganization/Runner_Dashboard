@@ -1,10 +1,16 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.78
+**Spec Version:** 2.5.79
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-10T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-10 (2.5.79):** Restored post-merge `main` CI compatibility for the
+  local-runner fleet. The 500-line source cap now keeps the existing legacy
+  frontend over-cap baseline explicit so `push` validation does not fail on
+  unrelated historical debt, while pull requests still check changed source
+  files. `local-only-runner-guard.yml` now runs on `d-sorg-fleet` itself, so
+  workflow-routing validation no longer depends on hosted GitHub runners.
 - **2026-06-10 (2.5.78):** Hardened fleet dashboard routing for the
   GitHub-primary/Forgejo-ready fleet posture. `backend/machine_registry.yml`
   now routes ControlTower pool dashboards through Tailscale MagicDNS

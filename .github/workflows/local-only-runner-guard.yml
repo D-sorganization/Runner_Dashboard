@@ -1,10 +1,8 @@
 name: Local-Only Workflow Runner Guard
 
 # Enforces that every workflow in this repo routes its jobs to the d-sorg
-# self-hosted fleet. The guard runs on ubuntu-latest because it is the canary
-# that must remain operable when the fleet itself is down. The job is named
-# "Reject hosted runner routing" — together with the workflow name above, these
-# are the only two names allowlisted to run on hosted runners across the org.
+# self-hosted fleet. The guard itself also runs on the local fleet so this repo
+# does not depend on hosted GitHub runners when validating local-only routing.
 
 on:
   pull_request:
@@ -26,7 +24,7 @@ concurrency:
 jobs:
   reject-hosted-runner-routing:
     name: Reject hosted runner routing
-    runs-on: ubuntu-latest
+    runs-on: d-sorg-fleet
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
@@ -48,19 +46,11 @@ jobs:
 
           import yaml
 
-          # Workflow files allowlisted to run on hosted runners. The guard itself
-          # is here because it is the canary. The runner-health-alert canary in
-          # Repository_Management is allowlisted only in that repo; the entry is
-          # harmless elsewhere.
+          # Workflow files allowlisted to run on hosted runners. The
+          # runner-health-alert canary in Repository_Management is allowlisted
+          # only in that repo; the entry is harmless elsewhere.
           ALLOWLIST_FILES = {
-              "local-only-runner-guard.yml",
               "runner-health-alert.yml",
-          }
-          # Job names allowlisted to run on hosted runners. Matches the two
-          # human-facing names every repo's CI standard refers to.
-          ALLOWLIST_JOB_NAMES = {
-              "Reject hosted runner routing",
-              "Local-Only Workflow Runner Guard",
           }
           HOSTED = re.compile(r"^(ubuntu|macos|windows)(-latest|-\d+)?$")
 
@@ -108,8 +98,6 @@ jobs:
                   continue
               for job_id, job in jobs.items():
                   if not isinstance(job, dict):
-                      continue
-                  if job.get("name") in ALLOWLIST_JOB_NAMES:
                       continue
                   # Reusable workflow callers don't have runs-on; skip
                   if "uses" in job and "runs-on" not in job:
