@@ -1,10 +1,17 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.79
+**Spec Version:** 2.5.80
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-10T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-10 (2.5.80):** Routed queue-read GitHub calls through the shared
+  GitHub App API client instead of shelling out to `gh api`. The dashboard queue
+  view now uses the same authenticated client path as health checks, preserves
+  per-job queued depth, and keeps stale auth or transient repo failures from
+  silently flattening the queue to zero. The OGLaptop registry entry now uses
+  its Tailscale MagicDNS dashboard URL so Tailscale Serve routes fleet health
+  calls to the running backend instead of returning the IP-host 404 path.
 - **2026-06-10 (2.5.79):** Restored post-merge `main` CI compatibility for the
   local-runner fleet. The 500-line source cap now keeps the existing legacy
   frontend over-cap baseline explicit so `push` validation does not fail on

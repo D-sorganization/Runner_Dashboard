@@ -108,7 +108,7 @@ machines:
       - oglaptop
     display_name: OGLaptop
     role: node
-    dashboard_url: http://100.125.64.108:8321
+    dashboard_url: http://oglaptop.tail2bbcc7.ts.net:8321
     tailscale_nodes:
       - name: oglaptop
         ip: 100.125.64.108
