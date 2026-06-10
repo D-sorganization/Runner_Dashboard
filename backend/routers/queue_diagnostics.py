@@ -66,7 +66,7 @@ def _target_for_labels(labels: list[str]) -> str:
     lowered = {label.lower() for label in labels}
     has_self_hosted = "self-hosted" in lowered
     has_fleet = any(label == _FLEET_LABEL_PREFIX or label.startswith(f"{_FLEET_LABEL_PREFIX}-") for label in labels)
-    if has_self_hosted and has_fleet:
+    if has_fleet:
         return "self-hosted (d-sorg-fleet)"
     if has_self_hosted:
         return "self-hosted (generic)"
