@@ -1,10 +1,18 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.81
+**Spec Version:** 2.5.82
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-10T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-10 (2.5.82):** Replaced the placeholder queue-diagnosis response
+  with live queue and runner analysis. `GET /api/queue/diagnose` now samples
+  queued workflow jobs through the shared authenticated GitHub API path,
+  summarizes online/busy/idle/offline runner capacity, distinguishes
+  GitHub-hosted, generic self-hosted, and `d-sorg-fleet` waits, reports
+  unroutable label sets, preserves bounded partial-failure errors, and caches
+  the diagnosis briefly so operators can explain queue stalls without adding
+  avoidable GitHub API pressure.
 - **2026-06-10 (2.5.81):** Fixed runner inventory visibility for fleets larger
   than GitHub's default first page. Dashboard runner, health, stats, quick
   dispatch, fleet control, diagnostics, group, and orchestration capacity paths
@@ -1280,7 +1288,7 @@ env var.
 | GET    | `/api/queue`                 | Current job queue (queued + in_progress). Includes `queued_jobs_count` — true job-level queue depth, counting `queued` jobs inside in_progress runs too (run-level `queued_count` misses them). |
 | GET    | `/api/queue/status`          | Queue data with per-run `timing` breakdown (queue_wait_seconds, exec_seconds)                                                                                                                   |
 | POST   | `/api/queue/cancel-workflow` | Cancel a queued workflow                                                                                                                                                                        |
-| GET    | `/api/queue/diagnose`        | Diagnose queue stalls and blockages                                                                                                                                                             |
+| GET    | `/api/queue/diagnose`        | Diagnose queue stalls with runner capacity, queued job target counts, label breakdowns, unroutable label findings, sampled jobs, and bounded partial-failure errors                             |
 
 ### Push Notifications
 
