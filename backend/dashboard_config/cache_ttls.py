@@ -44,3 +44,13 @@ class CacheTtl:
     # Watchdog cache: 30 seconds gives operators a near-live deployment
     # health pulse without spawning systemctl on every poll.
     WATCHDOG_S: int = 30
+
+    # Runner-capacity snapshot is embedded in every /api/system and
+    # /api/fleet/status response. Building it forks the runner-scheduler binary
+    # (``--dry-run --json``) plus two ``systemctl is-active`` calls — ~2-3 s of
+    # blocking subprocess work on a busy WSL host. Those calls dominated the
+    # endpoint latency and pushed /api/fleet/status past its 15 s budget (504).
+    # The underlying schedule/timer state changes on the order of minutes, so a
+    # 15 s cache keeps the panel effectively live while collapsing the per-poll
+    # fork cost to near zero.
+    RUNNER_CAPACITY_S: int = 15

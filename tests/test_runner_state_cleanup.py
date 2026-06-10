@@ -12,6 +12,7 @@ import pytest
 BACKEND = Path(__file__).resolve().parents[1] / "backend"
 sys.path.insert(0, str(BACKEND))
 
+import runner_state_cleanup  # noqa: E402
 from runner_state_cleanup import (  # noqa: E402
     _STALE_LOCK_AGE_S,
     cleanup_runner_state,
@@ -24,6 +25,7 @@ def fake_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("HOME", str(tmp_path))
     # Defensively wipe SUDO_USER + /home enumeration drift.
     monkeypatch.delenv("SUDO_USER", raising=False)
+    monkeypatch.setattr(runner_state_cleanup, "_candidate_runner_homes", lambda unit: [tmp_path])
     return tmp_path
 
 

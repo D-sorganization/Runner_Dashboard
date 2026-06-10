@@ -11,6 +11,7 @@ import errno
 import json
 import subprocess
 import sys
+import time
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -224,6 +225,7 @@ def test_windows_host_resource_snapshot_uses_absolute_powershell_fallback(monkey
         )
 
     monkeypatch.setattr(system_utils.subprocess, "run", fake_run)
+    monkeypatch.setattr(system_utils, "_host_snapshot_cache", None)
 
     assert system_utils._windows_host_resource_snapshot() == {
         "cpu_percent": 17.0,
@@ -236,6 +238,207 @@ def test_windows_host_resource_snapshot_uses_absolute_powershell_fallback(monkey
         "powershell.exe",
         "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe",
     ]
+
+
+# ---------------------------------------------------------------------------
+# Persistent hardware-facts cache (cold-start /api/fleet/status 504 fix)
+# ---------------------------------------------------------------------------
+
+
+def _reset_hw_caches(monkeypatch, tmp_path: Path) -> Path:
+    """Point the persistent facts file at tmp_path and clear in-memory caches."""
+    facts_file = tmp_path / "hardware_facts.json"
+    monkeypatch.setattr(system_utils, "_HARDWARE_FACTS_DIR", tmp_path)
+    monkeypatch.setattr(system_utils, "_HARDWARE_FACTS_FILE", facts_file)
+    system_utils._PHYSICAL_DISK_CACHE.clear()
+    monkeypatch.setattr(system_utils, "_WSL_BASE_PATH_CACHE", None)
+    monkeypatch.setattr(system_utils, "_WSL_BASE_PATH_LOOKED_UP", False)
+    return facts_file
+
+
+def test_physical_disk_props_persisted_after_first_probe(monkeypatch, tmp_path: Path) -> None:
+    facts_file = _reset_hw_caches(monkeypatch, tmp_path)
+    probe_calls = []
+
+    def fake_probe(letter: str) -> dict[str, str]:
+        probe_calls.append(letter)
+        return {"media_type": "SSD", "bus_type": "NVMe"}
+
+    monkeypatch.setattr(system_utils, "get_windows_drive_physical_properties", fake_probe)
+
+    result = system_utils.get_cached_windows_drive_physical_properties("C")
+    assert result == {"media_type": "SSD", "bus_type": "NVMe"}
+    assert probe_calls == ["C"]
+    # The static fact must be persisted with a timestamp for cross-restart reuse.
+    persisted = json.loads(facts_file.read_text(encoding="utf-8"))
+    assert persisted["physical_disks"]["C"]["media_type"] == "SSD"
+    assert "_fetched_at" in persisted["physical_disks"]["C"]
+
+
+def test_physical_disk_props_served_from_disk_after_restart(monkeypatch, tmp_path: Path) -> None:
+    facts_file = _reset_hw_caches(monkeypatch, tmp_path)
+    # Simulate a prior process having persisted the fact.
+    facts_file.write_text(
+        json.dumps(
+            {
+                "physical_disks": {
+                    "C": {"media_type": "SSD", "bus_type": "NVMe", "_fetched_at": time.time()},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def boom(letter: str) -> dict[str, str]:
+        raise AssertionError("cold probe must NOT run when a fresh persisted fact exists")
+
+    monkeypatch.setattr(system_utils, "get_windows_drive_physical_properties", boom)
+    result = system_utils.get_cached_windows_drive_physical_properties("C")
+    assert result == {"media_type": "SSD", "bus_type": "NVMe"}
+
+
+def test_physical_disk_props_reprobe_after_ttl_expiry(monkeypatch, tmp_path: Path) -> None:
+    facts_file = _reset_hw_caches(monkeypatch, tmp_path)
+    facts_file.write_text(
+        json.dumps(
+            {
+                "physical_disks": {
+                    "C": {
+                        "media_type": "Unknown",
+                        "bus_type": "Unknown",
+                        "_fetched_at": time.time() - system_utils._HW_FACTS_TTL_S - 1,
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    probe_calls = []
+
+    def fake_probe(letter: str) -> dict[str, str]:
+        probe_calls.append(letter)
+        return {"media_type": "HDD", "bus_type": "SATA"}
+
+    monkeypatch.setattr(system_utils, "get_windows_drive_physical_properties", fake_probe)
+    result = system_utils.get_cached_windows_drive_physical_properties("C")
+    assert result == {"media_type": "HDD", "bus_type": "SATA"}
+    assert probe_calls == ["C"]
+
+
+def test_unknown_probe_result_is_persisted_to_avoid_cold_retax(monkeypatch, tmp_path: Path) -> None:
+    """On hosts where Get-PhysicalDisk is slow AND returns nothing, persist the
+    Unknown so restarts stay fast instead of re-paying the ~10s probe."""
+    facts_file = _reset_hw_caches(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        system_utils,
+        "get_windows_drive_physical_properties",
+        lambda letter: {"media_type": "Unknown", "bus_type": "Unknown"},
+    )
+    result = system_utils.get_cached_windows_drive_physical_properties("C")
+    assert result == {"media_type": "Unknown", "bus_type": "Unknown"}
+    persisted = json.loads(facts_file.read_text(encoding="utf-8"))
+    assert persisted["physical_disks"]["C"]["media_type"] == "Unknown"
+    assert "_fetched_at" in persisted["physical_disks"]["C"]
+
+
+def test_wsl_base_path_served_from_disk_after_restart(monkeypatch, tmp_path: Path) -> None:
+    facts_file = _reset_hw_caches(monkeypatch, tmp_path)
+    facts_file.write_text(json.dumps({"wsl_base_path": "C:\\WSL"}), encoding="utf-8")
+
+    def boom() -> dict:
+        raise AssertionError("registry probe must NOT run when base path is persisted")
+
+    monkeypatch.setattr(system_utils, "get_wsl_distro_registry_info", boom)
+    assert system_utils.get_cached_wsl_base_path() == "C:\\WSL"
+
+
+def test_wsl_base_path_probed_and_persisted_on_cold_cache(monkeypatch, tmp_path: Path) -> None:
+    facts_file = _reset_hw_caches(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        system_utils,
+        "get_wsl_distro_registry_info",
+        lambda: {"BasePath": "D:\\WSL\\ControlTower"},
+    )
+    assert system_utils.get_cached_wsl_base_path() == "D:\\WSL\\ControlTower"
+    persisted = json.loads(facts_file.read_text(encoding="utf-8"))
+    assert persisted["wsl_base_path"] == "D:\\WSL\\ControlTower"
+
+
+def test_run_windows_powershell_respects_deadline(monkeypatch) -> None:
+    """A fully-failing probe must stop iterating candidates once the wall-clock
+    deadline is exhausted rather than spending 5s per candidate."""
+    monkeypatch.setattr(
+        system_utils.platform,
+        "uname",
+        lambda: type("Uname", (), {"release": "6.6-microsoft-standard-WSL2"})(),
+    )
+    monkeypatch.setattr(
+        system_utils,
+        "get_powershell_candidates",
+        lambda: ["a.exe", "b.exe", "c.exe", "d.exe"],
+    )
+    seen_timeouts = []
+
+    def fake_run(args, **kwargs):
+        seen_timeouts.append(kwargs.get("timeout"))
+        # Simulate the call consuming its whole timeout budget then failing.
+        raise subprocess.TimeoutExpired(cmd=args, timeout=kwargs.get("timeout"))
+
+    monkeypatch.setattr(system_utils.subprocess, "run", fake_run)
+    # Deadline already in the past => no candidate should be attempted.
+    assert system_utils._run_windows_powershell("x", deadline=time.monotonic() - 1) is None
+    assert seen_timeouts == []
+    # Per-candidate timeout must be clamped to <= 5s.
+    seen_timeouts.clear()
+    system_utils._run_windows_powershell("x", deadline=time.monotonic() + 5)
+    assert all(t is not None and t <= 5.0 for t in seen_timeouts)
+
+
+def test_host_snapshot_caches_within_ttl(monkeypatch) -> None:
+    """Rapid successive calls must reuse one PowerShell fork within the TTL."""
+    monkeypatch.setattr(system_utils, "_host_snapshot_cache", None)
+    monkeypatch.setattr(system_utils, "_HOST_SNAPSHOT_TTL_S", 60.0)
+    calls = []
+
+    def fake_uncached() -> dict[str, float]:
+        calls.append(1)
+        return {
+            "cpu_percent": 12.0,
+            "memory_total_gb": 64.0,
+            "memory_used_gb": 20.0,
+            "memory_available_gb": 44.0,
+            "memory_percent": 31.0,
+        }
+
+    monkeypatch.setattr(system_utils, "_windows_host_resource_snapshot_uncached", fake_uncached)
+    first = system_utils._windows_host_resource_snapshot()
+    second = system_utils._windows_host_resource_snapshot()
+    assert first == second
+    assert first is not None and first["cpu_percent"] == 12.0
+    assert len(calls) == 1  # second call served from cache
+
+
+def test_host_snapshot_serves_stale_on_probe_failure(monkeypatch) -> None:
+    """If a refresh probe fails, the last good value is served, not None."""
+    monkeypatch.setattr(
+        system_utils,
+        "_host_snapshot_cache",
+        (
+            {
+                "cpu_percent": 5.0,
+                "memory_total_gb": 1.0,
+                "memory_used_gb": 0.5,
+                "memory_available_gb": 0.5,
+                "memory_percent": 50.0,
+            },
+            time.monotonic() - 999,
+        ),
+    )
+    monkeypatch.setattr(system_utils, "_HOST_SNAPSHOT_TTL_S", 2.5)
+    monkeypatch.setattr(system_utils, "_windows_host_resource_snapshot_uncached", lambda: None)
+    result = system_utils._windows_host_resource_snapshot()
+    assert result is not None
+    assert result["cpu_percent"] == 5.0
 
 
 # ---------------------------------------------------------------------------

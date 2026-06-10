@@ -346,12 +346,12 @@ jobs:
             done < requirements-audit-ignore.txt
           fi
           if [ -f uv.lock ]; then
-            pip-audit --progress-spinner=off $IGNORE_FLAGS
+            ./.venv/bin/python -m pip_audit --progress-spinner=off $IGNORE_FLAGS
           else
             python -m venv "$RUNNER_TEMP/pip-audit-venv"
             "$RUNNER_TEMP/pip-audit-venv/bin/pip" install --quiet pip-audit
             # shellcheck disable=SC2086
-            "$RUNNER_TEMP/pip-audit-venv/bin/pip-audit" -r requirements.txt \
+            "$RUNNER_TEMP/pip-audit-venv/bin/python" -m pip_audit -r requirements.txt \
               --progress-spinner=off $IGNORE_FLAGS
           fi
 
@@ -377,12 +377,12 @@ jobs:
           python -m pip install --upgrade pip setuptools wheel
           if [ -f uv.lock ]; then
             rm -rf .venv
-            pip install uv
+            python -m pip install uv
             uv sync --frozen
-            ./.venv/bin/pip-audit --progress-spinner=off
+            ./.venv/bin/python -m pip_audit --progress-spinner=off
           else
-            pip install --quiet pip-audit
-            pip-audit -r requirements.txt --progress-spinner=off
+            python -m pip install --quiet pip-audit
+            python -m pip_audit -r requirements.txt --progress-spinner=off
           fi
 
   tests:
@@ -445,3 +445,15 @@ jobs:
             coverage.xml
           retention-days: 14
           if-no-files-found: ignore
+
+  tests-required:
+    name: tests
+    needs:
+      - ci-health-check
+      - tests
+    if: needs.ci-health-check.outputs.run_python_tests == 'true'
+    runs-on: d-sorg-fleet
+    timeout-minutes: 5
+    steps:
+      - name: Confirm Python test matrix
+        run: echo "Python test matrix passed."

@@ -6,7 +6,7 @@
 # (pydantic-core, uvloop, watchfiles, httptools, jiter, etc.).
 # To regenerate requirements.lock.txt:  uv export --no-dev -o requirements.lock.txt
 
-FROM python:3.14-slim@sha256:c845af9399020c7e562969a13689e929074a10fd057acd1b1fad06a2fb068e97
+FROM python:3.12-slim@sha256:090ba77e2958f6af52a5341f788b50b032dd4ca28377d2893dcf1ecbdfdfe203
 
 WORKDIR /app
 
@@ -23,7 +23,7 @@ RUN groupadd --gid 10001 appuser \
 # Copy requirements first for layer caching; install with hash verification
 COPY requirements.lock.txt .
 RUN pip install --no-cache-dir --upgrade \
-        pip==26.1.1 \
+        pip==26.1.2 \
         setuptools==82.0.1 \
         wheel==0.47.0 \
         jaraco.context==6.1.2 && \

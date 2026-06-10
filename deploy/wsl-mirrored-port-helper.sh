@@ -42,7 +42,8 @@ set -euo pipefail
 
 PROG="$(basename "$0")"
 
-TAILSCALE_EXE="/mnt/c/Program Files/Tailscale/tailscale.exe"
+TAILSCALE_EXE="${WSL_MIRRORED_PORT_HELPER_TAILSCALE_EXE:-/mnt/c/Program Files/Tailscale/tailscale.exe}"
+POWERSHELL_EXE="${WSL_MIRRORED_PORT_HELPER_POWERSHELL_EXE:-powershell.exe}"
 
 log() { printf '[%s] %s\n' "$PROG" "$*" >&2; }
 
@@ -82,21 +83,87 @@ fi
 
 # ---- pre-flight: this is a no-op outside WSL-mirrored topologies ---------
 
-if [[ ! -r /proc/version ]] || ! grep -qiE 'microsoft|wsl' /proc/version; then
+if [[ "${WSL_MIRRORED_PORT_HELPER_ASSUME_WSL:-0}" != "1" ]] \
+    && { [[ ! -r /proc/version ]] || ! grep -qiE 'microsoft|wsl' /proc/version; }; then
     log "not running under WSL; nothing to do (port $PORT)"
     exit 0
 fi
 
-if [[ ! -x "$TAILSCALE_EXE" ]]; then
-    log "Windows tailscale.exe not found at '$TAILSCALE_EXE'; nothing to do"
+windows_powershell_available() {
+    command -v "$POWERSHELL_EXE" >/dev/null 2>&1 || [[ -x "$POWERSHELL_EXE" ]]
+}
+
+if ! windows_powershell_available; then
+    log "Windows PowerShell not found ('$POWERSHELL_EXE'); nothing to do"
     exit 0
+fi
+
+run_windows_powershell() {
+    "$POWERSHELL_EXE" -NoProfile -NonInteractive -Command "$1"
+}
+
+clear_windows_portproxy() {
+    if ! windows_powershell_available; then
+        log "Windows PowerShell not found ('$POWERSHELL_EXE'); skipping portproxy clear"
+        return 0
+    fi
+    log "clearing Windows netsh portproxy bindings for port $PORT"
+    local ps
+    ps=$(cat <<EOF
+\$ErrorActionPreference = 'SilentlyContinue'
+foreach (\$addr in @('0.0.0.0', '127.0.0.1')) {
+    & netsh interface portproxy delete v4tov4 listenport=$PORT listenaddress=\$addr | Out-Null
+}
+exit 0
+EOF
+)
+    if ! run_windows_powershell "$ps" >/dev/null 2>&1; then
+        log "ERROR: failed to clear Windows netsh portproxy bindings for port $PORT"
+        exit 3
+    fi
+}
+
+restore_windows_portproxy() {
+    if ! windows_powershell_available; then
+        log "Windows PowerShell not found ('$POWERSHELL_EXE'); skipping portproxy restore"
+        return 0
+    fi
+    local wsl_ip
+    wsl_ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+    if [[ -z "$wsl_ip" ]]; then
+        log "WSL IP unavailable; skipping portproxy restore"
+        return 0
+    fi
+    log "restoring Windows netsh portproxy: 0.0.0.0:$PORT -> $wsl_ip:$PORT"
+    local ps
+    ps=$(cat <<EOF
+\$ErrorActionPreference = 'SilentlyContinue'
+& netsh interface portproxy delete v4tov4 listenport=$PORT listenaddress=0.0.0.0 | Out-Null
+& netsh interface portproxy add v4tov4 listenport=$PORT listenaddress=0.0.0.0 connectport=$PORT connectaddress=$wsl_ip | Out-Null
+exit \$LASTEXITCODE
+EOF
+)
+    if ! run_windows_powershell "$ps" >/dev/null 2>&1; then
+        log "ERROR: failed to restore Windows netsh portproxy binding for port $PORT"
+        exit 3
+    fi
+}
+
+tailscale_available() {
+    [[ -x "$TAILSCALE_EXE" ]]
+}
+
+if ! tailscale_available; then
+    log "Windows tailscale.exe not found at '$TAILSCALE_EXE'; tailscale serve cleanup disabled"
 fi
 
 # ``tailscale serve status`` returns "No serve config" on stdout when nothing
 # is configured. Use it as a cheap probe so we never call ``serve off`` on a
 # system that has nothing to clear.
 status_output() {
-    "$TAILSCALE_EXE" serve status 2>/dev/null || true
+    if tailscale_available; then
+        "$TAILSCALE_EXE" serve status 2>/dev/null || true
+    fi
 }
 
 port_is_configured() {
@@ -109,7 +176,8 @@ port_is_configured() {
 
 case "$MODE" in
     clear)
-        if ! port_is_configured; then
+        clear_windows_portproxy
+        if ! tailscale_available || ! port_is_configured; then
             log "tailscale serve has no binding for port $PORT; nothing to clear"
             exit 0
         fi
@@ -143,7 +211,8 @@ case "$MODE" in
             log "ERROR: timed out waiting for a WSL listener on port $PORT (30s)"
             exit 3
         fi
-        if port_is_configured; then
+        restore_windows_portproxy
+        if ! tailscale_available || port_is_configured; then
             log "tailscale serve already has a binding for port $PORT; not re-adding"
             exit 0
         fi
