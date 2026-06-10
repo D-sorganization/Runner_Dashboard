@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import stat
 import subprocess
 from pathlib import Path
 
@@ -51,6 +52,9 @@ def _run(args: list[str], *, env: dict[str, str] | None = None) -> subprocess.Co
     run_env = os.environ.copy()
     if env:
         run_env.update(env)
+        existing_wslenv = run_env.get("WSLENV", "")
+        extra_wslenv = ":".join(env)
+        run_env["WSLENV"] = f"{existing_wslenv}:{extra_wslenv}" if existing_wslenv else extra_wslenv
     return subprocess.run(
         [BASH, _bash_path(SCRIPT), *args],
         capture_output=True,
@@ -119,6 +123,51 @@ def test_outside_wsl_is_a_noop_for_clear() -> None:
 def test_unknown_flag_rejected() -> None:
     result = _run(["clear", "--port", "8321", "--surprise"])
     assert result.returncode == 2
+
+
+@BASH_REQUIRED
+def test_clear_removes_http_tailscale_binding(tmp_path: Path) -> None:
+    """Clear must use the protocol shown by ``tailscale serve status``."""
+
+    calls = tmp_path / "tailscale-calls.txt"
+    fake_tailscale = tmp_path / "tailscale.exe"
+    fake_powershell = tmp_path / "powershell.exe"
+    calls_for_bash = _bash_path(calls)
+
+    fake_tailscale.write_text(
+        f"""#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "$*" >> '{calls_for_bash}'
+if [[ "$*" == "serve status" ]]; then
+  printf 'http://controltower.tail2bbcc7.ts.net:8321 (tailnet only)\\n'
+  printf '|-- / proxy http://127.0.0.1:8321\\n'
+  exit 0
+fi
+if [[ "$*" == "serve --http=8321 off" ]]; then
+  exit 0
+fi
+exit 9
+""",
+        encoding="utf-8",
+        newline="\n",
+    )
+    fake_powershell.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8", newline="\n")
+    fake_tailscale.chmod(fake_tailscale.stat().st_mode | stat.S_IXUSR)
+    fake_powershell.chmod(fake_powershell.stat().st_mode | stat.S_IXUSR)
+
+    result = _run(
+        ["clear", "--port", "8321"],
+        env={
+            "WSL_MIRRORED_PORT_HELPER_ASSUME_WSL": "1",
+            "WSL_MIRRORED_PORT_HELPER_POWERSHELL_EXE": _bash_path(fake_powershell),
+            "WSL_MIRRORED_PORT_HELPER_TAILSCALE_EXE": _bash_path(fake_tailscale),
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    call_log = calls.read_text(encoding="utf-8")
+    assert "serve --http=8321 off" in call_log
+    assert "serve --tcp=8321 off" not in call_log
 
 
 def test_clear_removes_windows_portproxy_before_tailscale_binding() -> None:

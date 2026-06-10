@@ -371,19 +371,30 @@ jobs:
       - name: Audit Python Dependencies
         env:
           PYTHONNOUSERSITE: "1"
+          PIP_NO_CACHE_DIR: "1"
         run: |
           python -m venv "$RUNNER_TEMP/security-venv"
-          source "$RUNNER_TEMP/security-venv/bin/activate"
-          python -m pip install --upgrade pip setuptools wheel
-          if [ -f uv.lock ]; then
-            rm -rf .venv
-            python -m pip install uv
-            uv sync --frozen
-            ./.venv/bin/python -m pip_audit --progress-spinner=off
-          else
-            python -m pip install --quiet pip-audit
-            python -m pip_audit -r requirements.txt --progress-spinner=off
+          AUDIT_PYTHON="$RUNNER_TEMP/security-venv/bin/python"
+          "$AUDIT_PYTHON" -m pip install --upgrade pip setuptools wheel
+          "$AUDIT_PYTHON" -m pip install --quiet --no-cache-dir pip-audit
+
+          if [ ! -f requirements.txt ]; then
+            echo "::error::requirements.txt is required for security-scan dependency audit."
+            exit 1
           fi
+
+          IGNORE_FLAGS=""
+          if [ -f requirements-audit-ignore.txt ]; then
+            while IFS= read -r line; do
+              [[ "$line" =~ ^#.*$ || -z "$line" ]] && continue
+              PURL=$(echo "$line" | awk '{print $1}')
+              IGNORE_FLAGS="$IGNORE_FLAGS --ignore-vuln $PURL"
+            done < requirements-audit-ignore.txt
+          fi
+
+          # shellcheck disable=SC2086
+          "$AUDIT_PYTHON" -m pip_audit -r requirements.txt \
+            --progress-spinner=off $IGNORE_FLAGS
 
   tests:
     needs:
