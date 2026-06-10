@@ -82,7 +82,7 @@ async def test_health_endpoint_uses_gh_api_signature(client, app, monkeypatch) -
     import server  # noqa: PLC0415
 
     async def fake_gh_api_admin(endpoint: str) -> dict:
-        assert endpoint == "/orgs/D-sorganization/actions/runners"
+        assert endpoint == "/orgs/D-sorganization/actions/runners?per_page=100&page=1"
         return {"runners": [{"name": "runner-1"}]}
 
     monkeypatch.setattr(server, "_cache_get", lambda *_args, **_kwargs: None)

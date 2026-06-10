@@ -160,6 +160,48 @@ class TestGetRunners:
         assert data["runners"][1]["status"] == "online"
         assert data["runners"][2]["status"] == "offline"
 
+    def test_get_runners_fetches_all_github_pages(
+        self,
+        client: TestClient,
+        monkeypatch: pytest.MonkeyPatch,
+        mock_cache,
+    ) -> None:
+        """GitHub's default first page must not hide runners 31+."""
+        del mock_cache
+        seen: list[str] = []
+
+        async def paged_api(endpoint: str) -> dict:
+            seen.append(endpoint)
+            page = 2 if "page=2" in endpoint else 1
+            if page == 1:
+                return {
+                    "total_count": 33,
+                    "runners": [
+                        {"id": runner_id, "name": f"runner-{runner_id}", "status": "online", "busy": False}
+                        for runner_id in range(1, 31)
+                    ],
+                }
+            return {
+                "total_count": 33,
+                "runners": [
+                    {"id": runner_id, "name": f"runner-{runner_id}", "status": "online", "busy": False}
+                    for runner_id in range(31, 34)
+                ],
+            }
+
+        monkeypatch.setattr(runners_router, "gh_api_admin", paged_api, raising=False)
+
+        response = client.get("/api/runners")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total_count"] == 33
+        assert len(data["runners"]) == 33
+        assert seen == [
+            "/orgs/D-sorganization/actions/runners?per_page=100&page=1",
+            "/orgs/D-sorganization/actions/runners?per_page=100&page=2",
+        ]
+
     def test_get_runners_uses_cache(
         self,
         client: TestClient,

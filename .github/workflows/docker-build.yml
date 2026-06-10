@@ -29,7 +29,8 @@ concurrency:
 
 jobs:
   docker-build-scan:
-    runs-on: d-sorg-fleet
+    runs-on:
+      [self-hosted, Linux, X64, d-sorg-fleet-docker, d-sorg-fleet-fast-io]
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6

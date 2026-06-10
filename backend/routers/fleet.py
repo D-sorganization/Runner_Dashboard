@@ -23,6 +23,7 @@ from fleet_events import (  # issue #863 — record runner/disk transitions
 from gh_utils import gh_api_admin
 from proxy_utils import proxy_to_hub, should_proxy_fleet_to_hub
 from routers.runners import run_runner_svc, runner_num_from_id, runner_svc_path
+from runner_inventory import fetch_org_runners
 from system_utils import (
     classify_node_offline,
     get_system_metrics_snapshot,
@@ -65,7 +66,7 @@ def _runner_limit() -> int:
 
 async def _fleet_control_local(action: str) -> dict:
     """Scale runners on this machine only."""
-    data = await gh_api_admin(f"/orgs/{ORG}/actions/runners")
+    data = await fetch_org_runners(gh_api_admin, ORG)
     runners = data.get("runners", [])
     results = []
 

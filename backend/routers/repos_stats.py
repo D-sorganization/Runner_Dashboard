@@ -17,6 +17,7 @@ from typing import Any
 
 from fastapi import APIRouter, Request
 from proxy_utils import proxy_to_hub, should_proxy_fleet_to_hub
+from runner_inventory import fetch_org_runners
 
 router = APIRouter(tags=["repos"])
 
@@ -84,7 +85,7 @@ async def get_stats(request: Request) -> Any:
     # --- Runners (independent; fall back to last-known-good counts) -----------
     runners_data = cache_get("runners", 25.0)
     if runners_data is None:
-        runners_data = await _with_budget("runners", gh_api_admin(f"/orgs/{org}/actions/runners"), None)
+        runners_data = await _with_budget("runners", fetch_org_runners(gh_api_admin, org), None)
         if isinstance(runners_data, dict):
             cache_set("runners", runners_data)
     runners = runners_data.get("runners", []) if isinstance(runners_data, dict) else None

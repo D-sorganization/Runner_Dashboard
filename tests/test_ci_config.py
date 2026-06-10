@@ -11,7 +11,8 @@ pyproject.toml satisfy the non-blocking/blocking policy introduced in #400:
   5. The mypy Type Check step prints the override count to the CI log.
   6. bandit.yaml exists and contains a [skips] section with per-entry rationale.
   7. requirements-audit-ignore.txt exists and documents the policy.
-  8. All jobs in ci-standard.yml run on d-sorg-fleet (not ubuntu-latest).
+  8. All jobs in ci-standard.yml run on d-sorg fleet labels (not hosted).
+  9. Python dependency-heavy jobs use fast-io runners.
 """
 
 from __future__ import annotations
@@ -20,8 +21,11 @@ import re
 import tomllib
 from pathlib import Path
 
+import yaml
+
 ROOT = Path(__file__).resolve().parent.parent
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci-standard.yml"
+DOCKER_WORKFLOW = ROOT / ".github" / "workflows" / "docker-build.yml"
 LOCAL_ONLY_GUARD = ROOT / ".github" / "workflows" / "local-only-runner-guard.yml"
 PYPROJECT = ROOT / "pyproject.toml"
 BANDIT_CONFIG = ROOT / "bandit.yaml"
@@ -35,6 +39,17 @@ AUDIT_IGNORE = ROOT / "requirements-audit-ignore.txt"
 
 def _workflow_text() -> str:
     return CI_WORKFLOW.read_text(encoding="utf-8")
+
+
+def _workflow_yaml(path: Path) -> dict:
+    return yaml.safe_load(path.read_text(encoding="utf-8"))
+
+
+def _runs_on_labels(job: dict) -> set[str]:
+    runs_on = job["runs-on"]
+    if isinstance(runs_on, str):
+        return {runs_on}
+    return {str(label) for label in runs_on}
 
 
 def _local_only_guard_text() -> str:
@@ -125,12 +140,33 @@ def test_mypy_step_prints_override_count() -> None:
 
 
 def test_all_jobs_use_fleet_runner() -> None:
-    """Every job must use runs-on: d-sorg-fleet, not ubuntu-latest."""
+    """Every job must use local d-sorg fleet labels, not hosted runners."""
     text = _workflow_text()
     bad_runners = re.findall(r"runs-on:\s*(ubuntu-latest|ubuntu-\d+\.\d+)", text)
     assert not bad_runners, (
-        f"Found non-fleet runner(s) in ci-standard.yml: {bad_runners}. All jobs must use runs-on: d-sorg-fleet"
+        f"Found hosted runner(s) in ci-standard.yml: {bad_runners}. Jobs must use d-sorg fleet labels."
     )
+    workflow = _workflow_yaml(CI_WORKFLOW)
+    for job_name, job in workflow["jobs"].items():
+        labels = _runs_on_labels(job)
+        assert "d-sorg-fleet" in labels or any(label.startswith("d-sorg-fleet-") for label in labels), (
+            f"{job_name} does not use a d-sorg fleet label: {labels}"
+        )
+
+
+def test_python_heavy_jobs_use_fast_io_runners() -> None:
+    """Dependency-heavy Python jobs must avoid light OGLaptop-only routing."""
+    workflow = _workflow_yaml(CI_WORKFLOW)
+    for job_name in ("quality-gate", "security-scan", "tests"):
+        labels = _runs_on_labels(workflow["jobs"][job_name])
+        assert {"self-hosted", "Linux", "X64", "d-sorg-fleet-fast-io"}.issubset(labels)
+
+
+def test_docker_build_uses_docker_fast_io_runners() -> None:
+    """Docker builds require both Docker and fast-IO runner labels."""
+    workflow = _workflow_yaml(DOCKER_WORKFLOW)
+    labels = _runs_on_labels(workflow["jobs"]["docker-build-scan"])
+    assert {"self-hosted", "Linux", "X64", "d-sorg-fleet-docker", "d-sorg-fleet-fast-io"}.issubset(labels)
 
 
 def test_local_only_guard_runs_on_fleet() -> None:
