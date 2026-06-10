@@ -147,6 +147,40 @@ def test_diagnose_flags_unroutable_self_hosted_labels(
     assert "no online runner can satisfy" in data["bottleneck"]
 
 
+def test_diagnose_treats_fleet_label_without_self_hosted_as_self_hosted(
+    diagnostics_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from routers import queue_diagnostics as diag  # noqa: PLC0415
+
+    async def fake_queue_impl() -> dict[str, Any]:
+        return {"queued": [_run("RepoA", 10)], "in_progress": [], "queued_jobs_count": 1}
+
+    async def fake_fetch_org_runners(_api: Any, _org: str) -> dict[str, Any]:
+        return {
+            "runners": [
+                _runner(
+                    "docker-1",
+                    labels=["self-hosted", "Linux", "X64", "d-sorg-fleet", "d-sorg-fleet-docker"],
+                )
+            ]
+        }
+
+    async def fake_gh_api_admin(_endpoint: str) -> dict[str, Any]:
+        return {"jobs": [_job("docker-test", ["d-sorg-fleet-docker"])]}
+
+    monkeypatch.setattr(diag, "_queue_impl", fake_queue_impl)
+    monkeypatch.setattr(diag, "fetch_org_runners", fake_fetch_org_runners)
+    monkeypatch.setattr(diag, "gh_api_admin", fake_gh_api_admin)
+
+    data = diagnostics_client.get("/api/queue/diagnose").json()
+
+    assert data["waiting_for_fleet"] == 1
+    assert data["waiting_for_github_hosted"] == 0
+    assert data["pick_runner_misconfig"] == []
+    assert data["sampled_jobs"][0]["target"] == "self-hosted (d-sorg-fleet)"
+
+
 def test_diagnose_degrades_when_runner_inventory_fails(
     diagnostics_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,

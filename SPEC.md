@@ -1,10 +1,15 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.82
+**Spec Version:** 2.5.83
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-10T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-10 (2.5.83):** Corrected queue-diagnosis target classification for
+  fleet jobs whose GitHub job metadata contains only custom `d-sorg-fleet*`
+  labels. These jobs are now counted as self-hosted fleet work instead of
+  GitHub-hosted waits, so the diagnostic bottleneck reflects local runner
+  capacity when custom fleet labels route the job.
 - **2026-06-10 (2.5.82):** Replaced the placeholder queue-diagnosis response
   with live queue and runner analysis. `GET /api/queue/diagnose` now samples
   queued workflow jobs through the shared authenticated GitHub API path,

@@ -30,6 +30,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Queue diagnosis now treats `d-sorg-fleet*` labels as self-hosted fleet work
+  even when GitHub's queued-job metadata omits the literal `self-hosted` label,
+  so `/api/queue/diagnose` no longer reports local fleet jobs as
+  GitHub-hosted waits.
 - Overview summary (`/api/stats`) showed false zeros for open PRs, queue depth,
   and machines under partial GitHub failure. The PR/issue search, queue
   fan-out, and fleet probe shared one timeout budget, so a slow search or
