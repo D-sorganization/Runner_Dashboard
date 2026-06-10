@@ -22,6 +22,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci-standard.yml"
+LOCAL_ONLY_GUARD = ROOT / ".github" / "workflows" / "local-only-runner-guard.yml"
 PYPROJECT = ROOT / "pyproject.toml"
 BANDIT_CONFIG = ROOT / "bandit.yaml"
 AUDIT_IGNORE = ROOT / "requirements-audit-ignore.txt"
@@ -34,6 +35,10 @@ AUDIT_IGNORE = ROOT / "requirements-audit-ignore.txt"
 
 def _workflow_text() -> str:
     return CI_WORKFLOW.read_text(encoding="utf-8")
+
+
+def _local_only_guard_text() -> str:
+    return LOCAL_ONLY_GUARD.read_text(encoding="utf-8")
 
 
 def _pyproject_data() -> dict:  # type: ignore[type-arg]
@@ -126,6 +131,33 @@ def test_all_jobs_use_fleet_runner() -> None:
     assert not bad_runners, (
         f"Found non-fleet runner(s) in ci-standard.yml: {bad_runners}. All jobs must use runs-on: d-sorg-fleet"
     )
+
+
+def test_local_only_guard_runs_on_fleet() -> None:
+    """The hosted-runner guard must not depend on hosted runners itself."""
+    text = _local_only_guard_text()
+    assert "runs-on: d-sorg-fleet" in text
+    assert "runs-on: ubuntu-latest" not in text
+
+
+def test_main_line_cap_exempts_current_legacy_frontend_baseline() -> None:
+    """Main push line-cap gate must not fail on documented legacy frontend debt."""
+    text = _workflow_text()
+    legacy_files = {
+        "Principals.tsx",
+        "Analysis.tsx",
+        "RemediationPRs.tsx",
+        "Machines.tsx",
+        "FleetTab.tsx",
+        "FleetOrchestration.tsx",
+        "FeatureRequests.tsx",
+        "RemediationTab.tsx",
+        "Workflows.tsx",
+        "RemediationIssues.tsx",
+        "navRegistry.ts",
+    }
+    for filename in legacy_files:
+        assert filename in text, f"{filename} missing from line-cap legacy baseline"
 
 
 # ---------------------------------------------------------------------------
