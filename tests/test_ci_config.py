@@ -12,7 +12,7 @@ pyproject.toml satisfy the non-blocking/blocking policy introduced in #400:
   6. bandit.yaml exists and contains a [skips] section with per-entry rationale.
   7. requirements-audit-ignore.txt exists and documents the policy.
   8. All jobs in ci-standard.yml run on d-sorg fleet labels (not hosted).
-  9. Python dependency-heavy jobs use fast-io runners.
+  9. Python dependency-heavy jobs use Docker-capable self-hosted runners.
 """
 
 from __future__ import annotations
@@ -154,19 +154,19 @@ def test_all_jobs_use_fleet_runner() -> None:
         )
 
 
-def test_python_heavy_jobs_use_fast_io_runners() -> None:
-    """Dependency-heavy Python jobs must avoid light OGLaptop-only routing."""
+def test_python_heavy_jobs_use_docker_runners() -> None:
+    """Dependency-heavy Python jobs must use currently schedulable Docker runners."""
     workflow = _workflow_yaml(CI_WORKFLOW)
     for job_name in ("quality-gate", "security-scan", "tests"):
         labels = _runs_on_labels(workflow["jobs"][job_name])
-        assert {"self-hosted", "Linux", "X64", "d-sorg-fleet-fast-io"}.issubset(labels)
+        assert {"self-hosted", "Linux", "X64", "d-sorg-fleet-docker"}.issubset(labels)
 
 
-def test_docker_build_uses_docker_fast_io_runners() -> None:
-    """Docker builds require both Docker and fast-IO runner labels."""
+def test_docker_build_uses_docker_runners() -> None:
+    """Docker builds require Docker-capable runner labels."""
     workflow = _workflow_yaml(DOCKER_WORKFLOW)
     labels = _runs_on_labels(workflow["jobs"]["docker-build-scan"])
-    assert {"self-hosted", "Linux", "X64", "d-sorg-fleet-docker", "d-sorg-fleet-fast-io"}.issubset(labels)
+    assert {"self-hosted", "Linux", "X64", "d-sorg-fleet-docker"}.issubset(labels)
 
 
 def test_local_only_guard_runs_on_fleet() -> None:
