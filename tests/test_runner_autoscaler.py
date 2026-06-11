@@ -588,6 +588,99 @@ def test_should_restore_recovery_floor_only_after_overload_clears(
 
 
 # ---------------------------------------------------------------------------
+# Default-pool overload decision — OGLaptop 2026-06-09 idle-host regression
+#
+# A fully idle host (load 0.23 on 20 cores, 1 GB / 62 GB RAM, 0 swap) was
+# wrongly scaled to the floor and the stop was logged as "(host overloaded)".
+# These tests pin the decision contract: idle metrics must NOT read overloaded
+# (so no overload-driven scale-down) and MUST read recovered (so runners are
+# restored), evaluated against OGLaptop's deployed thresholds.
+# ---------------------------------------------------------------------------
+
+# OGLaptop's runner-autoscaler.service tunables, fed explicitly so the test is
+# independent of the module constants resolved at import time.
+_OGLAPTOP_THRESHOLDS = {
+    "cpu_high": 75.0,
+    "mem_high": 60.0,
+    "load_per_core": 1.2,
+    "disk_high": 92.0,
+    "disk_min_free_gb": 25.0,
+}
+
+# Observed idle sample: load1=0.23 across 20 logical cores → 0.0115 per core,
+# 1 GB of 62 GB RAM used → ~1.6%, CPU essentially idle, disk healthy.
+_IDLE_METRICS = {
+    "avg_cpu": 3.0,
+    "avg_mem": 1.6,
+    "avg_load": 0.23 / 20,
+    "avg_disk": 41.0,
+    "min_disk_free": 220.0,
+}
+
+
+def test_default_pool_not_overloaded_when_host_idle() -> None:
+    """Idle host must NOT trigger overload → no overload-driven scale-down."""
+    assert ra._default_pool_overloaded(**_IDLE_METRICS, **_OGLAPTOP_THRESHOLDS) is False, (
+        "fully idle host was reported overloaded — the OGLaptop 2026-06-09 false positive"
+    )
+
+
+def test_default_pool_recovered_when_host_idle() -> None:
+    """Idle host clears every threshold with margin → recovery is allowed."""
+    recovered = ra._default_pool_recovered(
+        avg_cpu=_IDLE_METRICS["avg_cpu"],
+        avg_mem=_IDLE_METRICS["avg_mem"],
+        avg_load=_IDLE_METRICS["avg_load"],
+        avg_disk=_IDLE_METRICS["avg_disk"],
+        min_disk_free=_IDLE_METRICS["min_disk_free"],
+        cpu_low=35.0,  # OGLaptop AUTOSCALER_CPU_LOW
+        mem_high=_OGLAPTOP_THRESHOLDS["mem_high"],
+        load_per_core=_OGLAPTOP_THRESHOLDS["load_per_core"],
+        disk_high=_OGLAPTOP_THRESHOLDS["disk_high"],
+        disk_min_free_gb=_OGLAPTOP_THRESHOLDS["disk_min_free_gb"],
+    )
+    assert recovered is True
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"avg_cpu": 80.0},  # CPU above cpu_high=75
+        {"avg_mem": 70.0},  # memory above mem_high=60
+        {"avg_load": 1.5},  # per-core load above load_per_core=1.2
+        {"avg_disk": 95.0},  # disk above disk_high=92
+        {"min_disk_free": 10.0},  # free headroom below disk_min_free_gb=25
+    ],
+)
+def test_default_pool_overloaded_when_any_metric_breaches(overrides: dict) -> None:
+    """Each individual threshold breach must still trip overload (no regression
+    from extracting the decision into a function)."""
+    metrics = {**_IDLE_METRICS, **overrides}
+    assert ra._default_pool_overloaded(**metrics, **_OGLAPTOP_THRESHOLDS) is True
+
+
+def test_stop_unit_logs_scheduled_surplus_reason(caplog: pytest.LogCaptureFixture) -> None:
+    """A scheduled-surplus trim must NOT be logged as 'host overloaded' — that
+    mislabel made an idle-host schedule trim look like a resource emergency."""
+    with patch(
+        "subprocess.run",
+        side_effect=[
+            _make_completed_process("KillMode=mixed\nTimeoutStopUSec=2min\n", returncode=0),
+            _make_completed_process("", returncode=0),
+        ],
+    ):
+        with caplog.at_level("WARNING"):
+            result = ra._stop_unit(
+                "actions.runner.my-org.runner1.service",
+                reason="scheduled surplus",
+            )
+    assert result is True
+    messages = " ".join(rec.getMessage() for rec in caplog.records)
+    assert "scheduled surplus" in messages
+    assert "host overloaded" not in messages
+
+
+# ---------------------------------------------------------------------------
 # Job-pickup busy signals — issue #651 race-close coverage
 #
 # Tests the helpers introduced in #664 plus the pickup-window check added

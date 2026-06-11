@@ -38,6 +38,7 @@ import json
 import logging
 import os
 import re
+import socket
 import sys
 import time
 from collections import deque
@@ -174,6 +175,11 @@ __all__ = [
     "_io_pressure_snapshot",
     "_sample",
     "_scheduled_desired_count",
+    "_default_pool_overloaded",
+    "_default_pool_recovered",
+    "_send_watchdog",
+    "_notify_systemd",
+    "_sd_notify_socket",
 ]
 
 
@@ -195,6 +201,84 @@ def _should_restore_recovery_floor(*, overloaded: bool, active_count: int, sched
     """Return whether the autoscaler should rebuild the minimum working pool."""
     return (
         not overloaded and active_count < _recovery_floor_target(scheduled_desired) and active_count < scheduled_desired
+    )
+
+
+def _default_pool_overloaded(
+    *,
+    avg_cpu: float,
+    avg_mem: float,
+    avg_load: float,
+    avg_disk: float,
+    min_disk_free: float,
+    cpu_high: float | None = None,
+    mem_high: float | None = None,
+    load_per_core: float | None = None,
+    disk_high: float | None = None,
+    disk_min_free_gb: float | None = None,
+) -> bool:
+    """Return True when the default pool's host metrics breach a scale-down trigger.
+
+    Pure decision function — no sampling, no systemd, no clock — so the overload
+    contract can be unit-tested against fixed metric vectors. A *fully idle*
+    host (low CPU, low memory, sub-unity per-core load, ample disk) MUST return
+    False: the autoscaler must never read "overloaded" on a quiet machine. This
+    is the guard for the OGLaptop 2026-06-09 regression, where a host at load
+    0.23 / 20 cores and 1 GB / 62 GB RAM was wrongly trimmed to the floor.
+
+    Inputs are already time-averaged by the caller (``avg_*``) except
+    ``min_disk_free``, the worst-case free headroom across the window.
+    ``avg_load`` is load1 divided by core count, so it is compared directly to
+    ``load_per_core`` (already a per-core figure) with no further division —
+    mixing a raw load1 in here would be the classic units bug.
+
+    Thresholds default to the module-level constants resolved from the
+    environment; tests pass them explicitly to reproduce a deployed host's tune.
+    """
+    cpu_high = CPU_HIGH if cpu_high is None else cpu_high
+    mem_high = MEM_HIGH if mem_high is None else mem_high
+    load_per_core = LOAD_PER_CORE if load_per_core is None else load_per_core
+    disk_high = DISK_HIGH if disk_high is None else disk_high
+    disk_min_free_gb = DISK_MIN_FREE_GB if disk_min_free_gb is None else disk_min_free_gb
+    return (
+        avg_cpu >= cpu_high
+        or avg_mem >= mem_high
+        or avg_load >= load_per_core
+        or avg_disk >= disk_high
+        or min_disk_free <= disk_min_free_gb
+    )
+
+
+def _default_pool_recovered(
+    *,
+    avg_cpu: float,
+    avg_mem: float,
+    avg_load: float,
+    avg_disk: float,
+    min_disk_free: float,
+    cpu_low: float | None = None,
+    mem_high: float | None = None,
+    load_per_core: float | None = None,
+    disk_high: float | None = None,
+    disk_min_free_gb: float | None = None,
+) -> bool:
+    """Return True when the default pool has comfortably cleared every threshold.
+
+    Hysteresis counterpart to :func:`_default_pool_overloaded`: every metric must
+    sit a margin *below* its scale-down trigger before the autoscaler restores
+    runners, so a host hovering on a threshold does not flap up and down.
+    """
+    cpu_low = CPU_LOW if cpu_low is None else cpu_low
+    mem_high = MEM_HIGH if mem_high is None else mem_high
+    load_per_core = LOAD_PER_CORE if load_per_core is None else load_per_core
+    disk_high = DISK_HIGH if disk_high is None else disk_high
+    disk_min_free_gb = DISK_MIN_FREE_GB if disk_min_free_gb is None else disk_min_free_gb
+    return (
+        avg_cpu <= cpu_low
+        and avg_mem < mem_high - 10
+        and avg_load < load_per_core * 0.7
+        and avg_disk < disk_high - 5
+        and min_disk_free > disk_min_free_gb
     )
 
 
@@ -462,13 +546,8 @@ def _run_poll_loop() -> None:
     }
 
     # A1: notify systemd we're up. Pairs with the periodic _send_watchdog()
-    # call inside the loop body below.
-    if _sd_notify is not None:
-        try:
-            watchdog_usec = os.environ.get("WATCHDOG_USEC", "120000000")
-            _sd_notify(f"READY=1\nWATCHDOG_USEC={watchdog_usec}")
-        except Exception:  # noqa: BLE001
-            log.exception("autoscaler READY notification failed; continuing")
+    # call inside the loop body below. Best-effort: _notify_systemd never raises.
+    _notify_systemd("READY=1")
 
     while True:
         _send_watchdog()
@@ -529,19 +608,19 @@ def _run_poll_loop() -> None:
                     avg_disk = sum(s["disk"] for s in hist) / len(hist)
                     min_disk_free = min(s["disk_free"] for s in hist)
 
-                    overloaded = (
-                        avg_cpu >= CPU_HIGH
-                        or avg_mem >= MEM_HIGH
-                        or avg_load >= LOAD_PER_CORE
-                        or avg_disk >= DISK_HIGH
-                        or min_disk_free <= DISK_MIN_FREE_GB
+                    overloaded = _default_pool_overloaded(
+                        avg_cpu=avg_cpu,
+                        avg_mem=avg_mem,
+                        avg_load=avg_load,
+                        avg_disk=avg_disk,
+                        min_disk_free=min_disk_free,
                     )
-                    recovered = (
-                        avg_cpu <= CPU_LOW
-                        and avg_mem < MEM_HIGH - 10
-                        and avg_load < LOAD_PER_CORE * 0.7
-                        and avg_disk < DISK_HIGH - 5
-                        and min_disk_free > DISK_MIN_FREE_GB
+                    recovered = _default_pool_recovered(
+                        avg_cpu=avg_cpu,
+                        avg_mem=avg_mem,
+                        avg_load=avg_load,
+                        avg_disk=avg_disk,
+                        min_disk_free=min_disk_free,
                     )
                     log.info(
                         "pool=default cpu=%.1f%% mem=%.1f%% load/core=%.2f disk=%.1f%% free=%.1fGB"
@@ -631,7 +710,7 @@ def _run_poll_loop() -> None:
                             len(to_stop),
                         )
                         for u in to_stop:
-                            _stop_unit(u)
+                            _stop_unit(u, reason="scheduled surplus")
                     else:
                         log.debug("pool=%s stop action filtered/disabled", pool_name)
 
@@ -653,7 +732,7 @@ def _run_poll_loop() -> None:
                                 pool_cfg["min_online"],
                             )
                             for u in to_stop:
-                                _stop_unit(u)
+                                _stop_unit(u, reason="host overloaded")
                     else:
                         log.debug("pool=%s stop action filtered/disabled during overload", pool_name)
 
@@ -685,45 +764,88 @@ def _run_poll_loop() -> None:
 
         except Exception as exc:  # noqa: BLE001
             log.exception("autoscaler tick failed: %s", exc)
-        _notify_watchdog()
+        # Beat the watchdog again at the *end* of the tick. A tick that stalls
+        # on slow systemctl calls can run longer than the top-of-loop beat's
+        # headroom; a trailing beat keeps the deadline fresh either way.
+        _send_watchdog()
         time.sleep(POLL_SECONDS)
 
 
-# systemd watchdog notification (issue #707)
+# systemd watchdog notification (issue #707).
+#
+# The `systemd` python binding is an optional C extension that is NOT a declared
+# dependency (see backend/requirements.txt — only psutil is). On a host where it
+# isn't installed, `_sd_notify` is None; the old code then no-op'd the watchdog
+# beat entirely, so systemd SIGABRTed the process every WatchdogSec=120s
+# (OGLaptop 2026-06-09: NRestarts=93, status=6, crash-loop). We therefore prefer
+# the binding when present but fall back to writing the sd_notify datagram to
+# $NOTIFY_SOCKET ourselves — no extra dependency, and the unit already permits
+# AF_UNIX sockets and the @system-service syscall set.
 try:
     from systemd.daemon import notify as _sd_notify
 except ImportError:
     _sd_notify = None  # type: ignore[assignment]
 
-_sd_notify_autoscaler = _sd_notify
+
+def _sd_notify_socket(state: str) -> bool:
+    """Send an sd_notify *state* string to ``$NOTIFY_SOCKET`` directly.
+
+    Implements the systemd notification protocol without the `systemd` python
+    package: connect to the AF_UNIX datagram socket named by ``$NOTIFY_SOCKET``
+    and write the newline-separated state. A leading ``@`` denotes a Linux
+    abstract-namespace socket and maps to a leading NUL byte.
+
+    Best-effort: returns True when the datagram was sent, False when there is no
+    socket or the send fails. Never raises — the watchdog must not crash the
+    poll loop.
+    """
+    addr = os.environ.get("NOTIFY_SOCKET")
+    if not addr:
+        return False
+    if addr.startswith("@"):
+        addr = "\0" + addr[1:]
+    try:
+        # AF_UNIX is POSIX-only; the autoscaler only ever runs on the Linux
+        # host. The ignore keeps type-checking green on Windows dev machines.
+        with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as sock:  # type: ignore[attr-defined]
+            sock.connect(addr)
+            sock.sendall(state.encode("utf-8"))
+        return True
+    except OSError as exc:
+        log.debug("sd_notify via NOTIFY_SOCKET failed: %s", exc)
+        return False
+
+
+def _notify_systemd(state: str) -> bool:
+    """Deliver an sd_notify *state* to systemd by any available channel.
+
+    Tries the `systemd` python binding first (when installed), then the raw
+    ``$NOTIFY_SOCKET`` datagram. Returns True if either channel accepted the
+    message. Never raises.
+    """
+    notifier = _sd_notify
+    if notifier is not None:
+        try:
+            notifier(state)
+            return True
+        except Exception as exc:  # noqa: BLE001
+            log.warning("systemd.daemon.notify failed (%s); falling back to NOTIFY_SOCKET", exc)
+    return _sd_notify_socket(state)
 
 
 def _send_watchdog() -> None:
-    """Send WATCHDOG=1 to systemd if available (issue #707).
+    """Reset the systemd watchdog timer if one is configured (issue #707).
 
-    Pre-condition: none. Post-condition: never raises.
+    Pre-condition: none. Post-condition: never raises. No-op outside systemd
+    (``WATCHDOG_USEC`` unset), so local ``python runner_autoscaler.py`` runs
+    unaffected.
     """
-    if _sd_notify is None:
-        return
     if not os.environ.get("WATCHDOG_USEC", "").strip():
         return
     try:
-        _sd_notify("WATCHDOG=1")
+        _notify_systemd("WATCHDOG=1")
     except Exception:  # noqa: BLE001
         log.exception("autoscaler watchdog notification failed; will retry next tick")
-
-
-def _notify_watchdog() -> None:
-    """Send WATCHDOG=1 to systemd if available (issue #707).
-
-    Pre-condition: none (safe to call unconditionally).
-    Post-condition: watchdog timer is reset when sd_notify is available.
-    """
-    if _sd_notify_autoscaler is not None:
-        try:
-            _sd_notify_autoscaler("WATCHDOG=1")
-        except Exception as exc:  # noqa: BLE001
-            log.warning("autoscaler: sd_notify WATCHDOG=1 failed: %s", exc)
 
 
 def main() -> None:

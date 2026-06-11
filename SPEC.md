@@ -3347,3 +3347,22 @@ HMAC message is approve:<envelope_id>:<action>. If approval_hmac is
 present and invalid, validate_envelope_crypto fails closed with
 valid=False. An absent approval_hmac is accepted with a deprecation
 warning for backwards-compatibility; clients should supply it.
+
+### Autoscaler overload detection and systemd watchdog (PR #918)
+
+`_default_pool_overloaded()` and `_default_pool_recovered()` are now
+pure functions in `runner_autoscaler.py`, extracted from the inline
+poll-loop expressions. This makes the overload contract unit-testable
+without running the poll loop or touching systemd (OGLaptop 2026-06-09
+regression: idle host at load 0.23/20 cores was wrongly scaled to the
+floor and logged as "host overloaded").
+
+The systemd watchdog path no longer requires the optional `systemd`
+Python package. `_sd_notify_socket()` writes the sd_notify datagram
+directly to `$NOTIFY_SOCKET`; `_notify_systemd()` tries the binding
+first and falls back to the socket path. `NotifyAccess=main` is added
+to `deploy/runner-autoscaler.service` so systemd honours keep-alive
+pings from the main process.
+
+`_stop_unit()` now accepts a `reason=` keyword argument so a
+scheduled-surplus trim is logged as such rather than "host overloaded".

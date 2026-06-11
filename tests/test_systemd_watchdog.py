@@ -12,6 +12,7 @@ contract.
 from __future__ import annotations
 
 import asyncio
+import socket
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -137,3 +138,69 @@ def test_autoscaler_watchdog_swallows_notifier_failure(monkeypatch) -> None:
     monkeypatch.setenv("WATCHDOG_USEC", "120000000")
     # Must not propagate.
     ra._send_watchdog()
+
+
+# ---------------------------------------------------------------------------
+# Dependency-free $NOTIFY_SOCKET fallback (issue #707 / OGLaptop 2026-06-09)
+#
+# The crash-loop root cause: the `systemd` python binding is not a declared
+# dependency, so on the deployed host `_sd_notify is None` and the old watchdog
+# silently no-op'd, letting systemd SIGABRT the process every WatchdogSec. The
+# fallback writes the sd_notify datagram to $NOTIFY_SOCKET directly, so the
+# heartbeat works with the binding absent.
+# ---------------------------------------------------------------------------
+
+
+def test_sd_notify_socket_returns_false_without_env(monkeypatch) -> None:
+    """No $NOTIFY_SOCKET → best-effort no-op returning False (never raises)."""
+    import runner_autoscaler as ra
+
+    monkeypatch.delenv("NOTIFY_SOCKET", raising=False)
+    assert ra._sd_notify_socket("WATCHDOG=1") is False
+
+
+def test_notify_systemd_falls_back_to_socket_when_binding_raises(monkeypatch) -> None:
+    """When the systemd binding errors, _notify_systemd must try the socket."""
+    import runner_autoscaler as ra
+
+    def boom(_payload: str) -> None:
+        raise RuntimeError("binding unavailable")
+
+    captured: dict[str, str] = {}
+
+    def fake_socket(state: str) -> bool:
+        captured["state"] = state
+        return True
+
+    monkeypatch.setattr(ra, "_sd_notify", boom)
+    monkeypatch.setattr(ra, "_sd_notify_socket", fake_socket)
+
+    assert ra._notify_systemd("WATCHDOG=1") is True
+    assert captured["state"] == "WATCHDOG=1"
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32" or not hasattr(socket, "AF_UNIX"),
+    reason="AF_UNIX datagram sockets are unavailable on this platform",
+)
+def test_autoscaler_watchdog_delivers_over_notify_socket(monkeypatch, tmp_path) -> None:
+    """End-to-end crash-loop fix: with the systemd binding absent
+    (_sd_notify=None), _send_watchdog must still deliver WATCHDOG=1 by writing
+    $NOTIFY_SOCKET — exactly the OGLaptop deployment condition."""
+    import runner_autoscaler as ra
+
+    sock_path = str(tmp_path / "notify.sock")
+    listener = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+    listener.bind(sock_path)
+    listener.settimeout(2.0)
+    try:
+        monkeypatch.setattr(ra, "_sd_notify", None)
+        monkeypatch.setenv("WATCHDOG_USEC", "120000000")
+        monkeypatch.setenv("NOTIFY_SOCKET", sock_path)
+
+        ra._send_watchdog()
+
+        data, _addr = listener.recvfrom(64)
+    finally:
+        listener.close()
+    assert data == b"WATCHDOG=1"
