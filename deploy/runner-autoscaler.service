@@ -86,9 +86,13 @@ ProtectProc=invisible
 MemoryMax=2G
 CPUQuota=200%
 TasksMax=512
-# Watchdog — fires if the autoscaler process hangs entirely.
-# See issue #391 AC-3 for the follow-up to wire sd_notify into the process.
+# Watchdog — fires if the autoscaler process hangs entirely. The process resets
+# it each poll via sd_notify(WATCHDOG=1); see _send_watchdog() in
+# runner_autoscaler.py, which writes $NOTIFY_SOCKET directly so the heartbeat
+# works without the optional `systemd` python package installed. NotifyAccess
+# is made explicit so systemd honours the main process's keep-alive pings.
 WatchdogSec=120
+NotifyAccess=main
 # Allow autoscaler to read runner schedule config from the service user HOME.
 ReadWritePaths=/home/YOUR_USER/.config/runner-dashboard
 

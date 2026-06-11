@@ -177,10 +177,17 @@ def _unit_has_safe_stop_contract(unit: str) -> bool:
     return True
 
 
-def _stop_unit(unit: str) -> bool:
+def _stop_unit(unit: str, *, reason: str = "host overloaded") -> bool:
     """Stop *unit* via systemd, respecting DRY_RUN mode.
 
     Returns True on success (or in dry-run), False if systemctl reports failure.
+
+    ``reason`` is the operator-facing cause logged on a successful stop. It MUST
+    reflect the branch that decided to stop: a scheduled-surplus trim and a
+    genuine host-overload eviction are different events, and labelling every
+    stop "host overloaded" (the old hardcoded string) made an idle-host
+    schedule trim look like a CPU/memory emergency — the misleading half of the
+    OGLaptop 2026-06-09 report.
 
     After every stop attempt (whether systemctl returns success or failure)
     invokes :func:`runner_state_cleanup.cleanup_runner_state` so that any
@@ -202,7 +209,7 @@ def _stop_unit(unit: str) -> bool:
     if not success:
         log.warning("Failed to stop %s: %s", unit, r.stderr.strip()[:200])
     else:
-        log.warning("Autoscaler STOPPED %s (host overloaded)", unit)
+        log.warning("Autoscaler STOPPED %s (%s)", unit, reason)
 
     # Recovery half of the stop contract — best-effort, never raises.
     try:
