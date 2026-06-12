@@ -28,6 +28,20 @@ if str(_BACKEND_DIR) not in sys.path:
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _enable_dev_login(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Dev-login is opt-in (issue #921). TestClient connects from loopback, so
+    enabling the flag is sufficient to exercise the persistence behaviour.
+
+    Also clears the per-IP auth rate-limit store (issue #320) so repeated
+    loopback dev-login calls across tests don't trip the shared 5/5min limiter.
+    """
+    monkeypatch.setenv("DASHBOARD_DEV_LOGIN", "1")
+    import middleware
+
+    middleware._auth_rate_store.clear()
+
+
 def _make_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> FastAPI:
     """Build a minimal FastAPI app wired to a temp config dir."""
     import session_management as sm
@@ -66,7 +80,7 @@ def test_dev_login_persists_principal_to_yaml(
     """Calling /api/auth/dev-login when no human principal exists must write
     dev-user to principals.yml atomically."""
     app = _make_app(tmp_path, monkeypatch)
-    client = TestClient(app, follow_redirects=False)
+    client = TestClient(app, follow_redirects=False, client=("127.0.0.1", 12345))
 
     response = client.get("/api/auth/dev-login")
     assert response.status_code in (200, 302, 307)
@@ -95,7 +109,7 @@ def test_dev_login_session_survives_restart(
 
     # --- First boot ---
     app1 = _make_app(tmp_path, monkeypatch)
-    client1 = TestClient(app1, follow_redirects=False)
+    client1 = TestClient(app1, follow_redirects=False, client=("127.0.0.1", 12345))
     client1.get("/api/auth/dev-login")
 
     principals_yml = tmp_path / "config" / "principals.yml"
@@ -143,7 +157,7 @@ def test_dev_login_cookie_works_after_restart(
     app1.add_middleware(SessionMiddleware, secret_key="test-secret-key")
     app1.include_router(auth_module.router)
 
-    client1 = TestClient(app1, follow_redirects=False)
+    client1 = TestClient(app1, follow_redirects=False, client=("127.0.0.1", 12345))
     resp = client1.get("/api/auth/dev-login")
     # Cookie is set in client1's jar
     assert resp.status_code in (200, 302, 307)
@@ -167,7 +181,7 @@ def test_dev_login_idempotent_no_duplicate_entries(
 ) -> None:
     """Calling dev-login twice must not create duplicate principals in the YAML."""
     app = _make_app(tmp_path, monkeypatch)
-    client = TestClient(app, follow_redirects=False)
+    client = TestClient(app, follow_redirects=False, client=("127.0.0.1", 12345))
 
     client.get("/api/auth/dev-login")
     client.get("/api/auth/dev-login")
