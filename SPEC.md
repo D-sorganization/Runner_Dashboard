@@ -1,10 +1,21 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.88
+**Spec Version:** 2.5.89
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-12T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-12 (2.5.89):** Enforced intra-fleet authentication on the hub
+  (security, issue #922). Added the `require_fleet_peer` dependency
+  (`backend/identity.py`): a hub-reachable fleet route is accepted only when the
+  caller presents a valid principal OR `Authorization: Bearer <HUB_FLEET_TOKEN>`
+  matching the hub's configured token via `hmac.compare_digest` (constant-time).
+  Applied to `GET /api/fleet/status`. Policy: fleet reads are token-gated when
+  `HUB_FLEET_TOKEN` is set (unauthenticated callers get `401`) and tailnet-public
+  when it is unset (backward-compatible no-op for single-node deployments).
+  `docs/runbooks/hub-credentials.md` now describes the enforced behavior instead
+  of claiming validation that did not exist. The structural "all `/api/*` routes
+  authenticated" follow-up is tracked by #924.
 - **2026-06-12 (2.5.88):** Collapsed the two divergent `proxy_to_hub`
   implementations into one (security, issue #923, re-opens #347). `backend/server.py`
   previously defined its own `proxy_to_hub` that forwarded ALL caller headers to
