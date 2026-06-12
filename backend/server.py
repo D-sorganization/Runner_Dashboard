@@ -81,6 +81,7 @@ import orchestration_audit as orchestration_audit  # noqa: E402
 import orchestrator_api as _orchestrator_api  # noqa: E402  # Conductor integration (issue #1282)
 import pr_inventory as pr_inventory  # noqa: E402
 import prometheus_metrics as _prometheus_metrics_router  # noqa: E402
+import proxy_utils as _proxy_utils  # noqa: E402  # single hub-proxy implementation (issue #923)
 import push as _push_router  # noqa: E402
 import quota_enforcement as quota_enforcement  # noqa: E402
 import unified_issue_inventory as unified_issue_inventory  # noqa: E402
@@ -854,58 +855,15 @@ if HUB_URL:
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
 
-async def proxy_to_hub(request: Request):
-    """Proxy request to the designated HUB_URL for hub-spoke topology."""
-    if not HUB_URL:
-        raise HTTPException(status_code=502, detail="HUB_URL not configured")
-    from proxy_utils import _translate_upstream_response, mark_hub_unreachable, reset_hub_circuit
-
-    async with httpx.AsyncClient(timeout=HttpTimeout.PROXY_TO_HUB_S) as client:
-        url = f"{HUB_URL}{request.url.path}"
-        if request.url.query:
-            url = f"{url}?{request.url.query}"
-        try:
-            req = client.build_request(
-                request.method,
-                url,
-                headers={k: v for k, v in request.headers.items() if k.lower() not in ("host", "content-length")},
-                content=await request.body(),
-            )
-            resp = await client.send(req)
-            reset_hub_circuit()  # hub answered → close the breaker
-            return _translate_upstream_response(resp, "Hub proxy")
-        except httpx.TimeoutException as e:
-            log.warning("Hub proxy timeout for %s: %s", request.url.path, e)
-            mark_hub_unreachable()  # open breaker → serve local until hub recovers
-            raise HTTPException(status_code=504, detail="Hub timeout") from e
-        except httpx.ConnectError as e:
-            log.warning("Hub proxy connect error for %s: %s", request.url.path, e)
-            mark_hub_unreachable()  # open breaker → serve local until hub recovers
-            raise HTTPException(status_code=503, detail="Hub connection error") from e
-        except HTTPException:
-            raise
-        except Exception as e:  # noqa: BLE001
-            log.warning("Hub proxy error for %s: %s", request.url.path, e)
-            raise HTTPException(status_code=502, detail="Hub proxy error") from e
-
-
-def _should_proxy_fleet_to_hub(request: Request) -> bool:
-    """Return True when this node should use the hub's fleet-wide view.
-
-    Local health, system metrics, watchdog, and runner schedule endpoints stay
-    local. Fleet-wide endpoints can proxy to the hub, while hub fan-out calls
-    can add ``?local=1`` to force a node-local action and avoid proxy loops.
-
-    If the hub circuit breaker is open (hub recently unreachable), we serve local
-    data instead of proxying, so a dead hub never blanks the dashboard.
-    """
-    from proxy_utils import hub_in_cooldown
-
-    if MACHINE_ROLE != "node" or not HUB_URL or hub_in_cooldown():
-        return False
-    local_value = request.query_params.get("local", "").lower()
-    scope_value = request.query_params.get("scope", "").lower()
-    return local_value not in {"1", "true", "yes", "local"} and scope_value != "local"
+# Hub proxying lives in a SINGLE implementation: proxy_utils.proxy_to_hub, which
+# strips sensitive caller headers (Authorization/Cookie/X-API-Key/X-CSRF-Token)
+# and injects the intra-fleet HUB_FLEET_TOKEN instead. The previous server.py copy
+# (issue #923) forwarded ALL caller headers verbatim except host/content-length,
+# laundering operator credentials to the hub — a regression of the #347 class. It
+# is deleted; these names are thin re-exports so existing call sites and DI wiring
+# keep working without a second divergent implementation.
+proxy_to_hub = _proxy_utils.proxy_to_hub
+_should_proxy_fleet_to_hub = _proxy_utils.should_proxy_fleet_to_hub
 
 
 async def run_cmd(
