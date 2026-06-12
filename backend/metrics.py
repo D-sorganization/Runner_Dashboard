@@ -5,15 +5,12 @@ Extracted from server.py as part of issue #159 god-module-refactor-2026q2.
 
 from __future__ import annotations
 
-import datetime as _dt_mod
 from pathlib import Path
 
 import psutil  # noqa: F401
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 
 router = APIRouter(tags=["metrics"])
-UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
-datetime = _dt_mod.datetime
 
 
 def _resolve_windows_host_disk_path(configured_path: str | Path | None = None) -> Path | None:
@@ -36,111 +33,16 @@ def _resolve_windows_host_disk_path(configured_path: str | Path | None = None) -
     return None
 
 
-@router.get("/api/system")
-async def get_system_metrics():
-    """Real-time system resource metrics."""
-    from routers.system import get_system_metrics as _canonical_system_metrics  # noqa: PLC0415
-
-    return await _canonical_system_metrics()
-
-
-@router.get("/api/fleet/status")
-async def get_fleet_status(request: Request, exclude_pools: bool = False):
-    """Get full system metrics state for all machines in the fleet network."""
-    # Lazy import to avoid circular dependency with server.py
-    from dashboard_config import PORT  # noqa: PLC0415
-    from server import (  # noqa: PLC0415
-        FLEET_NODES,
-        _classify_node_offline,
-        _resource_offline_reason,
-        _should_proxy_fleet_to_hub,
-        proxy_to_hub,
-    )
-
-    if _should_proxy_fleet_to_hub(request):
-        return await proxy_to_hub(request)
-
-    responses = {}
-    local_metrics = await get_system_metrics()
-    local_metrics["_role"] = "hub"
-
-    if PORT == 8322:
-        local_pool_name = "ControlTower-HDD"
-        peer_pool_name = "ControlTower-NVMe"
-        peer_port = 8321
-    else:
-        local_pool_name = "ControlTower-NVMe"
-        peer_pool_name = "ControlTower-HDD"
-        peer_port = 8322
-
-    responses[local_pool_name] = local_metrics
-
-    async def fetch_node(name, url):
-        import httpx  # noqa: PLC0415
-
-        try:
-            async with httpx.AsyncClient() as client:
-                target = f"{url}/api/system"
-                resp = await client.get(target, timeout=5)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    data["_role"] = "node"
-                    resource_reason = _resource_offline_reason(data)
-                    if resource_reason:
-                        data.update(resource_reason)
-                    return name, data
-                reason = _classify_node_offline(status_code=resp.status_code)
-                return name, {
-                    "status": "offline",
-                    "error": reason["offline_detail"],
-                    **reason,
-                }
-        except Exception as e:  # noqa: BLE001
-            reason = _classify_node_offline(e)
-            return name, {
-                "status": "offline",
-                "error": reason["offline_detail"],
-                **reason,
-            }
-
-    if FLEET_NODES:
-        import asyncio  # noqa: PLC0415
-
-        results = await asyncio.gather(*[fetch_node(n, u) for n, u in FLEET_NODES.items()])
-        for name, data in results:
-            responses[name] = data
-
-    if not exclude_pools:
-        import logging  # noqa: PLC0415
-
-        import httpx  # noqa: PLC0415
-
-        logger = logging.getLogger("dashboard.metrics")
-        peer_url = f"http://localhost:{peer_port}/api/fleet/status?exclude_pools=true"
-        try:
-            async with httpx.AsyncClient() as client:
-                resp = await client.get(peer_url, timeout=5)
-                if resp.status_code == 200:
-                    peer_data = resp.json()
-                    for k, v in peer_data.items():
-                        responses[k] = v
-                else:
-                    reason = _classify_node_offline(status_code=resp.status_code)
-                    responses[peer_pool_name] = {
-                        "status": "offline",
-                        "error": reason["offline_detail"],
-                        **reason,
-                    }
-        except Exception as e:  # noqa: BLE001
-            logger.warning("Failed to query peer pool on port %d: %s", peer_port, e)
-            reason = _classify_node_offline(e)
-            responses[peer_pool_name] = {
-                "status": "offline",
-                "error": reason["offline_detail"],
-                **reason,
-            }
-
-    return responses
+# NOTE (issue #940): the GET /api/system and GET /api/fleet/status routes that
+# previously lived here were duplicate registrations. Because this router is
+# included before routers.system and routers.fleet in server.py, FastAPI's
+# first-match-wins routing served these copies and shadowed the maintained
+# implementations — silently killing the FleetEventPoller wiring that feeds
+# /api/events (issue #863) and re-registering /api/system over routers.system.
+# The canonical implementations now live in:
+#   - GET /api/system        -> backend/routers/system.py
+#   - GET /api/fleet/status  -> backend/routers/fleet.py (records fleet events)
+# Do not re-add them here. A route-uniqueness invariant test enforces this.
 
 
 @router.get("/api/disk/pool-pressure")
