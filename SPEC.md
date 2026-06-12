@@ -1,10 +1,21 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.87
+**Spec Version:** 2.5.88
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-12T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-12 (2.5.88):** Collapsed the two divergent `proxy_to_hub`
+  implementations into one (security, issue #923, re-opens #347). `backend/server.py`
+  previously defined its own `proxy_to_hub` that forwarded ALL caller headers to
+  the hub except `host`/`content-length` — laundering operator session cookies,
+  `Authorization`, `X-API-Key`, and `X-CSRF-Token` upstream — and that copy was the
+  one dependency-injected into the deployment / orchestration / orchestration-node
+  routers. The server-side body is deleted; `server.proxy_to_hub` and
+  `server._should_proxy_fleet_to_hub` are now thin re-exports of the single
+  header-stripping implementation in `proxy_utils`, which strips the sensitive
+  headers and injects the intra-fleet `HUB_FLEET_TOKEN`. A regression test asserts
+  that for every hub-proxying route no operator credential reaches the hub.
 - **2026-06-12 (2.5.87):** Removed the duplicate `GET /api/system` and
   `GET /api/fleet/status` route registrations in `backend/metrics.py`
   (architecture/correctness, issue #940). Because the metrics router is included
