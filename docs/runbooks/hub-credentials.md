@@ -3,7 +3,7 @@
 ## Overview
 
 `HUB_FLEET_TOKEN` is the intra-fleet bearer token used by spoke nodes when
-proxying requests to the hub node.  It replaces forwarding the caller's own
+proxying requests to the hub node. It replaces forwarding the caller's own
 `Authorization` / `Cookie` / `X-API-Key` headers (issue #347).
 
 ## Setting the token
@@ -21,8 +21,18 @@ echo "HUB_FLEET_TOKEN=${HUB_FLEET_TOKEN}" >> ~/.config/runner-dashboard/runner-d
 sudo systemctl restart runner-dashboard
 ```
 
-The hub must validate inbound `Authorization: Bearer <HUB_FLEET_TOKEN>` headers
-on routes that accept spoke traffic.
+The hub validates inbound `Authorization: Bearer <HUB_FLEET_TOKEN>` headers
+on hub-reachable fleet-read routes via the `require_fleet_peer` dependency.
+A fleet-read request is accepted when either:
+
+- it carries normal dashboard credentials for a valid principal, or
+- it presents `Authorization: Bearer <HUB_FLEET_TOKEN>` matching the hub's
+  configured token.
+
+When `HUB_FLEET_TOKEN` is set on the hub, an unauthenticated request to a
+fleet-read route returns `401`. When the token is unset, those fleet-read routes
+remain tailnet-public for existing single-node and tokenless deployments. For a
+token-gated fleet, set `HUB_FLEET_TOKEN` on the hub and every spoke.
 
 ## Rotation procedure
 
@@ -41,5 +51,6 @@ configured to accept both tokens during the transition window if needed.
 - The token is a symmetric shared secret; protect it like an API key.
 - Never commit `HUB_FLEET_TOKEN` to the repository; store it in the env file
   (which is excluded by `.gitignore`).
-- If not set, no `Authorization` header is injected for intra-fleet calls
-  (the hub must allow unauthenticated spoke traffic in that case).
+- Fleet-token comparison uses a constant-time digest comparison.
+- If not set, no `Authorization` header is injected for intra-fleet calls and
+  fleet-read routes remain tailnet-public.

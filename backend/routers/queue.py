@@ -20,7 +20,7 @@ from dashboard_config import ORG
 from error_models import bad_gateway, validation_error
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from gh_utils import gh_api
-from identity import Principal, require_scope
+from identity import Principal, require_fleet_peer, require_scope
 from models.github_payloads import GhWorkflowRun
 from proxy_utils import proxy_to_hub, should_proxy_fleet_to_hub
 from queue_cleanup import DEFAULT_MIN_AGE_MINUTES, find_stale_runs, purge_stale_runs
@@ -274,7 +274,7 @@ async def _queue_impl() -> dict:
 # ─── Queue Routes ─────────────────────────────────────────────────────────────
 
 
-@router.get("/api/queue")
+@router.get("/api/queue", dependencies=[Depends(require_fleet_peer)])
 async def get_queue(request: Request) -> dict:
     """Get queued and in-progress workflow runs across the org.
 
@@ -289,7 +289,7 @@ async def get_queue(request: Request) -> dict:
     return await _queue_impl()
 
 
-@router.get("/api/queue/status")
+@router.get("/api/queue/status", dependencies=[Depends(require_fleet_peer)])
 async def get_queue_status(request: Request) -> dict:
     """Queue data with per-run queue-wait vs. execution-time breakdown.
 
@@ -314,7 +314,7 @@ async def get_queue_status(request: Request) -> dict:
     return annotate_runs_with_timing(raw)
 
 
-@router.get("/api/queue/stale")
+@router.get("/api/queue/stale", dependencies=[Depends(require_fleet_peer)])
 async def get_stale_queue_runs(
     request: Request,
     min_age_minutes: Annotated[int, Query(ge=1, le=60 * 24 * 14)] = DEFAULT_MIN_AGE_MINUTES,
@@ -371,7 +371,7 @@ async def get_stale_queue_runs(
     }
 
 
-@router.post("/api/queue/purge-stale")
+@router.post("/api/queue/purge-stale", dependencies=[Depends(require_fleet_peer)])
 async def purge_stale_queue_runs(
     request: Request,
     *,

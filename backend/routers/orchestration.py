@@ -32,7 +32,7 @@ import dispatch_contract
 import orchestration_audit as _audit
 from dashboard_config import FLEET_NODES, HOSTNAME, MACHINE_ROLE, ORG, PORT, REPO_ROOT
 from fastapi import APIRouter, Depends, HTTPException, Request
-from identity import Principal, require_scope  # noqa: B008
+from identity import Principal, require_fleet_peer, require_scope  # noqa: B008
 from machine_registry import load_machine_registry
 from routers import orchestration_audit_routes as _audit_routes
 from routers import orchestration_node_routes as _node_routes
@@ -390,7 +390,7 @@ async def fleet_orchestration_deploy(
     }
 
 
-@router.post("/api/fleet/control/{action}")
+@router.post("/api/fleet/control/{action}", dependencies=[Depends(require_fleet_peer)])
 async def fleet_control(
     action: str,
     request: Request,

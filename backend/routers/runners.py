@@ -25,7 +25,7 @@ from dashboard_config import ORG
 from error_models import bad_gateway, not_found, service_error, service_stderr_to_status
 from fastapi import APIRouter, Depends, HTTPException, Request
 from gh_utils import RateLimitedError, gh_api_admin
-from identity import Principal, require_scope
+from identity import Principal, require_fleet_peer, require_scope
 from proxy_utils import proxy_to_hub, should_proxy_fleet_to_hub
 from runner_inventory import fetch_org_runners
 
@@ -90,7 +90,7 @@ def _runner_response(
     }
 
 
-@router.get("/api/runners")
+@router.get("/api/runners", dependencies=[Depends(require_fleet_peer)])
 async def get_runners(request: Request) -> dict[str, Any]:
     """Get all org runners with their status.
 
@@ -156,7 +156,7 @@ async def get_runners(request: Request) -> dict[str, Any]:
         )
 
 
-@router.get("/api/runners/matlab")
+@router.get("/api/runners/matlab", dependencies=[Depends(require_fleet_peer)])
 async def get_matlab_runner_health(request: Request) -> dict[str, Any]:
     """Surface Windows MATLAB runner health for the dashboard.
 

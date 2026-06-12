@@ -13,7 +13,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from gh_utils import gh_api_admin
-from identity import Principal, require_scope
+from identity import Principal, require_fleet_peer, require_scope
 from proxy_utils import proxy_to_hub, should_proxy_fleet_to_hub
 from runner_inventory import fetch_org_runners
 
@@ -32,7 +32,7 @@ router = APIRouter(tags=["runners"])
 _get_system_metrics_snapshot = None
 
 
-@router.get("/api/runners/diagnostics/summary")
+@router.get("/api/runners/diagnostics/summary", dependencies=[Depends(require_fleet_peer)])
 async def get_runners_diagnostics_summary(request: Request) -> dict[str, Any]:
     """Get a comprehensive diagnostics summary for all runners.
 
@@ -170,7 +170,7 @@ async def get_runner_diagnostics(request: Request, runner_id: int) -> dict[str, 
         raise HTTPException(status_code=502, detail=f"GitHub API error: {exc}") from exc
 
 
-@router.get("/api/runners/fleet/capacity")
+@router.get("/api/runners/fleet/capacity", dependencies=[Depends(require_fleet_peer)])
 async def get_fleet_capacity(request: Request) -> dict[str, Any]:
     """Get fleet capacity and scheduling information.
 

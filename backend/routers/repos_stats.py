@@ -15,7 +15,8 @@ import asyncio
 import json
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
+from identity import require_fleet_peer
 from proxy_utils import proxy_to_hub, should_proxy_fleet_to_hub
 from runner_inventory import fetch_org_runners
 
@@ -44,7 +45,7 @@ def _state() -> Any:
     return _repos
 
 
-@router.get("/api/stats")
+@router.get("/api/stats", dependencies=[Depends(require_fleet_peer)])
 async def get_stats(request: Request) -> Any:
     """Aggregate organization, runner, queue, and workflow statistics."""
     if should_proxy_fleet_to_hub(request):
@@ -209,7 +210,7 @@ async def get_stats(request: Request) -> Any:
     return result
 
 
-@router.get("/api/usage")
+@router.get("/api/usage", dependencies=[Depends(require_fleet_peer)])
 async def get_usage_monitoring(request: Request) -> dict:
     """Return normalized subscription and local tool usage summaries."""
     if should_proxy_fleet_to_hub(request):

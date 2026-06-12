@@ -8,7 +8,8 @@ from typing import TYPE_CHECKING
 
 import httpx
 from dashboard_config import FLEET_NODES, HOSTNAME
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
+from identity import require_fleet_peer
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -40,7 +41,7 @@ def set_dependencies(
     _get_system_metrics_snapshot = get_system_metrics_snapshot
 
 
-@router.get("/api/fleet/nodes")
+@router.get("/api/fleet/nodes", dependencies=[Depends(require_fleet_peer)])
 async def get_fleet_nodes(request: Request) -> dict:
     """Aggregate system metrics + health from all fleet nodes."""
     if _should_proxy_fleet_to_hub(request):  # type: ignore[misc]
@@ -48,7 +49,7 @@ async def get_fleet_nodes(request: Request) -> dict:
     return await _get_fleet_nodes_impl()  # type: ignore[misc]
 
 
-@router.get("/api/fleet/hardware")
+@router.get("/api/fleet/hardware", dependencies=[Depends(require_fleet_peer)])
 async def get_fleet_hardware(request: Request) -> dict:
     """Return centralized fleet hardware specs for workload placement."""
     if _should_proxy_fleet_to_hub(request):  # type: ignore[misc]

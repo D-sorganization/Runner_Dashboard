@@ -1,10 +1,19 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.88
+**Spec Version:** 2.5.89
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-12T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-12 (2.5.89):** Enforced hub-side validation for
+  `HUB_FLEET_TOKEN` on read-only routes that spokes proxy to the hub
+  (Runner_Dashboard#922). `identity.require_fleet_peer` now accepts either a
+  valid dashboard principal or a constant-time
+  `Authorization: Bearer <HUB_FLEET_TOKEN>` match. When the token is configured,
+  anonymous fleet-read requests return `401`; when unset, those reads remain
+  tailnet-public for existing tokenless deployments. The hub credentials
+  runbook documents that policy and regression tests cover the gated route
+  surface.
 - **2026-06-12 (2.5.88):** Collapsed the two divergent `proxy_to_hub`
   implementations into one (security, issue #923, re-opens #347). `backend/server.py`
   previously defined its own `proxy_to_hub` that forwarded ALL caller headers to

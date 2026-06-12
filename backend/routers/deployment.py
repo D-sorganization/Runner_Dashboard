@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any
 import deployment_drift
 from dashboard_config import EXPECTED_VERSION_FILE, HOSTNAME
 from fastapi import APIRouter, Depends, Request
-from identity import Principal, require_scope  # noqa: B008
+from identity import Principal, require_fleet_peer, require_scope  # noqa: B008
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -91,7 +91,7 @@ async def get_deployment_drift() -> dict:
     return status.to_dict()
 
 
-@router.get("/api/deployment/state")
+@router.get("/api/deployment/state", dependencies=[Depends(require_fleet_peer)])
 async def get_deployment_state(request: Request) -> dict:
     """Return dashboard deployment state for the fleet overview and deployment tab."""
     if _should_proxy_fleet_to_hub(request):  # type: ignore[misc]
