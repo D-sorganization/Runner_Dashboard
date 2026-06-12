@@ -19,11 +19,15 @@ def test_metrics_module_importable() -> None:
 
 
 def test_metrics_router_has_expected_routes() -> None:
+    """#940: metrics.py owns only the unique /api/disk/pool-pressure route. The
+    previously-duplicated /api/system and /api/fleet/status handlers were removed
+    because they shadowed the maintained routers.system / routers.fleet copies."""
     import metrics  # noqa: PLC0415
 
     paths = {r.path for r in metrics.router.routes}  # type: ignore[attr-defined]
-    assert "/api/system" in paths, "metrics router must expose /api/system"
-    assert "/api/fleet/status" in paths, "metrics router must expose /api/fleet/status"
+    assert "/api/disk/pool-pressure" in paths, "metrics router must expose /api/disk/pool-pressure"
+    assert "/api/system" not in paths, "/api/system is owned by routers.system, not metrics (#940)"
+    assert "/api/fleet/status" not in paths, "/api/fleet/status is owned by routers.fleet, not metrics (#940)"
 
 
 def test_metrics_router_not_inline_in_server() -> None:
@@ -40,15 +44,11 @@ def test_server_registers_metrics_router() -> None:
     assert "include_router(_metrics_router.router)" in server_src
 
 
-def test_metrics_imports_psutil_directly() -> None:
-    """metrics.py must delegate /api/system to the canonical system router."""
+def test_metrics_does_not_import_from_server() -> None:
+    """#940: metrics.py must not import from backend.server. The only reason it
+    ever did was the duplicate /api/fleet/status handler (now removed), which
+    forced a lazy circular import."""
     metrics_src = (_BACKEND_DIR / "metrics.py").read_text(encoding="utf-8")
-    assert "from routers.system import get_system_metrics" in metrics_src
-    assert (
-        "from server import"
-        not in metrics_src.split('@router.get("/api/system")', 1)[1].split(
-            '@router.get("/api/fleet/status")',
-            1,
-        )[0]
-    )
+    assert "from server import" not in metrics_src, "metrics.py must not import from server (#940)"
+    assert "import server" not in metrics_src, "metrics.py must not import server (#940)"
     assert "psutil," not in metrics_src

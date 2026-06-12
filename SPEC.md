@@ -1,10 +1,23 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.86
+**Spec Version:** 2.5.87
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-12T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-12 (2.5.87):** Removed the duplicate `GET /api/system` and
+  `GET /api/fleet/status` route registrations in `backend/metrics.py`
+  (architecture/correctness, issue #940). Because the metrics router is included
+  before `routers.system` and `routers.fleet`, FastAPI's first-match-wins routing
+  served the metrics copies and shadowed the maintained implementations — silently
+  killing the `FleetEventPoller` wiring in `routers/fleet.py` that feeds
+  `/api/events` (issue #863), and re-registering `/api/system` over
+  `routers/system.py`. The canonical handlers now own those paths and
+  `metrics.py` no longer lazy-imports from `backend.server` (circular import
+  removed). The unique `GET /api/disk/pool-pressure` route is unchanged. A new
+  route-uniqueness invariant (`tests/api/test_route_uniqueness.py`) fails on any
+  duplicate `(method, path)` pair except the explicitly-tracked god-module twins
+  pending issue #941.
 - **2026-06-12 (2.5.86):** Closed unauthenticated remote admin via the dev-login
   endpoint (security, issue #921). `GET /api/auth/dev-login` — which mints an
   admin session for the first human principal — is now gated on BOTH a loopback

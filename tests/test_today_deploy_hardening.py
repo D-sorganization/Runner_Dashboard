@@ -352,9 +352,16 @@ def test_health_gh_api_timeout_is_realistic() -> None:
 
 
 def test_metrics_imports_psutil_directly_not_through_server() -> None:
-    """metrics.py must not depend on server.py re-exporting psutil."""
+    """metrics.py must not depend on server.py for anything.
+
+    Originally this guarded against pulling psutil through a `from server import`
+    block. As of issue #940 the duplicate /api/system and /api/fleet/status
+    handlers (the only code that referenced server internals) were removed, so
+    metrics.py must have no server import at all.
+    """
     src = _read(_BACKEND / "metrics.py")
-    assert "from routers.system import get_system_metrics" in src
+    assert "from server import" not in src, "metrics.py must not import from server (#940)"
+    assert "import server" not in src, "metrics.py must not import server (#940)"
     # The bad pattern was "from server import (... psutil, ...)" — make
     # sure psutil never appears in such a multi-line import block.
     assert "psutil," not in src
