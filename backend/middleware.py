@@ -113,8 +113,36 @@ _AUTH_EXEMPT_PATHS = {
     "/icon.svg",
     "/api/auth/github",
     "/api/auth/callback",
+    # Logout must succeed even when the presented session is already invalid;
+    # it only clears server-side session state and never returns sensitive data.
+    "/api/auth/logout",
     "/api/linear/webhook",
+    # Webhook receiver health probe — config status only, no sensitive data;
+    # consumed by external uptime monitors that present no operator credential.
+    "/api/linear/webhook/health",
 }
+
+# Routes that authenticate by a mechanism OTHER than a resolved operator
+# principal, and therefore must NOT be force-401'd by the structural perimeter
+# (#924). Each entry carries an equally-strong, independently-tested check:
+#   - /api/fleet/dispatch/*  → HMAC-signed command envelope
+#                              (dispatch_contract.validate_envelope_crypto).
+#   - /api/orchestrator/*    → Conductor admission gate; feature-flagged off by
+#                              default and validated by its own pydantic
+#                              contracts + intra-fleet HTTP boundary (#1282).
+# These are prefixes; the structural perimeter test cross-checks that anything
+# listed here is genuinely a known alternate-auth surface rather than a hole.
+#   - /api/credentials/*     → loopback-only guard with proxy-header rejection
+#                              (credentials._require_local_request). These write
+#                              provider keys to the operator's OWN machine and
+#                              must work from the local browser before any login,
+#                              so a principal cannot be required; the local-origin
+#                              check is the (independently tested) alternate auth.
+_ALT_AUTH_EXEMPT_PREFIXES = (
+    "/api/fleet/dispatch/",
+    "/api/orchestrator/",
+    "/api/credentials/",
+)
 
 DEFAULT_MAX_BODY_SIZE = 1 * 1024 * 1024  # 1 MB
 WEBHOOK_MAX_BODY_SIZE = 256 * 1024  # 256 KB
@@ -202,6 +230,82 @@ async def max_body_size_check(request: Request, call_next: Any) -> Any:
             status_code=413,
         )
 
+    return await call_next(request)
+
+
+def is_auth_exempt(path: str) -> bool:
+    """Return True if *path* is exempt from the structural auth perimeter (#924).
+
+    Exemptions cover health probes, the auth handshake endpoints (which mint the
+    very credentials the perimeter requires), the inbound Linear webhook (its own
+    signature check authenticates it), the PWA manifest, and the SPA shell / app
+    icon served as static assets. Static asset paths (anything not under
+    ``/api/``) are handled separately by the caller and are not listed here.
+
+    Alternate-auth surfaces (HMAC dispatch envelopes, the feature-flagged
+    Conductor orchestrator) are also treated as exempt from the *principal*
+    perimeter because they enforce their own equally-strong check.
+    """
+    if path in _AUTH_EXEMPT_PATHS:
+        return True
+    return any(path.startswith(prefix) for prefix in _ALT_AUTH_EXEMPT_PREFIXES)
+
+
+def _requires_perimeter_auth(request: Request) -> bool:
+    """Return True when this request must carry an authenticated principal (#924).
+
+    Only ``/api/*`` routes are gated; the SPA shell, static assets, and the
+    explicitly exempt handshake/health/webhook paths pass through. This is the
+    single structural decision point so every present and future ``/api/*`` route
+    is authenticated by default rather than opt-in per route.
+    """
+    path = request.url.path
+    if not path.startswith("/api/"):
+        return False
+    return not is_auth_exempt(path)
+
+
+async def auth_perimeter_check(request: Request, call_next: Any) -> Any:
+    """Fail-closed structural auth gate for every ``/api/*`` route (#924).
+
+    Authentication used to be opt-in per route: a handler that simply forgot to
+    declare ``Depends(require_principal)`` shipped wide open. This middleware
+    enforces a perimeter so a missing per-route dependency can no longer create
+    an unauthenticated hole — every non-exempt ``/api/*`` request must resolve to
+    a principal (service token, session, or gated loopback admin) or it is
+    rejected with 401 before the handler runs.
+
+    The resolved principal is stashed on ``request.state.perimeter_principal`` so
+    downstream dependencies can reuse it without re-resolving.
+
+    Test harnesses inject identities via ``app.dependency_overrides`` rather than
+    real credentials; when such an override for the auth dependency is present we
+    defer to the route-level dependency (which the override satisfies) instead of
+    re-checking here, so the perimeter never contradicts an explicit test
+    injection. Production has no overrides, so the perimeter is always live.
+    """
+    if not _requires_perimeter_auth(request):
+        return await call_next(request)
+
+    # Defer to the route dependency when a test/explicit override is installed.
+    app = request.scope.get("app")
+    overrides = getattr(app, "dependency_overrides", {}) if app is not None else {}
+    if overrides:
+        from identity import require_fleet_peer, require_principal
+
+        if require_principal in overrides or require_fleet_peer in overrides:
+            return await call_next(request)
+
+    from identity import resolve_perimeter_principal
+
+    principal = resolve_perimeter_principal(request)
+    if principal is None:
+        return JSONResponse(
+            {"error": "Authentication required"},
+            status_code=401,
+        )
+
+    request.state.perimeter_principal = principal
     return await call_next(request)
 
 

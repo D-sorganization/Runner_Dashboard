@@ -15,7 +15,8 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from identity import Principal, require_scope
 from pydantic import BaseModel, Field
 
 log = logging.getLogger("dashboard.autoscaler_pools")
@@ -161,7 +162,11 @@ async def get_autoscaler_pools() -> PoolsResponse:
         "reflects the new values immediately."
     ),
 )
-async def patch_pool_config(pool: str, body: PoolConfigPatch) -> dict:
+async def patch_pool_config(
+    pool: str,
+    body: PoolConfigPatch,
+    _principal: Principal = Depends(require_scope("fleet.control")),  # noqa: B008 — issue #924
+) -> dict:
     """Override pool scaling bounds at runtime.
 
     Pre-condition: pool must be one of the known pool names; min <= max.

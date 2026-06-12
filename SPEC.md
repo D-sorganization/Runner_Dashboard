@@ -1,10 +1,33 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.90
+**Spec Version:** 2.5.91
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-12T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-12 (2.5.91):** Added a structural authentication perimeter so every
+  `/api/*` route is authenticated by default rather than opt-in per route
+  (security, issues #924 and #928). A fail-closed middleware
+  (`middleware.auth_perimeter_check`, registered before `SessionMiddleware` so the
+  session is resolved) rejects any non-exempt `/api/*` request that does not
+  resolve to a principal (service token, session, or gated loopback admin) with
+  `401` before the handler runs; it defers to the route dependency when a test
+  installs an `app.dependency_overrides` for the auth dependency, so production is
+  always live while tests keep injecting identities. The exempt set
+  (`_AUTH_EXEMPT_PATHS`) is an explicit, reviewed allowlist (health, auth
+  handshake, logout, signed Linear webhook + its health probe); alternate-auth
+  surfaces that enforce their own equally-strong check are listed in
+  `_ALT_AUTH_EXEMPT_PREFIXES` (`/api/fleet/dispatch/*` HMAC envelopes,
+  `/api/orchestrator/*` Conductor admission gate, `/api/credentials/*`
+  loopback-only writes). Routes that previously shipped unauthenticated now carry
+  an explicit dependency: `POST /api/metrics/web-vitals` (#928),
+  `POST /api/runner-routing-audit/refresh` (both registrations, #928),
+  `POST /api/runners/{id}/diagnostics` (#928),
+  `POST /api/autoscaler/pools/{pool}/config` (#924), and
+  `POST /api/linear/sync/poll` (#924). A new `tests/api/test_structural_auth_perimeter.py`
+  walks `app.routes` and fails the build if any mutating `/api/*` route is neither
+  auth-protected nor on a documented exempt list, so the perimeter cannot silently
+  regress to opt-in.
 - **2026-06-12 (2.5.90):** Fixed the dead Maxwell pipeline-control proxy path
   (integration, issue #952). `POST /api/maxwell/pipeline-control/{action}`
   proxied to `/api/v1/control/{action}`, which Maxwell-Daemon does not expose —
