@@ -401,7 +401,10 @@ async def maxwell_pipeline_control(
     """
     if action not in ("pause", "resume", "abort"):
         raise HTTPException(status_code=422, detail="action must be pause, resume, or abort")
-    path = f"/api/v1/control/{action}"
+    # Maxwell-Daemon exposes POST /api/control/{action} (not /api/v1/control);
+    # see maxwell_daemon/api/routes/dispatch.py. Proxying to the v1 path 404'd
+    # every pause/resume/abort (issue #952).
+    path = f"/api/control/{action}"
     raw_body = await request.json()
 
     # Validate caller-supplied confirmation_token (DbC, issue #349)

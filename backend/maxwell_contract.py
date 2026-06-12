@@ -193,9 +193,20 @@ class MaxwellCostResponse(BaseModel):
 
 
 class MaxwellControlResponse(BaseModel):
-    """Consumer view of Maxwell-Daemon's /api/v1/control/{action} response."""
+    """Consumer view of Maxwell-Daemon's ``POST /api/control/{action}`` response.
+
+    MD's ``ControlResponse`` (maxwell_daemon/api/contract.py) is
+    ``{action, applied_at, previous_state}``. We mirror those fields and keep
+    ``action`` required so a mismatched payload fails loudly (DbC) instead of
+    silently defaulting (issue #952). The legacy ``status``/``message`` fields are
+    retained as optional for backward compatibility with the dashboard tab and
+    older MD builds, but are no longer the contract's source of truth.
+    """
 
     action: str
+    applied_at: str | None = Field(default=None)
+    previous_state: str | None = Field(default=None)
+    # Legacy/optional — the Maxwell tab and older MD builds may still read these.
     status: str = Field(default="ok")
     message: str | None = Field(default=None)
 

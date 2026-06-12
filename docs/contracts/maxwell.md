@@ -24,12 +24,12 @@ This contract is implemented in `backend/maxwell_contract.py`.
 
 Proxy of Maxwell-Daemon `/api/version`.
 
-| Field          | Type         | Notes                          |
-|----------------|--------------|--------------------------------|
-| `version`      | `string`     | Semantic version, default `"unknown"` |
-| `build`        | `string?`    | CI build label or hash         |
-| `environment`  | `string?`    | e.g. `"production"`            |
-| `started_at`   | `string?`    | ISO 8601 daemon start time     |
+| Field         | Type      | Notes                                 |
+| ------------- | --------- | ------------------------------------- |
+| `version`     | `string`  | Semantic version, default `"unknown"` |
+| `build`       | `string?` | CI build label or hash                |
+| `environment` | `string?` | e.g. `"production"`                   |
+| `started_at`  | `string?` | ISO 8601 daemon start time            |
 
 ---
 
@@ -37,16 +37,16 @@ Proxy of Maxwell-Daemon `/api/version`.
 
 Proxy of Maxwell-Daemon `/api/status`.
 
-| Field             | Type       | Notes                           |
-|-------------------|------------|---------------------------------|
-| `state`           | `string`   | `"idle"`, `"running"`, …        |
-| `active_tasks`    | `int`      | Currently executing             |
-| `queued_tasks`    | `int`      | Waiting in queue                |
-| `completed_tasks` | `int?`     |                                 |
-| `failed_tasks`    | `int?`     |                                 |
-| `uptime_seconds`  | `float?`   |                                 |
-| `last_activity`   | `string?`  | ISO 8601                        |
-| `paused`          | `bool`     |                                 |
+| Field             | Type      | Notes                    |
+| ----------------- | --------- | ------------------------ |
+| `state`           | `string`  | `"idle"`, `"running"`, … |
+| `active_tasks`    | `int`     | Currently executing      |
+| `queued_tasks`    | `int`     | Waiting in queue         |
+| `completed_tasks` | `int?`    |                          |
+| `failed_tasks`    | `int?`    |                          |
+| `uptime_seconds`  | `float?`  |                          |
+| `last_activity`   | `string?` | ISO 8601                 |
+| `paused`          | `bool`    |                          |
 
 ---
 
@@ -54,24 +54,24 @@ Proxy of Maxwell-Daemon `/api/status`.
 
 Proxy of Maxwell-Daemon `/api/tasks`.
 
-| Field    | Type            | Notes                       |
-|----------|-----------------|-----------------------------|
-| `tasks`  | `TaskItem[]`    | See task item schema below  |
-| `cursor` | `string?`       | Opaque pagination cursor    |
-| `total`  | `int?`          |                             |
+| Field    | Type         | Notes                      |
+| -------- | ------------ | -------------------------- |
+| `tasks`  | `TaskItem[]` | See task item schema below |
+| `cursor` | `string?`    | Opaque pagination cursor   |
+| `total`  | `int?`       |                            |
 
 **TaskItem**:
 
-| Field          | Type       | Notes                     |
-|----------------|------------|---------------------------|
-| `id`           | `string`   | UUID                      |
-| `status`       | `string`   |                           |
-| `created_at`   | `string?`  | ISO 8601                  |
-| `updated_at`   | `string?`  | ISO 8601                  |
-| `type`         | `string?`  |                           |
-| `priority`     | `int?`     |                           |
-| `tags`         | `string[]` |                           |
-| `error`        | `string?`  |                           |
+| Field        | Type       | Notes    |
+| ------------ | ---------- | -------- |
+| `id`         | `string`   | UUID     |
+| `status`     | `string`   |          |
+| `created_at` | `string?`  | ISO 8601 |
+| `updated_at` | `string?`  | ISO 8601 |
+| `type`       | `string?`  |          |
+| `priority`   | `int?`     |          |
+| `tags`       | `string[]` |          |
+| `error`      | `string?`  |          |
 
 ---
 
@@ -81,11 +81,11 @@ Proxy of Maxwell-Daemon `/api/tasks/{id}`.
 
 Same as TaskItem plus:
 
-| Field            | Type       | Notes              |
-|------------------|------------|--------------------|
-| `started_at`     | `string?`  | ISO 8601           |
-| `completed_at`   | `string?`  | ISO 8601           |
-| `result_summary` | `string?`  | Truncated summary  |
+| Field            | Type      | Notes             |
+| ---------------- | --------- | ----------------- |
+| `started_at`     | `string?` | ISO 8601          |
+| `completed_at`   | `string?` | ISO 8601          |
+| `result_summary` | `string?` | Truncated summary |
 
 ---
 
@@ -93,25 +93,28 @@ Same as TaskItem plus:
 
 Proxy of Maxwell-Daemon `POST /api/v1/tasks`.
 
-| Field             | Type       | Notes                        |
-|-------------------|------------|------------------------------|
-| `task_id`         | `string`   | Returned as `id` by Maxwell  |
-| `status`          | `string`   | Typically `"queued"`         |
-| `idempotency_key` | `string?`  |                              |
-| `created_at`      | `string?`  |                              |
-| `message`         | `string?`  |                              |
+| Field             | Type      | Notes                       |
+| ----------------- | --------- | --------------------------- |
+| `task_id`         | `string`  | Returned as `id` by Maxwell |
+| `status`          | `string`  | Typically `"queued"`        |
+| `idempotency_key` | `string?` |                             |
+| `created_at`      | `string?` |                             |
+| `message`         | `string?` |                             |
 
 ---
 
 ### `POST /api/maxwell/pipeline-control/{action}`
 
-Proxy of Maxwell-Daemon `POST /api/v1/control/{action}`.
+Proxy of Maxwell-Daemon `POST /api/control/{action}` (issue #952; the daemon has
+no `/api/v1/control/*` route).
 
-| Field     | Type      | Notes                        |
-|-----------|-----------|------------------------------|
-| `action`  | `string`  | `pause`, `resume`, `abort`   |
-| `status`  | `string`  | Default `"ok"`               |
-| `message` | `string?` |                              |
+| Field            | Type      | Notes                                     |
+| ---------------- | --------- | ----------------------------------------- |
+| `action`         | `string`  | `pause`, `resume`, `abort` (required)     |
+| `applied_at`     | `string?` | MD timestamp when the control was applied |
+| `previous_state` | `string?` | MD pipeline state before this action      |
+| `status`         | `string`  | Legacy/optional, default `"ok"`           |
+| `message`        | `string?` | Legacy/optional                           |
 
 ---
 
@@ -119,19 +122,19 @@ Proxy of Maxwell-Daemon `POST /api/v1/control/{action}`.
 
 Proxy of Maxwell-Daemon `/api/v1/backends`.
 
-| Field       | Type             | Notes                     |
-|-------------|------------------|---------------------------|
-| `backends`  | `BackendItem[]`  |                           |
+| Field      | Type            | Notes |
+| ---------- | --------------- | ----- |
+| `backends` | `BackendItem[]` |       |
 
 **BackendItem**:
 
-| Field     | Type      | Notes                              |
-|-----------|-----------|------------------------------------|
-| `name`    | `string`  | Display name, e.g. `"Anthropic"`  |
-| `type`    | `string`  |                                    |
-| `enabled` | `bool`    |                                    |
-| `model`   | `string?` |                                    |
-| `status`  | `string?` |                                    |
+| Field     | Type      | Notes                            |
+| --------- | --------- | -------------------------------- |
+| `name`    | `string`  | Display name, e.g. `"Anthropic"` |
+| `type`    | `string`  |                                  |
+| `enabled` | `bool`    |                                  |
+| `model`   | `string?` |                                  |
+| `status`  | `string?` |                                  |
 
 > ⚠️ **`api_key`, `connection_string`, and similar fields are NEVER forwarded.**
 
@@ -141,22 +144,22 @@ Proxy of Maxwell-Daemon `/api/v1/backends`.
 
 Proxy of Maxwell-Daemon `/api/v1/workers`.
 
-| Field       | Type            |
-|-------------|-----------------|
-| `workers`   | `WorkerItem[]`  |
-| `total`     | `int?`          |
+| Field     | Type           |
+| --------- | -------------- |
+| `workers` | `WorkerItem[]` |
+| `total`   | `int?`         |
 
 **WorkerItem**:
 
-| Field               | Type      |
-|---------------------|-----------|
-| `id`                | `string`  |
-| `status`            | `string`  |
-| `current_task_id`   | `string?` |
-| `tasks_completed`   | `int?`    |
-| `tasks_failed`      | `int?`    |
-| `started_at`        | `string?` |
-| `last_activity`     | `string?` |
+| Field             | Type      |
+| ----------------- | --------- |
+| `id`              | `string`  |
+| `status`          | `string`  |
+| `current_task_id` | `string?` |
+| `tasks_completed` | `int?`    |
+| `tasks_failed`    | `int?`    |
+| `started_at`      | `string?` |
+| `last_activity`   | `string?` |
 
 ---
 
@@ -164,13 +167,13 @@ Proxy of Maxwell-Daemon `/api/v1/workers`.
 
 Proxy of Maxwell-Daemon `/api/v1/cost`.
 
-| Field        | Type              |
-|--------------|-------------------|
-| `total_usd`  | `float?`          |
-| `window`     | `string?`         |
-| `by_model`   | `dict[str,float]?`|
-| `by_backend` | `dict[str,float]?`|
-| `currency`   | `string`          |
+| Field        | Type               |
+| ------------ | ------------------ |
+| `total_usd`  | `float?`           |
+| `window`     | `string?`          |
+| `by_model`   | `dict[str,float]?` |
+| `by_backend` | `dict[str,float]?` |
+| `currency`   | `string`           |
 
 ---
 

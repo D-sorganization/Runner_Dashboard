@@ -1,10 +1,20 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.89
+**Spec Version:** 2.5.90
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-12T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-12 (2.5.90):** Fixed the dead Maxwell pipeline-control proxy path
+  (integration, issue #952). `POST /api/maxwell/pipeline-control/{action}`
+  proxied to `/api/v1/control/{action}`, which Maxwell-Daemon does not expose —
+  every pause/resume/abort from the dashboard 404'd. The proxy now targets MD's
+  real route `POST /api/control/{action}`, and `MaxwellControlResponse` carries
+  MD's `{action, applied_at, previous_state}` shape (with `action` required so a
+  mismatched payload fails loudly; legacy `status`/`message` kept optional for
+  backward compatibility). `docs/contracts/maxwell.md` updated to match. Part of
+  the RD↔MD contract epic (#964); the MD side already serves port 8080 /
+  contract 2.0.0.
 - **2026-06-12 (2.5.89):** Enforced intra-fleet authentication on the hub
   (security, issue #922). Added the `require_fleet_peer` dependency
   (`backend/identity.py`): a hub-reachable fleet route is accepted only when the
