@@ -1,10 +1,19 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.83
+**Spec Version:** 2.5.84
 **Application Version:** 4.8.0 (see `VERSION`)
-**Last Updated:** 2026-06-10T00:00:00-07:00
+**Last Updated:** 2026-06-12T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-12 (2.5.84):** Authenticated the agent-launcher control surface
+  (security, issue #920). Every `/api/agent-launcher/*` route now requires an
+  authenticated principal; the mutating routes (`PUT /config`, `POST /start`,
+  `POST /stop`, `POST /run-once`) additionally require the privileged
+  `system.control` scope. Previously these routes — which spawn code-executing
+  agent processes and write attacker-controllable JSON into the operator's home
+  directory — were completely unauthenticated, so any LAN/Tailscale peer
+  reaching the dashboard port could launch or reconfigure agents (RCE-adjacent).
+  Unauthenticated requests now return 401 and under-scoped principals get 403.
 - **2026-06-10 (2.5.83):** Corrected queue-diagnosis target classification for
   fleet jobs whose GitHub job metadata contains only custom `d-sorg-fleet*`
   labels. These jobs are now counted as self-hosted fleet work instead of

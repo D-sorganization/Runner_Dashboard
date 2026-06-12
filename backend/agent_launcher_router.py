@@ -34,10 +34,18 @@ import subprocess
 import threading
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
+from identity import Principal, require_principal, require_scope
 from pydantic import BaseModel, Field
 
 log = logging.getLogger("dashboard.agent_launcher")
+
+# Issue #920: the agent-launcher control surface spawns code-executing agent
+# processes and writes attacker-controllable JSON into the operator's home
+# directory. Every route must be authenticated; mutating routes additionally
+# require the privileged ``system.control`` scope. Read routes require only an
+# authenticated principal.
+_CONTROL_SCOPE = "system.control"
 router = APIRouter(prefix="/api/agent-launcher", tags=["agent-launcher"])
 
 # Bound concurrent launcher spawns to prevent fork-bomb when multiple dashboard
@@ -240,7 +248,7 @@ def _read_lock(agent_name: str) -> dict | None:
 
 
 @router.get("/status", response_model=StatusResponse)
-def get_status() -> StatusResponse:
+def get_status(_principal: Principal = Depends(require_principal)) -> StatusResponse:  # noqa: B008
     """Quick status read. Pure file I/O — no subprocess. Safe to poll
     every few seconds from the dashboard."""
     cfg = _read_config_dict_safe()
@@ -288,11 +296,12 @@ def _read_config_dict_safe() -> dict:
 # ---------------------------------------------------------------------------
 # Config — read returns normalized v2; write validates via launcher CLI
 # ---------------------------------------------------------------------------
-@router.get("/config")
-def get_config() -> dict:
-    """Return the normalized v2 user config. Delegates to the launcher's
-    ``--validate-config`` so the response matches whatever the scheduler
-    will see."""
+def _validated_config() -> dict:
+    """Return the normalized v2 user config from the launcher.
+
+    Extracted so internal callers (e.g. ``run_once``) can read the validated
+    config without going through the authenticated route dependency.
+    """
     rc, stdout, stderr = _run_cli("--validate-config")
     if rc != 0:
         raise HTTPException(
@@ -305,8 +314,19 @@ def get_config() -> dict:
         raise HTTPException(status_code=500, detail=f"launcher returned invalid JSON: {exc}") from exc
 
 
+@router.get("/config")
+def get_config(_principal: Principal = Depends(require_principal)) -> dict:  # noqa: B008
+    """Return the normalized v2 user config. Delegates to the launcher's
+    ``--validate-config`` so the response matches whatever the scheduler
+    will see."""
+    return _validated_config()
+
+
 @router.put("/config", response_model=SimpleResponse)
-async def put_config(request: Request) -> SimpleResponse:
+async def put_config(
+    request: Request,
+    _principal: Principal = Depends(require_scope(_CONTROL_SCOPE)),  # noqa: B008
+) -> SimpleResponse:
     """Replace the user config. Validates by writing to a temp file and
     invoking the launcher's ``--validate-config --config <tmp>``; only
     promotes to the real config path if validation passes (atomic
@@ -346,7 +366,7 @@ async def put_config(request: Request) -> SimpleResponse:
 # Repos — live WSL inventory
 # ---------------------------------------------------------------------------
 @router.get("/repos", response_model=ReposResponse)
-def get_repos() -> ReposResponse:
+def get_repos(_principal: Principal = Depends(require_principal)) -> ReposResponse:  # noqa: B008
     rc, stdout, stderr = _run_cli("--list-repos", timeout=45.0)
     if rc != 0:
         raise HTTPException(
@@ -378,7 +398,9 @@ def _cli_path() -> Path:
 
 
 @router.post("/start", response_model=SimpleResponse)
-def start_scheduler() -> SimpleResponse:
+def start_scheduler(
+    _principal: Principal = Depends(require_scope(_CONTROL_SCOPE)),  # noqa: B008
+) -> SimpleResponse:
     pid_info = _read_pidfile()
     if pid_info and _is_pid_alive(int(pid_info.get("pid", -1))):
         return SimpleResponse(ok=True, detail=f"already running (pid {pid_info['pid']})")
@@ -420,7 +442,9 @@ def start_scheduler() -> SimpleResponse:
 
 
 @router.post("/stop", response_model=SimpleResponse)
-def stop_scheduler() -> SimpleResponse:
+def stop_scheduler(
+    _principal: Principal = Depends(require_scope(_CONTROL_SCOPE)),  # noqa: B008
+) -> SimpleResponse:
     rc, stdout, stderr = _run_cli("--stop")
     if rc == 4:
         return SimpleResponse(ok=False, detail="no running scheduler found")
@@ -430,10 +454,13 @@ def stop_scheduler() -> SimpleResponse:
 
 
 @router.post("/run-once", response_model=SimpleResponse)
-def run_once(req: RunOnceRequest) -> SimpleResponse:
+def run_once(
+    req: RunOnceRequest,
+    _principal: Principal = Depends(require_scope(_CONTROL_SCOPE)),  # noqa: B008
+) -> SimpleResponse:
     """Spawn one window for one agent now (does not affect the scheduler)."""
     # Validate the agent exists first by reading the (validated) config.
-    cfg = get_config()
+    cfg = _validated_config()
     if req.agent not in cfg.get("agents", {}):
         known = list(cfg.get("agents", {}))
         raise HTTPException(
