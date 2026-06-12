@@ -2727,7 +2727,10 @@ if __name__ == "__main__":
     _uvicorn_target: object = "server:app" if _uvicorn_cfg["workers"] > 1 else app
     uvicorn.run(
         _uvicorn_target,  # type: ignore[arg-type]
-        host="0.0.0.0",  # B104: intentionally binding to all interfaces; listed in bandit.yaml
+        # Issue #921: honor the operator-resolved bind host (DASHBOARD_HOST) instead
+        # of a hardcoded 0.0.0.0. Defaults to 0.0.0.0 when DASHBOARD_HOST is unset,
+        # preserving historical behavior while letting operators bind loopback-only.
+        host=dashboard_config.HOST,  # noqa: S104 — default resolves to 0.0.0.0; see dashboard_config._resolve_bind_host
         port=PORT,
         log_level="warning",  # FastAPI handles its own logging
         workers=_uvicorn_cfg["workers"],

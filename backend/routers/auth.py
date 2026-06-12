@@ -8,7 +8,12 @@ import httpx
 import session_management as sm
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
-from identity import Principal, identity_manager, require_principal
+from identity import (
+    Principal,
+    _is_loopback_request,
+    identity_manager,
+    require_principal,
+)
 from middleware import check_auth_rate_limit
 from pydantic import BaseModel
 
@@ -20,6 +25,15 @@ GITHUB_CLIENT_SECRET = os.environ.get("GITHUB_CLIENT_SECRET", "")
 GITHUB_ORG = os.environ.get("GITHUB_ORG", os.environ.get("REQUIRED_GITHUB_ORG", ""))
 REQUIRED_GITHUB_ORG = GITHUB_ORG
 _OAUTH_STATE_TTL_SECONDS = 10 * 60
+
+
+def _dev_login_enabled() -> bool:
+    """Dev-login is opt-in via an explicit env flag (issue #921).
+
+    Read at call time (not import time) so tests and operators can toggle it
+    without re-importing the module.
+    """
+    return os.environ.get("DASHBOARD_DEV_LOGIN") == "1"
 
 
 def _clear_oauth_state(request: Request) -> None:
@@ -131,10 +145,21 @@ async def github_callback(request: Request, code: str, state: str):
 
 @router.get("/dev-login")
 async def dev_login(request: Request):
-    """Development login when OAuth is not configured."""
+    """Development login when OAuth is not configured.
+
+    Hardened per issue #921: this endpoint mints an admin session for the first
+    human principal, so it must never be reachable from the network. It is gated
+    on BOTH a loopback transport peer AND an explicit ``DASHBOARD_DEV_LOGIN=1``
+    opt-in. Any request failing either gate gets a 404 so the endpoint is
+    indistinguishable from "not present" to a remote scanner.
+    """
     check_auth_rate_limit(request)  # issue #320: 5 attempts / 5 min per IP
     if GITHUB_CLIENT_ID:
         raise HTTPException(status_code=400, detail="Dev login disabled when OAuth is configured")
+
+    # Fail closed for any non-loopback peer or when the opt-in flag is unset.
+    if not (_dev_login_enabled() and _is_loopback_request(request)):
+        raise HTTPException(status_code=404, detail="Not Found")
 
     # Just grab the first human principal
     for p in identity_manager.principals.values():

@@ -1,10 +1,18 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.85
+**Spec Version:** 2.5.86
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-12T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-12 (2.5.86):** Closed unauthenticated remote admin via the dev-login
+  endpoint (security, issue #921). `GET /api/auth/dev-login` — which mints an
+  admin session for the first human principal — is now gated on BOTH a loopback
+  transport peer AND an explicit `DASHBOARD_DEV_LOGIN=1` opt-in; any request
+  failing either gate gets a `404` (indistinguishable from "not present" to a
+  remote scanner). The `__main__` uvicorn bind now uses `dashboard_config.HOST`
+  (honoring `DASHBOARD_HOST`) instead of a hardcoded `0.0.0.0`; the default
+  still resolves to `0.0.0.0` so existing deployments are unchanged.
 - **2026-06-12 (2.5.85):** Closed the dispatch HMAC signature-gate bypass
   (security, issue #919). `CommandEnvelope.from_dict` no longer runs the
   auto-signing path used for locally minted envelopes: an inbound wire body is
