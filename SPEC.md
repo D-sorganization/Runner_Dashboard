@@ -1,10 +1,20 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.84
+**Spec Version:** 2.5.85
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-12T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-12 (2.5.85):** Closed the dispatch HMAC signature-gate bypass
+  (security, issue #919). `CommandEnvelope.from_dict` no longer runs the
+  auto-signing path used for locally minted envelopes: an inbound wire body is
+  reconstructed verbatim and a new `signature_authentic` flag records whether a
+  non-empty signature was actually present. `validate_envelope_crypto` now
+  rejects any envelope whose signature was absent on the wire
+  (`"envelope signature missing"`), so `POST /api/fleet/dispatch/submit` returns
+  400 for signature-less or empty-signature envelopes instead of the server
+  minting a valid signature on the caller's behalf. Locally minted,
+  server-originated envelopes still auto-sign and round-trip unchanged.
 - **2026-06-12 (2.5.84):** Authenticated the agent-launcher control surface
   (security, issue #920). Every `/api/agent-launcher/*` route now requires an
   authenticated principal; the mutating routes (`PUT /config`, `POST /start`,

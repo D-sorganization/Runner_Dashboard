@@ -88,6 +88,13 @@ class CommandEnvelope:
     principal: str = ""
     on_behalf_of: str = ""
     correlation_id: str = ""
+    # Issue #919: True when this envelope's signature is trustworthy as to its
+    # origin — i.e. it was either minted locally by ``__post_init__`` (a
+    # server-originated envelope) OR carried a non-empty signature when parsed
+    # from the wire by ``from_dict``. It is False ONLY for a wire envelope that
+    # arrived with no signature, which must never have one minted on the
+    # caller's behalf. ``validate_envelope_crypto`` rejects such envelopes.
+    signature_authentic: bool = field(default=False, compare=False)
 
     def __post_init__(self) -> None:
         if not self.signature:
@@ -108,6 +115,10 @@ class CommandEnvelope:
                 _hash_payload(self.payload),
             )
             object.__setattr__(self, "signature", sig)
+        # A locally minted envelope (or one constructed with an explicit
+        # signature) is authentic by construction — we never reach the
+        # wire-parsing path for it.
+        object.__setattr__(self, "signature_authentic", bool(self.signature))
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -117,25 +128,36 @@ class CommandEnvelope:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> CommandEnvelope:
+        """Reconstruct an envelope from an untrusted wire body.
+
+        Issue #919: inbound parsing must NEVER auto-sign. An attacker who omits
+        the signature must not have one minted on their behalf. We therefore
+        build the instance without ever entering ``__post_init__``'s signing
+        branch by constructing through ``object.__new__`` and recording the
+        wire signature verbatim. ``signature_authentic`` captures whether a
+        non-empty signature was actually present so downstream crypto
+        validation can fail-loud on absence.
+        """
         confirmation_data = data.get("confirmation")
         confirmation = DispatchConfirmation.from_dict(confirmation_data) if confirmation_data is not None else None
-        envelope = cls(
-            action=_required_string(data, "action"),
-            source=_required_string(data, "source"),
-            target=_required_string(data, "target"),
-            requested_by=_required_string(data, "requested_by"),
-            reason=str(data.get("reason", "")),
-            payload=_ensure_dict(data.get("payload")),
-            confirmation=confirmation,
-            envelope_id=str(data.get("envelope_id", uuid4().hex)),
-            schema_version=str(data.get("schema_version", SCHEMA_VERSION)),
-            envelope_version=int(data.get("envelope_version", ENVELOPE_VERSION)),
-            issued_at=str(data.get("issued_at", utc_now_iso())),
-            signature=str(data.get("signature", "")),
-            principal=str(data.get("principal", "")),
-            on_behalf_of=str(data.get("on_behalf_of", "")),
-            correlation_id=str(data.get("correlation_id", "")),
-        )
+        wire_signature = str(data.get("signature", ""))
+        envelope = object.__new__(cls)
+        object.__setattr__(envelope, "action", _required_string(data, "action"))
+        object.__setattr__(envelope, "source", _required_string(data, "source"))
+        object.__setattr__(envelope, "target", _required_string(data, "target"))
+        object.__setattr__(envelope, "requested_by", _required_string(data, "requested_by"))
+        object.__setattr__(envelope, "reason", str(data.get("reason", "")))
+        object.__setattr__(envelope, "payload", _ensure_dict(data.get("payload")))
+        object.__setattr__(envelope, "confirmation", confirmation)
+        object.__setattr__(envelope, "envelope_id", str(data.get("envelope_id", uuid4().hex)))
+        object.__setattr__(envelope, "schema_version", str(data.get("schema_version", SCHEMA_VERSION)))
+        object.__setattr__(envelope, "envelope_version", int(data.get("envelope_version", ENVELOPE_VERSION)))
+        object.__setattr__(envelope, "issued_at", str(data.get("issued_at", utc_now_iso())))
+        object.__setattr__(envelope, "signature", wire_signature)
+        object.__setattr__(envelope, "principal", str(data.get("principal", "")))
+        object.__setattr__(envelope, "on_behalf_of", str(data.get("on_behalf_of", "")))
+        object.__setattr__(envelope, "correlation_id", str(data.get("correlation_id", "")))
+        object.__setattr__(envelope, "signature_authentic", bool(wire_signature))
         return envelope
 
     def verify_signature(self) -> bool:

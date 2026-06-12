@@ -41,6 +41,13 @@ def validate_envelope_crypto(envelope: object) -> CryptoValidationResult:
     - Timestamp is fresh (issued_at within ±5 minutes)
     - Confirmation timestamp is fresh if confirmation is present (approved_at within ±5 minutes)
     """
+    # Issue #919: an envelope parsed from the wire that arrived WITHOUT a
+    # signature must be rejected outright. The server must never mint a
+    # signature on the caller's behalf during parsing. ``signature_authentic``
+    # is False only for a wire envelope whose signature field was empty.
+    if not getattr(envelope, "signature_authentic", False):
+        return CryptoValidationResult(valid=False, reason="envelope signature missing")
+
     if not envelope.signature:  # type: ignore[attr-defined]
         return CryptoValidationResult(valid=False, reason="envelope signature missing")
 
