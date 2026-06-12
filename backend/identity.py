@@ -1,4 +1,5 @@
 # ruff: noqa: B008
+import hmac
 import ipaddress
 import logging
 import os
@@ -324,3 +325,66 @@ def require_scope(required_scope: str):
         )
 
     return checker
+
+
+def _resolve_principal_optional(request: Request, header_token: str | None) -> Principal | None:
+    """Resolve a principal from a Bearer token or session WITHOUT raising.
+
+    Mirrors the credential resolution in ``require_principal`` but returns
+    ``None`` instead of a 401 when no valid credential is present. Used by
+    ``require_fleet_peer`` so the fleet-token path can be tried as a fallback.
+    """
+    if header_token and header_token.startswith("Bearer "):
+        raw_token = header_token.replace("Bearer ", "")
+        prin = identity_manager.verify_token(raw_token)
+        if prin:
+            return prin
+
+    if hasattr(request, "session"):
+        principal_id = request.session.get("principal_id")
+        session_id = request.session.get("session_id")
+        if principal_id and principal_id in identity_manager.principals:
+            if session_id and not sm.touch_session(session_id):
+                return None
+            return identity_manager.principals[principal_id]
+    return None
+
+
+def require_fleet_peer(
+    request: Request,
+    header_token: str | None = Depends(auth_header),
+) -> str:
+    """Authenticate an intra-fleet caller for hub-reachable fleet routes (#922).
+
+    A request is accepted when EITHER:
+      - it carries valid operator credentials (a principal resolved from a
+        service token or session), OR
+      - it presents ``Authorization: Bearer <HUB_FLEET_TOKEN>`` matching the
+        hub's configured ``HUB_FLEET_TOKEN`` (constant-time compare).
+
+    Policy decision (documented in docs/runbooks/hub-credentials.md): when
+    ``HUB_FLEET_TOKEN`` is UNSET on this node, fleet reads are tailnet-public —
+    the dependency is a no-op so single-node and token-less deployments keep
+    working. When the token IS set, the fleet trust boundary is enforced and
+    an unauthenticated caller gets 401.
+
+    Returns a short principal/peer label for logging; never the token itself.
+    """
+    hub_token = os.environ.get("HUB_FLEET_TOKEN", "")
+
+    # A valid operator principal is always accepted.
+    principal = _resolve_principal_optional(request, header_token)
+    if principal is not None:
+        return f"principal:{principal.id}"
+
+    # No token configured → fleet reads are tailnet-public (backward compatible).
+    if not hub_token:
+        return "anonymous:tailnet"
+
+    # Token configured → require a constant-time match of the fleet bearer token.
+    if header_token and header_token.startswith("Bearer "):
+        presented = header_token[len("Bearer ") :]
+        if hmac.compare_digest(presented, hub_token):
+            return "fleet-peer"
+
+    raise HTTPException(status_code=401, detail="Fleet authentication required")
