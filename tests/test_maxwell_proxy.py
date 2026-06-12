@@ -258,6 +258,41 @@ async def test_maxwell_pipeline_control_daemon_unreachable_returns_503(client) -
     assert resp.json()["detail"] == "maxwell connection error"
 
 
+@pytest.mark.asyncio
+async def test_maxwell_pipeline_control_proxies_to_non_v1_path(client) -> None:
+    """Issue #952: the proxy must target MD's real route POST /api/control/{action},
+    NOT the nonexistent /api/v1/control/{action} (which 404'd every control)."""
+    payload = {"action": "pause", "applied_at": "2026-06-12T00:00:00Z", "previous_state": "running"}
+    mock_cm = _make_mock_client(post_return=_mock_httpx_response(payload))
+    with patch("httpx.AsyncClient", return_value=mock_cm):
+        resp = await client.post(
+            "/api/maxwell/pipeline-control/pause",
+            json={"confirmation_token": "test-token"},
+        )
+    assert resp.status_code == 200
+    called_url = mock_cm.__aenter__.return_value.post.call_args.args[0]
+    assert called_url.endswith("/api/control/pause"), f"expected /api/control/pause, got {called_url}"
+    assert "/api/v1/control/" not in called_url
+
+
+@pytest.mark.asyncio
+async def test_maxwell_pipeline_control_returns_md_response_shape(client) -> None:
+    """Issue #952: the proxy surfaces MD's {action, applied_at, previous_state}
+    instead of silently defaulting to {action, status:'ok'}."""
+    payload = {"action": "abort", "applied_at": "2026-06-12T01:02:03Z", "previous_state": "paused"}
+    mock_cm = _make_mock_client(post_return=_mock_httpx_response(payload))
+    with patch("httpx.AsyncClient", return_value=mock_cm):
+        resp = await client.post(
+            "/api/maxwell/pipeline-control/abort",
+            json={"confirmation_token": "test-token"},
+        )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["action"] == "abort"
+    assert data["applied_at"] == "2026-06-12T01:02:03Z"
+    assert data["previous_state"] == "paused"
+
+
 # ─── POST /api/maxwell/dispatch ──────────────────────────────────────────────
 
 
