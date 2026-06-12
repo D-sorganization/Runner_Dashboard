@@ -1,11 +1,11 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.84
+**Spec Version:** 2.5.85
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-12T00:00:00-07:00
 **Status:** Active
 
-- **2026-06-12 (2.5.84):** Closed the dispatch HMAC signature-gate bypass
+- **2026-06-12 (2.5.85):** Closed the dispatch HMAC signature-gate bypass
   (security, issue #919). `CommandEnvelope.from_dict` no longer runs the
   auto-signing path used for locally minted envelopes: an inbound wire body is
   reconstructed verbatim and a new `signature_authentic` flag records whether a
@@ -15,6 +15,15 @@
   400 for signature-less or empty-signature envelopes instead of the server
   minting a valid signature on the caller's behalf. Locally minted,
   server-originated envelopes still auto-sign and round-trip unchanged.
+- **2026-06-12 (2.5.84):** Authenticated the agent-launcher control surface
+  (security, issue #920). Every `/api/agent-launcher/*` route now requires an
+  authenticated principal; the mutating routes (`PUT /config`, `POST /start`,
+  `POST /stop`, `POST /run-once`) additionally require the privileged
+  `system.control` scope. Previously these routes — which spawn code-executing
+  agent processes and write attacker-controllable JSON into the operator's home
+  directory — were completely unauthenticated, so any LAN/Tailscale peer
+  reaching the dashboard port could launch or reconfigure agents (RCE-adjacent).
+  Unauthenticated requests now return 401 and under-scoped principals get 403.
 - **2026-06-10 (2.5.83):** Corrected queue-diagnosis target classification for
   fleet jobs whose GitHub job metadata contains only custom `d-sorg-fleet*`
   labels. These jobs are now counted as self-hosted fleet work instead of
