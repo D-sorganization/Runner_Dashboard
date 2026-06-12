@@ -39,7 +39,20 @@ def app(runtime):
 
 @pytest.fixture
 def client(app):
-    return TestClient(app)
+    """Authenticated client (admin principal) for the functional tests.
+
+    Issue #920: all agent-launcher routes now require authentication. The
+    behavioural tests exercise the launcher logic, not the auth gate, so we
+    inject an admin principal. The auth gate itself is covered by
+    ``test_agent_launcher_auth_perimeter.py`` using an unauthenticated client.
+    """
+    from identity import Principal, require_principal  # noqa: PLC0415
+
+    app.dependency_overrides[require_principal] = lambda: Principal(
+        id="test-admin", type="bot", name="Test Admin", roles=["admin"]
+    )
+    yield TestClient(app)
+    app.dependency_overrides.clear()
 
 
 # ---------------------------------------------------------------------------
