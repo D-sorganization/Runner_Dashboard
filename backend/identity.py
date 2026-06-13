@@ -202,7 +202,32 @@ class IdentityManager:
         return None
 
 
-identity_manager = IdentityManager()
+def resolve_identity_dir() -> Path:
+    """Return the directory holding principals.yml / tokens.yml (issue #944).
+
+    Anchored to a stable, CWD-independent location so launching the server from
+    any working directory uses the *same* identity store (the old
+    ``Path("config")`` default silently created a fresh empty store — and lost
+    all principals/tokens — when started from another CWD).
+
+    Resolution order:
+    1. ``DASHBOARD_IDENTITY_DIR`` env override (explicit operator choice).
+    2. ``XDG_CONFIG_HOME/runner-dashboard`` (or ``~/.config/runner-dashboard``)
+       — the same convention as ``_load_or_generate_api_key`` (server.py) and
+       ``auth_webauthn``.
+
+    Post-condition: returns an absolute ``Path``.
+    """
+    override = os.environ.get("DASHBOARD_IDENTITY_DIR", "").strip()
+    if override:
+        return Path(override).expanduser().resolve()
+    base = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+    return (base / "runner-dashboard").expanduser().resolve()
+
+
+_IDENTITY_DIR = resolve_identity_dir()
+log.info("Identity store directory: %s", _IDENTITY_DIR)
+identity_manager = IdentityManager(config_dir=_IDENTITY_DIR)
 
 auth_header = APIKeyHeader(name="Authorization", auto_error=False)
 auth_cookie = APIKeyCookie(name="dashboard_session", auto_error=False)

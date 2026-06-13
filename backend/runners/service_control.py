@@ -3,36 +3,62 @@
 Pure extraction from server.py of the functions that manage GitHub Actions
 runner systemd services (svc.sh invocation, service name resolution, etc.).
 
-Constants are read from environment variables at import time, matching the
-original server.py behaviour.  Tests may monkeypatch module attributes directly.
+Configuration values (ORG, RUNNER_BASE_DIR, runner limits, HOSTNAME, aliases)
+are read live from :mod:`dashboard_config` — the single source of truth (issue
+#943) — rather than re-derived from ``os.environ`` here. Tests monkeypatch
+``dashboard_config`` to reconfigure them.
 """
 
 from __future__ import annotations
 
 import logging
-import os
 import platform
 from pathlib import Path
 
+import dashboard_config
 from pydantic import BaseModel
 from system_utils import run_cmd  # noqa: E402
 
 log = logging.getLogger("dashboard")
 
 # ---------------------------------------------------------------------------
-# Module-level constants (mirrors server.py)
+# Configuration single source of truth (issue #943)
 # ---------------------------------------------------------------------------
+#
+# These values are *re-exported* from dashboard_config rather than re-derived
+# from os.environ. The previous duplicate derivation silently diverged: a
+# RUNNER_BASE_DIR override honored by dashboard_config was ignored here, so
+# metrics scanned one directory while sudo start/stop targeted another.
+#
+# They are read through module-level ``__getattr__`` so a test (or runtime
+# reconfiguration) that monkeypatches ``dashboard_config.RUNNER_BASE_DIR`` is
+# observed here without a stale snapshot, while ``service_control.RUNNER_BASE_DIR``
+# stays importable for backwards compatibility and direct monkeypatching.
 
-ORG: str = os.environ.get("GITHUB_ORG", "D-sorganization")
-RUNNER_BASE_DIR: Path = Path.home() / "actions-runners"
 
-_DEFAULT_NUM_RUNNERS = 12
-_REQUESTED_NUM_RUNNERS = int(os.environ.get("NUM_RUNNERS", str(_DEFAULT_NUM_RUNNERS)))
-MAX_RUNNERS: int = int(os.environ.get("MAX_RUNNERS", str(_REQUESTED_NUM_RUNNERS)))
-NUM_RUNNERS: int = min(_REQUESTED_NUM_RUNNERS, MAX_RUNNERS)
+def __getattr__(name: str) -> object:
+    """Re-export config from dashboard_config — single source of truth (#943).
 
-HOSTNAME: str = os.environ.get("DISPLAY_NAME") or platform.node()
-RUNNER_ALIASES: list[str] = [item.strip() for item in os.environ.get("RUNNER_ALIASES", "").split(",") if item.strip()]
+    ``_runner_limit`` is kept as a backwards-compatible alias of the one true
+    ``dashboard_config.runner_limit`` so existing ``from service_control import
+    _runner_limit`` callers (server.py, tests) keep working while only one
+    *definition* exists repo-wide.
+    """
+    if name == "_runner_limit":
+        return dashboard_config.runner_limit
+    if name in _CONFIG_REEXPORTS:
+        return getattr(dashboard_config, _CONFIG_REEXPORTS[name])
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+_CONFIG_REEXPORTS = {
+    "ORG": "ORG",
+    "RUNNER_BASE_DIR": "RUNNER_BASE_DIR",
+    "MAX_RUNNERS": "MAX_RUNNERS",
+    "NUM_RUNNERS": "NUM_RUNNERS",
+    "HOSTNAME": "HOSTNAME",
+    "RUNNER_ALIASES": "RUNNER_ALIASES",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -61,7 +87,7 @@ def runner_svc_path(runner_num: int) -> Path:
     """
     assert isinstance(runner_num, int) and runner_num > 0, f"runner_num must be a positive int, got {runner_num!r}"
 
-    result = RUNNER_BASE_DIR / f"runner-{runner_num}" / "svc.sh"
+    result = dashboard_config.RUNNER_BASE_DIR / f"runner-{runner_num}" / "svc.sh"
     assert result.name == "svc.sh"
     return result
 
@@ -98,9 +124,9 @@ def runner_num_from_id(runner_id: int, runners: list[dict]) -> int | None:
     assert isinstance(runners, list), f"runners must be list, got {type(runners)!r}"
 
     local_names = {
-        HOSTNAME.lower(),
+        dashboard_config.HOSTNAME.lower(),
         platform.node().lower(),
-        *(alias.lower() for alias in RUNNER_ALIASES),
+        *(alias.lower() for alias in dashboard_config.RUNNER_ALIASES),
     }
     for r in runners:
         name = r.get("name", "")
@@ -111,16 +137,6 @@ def runner_num_from_id(runner_id: int, runners: list[dict]) -> int | None:
                 return None
             return int(parts[1])
     return None
-
-
-def _runner_limit() -> int:
-    """Return the hard runner capacity this dashboard is allowed to manage.
-
-    Post-condition: result >= 0.
-    """
-    result = max(NUM_RUNNERS, MAX_RUNNERS)
-    assert result >= 0
-    return result
 
 
 def _runner_sort_key(runner: dict) -> tuple[str, int, str]:
@@ -146,8 +162,8 @@ def get_runner_service_name(runner_num: int) -> str | None:
     """
     assert isinstance(runner_num, int) and runner_num > 0, f"runner_num must be a positive int, got {runner_num!r}"
 
-    svc_file = RUNNER_BASE_DIR / f"runner-{runner_num}" / ".service"
+    svc_file = dashboard_config.RUNNER_BASE_DIR / f"runner-{runner_num}" / ".service"
     if svc_file.exists():
         return svc_file.read_text().strip()
     # Fall back to common naming pattern
-    return f"actions.runner.{ORG}.d-sorg-local-{HOSTNAME}-{runner_num}.service"
+    return f"actions.runner.{dashboard_config.ORG}.d-sorg-local-{dashboard_config.HOSTNAME}-{runner_num}.service"
