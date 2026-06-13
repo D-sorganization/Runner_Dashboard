@@ -350,8 +350,13 @@ async def add_security_headers(request: Request, call_next: Any) -> Any:
         "frame-ancestors 'none';"
     )
     # HSTS: instruct browsers to use HTTPS for 1 year; include subdomains
-    # (issue #324).
-    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    # (issue #324). Only sent in TLS mode (issue #930): sending HSTS on the
+    # documented plain-HTTP-over-tailnet deployment would wedge browsers into
+    # HTTPS-only for a year against a server that does not speak TLS.
+    from dashboard_config import TLS_ENABLED  # noqa: PLC0415
+
+    if TLS_ENABLED:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     # Permissions-Policy: microphone allowed on self for VoiceInputButton.
     response.headers["Permissions-Policy"] = (
         "camera=(), microphone=(self), geolocation=(), payment=(), usb=(), interest-cohort=()"

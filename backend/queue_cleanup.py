@@ -22,6 +22,7 @@ Common sources of stale runs:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import datetime as _dt
 import json
 import logging
@@ -196,7 +197,11 @@ async def _gh(*args: str, timeout: int = 30) -> tuple[int, str, str]:
     try:
         raw_out, raw_err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
     except TimeoutError:
-        proc.kill()
+        # Issue #939d: kill then reap, tolerating an already-exited process.
+        with contextlib.suppress(ProcessLookupError):
+            proc.kill()
+        with contextlib.suppress(ProcessLookupError):
+            await proc.wait()
         return 1, "", "timeout"
     return (
         proc.returncode or 0,

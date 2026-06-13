@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import errno
 import json
 import logging
@@ -1102,8 +1103,14 @@ async def run_cmd(cmd: list[str], timeout: int = 30, cwd: Path | None = None) ->
     except FileNotFoundError as exc:
         return 127, "", str(exc)
     except TimeoutError:
+        # Issue #939d: kill THEN reap. A bare proc.kill() without awaiting wait()
+        # leaks a zombie/transport; kill() also raises ProcessLookupError if the
+        # process already exited between the timeout and the kill.
         if "proc" in locals():
-            proc.kill()
+            with contextlib.suppress(ProcessLookupError):
+                proc.kill()
+            with contextlib.suppress(ProcessLookupError):
+                await proc.wait()
         return -1, "", "Command timed out"
 
 

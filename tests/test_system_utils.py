@@ -846,6 +846,80 @@ def test_tier_hdd_capacity_pressure_primary_signal() -> None:
     assert result["binding_constraint"] == "capacity"
 
 
+# ---------------------------------------------------------------------------
+# Issue #939d: run_cmd timeout must kill THEN reap, tolerating an already-exited
+# process (no zombie/transport leak, no unhandled ProcessLookupError).
+# ---------------------------------------------------------------------------
+
+
+def test_run_cmd_timeout_kills_and_reaps(monkeypatch) -> None:
+    import asyncio
+
+    class _FakeProc:
+        def __init__(self) -> None:
+            self.killed = False
+            self.waited = False
+            self.returncode = None
+
+        async def communicate(self):
+            raise TimeoutError
+
+        def kill(self):
+            self.killed = True
+
+        async def wait(self):
+            self.waited = True
+            return -9
+
+    fake = _FakeProc()
+
+    async def _fake_create(*_a, **_kw):
+        return fake
+
+    async def _fake_wait_for(coro, timeout):  # noqa: ARG001
+        # Drive the coroutine so it raises TimeoutError as the real one would.
+        await coro
+
+    monkeypatch.setattr(system_utils.asyncio, "create_subprocess_exec", _fake_create)
+    monkeypatch.setattr(system_utils.asyncio, "wait_for", _fake_wait_for)
+
+    code, out, err = asyncio.run(system_utils.run_cmd(["sleep", "100"], timeout=1))
+    assert code == -1
+    assert "timed out" in err.lower()
+    assert fake.killed is True, "process must be killed on timeout"
+    assert fake.waited is True, "process must be reaped (awaited) after kill"
+
+
+def test_run_cmd_timeout_tolerates_already_exited(monkeypatch) -> None:
+    import asyncio
+
+    class _GoneProc:
+        returncode = None
+
+        async def communicate(self):
+            raise TimeoutError
+
+        def kill(self):
+            raise ProcessLookupError  # already exited between timeout and kill
+
+        async def wait(self):
+            return 0
+
+    async def _fake_create(*_a, **_kw):
+        return _GoneProc()
+
+    async def _fake_wait_for(coro, timeout):  # noqa: ARG001
+        await coro
+
+    monkeypatch.setattr(system_utils.asyncio, "create_subprocess_exec", _fake_create)
+    monkeypatch.setattr(system_utils.asyncio, "wait_for", _fake_wait_for)
+
+    # Must not raise ProcessLookupError.
+    code, _out, err = asyncio.run(system_utils.run_cmd(["sleep", "100"], timeout=1))
+    assert code == -1
+    assert "timed out" in err.lower()
+
+
 def test_tier_hdd_critical_capacity() -> None:
     """HDD tier: capacity > 93% triggers critical."""
     result = system_utils.classify_disk_pressure_by_tier(
