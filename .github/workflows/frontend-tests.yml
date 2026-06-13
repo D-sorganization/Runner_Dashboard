@@ -95,8 +95,30 @@ jobs:
         with:
           node-version: "20"
 
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.11"
+
       - name: Install dependencies
         run: npm install
+
+      - name: Install backend dependencies for API contract generation
+        run: |
+          python -m venv "$RUNNER_TEMP/api-contract-venv"
+          source "$RUNNER_TEMP/api-contract-venv/bin/activate"
+          python -m pip install --upgrade pip setuptools wheel
+          if [ -f uv.lock ]; then
+            rm -rf .venv
+            pip install uv
+            uv sync --frozen
+            echo "$(pwd)/.venv/bin" >> "$GITHUB_PATH"
+          else
+            pip install -r requirements.txt
+            echo "$RUNNER_TEMP/api-contract-venv/bin" >> "$GITHUB_PATH"
+          fi
+
+      - name: Verify generated API contract types
+        run: npm run generate-api:check
 
       - name: Typecheck (tsc, no emit)
         run: npm run typecheck
