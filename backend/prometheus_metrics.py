@@ -100,6 +100,10 @@ if _PROMETHEUS_AVAILABLE:
         ["status", "github_api"],
         buckets=(0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
     )
+    DASHBOARD_HUB_CIRCUIT_OPEN = Gauge(
+        "dashboard_hub_circuit_open",
+        "Whether this node is serving local fleet data because the hub circuit is open",
+    )
 
     # Lease reaper (issue #708)
     LEASE_REAPER_PRUNED_TOTAL = Counter(
@@ -177,6 +181,7 @@ else:  # pragma: no cover
     CACHE_MISSES_TOTAL = _stub  # type: ignore[assignment]
     DASHBOARD_HEALTH_CHECKS_TOTAL = _stub  # type: ignore[assignment]
     DASHBOARD_HEALTH_DURATION = _stub  # type: ignore[assignment]
+    DASHBOARD_HUB_CIRCUIT_OPEN = _stub  # type: ignore[assignment]
     LEASE_REAPER_PRUNED_TOTAL = _stub  # type: ignore[assignment]
     LEASE_ACTIVE_TOTAL = _stub  # type: ignore[assignment]
     AUTOSCALER_SCALING_ACTIONS_TOTAL = _stub  # type: ignore[assignment]
@@ -211,6 +216,11 @@ def record_dashboard_health(status: str, github_api: str, duration_s: float) -> 
     """Record a completed dashboard health check."""
     DASHBOARD_HEALTH_CHECKS_TOTAL.labels(status=status, github_api=github_api).inc()
     DASHBOARD_HEALTH_DURATION.labels(status=status, github_api=github_api).observe(duration_s)
+
+
+def set_hub_circuit_open(is_open: bool) -> None:
+    """Update the hub-circuit-open gauge."""
+    DASHBOARD_HUB_CIRCUIT_OPEN.set(1.0 if is_open else 0.0)
 
 
 def update_lease_gauge(active_count: int) -> None:

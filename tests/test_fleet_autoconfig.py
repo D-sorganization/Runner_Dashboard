@@ -148,6 +148,7 @@ def test_derive_pool_topology_single_pool_machine_has_no_phantom_peer() -> None:
         _SPLIT_POOL_REGISTRY,
         local_port=8321,
         display_name="DeskComputer",
+        platform_node="",
     )
     assert local is None
     assert peers == []

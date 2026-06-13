@@ -14,7 +14,7 @@ from dashboard_config import (
     HttpTimeout,
     runner_limit,
 )
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Response
 from fleet_autoconfig import derive_pool_topology  # issue #942 — registry-driven pool topology
 from fleet_events import (  # issue #863 — record runner/disk transitions
     FleetEventPoller,
@@ -23,7 +23,7 @@ from fleet_events import (  # issue #863 — record runner/disk transitions
 from gh_utils import gh_api_admin
 from identity import require_fleet_peer  # issue #922 — intra-fleet auth gate
 from machine_registry import load_machine_registry
-from proxy_utils import proxy_to_hub, should_proxy_fleet_to_hub
+from proxy_utils import proxy_to_hub, should_mark_hub_circuit_degraded, should_proxy_fleet_to_hub
 from routers.runners import run_runner_svc, runner_num_from_id, runner_svc_path
 from runner_inventory import fetch_org_runners
 from system_utils import (
@@ -115,7 +115,7 @@ async def _fleet_control_local(action: str) -> dict:
 
 
 @router.get("/api/fleet/status", dependencies=[Depends(require_fleet_peer)])
-async def get_fleet_status(request: Request, exclude_pools: bool = False):
+async def get_fleet_status(request: Request, response: Response, exclude_pools: bool = False):
     """Get full system metrics state for all machines in the fleet network.
 
     Gated by require_fleet_peer (#922): when HUB_FLEET_TOKEN is set on this node,
@@ -124,6 +124,7 @@ async def get_fleet_status(request: Request, exclude_pools: bool = False):
     """
     if should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
+    degraded_by_hub_circuit = should_mark_hub_circuit_degraded(request)
 
     responses = {}
     local_metrics = await get_system_metrics_snapshot()
@@ -206,6 +207,9 @@ async def get_fleet_status(request: Request, exclude_pools: bool = False):
                 }
 
     _record_fleet_events(responses)
+    if degraded_by_hub_circuit:
+        responses["_degraded"] = True
+        response.headers["X-Dashboard-Degraded"] = "hub-circuit-open"
     return responses
 
 
