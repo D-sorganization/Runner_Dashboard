@@ -167,10 +167,19 @@ def validate_owner_repo_format(value: str) -> str:
 
 
 def validate_local_path(path_str: str, allowed_root: Path) -> Path:
-    """Resolve path and ensure it stays within allowed_root (issue #23)."""
+    """Resolve path and ensure it stays within allowed_root (issues #23, #927).
+
+    Both the user input AND ``allowed_root`` are fully resolved (following
+    symlinks) before the containment check, so the comparison is
+    resolved-vs-resolved. Previously ``allowed_root`` was compared unresolved
+    while ``resolved`` followed symlinks: when ``allowed_root`` itself was (or
+    contained) a symlink, legitimate paths inside the real root were rejected and,
+    worse, crafted symlinks could pass a containment check they should not (#927).
+    """
     resolved = Path(path_str).expanduser().resolve()
+    resolved_root = Path(allowed_root).expanduser().resolve()
     try:
-        resolved.relative_to(allowed_root)
+        resolved.relative_to(resolved_root)
     except ValueError as exc:
         raise ValueError(f"Path escapes allowed root: {path_str}") from exc
     return resolved

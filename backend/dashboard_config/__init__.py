@@ -83,7 +83,12 @@ def _resolve_bind_host() -> str:
 HOST = _resolve_bind_host()
 MAXWELL_PORT = int(os.environ.get("MAXWELL_PORT", "8322"))
 MAXWELL_URL = (os.environ.get("MAXWELL_URL", "") or f"http://localhost:{MAXWELL_PORT}").rstrip("/")
-MAXWELL_API_TOKEN = os.environ.get("MAXWELL_API_TOKEN", "maxwell-local-secret")
+# Issue #926: no hardcoded default secret. When MAXWELL_API_TOKEN is unset the
+# dashboard sends NO Authorization header (routers.maxwell._maxwell_headers), which
+# is correct for a token-less Maxwell-Daemon (per its ConnectionProfile, the daemon
+# runs open only when no auth is configured). A published default string would let
+# anyone reading the source mint valid Maxwell bearer tokens.
+MAXWELL_API_TOKEN = os.environ.get("MAXWELL_API_TOKEN", "").strip()
 
 
 def runner_limit() -> int:

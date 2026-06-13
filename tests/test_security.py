@@ -181,6 +181,34 @@ def test_validate_local_path_dotdot_escape(tmp_path: Path) -> None:
         security.validate_local_path(str(tmp_path / ".." / "etc" / "passwd"), tmp_path)
 
 
+def test_validate_local_path_symlinked_root_resolves_both(tmp_path: Path) -> None:
+    """#927: when allowed_root is itself a symlink, paths inside the REAL root
+    must validate (resolved-vs-resolved). Previously allowed_root was compared
+    unresolved, so a legitimate path inside the real root was rejected."""
+    real_root = tmp_path / "real_root"
+    real_root.mkdir()
+    link_root = tmp_path / "link_root"
+    _symlink_or_skip(link_root, real_root)
+
+    target = real_root / "data" / "file.txt"
+    # Pass the SYMLINK as allowed_root; the input lives under the real root.
+    result = security.validate_local_path(str(target), link_root)
+    assert result == target.resolve()
+
+
+def test_validate_local_path_symlinked_root_still_blocks_escape(tmp_path: Path) -> None:
+    """#927: a path outside the real root must still be rejected even when
+    allowed_root is provided as a symlink."""
+    real_root = tmp_path / "real_root"
+    real_root.mkdir()
+    link_root = tmp_path / "link_root"
+    _symlink_or_skip(link_root, real_root)
+
+    outside = tmp_path / "outside" / "secret.txt"
+    with pytest.raises(ValueError, match="Path escapes"):
+        security.validate_local_path(str(outside), link_root)
+
+
 # ---------------------------------------------------------------------------
 # validate_health_command
 # ---------------------------------------------------------------------------
