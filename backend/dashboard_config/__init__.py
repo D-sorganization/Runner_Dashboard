@@ -65,6 +65,23 @@ PORT = int(os.environ.get("DASHBOARD_PORT", "8321"))
 HOSTNAME = os.environ.get("DISPLAY_NAME") or platform.node()
 
 
+def _env_flag(name: str, default: bool = False) -> bool:
+    """Parse a boolean-ish env var (1/true/yes/on → True)."""
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+# Issue #930: the dashboard documents a plain-HTTP-over-tailnet deployment, but
+# the session cookie was unconditionally `https_only=True` (Secure) and HSTS was
+# always sent. Browsers DROP Secure cookies on http:// origins, so session auth
+# silently never worked in the documented mode — pushing operators toward the
+# unauthenticated paths. TLS-only protections are now gated on DASHBOARD_TLS:
+# unset (default) = HTTP-mode (no Secure cookie, no HSTS); set = TLS-mode.
+TLS_ENABLED = _env_flag("DASHBOARD_TLS", default=False)
+
+
 def _resolve_bind_host() -> str:
     """Return the interface uvicorn should bind for incoming HTTP.
 
@@ -287,6 +304,7 @@ __all__ = [
     "SESSION_SECRET",
     "SESSION_SECRET_SOURCE",
     "SYSTEMCTL_BIN",
+    "TLS_ENABLED",
     "VERSION",
     "WSL_KEEPALIVE_SERVICE",
     "WSL_KEEPALIVE_TASK_NAME",

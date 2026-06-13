@@ -130,14 +130,34 @@ class IdentityManager:
             self.tokens.append(TokenRecord(**t))
 
     def save_tokens(self):
-        """Save tokens with security validation (issue #355)."""
+        """Atomically persist tokens to ``tokens.yml`` (security: issue #355).
+
+        Crash-safety (issue #939a): writes via tempfile + ``os.replace`` so a
+        crash mid-dump can never leave a truncated tokens.yml — which
+        ``load_tokens`` would silently reset, locking every principal out.
+        Mirrors :meth:`save_principals`.
+        """
         self.tokens_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Security validation: ensure config dir is within allowed roots
         validate_config_path(self.tokens_path.parent, allowed_roots=[self.config_dir.resolve()])
 
-        with open(self.tokens_path, "w") as f:
-            yaml.dump({"tokens": [t.model_dump() for t in self.tokens]}, f)
+        payload = {"tokens": [t.model_dump() for t in self.tokens]}
+        fd, tmp_path = tempfile.mkstemp(
+            dir=self.tokens_path.parent,
+            prefix=".tmp-tokens-",
+            suffix=".yml",
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                yaml.dump(payload, fh, default_flow_style=False, allow_unicode=True)
+            os.replace(tmp_path, self.tokens_path)
+        except (OSError, yaml.YAMLError):
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
 
     def mint_service_token(self, principal_id: str, name: str, expires_in_days: int | None = None) -> str:
         if principal_id not in self.principals:

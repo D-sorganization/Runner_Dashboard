@@ -371,11 +371,13 @@ def test_safe_subprocess_env_excludes_secrets(monkeypatch) -> None:
     monkeypatch.setattr("os.environ", fake_env)
 
     result = security.safe_subprocess_env()
+    # Issue #929: the suffix catch-all now also strips ad-hoc secret-shaped vars
+    # (MY_SECRET / DATABASE_PASSWORD / SOME_TOKEN) that the explicit denylist
+    # never knew about. Vars that merely *contain* a secret word but end in a
+    # non-secret suffix (_PATH, _DISABLED) are still passed through — the suffix
+    # rule is anchored at the end of the name, not a substring match.
     assert result == {
         "PATH": "/usr/bin",
-        "MY_SECRET": "shh",
-        "DATABASE_PASSWORD": "password",
-        "SOME_TOKEN": "tok",
         "MAINTENANCE_TOKEN_FILE_PATH": "/tmp/token-file",
         "MAINTENANCE_PASSWORD_PROMPT_DISABLED": "1",
         "XDG_TOKEN_PATH": "/tmp/xdg-token",
@@ -409,6 +411,38 @@ def test_safe_subprocess_env_excludes_provider_key_map_values(monkeypatch) -> No
 def test_safe_subprocess_env_empty(monkeypatch) -> None:
     monkeypatch.setattr("os.environ", {})
     assert security.safe_subprocess_env() == {}
+
+
+def test_safe_subprocess_env_strips_new_secret_suffixes(monkeypatch) -> None:
+    """Issue #929: a brand-new secret var the denylist never enumerated is still
+    stripped by the suffix catch-all, while known-required vars pass through."""
+    fake_env = {
+        "PATH": "/usr/bin",
+        "HOME": "/home/dieter",
+        "LANG": "en_US.UTF-8",
+        "MY_NEW_SECRET": "x",
+        "FOO_TOKEN": "y",
+        "BAR_API_KEY": "z",
+        "DB_PASSWORD": "p",
+        "SVC_CREDENTIALS": "c",
+        "ROOT_PASSWD": "q",
+    }
+    monkeypatch.setattr("os.environ", fake_env)
+    result = security.safe_subprocess_env()
+    # None of the secret-suffixed vars survive.
+    for leaked in ("MY_NEW_SECRET", "FOO_TOKEN", "BAR_API_KEY", "DB_PASSWORD", "SVC_CREDENTIALS", "ROOT_PASSWD"):
+        assert leaked not in result, f"{leaked} leaked to subprocess env"
+    # Required, non-secret vars still pass through.
+    assert result == {"PATH": "/usr/bin", "HOME": "/home/dieter", "LANG": "en_US.UTF-8"}
+
+
+def test_is_secret_env_key_suffix_anchored() -> None:
+    """The suffix rule is anchored at the end of the name, not a substring match."""
+    assert security._is_secret_env_key("ANY_TOKEN") is True
+    assert security._is_secret_env_key("ANY_API_KEY") is True
+    # Substring-but-not-suffix names are NOT secrets.
+    assert security._is_secret_env_key("TOKEN_FILE_PATH") is False
+    assert security._is_secret_env_key("PASSWORD_PROMPT_DISABLED") is False
 
 
 # ---------------------------------------------------------------------------

@@ -127,6 +127,28 @@ def test_security_headers_present_on_post() -> None:
     assert resp.headers.get("X-Content-Type-Options") == "nosniff"
 
 
+def test_hsts_absent_in_http_mode(monkeypatch) -> None:
+    """Issue #930: no HSTS header in the default plain-HTTP deployment mode."""
+    import dashboard_config
+
+    monkeypatch.setattr(dashboard_config, "TLS_ENABLED", False)
+    app = _make_app_with_security_headers()
+    client = TestClient(app, raise_server_exceptions=False)
+    resp = client.get("/api/anything")
+    assert "Strict-Transport-Security" not in resp.headers
+
+
+def test_hsts_present_in_tls_mode(monkeypatch) -> None:
+    """Issue #930: HSTS is sent only when DASHBOARD_TLS is enabled."""
+    import dashboard_config
+
+    monkeypatch.setattr(dashboard_config, "TLS_ENABLED", True)
+    app = _make_app_with_security_headers()
+    client = TestClient(app, raise_server_exceptions=False)
+    resp = client.get("/api/anything")
+    assert resp.headers.get("Strict-Transport-Security") == "max-age=31536000; includeSubDomains"
+
+
 # ---------------------------------------------------------------------------
 # MaxBodySizeMiddleware
 # ---------------------------------------------------------------------------

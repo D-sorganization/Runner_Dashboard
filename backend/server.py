@@ -160,6 +160,7 @@ from runners.service_control import (  # noqa: E402
 )
 from security import (  # noqa: E402
     safe_subprocess_env,  # noqa: E402
+    sanitize_log_value,  # noqa: E402
     validate_fleet_node_url,  # noqa: E402
 )
 from system_utils import get_system_metrics_snapshot  # noqa: E402
@@ -702,7 +703,11 @@ app.add_middleware(
     session_cookie="dashboard_session",
     max_age=86400 * 7,  # 7 days
     same_site="strict",
-    https_only=True,
+    # Issue #930: Secure cookies are dropped by browsers on http:// origins, so
+    # forcing https_only broke session auth on the documented HTTP-over-tailnet
+    # deployment. Gate it on DASHBOARD_TLS so the default HTTP mode issues a
+    # usable cookie and TLS deployments still get the Secure attribute.
+    https_only=dashboard_config.TLS_ENABLED,
 )
 
 app.add_middleware(
@@ -2552,7 +2557,12 @@ async def drain_endpoint(request: Request) -> dict:
     """
     global _drain_mode
     client_host = request.client.host if request.client else "unknown"
-    assert client_host in ("127.0.0.1", "::1", "localhost"), "drain only from loopback"
+    # Issue #939c: a bare `assert` is compiled out under `python -O`, which would
+    # let ANY network peer drain the server. Enforce the loopback restriction
+    # with an explicit check that raises regardless of optimization level.
+    if client_host not in ("127.0.0.1", "::1", "localhost"):
+        log.warning("/_drain refused for non-loopback client %s", sanitize_log_value(client_host))
+        raise HTTPException(status_code=403, detail="drain only from loopback")
     _drain_mode = True
     log.info("/_drain activated by %s", client_host)
     return {"status": "draining"}

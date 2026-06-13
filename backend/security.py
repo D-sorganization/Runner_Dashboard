@@ -64,15 +64,34 @@ _DENIED_SUBPROCESS_ENV_KEYS = frozenset(
 
 _DENIED_SUBPROCESS_ENV_PREFIXES = ("AWS_", "AZURE_")
 
+# Issue #929: a hand-maintained denylist rots — any *new* secret-bearing env var
+# (a future ``*_TOKEN``/``*_SECRET`` nobody remembered to enumerate) would leak
+# to every spawned subprocess by default. Strip anything whose name ends in a
+# secret-shaped suffix as a catch-all on top of the explicit denylist. The suffix
+# set is deliberately conservative; ``PUBLIC_KEY`` still ends in ``_KEY`` and is
+# stripped — that is the safe direction (a subprocess that genuinely needs a
+# value should be passed it explicitly, not via inherited ambient env).
+_DENIED_SUBPROCESS_ENV_SUFFIXES = ("_SECRET", "_TOKEN", "_KEY", "_PASSWORD", "_PASSWD", "_CREDENTIALS")
+
+
+def _is_secret_env_key(key: str) -> bool:
+    """Return True when *key* names a secret-bearing env var that must not leak."""
+    upper = key.upper()
+    if upper in _DENIED_SUBPROCESS_ENV_KEYS:
+        return True
+    if upper.startswith(_DENIED_SUBPROCESS_ENV_PREFIXES):
+        return True
+    return upper.endswith(_DENIED_SUBPROCESS_ENV_SUFFIXES)
+
 
 def safe_subprocess_env() -> dict[str, str]:
-    """Return os.environ with known secret-bearing keys stripped for subprocess calls."""
-    return {
-        key: value
-        for key, value in os.environ.items()
-        if key.upper() not in _DENIED_SUBPROCESS_ENV_KEYS
-        and not key.upper().startswith(_DENIED_SUBPROCESS_ENV_PREFIXES)
-    }
+    """Return os.environ with secret-bearing keys stripped for subprocess calls.
+
+    Strips the explicit denylist, the cloud-provider prefixes, and — as a
+    rot-proof catch-all (#929) — any key ending in a secret-shaped suffix
+    (``*_SECRET``/``*_TOKEN``/``*_KEY``/``*_PASSWORD``/…).
+    """
+    return {key: value for key, value in os.environ.items() if not _is_secret_env_key(key)}
 
 
 # ─── URL Validation ────────────────────────────────────────────────────────────

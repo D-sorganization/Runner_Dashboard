@@ -43,3 +43,65 @@ def test_drain_script_has_timeout():
     script = Path(__file__).resolve().parents[2] / "deploy" / "drain-dashboard.sh"
     content = script.read_text()
     assert "DRAIN_TIMEOUT_S" in content, "drain-dashboard.sh must have a timeout"
+
+
+# ─── Issue #939c: loopback guard must be an explicit check, not a bare assert ──
+
+
+def _drain_source() -> str:
+    return (Path(__file__).resolve().parents[2] / "backend" / "server.py").read_text(encoding="utf-8")
+
+
+def test_drain_handler_has_no_bare_assert_guard():
+    """The /_drain loopback guard must NOT be a bare `assert` (compiled out under -O).
+
+    Greps the handler body to ensure the security check survives `python -O`.
+    """
+    import ast
+
+    tree = ast.parse(_drain_source())
+    drain_fn = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "drain_endpoint"
+    )
+    asserts = [n for n in ast.walk(drain_fn) if isinstance(n, ast.Assert)]
+    assert not asserts, "drain_endpoint must not guard the loopback restriction with a bare assert (#939c)"
+
+
+def test_drain_rejects_non_loopback_with_403():
+    """A non-loopback client must get HTTP 403, regardless of optimization level."""
+    import asyncio
+    from unittest.mock import MagicMock
+
+    from fastapi import HTTPException
+
+    import server  # noqa: PLC0415
+
+    req = MagicMock()
+    req.client.host = "10.0.0.5"  # not loopback
+    server._drain_mode = False
+    try:
+        asyncio.run(server.drain_endpoint(req))
+    except HTTPException as exc:
+        assert exc.status_code == 403
+    else:  # pragma: no cover
+        raise AssertionError("drain_endpoint must reject non-loopback clients with 403")
+    assert server._drain_mode is False, "drain must not activate for a rejected client"
+
+
+def test_drain_accepts_loopback():
+    import asyncio
+    from unittest.mock import MagicMock
+
+    import server  # noqa: PLC0415
+
+    req = MagicMock()
+    req.client.host = "127.0.0.1"
+    server._drain_mode = False
+    try:
+        result = asyncio.run(server.drain_endpoint(req))
+        assert result["status"] == "draining"
+        assert server._drain_mode is True
+    finally:
+        server._drain_mode = False
