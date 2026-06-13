@@ -273,9 +273,13 @@ jobs:
       - name: Install type stubs
         run: pip install types-PyYAML types-requests
       - name: Type Check
-        # disallow_untyped_defs is now true globally (pyproject.toml).
-        # Per-module overrides shrink each release (tracked in #161).
-        # The override count is printed to the log so it cannot grow silently.
+        # disallow_untyped_defs is true globally (pyproject.toml). Per-module
+        # relaxed overrides are a shrink-only ratchet (issue #950, tracking #161):
+        # the count may go DOWN but a PR that ADDS a relaxed override fails CI.
+        # MYPY_OVERRIDE_BASELINE is the current allowance; lower it as overrides
+        # are removed. Target is 0.
+        env:
+          MYPY_OVERRIDE_BASELINE: "24"
         run: |
           OVERRIDE_COUNT=$(python - <<'EOF'
           import tomllib, pathlib
@@ -289,7 +293,15 @@ jobs:
           print(relaxed_count)
           EOF
           )
-          echo "::notice::mypy relaxed-override module count: ${OVERRIDE_COUNT} (target: 0, tracked in #161)"
+          echo "::notice::mypy relaxed-override module count: ${OVERRIDE_COUNT} (baseline ${MYPY_OVERRIDE_BASELINE}, target 0; #161)"
+          if [ "${OVERRIDE_COUNT}" -gt "${MYPY_OVERRIDE_BASELINE}" ]; then
+            echo "::error::mypy relaxed-override count ${OVERRIDE_COUNT} exceeds baseline ${MYPY_OVERRIDE_BASELINE}." \
+              "Type the new module instead of relaxing it, or justify and bump MYPY_OVERRIDE_BASELINE in ci-standard.yml."
+            exit 1
+          fi
+          if [ "${OVERRIDE_COUNT}" -lt "${MYPY_OVERRIDE_BASELINE}" ]; then
+            echo "::notice::Override count dropped below baseline — lower MYPY_OVERRIDE_BASELINE to ${OVERRIDE_COUNT} to lock in the win."
+          fi
           mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional
       - name: Run bandit security scan
         # Blocking for HIGH severity (-lll = high severity, -i = low+ confidence).
