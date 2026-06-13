@@ -297,6 +297,19 @@ async def test_maxwell_pipeline_control_returns_md_response_shape(client) -> Non
 
 
 @pytest.mark.asyncio
+async def test_get_maxwell_backends_accepts_daemon_string_list_shape(client) -> None:
+    """Issue #954: MD returns list[str] from /api/v1/backends; RD must normalize it."""
+    mock_cm = _make_mock_client(get_return=_mock_httpx_response({"backends": ["openai", "ollama"]}))
+    with patch("httpx.AsyncClient", return_value=mock_cm):
+        resp = await client.get("/api/maxwell/backends")
+    assert resp.status_code == 200
+    assert resp.json()["backends"] == [
+        {"name": "openai", "type": "unknown", "enabled": True, "model": None, "status": None},
+        {"name": "ollama", "type": "unknown", "enabled": True, "model": None, "status": None},
+    ]
+
+
+@pytest.mark.asyncio
 async def test_maxwell_dispatch_daemon_unreachable_returns_503(client) -> None:
     """When daemon is unreachable, the mounted router returns a proxy error."""
     mock_cm = _make_mock_client(post_side_effect=httpx.ConnectError("connection refused"))

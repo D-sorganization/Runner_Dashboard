@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 # ---------------------------------------------------------------------------
 # Shared sentinel — use this for any field that must not be forwarded.
@@ -146,6 +146,13 @@ class MaxwellBackendsResponse(BaseModel):
     """Consumer view of Maxwell-Daemon's /api/v1/backends endpoint."""
 
     backends: list[MaxwellBackendItem] = Field(default_factory=list)
+
+    @field_validator("backends", mode="before")
+    @classmethod
+    def _normalize_daemon_backends(cls, value: Any) -> Any:
+        if not isinstance(value, list):
+            return value
+        return [{"name": item, "enabled": True} if isinstance(item, str) else item for item in value]
 
 
 # ---------------------------------------------------------------------------
