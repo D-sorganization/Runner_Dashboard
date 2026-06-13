@@ -81,8 +81,23 @@ def _resolve_bind_host() -> str:
 
 
 HOST = _resolve_bind_host()
-MAXWELL_PORT = int(os.environ.get("MAXWELL_PORT", "8322"))
+# Issue #959: Maxwell-Daemon serves on 8080 by default (its cli/main.py,
+# launcher.py, and CLI clients all default to http://127.0.0.1:8080). The old
+# 8322 default appeared nowhere in Maxwell_Daemon and — worse — collided with the
+# ControlTower-SSD pool's own dashboard_url:8322 in backend/machine_registry.yml,
+# so a default deploy probed a second dashboard and misreported it as Maxwell.
+# Align RD's default to the daemon's real port so an out-of-box RD reaches an
+# out-of-box MD on the same host. Override with MAXWELL_PORT / MAXWELL_URL.
+MAXWELL_PORT = int(os.environ.get("MAXWELL_PORT", "8080"))
 MAXWELL_URL = (os.environ.get("MAXWELL_URL", "") or f"http://localhost:{MAXWELL_PORT}").rstrip("/")
+# True when the operator has explicitly pointed RD at a Maxwell endpoint (either
+# MAXWELL_URL or MAXWELL_PORT set). When neither is set the dashboard falls back
+# to the localhost:8080 default, which is correct for a co-located daemon but is
+# a guess for a remote one — the Maxwell tab surfaces a "configuration needed"
+# hint instead of an opaque connection error in that case (issue #959).
+MAXWELL_EXPLICITLY_CONFIGURED = bool(
+    os.environ.get("MAXWELL_URL", "").strip() or os.environ.get("MAXWELL_PORT", "").strip()
+)
 # Issue #926: no hardcoded default secret. When MAXWELL_API_TOKEN is unset the
 # dashboard sends NO Authorization header (routers.maxwell._maxwell_headers), which
 # is correct for a token-less Maxwell-Daemon (per its ConnectionProfile, the daemon
@@ -252,6 +267,7 @@ __all__ = [
     "MACHINE_ROLE",
     "MAX_CACHE_SIZE",
     "MAXWELL_API_TOKEN",
+    "MAXWELL_EXPLICITLY_CONFIGURED",
     "MAXWELL_PORT",
     "MAXWELL_URL",
     "MAX_RUNNERS",

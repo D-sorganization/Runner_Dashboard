@@ -124,16 +124,21 @@ class TestExtraFieldsDropped:
                     "new_field": "ignored",
                 }
             ],
-            "cursor": "next-cursor",
+            "next_cursor": "next-cursor",
             "total": 1,
             "new_pagination_key": "X",
         }
         result = mc.MaxwellTaskListResponse.model_validate(raw).model_dump()
         assert "new_pagination_key" not in result
+        # Pagination is keyed next_cursor now, not cursor (issue #961).
+        assert "cursor" not in result
+        assert result["next_cursor"] == "next-cursor"
         tasks = result["tasks"]
         assert len(tasks) == 1
         assert "internal_ref" not in tasks[0]
         assert tasks[0]["id"] == "task-1"
+        # MaxwellTaskItem only models MD's real TaskSummary fields.
+        assert set(tasks[0].keys()) == {"id", "status", "created_at"}
 
     def test_backends_extra_fields_dropped(self) -> None:
         raw = {
@@ -234,7 +239,8 @@ class TestDefaults:
     def test_task_list_defaults(self) -> None:
         result = mc.MaxwellTaskListResponse.model_validate({}).model_dump()
         assert result["tasks"] == []
-        assert result["cursor"] is None
+        assert result["next_cursor"] is None
+        assert "cursor" not in result
 
     def test_cost_defaults(self) -> None:
         result = mc.MaxwellCostResponse.model_validate({}).model_dump()
@@ -338,3 +344,133 @@ class TestWorkersMapping:
         # The old {workers, total} shape (zero overlap with MD) must be rejected.
         with pytest.raises(ValidationError):
             mc.MaxwellWorkersResponse.model_validate({"workers": [], "total": 0})
+
+
+class TestTaskContractAlignment:
+    """#961 — task list/detail align with MD's real TaskSummary/TaskDetail shape."""
+
+    def test_task_list_maps_md_next_cursor(self) -> None:
+        # MD's real list shape: tasks of {id,status,created_at} + next_cursor.
+        raw = {
+            "tasks": [{"id": "t-1", "status": "running", "created_at": "2026-06-12T00:00:00Z"}],
+            "next_cursor": None,
+            "total": 1,
+        }
+        result = mc.MaxwellTaskListResponse.model_validate(raw).model_dump()
+        assert result["next_cursor"] is None
+        assert result["tasks"][0]["status"] == "running"
+
+    def test_task_item_missing_status_fails_loud(self) -> None:
+        # status is now required — a defaulted "unknown" row is impossible (#961).
+        with pytest.raises(ValidationError):
+            mc.MaxwellTaskItem.model_validate({"id": "t-1"})
+
+    def test_task_item_missing_id_fails_loud(self) -> None:
+        with pytest.raises(ValidationError):
+            mc.MaxwellTaskItem.model_validate({"status": "queued"})
+
+    def test_task_detail_maps_md_transcript_artifacts(self) -> None:
+        # MD's real detail shape: {id,status,created_at,transcript,artifacts}.
+        raw = {
+            "id": "t-9",
+            "status": "completed",
+            "created_at": "2026-06-12T00:00:00Z",
+            "transcript": [{"role": "system", "text": "hi"}],
+            "artifacts": ["out.log"],
+        }
+        result = mc.MaxwellTaskDetailResponse.model_validate(raw).model_dump()
+        assert result["transcript"] == [{"role": "system", "text": "hi"}]
+        assert result["artifacts"] == ["out.log"]
+        # Phantom fields RD invented are gone.
+        for phantom in ("updated_at", "type", "priority", "tags", "error", "result_summary"):
+            assert phantom not in result
+
+    def test_task_detail_defaults_transcript_artifacts_empty(self) -> None:
+        # MD returns [] today; the model must accept their absence and default.
+        result = mc.MaxwellTaskDetailResponse.model_validate({"id": "t-1", "status": "queued"}).model_dump()
+        assert result["transcript"] == []
+        assert result["artifacts"] == []
+
+    def test_task_detail_missing_status_fails_loud(self) -> None:
+        with pytest.raises(ValidationError):
+            mc.MaxwellTaskDetailResponse.model_validate({"id": "t-1"})
+
+
+# ---------------------------------------------------------------------------
+# #960 — consumer-driven contract: pin MD's REAL response shapes in one place
+# and assert every RD model both (a) accepts the canonical MD payload and
+# (b) fails loud when MD renames a discriminating field. This replaces the
+# old hand-written fixtures (e.g. {"state": "running", "active_tasks": 3})
+# that MD never emitted, which let drift pass both repos' CI silently.
+#
+# These canonical shapes mirror maxwell_daemon/api/contract.py. If MD renames
+# a field, the corresponding `*_field_rename_fails_loud` test turns red here,
+# surfacing the drift on the consumer side before merge.
+# ---------------------------------------------------------------------------
+
+# Canonical MD response shapes (the single source of truth on the RD side).
+MD_CANONICAL: dict[str, dict] = {
+    "version": {"daemon": "3.1.0", "contract": "2.0.0"},
+    "status": {"pipeline_state": "running", "active_task_id": "t-1", "gate": "open", "sandbox": "enabled"},
+    "status_v2": {"counts": {"running": 1, "queued": 0, "completed": 5, "failed": 0}},
+    "task_summary": {"id": "t-1", "status": "running", "created_at": "2026-06-12T00:00:00Z"},
+    "task_detail": {
+        "id": "t-1",
+        "status": "completed",
+        "created_at": "2026-06-12T00:00:00Z",
+        "transcript": [],
+        "artifacts": [],
+    },
+    "workers": {"worker_count": 2, "queue_depth": 0},
+    "control": {"action": "pause", "applied_at": "2026-06-12T00:00:00Z", "previous_state": "running"},
+}
+
+
+class TestConsumerDrivenContract:
+    """#960 — RD models validate against MD's real shapes, not hand-written ones."""
+
+    def test_version_accepts_canonical_md_shape(self) -> None:
+        mc.MaxwellVersionResponse.model_validate(MD_CANONICAL["version"])
+
+    def test_status_accepts_canonical_md_shape(self) -> None:
+        mc.MaxwellStatusResponse.model_validate(MD_CANONICAL["status"])
+
+    def test_status_v2_accepts_canonical_md_shape(self) -> None:
+        mc.MaxwellStatusV2Response.model_validate(MD_CANONICAL["status_v2"])
+
+    def test_task_summary_accepts_canonical_md_shape(self) -> None:
+        mc.MaxwellTaskItem.model_validate(MD_CANONICAL["task_summary"])
+
+    def test_task_detail_accepts_canonical_md_shape(self) -> None:
+        mc.MaxwellTaskDetailResponse.model_validate(MD_CANONICAL["task_detail"])
+
+    def test_workers_accepts_canonical_md_shape(self) -> None:
+        mc.MaxwellWorkersResponse.model_validate(MD_CANONICAL["workers"])
+
+    def test_control_accepts_canonical_md_shape(self) -> None:
+        mc.MaxwellControlResponse.model_validate(MD_CANONICAL["control"])
+
+    @pytest.mark.parametrize(
+        ("shape_key", "discriminator", "model"),
+        [
+            ("version", "contract", "MaxwellVersionResponse"),
+            ("status", "pipeline_state", "MaxwellStatusResponse"),
+            ("status_v2", "counts", "MaxwellStatusV2Response"),
+            ("task_summary", "status", "MaxwellTaskItem"),
+            ("task_detail", "status", "MaxwellTaskDetailResponse"),
+            ("workers", "worker_count", "MaxwellWorkersResponse"),
+            ("control", "action", "MaxwellControlResponse"),
+        ],
+    )
+    def test_discriminating_field_rename_fails_loud(self, shape_key: str, discriminator: str, model: str) -> None:
+        """If MD renames a required discriminating field, the consumer model rejects it.
+
+        Simulates upstream drift by renaming the discriminator to ``<name>_renamed``;
+        a defaulted/silent acceptance would mean drift is invisible (the #960 root
+        cause). The model must raise ValidationError instead.
+        """
+        renamed = dict(MD_CANONICAL[shape_key])
+        renamed[f"{discriminator}_renamed"] = renamed.pop(discriminator)
+        model_cls = getattr(mc, model)
+        with pytest.raises(ValidationError):
+            model_cls.model_validate(renamed)

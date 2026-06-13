@@ -1,10 +1,32 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.97
+**Spec Version:** 2.5.99
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-12T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-12 (2.5.99):** RD↔MD integration contract cluster (issues #959, #961,
+  #963). (#959) `MAXWELL_PORT` defaulted to 8322 — a port that appears nowhere in
+  Maxwell_Daemon (which serves on 8080) and that collided with the
+  ControlTower-SSD pool's own `dashboard_url:8322` in `machine_registry.yml`, so a
+  default deploy probed a second dashboard and misreported it as Maxwell. The
+  default is now 8080 (the daemon's real port). A new `MAXWELL_EXPLICITLY_CONFIGURED`
+  flag is surfaced on `GET /api/maxwell/status` as `configured` so the tab can show
+  "configuration needed" instead of an opaque connection error when neither
+  `MAXWELL_URL` nor `MAXWELL_PORT` is set. (#961) The task contract was mis-keyed
+  and full of phantom fields: `MaxwellTaskListResponse` used `cursor` where MD emits
+  `next_cursor`, and `MaxwellTaskItem`/`MaxwellTaskDetailResponse` modelled
+  `updated_at`/`type`/`priority`/`tags`/`error`/`result_summary`, none of which MD's
+  `TaskSummary`/`TaskDetail` produce. Models now mirror MD's real shapes
+  (`{id, status, created_at}` + `transcript`/`artifacts` on detail), with `id`/`status`
+  required so a defaulted task row is impossible. (#963) Maxwell lifecycle control
+  (`POST /api/maxwell/control`) shelled out to `systemctl` unconditionally — a silent
+  no-op on Windows/WSL hosts without systemd. It now returns HTTP 501 with an
+  actionable message there, `GET /api/maxwell/status` reports `lifecycle_supported`,
+  and the canonical `Maxwell_Daemon` repo slug replaces the broken `Maxwell-Daemon`
+  links in `CLAUDE.md` and `docs/contracts/maxwell.md`. New tests in
+  `tests/test_maxwell_contract.py` (incl. a #960 consumer-driven contract guard that
+  fails loud on a simulated MD field rename) and `tests/test_maxwell_proxy.py`.
 - **2026-06-12 (2.5.97):** Normalized the Maxwell backends contract for the
   daemon's current `/api/v1/backends` shape (integration, issue #954).
   Maxwell-Daemon returns a bare `list[str]` of provider names, while the
