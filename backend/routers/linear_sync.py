@@ -29,8 +29,9 @@ import os
 import time
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
+from identity import Principal, require_principal
 
 log = logging.getLogger("dashboard.linear_sync")
 router = APIRouter(prefix="/api/linear/sync", tags=["linear"])
@@ -281,7 +282,13 @@ async def get_sync_status() -> dict[str, Any]:
 
 
 @router.post("/poll")
-async def trigger_manual_poll() -> JSONResponse:
-    """Trigger an immediate Linear sync poll (outside the scheduled interval)."""
+async def trigger_manual_poll(
+    _principal: Principal = Depends(require_principal),  # noqa: B008 — issue #924
+) -> JSONResponse:
+    """Trigger an immediate Linear sync poll (outside the scheduled interval).
+
+    Authenticated (#924): the poll can fan out to agent dispatch, so it must not
+    be triggerable anonymously.
+    """
     asyncio.create_task(_sync_once())
     return JSONResponse({"status": "poll triggered"})

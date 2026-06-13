@@ -17,8 +17,9 @@ import re
 from typing import Any
 
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
+from identity import Principal, require_principal
 
 # Python 3.11+ has datetime.UTC; fall back to timezone.utc for 3.10
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
@@ -162,7 +163,9 @@ async def get_runner_routing_audit() -> JSONResponse:
 
 
 @router.post("/api/runner-routing-audit/refresh")
-async def refresh_runner_routing_audit() -> JSONResponse:
-    """Trigger an immediate audit refresh."""
+async def refresh_runner_routing_audit(
+    _principal: Principal = Depends(require_principal),  # noqa: B008 — issue #928
+) -> JSONResponse:
+    """Trigger an immediate audit refresh (authenticated, #928)."""
     asyncio.create_task(_run_runner_audit())
     return JSONResponse({"status": "refresh triggered"})

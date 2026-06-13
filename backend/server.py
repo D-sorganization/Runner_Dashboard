@@ -58,6 +58,7 @@ from middleware import MaxBodySizeMiddleware
 from pydantic import BaseModel, Field
 from routers import admin as admin_router
 from routers import auth as auth_router
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 BACKEND_DIR = Path(__file__).resolve().parent
@@ -112,6 +113,7 @@ from machine_registry import (  # noqa: E402
 )
 from middleware import (  # noqa: E402
     add_security_headers,
+    auth_perimeter_check,
     csrf_check,
     max_body_size_check,
 )
@@ -688,6 +690,13 @@ app.include_router(_repos_router.router)  # issue #360
 app.include_router(_diagnostics_router.router)  # issue #360
 app.include_router(_autoscaler_pools_router.router)  # issue #755 tier-aware autoscaler
 app.include_router(_orchestrator_api.router)  # Conductor admission gate (issue #1282)
+
+# Issue #924 — structural auth perimeter. Registered BEFORE SessionMiddleware so
+# that, in Starlette's outer→inner stack, SessionMiddleware wraps this gate and
+# request.session is populated by the time the perimeter resolves a principal.
+# Every non-exempt /api/* route is now authenticated by default: a handler that
+# forgets its own auth dependency can no longer ship an unauthenticated hole.
+app.add_middleware(BaseHTTPMiddleware, dispatch=auth_perimeter_check)
 
 app.add_middleware(
     SessionMiddleware,
