@@ -2425,6 +2425,19 @@ _leader_lock_fd = None
 @app.on_event("startup")
 async def _startup() -> None:
     """Initialize HTTP clients and notify systemd on startup (issue #364)."""
+    # Issue #942: refuse to start when Maxwell's port collides with a peer
+    # dashboard port declared in machine_registry.yml — a silent mis-probe
+    # otherwise misreports a sibling dashboard as the Maxwell daemon.
+    from dashboard_config import MAXWELL_PORT
+    from fleet_autoconfig import assert_no_maxwell_port_collision
+    from machine_registry import load_machine_registry
+
+    assert_no_maxwell_port_collision(
+        load_machine_registry(),
+        maxwell_port=MAXWELL_PORT,
+        local_port=PORT,
+    )
+
     # Wire injected dependencies for extracted routers (issue #360)
     _repos_router.set_dependencies(
         cache_get=_cache_get,

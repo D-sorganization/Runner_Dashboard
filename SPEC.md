@@ -1,10 +1,34 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.107
+**Spec Version:** 2.5.108
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-12T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-12 (2.5.108):** Single source of truth for fleet topology, runtime
+  config, and the identity store (issues #942, #943, #944). (#942) `/api/fleet/status`
+  no longer hardcodes `if PORT == 8322` to label itself ControlTower-NVMe and
+  probe a phantom ControlTower-HDD peer; it derives local-pool identity and the
+  sibling pools to probe from `machine_registry.yml` via a new
+  `fleet_autoconfig.derive_pool_topology`. Single-pool machines emit no phantom
+  peer node, and `_startup` now fails fast (`assert_no_maxwell_port_collision`)
+  when `MAXWELL_PORT` collides with a peer dashboard port in the registry.
+  (#943) `runners/service_control.py` and `routers/system.py` stopped
+  re-deriving `RUNNER_BASE_DIR`/`ORG`/runner limits/`HOSTNAME`/`RUNNER_ALIASES`
+  from `os.environ` and now read them live from `dashboard_config`, so a
+  `RUNNER_BASE_DIR` override drives both metrics scanning and the sudo-executed
+  svc.sh path; the four `_runner_limit` copies collapse to the single
+  `dashboard_config.runner_limit` (service_control re-exports a back-compat
+  alias). A new `tests/test_config_single_source.py` guard fails on re-derivation
+  or a second `runner_limit` definition. (#944) The identity store is anchored to
+  `XDG_CONFIG_HOME/runner-dashboard` (override `DASHBOARD_IDENTITY_DIR`) via
+  `identity.resolve_identity_dir` instead of a CWD-relative `Path("config")`, so
+  launching from any directory uses the same store; the resolved dir is logged at
+  startup; `config/principals.yml`/`tokens.yml` are untracked + gitignored and a
+  `config/principals.yml.example` ships instead. Tests in
+  `tests/test_fleet_autoconfig.py`, `tests/test_identity.py`,
+  `tests/test_config_single_source.py`, `tests/api/test_fleet_aggregator.py`,
+  and `tests/api/test_runner_service_control.py`.
 - **2026-06-12 (2.5.107):** Hardened the fleet-node SSRF guard against
   DNS-suffix spoofing and rebinding (security, issue #931). `validate_fleet_node_url`
   in `backend/security.py` previously accepted any host ending in
