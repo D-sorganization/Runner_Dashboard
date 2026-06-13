@@ -1,10 +1,23 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.101
+**Spec Version:** 2.5.104
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-12T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-12 (2.5.104):** server.py god-module duplicate sweep (architecture,
+  issue #941). Removed two body-identical twins from the ~2.3k-line wiring
+  module: the `POST /api/launchers/generate` route handler (a shadowed dead copy
+  of `routers/diagnostics.py`'s — FastAPI served the router's, never server.py's)
+  and the unused `_normalize_repository_input` helper (a copy of the ones in
+  `routers/assistant.py`/`routers/remediation.py` that server.py never called).
+  Extended `tests/test_no_duplicate_top_level_functions.py` from legacy/App.tsx
+  to all of `backend/**/*.py`: a new guard fails if server.py defines any function
+  body-identical to another backend module, plus a backend-wide "no new
+  body-identical duplicate" ratchet (pre-existing legitimate idioms allow-listed).
+  Pruned the now-resolved launchers entry from the #941 route-uniqueness allowlist
+  and corrected the CLAUDE.md architecture block (server.py size ~2.3k not ~6800;
+  requirements.txt lives at the repo root, not `backend/`).
 - **2026-06-12 (2.5.101):** Autoscaler correctness/robustness cluster (issues
   #932, #935, #936, #937). (#932) The autoscaler read leases from a repo-relative
   `config/leases.yml` that nothing ever wrote, so lease protection was a permanent
