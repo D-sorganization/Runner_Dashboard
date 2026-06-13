@@ -50,6 +50,7 @@ schema = TestClient(app, raise_server_exceptions=False).get("/openapi.json").jso
 out.write_text(json.dumps(schema, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 PY
 
+npx prettier --parser json --write "$TMP_SNAPSHOT"
 npx openapi-typescript "$TMP_SNAPSHOT" --output "$TMP_TYPES"
 
 cat >> "$TMP_TYPES" <<'TS'
