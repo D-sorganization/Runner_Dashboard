@@ -1,10 +1,23 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.94
+**Spec Version:** 2.5.95
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-12T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-12 (2.5.95):** Fixed the autoscaler singleton lock falling through to
+  an alternate path when the primary lock was HELD (correctness, issue #933).
+  `_acquire_lock` (`backend/runner_autoscaler.py`) caught every `OSError` from the
+  candidate-path loop and continued to the next path — but `BlockingIOError`
+  ("lock held" from `flock(LOCK_NB)`) is an `OSError` subclass, so a second
+  autoscaler instance failed the primary lock and silently acquired a DIFFERENT
+  lock file and ran anyway, allowing two concurrent autoscalers to
+  double-stop/double-start runners. The open/makedirs step (path unusable →
+  fall through) is now separated from the flock step: a held lock raises
+  `BlockingIOError` and the process exits `75` (EX_TEMPFAIL) immediately rather
+  than trying an alternate path; only genuine path-unusable errors
+  (`PermissionError`/`ENOENT`) fall through. Linux-only fail-loud tests added in
+  `tests/test_autoscaler_singleton_lock.py`.
 - **2026-06-12 (2.5.94):** Fixed branch-substring stale-run classification that
   auto-cancelled legitimate human CI (correctness, issue #934).
   `classify_stale_run` (`backend/queue_cleanup.py`) flagged any branch CONTAINING
