@@ -30,12 +30,18 @@ class MaxwellControlBody(BaseModel):
 
 
 class MaxwellDispatchBody(BaseModel):
-    """Request body for POST /api/maxwell/dispatch (issue #349).
+    """Request body for POST /api/maxwell/dispatch (issues #349, #953).
 
-    Caller must supply ``confirmation_token``; proxy must not inject it.
+    Caller must supply ``confirmation_token``; proxy must not inject it. ``prompt``
+    is required because MD's confirmation-gated ``POST /api/dispatch``
+    (``DispatchRequest``) requires it — validating it here turns an opaque
+    daemon-side 422 into a clear ``prompt is required`` at the dashboard boundary
+    (DbC). ``repo`` scopes the dispatched task to a repository.
     """
 
     confirmation_token: str = Field(..., min_length=1, max_length=512)
+    prompt: str = Field(..., min_length=1, max_length=100_000)
+    repo: str | None = Field(default=None, max_length=200)
     idempotency_key: str | None = Field(default=None, max_length=128)
 
 
@@ -60,11 +66,51 @@ class MaxwellChatBody(BaseModel):
     """
 
     message: str = Field(..., max_length=4000)
-    history: list[dict[str, str]] = Field(default_factory=list, max_length=20)
+    # History items arrive from the frontend as ``{id, role, content}`` where
+    # ``role`` is ``operator``/``maxwell`` (and ``id`` is an int), so values are
+    # not all strings — accept ``Any`` and normalise at the boundary (#957).
+    history: list[dict[str, Any]] = Field(default_factory=list, max_length=20)
     # Friendly repo identifier (e.g. "Runner_Dashboard") shown in the picker.
     repo: str | None = Field(default=None, max_length=200)
     # Absolute filesystem root the daemon jails its codebase tools to.
     repo_root: str | None = Field(default=None, max_length=1000)
+
+
+# Map the dashboard's chat roles to Maxwell-Daemon ``ChatMessage`` roles. The
+# UI labels the human "operator" and the assistant "maxwell"; MD's contract
+# (``ChatMessage.role`` ∈ {system,user,assistant,tool}) calls them user/assistant.
+_RD_TO_MD_CHAT_ROLE = {
+    "operator": "user",
+    "user": "user",
+    "maxwell": "assistant",
+    "assistant": "assistant",
+    "system": "system",
+    "tool": "tool",
+}
+
+
+def _history_to_md_messages(history: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """Translate RD chat history into MD ``messages[]`` (issue #957).
+
+    MD's ``ChatRequest`` carries multi-turn context in ``messages[]`` (role +
+    content), not the legacy ``history``/``stream`` fields, which it now rejects
+    with a 422 (``extra="forbid"``, MD #995). Each well-formed prior turn is
+    mapped to its MD role; malformed/empty entries are skipped so a single bad
+    item cannot 422 the whole request (fail-soft on history, fail-loud on the
+    current turn).
+    """
+    messages: list[dict[str, str]] = []
+    for item in history:
+        if not isinstance(item, dict):
+            continue
+        content = item.get("content")
+        if not isinstance(content, str) or not content.strip():
+            continue
+        role = _RD_TO_MD_CHAT_ROLE.get(str(item.get("role", "")).strip().lower())
+        if role is None:
+            continue
+        messages.append({"role": role, "content": content})
+    return messages
 
 
 def _maxwell_base_url() -> str:
@@ -345,32 +391,57 @@ async def maxwell_dispatch_task(
     *,
     principal: Principal = Depends(require_scope("maxwell.control")),  # noqa: B008,
 ) -> dict:
-    """Proxy POST /api/v1/tasks to Maxwell-Daemon (issue #349).
+    """Proxy POST /api/dispatch to Maxwell-Daemon (issues #349, #953).
 
-    Caller must supply ``confirmation_token``; server-side injection removed
-    so the dashboard cannot silently bypass the daemon's confirmation gate.
+    Posts to MD's confirmation-gated, idempotent ``POST /api/dispatch`` — the
+    endpoint that actually enforces ``hmac.compare_digest`` on
+    ``confirmation_token`` and keys idempotency on ``idempotency_key``. The
+    previous target, ``POST /api/v1/tasks``, silently discarded both fields
+    (Pydantic ``extra="ignore"``), so the confirmation gate was security theatre
+    and retries created duplicate tasks (#953). Caller must supply
+    ``confirmation_token`` and ``prompt``; server-side injection of the token is
+    not done so the dashboard cannot bypass the daemon-side gate.
     """
     import hashlib as _hashlib
 
-    path = "/api/v1/tasks"
+    path = "/api/dispatch"
     raw_body = await request.json()
 
-    # Validate caller-supplied confirmation_token (DbC, issue #349)
+    # Validate caller-supplied confirmation_token + prompt (DbC, issues #349/#953).
     try:
         validated_dispatch = MaxwellDispatchBody.model_validate(
             {
                 "confirmation_token": raw_body.get("confirmation_token"),
+                "prompt": raw_body.get("prompt"),
+                "repo": raw_body.get("repo"),
                 "idempotency_key": raw_body.get("idempotency_key"),
             }
         )
     except ValidationError as exc:
-        raise HTTPException(status_code=422, detail="confirmation_token is required") from exc
+        # Name the offending field so the operator sees "prompt is required"
+        # rather than a generic 422 from the daemon downstream.
+        missing = {e["loc"][0] for e in exc.errors() if e["loc"]}
+        detail = (
+            "prompt is required"
+            if "prompt" in missing and "confirmation_token" not in missing
+            else "confirmation_token and prompt are required"
+        )
+        raise HTTPException(status_code=422, detail=detail) from exc
 
     token_hash = _hashlib.sha256(validated_dispatch.confirmation_token.encode()).hexdigest()[:16]
 
-    body = dict(raw_body)
-    if not body.get("idempotency_key"):
-        body["idempotency_key"] = validated_dispatch.idempotency_key or str(uuid.uuid4())
+    # Build the exact MD DispatchRequest contract body. MD declares
+    # ``extra="forbid"`` (#994), so we must send precisely
+    # ``{confirmation_token, prompt, repo, idempotency_key}`` and nothing else —
+    # passing arbitrary caller keys through would now 422. The idempotency_key is
+    # honoured daemon-side, so a stable retry key prevents duplicate tasks (#953).
+    body: dict[str, Any] = {
+        "confirmation_token": validated_dispatch.confirmation_token,
+        "prompt": validated_dispatch.prompt,
+        "idempotency_key": validated_dispatch.idempotency_key or str(uuid.uuid4()),
+    }
+    if validated_dispatch.repo:
+        body["repo"] = validated_dispatch.repo
     # confirmation_token comes from the caller — do NOT overwrite with the API token
 
     hdrs = {"Content-Type": "application/json"}
@@ -384,6 +455,34 @@ async def maxwell_dispatch_task(
                 headers=hdrs,
             )
             log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
+
+            # The daemon's confirmation gate (and idempotency conflict) live in
+            # the HTTP status, not the body. ``_translate_upstream_response``
+            # ignores status, so a 403 would be mis-parsed as a successful
+            # dispatch — surface the daemon-side rejection explicitly (#953).
+            if resp.status_code == 403:
+                log.info(
+                    "audit: maxwell_dispatch REJECTED principal=%s confirmation_token_hash=%s",
+                    principal.id,
+                    token_hash,
+                )
+                raise HTTPException(
+                    status_code=403,
+                    detail="Maxwell-Daemon rejected the dispatch: invalid confirmation token.",
+                )
+            if resp.status_code == 409:
+                # Idempotency conflict — the task already exists. Surface it as a
+                # conflict rather than a duplicate-creating success (#953).
+                raise HTTPException(
+                    status_code=409,
+                    detail="A task with this idempotency key already exists.",
+                )
+            if resp.status_code >= 400:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"maxwell dispatch failed (HTTP {resp.status_code})",
+                )
+
             from proxy_utils import _translate_upstream_response
 
             raw = _translate_upstream_response(resp, "maxwell")
@@ -412,19 +511,33 @@ async def maxwell_chat(
     *,
     principal: Principal = Depends(require_scope("operator")),  # noqa: B008
 ) -> StreamingResponse:
-    """Proxy chat messages to Maxwell-Daemon while preserving streamed output.
+    """Proxy chat messages to Maxwell-Daemon and surface the answer text (#957).
 
-    When ``repo``/``repo_root`` are supplied (issue #838) they are forwarded so the
-    daemon scopes its agentic codebase tools to that repository. The companion
-    daemon capability is tracked in Maxwell_Daemon#948; if the running daemon does
-    not yet support codebase chat it answers ``501``, which we degrade into a clear,
-    actionable message rather than a dead-end "HTTP 501".
+    MD's ``/api/chat`` is a request/response JSON endpoint (``ChatResponse``);
+    it does not stream and now *rejects* the legacy ``history``/``stream`` fields
+    with a 422 (``extra="forbid"``, MD #995). This proxy therefore:
+
+    * carries multi-turn context in MD's ``messages[]`` (translated from the UI's
+      history) so chat is no longer amnesiac;
+    * parses the JSON ``ChatResponse`` and emits its ``content`` (not the raw
+      JSON serialization the UI previously rendered);
+    * routes codebase-scoped chat to MD's dedicated ``/api/chat/codebase`` route.
+
+    The browser still consumes a ``text/plain`` body via a stream reader, so the
+    answer text is delivered as a single chunk — no frontend change required
+    (the response is single-turn / non-incremental until MD advertises streaming
+    as a negotiated capability).
     """
-    path = "/api/chat"
+    codebase_scoped = bool(body.repo or body.repo_root)
+    # MD exposes a dedicated codebase route; the generic /api/chat also accepts
+    # repo_root, but routing scoped requests to /api/chat/codebase keeps the
+    # consumer aligned with MD's intended surface and makes the dead 501
+    # degradation path real again.
+    path = "/api/chat/codebase" if codebase_scoped else "/api/chat"
+
     payload: dict[str, Any] = {
         "message": body.message,
-        "history": body.history[-20:],
-        "stream": True,
+        "messages": _history_to_md_messages(body.history[-20:]),
     }
     # Forward codebase-scoping fields only when present, so the existing
     # fleet-status chat payload is unchanged (additive, reversible — DbC).
@@ -432,37 +545,44 @@ async def maxwell_chat(
         payload["repo"] = body.repo
     if body.repo_root:
         payload["repo_root"] = body.repo_root
-    codebase_scoped = bool(body.repo or body.repo_root)
 
     async def stream_daemon_response() -> Any:
         try:
-            async with httpx.AsyncClient(timeout=None) as client:
-                async with client.stream(
-                    "POST",
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                resp = await client.post(
                     f"{_maxwell_base_url()}{path}",
                     json=payload,
                     headers=_maxwell_headers(),
-                ) as resp:
-                    log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
-                    if resp.status_code == 501 and codebase_scoped:
-                        # Daemon is reachable but the codebase Q&A capability
-                        # (Maxwell_Daemon#948) is not deployed yet. Degrade
-                        # gracefully instead of surfacing a raw 501.
-                        yield (
-                            "Codebase Q&A is not available on the connected Maxwell-Daemon yet. "
-                            "Update the daemon to a build with codebase tools (Maxwell_Daemon#948), "
-                            "or ask a fleet-status question instead."
-                        )
-                        return
-                    if resp.status_code >= 400:
-                        yield (
-                            f"Maxwell-Daemon rejected the chat request (HTTP {resp.status_code}). "
-                            "Check the daemon logs and that it is healthy, then retry."
-                        )
-                        return
-                    async for chunk in resp.aiter_text():
-                        if chunk:
-                            yield chunk
+                )
+                log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
+                if resp.status_code == 501 and codebase_scoped:
+                    # Daemon is reachable but the codebase Q&A capability
+                    # (Maxwell_Daemon#948) is not deployed yet. Degrade
+                    # gracefully instead of surfacing a raw 501.
+                    yield (
+                        "Codebase Q&A is not available on the connected Maxwell-Daemon yet. "
+                        "Update the daemon to a build with codebase tools (Maxwell_Daemon#948), "
+                        "or ask a fleet-status question instead."
+                    )
+                    return
+                if resp.status_code >= 400:
+                    yield (
+                        f"Maxwell-Daemon rejected the chat request (HTTP {resp.status_code}). "
+                        "Check the daemon logs and that it is healthy, then retry."
+                    )
+                    return
+                # MD answers a single JSON ``ChatResponse``; emit its text, not
+                # the raw JSON the UI used to render (#957).
+                try:
+                    data = resp.json()
+                except ValueError:
+                    yield "Maxwell-Daemon returned a malformed (non-JSON) chat response."
+                    return
+                content = data.get("content") if isinstance(data, dict) else None
+                if isinstance(content, str) and content:
+                    yield content
+                else:
+                    yield "The assistant returned an empty response."
         except httpx.TimeoutException:
             log.info("maxwell_proxy: path=%s status=%s", path, "timeout")
             yield "Maxwell-Daemon timed out while answering. It may be busy — retry in a moment."

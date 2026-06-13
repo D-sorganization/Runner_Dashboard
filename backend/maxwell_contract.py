@@ -340,16 +340,26 @@ class MaxwellControlResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# /api/v1/tasks  (dispatch response)
+# /api/dispatch  (dispatch response, #953)
 # ---------------------------------------------------------------------------
 
 
 class MaxwellDispatchResponse(BaseModel):
-    """Consumer view of Maxwell-Daemon's task dispatch (POST /api/v1/tasks)."""
+    """Consumer view of Maxwell-Daemon's task dispatch (POST /api/dispatch).
+
+    Issue #953: the dashboard now proxies dispatch to MD's confirmation-gated,
+    idempotent ``POST /api/dispatch`` (``DispatchResponse`` =
+    ``{task_id, status, queued_at}``) instead of ``POST /api/v1/tasks`` (which
+    silently dropped ``confirmation_token``/``idempotency_key`` under Pydantic's
+    default ``extra="ignore"``). ``id``/``created_at`` aliases are retained so a
+    daemon still answering the legacy shape validates without error during the
+    additive rollover (reversible — DbC).
+    """
 
     task_id: str = Field(alias="id", default="unknown")
     status: str = Field(default="queued")
     idempotency_key: str | None = Field(default=None)
+    queued_at: str | None = Field(default=None)
     created_at: str | None = Field(default=None)
     message: str | None = Field(default=None)
 

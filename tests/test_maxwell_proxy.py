@@ -329,10 +329,103 @@ async def test_maxwell_dispatch_daemon_unreachable_returns_503(client) -> None:
     with patch("httpx.AsyncClient", return_value=mock_cm):
         resp = await client.post(
             "/api/maxwell/dispatch",
-            json={"repo": "test-repo", "confirmation_token": "test-token"},
+            json={"repo": "test-repo", "confirmation_token": "test-token", "prompt": "do a thing"},
         )
     assert resp.status_code == 503
     assert resp.json()["detail"] == "maxwell connection error"
+
+
+@pytest.mark.asyncio
+async def test_maxwell_dispatch_posts_to_confirmation_gated_endpoint(client) -> None:
+    """Issue #953: dispatch must target MD's /api/dispatch (the gated, idempotent
+    endpoint), sending the exact DispatchRequest contract body — not /api/v1/tasks,
+    which silently dropped confirmation_token + idempotency_key."""
+    payload = {"task_id": "t-99", "status": "queued", "queued_at": "2026-06-12T00:00:00Z"}
+    mock_cm = _make_mock_client(post_return=_mock_httpx_response(payload, status_code=202))
+    with patch("httpx.AsyncClient", return_value=mock_cm):
+        resp = await client.post(
+            "/api/maxwell/dispatch",
+            json={
+                "repo": "test-repo",
+                "confirmation_token": "secret",
+                "prompt": "build the thing",
+                "idempotency_key": "idem-1",
+            },
+        )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["task_id"] == "t-99"
+    assert data["queued_at"] == "2026-06-12T00:00:00Z"
+
+    post = mock_cm.__aenter__.return_value.post
+    called_url = post.call_args.args[0] if post.call_args.args else post.call_args.kwargs.get("url", "")
+    assert called_url.endswith("/api/dispatch")
+    # Exact contract body: confirmation_token, prompt, repo, idempotency_key only.
+    import json as _json  # noqa: PLC0415
+
+    sent = _json.loads(post.call_args.kwargs["content"])
+    assert sent["confirmation_token"] == "secret"
+    assert sent["prompt"] == "build the thing"
+    assert sent["repo"] == "test-repo"
+    assert sent["idempotency_key"] == "idem-1"
+
+
+@pytest.mark.asyncio
+async def test_maxwell_dispatch_preserves_caller_idempotency_key(client) -> None:
+    """Issue #953: a caller-supplied idempotency_key is forwarded verbatim so
+    retries with the same key do not create duplicate daemon-side tasks."""
+    mock_cm = _make_mock_client(post_return=_mock_httpx_response({"task_id": "t-1", "status": "queued"}, 202))
+    with patch("httpx.AsyncClient", return_value=mock_cm):
+        await client.post(
+            "/api/maxwell/dispatch",
+            json={"confirmation_token": "tok", "prompt": "p", "idempotency_key": "stable-key"},
+        )
+    import json as _json  # noqa: PLC0415
+
+    sent = _json.loads(mock_cm.__aenter__.return_value.post.call_args.kwargs["content"])
+    assert sent["idempotency_key"] == "stable-key"
+
+
+@pytest.mark.asyncio
+async def test_maxwell_dispatch_surfaces_daemon_confirmation_rejection(client) -> None:
+    """Issue #953 acceptance: an invalid confirmation token is rejected by the
+    daemon (403), and the proxy surfaces that rejection rather than masking it
+    as a 200 success."""
+    mock_cm = _make_mock_client(
+        post_return=_mock_httpx_response({"detail": "invalid confirmation_token"}, status_code=403)
+    )
+    with patch("httpx.AsyncClient", return_value=mock_cm):
+        resp = await client.post(
+            "/api/maxwell/dispatch",
+            json={"confirmation_token": "wrong", "prompt": "p"},
+        )
+    assert resp.status_code == 403
+    assert "invalid confirmation token" in resp.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_maxwell_dispatch_requires_prompt(client) -> None:
+    """Issue #953: a dispatch missing ``prompt`` is rejected at the RD boundary
+    with a clear 422, not an opaque daemon-side error."""
+    resp = await client.post(
+        "/api/maxwell/dispatch",
+        json={"confirmation_token": "tok"},
+    )
+    assert resp.status_code == 422
+    assert "prompt" in resp.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_maxwell_dispatch_idempotency_conflict_is_409(client) -> None:
+    """Issue #953: a daemon-side idempotency conflict surfaces as a 409, not a
+    duplicate-creating success."""
+    mock_cm = _make_mock_client(post_return=_mock_httpx_response({"detail": "duplicate"}, status_code=409))
+    with patch("httpx.AsyncClient", return_value=mock_cm):
+        resp = await client.post(
+            "/api/maxwell/dispatch",
+            json={"confirmation_token": "tok", "prompt": "p", "idempotency_key": "dup"},
+        )
+    assert resp.status_code == 409
 
 
 # ─── #959 status surface + #963 lifecycle platform guard ─────────────────────
@@ -395,46 +488,88 @@ async def test_tasks_proxy_exposes_next_cursor_not_cursor(client) -> None:
 # ─── POST /api/maxwell/chat ──────────────────────────────────────────────────
 
 
-@pytest.mark.asyncio
-async def test_maxwell_chat_daemon_unreachable_streams_fallback(client) -> None:
-    """When daemon is unreachable, chat streams a readable fallback instead of breaking the tab."""
+def _chat_post_cm(json_data: dict | None = None, status_code: int = 200, post_side_effect=None) -> MagicMock:
+    """Build a mock AsyncClient whose .post() returns an MD ChatResponse JSON body.
+
+    Issue #957: the chat proxy now POSTs to MD's request/response ``/api/chat``
+    (not a streamed endpoint) and emits ``ChatResponse.content``.
+    """
     mock_client = MagicMock()
-    mock_client.stream.side_effect = httpx.ConnectError("connection refused")
-    mock_cm = MagicMock()
-    mock_cm.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_cm.__aexit__ = AsyncMock(return_value=False)
-    with patch("httpx.AsyncClient", return_value=mock_cm):
-        resp = await client.post("/api/maxwell/chat", json={"message": "status"})
-    assert resp.status_code == 200
-    assert "Maxwell-Daemon is unreachable" in resp.text
-
-
-def _stream_cm(chunks: list[str], status_code: int = 200) -> MagicMock:
-    """Build a mock AsyncClient whose .stream() yields the given text chunks."""
-
-    async def _aiter_text():  # noqa: ANN202
-        for c in chunks:
-            yield c
-
-    stream_resp = MagicMock()
-    stream_resp.status_code = status_code
-    stream_resp.aiter_text = _aiter_text
-    stream_ctx = MagicMock()
-    stream_ctx.__aenter__ = AsyncMock(return_value=stream_resp)
-    stream_ctx.__aexit__ = AsyncMock(return_value=False)
-
-    mock_client = MagicMock()
-    mock_client.stream = MagicMock(return_value=stream_ctx)
+    if post_side_effect is not None:
+        mock_client.post = AsyncMock(side_effect=post_side_effect)
+    else:
+        mock_client.post = AsyncMock(return_value=_mock_httpx_response(json_data or {}, status_code))
     mock_cm = MagicMock()
     mock_cm.__aenter__ = AsyncMock(return_value=mock_client)
     mock_cm.__aexit__ = AsyncMock(return_value=False)
     return mock_cm
 
 
+def _md_chat_response(content: str) -> dict:
+    """A minimal MD ``ChatResponse`` payload."""
+    return {
+        "content": content,
+        "backend": "openai",
+        "backend_name": "OpenAI",
+        "model": "gpt-x",
+        "finish_reason": "stop",
+        "route_reason": "default",
+        "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+    }
+
+
+@pytest.mark.asyncio
+async def test_maxwell_chat_daemon_unreachable_streams_fallback(client) -> None:
+    """When daemon is unreachable, chat streams a readable fallback instead of breaking the tab."""
+    mock_cm = _chat_post_cm(post_side_effect=httpx.ConnectError("connection refused"))
+    with patch("httpx.AsyncClient", return_value=mock_cm):
+        resp = await client.post("/api/maxwell/chat", json={"message": "status"})
+    assert resp.status_code == 200
+    assert "Maxwell-Daemon is unreachable" in resp.text
+
+
+@pytest.mark.asyncio
+async def test_maxwell_chat_renders_answer_text_not_raw_json(client) -> None:
+    """Issue #957: the proxy emits ChatResponse.content, not the JSON serialization."""
+    mock_cm = _chat_post_cm(_md_chat_response("The queue is handled in queue_cleanup.py."))
+    with patch("httpx.AsyncClient", return_value=mock_cm):
+        resp = await client.post("/api/maxwell/chat", json={"message": "where is the queue?"})
+    assert resp.status_code == 200
+    assert resp.text == "The queue is handled in queue_cleanup.py."
+    assert "backend_name" not in resp.text  # not the raw JSON
+    assert "{" not in resp.text
+
+
+@pytest.mark.asyncio
+async def test_maxwell_chat_sends_messages_not_history_or_stream(client) -> None:
+    """Issue #957: MD rejects history/stream (extra=forbid); proxy must send messages[]."""
+    mock_cm = _chat_post_cm(_md_chat_response("ok"))
+    with patch("httpx.AsyncClient", return_value=mock_cm):
+        resp = await client.post(
+            "/api/maxwell/chat",
+            json={
+                "message": "and now?",
+                "history": [
+                    {"id": 1, "role": "operator", "content": "first question"},
+                    {"id": 2, "role": "maxwell", "content": "first answer"},
+                ],
+            },
+        )
+    assert resp.status_code == 200
+    sent = mock_cm.__aenter__.return_value.post.call_args.kwargs["json"]
+    assert "history" not in sent
+    assert "stream" not in sent
+    # Roles are mapped operator->user, maxwell->assistant (MD ChatMessage roles).
+    assert sent["messages"] == [
+        {"role": "user", "content": "first question"},
+        {"role": "assistant", "content": "first answer"},
+    ]
+
+
 @pytest.mark.asyncio
 async def test_maxwell_chat_forwards_repo_and_repo_root(client) -> None:
-    """Codebase Q&A scoping fields (issue #838) are forwarded to the daemon."""
-    mock_cm = _stream_cm(["where queue is handled"])
+    """Codebase Q&A scoping fields (issue #838) are forwarded to the codebase route."""
+    mock_cm = _chat_post_cm(_md_chat_response("where queue is handled"))
     with patch("httpx.AsyncClient", return_value=mock_cm):
         resp = await client.post(
             "/api/maxwell/chat",
@@ -445,28 +580,33 @@ async def test_maxwell_chat_forwards_repo_and_repo_root(client) -> None:
             },
         )
     assert resp.status_code == 200
-    sent = mock_cm.__aenter__.return_value.stream.call_args.kwargs["json"]
+    sent = mock_cm.__aenter__.return_value.post.call_args.kwargs["json"]
     assert sent["repo"] == "Runner_Dashboard"
     assert sent["repo_root"] == "/home/runner/Runner_Dashboard"
+    # Codebase-scoped chat routes to MD's dedicated /api/chat/codebase endpoint.
+    called_url = mock_cm.__aenter__.return_value.post.call_args.args[0]
+    assert called_url.endswith("/api/chat/codebase")
 
 
 @pytest.mark.asyncio
 async def test_maxwell_chat_omits_repo_fields_when_absent(client) -> None:
-    """Fleet-status chat keeps an unchanged payload (no repo/repo_root keys)."""
-    mock_cm = _stream_cm(["ok"])
+    """Fleet-status chat keeps an unchanged payload (no repo/repo_root keys) on /api/chat."""
+    mock_cm = _chat_post_cm(_md_chat_response("ok"))
     with patch("httpx.AsyncClient", return_value=mock_cm):
         resp = await client.post("/api/maxwell/chat", json={"message": "status"})
     assert resp.status_code == 200
-    sent = mock_cm.__aenter__.return_value.stream.call_args.kwargs["json"]
+    sent = mock_cm.__aenter__.return_value.post.call_args.kwargs["json"]
     assert "repo" not in sent
     assert "repo_root" not in sent
+    called_url = mock_cm.__aenter__.return_value.post.call_args.args[0]
+    assert called_url.endswith("/api/chat")
 
 
 @pytest.mark.asyncio
 async def test_maxwell_chat_501_degrades_gracefully_for_codebase(client) -> None:
     """A reachable daemon without codebase support (Maxwell_Daemon#948) returns 501;
     the proxy degrades it into a clear, actionable message, not a raw HTTP code."""
-    mock_cm = _stream_cm([], status_code=501)
+    mock_cm = _chat_post_cm({}, status_code=501)
     with patch("httpx.AsyncClient", return_value=mock_cm):
         resp = await client.post(
             "/api/maxwell/chat",
