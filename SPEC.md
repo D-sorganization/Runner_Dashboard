@@ -1,10 +1,17 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.109
+**Spec Version:** 2.5.110
 **Application Version:** 4.8.0 (see `VERSION`)
-**Last Updated:** 2026-06-12T00:00:00-07:00
+**Last Updated:** 2026-06-13T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-13 (2.5.110):** Stabilize the OpenAPI-to-TypeScript contract
+  generation gate added for issue #947. `scripts/gen-api-client.sh` now formats
+  the generated `frontend/src/lib/openapi.json` snapshot with the pinned local
+  Prettier dependency before `--check` diffs it, so CI compares against the same
+  compact JSON style committed in the repository instead of failing on formatting
+  drift. `tests/frontend/test_api_generation_contract.py` guards the canonical
+  scripts, checked snapshot, generated TypeScript output, and formatter ordering.
 - **2026-06-12 (2.5.109):** Quick Start works on a clean checkout + gh_client
   robustness (issues #945, #938). (#945) `start-dashboard.sh` now installs from
   the repo-root `requirements.txt` (the phantom `backend/requirements.txt` path
