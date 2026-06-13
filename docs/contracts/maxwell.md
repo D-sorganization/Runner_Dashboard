@@ -144,9 +144,9 @@ no `/api/v1/control/*` route).
 
 Proxy of Maxwell-Daemon `/api/v1/backends`.
 
-| Field      | Type            | Notes |
-| ---------- | --------------- | ----- |
-| `backends` | `BackendItem[]` |       |
+| Field      | Type            | Notes                                                                    |
+| ---------- | --------------- | ------------------------------------------------------------------------ |
+| `backends` | `BackendItem[]` | Bare string entries from Maxwell-Daemon are normalized to backend items. |
 
 **BackendItem**:
 
@@ -159,6 +159,10 @@ Proxy of Maxwell-Daemon `/api/v1/backends`.
 | `status`  | `string?` |                                  |
 
 > ⚠️ **`api_key`, `connection_string`, and similar fields are NEVER forwarded.**
+
+Producer compatibility: Maxwell-Daemon currently returns `{"backends": ["openai", "ollama"]}`
+from `/api/v1/backends`. The dashboard exposes those as
+`{"name": "...", "type": "unknown", "enabled": true, "model": null, "status": null}`.
 
 ---
 

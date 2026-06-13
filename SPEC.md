@@ -1,10 +1,19 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.96
+**Spec Version:** 2.5.97
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-12T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-12 (2.5.97):** Normalized the Maxwell backends contract for the
+  daemon's current `/api/v1/backends` shape (integration, issue #954).
+  Maxwell-Daemon returns a bare `list[str]` of provider names, while the
+  dashboard proxy expected backend objects and turned the real response into a
+  validation-backed HTTP 500. `MaxwellBackendsResponse` now accepts daemon string
+  entries and converts them into the existing dashboard backend item shape
+  (`name`, `type="unknown"`, `enabled=true`, optional `model`/`status`) before
+  serialization. Contract docs and proxy/model regressions cover the real daemon
+  list shape.
 - **2026-06-12 (2.5.96):** Hardened three dispatch/credential security defects
   (security, issues #925, #926, #927). (1) `verify_approval_hmac`
   (`backend/dispatch/signing.py`) returned `True` for any confirmation lacking an

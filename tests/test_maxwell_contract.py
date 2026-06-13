@@ -153,6 +153,16 @@ class TestExtraFieldsDropped:
         assert backend["name"] == "Anthropic"
         assert backend["model"] == "claude-opus-4"
 
+    def test_backends_accept_daemon_string_list_shape(self) -> None:
+        raw = {"backends": ["openai", "ollama"]}
+
+        result = mc.MaxwellBackendsResponse.model_validate(raw).model_dump()
+
+        assert result["backends"] == [
+            {"name": "openai", "type": "unknown", "enabled": True, "model": None, "status": None},
+            {"name": "ollama", "type": "unknown", "enabled": True, "model": None, "status": None},
+        ]
+
 
 # ---------------------------------------------------------------------------
 # AC-4: Sensitive fields are NOT present in dashboard responses
