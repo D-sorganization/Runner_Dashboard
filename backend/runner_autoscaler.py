@@ -309,10 +309,9 @@ def _acquire_lock() -> None:
             try:
                 os.makedirs(os.path.dirname(candidate), exist_ok=True)
                 _lock_fd = open(candidate, "w")
-                fcntl.flock(_lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)  # type: ignore[attr-defined,name-defined]
-                lock_path = candidate
-                break
             except OSError as exc:
+                # Path is unusable (PermissionError / ENOENT / read-only fs):
+                # try the next candidate. This is NOT a "lock held" signal.
                 last_err = exc
                 if _lock_fd is not None:
                     try:
@@ -321,6 +320,39 @@ def _acquire_lock() -> None:
                         pass
                     _lock_fd = None
                 continue
+
+            try:
+                fcntl.flock(_lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)  # type: ignore[attr-defined,name-defined]
+            except BlockingIOError:
+                # The lock is HELD by another autoscaler instance (#933). This is
+                # a definitive "already running" signal — do NOT fall through to
+                # an alternate path (which would let a second instance run against
+                # a different lock file and double-stop/double-start runners).
+                # Exit 75 (EX_TEMPFAIL) so systemd treats it as a transient, not
+                # a crash that triggers restart storms.
+                try:
+                    _lock_fd.close()
+                except OSError:
+                    pass
+                _lock_fd = None
+                log.error(
+                    "autoscaler lock %s is held by another instance; exiting (another autoscaler is running)",
+                    candidate,
+                )
+                sys.exit(75)
+            except OSError as exc:
+                # Non-blocking flock failure that is not "held" (e.g. the fs does
+                # not support locking): treat the path as unusable and try next.
+                last_err = exc
+                try:
+                    _lock_fd.close()
+                except OSError:
+                    pass
+                _lock_fd = None
+                continue
+
+            lock_path = candidate
+            break
         if not lock_path:
             log.error(
                 "Could not acquire lock on any candidate path; last error: %s",

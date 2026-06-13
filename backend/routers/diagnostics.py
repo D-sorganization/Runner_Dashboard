@@ -674,8 +674,15 @@ async def get_runner_routing_audit() -> JSONResponse:
 
 
 @router.post("/api/runner-routing-audit/refresh")
-async def refresh_runner_routing_audit() -> JSONResponse:
-    """Trigger an immediate audit refresh."""
+async def refresh_runner_routing_audit(
+    _principal: Any = Depends(require_scope("system.control")),  # noqa: B008 — issue #928
+) -> JSONResponse:
+    """Trigger an immediate audit refresh (authenticated, #928).
+
+    NOTE: this is the shadowed duplicate of routers.runner_audit's copy (the
+    canonical, first-registered winner). The dedup is tracked by #941; auth is
+    added here too so the route is gated regardless of which copy wins.
+    """
     if _run_runner_audit_fn is not None:
         asyncio.create_task(_run_runner_audit_fn())
     return JSONResponse({"status": "refresh triggered"})

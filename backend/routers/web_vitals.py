@@ -13,7 +13,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
+from identity import Principal, require_principal
 from pydantic import BaseModel, Field
 
 router = APIRouter(tags=["web-vitals"])
@@ -81,7 +82,13 @@ def _compute_percentile(values: list[float], percentile: float) -> float | None:
 
 
 @router.post("/api/metrics/web-vitals")
-async def post_web_vitals(payload: WebVitalsPayload, request: Request) -> dict[str, str]:
+async def post_web_vitals(
+    payload: WebVitalsPayload,
+    request: Request,
+    _principal: Principal = Depends(require_principal),  # noqa: B008 — issue #928
+) -> dict[str, str]:
+    # Authenticated ingestion (#928): the SPA beacon carries the operator session,
+    # so attacker-controlled records can no longer be appended anonymously.
     if SAMPLE_RATE < 1.0 and random.random() > SAMPLE_RATE:
         return {"status": "sampled_out"}
 

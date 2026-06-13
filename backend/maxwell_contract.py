@@ -7,7 +7,14 @@ Responses from Maxwell are deserialized into these models so that:
 2. Sensitive fields (e.g., ``secret_token``, ``api_key``) are never leaked.
 3. Schema drift (Maxwell adds/renames a field) is caught at the boundary.
 
-Contract version: v1 (2026-04-30, issue #366).
+Contract version: 2.0.0 (matches Maxwell-Daemon ``CONTRACT_VERSION``; issues
+#955/#956/#958). Earlier this module modelled an imaginary "v1" shape with zero
+overlapping keys against the daemon, so every field silently defaulted and the
+Maxwell tab perpetually showed "unknown / 0 tasks". The models below validate the
+daemon's REAL response shapes (see ``maxwell_daemon/api/contract.py``) and make
+the discriminating field of each response **required**, so future drift fails
+loudly (a ``ValidationError`` the proxy surfaces as 502) instead of defaulting.
+
 Docs: docs/contracts/maxwell.md
 
 Usage::
@@ -21,7 +28,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+# The contract major version this dashboard build was written against. Surfaced
+# at the /api/version boundary so a major-version mismatch with the daemon's
+# advertised ``contract`` can be detected and shown as a degraded-mode banner
+# instead of rendering silently-defaulted data (#956).
+EXPECTED_CONTRACT_VERSION = "2.0.0"
+EXPECTED_CONTRACT_MAJOR = EXPECTED_CONTRACT_VERSION.split(".", 1)[0]
 
 # ---------------------------------------------------------------------------
 # Shared sentinel — use this for any field that must not be forwarded.
@@ -50,12 +64,34 @@ _SENSITIVE_FIELDS = frozenset(
 
 
 class MaxwellVersionResponse(BaseModel):
-    """Consumer view of Maxwell-Daemon's /api/version endpoint."""
+    """Consumer view of Maxwell-Daemon's ``GET /api/version`` endpoint (#956).
 
+    MD returns ``{daemon, contract}`` (``maxwell_daemon/api/contract.py:VersionResponse``).
+    ``daemon`` is the daemon's semantic version; ``contract`` is the surface
+    contract version used for consumer negotiation. Both are **required** so a
+    reachable-but-incompatible daemon fails loudly here instead of reporting
+    ``version="unknown"`` forever.
+
+    The derived ``version`` field preserves the dashboard-facing name the frontend
+    already reads, and ``contract_compatible`` is computed against the contract
+    version this build targets so the Maxwell tab can show an explicit
+    incompatibility banner rather than silently rendering defaulted data.
+    """
+
+    daemon: str = Field(description="Daemon semantic version (MD 'daemon' field)")
+    contract: str = Field(description="MD surface contract version, e.g. '2.0.0'")
+    # Dashboard-facing alias retained for the existing frontend (mirrors `daemon`).
     version: str = Field(default="unknown", description="Semantic version string")
-    build: str | None = Field(default=None, description="Build hash or CI label")
-    environment: str | None = Field(default=None)
-    started_at: str | None = Field(default=None)
+    contract_compatible: bool = Field(default=True)
+
+    @model_validator(mode="after")
+    def _derive(self) -> MaxwellVersionResponse:
+        # Mirror the daemon version onto the legacy `version` key the UI reads.
+        self.version = self.daemon
+        # Major-version compatibility: a mismatch is a breaking contract change.
+        daemon_major = self.contract.split(".", 1)[0]
+        self.contract_compatible = daemon_major == EXPECTED_CONTRACT_MAJOR
+        return self
 
 
 # ---------------------------------------------------------------------------
@@ -64,8 +100,26 @@ class MaxwellVersionResponse(BaseModel):
 
 
 class MaxwellStatusResponse(BaseModel):
-    """Consumer view of Maxwell-Daemon's /api/status endpoint."""
+    """Consumer view of Maxwell-Daemon's ``GET /api/status`` endpoint (#955).
 
+    MD returns ``{pipeline_state, active_task_id, gate, sandbox}``
+    (``maxwell_daemon/api/contract.py:StatusResponse``). ``pipeline_state`` is the
+    discriminating field and is **required** so a shape mismatch fails loudly
+    instead of reporting ``state="unknown"`` against a healthy daemon.
+
+    ``pipeline_state`` is mapped onto the dashboard-facing ``state`` key; ``paused``
+    is derived from it; ``active_tasks`` is derived from ``active_task_id``
+    presence. Richer task counts come from ``GET /api/v2/status`` via
+    :class:`MaxwellStatusV2Response` and are merged in by the proxy route, which
+    sets ``active_tasks``/``queued_tasks``/``completed_tasks``/``failed_tasks``
+    from the authoritative ``counts`` map when available.
+    """
+
+    pipeline_state: str = Field(description="MD pipeline state: idle/running/paused/error")
+    active_task_id: str | None = Field(default=None)
+    gate: str | None = Field(default=None, description="MD admission gate: open/closed")
+    sandbox: str | None = Field(default=None, description="enabled/disabled")
+    # Dashboard-facing derived fields (mirrors / counts).
     state: str = Field(default="unknown")
     active_tasks: int = Field(default=0, ge=0)
     queued_tasks: int = Field(default=0, ge=0)
@@ -74,6 +128,42 @@ class MaxwellStatusResponse(BaseModel):
     uptime_seconds: float | None = Field(default=None)
     last_activity: str | None = Field(default=None)
     paused: bool = Field(default=False)
+
+    @model_validator(mode="after")
+    def _derive(self) -> MaxwellStatusResponse:
+        self.state = self.pipeline_state
+        self.paused = self.pipeline_state == "paused"
+        # Baseline from /api/status; refined by merge_v2_counts() when the richer
+        # /api/v2/status payload is available.
+        self.active_tasks = 1 if self.active_task_id else 0
+        return self
+
+    def merge_v2_counts(self, v2: MaxwellStatusV2Response) -> None:
+        """Overlay authoritative task counts from ``GET /api/v2/status`` (#955).
+
+        ``StatusV2Response.counts`` is a ``{state: n}`` map. We read the standard
+        states defensively (missing keys default to 0) so a daemon that omits a
+        bucket does not crash the merge.
+        """
+        counts = v2.counts
+        self.active_tasks = int(counts.get("running", self.active_tasks))
+        self.queued_tasks = int(counts.get("queued", counts.get("pending", 0)))
+        self.completed_tasks = int(counts.get("completed", counts.get("done", 0)))
+        self.failed_tasks = int(counts.get("failed", counts.get("error", 0)))
+
+
+class MaxwellStatusV2Response(BaseModel):
+    """Consumer view of Maxwell-Daemon's ``GET /api/v2/status`` endpoint (#955).
+
+    Only the ``counts`` map is contract-relevant for the dashboard's task tallies;
+    ``counts`` is **required** so a shape change is caught loudly. The richer
+    ``running``/``retrying`` task arrays are intentionally not modelled field-by-
+    field here (they are large and unstable); they are ignored by this consumer.
+    """
+
+    counts: dict[str, int] = Field(description="Per-state task counts, e.g. {'running': 2}")
+
+    model_config = {"extra": "ignore"}
 
 
 # ---------------------------------------------------------------------------
@@ -173,10 +263,27 @@ class MaxwellWorkerItem(BaseModel):
 
 
 class MaxwellWorkersResponse(BaseModel):
-    """Consumer view of Maxwell-Daemon's /api/v1/workers endpoint."""
+    """Consumer view of Maxwell-Daemon's ``GET /api/v1/workers`` endpoint (#958).
 
+    MD returns ``{worker_count, queue_depth}`` (``maxwell_daemon/api/routes/fleet.py``)
+    — it does NOT (yet) emit per-worker items. ``worker_count`` is **required** so a
+    shape change fails loudly instead of silently rendering an empty list.
+
+    ``total`` mirrors ``worker_count`` for the existing frontend; ``queue_depth`` is
+    surfaced for the workers panel. The ``workers`` list stays empty until MD
+    enriches the endpoint with per-worker detail (tracked on the MD side).
+    """
+
+    worker_count: int = Field(ge=0, description="Number of active workers (MD field)")
+    queue_depth: int | None = Field(default=None, ge=0, description="Pending queue depth (MD field)")
+    # Dashboard-facing fields.
     workers: list[MaxwellWorkerItem] = Field(default_factory=list)
     total: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def _derive(self) -> MaxwellWorkersResponse:
+        self.total = self.worker_count
+        return self
 
 
 # ---------------------------------------------------------------------------

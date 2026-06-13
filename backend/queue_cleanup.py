@@ -73,17 +73,69 @@ ALLOW_PROTECTED_PR_HEAD_STALE: bool = False
 IN_PROGRESS_STRICT_THRESHOLD_MINUTES: int = 120
 
 
-def classify_stale_run(branch: str, age_minutes: int) -> tuple[str, bool]:
-    """Determine the reason and safety status of a stale run based on branch and age."""
+# Branch-name shapes that identify an automated agent/worktree run (issue #934).
+# Matched on SEGMENT/PREFIX boundaries, never as bare substrings: the old
+# substring test flagged ordinary human branches (`fix/rerun-tests` matched
+# "run-", `feat/dispatch-fix` matched "patch-", `feature/user-agent-header`
+# matched "agent") and the reaper then auto-cancelled legitimate CI during
+# backlogs.
+#
+# A branch is agent-shaped when its FIRST path segment is an agent namespace
+# (`agent`, `codex`, `jules`, `worktree`) or it starts with a worktree/patch/run
+# prefix token (`wt-`, `patch-`, `run-`) — i.e. the token is the start of a
+# path segment, not buried mid-word.
+_AGENT_BRANCH_NAMESPACES = frozenset({"agent", "codex", "jules", "worktree"})
+_AGENT_BRANCH_PREFIXES = ("wt-", "patch-", "run-")
+
+# Logins that corroborate "this is a bot/agent run". GitHub appends "[bot]" to
+# GitHub-App actor logins; the named agents are our fleet bots.
+_AGENT_ACTOR_LOGINS = frozenset({"codex", "jules", "dashboard-bot", "github-actions"})
+
+
+def _is_agent_branch(branch: str) -> bool:
+    """Return True when *branch* is shaped like an automated agent/worktree branch.
+
+    Anchored to segment/prefix boundaries (issue #934) so ordinary human feature
+    branches are never misclassified.
+    """
+    lowered = branch.lower()
+    first_segment = lowered.split("/", 1)[0]
+    if first_segment in _AGENT_BRANCH_NAMESPACES:
+        return True
+    return any(first_segment.startswith(prefix) for prefix in _AGENT_BRANCH_PREFIXES)
+
+
+def _is_agent_actor(actor: str | None) -> bool:
+    """Return True when *actor* corroborates a bot/agent-triggered run (#934)."""
+    if not actor:
+        return False
+    login = actor.lower()
+    return login.endswith("[bot]") or login in _AGENT_ACTOR_LOGINS
+
+
+def classify_stale_run(branch: str, age_minutes: int, actor: str | None = None) -> tuple[str, bool]:
+    """Determine the reason and safety status of a stale run.
+
+    Agent-run classification (``safe_to_cancel=True``) requires BOTH an
+    agent-shaped branch (segment/prefix anchored) AND a corroborating bot actor
+    when the actor is known (issue #934). A human-actor run on an agent-named
+    branch is treated as an ordinary feature branch and is NOT auto-cancellable
+    on the agent reason. When the actor is unknown (``None``), branch shape alone
+    decides — preserving prior behaviour for callers that cannot supply an actor.
+    """
     if branch in ("main", "master", "release"):
         if age_minutes > 360:
             return StaleReason.OFFLINE_RUNNER_OR_LAG.value, True
-        else:
-            return StaleReason.STALE_MAIN_BRANCH.value, False
-    elif any(x in branch.lower() for x in ("agent", "worktree", "wt-", "patch-", "run-")):
-        return StaleReason.ABANDONED_AGENT.value, True
-    else:
+        return StaleReason.STALE_MAIN_BRANCH.value, False
+
+    if _is_agent_branch(branch):
+        # Require corroboration when we know the actor: a human pushing to an
+        # agent-shaped branch must not have their CI reaped.
+        if actor is None or _is_agent_actor(actor):
+            return StaleReason.ABANDONED_AGENT.value, True
         return StaleReason.STALE_FEATURE_BRANCH.value, True
+
+    return StaleReason.STALE_FEATURE_BRANCH.value, True
 
 
 def is_routable(required_labels: Iterable[str], online_label_sets: list[frozenset[str]]) -> bool:
@@ -515,7 +567,13 @@ async def _queued_stale_for_repo(
         branch = run.get("head_branch", "?") or "?"
         status = run.get("status", "queued")
 
-        run_reason, safe_to_cancel = classify_stale_run(branch, age_minutes)
+        # Corroborating actor for agent classification (#934). GitHub run payloads
+        # expose the triggering actor under `triggering_actor`/`actor` as a nested
+        # object with a `login`; fall back gracefully when absent.
+        actor_obj = run.get("triggering_actor") or run.get("actor") or {}
+        actor_login = actor_obj.get("login") if isinstance(actor_obj, dict) else None
+
+        run_reason, safe_to_cancel = classify_stale_run(branch, age_minutes, actor=actor_login)
         if status == "in_progress":
             safe_to_cancel = False
 

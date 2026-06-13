@@ -99,7 +99,11 @@ async def get_runners_diagnostics_summary(request: Request) -> dict[str, Any]:
 
 
 @router.post("/api/runners/{runner_id}/diagnostics")
-async def get_runner_diagnostics(request: Request, runner_id: int) -> dict[str, Any]:
+async def get_runner_diagnostics(
+    request: Request,
+    runner_id: int,
+    _principal: Principal = Depends(require_scope("runners.control")),  # noqa: B008 — issue #928
+) -> dict[str, Any]:
     """Get detailed diagnostics for a specific runner.
 
     Includes service status, recent activity, and potential troubleshooting info.

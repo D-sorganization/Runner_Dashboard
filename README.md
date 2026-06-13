@@ -30,9 +30,33 @@ backend serves as assets.
 ## Security
 
 > **Security Notice**: This dashboard provides full control over your GitHub
-> Actions runner fleet. It has no built-in authentication. Restrict network
-> access to trusted operators only. See [SECURITY.md](SECURITY.md) for the
+> Actions runner fleet. Treat the network it binds to as a trust boundary and
+> restrict access to trusted operators. See [SECURITY.md](SECURITY.md) for the
 > vulnerability disclosure policy.
+
+The dashboard ships with a built-in identity and authorization stack — it is
+**not** an unauthenticated service. Configure it before exposing the port:
+
+- **Principals, roles, and scopes** — every `/api/*` route is authenticated by
+  default (a structural perimeter rejects unauthenticated requests); operations
+  are gated by role-derived scopes. See `backend/identity.py`
+  (`require_principal`, `require_scope`, `SCOPE_PRESETS`).
+- **Sessions with revocation** — server-side sessions backed by
+  `backend/session_management.py`; revoked/expired sessions are rejected.
+- **GitHub OAuth + org membership check** — operators sign in via GitHub and are
+  admitted only if they belong to the configured org
+  (`backend/routers/auth.py`).
+- **WebAuthn** — passkey registration/assertion scaffolding in
+  `backend/auth_webauthn.py`.
+- **Service tokens / API-key bootstrap** — bot principals authenticate with
+  minted service tokens; see `backend/server.py` and the admin token routes.
+- **Intra-fleet auth** — hub-reachable fleet routes validate `HUB_FLEET_TOKEN`;
+  see [`docs/runbooks/hub-credentials.md`](docs/runbooks/hub-credentials.md).
+
+`require_principal` **fails closed**: a request with no valid credential gets
+`401`. A local development bypass exists only when `DASHBOARD_LOOPBACK_AUTH=1`
+and the peer is loopback. Network isolation is a defense-in-depth layer on top
+of this stack, not a replacement for it.
 
 ## Features
 

@@ -388,3 +388,28 @@ def require_fleet_peer(
             return "fleet-peer"
 
     raise HTTPException(status_code=401, detail="Fleet authentication required")
+
+
+def resolve_perimeter_principal(request: Request) -> Principal | None:
+    """Resolve the calling principal for the structural auth perimeter (#924).
+
+    This mirrors the credential resolution performed by :func:`require_principal`
+    but is callable from ASGI middleware (where the route-dependency machinery is
+    not yet available). It returns ``None`` instead of raising so the middleware
+    can decide the response.
+
+    Resolution order matches ``require_principal``:
+      1. ``Authorization: Bearer <service-token>``.
+      2. Session cookie (requires SessionMiddleware to have run first).
+      3. Loopback development admin, only when ``DASHBOARD_LOOPBACK_AUTH=1`` and
+         the transport peer is a loopback address.
+    """
+    header_token = request.headers.get("Authorization")
+    principal = _resolve_principal_optional(request, header_token)
+    if principal is not None:
+        return principal
+
+    if _loopback_auth_enabled() and _is_loopback_request(request):
+        return _loopback_principal()
+
+    return None

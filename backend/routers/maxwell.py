@@ -168,6 +168,23 @@ async def get_maxwell_status() -> dict:
 
     status = "running" if (service_running or http_reachable) else "stopped"
 
+    # Contract negotiation (#956): when the daemon is reachable, surface its
+    # advertised contract version and whether it is compatible with the version
+    # this dashboard build targets. Best-effort — never fails the status probe.
+    contract: dict[str, Any] = {
+        "expected": _mc.EXPECTED_CONTRACT_VERSION,
+        "daemon": None,
+        "compatible": None,
+    }
+    if http_reachable:
+        try:
+            raw_version = await _mx_get("/api/version")
+            ver = _mc.MaxwellVersionResponse.model_validate(_mc.strip_sensitive(raw_version))
+            contract["daemon"] = ver.contract
+            contract["compatible"] = ver.contract_compatible
+        except Exception as e:  # noqa: BLE001 — negotiation is advisory here
+            log.info("maxwell contract negotiation skipped: %s", str(e)[:120])
+
     return {
         "status": status,
         "binary_found": maxwell_binary is not None,
@@ -177,6 +194,7 @@ async def get_maxwell_status() -> dict:
         "http_reachable": http_reachable,
         "http_detail": http_detail,
         "dashboard_url": base_url,
+        "contract": contract,
         "deep_links": {
             "dashboard": base_url,
             "health": f"{base_url}/api/health",
@@ -217,18 +235,43 @@ async def maxwell_control(
     return {"status": action + "ed", "action": action, "approved_by": approved_by}
 
 
+async def _validated_maxwell_status() -> _mc.MaxwellStatusResponse:
+    """Fetch and validate MD ``/api/status``, merging ``/api/v2/status`` counts (#955).
+
+    ``/api/status`` is the authoritative pipeline-state source (its discriminating
+    ``pipeline_state`` field is required, so drift fails loudly as a 502). The
+    richer ``/api/v2/status`` ``counts`` map refines the task tallies; it is
+    best-effort — if it is unavailable or shape-shifted, the base status (with
+    ``active_tasks`` derived from ``active_task_id``) is still returned.
+    """
+    raw = await _mx_get("/api/status")
+    status = _mc.MaxwellStatusResponse.model_validate(_mc.strip_sensitive(raw))
+    try:
+        raw_v2 = await _mx_get("/api/v2/status")
+        v2 = _mc.MaxwellStatusV2Response.model_validate(_mc.strip_sensitive(raw_v2))
+        status.merge_v2_counts(v2)
+    except (HTTPException, ValidationError) as exc:
+        # v2 is an enrichment, not a hard dependency — log and keep base counts.
+        log.info("maxwell v2 status enrichment unavailable: %s", str(exc)[:120])
+    return status
+
+
 @router.get("/version")
 async def get_maxwell_version() -> dict:
-    """Proxy GET /api/version from Maxwell-Daemon (contract-filtered)."""
+    """Proxy GET /api/version from Maxwell-Daemon (contract-negotiated, #956).
+
+    Surfaces the daemon's real version and its advertised contract version, plus a
+    ``contract_compatible`` flag the Maxwell tab uses to show a degraded-mode
+    banner on a major-version mismatch instead of rendering defaulted data.
+    """
     raw = await _mx_get("/api/version")
     return _mc.MaxwellVersionResponse.model_validate(_mc.strip_sensitive(raw)).model_dump()
 
 
 @router.get("/daemon-status")
 async def get_maxwell_daemon_status_detail() -> dict:
-    """Proxy GET /api/status from Maxwell-Daemon (pipeline state, contract-filtered)."""
-    raw = await _mx_get("/api/status")
-    return _mc.MaxwellStatusResponse.model_validate(_mc.strip_sensitive(raw)).model_dump()
+    """Proxy GET /api/status from Maxwell-Daemon (pipeline state + counts, #955)."""
+    return (await _validated_maxwell_status()).model_dump()
 
 
 @router.get("/tasks")
@@ -465,6 +508,5 @@ async def get_maxwell_cost() -> dict:
 
 @router.get("/pipeline-state")
 async def get_maxwell_pipeline_state() -> dict:
-    """Proxy GET /api/status (pipeline state) from Maxwell-Daemon (contract-filtered)."""
-    raw = await _mx_get("/api/status")
-    return _mc.MaxwellStatusResponse.model_validate(_mc.strip_sensitive(raw)).model_dump()
+    """Proxy GET /api/status (pipeline state + counts) from Maxwell-Daemon (#955)."""
+    return (await _validated_maxwell_status()).model_dump()

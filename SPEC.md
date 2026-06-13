@@ -1,10 +1,79 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.90
+**Spec Version:** 2.5.95
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-12T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-12 (2.5.95):** Fixed the autoscaler singleton lock falling through to
+  an alternate path when the primary lock was HELD (correctness, issue #933).
+  `_acquire_lock` (`backend/runner_autoscaler.py`) caught every `OSError` from the
+  candidate-path loop and continued to the next path — but `BlockingIOError`
+  ("lock held" from `flock(LOCK_NB)`) is an `OSError` subclass, so a second
+  autoscaler instance failed the primary lock and silently acquired a DIFFERENT
+  lock file and ran anyway, allowing two concurrent autoscalers to
+  double-stop/double-start runners. The open/makedirs step (path unusable →
+  fall through) is now separated from the flock step: a held lock raises
+  `BlockingIOError` and the process exits `75` (EX_TEMPFAIL) immediately rather
+  than trying an alternate path; only genuine path-unusable errors
+  (`PermissionError`/`ENOENT`) fall through. Linux-only fail-loud tests added in
+  `tests/test_autoscaler_singleton_lock.py`.
+- **2026-06-12 (2.5.94):** Fixed branch-substring stale-run classification that
+  auto-cancelled legitimate human CI (correctness, issue #934).
+  `classify_stale_run` (`backend/queue_cleanup.py`) flagged any branch CONTAINING
+  `agent`/`worktree`/`wt-`/`patch-`/`run-` as an abandoned-agent run with
+  `safe_to_cancel=True`, so ordinary branches like `fix/rerun-tests`,
+  `feat/dispatch-fix`, and `feature/user-agent-header` were reaped by the
+  scheduled stale-job purge precisely during backlogs. Classification is now
+  anchored to path-segment / prefix boundaries (first segment is an agent
+  namespace `agent`/`codex`/`jules`/`worktree`, or starts with `wt-`/`patch-`/
+  `run-`) AND requires a corroborating bot actor when the triggering actor is
+  known — a human pushing to an agent-named branch is no longer auto-cancellable.
+  The scan caller now passes `triggering_actor`/`actor` login into the
+  classifier. Fail-loud tests added in `tests/test_queue_cleanup.py`.
+- **2026-06-12 (2.5.92):** Made the Maxwell read-path contract real — the
+  `/api/version`, `/api/status`, and `/api/v1/workers` consumer models in
+  `backend/maxwell_contract.py` previously modelled an imaginary shape with zero
+  overlapping keys against the daemon, so every field silently defaulted and the
+  Maxwell tab perpetually showed "unknown / 0 tasks" and an empty worker list
+  (integration, issues #955, #956, #958). The models now validate the daemon's
+  REAL shapes: `/api/version` returns `{daemon, contract}` (both required;
+  `daemon` mirrors to `version`, `contract_compatible` computed against
+  `EXPECTED_CONTRACT_VERSION="2.0.0"`); `/api/status` returns the daemon's
+  `pipeline_state` / `active_task_id` / `gate` / `sandbox` (`pipeline_state`
+  required, mapped to `state`, `paused` derived), with task counts merged from
+  `/api/v2/status` `counts`; `/api/v1/workers` returns
+  `{worker_count, queue_depth}` (`worker_count` required, mirrored to `total`).
+  The discriminating field of each is required so contract
+  drift fails loudly (`ValidationError` surfaced as `502`) instead of defaulting.
+  `GET /api/maxwell/status` now surfaces a `contract` negotiation block
+  `{expected, daemon, compatible}` so the tab can show an incompatibility banner
+  (#956). `docs/contracts/maxwell.md` bumped from "v1" to `2.0.0` with the real
+  shapes. Existing contract/proxy tests updated off the imaginary shapes and new
+  fail-loud / mapping tests added in `tests/test_maxwell_contract.py`.
+- **2026-06-12 (2.5.91):** Added a structural authentication perimeter so every
+  `/api/*` route is authenticated by default rather than opt-in per route
+  (security, issues #924 and #928). A fail-closed middleware
+  (`middleware.auth_perimeter_check`, registered before `SessionMiddleware` so the
+  session is resolved) rejects any non-exempt `/api/*` request that does not
+  resolve to a principal (service token, session, or gated loopback admin) with
+  `401` before the handler runs; it defers to the route dependency when a test
+  installs an `app.dependency_overrides` for the auth dependency, so production is
+  always live while tests keep injecting identities. The exempt set
+  (`_AUTH_EXEMPT_PATHS`) is an explicit, reviewed allowlist (health, auth
+  handshake, logout, signed Linear webhook + its health probe); alternate-auth
+  surfaces that enforce their own equally-strong check are listed in
+  `_ALT_AUTH_EXEMPT_PREFIXES` (`/api/fleet/dispatch/*` HMAC envelopes,
+  `/api/orchestrator/*` Conductor admission gate, `/api/credentials/*`
+  loopback-only writes). Routes that previously shipped unauthenticated now carry
+  an explicit dependency: `POST /api/metrics/web-vitals` (#928),
+  `POST /api/runner-routing-audit/refresh` (both registrations, #928),
+  `POST /api/runners/{id}/diagnostics` (#928),
+  `POST /api/autoscaler/pools/{pool}/config` (#924), and
+  `POST /api/linear/sync/poll` (#924). A new `tests/api/test_structural_auth_perimeter.py`
+  walks `app.routes` and fails the build if any mutating `/api/*` route is neither
+  auth-protected nor on a documented exempt list, so the perimeter cannot silently
+  regress to opt-in.
 - **2026-06-12 (2.5.90):** Fixed the dead Maxwell pipeline-control proxy path
   (integration, issue #952). `POST /api/maxwell/pipeline-control/{action}`
   proxied to `/api/v1/control/{action}`, which Maxwell-Daemon does not expose —

@@ -30,6 +30,7 @@ CHANGELOG_PATH = REPO_ROOT / "CHANGELOG.md"
 MIDDLEWARE_PATH = REPO_ROOT / "backend" / "middleware.py"
 CLAUDE_PATH = REPO_ROOT / "CLAUDE.md"
 CONTRIBUTING_PATH = REPO_ROOT / "CONTRIBUTING.md"
+README_PATH = REPO_ROOT / "README.md"
 
 # Phrases that must NOT appear in CLAUDE.md / CONTRIBUTING.md after the
 # Vite migration. Case-insensitive.
@@ -167,6 +168,36 @@ def test_contributing_md_does_not_claim_no_build_step_or_no_jsx() -> None:
             f"CONTRIBUTING.md contains forbidden phrase '{phrase}'. The "
             "frontend is a Vite + React + TypeScript SPA — update the docs."
         )
+
+
+def test_readme_security_section_describes_real_auth_stack() -> None:
+    """Issue #946: the README Security section must describe the actual identity
+    stack, not claim the dashboard has "no built-in authentication".
+
+    The contradiction was dangerous: operators reading "no built-in
+    authentication" would deploy assuming network isolation is the only control
+    and never configure OAuth/principals.
+    """
+    text = _read(README_PATH)
+    lower = text.lower()
+
+    # The false claim must be gone.
+    assert "no built-in authentication" not in lower, (
+        "README still claims 'no built-in authentication' — the dashboard ships "
+        "an identity/role/scope stack (backend/identity.py). Update the Security section (#946)."
+    )
+
+    # The Security section must reference the real auth modules / mechanisms so it
+    # cannot silently rot back to the old wording.
+    required_references = (
+        "backend/identity.py",
+        "require_principal",
+        "session_management",
+        "oauth",
+        "hub-credentials.md",
+    )
+    missing = [ref for ref in required_references if ref.lower() not in lower]
+    assert not missing, f"README Security section must reference the auth stack; missing {missing} (#946)."
 
 
 def test_frontend_actually_uses_vite_and_typescript() -> None:
