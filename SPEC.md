@@ -1,10 +1,23 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.92
+**Spec Version:** 2.5.94
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-12T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-12 (2.5.94):** Fixed branch-substring stale-run classification that
+  auto-cancelled legitimate human CI (correctness, issue #934).
+  `classify_stale_run` (`backend/queue_cleanup.py`) flagged any branch CONTAINING
+  `agent`/`worktree`/`wt-`/`patch-`/`run-` as an abandoned-agent run with
+  `safe_to_cancel=True`, so ordinary branches like `fix/rerun-tests`,
+  `feat/dispatch-fix`, and `feature/user-agent-header` were reaped by the
+  scheduled stale-job purge precisely during backlogs. Classification is now
+  anchored to path-segment / prefix boundaries (first segment is an agent
+  namespace `agent`/`codex`/`jules`/`worktree`, or starts with `wt-`/`patch-`/
+  `run-`) AND requires a corroborating bot actor when the triggering actor is
+  known — a human pushing to an agent-named branch is no longer auto-cancellable.
+  The scan caller now passes `triggering_actor`/`actor` login into the
+  classifier. Fail-loud tests added in `tests/test_queue_cleanup.py`.
 - **2026-06-12 (2.5.92):** Made the Maxwell read-path contract real — the
   `/api/version`, `/api/status`, and `/api/v1/workers` consumer models in
   `backend/maxwell_contract.py` previously modelled an imaginary shape with zero
