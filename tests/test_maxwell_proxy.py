@@ -103,14 +103,16 @@ def _make_mock_client(get_return=None, post_return=None, get_side_effect=None, p
 @pytest.mark.asyncio
 async def test_get_maxwell_version_returns_200_with_contract(client) -> None:
     """GET /api/maxwell/version proxies daemon response through the contract model."""
-    payload = {"version": "1.0.0", "build": "abc123"}
+    # Real MD /api/version shape is {daemon, contract} (#956).
+    payload = {"daemon": "1.0.0", "contract": "2.0.0"}
     mock_cm = _make_mock_client(get_return=_mock_httpx_response(payload))
     with patch("httpx.AsyncClient", return_value=mock_cm):
         resp = await client.get("/api/maxwell/version")
     assert resp.status_code == 200
     data = resp.json()
     assert data["version"] == "1.0.0"
-    assert data["build"] == "abc123"
+    assert data["contract"] == "2.0.0"
+    assert data["contract_compatible"] is True
 
 
 @pytest.mark.asyncio
@@ -181,14 +183,25 @@ async def test_get_maxwell_task_detail_daemon_unreachable_returns_503(client) ->
 
 @pytest.mark.asyncio
 async def test_get_maxwell_daemon_status_returns_200(client) -> None:
-    """GET /api/maxwell/daemon-status proxies pipeline state from daemon."""
-    payload = {"state": "idle", "active_tasks": 0, "queued_tasks": 0}
-    mock_cm = _make_mock_client(get_return=_mock_httpx_response(payload))
+    """GET /api/maxwell/daemon-status maps pipeline_state→state and merges v2 counts (#955)."""
+
+    # The route fetches /api/status then /api/v2/status; dispatch by URL.
+    async def _get_by_url(url, *_a, **_kw):
+        if url.endswith("/api/v2/status"):
+            return _mock_httpx_response({"counts": {"running": 2, "queued": 3, "completed": 7, "failed": 1}})
+        return _mock_httpx_response(
+            {"pipeline_state": "running", "active_task_id": "t1", "gate": "open", "sandbox": "enabled"}
+        )
+
+    mock_cm = _make_mock_client(get_side_effect=_get_by_url)
     with patch("httpx.AsyncClient", return_value=mock_cm):
         resp = await client.get("/api/maxwell/daemon-status")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["state"] == "idle"
+    assert data["state"] == "running"
+    assert data["active_tasks"] == 2
+    assert data["queued_tasks"] == 3
+    assert data["completed_tasks"] == 7
 
 
 @pytest.mark.asyncio

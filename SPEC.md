@@ -1,10 +1,30 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.91
+**Spec Version:** 2.5.92
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-12T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-12 (2.5.92):** Made the Maxwell read-path contract real — the
+  `/api/version`, `/api/status`, and `/api/v1/workers` consumer models in
+  `backend/maxwell_contract.py` previously modelled an imaginary shape with zero
+  overlapping keys against the daemon, so every field silently defaulted and the
+  Maxwell tab perpetually showed "unknown / 0 tasks" and an empty worker list
+  (integration, issues #955, #956, #958). The models now validate the daemon's
+  REAL shapes: `/api/version` returns `{daemon, contract}` (both required;
+  `daemon` mirrors to `version`, `contract_compatible` computed against
+  `EXPECTED_CONTRACT_VERSION="2.0.0"`); `/api/status` returns the daemon's
+  `pipeline_state` / `active_task_id` / `gate` / `sandbox` (`pipeline_state`
+  required, mapped to `state`, `paused` derived), with task counts merged from
+  `/api/v2/status` `counts`; `/api/v1/workers` returns
+  `{worker_count, queue_depth}` (`worker_count` required, mirrored to `total`).
+  The discriminating field of each is required so contract
+  drift fails loudly (`ValidationError` surfaced as `502`) instead of defaulting.
+  `GET /api/maxwell/status` now surfaces a `contract` negotiation block
+  `{expected, daemon, compatible}` so the tab can show an incompatibility banner
+  (#956). `docs/contracts/maxwell.md` bumped from "v1" to `2.0.0` with the real
+  shapes. Existing contract/proxy tests updated off the imaginary shapes and new
+  fail-loud / mapping tests added in `tests/test_maxwell_contract.py`.
 - **2026-06-12 (2.5.91):** Added a structural authentication perimeter so every
   `/api/*` route is authenticated by default rather than opt-in per route
   (security, issues #924 and #928). A fail-closed middleware
