@@ -1,8 +1,16 @@
 # Maxwell-Daemon API Contract — Dashboard Consumer View
 
-**Contract version**: v1  
-**Date**: 2026-04-30  
-**Issue**: [#366](https://github.com/D-sorganization/Runner_Dashboard/issues/366)
+**Contract version**: 2.0.0 (matches Maxwell-Daemon `CONTRACT_VERSION`)  
+**Date**: 2026-06-12  
+**Issues**: [#366](https://github.com/D-sorganization/Runner_Dashboard/issues/366),
+[#955](https://github.com/D-sorganization/Runner_Dashboard/issues/955),
+[#956](https://github.com/D-sorganization/Runner_Dashboard/issues/956),
+[#958](https://github.com/D-sorganization/Runner_Dashboard/issues/958)
+
+> The `version`/`status`/`workers` shapes below now mirror the daemon's REAL
+> response shapes (`maxwell_daemon/api/contract.py`). The discriminating field of
+> each is **required**, so contract drift fails loudly (a `ValidationError` the
+> proxy surfaces as `502`) instead of silently defaulting to "unknown / empty".
 
 ---
 
@@ -22,31 +30,45 @@ This contract is implemented in `backend/maxwell_contract.py`.
 
 ### `GET /api/maxwell/version`
 
-Proxy of Maxwell-Daemon `/api/version`.
+Proxy of Maxwell-Daemon `/api/version`, which returns `{daemon, contract}`.
 
-| Field         | Type      | Notes                                 |
-| ------------- | --------- | ------------------------------------- |
-| `version`     | `string`  | Semantic version, default `"unknown"` |
-| `build`       | `string?` | CI build label or hash                |
-| `environment` | `string?` | e.g. `"production"`                   |
-| `started_at`  | `string?` | ISO 8601 daemon start time            |
+| Field                 | Type     | Notes                                                              |
+| --------------------- | -------- | ------------------------------------------------------------------ |
+| `daemon`              | `string` | **Required.** Daemon semantic version (MD `daemon` field)          |
+| `contract`            | `string` | **Required.** MD surface contract version, e.g. `"2.0.0"`          |
+| `version`             | `string` | Mirrors `daemon` for the existing frontend                         |
+| `contract_compatible` | `bool`   | `false` on a major-version mismatch vs `EXPECTED_CONTRACT_VERSION` |
+
+Version negotiation (#956): `GET /api/maxwell/status` also surfaces a
+`contract` block `{expected, daemon, compatible}` when the daemon is reachable,
+so the Maxwell tab can show a degraded-mode banner on an incompatible major
+version instead of rendering defaulted data.
 
 ---
 
 ### `GET /api/maxwell/daemon-status` · `GET /api/maxwell/pipeline-state`
 
-Proxy of Maxwell-Daemon `/api/status`.
+Proxy of Maxwell-Daemon `/api/status` (shape `{pipeline_state, active_task_id,
+gate, sandbox}`), enriched with task counts from `/api/v2/status` (`counts` map).
 
-| Field             | Type      | Notes                    |
-| ----------------- | --------- | ------------------------ |
-| `state`           | `string`  | `"idle"`, `"running"`, … |
-| `active_tasks`    | `int`     | Currently executing      |
-| `queued_tasks`    | `int`     | Waiting in queue         |
-| `completed_tasks` | `int?`    |                          |
-| `failed_tasks`    | `int?`    |                          |
-| `uptime_seconds`  | `float?`  |                          |
-| `last_activity`   | `string?` | ISO 8601                 |
-| `paused`          | `bool`    |                          |
+| Field             | Type      | Notes                                                               |
+| ----------------- | --------- | ------------------------------------------------------------------- |
+| `pipeline_state`  | `string`  | **Required.** MD field: `"idle"`/`"running"`/`"paused"`/`"error"`   |
+| `active_task_id`  | `string?` | MD field                                                            |
+| `gate`            | `string?` | MD admission gate: `"open"`/`"closed"`                              |
+| `sandbox`         | `string?` | `"enabled"`/`"disabled"`                                            |
+| `state`           | `string`  | Mirrors `pipeline_state` for the existing frontend                  |
+| `active_tasks`    | `int`     | From `/api/v2/status` `counts.running` (else 1 if a task is active) |
+| `queued_tasks`    | `int`     | From `counts.queued`/`counts.pending`                               |
+| `completed_tasks` | `int?`    | From `counts.completed`/`counts.done`                               |
+| `failed_tasks`    | `int?`    | From `counts.failed`/`counts.error`                                 |
+| `uptime_seconds`  | `float?`  |                                                                     |
+| `last_activity`   | `string?` | ISO 8601                                                            |
+| `paused`          | `bool`    | Derived: `pipeline_state == "paused"`                               |
+
+The `/api/v2/status` enrichment is best-effort: if it is unavailable or
+shape-shifted, the base `/api/status` mapping is still returned (`active_tasks`
+derived from `active_task_id`).
 
 ---
 
@@ -142,14 +164,17 @@ Proxy of Maxwell-Daemon `/api/v1/backends`.
 
 ### `GET /api/maxwell/workers`
 
-Proxy of Maxwell-Daemon `/api/v1/workers`.
+Proxy of Maxwell-Daemon `/api/v1/workers`, which returns `{worker_count,
+queue_depth}` (it does NOT yet emit per-worker items).
 
-| Field     | Type           |
-| --------- | -------------- |
-| `workers` | `WorkerItem[]` |
-| `total`   | `int?`         |
+| Field          | Type           | Notes                                                       |
+| -------------- | -------------- | ----------------------------------------------------------- |
+| `worker_count` | `int`          | **Required.** Number of active workers (MD field)           |
+| `queue_depth`  | `int?`         | Pending queue depth (MD field)                              |
+| `total`        | `int?`         | Mirrors `worker_count` for the existing frontend            |
+| `workers`      | `WorkerItem[]` | Empty until MD enriches the endpoint with per-worker detail |
 
-**WorkerItem**:
+**WorkerItem** (reserved for when MD adds per-worker detail):
 
 | Field             | Type      |
 | ----------------- | --------- |
