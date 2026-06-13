@@ -1,10 +1,34 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.99
+**Spec Version:** 2.5.101
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-12T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-12 (2.5.101):** Autoscaler correctness/robustness cluster (issues
+  #932, #935, #936, #937). (#932) The autoscaler read leases from a repo-relative
+  `config/leases.yml` that nothing ever wrote, so lease protection was a permanent
+  no-op and actively-leased runners could be stopped; `_leased_runners`
+  (`backend/autoscaler_sampling.py`) now resolves the path through
+  `runner_lease._default_config_dir()` — the same `RUNNER_DASHBOARD_CONFIG_DIR`
+  store the `LeaseManager` writer uses — so reader and writer can never drift.
+  (#935) `_stop_unit`/`_start_unit` (`backend/autoscaler_systemd.py`) issued a
+  blocking `systemctl stop`; a legitimate >=120s drain starved the systemd
+  watchdog (WatchdogSec=120) and SIGABRTed the autoscaler mid-scale-down. Both now
+  use `--no-block` plus an explicit client-call timeout and re-read unit state the
+  next tick. (#936) `prune_expired` (`backend/runner_lease.py`) wrote a stale
+  in-memory snapshot via an unlocked `save_leases` on every reaper tick, clobbering
+  leases acquired by another process since the last load, and a crash mid-write
+  reset the file to `[]`; pruning now goes through the locked
+  `_atomic_read_modify_write` (re-read under exclusive lock) and all writes use
+  temp-file + `os.replace` for crash-safety. (#937) Five autoscaler defects fixed:
+  busy-query timeout no longer aborts the tick (fail-safe busy), exact lease-name
+  match (not substring), one malformed lease record is skipped not fatal, the
+  label-less default pool is exempt from start/stop label filters, and
+  `ACTION_COOLDOWN_SECONDS` is enforced on the stop side. Tests across
+  `tests/test_autoscaler_sampling.py`, `tests/test_runner_lease.py`,
+  `tests/api/test_lease_pruning.py`, `tests/test_autoscaler_systemd.py`,
+  `tests/test_autoscaler_busy.py`, and `tests/test_pool_autoscaler.py`.
 - **2026-06-12 (2.5.99):** RD↔MD integration contract cluster (issues #959, #961,
   #963). (#959) `MAXWELL_PORT` defaulted to 8322 — a port that appears nowhere in
   Maxwell_Daemon (which serves on 8080) and that collided with the

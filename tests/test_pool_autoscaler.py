@@ -183,3 +183,74 @@ def test_cooldown_and_soft_recovery_logic(monkeypatch: pytest.MonkeyPatch) -> No
     with patch("time.time", return_value=overload_time + 15):
         elapsed = time.time() - ra.pool_last_overloaded["nvme"]
         assert 10 <= elapsed < 20  # in soft recovery
+
+
+# ---------------------------------------------------------------------------
+# Issue #937d: empty-label (default) pool must be EXEMPT from label filtering,
+# not silently frozen, when a start/stop label filter is configured.
+# ---------------------------------------------------------------------------
+
+
+def test_default_pool_exempt_from_start_label_filter(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A label filter set for nvme/hdd must not freeze the label-less default pool."""
+    monkeypatch.setattr(ra, "FILTER_START_LABELS", ["nvme"])
+    # default pool has labels == [] (see _get_pool_config); it is the catch-all.
+    assert ra._is_start_allowed("default") is True
+    # A labelled pool that does not match the filter is still excluded.
+    monkeypatch.setattr(ra, "NVME_LABELS", ["nvme"])
+    monkeypatch.setattr(ra, "HDD_LABELS", ["hdd"])
+    assert ra._is_start_allowed("nvme") is True
+    assert ra._is_start_allowed("hdd") is False
+
+
+def test_default_pool_exempt_from_stop_label_filter(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(ra, "FILTER_STOP_LABELS", ["nvme"])
+    assert ra._is_stop_allowed("default") is True
+
+
+def test_pool_passes_label_filter_helper() -> None:
+    assert ra._pool_passes_label_filter([], []) is True  # no filter
+    assert ra._pool_passes_label_filter([], ["x"]) is True  # empty pool exempt
+    assert ra._pool_passes_label_filter(["x"], ["x"]) is True  # match
+    assert ra._pool_passes_label_filter(["y"], ["x"]) is False  # no match
+
+
+# ---------------------------------------------------------------------------
+# Issue #937e: ACTION_COOLDOWN_SECONDS must actually space out stop actions.
+# ---------------------------------------------------------------------------
+
+
+def test_stop_in_cooldown_defers_second_stop(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(ra, "ACTION_COOLDOWN_SECONDS", 120)
+    ra.pool_last_stop_action["default"] = 0.0
+    # No prior stop -> not in cooldown.
+    assert ra._stop_in_cooldown("default", now=1000.0) is False
+    # Record a stop, then a second decision 45s later is within cooldown.
+    ra._record_stop_action("default", now=1000.0)
+    assert ra._stop_in_cooldown("default", now=1045.0) is True
+    # After the cooldown window elapses, stops are allowed again.
+    assert ra._stop_in_cooldown("default", now=1121.0) is False
+
+
+def test_stop_cooldown_disabled_when_zero(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(ra, "ACTION_COOLDOWN_SECONDS", 0)
+    ra._record_stop_action("nvme", now=1000.0)
+    assert ra._stop_in_cooldown("nvme", now=1001.0) is False
+
+
+# ---------------------------------------------------------------------------
+# Issue #937b: lease protection must be an EXACT runner-name match, not a
+# substring (a lease on runner-1 must not shield runner-10..19).
+# ---------------------------------------------------------------------------
+
+
+def test_lease_protection_exact_match_not_substring() -> None:
+    """A lease on 'runner-1' must protect exactly that runner, not 'runner-10'."""
+    leased = {"runner-1"}
+    unit_1 = "actions.runner.org.runner-1.service"
+    unit_10 = "actions.runner.org.runner-10.service"
+    # Exact-name comparison: only runner-1 is shielded.
+    assert (ra._runner_name_for_unit(unit_1) in leased) is True
+    assert (ra._runner_name_for_unit(unit_10) in leased) is False
+    # The old substring test (`'runner-1' in unit_10`) would have wrongly shielded it.
+    assert ("runner-1" in unit_10) is True  # demonstrates the old bug
