@@ -101,7 +101,8 @@ from `frontend/src/` and served as static assets by the backend.
 ```
 runner-dashboard/
 ├── backend/            FastAPI server (Python 3.11+)
-│   ├── server.py           Main application (~6800 lines, all /api/* routes)
+│   ├── server.py           App wiring + remaining /api/* routes (~2.3k lines; most routes live in routers/)
+│   ├── routers/            Extracted FastAPI routers (fleet, queue, maxwell, diagnostics, …)
 │   ├── queue_cleanup.py        Stale-queue detection and bulk cancellation
 │   │                           (async helpers for /api/queue/stale and /api/queue/purge-stale)
 │   ├── agent_remediation.py    AI agent dispatch and remediation logic
@@ -118,8 +119,8 @@ runner-dashboard/
 │   ├── autoscaler_config.py    Autoscaler env helpers and threshold constants
 │   ├── autoscaler_systemd.py   Autoscaler systemd unit enumeration and control
 │   ├── autoscaler_busy.py      Autoscaler 4-strategy busy detection (issue #651)
-│   ├── autoscaler_sampling.py  Autoscaler resource sampling and scheduler
-│   └── requirements.txt        Python dependencies
+│   └── autoscaler_sampling.py  Autoscaler resource sampling and scheduler
+│                               (Python deps live in repo-root requirements.txt, not backend/)
 ├── frontend/           Vite-built React + TypeScript SPA
 │   ├── index.html          Vite entry HTML (~30 lines, mounts /src/main.tsx)
 │   ├── src/                TypeScript + TSX source tree
@@ -172,10 +173,10 @@ runner-dashboard/
 # Stop
 ./stop-dashboard.sh
 
-# Manual start
-cd backend
+# Manual start (requirements.txt lives at the repo root, not in backend/)
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
+cd backend
 python server.py
 ```
 

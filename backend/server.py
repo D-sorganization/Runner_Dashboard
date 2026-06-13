@@ -161,8 +161,6 @@ from runners.service_control import (  # noqa: E402
 from security import (  # noqa: E402
     safe_subprocess_env,  # noqa: E402
     validate_fleet_node_url,  # noqa: E402
-    validate_owner_repo_format,  # noqa: E402
-    validate_repo_slug,  # noqa: E402
 )
 from system_utils import get_system_metrics_snapshot  # noqa: E402
 from workflows.run_enrichment import (  # noqa: E402
@@ -1080,24 +1078,9 @@ async def _github_search_total(query: str) -> int:
 # workflows/run_enrichment.py (#719)
 
 
-def _normalize_repository_input(value: str) -> tuple[str, str]:
-    """Return (repo_name, full_name) for dashboard remediation inputs (issue #326).
-
-    Validates against a strict regex before any owner comparison or subprocess
-    interpolation to prevent SSRF via malformed owner/repo slugs.
-    """
-    text = str(value).strip()
-    if "/" in text:
-        # Validate full owner/repo format before extracting parts (issue #326)
-        validate_owner_repo_format(text)
-        owner, _, repo_name = text.partition("/")
-        if owner.lower() != ORG.lower():
-            raise HTTPException(status_code=422, detail=f"repository owner must be {ORG}")
-        repo_name = validate_repo_slug(repo_name)
-        return repo_name, f"{ORG}/{repo_name}"
-    repo_name = validate_repo_slug(text)
-    return repo_name, f"{ORG}/{repo_name}"
-
+# _normalize_repository_input was an unused body-identical twin of the copies in
+# routers/assistant.py and routers/remediation.py (the modules that actually call
+# it). server.py never referenced its own copy, so it was removed for issue #941.
 
 # _machine_name_from_runner_name, _placement_from_jobs, _enrich_run_with_job_placement
 # extracted to workflows/run_enrichment.py (#719)
@@ -2343,46 +2326,12 @@ async def help_chat(
 # Restart-service route extracted to routers/diagnostics.py (issue #360).
 
 
-@app.post("/api/launchers/generate")
-async def generate_launchers(
-    request: Request,
-    principal: Principal = Depends(require_scope("system.control")),  # noqa: B008
-) -> dict:
-    """Generate Windows PowerShell launcher scripts on the Desktop."""
-    output_dir = Path.home() / "Desktop" / "RunnerDashboard"
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    launchers_created: list[str] = []
-
-    script = output_dir / "Open-Dashboard.ps1"
-    script.write_text('Start-Process "http://localhost:8321"\n', encoding="utf-8")
-    launchers_created.append(str(script))
-
-    keepalive = output_dir / "Start-WSL-Keepalive.ps1"
-    keepalive.write_text(
-        'Start-ScheduledTask -TaskName "WSL-Dashboard-Keepalive" -ErrorAction SilentlyContinue\n'
-        'Write-Host "Keepalive task started"\n',
-        encoding="utf-8",
-    )
-    launchers_created.append(str(keepalive))
-
-    restart = output_dir / "Restart-Dashboard-Service.ps1"
-    restart.write_text(
-        'wsl -d Ubuntu -e bash -lc "sudo -n systemctl restart runner-dashboard.service && echo Service restarted"\n',
-        encoding="utf-8",
-    )
-    launchers_created.append(str(restart))
-
-    diag = output_dir / "Open-Diagnostics.ps1"
-    diag.write_text('Start-Process "http://localhost:8321/#diagnostics"\n', encoding="utf-8")
-    launchers_created.append(str(diag))
-
-    log.info("Generated %d launcher scripts in %s", len(launchers_created), output_dir)
-    return {
-        "output_dir": str(output_dir),
-        "launchers": launchers_created,
-        "message": f"Created {len(launchers_created)} launcher scripts in {output_dir}",
-    }
+# POST /api/launchers/generate is registered by routers/diagnostics.py
+# (issue #360). The previously-inline copy here was a body-identical dead twin —
+# shadowed by the router include above and never reached at runtime — and was
+# removed for issue #941 (server.py god-module duplicate sweep). The duplicate
+# guard in tests/test_no_duplicate_top_level_functions.py keeps it from coming
+# back.
 
 
 # ─── Hosted-Runner Billing Audit ─────────────────────────────────────────────

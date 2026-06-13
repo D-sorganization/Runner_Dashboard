@@ -78,9 +78,12 @@ def test_validate_owner_repo_rejects_extra_path() -> None:
 
 
 def test_normalizer_source_code_calls_validate_owner_repo_format() -> None:
-    """Verify that all three _normalize_repository_input bodies call validate_owner_repo_format."""
+    """Verify each _normalize_repository_input body calls validate_owner_repo_format.
+
+    server.py's unused body-identical copy was removed in #941; the function now
+    lives only in the two router modules that actually call it.
+    """
     source_paths = [
-        _BACKEND / "server.py",
         _BACKEND / "routers" / "assistant.py",
         _BACKEND / "routers" / "remediation.py",
     ]
