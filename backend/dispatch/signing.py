@@ -23,10 +23,33 @@ import enum
 import hashlib
 import hmac
 import json
+import logging
 import os
 
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 datetime = _dt_mod.datetime
+
+log = logging.getLogger("dashboard.dispatch.signing")
+
+# Legacy escape hatch (issue #925): when a signing secret IS configured, a
+# confirmation that carries no approval HMAC is rejected by default (fail-closed).
+# Operators who genuinely still run pre-#318 clients can opt back into the old
+# permissive behaviour by setting this flag truthy; doing so logs a deprecation
+# warning on every unsigned confirmation so the gap is visible.
+_ALLOW_UNSIGNED_APPROVAL_ENV = "DISPATCH_ALLOW_UNSIGNED_APPROVAL"
+_TRUTHY = {"1", "true", "yes", "on"}
+
+
+def _resolve_approval_secret() -> str:
+    """Return the configured approval HMAC secret, or '' when none is set.
+
+    Prefers ``APPROVAL_HMAC_SECRET`` and falls back to ``DISPATCH_SIGNING_SECRET``
+    so single-secret deployments work without extra configuration.
+    """
+    secret = os.environ.get("APPROVAL_HMAC_SECRET", "").strip()
+    if not secret:
+        secret = os.environ.get("DISPATCH_SIGNING_SECRET", "").strip()
+    return secret
 
 
 class _StrEnum(str, enum.Enum):  # noqa: UP042
@@ -117,25 +140,43 @@ def _compute_approval_hmac(envelope_id: str, action: str, secret: str) -> str:
 def verify_approval_hmac(confirmation: object, envelope_id: str, action: str) -> bool:
     """Verify that *confirmation.approval_hmac* is bound to *envelope_id* and *action*.
 
-    Loads the secret from ``APPROVAL_HMAC_SECRET`` (falls back to the
-    dispatch signing secret so that single-secret deployments work out of
-    the box).  Returns ``False`` immediately if no secret is configured.
+    Loads the secret from ``APPROVAL_HMAC_SECRET`` (falls back to the dispatch
+    signing secret so single-secret deployments work out of the box).
+
+    Fail-closed policy (issue #925): when a signing secret IS configured, a
+    confirmation that carries no ``approval_hmac`` is **rejected** — an attacker
+    can otherwise submit approvals with no HMAC and have them accepted, defeating
+    the envelope/action binding entirely. The legacy permissive behaviour (accept
+    unsigned confirmations) is available only behind the explicit, default-off
+    ``DISPATCH_ALLOW_UNSIGNED_APPROVAL`` flag, which logs a deprecation warning.
+
+    When NO secret is configured the binding cannot be checked at all, so the
+    result is ``False`` regardless (the dispatch path enforces other gates).
 
     ``confirmation`` is expected to be a ``DispatchConfirmation``-like object
     with an ``approval_hmac`` attribute.
     """
+    secret = _resolve_approval_secret()
     stored_hmac: str = getattr(confirmation, "approval_hmac", "")
+
     if not stored_hmac:
-        # No HMAC was recorded on this confirmation — skip binding check.
-        # Confirmations that include an approval_hmac must always verify;
-        # those without one are accepted for backward compatibility with
-        # clients that pre-date issue #318.
-        return True
-    secret = os.environ.get("APPROVAL_HMAC_SECRET", "").strip()
-    if not secret:
-        # Fall back to the dispatch signing secret so single-secret
-        # deployments work without extra configuration.
-        secret = os.environ.get("DISPATCH_SIGNING_SECRET", "").strip()
+        if not secret:
+            # No secret configured → binding cannot be established. Fail closed.
+            return False
+        # Secret IS configured but the confirmation is unsigned.
+        if os.environ.get(_ALLOW_UNSIGNED_APPROVAL_ENV, "").strip().lower() in _TRUTHY:
+            log.warning(
+                "DEPRECATED: accepting unsigned dispatch approval for envelope_id=%s "
+                "action=%s because %s is set. This bypass will be removed; migrate "
+                "clients to send an approval_hmac (issue #925).",
+                envelope_id,
+                action,
+                _ALLOW_UNSIGNED_APPROVAL_ENV,
+            )
+            return True
+        # Fail closed: a configured secret means approvals MUST be signed.
+        return False
+
     if not secret:
         return False
     expected = _compute_approval_hmac(envelope_id, action, secret)
