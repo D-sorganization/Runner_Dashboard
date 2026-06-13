@@ -43,6 +43,48 @@ def test_cache_ttls_are_positive_integers() -> None:
         assert value > 0, f"{name} must be positive, got {value}"
 
 
+def test_no_hardcoded_maxwell_default_secret() -> None:
+    """#926: the published default secret 'maxwell-local-secret' must not appear
+    in the source, and MAXWELL_API_TOKEN must default to '' (no token) when unset
+    so the dashboard never authenticates with a guessable string."""
+    import importlib
+    import os
+    from pathlib import Path
+    from unittest.mock import patch
+
+    src = (Path(__file__).resolve().parent.parent / "backend" / "dashboard_config" / "__init__.py").read_text(
+        encoding="utf-8"
+    )
+    assert "maxwell-local-secret" not in src, "hardcoded Maxwell default secret must be removed (#926)"
+
+    import dashboard_config
+
+    # With the env var unset, the resolved token is empty (no Authorization header).
+    with patch.dict(os.environ, {}, clear=False):
+        os.environ.pop("MAXWELL_API_TOKEN", None)
+        reloaded = importlib.reload(dashboard_config)
+        try:
+            assert reloaded.MAXWELL_API_TOKEN == ""
+        finally:
+            importlib.reload(dashboard_config)
+
+
+def test_maxwell_token_uses_env_when_set() -> None:
+    """When MAXWELL_API_TOKEN is set, the configured value is used (#926)."""
+    import importlib
+    import os
+    from unittest.mock import patch
+
+    import dashboard_config
+
+    with patch.dict(os.environ, {"MAXWELL_API_TOKEN": "operator-set-token"}, clear=False):
+        reloaded = importlib.reload(dashboard_config)
+        try:
+            assert reloaded.MAXWELL_API_TOKEN == "operator-set-token"
+        finally:
+            importlib.reload(dashboard_config)
+
+
 def test_http_timeout_module_importable() -> None:
     """``HttpTimeout`` is importable from the package and the leaf submodule."""
     from dashboard_config import HttpTimeout as PackageHttpTimeout

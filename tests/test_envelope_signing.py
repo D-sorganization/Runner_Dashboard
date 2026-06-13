@@ -366,19 +366,31 @@ class TestCryptoValidation:
             assert result.valid is False
 
     def test_crypto_validation_accepts_confirmation_with_valid_timestamp(self):
-        """validate_envelope_crypto accepts confirmation with fresh timestamp."""
+        """validate_envelope_crypto accepts confirmation with fresh timestamp.
+
+        A valid approval_hmac is supplied because, since #925, an unsigned
+        confirmation is rejected when a signing secret is configured (this test
+        exercises the timestamp-freshness path, not the unsigned-bypass).
+        """
+        from dispatch_contract import _compute_approval_hmac
+
         with patch.dict(os.environ, {"DISPATCH_SIGNING_SECRET": "test-secret"}):
             now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+            envelope_id = "env-fresh-ts"
+            action = "test.action"
             confirmation = DispatchConfirmation(
                 approved_by="bob",
                 approved_at=now,
+                envelope_id=envelope_id,
+                approval_hmac=_compute_approval_hmac(envelope_id, action, "test-secret"),
             )
             envelope = CommandEnvelope(
-                action="test.action",
+                action=action,
                 source="hub",
                 target="node-1",
                 requested_by="alice",
                 confirmation=confirmation,
+                envelope_id=envelope_id,
             )
             result = validate_envelope_crypto(envelope)
             assert result.valid is True
@@ -750,3 +762,68 @@ class TestApprovalHmacFunctions:
         with patch.dict(os.environ, {}, clear=True):
             # Neither APPROVAL_HMAC_SECRET nor DISPATCH_SIGNING_SECRET present
             assert verify_approval_hmac(confirmation, "env-xyz", "runner.stop") is False
+
+
+class TestApprovalHmacFailClosed:
+    """#925 — an absent approval HMAC must NOT verify when a secret is configured.
+
+    Previously ``verify_approval_hmac`` returned True for any confirmation lacking
+    an ``approval_hmac`` ("backward compatibility"), so an attacker could submit
+    approvals with no HMAC and have them accepted, defeating the envelope/action
+    binding entirely.
+    """
+
+    def test_absent_hmac_rejected_when_secret_configured(self):
+        from dispatch_contract import DispatchConfirmation, verify_approval_hmac
+
+        confirmation = DispatchConfirmation(
+            approved_by="mallory",
+            approved_at="2026-01-01T12:00:00Z",
+            envelope_id="env-1",
+            approval_hmac="",  # forged: no binding
+        )
+        with patch.dict(os.environ, {"APPROVAL_HMAC_SECRET": "test-secret"}, clear=True):
+            assert verify_approval_hmac(confirmation, "env-1", "runner.restart") is False
+
+    def test_absent_hmac_rejected_when_no_secret(self):
+        from dispatch_contract import DispatchConfirmation, verify_approval_hmac
+
+        confirmation = DispatchConfirmation(
+            approved_by="mallory",
+            approved_at="2026-01-01T12:00:00Z",
+            envelope_id="env-1",
+            approval_hmac="",
+        )
+        with patch.dict(os.environ, {}, clear=True):
+            assert verify_approval_hmac(confirmation, "env-1", "runner.restart") is False
+
+    def test_legacy_flag_re_enables_unsigned_acceptance(self):
+        """The explicit, default-off escape hatch restores legacy permissiveness."""
+        from dispatch_contract import DispatchConfirmation, verify_approval_hmac
+
+        confirmation = DispatchConfirmation(
+            approved_by="legacy-client",
+            approved_at="2026-01-01T12:00:00Z",
+            envelope_id="env-1",
+            approval_hmac="",
+        )
+        env = {
+            "APPROVAL_HMAC_SECRET": "test-secret",
+            "DISPATCH_ALLOW_UNSIGNED_APPROVAL": "1",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            assert verify_approval_hmac(confirmation, "env-1", "runner.restart") is True
+
+    def test_signed_confirmation_still_verifies(self):
+        """A correctly signed confirmation continues to verify (no regression)."""
+        from dispatch_contract import DispatchConfirmation, _compute_approval_hmac, verify_approval_hmac
+
+        with patch.dict(os.environ, {"APPROVAL_HMAC_SECRET": "test-secret"}, clear=True):
+            correct = _compute_approval_hmac("env-1", "runner.restart", "test-secret")
+            confirmation = DispatchConfirmation(
+                approved_by="alice",
+                approved_at="2026-01-01T12:00:00Z",
+                envelope_id="env-1",
+                approval_hmac=correct,
+            )
+            assert verify_approval_hmac(confirmation, "env-1", "runner.restart") is True

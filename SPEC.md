@@ -1,10 +1,27 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.94
+**Spec Version:** 2.5.96
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-12T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-12 (2.5.96):** Hardened three dispatch/credential security defects
+  (security, issues #925, #926, #927). (1) `verify_approval_hmac`
+  (`backend/dispatch/signing.py`) returned `True` for any confirmation lacking an
+  `approval_hmac` ("backward compatibility"), so a forged approval with no HMAC
+  verified and the envelope/action binding was effectively optional. It now fails
+  closed: when a signing secret is configured an unsigned confirmation is
+  rejected, with the legacy permissive behaviour available only behind the
+  explicit, default-off `DISPATCH_ALLOW_UNSIGNED_APPROVAL` flag (which logs a
+  deprecation warning). (2) `MAXWELL_API_TOKEN`
+  (`backend/dashboard_config/__init__.py`) defaulted to the published string
+  `"maxwell-local-secret"` — anyone reading the source could mint valid Maxwell
+  bearer tokens. The default is now `""` (no token → no `Authorization` header,
+  correct for a token-less daemon); the hardcoded string is gone. (3)
+  `validate_local_path` (`backend/security.py`) resolved user input (following
+  symlinks) but compared against an UNresolved `allowed_root`, so a symlinked root
+  rejected legitimate paths and could let crafted symlinks pass containment. It
+  now resolves both sides (resolved-vs-resolved). Each fix ships fail-loud tests.
 - **2026-06-12 (2.5.94):** Fixed branch-substring stale-run classification that
   auto-cancelled legitimate human CI (correctness, issue #934).
   `classify_stale_run` (`backend/queue_cleanup.py`) flagged any branch CONTAINING
