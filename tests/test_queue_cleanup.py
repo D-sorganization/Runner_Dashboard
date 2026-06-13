@@ -58,6 +58,71 @@ def test_scan_concurrency_positive() -> None:
     assert qc._SCAN_CONCURRENCY > 0
 
 
+# ---------------------------------------------------------------------------
+# classify_stale_run — anchored agent classification (issue #934)
+# ---------------------------------------------------------------------------
+
+import pytest  # noqa: E402
+
+_ABANDONED = qc.StaleReason.ABANDONED_AGENT.value
+_STALE_FEATURE = qc.StaleReason.STALE_FEATURE_BRANCH.value
+
+
+@pytest.mark.parametrize(
+    "branch",
+    [
+        "fix/rerun-tests",  # used to match "run-"
+        "feat/dispatch-fix",  # used to match "patch-"
+        "feature/user-agent-header",  # used to match "agent"
+        "bugfix/patch-notes",  # "patch-" mid-segment
+    ],
+)
+def test_human_feature_branches_not_classified_agent(branch: str) -> None:
+    """#934: ordinary human branches must NOT be abandoned-agent / safe_to_cancel
+    via substring matching."""
+    reason, safe = qc.classify_stale_run(branch, age_minutes=120, actor="alice")
+    assert reason == _STALE_FEATURE
+    # stale-feature-branch is still cancellable by age, but it is NOT flagged as
+    # an abandoned agent run (the dangerous reaper class).
+    assert reason != _ABANDONED
+
+
+@pytest.mark.parametrize(
+    "branch",
+    ["agent/foo", "codex/bar", "jules/baz", "wt-123", "worktree/x", "patch-1", "run-7"],
+)
+def test_agent_branches_with_bot_actor_are_abandoned_agent(branch: str) -> None:
+    """#934: agent-shaped branches from a bot actor ARE abandoned-agent runs."""
+    reason, safe = qc.classify_stale_run(branch, age_minutes=120, actor="codex[bot]")
+    assert reason == _ABANDONED
+    assert safe is True
+
+
+def test_agent_branch_human_actor_requires_corroboration() -> None:
+    """#934: a human-actor run on an agent-named branch is NOT abandoned-agent."""
+    reason, safe = qc.classify_stale_run("agent/foo", age_minutes=120, actor="alice")
+    assert reason == _STALE_FEATURE
+
+
+def test_agent_branch_unknown_actor_preserves_branch_only_behaviour() -> None:
+    """When the actor is unknown, branch shape alone decides (back-compat)."""
+    reason, safe = qc.classify_stale_run("agent/foo", age_minutes=120)
+    assert reason == _ABANDONED
+    assert safe is True
+
+
+def test_named_bot_actors_recognized() -> None:
+    for actor in ("jules", "dashboard-bot", "github-actions", "somebody[bot]"):
+        assert qc._is_agent_actor(actor) is True
+    for actor in ("alice", "", None):
+        assert qc._is_agent_actor(actor) is False
+
+
+def test_main_branch_classification_unchanged() -> None:
+    assert qc.classify_stale_run("main", age_minutes=400)[1] is True
+    assert qc.classify_stale_run("main", age_minutes=100) == (qc.StaleReason.STALE_MAIN_BRANCH.value, False)
+
+
 def test_cancel_concurrency_positive() -> None:
     assert qc._CANCEL_CONCURRENCY > 0
 
