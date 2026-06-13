@@ -12,7 +12,9 @@ falls back to OFFLINE_URL, not index.html.
 This module pins the contract that:
   - client routes (/t/queue, /settings/push) return 200 text/html SPA shell;
   - real API routes (/api/health) still return their JSON;
-  - unknown /api/* paths still 404 instead of being masked by the HTML shell.
+  - unknown /api/* paths are NOT masked by the HTML shell — they return a JSON
+    error (401 to an unauthenticated caller behind the structural auth perimeter
+    of #924; 404 once authenticated), never a 200 HTML page.
 
 Marked `unit` so the conftest network-block fixture is active: /api/health
 catches its (refused) GitHub call and returns a degraded JSON body, keeping the
@@ -84,9 +86,32 @@ def test_api_health_still_returns_json(client: TestClient) -> None:
 
 
 @pytest.mark.unit
-def test_unknown_api_path_still_404s(client: TestClient) -> None:
-    """An unknown /api/* path must 404 (excluded from the fallback), not be
-    masked by a 200 HTML shell."""
+def test_unknown_api_path_not_masked_by_spa_shell(client: TestClient) -> None:
+    """An unknown /api/* path must NOT be masked by a 200 HTML shell.
+
+    Behind the structural auth perimeter (#924) an unauthenticated caller gets a
+    JSON 401 (the perimeter refuses to leak which /api/* paths exist before the
+    request is even routed). The load-bearing contract — never a 200 HTML SPA
+    shell for an /api/* path — still holds.
+    """
     resp = client.get("/api/this-endpoint-does-not-exist")
-    assert resp.status_code == 404
+    assert resp.status_code == 401
     assert "text/html" not in resp.headers.get("content-type", "")
+
+
+@pytest.mark.unit
+def test_unknown_api_path_404s_when_authenticated(client: TestClient) -> None:
+    """Once past the perimeter (authenticated principal injected), an unknown
+    /api/* path resolves to a genuine 404 — not the SPA shell — proving the path
+    is truly unregistered rather than merely auth-blocked (#924)."""
+    from identity import Principal, require_principal
+
+    server.app.dependency_overrides[require_principal] = lambda: Principal(
+        id="test-admin", type="bot", name="Admin", roles=["admin"]
+    )
+    try:
+        resp = client.get("/api/this-endpoint-does-not-exist")
+        assert resp.status_code == 404
+        assert "text/html" not in resp.headers.get("content-type", "")
+    finally:
+        server.app.dependency_overrides.clear()
