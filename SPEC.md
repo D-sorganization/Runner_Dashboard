@@ -1,10 +1,28 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.108
+**Spec Version:** 2.5.109
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-12T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-12 (2.5.109):** Quick Start works on a clean checkout + gh_client
+  robustness (issues #945, #938). (#945) `start-dashboard.sh` now installs from
+  the repo-root `requirements.txt` (the phantom `backend/requirements.txt` path
+  silently fell back to a fastapi+uvicorn-only install that crashed on
+  `import httpx/psutil/yaml`); it fails loudly if the requirements file is
+  missing and builds the gitignored `frontend/dist/` via `npm ci && npm run build`
+  (or exits non-zero with instructions) so the served page is the real SPA, not
+  the "index.html not found" fallback. README documents the Node/npm requirement;
+  `tests/test_start_dashboard_script.py` guards the script against regressing.
+  (#938) `backend/gh_client.py`: (a) `_request` now treats any `2xx` as success
+  so GitHub's `202 Accepted` (e.g. `cancel_run`) is no longer reported as a
+  `GhServerError`; (b) `paginate` routes every page through `_request`, so a
+  primary-rate-limit `403` (`X-RateLimit-Remaining: 0`) raises the typed
+  `GhRateLimited` and transient `5xx` retry/backoff applies, instead of only
+  special-casing `429`; (c) the GitHub App installation-token exchange is now
+  async (`httpx.AsyncClient`) under an `asyncio.Lock`, so it no longer blocks the
+  event loop ~hourly and a refresh storm dedupes to one upstream exchange.
+  Tests in `tests/test_gh_client.py` and `tests/test_start_dashboard_script.py`.
 - **2026-06-12 (2.5.108):** Single source of truth for fleet topology, runtime
   config, and the identity store (issues #942, #943, #944). (#942) `/api/fleet/status`
   no longer hardcodes `if PORT == 8322` to label itself ControlTower-NVMe and
