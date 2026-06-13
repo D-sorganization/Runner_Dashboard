@@ -18,7 +18,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BACKEND_DIR="${SCRIPT_DIR}/backend"
 VENV_DIR="${SCRIPT_DIR}/.venv"
-REQUIREMENTS_FILE="${BACKEND_DIR}/requirements.txt"
+# Issue #945: Python deps live in the repo-root requirements.txt, not backend/.
+REQUIREMENTS_FILE="${SCRIPT_DIR}/requirements.txt"
+FRONTEND_DIR="${SCRIPT_DIR}/frontend"
+DIST_DIR="${FRONTEND_DIR}/dist"
 INSTALL_STAMP="${VENV_DIR}/.installed-stamp"
 PORT="${DASHBOARD_PORT:-8321}"
 HOST="${DASHBOARD_HOST:-127.0.0.1}"
@@ -71,17 +74,36 @@ fi
 # shellcheck disable=SC1091
 source "${VENV_DIR}/bin/activate"
 
+# Issue #945: fail loudly if the requirements file is missing instead of
+# silently installing a fastapi+uvicorn subset that crashes on first import
+# (server.py needs httpx/psutil/yaml/... too).
+if [[ ! -f "${REQUIREMENTS_FILE}" ]]; then
+    echo "[ERROR] requirements file not found: ${REQUIREMENTS_FILE}" >&2
+    echo "        The dashboard cannot start without its Python dependencies." >&2
+    exit 1
+fi
+
 # Cached install: only re-run pip if requirements.txt is newer than the stamp.
 if [[ ! -f "${INSTALL_STAMP}" ]] || [[ "${REQUIREMENTS_FILE}" -nt "${INSTALL_STAMP}" ]]; then
     echo "[INFO] Installing dependencies from ${REQUIREMENTS_FILE}"
     python -m pip install --upgrade pip >/dev/null
-    if [[ -f "${REQUIREMENTS_FILE}" ]]; then
-        python -m pip install -r "${REQUIREMENTS_FILE}"
-    else
-        # Fallback for minimal environments without a requirements.txt yet.
-        python -m pip install fastapi 'uvicorn[standard]'
-    fi
+    python -m pip install -r "${REQUIREMENTS_FILE}"
     touch "${INSTALL_STAMP}"
+fi
+
+# Issue #945: the backend serves the SPA from frontend/dist/ (gitignored). On a
+# clean checkout that directory is absent and the server falls back to a bare
+# "Frontend index.html not found" page. Build it (or fail with instructions)
+# so the documented Quick Start yields a working app.
+if [[ ! -f "${DIST_DIR}/index.html" ]]; then
+    echo "[INFO] Frontend bundle missing at ${DIST_DIR}; building it"
+    if command -v npm >/dev/null 2>&1; then
+        ( cd "${FRONTEND_DIR}" && npm ci && npm run build )
+    else
+        echo "[ERROR] npm not found and ${DIST_DIR}/index.html is missing." >&2
+        echo "        Install Node.js/npm, then run: (cd frontend && npm ci && npm run build)" >&2
+        exit 1
+    fi
 fi
 
 echo ""
