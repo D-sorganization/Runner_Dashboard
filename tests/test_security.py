@@ -136,6 +136,87 @@ def test_validate_fleet_node_url_no_scheme() -> None:
         security.validate_fleet_node_url("localhost:8080")
 
 
+# ── #931: DNS-resolution guard + IP pinning (SSRF hardening) ─────────────────
+
+
+def _patch_resolver(monkeypatch, mapping: dict[str, list[str]]) -> None:
+    """Patch security._resolve_host_ips to return mapped IPs for a hostname."""
+    import ipaddress as _ip  # noqa: PLC0415
+
+    def _fake(host: str):  # noqa: ANN202
+        return [_ip.ip_address(a) for a in mapping.get(host, [])]
+
+    monkeypatch.setattr(security, "_resolve_host_ips", _fake)
+
+
+def test_fleet_url_tsnet_resolving_to_public_ip_rejected(monkeypatch) -> None:
+    """#931: a .ts.net suffix name that resolves to a PUBLIC IP is rejected —
+    suffix matching alone is not sufficient."""
+    _patch_resolver(monkeypatch, {"evil.example.ts.net": ["8.8.8.8"]})
+    with pytest.raises(ValueError, match="outside allowed"):
+        security.validate_fleet_node_url("https://evil.example.ts.net")
+
+
+def test_fleet_url_internal_resolving_to_public_ip_rejected(monkeypatch) -> None:
+    """#931: an .internal name resolving to a public IP must be rejected."""
+    _patch_resolver(monkeypatch, {"lookalike.internal": ["93.184.216.34"]})
+    with pytest.raises(ValueError, match="outside allowed"):
+        security.validate_fleet_node_url("http://lookalike.internal:8321")
+
+
+def test_fleet_url_internal_resolving_to_link_local_rejected(monkeypatch) -> None:
+    """#931: link-local (169.254/16) is not a valid fleet target."""
+    _patch_resolver(monkeypatch, {"rebind.internal": ["169.254.1.1"]})
+    with pytest.raises(ValueError, match="outside allowed"):
+        security.validate_fleet_node_url("http://rebind.internal:8321")
+
+
+def test_fleet_url_tsnet_resolving_to_cgnat_accepted(monkeypatch) -> None:
+    """#931: a .ts.net name resolving into the Tailscale CGNAT range is allowed."""
+    _patch_resolver(monkeypatch, {"peer.tail-scale.ts.net": ["100.101.102.103"]})
+    assert security.validate_fleet_node_url("https://peer.tail-scale.ts.net") == "https://peer.tail-scale.ts.net"
+
+
+def test_fleet_url_internal_resolving_to_private_accepted(monkeypatch) -> None:
+    """#931: an .internal name resolving to RFC-1918 space is allowed."""
+    _patch_resolver(monkeypatch, {"node.internal": ["10.0.0.5"]})
+    assert security.validate_fleet_node_url("http://node.internal:8321") == "http://node.internal:8321"
+
+
+def test_fleet_url_unresolvable_name_accepted_at_config_time(monkeypatch) -> None:
+    """#931: a name that does not resolve (peer offline) is still accepted at
+    config time — connect-time pinning guards the actual request."""
+    _patch_resolver(monkeypatch, {})  # everything resolves to []
+    assert security.validate_fleet_node_url("https://offline.ts.net") == "https://offline.ts.net"
+
+
+def test_resolve_and_validate_fleet_host_pins_private_ip(monkeypatch) -> None:
+    """#931: the pin helper returns the resolved private IP to connect to."""
+    _patch_resolver(monkeypatch, {"peer.internal": ["192.168.1.50"]})
+    assert security.resolve_and_validate_fleet_host("peer.internal") == "192.168.1.50"
+
+
+def test_resolve_and_validate_fleet_host_rejects_public(monkeypatch) -> None:
+    """#931: pinning a name that resolves public fails loudly (rebinding guard)."""
+    _patch_resolver(monkeypatch, {"rebind.ts.net": ["1.2.3.4"]})
+    with pytest.raises(ValueError, match="outside allowed"):
+        security.resolve_and_validate_fleet_host("rebind.ts.net")
+
+
+def test_resolve_and_validate_fleet_host_literal_ip(monkeypatch) -> None:
+    """#931: a literal private IP is validated and returned as-is."""
+    assert security.resolve_and_validate_fleet_host("100.64.0.7") == "100.64.0.7"
+    with pytest.raises(ValueError, match="not an allowed"):
+        security.resolve_and_validate_fleet_host("8.8.8.8")
+
+
+def test_resolve_and_validate_fleet_host_unresolvable_raises(monkeypatch) -> None:
+    """#931: a name that does not resolve cannot be pinned for a request."""
+    _patch_resolver(monkeypatch, {})
+    with pytest.raises(ValueError, match="did not resolve"):
+        security.resolve_and_validate_fleet_host("nope.internal")
+
+
 # ---------------------------------------------------------------------------
 # validate_local_url
 # ---------------------------------------------------------------------------

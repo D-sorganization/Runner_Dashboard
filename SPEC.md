@@ -1,10 +1,23 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.106
+**Spec Version:** 2.5.107
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-12T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-12 (2.5.107):** Hardened the fleet-node SSRF guard against
+  DNS-suffix spoofing and rebinding (security, issue #931). `validate_fleet_node_url`
+  in `backend/security.py` previously accepted any host ending in
+  `.local`/`.internal`/`.ts.net` on suffix match alone, so a lookalike like
+  `evil.example.ts.net` — or a `.internal` name resolving to a public or
+  link-local IP — passed the guard. The suffix is now necessary but not
+  sufficient: when a name resolves, every resolved IP must fall inside an allowed
+  range (RFC 1918 private, loopback, or RFC 6598 CGNAT), with link-local
+  (169.254.0.0/16, fe80::/10) and all public addresses explicitly rejected. Names
+  that do not resolve are still accepted as config-time entries (a peer may be
+  offline). A new `resolve_and_validate_fleet_host` helper returns the single
+  validated IP an outbound caller should pin to, defeating DNS rebinding between
+  the URL check and the request.
 - **2026-06-12 (2.5.106):** Security/robustness hardening (issues #929, #930,
   #939). (#929) `safe_subprocess_env` (`backend/security.py`) stripped only a
   hand-maintained denylist, so any *new* `*_TOKEN`/`*_SECRET` env var leaked to
@@ -40,28 +53,6 @@
   Pruned the now-resolved launchers entry from the #941 route-uniqueness allowlist
   and corrected the CLAUDE.md architecture block (server.py size ~2.3k not ~6800;
   requirements.txt lives at the repo root, not `backend/`).
-- **2026-06-12 (2.5.105):** Security/robustness hardening (issues #929, #930,
-  #939). (#929) `safe_subprocess_env` (`backend/security.py`) stripped only a
-  hand-maintained denylist, so any *new* `*_TOKEN`/`*_SECRET` env var leaked to
-  every spawned subprocess by default; added a rot-proof suffix catch-all
-  (`*_SECRET`/`*_TOKEN`/`*_KEY`/`*_PASSWORD`/`*_PASSWD`/`*_CREDENTIALS`) on top of
-  the denylist (anchored at end-of-name, so `TOKEN_FILE_PATH` still passes
-  through). (#930) The session cookie was unconditionally `https_only=True` and
-  HSTS was always sent, but browsers drop Secure cookies on http:// origins — so
-  session auth silently never worked on the documented plain-HTTP-over-tailnet
-  deployment. Both are now gated on a new `DASHBOARD_TLS` flag
-  (`dashboard_config.TLS_ENABLED`): default HTTP mode issues a usable cookie and
-  sends no HSTS; TLS mode enforces Secure + HSTS. (#939) (a) `save_tokens`
-  (`backend/identity.py`) is now an atomic tempfile + `os.replace` write like
-  `save_principals`, so a crash mid-dump can't corrupt tokens.yml and lock
-  everyone out; (c) the `POST /_drain` loopback guard (`backend/server.py`) is now
-  an explicit `HTTPException(403)` instead of a bare `assert` (which `python -O`
-  compiles out, letting any peer drain the server); (d) the subprocess timeout
-  paths in `system_utils.run_cmd` and `queue_cleanup` now kill *then* `await
-  wait()` and tolerate `ProcessLookupError`, preventing zombie/transport leaks.
-  Tests in `tests/test_security.py`, `tests/test_middleware.py`,
-  `tests/test_identity.py`, `tests/api/test_drain_mode.py`, and
-  `tests/test_system_utils.py`.
 - **2026-06-12 (2.5.101):** Autoscaler correctness/robustness cluster (issues
   #932, #935, #936, #937). (#932) The autoscaler read leases from a repo-relative
   `config/leases.yml` that nothing ever wrote, so lease protection was a permanent
