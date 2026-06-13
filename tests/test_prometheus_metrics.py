@@ -65,6 +65,14 @@ def test_record_dashboard_health_do_not_raise() -> None:
     record_dashboard_health("degraded", "unreachable", 3.1)
 
 
+def test_hub_circuit_metric_defined_and_settable() -> None:
+    import prometheus_metrics  # noqa: PLC0415
+
+    assert hasattr(prometheus_metrics, "DASHBOARD_HUB_CIRCUIT_OPEN")
+    prometheus_metrics.set_hub_circuit_open(True)
+    prometheus_metrics.set_hub_circuit_open(False)
+
+
 def test_helper_functions_exported() -> None:
     import prometheus_metrics  # noqa: PLC0415
 
@@ -72,6 +80,7 @@ def test_helper_functions_exported() -> None:
     assert callable(prometheus_metrics.record_cache_hit)
     assert callable(prometheus_metrics.record_cache_miss)
     assert callable(prometheus_metrics.record_dashboard_health)
+    assert callable(prometheus_metrics.set_hub_circuit_open)
     assert callable(prometheus_metrics.update_lease_gauge)
     assert callable(prometheus_metrics.record_lease_expired)
 

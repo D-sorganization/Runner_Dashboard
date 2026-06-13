@@ -156,3 +156,59 @@ async def test_fleet_status_peer_offline_fallback(client) -> None:
         assert "ControlTower-SSD" in data
         assert data["ControlTower-SSD"]["status"] == "offline"
         assert data["ControlTower-SSD"]["offline_reason"] in ("refused", "wsl_connection_lost")
+
+
+@pytest.mark.asyncio
+async def test_fleet_status_marks_hub_circuit_fallback_degraded(client) -> None:
+    p_port, p_host, p1, p2, p3, p_reg = _patch_topology()
+    with (
+        p_port,
+        p_host,
+        p1,
+        p2,
+        p3,
+        p_reg,
+        patch("routers.fleet.MACHINE_ROLE", "node"),
+        patch("routers.fleet.should_proxy_fleet_to_hub", return_value=False),
+        patch("routers.fleet.should_mark_hub_circuit_degraded", return_value=True),
+        patch("httpx.AsyncClient") as mock_client_cls,
+    ):
+        mock_client = MagicMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client.get = AsyncMock()
+        mock_client_cls.return_value = mock_client
+
+        resp = await client.get("/api/fleet/status?exclude_pools=true")
+
+    assert resp.status_code == 200
+    assert resp.headers["X-Dashboard-Degraded"] == "hub-circuit-open"
+    assert resp.json()["_degraded"] is True
+
+
+@pytest.mark.asyncio
+async def test_fleet_status_keeps_explicit_local_response_plain(client) -> None:
+    p_port, p_host, p1, p2, p3, p_reg = _patch_topology()
+    with (
+        p_port,
+        p_host,
+        p1,
+        p2,
+        p3,
+        p_reg,
+        patch("routers.fleet.MACHINE_ROLE", "node"),
+        patch("routers.fleet.should_proxy_fleet_to_hub", return_value=False),
+        patch("routers.fleet.should_mark_hub_circuit_degraded", return_value=False),
+        patch("httpx.AsyncClient") as mock_client_cls,
+    ):
+        mock_client = MagicMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client.get = AsyncMock()
+        mock_client_cls.return_value = mock_client
+
+        resp = await client.get("/api/fleet/status?exclude_pools=true&local=true")
+
+    assert resp.status_code == 200
+    assert "X-Dashboard-Degraded" not in resp.headers
+    assert "_degraded" not in resp.json()

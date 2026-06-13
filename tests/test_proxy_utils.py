@@ -209,3 +209,25 @@ class TestHubCircuitBreaker:
                 assert proxy_utils.should_proxy_fleet_to_hub(req) is True
                 proxy_utils.mark_hub_unreachable()
                 assert proxy_utils.should_proxy_fleet_to_hub(req) is False
+
+    def test_open_breaker_marks_degraded_for_node_hub_fallback(self) -> None:
+        with patch.object(proxy_utils, "MACHINE_ROLE", "node"):
+            with patch.object(proxy_utils, "HUB_URL", "http://hub.internal"):
+                proxy_utils.mark_hub_unreachable()
+                assert proxy_utils.should_mark_hub_circuit_degraded(_make_request({})) is True
+
+    def test_explicit_local_request_is_not_hub_circuit_degraded(self) -> None:
+        with patch.object(proxy_utils, "MACHINE_ROLE", "node"):
+            with patch.object(proxy_utils, "HUB_URL", "http://hub.internal"):
+                proxy_utils.mark_hub_unreachable()
+                assert proxy_utils.should_mark_hub_circuit_degraded(_make_request({"local": "true"})) is False
+                assert proxy_utils.should_mark_hub_circuit_degraded(_make_request({"scope": "local"})) is False
+
+    def test_non_node_or_missing_hub_is_not_hub_circuit_degraded(self) -> None:
+        proxy_utils.mark_hub_unreachable()
+        with patch.object(proxy_utils, "MACHINE_ROLE", "hub"):
+            with patch.object(proxy_utils, "HUB_URL", "http://hub.internal"):
+                assert proxy_utils.should_mark_hub_circuit_degraded(_make_request({})) is False
+        with patch.object(proxy_utils, "MACHINE_ROLE", "node"):
+            with patch.object(proxy_utils, "HUB_URL", ""):
+                assert proxy_utils.should_mark_hub_circuit_degraded(_make_request({})) is False

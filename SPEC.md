@@ -1,10 +1,19 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.110
+**Spec Version:** 2.5.111
 **Application Version:** 4.8.0 (see `VERSION`)
 **Last Updated:** 2026-06-13T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-13 (2.5.111):** Expose hub-circuit degraded fallback state for issue
+  #948. When a node with `HUB_URL` serves local `/api/fleet/status` data only
+  because the hub circuit is open, the response now includes top-level
+  `_degraded: true` and an `X-Dashboard-Degraded: hub-circuit-open` header.
+  Explicit local reads (`local=true` or `scope=local`) keep the plain local
+  response contract. `/api/health` reports `hub_circuit_open`, and Prometheus
+  exports `dashboard_hub_circuit_open`. Focused regression coverage lives in
+  `tests/test_proxy_utils.py`, `tests/api/test_fleet_aggregator.py`,
+  `tests/test_health.py`, and `tests/test_prometheus_metrics.py`.
 - **2026-06-13 (2.5.110):** Stabilize the OpenAPI-to-TypeScript contract
   generation gate added for issue #947. `scripts/gen-api-client.sh` now formats
   the generated `frontend/src/lib/openapi.json` snapshot with the pinned local
@@ -69,7 +78,7 @@
   the URL check and the request.
 - **2026-06-12 (2.5.106):** Security/robustness hardening (issues #929, #930,
   #939). (#929) `safe_subprocess_env` (`backend/security.py`) stripped only a
-  hand-maintained denylist, so any *new* `*_TOKEN`/`*_SECRET` env var leaked to
+  hand-maintained denylist, so any _new_ `*_TOKEN`/`*_SECRET` env var leaked to
   every spawned subprocess by default; added a rot-proof suffix catch-all
   (`*_SECRET`/`*_TOKEN`/`*_KEY`/`*_PASSWORD`/`*_PASSWD`/`*_CREDENTIALS`) on top of
   the denylist (anchored at end-of-name, so `TOKEN_FILE_PATH` still passes
@@ -84,8 +93,8 @@
   everyone out; (c) the `POST /_drain` loopback guard (`backend/server.py`) is now
   an explicit `HTTPException(403)` instead of a bare `assert` (which `python -O`
   compiles out, letting any peer drain the server); (d) the subprocess timeout
-  paths in `system_utils.run_cmd` and `queue_cleanup` now kill *then* `await
-  wait()` and tolerate `ProcessLookupError`, preventing zombie/transport leaks.
+  paths in `system_utils.run_cmd` and `queue_cleanup` now kill processes, await
+  `wait()`, and tolerate `ProcessLookupError`, preventing zombie/transport leaks.
   Tests in `tests/test_security.py`, `tests/test_middleware.py`,
   `tests/test_identity.py`, `tests/api/test_drain_mode.py`, and
   `tests/test_system_utils.py`.
