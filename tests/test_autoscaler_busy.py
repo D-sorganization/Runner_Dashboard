@@ -98,6 +98,25 @@ def test_runner_is_busy_short_circuits_on_pickup_dir(
         assert busy._runner_is_busy(UNIT) is True
 
 
+def test_runner_is_busy_treats_mainpid_timeout_as_busy(
+    monkeypatch: pytest.MonkeyPatch,  # type: ignore[name-defined]
+) -> None:
+    """Issue #937a: a TimeoutExpired querying MainPID must NOT abort the tick.
+
+    The query is treated as 'busy' (fail safe — never stop a runner we cannot
+    confirm idle) and the exception is swallowed so the poll loop's broad except
+    is never reached and the other pools' scaling still runs.
+    """
+    # Force Strategies 1 and 2 to miss so control reaches the MainPID query.
+    monkeypatch.setattr(busy, "_runner_busy_via_pickup_dir_public", lambda _u: False)
+    monkeypatch.setattr(busy, "_runner_busy_via_lockfile", lambda _u: False)
+    import subprocess as _sp  # noqa: PLC0415
+
+    with patch("subprocess.run", side_effect=_sp.TimeoutExpired("systemctl", 5)):
+        # Must return True (busy) rather than propagating TimeoutExpired.
+        assert busy._runner_is_busy(UNIT) is True
+
+
 class _FakeProc:
     """Minimal psutil.Process stand-in exposing the .info dict process_iter sets."""
 

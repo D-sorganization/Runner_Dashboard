@@ -184,3 +184,58 @@ class TestStartUnit:
     def test_failure(self) -> None:
         with patch("subprocess.run", return_value=_cp(returncode=1)):
             assert sd._start_unit("actions.runner.org.r.service") is False
+
+    def test_start_uses_no_block_and_timeout(self) -> None:
+        """Issue #935: start must not block the watchdog — --no-block + timeout."""
+        with patch("subprocess.run", return_value=_cp(returncode=0)) as mock_run:
+            sd._start_unit("actions.runner.org.r.service")
+        args, kwargs = mock_run.call_args
+        assert "--no-block" in args[0]
+        assert kwargs.get("timeout") == sd._SYSTEMCTL_TIMEOUT_S
+
+    def test_start_timeout_returns_false(self) -> None:
+        with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("systemctl", 5)):
+            assert sd._start_unit("actions.runner.org.r.service") is False
+
+
+class TestStopStartWatchdogContract:
+    """Issue #935: neither stop nor start may block the systemd watchdog.
+
+    Every systemctl invocation in the module must carry either ``--no-block`` or
+    an explicit ``timeout=``; a blocking stop that waits out a >=120s drain
+    starves WatchdogSec=120 and systemd SIGABRTs the autoscaler mid-scale-down.
+    """
+
+    def test_stop_uses_no_block_and_timeout(self) -> None:
+        with (
+            patch(
+                "subprocess.run",
+                side_effect=[
+                    _cp("KillMode=mixed\nTimeoutStopUSec=2min\n"),
+                    _cp(returncode=0),
+                ],
+            ) as mock_run,
+            patch("runner_state_cleanup.cleanup_runner_state"),
+        ):
+            sd._stop_unit("actions.runner.org.r.service")
+        # The second call is the actual `systemctl stop`.
+        stop_call = mock_run.call_args_list[1]
+        argv = stop_call.args[0]
+        assert "stop" in argv
+        assert "--no-block" in argv
+        assert stop_call.kwargs.get("timeout") == sd._SYSTEMCTL_TIMEOUT_S
+
+    def test_stop_timeout_returns_false_without_crashing(self) -> None:
+        with (
+            patch(
+                "subprocess.run",
+                side_effect=[
+                    _cp("KillMode=mixed\nTimeoutStopUSec=2min\n"),
+                    subprocess.TimeoutExpired("systemctl", 5),
+                ],
+            ),
+            patch("runner_state_cleanup.cleanup_runner_state") as mock_clean,
+        ):
+            assert sd._stop_unit("actions.runner.org.r.service") is False
+            # Cleanup still runs even when the stop enqueue itself failed.
+            mock_clean.assert_called_once()

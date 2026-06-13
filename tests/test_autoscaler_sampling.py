@@ -119,14 +119,22 @@ def test_windows_host_snapshot_uses_absolute_powershell_fallback(monkeypatch: py
     ]
 
 
-def test_leased_runners_no_file() -> None:
+def test_leased_runners_no_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """_leased_runners returns empty set when leases.yml does not exist."""
-    with patch.object(Path, "exists", return_value=False):
-        assert samp._leased_runners() == set()
+    monkeypatch.setenv("RUNNER_DASHBOARD_CONFIG_DIR", str(tmp_path / "missing"))
+    assert samp._leased_runners() == set()
+
+
+def test_leases_path_matches_lease_manager_writer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Issue #932: reader path must equal the LeaseManager writer path."""
+    import runner_lease as rl  # noqa: PLC0415
+
+    monkeypatch.setenv("RUNNER_DASHBOARD_CONFIG_DIR", str(tmp_path / "cfg"))
+    assert samp._leases_path() == rl._default_config_dir() / "leases.yml"
 
 
 def test_leased_runners_filters_expired_entries(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    config_dir = tmp_path / "config"
+    config_dir = tmp_path / "cfg"
     config_dir.mkdir()
     (config_dir / "leases.yml").write_text(
         "leases:\n"
@@ -137,19 +145,40 @@ def test_leased_runners_filters_expired_entries(tmp_path: Path, monkeypatch: pyt
         "  - runner_id: sticky-runner\n",
         encoding="utf-8",
     )
-    monkeypatch.setattr(samp, "__file__", str(tmp_path / "backend" / "autoscaler_sampling.py"))
+    monkeypatch.setenv("RUNNER_DASHBOARD_CONFIG_DIR", str(config_dir))
     monkeypatch.setattr(samp.time, "time", lambda: 1000.0)
 
     assert samp._leased_runners() == {"live-runner", "sticky-runner"}
 
 
-def test_leased_runners_invalid_file_returns_empty_set(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    config_dir = tmp_path / "config"
+def test_leased_runners_unparseable_yaml_returns_empty_set(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    config_dir = tmp_path / "cfg"
     config_dir.mkdir()
     (config_dir / "leases.yml").write_text("leases:\n  - runner_id: [\n", encoding="utf-8")
-    monkeypatch.setattr(samp, "__file__", str(tmp_path / "backend" / "autoscaler_sampling.py"))
+    monkeypatch.setenv("RUNNER_DASHBOARD_CONFIG_DIR", str(config_dir))
 
     assert samp._leased_runners() == set()
+
+
+def test_leased_runners_skips_one_bad_record_keeps_good(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Issue #937c: one malformed record must not disable protection for all."""
+    config_dir = tmp_path / "cfg"
+    config_dir.mkdir()
+    (config_dir / "leases.yml").write_text(
+        "leases:\n"
+        "  - runner_id: good-1\n"
+        "    expires_at: 9999999999\n"
+        "  - expires_at: 9999999999\n"  # missing runner_id → bad record
+        "  - runner_id: good-2\n"
+        "    expires_at: not-a-number\n"  # unparseable expiry → bad record
+        "  - runner_id: good-3\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("RUNNER_DASHBOARD_CONFIG_DIR", str(config_dir))
+    monkeypatch.setattr(samp.time, "time", lambda: 1000.0)
+
+    # good-1 and good-3 survive; the two malformed records are skipped, not fatal.
+    assert samp._leased_runners() == {"good-1", "good-3"}
 
 
 def test_sample_uses_fallback_load_and_root_disk(monkeypatch: pytest.MonkeyPatch) -> None:

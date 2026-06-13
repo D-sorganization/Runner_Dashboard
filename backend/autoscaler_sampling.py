@@ -3,7 +3,8 @@
 Provides:
   - _sample()                  — one-shot CPU / memory / load / disk measurement
   - _scheduled_desired_count() — integrate with the runner-scheduler binary
-  - _leased_runners()          — read active runner leases from config/leases.yml
+  - _leased_runners()          — read active runner leases from the shared
+                                 LeaseManager store (RUNNER_DASHBOARD_CONFIG_DIR)
 """
 
 from __future__ import annotations
@@ -55,27 +56,53 @@ def _psutil_dep() -> Any:
     return psutil
 
 
+def _leases_path() -> Path:
+    """Resolve the leases.yml path the LeaseManager writer actually uses.
+
+    Issue #932: the autoscaler previously read ``<repo>/config/leases.yml``
+    (repo-relative), but the only writer — ``runner_lease.LeaseManager`` —
+    persists to ``$RUNNER_DASHBOARD_CONFIG_DIR`` (default
+    ``~/.config/runner-dashboard``). Reader and writer must share one path
+    helper or lease protection is a permanent no-op. We delegate to
+    ``runner_lease._default_config_dir`` so the two can never drift again.
+    """
+    from runner_lease import _default_config_dir  # noqa: PLC0415
+
+    return _default_config_dir() / "leases.yml"
+
+
 def _leased_runners() -> set[str]:
-    """Read config/leases.yml and return a set of leased runner_ids."""
-    # Assuming config is relative to the dashboard root.
-    # The autoscaler might run from a different CWD, so we should resolve this.
-    path = Path(__file__).resolve().parent.parent / "config" / "leases.yml"
+    """Return the set of currently-leased runner_ids from the shared leases file.
+
+    Reads the same ``leases.yml`` the LeaseManager writes (issue #932). Each
+    record is validated independently: a single malformed entry is skipped and
+    logged, but the remaining valid leases are still honoured (issue #937c) —
+    one bad record must never disable protection for every leased runner.
+    """
+    path = _leases_path()
     if not path.exists():
         return set()
     try:
         with open(path) as f:
             data = yaml.safe_load(f)
-        if not data or "leases" not in data:
-            return set()
-        now = time.time()
-        return {
-            str(lease_rec["runner_id"])
-            for lease_rec in data["leases"]
-            if lease_rec.get("expires_at") is None or float(lease_rec["expires_at"]) > now
-        }
     except Exception as exc:
         log.warning("Failed to read leases: %s", exc)
         return set()
+    if not data or "leases" not in data:
+        return set()
+
+    now = time.time()
+    leased: set[str] = set()
+    for lease_rec in data["leases"]:
+        try:
+            runner_id = str(lease_rec["runner_id"])
+            expires_at = lease_rec.get("expires_at")
+            if expires_at is None or float(expires_at) > now:
+                leased.add(runner_id)
+        except (KeyError, TypeError, ValueError) as exc:
+            log.warning("Skipping malformed lease record %r: %s", lease_rec, exc)
+            continue
+    return leased
 
 
 def _scheduled_desired_count(default: int) -> int:
