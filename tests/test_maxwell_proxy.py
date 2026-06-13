@@ -335,6 +335,63 @@ async def test_maxwell_dispatch_daemon_unreachable_returns_503(client) -> None:
     assert resp.json()["detail"] == "maxwell connection error"
 
 
+# ─── #959 status surface + #963 lifecycle platform guard ─────────────────────
+
+
+@pytest.mark.asyncio
+async def test_status_surfaces_configured_and_lifecycle_flags(client) -> None:
+    """Issue #959/#963: /status reports `configured` and `lifecycle_supported`."""
+    import routers.maxwell as mx  # noqa: PLC0415
+
+    # Daemon unreachable + no systemd → stopped, lifecycle unsupported.
+    mock_cm = _make_mock_client(get_side_effect=httpx.ConnectError("refused"))
+    with (
+        patch("httpx.AsyncClient", return_value=mock_cm),
+        patch.object(mx, "_lifecycle_supported", return_value=False),
+    ):
+        resp = await client.get("/api/maxwell/status")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "configured" in data
+    assert data["lifecycle_supported"] is False
+    assert data["service_detail"] == "systemd lifecycle control unavailable on this platform"
+
+
+@pytest.mark.asyncio
+async def test_control_returns_501_when_lifecycle_unsupported(client) -> None:
+    """Issue #963: start/stop must report unsupported, not silently no-op, off-systemd."""
+    import routers.maxwell as mx  # noqa: PLC0415
+
+    with patch.object(mx, "_lifecycle_supported", return_value=False):
+        resp = await client.post(
+            "/api/maxwell/control",
+            json={"action": "start", "approved_by": "tester"},
+        )
+    assert resp.status_code == 501
+    assert "unavailable on this platform" in resp.json()["detail"]
+
+
+# ─── #961 tasks proxy keys pagination as next_cursor ─────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_tasks_proxy_exposes_next_cursor_not_cursor(client) -> None:
+    """Issue #961: the tasks list response is keyed next_cursor, never cursor."""
+    payload = {
+        "tasks": [{"id": "t-1", "status": "running", "created_at": "2026-06-12T00:00:00Z"}],
+        "next_cursor": None,
+        "total": 1,
+    }
+    mock_cm = _make_mock_client(get_return=_mock_httpx_response(payload))
+    with patch("httpx.AsyncClient", return_value=mock_cm):
+        resp = await client.get("/api/maxwell/tasks")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "next_cursor" in data
+    assert "cursor" not in data
+    assert data["tasks"][0]["status"] == "running"
+
+
 # ─── POST /api/maxwell/chat ──────────────────────────────────────────────────
 
 

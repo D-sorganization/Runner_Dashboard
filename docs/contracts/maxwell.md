@@ -76,38 +76,36 @@ derived from `active_task_id`).
 
 Proxy of Maxwell-Daemon `/api/tasks`.
 
-| Field    | Type         | Notes                      |
-| -------- | ------------ | -------------------------- |
-| `tasks`  | `TaskItem[]` | See task item schema below |
-| `cursor` | `string?`    | Opaque pagination cursor   |
-| `total`  | `int?`       |                            |
+| Field         | Type         | Notes                                                         |
+| ------------- | ------------ | ------------------------------------------------------------- |
+| `tasks`       | `TaskItem[]` | See task item schema below                                    |
+| `next_cursor` | `string?`    | MD pagination cursor; `None` until MD implements it (#961)    |
+| `total`       | `int?`       |                                                               |
 
-**TaskItem**:
+**TaskItem** (mirrors MD `TaskSummary`; #961):
 
-| Field        | Type       | Notes    |
-| ------------ | ---------- | -------- |
-| `id`         | `string`   | UUID     |
-| `status`     | `string`   |          |
-| `created_at` | `string?`  | ISO 8601 |
-| `updated_at` | `string?`  | ISO 8601 |
-| `type`       | `string?`  |          |
-| `priority`   | `int?`     |          |
-| `tags`       | `string[]` |          |
-| `error`      | `string?`  |          |
+| Field        | Type      | Notes              |
+| ------------ | --------- | ------------------ |
+| `id`         | `string`  | UUID, **required** |
+| `status`     | `string`  | **required**       |
+| `created_at` | `string?` | ISO 8601           |
+
+The previously-modelled `updated_at`/`type`/`priority`/`tags`/`error` fields had
+no producer in MD's `TaskSummary` and were removed; re-add once MD emits them.
 
 ---
 
 ### `GET /api/maxwell/tasks/{task_id}`
 
-Proxy of Maxwell-Daemon `/api/tasks/{id}`.
+Proxy of Maxwell-Daemon `/api/tasks/{id}`. Mirrors MD `TaskDetail` (#961):
 
-Same as TaskItem plus:
-
-| Field            | Type      | Notes             |
-| ---------------- | --------- | ----------------- |
-| `started_at`     | `string?` | ISO 8601          |
-| `completed_at`   | `string?` | ISO 8601          |
-| `result_summary` | `string?` | Truncated summary |
+| Field        | Type      | Notes                          |
+| ------------ | --------- | ------------------------------ |
+| `id`         | `string`  | UUID, **required**             |
+| `status`     | `string`  | **required**                   |
+| `created_at` | `string?` | ISO 8601                       |
+| `transcript` | `any[]`   | MD task transcript (`[]` today)|
+| `artifacts`  | `any[]`   | MD task artifacts (`[]` today) |
 
 ---
 

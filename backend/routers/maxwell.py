@@ -11,7 +11,7 @@ from typing import Any
 
 import httpx
 import maxwell_contract as _mc
-from dashboard_config import MAXWELL_API_TOKEN, MAXWELL_URL
+from dashboard_config import MAXWELL_API_TOKEN, MAXWELL_EXPLICITLY_CONFIGURED, MAXWELL_URL
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from identity import Principal, require_scope
@@ -85,6 +85,28 @@ def _maxwell_headers() -> dict:
     return {}
 
 
+# Issue #963: start/stop drive the daemon via ``systemctl ... maxwell-daemon``,
+# which matches Maxwell_Daemon's deploy/systemd/maxwell-daemon.service on Linux
+# but is a silent no-op on Windows/WSL hosts where MD ships Launch-Maxwell.bat.
+# The systemd unit name is part of the implicit RD↔MD contract; surface
+# lifecycle availability explicitly instead of pretending the control worked.
+MAXWELL_SYSTEMD_UNIT = "maxwell-daemon"
+
+
+def _lifecycle_supported() -> bool:
+    """Return True when systemd-based daemon lifecycle control is available.
+
+    The Maxwell start/stop/restart controls shell out to ``systemctl``. On a host
+    without systemd (Windows, bare WSL) those commands cannot manage the daemon,
+    so the controls must report "unsupported on this platform" rather than
+    silently failing. We treat the presence of a ``systemctl`` binary as the
+    capability signal.
+    """
+    import shutil  # noqa: PLC0415
+
+    return shutil.which("systemctl") is not None
+
+
 async def _mx_get(path: str, params: dict | None = None) -> dict:
     """GET helper for Maxwell proxy routes."""
     try:
@@ -139,20 +161,26 @@ async def get_maxwell_status() -> dict:
     # Check if maxwell service is running via systemd
     service_running = False
     service_detail = "unknown"
-    try:
-        # Note: using asyncio.to_thread to avoid blocking the event loop
-        r = await asyncio.to_thread(
-            subprocess.run,
-            ["systemctl", "is-active", "maxwell-daemon"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            env=safe_subprocess_env(),
-        )
-        service_running = r.stdout.strip() == "active"
-        service_detail = r.stdout.strip()
-    except Exception as e:
-        service_detail = f"probe error: {str(e)}"
+    lifecycle_supported = _lifecycle_supported()
+    if not lifecycle_supported:
+        # No systemd → the start/stop controls cannot manage the daemon here.
+        # Report this honestly instead of a misleading "probe error" (#963).
+        service_detail = "systemd lifecycle control unavailable on this platform"
+    else:
+        try:
+            # Note: using asyncio.to_thread to avoid blocking the event loop
+            r = await asyncio.to_thread(
+                subprocess.run,
+                ["systemctl", "is-active", MAXWELL_SYSTEMD_UNIT],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                env=safe_subprocess_env(),
+            )
+            service_running = r.stdout.strip() == "active"
+            service_detail = r.stdout.strip()
+        except Exception as e:
+            service_detail = f"probe error: {str(e)}"
 
     # Check HTTP reachability
     http_reachable = False
@@ -194,11 +222,19 @@ async def get_maxwell_status() -> dict:
         "http_reachable": http_reachable,
         "http_detail": http_detail,
         "dashboard_url": base_url,
+        # Issue #959: tell the UI whether the operator explicitly pointed RD at a
+        # Maxwell endpoint. When False and the daemon is unreachable, the tab can
+        # show "configuration needed" (set MAXWELL_URL/MAXWELL_PORT) instead of an
+        # opaque connection error — the default localhost:8080 is only a guess.
+        "configured": MAXWELL_EXPLICITLY_CONFIGURED,
+        # Issue #963: whether start/stop/restart can actually manage the daemon
+        # on this host. False on Windows/WSL without systemd.
+        "lifecycle_supported": lifecycle_supported,
         "contract": contract,
         "deep_links": {
             "dashboard": base_url,
             "health": f"{base_url}/api/health",
-            "logs": "journalctl -u maxwell-daemon -f",
+            "logs": f"journalctl -u {MAXWELL_SYSTEMD_UNIT} -f",
         },
         "probed_at": datetime.now(UTC).isoformat(),
     }
@@ -218,8 +254,20 @@ async def maxwell_control(
         raise HTTPException(status_code=422, detail="action must be start, stop, or restart")
     if not approved_by:
         raise HTTPException(status_code=422, detail="approved_by required for privileged action")
+    # Issue #963: refuse loudly on hosts without systemd instead of shelling out
+    # to a systemctl that does not exist and reporting a generic 502. The daemon
+    # lifecycle is only controllable where its systemd unit lives (Linux co-host).
+    if not _lifecycle_supported():
+        raise HTTPException(
+            status_code=501,
+            detail=(
+                "Maxwell lifecycle control is unavailable on this platform "
+                "(no systemd). Manage the daemon on its host directly "
+                "(e.g. Launch-Maxwell.bat on Windows)."
+            ),
+        )
 
-    code, out, stderr = await _run_cmd(["systemctl", action, "maxwell-daemon"], timeout=15)
+    code, out, stderr = await _run_cmd(["systemctl", action, MAXWELL_SYSTEMD_UNIT], timeout=15)
     log.info(
         "maxwell_control: action=%s approved_by=%s exit_code=%d",
         sanitize_log_value(action),

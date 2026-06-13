@@ -172,24 +172,36 @@ class MaxwellStatusV2Response(BaseModel):
 
 
 class MaxwellTaskItem(BaseModel):
-    """A single task entry in the tasks list."""
+    """A single task entry in the tasks list (issue #961).
+
+    Mirrors MD's real ``TaskSummary`` (``maxwell_daemon/api/contract.py``):
+    ``{id, status, created_at}``. ``id`` and ``status`` are **required** so a
+    defaulted task row (the old failure mode where every field silently fell back
+    to ``unknown``) is impossible. The phantom fields RD previously modelled
+    (``updated_at``/``type``/``priority``/``tags``/``error``) had no producer in
+    MD and were dropped; reinstate them here only once MD's ``TaskSummary`` adds
+    them (tracked in the paired Maxwell_Daemon issue).
+    """
 
     id: str = Field(description="Task UUID")
-    status: str = Field(default="unknown")
+    status: str = Field(description="Task status, e.g. queued/running/completed")
     created_at: str | None = Field(default=None)
-    updated_at: str | None = Field(default=None)
-    type: str | None = Field(default=None)
-    priority: int | None = Field(default=None)
-    tags: list[str] = Field(default_factory=list)
-    error: str | None = Field(default=None)
     # No credential fields are allow-listed here.
 
 
 class MaxwellTaskListResponse(BaseModel):
-    """Consumer view of Maxwell-Daemon's /api/tasks list endpoint."""
+    """Consumer view of Maxwell-Daemon's /api/tasks list endpoint (issue #961).
+
+    MD's list response keys pagination as ``next_cursor`` (``tasks.py``), not
+    ``cursor``; the old mis-keyed ``cursor`` field meant the dashboard could never
+    advance pages. ``next_cursor`` mirrors MD's field directly. MD currently
+    always returns ``next_cursor=None`` (pagination is stubbed upstream); the
+    proxy/UI therefore must not offer a "next page" affordance until MD emits a
+    real cursor — tracked in the paired Maxwell_Daemon issue.
+    """
 
     tasks: list[MaxwellTaskItem] = Field(default_factory=list)
-    cursor: str | None = Field(default=None, description="Opaque pagination cursor")
+    next_cursor: str | None = Field(default=None, description="MD pagination cursor (None until MD implements it)")
     total: int | None = Field(default=None, ge=0)
 
 
@@ -199,21 +211,23 @@ class MaxwellTaskListResponse(BaseModel):
 
 
 class MaxwellTaskDetailResponse(BaseModel):
-    """Consumer view of Maxwell-Daemon's /api/tasks/{task_id} endpoint."""
+    """Consumer view of Maxwell-Daemon's /api/tasks/{task_id} endpoint (issue #961).
+
+    Mirrors MD's real ``TaskDetail`` (``maxwell_daemon/api/contract.py``):
+    ``{id, status, created_at, transcript, artifacts}``. ``id``/``status`` are
+    **required**. ``transcript`` and ``artifacts`` are always emitted by MD (as
+    ``[]`` today — the fields are present but unpopulated), so they are modelled
+    as lists with empty-list defaults rather than the phantom
+    ``updated_at``/``type``/``priority``/``tags``/``error``/``result_summary``
+    fields RD previously invented, none of which MD produces. The phantom fields
+    are dropped; re-add when MD's ``TaskDetail`` grows a real producer.
+    """
 
     id: str
-    status: str = Field(default="unknown")
+    status: str = Field(description="Task status, e.g. queued/running/completed")
     created_at: str | None = Field(default=None)
-    updated_at: str | None = Field(default=None)
-    started_at: str | None = Field(default=None)
-    completed_at: str | None = Field(default=None)
-    type: str | None = Field(default=None)
-    priority: int | None = Field(default=None)
-    tags: list[str] = Field(default_factory=list)
-    error: str | None = Field(default=None)
-    result_summary: str | None = Field(default=None)
-    # Note: full result payload is intentionally omitted — use a dedicated
-    # result endpoint if needed, and filter there too.
+    transcript: list[Any] = Field(default_factory=list, description="MD task transcript ([] until populated)")
+    artifacts: list[Any] = Field(default_factory=list, description="MD task artifacts ([] until populated)")
 
 
 # ---------------------------------------------------------------------------
