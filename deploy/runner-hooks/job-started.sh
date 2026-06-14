@@ -41,10 +41,13 @@ for _gclock in "$HOME_DIR/.gitconfig.lock" "$HOME_DIR/.gitconfig.lock.0"; do
             echo "[runner-cleanup] removed stale $_gclock" >&2
     fi
 done
-# Per-worktree locks older than 1 minute (avoid racing concurrent git ops).
+# Per-worktree lock scans are intentionally opt-in. On large SSD runner pools,
+# an unbounded pre-job find can spend minutes in disk wait and cancel the job
+# before the workflow starts. Keep this cleanup in scheduled maintenance by
+# default; enable here only for one-off recovery.
 _work_root="$HOME_DIR/actions-runners"
-if [ -d "$_work_root" ]; then
-    find "$_work_root" \
+if [ "${RUNNER_HOOK_ENABLE_WORKTREE_LOCK_CLEANUP:-0}" = "1" ] && [ -d "$_work_root" ]; then
+    timeout "${RUNNER_HOOK_LOCK_CLEANUP_TIMEOUT_SECONDS:-10}s" find "$_work_root" \
         \( -path '*/.git/index.lock' -o \
            -path '*/.git/HEAD.lock' -o \
            -path '*/.git/config.lock' -o \
