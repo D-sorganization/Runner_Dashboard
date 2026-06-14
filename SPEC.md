@@ -2,19 +2,20 @@
 
 **Spec Version:** 2.5.112
 **Application Version:** 4.8.0 (see `VERSION`)
-**Last Updated:** 2026-06-14T00:00:00-07:00
+**Last Updated:** 2026-06-14T10:55:00-07:00
 **Status:** Active
 
-- **2026-06-14 (2.5.112):** Made the RD↔MD consumer contract test consume the
-  generated Maxwell_Daemon OpenAPI artifact for issue #960. The vendored snapshot
-  lives at `tests/contracts/maxwell_openapi.json`; `tests/test_maxwell_contract.py`
-  derives the canonical version/status/v2-status/task/dispatch/control payloads
-  from that snapshot instead of a hand-written fixture table, while keeping
-  explicit producer-observed payloads only for MD endpoints that still publish
-  generic object schemas. `MaxwellDispatchResponse` now accepts both current
-  `task_id` and legacy `id` inputs but no longer defaults a missing task id to
-  `"unknown"`, so a producer rename fails loudly. `scripts/check_maxwell_contract_drift.py`
-  and `.github/workflows/maxwell-contract-drift.yml` add a scheduled/manual
+- **2026-06-14 (2.5.112):** Replaced the last hand-written RD↔MD consumer
+  contract fixtures with a vendored Maxwell_Daemon OpenAPI snapshot for issue
+  #960. `tests/contracts/maxwell_openapi.json` is the producer-owned schema
+  baseline; `tests/test_maxwell_openapi_contract.py` asserts the dashboard's
+  consumed paths/schemas exist, validates minimal producer-required payloads
+  against the dashboard models, and fails loudly when consumed required fields
+  are renamed. The task-list model now requires MD's `total`, dispatch requires
+  a producer task id/status while retaining the legacy `id` alias, and cost
+  mirrors MD's required `month_to_date_usd` into the dashboard's legacy
+  `total_usd` field. `scripts/check_maxwell_contract_drift.py` and
+  `.github/workflows/maxwell-contract-drift.yml` add a scheduled/manual
   self-hosted drift monitor that compares the vendored snapshot with
   `D-sorganization/Maxwell_Daemon` main and records a GitHub issue when they
   differ.
