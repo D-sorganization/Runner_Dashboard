@@ -237,14 +237,16 @@ class TestSensitiveFieldsNeverForwarded:
 
 class TestDefaults:
     def test_task_list_defaults(self) -> None:
-        result = mc.MaxwellTaskListResponse.model_validate({}).model_dump()
+        result = mc.MaxwellTaskListResponse.model_validate({"total": 0}).model_dump()
         assert result["tasks"] == []
         assert result["next_cursor"] is None
+        assert result["total"] == 0
         assert "cursor" not in result
 
     def test_cost_defaults(self) -> None:
-        result = mc.MaxwellCostResponse.model_validate({}).model_dump()
-        assert result["total_usd"] is None
+        result = mc.MaxwellCostResponse.model_validate({"month_to_date_usd": 0.0, "by_backend": {}}).model_dump()
+        assert result["month_to_date_usd"] == 0.0
+        assert result["total_usd"] == 0.0
         assert result["currency"] == "USD"
 
     def test_dispatch_response_id_alias(self) -> None:
