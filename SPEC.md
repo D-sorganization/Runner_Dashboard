@@ -1,10 +1,19 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.112
+**Spec Version:** 2.5.113
 **Application Version:** 4.8.0 (see `VERSION`)
-**Last Updated:** 2026-06-14T10:55:00-07:00
+**Last Updated:** 2026-06-14T16:10:00-07:00
 **Status:** Active
 
+- **2026-06-14 (2.5.113):** Kept the runner job-started hook bounded for fleet
+  reliability. `deploy/runner-hooks/job-started.sh` now keeps the fast global
+  `~/.gitconfig.lock` cleanup in place, makes the expensive per-worktree stale
+  git-lock scan opt-in via `RUNNER_HOOK_ENABLE_WORKTREE_LOCK_CLEANUP=1`, and
+  bounds that scan with `RUNNER_HOOK_LOCK_CLEANUP_TIMEOUT_SECONDS` (default 10s).
+  This prevents SSD runner pools from cancelling jobs inside
+  `ACTIONS_RUNNER_HOOK_JOB_STARTED`; scheduled cleanup remains responsible for
+  broad worktree sweeps. `tests/test_today_deploy_hardening.py` guards the deploy
+  hook contract.
 - **2026-06-14 (2.5.112):** Replaced the last hand-written RD↔MD consumer
   contract fixtures with a vendored Maxwell_Daemon OpenAPI snapshot for issue
   #960. `tests/contracts/maxwell_openapi.json` is the producer-owned schema
