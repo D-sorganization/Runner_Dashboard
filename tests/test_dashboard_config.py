@@ -307,7 +307,13 @@ def test_runner_scheduler_apply_command_from_env(monkeypatch) -> None:
 
 
 def test_version() -> None:
-    assert dashboard_config.VERSION == "1.2.0"
+    version_file = Path(__file__).parent.parent / "VERSION"
+    expected = next(
+        line.strip()
+        for line in version_file.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.startswith("#")
+    )
+    assert dashboard_config.VERSION == expected
 
 
 # ---------------------------------------------------------------------------

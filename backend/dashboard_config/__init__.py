@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 import os
 import platform
+import re
 import secrets
 import tempfile
 from pathlib import Path
@@ -173,8 +174,20 @@ def runner_scheduler_apply_command() -> list[str]:
     return [RUNNER_SCHEDULER_BIN, "apply", "--config", str(RUNNER_SCHEDULE_CONFIG)]
 
 
+def _read_repo_version(version_path: Path = REPO_ROOT / "VERSION") -> str:
+    """Return the first semver entry from the repository VERSION file."""
+    for raw_line in version_path.read_text(encoding="utf-8").splitlines():
+        candidate = raw_line.strip()
+        if not candidate or candidate.startswith("#"):
+            continue
+        if re.fullmatch(r"\d+\.\d+\.\d+", candidate):
+            return candidate
+        break
+    raise RuntimeError(f"{version_path} must contain a MAJOR.MINOR.PATCH version")
+
+
 # Deployment
-VERSION = "1.2.0"
+VERSION = _read_repo_version()
 DEPLOYMENT_FILE = Path(os.environ.get("RUNNER_DASHBOARD_DEPLOYMENT_FILE", BACKEND_DIR.parent / "deployment.json"))
 EXPECTED_VERSION_FILE = Path(os.environ.get("RUNNER_DASHBOARD_EXPECTED_VERSION_FILE", BACKEND_DIR.parent / "VERSION"))
 
