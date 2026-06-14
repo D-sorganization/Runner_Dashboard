@@ -100,7 +100,7 @@ jobs:
                       continue
                   values = collect_runs_on(job)
                   if not values:
-                      # Could be an expression like ${{ needs.pick-runner.outputs.runner }};
+                      # Could be a runtime expression that resolves to a runner label;
                       # treat the raw expression text as the value to inspect.
                       raw = job.get("runs-on")
                       if isinstance(raw, str):
@@ -113,7 +113,7 @@ jobs:
                       if HOSTED.match(v_clean):
                           violations.append(
                               f"{wf.name}::{job_id}: runs-on '{v_clean}' is a hosted runner; "
-                              f"route to d-sorg-fleet (or `${{{{ needs.pick-runner.outputs.runner }}}}`)."
+                              "route to d-sorg-fleet or the pick-runner output."
                           )
 
           if violations:
