@@ -28,7 +28,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import AliasChoices, BaseModel, Field, field_validator, model_validator
 
 # The contract major version this dashboard build was written against. Surfaced
 # at the /api/version boundary so a major-version mismatch with the daemon's
@@ -202,7 +202,7 @@ class MaxwellTaskListResponse(BaseModel):
 
     tasks: list[MaxwellTaskItem] = Field(default_factory=list)
     next_cursor: str | None = Field(default=None, description="MD pagination cursor (None until MD implements it)")
-    total: int | None = Field(default=None, ge=0)
+    total: int = Field(ge=0)
 
 
 # ---------------------------------------------------------------------------
@@ -306,13 +306,26 @@ class MaxwellWorkersResponse(BaseModel):
 
 
 class MaxwellCostResponse(BaseModel):
-    """Consumer view of Maxwell-Daemon's /api/v1/cost endpoint."""
+    """Consumer view of Maxwell-Daemon's ``GET /api/v1/cost`` endpoint.
 
+    MD's OpenAPI schema defines ``CostSummary`` as
+    ``{month_to_date_usd, by_backend}``. ``month_to_date_usd`` is required on the
+    producer side; RD mirrors it directly and derives the legacy ``total_usd``
+    field so existing dashboard code keeps reading a total without silently
+    dropping the daemon's only emitted cost total (#960/#997).
+    """
+
+    month_to_date_usd: float = Field(ge=0)
     total_usd: float | None = Field(default=None, ge=0)
     window: str | None = Field(default=None, description="e.g. 'rolling_30d'")
     by_model: dict[str, float] | None = Field(default=None)
-    by_backend: dict[str, float] | None = Field(default=None)
+    by_backend: dict[str, float] = Field(default_factory=dict)
     currency: str = Field(default="USD")
+
+    @model_validator(mode="after")
+    def _derive(self) -> MaxwellCostResponse:
+        self.total_usd = self.month_to_date_usd
+        return self
 
 
 # ---------------------------------------------------------------------------
@@ -356,8 +369,8 @@ class MaxwellDispatchResponse(BaseModel):
     additive rollover (reversible — DbC).
     """
 
-    task_id: str = Field(alias="id", default="unknown")
-    status: str = Field(default="queued")
+    task_id: str = Field(validation_alias=AliasChoices("task_id", "id"))
+    status: str
     idempotency_key: str | None = Field(default=None)
     queued_at: str | None = Field(default=None)
     created_at: str | None = Field(default=None)
