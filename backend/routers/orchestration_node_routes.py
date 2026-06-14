@@ -7,6 +7,7 @@ import logging
 from typing import TYPE_CHECKING
 
 import httpx
+import proxy_utils
 from dashboard_config import FLEET_NODES, HOSTNAME
 from fastapi import APIRouter, HTTPException, Request
 
@@ -20,39 +21,32 @@ log = logging.getLogger("dashboard.orchestration")
 router = APIRouter(tags=["orchestration"])
 
 _get_fleet_nodes_impl: Callable | None = None
-_proxy_to_hub: Callable | None = None
-_should_proxy_fleet_to_hub: Callable | None = None
 _get_system_metrics_snapshot: Callable | None = None
 
 
 def set_dependencies(
     get_fleet_nodes_impl: Callable,
-    proxy_to_hub: Callable,
-    should_proxy_fleet_to_hub: Callable,
     get_system_metrics_snapshot: Callable,
 ) -> None:
     """Wire server.py helpers into this route module."""
-    global _get_fleet_nodes_impl, _proxy_to_hub, _should_proxy_fleet_to_hub  # noqa: PLW0603
-    global _get_system_metrics_snapshot  # noqa: PLW0603
+    global _get_fleet_nodes_impl, _get_system_metrics_snapshot  # noqa: PLW0603
     _get_fleet_nodes_impl = get_fleet_nodes_impl
-    _proxy_to_hub = proxy_to_hub
-    _should_proxy_fleet_to_hub = should_proxy_fleet_to_hub
     _get_system_metrics_snapshot = get_system_metrics_snapshot
 
 
 @router.get("/api/fleet/nodes")
 async def get_fleet_nodes(request: Request) -> dict:
     """Aggregate system metrics + health from all fleet nodes."""
-    if _should_proxy_fleet_to_hub(request):  # type: ignore[misc]
-        return await _proxy_to_hub(request)  # type: ignore[misc]
+    if proxy_utils.should_proxy_fleet_to_hub(request):
+        return await proxy_utils.proxy_to_hub(request)
     return await _get_fleet_nodes_impl()  # type: ignore[misc]
 
 
 @router.get("/api/fleet/hardware")
 async def get_fleet_hardware(request: Request) -> dict:
     """Return centralized fleet hardware specs for workload placement."""
-    if _should_proxy_fleet_to_hub(request):  # type: ignore[misc]
-        return await _proxy_to_hub(request)  # type: ignore[misc]
+    if proxy_utils.should_proxy_fleet_to_hub(request):
+        return await proxy_utils.proxy_to_hub(request)
     fleet = await _get_fleet_nodes_impl()  # type: ignore[misc]
     machines = []
     for node in fleet.get("nodes", []):

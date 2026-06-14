@@ -1,10 +1,17 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.113
+**Spec Version:** 2.5.114
 **Application Version:** 4.9.16 (see `VERSION`)
-**Last Updated:** 2026-06-14T16:10:00-07:00
+**Last Updated:** 2026-06-14T16:45:00-07:00
 **Status:** Active
 
+- **2026-06-14 (2.5.114):** Removed the hub-proxy `configure()` globals from
+  the deployment and orchestration routers for issue #949. The routers now call
+  the canonical `proxy_utils` implementation directly, keeping the
+  credential-stripping proxy contract DRY and eliminating mutable
+  `_proxy_to_hub` / `_should_proxy_fleet_to_hub` module state. The
+  `tests/api/test_proxy_credential_stripping.py` regression now fails if those
+  injected proxy callables return.
 - **2026-06-14 (2.5.113):** Kept the runner job-started hook bounded for fleet
   reliability. `deploy/runner-hooks/job-started.sh` now keeps the fast global
   `~/.gitconfig.lock` cleanup in place, makes the expensive per-worktree stale

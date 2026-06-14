@@ -2364,8 +2364,6 @@ _orchestration_router.set_dependencies(
     fleet_control_local=_fleet_control_local,
     remote_fleet_control=_remote_fleet_control,
     get_fleet_nodes_impl=_get_fleet_nodes_impl,
-    proxy_to_hub=proxy_to_hub,
-    should_proxy_fleet_to_hub=_should_proxy_fleet_to_hub,
     get_runner_capacity_snapshot=get_runner_capacity_snapshot,
     validate_runner_schedule=_validate_runner_schedule,
     write_runner_schedule_config=_write_runner_schedule_config,
@@ -2404,8 +2402,6 @@ _orchestrator_api.set_capacity_provider(_orchestrator_capacity_provider)
 # Inject dependencies into deployment router
 _deployment_router.set_dependencies(
     get_fleet_nodes_impl=_get_fleet_nodes_impl,
-    proxy_to_hub=proxy_to_hub,
-    should_proxy_fleet_to_hub=_should_proxy_fleet_to_hub,
     deployment_info=_deployment_info,
     read_expected_dashboard_version=_read_expected_dashboard_version,
     build_deployment_state=_build_deployment_state,
