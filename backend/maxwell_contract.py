@@ -28,7 +28,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import AliasChoices, BaseModel, Field, field_validator, model_validator
 
 # The contract major version this dashboard build was written against. Surfaced
 # at the /api/version boundary so a major-version mismatch with the daemon's
@@ -356,7 +356,7 @@ class MaxwellDispatchResponse(BaseModel):
     additive rollover (reversible — DbC).
     """
 
-    task_id: str = Field(alias="id", default="unknown")
+    task_id: str = Field(validation_alias=AliasChoices("task_id", "id"))
     status: str = Field(default="queued")
     idempotency_key: str | None = Field(default=None)
     queued_at: str | None = Field(default=None)

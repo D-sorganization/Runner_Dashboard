@@ -9,6 +9,7 @@ Acceptance criteria verified:
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -20,6 +21,102 @@ if str(_BACKEND) not in sys.path:
     sys.path.insert(0, str(_BACKEND))
 
 import maxwell_contract as mc  # noqa: E402
+
+_CONTRACTS = Path(__file__).parent / "contracts"
+_MAXWELL_OPENAPI = _CONTRACTS / "maxwell_openapi.json"
+
+
+def _load_maxwell_openapi() -> dict:
+    return json.loads(_MAXWELL_OPENAPI.read_text(encoding="utf-8"))
+
+
+def _resolve_schema(openapi: dict, schema: dict) -> dict:
+    ref = schema.get("$ref")
+    if not ref:
+        return schema
+    name = ref.rsplit("/", 1)[-1]
+    return openapi["components"]["schemas"][name]
+
+
+def _response_schema(openapi: dict, path: str, method: str = "get", status: str = "200") -> dict:
+    return _resolve_schema(
+        openapi,
+        openapi["paths"][path][method]["responses"][status]["content"]["application/json"]["schema"],
+    )
+
+
+def _schema_payload(openapi: dict, schema: dict, *, field_name: str = "") -> object:
+    schema = _resolve_schema(openapi, schema)
+    if "anyOf" in schema:
+        non_null = next((item for item in schema["anyOf"] if item.get("type") != "null"), schema["anyOf"][0])
+        return _schema_payload(openapi, non_null, field_name=field_name)
+    if "enum" in schema:
+        return schema["enum"][0]
+    if "default" in schema:
+        return schema["default"]
+
+    schema_type = schema.get("type")
+    if schema_type == "object" or "properties" in schema:
+        properties = schema.get("properties", {})
+        required = schema.get("required", list(properties))
+        if not properties:
+            additional = schema.get("additionalProperties", {})
+            if additional is True:
+                return {}
+            if not isinstance(additional, dict):
+                additional = {}
+            if additional.get("type") == "integer":
+                return {"running": 1, "queued": 0, "completed": 1, "failed": 0}
+            if additional.get("type") == "number":
+                return {"sample": 1.0}
+            return {}
+        return {
+            name: _schema_payload(openapi, properties[name], field_name=name) for name in required if name in properties
+        }
+    if schema_type == "array":
+        return [_schema_payload(openapi, schema.get("items", {}), field_name=field_name)]
+    if schema_type == "integer":
+        return 1
+    if schema_type == "number":
+        return 1.0
+    if schema_type == "boolean":
+        return True
+    if schema_type == "string":
+        samples = {
+            "action": "pause",
+            "contract": mc.EXPECTED_CONTRACT_VERSION,
+            "created_at": "2026-06-12T00:00:00Z",
+            "daemon": "3.1.0",
+            "gate": "open",
+            "generated_at": "2026-06-12T00:00:00Z",
+            "pipeline_state": "running",
+            "previous_state": "running",
+            "queued_at": "2026-06-12T00:00:00Z",
+            "sandbox": "enabled",
+            "status": "running",
+            "task_id": "t-1",
+        }
+        return samples.get(field_name, f"{field_name or 'value'}-sample")
+    return None
+
+
+def _maxwell_contract_payloads() -> dict[str, dict]:
+    openapi = _load_maxwell_openapi()
+    task_list = _schema_payload(openapi, _response_schema(openapi, "/api/tasks"))
+    return {
+        "version": _schema_payload(openapi, _response_schema(openapi, "/api/version")),
+        "status": _schema_payload(openapi, _response_schema(openapi, "/api/status")),
+        "status_v2": _schema_payload(openapi, _response_schema(openapi, "/api/v2/status")),
+        "task_list": task_list,
+        "task_summary": task_list["tasks"][0],
+        "task_detail": _schema_payload(openapi, _response_schema(openapi, "/api/tasks/{task_id}")),
+        "dispatch": _schema_payload(openapi, _response_schema(openapi, "/api/dispatch", "post", "202")),
+        "control": _schema_payload(openapi, _response_schema(openapi, "/api/control/{action}", "post")),
+        # These MD endpoints still publish generic object schemas. Keep explicit
+        # producer-observed payloads until MD gives them typed OpenAPI responses.
+        "workers": {"worker_count": 2, "queue_depth": 0},
+    }
+
 
 # ---------------------------------------------------------------------------
 # strip_sensitive
@@ -397,37 +494,24 @@ class TestTaskContractAlignment:
 
 
 # ---------------------------------------------------------------------------
-# #960 — consumer-driven contract: pin MD's REAL response shapes in one place
-# and assert every RD model both (a) accepts the canonical MD payload and
-# (b) fails loud when MD renames a discriminating field. This replaces the
-# old hand-written fixtures (e.g. {"state": "running", "active_tasks": 3})
-# that MD never emitted, which let drift pass both repos' CI silently.
-#
-# These canonical shapes mirror maxwell_daemon/api/contract.py. If MD renames
-# a field, the corresponding `*_field_rename_fails_loud` test turns red here,
-# surfacing the drift on the consumer side before merge.
+# #960 — consumer-driven contract: derive RD's canonical payloads from MD's
+# generated OpenAPI snapshot. If MD renames a discriminating field in the
+# precise schemas below, the corresponding `*_field_rename_fails_loud` test
+# turns red here, surfacing drift on the consumer side before merge.
 # ---------------------------------------------------------------------------
 
-# Canonical MD response shapes (the single source of truth on the RD side).
-MD_CANONICAL: dict[str, dict] = {
-    "version": {"daemon": "3.1.0", "contract": "2.0.0"},
-    "status": {"pipeline_state": "running", "active_task_id": "t-1", "gate": "open", "sandbox": "enabled"},
-    "status_v2": {"counts": {"running": 1, "queued": 0, "completed": 5, "failed": 0}},
-    "task_summary": {"id": "t-1", "status": "running", "created_at": "2026-06-12T00:00:00Z"},
-    "task_detail": {
-        "id": "t-1",
-        "status": "completed",
-        "created_at": "2026-06-12T00:00:00Z",
-        "transcript": [],
-        "artifacts": [],
-    },
-    "workers": {"worker_count": 2, "queue_depth": 0},
-    "control": {"action": "pause", "applied_at": "2026-06-12T00:00:00Z", "previous_state": "running"},
-}
+MD_CANONICAL: dict[str, dict] = _maxwell_contract_payloads()
 
 
 class TestConsumerDrivenContract:
     """#960 — RD models validate against MD's real shapes, not hand-written ones."""
+
+    def test_openapi_snapshot_is_vendored(self) -> None:
+        openapi = _load_maxwell_openapi()
+        assert openapi["paths"]["/api/status"]["get"]["responses"]["200"]["content"]["application/json"]["schema"][
+            "$ref"
+        ].endswith("/StatusResponse")
+        assert "StatusResponse" in openapi["components"]["schemas"]
 
     def test_version_accepts_canonical_md_shape(self) -> None:
         mc.MaxwellVersionResponse.model_validate(MD_CANONICAL["version"])
@@ -441,6 +525,9 @@ class TestConsumerDrivenContract:
     def test_task_summary_accepts_canonical_md_shape(self) -> None:
         mc.MaxwellTaskItem.model_validate(MD_CANONICAL["task_summary"])
 
+    def test_task_list_accepts_canonical_md_shape(self) -> None:
+        mc.MaxwellTaskListResponse.model_validate(MD_CANONICAL["task_list"])
+
     def test_task_detail_accepts_canonical_md_shape(self) -> None:
         mc.MaxwellTaskDetailResponse.model_validate(MD_CANONICAL["task_detail"])
 
@@ -450,6 +537,9 @@ class TestConsumerDrivenContract:
     def test_control_accepts_canonical_md_shape(self) -> None:
         mc.MaxwellControlResponse.model_validate(MD_CANONICAL["control"])
 
+    def test_dispatch_accepts_canonical_md_shape(self) -> None:
+        mc.MaxwellDispatchResponse.model_validate(MD_CANONICAL["dispatch"])
+
     @pytest.mark.parametrize(
         ("shape_key", "discriminator", "model"),
         [
@@ -458,6 +548,7 @@ class TestConsumerDrivenContract:
             ("status_v2", "counts", "MaxwellStatusV2Response"),
             ("task_summary", "status", "MaxwellTaskItem"),
             ("task_detail", "status", "MaxwellTaskDetailResponse"),
+            ("dispatch", "task_id", "MaxwellDispatchResponse"),
             ("workers", "worker_count", "MaxwellWorkersResponse"),
             ("control", "action", "MaxwellControlResponse"),
         ],
