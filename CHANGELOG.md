@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.9.16] - 2026-06-14
+
+### Fixed
+
+- Aligned the dashboard's release metadata with the canonical `VERSION` file:
+  backend runtime version, Python package metadata, frontend package metadata,
+  lockfiles, and `SPEC.md` now track `4.9.16` under a regression test.
+
 ### Added
 
 - Queue reaper unroutable-job detection (`backend/queue_cleanup.py`): a new

@@ -395,7 +395,7 @@ HEAVY_TEST_REPOS = {
 
 app = FastAPI(
     title="D-sorganization Runner Dashboard",
-    version="4.0.0",
+    version=dashboard_config.VERSION,
     description="Monitor and control self-hosted GitHub Actions runners",
 )
 
@@ -2645,7 +2645,7 @@ if __name__ == "__main__":
     import uvicorn
 
     log.info("=" * 60)
-    log.info("  D-sorganization Runner Dashboard v4.0")
+    log.info("  D-sorganization Runner Dashboard v%s", dashboard_config.VERSION)
     log.info("  Local:   http://localhost:%s", PORT)
     log.info("  Network: http://0.0.0.0:%s", PORT)
     log.info("  API docs: http://localhost:%s/docs", PORT)
