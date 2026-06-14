@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import deployment_drift
+import proxy_utils
 from dashboard_config import EXPECTED_VERSION_FILE, HOSTNAME
 from fastapi import APIRouter, Depends, Request
 from identity import Principal, require_scope  # noqa: B008
@@ -36,8 +37,6 @@ router = APIRouter(tags=["deployment"])
 # ---------------------------------------------------------------------------
 
 _get_fleet_nodes_impl: Callable[[], Any] | None = None
-_proxy_to_hub: Callable[[Request], Any] | None = None
-_should_proxy_fleet_to_hub: Callable[[Request], bool] | None = None
 _deployment_info: Callable[[], dict] | None = None
 _read_expected_dashboard_version: Callable[[], Any] | None = None
 _build_deployment_state: Callable[[list, str], dict] | None = None
@@ -45,18 +44,14 @@ _build_deployment_state: Callable[[list, str], dict] | None = None
 
 def set_dependencies(
     get_fleet_nodes_impl: Callable,
-    proxy_to_hub: Callable,
-    should_proxy_fleet_to_hub: Callable,
     deployment_info: Callable,
     read_expected_dashboard_version: Callable,
     build_deployment_state: Callable,
 ) -> None:
     """Wire server.py helpers into this router (called at startup)."""
-    global _get_fleet_nodes_impl, _proxy_to_hub, _should_proxy_fleet_to_hub  # noqa: PLW0603
-    global _deployment_info, _read_expected_dashboard_version, _build_deployment_state  # noqa: PLW0603
+    global _get_fleet_nodes_impl, _deployment_info, _read_expected_dashboard_version  # noqa: PLW0603
+    global _build_deployment_state  # noqa: PLW0603
     _get_fleet_nodes_impl = get_fleet_nodes_impl
-    _proxy_to_hub = proxy_to_hub
-    _should_proxy_fleet_to_hub = should_proxy_fleet_to_hub
     _deployment_info = deployment_info
     _read_expected_dashboard_version = read_expected_dashboard_version
     _build_deployment_state = build_deployment_state
@@ -94,8 +89,8 @@ async def get_deployment_drift() -> dict:
 @router.get("/api/deployment/state")
 async def get_deployment_state(request: Request) -> dict:
     """Return dashboard deployment state for the fleet overview and deployment tab."""
-    if _should_proxy_fleet_to_hub(request):  # type: ignore[misc]
-        return await _proxy_to_hub(request)  # type: ignore[misc]
+    if proxy_utils.should_proxy_fleet_to_hub(request):
+        return await proxy_utils.proxy_to_hub(request)
     fleet = await _get_fleet_nodes_impl()  # type: ignore[misc]
     expected = await _read_expected_dashboard_version()  # type: ignore[misc]
     return _build_deployment_state(fleet.get("nodes", []), expected)  # type: ignore[misc]

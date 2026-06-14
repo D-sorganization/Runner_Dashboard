@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING
 
 import dispatch_contract
 import orchestration_audit as _audit
+import proxy_utils
 from dashboard_config import FLEET_NODES, HOSTNAME, MACHINE_ROLE, ORG, PORT, REPO_ROOT
 from fastapi import APIRouter, Depends, HTTPException, Request
 from identity import Principal, require_scope  # noqa: B008
@@ -58,8 +59,6 @@ router.include_router(_node_routes.router)
 _fleet_control_local: Callable | None = None
 _remote_fleet_control: Callable | None = None
 _get_fleet_nodes_impl: Callable | None = None
-_proxy_to_hub: Callable | None = None
-_should_proxy_fleet_to_hub: Callable | None = None
 _run_cmd: Callable | None = None
 
 _DEPLOY_ACTIONS = {"sync_workflows", "restart_runner", "update_config"}
@@ -69,8 +68,6 @@ def set_dependencies(  # noqa: PLR0913
     fleet_control_local: Callable,
     remote_fleet_control: Callable,
     get_fleet_nodes_impl: Callable,
-    proxy_to_hub: Callable,
-    should_proxy_fleet_to_hub: Callable,
     get_runner_capacity_snapshot: Callable,
     validate_runner_schedule: Callable,
     write_runner_schedule_config: Callable,
@@ -84,14 +81,11 @@ def set_dependencies(  # noqa: PLR0913
 ) -> None:
     """Wire server.py helpers into this router (called at startup)."""
     global _fleet_control_local, _remote_fleet_control, _get_fleet_nodes_impl  # noqa: PLW0603
-    global _proxy_to_hub, _should_proxy_fleet_to_hub  # noqa: PLW0603
     global _run_cmd  # noqa: PLW0603
 
     _fleet_control_local = fleet_control_local
     _remote_fleet_control = remote_fleet_control
     _get_fleet_nodes_impl = get_fleet_nodes_impl
-    _proxy_to_hub = proxy_to_hub
-    _should_proxy_fleet_to_hub = should_proxy_fleet_to_hub
     _run_cmd = run_cmd
     _schedule_routes.set_dependencies(
         get_runner_capacity_snapshot=get_runner_capacity_snapshot,
@@ -105,8 +99,6 @@ def set_dependencies(  # noqa: PLR0913
     )
     _node_routes.set_dependencies(
         get_fleet_nodes_impl=get_fleet_nodes_impl,
-        proxy_to_hub=proxy_to_hub,
-        should_proxy_fleet_to_hub=should_proxy_fleet_to_hub,
         get_system_metrics_snapshot=get_system_metrics_snapshot,
     )
 
@@ -403,8 +395,8 @@ async def fleet_control(
     locally and fans it out to configured nodes. Internal fan-out calls use
     ``?local=1`` so each node controls its own runner services.
     """
-    if _should_proxy_fleet_to_hub(request):  # type: ignore[misc]
-        return await _proxy_to_hub(request)  # type: ignore[misc]
+    if proxy_utils.should_proxy_fleet_to_hub(request):
+        return await proxy_utils.proxy_to_hub(request)
 
     scope = request.query_params.get("scope", "fleet")
     should_fan_out = MACHINE_ROLE == "hub" and scope != "local" and bool(FLEET_NODES)
