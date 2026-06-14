@@ -14,7 +14,11 @@
   are renamed. The task-list model now requires MD's `total`, dispatch requires
   a producer task id/status while retaining the legacy `id` alias, and cost
   mirrors MD's required `month_to_date_usd` into the dashboard's legacy
-  `total_usd` field.
+  `total_usd` field. `scripts/check_maxwell_contract_drift.py` and
+  `.github/workflows/maxwell-contract-drift.yml` add a scheduled/manual
+  self-hosted drift monitor that compares the vendored snapshot with
+  `D-sorganization/Maxwell_Daemon` main and records a GitHub issue when they
+  differ.
 - **2026-06-13 (2.5.111):** Expose hub-circuit degraded fallback state for issue
   #948. When a node with `HUB_URL` serves local `/api/fleet/status` data only
   because the hub circuit is open, the response now includes top-level
