@@ -10,6 +10,7 @@ export default defineConfig({
         rollupOptions: {
             output: {
                 manualChunks: function (id) {
+                    var normalizedId = id.replace(/\\/g, '/');
                     if (id.includes('node_modules/react/') || id.includes('node_modules/react-dom/')) {
                         return 'vendor-react';
                     }
@@ -18,6 +19,9 @@ export default defineConfig({
                     }
                     if (id.includes('node_modules/dompurify')) {
                         return 'vendor-dompurify';
+                    }
+                    if (normalizedId.includes('/frontend/src/pages/FleetOrchestration')) {
+                        return 'fleet-orchestration';
                     }
                 },
             },

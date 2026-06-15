@@ -14,16 +14,20 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id: string) {
+          const normalizedId = id.replace(/\\/g, '/')
           if (id.includes('node_modules/react/') || id.includes('node_modules/react-dom/')) {
             return 'vendor-react'
           }
           if (id.includes('node_modules/marked')) {
             return 'vendor-marked'
           }
-          if (id.includes('node_modules/dompurify')) {
-            return 'vendor-dompurify'
-          }
-        },
+        if (id.includes('node_modules/dompurify')) {
+          return 'vendor-dompurify'
+        }
+        if (normalizedId.includes('/frontend/src/pages/FleetOrchestration')) {
+          return 'fleet-orchestration'
+        }
+      },
       },
     },
   },

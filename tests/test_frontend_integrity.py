@@ -710,7 +710,8 @@ def test_fleet_orchestration_desktop_route_bypasses_legacy_app() -> None:
     orchestration_page = (_FRONTEND_DIR / "src" / "pages" / "FleetOrchestrationPage.tsx").read_text(encoding="utf-8")
 
     assert 'case "fleet-orchestration":' in routed_shell
-    assert "return <FleetOrchestrationPage />;" in routed_shell
+    assert "const LazyFleetOrchestrationPage = React.lazy(" in routed_shell
+    assert "return <LazyFleetOrchestrationPage />;" in routed_shell
     assert 'legacyFetch("/api/fleet/orchestration"' in orchestration_page
     assert 'legacyFetch("/api/fleet/orchestration/dispatch"' in orchestration_page
     assert 'legacyFetch("/api/fleet/orchestration/deploy"' in orchestration_page

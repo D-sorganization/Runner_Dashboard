@@ -83,6 +83,9 @@ vi.mock("../../pages/FleetOrchestrationPage", () => ({
   FleetOrchestrationPage: () => (
     <div data-testid="native-fleet-orchestration">Fleet Orchestration</div>
   ),
+  default: () => (
+    <div data-testid="native-fleet-orchestration">Fleet Orchestration</div>
+  ),
 }));
 
 vi.mock("../../pages/LinearSetup", () => ({
