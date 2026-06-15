@@ -1,10 +1,16 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.127
+**Spec Version:** 2.5.128
 **Application Version:** 4.9.17 (see `VERSION`)
-**Last Updated:** 2026-06-15T13:58:00-07:00
+**Last Updated:** 2026-06-15T14:22:00-07:00
 **Status:** Active
 
+- **2026-06-15 (2.5.128):** Hardened the mobile Credentials tab visibility
+  lock after #949 extraction by installing the `visibilitychange` listener for
+  the full mobile lifecycle and updating the unlock ref synchronously before
+  refresh callbacks run. This closes the same-tick unlock race where mobile
+  credential metadata could remain visible after the tab lost focus, with a
+  focused Vitest regression.
 - **2026-06-15 (2.5.127):** Continued #949 frontend monolith retirement by
   deleting the dead legacy `LANG_COLORS` copy from `legacy/App.tsx` and routing
   the extracted Organization tab through the tested shared
@@ -856,6 +862,7 @@ Icon, tooltip, tabId, frequent }`. Six ordered groups (Fleet & Runners,
 - **2026-05-28 (2.5.40):** Added tier-aware autoscaler controls for ControlTower
   NVMe and HDD pools (issue #755). New `backend/routers/autoscaler_pools.py`
   exposes two endpoints:
+
   - `GET /api/autoscaler/pools` — returns per-pool scaling state (pool name,
     min/max/default online counts, systemd unit pattern, labels, start/stop
     enabled flags, primary pressure metric name, cooldown secs, dry_run flag).
@@ -1865,12 +1872,12 @@ Response shape (`schema_version` `1.0.0`):
       "setup_hint": "...",
       "experimental": false,
       "editable": true,
-      "remote": false,
-    },
+      "remote": false
+    }
   ],
   "auth_kinds": ["none", "github_app", "api_key", "local"],
   "task_classes": ["format", "..."],
-  "capabilities": ["code_edit", "..."],
+  "capabilities": ["code_edit", "..."]
 }
 ```
 

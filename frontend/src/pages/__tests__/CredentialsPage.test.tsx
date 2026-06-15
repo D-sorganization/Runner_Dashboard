@@ -202,6 +202,26 @@ describe("CredentialsTab", () => {
     Object.defineProperty(document, "hidden", { value: false, configurable: true });
   });
 
+  it("re-locks when visibility is lost during the unlock completion tick", async () => {
+    vi.stubGlobal("PublicKeyCredential", function () {});
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(jsonResponse({ challenge: "AAAA", allow_credentials: [] }))));
+    vi.stubGlobal("navigator", {
+      credentials: { get: () => Promise.resolve({ id: "c", type: "public-key", rawId: new ArrayBuffer(0), response: {} }) },
+    });
+    const onRefresh = vi.fn(() => {
+      Object.defineProperty(document, "hidden", { value: true, configurable: true });
+      fireEvent(document, new Event("visibilitychange"));
+    });
+    render(
+      <CredentialsTab probes={PROBES} summary={{}} loading={false} onRefresh={onRefresh} mobile />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Show credentials" }));
+    await waitFor(() => expect(onRefresh).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByText("Credentials locked")).toBeInTheDocument());
+    expect(screen.queryByText("Anthropic")).not.toBeInTheDocument();
+    Object.defineProperty(document, "hidden", { value: false, configurable: true });
+  });
+
   it("reports a failed WebAuthn assertion on mobile", async () => {
     vi.stubGlobal("PublicKeyCredential", function () {});
     vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(jsonResponse({ challenge: "AAAA", allow_credentials: [] }))));
