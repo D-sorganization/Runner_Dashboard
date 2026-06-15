@@ -1,10 +1,28 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.121
+**Spec Version:** 2.5.124
 **Application Version:** 4.9.17 (see `VERSION`)
-**Last Updated:** 2026-06-15T03:52:00-07:00
+**Last Updated:** 2026-06-15T12:56:00-07:00
 **Status:** Active
 
+- **2026-06-15 (2.5.124):** Hardened the Python 3.14 Docker build path by
+  deleting temporary Rust/cargo/rustup and pip build caches after source-built
+  wheels are installed. This keeps build-only `pyo3` sources out of the
+  runtime image and prevents Trivy from failing on vulnerabilities in discarded
+  build inputs while preserving the locked dependency set.
+- **2026-06-15 (2.5.123):** Restored Docker image build compatibility after
+  the pinned runtime image advanced to Python 3.14. The locked dependency set
+  can require native Rust/C extension builds before upstream wheels are
+  available, so `Dockerfile` now installs the minimal Debian build toolchain
+  used by those source builds while keeping the runtime healthcheck and
+  non-root execution contract unchanged.
+- **2026-06-15 (2.5.122):** Continued #949 frontend monolith retirement with
+  a shrink-only static guard. `tests/test_frontend_integrity.py` now fails if
+  `legacy/App.tsx` grows above 2960 lines and asserts Fleet/Remediation route
+  through the extracted `pages/FleetTab.tsx` and `pages/RemediationTab.tsx`
+  implementations instead of reintroducing inline legacy twins. The legacy app
+  sheds obsolete decomposition comments while preserving current shell
+  behaviour.
 - **2026-06-15 (2.5.121):** Continued #949 frontend monolith hardening. Legacy
   dashboard polling now registers through `frontend/src/legacy/visibleInterval.ts`,
   which skips interval callbacks while the browser tab is hidden and refreshes

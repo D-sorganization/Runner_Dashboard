@@ -17,9 +17,12 @@ _SRC_DIR = _FRONTEND_DIR / "src"
 _INDEX_HTML = _SRC_DIR / "legacy" / "App.tsx"
 _VISIBLE_INTERVAL = _SRC_DIR / "legacy" / "visibleInterval.ts"
 _QUEUE_INDEX = _SRC_DIR / "pages" / "Queue" / "index.tsx"
+_FLEET_TAB = _SRC_DIR / "pages" / "FleetTab.tsx"
+_REMEDIATION_TAB = _SRC_DIR / "pages" / "RemediationTab.tsx"
 _PUSH_SETTINGS = _FRONTEND_DIR / "src" / "pages" / "PushSettings.tsx"
 _DESIGN_DIR = _FRONTEND_DIR / "src" / "design"
 _PRIMITIVES_DIR = _FRONTEND_DIR / "src" / "primitives"
+_LEGACY_APP_LINE_RATCHET = 2960
 
 
 def _read_index() -> str:
@@ -144,6 +147,29 @@ def test_legacy_polling_pauses_while_tab_is_hidden() -> None:
     poller_block = content[poller_start : content.index("];", poller_start)]
     assert poller_block.count("createVisibleInterval(") == 15
     assert "createVisibleInterval(checkHealth, 2000)" in content
+
+
+def test_legacy_app_line_count_ratchet_shrinks_for_issue_949() -> None:
+    """The legacy monolith must only shrink while tabs are retired (#949)."""
+    line_count = len(_INDEX_HTML.read_text(encoding="utf-8").splitlines())
+
+    assert line_count <= _LEGACY_APP_LINE_RATCHET
+
+
+def test_fleet_and_remediation_tabs_are_extracted_from_legacy_monolith() -> None:
+    """Fleet and Remediation route through page modules, not inline twins (#949)."""
+    content = _read_legacy_app()
+    fleet_page = _FLEET_TAB.read_text(encoding="utf-8")
+    remediation_page = _REMEDIATION_TAB.read_text(encoding="utf-8")
+
+    assert 'import { FleetTab } from "../pages/FleetTab"' in content
+    assert 'import { RemediationTab } from "../pages/RemediationTab"' in content
+    assert "function FleetTab" not in content
+    assert "function RemediationTab" not in content
+    assert "h(FleetTab, {" in content
+    assert "h(RemediationTab, {" in content
+    assert "export function FleetTab" in fleet_page
+    assert "export function RemediationTab" in remediation_page
 
 
 def test_runner_facing_tables_use_sortable_headers() -> None:

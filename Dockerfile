@@ -1,9 +1,10 @@
 # Dockerfile for runner-dashboard
 # Provides a reproducible, hardened container environment.
 #
-# Base image: python:3.12-slim
-# Python 3.12 has full binary wheel availability for all common packages
-# (pydantic-core, uvloop, watchfiles, httptools, jiter, etc.).
+# Base image: python:3.14-slim
+# Python 3.14 does not yet have full binary wheel coverage for every locked
+# dependency, so the image includes a minimal compiler toolchain for source
+# builds during the dependency install layer.
 # To regenerate requirements.lock.txt:  uv export --no-dev -o requirements.lock.txt
 
 FROM python:3.14-slim@sha256:44dd04494ee8f3b538294360e7c4b3acb87c8268e4d0a4828a6500b1eff50061
@@ -12,15 +13,19 @@ WORKDIR /app
 
 # Install system dependencies (curl needed for HEALTHCHECK)
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
+    build-essential \
     curl \
     git \
+    libffi-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user and group
 RUN groupadd --gid 10001 appuser \
     && useradd --uid 10001 --gid 10001 --no-create-home --shell /sbin/nologin appuser
 
-# Copy requirements first for layer caching; install with hash verification
+# Copy requirements first for layer caching; install with hash verification.
+# Python 3.14 source builds may download Rust build backends; do not ship their
+# cargo/rustup caches in the runtime image.
 COPY requirements.lock.txt .
 RUN pip install --no-cache-dir --upgrade \
         pip==26.1.2 \
@@ -34,7 +39,10 @@ RUN pip install --no-cache-dir --upgrade \
            /usr/local/lib/python3.12/site-packages/pip-25.0.1.dist-info \
            /usr/local/lib/python3.12/site-packages/setuptools-79.0.1.dist-info \
            /usr/local/lib/python3.12/site-packages/setuptools/_vendor/jaraco.context-5.3.0.dist-info \
-           /usr/local/lib/python3.12/site-packages/setuptools/_vendor/wheel-0.45.1.dist-info
+           /usr/local/lib/python3.12/site-packages/setuptools/_vendor/wheel-0.45.1.dist-info \
+           /root/.cache \
+           /tmp/* \
+           /var/tmp/*
 
 
 # Copy application code and set ownership

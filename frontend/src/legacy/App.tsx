@@ -430,9 +430,6 @@ var I = {
   },
 };
 
-// ════════════════════════ FLEET TAB ════════════════════════
-// FleetTab and its telemetry helpers were extracted to ../pages/FleetTab and
-// ../lib/fleetTelemetry as part of the decomposition epic (#836, pass 12).
 // ════════════════════════ ANALYSIS TAB (orchestrator) ════════════════════════
 // AnalysisTab (the sub-tab orchestrator) and its leaf panels are extracted to
 // ../pages/Analysis; the shared `isAnalysisTabKey` routing predicate lives in
@@ -2006,7 +2003,6 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
 
   var asstPosition = lsGet(ASST_LS.position, "right");
 
-  // ─── Consolidated alert surface (issue #819) ────────────────────────────
   // Roll the cross-cutting fleet signals into ONE durable, acknowledgeable
   // surface (status pill + drawer) instead of the old hero list + three sticky
   // banners that re-popped on every poll. Uses the same pure rollup as the
