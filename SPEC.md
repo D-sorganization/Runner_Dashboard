@@ -1,10 +1,17 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.125
+**Spec Version:** 2.5.126
 **Application Version:** 4.9.17 (see `VERSION`)
-**Last Updated:** 2026-06-15T13:05:00-07:00
+**Last Updated:** 2026-06-15T13:35:00-07:00
 **Status:** Active
 
+- **2026-06-15 (2.5.126):** Continued #949 frontend monolith retirement by
+  routing self-contained modern desktop tabs directly through their extracted
+  page modules. `agent-dispatch`, `cline-launcher`, `conductor`, `diagnostics`,
+  and `linear-setup` no longer mount the legacy `App` chunk in the modern
+  desktop shell, while stateful tabs still fall back to the chromeless legacy
+  app and the reversible legacy-layout flag remains intact. RoutedShell tests
+  now assert both the native route bypass and the legacy fallback contract.
 - **2026-06-15 (2.5.125):** Continued #949 frontend monolith retirement by
   extracting the legacy global fetch guard into
   `frontend/src/legacy/fetchGuards.ts`. The extracted guard owns the
