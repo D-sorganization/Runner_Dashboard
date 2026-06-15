@@ -23,7 +23,9 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
 RUN groupadd --gid 10001 appuser \
     && useradd --uid 10001 --gid 10001 --no-create-home --shell /sbin/nologin appuser
 
-# Copy requirements first for layer caching; install with hash verification
+# Copy requirements first for layer caching; install with hash verification.
+# Python 3.14 source builds may download Rust build backends; do not ship their
+# cargo/rustup caches in the runtime image.
 COPY requirements.lock.txt .
 RUN pip install --no-cache-dir --upgrade \
         pip==26.1.2 \
@@ -37,7 +39,10 @@ RUN pip install --no-cache-dir --upgrade \
            /usr/local/lib/python3.12/site-packages/pip-25.0.1.dist-info \
            /usr/local/lib/python3.12/site-packages/setuptools-79.0.1.dist-info \
            /usr/local/lib/python3.12/site-packages/setuptools/_vendor/jaraco.context-5.3.0.dist-info \
-           /usr/local/lib/python3.12/site-packages/setuptools/_vendor/wheel-0.45.1.dist-info
+           /usr/local/lib/python3.12/site-packages/setuptools/_vendor/wheel-0.45.1.dist-info \
+           /root/.cache \
+           /tmp/* \
+           /var/tmp/*
 
 
 # Copy application code and set ownership
