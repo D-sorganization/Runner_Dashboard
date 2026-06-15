@@ -37,6 +37,12 @@ vi.mock("../../pages/AgentDispatch", () => ({
   ),
 }));
 
+vi.mock("../../pages/Analysis", () => ({
+  AnalysisTab: (props: { activeTab?: string }) => (
+    <div data-testid="native-analysis">{props.activeTab}</div>
+  ),
+}));
+
 vi.mock("../../pages/ClineLauncher", () => ({
   ClineLauncherTab: () => (
     <div data-testid="native-cline-launcher">Cline Launcher</div>
@@ -175,6 +181,7 @@ describe("RoutedShell — URL is the source of truth", () => {
 
   it.each([
     ["agent-dispatch", "native-agent-dispatch"],
+    ["analysis", "native-analysis"],
     ["cline-launcher", "native-cline-launcher"],
     ["conductor", "native-conductor"],
     ["diagnostics", "native-diagnostics"],
@@ -182,6 +189,7 @@ describe("RoutedShell — URL is the source of truth", () => {
     ["linear-setup", "native-linear-setup"],
     ["principals", "native-principals"],
     ["push-settings", "native-push-settings"],
+    ["reports", "native-analysis"],
     ["scheduled-jobs", "native-scheduled-jobs"],
     ["settings", "native-settings"],
   ])(

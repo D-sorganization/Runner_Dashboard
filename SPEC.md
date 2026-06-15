@@ -1,10 +1,16 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.130
+**Spec Version:** 2.5.131
 **Application Version:** 4.9.17 (see `VERSION`)
 **Last Updated:** 2026-06-15T14:32:00-07:00
 **Status:** Active
 
+- **2026-06-15 (2.5.131):** Continued #949 frontend monolith retirement by
+  making `AnalysisTab` self-fetch report summaries when rendered outside the
+  legacy App owner, then routing `analysis` and `reports` desktop tabs directly
+  through `pages/Analysis.tsx`. The modern shell now bypasses the legacy `App`
+  chunk for those analysis routes while preserving the legacy prop-driven path
+  for fallback tabs.
 - **2026-06-15 (2.5.130):** Continued #949 frontend monolith retirement by
   routing the self-contained `events` desktop tab directly through
   `pages/Events.tsx`. The modern desktop shell now shows the event log and
