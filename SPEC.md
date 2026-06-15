@@ -1,10 +1,17 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.124
+**Spec Version:** 2.5.125
 **Application Version:** 4.9.17 (see `VERSION`)
-**Last Updated:** 2026-06-15T12:56:00-07:00
+**Last Updated:** 2026-06-15T13:05:00-07:00
 **Status:** Active
 
+- **2026-06-15 (2.5.125):** Continued #949 frontend monolith retirement by
+  extracting the legacy global fetch guard into
+  `frontend/src/legacy/fetchGuards.ts`. The extracted guard owns the
+  credentials API service-worker cache denylist, no-store fetch option, silent
+  session refresh retry, and session-expired toast/event fallback, with Vitest
+  coverage and static integrity checks. `legacy/App.tsx` now delegates that
+  contract and the shrink-only ratchet drops to 2909 lines.
 - **2026-06-15 (2.5.124):** Hardened the Python 3.14 Docker build path by
   deleting temporary Rust/cargo/rustup and pip build caches after source-built
   wheels are installed. This keeps build-only `pyo3` sources out of the
