@@ -42,8 +42,8 @@ import { marked } from "marked"
 import DOMPurify from "dompurify"
 import {
   emitSessionExpired,
-  shouldIgnoreUnauthorizedResponse,
   subscribeSessionExpired,
+  shouldIgnoreUnauthorizedResponse,
   tryRefreshSession,
 } from "./sessionExpired"
 import { installWheelValueGuard } from "./wheelValueGuard"
@@ -61,73 +61,21 @@ import {
   lsSet,
 } from "../lib/assistantStorage"
 import { createVisibleInterval } from "./visibleInterval"
+import { installLegacyFetchGuards } from "./fetchGuards"
 
 var h = React.createElement;
-var SERVICE_WORKER_CACHE_DENYLIST = [/^\/api\/credentials(?:\/|$)/];
-
-function shouldBypassServiceWorkerCache(url) {
-  try {
-    var parsed = new URL(url, window.location.origin);
-    return SERVICE_WORKER_CACHE_DENYLIST.some(function (pattern) {
-      return pattern.test(parsed.pathname);
-    });
-  } catch (e) {
-    return false;
-  }
-}
 
 // Wrap global fetch to detect session-expiry 401s and prompt login through React.
-var originalFetch = window.fetch;
-window.fetch = async function(url, opts) {
-  if (shouldBypassServiceWorkerCache(url)) {
-    opts = Object.assign({}, opts || {}, { cache: "no-store" });
-  }
-  var resp = await originalFetch(url, opts);
-  if (resp.status === 401 && !shouldIgnoreUnauthorizedResponse(url)) {
-    console.warn("[auth] 401 Unauthorized from", url);
-    if (await tryRefreshSession(originalFetch)) {
-      return originalFetch(url, opts);
-    }
-    // Emit a global toast so the announcement is screen-reader-accessible
-    // even before the modal repaints (issue #421).
-    try {
-      var toaster = (window as any).__toaster;
-      if (toaster && typeof toaster.showToast === "function") {
-        toaster.showToast(
-          "Your session has expired. Please log in again to continue.",
-          { variant: "error", title: "Session expired" },
-        );
-      }
-    } catch (toastErr) {
-      console.warn("[auth] Failed to emit 401 toast:", toastErr);
-    }
-    emitSessionExpired();
-  }
-  return resp;
-};
+installLegacyFetchGuards({
+  emitSessionExpired,
+  shouldIgnoreUnauthorizedResponse,
+  tryRefreshSession,
+});
 // ────────────────────────────────────────────────────────────────────────
 
 // Configure marked with safe options (issue #7)
 if (typeof marked !== "undefined") {
   marked.use({ mangle: false, headerIds: false, gfm: true });
-}
-
-/**
- * safeOpen – open a URL in a new tab only when it belongs to a trusted
- * origin (issue #30).  Blocks arbitrary URLs that could be injected via
- * API responses.
- * @param {string} url
- */
-function safeOpen(url) {
-  if (
-    !url.startsWith("http://localhost") &&
-    !url.startsWith("https://github.com/") &&
-    !url.startsWith("https://api.github.com/")
-  ) {
-    console.error("Blocked unsafe URL:", url);
-    return;
-  }
-  window.open(url, "_blank", "noopener,noreferrer");
 }
 
 var LANG_COLORS = {

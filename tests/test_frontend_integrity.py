@@ -15,6 +15,7 @@ _FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 _HTML_SHELL = _FRONTEND_DIR / "index.html"
 _SRC_DIR = _FRONTEND_DIR / "src"
 _INDEX_HTML = _SRC_DIR / "legacy" / "App.tsx"
+_FETCH_GUARDS = _SRC_DIR / "legacy" / "fetchGuards.ts"
 _VISIBLE_INTERVAL = _SRC_DIR / "legacy" / "visibleInterval.ts"
 _QUEUE_INDEX = _SRC_DIR / "pages" / "Queue" / "index.tsx"
 _FLEET_TAB = _SRC_DIR / "pages" / "FleetTab.tsx"
@@ -22,7 +23,7 @@ _REMEDIATION_TAB = _SRC_DIR / "pages" / "RemediationTab.tsx"
 _PUSH_SETTINGS = _FRONTEND_DIR / "src" / "pages" / "PushSettings.tsx"
 _DESIGN_DIR = _FRONTEND_DIR / "src" / "design"
 _PRIMITIVES_DIR = _FRONTEND_DIR / "src" / "primitives"
-_LEGACY_APP_LINE_RATCHET = 2960
+_LEGACY_APP_LINE_RATCHET = 2909
 
 
 def _read_index() -> str:
@@ -303,11 +304,13 @@ def test_mobile_credentials_mutations_require_bottom_sheet_confirmation() -> Non
 
 
 def test_credentials_api_is_excluded_from_frontend_cache_contract() -> None:
-    content = _read_legacy_app()
+    content = _FETCH_GUARDS.read_text(encoding="utf-8")
+    legacy_app = _read_legacy_app()
     assert "SERVICE_WORKER_CACHE_DENYLIST" in content
     assert "/^\\/api\\/credentials(?:\\/|$)/" in content
     assert "shouldBypassServiceWorkerCache(url)" in content
     assert 'cache: "no-store"' in content
+    assert "installLegacyFetchGuards" in legacy_app
     assert "navigator.serviceWorker" not in content
 
 
