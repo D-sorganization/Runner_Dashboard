@@ -1,9 +1,10 @@
 # Dockerfile for runner-dashboard
 # Provides a reproducible, hardened container environment.
 #
-# Base image: python:3.12-slim
-# Python 3.12 has full binary wheel availability for all common packages
-# (pydantic-core, uvloop, watchfiles, httptools, jiter, etc.).
+# Base image: python:3.14-slim
+# Python 3.14 does not yet have full binary wheel coverage for every locked
+# dependency, so the image includes a minimal compiler toolchain for source
+# builds during the dependency install layer.
 # To regenerate requirements.lock.txt:  uv export --no-dev -o requirements.lock.txt
 
 FROM python:3.14-slim@sha256:44dd04494ee8f3b538294360e7c4b3acb87c8268e4d0a4828a6500b1eff50061
@@ -12,8 +13,10 @@ WORKDIR /app
 
 # Install system dependencies (curl needed for HEALTHCHECK)
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
+    build-essential \
     curl \
     git \
+    libffi-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user and group

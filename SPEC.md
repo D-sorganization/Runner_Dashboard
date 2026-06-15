@@ -1,10 +1,16 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.122
+**Spec Version:** 2.5.123
 **Application Version:** 4.9.17 (see `VERSION`)
-**Last Updated:** 2026-06-15T11:36:00-07:00
+**Last Updated:** 2026-06-15T12:24:00-07:00
 **Status:** Active
 
+- **2026-06-15 (2.5.123):** Restored Docker image build compatibility after
+  the pinned runtime image advanced to Python 3.14. The locked dependency set
+  can require native Rust/C extension builds before upstream wheels are
+  available, so `Dockerfile` now installs the minimal Debian build toolchain
+  used by those source builds while keeping the runtime healthcheck and
+  non-root execution contract unchanged.
 - **2026-06-15 (2.5.122):** Continued #949 frontend monolith retirement with
   a shrink-only static guard. `tests/test_frontend_integrity.py` now fails if
   `legacy/App.tsx` grows above 2960 lines and asserts Fleet/Remediation route
