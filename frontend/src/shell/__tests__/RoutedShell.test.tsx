@@ -73,6 +73,10 @@ vi.mock("../../pages/LocalApps", () => ({
   LocalAppsPage: () => <div data-testid="native-local-apps">Local Apps</div>,
 }));
 
+vi.mock("../../pages/Machines", () => ({
+  MachinesPage: () => <div data-testid="native-machines">Machines</div>,
+}));
+
 vi.mock("../../pages/MaxwellPage", () => ({
   MaxwellPage: () => <div data-testid="native-maxwell">Maxwell</div>,
 }));
@@ -226,6 +230,7 @@ describe("RoutedShell — URL is the source of truth", () => {
     ["events", "native-events"],
     ["linear-setup", "native-linear-setup"],
     ["local-apps", "native-local-apps"],
+    ["machines", "native-machines"],
     ["maxwell", "native-maxwell"],
     ["org", "native-org"],
     ["principals", "native-principals"],
@@ -248,13 +253,13 @@ describe("RoutedShell — URL is the source of truth", () => {
   );
 
   it("keeps legacy fallback for tabs that still depend on legacy-owned state", async () => {
-    renderAt("/t/machines");
+    renderAt("/t/fleet-orchestration");
     expect(await screen.findByTestId("active-tab")).toHaveTextContent(
-      "machines",
+      "fleet-orchestration",
     );
     expect(await screen.findByTestId("legacy-app")).toHaveAttribute(
       "data-active-tab",
-      "machines",
+      "fleet-orchestration",
     );
   });
 });

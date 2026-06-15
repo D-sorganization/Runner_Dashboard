@@ -591,6 +591,22 @@ def test_org_desktop_route_bypasses_legacy_app() -> None:
     assert "export function OrgPage" in org_page
 
 
+def test_machines_desktop_route_bypasses_legacy_app() -> None:
+    """The Machines desktop tab owns its data outside legacy/App.tsx (#949)."""
+    routed_shell = (_FRONTEND_DIR / "src" / "shell" / "RoutedShell.tsx").read_text(
+        encoding="utf-8",
+    )
+    machines_page = (_FRONTEND_DIR / "src" / "pages" / "Machines.tsx").read_text(
+        encoding="utf-8",
+    )
+
+    assert 'case "machines":' in routed_shell
+    assert "return <MachinesPage />;" in routed_shell
+    assert 'legacyFetch("/api/fleet/nodes"' in machines_page
+    assert 'legacyFetch("/api/runners"' in machines_page
+    assert "export function MachinesPage" in machines_page
+
+
 def test_tests_desktop_route_bypasses_legacy_app() -> None:
     """The Tests desktop tab owns its data outside legacy/App.tsx (#949)."""
     routed_shell = (_FRONTEND_DIR / "src" / "shell" / "RoutedShell.tsx").read_text(
