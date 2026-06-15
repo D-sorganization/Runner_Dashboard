@@ -23,7 +23,7 @@ _REMEDIATION_TAB = _SRC_DIR / "pages" / "RemediationTab.tsx"
 _PUSH_SETTINGS = _FRONTEND_DIR / "src" / "pages" / "PushSettings.tsx"
 _DESIGN_DIR = _FRONTEND_DIR / "src" / "design"
 _PRIMITIVES_DIR = _FRONTEND_DIR / "src" / "primitives"
-_LEGACY_APP_LINE_RATCHET = 2909
+_LEGACY_APP_LINE_RATCHET = 2886
 
 
 def _read_index() -> str:
