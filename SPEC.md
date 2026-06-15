@@ -1,10 +1,15 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.128
+**Spec Version:** 2.5.129
 **Application Version:** 4.9.17 (see `VERSION`)
-**Last Updated:** 2026-06-15T14:22:00-07:00
+**Last Updated:** 2026-06-15T14:36:00-07:00
 **Status:** Active
 
+- **2026-06-15 (2.5.129):** Continued #949 frontend monolith retirement by
+  routing the self-fetching `scheduled-jobs` and `push-settings` desktop tabs
+  directly through their extracted page modules. The modern shell now bypasses
+  the legacy app for these no-prop tabs, while stateful legacy-owned tabs still
+  retain the fallback path; RoutedShell coverage asserts both routes.
 - **2026-06-15 (2.5.128):** Hardened the mobile Credentials tab visibility
   lock after #949 extraction by installing the `visibilitychange` listener for
   the full mobile lifecycle and updating the unlock ref synchronously before

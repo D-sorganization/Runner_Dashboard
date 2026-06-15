@@ -48,6 +48,8 @@ import { ClineLauncherTab } from "../pages/ClineLauncher";
 import { Conductor } from "../pages/Conductor";
 import { DiagnosticsTab } from "../pages/Diagnostics";
 import { LinearSetup } from "../pages/LinearSetup";
+import PushSettings from "../pages/PushSettings";
+import ScheduledJobs from "../pages/ScheduledJobs";
 
 // The legacy App hosts Fleet, Maxwell, Queue, Remediation, Org, Heavy and every
 // other tab. Loading it via React.lazy makes Vite emit it as its own chunk so
@@ -97,6 +99,10 @@ function nativeDesktopTabContent(tabId: string): React.ReactNode | null {
       return <DiagnosticsTab />;
     case "linear-setup":
       return <LinearSetup />;
+    case "push-settings":
+      return <PushSettings />;
+    case "scheduled-jobs":
+      return <ScheduledJobs />;
     default:
       return null;
   }

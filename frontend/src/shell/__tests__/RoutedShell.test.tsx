@@ -55,6 +55,14 @@ vi.mock("../../pages/LinearSetup", () => ({
   LinearSetup: () => <div data-testid="native-linear-setup">Linear Setup</div>,
 }));
 
+vi.mock("../../pages/PushSettings", () => ({
+  default: () => <div data-testid="native-push-settings">Push Settings</div>,
+}));
+
+vi.mock("../../pages/ScheduledJobs", () => ({
+  default: () => <div data-testid="native-scheduled-jobs">Scheduled Jobs</div>,
+}));
+
 // Force the desktop shell branch (lg) so DesktopShell renders deterministically.
 vi.mock("../../hooks/useBreakpoint", async (orig) => {
   const actual = (await orig()) as Record<string, unknown>;
@@ -161,6 +169,16 @@ describe("RoutedShell — URL is the source of truth", () => {
     expect(
       await screen.findByTestId("native-agent-dispatch"),
     ).toBeInTheDocument();
+    expect(screen.queryByTestId("legacy-app")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["push-settings", "native-push-settings"],
+    ["scheduled-jobs", "native-scheduled-jobs"],
+  ])("routes %s through its native desktop page", async (tabId, testId) => {
+    renderAt(`/t/${tabId}`);
+    expect(await screen.findByTestId("active-tab")).toHaveTextContent(tabId);
+    expect(await screen.findByTestId(testId)).toBeInTheDocument();
     expect(screen.queryByTestId("legacy-app")).not.toBeInTheDocument();
   });
 
