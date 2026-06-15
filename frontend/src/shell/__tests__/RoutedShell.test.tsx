@@ -123,7 +123,6 @@ vi.mock("../../pages/Queue", () => ({
 
 vi.mock("../../pages/RemediationPage", () => ({
   default: () => <div data-testid="native-remediation">Remediation</div>,
-  RemediationPage: () => <div data-testid="native-remediation">Remediation</div>,
 }));
 
 vi.mock("../../pages/RunnerAudit", () => ({
@@ -204,12 +203,10 @@ function renderAt(path: string) {
   return render(
     <MemoryRouter initialEntries={[path]}>
       <LocationProbe />
-      <React.Suspense fallback={null}>
-        <Routes>
-          <Route path="/t/:tabId" element={<RoutedShell />} />
-          <Route path="/" element={<RoutedShell />} />
-        </Routes>
-      </React.Suspense>
+      <Routes>
+        <Route path="/t/:tabId" element={<RoutedShell />} />
+        <Route path="/" element={<RoutedShell />} />
+      </Routes>
     </MemoryRouter>,
   );
 }
@@ -217,6 +214,7 @@ function renderAt(path: string) {
 describe("RoutedShell — URL is the source of truth", () => {
   beforeEach(() => {
     cleanup();
+    localStorage.clear();
     legacyAppImport.mockClear();
   });
 
@@ -253,10 +251,12 @@ describe("RoutedShell — URL is the source of truth", () => {
     );
   });
 
-  it("renders the native overview route without mounting the legacy App", async () => {
+  it("lazy-loads the legacy App (code-split, not eager)", async () => {
+    localStorage.setItem("dashboard.layout", "legacy");
     renderAt("/");
-    expect(await screen.findByTestId("native-overview")).toBeInTheDocument();
-    expect(screen.queryByTestId("legacy-app")).not.toBeInTheDocument();
+    // The legacy App renders only after its lazy chunk resolves.
+    expect(await screen.findByTestId("legacy-app")).toBeInTheDocument();
+    localStorage.removeItem("dashboard.layout");
   });
 
   it.each([
@@ -298,12 +298,13 @@ describe("RoutedShell — URL is the source of truth", () => {
     },
   );
 
-  it("falls back unknown tab ids to the native overview route", async () => {
-    renderAt("/t/not-a-real-tab");
-    expect(await screen.findByTestId("active-tab")).toHaveTextContent(
+  it("keeps the explicit legacy desktop-shell escape hatch", async () => {
+    localStorage.setItem("dashboard.layout", "legacy");
+    renderAt("/t/overview");
+    expect(await screen.findByTestId("legacy-app")).toHaveAttribute(
+      "data-active-tab",
       "overview",
     );
-    expect(await screen.findByTestId("native-overview")).toBeInTheDocument();
-    expect(screen.queryByTestId("legacy-app")).not.toBeInTheDocument();
+    localStorage.removeItem("dashboard.layout");
   });
 });

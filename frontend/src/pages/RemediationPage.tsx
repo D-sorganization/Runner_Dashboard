@@ -1,232 +1,134 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- RemediationPage adapts dynamic remediation and workflow-run payloads into the 1:1 RemediationTab contract while #949 retires legacy/App.tsx. */
 import React, { useCallback, useEffect, useState } from "react";
-import { legacyFetch } from "../lib/api";
 import { RemediationTab } from "./RemediationTab";
-
-const JSON_HEADERS = {
-  "Content-Type": "application/json",
-  "X-Requested-With": "XMLHttpRequest",
-};
+import { legacyFetch } from "../lib/api";
 
 interface RemediationContext {
   repository: string;
   workflow_name: string;
   branch: string;
-  run_id: unknown;
+  run_id: string | number;
   failure_reason: string;
   protected_branch: boolean;
-  attempts: unknown[];
+  attempts: any[];
 }
 
-function readJsonOrThrow(response: Response, fallback: string): Promise<unknown> {
-  return response.json().then((data: unknown) => {
-    if (!response.ok) {
-      const detail =
-        data && typeof data === "object" && "detail" in data
-          ? String((data as { detail?: unknown }).detail)
-          : fallback;
-      throw new Error(detail);
-    }
-    return data;
+function normalizeObject(payload: unknown): Record<string, any> {
+  return payload && typeof payload === "object"
+    ? (payload as Record<string, any>)
+    : {};
+}
+
+function normalizeArrayPayload(payload: unknown, key: string): any[] {
+  if (Array.isArray(payload)) return payload;
+  if (payload && typeof payload === "object") {
+    const value = (payload as Record<string, unknown>)[key];
+    if (Array.isArray(value)) return value;
+  }
+  return [];
+}
+
+function getJson(url: string, signal?: AbortSignal): Promise<unknown> {
+  return legacyFetch(url, { signal }).then((response) => {
+    if (!response.ok) throw new Error(url + " HTTP " + response.status);
+    return response.json();
   });
 }
 
-function runsFromPayload(payload: unknown): unknown[] {
-  if (!payload || typeof payload !== "object") return [];
-  const runs = (payload as { workflow_runs?: unknown }).workflow_runs;
-  return Array.isArray(runs) ? runs : [];
+function parseJsonOrThrow(response: Response, fallback: string): Promise<unknown> {
+  return response.json().then((payload: unknown) => {
+    if (!response.ok) {
+      const detail =
+        payload && typeof payload === "object" && "detail" in payload
+          ? String((payload as { detail?: unknown }).detail)
+          : fallback;
+      throw new Error(detail);
+    }
+    return payload;
+  });
 }
 
-function historyFromPayload(payload: unknown): unknown[] {
-  if (!payload || typeof payload !== "object") return [];
-  const history = (payload as { history?: unknown }).history;
-  return Array.isArray(history) ? history : [];
-}
-
-function defaultProvider(config: unknown): string {
-  if (!config || typeof config !== "object") return "jules_api";
-  const policy = (config as { policy?: { default_provider?: unknown } }).policy;
-  return typeof policy?.default_provider === "string"
-    ? policy.default_provider
-    : "jules_api";
-}
-
-function stringField(record: Record<string, unknown>, key: string): string {
-  const value = record[key];
-  return typeof value === "string" ? value : "";
-}
-
-function buildRemediationContext(run: unknown): RemediationContext | null {
-  if (!run || typeof run !== "object") return null;
-  const record = run as Record<string, unknown>;
-  const repository = record.repository;
-  const repositoryRecord =
-    repository && typeof repository === "object"
-      ? (repository as Record<string, unknown>)
-      : {};
-  const branch = stringField(record, "head_branch");
-  const repoName = stringField(repositoryRecord, "name");
-  const workflowName =
-    stringField(record, "name") || stringField(record, "workflow_name") || "CI Standard";
+function buildRemediationContext(run: any): RemediationContext | null {
+  if (!run) return null;
+  const branch = run.head_branch || "";
+  const repository = run.repository && run.repository.name ? run.repository.name : "";
+  const workflowName = run.name || run.workflow_name || "CI Standard";
   return {
-    repository: repoName,
+    repository,
     workflow_name: workflowName,
     branch,
-    run_id: record.id,
-    failure_reason: `${workflowName} failed for ${repoName} on ${branch}`,
+    run_id: run.id,
+    failure_reason: workflowName + " failed for " + repository + " on " + branch,
     protected_branch: branch === "main" || branch === "master",
     attempts: [],
   };
 }
 
 export function RemediationPage(): React.ReactElement {
-  const [config, setConfig] = useState<unknown>({});
-  const [workflows, setWorkflows] = useState<unknown>({});
-  const [runs, setRuns] = useState<unknown[]>([]);
+  const [config, setConfig] = useState<Record<string, any>>({});
+  const [workflows, setWorkflows] = useState<Record<string, any>>({});
+  const [runs, setRuns] = useState<any[]>([]);
+  const [history, setHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [provider, setProvider] = useState("jules_api");
   const [model, setModel] = useState("");
-  const [plan, setPlan] = useState<unknown>(null);
-  const [dispatchState, setDispatchState] = useState<unknown>(null);
-  const [selectedRunId, setSelectedRunId] = useState("");
-  const [history, setHistory] = useState<unknown[]>([]);
+  const [plan, setPlan] = useState<any>(null);
+  const [dispatchState, setDispatchState] = useState<any>(null);
 
-  const refreshHistory = useCallback(() => {
-    return legacyFetch("/api/agent-remediation/history")
-      .then((r) => readJsonOrThrow(r, "history failed"))
-      .then((payload) => setHistory(historyFromPayload(payload)))
-      .catch(() => undefined);
-  }, []);
-
-  const refresh = useCallback((signal?: AbortSignal) => {
-    setLoading(true);
-    Promise.all([
-      legacyFetch("/api/agent-remediation/config", { signal }).then((r) =>
-        readJsonOrThrow(r, "config failed"),
-      ),
-      legacyFetch("/api/agent-remediation/workflows", { signal }).then((r) =>
-        readJsonOrThrow(r, "workflows failed"),
-      ),
-      legacyFetch("/api/agent-remediation/history", { signal })
-        .then((r) => readJsonOrThrow(r, "history failed"))
-        .catch(() => ({ history: [] })),
-      legacyFetch("/api/runs/enriched?per_page=50", { signal })
-        .then((r) => readJsonOrThrow(r, "runs failed"))
-        .catch(() => ({ workflow_runs: [] })),
-    ])
-      .then(([configPayload, workflowsPayload, historyPayload, runsPayload]) => {
-        setConfig(configPayload || {});
-        setWorkflows(workflowsPayload || {});
-        setHistory(historyFromPayload(historyPayload));
-        setRuns(runsFromPayload(runsPayload));
-        setProvider(defaultProvider(configPayload));
-        setError(null);
-      })
-      .catch((refreshError: unknown) => {
-        if (refreshError instanceof DOMException && refreshError.name === "AbortError") {
-          return;
-        }
-        setError("Failed to load remediation controls from the dashboard backend.");
-      })
-      .finally(() => {
-        if (!signal?.aborted) setLoading(false);
-      });
-  }, []);
-
-  const saveConfig = useCallback((policy: unknown) => {
-    setLoading(true);
-    return legacyFetch("/api/agent-remediation/config", {
-      method: "PUT",
-      headers: JSON_HEADERS,
-      body: JSON.stringify({ policy }),
-    })
-      .then((r) => readJsonOrThrow(r, "Save failed"))
+  const refreshHistory = useCallback((signal?: AbortSignal) => {
+    return getJson("/api/agent-remediation/history", signal)
       .then((payload) => {
-        setConfig(payload || {});
-        setProvider(defaultProvider(payload));
-        setError(null);
-        return payload;
+        setHistory(normalizeArrayPayload(payload, "history"));
       })
-      .catch((saveError: unknown) => {
-        const message = saveError instanceof Error ? saveError.message : "Save failed";
-        setError(message);
-        throw saveError;
-      })
-      .finally(() => setLoading(false));
+      .catch(() => {
+        setHistory([]);
+      });
   }, []);
 
-  const preview = useCallback(
-    (run: unknown) => {
-      const payload = buildRemediationContext(run);
-      if (!payload) {
-        setError("Select a failed run before previewing remediation.");
-        return;
-      }
+  const refresh = useCallback(
+    (signal?: AbortSignal) => {
       setLoading(true);
-      setDispatchState(null);
-      legacyFetch("/api/agent-remediation/plan", {
-        method: "POST",
-        headers: JSON_HEADERS,
-        body: JSON.stringify({
-          ...payload,
-          provider_override: provider,
-          model_override: model || undefined,
-        }),
-      })
-        .then((r) => readJsonOrThrow(r, "Preview failed"))
-        .then((payloadData) => {
-          setPlan(payloadData);
-          setError(null);
+      setError(null);
+      Promise.all([
+        getJson("/api/agent-remediation/config", signal),
+        getJson("/api/agent-remediation/workflows", signal),
+        getJson("/api/agent-remediation/history", signal).catch(() => ({
+          history: [],
+        })),
+        getJson("/api/runs/enriched?per_page=50", signal).catch(() => ({
+          runs: [],
+        })),
+        getJson("/api/runs?per_page=30", signal).catch(() => ({ runs: [] })),
+      ])
+        .then(([configPayload, workflowsPayload, historyPayload, enrichedRuns, rawRuns]) => {
+          const nextConfig = normalizeObject(configPayload);
+          const enriched = normalizeArrayPayload(enrichedRuns, "runs");
+          const fallbackRuns = normalizeArrayPayload(rawRuns, "runs");
+          setConfig(nextConfig);
+          setWorkflows(normalizeObject(workflowsPayload));
+          setHistory(normalizeArrayPayload(historyPayload, "history"));
+          setRuns(enriched.length ? enriched : fallbackRuns);
+          setProvider(
+            nextConfig.policy && nextConfig.policy.default_provider
+              ? String(nextConfig.policy.default_provider)
+              : "jules_api",
+          );
         })
-        .catch((previewError: unknown) => {
-          setPlan(null);
-          setError(previewError instanceof Error ? previewError.message : "Preview failed");
+        .catch((err: unknown) => {
+          if (err instanceof DOMException && err.name === "AbortError") return;
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Failed to load remediation controls from the dashboard backend.",
+          );
         })
-        .finally(() => setLoading(false));
+        .finally(() => {
+          if (!signal?.aborted) setLoading(false);
+        });
     },
-    [model, provider],
-  );
-
-  const dispatch = useCallback(
-    (run: unknown) => {
-      const payload = buildRemediationContext(run);
-      if (!payload) {
-        setError("Select a failed run before dispatching remediation.");
-        return;
-      }
-      setLoading(true);
-      setDispatchState({
-        note: `Dispatch submitted for ${payload.repository} #${payload.run_id}. Waiting for agent heartbeat.`,
-      });
-      legacyFetch("/api/agent-remediation/dispatch", {
-        method: "POST",
-        headers: JSON_HEADERS,
-        body: JSON.stringify({ ...payload, provider }),
-      })
-        .then((r) => readJsonOrThrow(r, "Dispatch failed"))
-        .then((payloadData) => {
-          const dispatchPayload =
-            payloadData && typeof payloadData === "object"
-              ? (payloadData as Record<string, unknown>)
-              : {};
-          setDispatchState({
-            note: `Dispatched ${stringField(dispatchPayload, "provider")} through ${stringField(
-              dispatchPayload,
-              "workflow",
-            )}.`,
-          });
-          setError(null);
-          refreshHistory();
-        })
-        .catch((dispatchError: unknown) => {
-          const message =
-            dispatchError instanceof Error ? dispatchError.message : "Dispatch failed";
-          setDispatchState({ error: message });
-          setError(message);
-        })
-        .finally(() => setLoading(false));
-    },
-    [provider, refreshHistory],
+    [],
   );
 
   useEffect(() => {
@@ -234,6 +136,109 @@ export function RemediationPage(): React.ReactElement {
     refresh(controller.signal);
     return () => controller.abort();
   }, [refresh]);
+
+  const saveConfig = useCallback((policy: any) => {
+    setLoading(true);
+    return legacyFetch("/api/agent-remediation/config", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ policy }),
+    })
+      .then((response) => parseJsonOrThrow(response, "Save failed"))
+      .then((payload) => {
+        const nextConfig = normalizeObject(payload);
+        setConfig(nextConfig);
+        setProvider(
+          nextConfig.policy && nextConfig.policy.default_provider
+            ? String(nextConfig.policy.default_provider)
+            : "jules_api",
+        );
+        setError(null);
+        return nextConfig;
+      })
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : "Save failed");
+        throw err;
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  const preview = useCallback(
+    (run: any) => {
+      const context = buildRemediationContext(run);
+      if (!context) {
+        setError("Select a failed run before previewing remediation.");
+        return;
+      }
+      setLoading(true);
+      setDispatchState(null);
+      legacyFetch("/api/agent-remediation/plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...context,
+          provider_override: provider,
+          model_override: model || undefined,
+        }),
+      })
+        .then((response) => parseJsonOrThrow(response, "Preview failed"))
+        .then((payload) => {
+          setPlan(payload);
+          setError(null);
+        })
+        .catch((err: unknown) => {
+          setPlan(null);
+          setError(err instanceof Error ? err.message : "Preview failed");
+        })
+        .finally(() => setLoading(false));
+    },
+    [model, provider],
+  );
+
+  const dispatch = useCallback(
+    (run: any) => {
+      const context = buildRemediationContext(run);
+      if (!context) {
+        setError("Select a failed run before dispatching remediation.");
+        return;
+      }
+      setLoading(true);
+      setDispatchState({
+        note:
+          "Dispatch submitted for " +
+          context.repository +
+          " #" +
+          context.run_id +
+          ". Waiting for agent heartbeat.",
+      });
+      legacyFetch("/api/agent-remediation/dispatch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...context, provider }),
+      })
+        .then((response) => parseJsonOrThrow(response, "Dispatch failed"))
+        .then((payload) => {
+          const result = normalizeObject(payload);
+          setDispatchState({
+            note:
+              "Dispatched " +
+              (result.provider || provider) +
+              " through " +
+              (result.workflow || "remediation workflow") +
+              ".",
+          });
+          setError(null);
+          void refreshHistory();
+        })
+        .catch((err: unknown) => {
+          const message = err instanceof Error ? err.message : "Dispatch failed";
+          setDispatchState({ error: message });
+          setError(message);
+        })
+        .finally(() => setLoading(false));
+    },
+    [provider, refreshHistory],
+  );
 
   return (
     <RemediationTab
@@ -255,6 +260,7 @@ export function RemediationPage(): React.ReactElement {
       onPreview={preview}
       onDispatch={dispatch}
       history={history}
+      principalName="dashboard"
     />
   );
 }
