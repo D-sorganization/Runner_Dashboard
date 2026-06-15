@@ -53,6 +53,7 @@ import { CredentialsPage } from "../pages/CredentialsPage";
 import { DeploymentTab } from "../pages/Deployment";
 import { DiagnosticsTab } from "../pages/Diagnostics";
 import { EventsTab } from "../pages/Events";
+import { FeatureRequestsPage } from "../pages/FeatureRequestsPage";
 import { LinearSetup } from "../pages/LinearSetup";
 import { LocalAppsPage } from "../pages/LocalApps";
 import { MachinesPage } from "../pages/Machines";
@@ -125,6 +126,8 @@ function nativeDesktopTabContent(tabId: string): React.ReactNode | null {
       return <DiagnosticsTab />;
     case "events":
       return <EventsTab />;
+    case "feature-requests":
+      return <FeatureRequestsPage />;
     case "linear-setup":
       return <LinearSetup />;
     case "local-apps":

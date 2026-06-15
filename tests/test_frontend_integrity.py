@@ -670,6 +670,22 @@ def test_assessments_desktop_route_bypasses_legacy_app() -> None:
     assert "export function AssessmentsPage" in assessments_page
 
 
+def test_feature_requests_desktop_route_bypasses_legacy_app() -> None:
+    """The Feature Requests desktop tab owns dispatch data outside legacy/App.tsx."""
+    routed_shell = (_FRONTEND_DIR / "src" / "shell" / "RoutedShell.tsx").read_text(
+        encoding="utf-8",
+    )
+    feature_requests_page = (_FRONTEND_DIR / "src" / "pages" / "FeatureRequestsPage.tsx").read_text(encoding="utf-8")
+
+    assert 'case "feature-requests":' in routed_shell
+    assert "return <FeatureRequestsPage />;" in routed_shell
+    assert 'legacyFetch("/api/feature-requests"' in feature_requests_page
+    assert 'legacyFetch("/api/feature-requests/dispatch"' in feature_requests_page
+    assert 'legacyFetch("/api/prompt-templates"' in feature_requests_page
+    assert 'legacyFetch("/api/settings/prompt-notes"' in feature_requests_page
+    assert "export function FeatureRequestsPage" in feature_requests_page
+
+
 def test_credentials_desktop_route_bypasses_legacy_app() -> None:
     """The Credentials desktop tab owns probe/set-key data outside legacy/App.tsx (#949)."""
     routed_shell = (_FRONTEND_DIR / "src" / "shell" / "RoutedShell.tsx").read_text(
