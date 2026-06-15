@@ -229,6 +229,7 @@ jobs:
             --exclude='dashboard-*.tar.gz.sha256' \
             --exclude='dashboard-*.sig' \
             --exclude='dashboard-*.pem' \
+            --exclude='dashboard-*.bundle' \
             .
           mv "$TMP_ARTIFACT" "$ARTIFACT"
           SHA256=$(sha256sum "$ARTIFACT" | awk '{print $1}')
@@ -250,13 +251,11 @@ jobs:
           COSIGN_EXPERIMENTAL: "1"
         run: |
           set -euo pipefail
-          SIG_FILE="dashboard-${VERSION}.sig"
-          CERT_FILE="dashboard-${VERSION}.pem"
+          BUNDLE_FILE="dashboard-${VERSION}.bundle"
           cosign sign-blob --yes \
-            --output-signature "$SIG_FILE" \
-            --output-certificate "$CERT_FILE" \
+            --bundle "$BUNDLE_FILE" \
             "$ARTIFACT"
-          echo "Signed $ARTIFACT → $SIG_FILE (cert: $CERT_FILE)"
+          echo "Signed $ARTIFACT → $BUNDLE_FILE"
 
       - name: Generate SBOM with syft (anchore/sbom-action)
         if: steps.resolve.outputs.dry_run != 'true'
@@ -345,15 +344,13 @@ jobs:
         run: |
           set -euo pipefail
           ARTIFACT="dashboard-${VERSION}.tar.gz"
-          SIG_FILE="dashboard-${VERSION}.sig"
-          CERT_FILE="dashboard-${VERSION}.pem"
+          BUNDLE_FILE="dashboard-${VERSION}.bundle"
           gh release create "$TAG" \
             --title "$TAG" \
             --notes-file "$NOTES_FILE" \
             --target "${{ github.sha }}" \
             "$ARTIFACT" \
             "${ARTIFACT}.sha256" \
-            "$SIG_FILE" \
-            "$CERT_FILE" \
+            "$BUNDLE_FILE" \
             sbom.spdx.json
           echo "Created GitHub release $TAG with signed artifacts and SBOM."
