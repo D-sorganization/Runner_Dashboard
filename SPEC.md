@@ -1,16 +1,22 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.144
+**Spec Version:** 2.5.145
 **Application Version:** 4.9.17 (see `VERSION`)
-**Last Updated:** 2026-06-15T14:55:00-07:00
+**Last Updated:** 2026-06-15T15:12:00-07:00
 **Status:** Active
 
-- **2026-06-15 (2.5.144):** Continued #949 frontend monolith retirement by
+- **2026-06-15 (2.5.145):** Continued #949 frontend monolith retirement by
   adding a self-contained `AssessmentsPage` container for desktop. The page now
   owns `/api/repos`, `/api/assessments/scores`, and
   `/api/assessments/dispatch` outside the legacy App owner while preserving the
   prop-driven `AssessmentsTab` contract for fallback callers, and `RoutedShell`
   bypasses the legacy chunk for `/t/assessments`.
+- **2026-06-15 (2.5.144):** Continued #949 frontend monolith retirement by
+  adding a self-contained `CredentialsPage` container for desktop. The page now
+  owns `/api/credentials` probe loading and `/api/credentials/set-key` updates
+  outside the legacy App owner while preserving the prop-driven
+  `CredentialsTab` contract for fallback callers, and `RoutedShell` bypasses
+  the legacy chunk for `/t/credentials`.
 - **2026-06-15 (2.5.143):** Continued #949 frontend monolith retirement by
   adding a self-contained `WorkflowsPage` container for desktop. The page now
   owns `/api/workflows/list` and `/api/workflows/dispatch` outside the legacy
