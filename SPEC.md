@@ -1,10 +1,18 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.115
+**Spec Version:** 2.5.116
 **Application Version:** 4.9.16 (see `VERSION`)
-**Last Updated:** 2026-06-15T00:00:00-07:00
+**Last Updated:** 2026-06-15T00:45:00-07:00
 **Status:** Active
 
+- **2026-06-15 (2.5.116):** Started the Runner_Dashboard side of #962 least-
+  privilege Maxwell-Daemon access. The Maxwell proxy now uses the configured
+  static `MAXWELL_API_TOKEN` only as a bootstrap credential for
+  `POST /api/v1/auth/token`, caches short-lived scoped JWTs, sends viewer tokens
+  on read/status proxies, and sends operator tokens on dispatch/control/chat
+  calls. Older daemons that do not expose scoped token minting still fall back to
+  the static token for compatibility, but modern RD↔MD deployments no longer
+  put an admin-capable credential on routine polling requests.
 - **2026-06-15 (2.5.115):** Reduced the #949 frontend monolith surface on
   mobile native tabs. `MobileShell` now treats `tabContent` as exclusive page
   content instead of hidden-mounting the legacy `App` behind native Fleet, Queue,

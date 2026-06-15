@@ -5,6 +5,7 @@ import datetime as _dt_mod
 import json as _json
 import logging
 import subprocess
+import time
 import uuid
 from pathlib import Path
 from typing import Any
@@ -22,6 +23,11 @@ router = APIRouter(prefix="/api/maxwell", tags=["maxwell"])
 log = logging.getLogger("dashboard")
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 datetime = _dt_mod.datetime
+_SCOPED_TOKEN_SUBJECT = "runner-dashboard"
+_SCOPED_TOKEN_EXPIRY_SECONDS = 600
+_SCOPED_TOKEN_EXPIRY_SKEW_SECONDS = 30
+_scoped_token_lock = asyncio.Lock()
+_scoped_tokens: dict[str, tuple[str, float]] = {}
 
 
 class MaxwellControlBody(BaseModel):
@@ -123,12 +129,82 @@ def _maxwell_api_token() -> str:
     return MAXWELL_API_TOKEN
 
 
-def _maxwell_headers() -> dict:
-    """Return auth headers for Maxwell-Daemon requests."""
+def _maxwell_static_headers() -> dict:
+    """Return static admin-token headers for Maxwell-Daemon bootstrap requests."""
     token = _maxwell_api_token()
     if token:
         return {"Authorization": f"Bearer {token}"}
     return {}
+
+
+def _maxwell_headers() -> dict:
+    """Return legacy static auth headers for compatibility."""
+    return _maxwell_static_headers()
+
+
+async def _maxwell_headers_for_role(
+    client: httpx.AsyncClient,
+    role: str,
+) -> dict[str, str]:
+    """Return least-privilege Maxwell auth headers for the requested role.
+
+    The dashboard stores one bootstrap token (`MAXWELL_API_TOKEN`). When a
+    connected daemon supports `/api/v1/auth/token`, use that admin credential
+    only to mint short-lived viewer/operator JWTs and send those scoped tokens
+    on steady-state proxy calls (#962). Older daemons fall back to the static
+    token so existing deployments keep working while they roll forward.
+    """
+    bootstrap_headers = _maxwell_static_headers()
+    if not bootstrap_headers:
+        return {}
+
+    now = time.monotonic()
+    cached = _scoped_tokens.get(role)
+    if cached is not None:
+        token, expires_at = cached
+        if expires_at > now:
+            return {"Authorization": f"Bearer {token}"}
+
+    async with _scoped_token_lock:
+        cached = _scoped_tokens.get(role)
+        now = time.monotonic()
+        if cached is not None:
+            token, expires_at = cached
+            if expires_at > now:
+                return {"Authorization": f"Bearer {token}"}
+
+        try:
+            response = await client.post(
+                f"{_maxwell_base_url()}/api/v1/auth/token",
+                json={
+                    "subject": _SCOPED_TOKEN_SUBJECT,
+                    "role": role,
+                    "expiry_seconds": _SCOPED_TOKEN_EXPIRY_SECONDS,
+                },
+                headers=bootstrap_headers,
+            )
+            if response.status_code >= 400:
+                return bootstrap_headers
+            payload = response.json()
+            token = payload.get("access_token")
+            expires_in = payload.get("expires_in", _SCOPED_TOKEN_EXPIRY_SECONDS)
+            if not isinstance(token, str) or not token:
+                return bootstrap_headers
+            if not isinstance(expires_in, int | float) or expires_in <= 0:
+                expires_in = _SCOPED_TOKEN_EXPIRY_SECONDS
+            expires_at = time.monotonic() + max(
+                1.0,
+                float(expires_in) - _SCOPED_TOKEN_EXPIRY_SKEW_SECONDS,
+            )
+            _scoped_tokens[role] = (token, expires_at)
+            return {"Authorization": f"Bearer {token}"}
+        except (httpx.HTTPError, ValueError, TypeError) as exc:
+            log.info(
+                "maxwell scoped token unavailable: role=%s error=%s",
+                role,
+                str(exc)[:80],
+            )
+            return bootstrap_headers
 
 
 # Issue #963: start/stop drive the daemon via ``systemctl ... maxwell-daemon``,
@@ -157,10 +233,11 @@ async def _mx_get(path: str, params: dict | None = None) -> dict:
     """GET helper for Maxwell proxy routes."""
     try:
         async with httpx.AsyncClient(timeout=3.0) as client:
+            headers = await _maxwell_headers_for_role(client, "viewer")
             resp = await client.get(
                 f"{_maxwell_base_url()}{path}",
                 params=params,
-                headers=_maxwell_headers(),
+                headers=headers,
             )
             log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
             from proxy_utils import _translate_upstream_response
@@ -234,7 +311,8 @@ async def get_maxwell_status() -> dict:
     base_url = _maxwell_base_url()
     try:
         async with httpx.AsyncClient(timeout=3.0) as client:
-            resp = await client.get(f"{base_url}/api/health", headers=_maxwell_headers())
+            headers = await _maxwell_headers_for_role(client, "viewer")
+            resp = await client.get(f"{base_url}/api/health", headers=headers)
             http_reachable = resp.status_code == 200
             http_detail = f"HTTP {resp.status_code}"
     except Exception as e:
@@ -444,11 +522,10 @@ async def maxwell_dispatch_task(
         body["repo"] = validated_dispatch.repo
     # confirmation_token comes from the caller — do NOT overwrite with the API token
 
-    hdrs = {"Content-Type": "application/json"}
-    hdrs.update(_maxwell_headers())
-
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
+            hdrs = {"Content-Type": "application/json"}
+            hdrs.update(await _maxwell_headers_for_role(client, "operator"))
             resp = await client.post(
                 f"{_maxwell_base_url()}{path}",
                 content=_json.dumps(body),
@@ -549,10 +626,11 @@ async def maxwell_chat(
     async def stream_daemon_response() -> Any:
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
+                headers = await _maxwell_headers_for_role(client, "operator")
                 resp = await client.post(
                     f"{_maxwell_base_url()}{path}",
                     json=payload,
-                    headers=_maxwell_headers(),
+                    headers=headers,
                 )
                 log.info("maxwell_proxy: path=%s status=%s", path, resp.status_code)
                 if resp.status_code == 501 and codebase_scoped:
@@ -627,11 +705,10 @@ async def maxwell_pipeline_control(
     body = dict(raw_body)
     # confirmation_token comes from the caller — do NOT overwrite with the API token
 
-    hdrs = {"Content-Type": "application/json"}
-    hdrs.update(_maxwell_headers())
-
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
+            hdrs = {"Content-Type": "application/json"}
+            hdrs.update(await _maxwell_headers_for_role(client, "operator"))
             resp = await client.post(
                 f"{_maxwell_base_url()}{path}",
                 content=_json.dumps(body),
