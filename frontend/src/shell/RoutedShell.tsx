@@ -51,6 +51,7 @@ import { DiagnosticsTab } from "../pages/Diagnostics";
 import { EventsTab } from "../pages/Events";
 import { LinearSetup } from "../pages/LinearSetup";
 import { PrincipalsTab } from "../pages/Principals";
+import { RunnerAuditPage } from "../pages/RunnerAudit";
 import PushSettings from "../pages/PushSettings";
 import ScheduledJobs from "../pages/ScheduledJobs";
 import { ThemeSettings } from "../components/ThemeSettings";
@@ -112,6 +113,8 @@ function nativeDesktopTabContent(tabId: string): React.ReactNode | null {
       return <PrincipalsTab />;
     case "push-settings":
       return <PushSettings />;
+    case "runner-audit":
+      return <RunnerAuditPage />;
     case "scheduled-jobs":
       return <ScheduledJobs />;
     case "settings":
