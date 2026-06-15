@@ -157,6 +157,7 @@ describe("RemediationPage", () => {
     render(<RemediationPage />);
 
     await screen.findByText("Manual Dispatch");
+    await screen.findByText(/alpha · CI Standard · fix\/thing #4242/);
     fireEvent.click(screen.getByText("Preview"));
     expect(await screen.findByText("fix alpha")).toBeInTheDocument();
 

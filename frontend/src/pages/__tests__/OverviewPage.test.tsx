@@ -164,7 +164,9 @@ describe("OverviewPage", () => {
     renderOverview();
 
     await screen.findByRole("region", { name: "Fleet status" });
-    fireEvent.click(screen.getByRole("button", { name: /Start All/ }));
+    const startAll = screen.getByRole("button", { name: /Start All/ });
+    await waitFor(() => expect(startAll).not.toBeDisabled());
+    fireEvent.click(startAll);
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
         "/api/fleet/control/all-up",
@@ -172,7 +174,9 @@ describe("OverviewPage", () => {
       ),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /^Stop$/ }));
+    const stopRunner = screen.getByRole("button", { name: /^Stop$/ });
+    await waitFor(() => expect(stopRunner).not.toBeDisabled());
+    fireEvent.click(stopRunner);
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
         "/api/runners/1/stop",
