@@ -1,10 +1,17 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.121
+**Spec Version:** 2.5.122
 **Application Version:** 4.9.17 (see `VERSION`)
-**Last Updated:** 2026-06-15T03:52:00-07:00
+**Last Updated:** 2026-06-15T11:36:00-07:00
 **Status:** Active
 
+- **2026-06-15 (2.5.122):** Continued #949 frontend monolith retirement with
+  a shrink-only static guard. `tests/test_frontend_integrity.py` now fails if
+  `legacy/App.tsx` grows above 2960 lines and asserts Fleet/Remediation route
+  through the extracted `pages/FleetTab.tsx` and `pages/RemediationTab.tsx`
+  implementations instead of reintroducing inline legacy twins. The legacy app
+  sheds obsolete decomposition comments while preserving current shell
+  behaviour.
 - **2026-06-15 (2.5.121):** Continued #949 frontend monolith hardening. Legacy
   dashboard polling now registers through `frontend/src/legacy/visibleInterval.ts`,
   which skips interval callbacks while the browser tab is hidden and refreshes
