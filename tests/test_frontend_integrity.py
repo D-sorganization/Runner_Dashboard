@@ -655,6 +655,20 @@ def test_workflows_desktop_route_bypasses_legacy_app() -> None:
     assert "export function WorkflowsPage" in workflows_page
 
 
+def test_credentials_desktop_route_bypasses_legacy_app() -> None:
+    """The Credentials desktop tab owns probe/set-key data outside legacy/App.tsx (#949)."""
+    routed_shell = (_FRONTEND_DIR / "src" / "shell" / "RoutedShell.tsx").read_text(
+        encoding="utf-8",
+    )
+    credentials_page = (_FRONTEND_DIR / "src" / "pages" / "CredentialsPage.tsx").read_text(encoding="utf-8")
+
+    assert 'case "credentials":' in routed_shell
+    assert "return <CredentialsPage />;" in routed_shell
+    assert 'legacyFetch("/api/credentials"' in credentials_page
+    assert 'legacyFetch("/api/credentials/set-key"' in credentials_page
+    assert "export function CredentialsPage" in credentials_page
+
+
 def test_main_tsx_has_root_suspense_fallback() -> None:
     main_tsx = (_FRONTEND_DIR / "src" / "main.tsx").read_text(encoding="utf-8")
     assert "<React.Suspense" in main_tsx
