@@ -1,10 +1,18 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.114
+**Spec Version:** 2.5.115
 **Application Version:** 4.9.16 (see `VERSION`)
-**Last Updated:** 2026-06-14T16:45:00-07:00
+**Last Updated:** 2026-06-15T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-15 (2.5.115):** Reduced the #949 frontend monolith surface on
+  mobile native tabs. `MobileShell` now treats `tabContent` as exclusive page
+  content instead of hidden-mounting the legacy `App` behind native Fleet, Queue,
+  Maxwell, Reports, and Credentials mobile pages. This prevents the legacy
+  polling tree from running in the background for those tabs while preserving
+  the fallback child render for tabs without native mobile content. A focused
+  MobileShell regression asserts the legacy child tree is not mounted when
+  native tab content exists.
 - **2026-06-14 (2.5.114):** Removed the hub-proxy `configure()` globals from
   the deployment and orchestration routers for issue #949. The routers now call
   the canonical `proxy_utils` implementation directly, keeping the
