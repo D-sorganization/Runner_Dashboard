@@ -69,6 +69,12 @@ vi.mock("../../pages/Principals", () => ({
   PrincipalsTab: () => <div data-testid="native-principals">Principals</div>,
 }));
 
+vi.mock("../../pages/RunnerAudit", () => ({
+  RunnerAuditPage: () => (
+    <div data-testid="native-runner-audit">Runner Audit</div>
+  ),
+}));
+
 vi.mock("../../pages/PushSettings", () => ({
   default: () => <div data-testid="native-push-settings">Push Settings</div>,
 }));
@@ -190,6 +196,7 @@ describe("RoutedShell — URL is the source of truth", () => {
     ["principals", "native-principals"],
     ["push-settings", "native-push-settings"],
     ["reports", "native-analysis"],
+    ["runner-audit", "native-runner-audit"],
     ["scheduled-jobs", "native-scheduled-jobs"],
     ["settings", "native-settings"],
   ])(

@@ -1,10 +1,16 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.131
+**Spec Version:** 2.5.132
 **Application Version:** 4.9.17 (see `VERSION`)
-**Last Updated:** 2026-06-15T14:32:00-07:00
+**Last Updated:** 2026-06-15T15:05:00-07:00
 **Status:** Active
 
+- **2026-06-15 (2.5.132):** Continued #949 frontend monolith retirement by
+  routing the `runner-audit` desktop tab through a native `RunnerAuditPage`
+  container. The page now owns the current `/api/runner-routing-audit` GET and
+  refresh POST contract outside the legacy `App` chunk, with tests covering
+  the endpoint, CSRF bridge header, delayed refresh poll, and RoutedShell native
+  bypass.
 - **2026-06-15 (2.5.131):** Continued #949 frontend monolith retirement by
   making `AnalysisTab` self-fetch report summaries when rendered outside the
   legacy App owner, then routing `analysis` and `reports` desktop tabs directly
@@ -878,7 +884,6 @@ Icon, tooltip, tabId, frequent }`. Six ordered groups (Fleet & Runners,
 - **2026-05-28 (2.5.40):** Added tier-aware autoscaler controls for ControlTower
   NVMe and HDD pools (issue #755). New `backend/routers/autoscaler_pools.py`
   exposes two endpoints:
-
   - `GET /api/autoscaler/pools` — returns per-pool scaling state (pool name,
     min/max/default online counts, systemd unit pattern, labels, start/stop
     enabled flags, primary pressure metric name, cooldown secs, dry_run flag).
@@ -1888,12 +1893,12 @@ Response shape (`schema_version` `1.0.0`):
       "setup_hint": "...",
       "experimental": false,
       "editable": true,
-      "remote": false
-    }
+      "remote": false,
+    },
   ],
   "auth_kinds": ["none", "github_app", "api_key", "local"],
   "task_classes": ["format", "..."],
-  "capabilities": ["code_edit", "..."]
+  "capabilities": ["code_edit", "..."],
 }
 ```
 
