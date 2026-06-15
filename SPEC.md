@@ -1,10 +1,15 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.134
+**Spec Version:** 2.5.135
 **Application Version:** 4.9.17 (see `VERSION`)
-**Last Updated:** 2026-06-15T11:37:34-07:00
+**Last Updated:** 2026-06-15T12:02:05-07:00
 **Status:** Active
 
+- **2026-06-15 (2.5.135):** Continued #949 frontend monolith retirement by
+  adding a self-contained `MaxwellPage` container for desktop. The page now
+  owns `/api/maxwell/status` and `/api/maxwell/control` outside the legacy App
+  owner while preserving the prop-driven `MaxwellTab` contract for fallback
+  callers, and `RoutedShell` bypasses the legacy chunk for `/t/maxwell`.
 - **2026-06-15 (2.5.134):** Continued #949 frontend monolith retirement by
   routing the desktop `queue` tab directly through the extracted
   `pages/Queue` implementation. The page's existing `/api/queue` self-fetch
