@@ -55,6 +55,22 @@ vi.mock("../../pages/LinearSetup", () => ({
   LinearSetup: () => <div data-testid="native-linear-setup">Linear Setup</div>,
 }));
 
+vi.mock("../../pages/Principals", () => ({
+  PrincipalsTab: () => <div data-testid="native-principals">Principals</div>,
+}));
+
+vi.mock("../../pages/PushSettings", () => ({
+  default: () => <div data-testid="native-push-settings">Push Settings</div>,
+}));
+
+vi.mock("../../pages/ScheduledJobs", () => ({
+  default: () => <div data-testid="native-scheduled-jobs">Scheduled Jobs</div>,
+}));
+
+vi.mock("../../components/ThemeSettings", () => ({
+  ThemeSettings: () => <div data-testid="native-settings">Settings</div>,
+}));
+
 // Force the desktop shell branch (lg) so DesktopShell renders deterministically.
 vi.mock("../../hooks/useBreakpoint", async (orig) => {
   const actual = (await orig()) as Record<string, unknown>;
@@ -153,16 +169,25 @@ describe("RoutedShell — URL is the source of truth", () => {
     expect(await screen.findByTestId("legacy-app")).toBeInTheDocument();
   });
 
-  it("routes self-contained desktop tabs without mounting the legacy App", async () => {
-    renderAt("/t/agent-dispatch");
-    expect(await screen.findByTestId("active-tab")).toHaveTextContent(
-      "agent-dispatch",
-    );
-    expect(
-      await screen.findByTestId("native-agent-dispatch"),
-    ).toBeInTheDocument();
-    expect(screen.queryByTestId("legacy-app")).not.toBeInTheDocument();
-  });
+  it.each([
+    ["agent-dispatch", "native-agent-dispatch"],
+    ["cline-launcher", "native-cline-launcher"],
+    ["conductor", "native-conductor"],
+    ["diagnostics", "native-diagnostics"],
+    ["linear-setup", "native-linear-setup"],
+    ["principals", "native-principals"],
+    ["push-settings", "native-push-settings"],
+    ["scheduled-jobs", "native-scheduled-jobs"],
+    ["settings", "native-settings"],
+  ])(
+    "routes self-contained desktop tab %s without mounting the legacy App",
+    async (tabId, testId) => {
+      renderAt(`/t/${tabId}`);
+      expect(await screen.findByTestId("active-tab")).toHaveTextContent(tabId);
+      expect(await screen.findByTestId(testId)).toBeInTheDocument();
+      expect(screen.queryByTestId("legacy-app")).not.toBeInTheDocument();
+    },
+  );
 
   it("keeps legacy fallback for tabs that still depend on legacy-owned state", async () => {
     renderAt("/t/queue");
