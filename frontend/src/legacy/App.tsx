@@ -60,6 +60,7 @@ import {
   lsGet,
   lsSet,
 } from "../lib/assistantStorage"
+import { createVisibleInterval } from "./visibleInterval"
 
 var h = React.createElement;
 var SERVICE_WORKER_CACHE_DENYLIST = [/^\/api\/credentials(?:\/|$)/];
@@ -1929,37 +1930,25 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
     fetchScheduledJobs();
     fetchRunnerCapacity();
     fetchRunnerAudit();
-    var t1 = setInterval(fetchFleet, 30000);
-    var t2 = setInterval(fetchRepos, 120000);
-    var t3 = setInterval(fetchTests, 120000);
-    var t3b = setInterval(fetchCiResults, 120000);
-    var t4 = setInterval(fetchReports, 300000);
-    var t5 = setInterval(fetchQueue, 60000);
-    var t6 = setInterval(fetchMachines, 60000);
-    var t7 = setInterval(fetchEnrichedRuns, 60000);
-    var t8 = setInterval(fetchWatchdog, 120000);
-    var t9 = setInterval(fetchScheduledJobs, 300000);
-    var t10 = setInterval(fetchLocalApps, 90000);
-    var t11 = setInterval(fetchRunnerCapacity, 60000);
-    var t12 = setInterval(fetchDeployment, 300000);
-    var t13 = setInterval(fetchDeploymentState, 300000);
-    var t14 = setInterval(fetchRunnerAudit, 300000);
+    var cleanupIntervals = [
+      createVisibleInterval(fetchFleet, 30000),
+      createVisibleInterval(fetchRepos, 120000),
+      createVisibleInterval(fetchTests, 120000),
+      createVisibleInterval(fetchCiResults, 120000),
+      createVisibleInterval(fetchReports, 300000),
+      createVisibleInterval(fetchQueue, 60000),
+      createVisibleInterval(fetchMachines, 60000),
+      createVisibleInterval(fetchEnrichedRuns, 60000),
+      createVisibleInterval(fetchWatchdog, 120000),
+      createVisibleInterval(fetchScheduledJobs, 300000),
+      createVisibleInterval(fetchLocalApps, 90000),
+      createVisibleInterval(fetchRunnerCapacity, 60000),
+      createVisibleInterval(fetchDeployment, 300000),
+      createVisibleInterval(fetchDeploymentState, 300000),
+      createVisibleInterval(fetchRunnerAudit, 300000),
+    ];
     return function () {
-      clearInterval(t1);
-      clearInterval(t2);
-      clearInterval(t3);
-      clearInterval(t3b);
-      clearInterval(t4);
-      clearInterval(t5);
-      clearInterval(t6);
-      clearInterval(t7);
-      clearInterval(t8);
-      clearInterval(t9);
-      clearInterval(t10);
-      clearInterval(t11);
-      clearInterval(t12);
-      clearInterval(t13);
-      clearInterval(t14);
+      cleanupIntervals.forEach(function (cleanup) { cleanup(); });
     };
   }, []);
 
@@ -1986,8 +1975,8 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
           }
         });
     }
-    var healthInterval = setInterval(checkHealth, 2000);
-    return function () { clearInterval(healthInterval); };
+    var cleanupHealthInterval = createVisibleInterval(checkHealth, 2000);
+    return function () { cleanupHealthInterval(); };
   }, []);
 
   function onFleet(a) {

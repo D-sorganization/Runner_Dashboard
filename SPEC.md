@@ -1,10 +1,18 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.120
+**Spec Version:** 2.5.121
 **Application Version:** 4.9.17 (see `VERSION`)
-**Last Updated:** 2026-06-15T02:52:00-07:00
+**Last Updated:** 2026-06-15T03:52:00-07:00
 **Status:** Active
 
+- **2026-06-15 (2.5.121):** Continued #949 frontend monolith hardening. Legacy
+  dashboard polling now registers through `frontend/src/legacy/visibleInterval.ts`,
+  which skips interval callbacks while the browser tab is hidden and refreshes
+  once on `visibilitychange` when the tab becomes visible again. The legacy app
+  keeps the existing immediate first fetches and state ownership, but the 15
+  background pollers plus the `/health` recovery check no longer run
+  continuously in hidden tabs. `tests/test_frontend_integrity.py` guards the
+  visibility-aware polling contract, and `legacy/App.tsx` shrinks to 2919 lines.
 - **2026-06-15 (2.5.120):** Updated the release signing step for the installed
   cosign v4 behaviour. The release workflow now writes a
   `dashboard-<version>.bundle` with `cosign sign-blob --bundle` and uploads that
