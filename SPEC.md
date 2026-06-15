@@ -1,10 +1,16 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.116
-**Application Version:** 4.9.16 (see `VERSION`)
-**Last Updated:** 2026-06-15T00:45:00-07:00
+**Spec Version:** 2.5.117
+**Application Version:** 4.9.17 (see `VERSION`)
+**Last Updated:** 2026-06-15T02:15:00-07:00
 **Status:** Active
 
+- **2026-06-15 (2.5.117):** Continued #949 backend DI cleanup. Deployment
+  and orchestration routers now receive server helpers through typed FastAPI
+  app-state dependency objects instead of module-global `Callable | None`
+  variables mutated by `set_dependencies()`. Focused regressions assert these
+  routers no longer carry optional callable globals while preserving the
+  existing route behaviour.
 - **2026-06-15 (2.5.116):** Started the Runner_Dashboard side of #962 least-
   privilege Maxwell-Daemon access. The Maxwell proxy now uses the configured
   static `MAXWELL_API_TOKEN` only as a bootstrap credential for

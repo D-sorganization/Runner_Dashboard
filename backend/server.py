@@ -2361,6 +2361,7 @@ _system_router.set_boot_time(BOOT_TIME)
 
 # Inject dependencies into orchestration router (issue #359)
 _orchestration_router.set_dependencies(
+    app=app,
     fleet_control_local=_fleet_control_local,
     remote_fleet_control=_remote_fleet_control,
     get_fleet_nodes_impl=_get_fleet_nodes_impl,
@@ -2401,6 +2402,7 @@ _orchestrator_api.set_capacity_provider(_orchestrator_capacity_provider)
 
 # Inject dependencies into deployment router
 _deployment_router.set_dependencies(
+    app=app,
     get_fleet_nodes_impl=_get_fleet_nodes_impl,
     deployment_info=_deployment_info,
     read_expected_dashboard_version=_read_expected_dashboard_version,
