@@ -13,9 +13,19 @@
  * 7. Scheduler-missing + error states surface to the operator.
  */
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { RunnerScheduleTab, type RunnerScheduleData } from "../RunnerSchedule";
+import {
+  RunnerSchedulePage,
+  RunnerScheduleTab,
+  type RunnerScheduleData,
+} from "../RunnerSchedule";
 
 afterEach(cleanup);
 beforeEach(() => {
@@ -65,6 +75,61 @@ const DATA: RunnerScheduleData = {
 };
 
 describe("RunnerScheduleTab", () => {
+  it("RunnerSchedulePage owns the schedule fetch", async () => {
+    const fetchMock = vi.fn(() =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(DATA),
+      } as Response),
+    );
+    global.fetch = fetchMock;
+
+    render(<RunnerSchedulePage />);
+
+    expect(await screen.findByText("weekdays")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/fleet/schedule",
+      expect.objectContaining({ headers: expect.any(Headers) }),
+    );
+  });
+
+  it("RunnerSchedulePage posts saves and applies the returned payload", async () => {
+    const updated = {
+      ...DATA,
+      state: { ...DATA.state, desired: 6, timestamp: 456 },
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(DATA),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(updated),
+      } as Response);
+    global.fetch = fetchMock;
+
+    render(<RunnerSchedulePage />);
+
+    expect(await screen.findByText("weekdays")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/fleet/schedule",
+        expect.objectContaining({
+          body: JSON.stringify({ schedule: DATA.schedule, apply: false }),
+          method: "POST",
+        }),
+      );
+    });
+    expect(await screen.findByText("6")).toBeInTheDocument();
+  });
+
   it("renders without throwing (smoke test)", () => {
     expect(() =>
       render(<RunnerScheduleTab data={{}} loading={false} onSave={() => {}} />),
