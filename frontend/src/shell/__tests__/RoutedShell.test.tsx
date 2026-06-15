@@ -118,6 +118,10 @@ vi.mock("../../pages/TestsPage", () => ({
   TestsPage: () => <div data-testid="native-tests">Tests</div>,
 }));
 
+vi.mock("../../pages/WorkflowsPage", () => ({
+  WorkflowsPage: () => <div data-testid="native-workflows">Workflows</div>,
+}));
+
 vi.mock("../../components/ThemeSettings", () => ({
   ThemeSettings: () => <div data-testid="native-settings">Settings</div>,
 }));
@@ -242,6 +246,7 @@ describe("RoutedShell — URL is the source of truth", () => {
     ["scheduled-jobs", "native-scheduled-jobs"],
     ["settings", "native-settings"],
     ["tests", "native-tests"],
+    ["workflows", "native-workflows"],
   ])(
     "routes self-contained desktop tab %s without mounting the legacy App",
     async (tabId, testId) => {

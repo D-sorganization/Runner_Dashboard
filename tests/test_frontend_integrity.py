@@ -639,6 +639,22 @@ def test_runner_schedule_desktop_route_bypasses_legacy_app() -> None:
     assert "export function RunnerSchedulePage" in schedule_page
 
 
+def test_workflows_desktop_route_bypasses_legacy_app() -> None:
+    """The Workflows desktop tab owns list/dispatch data outside legacy/App.tsx (#949)."""
+    routed_shell = (_FRONTEND_DIR / "src" / "shell" / "RoutedShell.tsx").read_text(
+        encoding="utf-8",
+    )
+    workflows_page = (_FRONTEND_DIR / "src" / "pages" / "WorkflowsPage.tsx").read_text(
+        encoding="utf-8",
+    )
+
+    assert 'case "workflows":' in routed_shell
+    assert "return <WorkflowsPage />;" in routed_shell
+    assert 'legacyFetch("/api/workflows/list"' in workflows_page
+    assert 'legacyFetch("/api/workflows/dispatch"' in workflows_page
+    assert "export function WorkflowsPage" in workflows_page
+
+
 def test_main_tsx_has_root_suspense_fallback() -> None:
     main_tsx = (_FRONTEND_DIR / "src" / "main.tsx").read_text(encoding="utf-8")
     assert "<React.Suspense" in main_tsx
