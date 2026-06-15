@@ -73,6 +73,9 @@ import { ThemeSettings } from "../components/ThemeSettings";
 // its own chunk so the entry bundle code-splits the monolith out of first paint
 // (issue #831).
 const LazyLegacyApp = React.lazy(() => import("../legacy/App"));
+const LazyFleetOrchestrationPage = React.lazy(
+  () => import("../pages/FleetOrchestrationPage"),
+);
 
 /**
  * Persistent/global provider control for the shell topbar (#811). Fetches the
@@ -128,6 +131,8 @@ function nativeDesktopTabContent(tabId: string): React.ReactNode | null {
       return <EventsTab />;
     case "feature-requests":
       return <FeatureRequestsPage />;
+    case "fleet-orchestration":
+      return <LazyFleetOrchestrationPage />;
     case "linear-setup":
       return <LinearSetup />;
     case "local-apps":
