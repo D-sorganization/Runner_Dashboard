@@ -57,6 +57,7 @@ import { MaxwellPage } from "../pages/MaxwellPage";
 import { OrgPage } from "../pages/Org";
 import { PrincipalsTab } from "../pages/Principals";
 import { RunnerAuditPage } from "../pages/RunnerAudit";
+import { TestsPage } from "../pages/TestsPage";
 import PushSettings from "../pages/PushSettings";
 import ScheduledJobs from "../pages/ScheduledJobs";
 import { ThemeSettings } from "../components/ThemeSettings";
@@ -135,6 +136,8 @@ function nativeDesktopTabContent(tabId: string): React.ReactNode | null {
       return <ScheduledJobs />;
     case "settings":
       return <ThemeSettings />;
+    case "tests":
+      return <TestsPage />;
     default:
       return null;
   }

@@ -1,10 +1,15 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.138
+**Spec Version:** 2.5.139
 **Application Version:** 4.9.17 (see `VERSION`)
-**Last Updated:** 2026-06-15T12:49:00-07:00
+**Last Updated:** 2026-06-15T12:55:00-07:00
 **Status:** Active
 
+- **2026-06-15 (2.5.139):** Continued #949 frontend monolith retirement by
+  adding a self-contained `TestsPage` container for desktop. The page now owns
+  `/api/heavy-tests/repos` and `/api/tests/ci-results` outside the legacy App
+  owner while preserving the prop-driven `TestsTab` contract for fallback
+  callers, and `RoutedShell` bypasses the legacy chunk for `/t/tests`.
 - **2026-06-15 (2.5.138):** Restored push-time CI Standard line-cap health by
   splitting the native Maxwell chat/tasks panels, the Local Apps error boundary,
   and Maxwell test fixtures into focused modules. The three previously

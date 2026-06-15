@@ -591,6 +591,22 @@ def test_org_desktop_route_bypasses_legacy_app() -> None:
     assert "export function OrgPage" in org_page
 
 
+def test_tests_desktop_route_bypasses_legacy_app() -> None:
+    """The Tests desktop tab owns its data outside legacy/App.tsx (#949)."""
+    routed_shell = (_FRONTEND_DIR / "src" / "shell" / "RoutedShell.tsx").read_text(
+        encoding="utf-8",
+    )
+    tests_page = (_FRONTEND_DIR / "src" / "pages" / "TestsPage.tsx").read_text(
+        encoding="utf-8",
+    )
+
+    assert 'case "tests":' in routed_shell
+    assert "return <TestsPage />;" in routed_shell
+    assert 'legacyFetch("/api/heavy-tests/repos"' in tests_page
+    assert 'legacyFetch("/api/tests/ci-results"' in tests_page
+    assert "export function TestsPage" in tests_page
+
+
 def test_main_tsx_has_root_suspense_fallback() -> None:
     main_tsx = (_FRONTEND_DIR / "src" / "main.tsx").read_text(encoding="utf-8")
     assert "<React.Suspense" in main_tsx

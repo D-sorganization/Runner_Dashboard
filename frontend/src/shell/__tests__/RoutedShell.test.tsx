@@ -104,6 +104,10 @@ vi.mock("../../pages/ScheduledJobs", () => ({
   default: () => <div data-testid="native-scheduled-jobs">Scheduled Jobs</div>,
 }));
 
+vi.mock("../../pages/TestsPage", () => ({
+  TestsPage: () => <div data-testid="native-tests">Tests</div>,
+}));
+
 vi.mock("../../components/ThemeSettings", () => ({
   ThemeSettings: () => <div data-testid="native-settings">Settings</div>,
 }));
@@ -225,6 +229,7 @@ describe("RoutedShell — URL is the source of truth", () => {
     ["runner-audit", "native-runner-audit"],
     ["scheduled-jobs", "native-scheduled-jobs"],
     ["settings", "native-settings"],
+    ["tests", "native-tests"],
   ])(
     "routes self-contained desktop tab %s without mounting the legacy App",
     async (tabId, testId) => {
