@@ -11,16 +11,26 @@
  * 5. Loading + offline-stub-node states.
  */
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
 import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  MachinesPage,
   MachinesTab,
   MachineCard,
   StorageDeviceMetric,
   SystemResourcesPanel,
 } from "../Machines";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 const SYS = {
   cpu: { percent: 42, per_cpu_percent: [10, 90] },
@@ -35,6 +45,76 @@ const SYS = {
 };
 
 describe("MachinesTab", () => {
+  it("MachinesPage owns the fleet-node and runner fetches", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input) => {
+        const url = String(input);
+        if (url.endsWith("/api/fleet/nodes")) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                nodes: [
+                  {
+                    name: "ControlTower",
+                    online: true,
+                    dashboard_reachable: true,
+                    system: SYS,
+                  },
+                ],
+              }),
+              { status: 200 },
+            ),
+          );
+        }
+        if (url.endsWith("/api/runners")) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                runners: [
+                  {
+                    id: 1,
+                    name: "d-sorg-local-ControlTower-1",
+                    status: "online",
+                    busy: false,
+                  },
+                ],
+              }),
+              { status: 200 },
+            ),
+          );
+        }
+        return Promise.reject(new Error("unexpected fetch " + url));
+      });
+
+    render(<MachinesPage />);
+
+    await waitFor(() =>
+      expect(screen.getByText("ControlTower")).toBeInTheDocument(),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/fleet/nodes",
+      expect.objectContaining({ headers: expect.any(Headers) }),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/runners",
+      expect.objectContaining({ headers: expect.any(Headers) }),
+    );
+  });
+
+  it("MachinesPage surfaces a retry affordance when machine data fails", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ error: "nope" }), { status: 500 }),
+    );
+
+    render(<MachinesPage />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Failed to load machine data",
+    );
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
+
   it("renders headline stats and a card per physical machine", () => {
     const data = {
       nodes: [

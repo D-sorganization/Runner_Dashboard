@@ -53,6 +53,7 @@ import { DiagnosticsTab } from "../pages/Diagnostics";
 import { EventsTab } from "../pages/Events";
 import { LinearSetup } from "../pages/LinearSetup";
 import { LocalAppsPage } from "../pages/LocalApps";
+import { MachinesPage } from "../pages/Machines";
 import { MaxwellPage } from "../pages/MaxwellPage";
 import { OrgPage } from "../pages/Org";
 import { PrincipalsTab } from "../pages/Principals";
@@ -121,6 +122,8 @@ function nativeDesktopTabContent(tabId: string): React.ReactNode | null {
       return <LinearSetup />;
     case "local-apps":
       return <LocalAppsPage />;
+    case "machines":
+      return <MachinesPage />;
     case "maxwell":
       return <MaxwellPage />;
     case "org":
