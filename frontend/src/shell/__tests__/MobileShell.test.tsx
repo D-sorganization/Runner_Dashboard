@@ -288,6 +288,23 @@ describe('MobileShell', () => {
     }
   })
 
+  it('does not hidden-mount legacy children when native tab content exists', () => {
+    render(
+      <MobileShell
+        currentTab={FIRST.tabId}
+        onTabChange={vi.fn()}
+        tabContent={{
+          [FIRST.tabId]: <div>Native fleet content</div>,
+        }}
+      >
+        <div>Legacy polling app</div>
+      </MobileShell>
+    )
+
+    expect(screen.getByText('Native fleet content')).toBeInTheDocument()
+    expect(screen.queryByText('Legacy polling app')).not.toBeInTheDocument()
+  })
+
   it('closes drawer when backdrop is clicked', async () => {
     const { container } = render(
       <MobileShell currentTab={FIRST.tabId} onTabChange={vi.fn()}>
