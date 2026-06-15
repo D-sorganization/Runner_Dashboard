@@ -555,6 +555,26 @@ def test_router_is_the_single_nav_source_of_truth() -> None:
         assert marker in routing_ts, f"missing routing helper: {marker!r}"
 
 
+def test_queue_desktop_route_bypasses_legacy_app() -> None:
+    """The Queue desktop tab is self-owned and must not remount legacy/App.tsx.
+
+    QueueTab already fetches `/api/queue` when rendered without legacy-owned
+    props. Keep the modern desktop shell pointed at the extracted page so #949
+    continues shrinking the legacy fallback surface instead of expanding it.
+    """
+    routed_shell = (_FRONTEND_DIR / "src" / "shell" / "RoutedShell.tsx").read_text(
+        encoding="utf-8",
+    )
+    queue_page = (_FRONTEND_DIR / "src" / "pages" / "Queue" / "index.tsx").read_text(
+        encoding="utf-8",
+    )
+
+    assert 'case "queue":' in routed_shell
+    assert "return <QueueTab />;" in routed_shell
+    assert 'fetch("/api/queue")' in queue_page
+    assert "p.queue ?? localQueue ?? {}" in queue_page
+
+
 def test_main_tsx_has_root_suspense_fallback() -> None:
     main_tsx = (_FRONTEND_DIR / "src" / "main.tsx").read_text(encoding="utf-8")
     assert "<React.Suspense" in main_tsx
