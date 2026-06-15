@@ -1,10 +1,16 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.135
+**Spec Version:** 2.5.136
 **Application Version:** 4.9.17 (see `VERSION`)
-**Last Updated:** 2026-06-15T12:02:05-07:00
+**Last Updated:** 2026-06-15T12:18:00-07:00
 **Status:** Active
 
+- **2026-06-15 (2.5.136):** Continued #949 frontend monolith retirement by
+  making the desktop `org` tab self-fetch `/api/repos` and `/api/stats` through
+  a native `OrgPage` container, then routing it directly through the modern
+  desktop shell. The presentational `OrgTab` remains prop-driven for legacy
+  fallback callers and focused tests, while RoutedShell and static integrity
+  coverage guard the native route bypass.
 - **2026-06-15 (2.5.135):** Continued #949 frontend monolith retirement by
   adding a self-contained `MaxwellPage` container for desktop. The page now
   owns `/api/maxwell/status` and `/api/maxwell/control` outside the legacy App

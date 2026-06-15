@@ -6,15 +6,14 @@
  * search, sortable headline columns (Recent / PRs / Issues / Name), aggregate
  * stats (repos, open PRs, open issues, CI-active count), and per-repo CI status.
  *
- * Presentational: the repo list (and its loading flag) is owned by the legacy
- * App because the same `repos` state also feeds several other tabs (Assessments,
- * Feature Requests). To stay DRY and avoid double-polling, this page receives
- * the already-fetched `repos`/`stats` and a `loading` flag. Loading/empty
- * states and a11y semantics match the original legacy render exactly.
+ * The exported `OrgPage` owns the `/api/repos` + `/api/stats` fetches for the
+ * routed desktop shell. `OrgTab` stays presentational so legacy callers and
+ * focused component tests can keep passing explicit repo/stat payloads.
  */
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { LANG_COLORS } from "../components/formatters";
 import { Stat } from "../components/Stat";
+import { legacyFetch } from "../lib/api";
 import { GitPrGlyph, IssueGlyph } from "./decompIcons";
 
 function timeAgo(d?: string | null): string {
@@ -55,7 +54,90 @@ export interface OrgProps {
   stats?: OrgStats;
 }
 
+interface ReposPayload {
+  repos?: OrgRepo[];
+}
+
 type SortKey = "updated" | "prs" | "issues" | "name";
+
+function normalizeReposPayload(payload: unknown): OrgRepo[] {
+  if (Array.isArray(payload)) return payload as OrgRepo[];
+  if (payload && typeof payload === "object") {
+    const repos = (payload as ReposPayload).repos;
+    if (Array.isArray(repos)) return repos;
+  }
+  return [];
+}
+
+export function OrgPage(): React.ReactElement {
+  const [repos, setRepos] = useState<OrgRepo[]>([]);
+  const [stats, setStats] = useState<OrgStats>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback((signal?: AbortSignal) => {
+    setLoading(true);
+    setError(null);
+    Promise.all([
+      legacyFetch("/api/repos", { signal }).then((r) => {
+        if (!r.ok) throw new Error("repos HTTP " + r.status);
+        return r.json();
+      }),
+      legacyFetch("/api/stats", { signal }).then((r) => {
+        if (!r.ok) throw new Error("stats HTTP " + r.status);
+        return r.json();
+      }),
+    ])
+      .then(([reposPayload, statsPayload]) => {
+        setRepos(normalizeReposPayload(reposPayload));
+        setStats(
+          (statsPayload && typeof statsPayload === "object"
+            ? statsPayload
+            : {}) as OrgStats,
+        );
+      })
+      .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Failed to load organization data",
+        );
+      })
+      .finally(() => {
+        if (!signal?.aborted) setLoading(false);
+      });
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    refresh(controller.signal);
+    return () => controller.abort();
+  }, [refresh]);
+
+  return (
+    <div>
+      {error ? (
+        <div
+          className="section"
+          role="alert"
+          style={{ marginBottom: 12, color: "var(--accent-red)" }}
+        >
+          Failed to load organization data: {error}
+          <button
+            className="btn"
+            type="button"
+            onClick={() => refresh()}
+            style={{ marginLeft: 12 }}
+          >
+            Retry
+          </button>
+        </div>
+      ) : null}
+      <OrgTab repos={repos} loading={loading} stats={stats} />
+    </div>
+  );
+}
 
 export function OrgTab({
   repos,

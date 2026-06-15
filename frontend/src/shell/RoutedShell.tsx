@@ -53,6 +53,7 @@ import { DiagnosticsTab } from "../pages/Diagnostics";
 import { EventsTab } from "../pages/Events";
 import { LinearSetup } from "../pages/LinearSetup";
 import { MaxwellPage } from "../pages/MaxwellPage";
+import { OrgPage } from "../pages/Org";
 import { PrincipalsTab } from "../pages/Principals";
 import { RunnerAuditPage } from "../pages/RunnerAudit";
 import PushSettings from "../pages/PushSettings";
@@ -117,6 +118,8 @@ function nativeDesktopTabContent(tabId: string): React.ReactNode | null {
       return <LinearSetup />;
     case "maxwell":
       return <MaxwellPage />;
+    case "org":
+      return <OrgPage />;
     case "principals":
       return <PrincipalsTab />;
     case "push-settings":
