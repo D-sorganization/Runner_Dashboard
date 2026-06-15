@@ -1,10 +1,16 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.117
+**Spec Version:** 2.5.118
 **Application Version:** 4.9.17 (see `VERSION`)
-**Last Updated:** 2026-06-15T02:15:00-07:00
+**Last Updated:** 2026-06-15T02:40:00-07:00
 **Status:** Active
 
+- **2026-06-15 (2.5.118):** Hardened the release tarball step after the
+  `4.9.17` release workflow exposed that `tar czf dashboard-<version>.tar.gz .`
+  can read its own in-progress output. The release workflow now excludes
+  `.venv` and generated dashboard release artifacts (`.tar.gz`, checksums,
+  signatures, and certs) from the source archive, with a regression in
+  `tests/test_release_workflow_yaml.py`.
 - **2026-06-15 (2.5.117):** Continued #949 backend DI cleanup. Deployment
   and orchestration routers now receive server helpers through typed FastAPI
   app-state dependency objects instead of module-global `Callable | None`

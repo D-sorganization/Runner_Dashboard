@@ -163,6 +163,18 @@ def test_release_workflow_defines_dry_run_input() -> None:
     assert inputs["version"].get("required") is True, "`version` input must be required"
 
 
+def test_release_tarball_excludes_generated_release_artifacts() -> None:
+    text = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+    for pattern in (
+        "--exclude='.venv'",
+        "--exclude='dashboard-*.tar.gz'",
+        "--exclude='dashboard-*.tar.gz.sha256'",
+        "--exclude='dashboard-*.sig'",
+        "--exclude='dashboard-*.pem'",
+    ):
+        assert pattern in text, f"release tarball must exclude generated artifact pattern {pattern}"
+
+
 def test_verify_tag_workflow_triggers_on_v_tag_push() -> None:
     data = _load_workflow(VERIFY_TAG_WORKFLOW)
     triggers = data["on"]
