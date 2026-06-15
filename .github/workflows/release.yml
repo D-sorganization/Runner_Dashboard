@@ -220,9 +220,14 @@ jobs:
             --exclude='.git' \
             --exclude='node_modules' \
             --exclude='venv' \
+            --exclude='.venv' \
             --exclude='__pycache__' \
             --exclude='*.pyc' \
             --exclude='dist' \
+            --exclude='dashboard-*.tar.gz' \
+            --exclude='dashboard-*.tar.gz.sha256' \
+            --exclude='dashboard-*.sig' \
+            --exclude='dashboard-*.pem' \
             .
           SHA256=$(sha256sum "$ARTIFACT" | awk '{print $1}')
           echo "${SHA256}  ${ARTIFACT}" > "${ARTIFACT}.sha256"
