@@ -15,6 +15,7 @@ _FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 _HTML_SHELL = _FRONTEND_DIR / "index.html"
 _SRC_DIR = _FRONTEND_DIR / "src"
 _INDEX_HTML = _SRC_DIR / "legacy" / "App.tsx"
+_VISIBLE_INTERVAL = _SRC_DIR / "legacy" / "visibleInterval.ts"
 _QUEUE_INDEX = _SRC_DIR / "pages" / "Queue" / "index.tsx"
 _PUSH_SETTINGS = _FRONTEND_DIR / "src" / "pages" / "PushSettings.tsx"
 _DESIGN_DIR = _FRONTEND_DIR / "src" / "design"
@@ -126,6 +127,23 @@ def test_tests_tab_rerun_checks_response_ok_before_triggered_state() -> None:
 
     assert "if (!r.ok)" in rerun_block
     assert 'throw new Error("rerun failed")' in rerun_block
+
+
+def test_legacy_polling_pauses_while_tab_is_hidden() -> None:
+    content = _read_legacy_app()
+    helper = _VISIBLE_INTERVAL.read_text(encoding="utf-8")
+
+    assert 'import { createVisibleInterval } from "./visibleInterval"' in content
+    assert "document.hidden" in helper
+    assert 'document.addEventListener("visibilitychange", onVisibilityChange)' in helper
+    assert 'document.removeEventListener("visibilitychange", onVisibilityChange)' in helper
+    assert "var t1 = setInterval" not in content
+    assert "var healthInterval = setInterval" not in content
+
+    poller_start = content.index("var cleanupIntervals = [")
+    poller_block = content[poller_start : content.index("];", poller_start)]
+    assert poller_block.count("createVisibleInterval(") == 15
+    assert "createVisibleInterval(checkHealth, 2000)" in content
 
 
 def test_runner_facing_tables_use_sortable_headers() -> None:
