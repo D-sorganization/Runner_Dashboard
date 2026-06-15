@@ -7,12 +7,12 @@
  * desired/deployed versions + drift, and a dry-run "Preview update" → "Confirm
  * update" flow that POSTs to `/api/deployment/update-signal`.
  *
- * Presentational: the deployment state (and its poll) is owned by the legacy App,
- * so this page receives the already-fetched `data`, a `loading` flag, and
- * `onRefresh` / `onOpenFleet` callbacks. The dry-run preview is local state.
- * Loading/empty states and a11y semantics mirror the original legacy render.
+ * Dual-mode data ownership: legacy callers can pass already-fetched `data` plus
+ * callbacks, while native shell routes omit those props and let this page fetch
+ * `/api/deployment/state` itself. The dry-run preview is local state. Loading,
+ * empty states, and a11y semantics mirror the original legacy render.
  */
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Stat } from "../components/Stat";
 import { timeAgo } from "../components/formatters";
 import { legacyFetch } from "../lib/api";
@@ -100,10 +100,33 @@ export function DeploymentTab({
   onRefresh,
   onOpenFleet,
 }: DeploymentProps): React.ReactElement {
-  const d = data || {};
-  const refresh = onRefresh || (() => {});
+  const ownsData = data === undefined;
+  const [ownedData, setOwnedData] = useState<DeploymentData>({});
+  const [ownedLoading, setOwnedLoading] = useState(false);
+  const d = data ?? ownedData;
+  const effectiveLoading = loading ?? ownedLoading;
+  const fetchOwnedData = useCallback(() => {
+    if (!ownsData) return;
+    setOwnedLoading(true);
+    legacyFetch("/api/deployment/state")
+      .then((r) => r.json())
+      .then((resp: DeploymentData) => {
+        setOwnedData(resp || {});
+      })
+      .catch(() => {
+        setOwnedData({});
+      })
+      .finally(() => {
+        setOwnedLoading(false);
+      });
+  }, [ownsData]);
+  const refresh = onRefresh || fetchOwnedData;
   const openFleet = onOpenFleet || (() => {});
   const [preview, setPreview] = useState<PreviewState | null>(null);
+
+  useEffect(() => {
+    fetchOwnedData();
+  }, [fetchOwnedData]);
 
   const rollout = d.rollout_state || {};
   const machines = (d.machines || []).slice().sort((a, b) => {
@@ -253,7 +276,7 @@ export function DeploymentTab({
         >
           Fleet overview
         </button>
-        {loading ? <span>Loading...</span> : null}
+        {effectiveLoading ? <span>Loading...</span> : null}
       </div>
       {preview ? (
         <div className="deployment-preview">
@@ -311,10 +334,7 @@ export function DeploymentTab({
                   ? "var(--accent-yellow)"
                   : "inherit";
           return (
-            <div
-              key={machine.name}
-              className="deployment-state-machine"
-            >
+            <div key={machine.name} className="deployment-state-machine">
               <div className="deployment-state-machine-head">
                 <div className="deployment-state-machine-title">
                   <strong>{machine.display_name || machine.name}</strong>
