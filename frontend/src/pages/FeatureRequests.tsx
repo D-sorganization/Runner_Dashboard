@@ -14,7 +14,7 @@
  * the already-fetched lists plus async callbacks. The form fields and transient
  * status flags are local state, matching the original legacy render exactly.
  */
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { IssueGlyph } from "./decompIcons";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -110,6 +110,11 @@ export function FeatureRequestsTab({
   const [editingPromptNotes, setEditingPromptNotes] = useState(promptNotes.notes);
   const [promptNotesEnabled, setPromptNotesEnabled] = useState(promptNotes.enabled);
   const [promptNotesSaveStatus, setPromptNotesSaveStatus] = useState<SaveStatus>(null);
+
+  useEffect(() => {
+    setEditingPromptNotes(promptNotes.notes);
+    setPromptNotesEnabled(promptNotes.enabled);
+  }, [promptNotes.enabled, promptNotes.notes]);
 
   function toggleStd(s: string): void {
     setSelStds((prev) => {

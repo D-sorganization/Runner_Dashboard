@@ -684,6 +684,24 @@ def test_credentials_desktop_route_bypasses_legacy_app() -> None:
     assert "export function CredentialsPage" in credentials_page
 
 
+def test_feature_requests_desktop_route_bypasses_legacy_app() -> None:
+    """The Feature Requests desktop tab owns request/template data outside legacy/App.tsx."""
+    routed_shell = (_FRONTEND_DIR / "src" / "shell" / "RoutedShell.tsx").read_text(
+        encoding="utf-8",
+    )
+    feature_requests_page = (_FRONTEND_DIR / "src" / "pages" / "FeatureRequestsPage.tsx").read_text(encoding="utf-8")
+
+    assert 'case "feature-requests":' in routed_shell
+    assert "return <FeatureRequestsPage />;" in routed_shell
+    assert 'legacyFetch("/api/repos"' in feature_requests_page
+    assert 'legacyFetch("/api/feature-requests"' in feature_requests_page
+    assert 'legacyFetch("/api/feature-requests/templates"' in feature_requests_page
+    assert 'legacyFetch("/api/feature-requests/dispatch"' in feature_requests_page
+    assert 'legacyFetch("/api/settings/prompt-notes"' in feature_requests_page
+    assert 'legacyFetch("/api/prompt-templates"' not in feature_requests_page
+    assert "export function FeatureRequestsPage" in feature_requests_page
+
+
 def test_main_tsx_has_root_suspense_fallback() -> None:
     main_tsx = (_FRONTEND_DIR / "src" / "main.tsx").read_text(encoding="utf-8")
     assert "<React.Suspense" in main_tsx
