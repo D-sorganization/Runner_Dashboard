@@ -449,12 +449,14 @@ function LocalAppsBody({
   );
 }
 
-export function LocalAppsTab(props: LocalAppsProps): React.ReactElement {
-  return (
-    <LocalAppsBoundary {...props}>
-      <LocalAppsBody {...props} />
-    </LocalAppsBoundary>
-  );
+export class LocalAppsTab extends React.Component<LocalAppsProps> {
+  render(): React.ReactNode {
+    return (
+      <LocalAppsBoundary {...this.props}>
+        <LocalAppsBody {...this.props} />
+      </LocalAppsBoundary>
+    );
+  }
 }
 
 export default LocalAppsTab;
