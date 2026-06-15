@@ -22,6 +22,7 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { TestsPage } from "../TestsPage";
 import { TestsTab, type CiResult, type TestRepo } from "../Tests";
 
 afterEach(cleanup);
@@ -85,8 +86,41 @@ const REPOS: TestRepo[] = [
 ];
 
 describe("TestsTab", () => {
+  it("TestsPage owns the heavy-test and CI result fetches", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      const payload =
+        url === "/api/heavy-tests/repos"
+          ? { repos: REPOS }
+          : url === "/api/tests/ci-results"
+            ? { results: CI }
+            : {};
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(payload),
+      } as Response);
+    });
+    global.fetch = fetchMock;
+
+    render(<TestsPage />);
+
+    expect(await screen.findByText("alpha")).toBeInTheDocument();
+    const card = document.querySelector(".test-card") as HTMLElement;
+    expect(within(card).getByText("UpstreamDrift")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/heavy-tests/repos",
+      expect.objectContaining({ headers: expect.any(Headers) }),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/tests/ci-results",
+      expect.objectContaining({ headers: expect.any(Headers) }),
+    );
+  });
+
   it("renders without throwing (smoke test)", () => {
-    expect(() => render(<TestsTab testRepos={[]} loading={false} />)).not.toThrow();
+    expect(() =>
+      render(<TestsTab testRepos={[]} loading={false} />),
+    ).not.toThrow();
   });
 
   it("shows the CI loading placeholder when there are no CI results", () => {
@@ -98,10 +132,18 @@ describe("TestsTab", () => {
     render(<TestsTab testRepos={[]} loading={false} ciResults={CI} />);
     expect(screen.getByText("alpha")).toBeInTheDocument();
     expect(screen.getByText("beta")).toBeInTheDocument();
-    expect(screen.getByText("failure")).toHaveAttribute("data-touch-primitive", "Badge");
-    expect(screen.getByText("success")).toHaveAttribute("data-touch-primitive", "Badge");
+    expect(screen.getByText("failure")).toHaveAttribute(
+      "data-touch-primitive",
+      "Badge",
+    );
+    expect(screen.getByText("success")).toHaveAttribute(
+      "data-touch-primitive",
+      "Badge",
+    );
     // alpha (failure) gets a re-run button; beta (success) gets View.
-    expect(screen.getByRole("button", { name: /Re-run Failed/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Re-run Failed/i }),
+    ).toBeInTheDocument();
   });
 
   it("posts to /api/tests/rerun when Re-run Failed is clicked", async () => {
@@ -110,7 +152,10 @@ describe("TestsTab", () => {
     render(<TestsTab testRepos={[]} loading={false} ciResults={CI} />);
     fireEvent.click(screen.getByRole("button", { name: /Re-run Failed/i }));
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith("/api/tests/rerun", expect.anything());
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tests/rerun",
+        expect.anything(),
+      );
     });
   });
 
@@ -132,7 +177,9 @@ describe("TestsTab", () => {
     const fetchMock = mockFetch({ status: "dispatched" });
     global.fetch = fetchMock;
     render(<TestsTab testRepos={REPOS} loading={false} ciResults={CI} />);
-    fireEvent.click(screen.getByRole("button", { name: /Run via GitHub Actions/i }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /Run via GitHub Actions/i }),
+    );
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
         "/api/heavy-tests/dispatch",
@@ -169,15 +216,17 @@ describe("TestsTab", () => {
 
   it("uses shared primitives and scoped tests tab classes", () => {
     render(<TestsTab testRepos={REPOS} loading={false} ciResults={CI} />);
-    expect(document.querySelector(".tests-tab__ci-section")).toBeInTheDocument();
-    expect(document.querySelector(".tests-tab__table-wrap")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Re-run Failed/i })).toHaveAttribute(
-      "data-touch-primitive",
-      "TouchButton",
-    );
-    expect(screen.getByRole("button", { name: /Run via GitHub Actions/i })).toHaveAttribute(
-      "data-touch-primitive",
-      "TouchButton",
-    );
+    expect(
+      document.querySelector(".tests-tab__ci-section"),
+    ).toBeInTheDocument();
+    expect(
+      document.querySelector(".tests-tab__table-wrap"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Re-run Failed/i }),
+    ).toHaveAttribute("data-touch-primitive", "TouchButton");
+    expect(
+      screen.getByRole("button", { name: /Run via GitHub Actions/i }),
+    ).toHaveAttribute("data-touch-primitive", "TouchButton");
   });
 });
