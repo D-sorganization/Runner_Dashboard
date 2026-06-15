@@ -263,7 +263,7 @@ jobs:
 
       - name: Attest build provenance (SLSA-3)
         if: steps.resolve.outputs.dry_run != 'true'
-        uses: actions/attest-build-provenance@db473fddc028af60658334401dc6fa5fef4c7a9b # v2.3.0
+        uses: actions/attest-build-provenance@db473fddc028af60658334401dc6fa3ffd8669fd # v2.3.0
         with:
           subject-path: ${{ steps.tarball.outputs.artifact }}
 
