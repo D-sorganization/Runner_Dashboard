@@ -9,13 +9,11 @@
  * viewports the tab is gated behind a WebAuthn biometric assertion (lock screen
  * + 60-second auto-relock + a confirm sheet before any key mutation).
  *
- * Presentational: the probe data and its poll are owned by the legacy App, so
- * this page receives the already-fetched `probes`/`summary`, a `loading` flag,
- * an `error` string, and `onRefresh` / `onSetKey` callbacks. The mobile
- * lock/confirm state is local. Status colours, labels, a11y semantics, and the
- * WebAuthn assert flow mirror the original legacy render exactly.
+ * `CredentialsPage` owns the probe fetch/set-key side effects for the routed
+ * desktop shell. `CredentialsTab` stays presentational so legacy callers and
+ * focused tests can keep passing explicit probe payloads.
  */
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Stat } from "../components/Stat";
 import { legacyFetch } from "../lib/api";
 import { RefreshGlyph } from "./decompIcons";
@@ -54,6 +52,109 @@ const JSON_HEADERS = {
   "Content-Type": "application/json",
   "X-Requested-With": "XMLHttpRequest",
 };
+
+interface CredentialsPayload {
+  probes?: CredentialProbe[];
+  summary?: CredentialSummary;
+}
+
+function normalizeCredentialsPayload(payload: unknown): CredentialsPayload {
+  if (!payload || typeof payload !== "object") return {};
+  const data = payload as CredentialsPayload;
+  return {
+    probes: Array.isArray(data.probes) ? data.probes : [],
+    summary:
+      data.summary && typeof data.summary === "object" ? data.summary : {},
+  };
+}
+
+export function CredentialsPage(): React.ReactElement {
+  const [data, setData] = useState<CredentialsPayload>({
+    probes: [],
+    summary: {},
+  });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | undefined>(undefined);
+
+  const refresh = useCallback((signal?: AbortSignal) => {
+    setLoading(true);
+    setError(undefined);
+    legacyFetch("/api/credentials", { signal })
+      .then((r) =>
+        r.json().then((payload: unknown) => {
+          if (!r.ok) throw new Error("credentials HTTP " + r.status);
+          return payload;
+        }),
+      )
+      .then((payload) => {
+        setData(normalizeCredentialsPayload(payload));
+      })
+      .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setError(
+          err instanceof Error ? err.message : "Failed to probe credentials.",
+        );
+      })
+      .finally(() => {
+        if (!signal?.aborted) setLoading(false);
+      });
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    refresh(controller.signal);
+    return () => controller.abort();
+  }, [refresh]);
+
+  const setCredentialKey = useCallback(
+    (probe: CredentialProbe) => {
+      const provider = probe.key_provider;
+      if (!provider) return;
+      const label = probe.label || probe.name || provider;
+      const keyValue = window.prompt("Enter API key for " + label);
+      if (!keyValue) return;
+      legacyFetch("/api/credentials/set-key", {
+        method: "POST",
+        headers: JSON_HEADERS,
+        body: JSON.stringify({
+          provider,
+          key: keyValue,
+          restart_maxwell: false,
+        }),
+      })
+        .then((r) =>
+          r.json().then((payload: unknown) => {
+            if (!r.ok) {
+              const detail =
+                payload && typeof payload === "object"
+                  ? (payload as { detail?: string }).detail
+                  : undefined;
+              throw new Error(detail || "HTTP " + r.status);
+            }
+            return payload;
+          }),
+        )
+        .then(() => {
+          refresh();
+        })
+        .catch((err: unknown) => {
+          setError(err instanceof Error ? err.message : "Failed to save key.");
+        });
+    },
+    [refresh],
+  );
+
+  return (
+    <CredentialsTab
+      probes={data.probes || []}
+      summary={data.summary || {}}
+      loading={loading}
+      error={error}
+      onRefresh={() => refresh()}
+      onSetKey={setCredentialKey}
+    />
+  );
+}
 
 // ── WebAuthn helpers (1:1 legacy) ────────────────────────────────────────────
 
