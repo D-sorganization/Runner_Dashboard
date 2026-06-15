@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- OverviewPage adapts dynamic legacy endpoint payloads into the 1:1 FleetTab contract while #949 retires legacy/App.tsx. */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { OverviewEventSection } from "./Events";
