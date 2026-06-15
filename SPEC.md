@@ -1,10 +1,16 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.132
+**Spec Version:** 2.5.133
 **Application Version:** 4.9.17 (see `VERSION`)
-**Last Updated:** 2026-06-15T15:05:00-07:00
+**Last Updated:** 2026-06-15T15:15:00-07:00
 **Status:** Active
 
+- **2026-06-15 (2.5.133):** Continued #949 frontend monolith retirement by
+  making `DeploymentTab` self-fetch `/api/deployment/state` when rendered
+  outside the legacy App owner, then routing the `deployment` desktop tab
+  directly through `pages/Deployment.tsx`. Legacy prop-driven deployment
+  rendering remains intact for fallback callers, while the modern shell avoids
+  mounting the legacy `App` chunk for deployment operations.
 - **2026-06-15 (2.5.132):** Continued #949 frontend monolith retirement by
   routing the `runner-audit` desktop tab through a native `RunnerAuditPage`
   container. The page now owns the current `/api/runner-routing-audit` GET and
