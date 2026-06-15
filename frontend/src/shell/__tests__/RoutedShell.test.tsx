@@ -73,6 +73,12 @@ vi.mock("../../pages/Events", () => ({
   EventsTab: () => <div data-testid="native-events">Events</div>,
 }));
 
+vi.mock("../../pages/FeatureRequestsPage", () => ({
+  FeatureRequestsPage: () => (
+    <div data-testid="native-feature-requests">Feature Requests</div>
+  ),
+}));
+
 vi.mock("../../pages/LinearSetup", () => ({
   LinearSetup: () => <div data-testid="native-linear-setup">Linear Setup</div>,
 }));
@@ -242,6 +248,7 @@ describe("RoutedShell — URL is the source of truth", () => {
     ["deployment", "native-deployment"],
     ["diagnostics", "native-diagnostics"],
     ["events", "native-events"],
+    ["feature-requests", "native-feature-requests"],
     ["linear-setup", "native-linear-setup"],
     ["local-apps", "native-local-apps"],
     ["machines", "native-machines"],

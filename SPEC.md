@@ -1,10 +1,17 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.145
+**Spec Version:** 2.5.146
 **Application Version:** 4.9.17 (see `VERSION`)
-**Last Updated:** 2026-06-15T15:12:00-07:00
+**Last Updated:** 2026-06-15T15:24:00-07:00
 **Status:** Active
 
+- **2026-06-15 (2.5.146):** Continued #949 frontend monolith retirement by
+  adding a self-contained `FeatureRequestsPage` container for desktop. The page
+  now owns `/api/repos`, `/api/feature-requests`,
+  `/api/feature-requests/templates`, `/api/feature-requests/dispatch`, and
+  `/api/settings/prompt-notes` outside the legacy App owner while preserving the
+  prop-driven `FeatureRequestsTab` contract for fallback callers, and
+  `RoutedShell` bypasses the legacy chunk for `/t/feature-requests`.
 - **2026-06-15 (2.5.145):** Continued #949 frontend monolith retirement by
   adding a self-contained `AssessmentsPage` container for desktop. The page now
   owns `/api/repos`, `/api/assessments/scores`, and
