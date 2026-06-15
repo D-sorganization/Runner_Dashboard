@@ -575,6 +575,22 @@ def test_queue_desktop_route_bypasses_legacy_app() -> None:
     assert "p.queue ?? localQueue ?? {}" in queue_page
 
 
+def test_org_desktop_route_bypasses_legacy_app() -> None:
+    """The Organization desktop tab owns its data outside legacy/App.tsx (#949)."""
+    routed_shell = (_FRONTEND_DIR / "src" / "shell" / "RoutedShell.tsx").read_text(
+        encoding="utf-8",
+    )
+    org_page = (_FRONTEND_DIR / "src" / "pages" / "Org.tsx").read_text(
+        encoding="utf-8",
+    )
+
+    assert 'case "org":' in routed_shell
+    assert "return <OrgPage />;" in routed_shell
+    assert 'legacyFetch("/api/repos"' in org_page
+    assert 'legacyFetch("/api/stats"' in org_page
+    assert "export function OrgPage" in org_page
+
+
 def test_main_tsx_has_root_suspense_fallback() -> None:
     main_tsx = (_FRONTEND_DIR / "src" / "main.tsx").read_text(encoding="utf-8")
     assert "<React.Suspense" in main_tsx
