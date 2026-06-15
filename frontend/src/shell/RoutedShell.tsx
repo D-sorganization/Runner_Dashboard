@@ -76,6 +76,7 @@ const LazyLegacyApp = React.lazy(() => import("../legacy/App"));
 const LazyFleetOrchestrationPage = React.lazy(
   () => import("../pages/FleetOrchestrationPage"),
 );
+const LazyOverviewPage = React.lazy(() => import("../pages/OverviewPage"));
 
 /**
  * Persistent/global provider control for the shell topbar (#811). Fetches the
@@ -110,6 +111,8 @@ function ShellThemeSelector() {
 
 function nativeDesktopTabContent(tabId: string): React.ReactNode | null {
   switch (normalizeTabId(tabId)) {
+    case "overview":
+      return <LazyOverviewPage />;
     case "agent-dispatch":
       return <AgentDispatchPage />;
     case "analysis":

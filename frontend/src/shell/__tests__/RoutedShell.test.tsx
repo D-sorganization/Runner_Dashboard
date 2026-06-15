@@ -108,6 +108,10 @@ vi.mock("../../pages/Org", () => ({
   OrgPage: () => <div data-testid="native-org">Org</div>,
 }));
 
+vi.mock("../../pages/OverviewPage", () => ({
+  default: () => <div data-testid="native-overview">Overview</div>,
+}));
+
 vi.mock("../../pages/Principals", () => ({
   PrincipalsTab: () => <div data-testid="native-principals">Principals</div>,
 }));
@@ -214,6 +218,7 @@ describe("RoutedShell — URL is the source of truth", () => {
     expect(await screen.findByTestId("active-tab")).toHaveTextContent(
       "overview",
     );
+    expect(await screen.findByTestId("native-overview")).toBeInTheDocument();
   });
 
   it("derives the active tab from the /t/:tabId param", async () => {
@@ -242,12 +247,13 @@ describe("RoutedShell — URL is the source of truth", () => {
   });
 
   it("lazy-loads the legacy App (code-split, not eager)", async () => {
-    renderAt("/");
+    renderAt("/t/remediation");
     // The legacy App renders only after its lazy chunk resolves.
     expect(await screen.findByTestId("legacy-app")).toBeInTheDocument();
   });
 
   it.each([
+    ["overview", "native-overview"],
     ["agent-dispatch", "native-agent-dispatch"],
     ["analysis", "native-analysis"],
     ["assessments", "native-assessments"],
