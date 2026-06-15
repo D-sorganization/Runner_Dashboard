@@ -1,10 +1,15 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.136
+**Spec Version:** 2.5.137
 **Application Version:** 4.9.17 (see `VERSION`)
-**Last Updated:** 2026-06-15T12:18:00-07:00
+**Last Updated:** 2026-06-15T12:30:00-07:00
 **Status:** Active
 
+- **2026-06-15 (2.5.137):** Continued #949 frontend monolith retirement by
+  adding a self-contained `LocalAppsPage` container for desktop. The page now
+  owns `/api/local-apps` outside the legacy App owner while preserving the
+  prop-driven `LocalAppsTab` contract for fallback callers, and `RoutedShell`
+  bypasses the legacy chunk for `/t/local-apps`.
 - **2026-06-15 (2.5.136):** Continued #949 frontend monolith retirement by
   making the desktop `org` tab self-fetch `/api/repos` and `/api/stats` through
   a native `OrgPage` container, then routing it directly through the modern

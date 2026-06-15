@@ -13,9 +13,21 @@
  * 8. Error boundary degrades to a Retry affordance.
  */
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen, fireEvent, within } from "@testing-library/react";
+import {
+  cleanup,
+  render,
+  screen,
+  fireEvent,
+  within,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { LocalAppsTab, type LocalApp, type LocalAppsData } from "../LocalApps";
+import {
+  LocalAppsPage,
+  LocalAppsTab,
+  type LocalApp,
+  type LocalAppsData,
+} from "../LocalApps";
 import {
   localAppHasUpdateAvailable,
   localAppNeedsAttention,
@@ -29,7 +41,16 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
+
+function jsonResponse(body: unknown): Response {
+  return {
+    ok: true,
+    status: 200,
+    json: () => Promise.resolve(body),
+  } as unknown as Response;
+}
 
 const APPS: LocalApp[] = [
   {
@@ -50,12 +71,21 @@ const APPS: LocalApp[] = [
   },
 ];
 
-const DATA: LocalAppsData = { tools: APPS, manifest_path: "/x/local_apps.json" };
+const DATA: LocalAppsData = {
+  tools: APPS,
+  manifest_path: "/x/local_apps.json",
+};
 
 describe("LocalAppsTab", () => {
   it("renders without throwing (smoke test)", () => {
     expect(() =>
-      render(<LocalAppsTab data={{ tools: [] }} loading={false} onRefresh={() => {}} />),
+      render(
+        <LocalAppsTab
+          data={{ tools: [] }}
+          loading={false}
+          onRefresh={() => {}}
+        />,
+      ),
     ).not.toThrow();
   });
 
@@ -83,23 +113,37 @@ describe("LocalAppsTab", () => {
         onRefresh={() => {}}
       />,
     );
-    expect(screen.getByText(/No tools defined in local_apps.json/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/No tools defined in local_apps.json/i),
+    ).toBeInTheDocument();
   });
 
   it("shows the no-manifest state when no manifest is present", () => {
-    render(<LocalAppsTab data={{ tools: [] }} loading={false} onRefresh={() => {}} />);
-    expect(screen.getByText(/No local_apps.json manifest found/i)).toBeInTheDocument();
+    render(
+      <LocalAppsTab
+        data={{ tools: [] }}
+        loading={false}
+        onRefresh={() => {}}
+      />,
+    );
+    expect(
+      screen.getByText(/No local_apps.json manifest found/i),
+    ).toBeInTheDocument();
   });
 
   it("shows the loading state", () => {
-    render(<LocalAppsTab data={{ tools: [] }} loading={true} onRefresh={() => {}} />);
+    render(
+      <LocalAppsTab data={{ tools: [] }} loading={true} onRefresh={() => {}} />,
+    );
     expect(screen.getByText(/Loading/i)).toBeInTheDocument();
   });
 
   it("invokes onRefresh when the refresh button is clicked", () => {
     const onRefresh = vi.fn();
     render(<LocalAppsTab data={DATA} loading={false} onRefresh={onRefresh} />);
-    fireEvent.click(screen.getByRole("button", { name: /Refresh local tools/i }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /Refresh local tools/i }),
+    );
     expect(onRefresh).toHaveBeenCalledTimes(1);
   });
 
@@ -111,8 +155,12 @@ describe("LocalAppsTab", () => {
     // needs-attention is the disjunction of the two predicates.
     expect(localAppNeedsAttention(APPS[1])).toBe(true);
     expect(localAppNeedsAttention(APPS[0])).toBe(false);
-    expect(localAppNeedsAttention({ drift: { behind: 2, ahead: 0 } })).toBe(true);
-    expect(localAppNeedsAttention({ health: { available: true, ok: false } })).toBe(true);
+    expect(localAppNeedsAttention({ drift: { behind: 2, ahead: 0 } })).toBe(
+      true,
+    );
+    expect(
+      localAppNeedsAttention({ health: { available: true, ok: false } }),
+    ).toBe(true);
   });
 
   it("degrades to a Retry affordance when a row throws during render", () => {
@@ -125,7 +173,41 @@ describe("LocalAppsTab", () => {
       },
     });
     render(<LocalAppsTab data={bad} loading={false} onRefresh={() => {}} />);
-    expect(screen.getByText(/Local Tools failed to render/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Retry loading data/i })).toBeInTheDocument();
+    expect(
+      screen.getByText(/Local Tools failed to render/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Retry loading data/i }),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("LocalAppsPage", () => {
+  it("fetches local app data outside the legacy App owner", async () => {
+    const fetchSpy = vi.fn(() => Promise.resolve(jsonResponse(DATA)));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    render(<LocalAppsPage />);
+
+    await waitFor(() =>
+      expect(screen.getByText("tool-current")).toBeInTheDocument(),
+    );
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/local-apps",
+      expect.objectContaining({ headers: expect.any(Headers) }),
+    );
+  });
+
+  it("refreshes local app data from the native page", async () => {
+    const fetchSpy = vi.fn(() => Promise.resolve(jsonResponse(DATA)));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    render(<LocalAppsPage />);
+
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
+    fireEvent.click(
+      screen.getByRole("button", { name: /Refresh local tools/i }),
+    );
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2));
   });
 });
