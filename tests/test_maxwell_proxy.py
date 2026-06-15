@@ -97,6 +97,15 @@ def _make_mock_client(get_return=None, post_return=None, get_side_effect=None, p
     return mock_cm
 
 
+def _scoped_token(role: str) -> dict[str, object]:
+    return {
+        "access_token": f"{role}-jwt",
+        "token_type": "bearer",
+        "expires_in": 600,
+        "role": role,
+    }
+
+
 # ─── GET /api/maxwell/version ────────────────────────────────────────────────
 
 
@@ -139,6 +148,32 @@ async def test_get_maxwell_tasks_returns_200_with_tasks_key(client) -> None:
     assert resp.status_code == 200
     data = resp.json()
     assert "tasks" in data
+
+
+@pytest.mark.asyncio
+async def test_get_maxwell_tasks_uses_viewer_scoped_token(client, monkeypatch) -> None:
+    """Issue #962: read proxies should not send the static admin token steady-state."""
+    import routers.maxwell as mx  # noqa: PLC0415
+
+    monkeypatch.setattr(mx, "MAXWELL_API_TOKEN", "admin-bootstrap-token")
+    mx._scoped_tokens.clear()
+
+    async def _post_by_url(url, *_args, **kwargs):
+        assert url.endswith("/api/v1/auth/token")
+        assert kwargs["headers"]["Authorization"] == "Bearer admin-bootstrap-token"
+        assert kwargs["json"]["role"] == "viewer"
+        return _mock_httpx_response(_scoped_token("viewer"))
+
+    mock_cm = _make_mock_client(
+        get_return=_mock_httpx_response({"tasks": [], "total": 0}),
+        post_side_effect=_post_by_url,
+    )
+    with patch("httpx.AsyncClient", return_value=mock_cm):
+        resp = await client.get("/api/maxwell/tasks")
+
+    assert resp.status_code == 200
+    sent_headers = mock_cm.__aenter__.return_value.get.call_args.kwargs["headers"]
+    assert sent_headers["Authorization"] == "Bearer viewer-jwt"
 
 
 @pytest.mark.asyncio
@@ -368,6 +403,34 @@ async def test_maxwell_dispatch_posts_to_confirmation_gated_endpoint(client) -> 
     assert sent["prompt"] == "build the thing"
     assert sent["repo"] == "test-repo"
     assert sent["idempotency_key"] == "idem-1"
+
+
+@pytest.mark.asyncio
+async def test_maxwell_dispatch_uses_operator_scoped_token(client, monkeypatch) -> None:
+    """Issue #962: dispatch/control traffic should use operator-scoped JWTs."""
+    import routers.maxwell as mx  # noqa: PLC0415
+
+    monkeypatch.setattr(mx, "MAXWELL_API_TOKEN", "admin-bootstrap-token")
+    mx._scoped_tokens.clear()
+
+    async def _post_by_url(url, *_args, **kwargs):
+        if url.endswith("/api/v1/auth/token"):
+            assert kwargs["headers"]["Authorization"] == "Bearer admin-bootstrap-token"
+            assert kwargs["json"]["role"] == "operator"
+            return _mock_httpx_response(_scoped_token("operator"))
+        assert url.endswith("/api/dispatch")
+        assert kwargs["headers"]["Authorization"] == "Bearer operator-jwt"
+        return _mock_httpx_response({"task_id": "t-op", "status": "queued"}, status_code=202)
+
+    mock_cm = _make_mock_client(post_side_effect=_post_by_url)
+    with patch("httpx.AsyncClient", return_value=mock_cm):
+        resp = await client.post(
+            "/api/maxwell/dispatch",
+            json={"confirmation_token": "secret", "prompt": "build the thing"},
+        )
+
+    assert resp.status_code == 200
+    assert resp.json()["task_id"] == "t-op"
 
 
 @pytest.mark.asyncio
