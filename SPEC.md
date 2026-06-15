@@ -1,10 +1,15 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.119
+**Spec Version:** 2.5.120
 **Application Version:** 4.9.17 (see `VERSION`)
-**Last Updated:** 2026-06-15T02:45:00-07:00
+**Last Updated:** 2026-06-15T02:52:00-07:00
 **Status:** Active
 
+- **2026-06-15 (2.5.120):** Updated the release signing step for the installed
+  cosign v4 behaviour. The release workflow now writes a
+  `dashboard-<version>.bundle` with `cosign sign-blob --bundle` and uploads that
+  bundle with the tarball, checksum, and SBOM instead of deprecated
+  split signature/certificate outputs.
 - **2026-06-15 (2.5.119):** Finished the release tarball hardening by writing
   the in-progress archive to `$RUNNER_TEMP` and moving the completed artifact
   back into the workspace before hashing. This prevents the workspace root from

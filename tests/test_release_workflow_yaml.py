@@ -174,8 +174,18 @@ def test_release_tarball_excludes_generated_release_artifacts() -> None:
         "--exclude='dashboard-*.tar.gz.sha256'",
         "--exclude='dashboard-*.sig'",
         "--exclude='dashboard-*.pem'",
+        "--exclude='dashboard-*.bundle'",
     ):
         assert pattern in text, f"release tarball must exclude generated artifact pattern {pattern}"
+
+
+def test_release_workflow_uses_cosign_bundle_artifact() -> None:
+    text = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+    assert '--bundle "$BUNDLE_FILE"' in text
+    assert 'BUNDLE_FILE="dashboard-${VERSION}.bundle"' in text
+    assert '"$BUNDLE_FILE" \\' in text
+    assert "--output-signature" not in text
+    assert "--output-certificate" not in text
 
 
 def test_verify_tag_workflow_triggers_on_v_tag_push() -> None:
