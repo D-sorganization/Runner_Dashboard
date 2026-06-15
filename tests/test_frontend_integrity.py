@@ -655,6 +655,21 @@ def test_workflows_desktop_route_bypasses_legacy_app() -> None:
     assert "export function WorkflowsPage" in workflows_page
 
 
+def test_assessments_desktop_route_bypasses_legacy_app() -> None:
+    """The Assessments desktop tab owns repos/scores/dispatch outside legacy/App.tsx."""
+    routed_shell = (_FRONTEND_DIR / "src" / "shell" / "RoutedShell.tsx").read_text(
+        encoding="utf-8",
+    )
+    assessments_page = (_FRONTEND_DIR / "src" / "pages" / "AssessmentsPage.tsx").read_text(encoding="utf-8")
+
+    assert 'case "assessments":' in routed_shell
+    assert "return <AssessmentsPage />;" in routed_shell
+    assert 'legacyFetch("/api/repos"' in assessments_page
+    assert 'legacyFetch("/api/assessments/scores"' in assessments_page
+    assert 'legacyFetch("/api/assessments/dispatch"' in assessments_page
+    assert "export function AssessmentsPage" in assessments_page
+
+
 def test_credentials_desktop_route_bypasses_legacy_app() -> None:
     """The Credentials desktop tab owns probe/set-key data outside legacy/App.tsx (#949)."""
     routed_shell = (_FRONTEND_DIR / "src" / "shell" / "RoutedShell.tsx").read_text(
