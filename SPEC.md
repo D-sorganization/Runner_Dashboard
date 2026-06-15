@@ -1,10 +1,14 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.118
+**Spec Version:** 2.5.119
 **Application Version:** 4.9.17 (see `VERSION`)
-**Last Updated:** 2026-06-15T02:40:00-07:00
+**Last Updated:** 2026-06-15T02:45:00-07:00
 **Status:** Active
 
+- **2026-06-15 (2.5.119):** Finished the release tarball hardening by writing
+  the in-progress archive to `$RUNNER_TEMP` and moving the completed artifact
+  back into the workspace before hashing. This prevents the workspace root from
+  changing while `tar` is reading `.` during the `4.9.17` release.
 - **2026-06-15 (2.5.118):** Hardened the release tarball step after the
   `4.9.17` release workflow exposed that `tar czf dashboard-<version>.tar.gz .`
   can read its own in-progress output. The release workflow now excludes

@@ -165,6 +165,9 @@ def test_release_workflow_defines_dry_run_input() -> None:
 
 def test_release_tarball_excludes_generated_release_artifacts() -> None:
     text = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+    assert 'TMP_ARTIFACT="$RUNNER_TEMP/$ARTIFACT"' in text
+    assert 'tar czf "$TMP_ARTIFACT"' in text
+    assert 'mv "$TMP_ARTIFACT" "$ARTIFACT"' in text
     for pattern in (
         "--exclude='.venv'",
         "--exclude='dashboard-*.tar.gz'",
