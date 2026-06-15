@@ -16,38 +16,43 @@
  * Law of Demeter: the shell receives a flat `activeTab` string and an
  * `onSelectTab(tabId)` callback; it never reaches into router internals.
  */
-import React, { useCallback } from "react"
-import { useNavigate, useParams } from "react-router-dom"
-import { MobileShell, type TabId } from "./MobileShell"
-import { DesktopShell } from "./DesktopShell"
-import { ActiveProviderControl } from "./ActiveProviderControl"
-import { HelpAbout } from "./HelpAbout"
-import { introForTab } from "./intro"
-import { resolveDesktopShellLayout } from "./layoutFlag"
-import { buildShellActions } from "./shellActions"
+import React, { useCallback } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { MobileShell, type TabId } from "./MobileShell";
+import { DesktopShell } from "./DesktopShell";
+import { ActiveProviderControl } from "./ActiveProviderControl";
+import { HelpAbout } from "./HelpAbout";
+import { introForTab } from "./intro";
+import { resolveDesktopShellLayout } from "./layoutFlag";
+import { buildShellActions } from "./shellActions";
 import {
   DEFAULT_TAB_ID,
   normalizeTabId,
   pathnameToTabId,
   tabIdToPath,
-} from "./routing"
-import { IntroHeader } from "../primitives/IntroHeader"
-import { useSession } from "../hooks/useSession"
-import { useProviderRegistry } from "../lib/useProviderRegistry"
-import { useBreakpoint } from "../hooks/useBreakpoint"
-import { useThemeContext } from "../design/ThemeContext"
-import { ThemeSelector } from "../components/ThemeSelector"
-import { DensityToggle } from "../components/DensityToggle"
-import { QueueMobile } from "../pages/Queue"
-import { MaxwellMobile } from "../pages/Maxwell"
-import { ReportsMobile } from "../pages/Reports"
-import { CredentialsMobile } from "../pages/Credentials"
-import { FleetMobile } from "../pages/Fleet"
+} from "./routing";
+import { IntroHeader } from "../primitives/IntroHeader";
+import { useSession } from "../hooks/useSession";
+import { useProviderRegistry } from "../lib/useProviderRegistry";
+import { useBreakpoint } from "../hooks/useBreakpoint";
+import { useThemeContext } from "../design/ThemeContext";
+import { ThemeSelector } from "../components/ThemeSelector";
+import { DensityToggle } from "../components/DensityToggle";
+import { QueueMobile } from "../pages/Queue";
+import { MaxwellMobile } from "../pages/Maxwell";
+import { ReportsMobile } from "../pages/Reports";
+import { CredentialsMobile } from "../pages/Credentials";
+import { FleetMobile } from "../pages/Fleet";
+import { AgentDispatchPage } from "../pages/AgentDispatch";
+import { ClineLauncherTab } from "../pages/ClineLauncher";
+import { Conductor } from "../pages/Conductor";
+import { DiagnosticsTab } from "../pages/Diagnostics";
+import { LinearSetup } from "../pages/LinearSetup";
 
 // The legacy App hosts Fleet, Maxwell, Queue, Remediation, Org, Heavy and every
 // other tab. Loading it via React.lazy makes Vite emit it as its own chunk so
 // the entry bundle code-splits the monolith out of first paint (issue #831).
-const LazyLegacyApp = React.lazy(() => import("../legacy/App"))
+const LazyLegacyApp = React.lazy(() => import("../legacy/App"));
 
 /**
  * Persistent/global provider control for the shell topbar (#811). Fetches the
@@ -55,12 +60,19 @@ const LazyLegacyApp = React.lazy(() => import("../legacy/App"))
  * renders nothing until the registry is available so the topbar never flashes a
  * broken control. Clicking "Fix login" jumps to the Credentials tab.
  */
-function ShellActiveProvider({ onRequestLogin }: { onRequestLogin: () => void }) {
-  const { registry } = useProviderRegistry()
-  if (!registry) return null
+function ShellActiveProvider({
+  onRequestLogin,
+}: {
+  onRequestLogin: () => void;
+}) {
+  const { registry } = useProviderRegistry();
+  if (!registry) return null;
   return (
-    <ActiveProviderControl registry={registry} onRequestLogin={onRequestLogin} />
-  )
+    <ActiveProviderControl
+      registry={registry}
+      onRequestLogin={onRequestLogin}
+    />
+  );
 }
 
 /**
@@ -69,8 +81,25 @@ function ShellActiveProvider({ onRequestLogin }: { onRequestLogin: () => void })
  * fleet themes are reachable from the always-visible topbar.
  */
 function ShellThemeSelector() {
-  const { mode, setMode } = useThemeContext()
-  return <ThemeSelector currentMode={mode} onThemeChange={setMode} />
+  const { mode, setMode } = useThemeContext();
+  return <ThemeSelector currentMode={mode} onThemeChange={setMode} />;
+}
+
+function nativeDesktopTabContent(tabId: string): React.ReactNode | null {
+  switch (normalizeTabId(tabId)) {
+    case "agent-dispatch":
+      return <AgentDispatchPage />;
+    case "cline-launcher":
+      return <ClineLauncherTab />;
+    case "conductor":
+      return <Conductor />;
+    case "diagnostics":
+      return <DiagnosticsTab />;
+    case "linear-setup":
+      return <LinearSetup />;
+    default:
+      return null;
+  }
 }
 
 /**
@@ -80,23 +109,23 @@ function ShellThemeSelector() {
  * of truth, bookmarks and back/forward work for free.
  */
 export function RoutedShell() {
-  const navigate = useNavigate()
-  const params = useParams<{ tabId?: string }>()
+  const navigate = useNavigate();
+  const params = useParams<{ tabId?: string }>();
 
   // The active tab is derived purely from the URL. The router mounts this
   // component for "/" (no param -> default) and "/t/:tabId".
   const activeTab = params.tabId
     ? pathnameToTabId(`/t/${params.tabId}`)
-    : DEFAULT_TAB_ID
+    : DEFAULT_TAB_ID;
 
   const onSelectTab = useCallback(
     (tabId: string) => {
-      navigate(tabIdToPath(tabId))
+      navigate(tabIdToPath(tabId));
     },
     [navigate],
-  )
+  );
 
-  return <AppShell activeTab={activeTab} onSelectTab={onSelectTab} />
+  return <AppShell activeTab={activeTab} onSelectTab={onSelectTab} />;
 }
 
 /**
@@ -109,39 +138,39 @@ export function AppShell({
   activeTab,
   onSelectTab,
 }: {
-  activeTab: string
-  onSelectTab: (tabId: string) => void
+  activeTab: string;
+  onSelectTab: (tabId: string) => void;
 }) {
-  const breakpoint = useBreakpoint()
-  const isMobile = breakpoint !== "lg" && breakpoint !== "xl"
+  const breakpoint = useBreakpoint();
+  const isMobile = breakpoint !== "lg" && breakpoint !== "xl";
 
   // Reactive dashboard-session state (#842): the topbar Login/Logout label
   // derives from this hook, so it updates on focus / visibility / logout.
-  const { loggedIn, refresh: refreshSession } = useSession()
+  const { loggedIn, refresh: refreshSession } = useSession();
 
   // Per-tab intro header dismissal (#822).
   const [dismissedIntros, setDismissedIntros] = React.useState<
     Record<string, boolean>
-  >({})
+  >({});
 
   // The legacy App emits tab changes through its own toolstrip / mobile UI;
   // route those through the router so the URL stays authoritative.
   const handleLegacyTabChange = useCallback(
     (nextLegacyTab: string) => {
-      onSelectTab(normalizeTabId(nextLegacyTab))
+      onSelectTab(normalizeTabId(nextLegacyTab));
     },
     [onSelectTab],
-  )
+  );
 
   if (isMobile) {
-    const mobileTab = normalizeTabId(activeTab) as TabId
+    const mobileTab = normalizeTabId(activeTab) as TabId;
     const mobileTabContent = {
       overview: <FleetMobile />,
       queue: <QueueMobile />,
       maxwell: <MaxwellMobile />,
       reports: <ReportsMobile />,
       credentials: <CredentialsMobile />,
-    } as Partial<Record<TabId, React.ReactNode>>
+    } as Partial<Record<TabId, React.ReactNode>>;
 
     return (
       <MobileShell
@@ -149,9 +178,13 @@ export function AppShell({
         onTabChange={(t) => onSelectTab(t)}
         tabContent={mobileTabContent as Record<TabId, React.ReactNode>}
       >
-        <LazyLegacyApp initialTab={mobileTab} activeTab={mobileTab} onTabChange={handleLegacyTabChange} />
+        <LazyLegacyApp
+          initialTab={mobileTab}
+          activeTab={mobileTab}
+          onTabChange={handleLegacyTabChange}
+        />
       </MobileShell>
-    )
+    );
   }
 
   // Desktop. The modern shell (#802) is the default but fully reversible: when
@@ -159,8 +192,8 @@ export function AppShell({
   // its own top toolstrip. Otherwise the new DesktopShell owns navigation and
   // mounts the legacy App chromeless + tab-controlled.
   const env = (import.meta.env as Record<string, string | undefined>)
-    ?.VITE_DESKTOP_SHELL
-  const useModernShell = resolveDesktopShellLayout({ env })
+    ?.VITE_DESKTOP_SHELL;
+  const useModernShell = resolveDesktopShellLayout({ env });
 
   if (!useModernShell) {
     return (
@@ -169,10 +202,10 @@ export function AppShell({
         activeTab={activeTab}
         onTabChange={handleLegacyTabChange}
       />
-    )
+    );
   }
 
-  const intro = introForTab(activeTab)
+  const intro = introForTab(activeTab);
   const introNode =
     intro && !dismissedIntros[activeTab] ? (
       <IntroHeader
@@ -182,7 +215,8 @@ export function AppShell({
           setDismissedIntros((prev) => ({ ...prev, [activeTab]: true }))
         }
       />
-    ) : undefined
+    ) : undefined;
+  const nativeContent = nativeDesktopTabContent(activeTab);
 
   return (
     <DesktopShell
@@ -201,12 +235,14 @@ export function AppShell({
         </>
       }
     >
-      <LazyLegacyApp
-        initialTab={activeTab}
-        activeTab={activeTab}
-        chromeless
-        onTabChange={handleLegacyTabChange}
-      />
+      {nativeContent ?? (
+        <LazyLegacyApp
+          initialTab={activeTab}
+          activeTab={activeTab}
+          chromeless
+          onTabChange={handleLegacyTabChange}
+        />
+      )}
     </DesktopShell>
-  )
+  );
 }

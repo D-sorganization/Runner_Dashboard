@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * Integration tests for RoutedShell — the single navigation source of truth
  * (issues #835, #831).
@@ -7,51 +8,79 @@
  * param, selecting a tab navigates the URL (deep-linkable + back/forward), and
  * the legacy App is loaded lazily (its module is only imported on demand).
  */
-import React from "react"
-import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render, screen, cleanup } from "@testing-library/react"
-import userEvent from "@testing-library/user-event"
-import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom"
+import React from "react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import "@testing-library/jest-dom/vitest";
+import { render, screen, cleanup } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
 
 // --- Mocks: keep the test light and focused on routing -------------------
 
-const legacyAppImport = vi.fn()
+const legacyAppImport = vi.fn();
 
 vi.mock("../../legacy/App", () => {
-  legacyAppImport()
+  legacyAppImport();
   return {
     default: (props: { activeTab?: string; initialTab?: string }) => (
-      <div data-testid="legacy-app" data-active-tab={props.activeTab ?? props.initialTab} />
+      <div
+        data-testid="legacy-app"
+        data-active-tab={props.activeTab ?? props.initialTab}
+      />
     ),
-  }
-})
+  };
+});
+
+vi.mock("../../pages/AgentDispatch", () => ({
+  AgentDispatchPage: () => (
+    <div data-testid="native-agent-dispatch">Agent Dispatch</div>
+  ),
+}));
+
+vi.mock("../../pages/ClineLauncher", () => ({
+  ClineLauncherTab: () => (
+    <div data-testid="native-cline-launcher">Cline Launcher</div>
+  ),
+}));
+
+vi.mock("../../pages/Conductor", () => ({
+  Conductor: () => <div data-testid="native-conductor">Conductor</div>,
+}));
+
+vi.mock("../../pages/Diagnostics", () => ({
+  DiagnosticsTab: () => <div data-testid="native-diagnostics">Diagnostics</div>,
+}));
+
+vi.mock("../../pages/LinearSetup", () => ({
+  LinearSetup: () => <div data-testid="native-linear-setup">Linear Setup</div>,
+}));
 
 // Force the desktop shell branch (lg) so DesktopShell renders deterministically.
 vi.mock("../../hooks/useBreakpoint", async (orig) => {
-  const actual = (await orig()) as Record<string, unknown>
-  return { ...actual, useBreakpoint: () => "lg" }
-})
+  const actual = (await orig()) as Record<string, unknown>;
+  return { ...actual, useBreakpoint: () => "lg" };
+});
 
 vi.mock("../../hooks/useSession", () => ({
   useSession: () => ({ loggedIn: false, refresh: vi.fn() }),
-}))
+}));
 
 vi.mock("../../lib/useProviderRegistry", () => ({
   useProviderRegistry: () => ({ registry: null }),
-}))
+}));
 
 vi.mock("../../design/ThemeContext", () => ({
   useThemeContext: () => ({ mode: "light", setMode: vi.fn() }),
-}))
+}));
 
 // Stub the heavy desktop shell with a thin harness that exposes activeTabId
 // and a button that drives onSelect — exactly the contract RoutedShell relies
 // on, without the full sidebar/toolstrip render.
 vi.mock("../DesktopShell", () => ({
   DesktopShell: (props: {
-    activeTabId: string
-    onSelect: (id: string) => void
-    children: React.ReactNode
+    activeTabId: string;
+    onSelect: (id: string) => void;
+    children: React.ReactNode;
   }) => (
     <div>
       <span data-testid="active-tab">{props.activeTabId}</span>
@@ -59,13 +88,13 @@ vi.mock("../DesktopShell", () => ({
       {props.children}
     </div>
   ),
-}))
+}));
 
-import { RoutedShell } from "../RoutedShell"
+import { RoutedShell } from "../RoutedShell";
 
 function LocationProbe() {
-  const loc = useLocation()
-  return <span data-testid="pathname">{loc.pathname}</span>
+  const loc = useLocation();
+  return <span data-testid="pathname">{loc.pathname}</span>;
 }
 
 function renderAt(path: string) {
@@ -77,42 +106,70 @@ function renderAt(path: string) {
         <Route path="/" element={<RoutedShell />} />
       </Routes>
     </MemoryRouter>,
-  )
+  );
 }
 
 describe("RoutedShell — URL is the source of truth", () => {
   beforeEach(() => {
-    cleanup()
-    legacyAppImport.mockClear()
-  })
+    cleanup();
+    legacyAppImport.mockClear();
+  });
 
   it("derives the default tab from the root path", async () => {
-    renderAt("/")
-    expect(await screen.findByTestId("active-tab")).toHaveTextContent("overview")
-  })
+    renderAt("/");
+    expect(await screen.findByTestId("active-tab")).toHaveTextContent(
+      "overview",
+    );
+  });
 
   it("derives the active tab from the /t/:tabId param", async () => {
-    renderAt("/t/queue")
-    expect(await screen.findByTestId("active-tab")).toHaveTextContent("queue")
-  })
+    renderAt("/t/queue");
+    expect(await screen.findByTestId("active-tab")).toHaveTextContent("queue");
+  });
 
   it("falls back to the default tab for an unknown tab id", async () => {
-    renderAt("/t/not-a-real-tab")
-    expect(await screen.findByTestId("active-tab")).toHaveTextContent("overview")
-  })
+    renderAt("/t/not-a-real-tab");
+    expect(await screen.findByTestId("active-tab")).toHaveTextContent(
+      "overview",
+    );
+  });
 
   it("selecting a tab navigates the URL (deep-linkable + back/forward)", async () => {
-    const user = userEvent.setup()
-    renderAt("/")
-    await screen.findByTestId("active-tab")
-    await user.click(screen.getByText("go-maxwell"))
-    expect(await screen.findByTestId("pathname")).toHaveTextContent("/t/maxwell")
-    expect(await screen.findByTestId("active-tab")).toHaveTextContent("maxwell")
-  })
+    const user = userEvent.setup();
+    renderAt("/");
+    await screen.findByTestId("active-tab");
+    await user.click(screen.getByText("go-maxwell"));
+    expect(await screen.findByTestId("pathname")).toHaveTextContent(
+      "/t/maxwell",
+    );
+    expect(await screen.findByTestId("active-tab")).toHaveTextContent(
+      "maxwell",
+    );
+  });
 
   it("lazy-loads the legacy App (code-split, not eager)", async () => {
-    renderAt("/")
+    renderAt("/");
     // The legacy App renders only after its lazy chunk resolves.
-    expect(await screen.findByTestId("legacy-app")).toBeInTheDocument()
-  })
-})
+    expect(await screen.findByTestId("legacy-app")).toBeInTheDocument();
+  });
+
+  it("routes self-contained desktop tabs without mounting the legacy App", async () => {
+    renderAt("/t/agent-dispatch");
+    expect(await screen.findByTestId("active-tab")).toHaveTextContent(
+      "agent-dispatch",
+    );
+    expect(
+      await screen.findByTestId("native-agent-dispatch"),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("legacy-app")).not.toBeInTheDocument();
+  });
+
+  it("keeps legacy fallback for tabs that still depend on legacy-owned state", async () => {
+    renderAt("/t/queue");
+    expect(await screen.findByTestId("active-tab")).toHaveTextContent("queue");
+    expect(await screen.findByTestId("legacy-app")).toHaveAttribute(
+      "data-active-tab",
+      "queue",
+    );
+  });
+});
