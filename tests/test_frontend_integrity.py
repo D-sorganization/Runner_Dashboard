@@ -789,6 +789,17 @@ def test_native_mobile_tabs_do_not_build_legacy_fallback() -> None:
     assert "children: ReactNode" not in mobile_shell
 
 
+def test_modern_desktop_shell_has_no_legacy_fallback() -> None:
+    """Registered desktop tabs must route natively instead of falling back."""
+    routed_shell = (_FRONTEND_DIR / "src" / "shell" / "RoutedShell.tsx").read_text(
+        encoding="utf-8",
+    )
+
+    assert "chromeless" not in routed_shell
+    assert "nativeContent ??" not in routed_shell
+    assert "{nativeContent}" in routed_shell
+
+
 def test_main_tsx_has_root_suspense_fallback() -> None:
     main_tsx = (_FRONTEND_DIR / "src" / "main.tsx").read_text(encoding="utf-8")
     assert "<React.Suspense" in main_tsx

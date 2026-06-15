@@ -1,10 +1,16 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.150
+**Spec Version:** 2.5.151
 **Application Version:** 4.9.17 (see `VERSION`)
-**Last Updated:** 2026-06-15T16:57:24-07:00
+**Last Updated:** 2026-06-15T17:04:49-07:00
 **Status:** Active
 
+- **2026-06-15 (2.5.151):** Continued #949 frontend monolith retirement by
+  removing the modern desktop shell's silent legacy App fallback. Registered
+  desktop tabs now render their native page content directly, while the
+  explicit legacy layout escape hatch and mobile fallback stay unchanged. The
+  frontend integrity suite now guards against reintroducing `nativeContent ??`
+  fallback behavior or a chromeless legacy fallback in the desktop shell.
 - **2026-06-15 (2.5.150):** Continued #949 frontend monolith retirement on the
   mobile shell path. Native mobile tabs (`overview`, `queue`, `maxwell`,
   `reports`, and `credentials`) now skip constructing the legacy lazy App
