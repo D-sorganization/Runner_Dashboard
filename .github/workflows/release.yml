@@ -215,8 +215,9 @@ jobs:
         run: |
           set -euo pipefail
           ARTIFACT="dashboard-${VERSION}.tar.gz"
+          TMP_ARTIFACT="$RUNNER_TEMP/$ARTIFACT"
           # Exclude ephemeral / generated artefacts from the source tarball.
-          tar czf "$ARTIFACT" \
+          tar czf "$TMP_ARTIFACT" \
             --exclude='.git' \
             --exclude='node_modules' \
             --exclude='venv' \
@@ -229,6 +230,7 @@ jobs:
             --exclude='dashboard-*.sig' \
             --exclude='dashboard-*.pem' \
             .
+          mv "$TMP_ARTIFACT" "$ARTIFACT"
           SHA256=$(sha256sum "$ARTIFACT" | awk '{print $1}')
           echo "${SHA256}  ${ARTIFACT}" > "${ARTIFACT}.sha256"
           echo "artifact=$ARTIFACT" >> "$GITHUB_OUTPUT"
