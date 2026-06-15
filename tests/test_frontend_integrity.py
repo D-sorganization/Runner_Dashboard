@@ -718,6 +718,28 @@ def test_fleet_orchestration_desktop_route_bypasses_legacy_app() -> None:
     assert "export function FleetOrchestrationPage" in orchestration_page
 
 
+def test_overview_desktop_route_bypasses_legacy_app() -> None:
+    """The Overview desktop tab owns fleet data outside legacy/App.tsx."""
+    routed_shell = (_FRONTEND_DIR / "src" / "shell" / "RoutedShell.tsx").read_text(
+        encoding="utf-8",
+    )
+    overview_page = (_FRONTEND_DIR / "src" / "pages" / "OverviewPage.tsx").read_text(encoding="utf-8")
+    vite_config = (_FRONTEND_DIR.parent / "vite.config.ts").read_text(
+        encoding="utf-8",
+    )
+
+    assert 'case "overview":' in routed_shell
+    assert "const LazyOverviewPage = React.lazy(" in routed_shell
+    assert "return <LazyOverviewPage />;" in routed_shell
+    assert 'getJson("/api/stats"' in overview_page
+    assert 'getJson("/api/runners"' in overview_page
+    assert 'getJson("/api/fleet/nodes"' in overview_page
+    assert 'legacyFetch("/api/fleet/control/" + action' in overview_page
+    assert 'legacyFetch("/api/runners/" + id + "/" + action' in overview_page
+    assert "export function OverviewPage" in overview_page
+    assert "return 'fleet-overview'" in vite_config
+
+
 def test_main_tsx_has_root_suspense_fallback() -> None:
     main_tsx = (_FRONTEND_DIR / "src" / "main.tsx").read_text(encoding="utf-8")
     assert "<React.Suspense" in main_tsx

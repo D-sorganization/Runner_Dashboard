@@ -1,10 +1,17 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.147
+**Spec Version:** 2.5.148
 **Application Version:** 4.9.17 (see `VERSION`)
-**Last Updated:** 2026-06-15T15:34:00-07:00
+**Last Updated:** 2026-06-15T16:02:00-07:00
 **Status:** Active
 
+- **2026-06-15 (2.5.148):** Continued #949 frontend monolith retirement by
+  adding a self-contained `OverviewPage` container for desktop. The page now
+  owns the fleet overview GET fan-out, fleet-wide control POSTs, and per-runner
+  control POSTs outside the legacy App owner while preserving the prop-driven
+  `FleetTab` contract for fallback callers. `RoutedShell` bypasses the legacy
+  chunk for `/` and `/t/overview`, and the shared overview modules stay in a
+  lazy `fleet-overview` bundle so the entry perf budget remains enforced.
 - **2026-06-15 (2.5.147):** Continued #949 frontend monolith retirement by
   adding a self-contained `FleetOrchestrationPage` container for desktop. The
   page now owns `/api/fleet/orchestration`,
