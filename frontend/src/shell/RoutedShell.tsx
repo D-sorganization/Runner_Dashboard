@@ -47,6 +47,7 @@ import { AgentDispatchPage } from "../pages/AgentDispatch";
 import { ClineLauncherTab } from "../pages/ClineLauncher";
 import { Conductor } from "../pages/Conductor";
 import { DiagnosticsTab } from "../pages/Diagnostics";
+import { EventsTab } from "../pages/Events";
 import { LinearSetup } from "../pages/LinearSetup";
 import { PrincipalsTab } from "../pages/Principals";
 import PushSettings from "../pages/PushSettings";
@@ -99,6 +100,8 @@ function nativeDesktopTabContent(tabId: string): React.ReactNode | null {
       return <Conductor />;
     case "diagnostics":
       return <DiagnosticsTab />;
+    case "events":
+      return <EventsTab />;
     case "linear-setup":
       return <LinearSetup />;
     case "principals":
