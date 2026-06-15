@@ -844,6 +844,9 @@ export interface AnalysisTabProps {
 }
 
 export function AnalysisTab(p: AnalysisTabProps): React.ReactElement {
+  const ownsReports = p.reports === undefined;
+  const [ownedReports, setOwnedReports] = useState<ReportSummary[]>([]);
+  const [ownedReportsLoading, setOwnedReportsLoading] = useState(false);
   const legacyKey =
     isAnalysisTabKey(p.activeTab) && p.activeTab !== "analysis"
       ? p.activeTab
@@ -853,6 +856,25 @@ export function AnalysisTab(p: AnalysisTabProps): React.ReactElement {
   const ss = useState(initial);
   const subTab = ss[0],
     setSubTab = ss[1];
+  useEffect(() => {
+    if (!ownsReports) return;
+    let alive = true;
+    setOwnedReportsLoading(true);
+    legacyFetch("/api/reports")
+      .then((r) => r.json())
+      .then((data: { reports?: ReportSummary[] }) => {
+        if (alive) setOwnedReports(data.reports || []);
+      })
+      .catch(() => {
+        if (alive) setOwnedReports([]);
+      })
+      .finally(() => {
+        if (alive) setOwnedReportsLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [ownsReports]);
   function changeSubTab(key: string) {
     setSubTab(key);
     try {
@@ -861,6 +883,8 @@ export function AnalysisTab(p: AnalysisTabProps): React.ReactElement {
       /* localStorage may be unavailable; ignore (legacy 1:1). */
     }
   }
+  const reports = ownsReports ? ownedReports : p.reports || [];
+  const reportsLoading = ownsReports ? ownedReportsLoading : p.reportsLoading;
   return h(
     "div",
     null,
@@ -870,7 +894,7 @@ export function AnalysisTab(p: AnalysisTabProps): React.ReactElement {
         { key: "stats", label: "Durations" },
         { key: "history", label: "History", badge: (p.runs || []).length || null },
         { key: "performance", label: "Performance" },
-        { key: "reports", label: "Reports", badge: (p.reports || []).length || null },
+        { key: "reports", label: "Reports", badge: reports.length || null },
       ],
       activeKey: subTab,
       onChange: changeSubTab,
@@ -884,6 +908,6 @@ export function AnalysisTab(p: AnalysisTabProps): React.ReactElement {
           ? h(HistoryTab, { runs: p.runs, runners: p.runners })
           : subTab === "performance"
             ? h(PerformanceTab, null)
-            : h(ReportsTab, { reports: p.reports || [], loading: p.reportsLoading }),
+            : h(ReportsTab, { reports, loading: reportsLoading }),
   );
 }

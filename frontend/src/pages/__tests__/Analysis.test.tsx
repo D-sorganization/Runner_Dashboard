@@ -39,10 +39,22 @@ function routeFetch(routes: Array<[string, unknown]>): void {
 
 afterEach(cleanup);
 beforeEach(() => {
+  const storage = new Map<string, string>();
+  vi.stubGlobal("localStorage", {
+    clear: vi.fn(() => storage.clear()),
+    getItem: vi.fn((key: string) => storage.get(key) ?? null),
+    removeItem: vi.fn((key: string) => {
+      storage.delete(key);
+    }),
+    setItem: vi.fn((key: string, value: string) => {
+      storage.set(key, String(value));
+    }),
+  });
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("StatsTab", () => {
@@ -262,6 +274,22 @@ describe("AnalysisTab orchestrator", () => {
     await waitFor(() =>
       expect(screen.getByText(/Select a report/i)).toBeInTheDocument(),
     );
+  });
+
+  it("fetches reports itself when rendered outside the legacy App owner", async () => {
+    localStorage.setItem("analysis-subtab", "outcomes");
+    routeFetch([
+      [
+        "/api/reports/2026-06-01",
+        { content: "native report body", metrics: {} },
+      ],
+      ["/api/reports", { reports: [{ date: "2026-06-01", size_kb: 12 }] }],
+    ]);
+
+    render(<AnalysisTab activeTab="reports" runs={[]} runners={[]} />);
+
+    await waitFor(() => expect(screen.getAllByText("2026-06-01").length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getByText("native report body")).toBeInTheDocument());
   });
 
   it("switches sub-tabs and persists the selection to localStorage", async () => {
