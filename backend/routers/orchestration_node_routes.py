@@ -4,15 +4,18 @@ from __future__ import annotations
 
 import datetime as _dt_mod
 import logging
-from typing import TYPE_CHECKING
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
 import httpx
 import proxy_utils
 from dashboard_config import FLEET_NODES, HOSTNAME
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Awaitable, Callable
+
+    from fastapi import FastAPI
 
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 datetime = _dt_mod.datetime
@@ -20,34 +23,52 @@ datetime = _dt_mod.datetime
 log = logging.getLogger("dashboard.orchestration")
 router = APIRouter(tags=["orchestration"])
 
-_get_fleet_nodes_impl: Callable | None = None
-_get_system_metrics_snapshot: Callable | None = None
+
+@dataclass(frozen=True, slots=True)
+class OrchestrationNodeDeps:
+    get_fleet_nodes_impl: Callable[[], Awaitable[dict[str, Any]]]
+    get_system_metrics_snapshot: Callable[[], Awaitable[dict[str, Any]]]
 
 
 def set_dependencies(
+    app: FastAPI,
     get_fleet_nodes_impl: Callable,
     get_system_metrics_snapshot: Callable,
 ) -> None:
-    """Wire server.py helpers into this route module."""
-    global _get_fleet_nodes_impl, _get_system_metrics_snapshot  # noqa: PLW0603
-    _get_fleet_nodes_impl = get_fleet_nodes_impl
-    _get_system_metrics_snapshot = get_system_metrics_snapshot
+    """Wire server.py helpers into this route module through FastAPI app state."""
+    app.state.orchestration_node_deps = OrchestrationNodeDeps(
+        get_fleet_nodes_impl=get_fleet_nodes_impl,
+        get_system_metrics_snapshot=get_system_metrics_snapshot,
+    )
+
+
+def orchestration_node_deps(request: Request) -> OrchestrationNodeDeps:
+    deps = getattr(request.app.state, "orchestration_node_deps", None)
+    if not isinstance(deps, OrchestrationNodeDeps):
+        raise RuntimeError("orchestration node router dependencies are not configured")
+    return deps
 
 
 @router.get("/api/fleet/nodes")
-async def get_fleet_nodes(request: Request) -> dict:
+async def get_fleet_nodes(
+    request: Request,
+    deps: OrchestrationNodeDeps = Depends(orchestration_node_deps),  # noqa: B008
+) -> dict:
     """Aggregate system metrics + health from all fleet nodes."""
     if proxy_utils.should_proxy_fleet_to_hub(request):
         return await proxy_utils.proxy_to_hub(request)
-    return await _get_fleet_nodes_impl()  # type: ignore[misc]
+    return await deps.get_fleet_nodes_impl()
 
 
 @router.get("/api/fleet/hardware")
-async def get_fleet_hardware(request: Request) -> dict:
+async def get_fleet_hardware(
+    request: Request,
+    deps: OrchestrationNodeDeps = Depends(orchestration_node_deps),  # noqa: B008
+) -> dict:
     """Return centralized fleet hardware specs for workload placement."""
     if proxy_utils.should_proxy_fleet_to_hub(request):
         return await proxy_utils.proxy_to_hub(request)
-    fleet = await _get_fleet_nodes_impl()  # type: ignore[misc]
+    fleet = await deps.get_fleet_nodes_impl()
     machines = []
     for node in fleet.get("nodes", []):
         registry = node.get("registry") or {}
@@ -76,10 +97,13 @@ async def get_fleet_hardware(request: Request) -> dict:
 
 
 @router.get("/api/fleet/nodes/{node_name}/system")
-async def proxy_node_system(node_name: str) -> dict:
+async def proxy_node_system(
+    node_name: str,
+    deps: OrchestrationNodeDeps = Depends(orchestration_node_deps),  # noqa: B008
+) -> dict:
     """Proxy /api/system from a named fleet node (for detailed drill-down)."""
     if node_name in (HOSTNAME, "local"):
-        return await _get_system_metrics_snapshot()  # type: ignore[misc]
+        return await deps.get_system_metrics_snapshot()
     url = FLEET_NODES.get(node_name)
     if not url:
         raise HTTPException(status_code=404, detail=f"Node not found: {node_name}")

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.9.17] - 2026-06-15
+
+### Changed
+
+- Moved deployment/orchestration router helper wiring to typed FastAPI
+  app-state dependency objects for #949, removing module-global optional
+  callables from that backend slice.
+
 ## [4.9.16] - 2026-06-14
 
 ### Fixed
