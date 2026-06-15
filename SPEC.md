@@ -1,10 +1,15 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.126
+**Spec Version:** 2.5.127
 **Application Version:** 4.9.17 (see `VERSION`)
-**Last Updated:** 2026-06-15T13:35:00-07:00
+**Last Updated:** 2026-06-15T13:58:00-07:00
 **Status:** Active
 
+- **2026-06-15 (2.5.127):** Continued #949 frontend monolith retirement by
+  deleting the dead legacy `LANG_COLORS` copy from `legacy/App.tsx` and routing
+  the extracted Organization tab through the tested shared
+  `components/formatters.ts` language-colour map. The shrink-only static guard
+  now caps `legacy/App.tsx` at 2886 lines.
 - **2026-06-15 (2.5.126):** Continued #949 frontend monolith retirement by
   routing self-contained modern desktop tabs directly through their extracted
   page modules. `agent-dispatch`, `cline-launcher`, `conductor`, `diagnostics`,
@@ -851,7 +856,6 @@ Icon, tooltip, tabId, frequent }`. Six ordered groups (Fleet & Runners,
 - **2026-05-28 (2.5.40):** Added tier-aware autoscaler controls for ControlTower
   NVMe and HDD pools (issue #755). New `backend/routers/autoscaler_pools.py`
   exposes two endpoints:
-
   - `GET /api/autoscaler/pools` — returns per-pool scaling state (pool name,
     min/max/default online counts, systemd unit pattern, labels, start/stop
     enabled flags, primary pressure metric name, cooldown secs, dry_run flag).
@@ -1861,12 +1865,12 @@ Response shape (`schema_version` `1.0.0`):
       "setup_hint": "...",
       "experimental": false,
       "editable": true,
-      "remote": false
-    }
+      "remote": false,
+    },
   ],
   "auth_kinds": ["none", "github_app", "api_key", "local"],
   "task_classes": ["format", "..."],
-  "capabilities": ["code_edit", "..."]
+  "capabilities": ["code_edit", "..."],
 }
 ```
 
