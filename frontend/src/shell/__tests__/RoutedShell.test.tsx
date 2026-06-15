@@ -73,6 +73,11 @@ vi.mock("../../pages/Principals", () => ({
   PrincipalsTab: () => <div data-testid="native-principals">Principals</div>,
 }));
 
+vi.mock("../../pages/Queue", () => ({
+  QueueTab: () => <div data-testid="native-queue">Queue</div>,
+  QueueMobile: () => <div data-testid="mobile-queue">Mobile Queue</div>,
+}));
+
 vi.mock("../../pages/RunnerAudit", () => ({
   RunnerAuditPage: () => (
     <div data-testid="native-runner-audit">Runner Audit</div>
@@ -200,6 +205,7 @@ describe("RoutedShell — URL is the source of truth", () => {
     ["linear-setup", "native-linear-setup"],
     ["principals", "native-principals"],
     ["push-settings", "native-push-settings"],
+    ["queue", "native-queue"],
     ["reports", "native-analysis"],
     ["runner-audit", "native-runner-audit"],
     ["scheduled-jobs", "native-scheduled-jobs"],
@@ -215,11 +221,11 @@ describe("RoutedShell — URL is the source of truth", () => {
   );
 
   it("keeps legacy fallback for tabs that still depend on legacy-owned state", async () => {
-    renderAt("/t/queue");
-    expect(await screen.findByTestId("active-tab")).toHaveTextContent("queue");
+    renderAt("/t/maxwell");
+    expect(await screen.findByTestId("active-tab")).toHaveTextContent("maxwell");
     expect(await screen.findByTestId("legacy-app")).toHaveAttribute(
       "data-active-tab",
-      "queue",
+      "maxwell",
     );
   });
 });

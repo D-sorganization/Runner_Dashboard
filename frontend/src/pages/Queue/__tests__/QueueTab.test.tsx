@@ -1,11 +1,14 @@
+// @vitest-environment jsdom
 import React from "react";
 import { describe, it, expect, afterEach } from "vitest";
 import { vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import "@testing-library/jest-dom/vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueueTab } from "../index";
 
 describe("QueueTab Component", () => {
   afterEach(() => {
+    cleanup();
     vi.unstubAllGlobals();
   });
 

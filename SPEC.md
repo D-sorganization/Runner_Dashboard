@@ -1,10 +1,16 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.133
+**Spec Version:** 2.5.134
 **Application Version:** 4.9.17 (see `VERSION`)
-**Last Updated:** 2026-06-15T15:15:00-07:00
+**Last Updated:** 2026-06-15T11:37:34-07:00
 **Status:** Active
 
+- **2026-06-15 (2.5.134):** Continued #949 frontend monolith retirement by
+  routing the desktop `queue` tab directly through the extracted
+  `pages/Queue` implementation. The page's existing `/api/queue` self-fetch
+  path now serves the modern shell while the legacy prop-driven queue path
+  remains intact for fallback callers, with shell and static integrity coverage
+  guarding the native route bypass.
 - **2026-06-15 (2.5.133):** Continued #949 frontend monolith retirement by
   making `DeploymentTab` self-fetch `/api/deployment/state` when rendered
   outside the legacy App owner, then routing the `deployment` desktop tab
@@ -890,6 +896,7 @@ Icon, tooltip, tabId, frequent }`. Six ordered groups (Fleet & Runners,
 - **2026-05-28 (2.5.40):** Added tier-aware autoscaler controls for ControlTower
   NVMe and HDD pools (issue #755). New `backend/routers/autoscaler_pools.py`
   exposes two endpoints:
+
   - `GET /api/autoscaler/pools` — returns per-pool scaling state (pool name,
     min/max/default online counts, systemd unit pattern, labels, start/stop
     enabled flags, primary pressure metric name, cooldown secs, dry_run flag).
@@ -1899,12 +1906,12 @@ Response shape (`schema_version` `1.0.0`):
       "setup_hint": "...",
       "experimental": false,
       "editable": true,
-      "remote": false,
-    },
+      "remote": false
+    }
   ],
   "auth_kinds": ["none", "github_app", "api_key", "local"],
   "task_classes": ["format", "..."],
-  "capabilities": ["code_edit", "..."],
+  "capabilities": ["code_edit", "..."]
 }
 ```
 

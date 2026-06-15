@@ -9,7 +9,7 @@
  * previous hand-rolled `window.location.pathname` + React-state navigation in
  * `main.tsx`.
  *
- * The legacy `App` (the ~485KB monolith hosting Fleet/Maxwell/Queue/… tabs) is
+ * The legacy `App` (the ~485KB monolith hosting Fleet/Maxwell/… tabs) is
  * loaded through `React.lazy` so Vite code-splits it into its own chunk and the
  * entry bundle no longer pays for it on first paint (issue #831).
  *
@@ -39,6 +39,7 @@ import { useThemeContext } from "../design/ThemeContext";
 import { ThemeSelector } from "../components/ThemeSelector";
 import { DensityToggle } from "../components/DensityToggle";
 import { QueueMobile } from "../pages/Queue";
+import { QueueTab } from "../pages/Queue";
 import { MaxwellMobile } from "../pages/Maxwell";
 import { ReportsMobile } from "../pages/Reports";
 import { CredentialsMobile } from "../pages/Credentials";
@@ -57,9 +58,10 @@ import PushSettings from "../pages/PushSettings";
 import ScheduledJobs from "../pages/ScheduledJobs";
 import { ThemeSettings } from "../components/ThemeSettings";
 
-// The legacy App hosts Fleet, Maxwell, Queue, Remediation, Org, Heavy and every
-// other tab. Loading it via React.lazy makes Vite emit it as its own chunk so
-// the entry bundle code-splits the monolith out of first paint (issue #831).
+// The legacy App hosts Fleet, Maxwell, Remediation, Org, Heavy and every other
+// tab not yet routed natively. Loading it via React.lazy makes Vite emit it as
+// its own chunk so the entry bundle code-splits the monolith out of first paint
+// (issue #831).
 const LazyLegacyApp = React.lazy(() => import("../legacy/App"));
 
 /**
@@ -116,6 +118,8 @@ function nativeDesktopTabContent(tabId: string): React.ReactNode | null {
       return <PrincipalsTab />;
     case "push-settings":
       return <PushSettings />;
+    case "queue":
+      return <QueueTab />;
     case "runner-audit":
       return <RunnerAuditPage />;
     case "scheduled-jobs":
