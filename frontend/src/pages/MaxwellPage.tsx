@@ -21,7 +21,7 @@
  * legacy icon map and therefore rendered nothing — that no-icon behaviour is
  * preserved here.
  */
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Stat } from "../components/Stat";
 import { legacyFetch } from "../lib/api";
 import { RefreshGlyph, ServerGlyph } from "./decompIcons";
@@ -74,6 +74,64 @@ const JSON_HEADERS = {
 
 const CHAT_STORE_KEY = "maxwellMobileChatHistory";
 
+export function MaxwellPage(): React.ReactElement {
+  const [status, setStatus] = useState<MaxwellStatus>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | undefined>();
+
+  const fetchStatus = useCallback(() => {
+    setLoading(true);
+    legacyFetch("/api/maxwell/status")
+      .then((r) => r.json())
+      .then((data: MaxwellStatus) => {
+        setStatus(data || {});
+        setError(undefined);
+      })
+      .catch(() => {
+        setError("Failed to probe Maxwell status.");
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, []);
+
+  const controlDaemon = useCallback((payload: MaxwellControlPayload) => {
+    return legacyFetch("/api/maxwell/control", {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify(payload),
+    }).then((r) =>
+      r.json().then((data: unknown) => {
+        if (!r.ok) {
+          const detail =
+            data &&
+            typeof data === "object" &&
+            "detail" in data &&
+            typeof data.detail === "string"
+              ? data.detail
+              : "Control failed";
+          throw new Error(detail);
+        }
+        return data;
+      }),
+    );
+  }, []);
+
+  useEffect(() => {
+    fetchStatus();
+  }, [fetchStatus]);
+
+  return (
+    <MaxwellTab
+      status={status}
+      loading={loading}
+      error={error}
+      onRefresh={fetchStatus}
+      onControl={controlDaemon}
+    />
+  );
+}
+
 export function MaxwellTab({
   status,
   loading,
@@ -82,7 +140,10 @@ export function MaxwellTab({
   onControl,
 }: MaxwellProps): React.ReactElement {
   const st = status || {};
-  const [controlStatus, setControlStatus] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [controlStatus, setControlStatus] = useState<{
+    ok: boolean;
+    msg: string;
+  } | null>(null);
   const [controlling, setControlling] = useState(false);
   const [pendingAction, setPendingAction] = useState("");
   const [tasks, setTasks] = useState<MaxwellTask[]>([]);
@@ -134,7 +195,10 @@ export function MaxwellTab({
 
   useEffect(() => {
     try {
-      sessionStorage.setItem(CHAT_STORE_KEY, JSON.stringify(chatMessages.slice(-40)));
+      sessionStorage.setItem(
+        CHAT_STORE_KEY,
+        JSON.stringify(chatMessages.slice(-40)),
+      );
     } catch (e) {
       /* ignore */
     }
@@ -156,7 +220,9 @@ export function MaxwellTab({
   }
 
   function updateChatMessage(id: number, patch: Partial<ChatMessage>): void {
-    setChatMessages((prev) => prev.map((m) => (m.id === id ? Object.assign({}, m, patch) : m)));
+    setChatMessages((prev) =>
+      prev.map((m) => (m.id === id ? Object.assign({}, m, patch) : m)),
+    );
   }
 
   function sendMaxwellChat(text?: string): void {
@@ -168,7 +234,10 @@ export function MaxwellTab({
     const userMsg: ChatMessage = { id: now, role: "operator", content: msg };
     const assistantId = now + 1;
     setChatMessages((prev) =>
-      prev.concat([userMsg, { id: assistantId, role: "maxwell", content: "", streaming: true }]),
+      prev.concat([
+        userMsg,
+        { id: assistantId, role: "maxwell", content: "", streaming: true },
+      ]),
     );
     setChatSending(true);
     legacyFetch("/api/maxwell/chat", {
@@ -186,7 +255,10 @@ export function MaxwellTab({
           return reader.read().then((result) => {
             if (result.done) return acc;
             acc += decoder.decode(result.value, { stream: true });
-            updateChatMessage(assistantId, { content: acc || "Receiving...", streaming: true });
+            updateChatMessage(assistantId, {
+              content: acc || "Receiving...",
+              streaming: true,
+            });
             return pump();
           });
         }
@@ -200,7 +272,8 @@ export function MaxwellTab({
       })
       .catch((err: Error) => {
         updateChatMessage(assistantId, {
-          content: "Maxwell-Daemon is unreachable. Check daemon status above, then retry.",
+          content:
+            "Maxwell-Daemon is unreachable. Check daemon status above, then retry.",
           detail: String(err),
           streaming: false,
           error: true,
@@ -239,13 +312,32 @@ export function MaxwellTab({
   return (
     <div>
       <div className="stat-row">
-        <Stat label="Status" value={st.status || "unknown"} sub={st.service_detail || ""} />
-        <Stat label="HTTP" value={st.http_reachable ? "reachable" : "offline"} sub={st.http_detail || ""} />
-        <Stat label="Binary" value={st.binary_found ? "found" : "missing"} sub={st.binary_path || "not on PATH"} />
+        <Stat
+          label="Status"
+          value={st.status || "unknown"}
+          sub={st.service_detail || ""}
+        />
+        <Stat
+          label="HTTP"
+          value={st.http_reachable ? "reachable" : "offline"}
+          sub={st.http_detail || ""}
+        />
+        <Stat
+          label="Binary"
+          value={st.binary_found ? "found" : "missing"}
+          sub={st.binary_path || "not on PATH"}
+        />
         <Stat label="Contract" value={daemonVersion || "unknown"} />
       </div>
-      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-        <button className="btn" onClick={onRefresh} disabled={loading} aria-label="Refresh Maxwell status">
+      <div
+        style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}
+      >
+        <button
+          className="btn"
+          onClick={onRefresh}
+          disabled={loading}
+          aria-label="Refresh Maxwell status"
+        >
           <RefreshGlyph size={12} />
           {loading ? "Refreshing..." : "Refresh"}
         </button>
@@ -292,8 +384,12 @@ export function MaxwellTab({
             padding: "10px 12px",
             borderRadius: 8,
             marginBottom: 12,
-            background: controlStatus.ok ? "rgba(63,185,80,0.12)" : "rgba(248,81,73,0.12)",
-            color: controlStatus.ok ? "var(--accent-green)" : "var(--accent-red)",
+            background: controlStatus.ok
+              ? "rgba(63,185,80,0.12)"
+              : "rgba(248,81,73,0.12)",
+            color: controlStatus.ok
+              ? "var(--accent-green)"
+              : "var(--accent-red)",
           }}
         >
           {controlStatus.msg}
@@ -321,17 +417,34 @@ export function MaxwellTab({
         </div>
         <div className="section-body">
           {pendingAction ? (
-            <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>
+            <div
+              style={{
+                fontSize: 12,
+                color: "var(--text-muted)",
+                marginBottom: 8,
+              }}
+            >
               {"Working on " + pendingAction + "..."}
             </div>
           ) : null}
           {st.dashboard_url ? (
-            <a href={st.dashboard_url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent-blue)" }}>
+            <a
+              href={st.dashboard_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: "var(--accent-blue)" }}
+            >
               {st.dashboard_url + " ↗"}
             </a>
           ) : null}
           {!st.binary_found && !st.service_running && !st.http_reachable ? (
-            <div style={{ marginTop: 12, fontSize: 12, color: "var(--text-muted)" }}>
+            <div
+              style={{
+                marginTop: 12,
+                fontSize: 12,
+                color: "var(--text-muted)",
+              }}
+            >
               Maxwell-Daemon is not detected on this machine.
             </div>
           ) : null}
@@ -342,7 +455,12 @@ export function MaxwellTab({
           <span className="section-title">Maxwell Chat</span>
         </div>
         <div className="section-body maxwell-chat">
-          <div className="maxwell-chat-messages" ref={chatListRef} onScroll={onChatScroll} aria-live="polite">
+          <div
+            className="maxwell-chat-messages"
+            ref={chatListRef}
+            onScroll={onChatScroll}
+            aria-live="polite"
+          >
             {chatMessages.length === 0 ? (
               <div className="maxwell-chat-empty">
                 {st.http_reachable
@@ -351,9 +469,18 @@ export function MaxwellTab({
               </div>
             ) : (
               chatMessages.map((msg) => (
-                <div key={msg.id} className={"maxwell-chat-bubble " + msg.role + (msg.error ? " error" : "")}>
+                <div
+                  key={msg.id}
+                  className={
+                    "maxwell-chat-bubble " +
+                    msg.role +
+                    (msg.error ? " error" : "")
+                  }
+                >
                   {msg.content || (msg.streaming ? "Streaming..." : "")}
-                  {msg.streaming ? <span style={{ color: "var(--text-muted)" }}> ▌</span> : null}
+                  {msg.streaming ? (
+                    <span style={{ color: "var(--text-muted)" }}> ▌</span>
+                  ) : null}
                 </div>
               ))
             )}
@@ -364,14 +491,23 @@ export function MaxwellTab({
               className="btn maxwell-scroll-button"
               onClick={() => {
                 setShowScrollButton(false);
-                if (chatListRef.current) chatListRef.current.scrollTop = chatListRef.current.scrollHeight;
+                if (chatListRef.current)
+                  chatListRef.current.scrollTop =
+                    chatListRef.current.scrollHeight;
               }}
             >
               Latest
             </button>
           ) : null}
-          <div className="maxwell-quick-actions" aria-label="Maxwell quick actions">
-            {["status", "summarize last hour", "which runners are blocked?"].map((chip) => (
+          <div
+            className="maxwell-quick-actions"
+            aria-label="Maxwell quick actions"
+          >
+            {[
+              "status",
+              "summarize last hour",
+              "which runners are blocked?",
+            ].map((chip) => (
               <button
                 key={chip}
                 className="btn"
@@ -406,7 +542,9 @@ export function MaxwellTab({
               }}
               onKeyDown={onChatKeyDown}
               placeholder={
-                st.http_reachable ? "Message Maxwell..." : "Daemon unreachable; retry before sending commands"
+                st.http_reachable
+                  ? "Message Maxwell..."
+                  : "Daemon unreachable; retry before sending commands"
               }
               rows={1}
               disabled={chatSending || !st.http_reachable}
@@ -441,11 +579,17 @@ export function MaxwellTab({
         </div>
         <div className="section-body">
           {tasksLoading ? (
-            <div style={{ color: "var(--text-muted)", fontSize: 12 }}>Loading tasks…</div>
+            <div style={{ color: "var(--text-muted)", fontSize: 12 }}>
+              Loading tasks…
+            </div>
           ) : !st.http_reachable ? (
-            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Maxwell-Daemon offline — no task history</div>
+            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+              Maxwell-Daemon offline — no task history
+            </div>
           ) : tasks.length === 0 ? (
-            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>No tasks yet</div>
+            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+              No tasks yet
+            </div>
           ) : (
             <table className="data-table">
               <thead>
@@ -462,7 +606,11 @@ export function MaxwellTab({
                     <td>{(t.id || "").slice(0, 8)}</td>
                     <td>{t.status || "—"}</td>
                     <td>{t.repo || "—"}</td>
-                    <td>{t.created_at ? t.created_at.slice(0, 16).replace("T", " ") : "—"}</td>
+                    <td>
+                      {t.created_at
+                        ? t.created_at.slice(0, 16).replace("T", " ")
+                        : "—"}
+                    </td>
                   </tr>
                 ))}
               </tbody>
