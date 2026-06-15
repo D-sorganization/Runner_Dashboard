@@ -1210,6 +1210,15 @@ code, pre, .code, kbd {
   justify-content: flex-end;
 }
 
+.runner-schedule__error {
+  color: var(--accent-red);
+  margin-bottom: 12px;
+}
+
+.runner-schedule__retry-button {
+  margin-left: 12px;
+}
+
 .runner-schedule__icon-button {
   min-height: 32px;
   padding: 4px 10px;

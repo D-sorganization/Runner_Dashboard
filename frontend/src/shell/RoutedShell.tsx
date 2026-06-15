@@ -57,6 +57,7 @@ import { MaxwellPage } from "../pages/MaxwellPage";
 import { OrgPage } from "../pages/Org";
 import { PrincipalsTab } from "../pages/Principals";
 import { RunnerAuditPage } from "../pages/RunnerAudit";
+import { RunnerSchedulePage } from "../pages/RunnerSchedule";
 import { TestsPage } from "../pages/TestsPage";
 import PushSettings from "../pages/PushSettings";
 import ScheduledJobs from "../pages/ScheduledJobs";
@@ -132,6 +133,8 @@ function nativeDesktopTabContent(tabId: string): React.ReactNode | null {
       return <QueueTab />;
     case "runner-audit":
       return <RunnerAuditPage />;
+    case "runner-schedule":
+      return <RunnerSchedulePage />;
     case "scheduled-jobs":
       return <ScheduledJobs />;
     case "settings":

@@ -96,6 +96,12 @@ vi.mock("../../pages/RunnerAudit", () => ({
   ),
 }));
 
+vi.mock("../../pages/RunnerSchedule", () => ({
+  RunnerSchedulePage: () => (
+    <div data-testid="native-runner-schedule">Runner Schedule</div>
+  ),
+}));
+
 vi.mock("../../pages/PushSettings", () => ({
   default: () => <div data-testid="native-push-settings">Push Settings</div>,
 }));
@@ -227,6 +233,7 @@ describe("RoutedShell — URL is the source of truth", () => {
     ["queue", "native-queue"],
     ["reports", "native-analysis"],
     ["runner-audit", "native-runner-audit"],
+    ["runner-schedule", "native-runner-schedule"],
     ["scheduled-jobs", "native-scheduled-jobs"],
     ["settings", "native-settings"],
     ["tests", "native-tests"],

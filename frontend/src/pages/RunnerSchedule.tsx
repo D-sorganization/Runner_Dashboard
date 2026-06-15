@@ -15,8 +15,9 @@
  * re-seeded from props whenever the config path or state timestamp changes —
  * matching the original legacy render exactly.
  */
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Stat } from "../components/Stat";
+import { legacyFetch } from "../lib/api";
 import { Badge } from "../primitives/Badge";
 import { EmptyState } from "../primitives/EmptyState";
 import { TouchButton } from "../primitives/TouchButton";
@@ -64,6 +65,94 @@ export interface RunnerScheduleProps {
   loading?: boolean;
   onRefresh?: () => void;
   onSave: (draft: ScheduleConfig, applyNow: boolean) => void;
+}
+
+export function RunnerSchedulePage(): React.ReactElement {
+  const [data, setData] = useState<RunnerScheduleData>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback((signal?: AbortSignal) => {
+    setLoading(true);
+    setError(null);
+    legacyFetch("/api/fleet/schedule", { signal })
+      .then((r) => {
+        if (!r.ok) throw new Error("schedule HTTP " + r.status);
+        return r.json();
+      })
+      .then((payload: RunnerScheduleData | null) => {
+        setData(payload || {});
+      })
+      .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setError(
+          err instanceof Error ? err.message : "Failed to load runner schedule",
+        );
+      })
+      .finally(() => {
+        if (!signal?.aborted) setLoading(false);
+      });
+  }, []);
+
+  const save = useCallback((draft: ScheduleConfig, applyNow: boolean) => {
+    setLoading(true);
+    setError(null);
+    legacyFetch("/api/fleet/schedule", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+      },
+      body: JSON.stringify({ schedule: draft, apply: applyNow }),
+    })
+      .then((r) => {
+        if (!r.ok) throw new Error("save failed");
+        return r.json();
+      })
+      .then((payload: RunnerScheduleData | null) => {
+        setData(payload || {});
+      })
+      .catch((err: unknown) => {
+        setError(
+          err instanceof Error ? err.message : "Failed to save runner schedule",
+        );
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    refresh(controller.signal);
+    return () => controller.abort();
+  }, [refresh]);
+
+  return (
+    <div>
+      {error ? (
+        <div
+          className="section runner-schedule__error"
+          role="alert"
+        >
+          Failed to load runner schedule: {error}
+          <button
+            className="btn runner-schedule__retry-button"
+            type="button"
+            onClick={() => refresh()}
+          >
+            Retry
+          </button>
+        </div>
+      ) : null}
+      <RunnerScheduleTab
+        data={data}
+        loading={loading}
+        onRefresh={() => refresh()}
+        onSave={save}
+      />
+    </div>
+  );
 }
 
 export function RunnerScheduleTab({
