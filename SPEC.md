@@ -1,10 +1,18 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.148
+**Spec Version:** 2.5.149
 **Application Version:** 4.9.17 (see `VERSION`)
-**Last Updated:** 2026-06-15T16:02:00-07:00
+**Last Updated:** 2026-06-15T16:15:44-07:00
 **Status:** Active
 
+- **2026-06-15 (2.5.149):** Continued #949 frontend monolith retirement by
+  adding a lazy-loaded `RemediationPage` container for desktop. The page now
+  owns `/api/agent-remediation/config`,
+  `/api/agent-remediation/workflows`, `/api/agent-remediation/history`,
+  `/api/agent-remediation/plan`, `/api/agent-remediation/dispatch`, and the
+  enriched failed-runs feed outside the legacy App owner while preserving the
+  prop-driven `RemediationTab` contract for fallback callers, and
+  `RoutedShell` bypasses the legacy chunk for `/t/remediation`.
 - **2026-06-15 (2.5.148):** Continued #949 frontend monolith retirement by
   adding a self-contained `OverviewPage` container for desktop. The page now
   owns the fleet overview GET fan-out, fleet-wide control POSTs, and per-runner

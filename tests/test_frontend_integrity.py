@@ -723,7 +723,9 @@ def test_overview_desktop_route_bypasses_legacy_app() -> None:
     routed_shell = (_FRONTEND_DIR / "src" / "shell" / "RoutedShell.tsx").read_text(
         encoding="utf-8",
     )
-    overview_page = (_FRONTEND_DIR / "src" / "pages" / "OverviewPage.tsx").read_text(encoding="utf-8")
+    overview_page = (_FRONTEND_DIR / "src" / "pages" / "OverviewPage.tsx").read_text(
+        encoding="utf-8",
+    )
     vite_config = (_FRONTEND_DIR.parent / "vite.config.ts").read_text(
         encoding="utf-8",
     )
@@ -738,6 +740,26 @@ def test_overview_desktop_route_bypasses_legacy_app() -> None:
     assert 'legacyFetch("/api/runners/" + id + "/" + action' in overview_page
     assert "export function OverviewPage" in overview_page
     assert "return 'fleet-overview'" in vite_config
+
+
+def test_remediation_desktop_route_bypasses_legacy_app() -> None:
+    """The Remediation desktop tab owns remediation data outside legacy/App.tsx."""
+    routed_shell = (_FRONTEND_DIR / "src" / "shell" / "RoutedShell.tsx").read_text(
+        encoding="utf-8",
+    )
+    remediation_page = (_FRONTEND_DIR / "src" / "pages" / "RemediationPage.tsx").read_text(
+        encoding="utf-8",
+    )
+
+    assert 'case "remediation":' in routed_shell
+    assert 'React.lazy(() => import("../pages/RemediationPage"))' in routed_shell
+    assert "return <LazyRemediationPage />;" in routed_shell
+    assert 'legacyFetch("/api/agent-remediation/config"' in remediation_page
+    assert 'legacyFetch("/api/agent-remediation/workflows"' in remediation_page
+    assert 'legacyFetch("/api/agent-remediation/plan"' in remediation_page
+    assert 'legacyFetch("/api/agent-remediation/dispatch"' in remediation_page
+    assert 'legacyFetch("/api/runs/enriched?per_page=50"' in remediation_page
+    assert "export function RemediationPage" in remediation_page
 
 
 def test_main_tsx_has_root_suspense_fallback() -> None:

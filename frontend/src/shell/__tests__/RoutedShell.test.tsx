@@ -121,6 +121,11 @@ vi.mock("../../pages/Queue", () => ({
   QueueMobile: () => <div data-testid="mobile-queue">Mobile Queue</div>,
 }));
 
+vi.mock("../../pages/RemediationPage", () => ({
+  default: () => <div data-testid="native-remediation">Remediation</div>,
+  RemediationPage: () => <div data-testid="native-remediation">Remediation</div>,
+}));
+
 vi.mock("../../pages/RunnerAudit", () => ({
   RunnerAuditPage: () => (
     <div data-testid="native-runner-audit">Runner Audit</div>
@@ -199,10 +204,12 @@ function renderAt(path: string) {
   return render(
     <MemoryRouter initialEntries={[path]}>
       <LocationProbe />
-      <Routes>
-        <Route path="/t/:tabId" element={<RoutedShell />} />
-        <Route path="/" element={<RoutedShell />} />
-      </Routes>
+      <React.Suspense fallback={null}>
+        <Routes>
+          <Route path="/t/:tabId" element={<RoutedShell />} />
+          <Route path="/" element={<RoutedShell />} />
+        </Routes>
+      </React.Suspense>
     </MemoryRouter>,
   );
 }
@@ -246,10 +253,10 @@ describe("RoutedShell — URL is the source of truth", () => {
     );
   });
 
-  it("lazy-loads the legacy App (code-split, not eager)", async () => {
-    renderAt("/t/remediation");
-    // The legacy App renders only after its lazy chunk resolves.
-    expect(await screen.findByTestId("legacy-app")).toBeInTheDocument();
+  it("renders the native overview route without mounting the legacy App", async () => {
+    renderAt("/");
+    expect(await screen.findByTestId("native-overview")).toBeInTheDocument();
+    expect(screen.queryByTestId("legacy-app")).not.toBeInTheDocument();
   });
 
   it.each([
@@ -273,6 +280,7 @@ describe("RoutedShell — URL is the source of truth", () => {
     ["principals", "native-principals"],
     ["push-settings", "native-push-settings"],
     ["queue", "native-queue"],
+    ["remediation", "native-remediation"],
     ["reports", "native-analysis"],
     ["runner-audit", "native-runner-audit"],
     ["runner-schedule", "native-runner-schedule"],
@@ -290,14 +298,12 @@ describe("RoutedShell — URL is the source of truth", () => {
     },
   );
 
-  it("keeps legacy fallback for tabs that still depend on legacy-owned state", async () => {
-    renderAt("/t/remediation");
+  it("falls back unknown tab ids to the native overview route", async () => {
+    renderAt("/t/not-a-real-tab");
     expect(await screen.findByTestId("active-tab")).toHaveTextContent(
-      "remediation",
+      "overview",
     );
-    expect(await screen.findByTestId("legacy-app")).toHaveAttribute(
-      "data-active-tab",
-      "remediation",
-    );
+    expect(await screen.findByTestId("native-overview")).toBeInTheDocument();
+    expect(screen.queryByTestId("legacy-app")).not.toBeInTheDocument();
   });
 });
