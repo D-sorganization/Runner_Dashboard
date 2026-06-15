@@ -1,10 +1,18 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.146
+**Spec Version:** 2.5.147
 **Application Version:** 4.9.17 (see `VERSION`)
-**Last Updated:** 2026-06-15T15:24:00-07:00
+**Last Updated:** 2026-06-15T15:34:00-07:00
 **Status:** Active
 
+- **2026-06-15 (2.5.147):** Continued #949 frontend monolith retirement by
+  adding a self-contained `FleetOrchestrationPage` container for desktop. The
+  page now owns `/api/fleet/orchestration`,
+  `/api/fleet/orchestration/dispatch`, and
+  `/api/fleet/orchestration/deploy` outside the legacy App owner while
+  preserving the prop-driven `FleetOrchestrationTab` contract for fallback
+  callers, and `RoutedShell` bypasses the legacy chunk for
+  `/t/fleet-orchestration`.
 - **2026-06-15 (2.5.146):** Continued #949 frontend monolith retirement by
   adding a self-contained `FeatureRequestsPage` container for desktop. The page
   now owns `/api/repos`, `/api/feature-requests`,

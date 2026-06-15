@@ -702,6 +702,21 @@ def test_feature_requests_desktop_route_bypasses_legacy_app() -> None:
     assert "export function FeatureRequestsPage" in feature_requests_page
 
 
+def test_fleet_orchestration_desktop_route_bypasses_legacy_app() -> None:
+    """The Fleet Orchestration desktop tab owns orchestration data outside legacy/App.tsx."""
+    routed_shell = (_FRONTEND_DIR / "src" / "shell" / "RoutedShell.tsx").read_text(
+        encoding="utf-8",
+    )
+    orchestration_page = (_FRONTEND_DIR / "src" / "pages" / "FleetOrchestrationPage.tsx").read_text(encoding="utf-8")
+
+    assert 'case "fleet-orchestration":' in routed_shell
+    assert "return <FleetOrchestrationPage />;" in routed_shell
+    assert 'legacyFetch("/api/fleet/orchestration"' in orchestration_page
+    assert 'legacyFetch("/api/fleet/orchestration/dispatch"' in orchestration_page
+    assert 'legacyFetch("/api/fleet/orchestration/deploy"' in orchestration_page
+    assert "export function FleetOrchestrationPage" in orchestration_page
+
+
 def test_main_tsx_has_root_suspense_fallback() -> None:
     main_tsx = (_FRONTEND_DIR / "src" / "main.tsx").read_text(encoding="utf-8")
     assert "<React.Suspense" in main_tsx

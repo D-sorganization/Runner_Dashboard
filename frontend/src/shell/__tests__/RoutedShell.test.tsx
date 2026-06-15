@@ -79,6 +79,12 @@ vi.mock("../../pages/FeatureRequestsPage", () => ({
   ),
 }));
 
+vi.mock("../../pages/FleetOrchestrationPage", () => ({
+  FleetOrchestrationPage: () => (
+    <div data-testid="native-fleet-orchestration">Fleet Orchestration</div>
+  ),
+}));
+
 vi.mock("../../pages/LinearSetup", () => ({
   LinearSetup: () => <div data-testid="native-linear-setup">Linear Setup</div>,
 }));
@@ -249,6 +255,7 @@ describe("RoutedShell — URL is the source of truth", () => {
     ["diagnostics", "native-diagnostics"],
     ["events", "native-events"],
     ["feature-requests", "native-feature-requests"],
+    ["fleet-orchestration", "native-fleet-orchestration"],
     ["linear-setup", "native-linear-setup"],
     ["local-apps", "native-local-apps"],
     ["machines", "native-machines"],
@@ -275,13 +282,13 @@ describe("RoutedShell — URL is the source of truth", () => {
   );
 
   it("keeps legacy fallback for tabs that still depend on legacy-owned state", async () => {
-    renderAt("/t/fleet-orchestration");
+    renderAt("/t/remediation");
     expect(await screen.findByTestId("active-tab")).toHaveTextContent(
-      "fleet-orchestration",
+      "remediation",
     );
     expect(await screen.findByTestId("legacy-app")).toHaveAttribute(
       "data-active-tab",
-      "fleet-orchestration",
+      "remediation",
     );
   });
 });
