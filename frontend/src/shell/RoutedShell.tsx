@@ -77,6 +77,7 @@ const LazyFleetOrchestrationPage = React.lazy(
   () => import("../pages/FleetOrchestrationPage"),
 );
 const LazyOverviewPage = React.lazy(() => import("../pages/OverviewPage"));
+const LazyRemediationPage = React.lazy(() => import("../pages/RemediationPage"));
 
 /**
  * Persistent/global provider control for the shell topbar (#811). Fetches the
@@ -152,6 +153,8 @@ function nativeDesktopTabContent(tabId: string): React.ReactNode | null {
       return <PushSettings />;
     case "queue":
       return <QueueTab />;
+    case "remediation":
+      return <LazyRemediationPage />;
     case "runner-audit":
       return <RunnerAuditPage />;
     case "runner-schedule":

@@ -121,6 +121,10 @@ vi.mock("../../pages/Queue", () => ({
   QueueMobile: () => <div data-testid="mobile-queue">Mobile Queue</div>,
 }));
 
+vi.mock("../../pages/RemediationPage", () => ({
+  default: () => <div data-testid="native-remediation">Remediation</div>,
+}));
+
 vi.mock("../../pages/RunnerAudit", () => ({
   RunnerAuditPage: () => (
     <div data-testid="native-runner-audit">Runner Audit</div>
@@ -210,6 +214,7 @@ function renderAt(path: string) {
 describe("RoutedShell — URL is the source of truth", () => {
   beforeEach(() => {
     cleanup();
+    localStorage.clear();
     legacyAppImport.mockClear();
   });
 
@@ -247,9 +252,11 @@ describe("RoutedShell — URL is the source of truth", () => {
   });
 
   it("lazy-loads the legacy App (code-split, not eager)", async () => {
-    renderAt("/t/remediation");
+    localStorage.setItem("dashboard.layout", "legacy");
+    renderAt("/");
     // The legacy App renders only after its lazy chunk resolves.
     expect(await screen.findByTestId("legacy-app")).toBeInTheDocument();
+    localStorage.removeItem("dashboard.layout");
   });
 
   it.each([
@@ -273,6 +280,7 @@ describe("RoutedShell — URL is the source of truth", () => {
     ["principals", "native-principals"],
     ["push-settings", "native-push-settings"],
     ["queue", "native-queue"],
+    ["remediation", "native-remediation"],
     ["reports", "native-analysis"],
     ["runner-audit", "native-runner-audit"],
     ["runner-schedule", "native-runner-schedule"],
@@ -290,14 +298,13 @@ describe("RoutedShell — URL is the source of truth", () => {
     },
   );
 
-  it("keeps legacy fallback for tabs that still depend on legacy-owned state", async () => {
-    renderAt("/t/remediation");
-    expect(await screen.findByTestId("active-tab")).toHaveTextContent(
-      "remediation",
-    );
+  it("keeps the explicit legacy desktop-shell escape hatch", async () => {
+    localStorage.setItem("dashboard.layout", "legacy");
+    renderAt("/t/overview");
     expect(await screen.findByTestId("legacy-app")).toHaveAttribute(
       "data-active-tab",
-      "remediation",
+      "overview",
     );
+    localStorage.removeItem("dashboard.layout");
   });
 });
