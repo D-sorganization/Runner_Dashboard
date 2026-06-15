@@ -15,7 +15,7 @@
  * lock/confirm state is local. Status colours, labels, a11y semantics, and the
  * WebAuthn assert flow mirror the original legacy render exactly.
  */
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Stat } from "../components/Stat";
 import { legacyFetch } from "../lib/api";
 import { RefreshGlyph } from "./decompIcons";
@@ -135,10 +135,12 @@ export function CredentialsTab({
   const probeList = probes || [];
   const sum = summary || {};
   const [mobileUnlocked, setMobileUnlocked] = useState(false);
+  const mobileUnlockedRef = useRef(false);
   const [mobileUnlockStatus, setMobileUnlockStatus] = useState<string | null>(null);
   const [mobileConfirmProbe, setMobileConfirmProbe] = useState<CredentialProbe | null>(null);
 
   function lockMobileCredentials(message?: string): void {
+    mobileUnlockedRef.current = false;
     setMobileUnlocked(false);
     setMobileConfirmProbe(null);
     if (message) setMobileUnlockStatus(message);
@@ -187,6 +189,7 @@ export function CredentialsTab({
         ),
       )
       .then(() => {
+        mobileUnlockedRef.current = true;
         setMobileUnlocked(true);
         setMobileUnlockStatus("Unlocked for 60 seconds.");
         if (onRefresh) onRefresh();
@@ -197,17 +200,25 @@ export function CredentialsTab({
   }
 
   useEffect(() => {
+    if (!mobile) return;
+    function onVisibilityChange(): void {
+      if (document.hidden && mobileUnlockedRef.current) {
+        lockMobileCredentials("Credentials re-locked when the tab lost focus.");
+      }
+    }
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [mobile]);
+
+  useEffect(() => {
     if (!mobile || !mobileUnlocked) return;
     const timer = window.setTimeout(() => {
       lockMobileCredentials("Credentials re-locked after 60 seconds.");
     }, 60000);
-    function onVisibilityChange(): void {
-      if (document.hidden) lockMobileCredentials("Credentials re-locked when the tab lost focus.");
-    }
-    document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       window.clearTimeout(timer);
-      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [mobile, mobileUnlocked]);
 
