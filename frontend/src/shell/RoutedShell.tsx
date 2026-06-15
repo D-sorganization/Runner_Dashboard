@@ -59,6 +59,7 @@ import { PrincipalsTab } from "../pages/Principals";
 import { RunnerAuditPage } from "../pages/RunnerAudit";
 import { RunnerSchedulePage } from "../pages/RunnerSchedule";
 import { TestsPage } from "../pages/TestsPage";
+import { WorkflowsPage } from "../pages/WorkflowsPage";
 import PushSettings from "../pages/PushSettings";
 import ScheduledJobs from "../pages/ScheduledJobs";
 import { ThemeSettings } from "../components/ThemeSettings";
@@ -141,6 +142,8 @@ function nativeDesktopTabContent(tabId: string): React.ReactNode | null {
       return <ThemeSettings />;
     case "tests":
       return <TestsPage />;
+    case "workflows":
+      return <WorkflowsPage />;
     default:
       return null;
   }

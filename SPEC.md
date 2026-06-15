@@ -1,10 +1,16 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.141
+**Spec Version:** 2.5.142
 **Application Version:** 4.9.17 (see `VERSION`)
-**Last Updated:** 2026-06-15T13:55:00-07:00
+**Last Updated:** 2026-06-15T14:30:00-07:00
 **Status:** Active
 
+- **2026-06-15 (2.5.142):** Continued #949 frontend monolith retirement by
+  adding a self-contained `WorkflowsPage` container for desktop. The page now
+  owns `/api/workflows/list` and `/api/workflows/dispatch` outside the legacy
+  App owner while preserving the prop-driven `WorkflowsTab` contract for
+  fallback callers, and `RoutedShell` bypasses the legacy chunk for
+  `/t/workflows`.
 - **2026-06-15 (2.5.141):** Restored dependency audit health after new
   advisories flagged the locked dashboard runtime set. `starlette` now pins to
   `1.3.1`, and the exported `uv` requirements refresh lifts transitive
