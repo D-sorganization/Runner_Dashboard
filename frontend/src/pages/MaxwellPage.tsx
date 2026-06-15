@@ -25,6 +25,11 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Stat } from "../components/Stat";
 import { legacyFetch } from "../lib/api";
 import { RefreshGlyph, ServerGlyph } from "./decompIcons";
+import {
+  MaxwellChatPanel,
+  MaxwellTasksPanel,
+  type ChatMessage,
+} from "./MaxwellPanels";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -44,15 +49,6 @@ export interface MaxwellTask {
   status?: string;
   repo?: string;
   created_at?: string;
-}
-
-interface ChatMessage {
-  id: number;
-  role: string;
-  content: string;
-  streaming?: boolean;
-  error?: boolean;
-  detail?: string;
 }
 
 export interface MaxwellControlPayload {
@@ -450,174 +446,33 @@ export function MaxwellTab({
           ) : null}
         </div>
       </div>
-      <div className="section maxwell-chat-section">
-        <div className="section-header">
-          <span className="section-title">Maxwell Chat</span>
-        </div>
-        <div className="section-body maxwell-chat">
-          <div
-            className="maxwell-chat-messages"
-            ref={chatListRef}
-            onScroll={onChatScroll}
-            aria-live="polite"
-          >
-            {chatMessages.length === 0 ? (
-              <div className="maxwell-chat-empty">
-                {st.http_reachable
-                  ? "Ask Maxwell for fleet status, recent runner activity, or the next operator command."
-                  : "Maxwell-Daemon is unreachable. Chat history is preserved; use Retry after the daemon is reachable."}
-              </div>
-            ) : (
-              chatMessages.map((msg) => (
-                <div
-                  key={msg.id}
-                  className={
-                    "maxwell-chat-bubble " +
-                    msg.role +
-                    (msg.error ? " error" : "")
-                  }
-                >
-                  {msg.content || (msg.streaming ? "Streaming..." : "")}
-                  {msg.streaming ? (
-                    <span style={{ color: "var(--text-muted)" }}> ▌</span>
-                  ) : null}
-                </div>
-              ))
-            )}
-          </div>
-          {showScrollButton ? (
-            <button
-              aria-label="Scroll to bottom of chat"
-              className="btn maxwell-scroll-button"
-              onClick={() => {
-                setShowScrollButton(false);
-                if (chatListRef.current)
-                  chatListRef.current.scrollTop =
-                    chatListRef.current.scrollHeight;
-              }}
-            >
-              Latest
-            </button>
-          ) : null}
-          <div
-            className="maxwell-quick-actions"
-            aria-label="Maxwell quick actions"
-          >
-            {[
-              "status",
-              "summarize last hour",
-              "which runners are blocked?",
-            ].map((chip) => (
-              <button
-                key={chip}
-                className="btn"
-                type="button"
-                onClick={() => {
-                  sendMaxwellChat(chip);
-                }}
-                disabled={chatSending}
-              >
-                {chip}
-              </button>
-            ))}
-            {!st.http_reachable ? (
-              <button
-                className="btn btn-blue"
-                type="button"
-                onClick={() => {
-                  if (onRefresh) onRefresh();
-                  fetchTasks();
-                  fetchVersion();
-                }}
-              >
-                Retry
-              </button>
-            ) : null}
-          </div>
-          <div className="maxwell-composer">
-            <textarea
-              value={chatInput}
-              onChange={(e) => {
-                setChatInput(e.target.value);
-              }}
-              onKeyDown={onChatKeyDown}
-              placeholder={
-                st.http_reachable
-                  ? "Message Maxwell..."
-                  : "Daemon unreachable; retry before sending commands"
-              }
-              rows={1}
-              disabled={chatSending || !st.http_reachable}
-              style={{
-                width: "100%",
-                boxSizing: "border-box",
-                borderRadius: 8,
-                border: "1px solid var(--border)",
-                background: "var(--bg-tertiary)",
-                color: "var(--text-primary)",
-                padding: "10px 12px",
-                fontFamily: "inherit",
-                fontSize: 13,
-              }}
-            />
-            <button
-              className="btn btn-blue"
-              type="button"
-              onClick={() => {
-                sendMaxwellChat();
-              }}
-              disabled={chatSending || !chatInput.trim() || !st.http_reachable}
-            >
-              {chatSending ? "Sending..." : "Send"}
-            </button>
-          </div>
-        </div>
-      </div>
-      <div className="section">
-        <div className="section-header">
-          <span className="section-title">Recent Tasks</span>
-        </div>
-        <div className="section-body">
-          {tasksLoading ? (
-            <div style={{ color: "var(--text-muted)", fontSize: 12 }}>
-              Loading tasks…
-            </div>
-          ) : !st.http_reachable ? (
-            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-              Maxwell-Daemon offline — no task history
-            </div>
-          ) : tasks.length === 0 ? (
-            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-              No tasks yet
-            </div>
-          ) : (
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Status</th>
-                  <th>Repo</th>
-                  <th>Created</th>
-                </tr>
-              </thead>
-              <tbody>
-                {tasks.map((t) => (
-                  <tr key={t.id}>
-                    <td>{(t.id || "").slice(0, 8)}</td>
-                    <td>{t.status || "—"}</td>
-                    <td>{t.repo || "—"}</td>
-                    <td>
-                      {t.created_at
-                        ? t.created_at.slice(0, 16).replace("T", " ")
-                        : "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </div>
+      <MaxwellChatPanel
+        status={st}
+        chatMessages={chatMessages}
+        chatInput={chatInput}
+        chatSending={chatSending}
+        showScrollButton={showScrollButton}
+        chatListRef={chatListRef}
+        onChatScroll={onChatScroll}
+        onChatInputChange={setChatInput}
+        onChatKeyDown={onChatKeyDown}
+        onSendChat={sendMaxwellChat}
+        onShowLatest={() => {
+          setShowScrollButton(false);
+          if (chatListRef.current)
+            chatListRef.current.scrollTop = chatListRef.current.scrollHeight;
+        }}
+        onRetry={() => {
+          if (onRefresh) onRefresh();
+          fetchTasks();
+          fetchVersion();
+        }}
+      />
+      <MaxwellTasksPanel
+        status={st}
+        tasks={tasks}
+        tasksLoading={tasksLoading}
+      />
     </div>
   );
 }

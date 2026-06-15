@@ -23,6 +23,7 @@ import {
   localAppHasUpdateAvailable,
   localAppUnhealthy,
 } from "./localAppStatus";
+import { LocalAppsBoundary } from "./LocalAppsBoundary";
 
 /** Git drift summary for a local app. */
 interface LocalAppDrift {
@@ -448,77 +449,12 @@ function LocalAppsBody({
   );
 }
 
-// ── Error boundary (ported from legacy LocalAppsErrorBoundary) ───────────────
-
-interface BoundaryState {
-  hasError: boolean;
-  error: Error | null;
-}
-
-/**
- * Wraps the page body so a malformed app entry degrades to a Retry affordance
- * instead of crashing the shell (orthogonality — issue #836).
- */
-export class LocalAppsTab extends React.Component<
-  LocalAppsProps,
-  BoundaryState
-> {
-  constructor(props: LocalAppsProps) {
-    super(props);
-    this.state = { hasError: false, error: null };
-    this.handleRetry = this.handleRetry.bind(this);
-  }
-
-  static getDerivedStateFromError(error: Error): BoundaryState {
-    return { hasError: true, error };
-  }
-
-  componentDidCatch(error: Error, info: React.ErrorInfo): void {
-    // eslint-disable-next-line no-console
-    console.error("[LocalAppsTab] render error:", error, info);
-  }
-
-  handleRetry(): void {
-    this.setState({ hasError: false, error: null });
-  }
-
-  render(): React.ReactNode {
-    if (this.state.hasError) {
-      return (
-        <div style={{ padding: 24, color: "var(--text-primary)" }}>
-          <div
-            style={{
-              marginBottom: 12,
-              color: "var(--accent-red)",
-              fontWeight: 600,
-            }}
-          >
-            Local Tools failed to render
-          </div>
-          <code
-            style={{
-              display: "block",
-              fontSize: 12,
-              color: "var(--accent-red)",
-              marginBottom: 12,
-              whiteSpace: "pre-wrap",
-            }}
-          >
-            {String(this.state.error)}
-          </code>
-          <button
-            className="btn"
-            type="button"
-            onClick={this.handleRetry}
-            aria-label="Retry loading data"
-          >
-            Retry
-          </button>
-        </div>
-      );
-    }
-    return <LocalAppsBody {...this.props} />;
-  }
+export function LocalAppsTab(props: LocalAppsProps): React.ReactElement {
+  return (
+    <LocalAppsBoundary {...props}>
+      <LocalAppsBody {...props} />
+    </LocalAppsBoundary>
+  );
 }
 
 export default LocalAppsTab;
