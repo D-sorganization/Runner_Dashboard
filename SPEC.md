@@ -1,10 +1,15 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.129
+**Spec Version:** 2.5.130
 **Application Version:** 4.9.17 (see `VERSION`)
 **Last Updated:** 2026-06-15T14:32:00-07:00
 **Status:** Active
 
+- **2026-06-15 (2.5.130):** Continued #949 frontend monolith retirement by
+  routing the self-contained `events` desktop tab directly through
+  `pages/Events.tsx`. The modern desktop shell now shows the event log and
+  alarm center without mounting the legacy `App` chunk, with RoutedShell
+  coverage guarding the native route bypass.
 - **2026-06-15 (2.5.129):** Continued #949 frontend monolith retirement by
   routing more self-contained desktop tabs directly through extracted page
   modules. `principals`, `push-settings`, `scheduled-jobs`, and `settings` now
@@ -867,6 +872,7 @@ Icon, tooltip, tabId, frequent }`. Six ordered groups (Fleet & Runners,
 - **2026-05-28 (2.5.40):** Added tier-aware autoscaler controls for ControlTower
   NVMe and HDD pools (issue #755). New `backend/routers/autoscaler_pools.py`
   exposes two endpoints:
+
   - `GET /api/autoscaler/pools` — returns per-pool scaling state (pool name,
     min/max/default online counts, systemd unit pattern, labels, start/stop
     enabled flags, primary pressure metric name, cooldown secs, dry_run flag).
@@ -1876,12 +1882,12 @@ Response shape (`schema_version` `1.0.0`):
       "setup_hint": "...",
       "experimental": false,
       "editable": true,
-      "remote": false,
-    },
+      "remote": false
+    }
   ],
   "auth_kinds": ["none", "github_app", "api_key", "local"],
   "task_classes": ["format", "..."],
-  "capabilities": ["code_edit", "..."],
+  "capabilities": ["code_edit", "..."]
 }
 ```
 
