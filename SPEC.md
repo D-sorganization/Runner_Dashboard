@@ -1,10 +1,15 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.152
+**Spec Version:** 2.5.153
 **Application Version:** 4.9.17 (see `VERSION`)
-**Last Updated:** 2026-06-15T19:58:25-07:00
+**Last Updated:** 2026-06-15T20:19:00-07:00
 **Status:** Active
 
+- **2026-06-15 (2.5.153):** Stabilized session-expiry validation after the
+  post-merge `main` CI run exposed a timing-sensitive
+  `test_prune_expired_sessions` failure under parallel test execution.
+  Session-management timestamp reads now route through an internal clock helper
+  so expiry tests can advance time deterministically instead of sleeping.
 - **2026-06-15 (2.5.152):** Continued #949 frontend monolith retirement by
   adding a static registry-vs-router guard. Every tab declared in
   `navRegistry.ts` must now have a matching native desktop route case in

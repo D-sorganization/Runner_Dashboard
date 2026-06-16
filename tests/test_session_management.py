@@ -97,11 +97,13 @@ def test_revoke_all_except_current(tmp_path: Path, monkeypatch: pytest.MonkeyPat
 def test_prune_expired_sessions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _set_sessions_path(tmp_path, monkeypatch)
     monkeypatch.setattr("session_management._SESSION_TTL_SECONDS", 1)
+    now = time.time()
+    monkeypatch.setattr("session_management._now", lambda: now)
 
     sid = register_session("user-1")
     assert is_session_active(sid)
 
-    time.sleep(1.5)
+    now += 1.5
     assert not is_session_active(sid)
     assert session_count_for_principal("user-1") == 0
 
