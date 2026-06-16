@@ -241,6 +241,14 @@ export function AppShell({
       reports: <ReportsMobile />,
       credentials: <CredentialsMobile />,
     } as Partial<Record<TabId, React.ReactNode>>;
+    const nativeMobileContent = mobileTabContent[mobileTab];
+    const legacyMobileFallback = nativeMobileContent ? null : (
+      <LazyLegacyApp
+        initialTab={mobileTab}
+        activeTab={mobileTab}
+        onTabChange={handleLegacyTabChange}
+      />
+    );
 
     return (
       <MobileShell
@@ -248,11 +256,7 @@ export function AppShell({
         onTabChange={(t) => onSelectTab(t)}
         tabContent={mobileTabContent as Record<TabId, React.ReactNode>}
       >
-        <LazyLegacyApp
-          initialTab={mobileTab}
-          activeTab={mobileTab}
-          onTabChange={handleLegacyTabChange}
-        />
+        {legacyMobileFallback}
       </MobileShell>
     );
   }
