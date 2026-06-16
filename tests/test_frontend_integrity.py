@@ -763,6 +763,32 @@ def test_remediation_desktop_route_bypasses_legacy_app() -> None:
     assert "return 'remediation'" in vite_config
 
 
+def test_native_mobile_tabs_do_not_build_legacy_fallback() -> None:
+    """Native mobile tabs must not construct the legacy fallback app (#949)."""
+    routed_shell = (_FRONTEND_DIR / "src" / "shell" / "RoutedShell.tsx").read_text(
+        encoding="utf-8",
+    )
+    mobile_shell = (_FRONTEND_DIR / "src" / "shell" / "MobileShell.tsx").read_text(
+        encoding="utf-8",
+    )
+
+    for marker in [
+        "overview: <FleetMobile />",
+        "queue: <QueueMobile />",
+        "maxwell: <MaxwellMobile />",
+        "reports: <ReportsMobile />",
+        "credentials: <CredentialsMobile />",
+        "const nativeMobileContent = mobileTabContent[mobileTab];",
+        "const legacyMobileFallback = nativeMobileContent ? null :",
+    ]:
+        assert marker in routed_shell
+
+    assert "{legacyMobileFallback}" in routed_shell
+    assert "children?: ReactNode" in mobile_shell
+    assert "{nativeContent ?? children}" in mobile_shell
+    assert "children: ReactNode" not in mobile_shell
+
+
 def test_main_tsx_has_root_suspense_fallback() -> None:
     main_tsx = (_FRONTEND_DIR / "src" / "main.tsx").read_text(encoding="utf-8")
     assert "<React.Suspense" in main_tsx

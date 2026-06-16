@@ -18,6 +18,7 @@ import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
 // --- Mocks: keep the test light and focused on routing -------------------
 
 const legacyAppImport = vi.fn();
+const breakpointMock = vi.fn(() => "lg");
 
 vi.mock("../../legacy/App", () => {
   legacyAppImport();
@@ -59,6 +60,12 @@ vi.mock("../../pages/Conductor", () => ({
 
 vi.mock("../../pages/CredentialsPage", () => ({
   CredentialsPage: () => <div data-testid="native-credentials">Credentials</div>,
+}));
+
+vi.mock("../../pages/Credentials", () => ({
+  CredentialsMobile: () => (
+    <div data-testid="mobile-credentials">Mobile Credentials</div>
+  ),
 }));
 
 vi.mock("../../pages/Deployment", () => ({
@@ -104,12 +111,20 @@ vi.mock("../../pages/MaxwellPage", () => ({
   MaxwellPage: () => <div data-testid="native-maxwell">Maxwell</div>,
 }));
 
+vi.mock("../../pages/Maxwell", () => ({
+  MaxwellMobile: () => <div data-testid="mobile-maxwell">Mobile Maxwell</div>,
+}));
+
 vi.mock("../../pages/Org", () => ({
   OrgPage: () => <div data-testid="native-org">Org</div>,
 }));
 
 vi.mock("../../pages/OverviewPage", () => ({
   default: () => <div data-testid="native-overview">Overview</div>,
+}));
+
+vi.mock("../../pages/Fleet", () => ({
+  FleetMobile: () => <div data-testid="mobile-overview">Mobile Overview</div>,
 }));
 
 vi.mock("../../pages/Principals", () => ({
@@ -123,6 +138,10 @@ vi.mock("../../pages/Queue", () => ({
 
 vi.mock("../../pages/RemediationPage", () => ({
   default: () => <div data-testid="native-remediation">Remediation</div>,
+}));
+
+vi.mock("../../pages/Reports", () => ({
+  ReportsMobile: () => <div data-testid="mobile-reports">Mobile Reports</div>,
 }));
 
 vi.mock("../../pages/RunnerAudit", () => ({
@@ -157,10 +176,11 @@ vi.mock("../../components/ThemeSettings", () => ({
   ThemeSettings: () => <div data-testid="native-settings">Settings</div>,
 }));
 
-// Force the desktop shell branch (lg) so DesktopShell renders deterministically.
+// Force the desktop shell branch by default so DesktopShell renders
+// deterministically; individual tests can opt into mobile.
 vi.mock("../../hooks/useBreakpoint", async (orig) => {
   const actual = (await orig()) as Record<string, unknown>;
-  return { ...actual, useBreakpoint: () => "lg" };
+  return { ...actual, useBreakpoint: () => breakpointMock() };
 });
 
 vi.mock("../../hooks/useSession", () => ({
@@ -216,6 +236,7 @@ describe("RoutedShell — URL is the source of truth", () => {
     cleanup();
     localStorage.clear();
     legacyAppImport.mockClear();
+    breakpointMock.mockReturnValue("lg");
   });
 
   it("derives the default tab from the root path", async () => {
@@ -249,14 +270,6 @@ describe("RoutedShell — URL is the source of truth", () => {
     expect(await screen.findByTestId("active-tab")).toHaveTextContent(
       "maxwell",
     );
-  });
-
-  it("lazy-loads the legacy App (code-split, not eager)", async () => {
-    localStorage.setItem("dashboard.layout", "legacy");
-    renderAt("/");
-    // The legacy App renders only after its lazy chunk resolves.
-    expect(await screen.findByTestId("legacy-app")).toBeInTheDocument();
-    localStorage.removeItem("dashboard.layout");
   });
 
   it.each([
@@ -295,8 +308,46 @@ describe("RoutedShell — URL is the source of truth", () => {
       expect(await screen.findByTestId("active-tab")).toHaveTextContent(tabId);
       expect(await screen.findByTestId(testId)).toBeInTheDocument();
       expect(screen.queryByTestId("legacy-app")).not.toBeInTheDocument();
+      expect(legacyAppImport).not.toHaveBeenCalled();
     },
   );
+
+  it.each([
+    ["/", "mobile-overview"],
+    ["/t/queue", "mobile-queue"],
+    ["/t/maxwell", "mobile-maxwell"],
+    ["/t/reports", "mobile-reports"],
+    ["/t/credentials", "mobile-credentials"],
+  ])(
+    "routes native mobile tab %s without importing the legacy App",
+    async (path, testId) => {
+      breakpointMock.mockReturnValue("md");
+      renderAt(path);
+
+      expect(await screen.findByTestId(testId)).toBeInTheDocument();
+      expect(screen.queryByTestId("legacy-app")).not.toBeInTheDocument();
+      expect(legacyAppImport).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps the mobile legacy fallback for drawer tabs without native content", async () => {
+    breakpointMock.mockReturnValue("md");
+    renderAt("/t/conductor");
+
+    expect(await screen.findByTestId("legacy-app")).toHaveAttribute(
+      "data-active-tab",
+      "conductor",
+    );
+    expect(legacyAppImport).toHaveBeenCalledTimes(1);
+  });
+
+  it("lazy-loads the legacy App (code-split, not eager)", async () => {
+    localStorage.setItem("dashboard.layout", "legacy");
+    renderAt("/");
+    // The legacy App renders only after its lazy chunk resolves.
+    expect(await screen.findByTestId("legacy-app")).toBeInTheDocument();
+    localStorage.removeItem("dashboard.layout");
+  });
 
   it("keeps the explicit legacy desktop-shell escape hatch", async () => {
     localStorage.setItem("dashboard.layout", "legacy");

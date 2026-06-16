@@ -29,7 +29,7 @@ import {
 export type TabId = string
 
 export interface MobileShellProps {
-  children: ReactNode
+  children?: ReactNode
   currentTab: TabId
   onTabChange: (tab: TabId) => void
   tabContent?: Record<TabId, ReactNode>

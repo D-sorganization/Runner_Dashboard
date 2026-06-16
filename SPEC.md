@@ -1,10 +1,17 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.149
+**Spec Version:** 2.5.150
 **Application Version:** 4.9.17 (see `VERSION`)
-**Last Updated:** 2026-06-15T16:20:00-07:00
+**Last Updated:** 2026-06-15T16:57:24-07:00
 **Status:** Active
 
+- **2026-06-15 (2.5.150):** Continued #949 frontend monolith retirement on the
+  mobile shell path. Native mobile tabs (`overview`, `queue`, `maxwell`,
+  `reports`, and `credentials`) now skip constructing the legacy lazy App
+  fallback entirely, while drawer tabs without extracted mobile pages keep the
+  fallback for feature parity. Regression coverage asserts the native mobile
+  routes do not import or mount the legacy chunk, and the static frontend
+  integrity gate prevents the hidden fallback from returning.
 - **2026-06-15 (2.5.149):** Continued #949 frontend monolith retirement by
   adding a self-contained `RemediationPage` container for desktop. The page now
   owns remediation config/workflow/history loading, failed-run loading,
