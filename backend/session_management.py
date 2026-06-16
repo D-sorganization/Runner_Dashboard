@@ -27,8 +27,8 @@ class SessionRecord(BaseModel):
 
     session_id: str
     principal_id: str
-    created_at: float = Field(default_factory=time.time)
-    last_seen_at: float = Field(default_factory=time.time)
+    created_at: float = Field(default_factory=_now)
+    last_seen_at: float = Field(default_factory=_now)
     user_agent: str | None = None
     ip_address: str | None = None
     revoked_at: float | None = None
