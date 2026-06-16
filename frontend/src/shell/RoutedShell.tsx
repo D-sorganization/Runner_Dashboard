@@ -9,9 +9,10 @@
  * previous hand-rolled `window.location.pathname` + React-state navigation in
  * `main.tsx`.
  *
- * The legacy `App` (the ~485KB monolith hosting Fleet/Maxwell/… tabs) is
- * loaded through `React.lazy` so Vite code-splits it into its own chunk and the
- * entry bundle no longer pays for it on first paint (issue #831).
+ * The legacy `App` is retained only for the explicit legacy desktop escape
+ * hatch and the still-legacy mobile fallback. Modern desktop routes render
+ * native page modules directly and never use legacy/App.tsx as a silent
+ * desktop fallback (#949).
  *
  * Law of Demeter: the shell receives a flat `activeTab` string and an
  * `onSelectTab(tabId)` callback; it never reaches into router internals.
@@ -68,10 +69,8 @@ import PushSettings from "../pages/PushSettings";
 import ScheduledJobs from "../pages/ScheduledJobs";
 import { ThemeSettings } from "../components/ThemeSettings";
 
-// The legacy App hosts Fleet, Maxwell, Remediation, Org, Heavy and every other
-// tab not yet routed natively. Loading it via React.lazy makes Vite emit it as
-// its own chunk so the entry bundle code-splits the monolith out of first paint
-// (issue #831).
+// The legacy App is isolated behind the explicit legacy layout flag and mobile
+// fallback while the modern desktop shell routes registered tabs natively.
 const LazyLegacyApp = React.lazy(() => import("../legacy/App"));
 const LazyFleetOrchestrationPage = React.lazy(
   () => import("../pages/FleetOrchestrationPage"),
@@ -199,10 +198,9 @@ export function RoutedShell() {
 }
 
 /**
- * AppShell renders the mobile or desktop chrome around the legacy App for the
- * given active tab. Navigation is delegated to `onSelectTab` (the router), so
- * the legacy App's internal tab changes and the shell stay in lockstep with
- * the URL.
+ * AppShell renders mobile or desktop chrome for the given active tab.
+ * Navigation is delegated to `onSelectTab` (the router), so URL state remains
+ * the single source of truth.
  */
 export function AppShell({
   activeTab,
@@ -263,8 +261,8 @@ export function AppShell({
 
   // Desktop. The modern shell (#802) is the default but fully reversible: when
   // the layout flag resolves to legacy we render the untouched legacy App with
-  // its own top toolstrip. Otherwise the new DesktopShell owns navigation and
-  // mounts the legacy App chromeless + tab-controlled.
+  // its own top toolstrip. Otherwise DesktopShell owns navigation and renders
+  // native page content for every registered tab (#949).
   const env = (import.meta.env as Record<string, string | undefined>)
     ?.VITE_DESKTOP_SHELL;
   const useModernShell = resolveDesktopShellLayout({ env });
@@ -309,14 +307,7 @@ export function AppShell({
         </>
       }
     >
-      {nativeContent ?? (
-        <LazyLegacyApp
-          initialTab={activeTab}
-          activeTab={activeTab}
-          chromeless
-          onTabChange={handleLegacyTabChange}
-        />
-      )}
+      {nativeContent}
     </DesktopShell>
   );
 }
