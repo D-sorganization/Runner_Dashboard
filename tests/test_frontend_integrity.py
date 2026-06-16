@@ -25,6 +25,7 @@ _ROUTED_SHELL = _SRC_DIR / "shell" / "RoutedShell.tsx"
 _PUSH_SETTINGS = _FRONTEND_DIR / "src" / "pages" / "PushSettings.tsx"
 _DESIGN_DIR = _FRONTEND_DIR / "src" / "design"
 _PRIMITIVES_DIR = _FRONTEND_DIR / "src" / "primitives"
+_AUDIT_CLOSEOUT = Path(__file__).parent.parent / "docs" / "operations" / "2026-06-15-audit-closeout.md"
 _LEGACY_APP_LINE_RATCHET = 2886
 
 
@@ -816,6 +817,16 @@ def test_every_registered_desktop_tab_has_native_route_content() -> None:
 
     assert registered_tabs
     assert registered_tabs <= routed_tabs
+
+
+def test_runner_dashboard_audit_closeout_evidence_tracks_final_issues() -> None:
+    """The #949/#951 closeout record must remain tied to the checked guards."""
+    closeout = _AUDIT_CLOSEOUT.read_text(encoding="utf-8")
+
+    assert "#949" in closeout
+    assert "#951" in closeout
+    assert "tests/test_frontend_integrity.py" in closeout
+    assert "tests/api/test_router_dependency_contracts.py" in closeout
 
 
 def test_main_tsx_has_root_suspense_fallback() -> None:

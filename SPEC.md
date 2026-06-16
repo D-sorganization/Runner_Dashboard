@@ -1,10 +1,13 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.155
+**Spec Version:** 2.5.156
 **Application Version:** 4.9.17 (see `VERSION`)
 **Last Updated:** 2026-06-15T20:35:00-07:00
 **Status:** Active
 
+- **2026-06-15 (2.5.156):** Added a static frontend-integrity guard that keeps
+  the #949/#951 audit closeout record tied to the tested frontend and router
+  dependency evidence paths.
 - **2026-06-15 (2.5.155):** Added an operations closeout record for the
   2026-06-12 Runner Dashboard audit epic and final #949 cleanup issue so the
   closure guard can tie #949/#951 to a merged PR with explicit evidence.
