@@ -1,10 +1,16 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.153
+**Spec Version:** 2.5.154
 **Application Version:** 4.9.17 (see `VERSION`)
-**Last Updated:** 2026-06-15T20:19:00-07:00
+**Last Updated:** 2026-06-15T20:35:00-07:00
 **Status:** Active
 
+- **2026-06-15 (2.5.154):** Continued #949 mobile legacy-fallback retirement
+  by routing the mobile Remediation tab through the dedicated
+  `RemediationMobile` page instead of the hidden legacy App. The shell keeps
+  mobile remediation in-flight dispatch state above the tab content so dispatch
+  status persists across tab switches, and routing/static tests now guard that
+  `/t/remediation` does not import the legacy App on mobile.
 - **2026-06-15 (2.5.153):** Stabilized session-expiry validation after the
   post-merge `main` CI run exposed a timing-sensitive
   `test_prune_expired_sessions` failure under parallel test execution.

@@ -45,6 +45,10 @@ import { MaxwellMobile } from "../pages/Maxwell";
 import { ReportsMobile } from "../pages/Reports";
 import { CredentialsMobile } from "../pages/Credentials";
 import { FleetMobile } from "../pages/Fleet";
+import {
+  RemediationMobile,
+  type InFlightDispatch,
+} from "../pages/Remediation/Mobile";
 import { AgentDispatchPage } from "../pages/AgentDispatch";
 import { AnalysisTab } from "../pages/Analysis";
 import { AssessmentsPage } from "../pages/AssessmentsPage";
@@ -76,7 +80,9 @@ const LazyFleetOrchestrationPage = React.lazy(
   () => import("../pages/FleetOrchestrationPage"),
 );
 const LazyOverviewPage = React.lazy(() => import("../pages/OverviewPage"));
-const LazyRemediationPage = React.lazy(() => import("../pages/RemediationPage"));
+const LazyRemediationPage = React.lazy(
+  () => import("../pages/RemediationPage"),
+);
 
 /**
  * Persistent/global provider control for the shell topbar (#811). Fetches the
@@ -220,6 +226,8 @@ export function AppShell({
   const [dismissedIntros, setDismissedIntros] = React.useState<
     Record<string, boolean>
   >({});
+  const [mobileRemediationDispatches, setMobileRemediationDispatches] =
+    React.useState<InFlightDispatch[]>([]);
 
   // The legacy App emits tab changes through its own toolstrip / mobile UI;
   // route those through the router so the URL stays authoritative.
@@ -236,6 +244,14 @@ export function AppShell({
       overview: <FleetMobile />,
       queue: <QueueMobile />,
       maxwell: <MaxwellMobile />,
+      remediation: (
+        <RemediationMobile
+          inFlightDispatches={mobileRemediationDispatches}
+          onAddInFlight={(dispatch) =>
+            setMobileRemediationDispatches((prev) => [...prev, dispatch])
+          }
+        />
+      ),
       reports: <ReportsMobile />,
       credentials: <CredentialsMobile />,
     } as Partial<Record<TabId, React.ReactNode>>;
