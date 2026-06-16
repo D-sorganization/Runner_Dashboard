@@ -1,10 +1,18 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.154
+**Spec Version:** 2.5.157
 **Application Version:** 4.9.17 (see `VERSION`)
 **Last Updated:** 2026-06-15T20:35:00-07:00
 **Status:** Active
 
+- **2026-06-15 (2.5.157):** Linked the remaining legacy App decomposition
+  marker to the #949 closeout evidence without changing runtime behavior.
+- **2026-06-15 (2.5.156):** Added a static frontend-integrity guard that keeps
+  the #949/#951 audit closeout record tied to the tested frontend and router
+  dependency evidence paths.
+- **2026-06-15 (2.5.155):** Added an operations closeout record for the
+  2026-06-12 Runner Dashboard audit epic and final #949 cleanup issue so the
+  closure guard can tie #949/#951 to a merged PR with explicit evidence.
 - **2026-06-15 (2.5.154):** Continued #949 mobile legacy-fallback retirement
   by routing the mobile Remediation tab through the dedicated
   `RemediationMobile` page instead of the hidden legacy App. The shell keeps

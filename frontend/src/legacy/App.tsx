@@ -4,7 +4,7 @@
 // `@ts-nocheck` when it is the first comment in the file (before any
 // statements). It was previously placed after the imports, so it was
 // silently ignored and the legacy file leaked ~1000 type errors into any
-// `tsc` run. Decomposition of this file is tracked separately (#403).
+// `tsc` run. Decomposition closeout evidence is tracked under #949.
 import React from "react"
 import { legacyFetch } from "../lib/api"
 import * as fleetAlerts from "../lib/fleetAlerts"
