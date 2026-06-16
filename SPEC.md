@@ -1,10 +1,16 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.151
+**Spec Version:** 2.5.152
 **Application Version:** 4.9.17 (see `VERSION`)
-**Last Updated:** 2026-06-15T17:04:49-07:00
+**Last Updated:** 2026-06-15T19:58:25-07:00
 **Status:** Active
 
+- **2026-06-15 (2.5.152):** Continued #949 frontend monolith retirement by
+  adding a static registry-vs-router guard. Every tab declared in
+  `navRegistry.ts` must now have a matching native desktop route case in
+  `RoutedShell.tsx`, preventing new desktop tabs from silently falling back to
+  the legacy App while the existing legacy App line-count ratchet remains in
+  force.
 - **2026-06-15 (2.5.151):** Continued #949 frontend monolith retirement by
   removing the modern desktop shell's silent legacy App fallback. Registered
   desktop tabs now render their native page content directly, while the
