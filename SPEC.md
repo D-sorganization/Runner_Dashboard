@@ -1,10 +1,12 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.156
+**Spec Version:** 2.5.157
 **Application Version:** 4.9.17 (see `VERSION`)
 **Last Updated:** 2026-06-15T20:35:00-07:00
 **Status:** Active
 
+- **2026-06-15 (2.5.157):** Linked the remaining legacy App decomposition
+  marker to the #949 closeout evidence without changing runtime behavior.
 - **2026-06-15 (2.5.156):** Added a static frontend-integrity guard that keeps
   the #949/#951 audit closeout record tied to the tested frontend and router
   dependency evidence paths.
