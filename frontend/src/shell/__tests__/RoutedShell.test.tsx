@@ -45,7 +45,9 @@ vi.mock("../../pages/Analysis", () => ({
 }));
 
 vi.mock("../../pages/AssessmentsPage", () => ({
-  AssessmentsPage: () => <div data-testid="native-assessments">Assessments</div>,
+  AssessmentsPage: () => (
+    <div data-testid="native-assessments">Assessments</div>
+  ),
 }));
 
 vi.mock("../../pages/ClineLauncher", () => ({
@@ -59,7 +61,9 @@ vi.mock("../../pages/Conductor", () => ({
 }));
 
 vi.mock("../../pages/CredentialsPage", () => ({
-  CredentialsPage: () => <div data-testid="native-credentials">Credentials</div>,
+  CredentialsPage: () => (
+    <div data-testid="native-credentials">Credentials</div>
+  ),
 }));
 
 vi.mock("../../pages/Credentials", () => ({
@@ -138,6 +142,12 @@ vi.mock("../../pages/Queue", () => ({
 
 vi.mock("../../pages/RemediationPage", () => ({
   default: () => <div data-testid="native-remediation">Remediation</div>,
+}));
+
+vi.mock("../../pages/Remediation/Mobile", () => ({
+  RemediationMobile: () => (
+    <div data-testid="mobile-remediation">Mobile Remediation</div>
+  ),
 }));
 
 vi.mock("../../pages/Reports", () => ({
@@ -316,6 +326,7 @@ describe("RoutedShell — URL is the source of truth", () => {
     ["/", "mobile-overview"],
     ["/t/queue", "mobile-queue"],
     ["/t/maxwell", "mobile-maxwell"],
+    ["/t/remediation", "mobile-remediation"],
     ["/t/reports", "mobile-reports"],
     ["/t/credentials", "mobile-credentials"],
   ])(

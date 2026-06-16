@@ -778,6 +778,8 @@ def test_native_mobile_tabs_do_not_build_legacy_fallback() -> None:
         "overview: <FleetMobile />",
         "queue: <QueueMobile />",
         "maxwell: <MaxwellMobile />",
+        "remediation: (",
+        "<RemediationMobile",
         "reports: <ReportsMobile />",
         "credentials: <CredentialsMobile />",
         "const nativeMobileContent = mobileTabContent[mobileTab];",
