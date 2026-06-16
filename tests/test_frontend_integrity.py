@@ -20,6 +20,8 @@ _VISIBLE_INTERVAL = _SRC_DIR / "legacy" / "visibleInterval.ts"
 _QUEUE_INDEX = _SRC_DIR / "pages" / "Queue" / "index.tsx"
 _FLEET_TAB = _SRC_DIR / "pages" / "FleetTab.tsx"
 _REMEDIATION_TAB = _SRC_DIR / "pages" / "RemediationTab.tsx"
+_NAV_REGISTRY = _SRC_DIR / "shell" / "navRegistry.ts"
+_ROUTED_SHELL = _SRC_DIR / "shell" / "RoutedShell.tsx"
 _PUSH_SETTINGS = _FRONTEND_DIR / "src" / "pages" / "PushSettings.tsx"
 _DESIGN_DIR = _FRONTEND_DIR / "src" / "design"
 _PRIMITIVES_DIR = _FRONTEND_DIR / "src" / "primitives"
@@ -798,6 +800,20 @@ def test_modern_desktop_shell_has_no_legacy_fallback() -> None:
     assert "chromeless" not in routed_shell
     assert "nativeContent ??" not in routed_shell
     assert "{nativeContent}" in routed_shell
+
+
+def test_every_registered_desktop_tab_has_native_route_content() -> None:
+    """Adding a nav tab must add native desktop content, not revive legacy fallback."""
+    nav_registry = _NAV_REGISTRY.read_text(encoding="utf-8")
+    routed_shell = _ROUTED_SHELL.read_text(encoding="utf-8")
+
+    registered_tabs = set(re.findall(r'tabId:\s*"([^"]+)"', nav_registry))
+    routed_tabs = set(
+        re.findall(r'case\s+"([^"]+)":', routed_shell[routed_shell.index("function nativeDesktopTabContent") :])
+    )
+
+    assert registered_tabs
+    assert registered_tabs <= routed_tabs
 
 
 def test_main_tsx_has_root_suspense_fallback() -> None:
