@@ -12,6 +12,7 @@ from hashlib import sha256
 
 from cache_utils import cache_get, cache_set
 from dashboard_config import DEPLOYMENT_FILE, HOSTNAME, VERSION
+from dashboard_config.cache_ttls import CacheTtl
 from fastapi import HTTPException
 from system_utils import BOOT_TIME, get_deployment_info, run_cmd
 
@@ -205,6 +206,28 @@ async def gh_api(endpoint: str) -> dict:
 gh_api_admin = gh_api
 
 
+async def get_cached_org_runners(org: str) -> dict:
+    """Return the org's self-hosted runners, reusing the shared ``runners`` cache.
+
+    Single source of truth for "the current runner inventory" so every
+    caller — the runners list, the health summary, and the Conductor admission
+    gate — shares one GitHub round-trip per ``CacheTtl.RUNNERS_S`` window
+    instead of each issuing its own uncached call (DRY; bounds rate-limit
+    pressure under Conductor polling).
+
+    Postcondition: always returns a dict (``{}`` on a cache miss that also
+    failed upstream is the caller's concern; this raises on fetch failure so
+    callers can degrade explicitly).
+    """
+    from runner_inventory import fetch_org_runners  # noqa: PLC0415 — avoid import cycle
+
+    data = cache_get("runners", float(CacheTtl.RUNNERS_S))
+    if data is None:
+        data = await fetch_org_runners(gh_api_admin, org)
+        cache_set("runners", data)
+    return data or {}
+
+
 async def gh_api_raw(endpoint: str) -> str:
     """Call the GitHub API via gh CLI and return the raw body text."""
     code, stdout, stderr = await run_cmd(["gh", "api", "-H", "Accept: application/vnd.github.raw", endpoint])
@@ -216,13 +239,8 @@ async def gh_api_raw(endpoint: str) -> str:
 async def get_gh_health_summary(org: str) -> dict:
     """Core health logic for GitHub runners and dashboard state."""
     try:
-        from runner_inventory import fetch_org_runners  # noqa: PLC0415
-
-        # Reuse the runner cache so health checks don't add extra API calls.
-        data = cache_get("runners", 25.0)
-        if data is None:
-            data = await fetch_org_runners(gh_api_admin, org)
-            cache_set("runners", data)
+        # Reuse the shared runner cache so health checks add no extra API calls.
+        data = await get_cached_org_runners(org)
         gh_ok = True
         runner_count = len(data.get("runners", []))
     except Exception as exc:  # noqa: BLE001

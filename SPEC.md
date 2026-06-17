@@ -1,10 +1,17 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.158
+**Spec Version:** 2.5.159
 **Application Version:** 4.9.17 (see `VERSION`)
-**Last Updated:** 2026-06-15T20:35:00-07:00
+**Last Updated:** 2026-06-16T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-16 (2.5.159):** Routed the Conductor admission gate's capacity
+  provider through the shared `runners` cache via a new
+  `gh_utils.get_cached_org_runners` helper (also adopted by the GitHub health
+  summary), so each admission decision reuses one GitHub round-trip per
+  `CacheTtl.RUNNERS_S` window instead of issuing an uncached call on every
+  Conductor poll. Corrected the stale "cached upstream" comment on
+  `_orchestrator_capacity_provider`.
 - **2026-06-15 (2.5.158):** Stabilized FIFO session-eviction coverage after
   the post-merge `main` CI run exposed another wall-clock-sensitive session
   test. Session record defaults now use the module clock helper, and the FIFO

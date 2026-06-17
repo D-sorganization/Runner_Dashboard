@@ -2382,15 +2382,16 @@ _system_router.set_runner_capacity_snapshot_func(get_runner_capacity_snapshot)
 
 # Conductor admission gate (issue #1282): wire the orchestrator capacity
 # provider to the SAME runner-counting logic as /api/runners/fleet/capacity
-# (DRY via routers.runner_helpers.count_runner_capacity). Synchronous wrapper
-# so the in-process lease lock stays simple; the gh call is cached upstream.
+# (DRY via routers.runner_helpers.count_runner_capacity). Reads the runner
+# inventory through the shared ``runners`` cache so each admission decision
+# reuses one GitHub round-trip per CacheTtl.RUNNERS_S window instead of issuing
+# an uncached call on every Conductor poll.
 async def _orchestrator_capacity_provider() -> dict[str, int]:
-    from gh_utils import gh_api_admin  # noqa: PLC0415
+    from gh_utils import get_cached_org_runners  # noqa: PLC0415
     from routers.runner_helpers import count_runner_capacity  # noqa: PLC0415
-    from runner_inventory import fetch_org_runners  # noqa: PLC0415
 
     try:
-        data = await fetch_org_runners(gh_api_admin, ORG)
+        data = await get_cached_org_runners(ORG)
         runners = (data or {}).get("runners", []) or []
         return count_runner_capacity(runners)
     except Exception as exc:  # noqa: BLE001 — fail safe: report zero capacity
