@@ -316,6 +316,25 @@ def test_version() -> None:
     assert dashboard_config.VERSION == expected
 
 
+def test_version_ignores_workflow_repo_root_override(monkeypatch, tmp_path: Path) -> None:
+    workflow_root = tmp_path / "Repository_Management"
+    workflow_root.mkdir()
+    env = os.environ.copy()
+    env["RUNNER_DASHBOARD_REPO_ROOT"] = str(workflow_root)
+    monkeypatch.setattr(os, "environ", env)
+
+    importlib.reload(dashboard_config)
+
+    version_file = Path(__file__).parent.parent / "VERSION"
+    expected = next(
+        line.strip()
+        for line in version_file.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.startswith("#")
+    )
+    assert dashboard_config.REPO_ROOT == workflow_root
+    assert dashboard_config.VERSION == expected
+
+
 # ---------------------------------------------------------------------------
 # LLM
 # ---------------------------------------------------------------------------

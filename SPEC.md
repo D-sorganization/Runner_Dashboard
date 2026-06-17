@@ -1,10 +1,16 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.161
+**Spec Version:** 2.5.162
 **Application Version:** 4.9.17 (see `VERSION`)
-**Last Updated:** 2026-06-16T01:00:00-07:00
+**Last Updated:** 2026-06-17T08:40:00-07:00
 **Status:** Active
 
+- **2026-06-17 (2.5.162):** Kept dashboard version resolution anchored to
+  the deployed dashboard checkout even when `RUNNER_DASHBOARD_REPO_ROOT`
+  points at the workflow/conductor repository. DeskComputer nodes use that
+  override to direct workflow operations through `Repository_Management`; the
+  dashboard now still reads its own `VERSION` file at boot instead of failing
+  on a sibling repo without a dashboard version file.
 - **2026-06-16 (2.5.161):** Fixed the DeskComputer node `dashboard_url` in
   `machine_registry.yml` to its MagicDNS name
   (`http://deskcomputer.tail2bbcc7.ts.net:8321`) instead of the raw tailnet IP.

@@ -29,6 +29,7 @@ log = logging.getLogger("dashboard")
 
 # Paths
 BACKEND_DIR = Path(__file__).resolve().parent.parent
+DASHBOARD_ROOT = BACKEND_DIR.parent
 REPO_ROOT = Path(os.environ.get("RUNNER_DASHBOARD_REPO_ROOT", BACKEND_DIR.parents[0]))
 RUNNER_BASE_DIR = Path(
     os.environ.get(
@@ -174,16 +175,17 @@ def runner_scheduler_apply_command() -> list[str]:
     return [RUNNER_SCHEDULER_BIN, "apply", "--config", str(RUNNER_SCHEDULE_CONFIG)]
 
 
-def _read_repo_version(version_path: Path = REPO_ROOT / "VERSION") -> str:
+def _read_repo_version(version_path: Path | None = None) -> str:
     """Return the first semver entry from the repository VERSION file."""
-    for raw_line in version_path.read_text(encoding="utf-8").splitlines():
+    version_file = version_path or DASHBOARD_ROOT / "VERSION"
+    for raw_line in version_file.read_text(encoding="utf-8").splitlines():
         candidate = raw_line.strip()
         if not candidate or candidate.startswith("#"):
             continue
         if re.fullmatch(r"\d+\.\d+\.\d+", candidate):
             return candidate
         break
-    raise RuntimeError(f"{version_path} must contain a MAJOR.MINOR.PATCH version")
+    raise RuntimeError(f"{version_file} must contain a MAJOR.MINOR.PATCH version")
 
 
 # Deployment
@@ -282,6 +284,7 @@ SESSION_SECRET, SESSION_SECRET_SOURCE = _resolve_session_secret()
 __all__ = [
     "BACKEND_DIR",
     "CACHE_EVICT_BATCH",
+    "DASHBOARD_ROOT",
     "DEFAULT_LLM_MODEL",
     "DEFAULT_NUM_RUNNERS",
     "DEPLOYMENT_FILE",
