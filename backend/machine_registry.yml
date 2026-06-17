@@ -151,7 +151,7 @@ machines:
       - desk-computer
     display_name: DeskComputer
     role: node
-    dashboard_url: http://100.122.254.109:8321
+    dashboard_url: http://deskcomputer.tail2bbcc7.ts.net:8321
     tailscale_nodes:
       - name: deskcomputer
         ip: 100.122.254.109
