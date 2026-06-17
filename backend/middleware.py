@@ -109,6 +109,17 @@ _AUTH_EXEMPT_PATHS = {
     "/",
     "/health",
     "/api/health",
+    # Read-only fleet telemetry consumed hub→node over the Tailscale mesh. The
+    # hub's fleet fan-out (`routers.fleet.fetch_node` → GET `/api/system`, and
+    # peer-pool GET `/api/fleet/status`) presents no operator principal, and the
+    # fleet model already treats these as tailnet-public reads (see
+    # `require_fleet_peer` (#922): "fleet reads remain tailnet-public" when no
+    # HUB_FLEET_TOKEN is set). The #924 structural perimeter over-blocked them,
+    # 401-ing every >=4.9 node so the hub marked the whole fleet offline. These
+    # are GET-only system metrics on a private tailnet; `/api/fleet/status` also
+    # keeps its own `require_fleet_peer` route dependency.
+    "/api/system",
+    "/api/fleet/status",
     "/manifest.webmanifest",
     "/icon.svg",
     "/api/auth/github",

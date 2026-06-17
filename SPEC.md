@@ -1,10 +1,18 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.161
+**Spec Version:** 2.5.162
 **Application Version:** 4.9.17 (see `VERSION`)
-**Last Updated:** 2026-06-16T01:00:00-07:00
+**Last Updated:** 2026-06-17T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-17 (2.5.162):** Exempted the read-only fleet-telemetry endpoints
+  `/api/system` and `/api/fleet/status` from the #924 structural auth perimeter.
+  The hub's fleet fan-out (`fetch_node` → `/api/system`; peer pools →
+  `/api/fleet/status`) presents no operator principal, so the perimeter 401-ed
+  every node once it moved to >=4.9 code, marking the whole fleet offline. These
+  are tailnet-scoped GET metrics already intended as tailnet-public fleet reads
+  (`require_fleet_peer`); `/api/fleet/status` keeps its own `require_fleet_peer`
+  dependency. Restores hub→node fleet status across the fleet.
 - **2026-06-16 (2.5.161):** Fixed the DeskComputer node `dashboard_url` in
   `machine_registry.yml` to its MagicDNS name
   (`http://deskcomputer.tail2bbcc7.ts.net:8321`) instead of the raw tailnet IP.
