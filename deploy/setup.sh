@@ -276,6 +276,19 @@ else
     warn "(The refresh-token.sh script will pick it up automatically on restart)"
 fi
 
+# Seed loopback operator auth (issue #924 fail-closed perimeter).
+# The dashboard is a local operator console reached at http://localhost:8321;
+# without this flag every /api/* request from the local browser is rejected with
+# 401 "Authentication required" once the perimeter is active. Only loopback
+# (127.0.0.1) callers are granted the admin principal — the service binds
+# 0.0.0.0 but network/tailnet peers still require a real service token or
+# session, so seeding this default is safe. Respect an explicit operator choice:
+# only seed when the key is absent, never override an existing value.
+if ! grep -qE '^DASHBOARD_LOOPBACK_AUTH=' "${SECRETS_FILE}"; then
+    printf 'DASHBOARD_LOOPBACK_AUTH=1\n' >> "${SECRETS_FILE}"
+    ok "DASHBOARD_LOOPBACK_AUTH=1 seeded (local operator access via loopback)"
+fi
+
 # Append FLEET_NODES to secrets file if provided
 if [[ -n "$FLEET_NODES_VAL" ]]; then
     # Remove existing FLEET_NODES line, then re-add
