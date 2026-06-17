@@ -1,10 +1,17 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.159
+**Spec Version:** 2.5.160
 **Application Version:** 4.9.17 (see `VERSION`)
-**Last Updated:** 2026-06-16T00:00:00-07:00
+**Last Updated:** 2026-06-16T00:10:00-07:00
 **Status:** Active
 
+- **2026-06-16 (2.5.160):** Made `/api/fleet/status` resilient to unreachable
+  fleet nodes. Peer pools are now fetched concurrently (`asyncio.gather`)
+  instead of in a sequential loop, and cross-node probes use a connect-capped
+  `httpx.Timeout` (`HttpTimeout.NODE_CONNECT_S`) so a black-holed node fails in
+  ~5 s on the handshake instead of consuming the full 30 s read budget — the
+  endpoint no longer stalls to ~30 s when any node is offline. Extracted
+  `_fetch_peer_pool` / `_node_probe_timeout` helpers.
 - **2026-06-16 (2.5.159):** Routed the Conductor admission gate's capacity
   provider through the shared `runners` cache via a new
   `gh_utils.get_cached_org_runners` helper (also adopted by the GitHub health
