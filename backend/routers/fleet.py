@@ -114,6 +114,40 @@ async def _fleet_control_local(action: str) -> dict:
 # Runner control routes are defined in routers/runners.py
 
 
+def _node_probe_timeout() -> httpx.Timeout:
+    """Bounded HTTP timeout for cross-node fleet probes.
+
+    Caps the TCP connect phase at ``NODE_CONNECT_S`` so a black-holed node
+    (firewall drop, no RST) fails fast instead of consuming the full
+    ``PROXY_NODE_SYSTEM_S`` read budget on the handshake, while a slow-but-alive
+    node keeps that full read budget.
+    """
+    return httpx.Timeout(HttpTimeout.PROXY_NODE_SYSTEM_S, connect=HttpTimeout.NODE_CONNECT_S)
+
+
+async def _fetch_peer_pool(peer: dict) -> dict[str, dict]:
+    """Fetch one peer pool's fleet status, classifying it offline on failure.
+
+    Returns a ``{node_name: metrics}`` mapping to merge into the aggregate
+    response. Independent per peer (no shared state) so callers can ``gather``
+    them concurrently; an unreachable peer resolves to a single offline entry
+    rather than raising.
+    """
+    peer_pool_name = peer["name"]
+    peer_url = f"{peer['url']}/api/fleet/status?exclude_pools=true"
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(peer_url, timeout=_node_probe_timeout())
+            if resp.status_code == 200:
+                return dict(resp.json())
+            reason = classify_node_offline(status_code=resp.status_code)
+            return {peer_pool_name: {"status": "offline", "error": reason["offline_detail"], **reason}}
+    except Exception as e:  # noqa: BLE001 — any failure means the peer is offline
+        log.warning("Failed to query peer pool %s at %s: %s", peer_pool_name, peer_url, e)
+        reason = classify_node_offline(e)
+        return {peer_pool_name: {"status": "offline", "error": reason["offline_detail"], **reason}}
+
+
 @router.get("/api/fleet/status", dependencies=[Depends(require_fleet_peer)])
 async def get_fleet_status(request: Request, response: Response, exclude_pools: bool = False):
     """Get full system metrics state for all machines in the fleet network.
@@ -151,7 +185,7 @@ async def get_fleet_status(request: Request, response: Response, exclude_pools: 
         try:
             async with httpx.AsyncClient() as client:
                 target = f"{url}/api/system"
-                resp = await client.get(target, timeout=HttpTimeout.PROXY_NODE_SYSTEM_S)
+                resp = await client.get(target, timeout=_node_probe_timeout())
                 if resp.status_code == 200:
                     data = resp.json()
                     data["_role"] = "node"
@@ -179,32 +213,13 @@ async def get_fleet_status(request: Request, response: Response, exclude_pools: 
         for name, data in results:
             responses[name] = data
 
-    if not exclude_pools:
-        for peer in peer_pools:
-            peer_pool_name = peer["name"]
-            peer_url = f"{peer['url']}/api/fleet/status?exclude_pools=true"
-            try:
-                async with httpx.AsyncClient() as client:
-                    resp = await client.get(peer_url, timeout=HttpTimeout.PROXY_NODE_SYSTEM_S)
-                    if resp.status_code == 200:
-                        peer_data = resp.json()
-                        for k, v in peer_data.items():
-                            responses[k] = v
-                    else:
-                        reason = classify_node_offline(status_code=resp.status_code)
-                        responses[peer_pool_name] = {
-                            "status": "offline",
-                            "error": reason["offline_detail"],
-                            **reason,
-                        }
-            except Exception as e:
-                log.warning("Failed to query peer pool %s at %s: %s", peer_pool_name, peer_url, e)
-                reason = classify_node_offline(e)
-                responses[peer_pool_name] = {
-                    "status": "offline",
-                    "error": reason["offline_detail"],
-                    **reason,
-                }
+    if not exclude_pools and peer_pools:
+        # Fan out to peer pools concurrently. The previous sequential loop let a
+        # single unreachable pool stall the whole response for its full connect
+        # budget; gather collapses N peer timeouts into one wall-clock window.
+        peer_results = await asyncio.gather(*[_fetch_peer_pool(peer) for peer in peer_pools])
+        for updates in peer_results:
+            responses.update(updates)
 
     _record_fleet_events(responses)
     if degraded_by_hub_circuit:
