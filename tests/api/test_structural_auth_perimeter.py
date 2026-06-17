@@ -188,3 +188,27 @@ def test_dependency_override_defers_to_route(_no_loopback_bypass) -> None:
         assert resp.status_code != 401
     finally:
         server.app.dependency_overrides.clear()
+
+
+def test_fleet_read_endpoints_are_exempt() -> None:
+    """Hub→node fleet telemetry reads must not be force-401'd by the perimeter.
+
+    The hub fans out to `{node}/api/system` (and peer pools to
+    `/api/fleet/status`) with no operator principal; these are tailnet-scoped
+    read-only metrics. Regression guard for the whole fleet showing offline-401
+    after every node moved to >=4.9 code.
+    """
+    assert is_auth_exempt("/api/system")
+    assert is_auth_exempt("/api/fleet/status")
+
+
+def test_fleet_status_keeps_its_own_fleet_peer_dependency() -> None:
+    """Exempting `/api/fleet/status` from the structural perimeter must not strip
+    its dedicated `require_fleet_peer` auth — it stays governed by the fleet
+    model, just not by the operator-principal perimeter."""
+    routes = [r for r in server.app.routes if getattr(r, "path", None) == "/api/fleet/status"]
+    assert routes, "/api/fleet/status route not found"
+    names: set[str] = set()
+    for r in routes:
+        names |= _dependency_callable_names(r)
+    assert "require_fleet_peer" in names
