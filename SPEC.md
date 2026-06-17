@@ -1,10 +1,17 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.160
+**Spec Version:** 2.5.161
 **Application Version:** 4.9.17 (see `VERSION`)
-**Last Updated:** 2026-06-16T00:10:00-07:00
+**Last Updated:** 2026-06-16T01:00:00-07:00
 **Status:** Active
 
+- **2026-06-16 (2.5.161):** Fixed the DeskComputer node `dashboard_url` in
+  `machine_registry.yml` to its MagicDNS name
+  (`http://deskcomputer.tail2bbcc7.ts.net:8321`) instead of the raw tailnet IP.
+  Tailscale's `serve` exposes node dashboards by name (name-based HTTP), so the
+  raw-IP entry returned 404 and the hub marked DeskComputer offline. Every other
+  node already used its MagicDNS name; this aligns DeskComputer with the fleet
+  convention so hub↔node fleet status resolves.
 - **2026-06-16 (2.5.160):** Made `/api/fleet/status` resilient to unreachable
   fleet nodes. Peer pools are now fetched concurrently (`asyncio.gather`)
   instead of in a sequential loop, and cross-node probes use a connect-capped
