@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- WSL keepalive parser smoke coverage now writes its probe log/state artifacts
+  under pytest `tmp_path` instead of the repository root, so the test no longer
+  leaves `.test-wsl-keepalive-junk/` worktree debris behind.
+
 ## [4.9.18] - 2026-06-17
 
 ### Fixed

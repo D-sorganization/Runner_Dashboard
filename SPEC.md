@@ -1,10 +1,15 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.163
+**Spec Version:** 2.5.164
 **Application Version:** 4.9.18 (see `VERSION`)
-**Last Updated:** 2026-06-17T00:00:00-07:00
+**Last Updated:** 2026-06-18T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-18 (2.5.164):** WSL keepalive parser coverage now writes its
+  one-shot probe state and log artifacts to the pytest `tmp_path` tree instead
+  of a repository-root `.test-wsl-keepalive-junk/` directory. This preserves
+  the PowerShell parser/smoke contract while keeping local and CI worktrees
+  clean after `tests/deploy/test_wsl_keepalive_script.py` runs.
 - **2026-06-17 (2.5.162):** Exempted the read-only fleet-telemetry endpoints
   `/api/system` and `/api/fleet/status` from the #924 structural auth perimeter.
   The hub's fleet fan-out (`fetch_node` → `/api/system`; peer pools →
