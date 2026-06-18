@@ -175,15 +175,34 @@ def runner_scheduler_apply_command() -> list[str]:
 
 
 def _read_repo_version(version_path: Path = REPO_ROOT / "VERSION") -> str:
-    """Return the first semver entry from the repository VERSION file."""
-    for raw_line in version_path.read_text(encoding="utf-8").splitlines():
-        candidate = raw_line.strip()
-        if not candidate or candidate.startswith("#"):
+    """Return the first semver entry from the repository VERSION file.
+
+    ``REPO_ROOT`` is operator-overridable via ``RUNNER_DASHBOARD_REPO_ROOT`` and
+    on some deploys points at a sibling repo (e.g. Repository_Management, used by
+    the agent launcher) that has no ``VERSION`` file. Rather than crash the whole
+    dashboard at import, fall back to the deployed backend's own
+    ``BACKEND_DIR.parent / "VERSION"`` and finally to ``"0.0.0"`` when neither
+    file exists. A file that *exists* but is malformed still raises, so a
+    genuinely bad version is never silently accepted.
+    """
+    candidates: list[Path] = [version_path]
+    fallback = BACKEND_DIR.parent / "VERSION"
+    if fallback != version_path:
+        candidates.append(fallback)
+    for path in candidates:
+        try:
+            text = path.read_text(encoding="utf-8")
+        except FileNotFoundError:
             continue
-        if re.fullmatch(r"\d+\.\d+\.\d+", candidate):
-            return candidate
-        break
-    raise RuntimeError(f"{version_path} must contain a MAJOR.MINOR.PATCH version")
+        for raw_line in text.splitlines():
+            candidate = raw_line.strip()
+            if not candidate or candidate.startswith("#"):
+                continue
+            if re.fullmatch(r"\d+\.\d+\.\d+", candidate):
+                return candidate
+            break
+        raise RuntimeError(f"{path} must contain a MAJOR.MINOR.PATCH version")
+    return "0.0.0"
 
 
 # Deployment

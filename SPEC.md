@@ -1,7 +1,7 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.162
-**Application Version:** 4.9.17 (see `VERSION`)
+**Spec Version:** 2.5.163
+**Application Version:** 4.9.18 (see `VERSION`)
 **Last Updated:** 2026-06-17T00:00:00-07:00
 **Status:** Active
 
@@ -2556,6 +2556,16 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 ---
 
 ## 7. Changelog
+
+### 2.5.163 - 2026-06-17
+
+- fix(config): `_read_repo_version()` no longer crashes the dashboard at import
+  when `REPO_ROOT/VERSION` is missing. `REPO_ROOT` is operator-overridable via
+  `RUNNER_DASHBOARD_REPO_ROOT` and on some deploys points at a sibling repo
+  (e.g. `Repository_Management`) with no `VERSION` file; the reader now falls
+  back to the deployed backend's own `BACKEND_DIR.parent/VERSION` and finally to
+  `"0.0.0"` when neither file exists. A `VERSION` file that exists but is
+  malformed still raises, so a genuinely bad version is never silently accepted.
 
 ### 2.5.26 - 2026-05-21
 

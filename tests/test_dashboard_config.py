@@ -5,6 +5,7 @@ import os  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 import dashboard_config  # noqa: E402
+import pytest  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -314,6 +315,34 @@ def test_version() -> None:
         if line.strip() and not line.startswith("#")
     )
     assert dashboard_config.VERSION == expected
+
+
+def test_read_repo_version_missing_primary_falls_back_to_backend(tmp_path: Path) -> None:
+    """A missing REPO_ROOT/VERSION falls back to the deployed backend's VERSION.
+
+    ``REPO_ROOT`` is operator-overridable via ``RUNNER_DASHBOARD_REPO_ROOT`` and
+    on some deploys points at a sibling repo (e.g. Repository_Management) with
+    no VERSION file. The dashboard must not crash at import in that case.
+    """
+    importlib.reload(dashboard_config)
+    missing = tmp_path / "no-such-repo" / "VERSION"
+    # backend/../VERSION exists in this checkout, so the fallback resolves it.
+    assert dashboard_config._read_repo_version(missing) == dashboard_config.VERSION
+
+
+def test_read_repo_version_all_missing_returns_safe_default(monkeypatch, tmp_path: Path) -> None:
+    """When neither the primary nor the backend fallback exists, return 0.0.0."""
+    monkeypatch.setattr(dashboard_config, "BACKEND_DIR", tmp_path / "backend")
+    missing = tmp_path / "elsewhere" / "VERSION"
+    assert dashboard_config._read_repo_version(missing) == "0.0.0"
+
+
+def test_read_repo_version_malformed_file_still_raises(tmp_path: Path) -> None:
+    """A VERSION file that exists but is malformed is a hard error, not 0.0.0."""
+    bad = tmp_path / "VERSION"
+    bad.write_text("not-a-semver\n", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="MAJOR.MINOR.PATCH"):
+        dashboard_config._read_repo_version(bad)
 
 
 # ---------------------------------------------------------------------------

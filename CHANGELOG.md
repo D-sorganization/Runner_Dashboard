@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.9.18] - 2026-06-17
+
+### Fixed
+
+- `_read_repo_version()` no longer crashes the dashboard at import when
+  `REPO_ROOT/VERSION` is missing. `REPO_ROOT` is operator-overridable via
+  `RUNNER_DASHBOARD_REPO_ROOT` and on some deploys points at a sibling repo
+  (e.g. `Repository_Management`) that has no `VERSION` file. The reader now
+  falls back to the deployed backend's own `BACKEND_DIR.parent/VERSION` and
+  finally to `"0.0.0"` when neither file exists. A `VERSION` file that exists
+  but is malformed still raises, so a genuinely bad version is never silently
+  accepted.
+
 ## [4.9.17] - 2026-06-15
 
 ### Changed
