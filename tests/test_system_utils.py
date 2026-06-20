@@ -394,6 +394,33 @@ def test_run_windows_powershell_respects_deadline(monkeypatch) -> None:
     assert all(t is not None and t <= 5.0 for t in seen_timeouts)
 
 
+def test_run_windows_powershell_launches_hidden(monkeypatch) -> None:
+    """Host powershell.exe probes must run with a hidden window so the WSL->Windows
+    spec sync does not pop visible console windows on the operator's desktop."""
+    monkeypatch.setattr(
+        system_utils.platform,
+        "uname",
+        lambda: type("Uname", (), {"release": "6.6-microsoft-standard-WSL2"})(),
+    )
+    monkeypatch.setattr(system_utils, "get_powershell_candidates", lambda: ["ps.exe"])
+    seen_args: list[list[str]] = []
+
+    def fake_run(args, **kwargs):  # noqa: ARG001
+        seen_args.append(list(args))
+        return _cp(stdout="ok", returncode=0)
+
+    monkeypatch.setattr(system_utils.subprocess, "run", fake_run)
+    assert system_utils._run_windows_powershell("Get-Thing") == "ok"
+    assert seen_args, "powershell candidate should have been invoked"
+    args = seen_args[0]
+    # The window must be suppressed; -NonInteractive avoids any prompt hang.
+    assert "-WindowStyle" in args
+    assert args[args.index("-WindowStyle") + 1] == "Hidden"
+    assert "-NonInteractive" in args
+    # The actual command must still be passed through.
+    assert "-Command" in args and args[args.index("-Command") + 1] == "Get-Thing"
+
+
 def test_host_snapshot_caches_within_ttl(monkeypatch) -> None:
     """Rapid successive calls must reuse one PowerShell fork within the TTL."""
     monkeypatch.setattr(system_utils, "_host_snapshot_cache", None)
