@@ -155,7 +155,19 @@ def _run_windows_powershell(command: str, *, deadline: float | None = None) -> s
             timeout = 5.0
         try:
             result = subprocess.run(
-                [powershell, "-NoProfile", "-Command", command],
+                # -WindowStyle Hidden / -NonInteractive: when the dashboard runs
+                # inside WSL and shells out to the Windows host powershell.exe,
+                # Windows would otherwise pop a visible console window for every
+                # hardware-spec probe. These flags keep the spec sync silent.
+                [
+                    powershell,
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-WindowStyle",
+                    "Hidden",
+                    "-Command",
+                    command,
+                ],
                 capture_output=True,
                 text=True,
                 timeout=timeout,

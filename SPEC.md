@@ -1,9 +1,15 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.165
+**Spec Version:** 2.5.166
 **Application Version:** 4.9.19 (see `VERSION`)
 **Last Updated:** 2026-06-20T00:00:00-07:00
 **Status:** Active
+
+- **2026-06-20 (2.5.166):** Host machine-spec probes now launch the Windows
+  `powershell.exe` with `-WindowStyle Hidden -NonInteractive`. When the backend
+  runs in WSL and shells out to the Windows host powershell for hardware facts,
+  Windows otherwise pops a visible console window per probe on every spec sync;
+  the flags keep the sync silent with no change to the data collected (#1056).
 
 - **2026-06-20 (2.5.165):** Exempted the read-only org runner inventory
   `GET /api/runners` from the #924 structural auth perimeter, alongside
@@ -2571,6 +2577,12 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 ---
 
 ## 7. Changelog
+
+### 2.5.166 - 2026-06-20
+
+- fix(system): host `powershell.exe` spec probes run with
+  `-WindowStyle Hidden -NonInteractive` so the WSL->Windows machine-spec sync no
+  longer pops visible console windows on the operator desktop (#1056).
 
 ### 2.5.163 - 2026-06-17
 
