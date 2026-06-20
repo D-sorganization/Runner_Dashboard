@@ -120,6 +120,15 @@ _AUTH_EXEMPT_PATHS = {
     # keeps its own `require_fleet_peer` route dependency.
     "/api/system",
     "/api/fleet/status",
+    # GET-only org runner inventory, same telemetry class as `/api/system` /
+    # `/api/fleet/status` above. The fleet-health monitor on the hub polls each
+    # node's `GET /api/runners` over the tailnet (no operator principal) to read
+    # online/busy counts and drive keepalive auto-recovery; the #924 perimeter
+    # 401-ed it, so `ct_runners_online` went null and self-healing silently died.
+    # Exact-match only — mutating `/api/runners/{id}/start|stop|restart` and the
+    # `/api/runners/...` diagnostics POSTs are distinct paths and stay perimeter-
+    # protected (they carry their own `require_scope` deps besides).
+    "/api/runners",
     "/manifest.webmanifest",
     "/icon.svg",
     "/api/auth/github",

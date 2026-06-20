@@ -1,10 +1,20 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.164
-**Application Version:** 4.9.18 (see `VERSION`)
-**Last Updated:** 2026-06-18T00:00:00-07:00
+**Spec Version:** 2.5.165
+**Application Version:** 4.9.19 (see `VERSION`)
+**Last Updated:** 2026-06-20T00:00:00-07:00
 **Status:** Active
 
+- **2026-06-20 (2.5.165):** Exempted the read-only org runner inventory
+  `GET /api/runners` from the #924 structural auth perimeter, alongside
+  `/api/system` and `/api/fleet/status` (2.5.162). The fleet-health monitor on
+  the hub polls each node's `GET /api/runners` over the tailnet with no operator
+  principal to read online/busy counts and drive keepalive auto-recovery; the
+  perimeter 401-ed it, so `ct_runners_online` went null and self-healing
+  silently stopped. The exemption is an exact match on the bare inventory route
+  only — mutating `/api/runners/{id}/start|stop|restart` and the diagnostics
+  POSTs are distinct paths and remain perimeter-protected (and carry their own
+  `require_scope` dependencies).
 - **2026-06-18 (2.5.164):** WSL keepalive parser coverage now writes its
   one-shot probe state and log artifacts to the pytest `tmp_path` tree instead
   of a repository-root `.test-wsl-keepalive-junk/` directory. This preserves
