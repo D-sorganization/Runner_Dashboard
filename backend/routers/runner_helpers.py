@@ -20,6 +20,11 @@ UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 log = logging.getLogger("dashboard.runners")
 
 
+def principal_log_id(principal: Any) -> str:
+    """Return a stable identifier for logging authenticated runner-control calls."""
+    return str(getattr(principal, "user_id", getattr(principal, "id", "unknown")))
+
+
 def runner_svc_path(runner_num: int) -> Path:
     """Return the path to a runner's svc.sh script.
 
@@ -64,12 +69,11 @@ def runner_num_from_id(runner_id: int, runners: list[dict]) -> int | None:
     for r in runners:
         if r.get("id") == runner_id:
             name = r.get("name", "")
-            # Expecting names like "d-sorg-fleet-runner-1"
-            if "runner-" in name:
-                try:
-                    return int(name.split("runner-")[-1])
-                except (ValueError, IndexError):
-                    pass
+            # Accept both legacy names like "d-sorg-fleet-runner-1" and
+            # current fleet names like "d-sorg-local-ControlTower-nvme-1".
+            suffix = name.rsplit("-", 1)[-1]
+            if suffix.isdigit():
+                return int(suffix)
     return None
 
 

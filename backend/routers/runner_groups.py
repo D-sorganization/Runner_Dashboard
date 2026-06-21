@@ -15,7 +15,7 @@ from identity import Principal, require_scope
 from proxy_utils import proxy_to_hub, should_proxy_fleet_to_hub
 from runner_inventory import fetch_org_runners
 
-from .runner_helpers import run_runner_svc, runner_num_from_id, runner_sort_key
+from .runner_helpers import principal_log_id, run_runner_svc, runner_num_from_id, runner_sort_key
 
 log = logging.getLogger("dashboard.runners")
 router = APIRouter(tags=["runners"])
@@ -119,7 +119,7 @@ async def start_runner_group(
             "start_runner_group: label=%s (total=%d, principal=%s)",
             group_label,
             len(grouped),
-            principal.user_id,
+            principal_log_id(principal),
         )
         return {"group_label": group_label, "results": results, "successful": sum(1 for r in results if r["success"])}
     except Exception as exc:
@@ -179,7 +179,7 @@ async def stop_runner_group(
             "stop_runner_group: label=%s (total=%d, principal=%s)",
             group_label,
             len(grouped),
-            principal.user_id,
+            principal_log_id(principal),
         )
         return {"group_label": group_label, "results": results, "successful": sum(1 for r in results if r["success"])}
     except Exception as exc:
