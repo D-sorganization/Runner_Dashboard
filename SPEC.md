@@ -1,9 +1,19 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.166
+**Spec Version:** 2.5.167
 **Application Version:** 4.9.19 (see `VERSION`)
-**Last Updated:** 2026-06-20T00:00:00-07:00
+**Last Updated:** 2026-06-21T12:20:00-07:00
 **Status:** Active
+
+- **2026-06-21 (2.5.167):** Runner service-control routes now share a
+  `principal_log_id` helper so loopback-gated admin principals that expose
+  `id` instead of `user_id` can still start, stop, and restart runners without
+  tripping logging-only `AttributeError`s after authorization succeeds. The
+  local runner-number resolver also accepts current fleet names such as
+  `d-sorg-local-ControlTower-nvme-1` in addition to legacy `runner-1` suffixes,
+  keeping `/api/runners/{id}/start|stop|restart` and group start/stop actions
+  mapped to the right `svc.sh` path while preserving the existing
+  `runners.control` scope requirement.
 
 - **2026-06-20 (2.5.166):** Host machine-spec probes now launch the Windows
   `powershell.exe` with `-WindowStyle Hidden -NonInteractive`. When the backend
