@@ -1,6 +1,6 @@
 [project]
 name = "runner-dashboard"
-version = "4.9.18"
+version = "4.9.19"
 description = "Runner dashboard for fleet management"
 requires-python = ">=3.11,<3.14"
 dependencies = [
