@@ -95,7 +95,7 @@ jobs:
         with:
           node-version: "20"
 
-      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v6
         with:
           python-version: "3.11"
 
@@ -169,7 +169,7 @@ jobs:
         with:
           node-version: "20"
 
-      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v6
         with:
           python-version: "3.11"
 
@@ -209,7 +209,7 @@ jobs:
         run: npx playwright install chromium --with-deps
 
       - name: Set up Python for backend
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v6
         with:
           python-version: "3.11"
 
