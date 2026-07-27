@@ -39,7 +39,7 @@ jobs:
     outputs:
       run_python_tests: ${{ steps.python-scope.outputs.run_python_tests }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Verify clean working tree
         run: |
           if [ -n "$(git status --porcelain)" ]; then
@@ -230,7 +230,7 @@ jobs:
     env:
       PIP_CACHE_DIR: /home/dieterolson/actions-runners/.shared-tool-cache/pip
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: "3.11"
@@ -375,7 +375,7 @@ jobs:
     env:
       PIP_CACHE_DIR: /home/dieterolson/actions-runners/.shared-tool-cache/pip
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: "3.11"
@@ -423,7 +423,7 @@ jobs:
         python:
           - "3.11"
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Bootstrap Python venv
         run: |
           for py in python3.11 python3.12 python3.10 python3; do
