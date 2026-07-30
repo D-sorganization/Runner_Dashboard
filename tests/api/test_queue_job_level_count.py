@@ -22,6 +22,7 @@ from typing import Any
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from starlette.middleware.sessions import SessionMiddleware
 
 _BACKEND = Path(__file__).resolve().parents[2] / "backend"
 if str(_BACKEND) not in sys.path:
@@ -80,8 +81,9 @@ def queue_app(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     monkeypatch.setattr(queue_router, "run_cmd", fail_run_cmd)
 
     app = FastAPI()
+    app.add_middleware(SessionMiddleware, secret_key="test-secret")  # pragma: allowlist secret
     app.include_router(queue_router.router)
-    yield TestClient(app, raise_server_exceptions=False)
+    yield TestClient(app, raise_server_exceptions=True)
     app.dependency_overrides.clear()
 
 
@@ -123,8 +125,9 @@ def test_queue_job_count_falls_back_when_jobs_fetch_fails(monkeypatch: pytest.Mo
     monkeypatch.setattr(queue_router, "run_cmd", fail_run_cmd)
 
     app = FastAPI()
+    app.add_middleware(SessionMiddleware, secret_key="test-secret")  # pragma: allowlist secret
     app.include_router(queue_router.router)
-    client = TestClient(app, raise_server_exceptions=False)
+    client = TestClient(app, raise_server_exceptions=True)
 
     data = client.get("/api/queue").json()
     # Falls back to at least the run-level queued count (never silently 0).
