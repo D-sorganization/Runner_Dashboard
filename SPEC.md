@@ -1554,6 +1554,20 @@ distros in one shared utility VM. Two hardening steps keep them out of the
   and an `AtStartup` trigger. This keeps the host-side handle that holds the WSL
   VM resident across logoff, preventing the teardown that otherwise forces both
   distros to cold-boot together and race the 10s window.
+- **`deploy/run-hidden.vbs` + `deploy/install-hidden-task-launcher.ps1`** stop
+  InteractiveToken scheduled tasks from popping focus-stealing console windows
+  in the user's session. The installer rewrites a task's action to
+  `wscript.exe //B //Nologo "run-hidden.vbs" <exe> <args>`; the GUI-subsystem
+  host launches the child with `SW_HIDE` (no console window is ever created —
+  unlike `-WindowStyle Hidden`, which still flashes the console host), waits,
+  and propagates the child's exit code so `LastTaskResult` stays accurate.
+  Contracts: idempotent (wrapping a wrapped task is a no-op), reversible
+  (`-Revert` restores the original action verbatim), postcondition-verified
+  (re-reads the task after writing), foldered tasks addressed by discovered
+  `TaskPath`, and arguments with literal double quotes refused (WScript strips
+  quoting; they cannot be rebuilt losslessly). For tasks that do not need the
+  interactive session, an S4U principal remains the preferred fix. Runbook:
+  `docs/runbooks/interactive-task-console-popups.md`.
 
 #### 2.3.2 Disk-pressure controls (`runner-cleanup.sh`)
 
