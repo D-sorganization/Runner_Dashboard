@@ -130,14 +130,34 @@ class IdentityManager:
             self.tokens.append(TokenRecord(**t))
 
     def save_tokens(self):
-        """Save tokens with security validation (issue #355)."""
+        """Atomically persist tokens to ``tokens.yml`` (security: issue #355).
+
+        Crash-safety (issue #939a): writes via tempfile + ``os.replace`` so a
+        crash mid-dump can never leave a truncated tokens.yml — which
+        ``load_tokens`` would silently reset, locking every principal out.
+        Mirrors :meth:`save_principals`.
+        """
         self.tokens_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Security validation: ensure config dir is within allowed roots
         validate_config_path(self.tokens_path.parent, allowed_roots=[self.config_dir.resolve()])
 
-        with open(self.tokens_path, "w") as f:
-            yaml.dump({"tokens": [t.model_dump() for t in self.tokens]}, f)
+        payload = {"tokens": [t.model_dump() for t in self.tokens]}
+        fd, tmp_path = tempfile.mkstemp(
+            dir=self.tokens_path.parent,
+            prefix=".tmp-tokens-",
+            suffix=".yml",
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                yaml.dump(payload, fh, default_flow_style=False, allow_unicode=True)
+            os.replace(tmp_path, self.tokens_path)
+        except (OSError, yaml.YAMLError):
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
 
     def mint_service_token(self, principal_id: str, name: str, expires_in_days: int | None = None) -> str:
         if principal_id not in self.principals:
@@ -182,7 +202,32 @@ class IdentityManager:
         return None
 
 
-identity_manager = IdentityManager()
+def resolve_identity_dir() -> Path:
+    """Return the directory holding principals.yml / tokens.yml (issue #944).
+
+    Anchored to a stable, CWD-independent location so launching the server from
+    any working directory uses the *same* identity store (the old
+    ``Path("config")`` default silently created a fresh empty store — and lost
+    all principals/tokens — when started from another CWD).
+
+    Resolution order:
+    1. ``DASHBOARD_IDENTITY_DIR`` env override (explicit operator choice).
+    2. ``XDG_CONFIG_HOME/runner-dashboard`` (or ``~/.config/runner-dashboard``)
+       — the same convention as ``_load_or_generate_api_key`` (server.py) and
+       ``auth_webauthn``.
+
+    Post-condition: returns an absolute ``Path``.
+    """
+    override = os.environ.get("DASHBOARD_IDENTITY_DIR", "").strip()
+    if override:
+        return Path(override).expanduser().resolve()
+    base = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+    return (base / "runner-dashboard").expanduser().resolve()
+
+
+_IDENTITY_DIR = resolve_identity_dir()
+log.info("Identity store directory: %s", _IDENTITY_DIR)
+identity_manager = IdentityManager(config_dir=_IDENTITY_DIR)
 
 auth_header = APIKeyHeader(name="Authorization", auto_error=False)
 auth_cookie = APIKeyCookie(name="dashboard_session", auto_error=False)
@@ -328,7 +373,12 @@ def require_scope(required_scope: str):
 
 
 def _resolve_principal_optional(request: Request, header_token: str | None) -> Principal | None:
-    """Resolve caller credentials without failing the fleet-token fallback."""
+    """Resolve a principal from a Bearer token or session WITHOUT raising.
+
+    Mirrors the credential resolution in ``require_principal`` but returns
+    ``None`` instead of a 401 when no valid credential is present. Used by
+    ``require_fleet_peer`` so the fleet-token path can be tried as a fallback.
+    """
     if header_token and header_token.startswith("Bearer "):
         raw_token = header_token.replace("Bearer ", "")
         prin = identity_manager.verify_token(raw_token)
@@ -342,10 +392,6 @@ def _resolve_principal_optional(request: Request, header_token: str | None) -> P
             if session_id and not sm.touch_session(session_id):
                 return None
             return identity_manager.principals[principal_id]
-
-    if _loopback_auth_enabled() and _is_loopback_request(request):
-        return _loopback_principal()
-
     return None
 
 
@@ -353,24 +399,62 @@ def require_fleet_peer(
     request: Request,
     header_token: str | None = Depends(auth_header),
 ) -> str:
-    """Authorize hub-reachable fleet-read traffic.
+    """Authenticate an intra-fleet caller for hub-reachable fleet routes (#922).
 
-    Contract: when HUB_FLEET_TOKEN is configured, callers must present either a
-    normal dashboard principal or Authorization: Bearer <HUB_FLEET_TOKEN>. If no
-    token is configured, fleet-read endpoints remain tailnet-public for existing
-    single-node and tokenless deployments.
+    A request is accepted when EITHER:
+      - it carries valid operator credentials (a principal resolved from a
+        service token or session), OR
+      - it presents ``Authorization: Bearer <HUB_FLEET_TOKEN>`` matching the
+        hub's configured ``HUB_FLEET_TOKEN`` (constant-time compare).
+
+    Policy decision (documented in docs/runbooks/hub-credentials.md): when
+    ``HUB_FLEET_TOKEN`` is UNSET on this node, fleet reads are tailnet-public —
+    the dependency is a no-op so single-node and token-less deployments keep
+    working. When the token IS set, the fleet trust boundary is enforced and
+    an unauthenticated caller gets 401.
+
+    Returns a short principal/peer label for logging; never the token itself.
     """
+    hub_token = os.environ.get("HUB_FLEET_TOKEN", "")
+
+    # A valid operator principal is always accepted.
     principal = _resolve_principal_optional(request, header_token)
     if principal is not None:
         return f"principal:{principal.id}"
 
-    hub_token = os.environ.get("HUB_FLEET_TOKEN", "")
+    # No token configured → fleet reads are tailnet-public (backward compatible).
     if not hub_token:
         return "anonymous:tailnet"
 
+    # Token configured → require a constant-time match of the fleet bearer token.
     if header_token and header_token.startswith("Bearer "):
         presented = header_token[len("Bearer ") :]
         if hmac.compare_digest(presented, hub_token):
             return "fleet-peer"
 
     raise HTTPException(status_code=401, detail="Fleet authentication required")
+
+
+def resolve_perimeter_principal(request: Request) -> Principal | None:
+    """Resolve the calling principal for the structural auth perimeter (#924).
+
+    This mirrors the credential resolution performed by :func:`require_principal`
+    but is callable from ASGI middleware (where the route-dependency machinery is
+    not yet available). It returns ``None`` instead of raising so the middleware
+    can decide the response.
+
+    Resolution order matches ``require_principal``:
+      1. ``Authorization: Bearer <service-token>``.
+      2. Session cookie (requires SessionMiddleware to have run first).
+      3. Loopback development admin, only when ``DASHBOARD_LOOPBACK_AUTH=1`` and
+         the transport peer is a loopback address.
+    """
+    header_token = request.headers.get("Authorization")
+    principal = _resolve_principal_optional(request, header_token)
+    if principal is not None:
+        return principal
+
+    if _loopback_auth_enabled() and _is_loopback_request(request):
+        return _loopback_principal()
+
+    return None

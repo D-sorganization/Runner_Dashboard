@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 import os
 import platform
+import re
 import secrets
 import tempfile
 from pathlib import Path
@@ -65,6 +66,23 @@ PORT = int(os.environ.get("DASHBOARD_PORT", "8321"))
 HOSTNAME = os.environ.get("DISPLAY_NAME") or platform.node()
 
 
+def _env_flag(name: str, default: bool = False) -> bool:
+    """Parse a boolean-ish env var (1/true/yes/on → True)."""
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+# Issue #930: the dashboard documents a plain-HTTP-over-tailnet deployment, but
+# the session cookie was unconditionally `https_only=True` (Secure) and HSTS was
+# always sent. Browsers DROP Secure cookies on http:// origins, so session auth
+# silently never worked in the documented mode — pushing operators toward the
+# unauthenticated paths. TLS-only protections are now gated on DASHBOARD_TLS:
+# unset (default) = HTTP-mode (no Secure cookie, no HSTS); set = TLS-mode.
+TLS_ENABLED = _env_flag("DASHBOARD_TLS", default=False)
+
+
 def _resolve_bind_host() -> str:
     """Return the interface uvicorn should bind for incoming HTTP.
 
@@ -81,9 +99,29 @@ def _resolve_bind_host() -> str:
 
 
 HOST = _resolve_bind_host()
-MAXWELL_PORT = int(os.environ.get("MAXWELL_PORT", "8322"))
+# Issue #959: Maxwell-Daemon serves on 8080 by default (its cli/main.py,
+# launcher.py, and CLI clients all default to http://127.0.0.1:8080). The old
+# 8322 default appeared nowhere in Maxwell_Daemon and — worse — collided with the
+# ControlTower-SSD pool's own dashboard_url:8322 in backend/machine_registry.yml,
+# so a default deploy probed a second dashboard and misreported it as Maxwell.
+# Align RD's default to the daemon's real port so an out-of-box RD reaches an
+# out-of-box MD on the same host. Override with MAXWELL_PORT / MAXWELL_URL.
+MAXWELL_PORT = int(os.environ.get("MAXWELL_PORT", "8080"))
 MAXWELL_URL = (os.environ.get("MAXWELL_URL", "") or f"http://localhost:{MAXWELL_PORT}").rstrip("/")
-MAXWELL_API_TOKEN = os.environ.get("MAXWELL_API_TOKEN", "maxwell-local-secret")
+# True when the operator has explicitly pointed RD at a Maxwell endpoint (either
+# MAXWELL_URL or MAXWELL_PORT set). When neither is set the dashboard falls back
+# to the localhost:8080 default, which is correct for a co-located daemon but is
+# a guess for a remote one — the Maxwell tab surfaces a "configuration needed"
+# hint instead of an opaque connection error in that case (issue #959).
+MAXWELL_EXPLICITLY_CONFIGURED = bool(
+    os.environ.get("MAXWELL_URL", "").strip() or os.environ.get("MAXWELL_PORT", "").strip()
+)
+# Issue #926: no hardcoded default secret. When MAXWELL_API_TOKEN is unset the
+# dashboard sends NO Authorization header (routers.maxwell._maxwell_headers), which
+# is correct for a token-less Maxwell-Daemon (per its ConnectionProfile, the daemon
+# runs open only when no auth is configured). A published default string would let
+# anyone reading the source mint valid Maxwell bearer tokens.
+MAXWELL_API_TOKEN = os.environ.get("MAXWELL_API_TOKEN", "").strip()
 
 
 def runner_limit() -> int:
@@ -136,8 +174,39 @@ def runner_scheduler_apply_command() -> list[str]:
     return [RUNNER_SCHEDULER_BIN, "apply", "--config", str(RUNNER_SCHEDULE_CONFIG)]
 
 
+def _read_repo_version(version_path: Path = REPO_ROOT / "VERSION") -> str:
+    """Return the first semver entry from the repository VERSION file.
+
+    ``REPO_ROOT`` is operator-overridable via ``RUNNER_DASHBOARD_REPO_ROOT`` and
+    on some deploys points at a sibling repo (e.g. Repository_Management, used by
+    the agent launcher) that has no ``VERSION`` file. Rather than crash the whole
+    dashboard at import, fall back to the deployed backend's own
+    ``BACKEND_DIR.parent / "VERSION"`` and finally to ``"0.0.0"`` when neither
+    file exists. A file that *exists* but is malformed still raises, so a
+    genuinely bad version is never silently accepted.
+    """
+    candidates: list[Path] = [version_path]
+    fallback = BACKEND_DIR.parent / "VERSION"
+    if fallback != version_path:
+        candidates.append(fallback)
+    for path in candidates:
+        try:
+            text = path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            continue
+        for raw_line in text.splitlines():
+            candidate = raw_line.strip()
+            if not candidate or candidate.startswith("#"):
+                continue
+            if re.fullmatch(r"\d+\.\d+\.\d+", candidate):
+                return candidate
+            break
+        raise RuntimeError(f"{path} must contain a MAJOR.MINOR.PATCH version")
+    return "0.0.0"
+
+
 # Deployment
-VERSION = "1.2.0"
+VERSION = _read_repo_version()
 DEPLOYMENT_FILE = Path(os.environ.get("RUNNER_DASHBOARD_DEPLOYMENT_FILE", BACKEND_DIR.parent / "deployment.json"))
 EXPECTED_VERSION_FILE = Path(os.environ.get("RUNNER_DASHBOARD_EXPECTED_VERSION_FILE", BACKEND_DIR.parent / "VERSION"))
 
@@ -247,6 +316,7 @@ __all__ = [
     "MACHINE_ROLE",
     "MAX_CACHE_SIZE",
     "MAXWELL_API_TOKEN",
+    "MAXWELL_EXPLICITLY_CONFIGURED",
     "MAXWELL_PORT",
     "MAXWELL_URL",
     "MAX_RUNNERS",
@@ -266,6 +336,7 @@ __all__ = [
     "SESSION_SECRET",
     "SESSION_SECRET_SOURCE",
     "SYSTEMCTL_BIN",
+    "TLS_ENABLED",
     "VERSION",
     "WSL_KEEPALIVE_SERVICE",
     "WSL_KEEPALIVE_TASK_NAME",

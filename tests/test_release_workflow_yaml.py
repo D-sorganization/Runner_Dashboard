@@ -163,6 +163,31 @@ def test_release_workflow_defines_dry_run_input() -> None:
     assert inputs["version"].get("required") is True, "`version` input must be required"
 
 
+def test_release_tarball_excludes_generated_release_artifacts() -> None:
+    text = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+    assert 'TMP_ARTIFACT="$RUNNER_TEMP/$ARTIFACT"' in text
+    assert 'tar czf "$TMP_ARTIFACT"' in text
+    assert 'mv "$TMP_ARTIFACT" "$ARTIFACT"' in text
+    for pattern in (
+        "--exclude='.venv'",
+        "--exclude='dashboard-*.tar.gz'",
+        "--exclude='dashboard-*.tar.gz.sha256'",
+        "--exclude='dashboard-*.sig'",
+        "--exclude='dashboard-*.pem'",
+        "--exclude='dashboard-*.bundle'",
+    ):
+        assert pattern in text, f"release tarball must exclude generated artifact pattern {pattern}"
+
+
+def test_release_workflow_uses_cosign_bundle_artifact() -> None:
+    text = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+    assert '--bundle "$BUNDLE_FILE"' in text
+    assert 'BUNDLE_FILE="dashboard-${VERSION}.bundle"' in text
+    assert '"$BUNDLE_FILE" \\' in text
+    assert "--output-signature" not in text
+    assert "--output-certificate" not in text
+
+
 def test_verify_tag_workflow_triggers_on_v_tag_push() -> None:
     data = _load_workflow(VERIFY_TAG_WORKFLOW)
     triggers = data["on"]

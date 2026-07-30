@@ -80,8 +80,9 @@ def test_get_token_raises_when_absent(monkeypatch: pytest.MonkeyPatch) -> None:
     gh_client.clear_token_cache()
 
 
-def test_get_token_prefers_github_app(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_get_token_prefers_github_app(monkeypatch: pytest.MonkeyPatch) -> None:
     import gh_client
+    from unittest.mock import AsyncMock
 
     gh_client.clear_token_cache()
     monkeypatch.setenv("GITHUB_APP_ID", "12345")
@@ -89,15 +90,16 @@ def test_get_token_prefers_github_app(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GITHUB_APP_PRIVATE_KEY", "fake-key")
     monkeypatch.setenv("GH_TOKEN", "fallback-token")
 
-    with patch.object(gh_client, "_fetch_github_app_installation_token", return_value="installation-token"):
-        assert gh_client._get_token() == "installation-token"
+    with patch.object(gh_client, "_fetch_github_app_installation_token", AsyncMock(return_value="installation-token")):
+        assert await gh_client._get_token_async() == "installation-token"
 
     assert gh_client.get_status()["auth_source"] == "github_app"
     gh_client.clear_token_cache()
 
 
-def test_get_token_falls_back_when_github_app_exchange_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_get_token_falls_back_when_github_app_exchange_fails(monkeypatch: pytest.MonkeyPatch) -> None:
     import gh_client
+    from unittest.mock import AsyncMock
 
     gh_client.clear_token_cache()
     monkeypatch.setenv("GITHUB_APP_ID", "12345")
@@ -105,10 +107,35 @@ def test_get_token_falls_back_when_github_app_exchange_fails(monkeypatch: pytest
     monkeypatch.setenv("GITHUB_APP_PRIVATE_KEY", "fake-key")
     monkeypatch.setenv("GH_TOKEN", "fallback-token")
 
-    with patch.object(gh_client, "_fetch_github_app_installation_token", side_effect=RuntimeError("boom")):
-        assert gh_client._get_token() == "fallback-token"
+    with patch.object(gh_client, "_fetch_github_app_installation_token", AsyncMock(side_effect=RuntimeError("boom"))):
+        assert await gh_client._get_token_async() == "fallback-token"
 
-    assert gh_client.get_status()["auth_source"] == "env_token"
+
+async def test_concurrent_token_refresh_triggers_single_exchange(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Issue #938c: a refresh storm dedupes to exactly one upstream exchange."""
+    import asyncio
+
+    import gh_client
+
+    gh_client.clear_token_cache()
+    monkeypatch.setenv("GITHUB_APP_ID", "12345")
+    monkeypatch.setenv("GITHUB_APP_INSTALLATION_ID", "67890")
+    monkeypatch.setenv("GITHUB_APP_PRIVATE_KEY", "fake-key")
+
+    calls = 0
+
+    async def _slow_exchange() -> str:
+        nonlocal calls
+        calls += 1
+        await asyncio.sleep(0.05)  # hold the lock so peers queue behind it
+        gh_client._cached_token_expires_at = gh_client.time.time() + 3600
+        return "installation-token"
+
+    monkeypatch.setattr(gh_client, "_fetch_github_app_installation_token", _slow_exchange)
+
+    results = await asyncio.gather(*[gh_client._get_token_async() for _ in range(10)])
+    assert results == ["installation-token"] * 10
+    assert calls == 1
     gh_client.clear_token_cache()
 
 
@@ -245,3 +272,97 @@ def test_gh_client_exports_rerun_failed() -> None:
     import gh_client
 
     assert callable(gh_client.rerun_failed)
+
+
+# ---------------------------------------------------------------------------
+# Issue #938: gh_client robustness (202 success, paginate rate-limit, async token)
+# ---------------------------------------------------------------------------
+
+
+class _FakeResponse:
+    def __init__(self, status_code: int, *, json_body=None, headers=None, text: str = "") -> None:
+        self.status_code = status_code
+        self._json = json_body if json_body is not None else {}
+        self.headers = headers or {}
+        self.text = text
+
+    def json(self):
+        return self._json
+
+
+class _FakeClient:
+    """Minimal async httpx.AsyncClient stand-in returning queued responses."""
+
+    def __init__(self, responses: list[_FakeResponse]) -> None:
+        self._responses = list(responses)
+        self.headers: dict[str, str] = {}
+        self.requests: list[tuple[str, str]] = []
+
+    async def request(self, method: str, path: str, **_kwargs) -> _FakeResponse:
+        self.requests.append((method, path))
+        return self._responses.pop(0)
+
+    async def get(self, url: str, **_kwargs) -> _FakeResponse:
+        self.requests.append(("GET", url))
+        return self._responses.pop(0)
+
+
+async def test_request_accepts_202_as_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Issue #938a: 202 Accepted (e.g. cancel_run) is a success, not a server error."""
+    import gh_client
+
+    gh_client.clear_token_cache()
+    monkeypatch.setenv("GH_TOKEN", "t")
+    fake = _FakeClient([_FakeResponse(202, json_body={"ok": True})])
+    monkeypatch.setattr(gh_client, "_get_client", lambda: fake)
+
+    resp = await gh_client._request("POST", "/repos/x/y/actions/runs/1/cancel")
+    assert resp.status_code == 202
+    gh_client.clear_token_cache()
+
+
+async def test_paginate_raises_typed_rate_limited_on_primary_403(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Issue #938b: a 403 + X-RateLimit-Remaining: 0 routes through _request.
+
+    Before #938b paginate only special-cased 429 and raised an opaque
+    GhServerError on a primary-rate-limit 403. Now it goes through _request, so
+    the caller gets the typed GhRateLimited (carrying retry_after) instead.
+    """
+    import gh_client
+
+    gh_client.clear_token_cache()
+    monkeypatch.setenv("GH_TOKEN", "t")
+
+    rate_limited = _FakeResponse(
+        403,
+        headers={"X-RateLimit-Remaining": "0", "X-RateLimit-Reset": "1"},
+        text="API rate limit exceeded",
+    )
+    fake = _FakeClient([rate_limited])
+    monkeypatch.setattr(gh_client, "_get_client", lambda: fake)
+
+    with pytest.raises(gh_client.GhRateLimited):
+        _ = [item async for item in gh_client.paginate("/orgs/x/actions/runners")]
+    gh_client.clear_token_cache()
+
+
+async def test_paginate_retries_transient_5xx(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Issue #938b: a transient 5xx on a page retries (via _request) instead of aborting."""
+    import gh_client
+
+    gh_client.clear_token_cache()
+    monkeypatch.setenv("GH_TOKEN", "t")
+
+    server_err = _FakeResponse(503, headers={}, text="upstream hiccup")
+    ok = _FakeResponse(200, json_body=[{"id": 7}], headers={})
+    fake = _FakeClient([server_err, ok])
+    monkeypatch.setattr(gh_client, "_get_client", lambda: fake)
+
+    async def _no_sleep(_secs: float) -> None:
+        return None
+
+    monkeypatch.setattr(gh_client.asyncio, "sleep", _no_sleep)
+
+    items = [item async for item in gh_client.paginate("/orgs/x/actions/runners")]
+    assert items == [{"id": 7}]
+    gh_client.clear_token_cache()

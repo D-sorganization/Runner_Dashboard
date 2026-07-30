@@ -51,7 +51,7 @@ jobs:
       AUTO_NOTES_HEADER: "Auto-generated release notes (release.yml)"
     steps:
       - name: Checkout (full history for tags)
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -215,15 +215,23 @@ jobs:
         run: |
           set -euo pipefail
           ARTIFACT="dashboard-${VERSION}.tar.gz"
+          TMP_ARTIFACT="$RUNNER_TEMP/$ARTIFACT"
           # Exclude ephemeral / generated artefacts from the source tarball.
-          tar czf "$ARTIFACT" \
+          tar czf "$TMP_ARTIFACT" \
             --exclude='.git' \
             --exclude='node_modules' \
             --exclude='venv' \
+            --exclude='.venv' \
             --exclude='__pycache__' \
             --exclude='*.pyc' \
             --exclude='dist' \
+            --exclude='dashboard-*.tar.gz' \
+            --exclude='dashboard-*.tar.gz.sha256' \
+            --exclude='dashboard-*.sig' \
+            --exclude='dashboard-*.pem' \
+            --exclude='dashboard-*.bundle' \
             .
+          mv "$TMP_ARTIFACT" "$ARTIFACT"
           SHA256=$(sha256sum "$ARTIFACT" | awk '{print $1}')
           echo "${SHA256}  ${ARTIFACT}" > "${ARTIFACT}.sha256"
           echo "artifact=$ARTIFACT" >> "$GITHUB_OUTPUT"
@@ -243,13 +251,11 @@ jobs:
           COSIGN_EXPERIMENTAL: "1"
         run: |
           set -euo pipefail
-          SIG_FILE="dashboard-${VERSION}.sig"
-          CERT_FILE="dashboard-${VERSION}.pem"
+          BUNDLE_FILE="dashboard-${VERSION}.bundle"
           cosign sign-blob --yes \
-            --output-signature "$SIG_FILE" \
-            --output-certificate "$CERT_FILE" \
+            --bundle "$BUNDLE_FILE" \
             "$ARTIFACT"
-          echo "Signed $ARTIFACT → $SIG_FILE (cert: $CERT_FILE)"
+          echo "Signed $ARTIFACT → $BUNDLE_FILE"
 
       - name: Generate SBOM with syft (anchore/sbom-action)
         if: steps.resolve.outputs.dry_run != 'true'
@@ -263,7 +269,7 @@ jobs:
 
       - name: Attest build provenance (SLSA-3)
         if: steps.resolve.outputs.dry_run != 'true'
-        uses: actions/attest-build-provenance@db473fddc028af60658334401dc6fa5fef4c7a9b # v2.3.0
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
         with:
           subject-path: ${{ steps.tarball.outputs.artifact }}
 
@@ -338,15 +344,13 @@ jobs:
         run: |
           set -euo pipefail
           ARTIFACT="dashboard-${VERSION}.tar.gz"
-          SIG_FILE="dashboard-${VERSION}.sig"
-          CERT_FILE="dashboard-${VERSION}.pem"
+          BUNDLE_FILE="dashboard-${VERSION}.bundle"
           gh release create "$TAG" \
             --title "$TAG" \
             --notes-file "$NOTES_FILE" \
             --target "${{ github.sha }}" \
             "$ARTIFACT" \
             "${ARTIFACT}.sha256" \
-            "$SIG_FILE" \
-            "$CERT_FILE" \
+            "$BUNDLE_FILE" \
             sbom.spdx.json
           echo "Created GitHub release $TAG with signed artifacts and SBOM."

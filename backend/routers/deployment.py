@@ -13,16 +13,20 @@ import json
 import logging
 import os
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import deployment_drift
+import proxy_utils
 from dashboard_config import EXPECTED_VERSION_FILE, HOSTNAME
 from fastapi import APIRouter, Depends, Request
 from identity import Principal, require_fleet_peer, require_scope  # noqa: B008
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Awaitable, Callable
+
+    from fastapi import FastAPI
 
 import datetime as _dt_mod
 
@@ -31,35 +35,36 @@ UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 log = logging.getLogger("dashboard.deployment")
 router = APIRouter(tags=["deployment"])
 
-# ---------------------------------------------------------------------------
-# Injected dependencies (set by server.py after import)
-# ---------------------------------------------------------------------------
 
-_get_fleet_nodes_impl: Callable[[], Any] | None = None
-_proxy_to_hub: Callable[[Request], Any] | None = None
-_should_proxy_fleet_to_hub: Callable[[Request], bool] | None = None
-_deployment_info: Callable[[], dict] | None = None
-_read_expected_dashboard_version: Callable[[], Any] | None = None
-_build_deployment_state: Callable[[list, str], dict] | None = None
+@dataclass(frozen=True, slots=True)
+class DeploymentDeps:
+    get_fleet_nodes_impl: Callable[[], Awaitable[dict[str, Any]]]
+    deployment_info: Callable[[], dict[str, Any]]
+    read_expected_dashboard_version: Callable[[], Awaitable[str]]
+    build_deployment_state: Callable[[list[Any], str], dict[str, Any]]
 
 
 def set_dependencies(
+    app: FastAPI,
     get_fleet_nodes_impl: Callable,
-    proxy_to_hub: Callable,
-    should_proxy_fleet_to_hub: Callable,
     deployment_info: Callable,
     read_expected_dashboard_version: Callable,
     build_deployment_state: Callable,
 ) -> None:
-    """Wire server.py helpers into this router (called at startup)."""
-    global _get_fleet_nodes_impl, _proxy_to_hub, _should_proxy_fleet_to_hub  # noqa: PLW0603
-    global _deployment_info, _read_expected_dashboard_version, _build_deployment_state  # noqa: PLW0603
-    _get_fleet_nodes_impl = get_fleet_nodes_impl
-    _proxy_to_hub = proxy_to_hub
-    _should_proxy_fleet_to_hub = should_proxy_fleet_to_hub
-    _deployment_info = deployment_info
-    _read_expected_dashboard_version = read_expected_dashboard_version
-    _build_deployment_state = build_deployment_state
+    """Wire server.py helpers into this router through FastAPI app state."""
+    app.state.deployment_deps = DeploymentDeps(
+        get_fleet_nodes_impl=get_fleet_nodes_impl,
+        deployment_info=deployment_info,
+        read_expected_dashboard_version=read_expected_dashboard_version,
+        build_deployment_state=build_deployment_state,
+    )
+
+
+def deployment_deps(request: Request) -> DeploymentDeps:
+    deps = getattr(request.app.state, "deployment_deps", None)
+    if not isinstance(deps, DeploymentDeps):
+        raise RuntimeError("deployment router dependencies are not configured")
+    return deps
 
 
 # ---------------------------------------------------------------------------
@@ -68,9 +73,9 @@ def set_dependencies(
 
 
 @router.get("/api/deployment")
-async def get_deployment() -> dict:
+async def get_deployment(deps: DeploymentDeps = Depends(deployment_deps)) -> dict:  # noqa: B008
     """Return the dashboard code revision deployed on this machine."""
-    return _deployment_info()  # type: ignore[misc]
+    return deps.deployment_info()
 
 
 @router.get("/api/deployment/expected-version")
@@ -84,27 +89,31 @@ async def get_expected_deployment_version() -> dict:
 
 
 @router.get("/api/deployment/drift")
-async def get_deployment_drift() -> dict:
+async def get_deployment_drift(deps: DeploymentDeps = Depends(deployment_deps)) -> dict:  # noqa: B008
     """Compare the deployed version against the hub's expected VERSION."""
-    expected = await _read_expected_dashboard_version()  # type: ignore[misc]
-    status = deployment_drift.evaluate_drift(_deployment_info(), expected)  # type: ignore[misc]
+    expected = await deps.read_expected_dashboard_version()
+    status = deployment_drift.evaluate_drift(deps.deployment_info(), expected)
     return status.to_dict()
 
 
 @router.get("/api/deployment/state", dependencies=[Depends(require_fleet_peer)])
-async def get_deployment_state(request: Request) -> dict:
+async def get_deployment_state(
+    request: Request,
+    deps: DeploymentDeps = Depends(deployment_deps),  # noqa: B008
+) -> dict:
     """Return dashboard deployment state for the fleet overview and deployment tab."""
-    if _should_proxy_fleet_to_hub(request):  # type: ignore[misc]
-        return await _proxy_to_hub(request)  # type: ignore[misc]
-    fleet = await _get_fleet_nodes_impl()  # type: ignore[misc]
-    expected = await _read_expected_dashboard_version()  # type: ignore[misc]
-    return _build_deployment_state(fleet.get("nodes", []), expected)  # type: ignore[misc]
+    if proxy_utils.should_proxy_fleet_to_hub(request):
+        return await proxy_utils.proxy_to_hub(request)
+    fleet = await deps.get_fleet_nodes_impl()
+    expected = await deps.read_expected_dashboard_version()
+    return deps.build_deployment_state(fleet.get("nodes", []), expected)
 
 
 @router.post("/api/deployment/update-signal")
 async def post_deployment_update_signal(
     request: Request,
     *,
+    deps: DeploymentDeps = Depends(deployment_deps),  # noqa: B008
     principal: Principal = Depends(require_scope("system.control")),  # noqa: B008
 ) -> dict:
     """Emit a structured "update requested" event for a node."""
@@ -116,8 +125,8 @@ async def post_deployment_update_signal(
     reason = str(payload.get("reason") or "user-requested")
     dry_run = bool(payload.get("dry_run", False))
 
-    expected = await _read_expected_dashboard_version()  # type: ignore[misc]
-    status = deployment_drift.evaluate_drift(_deployment_info(), expected)  # type: ignore[misc]
+    expected = await deps.read_expected_dashboard_version()
+    status = deployment_drift.evaluate_drift(deps.deployment_info(), expected)
     if dry_run:
         preview = {
             "event": "dashboard.node.update_requested",

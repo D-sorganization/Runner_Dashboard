@@ -1,0 +1,27 @@
+# Example identity store for runner-dashboard (issue #944).
+#
+# Copy this file to your identity directory and edit it for your deployment:
+#
+#   mkdir -p ~/.config/runner-dashboard
+#   cp config/principals.yml.example ~/.config/runner-dashboard/principals.yml
+#
+# The live store location is resolved by backend/identity.resolve_identity_dir():
+#   1. $DASHBOARD_IDENTITY_DIR (explicit override), else
+#   2. $XDG_CONFIG_HOME/runner-dashboard (default ~/.config/runner-dashboard).
+#
+# The live principals.yml / tokens.yml are gitignored — never commit real
+# credentials, and never ship a default admin principal (a committed admin plus
+# dev-login is an unauthenticated-admin hole).
+principals:
+  - id: dashboard-operator
+    type: human
+    name: Default Dashboard Operator
+    roles:
+      - admin
+    github_username: your-github-username
+    email: operator@example.com
+  - id: runner-bot
+    type: bot
+    name: CI/CD Runner Bot
+    roles:
+      - bot

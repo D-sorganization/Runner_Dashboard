@@ -55,7 +55,9 @@ def _method_path_pairs() -> list[tuple[str, str]]:
 _KNOWN_DUPLICATES_PENDING_941: set[tuple[str, str]] = {
     ("GET", "/api/runner-routing-audit"),
     ("POST", "/api/runner-routing-audit/refresh"),
-    ("POST", "/api/launchers/generate"),
+    # ("POST", "/api/launchers/generate") removed in #941 — the body-identical
+    # server.py twin of routers/diagnostics.py's handler was deleted; the route
+    # is now registered exactly once.
 }
 
 

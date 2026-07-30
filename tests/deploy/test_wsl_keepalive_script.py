@@ -178,13 +178,14 @@ def test_resident_task_installer_runs_when_logged_off() -> None:
 
 
 @PWSH_REQUIRED
-def test_script_parses_cleanly() -> None:
+def test_script_parses_cleanly(tmp_path: Path) -> None:
     """A syntax error would surface as a parser error here."""
+    log_dir = tmp_path / "logs"
     result = _run_ps(
         f". '{SCRIPT}' -Once -Distro 'no-such-distro' "
         f"-CheckIntervalSeconds 10 -ProbeTimeoutSeconds 2 "
         f"-Mode Resident "
-        f"-LogDir '{(REPO_ROOT / '.test-wsl-keepalive-junk').as_posix()}'"
+        f"-LogDir '{log_dir.as_posix()}'"
     )
     # We don't care about the actual outcome of the probe (it will fail
     # because no such distro exists). We only require that the parser

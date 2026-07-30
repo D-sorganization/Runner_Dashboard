@@ -9,9 +9,9 @@ There used to be TWO proxy_to_hub implementations:
 
 This module asserts:
   - There is exactly one proxy implementation: server.proxy_to_hub IS
-    proxy_utils.proxy_to_hub (and the shouldproxy predicate likewise), so every
-    DI consumer (deployment, orchestration, orchestration_node_routes, fleet)
-    uses the header-stripping version.
+    proxy_utils.proxy_to_hub (and the shouldproxy predicate likewise).
+  - Proxy-consuming routers import proxy_utils directly instead of receiving
+    mutable module-global proxy callables through configure()/set_dependencies.
   - The header builder strips every sensitive header and injects HUB_FLEET_TOKEN.
   - An end-to-end proxy call against a fake upstream never leaks
     Authorization/Cookie/X-API-Key/X-CSRF-Token, and carries the fleet token.
@@ -57,16 +57,20 @@ def test_no_second_proxy_definition_in_server_source() -> None:
     assert 'if k.lower() not in ("host", "content-length")' not in src
 
 
-def test_di_consumers_receive_stripping_proxy() -> None:
-    """The deployment / orchestration routers must be wired with the
-    header-stripping proxy (verified via the configured callables)."""
+def test_proxy_consumers_do_not_use_module_global_proxy_injection() -> None:
+    """Proxy consumers must not accept mutable proxy callables from server.py."""
     import server  # noqa: PLC0415
     from routers import deployment, orchestration, orchestration_node_routes
 
     for mod in (deployment, orchestration, orchestration_node_routes):
-        assert mod._proxy_to_hub is proxy_utils.proxy_to_hub, (
-            f"{mod.__name__} must use proxy_utils.proxy_to_hub, not a credential-forwarding copy"
+        assert not hasattr(mod, "_proxy_to_hub"), f"{mod.__name__} must not keep an injected proxy callable"
+        assert not hasattr(mod, "_should_proxy_fleet_to_hub"), (
+            f"{mod.__name__} must not keep an injected proxy predicate"
         )
+        source = Path(mod.__file__).read_text(encoding="utf-8")
+        assert "import proxy_utils" in source
+        assert "_proxy_to_hub" not in source
+        assert "_should_proxy_fleet_to_hub" not in source
     # And the server-level names resolve to the same object.
     assert server.proxy_to_hub is proxy_utils.proxy_to_hub
 

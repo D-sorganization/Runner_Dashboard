@@ -21,18 +21,28 @@ echo "HUB_FLEET_TOKEN=${HUB_FLEET_TOKEN}" >> ~/.config/runner-dashboard/runner-d
 sudo systemctl restart runner-dashboard
 ```
 
-The hub validates inbound `Authorization: Bearer <HUB_FLEET_TOKEN>` headers
-on hub-reachable fleet-read routes via the `require_fleet_peer` dependency.
-A fleet-read request is accepted when either:
+## Enforcement (issue #922)
 
-- it carries normal dashboard credentials for a valid principal, or
+The hub validates inbound `Authorization: Bearer <HUB_FLEET_TOKEN>` on
+hub-reachable fleet-read routes via the `require_fleet_peer` dependency
+(`backend/identity.py`). A request to a gated route is accepted when **either**:
+
+- it carries valid operator credentials (a principal resolved from a service
+  token or session), **or**
 - it presents `Authorization: Bearer <HUB_FLEET_TOKEN>` matching the hub's
-  configured token.
+  configured token, compared with `hmac.compare_digest` (constant-time).
 
-When `HUB_FLEET_TOKEN` is set on the hub, an unauthenticated request to a
-fleet-read route returns `401`. When the token is unset, those fleet-read routes
-remain tailnet-public for existing single-node and tokenless deployments. For a
-token-gated fleet, set `HUB_FLEET_TOKEN` on the hub and every spoke.
+**Policy — fleet reads are token-gated only when a token is configured.**
+When `HUB_FLEET_TOKEN` is **set** on the hub, an unauthenticated caller to a
+gated fleet route receives `401`. When it is **unset** (single-node and
+token-less deployments), fleet reads are tailnet-public and the dependency is a
+no-op — preserving backward compatibility. To enforce the fleet trust boundary,
+set `HUB_FLEET_TOKEN` on the hub (and on every spoke, so their proxied calls
+carry it).
+
+> Currently gated: `GET /api/fleet/status`. Additional hub-reachable read routes
+> are being brought under the same dependency; see issue #924 for the structural
+> "all `/api/*` routes authenticated" follow-up.
 
 ## Rotation procedure
 

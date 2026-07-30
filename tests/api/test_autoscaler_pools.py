@@ -139,14 +139,42 @@ def test_load_pool_state_respects_config_values(monkeypatch: pytest.MonkeyPatch)
 
 @pytest.fixture()
 def client():
-    """TestClient for the autoscaler pools router (standalone, no auth required)."""
+    """TestClient for the autoscaler pools router with an admin principal injected.
+
+    The config PATCH route requires ``fleet.control`` (issue #924); these tests
+    exercise the config logic, so we inject an admin via dependency_overrides and
+    assert the auth gate separately in ``test_patch_pool_config_requires_auth``.
+    """
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
+    from identity import Principal, require_principal
     from routers.autoscaler_pools import router
 
     app = FastAPI()
     app.include_router(router)
-    return TestClient(app, raise_server_exceptions=False)
+    app.dependency_overrides[require_principal] = lambda: Principal(
+        id="test-admin", type="bot", name="Admin", roles=["admin"]
+    )
+    client = TestClient(app, raise_server_exceptions=False)
+    try:
+        yield client
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_patch_pool_config_requires_auth() -> None:
+    """POST /api/autoscaler/pools/{pool}/config rejects unauthenticated callers (#924)."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from routers.autoscaler_pools import router
+    from starlette.middleware.sessions import SessionMiddleware
+
+    app = FastAPI()
+    app.add_middleware(SessionMiddleware, secret_key="test-secret")  # pragma: allowlist secret
+    app.include_router(router)
+    client = TestClient(app, raise_server_exceptions=False)
+    resp = client.post("/api/autoscaler/pools/nvme/config", json={"min_online": 1, "max_online": 4})
+    assert resp.status_code == 401
 
 
 def test_get_autoscaler_pools_returns_200(client) -> None:

@@ -199,17 +199,36 @@ def _stop_unit(unit: str, *, reason: str = "host overloaded") -> bool:
         return True
     if not _unit_has_safe_stop_contract(unit):
         return False
-    r = subprocess.run(
-        ["sudo", "-n", "systemctl", "stop", unit],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    success = r.returncode == 0
-    if not success:
-        log.warning("Failed to stop %s: %s", unit, r.stderr.strip()[:200])
-    else:
-        log.warning("Autoscaler STOPPED %s (%s)", unit, reason)
+    # Issue #935: stop with ``--no-block``. The #640/#679 drain contract lets a
+    # busy runner legally hold systemd's stop for up to TimeoutStopUSec (>=120s),
+    # but the autoscaler's systemd watchdog only beats at the top/end of each
+    # poll tick. A blocking ``systemctl stop`` that waits out a 120s drain
+    # starves the watchdog, and systemd SIGABRTs the autoscaler mid-scale-down —
+    # killing the service for correctly honouring the very stop contract it
+    # requires. ``--no-block`` enqueues the stop job and returns immediately; the
+    # drain proceeds in the background and the next poll tick re-reads unit state
+    # (active → inactive) to confirm completion. The explicit timeout guards the
+    # systemctl client call itself (job enqueue), never the drain.
+    try:
+        r = subprocess.run(
+            ["sudo", "-n", "systemctl", "stop", "--no-block", unit],
+            capture_output=True,
+            text=True,
+            timeout=_SYSTEMCTL_TIMEOUT_S,
+            check=False,
+        )
+        success = r.returncode == 0
+        if not success:
+            log.warning("Failed to stop %s: %s", unit, r.stderr.strip()[:200])
+        else:
+            log.warning("Autoscaler STOPPED %s (%s)", unit, reason)
+    except (OSError, subprocess.SubprocessError) as exc:
+        # The enqueue itself failed (e.g. systemctl client timeout). The unit
+        # may or may not have been signalled, so run cleanup on this path too —
+        # the #640 ~/.gitconfig.lock contract requires cleanup on EVERY stop
+        # attempt — and report failure.
+        log.warning("Failed to enqueue stop for %s: %s", unit, exc)
+        success = False
 
     # Recovery half of the stop contract — best-effort, never raises.
     try:
@@ -230,12 +249,21 @@ def _start_unit(unit: str) -> bool:
     if _dry_run_enabled():
         log.info("[dry-run] would start %s", unit)
         return True
-    r = subprocess.run(
-        ["sudo", "-n", "systemctl", "start", unit],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    # Issue #935: ``--no-block`` so a slow unit start cannot starve the watchdog,
+    # plus an explicit client-call timeout. Start is far quicker than a drained
+    # stop, but the watchdog-starvation reasoning is identical, and the next tick
+    # re-reads ActiveState to confirm the unit came up.
+    try:
+        r = subprocess.run(
+            ["sudo", "-n", "systemctl", "start", "--no-block", unit],
+            capture_output=True,
+            text=True,
+            timeout=_SYSTEMCTL_TIMEOUT_S,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        log.warning("Failed to enqueue start for %s: %s", unit, exc)
+        return False
     if r.returncode != 0:
         log.warning("Failed to start %s: %s", unit, r.stderr.strip()[:200])
         return False

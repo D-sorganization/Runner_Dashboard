@@ -180,6 +180,12 @@ __all__ = [
     "_send_watchdog",
     "_notify_systemd",
     "_sd_notify_socket",
+    "_is_start_allowed",
+    "_is_stop_allowed",
+    "_pool_passes_label_filter",
+    "_stop_in_cooldown",
+    "_record_stop_action",
+    "pool_last_stop_action",
 ]
 
 
@@ -309,10 +315,9 @@ def _acquire_lock() -> None:
             try:
                 os.makedirs(os.path.dirname(candidate), exist_ok=True)
                 _lock_fd = open(candidate, "w")
-                fcntl.flock(_lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)  # type: ignore[attr-defined,name-defined]
-                lock_path = candidate
-                break
             except OSError as exc:
+                # Path is unusable (PermissionError / ENOENT / read-only fs):
+                # try the next candidate. This is NOT a "lock held" signal.
                 last_err = exc
                 if _lock_fd is not None:
                     try:
@@ -321,6 +326,39 @@ def _acquire_lock() -> None:
                         pass
                     _lock_fd = None
                 continue
+
+            try:
+                fcntl.flock(_lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)  # type: ignore[attr-defined,name-defined]
+            except BlockingIOError:
+                # The lock is HELD by another autoscaler instance (#933). This is
+                # a definitive "already running" signal — do NOT fall through to
+                # an alternate path (which would let a second instance run against
+                # a different lock file and double-stop/double-start runners).
+                # Exit 75 (EX_TEMPFAIL) so systemd treats it as a transient, not
+                # a crash that triggers restart storms.
+                try:
+                    _lock_fd.close()
+                except OSError:
+                    pass
+                _lock_fd = None
+                log.error(
+                    "autoscaler lock %s is held by another instance; exiting (another autoscaler is running)",
+                    candidate,
+                )
+                sys.exit(75)
+            except OSError as exc:
+                # Non-blocking flock failure that is not "held" (e.g. the fs does
+                # not support locking): treat the path as unusable and try next.
+                last_err = exc
+                try:
+                    _lock_fd.close()
+                except OSError:
+                    pass
+                _lock_fd = None
+                continue
+
+            lock_path = candidate
+            break
         if not lock_path:
             log.error(
                 "Could not acquire lock on any candidate path; last error: %s",
@@ -388,16 +426,29 @@ def _get_pool_config(pool_name: str) -> dict:
         }
 
 
+def _pool_passes_label_filter(pool_labels: list[str], filter_labels: list[str]) -> bool:
+    """Return True if *pool_labels* satisfies *filter_labels*.
+
+    Issue #937d: the default pool has ``labels == []`` by design. When a label
+    filter is configured, an empty-label pool can never match any required
+    label, so the previous ``any(...)`` check silently froze the default pool
+    (no starts, no stops) the moment any filter was set. A label-less pool is
+    the generic/catch-all pool and must be *exempt* from label filtering rather
+    than permanently disabled.
+    """
+    if not filter_labels:
+        return True
+    if not pool_labels:
+        return True
+    return any(label in filter_labels for label in pool_labels)
+
+
 def _is_start_allowed(pool_name: str) -> bool:
     """Check if starting runners is allowed for the specified pool, considering labels/filters."""
     cfg = _get_pool_config(pool_name)
     if not cfg["start_enabled"]:
         return False
-    if FILTER_START_LABELS:
-        pool_labels = cfg.get("labels", [])
-        if not any(label in FILTER_START_LABELS for label in pool_labels):
-            return False
-    return True
+    return _pool_passes_label_filter(cfg.get("labels", []), FILTER_START_LABELS)
 
 
 def _is_stop_allowed(pool_name: str) -> bool:
@@ -405,11 +456,7 @@ def _is_stop_allowed(pool_name: str) -> bool:
     cfg = _get_pool_config(pool_name)
     if not cfg["stop_enabled"]:
         return False
-    if FILTER_STOP_LABELS:
-        pool_labels = cfg.get("labels", [])
-        if not any(label in FILTER_STOP_LABELS for label in pool_labels):
-            return False
-    return True
+    return _pool_passes_label_filter(cfg.get("labels", []), FILTER_STOP_LABELS)
 
 
 def _get_scheduled_pool_desired(pool_name: str, pool_units_count: int) -> int:
@@ -533,6 +580,37 @@ pool_last_overloaded: dict[str, float] = {
     "hdd": 0.0,
 }
 
+# Issue #937e: track the wall-clock time of the last STOP action per pool so
+# ACTION_COOLDOWN_SECONDS is actually enforced. Previously the setting was
+# documented, configured, and logged but never gated any decision, so a 45s
+# spike could trim a pool to min_online in well under a minute. Keys mirror the
+# pool names above; 0.0 means "no stop yet".
+pool_last_stop_action: dict[str, float] = {
+    "default": 0.0,
+    "nvme": 0.0,
+    "hdd": 0.0,
+}
+
+
+def _stop_in_cooldown(pool_name: str, now: float | None = None) -> bool:
+    """Return True if *pool_name* stopped a runner within ACTION_COOLDOWN_SECONDS.
+
+    Enforces per-pool spacing between destructive scale-downs (issue #937e).
+    A cooldown of 0 disables spacing entirely (opt-out).
+    """
+    if ACTION_COOLDOWN_SECONDS <= 0:
+        return False
+    last = pool_last_stop_action.get(pool_name, 0.0)
+    if last <= 0.0:
+        return False
+    current = time.time() if now is None else now
+    return (current - last) < ACTION_COOLDOWN_SECONDS
+
+
+def _record_stop_action(pool_name: str, now: float | None = None) -> None:
+    """Record that *pool_name* just performed a stop action (issue #937e)."""
+    pool_last_stop_action[pool_name] = time.time() if now is None else now
+
 
 def _run_poll_loop() -> None:
     """Infinite poll loop: sample resources, classify runners, scale up/down."""
@@ -595,7 +673,9 @@ def _run_poll_loop() -> None:
                 pool_active = [u for u in pool_units if _unit_is_active(u)]
                 pool_inactive = [u for u in pool_units if u not in pool_active]
                 pool_busy = {u for u in pool_active if _runner_is_busy(u)}
-                pool_idle_active = [u for u in pool_active if u not in pool_busy and not any(r in u for r in leased)]
+                pool_idle_active = [
+                    u for u in pool_active if u not in pool_busy and _runner_name_for_unit(u) not in leased
+                ]
 
                 hist = pool_samples[pool_name]
                 overloaded = False
@@ -701,7 +781,16 @@ def _run_poll_loop() -> None:
                             in_soft_recovery = True
 
                 if surplus and pool_idle_active:
-                    if _is_stop_allowed(pool_name):
+                    if not _is_stop_allowed(pool_name):
+                        log.debug("pool=%s stop action filtered/disabled", pool_name)
+                    elif _stop_in_cooldown(pool_name):
+                        log.info(
+                            "pool=%s surplus=%d but within action cooldown (%ds) — deferring stop",
+                            pool_name,
+                            surplus,
+                            ACTION_COOLDOWN_SECONDS,
+                        )
+                    else:
                         to_stop = pool_idle_active[: min(MAX_STEP, surplus)]
                         log.info(
                             "pool=%s surplus=%d, stopping %d idle active runners",
@@ -711,12 +800,20 @@ def _run_poll_loop() -> None:
                         )
                         for u in to_stop:
                             _stop_unit(u, reason="scheduled surplus")
-                    else:
-                        log.debug("pool=%s stop action filtered/disabled", pool_name)
+                        if to_stop:
+                            _record_stop_action(pool_name)
 
                 elif overloaded and len(pool_active) > pool_cfg["min_online"]:
                     room = len(pool_active) - pool_cfg["min_online"]
-                    if _is_stop_allowed(pool_name):
+                    if not _is_stop_allowed(pool_name):
+                        log.debug("pool=%s stop action filtered/disabled during overload", pool_name)
+                    elif _stop_in_cooldown(pool_name):
+                        log.info(
+                            "pool=%s overloaded but within action cooldown (%ds) — deferring stop",
+                            pool_name,
+                            ACTION_COOLDOWN_SECONDS,
+                        )
+                    else:
                         to_stop = pool_idle_active[: min(MAX_STEP, room)]
                         if not to_stop and pool_busy:
                             log.info(
@@ -733,8 +830,7 @@ def _run_poll_loop() -> None:
                             )
                             for u in to_stop:
                                 _stop_unit(u, reason="host overloaded")
-                    else:
-                        log.debug("pool=%s stop action filtered/disabled during overload", pool_name)
+                            _record_stop_action(pool_name)
 
                 elif recovered and pool_inactive and len(pool_active) < pool_desired:
                     if in_cooldown:

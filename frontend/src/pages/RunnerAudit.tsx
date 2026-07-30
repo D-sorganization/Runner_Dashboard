@@ -19,6 +19,7 @@ import React from "react";
 import { Badge } from "../primitives/Badge";
 import { EmptyState } from "../primitives/EmptyState";
 import { TouchButton } from "../primitives/TouchButton";
+import { legacyFetch } from "../lib/api";
 import { RefreshGlyph } from "./decompIcons";
 
 /** A single hosted-runner routing violation row. */
@@ -44,6 +45,73 @@ export interface RunnerAuditProps {
   audit: RunnerAuditData;
   /** Trigger an immediate backend re-check. */
   onRefresh: () => void;
+}
+
+const EMPTY_AUDIT: RunnerAuditData = {
+  violations: [],
+  last_checked: null,
+  error: null,
+};
+
+function normalizeRunnerAudit(payload: unknown): RunnerAuditData {
+  if (!payload || typeof payload !== "object") return EMPTY_AUDIT;
+  const raw = payload as RunnerAuditData;
+  return {
+    violations: Array.isArray(raw.violations) ? raw.violations : [],
+    last_checked: raw.last_checked ?? null,
+    error: raw.error ?? null,
+  };
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
+export function RunnerAuditPage(): React.ReactElement {
+  const [audit, setAudit] = React.useState<RunnerAuditData>(EMPTY_AUDIT);
+  const refreshTimer = React.useRef<number | null>(null);
+
+  const loadAudit = React.useCallback((signal?: AbortSignal): void => {
+    legacyFetch("/api/runner-routing-audit", { signal })
+      .then((r) => r.json())
+      .then((payload) => {
+        setAudit(normalizeRunnerAudit(payload));
+      })
+      .catch((error: unknown) => {
+        if (isAbortError(error)) return;
+        setAudit({
+          violations: [],
+          last_checked: null,
+          error: "Failed to load runner audit",
+        });
+      });
+  }, []);
+
+  const triggerRefresh = React.useCallback((): void => {
+    legacyFetch("/api/runner-routing-audit/refresh", { method: "POST" })
+      .then(() => {
+        if (refreshTimer.current !== null) {
+          window.clearTimeout(refreshTimer.current);
+        }
+        refreshTimer.current = window.setTimeout(() => {
+          loadAudit();
+        }, 3000);
+      })
+      .catch(() => {});
+  }, [loadAudit]);
+
+  React.useEffect(() => {
+    const controller = new AbortController();
+    loadAudit(controller.signal);
+    return () => {
+      controller.abort();
+      if (refreshTimer.current !== null) {
+        window.clearTimeout(refreshTimer.current);
+      }
+    };
+  }, [loadAudit]);
+
+  return <RunnerAudit audit={audit} onRefresh={triggerRefresh} />;
 }
 
 export default function RunnerAudit({

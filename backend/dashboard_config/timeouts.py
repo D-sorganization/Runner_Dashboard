@@ -34,6 +34,14 @@ class HttpTimeout:
     # a larger budget here and keep the gather fan-out independent per node.
     PROXY_NODE_SYSTEM_S: float = 30.0
 
+    # Connect budget for cross-node probes. A black-holed peer (firewall drop,
+    # no RST) otherwise consumes the full PROXY_NODE_SYSTEM_S read budget just
+    # waiting for a TCP handshake, which stalled /api/fleet/status to ~30 s
+    # whenever any node was unreachable. Capping connect lets an unreachable
+    # node fail in NODE_CONNECT_S while a slow-but-alive node keeps the full
+    # read budget. A healthy tailnet handshake is sub-second.
+    NODE_CONNECT_S: float = 5.0
+
     # Hub-bound proxies and the default ``gh api`` budget. 15 s tolerates
     # GitHub API tail latency without holding workers too long.
     PROXY_TO_HUB_S: float = 15.0
