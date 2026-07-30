@@ -510,6 +510,7 @@
   (`name`, `type="unknown"`, `enabled=true`, optional `model`/`status`) before
   serialization. Contract docs and proxy/model regressions cover the real daemon
   list shape.
+  > > > > > > > origin/main
 - **2026-06-12 (2.5.96):** Hardened three dispatch/credential security defects
   (security, issues #925, #926, #927). (1) `verify_approval_hmac`
   (`backend/dispatch/signing.py`) returned `True` for any confirmation lacking an
