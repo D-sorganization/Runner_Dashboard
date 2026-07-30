@@ -1,0 +1,27 @@
+name: Maxwell Contract Drift
+
+on:
+  schedule:
+    - cron: "37 8 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compare:
+    runs-on: d-sorg-fleet
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Compare Maxwell OpenAPI snapshot
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          python scripts/check_maxwell_contract_drift.py
+          --issue-repo "${{ github.repository }}"

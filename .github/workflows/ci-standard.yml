@@ -39,7 +39,7 @@ jobs:
     outputs:
       run_python_tests: ${{ steps.python-scope.outputs.run_python_tests }}
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Verify clean working tree
         run: |
           if [ -n "$(git status --porcelain)" ]; then
@@ -102,7 +102,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           BASE_REF: ${{ github.base_ref || 'main' }}
         run: |
-          EXEMPT="server.py|agent_remediation.py|dispatch_contract.py|agent_dispatch_router.py|credentials.py|App.tsx|queue.py|remediation.py|Queue/index.tsx|total|quick_dispatch.py|diagnostics.py|gh_client.py|system_utils.py|runner_autoscaler.py|queue_cleanup.py|Mobile.test.tsx|Principals.tsx|Analysis.tsx|RemediationPRs.tsx|Machines.tsx|FleetTab.tsx|FleetOrchestration.tsx|FeatureRequests.tsx|RemediationTab.tsx|Workflows.tsx|RemediationIssues.tsx|navRegistry.ts"
+          EXEMPT="server.py|agent_remediation.py|dispatch_contract.py|agent_dispatch_router.py|credentials.py|security.py|maxwell.py|App.tsx|queue.py|remediation.py|Queue/index.tsx|total|quick_dispatch.py|diagnostics.py|gh_client.py|system_utils.py|runner_autoscaler.py|queue_cleanup.py|Mobile.test.tsx|Principals.tsx|Analysis.tsx|RemediationPRs.tsx|Machines.tsx|FleetTab.tsx|FleetOrchestration.tsx|FeatureRequests.tsx|RemediationTab.tsx|Workflows.tsx|RemediationIssues.tsx|navRegistry.ts|api-types.ts"
           if [ "$EVENT_NAME" = "pull_request" ]; then
             git fetch --no-tags --depth=1 origin "$BASE_REF"
             FILES=$(git diff --name-only "origin/${BASE_REF}...HEAD" -- backend/ frontend/src/ \
@@ -230,8 +230,8 @@ jobs:
     env:
       PIP_CACHE_DIR: /home/dieterolson/actions-runners/.shared-tool-cache/pip
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v6
         with:
           python-version: "3.11"
           cache: "pip"
@@ -273,9 +273,13 @@ jobs:
       - name: Install type stubs
         run: pip install types-PyYAML types-requests
       - name: Type Check
-        # disallow_untyped_defs is now true globally (pyproject.toml).
-        # Per-module overrides shrink each release (tracked in #161).
-        # The override count is printed to the log so it cannot grow silently.
+        # disallow_untyped_defs is true globally (pyproject.toml). Per-module
+        # relaxed overrides are a shrink-only ratchet (issue #950, tracking #161):
+        # the count may go DOWN but a PR that ADDS a relaxed override fails CI.
+        # MYPY_OVERRIDE_BASELINE is the current allowance; lower it as overrides
+        # are removed. Target is 0.
+        env:
+          MYPY_OVERRIDE_BASELINE: "24"
         run: |
           OVERRIDE_COUNT=$(python - <<'EOF'
           import tomllib, pathlib
@@ -289,7 +293,15 @@ jobs:
           print(relaxed_count)
           EOF
           )
-          echo "::notice::mypy relaxed-override module count: ${OVERRIDE_COUNT} (target: 0, tracked in #161)"
+          echo "::notice::mypy relaxed-override module count: ${OVERRIDE_COUNT} (baseline ${MYPY_OVERRIDE_BASELINE}, target 0; #161)"
+          if [ "${OVERRIDE_COUNT}" -gt "${MYPY_OVERRIDE_BASELINE}" ]; then
+            echo "::error::mypy relaxed-override count ${OVERRIDE_COUNT} exceeds baseline ${MYPY_OVERRIDE_BASELINE}." \
+              "Type the new module instead of relaxing it, or justify and bump MYPY_OVERRIDE_BASELINE in ci-standard.yml."
+            exit 1
+          fi
+          if [ "${OVERRIDE_COUNT}" -lt "${MYPY_OVERRIDE_BASELINE}" ]; then
+            echo "::notice::Override count dropped below baseline — lower MYPY_OVERRIDE_BASELINE to ${OVERRIDE_COUNT} to lock in the win."
+          fi
           mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional
       - name: Run bandit security scan
         # Blocking for HIGH severity (-lll = high severity, -i = low+ confidence).
@@ -363,8 +375,8 @@ jobs:
     env:
       PIP_CACHE_DIR: /home/dieterolson/actions-runners/.shared-tool-cache/pip
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v6
         with:
           python-version: "3.11"
           cache: "pip"
@@ -411,7 +423,7 @@ jobs:
         python:
           - "3.11"
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Bootstrap Python venv
         run: |
           for py in python3.11 python3.12 python3.10 python3; do

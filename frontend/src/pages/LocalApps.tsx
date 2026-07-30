@@ -17,11 +17,13 @@
  * original legacy render exactly.
  */
 import React from "react";
+import { legacyFetch } from "../lib/api";
 import { RefreshGlyph } from "./decompIcons";
 import {
   localAppHasUpdateAvailable,
   localAppUnhealthy,
 } from "./localAppStatus";
+import { LocalAppsBoundary } from "./LocalAppsBoundary";
 
 /** Git drift summary for a local app. */
 interface LocalAppDrift {
@@ -72,6 +74,34 @@ export interface LocalAppsProps {
 
 // Pure status predicates live in ./localAppStatus.
 
+export function LocalAppsPage(): React.ReactElement {
+  const [data, setData] = React.useState<LocalAppsData>({ tools: [] });
+  const [loading, setLoading] = React.useState(true);
+
+  const fetchLocalApps = React.useCallback(() => {
+    setLoading(true);
+    legacyFetch("/api/local-apps")
+      .then((r) => r.json())
+      .then((payload: LocalAppsData | null) => {
+        if (payload) setData(payload);
+      })
+      .catch(() => {
+        /* keep last-known data */
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, []);
+
+  React.useEffect(() => {
+    fetchLocalApps();
+  }, [fetchLocalApps]);
+
+  return (
+    <LocalAppsTab data={data} loading={loading} onRefresh={fetchLocalApps} />
+  );
+}
+
 function renderVersion(value?: string | null): string {
   return value && value !== "unknown" ? value : "unknown";
 }
@@ -86,7 +116,10 @@ function DriftBadge({ app }: { app: LocalApp }): React.ReactElement {
     return (
       <span
         className={badgeBase}
-        style={{ background: "rgba(248,81,73,0.15)", color: "var(--accent-red)" }}
+        style={{
+          background: "rgba(248,81,73,0.15)",
+          color: "var(--accent-red)",
+        }}
         title={d.error || "unavailable"}
       >
         {"⚠ error"}
@@ -97,7 +130,10 @@ function DriftBadge({ app }: { app: LocalApp }): React.ReactElement {
     return (
       <span
         className={badgeBase}
-        style={{ background: "rgba(63,185,80,0.15)", color: "var(--accent-green)" }}
+        style={{
+          background: "rgba(63,185,80,0.15)",
+          color: "var(--accent-green)",
+        }}
       >
         {"✔ current"}
       </span>
@@ -107,7 +143,10 @@ function DriftBadge({ app }: { app: LocalApp }): React.ReactElement {
     return (
       <span
         className={badgeBase}
-        style={{ background: "rgba(210,153,34,0.15)", color: "var(--accent-yellow)" }}
+        style={{
+          background: "rgba(210,153,34,0.15)",
+          color: "var(--accent-yellow)",
+        }}
       >
         {"▼ " + behind + " behind"}
       </span>
@@ -117,7 +156,10 @@ function DriftBadge({ app }: { app: LocalApp }): React.ReactElement {
     return (
       <span
         className={badgeBase}
-        style={{ background: "rgba(88,166,255,0.15)", color: "var(--accent-blue)" }}
+        style={{
+          background: "rgba(88,166,255,0.15)",
+          color: "var(--accent-blue)",
+        }}
       >
         {"▲ " + ahead + " ahead"}
       </span>
@@ -139,7 +181,10 @@ function HealthBadge({ app }: { app: LocalApp }): React.ReactElement {
     return (
       <span
         className={badgeBase}
-        style={{ background: "rgba(110,118,129,0.2)", color: "var(--text-muted)" }}
+        style={{
+          background: "rgba(110,118,129,0.2)",
+          color: "var(--text-muted)",
+        }}
       >
         {"—"}
       </span>
@@ -160,7 +205,11 @@ function HealthBadge({ app }: { app: LocalApp }): React.ReactElement {
   );
 }
 
-function ServiceBadge({ status }: { status?: string | null }): React.ReactElement | null {
+function ServiceBadge({
+  status,
+}: {
+  status?: string | null;
+}): React.ReactElement | null {
   if (!status || status === "not-configured") return null;
   const ok = status === "active";
   return (
@@ -182,7 +231,10 @@ function DirtyBadge({ app }: { app: LocalApp }): React.ReactElement {
       <span
         className={badgeBase}
         title={app.dirty_error || "dirty probe failed"}
-        style={{ background: "rgba(248,81,73,0.15)", color: "var(--accent-red)" }}
+        style={{
+          background: "rgba(248,81,73,0.15)",
+          color: "var(--accent-red)",
+        }}
       >
         {"⚠ probe error"}
       </span>
@@ -207,7 +259,11 @@ function DirtyBadge({ app }: { app: LocalApp }): React.ReactElement {
 
 // ── Page body ────────────────────────────────────────────────────────────────
 
-function LocalAppsBody({ data, loading, onRefresh }: LocalAppsProps): React.ReactElement {
+function LocalAppsBody({
+  data,
+  loading,
+  onRefresh,
+}: LocalAppsProps): React.ReactElement {
   const apps: LocalApp[] = Array.isArray(data.tools)
     ? data.tools
     : Array.isArray(data.apps)
@@ -217,7 +273,9 @@ function LocalAppsBody({ data, loading, onRefresh }: LocalAppsProps): React.Reac
   const behindCount = apps.filter(localAppHasUpdateAvailable).length;
   const unhealthyCount = apps.filter(localAppUnhealthy).length;
   const dirtyCount = apps.filter((a) => a.dirty).length;
-  const dirtyErrorCount = apps.filter((a) => a.dirty_available === false).length;
+  const dirtyErrorCount = apps.filter(
+    (a) => a.dirty_available === false,
+  ).length;
 
   return (
     <div className="section">
@@ -229,15 +287,24 @@ function LocalAppsBody({ data, loading, onRefresh }: LocalAppsProps): React.Reac
         {behindCount > 0 ? (
           <span
             className={badgeBase}
-            style={{ background: "rgba(210,153,34,0.15)", color: "var(--accent-yellow)" }}
+            style={{
+              background: "rgba(210,153,34,0.15)",
+              color: "var(--accent-yellow)",
+            }}
           >
-            {behindCount + " update" + (behindCount > 1 ? "s" : "") + " available"}
+            {behindCount +
+              " update" +
+              (behindCount > 1 ? "s" : "") +
+              " available"}
           </span>
         ) : null}
         {unhealthyCount > 0 ? (
           <span
             className={badgeBase}
-            style={{ background: "rgba(248,81,73,0.15)", color: "var(--accent-red)" }}
+            style={{
+              background: "rgba(248,81,73,0.15)",
+              color: "var(--accent-red)",
+            }}
           >
             {unhealthyCount + " unhealthy"}
           </span>
@@ -245,7 +312,10 @@ function LocalAppsBody({ data, loading, onRefresh }: LocalAppsProps): React.Reac
         {dirtyCount > 0 ? (
           <span
             className={badgeBase}
-            style={{ background: "rgba(210,153,34,0.15)", color: "var(--accent-yellow)" }}
+            style={{
+              background: "rgba(210,153,34,0.15)",
+              color: "var(--accent-yellow)",
+            }}
           >
             {dirtyCount + " dirty"}
           </span>
@@ -253,7 +323,10 @@ function LocalAppsBody({ data, loading, onRefresh }: LocalAppsProps): React.Reac
         {dirtyErrorCount > 0 ? (
           <span
             className={badgeBase}
-            style={{ background: "rgba(248,81,73,0.15)", color: "var(--accent-red)" }}
+            style={{
+              background: "rgba(248,81,73,0.15)",
+              color: "var(--accent-red)",
+            }}
           >
             {dirtyErrorCount + " dirty probe error"}
           </span>
@@ -270,7 +343,9 @@ function LocalAppsBody({ data, loading, onRefresh }: LocalAppsProps): React.Reac
       </div>
 
       {loading ? (
-        <div style={{ padding: 24, color: "var(--text-muted)" }}>{"Loading…"}</div>
+        <div style={{ padding: 24, color: "var(--text-muted)" }}>
+          {"Loading…"}
+        </div>
       ) : apps.length === 0 ? (
         <div style={{ padding: 24, color: "var(--text-muted)" }}>
           {data.manifest_path
@@ -374,69 +449,13 @@ function LocalAppsBody({ data, loading, onRefresh }: LocalAppsProps): React.Reac
   );
 }
 
-// ── Error boundary (ported from legacy LocalAppsErrorBoundary) ───────────────
-
-interface BoundaryState {
-  hasError: boolean;
-  error: Error | null;
-}
-
-/**
- * Wraps the page body so a malformed app entry degrades to a Retry affordance
- * instead of crashing the shell (orthogonality — issue #836).
- */
-export class LocalAppsTab extends React.Component<LocalAppsProps, BoundaryState> {
-  constructor(props: LocalAppsProps) {
-    super(props);
-    this.state = { hasError: false, error: null };
-    this.handleRetry = this.handleRetry.bind(this);
-  }
-
-  static getDerivedStateFromError(error: Error): BoundaryState {
-    return { hasError: true, error };
-  }
-
-  componentDidCatch(error: Error, info: React.ErrorInfo): void {
-    // eslint-disable-next-line no-console
-    console.error("[LocalAppsTab] render error:", error, info);
-  }
-
-  handleRetry(): void {
-    this.setState({ hasError: false, error: null });
-  }
-
+export class LocalAppsTab extends React.Component<LocalAppsProps> {
   render(): React.ReactNode {
-    if (this.state.hasError) {
-      return (
-        <div style={{ padding: 24, color: "var(--text-primary)" }}>
-          <div
-            style={{ marginBottom: 12, color: "var(--accent-red)", fontWeight: 600 }}
-          >
-            Local Tools failed to render
-          </div>
-          <code
-            style={{
-              display: "block",
-              fontSize: 12,
-              color: "var(--accent-red)",
-              marginBottom: 12,
-              whiteSpace: "pre-wrap",
-            }}
-          >
-            {String(this.state.error)}
-          </code>
-          <button
-            className="btn"
-            type="button"
-            onClick={this.handleRetry}
-            aria-label="Retry loading data"
-          >
-            Retry
-          </button>
-        </div>
-      );
-    }
-    return <LocalAppsBody {...this.props} />;
+    return (
+      <LocalAppsBoundary {...this.props}>
+        <LocalAppsBody {...this.props} />
+      </LocalAppsBoundary>
+    );
   }
 }
 

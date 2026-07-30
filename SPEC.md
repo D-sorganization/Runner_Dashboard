@@ -1,10 +1,516 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.96
-**Application Version:** 4.8.0 (see `VERSION`)
-**Last Updated:** 2026-06-12T00:00:00-07:00
+**Spec Version:** 2.5.167
+**Application Version:** 4.9.19 (see `VERSION`)
+**Last Updated:** 2026-06-21T12:20:00-07:00
 **Status:** Active
 
+- **2026-06-21 (2.5.167):** Runner service-control routes now share a
+  `principal_log_id` helper so loopback-gated admin principals that expose
+  `id` instead of `user_id` can still start, stop, and restart runners without
+  tripping logging-only `AttributeError`s after authorization succeeds. The
+  local runner-number resolver also accepts current fleet names such as
+  `d-sorg-local-ControlTower-nvme-1` in addition to legacy `runner-1` suffixes,
+  keeping `/api/runners/{id}/start|stop|restart` and group start/stop actions
+  mapped to the right `svc.sh` path while preserving the existing
+  `runners.control` scope requirement.
+
+- **2026-06-20 (2.5.166):** Host machine-spec probes now launch the Windows
+  `powershell.exe` with `-WindowStyle Hidden -NonInteractive`. When the backend
+  runs in WSL and shells out to the Windows host powershell for hardware facts,
+  Windows otherwise pops a visible console window per probe on every spec sync;
+  the flags keep the sync silent with no change to the data collected (#1056).
+
+- **2026-06-20 (2.5.165):** Exempted the read-only org runner inventory
+  `GET /api/runners` from the #924 structural auth perimeter, alongside
+  `/api/system` and `/api/fleet/status` (2.5.162). The fleet-health monitor on
+  the hub polls each node's `GET /api/runners` over the tailnet with no operator
+  principal to read online/busy counts and drive keepalive auto-recovery; the
+  perimeter 401-ed it, so `ct_runners_online` went null and self-healing
+  silently stopped. The exemption is an exact match on the bare inventory route
+  only — mutating `/api/runners/{id}/start|stop|restart` and the diagnostics
+  POSTs are distinct paths and remain perimeter-protected (and carry their own
+  `require_scope` dependencies).
+- **2026-06-18 (2.5.164):** WSL keepalive parser coverage now writes its
+  one-shot probe state and log artifacts to the pytest `tmp_path` tree instead
+  of a repository-root `.test-wsl-keepalive-junk/` directory. This preserves
+  the PowerShell parser/smoke contract while keeping local and CI worktrees
+  clean after `tests/deploy/test_wsl_keepalive_script.py` runs.
+- **2026-06-17 (2.5.162):** Exempted the read-only fleet-telemetry endpoints
+  `/api/system` and `/api/fleet/status` from the #924 structural auth perimeter.
+  The hub's fleet fan-out (`fetch_node` → `/api/system`; peer pools →
+  `/api/fleet/status`) presents no operator principal, so the perimeter 401-ed
+  every node once it moved to >=4.9 code, marking the whole fleet offline. These
+  are tailnet-scoped GET metrics already intended as tailnet-public fleet reads
+  (`require_fleet_peer`); `/api/fleet/status` keeps its own `require_fleet_peer`
+  dependency. Restores hub→node fleet status across the fleet.
+- **2026-06-16 (2.5.161):** Fixed the DeskComputer node `dashboard_url` in
+  `machine_registry.yml` to its MagicDNS name
+  (`http://deskcomputer.tail2bbcc7.ts.net:8321`) instead of the raw tailnet IP.
+  Tailscale's `serve` exposes node dashboards by name (name-based HTTP), so the
+  raw-IP entry returned 404 and the hub marked DeskComputer offline. Every other
+  node already used its MagicDNS name; this aligns DeskComputer with the fleet
+  convention so hub↔node fleet status resolves.
+- **2026-06-16 (2.5.160):** Made `/api/fleet/status` resilient to unreachable
+  fleet nodes. Peer pools are now fetched concurrently (`asyncio.gather`)
+  instead of in a sequential loop, and cross-node probes use a connect-capped
+  `httpx.Timeout` (`HttpTimeout.NODE_CONNECT_S`) so a black-holed node fails in
+  ~5 s on the handshake instead of consuming the full 30 s read budget — the
+  endpoint no longer stalls to ~30 s when any node is offline. Extracted
+  `_fetch_peer_pool` / `_node_probe_timeout` helpers.
+- **2026-06-16 (2.5.159):** Routed the Conductor admission gate's capacity
+  provider through the shared `runners` cache via a new
+  `gh_utils.get_cached_org_runners` helper (also adopted by the GitHub health
+  summary), so each admission decision reuses one GitHub round-trip per
+  `CacheTtl.RUNNERS_S` window instead of issuing an uncached call on every
+  Conductor poll. Corrected the stale "cached upstream" comment on
+  `_orchestrator_capacity_provider`.
+- **2026-06-15 (2.5.158):** Stabilized FIFO session-eviction coverage after
+  the post-merge `main` CI run exposed another wall-clock-sensitive session
+  test. Session record defaults now use the module clock helper, and the FIFO
+  test advances that clock deterministically instead of sleeping between
+  registrations.
+- **2026-06-15 (2.5.157):** Linked the remaining legacy App decomposition
+  marker to the #949 closeout evidence without changing runtime behavior.
+- **2026-06-15 (2.5.156):** Added a static frontend-integrity guard that keeps
+  the #949/#951 audit closeout record tied to the tested frontend and router
+  dependency evidence paths.
+- **2026-06-15 (2.5.155):** Added an operations closeout record for the
+  2026-06-12 Runner Dashboard audit epic and final #949 cleanup issue so the
+  closure guard can tie #949/#951 to a merged PR with explicit evidence.
+- **2026-06-15 (2.5.154):** Continued #949 mobile legacy-fallback retirement
+  by routing the mobile Remediation tab through the dedicated
+  `RemediationMobile` page instead of the hidden legacy App. The shell keeps
+  mobile remediation in-flight dispatch state above the tab content so dispatch
+  status persists across tab switches, and routing/static tests now guard that
+  `/t/remediation` does not import the legacy App on mobile.
+- **2026-06-15 (2.5.153):** Stabilized session-expiry validation after the
+  post-merge `main` CI run exposed a timing-sensitive
+  `test_prune_expired_sessions` failure under parallel test execution.
+  Session-management timestamp reads now route through an internal clock helper
+  so expiry tests can advance time deterministically instead of sleeping.
+- **2026-06-15 (2.5.152):** Continued #949 frontend monolith retirement by
+  adding a static registry-vs-router guard. Every tab declared in
+  `navRegistry.ts` must now have a matching native desktop route case in
+  `RoutedShell.tsx`, preventing new desktop tabs from silently falling back to
+  the legacy App while the existing legacy App line-count ratchet remains in
+  force.
+- **2026-06-15 (2.5.151):** Continued #949 frontend monolith retirement by
+  removing the modern desktop shell's silent legacy App fallback. Registered
+  desktop tabs now render their native page content directly, while the
+  explicit legacy layout escape hatch and mobile fallback stay unchanged. The
+  frontend integrity suite now guards against reintroducing `nativeContent ??`
+  fallback behavior or a chromeless legacy fallback in the desktop shell.
+- **2026-06-15 (2.5.150):** Continued #949 frontend monolith retirement on the
+  mobile shell path. Native mobile tabs (`overview`, `queue`, `maxwell`,
+  `reports`, and `credentials`) now skip constructing the legacy lazy App
+  fallback entirely, while drawer tabs without extracted mobile pages keep the
+  fallback for feature parity. Regression coverage asserts the native mobile
+  routes do not import or mount the legacy chunk, and the static frontend
+  integrity gate prevents the hidden fallback from returning.
+- **2026-06-15 (2.5.149):** Continued #949 frontend monolith retirement by
+  adding a self-contained `RemediationPage` container for desktop. The page now
+  owns remediation config/workflow/history loading, failed-run loading,
+  policy-save PUTs, guarded plan previews, and remediation dispatch POSTs
+  outside the legacy App owner while preserving the prop-driven
+  `RemediationTab` contract for fallback callers. `RoutedShell` bypasses the
+  legacy chunk for `/t/remediation`, and the extracted remediation modules stay
+  in a lazy `remediation` bundle.
+- **2026-06-15 (2.5.148):** Continued #949 frontend monolith retirement by
+  adding a self-contained `OverviewPage` container for desktop. The page now
+  owns the fleet overview GET fan-out, fleet-wide control POSTs, and per-runner
+  control POSTs outside the legacy App owner while preserving the prop-driven
+  `FleetTab` contract for fallback callers. `RoutedShell` bypasses the legacy
+  chunk for `/` and `/t/overview`, and the shared overview modules stay in a
+  lazy `fleet-overview` bundle so the entry perf budget remains enforced.
+- **2026-06-15 (2.5.147):** Continued #949 frontend monolith retirement by
+  adding a self-contained `FleetOrchestrationPage` container for desktop. The
+  page now owns `/api/fleet/orchestration`,
+  `/api/fleet/orchestration/dispatch`, and
+  `/api/fleet/orchestration/deploy` outside the legacy App owner while
+  preserving the prop-driven `FleetOrchestrationTab` contract for fallback
+  callers, and `RoutedShell` bypasses the legacy chunk for
+  `/t/fleet-orchestration`.
+- **2026-06-15 (2.5.146):** Continued #949 frontend monolith retirement by
+  adding a self-contained `FeatureRequestsPage` container for desktop. The page
+  now owns `/api/repos`, `/api/feature-requests`,
+  `/api/feature-requests/templates`, `/api/feature-requests/dispatch`, and
+  `/api/settings/prompt-notes` outside the legacy App owner while preserving the
+  prop-driven `FeatureRequestsTab` contract for fallback callers, and
+  `RoutedShell` bypasses the legacy chunk for `/t/feature-requests`.
+- **2026-06-15 (2.5.145):** Continued #949 frontend monolith retirement by
+  adding a self-contained `AssessmentsPage` container for desktop. The page now
+  owns `/api/repos`, `/api/assessments/scores`, and
+  `/api/assessments/dispatch` outside the legacy App owner while preserving the
+  prop-driven `AssessmentsTab` contract for fallback callers, and `RoutedShell`
+  bypasses the legacy chunk for `/t/assessments`.
+- **2026-06-15 (2.5.144):** Continued #949 frontend monolith retirement by
+  adding a self-contained `CredentialsPage` container for desktop. The page now
+  owns `/api/credentials` probe loading and `/api/credentials/set-key` updates
+  outside the legacy App owner while preserving the prop-driven
+  `CredentialsTab` contract for fallback callers, and `RoutedShell` bypasses
+  the legacy chunk for `/t/credentials`.
+- **2026-06-15 (2.5.143):** Continued #949 frontend monolith retirement by
+  adding a self-contained `WorkflowsPage` container for desktop. The page now
+  owns `/api/workflows/list` and `/api/workflows/dispatch` outside the legacy
+  App owner while preserving the prop-driven `WorkflowsTab` contract for
+  fallback callers, and `RoutedShell` bypasses the legacy chunk for
+  `/t/workflows`.
+- **2026-06-15 (2.5.142):** Continued #949 frontend monolith retirement by
+  adding a self-contained `MachinesPage` container for desktop. The page now
+  owns `/api/fleet/nodes` and `/api/runners` outside the legacy App owner while
+  preserving the prop-driven `MachinesTab` contract for fallback callers, and
+  `RoutedShell` bypasses the legacy chunk for `/t/machines`.
+- **2026-06-15 (2.5.141):** Restored dependency audit health after new
+  advisories flagged the locked dashboard runtime set. `starlette` now pins to
+  `1.3.1`, and the exported `uv` requirements refresh lifts transitive
+  `cryptography` to `49.0.0`, clearing the current `pip-audit` gate while
+  preserving the FastAPI runtime contract.
+- **2026-06-15 (2.5.140):** Continued #949 frontend monolith retirement by
+  adding a self-contained `RunnerSchedulePage` container for desktop. The page
+  now owns `/api/fleet/schedule` GET/POST outside the legacy App owner while
+  preserving the prop-driven `RunnerScheduleTab` contract for fallback callers,
+  and `RoutedShell` bypasses the legacy chunk for `/t/runner-schedule`.
+- **2026-06-15 (2.5.139):** Continued #949 frontend monolith retirement by
+  adding a self-contained `TestsPage` container for desktop. The page now owns
+  `/api/heavy-tests/repos` and `/api/tests/ci-results` outside the legacy App
+  owner while preserving the prop-driven `TestsTab` contract for fallback
+  callers, and `RoutedShell` bypasses the legacy chunk for `/t/tests`.
+- **2026-06-15 (2.5.138):** Restored push-time CI Standard line-cap health by
+  splitting the native Maxwell chat/tasks panels, the Local Apps error boundary,
+  and Maxwell test fixtures into focused modules. The three previously
+  over-limit files now stay below the 500-line soft cap without changing their
+  rendered behavior or API contracts.
+- **2026-06-15 (2.5.137):** Continued #949 frontend monolith retirement by
+  adding a self-contained `LocalAppsPage` container for desktop. The page now
+  owns `/api/local-apps` outside the legacy App owner while preserving the
+  prop-driven `LocalAppsTab` contract for fallback callers, and `RoutedShell`
+  bypasses the legacy chunk for `/t/local-apps`.
+- **2026-06-15 (2.5.136):** Continued #949 frontend monolith retirement by
+  making the desktop `org` tab self-fetch `/api/repos` and `/api/stats` through
+  a native `OrgPage` container, then routing it directly through the modern
+  desktop shell. The presentational `OrgTab` remains prop-driven for legacy
+  fallback callers and focused tests, while RoutedShell and static integrity
+  coverage guard the native route bypass.
+- **2026-06-15 (2.5.135):** Continued #949 frontend monolith retirement by
+  adding a self-contained `MaxwellPage` container for desktop. The page now
+  owns `/api/maxwell/status` and `/api/maxwell/control` outside the legacy App
+  owner while preserving the prop-driven `MaxwellTab` contract for fallback
+  callers, and `RoutedShell` bypasses the legacy chunk for `/t/maxwell`.
+- **2026-06-15 (2.5.134):** Continued #949 frontend monolith retirement by
+  routing the desktop `queue` tab directly through the extracted
+  `pages/Queue` implementation. The page's existing `/api/queue` self-fetch
+  path now serves the modern shell while the legacy prop-driven queue path
+  remains intact for fallback callers, with shell and static integrity coverage
+  guarding the native route bypass.
+- **2026-06-15 (2.5.133):** Continued #949 frontend monolith retirement by
+  making `DeploymentTab` self-fetch `/api/deployment/state` when rendered
+  outside the legacy App owner, then routing the `deployment` desktop tab
+  directly through `pages/Deployment.tsx`. Legacy prop-driven deployment
+  rendering remains intact for fallback callers, while the modern shell avoids
+  mounting the legacy `App` chunk for deployment operations.
+- **2026-06-15 (2.5.132):** Continued #949 frontend monolith retirement by
+  routing the `runner-audit` desktop tab through a native `RunnerAuditPage`
+  container. The page now owns the current `/api/runner-routing-audit` GET and
+  refresh POST contract outside the legacy `App` chunk, with tests covering
+  the endpoint, CSRF bridge header, delayed refresh poll, and RoutedShell native
+  bypass.
+- **2026-06-15 (2.5.131):** Continued #949 frontend monolith retirement by
+  making `AnalysisTab` self-fetch report summaries when rendered outside the
+  legacy App owner, then routing `analysis` and `reports` desktop tabs directly
+  through `pages/Analysis.tsx`. The modern shell now bypasses the legacy `App`
+  chunk for those analysis routes while preserving the legacy prop-driven path
+  for fallback tabs.
+- **2026-06-15 (2.5.130):** Continued #949 frontend monolith retirement by
+  routing the self-contained `events` desktop tab directly through
+  `pages/Events.tsx`. The modern desktop shell now shows the event log and
+  alarm center without mounting the legacy `App` chunk, with RoutedShell
+  coverage guarding the native route bypass.
+- **2026-06-15 (2.5.129):** Continued #949 frontend monolith retirement by
+  routing more self-contained desktop tabs directly through extracted page
+  modules. `principals`, `push-settings`, `scheduled-jobs`, and `settings` now
+  bypass the legacy `App` chunk in the modern desktop shell while stateful
+  prop-driven tabs continue to use the legacy fallback.
+- **2026-06-15 (2.5.128):** Hardened the mobile Credentials tab visibility
+  lock after #949 extraction by installing the `visibilitychange` listener for
+  the full mobile lifecycle and updating the unlock ref synchronously before
+  refresh callbacks run. This closes the same-tick unlock race where mobile
+  credential metadata could remain visible after the tab lost focus, with a
+  focused Vitest regression.
+- **2026-06-15 (2.5.127):** Continued #949 frontend monolith retirement by
+  deleting the dead legacy `LANG_COLORS` copy from `legacy/App.tsx` and routing
+  the extracted Organization tab through the tested shared
+  `components/formatters.ts` language-colour map. The shrink-only static guard
+  now caps `legacy/App.tsx` at 2886 lines.
+- **2026-06-15 (2.5.126):** Continued #949 frontend monolith retirement by
+  routing self-contained modern desktop tabs directly through their extracted
+  page modules. `agent-dispatch`, `cline-launcher`, `conductor`, `diagnostics`,
+  and `linear-setup` no longer mount the legacy `App` chunk in the modern
+  desktop shell, while stateful tabs still fall back to the chromeless legacy
+  app and the reversible legacy-layout flag remains intact. RoutedShell tests
+  now assert both the native route bypass and the legacy fallback contract.
+- **2026-06-15 (2.5.125):** Continued #949 frontend monolith retirement by
+  extracting the legacy global fetch guard into
+  `frontend/src/legacy/fetchGuards.ts`. The extracted guard owns the
+  credentials API service-worker cache denylist, no-store fetch option, silent
+  session refresh retry, and session-expired toast/event fallback, with Vitest
+  coverage and static integrity checks. `legacy/App.tsx` now delegates that
+  contract and the shrink-only ratchet drops to 2909 lines.
+- **2026-06-15 (2.5.124):** Hardened the Python 3.14 Docker build path by
+  deleting temporary Rust/cargo/rustup and pip build caches after source-built
+  wheels are installed. This keeps build-only `pyo3` sources out of the
+  runtime image and prevents Trivy from failing on vulnerabilities in discarded
+  build inputs while preserving the locked dependency set.
+- **2026-06-15 (2.5.123):** Restored Docker image build compatibility after
+  the pinned runtime image advanced to Python 3.14. The locked dependency set
+  can require native Rust/C extension builds before upstream wheels are
+  available, so `Dockerfile` now installs the minimal Debian build toolchain
+  used by those source builds while keeping the runtime healthcheck and
+  non-root execution contract unchanged.
+- **2026-06-15 (2.5.122):** Continued #949 frontend monolith retirement with
+  a shrink-only static guard. `tests/test_frontend_integrity.py` now fails if
+  `legacy/App.tsx` grows above 2960 lines and asserts Fleet/Remediation route
+  through the extracted `pages/FleetTab.tsx` and `pages/RemediationTab.tsx`
+  implementations instead of reintroducing inline legacy twins. The legacy app
+  sheds obsolete decomposition comments while preserving current shell
+  behaviour.
+- **2026-06-15 (2.5.121):** Continued #949 frontend monolith hardening. Legacy
+  dashboard polling now registers through `frontend/src/legacy/visibleInterval.ts`,
+  which skips interval callbacks while the browser tab is hidden and refreshes
+  once on `visibilitychange` when the tab becomes visible again. The legacy app
+  keeps the existing immediate first fetches and state ownership, but the 15
+  background pollers plus the `/health` recovery check no longer run
+  continuously in hidden tabs. `tests/test_frontend_integrity.py` guards the
+  visibility-aware polling contract, and `legacy/App.tsx` shrinks to 2919 lines.
+- **2026-06-15 (2.5.120):** Updated the release signing step for the installed
+  cosign v4 behaviour. The release workflow now writes a
+  `dashboard-<version>.bundle` with `cosign sign-blob --bundle` and uploads that
+  bundle with the tarball, checksum, and SBOM instead of deprecated
+  split signature/certificate outputs.
+- **2026-06-15 (2.5.119):** Finished the release tarball hardening by writing
+  the in-progress archive to `$RUNNER_TEMP` and moving the completed artifact
+  back into the workspace before hashing. This prevents the workspace root from
+  changing while `tar` is reading `.` during the `4.9.17` release.
+- **2026-06-15 (2.5.118):** Hardened the release tarball step after the
+  `4.9.17` release workflow exposed that `tar czf dashboard-<version>.tar.gz .`
+  can read its own in-progress output. The release workflow now excludes
+  `.venv` and generated dashboard release artifacts (`.tar.gz`, checksums,
+  signatures, and certs) from the source archive, with a regression in
+  `tests/test_release_workflow_yaml.py`.
+- **2026-06-15 (2.5.117):** Continued #949 backend DI cleanup. Deployment
+  and orchestration routers now receive server helpers through typed FastAPI
+  app-state dependency objects instead of module-global `Callable | None`
+  variables mutated by `set_dependencies()`. Focused regressions assert these
+  routers no longer carry optional callable globals while preserving the
+  existing route behaviour.
+- **2026-06-15 (2.5.116):** Started the Runner_Dashboard side of #962 least-
+  privilege Maxwell-Daemon access. The Maxwell proxy now uses the configured
+  static `MAXWELL_API_TOKEN` only as a bootstrap credential for
+  `POST /api/v1/auth/token`, caches short-lived scoped JWTs, sends viewer tokens
+  on read/status proxies, and sends operator tokens on dispatch/control/chat
+  calls. Older daemons that do not expose scoped token minting still fall back to
+  the static token for compatibility, but modern RD↔MD deployments no longer
+  put an admin-capable credential on routine polling requests.
+- **2026-06-15 (2.5.115):** Reduced the #949 frontend monolith surface on
+  mobile native tabs. `MobileShell` now treats `tabContent` as exclusive page
+  content instead of hidden-mounting the legacy `App` behind native Fleet, Queue,
+  Maxwell, Reports, and Credentials mobile pages. This prevents the legacy
+  polling tree from running in the background for those tabs while preserving
+  the fallback child render for tabs without native mobile content. A focused
+  MobileShell regression asserts the legacy child tree is not mounted when
+  native tab content exists.
+- **2026-06-14 (2.5.114):** Removed the hub-proxy `configure()` globals from
+  the deployment and orchestration routers for issue #949. The routers now call
+  the canonical `proxy_utils` implementation directly, keeping the
+  credential-stripping proxy contract DRY and eliminating mutable
+  `_proxy_to_hub` / `_should_proxy_fleet_to_hub` module state. The
+  `tests/api/test_proxy_credential_stripping.py` regression now fails if those
+  injected proxy callables return.
+- **2026-06-14 (2.5.113):** Kept the runner job-started hook bounded for fleet
+  reliability. `deploy/runner-hooks/job-started.sh` now keeps the fast global
+  `~/.gitconfig.lock` cleanup in place, makes the expensive per-worktree stale
+  git-lock scan opt-in via `RUNNER_HOOK_ENABLE_WORKTREE_LOCK_CLEANUP=1`, and
+  bounds that scan with `RUNNER_HOOK_LOCK_CLEANUP_TIMEOUT_SECONDS` (default 10s).
+  This prevents SSD runner pools from cancelling jobs inside
+  `ACTIONS_RUNNER_HOOK_JOB_STARTED`; scheduled cleanup remains responsible for
+  broad worktree sweeps. `tests/test_today_deploy_hardening.py` guards the deploy
+  hook contract.
+- **2026-06-14 (2.5.112):** Replaced the last hand-written RD↔MD consumer
+  contract fixtures with a vendored Maxwell_Daemon OpenAPI snapshot for issue
+  #960. `tests/contracts/maxwell_openapi.json` is the producer-owned schema
+  baseline; `tests/test_maxwell_openapi_contract.py` asserts the dashboard's
+  consumed paths/schemas exist, validates minimal producer-required payloads
+  against the dashboard models, and fails loudly when consumed required fields
+  are renamed. The task-list model now requires MD's `total`, dispatch requires
+  a producer task id/status while retaining the legacy `id` alias, and cost
+  mirrors MD's required `month_to_date_usd` into the dashboard's legacy
+  `total_usd` field. `scripts/check_maxwell_contract_drift.py` and
+  `.github/workflows/maxwell-contract-drift.yml` add a scheduled/manual
+  self-hosted drift monitor that compares the vendored snapshot with
+  `D-sorganization/Maxwell_Daemon` main and records a GitHub issue when they
+  differ.
+- **2026-06-13 (2.5.111):** Expose hub-circuit degraded fallback state for issue
+  #948. When a node with `HUB_URL` serves local `/api/fleet/status` data only
+  because the hub circuit is open, the response now includes top-level
+  `_degraded: true` and an `X-Dashboard-Degraded: hub-circuit-open` header.
+  Explicit local reads (`local=true` or `scope=local`) keep the plain local
+  response contract. `/api/health` reports `hub_circuit_open`, and Prometheus
+  exports `dashboard_hub_circuit_open`. Focused regression coverage lives in
+  `tests/test_proxy_utils.py`, `tests/api/test_fleet_aggregator.py`,
+  `tests/test_health.py`, and `tests/test_prometheus_metrics.py`.
+- **2026-06-13 (2.5.110):** Stabilize the OpenAPI-to-TypeScript contract
+  generation gate added for issue #947. `scripts/gen-api-client.sh` now formats
+  the generated `frontend/src/lib/openapi.json` snapshot with the pinned local
+  Prettier dependency before `--check` diffs it, so CI compares against the same
+  compact JSON style committed in the repository instead of failing on formatting
+  drift. `tests/frontend/test_api_generation_contract.py` guards the canonical
+  scripts, checked snapshot, generated TypeScript output, and formatter ordering.
+- **2026-06-12 (2.5.109):** Quick Start works on a clean checkout + gh_client
+  robustness (issues #945, #938). (#945) `start-dashboard.sh` now installs from
+  the repo-root `requirements.txt` (the phantom `backend/requirements.txt` path
+  silently fell back to a fastapi+uvicorn-only install that crashed on
+  `import httpx/psutil/yaml`); it fails loudly if the requirements file is
+  missing and builds the gitignored `frontend/dist/` via `npm ci && npm run build`
+  (or exits non-zero with instructions) so the served page is the real SPA, not
+  the "index.html not found" fallback. README documents the Node/npm requirement;
+  `tests/test_start_dashboard_script.py` guards the script against regressing.
+  (#938) `backend/gh_client.py`: (a) `_request` now treats any `2xx` as success
+  so GitHub's `202 Accepted` (e.g. `cancel_run`) is no longer reported as a
+  `GhServerError`; (b) `paginate` routes every page through `_request`, so a
+  primary-rate-limit `403` (`X-RateLimit-Remaining: 0`) raises the typed
+  `GhRateLimited` and transient `5xx` retry/backoff applies, instead of only
+  special-casing `429`; (c) the GitHub App installation-token exchange is now
+  async (`httpx.AsyncClient`) under an `asyncio.Lock`, so it no longer blocks the
+  event loop ~hourly and a refresh storm dedupes to one upstream exchange.
+  Tests in `tests/test_gh_client.py` and `tests/test_start_dashboard_script.py`.
+- **2026-06-12 (2.5.108):** Single source of truth for fleet topology, runtime
+  config, and the identity store (issues #942, #943, #944). (#942) `/api/fleet/status`
+  no longer hardcodes `if PORT == 8322` to label itself ControlTower-NVMe and
+  probe a phantom ControlTower-HDD peer; it derives local-pool identity and the
+  sibling pools to probe from `machine_registry.yml` via a new
+  `fleet_autoconfig.derive_pool_topology`. Single-pool machines emit no phantom
+  peer node, and `_startup` now fails fast (`assert_no_maxwell_port_collision`)
+  when `MAXWELL_PORT` collides with a peer dashboard port in the registry.
+  (#943) `runners/service_control.py` and `routers/system.py` stopped
+  re-deriving `RUNNER_BASE_DIR`/`ORG`/runner limits/`HOSTNAME`/`RUNNER_ALIASES`
+  from `os.environ` and now read them live from `dashboard_config`, so a
+  `RUNNER_BASE_DIR` override drives both metrics scanning and the sudo-executed
+  svc.sh path; the four `_runner_limit` copies collapse to the single
+  `dashboard_config.runner_limit` (service_control re-exports a back-compat
+  alias). A new `tests/test_config_single_source.py` guard fails on re-derivation
+  or a second `runner_limit` definition. (#944) The identity store is anchored to
+  `XDG_CONFIG_HOME/runner-dashboard` (override `DASHBOARD_IDENTITY_DIR`) via
+  `identity.resolve_identity_dir` instead of a CWD-relative `Path("config")`, so
+  launching from any directory uses the same store; the resolved dir is logged at
+  startup; `config/principals.yml`/`tokens.yml` are untracked + gitignored and a
+  `config/principals.yml.example` ships instead. Tests in
+  `tests/test_fleet_autoconfig.py`, `tests/test_identity.py`,
+  `tests/test_config_single_source.py`, `tests/api/test_fleet_aggregator.py`,
+  and `tests/api/test_runner_service_control.py`.
+- **2026-06-12 (2.5.107):** Hardened the fleet-node SSRF guard against
+  DNS-suffix spoofing and rebinding (security, issue #931). `validate_fleet_node_url`
+  in `backend/security.py` previously accepted any host ending in
+  `.local`/`.internal`/`.ts.net` on suffix match alone, so a lookalike like
+  `evil.example.ts.net` — or a `.internal` name resolving to a public or
+  link-local IP — passed the guard. The suffix is now necessary but not
+  sufficient: when a name resolves, every resolved IP must fall inside an allowed
+  range (RFC 1918 private, loopback, or RFC 6598 CGNAT), with link-local
+  (169.254.0.0/16, fe80::/10) and all public addresses explicitly rejected. Names
+  that do not resolve are still accepted as config-time entries (a peer may be
+  offline). A new `resolve_and_validate_fleet_host` helper returns the single
+  validated IP an outbound caller should pin to, defeating DNS rebinding between
+  the URL check and the request.
+- **2026-06-12 (2.5.106):** Security/robustness hardening (issues #929, #930,
+  #939). (#929) `safe_subprocess_env` (`backend/security.py`) stripped only a
+  hand-maintained denylist, so any _new_ `*_TOKEN`/`*_SECRET` env var leaked to
+  every spawned subprocess by default; added a rot-proof suffix catch-all
+  (`*_SECRET`/`*_TOKEN`/`*_KEY`/`*_PASSWORD`/`*_PASSWD`/`*_CREDENTIALS`) on top of
+  the denylist (anchored at end-of-name, so `TOKEN_FILE_PATH` still passes
+  through). (#930) The session cookie was unconditionally `https_only=True` and
+  HSTS was always sent, but browsers drop Secure cookies on http:// origins — so
+  session auth silently never worked on the documented plain-HTTP-over-tailnet
+  deployment. Both are now gated on a new `DASHBOARD_TLS` flag
+  (`dashboard_config.TLS_ENABLED`): default HTTP mode issues a usable cookie and
+  sends no HSTS; TLS mode enforces Secure + HSTS. (#939) (a) `save_tokens`
+  (`backend/identity.py`) is now an atomic tempfile + `os.replace` write like
+  `save_principals`, so a crash mid-dump can't corrupt tokens.yml and lock
+  everyone out; (c) the `POST /_drain` loopback guard (`backend/server.py`) is now
+  an explicit `HTTPException(403)` instead of a bare `assert` (which `python -O`
+  compiles out, letting any peer drain the server); (d) the subprocess timeout
+  paths in `system_utils.run_cmd` and `queue_cleanup` now kill processes, await
+  `wait()`, and tolerate `ProcessLookupError`, preventing zombie/transport leaks.
+  Tests in `tests/test_security.py`, `tests/test_middleware.py`,
+  `tests/test_identity.py`, `tests/api/test_drain_mode.py`, and
+  `tests/test_system_utils.py`.
+- **2026-06-12 (2.5.104):** server.py god-module duplicate sweep (architecture,
+  issue #941). Removed two body-identical twins from the ~2.3k-line wiring
+  module: the `POST /api/launchers/generate` route handler (a shadowed dead copy
+  of `routers/diagnostics.py`'s — FastAPI served the router's, never server.py's)
+  and the unused `_normalize_repository_input` helper (a copy of the ones in
+  `routers/assistant.py`/`routers/remediation.py` that server.py never called).
+  Extended `tests/test_no_duplicate_top_level_functions.py` from legacy/App.tsx
+  to all of `backend/**/*.py`: a new guard fails if server.py defines any function
+  body-identical to another backend module, plus a backend-wide "no new
+  body-identical duplicate" ratchet (pre-existing legitimate idioms allow-listed).
+  Pruned the now-resolved launchers entry from the #941 route-uniqueness allowlist
+  and corrected the CLAUDE.md architecture block (server.py size ~2.3k not ~6800;
+  requirements.txt lives at the repo root, not `backend/`).
+- **2026-06-12 (2.5.101):** Autoscaler correctness/robustness cluster (issues
+  #932, #935, #936, #937). (#932) The autoscaler read leases from a repo-relative
+  `config/leases.yml` that nothing ever wrote, so lease protection was a permanent
+  no-op and actively-leased runners could be stopped; `_leased_runners`
+  (`backend/autoscaler_sampling.py`) now resolves the path through
+  `runner_lease._default_config_dir()` — the same `RUNNER_DASHBOARD_CONFIG_DIR`
+  store the `LeaseManager` writer uses — so reader and writer can never drift.
+  (#935) `_stop_unit`/`_start_unit` (`backend/autoscaler_systemd.py`) issued a
+  blocking `systemctl stop`; a legitimate >=120s drain starved the systemd
+  watchdog (WatchdogSec=120) and SIGABRTed the autoscaler mid-scale-down. Both now
+  use `--no-block` plus an explicit client-call timeout and re-read unit state the
+  next tick. (#936) `prune_expired` (`backend/runner_lease.py`) wrote a stale
+  in-memory snapshot via an unlocked `save_leases` on every reaper tick, clobbering
+  leases acquired by another process since the last load, and a crash mid-write
+  reset the file to `[]`; pruning now goes through the locked
+  `_atomic_read_modify_write` (re-read under exclusive lock) and all writes use
+  temp-file + `os.replace` for crash-safety. (#937) Five autoscaler defects fixed:
+  busy-query timeout no longer aborts the tick (fail-safe busy), exact lease-name
+  match (not substring), one malformed lease record is skipped not fatal, the
+  label-less default pool is exempt from start/stop label filters, and
+  `ACTION_COOLDOWN_SECONDS` is enforced on the stop side. Tests across
+  `tests/test_autoscaler_sampling.py`, `tests/test_runner_lease.py`,
+  `tests/api/test_lease_pruning.py`, `tests/test_autoscaler_systemd.py`,
+  `tests/test_autoscaler_busy.py`, and `tests/test_pool_autoscaler.py`.
+- **2026-06-12 (2.5.99):** RD↔MD integration contract cluster (issues #959, #961,
+  #963). (#959) `MAXWELL_PORT` defaulted to 8322 — a port that appears nowhere in
+  Maxwell_Daemon (which serves on 8080) and that collided with the
+  ControlTower-SSD pool's own `dashboard_url:8322` in `machine_registry.yml`, so a
+  default deploy probed a second dashboard and misreported it as Maxwell. The
+  default is now 8080 (the daemon's real port). A new `MAXWELL_EXPLICITLY_CONFIGURED`
+  flag is surfaced on `GET /api/maxwell/status` as `configured` so the tab can show
+  "configuration needed" instead of an opaque connection error when neither
+  `MAXWELL_URL` nor `MAXWELL_PORT` is set. (#961) The task contract was mis-keyed
+  and full of phantom fields: `MaxwellTaskListResponse` used `cursor` where MD emits
+  `next_cursor`, and `MaxwellTaskItem`/`MaxwellTaskDetailResponse` modelled
+  `updated_at`/`type`/`priority`/`tags`/`error`/`result_summary`, none of which MD's
+  `TaskSummary`/`TaskDetail` produce. Models now mirror MD's real shapes
+  (`{id, status, created_at}` + `transcript`/`artifacts` on detail), with `id`/`status`
+  required so a defaulted task row is impossible. (#963) Maxwell lifecycle control
+  (`POST /api/maxwell/control`) shelled out to `systemctl` unconditionally — a silent
+  no-op on Windows/WSL hosts without systemd. It now returns HTTP 501 with an
+  actionable message there, `GET /api/maxwell/status` reports `lifecycle_supported`,
+  and the canonical `Maxwell_Daemon` repo slug replaces the broken `Maxwell-Daemon`
+  links in `CLAUDE.md` and `docs/contracts/maxwell.md`. New tests in
+  `tests/test_maxwell_contract.py` (incl. a #960 consumer-driven contract guard that
+  fails loud on a simulated MD field rename) and `tests/test_maxwell_proxy.py`.
+- **2026-06-12 (2.5.97):** Normalized the Maxwell backends contract for the
+  daemon's current `/api/v1/backends` shape (integration, issue #954).
+  Maxwell-Daemon returns a bare `list[str]` of provider names, while the
+  dashboard proxy expected backend objects and turned the real response into a
+  validation-backed HTTP 500. `MaxwellBackendsResponse` now accepts daemon string
+  entries and converts them into the existing dashboard backend item shape
+  (`name`, `type="unknown"`, `enabled=true`, optional `model`/`status`) before
+  serialization. Contract docs and proxy/model regressions cover the real daemon
+  list shape.
+  > > > > > > > origin/main
 - **2026-06-12 (2.5.96):** Hardened three dispatch/credential security defects
   (security, issues #925, #926, #927). (1) `verify_approval_hmac`
   (`backend/dispatch/signing.py`) returned `True` for any confirmation lacking an
@@ -1652,11 +2158,12 @@ inline style objects.
 
 ### Maxwell
 
-| Method | Path                   | Description                                                                                                                                                                                                                                                                                                                                                                        |
-| ------ | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/api/maxwell/status`  | Maxwell daemon status and configuration                                                                                                                                                                                                                                                                                                                                            |
-| POST   | `/api/maxwell/control` | Control Maxwell daemon (start/stop/configure)                                                                                                                                                                                                                                                                                                                                      |
-| POST   | `/api/maxwell/chat`    | Proxy Maxwell chat messages over HTTP with streamed text output. Accepts optional `repo`/`repo_root` fields (issue #838) that scope a codebase Q&A session; they are forwarded to Maxwell-Daemon, which jails its agentic codebase tools to that root. If the daemon lacks codebase support (Maxwell_Daemon#948) it returns 501, which the proxy degrades into a readable message. |
+| Method | Path                    | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ------ | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/maxwell/status`   | Maxwell daemon status and configuration                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| POST   | `/api/maxwell/control`  | Control Maxwell daemon (start/stop/configure)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| POST   | `/api/maxwell/dispatch` | Dispatch an agent task to Maxwell-Daemon. Proxies to MD's confirmation-gated, idempotent `POST /api/dispatch` (issue #953) — the endpoint that actually enforces `hmac.compare_digest` on `confirmation_token` and keys idempotency on `idempotency_key`. Sends the exact `DispatchRequest` contract body (`confirmation_token`, `prompt`, `repo`, `idempotency_key`); the caller must supply `confirmation_token` and `prompt`. A daemon-side confirmation rejection surfaces as 403 and an idempotency conflict as 409, rather than being masked as a success. Replaces the prior target `POST /api/v1/tasks`, which silently dropped both fields.                                                                                               |
+| POST   | `/api/maxwell/chat`     | Proxy Maxwell chat messages to MD's request/response `POST /api/chat` (codebase-scoped requests route to `POST /api/chat/codebase`). Multi-turn context is carried in MD's `messages[]` (translated from the UI's history; issue #957) — MD now rejects the legacy `history`/`stream` fields. The proxy parses the JSON `ChatResponse` and emits its `content` as a `text/plain` body (the UI previously rendered the raw JSON). Accepts optional `repo`/`repo_root` fields (issue #838) that scope a codebase Q&A session; they are forwarded to Maxwell-Daemon, which jails its agentic codebase tools to that root. If the daemon lacks codebase support (Maxwell_Daemon#948) it returns 501, which the proxy degrades into a readable message. |
 
 ### Assessments
 
@@ -2081,6 +2588,22 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 ---
 
 ## 7. Changelog
+
+### 2.5.166 - 2026-06-20
+
+- fix(system): host `powershell.exe` spec probes run with
+  `-WindowStyle Hidden -NonInteractive` so the WSL->Windows machine-spec sync no
+  longer pops visible console windows on the operator desktop (#1056).
+
+### 2.5.163 - 2026-06-17
+
+- fix(config): `_read_repo_version()` no longer crashes the dashboard at import
+  when `REPO_ROOT/VERSION` is missing. `REPO_ROOT` is operator-overridable via
+  `RUNNER_DASHBOARD_REPO_ROOT` and on some deploys points at a sibling repo
+  (e.g. `Repository_Management`) with no `VERSION` file; the reader now falls
+  back to the deployed backend's own `BACKEND_DIR.parent/VERSION` and finally to
+  `"0.0.0"` when neither file exists. A `VERSION` file that exists but is
+  malformed still raises, so a genuinely bad version is never silently accepted.
 
 ### 2.5.26 - 2026-05-21
 

@@ -16,6 +16,7 @@ from dashboard_config import (
     DISK_MIN_FREE_GB,
     DISK_WARN_PERCENT,
     RUNNER_BASE_DIR,
+    runner_limit,
 )
 from fastapi import APIRouter
 from security import safe_subprocess_env
@@ -230,16 +231,9 @@ def get_gpu_info() -> dict:
         return {}
 
 
-def _runner_limit() -> int:
-    """Return the hard runner capacity this dashboard is allowed to manage."""
-    from dashboard_config import MAX_RUNNERS, NUM_RUNNERS
-
-    return max(NUM_RUNNERS, MAX_RUNNERS)
-
-
 def get_per_runner_resources() -> list[dict]:
     """Get CPU and memory usage for each runner's worker processes."""
-    limit = _runner_limit()
+    limit = runner_limit()
     runner_procs: list[dict[str, Any]] = [
         {
             "runner_num": i,
@@ -312,7 +306,7 @@ async def get_system_metrics() -> dict[str, Any]:
     from system_utils import get_system_metrics_snapshot
 
     return await get_system_metrics_snapshot(
-        runner_limit=_runner_limit(),
+        runner_limit=runner_limit(),
         boot_time=_boot_time,
         host_memory_gb=_host_memory_gb,
         get_runner_capacity_snapshot=_get_runner_capacity_snapshot,

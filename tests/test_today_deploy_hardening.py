@@ -157,6 +157,14 @@ def test_job_started_hook_writes_metadata_lockfile() -> None:
         assert key in src, f"job-started lockfile must include {key}"
 
 
+def test_job_started_hook_keeps_worktree_lock_scan_bounded_and_opt_in() -> None:
+    """Per-job hooks must not scan every runner worktree by default."""
+    src = _read(_DEPLOY / "runner-hooks" / "job-started.sh")
+    assert "RUNNER_HOOK_ENABLE_WORKTREE_LOCK_CLEANUP:-0" in src
+    assert "RUNNER_HOOK_LOCK_CLEANUP_TIMEOUT_SECONDS:-10" in src
+    assert 'timeout "${RUNNER_HOOK_LOCK_CLEANUP_TIMEOUT_SECONDS:-10}s" find' in src
+
+
 def test_job_completed_hook_removes_the_lockfile() -> None:
     src = _read(_DEPLOY / "runner-hooks" / "job-completed.sh")
     assert "rm -f " in src and "$LOCK_FILE" in src

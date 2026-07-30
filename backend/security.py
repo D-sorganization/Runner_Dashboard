@@ -64,15 +64,34 @@ _DENIED_SUBPROCESS_ENV_KEYS = frozenset(
 
 _DENIED_SUBPROCESS_ENV_PREFIXES = ("AWS_", "AZURE_")
 
+# Issue #929: a hand-maintained denylist rots — any *new* secret-bearing env var
+# (a future ``*_TOKEN``/``*_SECRET`` nobody remembered to enumerate) would leak
+# to every spawned subprocess by default. Strip anything whose name ends in a
+# secret-shaped suffix as a catch-all on top of the explicit denylist. The suffix
+# set is deliberately conservative; ``PUBLIC_KEY`` still ends in ``_KEY`` and is
+# stripped — that is the safe direction (a subprocess that genuinely needs a
+# value should be passed it explicitly, not via inherited ambient env).
+_DENIED_SUBPROCESS_ENV_SUFFIXES = ("_SECRET", "_TOKEN", "_KEY", "_PASSWORD", "_PASSWD", "_CREDENTIALS")
+
+
+def _is_secret_env_key(key: str) -> bool:
+    """Return True when *key* names a secret-bearing env var that must not leak."""
+    upper = key.upper()
+    if upper in _DENIED_SUBPROCESS_ENV_KEYS:
+        return True
+    if upper.startswith(_DENIED_SUBPROCESS_ENV_PREFIXES):
+        return True
+    return upper.endswith(_DENIED_SUBPROCESS_ENV_SUFFIXES)
+
 
 def safe_subprocess_env() -> dict[str, str]:
-    """Return os.environ with known secret-bearing keys stripped for subprocess calls."""
-    return {
-        key: value
-        for key, value in os.environ.items()
-        if key.upper() not in _DENIED_SUBPROCESS_ENV_KEYS
-        and not key.upper().startswith(_DENIED_SUBPROCESS_ENV_PREFIXES)
-    }
+    """Return os.environ with secret-bearing keys stripped for subprocess calls.
+
+    Strips the explicit denylist, the cloud-provider prefixes, and — as a
+    rot-proof catch-all (#929) — any key ending in a secret-shaped suffix
+    (``*_SECRET``/``*_TOKEN``/``*_KEY``/``*_PASSWORD``/…).
+    """
+    return {key: value for key, value in os.environ.items() if not _is_secret_env_key(key)}
 
 
 # ─── URL Validation ────────────────────────────────────────────────────────────
@@ -89,19 +108,67 @@ def safe_subprocess_env() -> dict[str, str]:
 # the local host. See #668 follow-up for the diagnostic surface.
 _TAILSCALE_CGNAT_NET = ipaddress.ip_network("100.64.0.0/10")
 
+# Hostname suffixes permitted for fleet peers. Suffix membership is necessary
+# but NOT sufficient (#931): a name like ``evil.example.ts.net`` ending in an
+# allowed suffix is only accepted if it ALSO resolves entirely into an allowed
+# IP range. This closes the suffix-spoofing + public-IP-lookalike hole.
+_ALLOWED_FLEET_HOST_SUFFIXES = (".local", ".internal", ".ts.net")
+
+
+def _ip_is_allowed_fleet_target(addr: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """Return True iff ``addr`` is a private/loopback/CGNAT fleet target.
+
+    Explicitly EXCLUDES link-local (169.254.0.0/16, fe80::/10) and every public
+    address: a ``.internal``/``.ts.net`` name that resolves to a link-local or
+    public IP must be rejected, not accepted on the strength of its suffix (#931).
+    ``ipaddress``' ``is_private`` already excludes link-local for IPv4 but the
+    explicit guard documents intent and covers the IPv6 case uniformly.
+    """
+    if addr.is_link_local:
+        return False
+    if addr.is_loopback:
+        return True
+    if addr.is_private:
+        return True
+    return isinstance(addr, ipaddress.IPv4Address) and addr in _TAILSCALE_CGNAT_NET
+
+
+def _resolve_host_ips(host: str) -> list[ipaddress.IPv4Address | ipaddress.IPv6Address]:
+    """Resolve ``host`` to its IP addresses (DNS A/AAAA), or ``[]`` on failure.
+
+    Isolated for test seams: a rebinding/lookalike test patches this to control
+    what a hostname resolves to.
+    """
+    import contextlib  # noqa: PLC0415
+    import socket  # noqa: PLC0415
+
+    try:
+        infos = socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)
+    except (socket.gaierror, OSError):
+        return []
+    out: list[ipaddress.IPv4Address | ipaddress.IPv6Address] = []
+    for info in infos:
+        sockaddr = info[4]
+        with contextlib.suppress(ValueError):
+            out.append(ipaddress.ip_address(sockaddr[0]))
+    return out
+
 
 def validate_fleet_node_url(url: str) -> str:
-    """Validate a fleet node URL to prevent SSRF (issue #28).
+    """Validate a fleet node URL to prevent SSRF (issues #28, #931).
 
     Allowed address ranges:
       - RFC 1918 private (10/8, 172.16/12, 192.168/16)
       - Loopback (127/8)
       - RFC 6598 CGNAT (100.64.0.0/10) — Tailscale + carrier-grade NAT
-    Allowed hostnames:
-      - localhost
-      - *.local
-      - *.internal
-      - *.ts.net (Tailscale MagicDNS — full FQDNs for federation peers)
+
+    Allowed hostnames (``localhost`` plus the ``.local``/``.internal``/``.ts.net``
+    suffixes) are accepted only when DNS resolution proves they map ENTIRELY into
+    the allowed ranges above (#931). A suffix-matching name that resolves to a
+    public or link-local IP — the DNS-rebinding / lookalike vector — is rejected.
+    Names that fail to resolve at validation time are still accepted as
+    config-time entries (a peer may be offline); connect-time pinning via
+    :func:`resolve_and_validate_fleet_host` guards the actual outbound request.
     """
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https"):
@@ -109,21 +176,49 @@ def validate_fleet_node_url(url: str) -> str:
     host = parsed.hostname or ""
     try:
         addr = ipaddress.ip_address(host)
-        if addr.is_private or addr.is_loopback:
-            return url
-        if isinstance(addr, ipaddress.IPv4Address) and addr in _TAILSCALE_CGNAT_NET:
-            return url
+    except ValueError:
+        # Not a literal IP — must be an allowed hostname.
+        if host != "localhost" and not host.endswith(_ALLOWED_FLEET_HOST_SUFFIXES):
+            raise ValueError(f"Fleet node hostname not allowed: {host}") from None
+        # Suffix is necessary but not sufficient: if the name resolves, EVERY
+        # resolved IP must land in an allowed range (#931). ``localhost`` is
+        # trusted without resolution (it is loopback by definition).
+        if host != "localhost":
+            resolved = _resolve_host_ips(host)
+            if resolved and not all(_ip_is_allowed_fleet_target(ip) for ip in resolved):
+                raise ValueError(f"Fleet node hostname {host} resolves outside allowed private/CGNAT ranges") from None
+        return url
+    # Literal IP address.
+    if not _ip_is_allowed_fleet_target(addr):
         raise ValueError(f"Fleet node URL must be a private/local address: {url}")
-    except ValueError as exc:
-        # If it's not an IP address check it's a hostname we trust
-        if "must be" in str(exc):
-            raise
-        # hostname – allow localhost, .local, .internal, .ts.net (Tailscale MagicDNS)
-        if not (
-            host == "localhost" or host.endswith(".local") or host.endswith(".internal") or host.endswith(".ts.net")
-        ):
-            raise ValueError(f"Fleet node hostname not allowed: {host}") from exc
     return url
+
+
+def resolve_and_validate_fleet_host(host: str) -> str:
+    """Resolve ``host`` and return the single pinned IP to connect to (#931).
+
+    Defeats DNS rebinding between the URL check and the outbound request: the
+    caller connects to the returned literal IP (e.g. via httpx ``Host`` header +
+    IP URL, or a transport that pins it) rather than re-resolving the name, so a
+    name that validated as private cannot be swapped for a public IP mid-flight.
+
+    Raises ``ValueError`` if the host does not resolve or any resolved IP is
+    outside the allowed ranges. A literal IP is validated and returned as-is.
+    """
+    try:
+        addr = ipaddress.ip_address(host)
+        if not _ip_is_allowed_fleet_target(addr):
+            raise ValueError(f"host {host} is not an allowed fleet target")
+        return str(addr)
+    except ValueError as exc:
+        if "not an allowed" in str(exc):
+            raise
+    resolved = _resolve_host_ips(host)
+    if not resolved:
+        raise ValueError(f"fleet host {host} did not resolve")
+    if not all(_ip_is_allowed_fleet_target(ip) for ip in resolved):
+        raise ValueError(f"fleet host {host} resolves outside allowed ranges")
+    return str(resolved[0])
 
 
 def validate_local_url(url: str, field: str = "url") -> str:

@@ -11,11 +11,51 @@
  * 6. Refresh button invokes onRefresh.
  */
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen, fireEvent } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  render,
+  screen,
+  fireEvent,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import RunnerAudit from "../RunnerAudit";
+import RunnerAudit, { RunnerAuditPage } from "../RunnerAudit";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
+
+function jsonResponse(body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function headersOf(init: RequestInit): Record<string, string> {
+  const headers = init.headers;
+  if (headers instanceof Headers) {
+    const out: Record<string, string> = {};
+    headers.forEach((value, key) => {
+      out[key.toLowerCase()] = value;
+    });
+    return out;
+  }
+  return Object.fromEntries(
+    Object.entries((headers ?? {}) as Record<string, string>).map(
+      ([key, value]) => [key.toLowerCase(), value],
+    ),
+  );
+}
+
+async function flushAsyncWork(): Promise<void> {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
 
 describe("RunnerAudit", () => {
   it("renders without throwing (smoke test)", () => {
@@ -124,5 +164,74 @@ describe("RunnerAudit", () => {
       "data-touch-primitive",
       "TouchButton",
     );
+  });
+
+  it("loads audit data from the current runner-routing endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      jsonResponse({
+        last_checked: "2026-06-15T00:00:00Z",
+        violations: [
+          {
+            repo: "D-sorganization/Runner_Dashboard",
+            workflow: "ci.yml",
+            job_name: "tests",
+            runner_name: "ubuntu-latest",
+          },
+        ],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<RunnerAuditPage />);
+
+    expect(
+      await screen.findByText("D-sorganization/Runner_Dashboard"),
+    ).toBeInTheDocument();
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/runner-routing-audit");
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+    expect(headersOf(init)["x-requested-with"]).toBe("XMLHttpRequest");
+  });
+
+  it("refreshes through the runner-routing refresh endpoint", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({ violations: [], last_checked: null, error: null }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ accepted: true }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          last_checked: "2026-06-15T00:00:00Z",
+          violations: [{ repo: "D-sorganization/Tools" }],
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<RunnerAuditPage />);
+    await flushAsyncWork();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Refresh runner audit now/i }),
+    );
+    await flushAsyncWork();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const [refreshUrl, refreshInit] = fetchMock.mock.calls[1] as [
+      string,
+      RequestInit,
+    ];
+    expect(refreshUrl).toBe("/api/runner-routing-audit/refresh");
+    expect(refreshInit.method).toBe("POST");
+    expect(headersOf(refreshInit)["x-requested-with"]).toBe("XMLHttpRequest");
+
+    await act(async () => {
+      vi.advanceTimersByTime(3000);
+    });
+    await flushAsyncWork();
+
+    expect(screen.getByText("D-sorganization/Tools")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 });

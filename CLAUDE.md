@@ -9,24 +9,25 @@ canonical contract lives in
 [`Repository_Management/docs/sibling-repos.md`](https://github.com/D-sorganization/Repository_Management/blob/main/docs/sibling-repos.md).
 Read it before adding any cross-repo surface.
 
-| Repo                      | Role                                                   |
-| ------------------------- | ------------------------------------------------------ |
-| [`Repository_Management`](https://github.com/D-sorganization/Repository_Management) | Fleet orchestrator (workflows, skills, templates, agent coordination). |
-| `runner-dashboard` (here) | Operator console — backend, frontend, deploy, every dashboard tab and `/api/*` endpoint. |
-| [`Maxwell-Daemon`](https://github.com/D-sorganization/Maxwell-Daemon) | Autonomous local AI control plane consumed by the Maxwell tab over HTTP. |
+| Repo                                                                                | Role                                                                                     |
+| ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| [`Repository_Management`](https://github.com/D-sorganization/Repository_Management) | Fleet orchestrator (workflows, skills, templates, agent coordination).                   |
+| `runner-dashboard` (here)                                                           | Operator console — backend, frontend, deploy, every dashboard tab and `/api/*` endpoint. |
+| [`Maxwell_Daemon`](https://github.com/D-sorganization/Maxwell_Daemon)               | Autonomous local AI control plane consumed by the Maxwell tab over HTTP.                 |
 
 **Owned here:** every dashboard tab (Fleet, Org, Heavy, Workflows,
 Remediation, Maxwell, Assessments, Feature Requests, Credentials, Reports,
 Queue Health), every `/api/*` endpoint, dispatch envelope/contract, deployment
-+ rollout machinery, the frontend bundle, stale-queue cleanup, dashboard-only
-docs.
+
+- rollout machinery, the frontend bundle, stale-queue cleanup, dashboard-only
+  docs.
 
 **Not owned here:** fleet-wide CI workflows (live in `Repository_Management`),
 agent claim/lease protocol (lives in `Repository_Management`), the Maxwell AI
-pipeline (lives in `Maxwell-Daemon`). The dashboard never imports from a
+pipeline (lives in `Maxwell_Daemon`). The dashboard never imports from a
 sibling repo at runtime — all cross-repo traffic is HTTP.
 
-**Routing rule:** issues about the Maxwell pipeline → `Maxwell-Daemon`;
+**Routing rule:** issues about the Maxwell pipeline → `Maxwell_Daemon`;
 issues about fleet workflows / templates / skills → `Repository_Management`;
 everything else dashboard-shaped → here.
 
@@ -100,7 +101,8 @@ from `frontend/src/` and served as static assets by the backend.
 ```
 runner-dashboard/
 ├── backend/            FastAPI server (Python 3.11+)
-│   ├── server.py           Main application (~6800 lines, all /api/* routes)
+│   ├── server.py           App wiring + remaining /api/* routes (~2.3k lines; most routes live in routers/)
+│   ├── routers/            Extracted FastAPI routers (fleet, queue, maxwell, diagnostics, …)
 │   ├── queue_cleanup.py        Stale-queue detection and bulk cancellation
 │   │                           (async helpers for /api/queue/stale and /api/queue/purge-stale)
 │   ├── agent_remediation.py    AI agent dispatch and remediation logic
@@ -117,8 +119,8 @@ runner-dashboard/
 │   ├── autoscaler_config.py    Autoscaler env helpers and threshold constants
 │   ├── autoscaler_systemd.py   Autoscaler systemd unit enumeration and control
 │   ├── autoscaler_busy.py      Autoscaler 4-strategy busy detection (issue #651)
-│   ├── autoscaler_sampling.py  Autoscaler resource sampling and scheduler
-│   └── requirements.txt        Python dependencies
+│   └── autoscaler_sampling.py  Autoscaler resource sampling and scheduler
+│                               (Python deps live in repo-root requirements.txt, not backend/)
 ├── frontend/           Vite-built React + TypeScript SPA
 │   ├── index.html          Vite entry HTML (~30 lines, mounts /src/main.tsx)
 │   ├── src/                TypeScript + TSX source tree
@@ -171,10 +173,10 @@ runner-dashboard/
 # Stop
 ./stop-dashboard.sh
 
-# Manual start
-cd backend
+# Manual start (requirements.txt lives at the repo root, not in backend/)
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
+cd backend
 python server.py
 ```
 
@@ -237,6 +239,7 @@ change without a SPEC.md update, the check fails. Apply `spec-exempt` label
 to bypass.
 
 Agent workflows:
+
 - **Jules Control Tower** — orchestrates CI remediation and weekly maintenance
 - **Jules PR AutoFix** — iteratively fixes CI failures by pushing to PR branches
 - **Jules Auto-Repair** — worker called by Control Tower for complex repairs
@@ -299,7 +302,7 @@ Every PR must demonstrably preserve all of these. They are checked at review:
   blocks or pydantic models at every boundary; mandatory on dispatch envelopes
   and any `POST` route. See `backend/dispatch_contract.py` for the pattern.
 - **DRY** — if a helper would benefit `Repository_Management` or
-  `Maxwell-Daemon`, lift it to `Repository_Management/shared_scripts/` and
+  `Maxwell_Daemon`, lift it to `Repository_Management/shared_scripts/` and
   consume from there. Do not fork.
 - **LoD (Law of Demeter)** — handlers receive flat, typed payloads. No
   reaching through nested objects across module boundaries.

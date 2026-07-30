@@ -24,7 +24,8 @@ def test_validate_repo_slug_rejects_path_and_query_injection(repo: str) -> None:
 @pytest.mark.parametrize(
     "normalizer",
     [
-        server._normalize_repository_input,
+        # server._normalize_repository_input was removed in #941 (unused twin);
+        # the helper now lives only in the two router modules that call it.
         assistant._normalize_repository_input,
         remediation._normalize_repository_input,
     ],

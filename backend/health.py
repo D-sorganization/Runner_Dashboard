@@ -28,6 +28,7 @@ from cache_utils import cache_size
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from prometheus_metrics import record_dashboard_health
+from proxy_utils import hub_in_cooldown
 from readiness import aggregate, get_default_probes
 
 router = APIRouter(tags=["health"])
@@ -134,6 +135,7 @@ async def _health_impl() -> dict:
     status = "healthy" if gh_ok else "degraded"
     duration_s = time.perf_counter() - start
     record_dashboard_health(status, github_api, duration_s)
+    hub_circuit_open = hub_in_cooldown()
 
     return {
         "status": status,
@@ -144,6 +146,7 @@ async def _health_impl() -> dict:
         "github_auth_source": github_auth.get("auth_source", "unknown"),
         "github_auth_status": github_auth.get("status", "unknown"),
         "github_check_seconds": round(duration_s, 3),
+        "hub_circuit_open": hub_circuit_open,
         "runners_registered": runner_count,
         "dashboard_uptime_seconds": int(time.time() - BOOT_TIME),
         "deployment": _deployment_info(),

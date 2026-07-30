@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Loopback principals can use runner service-control logging paths without
+  raising `Principal.user_id` attribute errors.
+- Package and OpenAPI release metadata now match the deployed `4.9.19`
+  dashboard version.
+- WSL keepalive parser smoke coverage now writes its probe log/state artifacts
+  under pytest `tmp_path` instead of the repository root, so the test no longer
+  leaves `.test-wsl-keepalive-junk/` worktree debris behind.
+
+## [4.9.19] - 2026-06-20
+
+### Fixed
+
+- Aligned release metadata with the canonical `VERSION` file.
+
+## [4.9.18] - 2026-06-17
+
+### Fixed
+
+- `_read_repo_version()` no longer crashes the dashboard at import when
+  `REPO_ROOT/VERSION` is missing. `REPO_ROOT` is operator-overridable via
+  `RUNNER_DASHBOARD_REPO_ROOT` and on some deploys points at a sibling repo
+  (e.g. `Repository_Management`) that has no `VERSION` file. The reader now
+  falls back to the deployed backend's own `BACKEND_DIR.parent/VERSION` and
+  finally to `"0.0.0"` when neither file exists. A `VERSION` file that exists
+  but is malformed still raises, so a genuinely bad version is never silently
+  accepted.
+
+## [4.9.17] - 2026-06-15
+
+### Changed
+
+- Moved deployment/orchestration router helper wiring to typed FastAPI
+  app-state dependency objects for #949, removing module-global optional
+  callables from that backend slice.
+
+## [4.9.16] - 2026-06-14
+
+### Fixed
+
+- Aligned the dashboard's release metadata with the canonical `VERSION` file:
+  backend runtime version, Python package metadata, frontend package metadata,
+  lockfiles, and `SPEC.md` now track `4.9.16` under a regression test.
+
 ### Added
 
 - Queue reaper unroutable-job detection (`backend/queue_cleanup.py`): a new

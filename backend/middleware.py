@@ -109,6 +109,26 @@ _AUTH_EXEMPT_PATHS = {
     "/",
     "/health",
     "/api/health",
+    # Read-only fleet telemetry consumed hub→node over the Tailscale mesh. The
+    # hub's fleet fan-out (`routers.fleet.fetch_node` → GET `/api/system`, and
+    # peer-pool GET `/api/fleet/status`) presents no operator principal, and the
+    # fleet model already treats these as tailnet-public reads (see
+    # `require_fleet_peer` (#922): "fleet reads remain tailnet-public" when no
+    # HUB_FLEET_TOKEN is set). The #924 structural perimeter over-blocked them,
+    # 401-ing every >=4.9 node so the hub marked the whole fleet offline. These
+    # are GET-only system metrics on a private tailnet; `/api/fleet/status` also
+    # keeps its own `require_fleet_peer` route dependency.
+    "/api/system",
+    "/api/fleet/status",
+    # GET-only org runner inventory, same telemetry class as `/api/system` /
+    # `/api/fleet/status` above. The fleet-health monitor on the hub polls each
+    # node's `GET /api/runners` over the tailnet (no operator principal) to read
+    # online/busy counts and drive keepalive auto-recovery; the #924 perimeter
+    # 401-ed it, so `ct_runners_online` went null and self-healing silently died.
+    # Exact-match only — mutating `/api/runners/{id}/start|stop|restart` and the
+    # `/api/runners/...` diagnostics POSTs are distinct paths and stay perimeter-
+    # protected (they carry their own `require_scope` deps besides).
+    "/api/runners",
     "/manifest.webmanifest",
     "/icon.svg",
     "/api/auth/github",
@@ -350,8 +370,13 @@ async def add_security_headers(request: Request, call_next: Any) -> Any:
         "frame-ancestors 'none';"
     )
     # HSTS: instruct browsers to use HTTPS for 1 year; include subdomains
-    # (issue #324).
-    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    # (issue #324). Only sent in TLS mode (issue #930): sending HSTS on the
+    # documented plain-HTTP-over-tailnet deployment would wedge browsers into
+    # HTTPS-only for a year against a server that does not speak TLS.
+    from dashboard_config import TLS_ENABLED  # noqa: PLC0415
+
+    if TLS_ENABLED:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     # Permissions-Policy: microphone allowed on self for VoiceInputButton.
     response.headers["Permissions-Policy"] = (
         "camera=(), microphone=(self), geolocation=(), payment=(), usb=(), interest-cohort=()"

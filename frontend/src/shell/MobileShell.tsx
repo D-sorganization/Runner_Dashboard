@@ -29,7 +29,7 @@ import {
 export type TabId = string
 
 export interface MobileShellProps {
-  children: ReactNode
+  children?: ReactNode
   currentTab: TabId
   onTabChange: (tab: TabId) => void
   tabContent?: Record<TabId, ReactNode>
@@ -174,15 +174,7 @@ export function MobileShell({ children, currentTab, onTabChange, tabContent }: M
       </header>
       {/* Main content area — native mobile component takes precedence when provided */}
       <main id="main-content" className="mobile-shell__content" role="main" tabIndex={-1}>
-        {nativeContent != null ? (
-          <>
-            {/* Keep legacy App mounted but hidden so it keeps its internal state */}
-            <div style={{ display: 'none' }} aria-hidden="true">{children}</div>
-            {nativeContent}
-          </>
-        ) : (
-          children
-        )}
+        {nativeContent ?? children}
       </main>
       <div className="visually-hidden" aria-live="polite" aria-atomic="true">
         {drawerAnnouncement}

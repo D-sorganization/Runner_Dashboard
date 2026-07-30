@@ -136,6 +136,87 @@ def test_validate_fleet_node_url_no_scheme() -> None:
         security.validate_fleet_node_url("localhost:8080")
 
 
+# ── #931: DNS-resolution guard + IP pinning (SSRF hardening) ─────────────────
+
+
+def _patch_resolver(monkeypatch, mapping: dict[str, list[str]]) -> None:
+    """Patch security._resolve_host_ips to return mapped IPs for a hostname."""
+    import ipaddress as _ip  # noqa: PLC0415
+
+    def _fake(host: str):  # noqa: ANN202
+        return [_ip.ip_address(a) for a in mapping.get(host, [])]
+
+    monkeypatch.setattr(security, "_resolve_host_ips", _fake)
+
+
+def test_fleet_url_tsnet_resolving_to_public_ip_rejected(monkeypatch) -> None:
+    """#931: a .ts.net suffix name that resolves to a PUBLIC IP is rejected —
+    suffix matching alone is not sufficient."""
+    _patch_resolver(monkeypatch, {"evil.example.ts.net": ["8.8.8.8"]})
+    with pytest.raises(ValueError, match="outside allowed"):
+        security.validate_fleet_node_url("https://evil.example.ts.net")
+
+
+def test_fleet_url_internal_resolving_to_public_ip_rejected(monkeypatch) -> None:
+    """#931: an .internal name resolving to a public IP must be rejected."""
+    _patch_resolver(monkeypatch, {"lookalike.internal": ["93.184.216.34"]})
+    with pytest.raises(ValueError, match="outside allowed"):
+        security.validate_fleet_node_url("http://lookalike.internal:8321")
+
+
+def test_fleet_url_internal_resolving_to_link_local_rejected(monkeypatch) -> None:
+    """#931: link-local (169.254/16) is not a valid fleet target."""
+    _patch_resolver(monkeypatch, {"rebind.internal": ["169.254.1.1"]})
+    with pytest.raises(ValueError, match="outside allowed"):
+        security.validate_fleet_node_url("http://rebind.internal:8321")
+
+
+def test_fleet_url_tsnet_resolving_to_cgnat_accepted(monkeypatch) -> None:
+    """#931: a .ts.net name resolving into the Tailscale CGNAT range is allowed."""
+    _patch_resolver(monkeypatch, {"peer.tail-scale.ts.net": ["100.101.102.103"]})
+    assert security.validate_fleet_node_url("https://peer.tail-scale.ts.net") == "https://peer.tail-scale.ts.net"
+
+
+def test_fleet_url_internal_resolving_to_private_accepted(monkeypatch) -> None:
+    """#931: an .internal name resolving to RFC-1918 space is allowed."""
+    _patch_resolver(monkeypatch, {"node.internal": ["10.0.0.5"]})
+    assert security.validate_fleet_node_url("http://node.internal:8321") == "http://node.internal:8321"
+
+
+def test_fleet_url_unresolvable_name_accepted_at_config_time(monkeypatch) -> None:
+    """#931: a name that does not resolve (peer offline) is still accepted at
+    config time — connect-time pinning guards the actual request."""
+    _patch_resolver(monkeypatch, {})  # everything resolves to []
+    assert security.validate_fleet_node_url("https://offline.ts.net") == "https://offline.ts.net"
+
+
+def test_resolve_and_validate_fleet_host_pins_private_ip(monkeypatch) -> None:
+    """#931: the pin helper returns the resolved private IP to connect to."""
+    _patch_resolver(monkeypatch, {"peer.internal": ["192.168.1.50"]})
+    assert security.resolve_and_validate_fleet_host("peer.internal") == "192.168.1.50"
+
+
+def test_resolve_and_validate_fleet_host_rejects_public(monkeypatch) -> None:
+    """#931: pinning a name that resolves public fails loudly (rebinding guard)."""
+    _patch_resolver(monkeypatch, {"rebind.ts.net": ["1.2.3.4"]})
+    with pytest.raises(ValueError, match="outside allowed"):
+        security.resolve_and_validate_fleet_host("rebind.ts.net")
+
+
+def test_resolve_and_validate_fleet_host_literal_ip(monkeypatch) -> None:
+    """#931: a literal private IP is validated and returned as-is."""
+    assert security.resolve_and_validate_fleet_host("100.64.0.7") == "100.64.0.7"
+    with pytest.raises(ValueError, match="not an allowed"):
+        security.resolve_and_validate_fleet_host("8.8.8.8")
+
+
+def test_resolve_and_validate_fleet_host_unresolvable_raises(monkeypatch) -> None:
+    """#931: a name that does not resolve cannot be pinned for a request."""
+    _patch_resolver(monkeypatch, {})
+    with pytest.raises(ValueError, match="did not resolve"):
+        security.resolve_and_validate_fleet_host("nope.internal")
+
+
 # ---------------------------------------------------------------------------
 # validate_local_url
 # ---------------------------------------------------------------------------
@@ -371,11 +452,13 @@ def test_safe_subprocess_env_excludes_secrets(monkeypatch) -> None:
     monkeypatch.setattr("os.environ", fake_env)
 
     result = security.safe_subprocess_env()
+    # Issue #929: the suffix catch-all now also strips ad-hoc secret-shaped vars
+    # (MY_SECRET / DATABASE_PASSWORD / SOME_TOKEN) that the explicit denylist
+    # never knew about. Vars that merely *contain* a secret word but end in a
+    # non-secret suffix (_PATH, _DISABLED) are still passed through — the suffix
+    # rule is anchored at the end of the name, not a substring match.
     assert result == {
         "PATH": "/usr/bin",
-        "MY_SECRET": "shh",
-        "DATABASE_PASSWORD": "password",
-        "SOME_TOKEN": "tok",
         "MAINTENANCE_TOKEN_FILE_PATH": "/tmp/token-file",
         "MAINTENANCE_PASSWORD_PROMPT_DISABLED": "1",
         "XDG_TOKEN_PATH": "/tmp/xdg-token",
@@ -409,6 +492,38 @@ def test_safe_subprocess_env_excludes_provider_key_map_values(monkeypatch) -> No
 def test_safe_subprocess_env_empty(monkeypatch) -> None:
     monkeypatch.setattr("os.environ", {})
     assert security.safe_subprocess_env() == {}
+
+
+def test_safe_subprocess_env_strips_new_secret_suffixes(monkeypatch) -> None:
+    """Issue #929: a brand-new secret var the denylist never enumerated is still
+    stripped by the suffix catch-all, while known-required vars pass through."""
+    fake_env = {
+        "PATH": "/usr/bin",
+        "HOME": "/home/dieter",
+        "LANG": "en_US.UTF-8",
+        "MY_NEW_SECRET": "x",
+        "FOO_TOKEN": "y",
+        "BAR_API_KEY": "z",
+        "DB_PASSWORD": "p",
+        "SVC_CREDENTIALS": "c",
+        "ROOT_PASSWD": "q",
+    }
+    monkeypatch.setattr("os.environ", fake_env)
+    result = security.safe_subprocess_env()
+    # None of the secret-suffixed vars survive.
+    for leaked in ("MY_NEW_SECRET", "FOO_TOKEN", "BAR_API_KEY", "DB_PASSWORD", "SVC_CREDENTIALS", "ROOT_PASSWD"):
+        assert leaked not in result, f"{leaked} leaked to subprocess env"
+    # Required, non-secret vars still pass through.
+    assert result == {"PATH": "/usr/bin", "HOME": "/home/dieter", "LANG": "en_US.UTF-8"}
+
+
+def test_is_secret_env_key_suffix_anchored() -> None:
+    """The suffix rule is anchored at the end of the name, not a substring match."""
+    assert security._is_secret_env_key("ANY_TOKEN") is True
+    assert security._is_secret_env_key("ANY_API_KEY") is True
+    # Substring-but-not-suffix names are NOT secrets.
+    assert security._is_secret_env_key("TOKEN_FILE_PATH") is False
+    assert security._is_secret_env_key("PASSWORD_PROMPT_DISABLED") is False
 
 
 # ---------------------------------------------------------------------------

@@ -1,11 +1,12 @@
 # Maxwell-Daemon API Contract — Dashboard Consumer View
 
 **Contract version**: 2.0.0 (matches Maxwell-Daemon `CONTRACT_VERSION`)  
-**Date**: 2026-06-12  
+**Date**: 2026-06-14  
 **Issues**: [#366](https://github.com/D-sorganization/Runner_Dashboard/issues/366),
 [#955](https://github.com/D-sorganization/Runner_Dashboard/issues/955),
 [#956](https://github.com/D-sorganization/Runner_Dashboard/issues/956),
-[#958](https://github.com/D-sorganization/Runner_Dashboard/issues/958)
+[#958](https://github.com/D-sorganization/Runner_Dashboard/issues/958),
+[#960](https://github.com/D-sorganization/Runner_Dashboard/issues/960)
 
 > The `version`/`status`/`workers` shapes below now mirror the daemon's REAL
 > response shapes (`maxwell_daemon/api/contract.py`). The discriminating field of
@@ -22,7 +23,11 @@ the frontend. Unknown fields from Maxwell are silently dropped. Sensitive
 fields (see §Sensitive Field Blocklist) are explicitly excluded from every
 model.
 
-This contract is implemented in `backend/maxwell_contract.py`.
+This contract is implemented in `backend/maxwell_contract.py`. The consumer
+fixtures in `tests/test_maxwell_contract.py` are derived from the vendored
+Maxwell_Daemon OpenAPI snapshot at `tests/contracts/maxwell_openapi.json`; the
+scheduled `maxwell-contract-drift` workflow compares that snapshot with
+Maxwell_Daemon main and records an issue when it drifts.
 
 ---
 
@@ -76,52 +81,51 @@ derived from `active_task_id`).
 
 Proxy of Maxwell-Daemon `/api/tasks`.
 
-| Field    | Type         | Notes                      |
-| -------- | ------------ | -------------------------- |
-| `tasks`  | `TaskItem[]` | See task item schema below |
-| `cursor` | `string?`    | Opaque pagination cursor   |
-| `total`  | `int?`       |                            |
+| Field         | Type         | Notes                                                      |
+| ------------- | ------------ | ---------------------------------------------------------- |
+| `tasks`       | `TaskItem[]` | See task item schema below                                 |
+| `next_cursor` | `string?`    | MD pagination cursor; `None` until MD implements it (#961) |
+| `total`       | `int?`       |                                                            |
 
-**TaskItem**:
+**TaskItem** (mirrors MD `TaskSummary`; #961):
 
-| Field        | Type       | Notes    |
-| ------------ | ---------- | -------- |
-| `id`         | `string`   | UUID     |
-| `status`     | `string`   |          |
-| `created_at` | `string?`  | ISO 8601 |
-| `updated_at` | `string?`  | ISO 8601 |
-| `type`       | `string?`  |          |
-| `priority`   | `int?`     |          |
-| `tags`       | `string[]` |          |
-| `error`      | `string?`  |          |
+| Field        | Type      | Notes              |
+| ------------ | --------- | ------------------ |
+| `id`         | `string`  | UUID, **required** |
+| `status`     | `string`  | **required**       |
+| `created_at` | `string?` | ISO 8601           |
+
+The previously-modelled `updated_at`/`type`/`priority`/`tags`/`error` fields had
+no producer in MD's `TaskSummary` and were removed; re-add once MD emits them.
 
 ---
 
 ### `GET /api/maxwell/tasks/{task_id}`
 
-Proxy of Maxwell-Daemon `/api/tasks/{id}`.
+Proxy of Maxwell-Daemon `/api/tasks/{id}`. Mirrors MD `TaskDetail` (#961):
 
-Same as TaskItem plus:
-
-| Field            | Type      | Notes             |
-| ---------------- | --------- | ----------------- |
-| `started_at`     | `string?` | ISO 8601          |
-| `completed_at`   | `string?` | ISO 8601          |
-| `result_summary` | `string?` | Truncated summary |
+| Field        | Type      | Notes                           |
+| ------------ | --------- | ------------------------------- |
+| `id`         | `string`  | UUID, **required**              |
+| `status`     | `string`  | **required**                    |
+| `created_at` | `string?` | ISO 8601                        |
+| `transcript` | `any[]`   | MD task transcript (`[]` today) |
+| `artifacts`  | `any[]`   | MD task artifacts (`[]` today)  |
 
 ---
 
 ### `POST /api/maxwell/dispatch`
 
-Proxy of Maxwell-Daemon `POST /api/v1/tasks`.
+Proxy of Maxwell-Daemon `POST /api/dispatch`.
 
-| Field             | Type      | Notes                       |
-| ----------------- | --------- | --------------------------- |
-| `task_id`         | `string`  | Returned as `id` by Maxwell |
-| `status`          | `string`  | Typically `"queued"`        |
-| `idempotency_key` | `string?` |                             |
-| `created_at`      | `string?` |                             |
-| `message`         | `string?` |                             |
+| Field             | Type      | Notes                                                              |
+| ----------------- | --------- | ------------------------------------------------------------------ |
+| `task_id`         | `string`  | **Required.** Current MD field; legacy `id` accepted as input only |
+| `status`          | `string`  | Typically `"queued"`                                               |
+| `idempotency_key` | `string?` |                                                                    |
+| `queued_at`       | `string?` | MD queued timestamp                                                |
+| `created_at`      | `string?` | Legacy/optional                                                    |
+| `message`         | `string?` | Legacy/optional                                                    |
 
 ---
 
@@ -144,9 +148,9 @@ no `/api/v1/control/*` route).
 
 Proxy of Maxwell-Daemon `/api/v1/backends`.
 
-| Field      | Type            | Notes |
-| ---------- | --------------- | ----- |
-| `backends` | `BackendItem[]` |       |
+| Field      | Type            | Notes                                                                    |
+| ---------- | --------------- | ------------------------------------------------------------------------ |
+| `backends` | `BackendItem[]` | Bare string entries from Maxwell-Daemon are normalized to backend items. |
 
 **BackendItem**:
 
@@ -159,6 +163,10 @@ Proxy of Maxwell-Daemon `/api/v1/backends`.
 | `status`  | `string?` |                                  |
 
 > ⚠️ **`api_key`, `connection_string`, and similar fields are NEVER forwarded.**
+
+Producer compatibility: Maxwell-Daemon currently returns `{"backends": ["openai", "ollama"]}`
+from `/api/v1/backends`. The dashboard exposes those as
+`{"name": "...", "type": "unknown", "enabled": true, "model": null, "status": null}`.
 
 ---
 
@@ -228,3 +236,6 @@ model validation (defence-in-depth, `strip_sensitive()`):
 - Maxwell may add new fields freely; the dashboard will silently ignore them
   (Pydantic `extra=ignore` default).
 - The dashboard must **not** depend on any field not listed here.
+- The vendored `tests/contracts/maxwell_openapi.json` snapshot is the CI input
+  for precise producer schemas. Refresh it from Maxwell_Daemon whenever that
+  repository intentionally changes the contract.

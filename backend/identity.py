@@ -130,14 +130,34 @@ class IdentityManager:
             self.tokens.append(TokenRecord(**t))
 
     def save_tokens(self):
-        """Save tokens with security validation (issue #355)."""
+        """Atomically persist tokens to ``tokens.yml`` (security: issue #355).
+
+        Crash-safety (issue #939a): writes via tempfile + ``os.replace`` so a
+        crash mid-dump can never leave a truncated tokens.yml — which
+        ``load_tokens`` would silently reset, locking every principal out.
+        Mirrors :meth:`save_principals`.
+        """
         self.tokens_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Security validation: ensure config dir is within allowed roots
         validate_config_path(self.tokens_path.parent, allowed_roots=[self.config_dir.resolve()])
 
-        with open(self.tokens_path, "w") as f:
-            yaml.dump({"tokens": [t.model_dump() for t in self.tokens]}, f)
+        payload = {"tokens": [t.model_dump() for t in self.tokens]}
+        fd, tmp_path = tempfile.mkstemp(
+            dir=self.tokens_path.parent,
+            prefix=".tmp-tokens-",
+            suffix=".yml",
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                yaml.dump(payload, fh, default_flow_style=False, allow_unicode=True)
+            os.replace(tmp_path, self.tokens_path)
+        except (OSError, yaml.YAMLError):
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
 
     def mint_service_token(self, principal_id: str, name: str, expires_in_days: int | None = None) -> str:
         if principal_id not in self.principals:
@@ -182,7 +202,32 @@ class IdentityManager:
         return None
 
 
-identity_manager = IdentityManager()
+def resolve_identity_dir() -> Path:
+    """Return the directory holding principals.yml / tokens.yml (issue #944).
+
+    Anchored to a stable, CWD-independent location so launching the server from
+    any working directory uses the *same* identity store (the old
+    ``Path("config")`` default silently created a fresh empty store — and lost
+    all principals/tokens — when started from another CWD).
+
+    Resolution order:
+    1. ``DASHBOARD_IDENTITY_DIR`` env override (explicit operator choice).
+    2. ``XDG_CONFIG_HOME/runner-dashboard`` (or ``~/.config/runner-dashboard``)
+       — the same convention as ``_load_or_generate_api_key`` (server.py) and
+       ``auth_webauthn``.
+
+    Post-condition: returns an absolute ``Path``.
+    """
+    override = os.environ.get("DASHBOARD_IDENTITY_DIR", "").strip()
+    if override:
+        return Path(override).expanduser().resolve()
+    base = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+    return (base / "runner-dashboard").expanduser().resolve()
+
+
+_IDENTITY_DIR = resolve_identity_dir()
+log.info("Identity store directory: %s", _IDENTITY_DIR)
+identity_manager = IdentityManager(config_dir=_IDENTITY_DIR)
 
 auth_header = APIKeyHeader(name="Authorization", auto_error=False)
 auth_cookie = APIKeyCookie(name="dashboard_session", auto_error=False)

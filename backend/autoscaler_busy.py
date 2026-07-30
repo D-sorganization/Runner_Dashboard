@@ -265,13 +265,23 @@ def _runner_is_busy(unit: str) -> bool:
         return True
 
     # ── Strategy 3: MainPID-based child scan ─────────────────────────────────
-    r = subprocess.run(
-        ["systemctl", "show", unit, "--property=MainPID", "--value"],
-        capture_output=True,
-        text=True,
-        timeout=_SYSTEMCTL_TIMEOUT_S,
-        check=False,
-    )
+    # Issue #937a: a slow/hung host can make this systemctl query raise
+    # TimeoutExpired. Previously that propagated up to the poll loop's broad
+    # except and aborted the entire scaling tick for *every* pool — on exactly
+    # the overloaded host where scaling matters most. Treat a failed/timed-out
+    # busy query as "busy" (fail safe: never stop a runner we cannot confirm is
+    # idle) and let the tick continue for the other pools.
+    try:
+        r = subprocess.run(
+            ["systemctl", "show", unit, "--property=MainPID", "--value"],
+            capture_output=True,
+            text=True,
+            timeout=_SYSTEMCTL_TIMEOUT_S,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        log.warning("MainPID query failed for %s (%s) — treating as busy (fail safe)", unit, exc)
+        return True
     pid_str = (r.stdout or "").strip()
 
     main_pid: int | None = None

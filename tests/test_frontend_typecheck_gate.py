@@ -14,6 +14,7 @@ in place:
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -38,8 +39,9 @@ def test_typecheck_job_present_in_frontend_workflow() -> None:
     text = FRONTEND_WORKFLOW.read_text(encoding="utf-8")
     assert "\n  typecheck:" in text, "no `typecheck:` job in frontend-tests.yml"
     idx = text.find("\n  typecheck:")
-    # Window up to the next top-level job (4-space indent reset at column 2).
-    window = text[idx : idx + 900]
+    next_job = re.search(r"\n  [A-Za-z0-9_-]+:\n", text[idx + 1 :])
+    end = idx + 1 + next_job.start() if next_job else len(text)
+    window = text[idx:end]
     assert "npm run typecheck" in window, "typecheck job does not run `npm run typecheck`"
     assert "d-sorg-fleet" in window, "typecheck job must run on the self-hosted fleet"
     assert "needs: frontend-scope" in window, "typecheck job must depend on frontend-scope"

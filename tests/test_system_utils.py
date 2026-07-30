@@ -394,6 +394,33 @@ def test_run_windows_powershell_respects_deadline(monkeypatch) -> None:
     assert all(t is not None and t <= 5.0 for t in seen_timeouts)
 
 
+def test_run_windows_powershell_launches_hidden(monkeypatch) -> None:
+    """Host powershell.exe probes must run with a hidden window so the WSL->Windows
+    spec sync does not pop visible console windows on the operator's desktop."""
+    monkeypatch.setattr(
+        system_utils.platform,
+        "uname",
+        lambda: type("Uname", (), {"release": "6.6-microsoft-standard-WSL2"})(),
+    )
+    monkeypatch.setattr(system_utils, "get_powershell_candidates", lambda: ["ps.exe"])
+    seen_args: list[list[str]] = []
+
+    def fake_run(args, **kwargs):  # noqa: ARG001
+        seen_args.append(list(args))
+        return _cp(stdout="ok", returncode=0)
+
+    monkeypatch.setattr(system_utils.subprocess, "run", fake_run)
+    assert system_utils._run_windows_powershell("Get-Thing") == "ok"
+    assert seen_args, "powershell candidate should have been invoked"
+    args = seen_args[0]
+    # The window must be suppressed; -NonInteractive avoids any prompt hang.
+    assert "-WindowStyle" in args
+    assert args[args.index("-WindowStyle") + 1] == "Hidden"
+    assert "-NonInteractive" in args
+    # The actual command must still be passed through.
+    assert "-Command" in args and args[args.index("-Command") + 1] == "Get-Thing"
+
+
 def test_host_snapshot_caches_within_ttl(monkeypatch) -> None:
     """Rapid successive calls must reuse one PowerShell fork within the TTL."""
     monkeypatch.setattr(system_utils, "_host_snapshot_cache", None)
@@ -844,6 +871,80 @@ def test_tier_hdd_capacity_pressure_primary_signal() -> None:
     assert result["tier"] == "hdd"
     assert result["status"] in ("medium", "high", "critical")
     assert result["binding_constraint"] == "capacity"
+
+
+# ---------------------------------------------------------------------------
+# Issue #939d: run_cmd timeout must kill THEN reap, tolerating an already-exited
+# process (no zombie/transport leak, no unhandled ProcessLookupError).
+# ---------------------------------------------------------------------------
+
+
+def test_run_cmd_timeout_kills_and_reaps(monkeypatch) -> None:
+    import asyncio
+
+    class _FakeProc:
+        def __init__(self) -> None:
+            self.killed = False
+            self.waited = False
+            self.returncode = None
+
+        async def communicate(self):
+            raise TimeoutError
+
+        def kill(self):
+            self.killed = True
+
+        async def wait(self):
+            self.waited = True
+            return -9
+
+    fake = _FakeProc()
+
+    async def _fake_create(*_a, **_kw):
+        return fake
+
+    async def _fake_wait_for(coro, timeout):  # noqa: ARG001
+        # Drive the coroutine so it raises TimeoutError as the real one would.
+        await coro
+
+    monkeypatch.setattr(system_utils.asyncio, "create_subprocess_exec", _fake_create)
+    monkeypatch.setattr(system_utils.asyncio, "wait_for", _fake_wait_for)
+
+    code, out, err = asyncio.run(system_utils.run_cmd(["sleep", "100"], timeout=1))
+    assert code == -1
+    assert "timed out" in err.lower()
+    assert fake.killed is True, "process must be killed on timeout"
+    assert fake.waited is True, "process must be reaped (awaited) after kill"
+
+
+def test_run_cmd_timeout_tolerates_already_exited(monkeypatch) -> None:
+    import asyncio
+
+    class _GoneProc:
+        returncode = None
+
+        async def communicate(self):
+            raise TimeoutError
+
+        def kill(self):
+            raise ProcessLookupError  # already exited between timeout and kill
+
+        async def wait(self):
+            return 0
+
+    async def _fake_create(*_a, **_kw):
+        return _GoneProc()
+
+    async def _fake_wait_for(coro, timeout):  # noqa: ARG001
+        await coro
+
+    monkeypatch.setattr(system_utils.asyncio, "create_subprocess_exec", _fake_create)
+    monkeypatch.setattr(system_utils.asyncio, "wait_for", _fake_wait_for)
+
+    # Must not raise ProcessLookupError.
+    code, _out, err = asyncio.run(system_utils.run_cmd(["sleep", "100"], timeout=1))
+    assert code == -1
+    assert "timed out" in err.lower()
 
 
 def test_tier_hdd_critical_capacity() -> None:

@@ -185,8 +185,8 @@ async def test_5xx_retried_then_succeeds():
 
 
 @pytest.mark.asyncio
-async def test_paginate_recovers_from_429_on_page_2():
-    """paginate() recovers from 429 on page 2 without losing page 1."""
+async def test_paginate_surfaces_429_on_page_2_after_yielding_page_1():
+    """paginate() yields completed pages before surfacing a later 429."""
     import gh_client
 
     page1_resp = MagicMock()
@@ -199,31 +199,27 @@ async def test_paginate_recovers_from_429_on_page_2():
     page2_rate_resp.headers = {"Retry-After": "1"}
     page2_rate_resp.text = ""
 
-    page2_ok_resp = MagicMock()
-    page2_ok_resp.status_code = 200
-    page2_ok_resp.json.return_value = [{"id": 3}]
-    page2_ok_resp.headers = {}
-
-    call_counts: dict[str, int] = {}
-
-    async def mock_get(url, headers=None):
+    async def mock_request(method, url, headers=None, json=None):
+        assert method == "GET"
+        assert json is None
         if "per_page" in url:
             return page1_resp
         if url == "/page2":
-            idx = call_counts.get("/page2", 0)
-            call_counts["/page2"] = idx + 1
-            return [page2_rate_resp, page2_ok_resp][idx]
-        return page2_ok_resp
+            return page2_rate_resp
+        raise AssertionError(f"unexpected URL: {url}")
 
     mock_client = MagicMock()
-    mock_client.get = mock_get
+    mock_client.request = mock_request
     mock_client.headers = {}
 
+    items = []
     with patch("gh_client._get_client", return_value=mock_client), patch("asyncio.sleep", new_callable=AsyncMock):
-        items = [item async for item in gh_client.paginate("/repos/test/test/issues")]
+        with pytest.raises(gh_client.GhRateLimited):
+            async for item in gh_client.paginate("/repos/test/test/issues"):
+                items.append(item)
 
     ids = [item["id"] for item in items]
-    assert 1 in ids and 2 in ids, f"Page 1 items lost: {ids}"
+    assert ids == [1, 2]
 
 
 @pytest.mark.asyncio

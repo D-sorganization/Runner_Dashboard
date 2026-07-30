@@ -160,9 +160,8 @@ from runners.service_control import (  # noqa: E402
 )
 from security import (  # noqa: E402
     safe_subprocess_env,  # noqa: E402
+    sanitize_log_value,  # noqa: E402
     validate_fleet_node_url,  # noqa: E402
-    validate_owner_repo_format,  # noqa: E402
-    validate_repo_slug,  # noqa: E402
 )
 from system_utils import get_system_metrics_snapshot  # noqa: E402
 from workflows.run_enrichment import (  # noqa: E402
@@ -396,7 +395,7 @@ HEAVY_TEST_REPOS = {
 
 app = FastAPI(
     title="D-sorganization Runner Dashboard",
-    version="4.0.0",
+    version=dashboard_config.VERSION,
     description="Monitor and control self-hosted GitHub Actions runners",
 )
 
@@ -704,7 +703,11 @@ app.add_middleware(
     session_cookie="dashboard_session",
     max_age=86400 * 7,  # 7 days
     same_site="strict",
-    https_only=True,
+    # Issue #930: Secure cookies are dropped by browsers on http:// origins, so
+    # forcing https_only broke session auth on the documented HTTP-over-tailnet
+    # deployment. Gate it on DASHBOARD_TLS so the default HTTP mode issues a
+    # usable cookie and TLS deployments still get the Secure attribute.
+    https_only=dashboard_config.TLS_ENABLED,
 )
 
 app.add_middleware(
@@ -1080,24 +1083,9 @@ async def _github_search_total(query: str) -> int:
 # workflows/run_enrichment.py (#719)
 
 
-def _normalize_repository_input(value: str) -> tuple[str, str]:
-    """Return (repo_name, full_name) for dashboard remediation inputs (issue #326).
-
-    Validates against a strict regex before any owner comparison or subprocess
-    interpolation to prevent SSRF via malformed owner/repo slugs.
-    """
-    text = str(value).strip()
-    if "/" in text:
-        # Validate full owner/repo format before extracting parts (issue #326)
-        validate_owner_repo_format(text)
-        owner, _, repo_name = text.partition("/")
-        if owner.lower() != ORG.lower():
-            raise HTTPException(status_code=422, detail=f"repository owner must be {ORG}")
-        repo_name = validate_repo_slug(repo_name)
-        return repo_name, f"{ORG}/{repo_name}"
-    repo_name = validate_repo_slug(text)
-    return repo_name, f"{ORG}/{repo_name}"
-
+# _normalize_repository_input was an unused body-identical twin of the copies in
+# routers/assistant.py and routers/remediation.py (the modules that actually call
+# it). server.py never referenced its own copy, so it was removed for issue #941.
 
 # _machine_name_from_runner_name, _placement_from_jobs, _enrich_run_with_job_placement
 # extracted to workflows/run_enrichment.py (#719)
@@ -2343,46 +2331,12 @@ async def help_chat(
 # Restart-service route extracted to routers/diagnostics.py (issue #360).
 
 
-@app.post("/api/launchers/generate")
-async def generate_launchers(
-    request: Request,
-    principal: Principal = Depends(require_scope("system.control")),  # noqa: B008
-) -> dict:
-    """Generate Windows PowerShell launcher scripts on the Desktop."""
-    output_dir = Path.home() / "Desktop" / "RunnerDashboard"
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    launchers_created: list[str] = []
-
-    script = output_dir / "Open-Dashboard.ps1"
-    script.write_text('Start-Process "http://localhost:8321"\n', encoding="utf-8")
-    launchers_created.append(str(script))
-
-    keepalive = output_dir / "Start-WSL-Keepalive.ps1"
-    keepalive.write_text(
-        'Start-ScheduledTask -TaskName "WSL-Dashboard-Keepalive" -ErrorAction SilentlyContinue\n'
-        'Write-Host "Keepalive task started"\n',
-        encoding="utf-8",
-    )
-    launchers_created.append(str(keepalive))
-
-    restart = output_dir / "Restart-Dashboard-Service.ps1"
-    restart.write_text(
-        'wsl -d Ubuntu -e bash -lc "sudo -n systemctl restart runner-dashboard.service && echo Service restarted"\n',
-        encoding="utf-8",
-    )
-    launchers_created.append(str(restart))
-
-    diag = output_dir / "Open-Diagnostics.ps1"
-    diag.write_text('Start-Process "http://localhost:8321/#diagnostics"\n', encoding="utf-8")
-    launchers_created.append(str(diag))
-
-    log.info("Generated %d launcher scripts in %s", len(launchers_created), output_dir)
-    return {
-        "output_dir": str(output_dir),
-        "launchers": launchers_created,
-        "message": f"Created {len(launchers_created)} launcher scripts in {output_dir}",
-    }
+# POST /api/launchers/generate is registered by routers/diagnostics.py
+# (issue #360). The previously-inline copy here was a body-identical dead twin —
+# shadowed by the router include above and never reached at runtime — and was
+# removed for issue #941 (server.py god-module duplicate sweep). The duplicate
+# guard in tests/test_no_duplicate_top_level_functions.py keeps it from coming
+# back.
 
 
 # ─── Hosted-Runner Billing Audit ─────────────────────────────────────────────
@@ -2407,11 +2361,10 @@ _system_router.set_boot_time(BOOT_TIME)
 
 # Inject dependencies into orchestration router (issue #359)
 _orchestration_router.set_dependencies(
+    app=app,
     fleet_control_local=_fleet_control_local,
     remote_fleet_control=_remote_fleet_control,
     get_fleet_nodes_impl=_get_fleet_nodes_impl,
-    proxy_to_hub=proxy_to_hub,
-    should_proxy_fleet_to_hub=_should_proxy_fleet_to_hub,
     get_runner_capacity_snapshot=get_runner_capacity_snapshot,
     validate_runner_schedule=_validate_runner_schedule,
     write_runner_schedule_config=_write_runner_schedule_config,
@@ -2429,15 +2382,16 @@ _system_router.set_runner_capacity_snapshot_func(get_runner_capacity_snapshot)
 
 # Conductor admission gate (issue #1282): wire the orchestrator capacity
 # provider to the SAME runner-counting logic as /api/runners/fleet/capacity
-# (DRY via routers.runner_helpers.count_runner_capacity). Synchronous wrapper
-# so the in-process lease lock stays simple; the gh call is cached upstream.
+# (DRY via routers.runner_helpers.count_runner_capacity). Reads the runner
+# inventory through the shared ``runners`` cache so each admission decision
+# reuses one GitHub round-trip per CacheTtl.RUNNERS_S window instead of issuing
+# an uncached call on every Conductor poll.
 async def _orchestrator_capacity_provider() -> dict[str, int]:
-    from gh_utils import gh_api_admin  # noqa: PLC0415
+    from gh_utils import get_cached_org_runners  # noqa: PLC0415
     from routers.runner_helpers import count_runner_capacity  # noqa: PLC0415
-    from runner_inventory import fetch_org_runners  # noqa: PLC0415
 
     try:
-        data = await fetch_org_runners(gh_api_admin, ORG)
+        data = await get_cached_org_runners(ORG)
         runners = (data or {}).get("runners", []) or []
         return count_runner_capacity(runners)
     except Exception as exc:  # noqa: BLE001 — fail safe: report zero capacity
@@ -2449,9 +2403,8 @@ _orchestrator_api.set_capacity_provider(_orchestrator_capacity_provider)
 
 # Inject dependencies into deployment router
 _deployment_router.set_dependencies(
+    app=app,
     get_fleet_nodes_impl=_get_fleet_nodes_impl,
-    proxy_to_hub=proxy_to_hub,
-    should_proxy_fleet_to_hub=_should_proxy_fleet_to_hub,
     deployment_info=_deployment_info,
     read_expected_dashboard_version=_read_expected_dashboard_version,
     build_deployment_state=_build_deployment_state,
@@ -2471,6 +2424,19 @@ _leader_lock_fd = None
 @app.on_event("startup")
 async def _startup() -> None:
     """Initialize HTTP clients and notify systemd on startup (issue #364)."""
+    # Issue #942: refuse to start when Maxwell's port collides with a peer
+    # dashboard port declared in machine_registry.yml — a silent mis-probe
+    # otherwise misreports a sibling dashboard as the Maxwell daemon.
+    from dashboard_config import MAXWELL_PORT
+    from fleet_autoconfig import assert_no_maxwell_port_collision
+    from machine_registry import load_machine_registry
+
+    assert_no_maxwell_port_collision(
+        load_machine_registry(),
+        maxwell_port=MAXWELL_PORT,
+        local_port=PORT,
+    )
+
     # Wire injected dependencies for extracted routers (issue #360)
     _repos_router.set_dependencies(
         cache_get=_cache_get,
@@ -2603,7 +2569,12 @@ async def drain_endpoint(request: Request) -> dict:
     """
     global _drain_mode
     client_host = request.client.host if request.client else "unknown"
-    assert client_host in ("127.0.0.1", "::1", "localhost"), "drain only from loopback"
+    # Issue #939c: a bare `assert` is compiled out under `python -O`, which would
+    # let ANY network peer drain the server. Enforce the loopback restriction
+    # with an explicit check that raises regardless of optimization level.
+    if client_host not in ("127.0.0.1", "::1", "localhost"):
+        log.warning("/_drain refused for non-loopback client %s", sanitize_log_value(client_host))
+        raise HTTPException(status_code=403, detail="drain only from loopback")
     _drain_mode = True
     log.info("/_drain activated by %s", client_host)
     return {"status": "draining"}
@@ -2673,7 +2644,7 @@ if __name__ == "__main__":
     import uvicorn
 
     log.info("=" * 60)
-    log.info("  D-sorganization Runner Dashboard v4.0")
+    log.info("  D-sorganization Runner Dashboard v%s", dashboard_config.VERSION)
     log.info("  Local:   http://localhost:%s", PORT)
     log.info("  Network: http://0.0.0.0:%s", PORT)
     log.info("  API docs: http://localhost:%s/docs", PORT)

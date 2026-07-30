@@ -67,3 +67,27 @@ async def test_api_health_uses_supported_github_signature(monkeypatch: pytest.Mo
     assert metrics
     assert metrics[0][0:2] == ("degraded", "unreachable")
     assert metrics[0][2] >= 0
+
+
+@pytest.mark.asyncio
+async def test_api_health_reports_hub_circuit_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fake_fetch_org_runners(_gh_api_admin, _org) -> dict:
+        return {"runners": []}
+
+    fake_server = types.SimpleNamespace(
+        BOOT_TIME=time.time(),
+        HOSTNAME="test-host",
+        ORG="D-sorganization",
+        _cache_get=lambda *_args, **_kwargs: None,
+        _cache_set=lambda *_args, **_kwargs: None,
+        _deployment_info=lambda: {"version": "test"},
+        gh_api_admin=lambda _endpoint: {},
+    )
+    monkeypatch.setitem(sys.modules, "server", fake_server)
+    monkeypatch.setattr(h, "fetch_org_runners", fake_fetch_org_runners, raising=False)
+    monkeypatch.setattr(h, "record_dashboard_health", lambda *_args: None)
+    monkeypatch.setattr(h, "hub_in_cooldown", lambda: True)
+
+    body = await h._health_impl()  # noqa: SLF001
+
+    assert body["hub_circuit_open"] is True

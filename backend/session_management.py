@@ -18,13 +18,17 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 
+def _now() -> float:
+    return time.time()
+
+
 class SessionRecord(BaseModel):
     """Metadata for an authenticated dashboard session."""
 
     session_id: str
     principal_id: str
-    created_at: float = Field(default_factory=time.time)
-    last_seen_at: float = Field(default_factory=time.time)
+    created_at: float = Field(default_factory=_now)
+    last_seen_at: float = Field(default_factory=_now)
     user_agent: str | None = None
     ip_address: str | None = None
     revoked_at: float | None = None
@@ -73,7 +77,7 @@ def _save_sessions(records: list[SessionRecord], path: Path | None = None) -> No
 
 
 def _prune_expired_sessions(records: list[SessionRecord]) -> list[SessionRecord]:
-    now = time.time()
+    now = _now()
     cutoff = now - _SESSION_TTL_SECONDS
     return [record for record in records if record.last_seen_at > cutoff and record.revoked_at is None]
 
@@ -121,7 +125,7 @@ def touch_session(session_id: str) -> bool:
     found = False
     for record in records:
         if record.session_id == session_id:
-            record.last_seen_at = time.time()
+            record.last_seen_at = _now()
             found = True
             break
     if found:
@@ -133,7 +137,7 @@ def revoke_session(session_id: str) -> bool:
     """Revoke a single session by ID."""
     records = _load_sessions()
     changed = False
-    now = time.time()
+    now = _now()
     for record in records:
         if record.session_id == session_id and record.revoked_at is None:
             record.revoked_at = now
@@ -147,7 +151,7 @@ def revoke_all_sessions_for_principal(principal_id: str, exclude_session_id: str
     """Revoke all active sessions for a principal. Returns number revoked."""
     records = _load_sessions()
     changed = 0
-    now = time.time()
+    now = _now()
     for record in records:
         if (
             record.principal_id == principal_id

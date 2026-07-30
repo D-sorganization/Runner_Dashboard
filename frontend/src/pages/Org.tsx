@@ -6,38 +6,15 @@
  * search, sortable headline columns (Recent / PRs / Issues / Name), aggregate
  * stats (repos, open PRs, open issues, CI-active count), and per-repo CI status.
  *
- * Presentational: the repo list (and its loading flag) is owned by the legacy
- * App because the same `repos` state also feeds several other tabs (Assessments,
- * Feature Requests). To stay DRY and avoid double-polling, this page receives
- * the already-fetched `repos`/`stats` and a `loading` flag. Loading/empty
- * states and a11y semantics match the original legacy render exactly.
+ * The exported `OrgPage` owns the `/api/repos` + `/api/stats` fetches for the
+ * routed desktop shell. `OrgTab` stays presentational so legacy callers and
+ * focused component tests can keep passing explicit repo/stat payloads.
  */
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
+import { LANG_COLORS } from "../components/formatters";
 import { Stat } from "../components/Stat";
+import { legacyFetch } from "../lib/api";
 import { GitPrGlyph, IssueGlyph } from "./decompIcons";
-
-/** GitHub language → swatch colour, mirroring the legacy `LANG_COLORS` map. */
-const LANG_COLORS: Record<string, string> = {
-  JavaScript: "#f1e05a",
-  TypeScript: "#3178c6",
-  Python: "#3572A5",
-  Rust: "#dea584",
-  Go: "#00ADD8",
-  Java: "#b07219",
-  C: "#555555",
-  "C++": "#f34b7d",
-  "C#": "#178600",
-  Ruby: "#701516",
-  Shell: "#89e051",
-  HTML: "#e34c26",
-  CSS: "#563d7c",
-  MATLAB: "#e16737",
-  Jupyter: "#DA5B0B",
-  Vue: "#41b883",
-  Swift: "#F05138",
-  Kotlin: "#A97BFF",
-  Dart: "#00B4AB",
-};
 
 function timeAgo(d?: string | null): string {
   if (!d) return "";
@@ -77,9 +54,96 @@ export interface OrgProps {
   stats?: OrgStats;
 }
 
+interface ReposPayload {
+  repos?: OrgRepo[];
+}
+
 type SortKey = "updated" | "prs" | "issues" | "name";
 
-export function OrgTab({ repos, loading, stats }: OrgProps): React.ReactElement {
+function normalizeReposPayload(payload: unknown): OrgRepo[] {
+  if (Array.isArray(payload)) return payload as OrgRepo[];
+  if (payload && typeof payload === "object") {
+    const repos = (payload as ReposPayload).repos;
+    if (Array.isArray(repos)) return repos;
+  }
+  return [];
+}
+
+export function OrgPage(): React.ReactElement {
+  const [repos, setRepos] = useState<OrgRepo[]>([]);
+  const [stats, setStats] = useState<OrgStats>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback((signal?: AbortSignal) => {
+    setLoading(true);
+    setError(null);
+    Promise.all([
+      legacyFetch("/api/repos", { signal }).then((r) => {
+        if (!r.ok) throw new Error("repos HTTP " + r.status);
+        return r.json();
+      }),
+      legacyFetch("/api/stats", { signal }).then((r) => {
+        if (!r.ok) throw new Error("stats HTTP " + r.status);
+        return r.json();
+      }),
+    ])
+      .then(([reposPayload, statsPayload]) => {
+        setRepos(normalizeReposPayload(reposPayload));
+        setStats(
+          (statsPayload && typeof statsPayload === "object"
+            ? statsPayload
+            : {}) as OrgStats,
+        );
+      })
+      .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Failed to load organization data",
+        );
+      })
+      .finally(() => {
+        if (!signal?.aborted) setLoading(false);
+      });
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    refresh(controller.signal);
+    return () => controller.abort();
+  }, [refresh]);
+
+  return (
+    <div>
+      {error ? (
+        <div
+          className="section"
+          role="alert"
+          style={{ marginBottom: 12, color: "var(--accent-red)" }}
+        >
+          Failed to load organization data: {error}
+          <button
+            className="btn"
+            type="button"
+            onClick={() => refresh()}
+            style={{ marginLeft: 12 }}
+          >
+            Retry
+          </button>
+        </div>
+      ) : null}
+      <OrgTab repos={repos} loading={loading} stats={stats} />
+    </div>
+  );
+}
+
+export function OrgTab({
+  repos,
+  loading,
+  stats,
+}: OrgProps): React.ReactElement {
   const s: OrgStats = stats ?? {};
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<SortKey>("updated");
@@ -120,7 +184,11 @@ export function OrgTab({ repos, loading, stats }: OrgProps): React.ReactElement 
   return (
     <div>
       <div className="stat-row">
-        <Stat label="Repositories" value={repos.length} sub="in D-sorganization" />
+        <Stat
+          label="Repositories"
+          value={repos.length}
+          sub="in D-sorganization"
+        />
         <Stat
           label="Open PRs"
           value={tPR}
@@ -130,7 +198,9 @@ export function OrgTab({ repos, loading, stats }: OrgProps): React.ReactElement 
         <Stat
           label="Open Issues"
           value={s.org_open_issues != null ? s.org_open_issues : tI}
-          color={(s.org_open_issues || tI) > 0 ? "var(--accent-orange)" : "inherit"}
+          color={
+            (s.org_open_issues || tI) > 0 ? "var(--accent-orange)" : "inherit"
+          }
           sub="across all repos"
         />
         <Stat label="CI/CD Active" value={wCI} sub="repos with workflows" />
@@ -145,7 +215,9 @@ export function OrgTab({ repos, loading, stats }: OrgProps): React.ReactElement 
           onChange={(e) => setSearch(e.target.value)}
         />
         <div className="toolbar-right">
-          <span style={{ color: "var(--text-muted)", fontSize: 12 }}>Sort:</span>
+          <span style={{ color: "var(--text-muted)", fontSize: 12 }}>
+            Sort:
+          </span>
           {sortButton("updated", "Recent")}
           {sortButton("prs", "PRs")}
           {sortButton("issues", "Issues")}
@@ -174,7 +246,13 @@ export function OrgTab({ repos, loading, stats }: OrgProps): React.ReactElement 
                   <tr key={r.name}>
                     <td>
                       <div className="repo-name-cell">
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                          }}
+                        >
                           <a
                             className="repo-name-link"
                             href={r.url ?? undefined}
@@ -204,12 +282,19 @@ export function OrgTab({ repos, loading, stats }: OrgProps): React.ReactElement 
                     </td>
                     <td>
                       {r.language ? (
-                        <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 6,
+                          }}
+                        >
                           <span
                             className="lang-dot"
                             style={{
                               background:
-                                LANG_COLORS[r.language] || "var(--text-secondary)",
+                                LANG_COLORS[r.language] ||
+                                "var(--text-secondary)",
                             }}
                           />
                           {r.language}
@@ -221,7 +306,8 @@ export function OrgTab({ repos, loading, stats }: OrgProps): React.ReactElement 
                     <td style={{ textAlign: "center" }}>
                       <span
                         className={
-                          "count-badge " + ((r.open_prs || 0) > 0 ? "has-items" : "zero")
+                          "count-badge " +
+                          ((r.open_prs || 0) > 0 ? "has-items" : "zero")
                         }
                       >
                         <GitPrGlyph size={14} />
@@ -250,12 +336,16 @@ export function OrgTab({ repos, loading, stats }: OrgProps): React.ReactElement 
                           <span className={"conclusion-badge " + ci}>{ci}</span>
                         </a>
                       ) : (
-                        <span style={{ color: "var(--text-muted)", fontSize: 12 }}>
+                        <span
+                          style={{ color: "var(--text-muted)", fontSize: 12 }}
+                        >
                           No CI
                         </span>
                       )}
                     </td>
-                    <td style={{ color: "var(--text-muted)" }}>{timeAgo(r.updated_at)}</td>
+                    <td style={{ color: "var(--text-muted)" }}>
+                      {timeAgo(r.updated_at)}
+                    </td>
                   </tr>
                 );
               })

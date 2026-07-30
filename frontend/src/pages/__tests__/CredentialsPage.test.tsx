@@ -15,7 +15,11 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CredentialsTab, type CredentialProbe } from "../CredentialsPage";
+import {
+  CredentialsPage,
+  CredentialsTab,
+  type CredentialProbe,
+} from "../CredentialsPage";
 
 afterEach(cleanup);
 beforeEach(() => {
@@ -58,6 +62,114 @@ const PROBES: CredentialProbe[] = [
     status: "not_installed",
   },
 ];
+
+describe("CredentialsPage", () => {
+  it("owns the credential probe fetch", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            probes: PROBES,
+            summary: { ready: 1, not_ready: 2, total: 3 },
+          }),
+          { status: 200 },
+        ),
+      );
+
+    render(<CredentialsPage />);
+
+    await waitFor(() =>
+      expect(screen.getByText("Anthropic")).toBeInTheDocument(),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/credentials",
+      expect.objectContaining({ headers: expect.any(Headers) }),
+    );
+    expect(screen.getByText("Not ready")).toBeInTheDocument();
+  });
+
+  it("surfaces credential probe failures", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ detail: "nope" }), { status: 500 }),
+    );
+
+    render(<CredentialsPage />);
+
+    expect(
+      await screen.findByText("credentials HTTP 500"),
+    ).toBeInTheDocument();
+  });
+
+  it("submits a prompted key and refreshes probes", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input, init) => {
+        const url = String(input);
+        if (url.endsWith("/api/credentials/set-key")) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ ok: true }), { status: 200 }),
+          );
+        }
+        if (url.endsWith("/api/credentials")) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                probes: [PROBES[1]],
+                summary: { ready: 0, not_ready: 1, total: 1 },
+              }),
+              { status: 200 },
+            ),
+          );
+        }
+        return Promise.reject(
+          new Error("unexpected credentials fetch " + url + " " + init?.method),
+        );
+      });
+    vi.spyOn(window, "prompt").mockReturnValue("sk-test");
+
+    render(<CredentialsPage />);
+
+    fireEvent.click(await screen.findByText("Set API key"));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/credentials/set-key",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            provider: "openai",
+            key: "sk-test",
+            restart_maxwell: false,
+          }),
+        }),
+      ),
+    );
+  });
+
+  it("does not submit a key when the prompt is cancelled", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          probes: [PROBES[1]],
+          summary: { ready: 0, not_ready: 1, total: 1 },
+        }),
+        { status: 200 },
+      ),
+    );
+    vi.spyOn(window, "prompt").mockReturnValue(null);
+
+    render(<CredentialsPage />);
+
+    fireEvent.click(await screen.findByText("Set API key"));
+
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).endsWith("/api/credentials/set-key"),
+      ),
+    ).toBe(false);
+  });
+});
 
 describe("CredentialsTab", () => {
   it("renders without throwing (smoke test)", () => {
@@ -199,6 +311,26 @@ describe("CredentialsTab", () => {
     Object.defineProperty(document, "hidden", { value: true, configurable: true });
     fireEvent(document, new Event("visibilitychange"));
     await waitFor(() => expect(screen.getByText("Credentials locked")).toBeInTheDocument());
+    Object.defineProperty(document, "hidden", { value: false, configurable: true });
+  });
+
+  it("re-locks when visibility is lost during the unlock completion tick", async () => {
+    vi.stubGlobal("PublicKeyCredential", function () {});
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(jsonResponse({ challenge: "AAAA", allow_credentials: [] }))));
+    vi.stubGlobal("navigator", {
+      credentials: { get: () => Promise.resolve({ id: "c", type: "public-key", rawId: new ArrayBuffer(0), response: {} }) },
+    });
+    const onRefresh = vi.fn(() => {
+      Object.defineProperty(document, "hidden", { value: true, configurable: true });
+      fireEvent(document, new Event("visibilitychange"));
+    });
+    render(
+      <CredentialsTab probes={PROBES} summary={{}} loading={false} onRefresh={onRefresh} mobile />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Show credentials" }));
+    await waitFor(() => expect(onRefresh).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByText("Credentials locked")).toBeInTheDocument());
+    expect(screen.queryByText("Anthropic")).not.toBeInTheDocument();
     Object.defineProperty(document, "hidden", { value: false, configurable: true });
   });
 

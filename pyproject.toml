@@ -1,6 +1,6 @@
 [project]
 name = "runner-dashboard"
-version = "0.1.0"
+version = "4.9.19"
 description = "Runner dashboard for fleet management"
 requires-python = ">=3.11,<3.14"
 dependencies = [
@@ -15,7 +15,7 @@ dependencies = [
     "requests==2.33.1",
     "itsdangerous==2.2.0",
     "prometheus-client==0.21.1",
-    "starlette==1.0.1",
+    "starlette==1.3.1",
 ]
 
 [dependency-groups]

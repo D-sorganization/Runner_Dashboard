@@ -9,6 +9,7 @@ Acceptance criteria verified:
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -20,6 +21,102 @@ if str(_BACKEND) not in sys.path:
     sys.path.insert(0, str(_BACKEND))
 
 import maxwell_contract as mc  # noqa: E402
+
+_CONTRACTS = Path(__file__).parent / "contracts"
+_MAXWELL_OPENAPI = _CONTRACTS / "maxwell_openapi.json"
+
+
+def _load_maxwell_openapi() -> dict:
+    return json.loads(_MAXWELL_OPENAPI.read_text(encoding="utf-8"))
+
+
+def _resolve_schema(openapi: dict, schema: dict) -> dict:
+    ref = schema.get("$ref")
+    if not ref:
+        return schema
+    name = ref.rsplit("/", 1)[-1]
+    return openapi["components"]["schemas"][name]
+
+
+def _response_schema(openapi: dict, path: str, method: str = "get", status: str = "200") -> dict:
+    return _resolve_schema(
+        openapi,
+        openapi["paths"][path][method]["responses"][status]["content"]["application/json"]["schema"],
+    )
+
+
+def _schema_payload(openapi: dict, schema: dict, *, field_name: str = "") -> object:
+    schema = _resolve_schema(openapi, schema)
+    if "anyOf" in schema:
+        non_null = next((item for item in schema["anyOf"] if item.get("type") != "null"), schema["anyOf"][0])
+        return _schema_payload(openapi, non_null, field_name=field_name)
+    if "enum" in schema:
+        return schema["enum"][0]
+    if "default" in schema:
+        return schema["default"]
+
+    schema_type = schema.get("type")
+    if schema_type == "object" or "properties" in schema:
+        properties = schema.get("properties", {})
+        required = schema.get("required", list(properties))
+        if not properties:
+            additional = schema.get("additionalProperties", {})
+            if additional is True:
+                return {}
+            if not isinstance(additional, dict):
+                additional = {}
+            if additional.get("type") == "integer":
+                return {"running": 1, "queued": 0, "completed": 1, "failed": 0}
+            if additional.get("type") == "number":
+                return {"sample": 1.0}
+            return {}
+        return {
+            name: _schema_payload(openapi, properties[name], field_name=name) for name in required if name in properties
+        }
+    if schema_type == "array":
+        return [_schema_payload(openapi, schema.get("items", {}), field_name=field_name)]
+    if schema_type == "integer":
+        return 1
+    if schema_type == "number":
+        return 1.0
+    if schema_type == "boolean":
+        return True
+    if schema_type == "string":
+        samples = {
+            "action": "pause",
+            "contract": mc.EXPECTED_CONTRACT_VERSION,
+            "created_at": "2026-06-12T00:00:00Z",
+            "daemon": "3.1.0",
+            "gate": "open",
+            "generated_at": "2026-06-12T00:00:00Z",
+            "pipeline_state": "running",
+            "previous_state": "running",
+            "queued_at": "2026-06-12T00:00:00Z",
+            "sandbox": "enabled",
+            "status": "running",
+            "task_id": "t-1",
+        }
+        return samples.get(field_name, f"{field_name or 'value'}-sample")
+    return None
+
+
+def _maxwell_contract_payloads() -> dict[str, dict]:
+    openapi = _load_maxwell_openapi()
+    task_list = _schema_payload(openapi, _response_schema(openapi, "/api/tasks"))
+    return {
+        "version": _schema_payload(openapi, _response_schema(openapi, "/api/version")),
+        "status": _schema_payload(openapi, _response_schema(openapi, "/api/status")),
+        "status_v2": _schema_payload(openapi, _response_schema(openapi, "/api/v2/status")),
+        "task_list": task_list,
+        "task_summary": task_list["tasks"][0],
+        "task_detail": _schema_payload(openapi, _response_schema(openapi, "/api/tasks/{task_id}")),
+        "dispatch": _schema_payload(openapi, _response_schema(openapi, "/api/dispatch", "post", "202")),
+        "control": _schema_payload(openapi, _response_schema(openapi, "/api/control/{action}", "post")),
+        # These MD endpoints still publish generic object schemas. Keep explicit
+        # producer-observed payloads until MD gives them typed OpenAPI responses.
+        "workers": {"worker_count": 2, "queue_depth": 0},
+    }
+
 
 # ---------------------------------------------------------------------------
 # strip_sensitive
@@ -124,16 +221,21 @@ class TestExtraFieldsDropped:
                     "new_field": "ignored",
                 }
             ],
-            "cursor": "next-cursor",
+            "next_cursor": "next-cursor",
             "total": 1,
             "new_pagination_key": "X",
         }
         result = mc.MaxwellTaskListResponse.model_validate(raw).model_dump()
         assert "new_pagination_key" not in result
+        # Pagination is keyed next_cursor now, not cursor (issue #961).
+        assert "cursor" not in result
+        assert result["next_cursor"] == "next-cursor"
         tasks = result["tasks"]
         assert len(tasks) == 1
         assert "internal_ref" not in tasks[0]
         assert tasks[0]["id"] == "task-1"
+        # MaxwellTaskItem only models MD's real TaskSummary fields.
+        assert set(tasks[0].keys()) == {"id", "status", "created_at"}
 
     def test_backends_extra_fields_dropped(self) -> None:
         raw = {
@@ -152,6 +254,16 @@ class TestExtraFieldsDropped:
         assert "extra_cloud_config" not in backend
         assert backend["name"] == "Anthropic"
         assert backend["model"] == "claude-opus-4"
+
+    def test_backends_accept_daemon_string_list_shape(self) -> None:
+        raw = {"backends": ["openai", "ollama"]}
+
+        result = mc.MaxwellBackendsResponse.model_validate(raw).model_dump()
+
+        assert result["backends"] == [
+            {"name": "openai", "type": "unknown", "enabled": True, "model": None, "status": None},
+            {"name": "ollama", "type": "unknown", "enabled": True, "model": None, "status": None},
+        ]
 
 
 # ---------------------------------------------------------------------------
@@ -222,13 +334,16 @@ class TestSensitiveFieldsNeverForwarded:
 
 class TestDefaults:
     def test_task_list_defaults(self) -> None:
-        result = mc.MaxwellTaskListResponse.model_validate({}).model_dump()
+        result = mc.MaxwellTaskListResponse.model_validate({"total": 0}).model_dump()
         assert result["tasks"] == []
-        assert result["cursor"] is None
+        assert result["next_cursor"] is None
+        assert result["total"] == 0
+        assert "cursor" not in result
 
     def test_cost_defaults(self) -> None:
-        result = mc.MaxwellCostResponse.model_validate({}).model_dump()
-        assert result["total_usd"] is None
+        result = mc.MaxwellCostResponse.model_validate({"month_to_date_usd": 0.0, "by_backend": {}}).model_dump()
+        assert result["month_to_date_usd"] == 0.0
+        assert result["total_usd"] == 0.0
         assert result["currency"] == "USD"
 
     def test_dispatch_response_id_alias(self) -> None:
@@ -328,3 +443,127 @@ class TestWorkersMapping:
         # The old {workers, total} shape (zero overlap with MD) must be rejected.
         with pytest.raises(ValidationError):
             mc.MaxwellWorkersResponse.model_validate({"workers": [], "total": 0})
+
+
+class TestTaskContractAlignment:
+    """#961 — task list/detail align with MD's real TaskSummary/TaskDetail shape."""
+
+    def test_task_list_maps_md_next_cursor(self) -> None:
+        # MD's real list shape: tasks of {id,status,created_at} + next_cursor.
+        raw = {
+            "tasks": [{"id": "t-1", "status": "running", "created_at": "2026-06-12T00:00:00Z"}],
+            "next_cursor": None,
+            "total": 1,
+        }
+        result = mc.MaxwellTaskListResponse.model_validate(raw).model_dump()
+        assert result["next_cursor"] is None
+        assert result["tasks"][0]["status"] == "running"
+
+    def test_task_item_missing_status_fails_loud(self) -> None:
+        # status is now required — a defaulted "unknown" row is impossible (#961).
+        with pytest.raises(ValidationError):
+            mc.MaxwellTaskItem.model_validate({"id": "t-1"})
+
+    def test_task_item_missing_id_fails_loud(self) -> None:
+        with pytest.raises(ValidationError):
+            mc.MaxwellTaskItem.model_validate({"status": "queued"})
+
+    def test_task_detail_maps_md_transcript_artifacts(self) -> None:
+        # MD's real detail shape: {id,status,created_at,transcript,artifacts}.
+        raw = {
+            "id": "t-9",
+            "status": "completed",
+            "created_at": "2026-06-12T00:00:00Z",
+            "transcript": [{"role": "system", "text": "hi"}],
+            "artifacts": ["out.log"],
+        }
+        result = mc.MaxwellTaskDetailResponse.model_validate(raw).model_dump()
+        assert result["transcript"] == [{"role": "system", "text": "hi"}]
+        assert result["artifacts"] == ["out.log"]
+        # Phantom fields RD invented are gone.
+        for phantom in ("updated_at", "type", "priority", "tags", "error", "result_summary"):
+            assert phantom not in result
+
+    def test_task_detail_defaults_transcript_artifacts_empty(self) -> None:
+        # MD returns [] today; the model must accept their absence and default.
+        result = mc.MaxwellTaskDetailResponse.model_validate({"id": "t-1", "status": "queued"}).model_dump()
+        assert result["transcript"] == []
+        assert result["artifacts"] == []
+
+    def test_task_detail_missing_status_fails_loud(self) -> None:
+        with pytest.raises(ValidationError):
+            mc.MaxwellTaskDetailResponse.model_validate({"id": "t-1"})
+
+
+# ---------------------------------------------------------------------------
+# #960 — consumer-driven contract: derive RD's canonical payloads from MD's
+# generated OpenAPI snapshot. If MD renames a discriminating field in the
+# precise schemas below, the corresponding `*_field_rename_fails_loud` test
+# turns red here, surfacing drift on the consumer side before merge.
+# ---------------------------------------------------------------------------
+
+MD_CANONICAL: dict[str, dict] = _maxwell_contract_payloads()
+
+
+class TestConsumerDrivenContract:
+    """#960 — RD models validate against MD's real shapes, not hand-written ones."""
+
+    def test_openapi_snapshot_is_vendored(self) -> None:
+        openapi = _load_maxwell_openapi()
+        assert openapi["paths"]["/api/status"]["get"]["responses"]["200"]["content"]["application/json"]["schema"][
+            "$ref"
+        ].endswith("/StatusResponse")
+        assert "StatusResponse" in openapi["components"]["schemas"]
+
+    def test_version_accepts_canonical_md_shape(self) -> None:
+        mc.MaxwellVersionResponse.model_validate(MD_CANONICAL["version"])
+
+    def test_status_accepts_canonical_md_shape(self) -> None:
+        mc.MaxwellStatusResponse.model_validate(MD_CANONICAL["status"])
+
+    def test_status_v2_accepts_canonical_md_shape(self) -> None:
+        mc.MaxwellStatusV2Response.model_validate(MD_CANONICAL["status_v2"])
+
+    def test_task_summary_accepts_canonical_md_shape(self) -> None:
+        mc.MaxwellTaskItem.model_validate(MD_CANONICAL["task_summary"])
+
+    def test_task_list_accepts_canonical_md_shape(self) -> None:
+        mc.MaxwellTaskListResponse.model_validate(MD_CANONICAL["task_list"])
+
+    def test_task_detail_accepts_canonical_md_shape(self) -> None:
+        mc.MaxwellTaskDetailResponse.model_validate(MD_CANONICAL["task_detail"])
+
+    def test_workers_accepts_canonical_md_shape(self) -> None:
+        mc.MaxwellWorkersResponse.model_validate(MD_CANONICAL["workers"])
+
+    def test_control_accepts_canonical_md_shape(self) -> None:
+        mc.MaxwellControlResponse.model_validate(MD_CANONICAL["control"])
+
+    def test_dispatch_accepts_canonical_md_shape(self) -> None:
+        mc.MaxwellDispatchResponse.model_validate(MD_CANONICAL["dispatch"])
+
+    @pytest.mark.parametrize(
+        ("shape_key", "discriminator", "model"),
+        [
+            ("version", "contract", "MaxwellVersionResponse"),
+            ("status", "pipeline_state", "MaxwellStatusResponse"),
+            ("status_v2", "counts", "MaxwellStatusV2Response"),
+            ("task_summary", "status", "MaxwellTaskItem"),
+            ("task_detail", "status", "MaxwellTaskDetailResponse"),
+            ("dispatch", "task_id", "MaxwellDispatchResponse"),
+            ("workers", "worker_count", "MaxwellWorkersResponse"),
+            ("control", "action", "MaxwellControlResponse"),
+        ],
+    )
+    def test_discriminating_field_rename_fails_loud(self, shape_key: str, discriminator: str, model: str) -> None:
+        """If MD renames a required discriminating field, the consumer model rejects it.
+
+        Simulates upstream drift by renaming the discriminator to ``<name>_renamed``;
+        a defaulted/silent acceptance would mean drift is invisible (the #960 root
+        cause). The model must raise ValidationError instead.
+        """
+        renamed = dict(MD_CANONICAL[shape_key])
+        renamed[f"{discriminator}_renamed"] = renamed.pop(discriminator)
+        model_cls = getattr(mc, model)
+        with pytest.raises(ValidationError):
+            model_cls.model_validate(renamed)

@@ -28,7 +28,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import AliasChoices, BaseModel, Field, field_validator, model_validator
 
 # The contract major version this dashboard build was written against. Surfaced
 # at the /api/version boundary so a major-version mismatch with the daemon's
@@ -172,25 +172,37 @@ class MaxwellStatusV2Response(BaseModel):
 
 
 class MaxwellTaskItem(BaseModel):
-    """A single task entry in the tasks list."""
+    """A single task entry in the tasks list (issue #961).
+
+    Mirrors MD's real ``TaskSummary`` (``maxwell_daemon/api/contract.py``):
+    ``{id, status, created_at}``. ``id`` and ``status`` are **required** so a
+    defaulted task row (the old failure mode where every field silently fell back
+    to ``unknown``) is impossible. The phantom fields RD previously modelled
+    (``updated_at``/``type``/``priority``/``tags``/``error``) had no producer in
+    MD and were dropped; reinstate them here only once MD's ``TaskSummary`` adds
+    them (tracked in the paired Maxwell_Daemon issue).
+    """
 
     id: str = Field(description="Task UUID")
-    status: str = Field(default="unknown")
+    status: str = Field(description="Task status, e.g. queued/running/completed")
     created_at: str | None = Field(default=None)
-    updated_at: str | None = Field(default=None)
-    type: str | None = Field(default=None)
-    priority: int | None = Field(default=None)
-    tags: list[str] = Field(default_factory=list)
-    error: str | None = Field(default=None)
     # No credential fields are allow-listed here.
 
 
 class MaxwellTaskListResponse(BaseModel):
-    """Consumer view of Maxwell-Daemon's /api/tasks list endpoint."""
+    """Consumer view of Maxwell-Daemon's /api/tasks list endpoint (issue #961).
+
+    MD's list response keys pagination as ``next_cursor`` (``tasks.py``), not
+    ``cursor``; the old mis-keyed ``cursor`` field meant the dashboard could never
+    advance pages. ``next_cursor`` mirrors MD's field directly. MD currently
+    always returns ``next_cursor=None`` (pagination is stubbed upstream); the
+    proxy/UI therefore must not offer a "next page" affordance until MD emits a
+    real cursor — tracked in the paired Maxwell_Daemon issue.
+    """
 
     tasks: list[MaxwellTaskItem] = Field(default_factory=list)
-    cursor: str | None = Field(default=None, description="Opaque pagination cursor")
-    total: int | None = Field(default=None, ge=0)
+    next_cursor: str | None = Field(default=None, description="MD pagination cursor (None until MD implements it)")
+    total: int = Field(ge=0)
 
 
 # ---------------------------------------------------------------------------
@@ -199,21 +211,23 @@ class MaxwellTaskListResponse(BaseModel):
 
 
 class MaxwellTaskDetailResponse(BaseModel):
-    """Consumer view of Maxwell-Daemon's /api/tasks/{task_id} endpoint."""
+    """Consumer view of Maxwell-Daemon's /api/tasks/{task_id} endpoint (issue #961).
+
+    Mirrors MD's real ``TaskDetail`` (``maxwell_daemon/api/contract.py``):
+    ``{id, status, created_at, transcript, artifacts}``. ``id``/``status`` are
+    **required**. ``transcript`` and ``artifacts`` are always emitted by MD (as
+    ``[]`` today — the fields are present but unpopulated), so they are modelled
+    as lists with empty-list defaults rather than the phantom
+    ``updated_at``/``type``/``priority``/``tags``/``error``/``result_summary``
+    fields RD previously invented, none of which MD produces. The phantom fields
+    are dropped; re-add when MD's ``TaskDetail`` grows a real producer.
+    """
 
     id: str
-    status: str = Field(default="unknown")
+    status: str = Field(description="Task status, e.g. queued/running/completed")
     created_at: str | None = Field(default=None)
-    updated_at: str | None = Field(default=None)
-    started_at: str | None = Field(default=None)
-    completed_at: str | None = Field(default=None)
-    type: str | None = Field(default=None)
-    priority: int | None = Field(default=None)
-    tags: list[str] = Field(default_factory=list)
-    error: str | None = Field(default=None)
-    result_summary: str | None = Field(default=None)
-    # Note: full result payload is intentionally omitted — use a dedicated
-    # result endpoint if needed, and filter there too.
+    transcript: list[Any] = Field(default_factory=list, description="MD task transcript ([] until populated)")
+    artifacts: list[Any] = Field(default_factory=list, description="MD task artifacts ([] until populated)")
 
 
 # ---------------------------------------------------------------------------
@@ -236,6 +250,13 @@ class MaxwellBackendsResponse(BaseModel):
     """Consumer view of Maxwell-Daemon's /api/v1/backends endpoint."""
 
     backends: list[MaxwellBackendItem] = Field(default_factory=list)
+
+    @field_validator("backends", mode="before")
+    @classmethod
+    def _normalize_daemon_backends(cls, value: Any) -> Any:
+        if not isinstance(value, list):
+            return value
+        return [{"name": item, "enabled": True} if isinstance(item, str) else item for item in value]
 
 
 # ---------------------------------------------------------------------------
@@ -285,13 +306,26 @@ class MaxwellWorkersResponse(BaseModel):
 
 
 class MaxwellCostResponse(BaseModel):
-    """Consumer view of Maxwell-Daemon's /api/v1/cost endpoint."""
+    """Consumer view of Maxwell-Daemon's ``GET /api/v1/cost`` endpoint.
 
+    MD's OpenAPI schema defines ``CostSummary`` as
+    ``{month_to_date_usd, by_backend}``. ``month_to_date_usd`` is required on the
+    producer side; RD mirrors it directly and derives the legacy ``total_usd``
+    field so existing dashboard code keeps reading a total without silently
+    dropping the daemon's only emitted cost total (#960/#997).
+    """
+
+    month_to_date_usd: float = Field(ge=0)
     total_usd: float | None = Field(default=None, ge=0)
     window: str | None = Field(default=None, description="e.g. 'rolling_30d'")
     by_model: dict[str, float] | None = Field(default=None)
-    by_backend: dict[str, float] | None = Field(default=None)
+    by_backend: dict[str, float] = Field(default_factory=dict)
     currency: str = Field(default="USD")
+
+    @model_validator(mode="after")
+    def _derive(self) -> MaxwellCostResponse:
+        self.total_usd = self.month_to_date_usd
+        return self
 
 
 # ---------------------------------------------------------------------------
@@ -319,16 +353,26 @@ class MaxwellControlResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# /api/v1/tasks  (dispatch response)
+# /api/dispatch  (dispatch response, #953)
 # ---------------------------------------------------------------------------
 
 
 class MaxwellDispatchResponse(BaseModel):
-    """Consumer view of Maxwell-Daemon's task dispatch (POST /api/v1/tasks)."""
+    """Consumer view of Maxwell-Daemon's task dispatch (POST /api/dispatch).
 
-    task_id: str = Field(alias="id", default="unknown")
-    status: str = Field(default="queued")
+    Issue #953: the dashboard now proxies dispatch to MD's confirmation-gated,
+    idempotent ``POST /api/dispatch`` (``DispatchResponse`` =
+    ``{task_id, status, queued_at}``) instead of ``POST /api/v1/tasks`` (which
+    silently dropped ``confirmation_token``/``idempotency_key`` under Pydantic's
+    default ``extra="ignore"``). ``id``/``created_at`` aliases are retained so a
+    daemon still answering the legacy shape validates without error during the
+    additive rollover (reversible — DbC).
+    """
+
+    task_id: str = Field(validation_alias=AliasChoices("task_id", "id"))
+    status: str
     idempotency_key: str | None = Field(default=None)
+    queued_at: str | None = Field(default=None)
     created_at: str | None = Field(default=None)
     message: str | None = Field(default=None)
 

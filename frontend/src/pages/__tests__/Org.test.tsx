@@ -11,11 +11,21 @@
  * 6. Sort buttons reflect aria-pressed state.
  */
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen, fireEvent, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
-import { OrgTab, type OrgRepo } from "../Org";
+import {
+  cleanup,
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { OrgPage, OrgTab, type OrgRepo } from "../Org";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 const REPOS: OrgRepo[] = [
   {
@@ -97,8 +107,60 @@ describe("OrgTab", () => {
   });
 
   it("prefers org_open_issues from stats when provided", () => {
-    render(<OrgTab repos={REPOS} loading={false} stats={{ org_open_issues: 99 }} />);
+    render(
+      <OrgTab repos={REPOS} loading={false} stats={{ org_open_issues: 99 }} />,
+    );
     const statRow = document.querySelector(".stat-row") as HTMLElement;
     expect(within(statRow).getByText("99")).toBeInTheDocument();
+  });
+});
+
+describe("OrgPage", () => {
+  it("loads repos and stats for the native routed page", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input) => {
+        const url = String(input);
+        if (url.endsWith("/api/repos")) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ repos: REPOS }), { status: 200 }),
+          );
+        }
+        if (url.endsWith("/api/stats")) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ org_open_issues: 42 }), {
+              status: 200,
+            }),
+          );
+        }
+        return Promise.reject(new Error("unexpected fetch " + url));
+      });
+
+    render(<OrgPage />);
+
+    await waitFor(() => expect(screen.getByText("alpha")).toBeInTheDocument());
+    const statRow = document.querySelector(".stat-row") as HTMLElement;
+    expect(within(statRow).getByText("42")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/repos",
+      expect.objectContaining({ headers: expect.any(Headers) }),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/stats",
+      expect.objectContaining({ headers: expect.any(Headers) }),
+    );
+  });
+
+  it("surfaces a retry affordance when org data fails to load", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ error: "nope" }), { status: 500 }),
+    );
+
+    render(<OrgPage />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Failed to load organization data",
+    );
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
   });
 });

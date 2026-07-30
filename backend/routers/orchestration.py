@@ -25,11 +25,13 @@ import datetime as _dt_mod
 import json
 import logging
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import dispatch_contract
 import orchestration_audit as _audit
+import proxy_utils
 from dashboard_config import FLEET_NODES, HOSTNAME, MACHINE_ROLE, ORG, PORT, REPO_ROOT
 from fastapi import APIRouter, Depends, HTTPException, Request
 from identity import Principal, require_scope  # noqa: B008
@@ -40,7 +42,9 @@ from routers import orchestration_schedule_routes as _schedule_routes
 from security import sanitize_log_value
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Awaitable, Callable
+
+    from fastapi import FastAPI
 
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 datetime = _dt_mod.datetime
@@ -51,26 +55,23 @@ router.include_router(_audit_routes.router)
 router.include_router(_schedule_routes.router)
 router.include_router(_node_routes.router)
 
-# ---------------------------------------------------------------------------
-# Injected dependencies (set by server.py after import)
-# ---------------------------------------------------------------------------
 
-_fleet_control_local: Callable | None = None
-_remote_fleet_control: Callable | None = None
-_get_fleet_nodes_impl: Callable | None = None
-_proxy_to_hub: Callable | None = None
-_should_proxy_fleet_to_hub: Callable | None = None
-_run_cmd: Callable | None = None
+@dataclass(frozen=True, slots=True)
+class OrchestrationDeps:
+    fleet_control_local: Callable[[str], Awaitable[dict[str, Any]]]
+    remote_fleet_control: Callable[[str, str, str], Awaitable[dict[str, Any]]]
+    get_fleet_nodes_impl: Callable[[], Awaitable[dict[str, Any]]]
+    run_cmd: Callable[..., Awaitable[tuple[int, str, str]]]
+
 
 _DEPLOY_ACTIONS = {"sync_workflows", "restart_runner", "update_config"}
 
 
 def set_dependencies(  # noqa: PLR0913
+    app: FastAPI,
     fleet_control_local: Callable,
     remote_fleet_control: Callable,
     get_fleet_nodes_impl: Callable,
-    proxy_to_hub: Callable,
-    should_proxy_fleet_to_hub: Callable,
     get_runner_capacity_snapshot: Callable,
     validate_runner_schedule: Callable,
     write_runner_schedule_config: Callable,
@@ -82,17 +83,13 @@ def set_dependencies(  # noqa: PLR0913
     runner_scheduler_state: Path,
     runner_base_dir: Path,
 ) -> None:
-    """Wire server.py helpers into this router (called at startup)."""
-    global _fleet_control_local, _remote_fleet_control, _get_fleet_nodes_impl  # noqa: PLW0603
-    global _proxy_to_hub, _should_proxy_fleet_to_hub  # noqa: PLW0603
-    global _run_cmd  # noqa: PLW0603
-
-    _fleet_control_local = fleet_control_local
-    _remote_fleet_control = remote_fleet_control
-    _get_fleet_nodes_impl = get_fleet_nodes_impl
-    _proxy_to_hub = proxy_to_hub
-    _should_proxy_fleet_to_hub = should_proxy_fleet_to_hub
-    _run_cmd = run_cmd
+    """Wire server.py helpers into this router through FastAPI app state."""
+    app.state.orchestration_deps = OrchestrationDeps(
+        fleet_control_local=fleet_control_local,
+        remote_fleet_control=remote_fleet_control,
+        get_fleet_nodes_impl=get_fleet_nodes_impl,
+        run_cmd=run_cmd,
+    )
     _schedule_routes.set_dependencies(
         get_runner_capacity_snapshot=get_runner_capacity_snapshot,
         validate_runner_schedule=validate_runner_schedule,
@@ -104,11 +101,17 @@ def set_dependencies(  # noqa: PLR0913
         runner_base_dir=runner_base_dir,
     )
     _node_routes.set_dependencies(
+        app=app,
         get_fleet_nodes_impl=get_fleet_nodes_impl,
-        proxy_to_hub=proxy_to_hub,
-        should_proxy_fleet_to_hub=should_proxy_fleet_to_hub,
         get_system_metrics_snapshot=get_system_metrics_snapshot,
     )
+
+
+def orchestration_deps(request: Request) -> OrchestrationDeps:
+    deps = getattr(request.app.state, "orchestration_deps", None)
+    if not isinstance(deps, OrchestrationDeps):
+        raise RuntimeError("orchestration router dependencies are not configured")
+    return deps
 
 
 # ---------------------------------------------------------------------------
@@ -117,13 +120,16 @@ def set_dependencies(  # noqa: PLR0913
 
 
 @router.get("/api/fleet/orchestration")
-async def get_fleet_orchestration(request: Request) -> dict:
+async def get_fleet_orchestration(
+    request: Request,
+    deps: OrchestrationDeps = Depends(orchestration_deps),  # noqa: B008
+) -> dict:
     """Return per-machine job assignment, queue, and capacity for fleet orchestration view."""
     registry_data = load_machine_registry()
     machines_raw = registry_data.get("machines", [])
 
     try:
-        fleet = await _get_fleet_nodes_impl()  # type: ignore[misc]
+        fleet = await deps.get_fleet_nodes_impl()
         live_nodes = {n.get("name", ""): n for n in fleet.get("nodes", [])}
     except Exception as e:  # noqa: BLE001
         if isinstance(e, (KeyboardInterrupt, SystemExit)):
@@ -171,6 +177,7 @@ async def get_fleet_orchestration(request: Request) -> dict:
 async def fleet_orchestration_dispatch(
     request: Request,
     *,
+    deps: OrchestrationDeps = Depends(orchestration_deps),  # noqa: B008
     principal: Principal = Depends(require_scope("fleet.control")),  # noqa: B008
 ) -> dict:
     """Dispatch a workflow to a specific machine target."""
@@ -260,7 +267,7 @@ async def fleet_orchestration_dispatch(
             json.dump(dispatch_payload, pf_obj)
             pf = pf_obj.name
         try:
-            code, _, stderr = await _run_cmd(  # type: ignore[misc]
+            code, _, stderr = await deps.run_cmd(
                 ["gh", "api", endpoint, "--method", "POST", "--input", pf],
                 timeout=30,
                 cwd=REPO_ROOT,
@@ -288,6 +295,7 @@ async def fleet_orchestration_dispatch(
 async def fleet_orchestration_deploy(
     request: Request,
     *,
+    deps: OrchestrationDeps = Depends(orchestration_deps),  # noqa: B008
     principal: Principal = Depends(require_scope("fleet.control")),  # noqa: B008
 ) -> dict:
     """Deploy a workflow or config change to a fleet machine."""
@@ -395,6 +403,7 @@ async def fleet_control(
     action: str,
     request: Request,
     *,
+    deps: OrchestrationDeps = Depends(orchestration_deps),  # noqa: B008
     principal: Principal = Depends(require_scope("fleet.control")),  # noqa: B008
 ) -> dict:
     """Scale runners from any dashboard.
@@ -403,14 +412,14 @@ async def fleet_control(
     locally and fans it out to configured nodes. Internal fan-out calls use
     ``?local=1`` so each node controls its own runner services.
     """
-    if _should_proxy_fleet_to_hub(request):  # type: ignore[misc]
-        return await _proxy_to_hub(request)  # type: ignore[misc]
+    if proxy_utils.should_proxy_fleet_to_hub(request):
+        return await proxy_utils.proxy_to_hub(request)
 
     scope = request.query_params.get("scope", "fleet")
     should_fan_out = MACHINE_ROLE == "hub" and scope != "local" and bool(FLEET_NODES)
     local_machine = HOSTNAME
     try:
-        local_result = await _fleet_control_local(action)  # type: ignore[misc]
+        local_result = await deps.fleet_control_local(action)
         local_machine = local_result.get("machine", HOSTNAME)
         local_node_result = {
             "machine": local_machine,
@@ -433,7 +442,7 @@ async def fleet_control(
 
     if should_fan_out:
         remotes = await asyncio.gather(
-            *[_remote_fleet_control(name, url, action) for name, url in FLEET_NODES.items()]  # type: ignore[misc]
+            *[deps.remote_fleet_control(name, url, action) for name, url in FLEET_NODES.items()]
         )
         node_results.extend(remotes)
 

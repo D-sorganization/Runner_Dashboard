@@ -7,14 +7,12 @@
  * live telemetry node, then embeds the full `SystemResourcesPanel`
  * (CPU/RAM/swap/storage/load/network/GPU + per-runner process table).
  *
- * Presentational: the fleet `data` + flat `runners` list are owned by the
- * legacy App (the same state feeds Fleet/Overview), so this page receives them
- * as props. Pure helpers come from `lib/fleetMachines`, sort logic from
- * `decompSort`, the sortable header from `decompSortTh`, and formatters/Stat
- * from the shared modules — no fork, no double-poll.
+ * `MachinesPage` owns the fleet-node + runner fetches for the routed desktop
+ * shell. `MachinesTab` stays presentational so legacy callers and focused
+ * tests can keep passing explicit payloads.
  */
 /* eslint-disable @typescript-eslint/no-explicit-any -- 1:1 port of dynamically-typed legacy fleet/telemetry payloads; the backend response shapes lack complete TypeScript definitions. */
-import React from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Stat } from "../components/Stat";
 import {
   boundedPercent,
@@ -35,8 +33,90 @@ import {
   runnerSort,
   type StorageDevice,
 } from "../lib/fleetMachines";
+import { legacyFetch } from "../lib/api";
 
 const h = React.createElement;
+
+interface RunnersPayload {
+  runners?: any[];
+}
+
+function normalizeRunnersPayload(payload: unknown): any[] {
+  if (Array.isArray(payload)) return payload;
+  if (payload && typeof payload === "object") {
+    const runners = (payload as RunnersPayload).runners;
+    if (Array.isArray(runners)) return runners;
+  }
+  return [];
+}
+
+export function MachinesPage(): React.ReactElement {
+  const [data, setData] = useState<Record<string, any>>({ nodes: [] });
+  const [runners, setRunners] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback((signal?: AbortSignal) => {
+    setLoading(true);
+    setError(null);
+    Promise.all([
+      legacyFetch("/api/fleet/nodes", { signal }).then((r) => {
+        if (!r.ok) throw new Error("fleet nodes HTTP " + r.status);
+        return r.json();
+      }),
+      legacyFetch("/api/runners", { signal }).then((r) => {
+        if (!r.ok) throw new Error("runners HTTP " + r.status);
+        return r.json();
+      }),
+    ])
+      .then(([nodesPayload, runnersPayload]) => {
+        setData(
+          nodesPayload && typeof nodesPayload === "object"
+            ? (nodesPayload as Record<string, any>)
+            : { nodes: [] },
+        );
+        setRunners(normalizeRunnersPayload(runnersPayload));
+      })
+      .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setError(
+          err instanceof Error ? err.message : "Failed to load machine data",
+        );
+      })
+      .finally(() => {
+        if (!signal?.aborted) setLoading(false);
+      });
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    refresh(controller.signal);
+    return () => controller.abort();
+  }, [refresh]);
+
+  return (
+    <div>
+      {error ? (
+        <div
+          className="section"
+          role="alert"
+          style={{ marginBottom: 12, color: "var(--accent-red)" }}
+        >
+          Failed to load machine data: {error}
+          <button
+            className="btn"
+            type="button"
+            onClick={() => refresh()}
+            style={{ marginLeft: 12 }}
+          >
+            Retry
+          </button>
+        </div>
+      ) : null}
+      <MachinesTab data={data} runners={runners} loading={loading} />
+    </div>
+  );
+}
 
 export function StorageDeviceMetric(p: { device?: StorageDevice }): React.ReactElement {
   const device = p.device || {};

@@ -100,7 +100,14 @@ export GITHUB_TOKEN=ghp_your_token_here
 
 Open http://localhost:8321 in your browser.
 
-**Requirements:** Python 3.11+, a GitHub PAT with `repo` and `admin:org` scopes.
+On a clean checkout `start-dashboard.sh` provisions a project-local `.venv` from
+the repo-root `requirements.txt` and builds the frontend bundle
+(`frontend/dist/`) via `npm ci && npm run build`. It exits non-zero with
+instructions if the dependencies or a working `npm` are unavailable, rather than
+starting a broken server.
+
+**Requirements:** Python 3.11+, Node.js 18+/npm (for the frontend build), and a
+GitHub PAT with `repo` and `admin:org` scopes.
 
 ## Production Deployment
 

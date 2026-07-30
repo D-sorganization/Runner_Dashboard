@@ -15,10 +15,18 @@ _FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 _HTML_SHELL = _FRONTEND_DIR / "index.html"
 _SRC_DIR = _FRONTEND_DIR / "src"
 _INDEX_HTML = _SRC_DIR / "legacy" / "App.tsx"
+_FETCH_GUARDS = _SRC_DIR / "legacy" / "fetchGuards.ts"
+_VISIBLE_INTERVAL = _SRC_DIR / "legacy" / "visibleInterval.ts"
 _QUEUE_INDEX = _SRC_DIR / "pages" / "Queue" / "index.tsx"
+_FLEET_TAB = _SRC_DIR / "pages" / "FleetTab.tsx"
+_REMEDIATION_TAB = _SRC_DIR / "pages" / "RemediationTab.tsx"
+_NAV_REGISTRY = _SRC_DIR / "shell" / "navRegistry.ts"
+_ROUTED_SHELL = _SRC_DIR / "shell" / "RoutedShell.tsx"
 _PUSH_SETTINGS = _FRONTEND_DIR / "src" / "pages" / "PushSettings.tsx"
 _DESIGN_DIR = _FRONTEND_DIR / "src" / "design"
 _PRIMITIVES_DIR = _FRONTEND_DIR / "src" / "primitives"
+_AUDIT_CLOSEOUT = Path(__file__).parent.parent / "docs" / "operations" / "2026-06-15-audit-closeout.md"
+_LEGACY_APP_LINE_RATCHET = 2886
 
 
 def _read_index() -> str:
@@ -126,6 +134,46 @@ def test_tests_tab_rerun_checks_response_ok_before_triggered_state() -> None:
 
     assert "if (!r.ok)" in rerun_block
     assert 'throw new Error("rerun failed")' in rerun_block
+
+
+def test_legacy_polling_pauses_while_tab_is_hidden() -> None:
+    content = _read_legacy_app()
+    helper = _VISIBLE_INTERVAL.read_text(encoding="utf-8")
+
+    assert 'import { createVisibleInterval } from "./visibleInterval"' in content
+    assert "document.hidden" in helper
+    assert 'document.addEventListener("visibilitychange", onVisibilityChange)' in helper
+    assert 'document.removeEventListener("visibilitychange", onVisibilityChange)' in helper
+    assert "var t1 = setInterval" not in content
+    assert "var healthInterval = setInterval" not in content
+
+    poller_start = content.index("var cleanupIntervals = [")
+    poller_block = content[poller_start : content.index("];", poller_start)]
+    assert poller_block.count("createVisibleInterval(") == 15
+    assert "createVisibleInterval(checkHealth, 2000)" in content
+
+
+def test_legacy_app_line_count_ratchet_shrinks_for_issue_949() -> None:
+    """The legacy monolith must only shrink while tabs are retired (#949)."""
+    line_count = len(_INDEX_HTML.read_text(encoding="utf-8").splitlines())
+
+    assert line_count <= _LEGACY_APP_LINE_RATCHET
+
+
+def test_fleet_and_remediation_tabs_are_extracted_from_legacy_monolith() -> None:
+    """Fleet and Remediation route through page modules, not inline twins (#949)."""
+    content = _read_legacy_app()
+    fleet_page = _FLEET_TAB.read_text(encoding="utf-8")
+    remediation_page = _REMEDIATION_TAB.read_text(encoding="utf-8")
+
+    assert 'import { FleetTab } from "../pages/FleetTab"' in content
+    assert 'import { RemediationTab } from "../pages/RemediationTab"' in content
+    assert "function FleetTab" not in content
+    assert "function RemediationTab" not in content
+    assert "h(FleetTab, {" in content
+    assert "h(RemediationTab, {" in content
+    assert "export function FleetTab" in fleet_page
+    assert "export function RemediationTab" in remediation_page
 
 
 def test_runner_facing_tables_use_sortable_headers() -> None:
@@ -259,11 +307,13 @@ def test_mobile_credentials_mutations_require_bottom_sheet_confirmation() -> Non
 
 
 def test_credentials_api_is_excluded_from_frontend_cache_contract() -> None:
-    content = _read_legacy_app()
+    content = _FETCH_GUARDS.read_text(encoding="utf-8")
+    legacy_app = _read_legacy_app()
     assert "SERVICE_WORKER_CACHE_DENYLIST" in content
     assert "/^\\/api\\/credentials(?:\\/|$)/" in content
     assert "shouldBypassServiceWorkerCache(url)" in content
     assert 'cache: "no-store"' in content
+    assert "installLegacyFetchGuards" in legacy_app
     assert "navigator.serviceWorker" not in content
 
 
@@ -506,6 +556,277 @@ def test_router_is_the_single_nav_source_of_truth() -> None:
     routing_ts = (_FRONTEND_DIR / "src" / "shell" / "routing.ts").read_text(encoding="utf-8")
     for marker in ["pathnameToTabId", "tabIdToPath", "isPushSettingsRoute"]:
         assert marker in routing_ts, f"missing routing helper: {marker!r}"
+
+
+def test_queue_desktop_route_bypasses_legacy_app() -> None:
+    """The Queue desktop tab is self-owned and must not remount legacy/App.tsx.
+
+    QueueTab already fetches `/api/queue` when rendered without legacy-owned
+    props. Keep the modern desktop shell pointed at the extracted page so #949
+    continues shrinking the legacy fallback surface instead of expanding it.
+    """
+    routed_shell = (_FRONTEND_DIR / "src" / "shell" / "RoutedShell.tsx").read_text(
+        encoding="utf-8",
+    )
+    queue_page = (_FRONTEND_DIR / "src" / "pages" / "Queue" / "index.tsx").read_text(
+        encoding="utf-8",
+    )
+
+    assert 'case "queue":' in routed_shell
+    assert "return <QueueTab />;" in routed_shell
+    assert 'fetch("/api/queue")' in queue_page
+    assert "p.queue ?? localQueue ?? {}" in queue_page
+
+
+def test_org_desktop_route_bypasses_legacy_app() -> None:
+    """The Organization desktop tab owns its data outside legacy/App.tsx (#949)."""
+    routed_shell = (_FRONTEND_DIR / "src" / "shell" / "RoutedShell.tsx").read_text(
+        encoding="utf-8",
+    )
+    org_page = (_FRONTEND_DIR / "src" / "pages" / "Org.tsx").read_text(
+        encoding="utf-8",
+    )
+
+    assert 'case "org":' in routed_shell
+    assert "return <OrgPage />;" in routed_shell
+    assert 'legacyFetch("/api/repos"' in org_page
+    assert 'legacyFetch("/api/stats"' in org_page
+    assert "export function OrgPage" in org_page
+
+
+def test_machines_desktop_route_bypasses_legacy_app() -> None:
+    """The Machines desktop tab owns its data outside legacy/App.tsx (#949)."""
+    routed_shell = (_FRONTEND_DIR / "src" / "shell" / "RoutedShell.tsx").read_text(
+        encoding="utf-8",
+    )
+    machines_page = (_FRONTEND_DIR / "src" / "pages" / "Machines.tsx").read_text(
+        encoding="utf-8",
+    )
+
+    assert 'case "machines":' in routed_shell
+    assert "return <MachinesPage />;" in routed_shell
+    assert 'legacyFetch("/api/fleet/nodes"' in machines_page
+    assert 'legacyFetch("/api/runners"' in machines_page
+    assert "export function MachinesPage" in machines_page
+
+
+def test_tests_desktop_route_bypasses_legacy_app() -> None:
+    """The Tests desktop tab owns its data outside legacy/App.tsx (#949)."""
+    routed_shell = (_FRONTEND_DIR / "src" / "shell" / "RoutedShell.tsx").read_text(
+        encoding="utf-8",
+    )
+    tests_page = (_FRONTEND_DIR / "src" / "pages" / "TestsPage.tsx").read_text(
+        encoding="utf-8",
+    )
+
+    assert 'case "tests":' in routed_shell
+    assert "return <TestsPage />;" in routed_shell
+    assert 'legacyFetch("/api/heavy-tests/repos"' in tests_page
+    assert 'legacyFetch("/api/tests/ci-results"' in tests_page
+    assert "export function TestsPage" in tests_page
+
+
+def test_runner_schedule_desktop_route_bypasses_legacy_app() -> None:
+    """The Runner Schedule desktop tab owns its data outside legacy/App.tsx (#949)."""
+    routed_shell = (_FRONTEND_DIR / "src" / "shell" / "RoutedShell.tsx").read_text(
+        encoding="utf-8",
+    )
+    schedule_page = (_FRONTEND_DIR / "src" / "pages" / "RunnerSchedule.tsx").read_text(
+        encoding="utf-8",
+    )
+
+    assert 'case "runner-schedule":' in routed_shell
+    assert "return <RunnerSchedulePage />;" in routed_shell
+    assert 'legacyFetch("/api/fleet/schedule"' in schedule_page
+    assert 'method: "POST"' in schedule_page
+    assert "export function RunnerSchedulePage" in schedule_page
+
+
+def test_workflows_desktop_route_bypasses_legacy_app() -> None:
+    """The Workflows desktop tab owns list/dispatch data outside legacy/App.tsx (#949)."""
+    routed_shell = (_FRONTEND_DIR / "src" / "shell" / "RoutedShell.tsx").read_text(
+        encoding="utf-8",
+    )
+    workflows_page = (_FRONTEND_DIR / "src" / "pages" / "WorkflowsPage.tsx").read_text(
+        encoding="utf-8",
+    )
+
+    assert 'case "workflows":' in routed_shell
+    assert "return <WorkflowsPage />;" in routed_shell
+    assert 'legacyFetch("/api/workflows/list"' in workflows_page
+    assert 'legacyFetch("/api/workflows/dispatch"' in workflows_page
+    assert "export function WorkflowsPage" in workflows_page
+
+
+def test_assessments_desktop_route_bypasses_legacy_app() -> None:
+    """The Assessments desktop tab owns repos/scores/dispatch outside legacy/App.tsx."""
+    routed_shell = (_FRONTEND_DIR / "src" / "shell" / "RoutedShell.tsx").read_text(
+        encoding="utf-8",
+    )
+    assessments_page = (_FRONTEND_DIR / "src" / "pages" / "AssessmentsPage.tsx").read_text(encoding="utf-8")
+
+    assert 'case "assessments":' in routed_shell
+    assert "return <AssessmentsPage />;" in routed_shell
+    assert 'legacyFetch("/api/repos"' in assessments_page
+    assert 'legacyFetch("/api/assessments/scores"' in assessments_page
+    assert 'legacyFetch("/api/assessments/dispatch"' in assessments_page
+    assert "export function AssessmentsPage" in assessments_page
+
+
+def test_credentials_desktop_route_bypasses_legacy_app() -> None:
+    """The Credentials desktop tab owns probe/set-key data outside legacy/App.tsx (#949)."""
+    routed_shell = (_FRONTEND_DIR / "src" / "shell" / "RoutedShell.tsx").read_text(
+        encoding="utf-8",
+    )
+    credentials_page = (_FRONTEND_DIR / "src" / "pages" / "CredentialsPage.tsx").read_text(encoding="utf-8")
+
+    assert 'case "credentials":' in routed_shell
+    assert "return <CredentialsPage />;" in routed_shell
+    assert 'legacyFetch("/api/credentials"' in credentials_page
+    assert 'legacyFetch("/api/credentials/set-key"' in credentials_page
+    assert "export function CredentialsPage" in credentials_page
+
+
+def test_feature_requests_desktop_route_bypasses_legacy_app() -> None:
+    """The Feature Requests desktop tab owns request/template data outside legacy/App.tsx."""
+    routed_shell = (_FRONTEND_DIR / "src" / "shell" / "RoutedShell.tsx").read_text(
+        encoding="utf-8",
+    )
+    feature_requests_page = (_FRONTEND_DIR / "src" / "pages" / "FeatureRequestsPage.tsx").read_text(encoding="utf-8")
+
+    assert 'case "feature-requests":' in routed_shell
+    assert "return <FeatureRequestsPage />;" in routed_shell
+    assert 'legacyFetch("/api/repos"' in feature_requests_page
+    assert 'legacyFetch("/api/feature-requests"' in feature_requests_page
+    assert 'legacyFetch("/api/feature-requests/templates"' in feature_requests_page
+    assert 'legacyFetch("/api/feature-requests/dispatch"' in feature_requests_page
+    assert 'legacyFetch("/api/settings/prompt-notes"' in feature_requests_page
+    assert 'legacyFetch("/api/prompt-templates"' not in feature_requests_page
+    assert "export function FeatureRequestsPage" in feature_requests_page
+
+
+def test_fleet_orchestration_desktop_route_bypasses_legacy_app() -> None:
+    """The Fleet Orchestration desktop tab owns orchestration data outside legacy/App.tsx."""
+    routed_shell = (_FRONTEND_DIR / "src" / "shell" / "RoutedShell.tsx").read_text(
+        encoding="utf-8",
+    )
+    orchestration_page = (_FRONTEND_DIR / "src" / "pages" / "FleetOrchestrationPage.tsx").read_text(encoding="utf-8")
+
+    assert 'case "fleet-orchestration":' in routed_shell
+    assert "const LazyFleetOrchestrationPage = React.lazy(" in routed_shell
+    assert "return <LazyFleetOrchestrationPage />;" in routed_shell
+    assert 'legacyFetch("/api/fleet/orchestration"' in orchestration_page
+    assert 'legacyFetch("/api/fleet/orchestration/dispatch"' in orchestration_page
+    assert 'legacyFetch("/api/fleet/orchestration/deploy"' in orchestration_page
+    assert "export function FleetOrchestrationPage" in orchestration_page
+
+
+def test_overview_desktop_route_bypasses_legacy_app() -> None:
+    """The Overview desktop tab owns fleet data outside legacy/App.tsx."""
+    routed_shell = (_FRONTEND_DIR / "src" / "shell" / "RoutedShell.tsx").read_text(
+        encoding="utf-8",
+    )
+    overview_page = (_FRONTEND_DIR / "src" / "pages" / "OverviewPage.tsx").read_text(encoding="utf-8")
+    vite_config = (_FRONTEND_DIR.parent / "vite.config.ts").read_text(
+        encoding="utf-8",
+    )
+
+    assert 'case "overview":' in routed_shell
+    assert "const LazyOverviewPage = React.lazy(" in routed_shell
+    assert "return <LazyOverviewPage />;" in routed_shell
+    assert 'getJson("/api/stats"' in overview_page
+    assert 'getJson("/api/runners"' in overview_page
+    assert 'getJson("/api/fleet/nodes"' in overview_page
+    assert 'legacyFetch("/api/fleet/control/" + action' in overview_page
+    assert 'legacyFetch("/api/runners/" + id + "/" + action' in overview_page
+    assert "export function OverviewPage" in overview_page
+    assert "return 'fleet-overview'" in vite_config
+
+
+def test_remediation_desktop_route_bypasses_legacy_app() -> None:
+    """The Remediation desktop tab owns remediation data outside legacy/App.tsx."""
+    routed_shell = (_FRONTEND_DIR / "src" / "shell" / "RoutedShell.tsx").read_text(
+        encoding="utf-8",
+    )
+    remediation_page = (_FRONTEND_DIR / "src" / "pages" / "RemediationPage.tsx").read_text(encoding="utf-8")
+    vite_config = (_FRONTEND_DIR.parent / "vite.config.ts").read_text(
+        encoding="utf-8",
+    )
+
+    assert 'case "remediation":' in routed_shell
+    assert "const LazyRemediationPage = React.lazy(" in routed_shell
+    assert "return <LazyRemediationPage />;" in routed_shell
+    assert 'getJson("/api/agent-remediation/config"' in remediation_page
+    assert 'getJson("/api/agent-remediation/workflows"' in remediation_page
+    assert 'getJson("/api/agent-remediation/history"' in remediation_page
+    assert 'legacyFetch("/api/agent-remediation/config"' in remediation_page
+    assert 'legacyFetch("/api/agent-remediation/plan"' in remediation_page
+    assert 'legacyFetch("/api/agent-remediation/dispatch"' in remediation_page
+    assert "export function RemediationPage" in remediation_page
+    assert "return 'remediation'" in vite_config
+
+
+def test_native_mobile_tabs_do_not_build_legacy_fallback() -> None:
+    """Native mobile tabs must not construct the legacy fallback app (#949)."""
+    routed_shell = (_FRONTEND_DIR / "src" / "shell" / "RoutedShell.tsx").read_text(
+        encoding="utf-8",
+    )
+    mobile_shell = (_FRONTEND_DIR / "src" / "shell" / "MobileShell.tsx").read_text(
+        encoding="utf-8",
+    )
+
+    for marker in [
+        "overview: <FleetMobile />",
+        "queue: <QueueMobile />",
+        "maxwell: <MaxwellMobile />",
+        "remediation: (",
+        "<RemediationMobile",
+        "reports: <ReportsMobile />",
+        "credentials: <CredentialsMobile />",
+        "const nativeMobileContent = mobileTabContent[mobileTab];",
+        "const legacyMobileFallback = nativeMobileContent ? null :",
+    ]:
+        assert marker in routed_shell
+
+    assert "{legacyMobileFallback}" in routed_shell
+    assert "children?: ReactNode" in mobile_shell
+    assert "{nativeContent ?? children}" in mobile_shell
+    assert "children: ReactNode" not in mobile_shell
+
+
+def test_modern_desktop_shell_has_no_legacy_fallback() -> None:
+    """Registered desktop tabs must route natively instead of falling back."""
+    routed_shell = (_FRONTEND_DIR / "src" / "shell" / "RoutedShell.tsx").read_text(
+        encoding="utf-8",
+    )
+
+    assert "chromeless" not in routed_shell
+    assert "nativeContent ??" not in routed_shell
+    assert "{nativeContent}" in routed_shell
+
+
+def test_every_registered_desktop_tab_has_native_route_content() -> None:
+    """Adding a nav tab must add native desktop content, not revive legacy fallback."""
+    nav_registry = _NAV_REGISTRY.read_text(encoding="utf-8")
+    routed_shell = _ROUTED_SHELL.read_text(encoding="utf-8")
+
+    registered_tabs = set(re.findall(r'tabId:\s*"([^"]+)"', nav_registry))
+    routed_tabs = set(
+        re.findall(r'case\s+"([^"]+)":', routed_shell[routed_shell.index("function nativeDesktopTabContent") :])
+    )
+
+    assert registered_tabs
+    assert registered_tabs <= routed_tabs
+
+
+def test_runner_dashboard_audit_closeout_evidence_tracks_final_issues() -> None:
+    """The #949/#951 closeout record must remain tied to the checked guards."""
+    closeout = _AUDIT_CLOSEOUT.read_text(encoding="utf-8")
+
+    assert "#949" in closeout
+    assert "#951" in closeout
+    assert "tests/test_frontend_integrity.py" in closeout
+    assert "tests/api/test_router_dependency_contracts.py" in closeout
 
 
 def test_main_tsx_has_root_suspense_fallback() -> None:

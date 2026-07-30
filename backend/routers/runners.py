@@ -32,6 +32,7 @@ from runner_inventory import fetch_org_runners
 from .runner_helpers import (
     is_matlab_runner,
     matlab_runner_summary,
+    principal_log_id,
     run_runner_svc,
     runner_health_check,
     runner_num_from_id,
@@ -230,7 +231,11 @@ async def start_runner(
         num = runner_num_from_id(runner_id, runners)
 
         if num is None:
-            log.warning("start_runner: runner_id=%d not found locally (principal=%s)", runner_id, principal.user_id)
+            log.warning(
+                "start_runner: runner_id=%d not found locally (principal=%s)",
+                runner_id,
+                principal_log_id(principal),
+            )
             raise HTTPException(
                 status_code=404,
                 detail=not_found(f"Runner ID {runner_id} not found locally").model_dump(exclude_none=True),
@@ -238,14 +243,24 @@ async def start_runner(
 
         code, stdout, stderr = await run_runner_svc(num, "start")
         if code != 0:
-            log.error("start_runner: failed for runner_num=%d: %s (principal=%s)", num, stderr, principal.user_id)
+            log.error(
+                "start_runner: failed for runner_num=%d: %s (principal=%s)",
+                num,
+                stderr,
+                principal_log_id(principal),
+            )
             status = service_stderr_to_status(stderr)
             raise HTTPException(
                 status_code=status,
                 detail=service_error(f"Failed to start runner {num}: {stderr}").model_dump(exclude_none=True),
             )
 
-        log.info("start_runner: started runner_num=%d (runner_id=%d, principal=%s)", num, runner_id, principal.user_id)
+        log.info(
+            "start_runner: started runner_num=%d (runner_id=%d, principal=%s)",
+            num,
+            runner_id,
+            principal_log_id(principal),
+        )
         return {"status": "started", "runner": num, "output": stdout.strip()}
     except HTTPException:
         raise
@@ -284,7 +299,11 @@ async def stop_runner(
         num = runner_num_from_id(runner_id, runners)
 
         if num is None:
-            log.warning("stop_runner: runner_id=%d not found locally (principal=%s)", runner_id, principal.user_id)
+            log.warning(
+                "stop_runner: runner_id=%d not found locally (principal=%s)",
+                runner_id,
+                principal_log_id(principal),
+            )
             raise HTTPException(
                 status_code=404,
                 detail=not_found(f"Runner ID {runner_id} not found locally").model_dump(exclude_none=True),
@@ -292,14 +311,24 @@ async def stop_runner(
 
         code, stdout, stderr = await run_runner_svc(num, "stop")
         if code != 0:
-            log.error("stop_runner: failed for runner_num=%d: %s (principal=%s)", num, stderr, principal.user_id)
+            log.error(
+                "stop_runner: failed for runner_num=%d: %s (principal=%s)",
+                num,
+                stderr,
+                principal_log_id(principal),
+            )
             status = service_stderr_to_status(stderr)
             raise HTTPException(
                 status_code=status,
                 detail=service_error(f"Failed to stop runner {num}: {stderr}").model_dump(exclude_none=True),
             )
 
-        log.info("stop_runner: stopped runner_num=%d (runner_id=%d, principal=%s)", num, runner_id, principal.user_id)
+        log.info(
+            "stop_runner: stopped runner_num=%d (runner_id=%d, principal=%s)",
+            num,
+            runner_id,
+            principal_log_id(principal),
+        )
         return {"status": "stopped", "runner": num, "output": stdout.strip()}
     except HTTPException:
         raise
@@ -338,7 +367,11 @@ async def restart_runner(
         num = runner_num_from_id(runner_id, runners)
 
         if num is None:
-            log.warning("restart_runner: runner_id=%d not found locally (principal=%s)", runner_id, principal.user_id)
+            log.warning(
+                "restart_runner: runner_id=%d not found locally (principal=%s)",
+                runner_id,
+                principal_log_id(principal),
+            )
             raise HTTPException(
                 status_code=404,
                 detail=not_found(f"Runner ID {runner_id} not found locally").model_dump(exclude_none=True),
@@ -369,7 +402,7 @@ async def restart_runner(
             "restart_runner: restarted runner_num=%d (runner_id=%d, principal=%s)",
             num,
             runner_id,
-            principal.user_id,
+            principal_log_id(principal),
         )
         return {
             "status": "restarted",

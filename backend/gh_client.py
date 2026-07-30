@@ -52,6 +52,10 @@ assert _MAX_RETRIES > 0, "MAX_RETRIES must be positive"
 _cached_token: str | None = None
 _cached_token_expires_at: float = 0.0
 _cached_token_source: str = "unknown"
+# Issue #938(c): serialize concurrent GitHub App token exchanges so a refresh
+# storm (every request in flight when the ~hourly token expires) triggers
+# exactly one upstream exchange instead of one per coroutine.
+_token_refresh_lock: asyncio.Lock = asyncio.Lock()
 _last_status: dict[str, Any] = {
     "status": "unknown",
     "detail": "No GitHub API request has completed in this process.",
@@ -93,23 +97,19 @@ def _get_token() -> str:
     Raises:
         GhAuthError: when no token is available.
     """
-    global _cached_token, _cached_token_expires_at, _cached_token_source
     if _cached_token and (_cached_token_expires_at == 0.0 or time.time() < _cached_token_expires_at):
         return _cached_token
-
     if _github_app_auth_configured():
-        try:
-            _cached_token = _fetch_github_app_installation_token()
-            _cached_token_source = "github_app"
-            _last_status["auth_source"] = _cached_token_source
-            return _cached_token
-        except Exception as exc:
-            _cached_token = None
-            _cached_token_expires_at = 0.0
-            _cached_token_source = "github_app_error"
-            _set_status("auth_error", f"GitHub App token exchange failed: {type(exc).__name__}: {exc}")
-            log.exception("GitHub App token exchange failed; falling back to GH_TOKEN when present")
+        raise GhAuthError(
+            "GitHub App auth requires the async token path; call _get_token_async() "
+            "from the request path (issue #938c)."
+        )
+    return _resolve_env_token()
 
+
+def _resolve_env_token() -> str:
+    """Resolve and cache a GH_TOKEN / GITHUB_TOKEN env credential (sync)."""
+    global _cached_token, _cached_token_expires_at, _cached_token_source
     token = os.environ.get("GH_TOKEN", "").strip() or os.environ.get("GITHUB_TOKEN", "").strip()
     if not token:
         _cached_token_source = "missing"
@@ -123,6 +123,39 @@ def _get_token() -> str:
     _cached_token_source = "env_token"
     _last_status["auth_source"] = _cached_token_source
     return token
+
+
+async def _get_token_async() -> str:
+    """Async token resolver used by the request path (issue #938c).
+
+    GitHub App installation tokens are exchanged via an async client under a
+    shared lock, so a refresh storm at token expiry triggers exactly one
+    upstream exchange. Falls back to GH_TOKEN / GITHUB_TOKEN when the App
+    exchange fails or App auth is not configured.
+    """
+    global _cached_token, _cached_token_expires_at, _cached_token_source
+    if _cached_token and (_cached_token_expires_at == 0.0 or time.time() < _cached_token_expires_at):
+        return _cached_token
+
+    if _github_app_auth_configured():
+        async with _token_refresh_lock:
+            # Re-check under the lock: a concurrent coroutine may have just
+            # refreshed the token while we waited (dedupe the exchange).
+            if _cached_token and (_cached_token_expires_at == 0.0 or time.time() < _cached_token_expires_at):
+                return _cached_token
+            try:
+                _cached_token = await _fetch_github_app_installation_token()
+                _cached_token_source = "github_app"
+                _last_status["auth_source"] = _cached_token_source
+                return _cached_token
+            except Exception as exc:
+                _cached_token = None
+                _cached_token_expires_at = 0.0
+                _cached_token_source = "github_app_error"
+                _set_status("auth_error", f"GitHub App token exchange failed: {type(exc).__name__}: {exc}")
+                log.exception("GitHub App token exchange failed; falling back to GH_TOKEN when present")
+
+    return _resolve_env_token()
 
 
 def clear_token_cache() -> None:
@@ -182,8 +215,13 @@ def _build_app_jwt(now: datetime | None = None) -> str:
     return jwt.encode(payload, _github_app_private_key(), algorithm="RS256")
 
 
-def _fetch_github_app_installation_token() -> str:
-    """Exchange a GitHub App JWT for an installation access token."""
+async def _fetch_github_app_installation_token() -> str:
+    """Exchange a GitHub App JWT for an installation access token.
+
+    Issue #938(c): uses an ``httpx.AsyncClient`` so the exchange never blocks the
+    event loop. The previous sync ``httpx.Client`` froze the whole dashboard for
+    up to ~50s on every (~hourly) App-token expiry.
+    """
     global _cached_token_expires_at
 
     installation_id = os.environ["GITHUB_APP_INSTALLATION_ID"].strip()
@@ -193,8 +231,8 @@ def _fetch_github_app_installation_token() -> str:
         "X-GitHub-Api-Version": "2022-11-28",
         "Authorization": f"Bearer {_build_app_jwt()}",
     }
-    with httpx.Client(timeout=httpx.Timeout(connect=5.0, read=30.0, write=10.0, pool=5.0)) as client:
-        resp = client.post(url, headers=headers)
+    async with httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=30.0, write=10.0, pool=5.0)) as client:
+        resp = await client.post(url, headers=headers)
     if resp.status_code not in (200, 201):
         raise GhServerError(resp.status_code, "/app/installations/.../access_tokens", resp.text)
     body = resp.json()
@@ -293,8 +331,8 @@ class GhServerError(GhClientError):
 # ── Core helpers ──────────────────────────────────────────────────────────────
 
 
-def _auth_headers() -> dict[str, str]:
-    return {"Authorization": f"Bearer {_get_token()}"}
+async def _auth_headers() -> dict[str, str]:
+    return {"Authorization": f"Bearer {await _get_token_async()}"}
 
 
 def _parse_retry_after(resp: httpx.Response) -> int:
@@ -336,7 +374,7 @@ async def _request(method: str, path: str, *, json: Any = None) -> httpx.Respons
         GhClientError: timeout/connect error after all retries exhausted.
     """
     client = _get_client()
-    headers = _auth_headers()
+    headers = await _auth_headers()
     last_exc: Exception | None = None
 
     for attempt in range(_MAX_RETRIES):
@@ -356,7 +394,10 @@ async def _request(method: str, path: str, *, json: Any = None) -> httpx.Respons
                 await asyncio.sleep(backoff)
             continue
 
-        if resp.status_code in (200, 201, 204):
+        # Issue #938(a): accept any 2xx as success. GitHub returns 202 Accepted
+        # for async-processed actions (e.g. cancel_run); treating it as an error
+        # reported a successful cancel as a GhServerError.
+        if 200 <= resp.status_code < 300:
             _set_status("ok", "GitHub API requests are succeeding.", endpoint=path)
             return resp
         if resp.status_code in (401, 403) and not _is_rate_limited_response(resp):
@@ -475,30 +516,17 @@ async def paginate(path: str, *, per_page: int = 100) -> AsyncIterator[dict]:
     """
     sep = "&" if "?" in path else "?"
     url: str | None = f"{path}{sep}per_page={per_page}"
-    client = _get_client()
-    headers = _auth_headers()
 
     while url:
-        page_attempt = 0
-        while True:
-            resp = await client.get(url, headers={**headers, **client.headers})
-            if resp.status_code == 404:
-                return
-            if resp.status_code == 429:
-                retry_after = _parse_retry_after(resp)
-                if retry_after <= 60 and page_attempt == 0:
-                    log.warning(
-                        "gh_client: paginate rate limited at %s; sleeping %ds",
-                        url,
-                        retry_after,
-                    )
-                    await asyncio.sleep(retry_after)
-                    page_attempt += 1
-                    continue
-                raise GhRateLimited(retry_after_seconds=retry_after, endpoint=url)
-            if resp.status_code >= 400:
-                raise GhServerError(resp.status_code, url, resp.text)
-            break
+        # Issue #938(b): route every page through _request so the shared
+        # 403-primary-rate-limit detection (X-RateLimit-Remaining: 0), 429
+        # back-off, and 5xx retry/backoff apply. paginate previously only
+        # special-cased 429 and aborted on a primary-rate-limit 403 or a
+        # transient 5xx.
+        try:
+            resp = await _request("GET", url)
+        except GhNotFound:
+            return
         body = resp.json()
         items: list[dict] = body if isinstance(body, list) else []
         for key in ("workflow_runs", "jobs", "runners", "items", "repositories"):

@@ -4,7 +4,7 @@
 // `@ts-nocheck` when it is the first comment in the file (before any
 // statements). It was previously placed after the imports, so it was
 // silently ignored and the legacy file leaked ~1000 type errors into any
-// `tsc` run. Decomposition of this file is tracked separately (#403).
+// `tsc` run. Decomposition closeout evidence is tracked under #949.
 import React from "react"
 import { legacyFetch } from "../lib/api"
 import * as fleetAlerts from "../lib/fleetAlerts"
@@ -42,8 +42,8 @@ import { marked } from "marked"
 import DOMPurify from "dompurify"
 import {
   emitSessionExpired,
-  shouldIgnoreUnauthorizedResponse,
   subscribeSessionExpired,
+  shouldIgnoreUnauthorizedResponse,
   tryRefreshSession,
 } from "./sessionExpired"
 import { installWheelValueGuard } from "./wheelValueGuard"
@@ -60,96 +60,23 @@ import {
   lsGet,
   lsSet,
 } from "../lib/assistantStorage"
+import { createVisibleInterval } from "./visibleInterval"
+import { installLegacyFetchGuards } from "./fetchGuards"
 
 var h = React.createElement;
-var SERVICE_WORKER_CACHE_DENYLIST = [/^\/api\/credentials(?:\/|$)/];
-
-function shouldBypassServiceWorkerCache(url) {
-  try {
-    var parsed = new URL(url, window.location.origin);
-    return SERVICE_WORKER_CACHE_DENYLIST.some(function (pattern) {
-      return pattern.test(parsed.pathname);
-    });
-  } catch (e) {
-    return false;
-  }
-}
 
 // Wrap global fetch to detect session-expiry 401s and prompt login through React.
-var originalFetch = window.fetch;
-window.fetch = async function(url, opts) {
-  if (shouldBypassServiceWorkerCache(url)) {
-    opts = Object.assign({}, opts || {}, { cache: "no-store" });
-  }
-  var resp = await originalFetch(url, opts);
-  if (resp.status === 401 && !shouldIgnoreUnauthorizedResponse(url)) {
-    console.warn("[auth] 401 Unauthorized from", url);
-    if (await tryRefreshSession(originalFetch)) {
-      return originalFetch(url, opts);
-    }
-    // Emit a global toast so the announcement is screen-reader-accessible
-    // even before the modal repaints (issue #421).
-    try {
-      var toaster = (window as any).__toaster;
-      if (toaster && typeof toaster.showToast === "function") {
-        toaster.showToast(
-          "Your session has expired. Please log in again to continue.",
-          { variant: "error", title: "Session expired" },
-        );
-      }
-    } catch (toastErr) {
-      console.warn("[auth] Failed to emit 401 toast:", toastErr);
-    }
-    emitSessionExpired();
-  }
-  return resp;
-};
+installLegacyFetchGuards({
+  emitSessionExpired,
+  shouldIgnoreUnauthorizedResponse,
+  tryRefreshSession,
+});
 // ────────────────────────────────────────────────────────────────────────
 
 // Configure marked with safe options (issue #7)
 if (typeof marked !== "undefined") {
   marked.use({ mangle: false, headerIds: false, gfm: true });
 }
-
-/**
- * safeOpen – open a URL in a new tab only when it belongs to a trusted
- * origin (issue #30).  Blocks arbitrary URLs that could be injected via
- * API responses.
- * @param {string} url
- */
-function safeOpen(url) {
-  if (
-    !url.startsWith("http://localhost") &&
-    !url.startsWith("https://github.com/") &&
-    !url.startsWith("https://api.github.com/")
-  ) {
-    console.error("Blocked unsafe URL:", url);
-    return;
-  }
-  window.open(url, "_blank", "noopener,noreferrer");
-}
-
-var LANG_COLORS = {
-  JavaScript: "#f1e05a",
-  TypeScript: "#3178c6",
-  Python: "#3572A5",
-  Rust: "#dea584",
-  Go: "#00ADD8",
-  Java: "#b07219",
-  C: "#555555",
-  "C++": "#f34b7d",
-  "C#": "#178600",
-  Ruby: "#701516",
-  Shell: "#89e051",
-  HTML: "#e34c26",
-  CSS: "#563d7c",
-  MATLAB: "#e16737",
-  Jupyter: "#DA5B0B",
-  Vue: "#41b883",
-  Swift: "#F05138",
-  Kotlin: "#A97BFF",
-  Dart: "#00B4AB",
-};
 
 function icon(path, s) {
   s = s || 16;
@@ -429,9 +356,6 @@ var I = {
   },
 };
 
-// ════════════════════════ FLEET TAB ════════════════════════
-// FleetTab and its telemetry helpers were extracted to ../pages/FleetTab and
-// ../lib/fleetTelemetry as part of the decomposition epic (#836, pass 12).
 // ════════════════════════ ANALYSIS TAB (orchestrator) ════════════════════════
 // AnalysisTab (the sub-tab orchestrator) and its leaf panels are extracted to
 // ../pages/Analysis; the shared `isAnalysisTabKey` routing predicate lives in
@@ -1929,37 +1853,25 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
     fetchScheduledJobs();
     fetchRunnerCapacity();
     fetchRunnerAudit();
-    var t1 = setInterval(fetchFleet, 30000);
-    var t2 = setInterval(fetchRepos, 120000);
-    var t3 = setInterval(fetchTests, 120000);
-    var t3b = setInterval(fetchCiResults, 120000);
-    var t4 = setInterval(fetchReports, 300000);
-    var t5 = setInterval(fetchQueue, 60000);
-    var t6 = setInterval(fetchMachines, 60000);
-    var t7 = setInterval(fetchEnrichedRuns, 60000);
-    var t8 = setInterval(fetchWatchdog, 120000);
-    var t9 = setInterval(fetchScheduledJobs, 300000);
-    var t10 = setInterval(fetchLocalApps, 90000);
-    var t11 = setInterval(fetchRunnerCapacity, 60000);
-    var t12 = setInterval(fetchDeployment, 300000);
-    var t13 = setInterval(fetchDeploymentState, 300000);
-    var t14 = setInterval(fetchRunnerAudit, 300000);
+    var cleanupIntervals = [
+      createVisibleInterval(fetchFleet, 30000),
+      createVisibleInterval(fetchRepos, 120000),
+      createVisibleInterval(fetchTests, 120000),
+      createVisibleInterval(fetchCiResults, 120000),
+      createVisibleInterval(fetchReports, 300000),
+      createVisibleInterval(fetchQueue, 60000),
+      createVisibleInterval(fetchMachines, 60000),
+      createVisibleInterval(fetchEnrichedRuns, 60000),
+      createVisibleInterval(fetchWatchdog, 120000),
+      createVisibleInterval(fetchScheduledJobs, 300000),
+      createVisibleInterval(fetchLocalApps, 90000),
+      createVisibleInterval(fetchRunnerCapacity, 60000),
+      createVisibleInterval(fetchDeployment, 300000),
+      createVisibleInterval(fetchDeploymentState, 300000),
+      createVisibleInterval(fetchRunnerAudit, 300000),
+    ];
     return function () {
-      clearInterval(t1);
-      clearInterval(t2);
-      clearInterval(t3);
-      clearInterval(t3b);
-      clearInterval(t4);
-      clearInterval(t5);
-      clearInterval(t6);
-      clearInterval(t7);
-      clearInterval(t8);
-      clearInterval(t9);
-      clearInterval(t10);
-      clearInterval(t11);
-      clearInterval(t12);
-      clearInterval(t13);
-      clearInterval(t14);
+      cleanupIntervals.forEach(function (cleanup) { cleanup(); });
     };
   }, []);
 
@@ -1986,8 +1898,8 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
           }
         });
     }
-    var healthInterval = setInterval(checkHealth, 2000);
-    return function () { clearInterval(healthInterval); };
+    var cleanupHealthInterval = createVisibleInterval(checkHealth, 2000);
+    return function () { cleanupHealthInterval(); };
   }, []);
 
   function onFleet(a) {
@@ -2017,7 +1929,6 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
 
   var asstPosition = lsGet(ASST_LS.position, "right");
 
-  // ─── Consolidated alert surface (issue #819) ────────────────────────────
   // Roll the cross-cutting fleet signals into ONE durable, acknowledgeable
   // surface (status pill + drawer) instead of the old hero list + three sticky
   // banners that re-popped on every poll. Uses the same pure rollup as the

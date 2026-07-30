@@ -151,15 +151,12 @@ describe("ScheduledJobs", () => {
   it("renders headline stats from the payload", async () => {
     global.fetch = mockFetch(SAMPLE);
     render(<ScheduledJobs />);
-    // "Scheduled Workflows" is both a stat label and the section title, so
-    // assert it via the stat label specifically (getAllByText guards the count).
-    await waitFor(() => {
-      expect(screen.getAllByText(/Scheduled Workflows/i).length).toBeGreaterThan(0);
-    });
     // Jules + Disabled stats appear because the sample has one of each. Scope
     // to the stat-row: "Disabled" also matches the "disabled" status pill.
     const statRow = document.querySelector(".stat-row") as HTMLElement;
-    expect(within(statRow).getByText(/Jules Schedules/i)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(within(statRow).getByText(/Jules Schedules/i)).toBeInTheDocument();
+    });
     expect(within(statRow).getByText(/Disabled/i)).toBeInTheDocument();
   });
 

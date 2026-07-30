@@ -1,7 +1,7 @@
 {
   "name": "runner-dashboard",
   "private": true,
-  "version": "0.0.0",
+  "version": "4.9.19",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,12 +11,11 @@
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "test": "vitest",
     "test:ci": "vitest run --coverage",
-    "generate-api": "openapi-typescript ${OPENAPI_URL:-http://localhost:8321/openapi.json} --output frontend/src/lib/api-types.ts",
+    "generate-api": "bash scripts/gen-api-client.sh",
     "generate-api:check": "bash scripts/gen-api-client.sh --check",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "test:e2e:headed": "playwright test --headed",
-    "generate:api": "openapi-typescript http://localhost:8000/openapi.json -o src/types/api.d.ts"
+    "test:e2e:headed": "playwright test --headed"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.0.1",
@@ -49,6 +48,7 @@
     "eslint-plugin-react-refresh": "^0.4.7",
     "jsdom": "^29.1.1",
     "openapi-typescript": "^7.13.0",
+    "prettier": "3.6.2",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "typescript": "^5.9.3",

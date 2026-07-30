@@ -31,13 +31,27 @@ def mark_hub_unreachable(cooldown_s: float = HUB_CIRCUIT_COOLDOWN_S) -> None:
 
 def hub_in_cooldown() -> bool:
     """True while the hub circuit breaker is open (hub recently unreachable)."""
-    return time.monotonic() < _hub_unhealthy_until
+    is_open = time.monotonic() < _hub_unhealthy_until
+    _record_hub_circuit_state(is_open)
+    return is_open
 
 
 def reset_hub_circuit() -> None:
     """Close the hub circuit breaker (called on a successful proxy / by tests)."""
     global _hub_unhealthy_until
     _hub_unhealthy_until = 0.0
+    _record_hub_circuit_state(False)
+
+
+def _record_hub_circuit_state(is_open: bool) -> None:
+    try:
+        from prometheus_metrics import set_hub_circuit_open  # noqa: PLC0415
+
+        set_hub_circuit_open(is_open)
+    except Exception as exc:  # noqa: BLE001
+        if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+            raise
+        log.debug("Hub circuit metric update skipped: %s", exc)
 
 
 # Headers that must NEVER be forwarded to the hub (issue #347).
@@ -128,6 +142,17 @@ async def proxy_to_hub(request: Request):
             raise HTTPException(status_code=502, detail="Hub proxy error") from e
 
 
+def _request_prefers_local(request: Request) -> bool:
+    local_value = request.query_params.get("local", "").lower()
+    scope_value = request.query_params.get("scope", "").lower()
+    return local_value in {"1", "true", "yes", "local"} or scope_value == "local"
+
+
+def should_mark_hub_circuit_degraded(request: Request) -> bool:
+    """Return True when local data is served only because the hub circuit is open."""
+    return MACHINE_ROLE == "node" and bool(HUB_URL) and hub_in_cooldown() and not _request_prefers_local(request)
+
+
 def should_proxy_fleet_to_hub(request: Request) -> bool:
     """Return True when this node should use the hub's fleet-wide view.
 
@@ -137,6 +162,4 @@ def should_proxy_fleet_to_hub(request: Request) -> bool:
     """
     if MACHINE_ROLE != "node" or not HUB_URL or hub_in_cooldown():
         return False
-    local_value = request.query_params.get("local", "").lower()
-    scope_value = request.query_params.get("scope", "").lower()
-    return local_value not in {"1", "true", "yes", "local"} and scope_value != "local"
+    return not _request_prefers_local(request)
