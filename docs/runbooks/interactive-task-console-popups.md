@@ -108,6 +108,19 @@ Not wrapped on purpose: S4U/SYSTEM tasks (no UI by construction), Microsoft
 system tasks (`\Microsoft\...`), and OGLaptop's `RebootToUbuntu`
 (user-invoked deliberate reboot; a flash there is moot).
 
+Known remainder: DeskComputer's `WSL-Runner-KeepAlive` was registered from an
+elevated context, so rewriting its action needs an elevated session (both
+`Set-ScheduledTask` and the `schtasks` fallback are denied non-elevated, and
+elevating non-interactively would itself pop UAC). Low impact — the task is
+resident, so its `-WindowStyle Hidden` flash occurs only at logon or when the
+health monitor restarts a dead instance. To finish it, run once from an
+elevated PowerShell:
+
+```powershell
+powershell -NoProfile -File C:\Users\diete\runner_fleet_monitor\install-hidden-task-launcher.ps1 `
+    -TaskName 'WSL-Runner-KeepAlive'
+```
+
 ## Related
 
 - `docs/runbooks/wsl-keepalive-probe-fix.md` — the keepalive watchdog this
