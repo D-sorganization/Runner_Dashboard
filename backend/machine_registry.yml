@@ -1,5 +1,5 @@
 version: 1
-updated_at: 2026-06-09
+updated_at: 2026-07-31
 machines:
   - name: ControlTower
     aliases:
@@ -31,23 +31,26 @@ machines:
         dashboard_url: http://controltower.tail2bbcc7.ts.net:8321
         storage_tier: nvme
         runner_base_dir: /home/dieterolson/actions-runners-nvme
+        # QUARANTINED 2026-07 (Runner_Dashboard issue #1071): the distro
+        # exposed broad filesystem corruption (null-byte binaries, corrupt
+        # dpkg/node/uv). Registered runners 6-8 carry only the
+        # d-sorg-quarantine label; 1-5 were auto-purged by GitHub. The
+        # ControlTower-NVMe distro must stay STOPPED and the legacy
+        # C:\WSL\ext4.vhdx (0x80070570, hosted the :8321 hub) must not be
+        # deleted or mutated until the documented backup/reprovision.
         runner_labels:
           - self-hosted
           - Linux
           - X64
-          - d-sorg-fleet
-          - d-sorg-fleet-nvme
-          - d-sorg-fleet-fast-io
-          - d-sorg-fleet-docker
-          - d-sorg-fleet-4core
+          - d-sorg-quarantine
         runners:
-          min: 4
-          default: 8
+          min: 0
+          default: 0
           max: 8
         storage:
           host_drive: "C:"
           windows_host_path: "C:\\WSL"
-          wsl_distro: WSL
+          wsl_distro: ControlTower-NVMe
           vhdx_path: "C:\\WSL\\ext4.vhdx"
           disk_bus: NVMe
           disk_media_type: SSD
@@ -70,9 +73,9 @@ machines:
           - d-sorg-fleet-docker
           - d-sorg-fleet-4core
         runners:
-          min: 4
-          default: 8
-          max: 8
+          min: 12
+          default: 17
+          max: 17
         storage:
           host_drive: "F:"
           windows_host_path: "F:\\WSL\\ControlTower-SSD"
@@ -99,9 +102,12 @@ machines:
       allow_auto_stop: false
       preferred_window: Saturdays 10:00-12:00 UTC
       notes: >
-        Keep the hub online. The retired D: HDD pool has been removed from
-        the active registry; ControlTower now runs eight NVMe-backed runners
-        in the WSL distro and eight SSD-backed runners in ControlTower-SSD.
+        ControlTower-SSD (17 runners) is the only active ControlTower pool
+        as of 2026-07-31; the NVMe pool is quarantined per issue #1071 and
+        the legacy WSL-distro hub dashboard on :8321 is down with it (the
+        SSD distro serves :8322). The Windows-side matlab-1 runner is
+        separate and active. The retired D: HDD pool has been removed from
+        the active registry.
   - name: OGLaptop
     aliases:
       - og-laptop
@@ -119,7 +125,7 @@ machines:
       - Linux
       - X64
       - d-sorg-fleet
-      - d-sorg-fleet-4core
+      - d-sorg-fleet-docker
     runners:
       default: 4
       max: 8
@@ -162,8 +168,11 @@ machines:
       - Linux
       - X64
       - d-sorg-fleet
-      - d-sorg-fleet-4core
-      - d-sorg-fleet-6core
+      - d-sorg-fleet-docker
+    runners:
+      min: 6
+      default: 8
+      max: 8
     hardware:
       cpu_model: null
       cpu_physical_cores: null
