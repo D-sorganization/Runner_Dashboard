@@ -60,7 +60,12 @@ machines:
           - controltower-ssd
           - control-tower-ssd
           - controltower-bulk
-        dashboard_url: http://controltower.tail2bbcc7.ts.net:8322
+        # 2026-07-31: this instance IS the fleet hub (MACHINE_ROLE=hub) and
+        # moved to the canonical hub port 8321 after the legacy WSL-distro
+        # hub died with its corrupt vhdx (issue #1071). Windows
+        # tailscale-serve maps the old :8322 URL to the same backend for
+        # backward compatibility.
+        dashboard_url: http://controltower.tail2bbcc7.ts.net:8321
         storage_tier: ssd
         runner_base_dir: /home/dieterolson/actions-runners
         runner_labels:
@@ -103,11 +108,13 @@ machines:
       preferred_window: Saturdays 10:00-12:00 UTC
       notes: >
         ControlTower-SSD (17 runners) is the only active ControlTower pool
-        as of 2026-07-31; the NVMe pool is quarantined per issue #1071 and
-        the legacy WSL-distro hub dashboard on :8321 is down with it (the
-        SSD distro serves :8322). The Windows-side matlab-1 runner is
-        separate and active. The retired D: HDD pool has been removed from
-        the active registry.
+        as of 2026-07-31; the NVMe pool is quarantined per issue #1071. The
+        hub dashboard now runs INSIDE the ControlTower-SSD distro on the
+        canonical port 8321 (drop-in hub-port-8321.conf; the legacy
+        WSL-distro hub died with its corrupt vhdx), with the old :8322 URL
+        tailscale-served to the same backend. The Windows-side matlab-1
+        runner is separate and active. The retired D: HDD pool has been
+        removed from the active registry.
   - name: OGLaptop
     aliases:
       - og-laptop
