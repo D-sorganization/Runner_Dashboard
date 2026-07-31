@@ -1564,7 +1564,13 @@ distros in one shared utility VM. Two hardening steps keep them out of the
   members online on GitHub while local units run — the signature of GitHub's
   ~14-day offline auto-delete, which silently destroyed the DeskComputer
   pool's registrations in July 2026). Recovery procedure:
-  `docs/runbooks/runner-registration-purge-recovery.md`.
+  `docs/runbooks/runner-registration-purge-recovery.md`. Cycles carry a
+  heartbeat log line and a hard deadline on the ControlTower SSH leg (a
+  hung ssh once stalled the monitor for 100+ minutes under
+  `MultipleInstances=IgnoreNew`), and any floor breach computed from the
+  dashboard feed is re-verified against the GitHub API before warnings or
+  self-heal actions (the feed can serve stale/false zeros; verification
+  unavailable → the cycle takes no action).
 - **`deploy/run-hidden.vbs` + `deploy/install-hidden-task-launcher.ps1`** stop
   InteractiveToken scheduled tasks from popping focus-stealing console windows
   in the user's session. The installer rewrites a task's action to

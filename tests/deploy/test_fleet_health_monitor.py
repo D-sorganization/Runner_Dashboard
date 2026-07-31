@@ -95,6 +95,37 @@ def test_script_self_heals_desk_units_without_wsl_reset() -> None:
     assert "wsl --shutdown" not in text, "monitor must never tear down WSL"
 
 
+def test_ct_ssh_enforces_a_hard_timeout() -> None:
+    """Regression guard: on 2026-07-31 a cycle hung >100 min inside the
+    ControlTower SSH call (the $TimeoutSec parameter existed but was never
+    enforced) and MultipleInstances=IgnoreNew silently rejected every later
+    firing. The SSH child must be waited on with a deadline and killed on
+    expiry."""
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert "WaitForExit(" in text, "ssh must be awaited with a deadline"
+    assert ".Kill()" in text, "timed-out ssh must be killed"
+    assert "ct_ssh_timeout" in text or "timed out" in text
+
+
+def test_cycle_logs_a_heartbeat_line() -> None:
+    """A cycle that dies before its first section must still leave a trace,
+    otherwise a stall is indistinguishable from healthy silence."""
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert "cycle start" in text
+
+
+def test_floor_breaches_are_verified_against_github() -> None:
+    """The dashboard feed can serve stale/false zeros (observed 2026-07-31:
+    10 online reported vs 31 actual). A floor breach computed from dashboard
+    data must be re-counted straight from the GitHub API before any warning
+    or self-heal action; if verification is unavailable, the cycle takes no
+    action (fail-safe)."""
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert "Get-GitHubPoolCounts" in text
+    assert "ConvertFrom-GitHubRunnerJson" in text
+    assert "no action" in text.lower()
+
+
 # ---------------------------------------------------------------------------
 # Behavioural checks — pure helpers
 # ---------------------------------------------------------------------------
@@ -141,6 +172,33 @@ def test_pools_below_floor_detected() -> None:
     result = _run_ps(driver)
     assert result.returncode == 0, result.stderr
     assert "BELOW=Desktop" in result.stdout
+
+
+@PWSH_REQUIRED
+def test_github_runner_json_parses_to_pool_counts() -> None:
+    sample = (
+        '{"total_count": 3, "runners": ['
+        '{"name": "d-sorg-local-Desktop-1", "status": "online", "busy": true},'
+        '{"name": "d-sorg-local-Desktop-2", "status": "offline", "busy": false},'
+        '{"name": "d-sorg-local-Oglaptop-8", "status": "online", "busy": false}'
+        "]}"
+    )
+    driver = _prefix() + textwrap.dedent(
+        f"""
+        $runners = ConvertFrom-GitHubRunnerJson -Json '{sample}'
+        $c = Get-RunnerPoolCounts -Runners $runners
+        Write-Output ("DESK=" + $c['Desktop'].online + "/" + $c['Desktop'].total)
+        Write-Output ("OG=" + $c['Oglaptop'].online + "/" + $c['Oglaptop'].total)
+        Write-Output ("BADJSON=" + ($null -eq (ConvertFrom-GitHubRunnerJson -Json 'not json')))
+        Write-Output ("EMPTY=" + ($null -eq (ConvertFrom-GitHubRunnerJson -Json '')))
+        """
+    )
+    result = _run_ps(driver)
+    assert result.returncode == 0, result.stderr
+    assert "DESK=1/2" in result.stdout
+    assert "OG=1/1" in result.stdout
+    assert "BADJSON=True" in result.stdout
+    assert "EMPTY=True" in result.stdout
 
 
 @PWSH_REQUIRED
