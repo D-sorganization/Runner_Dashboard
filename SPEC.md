@@ -1570,7 +1570,14 @@ distros in one shared utility VM. Two hardening steps keep them out of the
   `MultipleInstances=IgnoreNew`), and any floor breach computed from the
   dashboard feed is re-verified against the GitHub API before warnings or
   self-heal actions (the feed can serve stale/false zeros; verification
-  unavailable → the cycle takes no action).
+  unavailable → the cycle takes no action). The same ControlTower probe
+  reports host free space and alarms below per-drive floors
+  (`$DiskFloorsGb`, default C: 25 GB / F: 40 GB): a WSL2 distro that
+  exhausts host disk mid-write corrupts itself — null-byte files and a
+  broken package database — which is the probable origin of the #1071 NVMe
+  corruption and came within minutes of repeating on the live pool on
+  2026-07-31. The floor is **alarm-only**; reclaiming space means deleting
+  large artifacts and is never automated.
 - **`deploy/run-hidden.vbs` + `deploy/install-hidden-task-launcher.ps1`** stop
   InteractiveToken scheduled tasks from popping focus-stealing console windows
   in the user's session. The installer rewrites a task's action to
