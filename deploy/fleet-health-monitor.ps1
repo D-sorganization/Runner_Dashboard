@@ -39,6 +39,12 @@ param(
   # idle fleet. What the floors must catch is silent pool decay toward the
   # ~14-day registration purge, where counts sit at/near zero for days.
   [hashtable]$PoolFloors          = @{ 'Desktop' = 3; 'ControlTower-SSD' = 6; 'Oglaptop' = 2 },
+  # Host free-space floors (GB) for the ControlTower drives. A WSL2 vhdx that
+  # exhausts host disk mid-write corrupts the distro (null-byte files, corrupt
+  # package DB) — the probable origin of the #1071 NVMe corruption, which on
+  # 2026-07-31 came within minutes of repeating on the LIVE SSD pool. F: holds
+  # the 326GB live runner vhdx, so its floor is the larger one.
+  [hashtable]$DiskFloorsGb        = @{ 'C' = 25; 'F' = 40 },
   [string]$DeskWslDistro          = "Ubuntu-22.04",
   [int]   $DeskRunnerTotal        = 8,
   [string]$LocalKeepAliveTask     = "WSL-Runner-KeepAlive",
@@ -101,6 +107,20 @@ function ConvertFrom-GitHubRunnerJson {
   return @($parsed.runners | ForEach-Object {
       [pscustomobject]@{ name = [string]$_.name; status = [string]$_.status }
     })
+}
+
+function Test-DiskBelowFloor {
+  <# True when free space is known AND strictly below the floor. Unknown
+     free space returns $false so an unparsable probe never fabricates a
+     breach (the alarm must mean something when it fires). #>
+  param(
+    [AllowNull()]$FreeGb,
+    [Parameter(Mandatory)][double]$FloorGb
+  )
+  if ($null -eq $FreeGb -or $FreeGb -eq '') { return $false }
+  $value = 0.0
+  if (-not [double]::TryParse([string]$FreeGb, [ref]$value)) { return $false }
+  return ($value -lt $FloorGb)
 }
 
 function Test-PurgeSuspected {
@@ -195,6 +215,7 @@ $state = [ordered]@{
   timestamp          = (Get-Date).ToString("o")
   actions            = @()
   ct_wmi_max_handles = $null
+  ct_disk_free_gb    = $null
   pool_counts        = $null
   pools_below_floor  = @()
   purge_suspected    = $false
@@ -233,14 +254,39 @@ foreach (`$p in Get-Process WmiPrvSE -ErrorAction SilentlyContinue) {
 }
 "WMIMAX=`$max"
 "WMIKILLED=`$(`$killed -join ',')"
+foreach (`$dl in 'C', 'F') {
+  `$v = Get-Volume -DriveLetter `$dl -ErrorAction SilentlyContinue
+  # `${dl} braces are required: "`$dl:" would parse as a scope qualifier.
+  if (`$v) { "DISKFREE=`${dl}:`$([math]::Round(`$v.SizeRemaining/1GB,2))" }
+}
 "@
   $res = Invoke-CtPowerShell $guard
-  $maxLine = ($res -split "`n" | Where-Object { $_ -match "WMIMAX=" }) -replace ".*WMIMAX=", ""
-  $killLine = ($res -split "`n" | Where-Object { $_ -match "WMIKILLED=" }) -replace ".*WMIKILLED=", ""
-  $state.ct_wmi_max_handles = ($maxLine | Select-Object -First 1).Trim()
-  if ($killLine -and ($killLine.Trim())) {
-    Write-Log "ControlTower WMI guard KILLED leaking WmiPrvSE: $($killLine.Trim()) (threshold $WmiHandleKillThreshold)" "WARN"
-    $state.actions += "killed-ct-wmiprvse:$($killLine.Trim())"
+  # Null-safe: a timed-out or failed ssh returns '', and calling .Trim() on the
+  # resulting empty match set threw, aborting the whole section (incl. the disk
+  # floors below) instead of degrading to "unknown".
+  $maxLine = @($res -split "`n" | Where-Object { $_ -match "WMIMAX=" }) -replace ".*WMIMAX=", ""
+  $killLine = @($res -split "`n" | Where-Object { $_ -match "WMIKILLED=" }) -replace ".*WMIKILLED=", ""
+  $state.ct_wmi_max_handles = if ($maxLine.Count -gt 0) { ([string]$maxLine[0]).Trim() } else { $null }
+  if ($killLine.Count -gt 0 -and ([string]$killLine[0]).Trim()) {
+    $killed = ([string]$killLine[0]).Trim()
+    Write-Log "ControlTower WMI guard KILLED leaking WmiPrvSE: $killed (threshold $WmiHandleKillThreshold)" "WARN"
+    $state.actions += "killed-ct-wmiprvse:$killed"
+  }
+
+  # Host free-space floors. Deliberately alarm-only: reclaiming space means
+  # deleting large artifacts, which is never safe to automate.
+  $disk = @{}
+  foreach ($line in ($res -split "`n" | Where-Object { $_ -match 'DISKFREE=' })) {
+    if ($line -match 'DISKFREE=([A-Z]):([0-9.]+)') { $disk[$Matches[1]] = [double]$Matches[2] }
+  }
+  $state.ct_disk_free_gb = $disk
+  foreach ($dl in $DiskFloorsGb.Keys) {
+    if ($disk.ContainsKey($dl) -and (Test-DiskBelowFloor -FreeGb $disk[$dl] -FloorGb $DiskFloorsGb[$dl])) {
+      Write-Log ("ControlTower ${dl}: only $($disk[$dl])GB free (floor $($DiskFloorsGb[$dl])GB) - " +
+        "vhdx corruption risk: a WSL2 distro that exhausts host disk mid-write corrupts itself (see #1071). " +
+        "Reclaim space now; do not wait.") "ERROR"
+      $state.actions += "alarm-ct-disk-$dl"
+    }
   }
 } catch {
   Write-Log "ControlTower WMI guard failed: $($_.Exception.Message)" "ERROR"

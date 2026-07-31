@@ -107,6 +107,19 @@ def test_ct_ssh_enforces_a_hard_timeout() -> None:
     assert "ct_ssh_timeout" in text or "timed out" in text
 
 
+def test_script_guards_controltower_host_disk_space() -> None:
+    """A WSL2 vhdx that runs out of host disk mid-write corrupts the distro
+    (null-byte files, corrupt package DB) — the probable origin of the #1071
+    NVMe corruption, which on 2026-07-31 came within minutes of repeating on
+    the LIVE ControlTower-SSD pool (F: hit 2.05 GB free and falling). The
+    monitor must alarm on host free space, not just runner counts."""
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert "$DiskFloorsGb" in text, "disk floors must be a declared parameter"
+    assert "Test-DiskBelowFloor" in text
+    assert "DISKFREE=" in text, "the ControlTower probe must report free space"
+    assert "vhdx corruption risk" in text.lower()
+
+
 def test_cycle_logs_a_heartbeat_line() -> None:
     """A cycle that dies before its first section must still leave a trace,
     otherwise a stall is indistinguishable from healthy silence."""
@@ -199,6 +212,26 @@ def test_github_runner_json_parses_to_pool_counts() -> None:
     assert "OG=1/1" in result.stdout
     assert "BADJSON=True" in result.stdout
     assert "EMPTY=True" in result.stdout
+
+
+@PWSH_REQUIRED
+def test_disk_floor_helper_is_pure_and_inclusive() -> None:
+    """Below-floor is strict (< floor); exactly-at-floor is still healthy.
+    Unknown/unparsable free space must NOT report a false breach."""
+    driver = _prefix() + textwrap.dedent(
+        """
+        Write-Output ("R1=" + (Test-DiskBelowFloor -FreeGb 2.05 -FloorGb 40))
+        Write-Output ("R2=" + (Test-DiskBelowFloor -FreeGb 289.2 -FloorGb 40))
+        Write-Output ("R3=" + (Test-DiskBelowFloor -FreeGb 40 -FloorGb 40))
+        Write-Output ("R4=" + (Test-DiskBelowFloor -FreeGb $null -FloorGb 40))
+        """
+    )
+    result = _run_ps(driver)
+    assert result.returncode == 0, result.stderr
+    assert "R1=True" in result.stdout
+    assert "R2=False" in result.stdout
+    assert "R3=False" in result.stdout
+    assert "R4=False" in result.stdout
 
 
 @PWSH_REQUIRED
