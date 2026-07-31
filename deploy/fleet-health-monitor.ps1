@@ -90,6 +90,19 @@ function Get-PoolsBelowFloor {
   return $below
 }
 
+function ConvertFrom-GitHubRunnerJson {
+  <# Parse `gh api orgs/<org>/actions/runners` JSON into flat runner
+     objects. Returns $null (never throws) on empty/invalid input so the
+     caller can treat verification as unavailable. #>
+  param([AllowEmptyString()][string]$Json = '')
+  if ([string]::IsNullOrWhiteSpace($Json)) { return $null }
+  try { $parsed = $Json | ConvertFrom-Json } catch { return $null }
+  if (-not ($parsed.PSObject.Properties.Name -contains 'runners')) { return $null }
+  return @($parsed.runners | ForEach-Object {
+      [pscustomobject]@{ name = [string]$_.name; status = [string]$_.status }
+    })
+}
+
 function Test-PurgeSuspected {
   <# GitHub deletes registrations for runners offline ~14 days. Zero pool
      members online while local units are actively running is that
@@ -120,19 +133,47 @@ function Write-Log([string]$msg, [string]$level = "INFO") {
   }
 }
 
-function Invoke-CtPowerShell([string]$Script, [int]$TimeoutSec = 30) {
+function Invoke-CtPowerShell([string]$Script, [int]$TimeoutSec = 45) {
+  <# Run a PowerShell snippet on ControlTower over SSH with a HARD deadline.
+     Regression guard: on 2026-07-31 an un-deadlined ssh call hung a cycle
+     for >100 minutes and MultipleInstances=IgnoreNew silently swallowed
+     every later firing. A cycle must never hang. #>
   $bytes = [System.Text.Encoding]::Unicode.GetBytes($Script)
   $enc   = [Convert]::ToBase64String($bytes)
-  $out = & ssh -o ConnectTimeout=10 -o BatchMode=yes $CtSsh "powershell -NoProfile -EncodedCommand $enc" 2>&1
-  # Drop ssh/CLIXML stderr noise so keepalive-restart results stay readable
-  # in monitor.log (remote powershell emits progress records as CLIXML).
-  $clean = $out | ForEach-Object { [string]$_ } | Where-Object {
-    $_ -notmatch '^#< CLIXML' -and
-    $_ -notmatch '<Objs .*</Objs>' -and
-    $_ -notmatch 'Warning: Permanently added' -and
-    $_ -notmatch 'NativeCommandError|CategoryInfo|FullyQualifiedErrorId|^\s*\+\s'
+  $outFile = Join-Path $env:TEMP ("ct-ssh-" + [guid]::NewGuid().ToString('N') + ".out")
+  try {
+    $p = Start-Process -FilePath 'ssh' `
+      -ArgumentList @('-o', 'ConnectTimeout=10', '-o', 'BatchMode=yes', $CtSsh,
+        "powershell -NoProfile -EncodedCommand $enc") `
+      -NoNewWindow -PassThru -RedirectStandardOutput $outFile
+    if (-not $p.WaitForExit($TimeoutSec * 1000)) {
+      try { $p.Kill() } catch {}
+      Write-Log "ct_ssh_timeout: ControlTower ssh exceeded ${TimeoutSec}s and was killed" "WARN"
+      return ''
+    }
+    $out = Get-Content $outFile -ErrorAction SilentlyContinue
+    # Drop CLIXML/progress noise so remote results stay readable in monitor.log.
+    $clean = @($out) | ForEach-Object { [string]$_ } | Where-Object {
+      $_ -notmatch '^#< CLIXML' -and
+      $_ -notmatch '<Objs .*</Objs>' -and
+      $_ -notmatch 'Warning: Permanently added'
+    }
+    return ($clean | Out-String)
+  } finally {
+    Remove-Item $outFile -Force -ErrorAction SilentlyContinue
   }
-  return ($clean | Out-String)
+}
+
+function Get-GitHubPoolCounts {
+  <# Authoritative recount straight from the GitHub API. The dashboard feed
+     can serve stale/false zeros under partial GitHub failure or auth
+     throttling (observed 2026-07-31: 10 online reported vs 31 actual), so
+     floor breaches are verified here before any warning or self-heal.
+     Returns $null when gh is unavailable. #>
+  $json = & gh api 'orgs/D-sorganization/actions/runners?per_page=100' 2>$null | Out-String
+  $runners = ConvertFrom-GitHubRunnerJson -Json $json
+  if ($null -eq $runners) { return $null }
+  return Get-RunnerPoolCounts -Runners $runners
 }
 
 function Get-DeskActiveUnitCount {
@@ -160,6 +201,10 @@ $state = [ordered]@{
   desk_keepalive     = $null
   errors             = @()
 }
+
+# Heartbeat: a cycle that dies early must still leave a trace, otherwise a
+# stall is indistinguishable from healthy silence.
+Write-Log "cycle start"
 
 # -- 1. DeskComputer local keepalive -----------------------------------------
 try {
@@ -211,9 +256,28 @@ try {
   Write-Log "fleet pools online: $summary (WmiPrvSE max handles: $($state.ct_wmi_max_handles))"
 
   $below = Get-PoolsBelowFloor -Counts $poolCounts -Floors $PoolFloors
+  if (@($below).Count -gt 0) {
+    # The dashboard feed can be stale or falsely zeroed; verify any breach
+    # against the GitHub API before warning or acting.
+    $ghCounts = Get-GitHubPoolCounts
+    if ($null -ne $ghCounts) {
+      $ghBelow = @(Get-PoolsBelowFloor -Counts $ghCounts -Floors $PoolFloors)
+      if (Compare-Object @($below) $ghBelow) {
+        Write-Log ("dashboard runner feed disagrees with GitHub " +
+          "(dashboard breach: $($below -join ',') vs verified: $($ghBelow -join ',')) - dashboard data suspect") "WARN"
+      }
+      $below = $ghBelow
+      $poolCounts = $ghCounts
+      $state.pool_counts = $ghCounts
+    }
+    else {
+      Write-Log "floor breach reported by dashboard but GitHub verification unavailable; taking no action this cycle" "ERROR"
+      $below = @()
+    }
+  }
   $state.pools_below_floor = $below
   foreach ($pool in $below) {
-    Write-Log "pool '$pool' online $($poolCounts[$pool].online) below floor $($PoolFloors[$pool])" "WARN"
+    Write-Log "pool '$pool' online $($poolCounts[$pool].online) below floor $($PoolFloors[$pool]) (GitHub-verified)" "WARN"
   }
 
   # 3b. Desktop self-heal + registration-purge alarm (local machine only).
