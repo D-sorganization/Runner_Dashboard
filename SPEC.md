@@ -1554,6 +1554,17 @@ distros in one shared utility VM. Two hardening steps keep them out of the
   and an `AtStartup` trigger. This keeps the host-side handle that holds the WSL
   VM resident across logoff, preventing the teardown that otherwise forces both
   distros to cold-boot together and race the 10s window.
+- **`deploy/fleet-health-monitor.ps1`** is the canonical DeskComputer fleet
+  monitor (5-minute scheduled task, launched via `run-hidden.vbs`). Beyond the
+  original DeskComputer-keepalive check and ControlTower WMI-handle guard, it
+  enforces **per-pool online floors** (Desktop / ControlTower-SSD / Oglaptop)
+  from the dashboard's `/api/runners` feed, self-heals a below-floor Desktop
+  pool with in-place `systemctl start` of the local runner units (never a WSL
+  reset), and raises an explicit **registration-purge alarm** (zero pool
+  members online on GitHub while local units run — the signature of GitHub's
+  ~14-day offline auto-delete, which silently destroyed the DeskComputer
+  pool's registrations in July 2026). Recovery procedure:
+  `docs/runbooks/runner-registration-purge-recovery.md`.
 - **`deploy/run-hidden.vbs` + `deploy/install-hidden-task-launcher.ps1`** stop
   InteractiveToken scheduled tasks from popping focus-stealing console windows
   in the user's session. The installer rewrites a task's action to
