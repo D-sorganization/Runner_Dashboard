@@ -31,30 +31,45 @@ machines:
         dashboard_url: http://controltower.tail2bbcc7.ts.net:8321
         storage_tier: nvme
         runner_base_dir: /home/dieterolson/actions-runners-nvme
-        # QUARANTINED 2026-07 (Runner_Dashboard issue #1071): the distro
-        # exposed broad filesystem corruption (null-byte binaries, corrupt
-        # dpkg/node/uv). Registered runners 6-8 carry only the
-        # d-sorg-quarantine label; 1-5 were auto-purged by GitHub. The
-        # ControlTower-NVMe distro must stay STOPPED and the legacy
-        # C:\WSL\ext4.vhdx (0x80070570, hosted the :8321 hub) must not be
-        # deleted or mutated until the documented backup/reprovision.
+        # RETIRED 2026-07-31 (Runner_Dashboard issue #1071). Quarantined in
+        # July after broad filesystem corruption (null-byte binaries, corrupt
+        # dpkg/node/uv); retired rather than reprovisioned because the pool
+        # was no longer NVMe-backed at all -- its vhdx sat on the same F:
+        # SATA volume as the SSD pool, so a rebuild would have added disk
+        # contention rather than an I/O tier, and ControlTower-SSD was
+        # expanded 8 -> 17 runners to replace it.
+        #
+        # Both distros were unregistered after byte-verified backups:
+        #   ControlTower-NVMe -> F:\WSL-backups\...-20260731.tar (sha256 recorded)
+        #   legacy "WSL" hub  -> DeskComputer D:\WSL-backups\controltower\
+        #                        (sha256 57B850DA...8191F3, matched both sides)
+        # Reversal for either: wsl --import from the corresponding archive.
+        #
+        # Probable root cause of the original corruption: F: reached zero free
+        # space while a distro was writing. It nearly recurred on the LIVE SSD
+        # pool on 2026-07-31 (2.05 GB free, falling); the fleet monitor now
+        # alarms on host disk floors. Do NOT co-locate large backups with a
+        # live runner vhdx.
         runner_labels:
           - self-hosted
           - Linux
           - X64
           - d-sorg-quarantine
+        retired: true
+        retired_on: 2026-07-31
         runners:
           min: 0
           default: 0
-          max: 8
+          max: 0
         storage:
-          host_drive: "C:"
-          windows_host_path: "C:\\WSL"
-          wsl_distro: ControlTower-NVMe
-          vhdx_path: "C:\\WSL\\ext4.vhdx"
-          disk_bus: NVMe
-          disk_media_type: SSD
-          cache_budget_gb: 120
+          # Distro unregistered; no vhdx remains on the host.
+          host_drive: null
+          windows_host_path: null
+          wsl_distro: null
+          vhdx_path: null
+          disk_bus: null
+          disk_media_type: null
+          cache_budget_gb: 0
       - name: ControlTower-SSD
         aliases:
           - controltower-ssd
