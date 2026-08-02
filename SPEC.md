@@ -510,6 +510,7 @@
   (`name`, `type="unknown"`, `enabled=true`, optional `model`/`status`) before
   serialization. Contract docs and proxy/model regressions cover the real daemon
   list shape.
+  > > > > > > > origin/main
 - **2026-06-12 (2.5.96):** Hardened three dispatch/credential security defects
   (security, issues #925, #926, #927). (1) `verify_approval_hmac`
   (`backend/dispatch/signing.py`) returned `True` for any confirmation lacking an
@@ -1554,6 +1555,44 @@ distros in one shared utility VM. Two hardening steps keep them out of the
   and an `AtStartup` trigger. This keeps the host-side handle that holds the WSL
   VM resident across logoff, preventing the teardown that otherwise forces both
   distros to cold-boot together and race the 10s window.
+- **`deploy/fleet-health-monitor.ps1`** is the canonical DeskComputer fleet
+  monitor (5-minute scheduled task, launched via `run-hidden.vbs`). Beyond the
+  original DeskComputer-keepalive check and ControlTower WMI-handle guard, it
+  enforces **per-pool online floors** (Desktop / ControlTower-SSD / Oglaptop)
+  from the dashboard's `/api/runners` feed, self-heals a below-floor Desktop
+  pool with in-place `systemctl start` of the local runner units (never a WSL
+  reset), and raises an explicit **registration-purge alarm** (zero pool
+  members online on GitHub while local units run — the signature of GitHub's
+  ~14-day offline auto-delete, which silently destroyed the DeskComputer
+  pool's registrations in July 2026). Recovery procedure:
+  `docs/runbooks/runner-registration-purge-recovery.md`. Cycles carry a
+  heartbeat log line and a hard deadline on the ControlTower SSH leg (a
+  hung ssh once stalled the monitor for 100+ minutes under
+  `MultipleInstances=IgnoreNew`), and any floor breach computed from the
+  dashboard feed is re-verified against the GitHub API before warnings or
+  self-heal actions (the feed can serve stale/false zeros; verification
+  unavailable → the cycle takes no action). The same ControlTower probe
+  reports host free space and alarms below per-drive floors
+  (`$DiskFloorsGb`, default C: 25 GB / F: 40 GB): a WSL2 distro that
+  exhausts host disk mid-write corrupts itself — null-byte files and a
+  broken package database — which is the probable origin of the #1071 NVMe
+  corruption and came within minutes of repeating on the live pool on
+  2026-07-31. The floor is **alarm-only**; reclaiming space means deleting
+  large artifacts and is never automated.
+- **`deploy/run-hidden.vbs` + `deploy/install-hidden-task-launcher.ps1`** stop
+  InteractiveToken scheduled tasks from popping focus-stealing console windows
+  in the user's session. The installer rewrites a task's action to
+  `wscript.exe //B //Nologo "run-hidden.vbs" <exe> <args>`; the GUI-subsystem
+  host launches the child with `SW_HIDE` (no console window is ever created —
+  unlike `-WindowStyle Hidden`, which still flashes the console host), waits,
+  and propagates the child's exit code so `LastTaskResult` stays accurate.
+  Contracts: idempotent (wrapping a wrapped task is a no-op), reversible
+  (`-Revert` restores the original action verbatim), postcondition-verified
+  (re-reads the task after writing), foldered tasks addressed by discovered
+  `TaskPath`, and arguments with literal double quotes refused (WScript strips
+  quoting; they cannot be rebuilt losslessly). For tasks that do not need the
+  interactive session, an S4U principal remains the preferred fix. Runbook:
+  `docs/runbooks/interactive-task-console-popups.md`.
 
 #### 2.3.2 Disk-pressure controls (`runner-cleanup.sh`)
 
