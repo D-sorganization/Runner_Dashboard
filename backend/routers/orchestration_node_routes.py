@@ -11,6 +11,7 @@ import httpx
 import proxy_utils
 from dashboard_config import FLEET_NODES, HOSTNAME
 from fastapi import APIRouter, Depends, HTTPException, Request
+from identity import require_fleet_peer
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -49,7 +50,7 @@ def orchestration_node_deps(request: Request) -> OrchestrationNodeDeps:
     return deps
 
 
-@router.get("/api/fleet/nodes")
+@router.get("/api/fleet/nodes", dependencies=[Depends(require_fleet_peer)])
 async def get_fleet_nodes(
     request: Request,
     deps: OrchestrationNodeDeps = Depends(orchestration_node_deps),  # noqa: B008
@@ -60,7 +61,7 @@ async def get_fleet_nodes(
     return await deps.get_fleet_nodes_impl()
 
 
-@router.get("/api/fleet/hardware")
+@router.get("/api/fleet/hardware", dependencies=[Depends(require_fleet_peer)])
 async def get_fleet_hardware(
     request: Request,
     deps: OrchestrationNodeDeps = Depends(orchestration_node_deps),  # noqa: B008

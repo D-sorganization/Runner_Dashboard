@@ -11,7 +11,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from gh_utils import gh_api_admin
-from identity import Principal, require_scope
+from identity import Principal, require_fleet_peer, require_scope
 from proxy_utils import proxy_to_hub, should_proxy_fleet_to_hub
 from runner_inventory import fetch_org_runners
 
@@ -21,7 +21,7 @@ log = logging.getLogger("dashboard.runners")
 router = APIRouter(tags=["runners"])
 
 
-@router.get("/api/runners/groups/{group_label}")
+@router.get("/api/runners/groups/{group_label}", dependencies=[Depends(require_fleet_peer)])
 async def get_runner_group(request: Request, group_label: str) -> dict[str, Any]:
     """Get runners filtered by a specific label/group.
 

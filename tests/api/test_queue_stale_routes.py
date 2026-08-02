@@ -25,8 +25,10 @@ def queue_route_context(tmp_path, monkeypatch):
     from identity import Principal, require_principal  # noqa: PLC0415
     from queue_cleanup import StaleRun  # noqa: PLC0415
     from routers import queue as queue_router  # noqa: PLC0415
+    from starlette.middleware.sessions import SessionMiddleware  # noqa: PLC0415
 
     app = FastAPI()
+    app.add_middleware(SessionMiddleware, secret_key="test-secret")  # pragma: allowlist secret
     app.include_router(queue_router.router)
 
     def make_client(role: str = "operator") -> TestClient:

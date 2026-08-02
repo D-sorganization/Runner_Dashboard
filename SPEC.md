@@ -618,6 +618,7 @@
   `docs/runbooks/hub-credentials.md` now describes the enforced behavior instead
   of claiming validation that did not exist. The structural "all `/api/*` routes
   authenticated" follow-up is tracked by #924.
+  > > > > > > > origin/main
 - **2026-06-12 (2.5.88):** Collapsed the two divergent `proxy_to_hub`
   implementations into one (security, issue #923, re-opens #347). `backend/server.py`
   previously defined its own `proxy_to_hub` that forwarded ALL caller headers to

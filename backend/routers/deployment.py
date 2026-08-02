@@ -21,7 +21,7 @@ import deployment_drift
 import proxy_utils
 from dashboard_config import EXPECTED_VERSION_FILE, HOSTNAME
 from fastapi import APIRouter, Depends, Request
-from identity import Principal, require_scope  # noqa: B008
+from identity import Principal, require_fleet_peer, require_scope  # noqa: B008
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -96,7 +96,7 @@ async def get_deployment_drift(deps: DeploymentDeps = Depends(deployment_deps)) 
     return status.to_dict()
 
 
-@router.get("/api/deployment/state")
+@router.get("/api/deployment/state", dependencies=[Depends(require_fleet_peer)])
 async def get_deployment_state(
     request: Request,
     deps: DeploymentDeps = Depends(deployment_deps),  # noqa: B008

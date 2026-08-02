@@ -28,7 +28,7 @@ from dashboard_config import ORG, REPO_ROOT, RUN_JOB_ENRICHMENT_LIMIT
 from error_models import bad_gateway, validation_error
 from fastapi import APIRouter, Depends, HTTPException, Request
 from gh_utils import gh_api, gh_api_raw
-from identity import Principal, require_scope
+from identity import Principal, require_fleet_peer, require_scope
 from input_validation import validate_workflow_inputs
 from models.github_payloads import GhJob, GhWorkflowRun
 from proxy_utils import proxy_to_hub, should_proxy_fleet_to_hub
@@ -172,7 +172,7 @@ async def _scheduled_workflows_impl(
 # ─── Routes ───────────────────────────────────────────────────────────────────
 
 
-@router.get("/api/runs")
+@router.get("/api/runs", dependencies=[Depends(require_fleet_peer)])
 async def get_runs(request: Request, per_page: int = 30) -> dict:
     """Get recent workflow runs across the org by sampling the most active repos.
 
@@ -205,7 +205,7 @@ async def get_runs(request: Request, per_page: int = 30) -> dict:
     return result
 
 
-@router.get("/api/runs/enriched")
+@router.get("/api/runs/enriched", dependencies=[Depends(require_fleet_peer)])
 async def get_enriched_runs(request: Request, per_page: int = 50) -> dict:
     """Return recent runs with dashboard-friendly enrichment fields."""
     if should_proxy_fleet_to_hub(request):
@@ -226,7 +226,7 @@ async def get_enriched_runs(request: Request, per_page: int = 50) -> dict:
     return result
 
 
-@router.get("/api/analysis/workflow-machines")
+@router.get("/api/analysis/workflow-machines", dependencies=[Depends(require_fleet_peer)])
 async def get_workflow_machine_analysis(request: Request, per_page: int = 100) -> dict:
     """Summarize recent workflow outcomes by machine and workflow."""
     if should_proxy_fleet_to_hub(request):
@@ -237,7 +237,7 @@ async def get_workflow_machine_analysis(request: Request, per_page: int = 100) -
     return summarize_runs_by_workflow_and_machine(runs)
 
 
-@router.get("/api/runs/{repo}")
+@router.get("/api/runs/{repo}", dependencies=[Depends(require_fleet_peer)])
 async def get_repo_runs(request: Request, repo: str, per_page: int = 20):
     """Get recent workflow runs for a specific repo."""
     if should_proxy_fleet_to_hub(request):
@@ -247,7 +247,7 @@ async def get_repo_runs(request: Request, repo: str, per_page: int = 20):
     return data
 
 
-@router.get("/api/scheduled-workflows")
+@router.get("/api/scheduled-workflows", dependencies=[Depends(require_fleet_peer)])
 async def get_scheduled_workflows(
     request: Request,
     include_archived: bool = False,

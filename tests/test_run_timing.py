@@ -182,7 +182,7 @@ def test_annotate_runs_empty_lists() -> None:
 def test_queue_status_route_declared_in_source() -> None:
     """GET /api/queue/status must be declared with @router.get in queue.py."""
     source = (_BACKEND_DIR / "routers" / "queue.py").read_text(encoding="utf-8")
-    assert '@router.get("/api/queue/status")' in source, "queue.py must declare @router.get('/api/queue/status')"
+    assert '@router.get("/api/queue/status"' in source, "queue.py must declare @router.get('/api/queue/status')"
 
 
 def test_queue_status_calls_annotate_runs_with_timing() -> None:

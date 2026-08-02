@@ -22,7 +22,7 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from identity import require_scope
+from identity import require_fleet_peer, require_scope
 from proxy_utils import proxy_to_hub, should_proxy_fleet_to_hub
 
 from .repos_stats import router as stats_router
@@ -158,7 +158,7 @@ def _unified_issue_inventory_dep() -> Any:
     return unified_issue_inventory
 
 
-@router.get("/api/repos")
+@router.get("/api/repos", dependencies=[Depends(require_fleet_peer)])
 async def get_repos(request: Request) -> Any:
     """Get all org repos with open PRs, open issues, and last CI status."""
     if should_proxy_fleet_to_hub(request):

@@ -61,5 +61,6 @@ configured to accept both tokens during the transition window if needed.
 - The token is a symmetric shared secret; protect it like an API key.
 - Never commit `HUB_FLEET_TOKEN` to the repository; store it in the env file
   (which is excluded by `.gitignore`).
-- If not set, no `Authorization` header is injected for intra-fleet calls
-  (the hub must allow unauthenticated spoke traffic in that case).
+- Fleet-token comparison uses a constant-time digest comparison.
+- If not set, no `Authorization` header is injected for intra-fleet calls and
+  fleet-read routes remain tailnet-public.
