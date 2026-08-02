@@ -68,11 +68,13 @@ per-host scripts; the canonical per-pool label sets are in
    `run-hidden.vbs` so it stays windowless) that writes output to a file.
 5. **OGLaptop**: the console may be logged off, so `/IT` tasks won't run —
    use an S4U task (the resident keepalive proves S4U → WSL works there).
-6. **Quarantine**: check runner labels before re-registering. A pool
-   labelled `d-sorg-quarantine` (ControlTower-NVMe as of 2026-07-30, see
-   Runner_Dashboard issue #1071) is out of service **on purpose** — its
-   distro must stay stopped and its purged runners must NOT be re-registered
-   until the documented reprovision completes.
+6. **Quarantine / retirement**: check runner labels before re-registering. A
+   pool labelled `d-sorg-quarantine` is out of service **on purpose** — never
+   re-register its runners to "fix" the count. ControlTower-NVMe carried that
+   label from 2026-07-30 and was **retired** on 2026-07-31 (issue #1071);
+   `machine_registry.yml` marks it `retired: true`, so its absence from the
+   fleet is expected, not decay. Any `d-sorg-local-ControlTower-nvme-*`
+   registrations still listed are orphans of that retirement.
 
 ## Verify
 
@@ -83,6 +85,36 @@ gh api orgs/D-sorganization/actions/runners --paginate \
 
 All expected names present and `online`; `systemctl is-active` on each unit;
 the fleet-health-monitor log shows pool counts at/above floors.
+
+## Host disk space is a first-class runner-health signal
+
+A WSL2 distro whose host volume reaches zero free space **corrupts itself**
+mid-write: files that are allocated but never flushed come back as null
+bytes, taking out binaries and the dpkg database. That is the probable
+origin of the ControlTower-NVMe corruption (issue #1071), and on 2026-07-31
+it came within minutes of repeating on the _live_ ControlTower-SSD pool
+(F: at 2.05 GB free and falling ~130 MB/min under 8 busy runners).
+
+Rules that follow from it:
+
+- **Never co-locate a large backup with a live runner vhdx.** The 190 GB
+  NVMe export was written to F:, the same 931 GB volume as the 326 GB live
+  SSD vhdx and 170 GB of ollama models — that is what consumed the headroom.
+- `deploy/fleet-health-monitor.ps1` alarms below per-drive floors
+  (`$DiskFloorsGb`, default C: 25 GB / F: 40 GB). It is **alarm-only** —
+  reclaiming space means deleting large artifacts and must not be automated.
+- A vhdx handle stays held by the WSL service even when the distro reads
+  `Stopped`, so the file cannot simply be deleted. Use
+  `wsl --unregister <distro>` — it releases the handle, removes the vhdx,
+  and avoids leaving a registration pointing at a missing file. Reverse with
+  `wsl --import`.
+- After retiring a distro, check whether it was the host's **default**
+  (`wsl --list --verbose` marks it `*`). A default pointing at a
+  missing/corrupt distro makes every bare `wsl` call fail and can wedge the
+  WSL service. Repoint with `wsl --set-default <live-distro>`.
+- Verify a `wsl --export` tar before trusting it: a complete POSIX archive
+  ends in ≥1024 zero bytes. Reading the last 1024 bytes distinguishes a
+  finished export from a truncated one in seconds, without rehashing.
 
 ## Prevention
 
