@@ -10,12 +10,14 @@ WatchdogSec, and the tightly-scoped sudoers drop-in.
 from __future__ import annotations  # noqa: E402
 
 import re  # noqa: E402
+import tomllib  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 _ROOT = Path(__file__).parent.parent
 _DEPLOY = _ROOT / "deploy"
 _DOCKERFILE = _ROOT / "Dockerfile"
 _LOCK = _ROOT / "requirements.lock.txt"
+_PYPROJECT = _ROOT / "pyproject.toml"
 
 # ── Issue #391: new hardening directives ─────────────────────────────────────
 # These must appear in both the .service template files AND in the setup.sh
@@ -79,7 +81,7 @@ def test_dockerfile_pins_base_image_to_digest() -> None:
     """FROM must reference a python:3.x-slim base pinned to a sha256 digest.
 
     Version-agnostic: tracks whatever python:3.<minor>-slim the Dockerfile
-    pins (e.g. 3.12, 3.14) rather than hardcoding a single minor version, so
+    pins rather than hardcoding a single minor version, so
     routine base-image bumps don't break this regression check.
     """
     content = _read(_DOCKERFILE)
@@ -92,6 +94,25 @@ def test_dockerfile_pins_base_image_to_digest() -> None:
     floating_tag = f"FROM python:{digest_match.group(1)}-slim\n"
     assert floating_tag not in content, (
         f"Dockerfile must not use the floating tag {floating_tag.strip()!r} without a digest"
+    )
+
+
+def test_dockerfile_python_is_allowed_by_project_metadata() -> None:
+    """The container runtime must stay below the project's Python upper bound."""
+    dockerfile = _read(_DOCKERFILE)
+    base_match = re.search(r"FROM python:(\d+)\.(\d+)-slim@sha256:", dockerfile)
+    assert base_match
+    base_version = tuple(int(part) for part in base_match.groups())
+
+    metadata = tomllib.loads(_read(_PYPROJECT))
+    requires_python = metadata["project"]["requires-python"]
+    upper_match = re.search(r"<(\d+)\.(\d+)", requires_python)
+    assert upper_match, "requires-python must declare an exclusive upper minor bound"
+    upper_bound = tuple(int(part) for part in upper_match.groups())
+
+    assert base_version < upper_bound, (
+        f"Dockerfile Python {base_version} violates requires-python {requires_python!r}; "
+        "update project metadata and locked wheels before advancing the container runtime"
     )
 
 

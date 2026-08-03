@@ -74,6 +74,24 @@ describe("QueueTab Component", () => {
     expect(screen.getAllByText(/Queue is empty/i)[0]).toBeInTheDocument();
   });
 
+  it("does not claim runners are idle when the repository sample is partial", () => {
+    render(
+      <QueueTab
+        queue={{
+          ...mockEmptyQueue,
+          data_source: "partial",
+          generated_at: "2026-08-03T12:00:00Z",
+          stats: { complete: false, repos_sampled: 30, repos_failed: 28 },
+        }}
+        loading={false}
+      />
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent("28 of 30");
+    expect(screen.getAllByText(/partial sample/i)[0]).toBeInTheDocument();
+    expect(screen.queryByText(/all runners idle/i)).not.toBeInTheDocument();
+  });
+
   it("displays loading spinner when loading", () => {
     render(
       <QueueTab queue={mockEmptyQueue} loading={true} />

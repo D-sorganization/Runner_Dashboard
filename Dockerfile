@@ -7,7 +7,7 @@
 # of slow CPython 3.14 source builds.
 # To regenerate requirements.lock.txt:  uv export --no-dev -o requirements.lock.txt
 
-FROM python:3.14-slim@sha256:cea0e6040540fb2b965b6e7fb5ffa00871e632eef63719f0ea54bca189ce14a6
+FROM python:3.13-slim@sha256:c33f0bc4364a6881bed1ec0cc2665e6c53c87a43e774aaeab88e6f17af105e4f
 
 WORKDIR /app
 

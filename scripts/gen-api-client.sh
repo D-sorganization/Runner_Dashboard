@@ -30,10 +30,20 @@ else
   exit 127
 fi
 
+# When this script is launched from WSL with a Windows Python interpreter,
+# translate the two paths passed to Python.  The remaining commands continue
+# to use the native shell paths, so hosted Linux behavior is unchanged.
+PY_ROOT_DIR="$ROOT_DIR"
+PY_TMP_SNAPSHOT="$TMP_SNAPSHOT"
+if [[ "${PYTHON_CMD[0]}" == *.exe ]] && command -v wslpath >/dev/null 2>&1; then
+  PY_ROOT_DIR="$(wslpath -w "$ROOT_DIR")"
+  PY_TMP_SNAPSHOT="$(wslpath -w "$TMP_SNAPSHOT")"
+fi
+
 AUTODERIVE_FLEET_NODES=0 \
 FLEET_NODES="" \
 DASHBOARD_AUTH_REQUIRED=0 \
-"${PYTHON_CMD[@]}" - "$ROOT_DIR" "$TMP_SNAPSHOT" <<'PY'
+"${PYTHON_CMD[@]}" - "$PY_ROOT_DIR" "$PY_TMP_SNAPSHOT" <<'PY'
 import json
 import os
 import sys

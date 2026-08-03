@@ -1,9 +1,23 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.167
-**Application Version:** 4.9.19 (see `VERSION`)
+**Spec Version:** 2.5.168
+**Application Version:** 4.9.24 (see `VERSION`)
 **Last Updated:** 2026-06-21T12:20:00-07:00
 **Status:** Active
+
+- **2026-08-03 (2.5.168):** Added a reversible, zero-polling public CI fast
+  lane controlled by the `CI_RUNNER_MODE` repository variable. Lightweight
+  validation may run on GitHub-hosted Ubuntu capacity while Docker image scans
+  remain on the local Docker fleet; clearing or changing the variable to
+  `local` restores local-only routing. Test fanout is capped and Docker builds
+  now reuse a scoped GitHub Actions BuildKit cache. Queue telemetry now marks
+  partial, stale, cached, and unavailable samples explicitly, reports failed
+  repository and job-detail fetch counts, timestamps both data generation and
+  serving, and no longer claims that all runners are idle when upstream data is
+  incomplete.
+  Optional principal resolution now checks the ASGI session scope directly,
+  avoiding Starlette's assertion-raising `request.session` property probe in
+  focused router apps that intentionally omit `SessionMiddleware`.
 
 - **2026-06-21 (2.5.167):** Runner service-control routes now share a
   `principal_log_id` helper so loopback-gated admin principals that expose

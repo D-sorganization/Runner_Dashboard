@@ -255,6 +255,19 @@ def _loopback_principal() -> Principal:
     )
 
 
+def _optional_session(request: Request) -> dict:
+    """Read session state without triggering Starlette's missing-middleware assertion."""
+    scope = getattr(request, "scope", None)
+    if isinstance(scope, dict):
+        session = scope.get("session")
+    else:
+        # Unit-level dependency tests use a request-shaped mock rather than an
+        # ASGI Request. Preserve that supported test seam without probing the
+        # assertion-raising Request.session property in production.
+        session = getattr(request, "session", None)
+    return session if isinstance(session, dict) else {}
+
+
 def require_principal(
     request: Request,
     header_token: str | None = Depends(auth_header),
@@ -267,9 +280,10 @@ def require_principal(
         prin = identity_manager.verify_token(raw_token)
 
     # 2. Check session — also consult revocation store (issue #346)
-    if not prin and hasattr(request, "session"):
-        principal_id = request.session.get("principal_id")
-        session_id = request.session.get("session_id")
+    session = _optional_session(request)
+    if not prin and session:
+        principal_id = session.get("principal_id")
+        session_id = session.get("session_id")
         if principal_id and principal_id in identity_manager.principals:
             # Reject sessions that have been revoked or FIFO-evicted
             if session_id and not sm.touch_session(session_id):
@@ -385,9 +399,10 @@ def _resolve_principal_optional(request: Request, header_token: str | None) -> P
         if prin:
             return prin
 
-    if hasattr(request, "session"):
-        principal_id = request.session.get("principal_id")
-        session_id = request.session.get("session_id")
+    session = _optional_session(request)
+    if session:
+        principal_id = session.get("principal_id")
+        session_id = session.get("session_id")
         if principal_id and principal_id in identity_manager.principals:
             if session_id and not sm.touch_session(session_id):
                 return None

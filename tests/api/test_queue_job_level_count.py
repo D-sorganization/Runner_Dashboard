@@ -98,6 +98,17 @@ def test_queue_surfaces_job_level_queued_depth(queue_app: TestClient) -> None:
     # New field reflects true job-level depth: 1 queued job in the queued run
     # PLUS 2 queued jobs hidden inside the in_progress run.
     assert data["queued_jobs_count"] == 3
+    assert data["stats"] == {
+        "repos_sampled": 1,
+        "repos_succeeded": 1,
+        "repos_failed": 0,
+        "failed_repositories": [],
+        "job_detail_failures": 0,
+        "complete": True,
+    }
+    assert data["data_source"] == "live"
+    assert data["generated_at"]
+    assert data["served_at"]
 
 
 def test_queue_job_count_falls_back_when_jobs_fetch_fails(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -132,3 +143,35 @@ def test_queue_job_count_falls_back_when_jobs_fetch_fails(monkeypatch: pytest.Mo
     data = client.get("/api/queue").json()
     # Falls back to at least the run-level queued count (never silently 0).
     assert data["queued_jobs_count"] >= data["queued_count"] == 1
+    assert data["stats"]["job_detail_failures"] == 1
+    assert data["stats"]["complete"] is False
+    assert data["data_source"] == "partial"
+
+
+def test_queue_marks_partial_repository_sample_non_authoritative(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A partial sample must never look like an authoritative empty queue."""
+    from routers import queue as queue_router  # noqa: PLC0415
+
+    monkeypatch.setattr(queue_router, "cache_get", lambda *a, **k: None)
+    monkeypatch.setattr(queue_router, "cache_set", lambda *a, **k: None)
+
+    async def fake_gh_api(url: str) -> Any:
+        if "/orgs/" in url and "/repos" in url:
+            return [{"name": "RepoA"}, {"name": "RepoB"}]
+        if "/RepoB/" in url:
+            raise RuntimeError("rate limited")
+        if "status=" in url:
+            return {"workflow_runs": []}
+        return {"jobs": []}
+
+    monkeypatch.setattr(queue_router, "_gh_api", fake_gh_api)
+    app = FastAPI()
+    app.add_middleware(SessionMiddleware, secret_key="test-secret")  # pragma: allowlist secret
+    app.include_router(queue_router.router)
+
+    data = TestClient(app).get("/api/queue").json()
+    assert data["queued_jobs_count"] == 0
+    assert data["stats"]["complete"] is False
+    assert data["stats"]["repos_succeeded"] == 1
+    assert data["stats"]["failed_repositories"] == ["RepoB"]
+    assert data["data_source"] == "partial"

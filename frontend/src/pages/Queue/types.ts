@@ -13,6 +13,17 @@ export interface QueuePayload {
   in_progress?: WorkflowRun[];
   queued?: WorkflowRun[];
   total?: number;
+  generated_at?: string;
+  served_at?: string;
+  data_source?: "live" | "cache" | "partial" | "stale" | "unavailable";
+  stats?: {
+    repos_sampled?: number;
+    repos_succeeded?: number;
+    repos_failed?: number;
+    failed_repositories?: string[];
+    job_detail_failures?: number;
+    complete?: boolean;
+  };
 }
 
 export type SortDir = "asc" | "desc";

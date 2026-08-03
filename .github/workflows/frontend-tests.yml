@@ -17,7 +17,7 @@ concurrency:
 jobs:
   frontend-scope:
     name: Determine frontend validation scope
-    runs-on: d-sorg-fleet
+    runs-on: ${{ !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
     timeout-minutes: 5
     outputs:
       run_frontend_tests: ${{ steps.scope.outputs.run_frontend_tests }}
@@ -86,7 +86,7 @@ jobs:
     name: TypeScript typecheck (tsc)
     needs: frontend-scope
     if: needs.frontend-scope.outputs.run_frontend_tests == 'true'
-    runs-on: d-sorg-fleet
+    runs-on: ${{ !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -127,7 +127,7 @@ jobs:
     name: Vitest + Coverage
     needs: frontend-scope
     if: needs.frontend-scope.outputs.run_frontend_tests == 'true'
-    runs-on: d-sorg-fleet
+    runs-on: ${{ !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -160,7 +160,7 @@ jobs:
     name: Frontend perf budget (real bundle)
     needs: frontend-scope
     if: needs.frontend-scope.outputs.run_frontend_tests == 'true'
-    runs-on: d-sorg-fleet
+    runs-on: ${{ !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -189,7 +189,7 @@ jobs:
 
   playwright-e2e:
     name: Playwright E2E smoke tests
-    runs-on: d-sorg-fleet
+    runs-on: ${{ !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
     timeout-minutes: 20
     needs:
       - frontend-scope

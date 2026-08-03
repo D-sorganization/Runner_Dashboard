@@ -7,11 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.9.24] - 2026-08-03
+
 ### Fixed
+
+- Restored the canonical version metadata to the already-declared `VERSION`
+  value so the release single-source contract passes again.
+- Added accurate degraded queue telemetry and reversible public CI routing.
 
 - Loopback principals can use runner service-control logging paths without
   raising `Principal.user_id` attribute errors.
-- Package and OpenAPI release metadata now match the deployed `4.9.19`
+- Package and OpenAPI release metadata now match the deployed `4.9.24`
   dashboard version.
 - WSL keepalive parser smoke coverage now writes its probe log/state artifacts
   under pytest `tmp_path` instead of the repository root, so the test no longer

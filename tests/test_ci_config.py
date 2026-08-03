@@ -11,13 +11,12 @@ pyproject.toml satisfy the non-blocking/blocking policy introduced in #400:
   5. The mypy Type Check step prints the override count to the CI log.
   6. bandit.yaml exists and contains a [skips] section with per-entry rationale.
   7. requirements-audit-ignore.txt exists and documents the policy.
-  8. All jobs in ci-standard.yml run on d-sorg fleet labels (not hosted).
-  9. Python dependency-heavy jobs use Docker-capable self-hosted runners.
+  8. Lightweight CI jobs use the reversible hosted/local selector.
+  9. Docker image builds remain on Docker-capable self-hosted runners.
 """
 
 from __future__ import annotations
 
-import re
 import tomllib
 from pathlib import Path
 
@@ -139,27 +138,33 @@ def test_mypy_step_prints_override_count() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_all_jobs_use_fleet_runner() -> None:
-    """Every job must use local d-sorg fleet labels, not hosted runners."""
+def test_ci_uses_reversible_zero_polling_runner_selector() -> None:
+    """Public CI can use hosted capacity without adding GitHub API polling."""
     text = _workflow_text()
-    bad_runners = re.findall(r"runs-on:\s*(ubuntu-latest|ubuntu-\d+\.\d+)", text)
-    assert not bad_runners, (
-        f"Found hosted runner(s) in ci-standard.yml: {bad_runners}. Jobs must use d-sorg fleet labels."
-    )
+    workflow = _workflow_yaml(CI_WORKFLOW)
+    picker = workflow["jobs"]["pick-runner"]
+    assert "CI_RUNNER_MODE" in text
+    assert "ubuntu-latest" in text
+    assert "d-sorg-fleet" in text
+    assert "gh api" not in str(picker)
+    assert "gh repo list" not in str(picker)
+    for job_name in ("ci-health-check", "quality-gate", "security-scan", "tests", "tests-required"):
+        assert "needs.pick-runner.outputs.runner" in str(workflow["jobs"][job_name]["runs-on"])
+
+
+def test_job_level_environment_uses_pre_runner_contexts_only() -> None:
+    """Job-level env is evaluated before runner context becomes available."""
     workflow = _workflow_yaml(CI_WORKFLOW)
     for job_name, job in workflow["jobs"].items():
-        labels = _runs_on_labels(job)
-        assert "d-sorg-fleet" in labels or any(label.startswith("d-sorg-fleet-") for label in labels), (
-            f"{job_name} does not use a d-sorg fleet label: {labels}"
-        )
+        for value in (job.get("env") or {}).values():
+            assert "runner.temp" not in str(value), (
+                f"{job_name} uses runner.temp in job-level env; use github.workspace or step-level env"
+            )
 
 
-def test_python_heavy_jobs_use_docker_runners() -> None:
-    """Dependency-heavy Python jobs must use currently schedulable Docker runners."""
+def test_test_matrix_fanout_is_bounded() -> None:
     workflow = _workflow_yaml(CI_WORKFLOW)
-    for job_name in ("quality-gate", "security-scan", "tests"):
-        labels = _runs_on_labels(workflow["jobs"][job_name])
-        assert {"self-hosted", "Linux", "X64", "d-sorg-fleet-docker"}.issubset(labels)
+    assert workflow["jobs"]["tests"]["strategy"]["max-parallel"] <= 3
 
 
 def test_docker_build_uses_docker_runners() -> None:
@@ -167,6 +172,21 @@ def test_docker_build_uses_docker_runners() -> None:
     workflow = _workflow_yaml(DOCKER_WORKFLOW)
     labels = _runs_on_labels(workflow["jobs"]["docker-build-scan"])
     assert {"self-hosted", "Linux", "X64", "d-sorg-fleet-docker"}.issubset(labels)
+    text = DOCKER_WORKFLOW.read_text(encoding="utf-8")
+    assert "cache-from: type=gha" in text
+    assert "cache-to: type=gha,mode=max" in text
+    assert "github/codeql-action/upload-sarif" not in str(workflow["jobs"]["docker-build-scan"])
+
+
+def test_docker_sarif_publication_uses_reversible_lightweight_route() -> None:
+    """Only SARIF publication may leave the local Docker runner."""
+    workflow = _workflow_yaml(DOCKER_WORKFLOW)
+    publisher = workflow["jobs"]["publish-sarif"]
+    runs_on = str(publisher["runs-on"])
+    assert "ubuntu-latest" in runs_on
+    assert "CI_RUNNER_MODE" in runs_on
+    assert "d-sorg-fleet" in runs_on
+    assert "github/codeql-action/upload-sarif" in str(publisher)
 
 
 def test_local_only_guard_runs_on_fleet() -> None:
