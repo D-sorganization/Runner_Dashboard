@@ -55,7 +55,7 @@ concurrency:
 
 jobs:
   close-redundant:
-    runs-on: d-sorg-fleet
+    runs-on: ${{ !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
     timeout-minutes: 10
     steps:
       - name: Check Jules app credentials
