@@ -1883,6 +1883,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
         "summary": "Get Workflow Machine Analysis",
         "tags": ["runs_workflows"]
       }
@@ -3176,6 +3181,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
         "summary": "Get Deployment State",
         "tags": ["deployment"]
       }
@@ -3738,6 +3748,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
         "summary": "Get Fleet Hardware",
         "tags": ["orchestration", "orchestration"]
       }
@@ -3760,6 +3775,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
         "summary": "Get Fleet Nodes",
         "tags": ["orchestration", "orchestration"]
       }
@@ -5684,6 +5704,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
         "summary": "Get Queue",
         "tags": ["queue"]
       }
@@ -6007,6 +6032,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
         "summary": "Get Stale Queue Runs",
         "tags": ["queue"]
       }
@@ -6029,6 +6059,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
         "summary": "Get Queue Status",
         "tags": ["queue"]
       }
@@ -6153,6 +6188,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
         "summary": "Get Repos",
         "tags": ["repos"]
       }
@@ -6219,6 +6259,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
         "summary": "Get Runners",
         "tags": ["runners"]
       }
@@ -6241,6 +6286,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
         "summary": "Get Runners Diagnostics Summary",
         "tags": ["runners"]
       }
@@ -6263,6 +6313,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
         "summary": "Get Fleet Capacity",
         "tags": ["runners"]
       }
@@ -6336,6 +6391,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
         "summary": "Get Runner Group",
         "tags": ["runners"]
       }
@@ -6496,6 +6556,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
         "summary": "Get Matlab Runner Health",
         "tags": ["runners"]
       }
@@ -6838,6 +6903,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
         "summary": "Get Runs",
         "tags": ["runs_workflows"]
       }
@@ -6882,6 +6952,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
         "summary": "Get Enriched Runs",
         "tags": ["runs_workflows"]
       }
@@ -6931,6 +7006,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
         "summary": "Get Repo Runs",
         "tags": ["runs_workflows"]
       }
@@ -7101,6 +7181,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
         "summary": "Get Scheduled Workflows",
         "tags": ["runs_workflows"]
       }
@@ -7171,6 +7256,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
         "summary": "Get Stats",
         "tags": ["repos", "repos"]
       }
@@ -7267,6 +7357,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
         "summary": "Get Usage Monitoring",
         "tags": ["repos", "repos"]
       }
