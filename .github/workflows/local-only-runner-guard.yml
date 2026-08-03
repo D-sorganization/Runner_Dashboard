@@ -52,6 +52,7 @@ jobs:
               "Agent-Redundant-PR-Closer.yml",
               "ci-secrets.yml",
               "ci-spec-check.yml",
+              "docker-build.yml",
               "frontend-tests.yml",
               "lint-workflow-files.yml",
               "runner-health-alert.yml",

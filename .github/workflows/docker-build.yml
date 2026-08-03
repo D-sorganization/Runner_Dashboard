@@ -2,6 +2,10 @@
 # Triggered on every PR and push to main that touches relevant files.
 name: Docker Build & Trivy Scan
 
+permissions:
+  contents: read
+  security-events: write
+
 on:
   push:
     branches:
@@ -68,8 +72,31 @@ jobs:
           output: trivy-results.sarif
           severity: HIGH,CRITICAL
 
-      - name: Upload SARIF to GitHub Security tab
+      - name: Stage SARIF for hosted publication
         if: always() && steps.build.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.3.0
+        with:
+          name: trivy-sarif
+          path: trivy-results.sarif
+          retention-days: 1
+        continue-on-error: true
+
+  publish-sarif:
+    name: Publish Trivy SARIF
+    needs: docker-build-scan
+    if: always() && needs.docker-build-scan.result != 'cancelled'
+    runs-on: ${{ !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
+    timeout-minutes: 10
+    steps:
+      - name: Download Trivy SARIF
+        id: download
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: trivy-sarif
+        continue-on-error: true
+
+      - name: Upload SARIF to GitHub Security tab
+        if: steps.download.outcome == 'success'
         uses: github/codeql-action/upload-sarif@e4262713b504983e61c7728f5452be240d9385a7 # v3.26.1
         with:
           sarif_file: trivy-results.sarif

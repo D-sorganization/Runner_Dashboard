@@ -165,6 +165,18 @@ def test_docker_build_uses_docker_runners() -> None:
     text = DOCKER_WORKFLOW.read_text(encoding="utf-8")
     assert "cache-from: type=gha" in text
     assert "cache-to: type=gha,mode=max" in text
+    assert "github/codeql-action/upload-sarif" not in str(workflow["jobs"]["docker-build-scan"])
+
+
+def test_docker_sarif_publication_uses_reversible_lightweight_route() -> None:
+    """Only SARIF publication may leave the local Docker runner."""
+    workflow = _workflow_yaml(DOCKER_WORKFLOW)
+    publisher = workflow["jobs"]["publish-sarif"]
+    runs_on = str(publisher["runs-on"])
+    assert "ubuntu-latest" in runs_on
+    assert "CI_RUNNER_MODE" in runs_on
+    assert "d-sorg-fleet" in runs_on
+    assert "github/codeql-action/upload-sarif" in str(publisher)
 
 
 def test_local_only_guard_runs_on_fleet() -> None:
