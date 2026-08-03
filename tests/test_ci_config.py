@@ -152,6 +152,16 @@ def test_ci_uses_reversible_zero_polling_runner_selector() -> None:
         assert "needs.pick-runner.outputs.runner" in str(workflow["jobs"][job_name]["runs-on"])
 
 
+def test_job_level_environment_uses_pre_runner_contexts_only() -> None:
+    """Job-level env is evaluated before runner context becomes available."""
+    workflow = _workflow_yaml(CI_WORKFLOW)
+    for job_name, job in workflow["jobs"].items():
+        for value in (job.get("env") or {}).values():
+            assert "runner.temp" not in str(value), (
+                f"{job_name} uses runner.temp in job-level env; use github.workspace or step-level env"
+            )
+
+
 def test_test_matrix_fanout_is_bounded() -> None:
     workflow = _workflow_yaml(CI_WORKFLOW)
     assert workflow["jobs"]["tests"]["strategy"]["max-parallel"] <= 3

@@ -253,7 +253,7 @@ jobs:
     runs-on: ${{ needs.pick-runner.outputs.runner }}
     timeout-minutes: 25
     env:
-      PIP_CACHE_DIR: ${{ runner.temp }}/pip-cache
+      PIP_CACHE_DIR: ${{ github.workspace }}/.cache/pip
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v6
@@ -398,7 +398,7 @@ jobs:
     runs-on: ${{ needs.pick-runner.outputs.runner }}
     timeout-minutes: 20
     env:
-      PIP_CACHE_DIR: ${{ runner.temp }}/pip-cache
+      PIP_CACHE_DIR: ${{ github.workspace }}/.cache/pip
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v6
@@ -442,7 +442,7 @@ jobs:
     runs-on: ${{ needs.pick-runner.outputs.runner }}
     timeout-minutes: 20
     env:
-      PIP_CACHE_DIR: ${{ runner.temp }}/pip-cache
+      PIP_CACHE_DIR: ${{ github.workspace }}/.cache/pip
     strategy:
       fail-fast: false
       max-parallel: 2
