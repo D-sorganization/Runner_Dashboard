@@ -18,7 +18,7 @@ on:
   workflow_dispatch:
     inputs:
       force_local:
-        description: Force all runner-routed jobs onto GitHub-hosted runners
+        description: Force runner-routed jobs onto the local fleet
         required: false
         default: false
         type: boolean
@@ -32,9 +32,34 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  pick-runner:
+    name: Select reversible CI runner
+    runs-on: ${{ (github.event_name == 'workflow_dispatch' && inputs.force_local) && 'd-sorg-fleet' || (!github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet') }}
+    timeout-minutes: 5
+    outputs:
+      runner: ${{ steps.select.outputs.runner }}
+      mode: ${{ steps.select.outputs.mode }}
+    steps:
+      - id: select
+        name: Select runner without API polling
+        shell: bash
+        env:
+          CONFIGURED_MODE: ${{ vars.CI_RUNNER_MODE }}
+          REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
+          FORCE_LOCAL: ${{ github.event_name == 'workflow_dispatch' && inputs.force_local }}
+        run: |
+          if [ "$FORCE_LOCAL" = "true" ] || [ "$REPOSITORY_PRIVATE" = "true" ] || [ "$CONFIGURED_MODE" = "local" ]; then
+            echo "runner=d-sorg-fleet" >> "$GITHUB_OUTPUT"
+            echo "mode=local" >> "$GITHUB_OUTPUT"
+          else
+            echo "runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
+            echo "mode=hosted" >> "$GITHUB_OUTPUT"
+          fi
+
   # â”€â”€ Fleet-wide CI health gate (issue #154) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   ci-health-check:
-    runs-on: d-sorg-fleet
+    needs: [pick-runner]
+    runs-on: ${{ needs.pick-runner.outputs.runner }}
     timeout-minutes: 10
     outputs:
       run_python_tests: ${{ steps.python-scope.outputs.run_python_tests }}
@@ -223,12 +248,12 @@ jobs:
           fi
 
   quality-gate:
-    needs: [ci-health-check]
+    needs: [pick-runner, ci-health-check]
     if: needs.ci-health-check.outputs.run_python_tests == 'true'
-    runs-on: [self-hosted, Linux, X64, d-sorg-fleet-docker]
+    runs-on: ${{ needs.pick-runner.outputs.runner }}
     timeout-minutes: 25
     env:
-      PIP_CACHE_DIR: /home/dieterolson/actions-runners/.shared-tool-cache/pip
+      PIP_CACHE_DIR: ${{ runner.temp }}/pip-cache
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v6
@@ -368,12 +393,12 @@ jobs:
           fi
 
   security-scan:
-    needs: [ci-health-check]
+    needs: [pick-runner, ci-health-check]
     if: needs.ci-health-check.outputs.run_python_tests == 'true'
-    runs-on: [self-hosted, Linux, X64, d-sorg-fleet-docker]
+    runs-on: ${{ needs.pick-runner.outputs.runner }}
     timeout-minutes: 20
     env:
-      PIP_CACHE_DIR: /home/dieterolson/actions-runners/.shared-tool-cache/pip
+      PIP_CACHE_DIR: ${{ runner.temp }}/pip-cache
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v6
@@ -412,13 +437,15 @@ jobs:
     needs:
       - ci-health-check
       - quality-gate
+      - pick-runner
     if: needs.ci-health-check.outputs.run_python_tests == 'true'
-    runs-on: [self-hosted, Linux, X64, d-sorg-fleet-docker]
+    runs-on: ${{ needs.pick-runner.outputs.runner }}
     timeout-minutes: 20
     env:
-      PIP_CACHE_DIR: /home/dieterolson/actions-runners/.shared-tool-cache/pip
+      PIP_CACHE_DIR: ${{ runner.temp }}/pip-cache
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         python:
           - "3.11"
@@ -474,8 +501,9 @@ jobs:
     needs:
       - ci-health-check
       - tests
+      - pick-runner
     if: needs.ci-health-check.outputs.run_python_tests == 'true'
-    runs-on: d-sorg-fleet
+    runs-on: ${{ needs.pick-runner.outputs.runner }}
     timeout-minutes: 5
     steps:
       - name: Confirm Python test matrix

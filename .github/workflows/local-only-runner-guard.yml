@@ -46,6 +46,9 @@ jobs:
           # runner-health-alert canary in Repository_Management is allowlisted
           # only in that repo; the entry is harmless elsewhere.
           ALLOWLIST_FILES = {
+              # Public lightweight CI may use the reversible CI_RUNNER_MODE
+              # selector. Docker and deployment workflows remain local-only.
+              "ci-standard.yml",
               "runner-health-alert.yml",
           }
           HOSTED = re.compile(r"^(ubuntu|macos|windows)(-latest|-\d+)?$")

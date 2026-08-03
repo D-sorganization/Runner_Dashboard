@@ -36,8 +36,6 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4 # v3.10.0
-        with:
-          driver: docker
 
       - name: Build Docker image
         id: build
@@ -47,6 +45,8 @@ jobs:
           push: false
           tags: runner-dashboard:ci-${{ github.sha }}
           load: true
+          cache-from: type=gha,scope=runner-dashboard-docker
+          cache-to: type=gha,mode=max,scope=runner-dashboard-docker
 
       - name: Run Trivy vulnerability scan
         if: steps.build.outcome == 'success'

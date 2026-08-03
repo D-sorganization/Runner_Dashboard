@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import UTC, datetime
 from typing import Annotated, Any, cast
 
 from cache_utils import cache_delete, cache_get, cache_set
@@ -78,6 +79,7 @@ async def _json_body_or_empty(request: Request) -> dict[str, Any]:
 
 def _empty_queue_result() -> dict:
     """Return the standard empty queue payload."""
+    now = datetime.now(UTC).isoformat()
     return {
         "queued": [],
         "in_progress": [],
@@ -85,6 +87,17 @@ def _empty_queue_result() -> dict:
         "queued_count": 0,
         "queued_jobs_count": 0,
         "in_progress_count": 0,
+        "generated_at": now,
+        "served_at": now,
+        "data_source": "unavailable",
+        "stats": {
+            "repos_sampled": 0,
+            "repos_succeeded": 0,
+            "repos_failed": 0,
+            "failed_repositories": [],
+            "job_detail_failures": 0,
+            "complete": False,
+        },
     }
 
 
@@ -142,7 +155,7 @@ async def _count_queued_jobs_for_run(run: dict) -> int:
     return sum(1 for job in jobs if job.get("status") == "queued")
 
 
-async def _count_queued_jobs(runs: list[dict]) -> int:
+async def _count_queued_jobs(runs: list[dict]) -> tuple[int, int]:
     """Aggregate job-level queued depth across active runs.
 
     Fetches each run's jobs concurrently with ``return_exceptions=True`` so one
@@ -151,19 +164,30 @@ async def _count_queued_jobs(runs: list[dict]) -> int:
     status is ``queued`` (preserving the legacy lower bound), otherwise 0.
     """
     if not runs:
-        return 0
+        return 0, 0
     results = await asyncio.gather(
         *[_count_queued_jobs_for_run(run) for run in runs],
         return_exceptions=True,
     )
     total = 0
+    failures = 0
     for run, result in zip(runs, results, strict=True):
         if isinstance(result, BaseException):
+            failures += 1
             log.warning("queued-jobs count failed for run %s: %r", run.get("id"), result)
             total += 1 if run.get("status") == "queued" else 0
         else:
             total += result
-    return total
+    return total, failures
+
+
+def _served_payload(payload: dict[Any, Any], source: str | None = None) -> dict[Any, Any]:
+    """Return a response copy with request-time freshness metadata."""
+    result = dict(payload)
+    result["served_at"] = datetime.now(UTC).isoformat()
+    if source is not None:
+        result["data_source"] = source
+    return result
 
 
 # Cache TTL kept at 60s (down from 120s) so partial failures heal faster.
@@ -195,13 +219,13 @@ async def _queue_impl() -> dict:
     """
     cached = cache_get(_QUEUE_CACHE_KEY, _QUEUE_CACHE_TTL)
     if cached is not None:
-        return cached
+        return _served_payload(cast(dict[Any, Any], cached), "cache")
 
     repos = await _get_recent_org_repos(limit=_QUEUE_REPO_LIMIT)
     if not repos:
         # No repos visible at all; try the stale cache before giving up.
         stale = cache_get(_QUEUE_STALE_KEY, _QUEUE_STALE_TTL)
-        return cast(dict[Any, Any], stale) if stale is not None else _empty_queue_result()
+        return _served_payload(cast(dict[Any, Any], stale), "stale") if stale is not None else _empty_queue_result()
 
     async def fetch_active_runs(repo_name: str) -> list[dict]:
         results: list[dict] = []
@@ -236,8 +260,16 @@ async def _queue_impl() -> dict:
         stale = cache_get(_QUEUE_STALE_KEY, _QUEUE_STALE_TTL)
         if stale is not None:
             log.warning("queue aggregation: all repos failed; serving stale cache")
-            return cast(dict[Any, Any], stale)
-        return _empty_queue_result()
+            return _served_payload(cast(dict[Any, Any], stale), "stale")
+        unavailable = _empty_queue_result()
+        unavailable["stats"].update(
+            {
+                "repos_sampled": len(sample),
+                "repos_failed": len(failures),
+                "failed_repositories": [repo["name"] for repo in sample],
+            }
+        )
+        return unavailable
 
     queued = sorted(
         [r for r in all_runs if r.get("status") == "queued"],
@@ -252,7 +284,10 @@ async def _queue_impl() -> dict:
     # in_progress runs (the latter can still have queued sibling jobs that the
     # run-level `queued_count` misses). This is the figure the operator cares
     # about — how many jobs are actually waiting for a runner.
-    queued_jobs_count = await _count_queued_jobs(queued + in_progress)
+    queued_jobs_count, job_detail_failures = await _count_queued_jobs(queued + in_progress)
+    generated_at = datetime.now(UTC).isoformat()
+    failed_repositories = [failure.split(":", 1)[0] for failure in failures]
+    complete = not failures and job_detail_failures == 0
 
     payload: dict[Any, Any] = {
         "queued": queued,
@@ -261,13 +296,21 @@ async def _queue_impl() -> dict:
         "queued_count": len(queued),
         "queued_jobs_count": queued_jobs_count,
         "in_progress_count": len(in_progress),
+        "generated_at": generated_at,
+        "served_at": generated_at,
+        "data_source": "live" if complete else "partial",
         "stats": {
             "repos_sampled": len(sample),
+            "repos_succeeded": len(sample) - len(failures),
             "repos_failed": len(failures),
+            "failed_repositories": failed_repositories,
+            "job_detail_failures": job_detail_failures,
+            "complete": complete,
         },
     }
     cache_set(_QUEUE_CACHE_KEY, payload)
-    cache_set(_QUEUE_STALE_KEY, payload)
+    if complete:
+        cache_set(_QUEUE_STALE_KEY, payload)
     return payload
 
 

@@ -344,6 +344,15 @@ export function QueueTab(p: QueueTabProps) {
         <Stat label="Auto-refresh" value="15s" sub="updates automatically" />
       </div>
 
+      {q.stats?.complete === false ? (
+        <div className="alert alert-warning" role="status" style={{ marginBottom: 12 }}>
+          Queue data is incomplete: {q.stats.repos_failed ?? 0} of {q.stats.repos_sampled ?? 0}{" "}
+          repositories were unavailable. Counts are a lower bound; an empty result does not mean all
+          runners are idle. Source: {q.data_source ?? "unavailable"}
+          {q.generated_at ? `; data generated ${new Date(q.generated_at).toLocaleString()}` : ""}.
+        </div>
+      ) : null}
+
       <div className="mobile-kpi-strip" aria-label="Queue health summary">
         {[
           { label: "Queued", value: qu.length },
@@ -720,7 +729,9 @@ export function QueueTab(p: QueueTabProps) {
               textAlign: "center",
             }}
           >
-            Queue is empty — all runners idle
+            {q.stats?.complete === false
+              ? "No active jobs were visible in the partial sample"
+              : "Queue is empty — all runners idle"}
           </div>
         )}
       </Collapse>
