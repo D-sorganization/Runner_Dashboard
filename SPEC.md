@@ -1,9 +1,19 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.168
+**Spec Version:** 2.5.169
 **Application Version:** 4.9.24 (see `VERSION`)
-**Last Updated:** 2026-06-21T12:20:00-07:00
+**Last Updated:** 2026-08-05T00:45:00-07:00
 **Status:** Active
+
+- **2026-08-05 (2.5.169):** Queue refreshes now have a shared eight-second
+  deadline across repository discovery, active-run sampling, and job-detail
+  enrichment. Repository and job fan-out are each limited to six concurrent
+  GitHub calls, while job-level queued counts are cached by repository and run
+  ID for 120 seconds. If the deadline expires, `/api/queue` returns the
+  completed subset or last-known-good snapshot with `data_source`,
+  generation/serve timestamps, failed-repository counts, and
+  `stats.budget_exhausted=true` rather than holding the request open. The
+  budget, concurrency limits, and job-cache TTL are operator-configurable.
 
 - **2026-08-03 (2.5.168):** Added a reversible, zero-polling public CI fast
   lane controlled by the `CI_RUNNER_MODE` repository variable. Lightweight

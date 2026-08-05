@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Bounded queue refreshes to an eight-second WAN budget with six concurrent
+  repository and job-detail requests, cached per-run job counts, and explicit
+  budget-exhaustion metadata instead of allowing a slow GitHub call to stall
+  queue observability indefinitely.
+
 ## [4.9.24] - 2026-08-03
 
 ### Fixed
