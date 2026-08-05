@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from datetime import UTC, datetime
 from typing import Annotated, Any, cast
 
@@ -96,6 +97,7 @@ def _empty_queue_result() -> dict:
             "repos_failed": 0,
             "failed_repositories": [],
             "job_detail_failures": 0,
+            "budget_exhausted": False,
             "complete": False,
         },
     }
@@ -150,12 +152,18 @@ async def _count_queued_jobs_for_run(run: dict) -> int:
     if not repo_name or run_id is None:
         raise RuntimeError(f"run missing repo/id for job-level count: {run_id!r}")
     repo_name = validate_repo_slug(repo_name)
+    cache_key = f"queue:jobs:{repo_name}:{run_id}"
+    cached = cache_get(cache_key, _QUEUE_JOB_CACHE_TTL)
+    if cached is not None:
+        return int(cached)
     data = await _gh_api(f"/repos/{ORG}/{repo_name}/actions/runs/{run_id}/jobs?per_page=100")
     jobs = data.get("jobs", [])
-    return sum(1 for job in jobs if job.get("status") == "queued")
+    count = sum(1 for job in jobs if job.get("status") == "queued")
+    cache_set(cache_key, count)
+    return count
 
 
-async def _count_queued_jobs(runs: list[dict]) -> tuple[int, int]:
+async def _count_queued_jobs(runs: list[dict], timeout: float) -> tuple[int, int, bool]:
     """Aggregate job-level queued depth across active runs.
 
     Fetches each run's jobs concurrently with ``return_exceptions=True`` so one
@@ -164,21 +172,34 @@ async def _count_queued_jobs(runs: list[dict]) -> tuple[int, int]:
     status is ``queued`` (preserving the legacy lower bound), otherwise 0.
     """
     if not runs:
-        return 0, 0
-    results = await asyncio.gather(
-        *[_count_queued_jobs_for_run(run) for run in runs],
-        return_exceptions=True,
-    )
+        return 0, 0, False
+    semaphore = asyncio.Semaphore(_QUEUE_JOB_CONCURRENCY)
+
+    async def bounded_count(run: dict) -> int:
+        async with semaphore:
+            return await _count_queued_jobs_for_run(run)
+
+    tasks = [asyncio.create_task(bounded_count(run)) for run in runs]
+    _, pending = await asyncio.wait(tasks, timeout=max(0.0, timeout))
+    for task in pending:
+        task.cancel()
+    if pending:
+        await asyncio.gather(*pending, return_exceptions=True)
+
     total = 0
     failures = 0
-    for run, result in zip(runs, results, strict=True):
-        if isinstance(result, BaseException):
+    for run, task in zip(runs, tasks, strict=True):
+        if task.cancelled():
             failures += 1
-            log.warning("queued-jobs count failed for run %s: %r", run.get("id"), result)
             total += 1 if run.get("status") == "queued" else 0
-        else:
-            total += result
-    return total, failures
+            continue
+        try:
+            total += task.result()
+        except Exception as exc:
+            failures += 1
+            log.warning("queued-jobs count failed for run %s: %r", run.get("id"), exc)
+            total += 1 if run.get("status") == "queued" else 0
+    return total, failures, bool(pending)
 
 
 def _served_payload(payload: dict[Any, Any], source: str | None = None) -> dict[Any, Any]:
@@ -199,9 +220,49 @@ _QUEUE_CACHE_TTL = 60.0
 _QUEUE_CACHE_KEY = "queue"
 _QUEUE_STALE_KEY = "queue:stale"
 _QUEUE_REPO_LIMIT = 30  # was 15 — repos beyond this silently contributed 0
+_QUEUE_REFRESH_BUDGET_SECONDS = float(os.environ.get("DASHBOARD_QUEUE_REFRESH_BUDGET_SECONDS", "8"))
+_QUEUE_REPO_CONCURRENCY = int(os.environ.get("DASHBOARD_QUEUE_REPO_CONCURRENCY", "6"))
+_QUEUE_JOB_CONCURRENCY = int(os.environ.get("DASHBOARD_QUEUE_JOB_CONCURRENCY", "6"))
+_QUEUE_JOB_CACHE_TTL = float(os.environ.get("DASHBOARD_QUEUE_JOB_CACHE_TTL", "120"))
+assert _QUEUE_REFRESH_BUDGET_SECONDS > 0
+assert _QUEUE_REPO_CONCURRENCY > 0
+assert _QUEUE_JOB_CONCURRENCY > 0
+assert _QUEUE_JOB_CACHE_TTL > 0
 # Years, in seconds. cache_utils proactively deletes entries past TTL, so we
 # need a value larger than the process's expected uptime, not literally inf.
 _QUEUE_STALE_TTL = 60.0 * 60.0 * 24.0 * 365.0
+
+
+async def _collect_repo_runs(sample: list[dict], timeout: float) -> tuple[list[dict], list[str], bool]:
+    """Fetch active runs with bounded concurrency and a shared deadline."""
+    semaphore = asyncio.Semaphore(_QUEUE_REPO_CONCURRENCY)
+
+    async def fetch(repo_name: str) -> list[dict]:
+        async with semaphore:
+            runs: list[dict] = []
+            for status in ("queued", "in_progress"):
+                runs.extend(await _fetch_repo_runs(repo_name, status=status))
+            return runs
+
+    tasks = [asyncio.create_task(fetch(repo["name"])) for repo in sample]
+    _, pending = await asyncio.wait(tasks, timeout=max(0.0, timeout))
+    for task in pending:
+        task.cancel()
+    if pending:
+        await asyncio.gather(*pending, return_exceptions=True)
+
+    all_runs: list[dict] = []
+    failures: list[str] = []
+    for repo, task in zip(sample, tasks, strict=True):
+        if task.cancelled():
+            failures.append(repo["name"])
+            continue
+        try:
+            all_runs.extend(task.result())
+        except Exception as exc:
+            failures.append(repo["name"])
+            log.warning("queue aggregation failed for %s: %r", repo["name"], exc)
+    return all_runs, failures, bool(pending)
 
 
 async def _queue_impl() -> dict:
@@ -221,42 +282,42 @@ async def _queue_impl() -> dict:
     if cached is not None:
         return _served_payload(cast(dict[Any, Any], cached), "cache")
 
-    repos = await _get_recent_org_repos(limit=_QUEUE_REPO_LIMIT)
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + _QUEUE_REFRESH_BUDGET_SECONDS
+    try:
+        repos = await asyncio.wait_for(
+            _get_recent_org_repos(limit=_QUEUE_REPO_LIMIT),
+            timeout=max(0.0, deadline - loop.time()),
+        )
+    except Exception as exc:
+        log.warning("queue repository inventory failed within refresh budget: %r", exc)
+        stale = cache_get(_QUEUE_STALE_KEY, _QUEUE_STALE_TTL)
+        if stale is not None:
+            return _served_payload(cast(dict[Any, Any], stale), "stale")
+        unavailable = _empty_queue_result()
+        unavailable["stats"]["budget_exhausted"] = isinstance(exc, TimeoutError)
+        return unavailable
     if not repos:
         # No repos visible at all; try the stale cache before giving up.
         stale = cache_get(_QUEUE_STALE_KEY, _QUEUE_STALE_TTL)
         return _served_payload(cast(dict[Any, Any], stale), "stale") if stale is not None else _empty_queue_result()
 
-    async def fetch_active_runs(repo_name: str) -> list[dict]:
-        results: list[dict] = []
-        for status in ("queued", "in_progress"):
-            results.extend(await _fetch_repo_runs(repo_name, status=status))
-        return results
-
     sample = repos[:_QUEUE_REPO_LIMIT]
-    fetched = await asyncio.gather(
-        *[fetch_active_runs(r["name"]) for r in sample],
-        return_exceptions=True,
+    all_runs, failed_repositories, repo_budget_exhausted = await _collect_repo_runs(
+        sample,
+        deadline - loop.time(),
     )
 
-    all_runs: list[dict[Any, Any]] = []
-    failures: list[str] = []
-    for repo, fetched_result in zip(sample, fetched, strict=True):
-        if isinstance(fetched_result, BaseException):
-            failures.append(f"{repo['name']}: {fetched_result!r}")
-            continue
-        all_runs.extend(fetched_result)
-
-    if failures:
+    if failed_repositories:
         log.warning(
-            "queue aggregation: %d/%d repos failed: %s",
-            len(failures),
+            "queue aggregation: %d/%d repos failed or exceeded budget: %s",
+            len(failed_repositories),
             len(sample),
-            "; ".join(failures[:5]),
+            "; ".join(failed_repositories[:5]),
         )
 
     # If every repo failed, prefer last-known-good over empty.
-    if len(failures) == len(sample):
+    if len(failed_repositories) == len(sample):
         stale = cache_get(_QUEUE_STALE_KEY, _QUEUE_STALE_TTL)
         if stale is not None:
             log.warning("queue aggregation: all repos failed; serving stale cache")
@@ -265,8 +326,9 @@ async def _queue_impl() -> dict:
         unavailable["stats"].update(
             {
                 "repos_sampled": len(sample),
-                "repos_failed": len(failures),
+                "repos_failed": len(failed_repositories),
                 "failed_repositories": [repo["name"] for repo in sample],
+                "budget_exhausted": repo_budget_exhausted,
             }
         )
         return unavailable
@@ -284,10 +346,13 @@ async def _queue_impl() -> dict:
     # in_progress runs (the latter can still have queued sibling jobs that the
     # run-level `queued_count` misses). This is the figure the operator cares
     # about — how many jobs are actually waiting for a runner.
-    queued_jobs_count, job_detail_failures = await _count_queued_jobs(queued + in_progress)
+    queued_jobs_count, job_detail_failures, job_budget_exhausted = await _count_queued_jobs(
+        queued + in_progress,
+        deadline - loop.time(),
+    )
     generated_at = datetime.now(UTC).isoformat()
-    failed_repositories = [failure.split(":", 1)[0] for failure in failures]
-    complete = not failures and job_detail_failures == 0
+    budget_exhausted = repo_budget_exhausted or job_budget_exhausted
+    complete = not failed_repositories and job_detail_failures == 0
 
     payload: dict[Any, Any] = {
         "queued": queued,
@@ -301,10 +366,11 @@ async def _queue_impl() -> dict:
         "data_source": "live" if complete else "partial",
         "stats": {
             "repos_sampled": len(sample),
-            "repos_succeeded": len(sample) - len(failures),
-            "repos_failed": len(failures),
+            "repos_succeeded": len(sample) - len(failed_repositories),
+            "repos_failed": len(failed_repositories),
             "failed_repositories": failed_repositories,
             "job_detail_failures": job_detail_failures,
+            "budget_exhausted": budget_exhausted,
             "complete": complete,
         },
     }

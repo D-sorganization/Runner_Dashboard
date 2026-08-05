@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -104,6 +105,7 @@ def test_queue_surfaces_job_level_queued_depth(queue_app: TestClient) -> None:
         "repos_failed": 0,
         "failed_repositories": [],
         "job_detail_failures": 0,
+        "budget_exhausted": False,
         "complete": True,
     }
     assert data["data_source"] == "live"
@@ -174,4 +176,111 @@ def test_queue_marks_partial_repository_sample_non_authoritative(monkeypatch: py
     assert data["stats"]["complete"] is False
     assert data["stats"]["repos_succeeded"] == 1
     assert data["stats"]["failed_repositories"] == ["RepoB"]
+    assert data["data_source"] == "partial"
+
+
+def test_queue_refresh_budget_returns_partial_when_repository_stalls(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A single stalled repository must not hold the queue endpoint open."""
+    from routers import queue as queue_router  # noqa: PLC0415
+
+    monkeypatch.setattr(queue_router, "cache_get", lambda *a, **k: None)
+    monkeypatch.setattr(queue_router, "cache_set", lambda *a, **k: None)
+    monkeypatch.setattr(queue_router, "_QUEUE_REFRESH_BUDGET_SECONDS", 0.05)
+    monkeypatch.setattr(queue_router, "_QUEUE_REPO_CONCURRENCY", 2)
+
+    async def fake_gh_api(url: str) -> Any:
+        if "/orgs/" in url and "/repos" in url:
+            return [{"name": "RepoA"}, {"name": "RepoB"}]
+        if "/RepoB/" in url:
+            import asyncio  # noqa: PLC0415
+
+            await asyncio.sleep(1)
+        return {"workflow_runs": []}
+
+    monkeypatch.setattr(queue_router, "_gh_api", fake_gh_api)
+    app = FastAPI()
+    app.add_middleware(SessionMiddleware, secret_key="test-secret")  # pragma: allowlist secret
+    app.include_router(queue_router.router)
+
+    started = time.monotonic()
+    data = TestClient(app).get("/api/queue").json()
+    elapsed = time.monotonic() - started
+
+    assert elapsed < 0.5
+    assert data["data_source"] == "partial"
+    assert data["stats"]["budget_exhausted"] is True
+    assert data["stats"]["repos_succeeded"] == 1
+    assert data["stats"]["failed_repositories"] == ["RepoB"]
+
+
+def test_queue_reuses_run_keyed_job_counts(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Repeated refreshes reuse per-run job counts instead of re-downloading."""
+    from routers import queue as queue_router  # noqa: PLC0415
+
+    job_cache: dict[str, Any] = {}
+
+    def fake_cache_get(key: str, _ttl: float) -> Any:
+        return job_cache.get(key) if key.startswith("queue:jobs:") else None
+
+    def fake_cache_set(key: str, value: Any) -> None:
+        if key.startswith("queue:jobs:"):
+            job_cache[key] = value
+
+    monkeypatch.setattr(queue_router, "cache_get", fake_cache_get)
+    monkeypatch.setattr(queue_router, "cache_set", fake_cache_set)
+    job_calls = 0
+
+    async def fake_gh_api(url: str) -> Any:
+        nonlocal job_calls
+        if "/orgs/" in url and "/repos" in url:
+            return [{"name": "RepoA"}]
+        if "/jobs" in url:
+            job_calls += 1
+            return _jobs_payload(["queued"])
+        if "status=queued" in url:
+            return {"workflow_runs": [_run("RepoA", 100, "queued")]}
+        return {"workflow_runs": []}
+
+    monkeypatch.setattr(queue_router, "_gh_api", fake_gh_api)
+    app = FastAPI()
+    app.add_middleware(SessionMiddleware, secret_key="test-secret")  # pragma: allowlist secret
+    app.include_router(queue_router.router)
+    client = TestClient(app)
+
+    assert client.get("/api/queue").json()["queued_jobs_count"] == 1
+    assert client.get("/api/queue").json()["queued_jobs_count"] == 1
+    assert job_calls == 1
+
+
+def test_queue_refresh_budget_bounds_stalled_job_details(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Job enrichment falls back to the run-level lower bound at deadline."""
+    from routers import queue as queue_router  # noqa: PLC0415
+
+    monkeypatch.setattr(queue_router, "cache_get", lambda *a, **k: None)
+    monkeypatch.setattr(queue_router, "cache_set", lambda *a, **k: None)
+    monkeypatch.setattr(queue_router, "_QUEUE_REFRESH_BUDGET_SECONDS", 0.05)
+
+    async def fake_gh_api(url: str) -> Any:
+        if "/orgs/" in url and "/repos" in url:
+            return [{"name": "RepoA"}]
+        if "/jobs" in url:
+            import asyncio  # noqa: PLC0415
+
+            await asyncio.sleep(1)
+        if "status=queued" in url:
+            return {"workflow_runs": [_run("RepoA", 100, "queued")]}
+        return {"workflow_runs": []}
+
+    monkeypatch.setattr(queue_router, "_gh_api", fake_gh_api)
+    app = FastAPI()
+    app.add_middleware(SessionMiddleware, secret_key="test-secret")  # pragma: allowlist secret
+    app.include_router(queue_router.router)
+
+    started = time.monotonic()
+    data = TestClient(app).get("/api/queue").json()
+
+    assert time.monotonic() - started < 0.5
+    assert data["queued_jobs_count"] == data["queued_count"] == 1
+    assert data["stats"]["job_detail_failures"] == 1
+    assert data["stats"]["budget_exhausted"] is True
     assert data["data_source"] == "partial"
