@@ -14,6 +14,8 @@
   generation/serve timestamps, failed-repository counts, and
   `stats.budget_exhausted=true` rather than holding the request open. The
   budget, concurrency limits, and job-cache TTL are operator-configurable.
+  The resolved `cryptography` dependency is 50.0.0, closing
+  PYSEC-2026-3552 in the deploy and audit lock sets.
 
 - **2026-08-03 (2.5.168):** Added a reversible, zero-polling public CI fast
   lane controlled by the `CI_RUNNER_MODE` repository variable. Lightweight

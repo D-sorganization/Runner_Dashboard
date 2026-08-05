@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   repository and job-detail requests, cached per-run job counts, and explicit
   budget-exhaustion metadata instead of allowing a slow GitHub call to stall
   queue observability indefinitely.
+- Updated the resolved `cryptography` dependency to 50.0.0 to remediate
+  PYSEC-2026-3552 in both CI audit paths.
 
 ## [4.9.24] - 2026-08-03
 
