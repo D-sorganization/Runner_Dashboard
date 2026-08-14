@@ -1,9 +1,22 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.171
+**Spec Version:** 2.5.172
 **Application Version:** 4.9.26 (see `VERSION`)
 **Last Updated:** 2026-08-14T00:00:00-07:00
 **Status:** Active
+
+- **2026-08-14 (2.5.172):** `uv.lock` is now part of the release
+  single-source contract. It pins the project's own `runner-dashboard`
+  version, but `test_static_release_metadata_tracks_version_file` covered
+  only `pyproject.toml`, `package.json`, `package-lock.json`,
+  `frontend/src/lib/openapi.json`, `SPEC.md`, and `CHANGELOG.md`, so the
+  lockfile silently kept 4.9.24 through the 4.9.26 bump. CI cannot catch
+  this on its own: the bootstrap step runs `uv sync --frozen`, which
+  consumes the lockfile as-is rather than re-resolving it (`--locked` is
+  the flag that asserts freshness). Guarded by
+  `tests/test_version_single_source.py::test_uv_lock_records_the_project_version`.
+  Bumping the release version now requires `uv lock` alongside the other
+  seven files.
 
 - **2026-08-14 (2.5.171):** The `ci-health-check` Python scope detector in
   `.github/workflows/ci-standard.yml` now treats `deploy/` and `tests/` as
