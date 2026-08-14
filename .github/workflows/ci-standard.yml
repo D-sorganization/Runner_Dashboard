@@ -193,7 +193,13 @@ jobs:
           with urllib.request.urlopen(request, timeout=20) as response:
               files = [item["filename"] for item in json.load(response)]
 
-          prefixes = ("backend/",)
+          # Keep in sync with the "Report skipped Python validation" step below
+          # and with SCOPE_PREFIX_NOUNS in tests/test_ci_config.py. Every job
+          # gated on run_python_tests (quality-gate — the sole required status
+          # check — plus security-scan, tests, tests-required) is skipped when
+          # this predicate is false, so a missing prefix means a PR merges with
+          # no test signal at all.
+          prefixes = ("backend/", "deploy/", "tests/")
           exact = {
               "pyproject.toml",
               "uv.lock",
@@ -212,7 +218,7 @@ jobs:
           EOF
       - name: Report skipped Python validation
         if: steps.python-scope.outputs.run_python_tests != 'true'
-        run: echo "Skipping Python dependency bootstrap and pytest collection; this PR does not touch backend, tests, or Python dependency policy files."
+        run: echo "Skipping Python dependency bootstrap and pytest collection; this PR does not touch backend, deploy, tests, or Python dependency policy files."
       - name: Bootstrap environment
         if: steps.python-scope.outputs.run_python_tests == 'true'
         run: |

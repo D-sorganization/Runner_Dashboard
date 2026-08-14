@@ -17,6 +17,7 @@ pyproject.toml satisfy the non-blocking/blocking policy introduced in #400:
 
 from __future__ import annotations
 
+import ast
 import tomllib
 from pathlib import Path
 
@@ -321,4 +322,157 @@ def test_requirements_audit_ignore_has_policy_header() -> None:
     text = AUDIT_IGNORE.read_text(encoding="utf-8")
     assert "CRITICAL" in text or "HIGH" in text, (
         "requirements-audit-ignore.txt must document that CRITICAL/HIGH CVEs are blocking"
+    )
+
+
+# ---------------------------------------------------------------------------
+# CI workflow — Python validation scope detector (issue #1093)
+#
+# `quality-gate` is the only required status check in the "Repository_Protections"
+# ruleset, and it — along with security-scan, tests, and tests-required — is
+# gated on `ci-health-check.outputs.run_python_tests`. Any path the detector
+# fails to recognise therefore merges with zero test signal. PR #1092 merged a
+# new regression test that never executed in CI for exactly this reason.
+# ---------------------------------------------------------------------------
+
+# Directory prefixes whose changes must trigger the Python lane, mapped to the
+# noun used for them in the "Report skipped Python validation" message. The two
+# must stay in sync in BOTH directions: a noun the message advertises has to be
+# a prefix the detector actually tests, and vice versa.
+SCOPE_PREFIX_NOUNS = {
+    "backend/": "backend",
+    "tests/": "tests",
+    "deploy/": "deploy",
+}
+
+# Jobs whose `if:` gates on the detector. Losing any of these on a mis-detected
+# PR is what makes the defect a merge-blocking-signal loss rather than a
+# cosmetic one.
+PYTHON_GATED_JOBS = ("quality-gate", "security-scan", "tests", "tests-required")
+
+
+def _ci_health_steps() -> list[dict]:
+    data = _workflow_yaml(CI_WORKFLOW)
+    return data["jobs"]["ci-health-check"]["steps"]
+
+
+def _step_by(key: str, value: str) -> dict:
+    for step in _ci_health_steps():
+        if step.get(key) == value:
+            return step
+    raise AssertionError(f"ci-health-check has no step with {key}={value!r}")
+
+
+def _scope_detector_source() -> str:
+    """Return the Python heredoc body from the `python-scope` step.
+
+    Reading it through the YAML parser (rather than the raw file) means the
+    block scalar is already dedented, so the result is importable source.
+    """
+    run = _step_by("id", "python-scope")["run"]
+    lines = run.splitlines()
+    start = next(
+        (i for i, line in enumerate(lines) if "<<'EOF'" in line),
+        None,
+    )
+    assert start is not None, "python-scope step no longer uses an <<'EOF' heredoc"
+    end = next(
+        (i for i in range(start + 1, len(lines)) if lines[i].strip() == "EOF"),
+        None,
+    )
+    assert end is not None, "python-scope heredoc is not terminated by EOF"
+    return "\n".join(lines[start + 1 : end])
+
+
+def _detector_literal(name: str) -> object:
+    """Evaluate a module-level literal assignment from the detector source."""
+    tree = ast.parse(_scope_detector_source())
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == name for t in node.targets):
+            return ast.literal_eval(node.value)
+    raise AssertionError(f"detector does not assign a literal named {name!r}")
+
+
+def _detector_selects(files: list[str]) -> bool:
+    """Mirror the detector's predicate using its own prefix/exact literals."""
+    prefixes = _detector_literal("prefixes")
+    exact = _detector_literal("exact")
+    assert isinstance(prefixes, tuple), "prefixes must stay a tuple for str.startswith"
+    return any(path.startswith(prefixes) or path in exact for path in files)
+
+
+def test_scope_detector_predicate_shape_is_unchanged() -> None:
+    """Guard the mirror in `_detector_selects` against a detector rewrite.
+
+    If the workflow stops combining `startswith(prefixes)` with `in exact`, the
+    behavioural tests below silently stop describing reality.
+    """
+    source = _scope_detector_source()
+    assert "path.startswith(prefixes)" in source, (
+        "detector no longer uses path.startswith(prefixes) — update _detector_selects"
+    )
+    assert "path in exact" in source, "detector no longer uses `path in exact` — update _detector_selects"
+
+
+def test_scope_detector_covers_documented_prefixes() -> None:
+    """Every directory the skip message advertises must actually be detected."""
+    prefixes = _detector_literal("prefixes")
+    for prefix in SCOPE_PREFIX_NOUNS:
+        assert prefix in prefixes, (
+            f"{prefix!r} missing from the python-scope detector — PRs touching only "
+            f"{prefix} skip quality-gate, the sole required status check"
+        )
+
+
+def test_test_only_pr_runs_python_lane() -> None:
+    """A test-only PR must run pytest (regression for PR #1092)."""
+    assert _detector_selects(["tests/deploy/test_wsl_keepalive_script.py"]), (
+        "a PR that only adds a regression test would skip pytest entirely"
+    )
+
+
+def test_deploy_only_pr_runs_python_lane() -> None:
+    """Deploy scripts are covered by tests/deploy/, so they must run the lane."""
+    assert _detector_selects(["deploy/wsl-keepalive.ps1"]), (
+        "deploy/ changes skip the pytest suite that exercises them (tests/deploy/)"
+    )
+
+
+def test_docs_only_pr_still_skips_python_lane() -> None:
+    """The detector must stay selective — this is the whole point of scoping."""
+    assert not _detector_selects(["docs/architecture.md", "README.md"]), (
+        "detector became unconditionally true; the scoping optimisation is gone"
+    )
+
+
+def test_skip_message_and_detector_agree() -> None:
+    """The skip message must describe exactly what the detector checks.
+
+    The original defect was a message advertising `tests` coverage that the
+    detector never implemented.
+    """
+    message = _step_by("name", "Report skipped Python validation")["run"]
+    prefixes = _detector_literal("prefixes")
+
+    for prefix, noun in SCOPE_PREFIX_NOUNS.items():
+        if prefix in prefixes:
+            assert noun in message, (
+                f"detector covers {prefix!r} but the skip message never mentions "
+                f"{noun!r} — operators cannot tell what was skipped"
+            )
+
+    for noun, prefix in ((n, p) for p, n in SCOPE_PREFIX_NOUNS.items()):
+        if noun in message:
+            assert prefix in prefixes, (
+                f"skip message claims {noun!r} is covered but the detector does not test the {prefix!r} prefix"
+            )
+
+
+def test_python_gated_jobs_are_known() -> None:
+    """Pin the blast radius of the detector so new gated jobs are deliberate."""
+    data = _workflow_yaml(CI_WORKFLOW)
+    gated = {name for name, job in data["jobs"].items() if "run_python_tests" in str(job.get("if", ""))}
+    assert gated == set(PYTHON_GATED_JOBS), (
+        f"set of detector-gated jobs changed: {sorted(gated)}. Every job added "
+        "here inherits the scope detector's blind spots — confirm that is intended"
     )

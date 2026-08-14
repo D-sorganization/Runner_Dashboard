@@ -1,9 +1,30 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.170
-**Application Version:** 4.9.25 (see `VERSION`)
+**Spec Version:** 2.5.171
+**Application Version:** 4.9.26 (see `VERSION`)
 **Last Updated:** 2026-08-14T00:00:00-07:00
 **Status:** Active
+
+- **2026-08-14 (2.5.171):** The `ci-health-check` Python scope detector in
+  `.github/workflows/ci-standard.yml` now treats `deploy/` and `tests/` as
+  Python-relevant prefixes alongside `backend/`. Previously only `backend/`
+  was matched, while the accompanying skip message claimed `tests` was
+  covered — so a PR touching only tests or only deployment scripts reported
+  `run_python_tests=false` and skipped all four gated jobs: `quality-gate`
+  (the sole required status check in the `Repository_Protections` ruleset),
+  `security-scan`, `tests`, and `tests-required`. Such a PR merged with zero
+  test signal; PR #1092 added
+  `tests/deploy/test_wsl_keepalive_script.py::test_script_defaults_to_resident_mode`
+  and that regression test never executed in CI. `deploy/` matters for the
+  same reason: `tests/deploy/` exists specifically to exercise the
+  deployment scripts. The skip message now enumerates the same set the
+  detector checks. Guarded by the scope-detector contract tests in
+  `tests/test_ci_config.py`, which parse the detector's own literals out of
+  the workflow, assert message/detector agreement in both directions, and
+  pin the set of detector-gated jobs. Release metadata (`pyproject.toml`,
+  `package.json`, `package-lock.json`, `frontend/src/lib/openapi.json`) is
+  realigned to `VERSION` in the same change — it had drifted to 4.9.24 when
+  the skipped `tests` job on PR #1092 failed to catch the 4.9.25 bump.
 
 - **2026-08-14 (2.5.170):** `deploy/wsl-keepalive.ps1` now defaults `-Mode` to
   `Resident` instead of `Watchdog`. `Watchdog` recovery may call

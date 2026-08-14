@@ -16,6 +16,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated the resolved `cryptography` dependency to 50.0.0 to remediate
   PYSEC-2026-3552 in both CI audit paths.
 
+## [4.9.26] - 2026-08-14
+
+### Fixed
+
+- The CI Standard Python scope detector now recognises `deploy/` and `tests/`
+  in addition to `backend/`. Test-only and deploy-only pull requests were
+  reporting `run_python_tests=false`, which skipped `quality-gate` — the only
+  required status check — along with `security-scan`, `tests`, and
+  `tests-required`, letting them merge with no test signal at all. The
+  "Report skipped Python validation" message already claimed `tests` was
+  covered; the detector never checked it.
+- Realigned `pyproject.toml`, `package.json`, `package-lock.json`, and
+  `frontend/src/lib/openapi.json` to the canonical `VERSION`. They had drifted
+  to 4.9.24 against a declared 4.9.25 because the `tests` job that enforces the
+  single-source contract was skipped on the PR that bumped `VERSION`.
+
 ## [4.9.24] - 2026-08-03
 
 ### Fixed
