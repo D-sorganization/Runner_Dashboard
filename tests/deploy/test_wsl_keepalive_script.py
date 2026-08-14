@@ -131,6 +131,21 @@ def test_script_pins_distro_with_persistent_session() -> None:
     assert "distro_pin_started" in text, "pin (re)starts should be logged"
 
 
+def test_script_defaults_to_resident_mode() -> None:
+    """A runner-fleet host must default to the never-shutdown mode.
+
+    ``Watchdog`` recovery calls ``wsl --shutdown``, which kills every distro
+    and the WSL2 VM -- taking every runner and in-flight CI job with it, and
+    corrupting the ext4 root on a hard kill mid-write (root-caused on OGLaptop
+    2026-05-29: 415 shutdowns, 48 e2fsck errors). The canonical installer
+    already passes ``-Mode Resident`` explicitly, so this default only governs
+    a bare run or a legacy task that omits ``-Mode`` -- exactly the paths that
+    should fail safe rather than reboot the host.
+    """
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert "[string]$Mode = 'Resident'" in text, "Mode must default to Resident"
+
+
 def test_probe_does_not_gate_on_process_exit_code() -> None:
     """Regression guard for the fleet-wide false-unresponsive bug.
 

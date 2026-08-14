@@ -1,9 +1,21 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.169
-**Application Version:** 4.9.24 (see `VERSION`)
-**Last Updated:** 2026-08-05T00:45:00-07:00
+**Spec Version:** 2.5.170
+**Application Version:** 4.9.25 (see `VERSION`)
+**Last Updated:** 2026-08-14T00:00:00-07:00
 **Status:** Active
+
+- **2026-08-14 (2.5.170):** `deploy/wsl-keepalive.ps1` now defaults `-Mode` to
+  `Resident` instead of `Watchdog`. `Watchdog` recovery may call
+  `wsl --shutdown`, which kills every distro and the WSL2 lightweight VM,
+  taking every runner and in-flight CI job with it, and corrupting the ext4
+  root on a hard kill mid-write. The canonical installer
+  (`deploy/install-wsl-keepalive-task.ps1`) already passes `-Mode Resident`
+  explicitly, so this default governs only a bare script run or a legacy
+  scheduled task that omits `-Mode` — the paths that should fail safe rather
+  than reboot a fleet host. `Watchdog` remains selectable explicitly for
+  non-fleet hosts. Guarded by
+  `tests/deploy/test_wsl_keepalive_script.py::test_script_defaults_to_resident_mode`.
 
 - **2026-08-05 (2.5.169):** Queue refreshes now have a shared eight-second
   deadline across repository discovery, active-run sampling, and job-detail
