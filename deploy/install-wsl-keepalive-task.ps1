@@ -30,8 +30,8 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 if ([string]::IsNullOrWhiteSpace($LogDir)) {
-    $localAppData = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } else { 'C:\AppData' }
-    $LogDir = Join-Path $localAppData 'runner-dashboard'
+    $localAppData = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } elseif ($env:HOME) { [System.IO.Path]::Combine($env:HOME, '.runner-dashboard') } else { [System.IO.Path]::GetTempPath() }
+    $LogDir = [System.IO.Path]::Combine($localAppData, 'runner-dashboard')
 }
 if ([string]::IsNullOrWhiteSpace($RunAsUser)) {
     $RunAsUser = if ($env:USERDOMAIN -and $env:USERNAME) {

@@ -48,7 +48,7 @@ $ErrorActionPreference = 'Stop'
 
 if ([string]::IsNullOrWhiteSpace($WScriptPath)) {
     $systemRoot = if ($env:SystemRoot) { $env:SystemRoot } else { 'C:\Windows' }
-    $WScriptPath = Join-Path $systemRoot 'System32\wscript.exe'
+    $WScriptPath = [System.IO.Path]::Combine($systemRoot, 'System32', 'wscript.exe')
 }
 if ([string]::IsNullOrWhiteSpace($VbsPath) -and -not $FunctionsOnly) {
     $VbsPath = Join-Path $PSScriptRoot 'run-hidden.vbs'

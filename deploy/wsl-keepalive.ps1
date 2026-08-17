@@ -147,8 +147,8 @@ if ($Mode -notin @('Watchdog', 'Resident')) {
 }
 
 if ([string]::IsNullOrWhiteSpace($LogDir)) {
-    $base = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } elseif ($env:HOME) { Join-Path $env:HOME '.runner-dashboard' } else { [System.IO.Path]::GetTempPath() }
-    $LogDir = Join-Path $base 'runner-dashboard'
+    $base = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } elseif ($env:HOME) { [System.IO.Path]::Combine($env:HOME, '.runner-dashboard') } else { [System.IO.Path]::GetTempPath() }
+    $LogDir = [System.IO.Path]::Combine($base, 'runner-dashboard')
 }
 
 # ---------- File layout ----------------------------------------------------
