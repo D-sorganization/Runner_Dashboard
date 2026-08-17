@@ -1,9 +1,16 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.172
+**Spec Version:** 2.5.173
 **Application Version:** 4.9.26 (see `VERSION`)
-**Last Updated:** 2026-08-14T00:00:00-07:00
+**Last Updated:** 2026-08-16T22:15:00-07:00
 **Status:** Active
+
+- **2026-08-16 (2.5.173):** `backend/machine_registry.yml` records each
+  fleet host's `runner_backing_drive` and storage configuration to prevent
+  spurious disk-capacity gating against system drives rather than runner-backing
+  volumes. Also restores supported Python runtime in `Dockerfile` (Python 3.13)
+  aligned with `pyproject.toml` (`<3.14`) and strengthens deployment helper
+  scripts against cross-platform execution.
 
 - **2026-08-14 (2.5.172):** `uv.lock` is now part of the release
   single-source contract. It pins the project's own `runner-dashboard`
