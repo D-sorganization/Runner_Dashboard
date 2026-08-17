@@ -47,7 +47,8 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 if ([string]::IsNullOrWhiteSpace($WScriptPath)) {
-    $WScriptPath = Join-Path $env:SystemRoot 'System32\wscript.exe'
+    $systemRoot = if ($env:SystemRoot) { $env:SystemRoot } else { 'C:\Windows' }
+    $WScriptPath = [System.IO.Path]::Combine($systemRoot, 'System32', 'wscript.exe')
 }
 if ([string]::IsNullOrWhiteSpace($VbsPath) -and -not $FunctionsOnly) {
     $VbsPath = Join-Path $PSScriptRoot 'run-hidden.vbs'
@@ -98,8 +99,12 @@ function ConvertTo-WrappedAction {
         [Parameter(Mandatory)][string]$Execute,
         [AllowEmptyString()][string]$Arguments = '',
         [Parameter(Mandatory)][string]$VbsPath,
-        [string]$WScriptPath = (Join-Path $env:SystemRoot 'System32\wscript.exe')
+        [string]$WScriptPath = ''
     )
+    if ([string]::IsNullOrWhiteSpace($WScriptPath)) {
+        $systemRoot = if ($env:SystemRoot) { $env:SystemRoot } else { 'C:\Windows' }
+        $WScriptPath = [System.IO.Path]::Combine($systemRoot, 'System32', 'wscript.exe')
+    }
     if ([string]::IsNullOrWhiteSpace($Execute)) {
         throw 'Execute must be a non-empty string'
     }
