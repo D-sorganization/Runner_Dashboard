@@ -1,9 +1,15 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.174
+**Spec Version:** 2.5.175
 **Application Version:** 4.9.26 (see `VERSION`)
-**Last Updated:** 2026-08-16T23:15:00-07:00
+**Last Updated:** 2026-08-16T23:45:00-07:00
 **Status:** Active
+
+- **2026-08-16 (2.5.175):** Canonicalize fleet reliability and scheduler observability
+  fixes in `deploy/` (issue #1078): `deploy/runner-scheduler.py` reports provenance for
+  `manual-target` capacity reasons, `deploy/fleet-health-monitor.ps1` explicitly isolates
+  and skips quarantined NVMe tasks, and `deploy/install-matlab-runner-task.ps1` establishes
+  a 10-minute repeating trigger for Windows MATLAB runners on broker socket disconnections.
 
 - **2026-08-16 (2.5.174):** Strengthen runner inventory pagination in
   `backend/runner_inventory.py` against partial/stale status reporting (issue #1076).

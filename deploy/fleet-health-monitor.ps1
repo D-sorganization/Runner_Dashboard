@@ -345,7 +345,12 @@ try {
   if ($ctOnline -lt $CtRunnerMinOnline) {
     Write-Log "ControlTower SSD online ($ctOnline/$CtRunnerTotal) below min ($CtRunnerMinOnline); restarting SSD keepalive task." "WARN"
     $restart = @'
+$quarantined = @("ControlTower-NVMe-KeepAlive", "ControlTower-NVMe-WSL-KeepAlive")
 foreach ($tn in @("ControlTower-SSD-KeepAlive")) {
+  if ($quarantined -contains $tn) {
+    "skipping quarantined task $tn (#1071 / #1078)"
+    continue
+  }
   $t = Get-ScheduledTask -TaskName $tn -ErrorAction SilentlyContinue
   if ($t -and $t.State -ne "Running") { Start-ScheduledTask -TaskName $tn; "restarted $tn" }
   elseif ($t) { "$tn already $($t.State)" }

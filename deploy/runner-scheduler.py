@@ -10,9 +10,9 @@ import platform
 import re
 import subprocess
 from dataclasses import dataclass
-from datetime import datetime, time
+from datetime import datetime, time, timezone
 from pathlib import Path
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 RUNNER_ROOT = Path(os.environ.get("RUNNER_ROOT", str(Path.home() / "actions-runners")))
 CONFIG_PATH = Path(
@@ -25,6 +25,13 @@ STATE_PATH = Path(
     os.environ.get("RUNNER_SCHEDULER_STATE", "/var/lib/runner-scheduler/state.json")
 )
 DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+
+
+def _resolve_tz(tz_name: str):
+    try:
+        return ZoneInfo(tz_name)
+    except (ZoneInfoNotFoundError, KeyError, Exception):
+        return timezone.utc
 
 
 @dataclass
@@ -85,13 +92,17 @@ def schedule_matches(entry: dict, now: datetime) -> bool:
 
 
 def desired_capacity(
-    config: dict, target_override: int | None = None
+    config: dict,
+    target_override: int | None = None,
+    *,
+    target_source: str | None = None,
 ) -> tuple[int, str]:
     if target_override is not None:
-        return target_override, "manual-target"
+        source_desc = f" ({target_source})" if target_source else ""
+        return target_override, f"manual-target{source_desc}"
     if not config.get("enabled", True):
         return int(config.get("default_count", 1)), "schedule-disabled"
-    tz = ZoneInfo(config.get("timezone", "America/Los_Angeles"))
+    tz = _resolve_tz(config.get("timezone", "America/Los_Angeles"))
     now = datetime.now(tz)
     for entry in config["schedules"]:
         if schedule_matches(entry, now):
@@ -181,7 +192,7 @@ def build_state(config: dict, desired: int, reason: str, actions: list[dict]) ->
     units = list_units()
     active = [unit for unit in units if unit.active]
     busy = [unit for unit in active if unit.busy]
-    tz = ZoneInfo(config.get("timezone", "America/Los_Angeles"))
+    tz = _resolve_tz(config.get("timezone", "America/Los_Angeles"))
     return {
         "hostname": platform.node(),
         "timestamp": datetime.now(tz).isoformat(),
@@ -226,7 +237,11 @@ def main() -> int:
     args = parser.parse_args()
 
     config = load_config()
-    desired, reason = desired_capacity(config, args.target)
+    desired, reason = desired_capacity(
+        config,
+        args.target,
+        target_source="cli: --target" if args.target is not None else None,
+    )
     units = list_units()
     actions = apply_capacity(units, desired, dry_run=(args.dry_run or not args.apply))
     state = build_state(config, desired, reason, actions)
