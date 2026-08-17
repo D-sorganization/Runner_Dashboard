@@ -95,6 +95,13 @@ def test_script_self_heals_desk_units_without_wsl_reset() -> None:
     assert "wsl --shutdown" not in text, "monitor must never tear down WSL"
 
 
+def test_script_explicitly_quarantines_nvme_keepalive() -> None:
+    """Issue #1071 / #1078 quarantine guard: ControlTower-NVMe keepalive must be explicitly quarantined."""
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert "ControlTower-NVMe-KeepAlive" in text
+    assert "$quarantined" in text
+
+
 def test_ct_ssh_enforces_a_hard_timeout() -> None:
     """Regression guard: on 2026-07-31 a cycle hung >100 min inside the
     ControlTower SSH call (the $TimeoutSec parameter existed but was never
