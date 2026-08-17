@@ -97,6 +97,8 @@ machines:
           default: 17
           max: 17
         storage:
+          # Runner-backing volume: capacity gates measure THIS volume, not C:.
+          runner_backing_drive: "F:"
           host_drive: "F:"
           windows_host_path: "F:\\WSL\\ControlTower-SSD"
           wsl_distro: ControlTower-SSD
@@ -151,6 +153,20 @@ machines:
     runners:
       default: 4
       max: 8
+    storage:
+      # Runner-backing volume: the one holding the WSL distro and every _work
+      # directory. Capacity gates measure THIS volume, not the system drive.
+      # On OGLaptop they happen to be the same disk; on DeskComputer they are
+      # not, which is why the volume must be recorded per host rather than
+      # assumed to be C:.
+      runner_backing_drive: "C:"
+      host_drive: "C:"
+      windows_host_path: "C:\\Users\\diete\\AppData\\Local\\wsl"
+      wsl_distro: Ubuntu
+      vhdx_path: null # GUID-named directory under the path above
+      disk_bus: null
+      disk_media_type: null
+      cache_budget_gb: null
     hardware:
       cpu_model: Intel Core i7-10750H
       cpu_physical_cores: 10
@@ -169,8 +185,15 @@ machines:
       preferred_window: Sundays 12:00-16:00 UTC
       notes: >
         WSL2 Ubuntu on Windows laptop. 10-core/20-thread CPU.
-        Default 4 runners, auto-scalable to 8. Windows C: disk at ~96% —
-        monitor disk pressure before scaling up. Runner labels use d-sorg-fleet-4core.
+        Default 4 runners, auto-scalable to 8; all 8 online as of 2026-08-16.
+        Disk pressure resolved: C: measured 194.8 GB free (20.5%) on
+        2026-08-16, not the ~96% used recorded previously. Unlike the other
+        hosts, OGLaptop's WSL distro really does live on C:, so C: IS the
+        runner-backing volume here. Network caveat: OGLaptop sits on a separate
+        192.168.12.0/24 segment reached over carrier-grade NAT (~96 ms), while
+        ControlTower and DeskComputer share 192.168.4.0/24 (~46 ms direct) —
+        prefer the other hosts for bandwidth-heavy jobs until that link is
+        upgraded. Runner labels use d-sorg-fleet-4core.
   - name: DeskComputer
     aliases:
       - deskcomputer
@@ -195,12 +218,29 @@ machines:
       min: 6
       default: 8
       max: 8
+    storage:
+      # Runner-backing volume is D:, NOT the system drive. The WSL distro and
+      # every runner _work directory live on the external D: drive; jobs never
+      # write to C:. Capacity gates must measure D:.
+      #
+      # 2026-08-16: gating on C: throttled this host for weeks over space its
+      # runners never touch — C: sat at 12.3% while D: had 592 GB free. C: was
+      # also where an agent mistakenly relocated the distro; that orphaned copy
+      # (147 GB) has been unregistered and the distro is correctly on D:.
+      runner_backing_drive: "D:"
+      host_drive: "D:"
+      windows_host_path: "D:\\WSL"
+      wsl_distro: Ubuntu-22.04
+      vhdx_path: "D:\\WSL\\ext4.vhdx"
+      disk_bus: USB
+      disk_media_type: external
+      cache_budget_gb: null
     hardware:
       cpu_model: null
       cpu_physical_cores: null
       cpu_logical_cores: null
-      memory_gb: null
-      disk_total_gb: null
+      memory_gb: 54
+      disk_total_gb: 1007
       gpu_vram_gb: null
       accelerators: []
       workload_tags:
@@ -210,4 +250,8 @@ machines:
       owner: fleet-ops
       allow_auto_stop: true
       preferred_window: Daily 05:00-07:00 America/Los_Angeles
-      notes: HP Envy laptop running WSL2 Ubuntu. Canonical machine name is DeskComputer; desktop is retained only as a legacy alias for older runner names.
+      notes: >
+        HP Envy laptop running WSL2 Ubuntu. Canonical machine name is
+        DeskComputer; desktop is retained only as a legacy alias for older
+        runner names. The WSL distro lives on the external D: drive — do not
+        gate capacity on C:.
