@@ -79,13 +79,15 @@ def _runner_response(
     error: str | None = None,
 ) -> dict[str, Any]:
     runners = sorted(data.get("runners", []) or [], key=runner_sort_key)
+    total_count = data.get("total_count", len(runners))
+    is_partial = len(runners) < total_count
     return {
         **data,
         "runners": runners,
-        "total_count": data.get("total_count", len(runners)),
+        "total_count": total_count,
         "source": source,
         "stale": stale,
-        "degraded": stale or error is not None,
+        "degraded": stale or error is not None or is_partial,
         "error": error,
         "generated_at": datetime.now(UTC).isoformat(),
     }

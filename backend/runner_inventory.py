@@ -11,13 +11,22 @@ MAX_RUNNER_PAGES = 20
 GitHubApi = Callable[[str], Awaitable[dict[str, Any]]]
 
 
+class IncompleteInventoryError(RuntimeError):
+    """Raised when GitHub pagination yields fewer runners than total_count."""
+
+
 def _runner_page_endpoint(org: str, page: int) -> str:
     assert org.strip(), "org must not be empty"
     assert page >= 1, "page must be positive"
     return f"/orgs/{org}/actions/runners?per_page={RUNNERS_PAGE_SIZE}&page={page}"
 
 
-async def fetch_org_runners(api: GitHubApi, org: str) -> dict[str, Any]:
+async def fetch_org_runners(
+    api: GitHubApi,
+    org: str,
+    *,
+    allow_partial: bool = False,
+) -> dict[str, Any]:
     """Fetch the full organization runner inventory across GitHub pages."""
     first_page = await api(_runner_page_endpoint(org, 1))
     total_count = _coerce_total_count(first_page)
@@ -31,6 +40,11 @@ async def fetch_org_runners(api: GitHubApi, org: str) -> dict[str, Any]:
             break
         runners = _unique_runners([*runners, *batch])
         page += 1
+
+    if len(runners) < total_count and not allow_partial:
+        raise IncompleteInventoryError(
+            f"Incomplete runner inventory: fetched {len(runners)} of {total_count} runners for org '{org}'"
+        )
 
     return {
         **first_page,

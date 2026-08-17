@@ -1,9 +1,16 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.173
+**Spec Version:** 2.5.174
 **Application Version:** 4.9.26 (see `VERSION`)
-**Last Updated:** 2026-08-16T22:15:00-07:00
+**Last Updated:** 2026-08-16T23:15:00-07:00
 **Status:** Active
+
+- **2026-08-16 (2.5.174):** Strengthen runner inventory pagination in
+  `backend/runner_inventory.py` against partial/stale status reporting (issue #1076).
+  `fetch_org_runners` now raises `IncompleteInventoryError` when pagination yields
+  fewer runners than `total_count` (unless `allow_partial=True`), and `_runner_response`
+  in `backend/routers/runners.py` marks `degraded=True` on incomplete lists while preserving
+  the prior complete cached inventory under upstream outages/throttling.
 
 - **2026-08-16 (2.5.173):** `backend/machine_registry.yml` records each
   fleet host's `runner_backing_drive` and storage configuration to prevent

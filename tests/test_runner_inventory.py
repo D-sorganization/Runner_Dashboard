@@ -11,7 +11,7 @@ _BACKEND_DIR = Path(__file__).parent.parent / "backend"
 if str(_BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(_BACKEND_DIR))
 
-from runner_inventory import fetch_org_runners  # noqa: E402
+from runner_inventory import IncompleteInventoryError, fetch_org_runners  # noqa: E402
 
 
 @pytest.mark.asyncio
@@ -59,3 +59,26 @@ async def test_fetch_org_runners_handles_missing_total_count() -> None:
     assert payload["runners"] == [{"id": 1}, {"id": 2}]
     assert payload["total_count"] == 2
     assert seen == ["/orgs/D-sorganization/actions/runners?per_page=100&page=1"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_org_runners_raises_on_incomplete_inventory() -> None:
+    async def api(endpoint: str) -> dict:
+        if endpoint.endswith("page=1"):
+            return {"total_count": 5, "runners": [{"id": 1}, {"id": 2}]}
+        return {"total_count": 5, "runners": []}
+
+    with pytest.raises(IncompleteInventoryError, match="fetched 2 of 5 runners"):
+        await fetch_org_runners(api, "D-sorganization")
+
+
+@pytest.mark.asyncio
+async def test_fetch_org_runners_allow_partial_returns_incomplete_inventory() -> None:
+    async def api(endpoint: str) -> dict:
+        if endpoint.endswith("page=1"):
+            return {"total_count": 5, "runners": [{"id": 1}, {"id": 2}]}
+        return {"total_count": 5, "runners": []}
+
+    payload = await fetch_org_runners(api, "D-sorganization", allow_partial=True)
+    assert payload["runners"] == [{"id": 1}, {"id": 2}]
+    assert payload["total_count"] == 5
