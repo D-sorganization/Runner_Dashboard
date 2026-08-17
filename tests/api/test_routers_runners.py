@@ -277,6 +277,49 @@ class TestGetRunners:
         assert data["stale"] is True
         assert data["degraded"] is True
 
+    def test_get_runners_partial_pagination_returns_stale_cache_and_marks_degraded(
+        self,
+        client: TestClient,
+        monkeypatch: pytest.MonkeyPatch,
+        mock_cache,
+    ) -> None:
+        """When pagination yields a partial batch, the previous valid cache must be preserved with stale=True."""
+
+        async def partial_paged_api(endpoint: str) -> dict:
+            if endpoint.endswith("page=1"):
+                return {
+                    "total_count": 35,
+                    "runners": [
+                        {"id": runner_id, "name": f"runner-{runner_id}", "status": "online", "busy": False}
+                        for runner_id in range(1, 11)
+                    ],
+                }
+            return {"total_count": 35, "runners": []}
+
+        monkeypatch.setattr(
+            runners_router,
+            "_last_successful_runners",
+            {
+                "total_count": 35,
+                "runners": [
+                    {"id": runner_id, "name": f"runner-{runner_id}", "status": "online", "busy": False}
+                    for runner_id in range(1, 36)
+                ],
+            },
+            raising=False,
+        )
+        monkeypatch.setattr(runners_router, "gh_api_admin", partial_paged_api, raising=False)
+
+        response = client.get("/api/runners")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["runners"]) == 35
+        assert data["source"] == "cache"
+        assert data["stale"] is True
+        assert data["degraded"] is True
+        assert "Incomplete runner inventory" in data["error"]
+
 
 class TestGetMatlabRunnerHealth:
     """Tests for GET /api/runners/matlab endpoint."""
