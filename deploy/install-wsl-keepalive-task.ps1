@@ -21,13 +21,27 @@ param(
     [int]$DashboardPort = 8321,
     [string]$DashboardServiceName = 'runner-dashboard.service',
     [string]$ScriptPath = '',
-    [string]$LogDir = (Join-Path $env:LOCALAPPDATA 'runner-dashboard'),
-    [string]$RunAsUser = ("{0}\{1}" -f $env:USERDOMAIN, $env:USERNAME),
+    [string]$LogDir = '',
+    [string]$RunAsUser = '',
     [switch]$DryRun
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+if ([string]::IsNullOrWhiteSpace($LogDir)) {
+    $localAppData = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } else { 'C:\AppData' }
+    $LogDir = Join-Path $localAppData 'runner-dashboard'
+}
+if ([string]::IsNullOrWhiteSpace($RunAsUser)) {
+    $RunAsUser = if ($env:USERDOMAIN -and $env:USERNAME) {
+        "{0}\{1}" -f $env:USERDOMAIN, $env:USERNAME
+    } elseif ($env:USERNAME) {
+        $env:USERNAME
+    } else {
+        'runner'
+    }
+}
 
 if ([string]::IsNullOrWhiteSpace($TaskName)) {
     throw 'TaskName must be a non-empty string'
@@ -51,10 +65,14 @@ if ($DashboardPort -lt 1 -or $DashboardPort -gt 65535) {
     throw "DashboardPort must be in 1..65535 (got $DashboardPort)"
 }
 
-$pwsh = (Get-Command pwsh.exe -ErrorAction SilentlyContinue).Source
-if (-not $pwsh) {
-    $pwsh = (Get-Command powershell.exe -ErrorAction Stop).Source
+$pwshCmd = (Get-Command pwsh.exe -ErrorAction SilentlyContinue)
+if (-not $pwshCmd) {
+    $pwshCmd = (Get-Command pwsh -ErrorAction SilentlyContinue)
 }
+if (-not $pwshCmd) {
+    $pwshCmd = (Get-Command powershell.exe -ErrorAction SilentlyContinue)
+}
+$pwsh = if ($pwshCmd) { $pwshCmd.Source } else { 'powershell.exe' }
 
 $arguments = @(
     '-NoProfile',

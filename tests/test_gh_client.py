@@ -81,8 +81,9 @@ def test_get_token_raises_when_absent(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 async def test_get_token_prefers_github_app(monkeypatch: pytest.MonkeyPatch) -> None:
-    import gh_client
     from unittest.mock import AsyncMock
+
+    import gh_client
 
     gh_client.clear_token_cache()
     monkeypatch.setenv("GITHUB_APP_ID", "12345")
@@ -98,8 +99,9 @@ async def test_get_token_prefers_github_app(monkeypatch: pytest.MonkeyPatch) -> 
 
 
 async def test_get_token_falls_back_when_github_app_exchange_fails(monkeypatch: pytest.MonkeyPatch) -> None:
-    import gh_client
     from unittest.mock import AsyncMock
+
+    import gh_client
 
     gh_client.clear_token_cache()
     monkeypatch.setenv("GITHUB_APP_ID", "12345")

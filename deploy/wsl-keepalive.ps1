@@ -90,7 +90,7 @@ param(
     [int]$ProbeTimeoutSeconds = 8,
     [int]$MaxConsecutiveRecoveries = 5,
     [int]$HealthyGapSeconds = 600,
-    [string]$LogDir = (Join-Path $env:LOCALAPPDATA 'runner-dashboard'),
+    [string]$LogDir = '',
     [int]$MaxLogBytes = 5MB,
     [int]$LogBackups = 3,
     [int]$DashboardPort = 8321,
@@ -144,6 +144,11 @@ if ([string]::IsNullOrWhiteSpace($DashboardServiceName)) {
 }
 if ($Mode -notin @('Watchdog', 'Resident')) {
     throw "Mode must be Watchdog or Resident (got $Mode)"
+}
+
+if ([string]::IsNullOrWhiteSpace($LogDir)) {
+    $base = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } elseif ($env:HOME) { Join-Path $env:HOME '.runner-dashboard' } else { [System.IO.Path]::GetTempPath() }
+    $LogDir = Join-Path $base 'runner-dashboard'
 }
 
 # ---------- File layout ----------------------------------------------------
@@ -266,6 +271,8 @@ function Test-Responsive {
             $null
         }
         return (Test-ProbeSuccess -Exited $exited -StdoutContent $out -ExpectedToken $script:ProbeToken)
+    } catch {
+        return $false
     } finally {
         Remove-Item -LiteralPath $stdoutFile -Force -ErrorAction SilentlyContinue
         Remove-Item -LiteralPath $stderrFile -Force -ErrorAction SilentlyContinue
@@ -294,7 +301,9 @@ function Invoke-WslRecovery {
         [Parameter(Mandatory)][int]$ProbeTimeoutSeconds,
         [string]$WslExe = 'wsl.exe'
     )
-    & $WslExe --shutdown 2>$null | Out-Null
+    try {
+        & $WslExe --shutdown 2>$null | Out-Null
+    } catch { }
     Start-Sleep -Seconds 3
     # A first probe may time out while WSL is still booting; allow up to
     # 3x the normal probe budget for the post-shutdown cold start.
@@ -353,6 +362,8 @@ function Start-DashboardServiceOnly {
             return $false
         }
         return $p.ExitCode -eq 0
+    } catch {
+        return $false
     } finally {
         Remove-Item -LiteralPath $stdoutFile -Force -ErrorAction SilentlyContinue
         Remove-Item -LiteralPath $stderrFile -Force -ErrorAction SilentlyContinue

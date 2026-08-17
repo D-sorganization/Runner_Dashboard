@@ -74,9 +74,8 @@ def test_drain_rejects_non_loopback_with_403():
     import asyncio
     from unittest.mock import MagicMock
 
-    from fastapi import HTTPException
-
     import server  # noqa: PLC0415
+    from fastapi import HTTPException
 
     req = MagicMock()
     req.client.host = "10.0.0.5"  # not loopback

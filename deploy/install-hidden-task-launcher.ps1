@@ -47,7 +47,8 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 if ([string]::IsNullOrWhiteSpace($WScriptPath)) {
-    $WScriptPath = Join-Path $env:SystemRoot 'System32\wscript.exe'
+    $systemRoot = if ($env:SystemRoot) { $env:SystemRoot } else { 'C:\Windows' }
+    $WScriptPath = Join-Path $systemRoot 'System32\wscript.exe'
 }
 if ([string]::IsNullOrWhiteSpace($VbsPath) -and -not $FunctionsOnly) {
     $VbsPath = Join-Path $PSScriptRoot 'run-hidden.vbs'
