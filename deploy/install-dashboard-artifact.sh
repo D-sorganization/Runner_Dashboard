@@ -25,15 +25,17 @@ warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
 fail() { echo -e "${RED}[FAIL]${NC} $*"; exit 1; }
 
 ARTIFACT_SOURCE=""
+CHECKSUM_INPUT=""
 DEPLOY_DIR="${DEPLOY_DIR:-$HOME/actions-runners/dashboard}"
 
 usage() {
     cat <<'EOF'
 Usage:
-  install-dashboard-artifact.sh --artifact PATH_OR_URL [--deploy-dir PATH]
+  install-dashboard-artifact.sh --artifact PATH_OR_URL [--checksum SHA256] [--deploy-dir PATH]
 
 Options:
   --artifact PATH_OR_URL   Dashboard tarball path or release URL
+  --checksum SHA256        Expected SHA-256 checksum (optional if .sha256 sidecar exists)
   --deploy-dir PATH        Deployed dashboard directory (default: ~/actions-runners/dashboard)
   -h, --help               Show this help
 EOF
@@ -42,6 +44,7 @@ EOF
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --artifact) ARTIFACT_SOURCE="$2"; shift 2 ;;
+        --checksum) CHECKSUM_INPUT="$2"; shift 2 ;;
         --deploy-dir) DEPLOY_DIR="$2"; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         *) fail "Unknown option: $1" ;;
@@ -65,14 +68,20 @@ fetch_artifact() {
     if [[ "$source" =~ ^https?:// ]]; then
         info "Downloading artifact from ${source}"
         curl -fsSL "$source" -o "$artifact_path"
-        curl -fsSL "${source}.sha256" -o "$checksum_path"
+        if [[ -n "${CHECKSUM_INPUT}" ]]; then
+            echo "${CHECKSUM_INPUT}  ${artifact_name}" > "$checksum_path"
+        else
+            curl -fsSL "${source}.sha256" -o "$checksum_path" || fail "Failed to download checksum from ${source}.sha256"
+        fi
     else
         [[ -f "$source" ]] || fail "Artifact not found: $source"
         cp "$source" "$artifact_path"
-        if [[ -f "${source}.sha256" ]]; then
+        if [[ -n "${CHECKSUM_INPUT}" ]]; then
+            echo "${CHECKSUM_INPUT}  ${artifact_name}" > "$checksum_path"
+        elif [[ -f "${source}.sha256" ]]; then
             cp "${source}.sha256" "$checksum_path"
         else
-            fail "Missing checksum file: ${source}.sha256"
+            fail "Missing checksum file: ${source}.sha256 (or pass --checksum <sha256>)"
         fi
     fi
 }
@@ -161,5 +170,18 @@ find "${DEPLOY_DIR}/backend" -maxdepth 2 -type f \
     \( -name '*.yml' -o -name '*.yaml' -o -name '*.json' \) \
     -exec chmod 0644 {} + 2>/dev/null || true
 chmod 644 "${DEPLOY_DIR}/deployment.json"
+
+if [[ -d "${stage_dir}/backend/wheels" ]] && [[ -n "$(ls -A "${stage_dir}/backend/wheels" 2>/dev/null)" ]]; then
+    info "Installing backend dependencies offline from vendored wheels..."
+    mkdir -p "${DEPLOY_DIR}/.venv"
+    if [[ ! -x "${DEPLOY_DIR}/.venv/bin/python" ]]; then
+        python3 -m venv "${DEPLOY_DIR}/.venv"
+    fi
+    if [[ -f "${stage_dir}/backend/requirements.txt" ]]; then
+        "${DEPLOY_DIR}/.venv/bin/pip" install --no-index --find-links="${stage_dir}/backend/wheels" -r "${stage_dir}/backend/requirements.txt" || true
+    elif [[ -f "${stage_dir}/requirements.lock.txt" ]]; then
+        "${DEPLOY_DIR}/.venv/bin/pip" install --no-index --find-links="${stage_dir}/backend/wheels" -r "${stage_dir}/requirements.lock.txt" || true
+    fi
+fi
 
 ok "Dashboard artifact installed to ${DEPLOY_DIR}"

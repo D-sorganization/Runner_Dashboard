@@ -17,6 +17,7 @@
 #   --repo <path>        Override the REPO path
 #   --deploy-dir <path>  Override the deploy directory
 #   --artifact <file>    Deploy from a pre-built artifact tarball
+#   --checksum <sha256>  Expected SHA-256 checksum for artifact
 #   --dry-run            Preview without executing destructive steps
 # ==============================================================================
 
@@ -30,12 +31,14 @@ REPO="${REPO:-/mnt/c/Users/${DASHBOARD_USER}/Repositories/runner-dashboard}"
 DEPLOY_DIR="${DEPLOY_DIR:-$HOME/actions-runners/dashboard}"
 SERVICE="runner-dashboard"
 ARTIFACT_SOURCE=""
+ARTIFACT_CHECKSUM=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --repo) REPO="$2"; shift 2 ;;
         --deploy-dir) DEPLOY_DIR="$2"; shift 2 ;;
         --artifact) ARTIFACT_SOURCE="$2"; shift 2 ;;
+        --checksum) ARTIFACT_CHECKSUM="$2"; shift 2 ;;
         --dry-run) DRY_RUN=true; shift ;;
         *) shift ;;
     esac
@@ -54,18 +57,6 @@ if [[ -z "$DASHBOARD_PORT" ]] && command -v systemctl &>/dev/null; then
 fi
 DASHBOARD_PORT="${DASHBOARD_PORT:-8321}"
 
-info "Installing/updating deployed backend dependencies via uv sync (issue #333)..."
-# uv sync --frozen --no-dev ensures the deployed service venv matches uv.lock exactly.
-if ! command -v uv &>/dev/null; then
-    pip install --quiet uv
-fi
-if [[ -f "$REPO/uv.lock" ]]; then
-    UV_PROJECT_ENVIRONMENT="${DEPLOY_DIR}/.venv" uv sync --frozen --no-dev --project "$REPO"
-else
-    fail "uv.lock missing at $REPO — refusing to install with floating transitives."
-fi
-ok "backend dependencies installed into ${DEPLOY_DIR}/.venv via uv sync --frozen --no-dev"
-
 if ! dry_run "backup $DEPLOY_DIR"; then
     info "Creating backup snapshot..."
     _BACKUP=$(backup_dir "$DEPLOY_DIR") || fail "Backup failed; aborting update"
@@ -75,12 +66,26 @@ fi
 
 if [[ -n "$ARTIFACT_SOURCE" ]]; then
     info "Installing dashboard artifact..."
-    if ! dry_run "install-dashboard-artifact.sh --artifact $ARTIFACT_SOURCE --deploy-dir $DEPLOY_DIR"; then
-        "$(dirname "$0")/install-dashboard-artifact.sh" \
-            --artifact "$ARTIFACT_SOURCE" \
-            --deploy-dir "$DEPLOY_DIR"
+    INSTALL_ARGS=(--artifact "$ARTIFACT_SOURCE" --deploy-dir "$DEPLOY_DIR")
+    if [[ -n "$ARTIFACT_CHECKSUM" ]]; then
+        INSTALL_ARGS+=(--checksum "$ARTIFACT_CHECKSUM")
+    fi
+    if ! dry_run "install-dashboard-artifact.sh ${INSTALL_ARGS[*]}"; then
+        "$(dirname "$0")/install-dashboard-artifact.sh" "${INSTALL_ARGS[@]}"
     fi
 else
+    info "Installing/updating deployed backend dependencies via uv sync (issue #333)..."
+    # uv sync --frozen --no-dev ensures the deployed service venv matches uv.lock exactly.
+    if ! command -v uv &>/dev/null; then
+        pip install --quiet uv
+    fi
+    if [[ -f "$REPO/uv.lock" ]]; then
+        UV_PROJECT_ENVIRONMENT="${DEPLOY_DIR}/.venv" uv sync --frozen --no-dev --project "$REPO"
+    else
+        fail "uv.lock missing at $REPO — refusing to install with floating transitives."
+    fi
+    ok "backend dependencies installed into ${DEPLOY_DIR}/.venv via uv sync --frozen --no-dev"
+
     info "Copying backend..."
     if ! dry_run "sync_dir $REPO/runner-dashboard/backend $DEPLOY_DIR/backend"; then
         sync_dir "$REPO/backend" "$DEPLOY_DIR/backend"
@@ -114,7 +119,7 @@ else
     info "Copying frontend..."
     if ! dry_run "sync_dir $REPO/runner-dashboard/frontend $DEPLOY_DIR/frontend"; then
         if [[ ! -d "$REPO/node_modules" ]]; then
-            (cd "$REPO" && npm install --no-audit --no-fund --package-lock=false)
+            (cd "$REPO" && npm ci)
         fi
         (cd "$REPO" && npm run build)
         sync_dir "$REPO/frontend" "$DEPLOY_DIR/frontend"
