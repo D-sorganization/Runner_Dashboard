@@ -455,6 +455,19 @@ async def get_diagnostics_summary() -> dict:
             raise
         summary["is_drifted"] = False
 
+    # Host recovery & WSL lifecycle (Issue #1067)
+    try:
+        from wsl_interlock import get_wsl_lifecycle_diagnostics
+
+        summary["host_recovery"] = get_wsl_lifecycle_diagnostics()
+    except Exception:
+        summary["host_recovery"] = {
+            "last_wsl_boot_time": None,
+            "last_recovery_reason": None,
+            "interrupted_runner_count": 0,
+            "active_worker_count": 0,
+        }
+
     return summary
 
 

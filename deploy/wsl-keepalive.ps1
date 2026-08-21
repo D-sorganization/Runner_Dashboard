@@ -105,6 +105,7 @@ param(
     # (415 shutdowns; e2fsck found 48 errors). #784's runbook migrates every host
     # to Resident; defaulting to it makes that the safe fallback, not a footgun.
     [string]$Mode = 'Resident',
+    [switch]$EmergencyOverride,
     [switch]$Once
 )
 
@@ -198,12 +199,6 @@ function Test-ProbeSuccess {
 
     .DESCRIPTION
         Success is deliberately NOT derived from the process exit code.
-        ``Start-Process -PassThru`` does not reliably populate the exit code
-        when the watchdog runs non-interactively (``powershell -File`` from a
-        scheduled task): it comes back ``$null``. The old gate compared that
-        null code against zero, judged it non-zero, and declared a perfectly
-        healthy distro unresponsive on EVERY cycle. In Watchdog mode that drove
-        a ``wsl --shutdown`` reboot loop that took the whole runner fleet (and
         the dashboard) offline; in Resident mode it spammed false
         ``unresponsive`` reports.
 
@@ -227,6 +222,110 @@ function Test-ProbeSuccess {
     if (-not $Exited) { return $false }
     if ([string]::IsNullOrEmpty($StdoutContent)) { return $false }
     return $StdoutContent.Contains($ExpectedToken)
+}
+
+function Test-WslTeardownAllowed {
+    <#
+    .SYNOPSIS
+        Interlock: evaluate whether destructive WSL teardown/restart is permitted (Issue #1067).
+    .DESCRIPTION
+        Destructive recovery (wsl --shutdown, distro terminate) abruptly kills
+        all in-progress CI jobs and invalidates long-running checks. Teardown is
+        permitted ONLY when active worker count is 0, or when an explicit
+        emergency override is specified.
+    #>
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param(
+        [Parameter(Mandatory)][int]$ActiveWorkers,
+        [string]$Reason = 'unresponsive_distro',
+        [bool]$EmergencyOverride = $false,
+        [string]$Initiator = 'wsl-keepalive-watchdog'
+    )
+    $allowed = ($ActiveWorkers -le 0) -or $EmergencyOverride
+    $decisionReason = if ($ActiveWorkers -gt 0 -and -not $EmergencyOverride) {
+        "active_runner_workers_running ($ActiveWorkers active)"
+    } elseif ($ActiveWorkers -gt 0 -and $EmergencyOverride) {
+        "emergency_override_used ($ActiveWorkers active workers bypassed)"
+    } else {
+        "no_active_workers"
+    }
+
+    return @{
+        allowed = [bool]$allowed
+        active_workers = [int]$ActiveWorkers
+        emergency_override = [bool]$EmergencyOverride
+        reason = [string]$Reason
+        decision_reason = [string]$decisionReason
+        initiator = [string]$Initiator
+        timestamp = (Get-Date).ToString('o')
+    }
+}
+
+function Get-ActiveRunnerWorkers {
+    <#
+    .SYNOPSIS
+        Count active Runner.Worker processes across the target distro and host.
+    #>
+    [CmdletBinding()]
+    [OutputType([int])]
+    param(
+        [Parameter(Mandatory)][string]$Distro,
+        [string]$WslExe = 'wsl.exe',
+        [int]$TimeoutSeconds = 5
+    )
+    # Check 1: In-distro pgrep for Runner.Worker if WSL is responsive
+    $stdoutFile = [System.IO.Path]::GetTempFileName()
+    $stderrFile = [System.IO.Path]::GetTempFileName()
+    try {
+        $script = "pgrep -f 'Runner.Worker' 2>/dev/null | wc -l"
+        $args = @('-d', $Distro, '--exec', '/bin/bash', '-c', $script)
+        $p = Start-Process -FilePath $WslExe -ArgumentList $args `
+            -NoNewWindow -PassThru `
+            -RedirectStandardOutput $stdoutFile `
+            -RedirectStandardError $stderrFile
+        if ($p.WaitForExit($TimeoutSeconds * 1000) -and $p.ExitCode -eq 0) {
+            $raw = (Get-Content -LiteralPath $stdoutFile -Raw -ErrorAction SilentlyContinue)
+            if ($raw -match '(\d+)') {
+                return [int]$matches[1]
+            }
+        }
+    } catch {
+    } finally {
+        Remove-Item -LiteralPath $stdoutFile -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $stderrFile -Force -ErrorAction SilentlyContinue
+    }
+
+    # Check 2: Windows-side process scan for any Runner.Worker processes
+    try {
+        $hostWorkers = @(Get-Process -Name "Runner.Worker" -ErrorAction SilentlyContinue)
+        if ($hostWorkers.Count -gt 0) {
+            return $hostWorkers.Count
+        }
+    } catch { }
+
+    return 0
+}
+
+function Write-TeardownAuditLog {
+    <#
+    .SYNOPSIS
+        Record structured audit log before any planned or attempted host reset (Issue #1067).
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$LogDir,
+        [Parameter(Mandatory)][hashtable]$AuditEntry
+    )
+    try {
+        if (-not (Test-Path -LiteralPath $LogDir)) {
+            New-Item -ItemType Directory -Path $LogDir -Force -ErrorAction SilentlyContinue | Out-Null
+        }
+        $auditFile = Join-Path $LogDir "wsl-teardown-audit.jsonl"
+        $AuditEntry['ts'] = (Get-Date).ToString('o')
+        $line = ($AuditEntry | ConvertTo-Json -Compress -Depth 4)
+        Add-Content -LiteralPath $auditFile -Value $line -Encoding UTF8 -ErrorAction SilentlyContinue
+    } catch { }
 }
 
 function Test-Responsive {
@@ -455,7 +554,9 @@ function Invoke-OneCycle {
         [Parameter(Mandatory)][int]$LogBackups,
         [Parameter(Mandatory)][int]$DashboardPort,
         [Parameter(Mandatory)][string]$DashboardServiceName,
-        [Parameter(Mandatory)][ValidateSet('Watchdog', 'Resident')][string]$Mode
+        [Parameter(Mandatory)][ValidateSet('Watchdog', 'Resident')][string]$Mode,
+        [switch]$EmergencyOverride,
+        [string]$WslExe = 'wsl.exe'
     )
 
     # Load prior state (consecutive recovery counter, last_recovery_ts).
@@ -471,7 +572,7 @@ function Invoke-OneCycle {
         }
     }
 
-    $responsive = Test-Responsive -Distro $Distro -TimeoutSeconds $ProbeTimeoutSeconds
+    $responsive = Test-Responsive -Distro $Distro -TimeoutSeconds $ProbeTimeoutSeconds -WslExe $WslExe
     $now = Get-Date
 
     if ($responsive) {
@@ -487,7 +588,8 @@ function Invoke-OneCycle {
             $dashboardRecovered = Start-DashboardServiceOnly `
                 -Distro $Distro `
                 -ServiceName $DashboardServiceName `
-                -TimeoutSeconds $dashboardStartTimeout
+                -TimeoutSeconds $dashboardStartTimeout `
+                -WslExe $WslExe
             if ($dashboardRecovered -and -not (Test-DashboardHealth -Port $DashboardPort)) {
                 $dashboardRecovered = $false
             }
@@ -499,41 +601,16 @@ function Invoke-OneCycle {
                 port = $DashboardPort
             }
             if (-not $dashboardRecovered) {
-                if ($Mode -eq 'Resident') {
-                    Write-EventLine -LogPath $LogPath -MaxBytes $MaxLogBytes -Backups $LogBackups -Event @{
-                        level = 'error'
-                        event = 'dashboard_recovery_failed_no_wsl_reset'
-                        distro = $Distro
-                        service = $DashboardServiceName
-                        port = $DashboardPort
-                        mode = $Mode
-                    }
-                } else {
-                    Write-EventLine -LogPath $LogPath -MaxBytes $MaxLogBytes -Backups $LogBackups -Event @{
-                        level = 'warn'
-                        event = 'dashboard_recovery_escalating_to_wsl_reset'
-                        distro = $Distro
-                        service = $DashboardServiceName
-                        port = $DashboardPort
-                    }
-                    $wslRecovered = Invoke-WslRecovery -Distro $Distro -ProbeTimeoutSeconds $ProbeTimeoutSeconds
-                    if ($wslRecovered) {
-                        $dashboardRecovered = Start-DashboardServiceOnly `
-                            -Distro $Distro `
-                            -ServiceName $DashboardServiceName `
-                            -TimeoutSeconds $dashboardStartTimeout
-                        if ($dashboardRecovered -and -not (Test-DashboardHealth -Port $DashboardPort)) {
-                            $dashboardRecovered = $false
-                        }
-                    }
-                    Write-EventLine -LogPath $LogPath -MaxBytes $MaxLogBytes -Backups $LogBackups -Event @{
-                        level = if ($dashboardRecovered) { 'info' } else { 'error' }
-                        event = if ($dashboardRecovered) { 'dashboard_recovery_after_wsl_reset_succeeded' } else { 'dashboard_recovery_after_wsl_reset_failed' }
-                        distro = $Distro
-                        service = $DashboardServiceName
-                        port = $DashboardPort
-                        wsl_recovered = $wslRecovered
-                    }
+                # Issue #1067: Dashboard-service recovery is strictly isolated from
+                # healthy runner services. Never escalate dashboard health failure to
+                # destructive WSL reset.
+                Write-EventLine -LogPath $LogPath -MaxBytes $MaxLogBytes -Backups $LogBackups -Event @{
+                    level = 'error'
+                    event = 'dashboard_recovery_failed_no_wsl_reset'
+                    distro = $Distro
+                    service = $DashboardServiceName
+                    port = $DashboardPort
+                    mode = $Mode
                 }
             }
         }
@@ -609,7 +686,66 @@ function Invoke-OneCycle {
         distro = $Distro
     }
 
-    $recovered = Invoke-WslRecovery -Distro $Distro -ProbeTimeoutSeconds $ProbeTimeoutSeconds
+    # Issue #1067: Active-job interlock
+    $activeWorkers = Get-ActiveRunnerWorkers -Distro $Distro -WslExe $WslExe
+    $decision = Test-WslTeardownAllowed -ActiveWorkers $activeWorkers -Reason 'unresponsive_distro' -EmergencyOverride ([bool]$EmergencyOverride) -Initiator 'wsl-keepalive-watchdog'
+
+    if (-not $decision.allowed) {
+        $logDir = [System.IO.Path]::GetDirectoryName($LogPath)
+        Write-TeardownAuditLog -LogDir $logDir -AuditEntry @{
+            action = 'teardown_deferred'
+            distro = $Distro
+            initiator = $decision.initiator
+            active_workers = $activeWorkers
+            emergency_override = $decision.emergency_override
+            reason = $decision.decision_reason
+        }
+        Write-EventLine -LogPath $LogPath -MaxBytes $MaxLogBytes -Backups $LogBackups -Event @{
+            level = 'error'
+            event = 'wsl_teardown_deferred_busy_runners'
+            distro = $Distro
+            active_workers = $activeWorkers
+            reason = $decision.decision_reason
+            mode = $Mode
+        }
+        $state = @{
+            status = 'unresponsive_teardown_deferred'
+            consecutive = $prior.consecutive
+            last_recovery_ts = $prior.last_recovery_ts
+            last_recovery_reason = "teardown_deferred: $($decision.decision_reason)"
+            active_workers = $activeWorkers
+            interrupted_runner_count = 0
+            last_healthy_ts = $prior.last_healthy_ts
+            distro = $Distro
+            mode = $Mode
+        }
+        Write-StateFile -Path $StatePath -State $state
+        return @{
+            outcome = 'teardown_deferred'
+            consecutive = $prior.consecutive
+            active_workers = $activeWorkers
+        }
+    }
+
+    # Teardown is permitted (0 active workers OR emergency override used)
+    $logDir = [System.IO.Path]::GetDirectoryName($LogPath)
+    Write-TeardownAuditLog -LogDir $logDir -AuditEntry @{
+        action = 'teardown_initiated'
+        distro = $Distro
+        initiator = $decision.initiator
+        active_workers = $activeWorkers
+        emergency_override = $decision.emergency_override
+        reason = $decision.decision_reason
+    }
+    Write-EventLine -LogPath $LogPath -MaxBytes $MaxLogBytes -Backups $LogBackups -Event @{
+        level = 'warn'
+        event = 'wsl_teardown_initiated'
+        distro = $Distro
+        active_workers = $activeWorkers
+        override_used = $decision.emergency_override
+    }
+
+    $recovered = Invoke-WslRecovery -Distro $Distro -ProbeTimeoutSeconds $ProbeTimeoutSeconds -WslExe $WslExe
 
     $newConsecutive = $prior.consecutive + 1
     Write-EventLine -LogPath $LogPath -MaxBytes $MaxLogBytes -Backups $LogBackups -Event @{
@@ -623,6 +759,8 @@ function Invoke-OneCycle {
         status = if ($recovered) { 'recovered' } else { 'failed' }
         consecutive = $newConsecutive
         last_recovery_ts = $now.ToString('o')
+        last_recovery_reason = 'unresponsive_distro'
+        interrupted_runner_count = if ($decision.emergency_override) { $activeWorkers } else { 0 }
         last_healthy_ts = if ($recovered) { $now.ToString('o') } else { $prior.last_healthy_ts }
         distro = $Distro
         mode = $Mode
@@ -648,7 +786,8 @@ if ($Once) {
         -LogBackups $LogBackups `
         -DashboardPort $DashboardPort `
         -DashboardServiceName $DashboardServiceName `
-        -Mode $Mode
+        -Mode $Mode `
+        -EmergencyOverride:$EmergencyOverride
     Write-Output ($result | ConvertTo-Json -Compress)
     exit 0
 }

@@ -84,7 +84,7 @@ def test_artifact_layout_and_checksum_verification():
         deployment_data = {
             "app": "runner-dashboard",
             "version": "4.9.26",
-            "git_sha": "test-git-sha-12345",
+            "git_sha": "mock-git-sha-val",  # pragma: allowlist secret
             "build_timestamp": "2026-08-21T00:00:00Z",
             "compatibility": {
                 "artifact_schema": "runner-dashboard-artifact-v1",
