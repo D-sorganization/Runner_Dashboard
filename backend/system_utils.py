@@ -975,6 +975,21 @@ def get_overall_disk_pressure(pools: list[dict[str, Any]]) -> dict[str, Any]:
     return most_constrained["pressure"]
 
 
+def _get_host_recovery_diagnostics() -> dict[str, Any]:
+    """Retrieve host recovery and WSL lifecycle diagnostics (Issue #1067)."""
+    try:
+        from wsl_interlock import get_wsl_lifecycle_diagnostics
+
+        return get_wsl_lifecycle_diagnostics()
+    except Exception:
+        return {
+            "last_wsl_boot_time": None,
+            "last_recovery_reason": None,
+            "interrupted_runner_count": 0,
+            "active_worker_count": 0,
+        }
+
+
 async def get_system_metrics_snapshot(
     runner_limit: int | None = None,
     boot_time: float | None = None,
@@ -1090,6 +1105,7 @@ async def get_system_metrics_snapshot(
             "runner_processes": get_per_runner_resources(runner_limit) if runner_limit else [],
             "runner_capacity": get_runner_capacity_snapshot() if get_runner_capacity_snapshot else {},
             "io_pressure": get_io_pressure_snapshot(),
+            "host_recovery": _get_host_recovery_diagnostics(),
         }
 
         return metrics
