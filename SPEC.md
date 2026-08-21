@@ -1,9 +1,17 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.175
+**Spec Version:** 2.5.176
 **Application Version:** 4.9.26 (see `VERSION`)
-**Last Updated:** 2026-08-16T23:45:00-07:00
+**Last Updated:** 2026-08-21T00:00:00-07:00
 **Status:** Active
+
+- **2026-08-21 (2.5.176):** Implement active-job interlock and host teardown safeguards
+  (issue #1067). `deploy/wsl-keepalive.ps1` and `backend/wsl_interlock.py` check for active
+  `Runner.Worker` processes and busy runners before any destructive WSL recovery, deferring
+  `wsl --shutdown` resets unless explicit emergency override is provided. Dashboard health
+  recovery is strictly isolated to avoid host/runner restarts on dashboard-only failures.
+  Host recovery telemetry and structured audit logs (`wsl-teardown-audit.jsonl`) record all
+  teardown decisions with initiator and active runner counts.
 
 - **2026-08-16 (2.5.175):** Canonicalize fleet reliability and scheduler observability
   fixes in `deploy/` (issue #1078): `deploy/runner-scheduler.py` reports provenance for
