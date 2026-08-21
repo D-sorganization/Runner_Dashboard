@@ -318,7 +318,7 @@ def test_update_deployed_builds_frontend_and_syncs_dist() -> None:
     + sync of dist/, the favicon, icons, manifest, and the entire SPA
     bundle 404 (because dist/ is empty on a fresh install)."""
     src = _read(_DEPLOY / "update-deployed.sh")
-    assert "npm install --no-audit --no-fund --package-lock=false" in src
+    assert "npm ci" in src
     assert "npm run build" in src
     assert 'sync_dir "$REPO/dist" "$DEPLOY_DIR/dist"' in src
 

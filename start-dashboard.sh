@@ -98,10 +98,10 @@ fi
 if [[ ! -f "${DIST_DIR}/index.html" ]]; then
     echo "[INFO] Frontend bundle missing at ${DIST_DIR}; building it"
     if command -v npm >/dev/null 2>&1; then
-        ( cd "${FRONTEND_DIR}" && npm ci && npm run build )
+        ( cd "${SCRIPT_DIR}" && npm ci && npm run build )
     else
         echo "[ERROR] npm not found and ${DIST_DIR}/index.html is missing." >&2
-        echo "        Install Node.js/npm, then run: (cd frontend && npm ci && npm run build)" >&2
+        echo "        Install Node.js/npm, then run: (npm ci && npm run build)" >&2
         exit 1
     fi
 fi

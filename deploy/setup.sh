@@ -54,6 +54,7 @@ MACHINE_ROLE="node"
 FLEET_NODES_VAL=""
 HUB_URL_VAL=""
 ARTIFACT_SOURCE=""
+ARTIFACT_CHECKSUM=""
 SCHEDULE_CONFIG_VAL="${RUNNER_SCHEDULE_CONFIG:-$HOME/.config/runner-dashboard/runner-schedule.json}"
 PYTHON_BIN="${RUNNER_DASHBOARD_PYTHON:-$(command -v python3.11 || command -v python3)}"
 CHECK_ONLY=""
@@ -117,6 +118,7 @@ while [[ $# -gt 0 ]]; do
         --runner-base-dir) RUNNER_BASE_DIR="$2"; shift 2 ;;
         --deploy-dir)    DEPLOY_DIR="$2"; shift 2 ;;
         --artifact)     ARTIFACT_SOURCE="$2"; shift 2 ;;
+        --checksum)     ARTIFACT_CHECKSUM="$2"; shift 2 ;;
         --schedule-config) SCHEDULE_CONFIG_VAL="$2"; shift 2 ;;
         --force)        FORCE_RESTART=1;      shift ;;
         *) shift ;;
@@ -172,26 +174,29 @@ if ! command -v uv &>/dev/null; then
     ln -sf "${BOOTSTRAP_VENV}/bin/uv" "${HOME}/.local/bin/uv"
     export PATH="${HOME}/.local/bin:${PATH}"
 fi
-if [[ -f "${SCRIPT_DIR}/uv.lock" ]]; then
-    mkdir -p "${DEPLOY_DIR}"
-    uv venv --python "${PYTHON_BIN}" "${DEPLOY_DIR}/.venv"
-    REQ_FILE="$(mktemp)"
-    uv export --frozen --no-dev --project "${SCRIPT_DIR}" --format requirements-txt --output-file "${REQ_FILE}"
-    uv pip install --python "${DEPLOY_DIR}/.venv/bin/python" -r "${REQ_FILE}"
-    rm -f "${REQ_FILE}"
-else
-    fail "uv.lock missing — refusing to install with floating transitives. Re-run 'uv lock' and commit."
+if [[ -z "${ARTIFACT_SOURCE}" ]]; then
+    if [[ -f "${SCRIPT_DIR}/uv.lock" ]]; then
+        mkdir -p "${DEPLOY_DIR}"
+        uv venv --python "${PYTHON_BIN}" "${DEPLOY_DIR}/.venv"
+        REQ_FILE="$(mktemp)"
+        uv export --frozen --no-dev --project "${SCRIPT_DIR}" --format requirements-txt --output-file "${REQ_FILE}"
+        uv pip install --python "${DEPLOY_DIR}/.venv/bin/python" -r "${REQ_FILE}"
+        rm -f "${REQ_FILE}"
+    else
+        fail "uv.lock missing — refusing to install with floating transitives. Re-run 'uv lock' and commit."
+    fi
+    ok "backend dependencies installed into ${DEPLOY_DIR}/.venv"
 fi
-ok "backend dependencies installed into ${DEPLOY_DIR}/.venv"
 
 # ── Step 2: Deploy dashboard files ───────────────────────────────────────────
 header "Step 2/5: Deploy Dashboard"
 if [[ -n "${ARTIFACT_SOURCE}" ]]; then
     info "Installing dashboard artifact from ${ARTIFACT_SOURCE}"
-    ARTIFACT_SOURCE="${ARTIFACT_SOURCE}" DEPLOY_DIR="${DEPLOY_DIR}" \
-        "${SCRIPT_DIR}/deploy/install-dashboard-artifact.sh" \
-        --artifact "${ARTIFACT_SOURCE}" \
-        --deploy-dir "${DEPLOY_DIR}"
+    INSTALL_ARGS=(--artifact "${ARTIFACT_SOURCE}" --deploy-dir "${DEPLOY_DIR}")
+    if [[ -n "${ARTIFACT_CHECKSUM}" ]]; then
+        INSTALL_ARGS+=(--checksum "${ARTIFACT_CHECKSUM}")
+    fi
+    "${SCRIPT_DIR}/deploy/install-dashboard-artifact.sh" "${INSTALL_ARGS[@]}"
 else
     mkdir -p "${DEPLOY_DIR}"
     cp -r "${SCRIPT_DIR}/backend"  "${DEPLOY_DIR}/"

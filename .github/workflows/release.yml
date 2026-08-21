@@ -205,6 +205,12 @@ jobs:
           cat "$NOTES_FILE"
           echo "---------------------------"
 
+      - name: Set up Node.js
+        if: steps.resolve.outputs.dry_run != 'true'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "20"
+
       - name: Build release tarball
         id: tarball
         if: steps.resolve.outputs.dry_run != 'true'
@@ -216,6 +222,12 @@ jobs:
           set -euo pipefail
           ARTIFACT="dashboard-${VERSION}.tar.gz"
           TMP_ARTIFACT="$RUNNER_TEMP/$ARTIFACT"
+          if [ ! -d "dist" ]; then
+            npm ci
+            npm run build
+          fi
+          bash deploy/write-deployment-metadata.sh . .
+          find . -maxdepth 3 -type f | sed 's|^\./||' | grep -vE '^(\.git|node_modules|\.venv|venv|__pycache__|dashboard-)' | sort > FILES.txt
           # Exclude ephemeral / generated artefacts from the source tarball.
           tar czf "$TMP_ARTIFACT" \
             --exclude='.git' \
@@ -224,7 +236,6 @@ jobs:
             --exclude='.venv' \
             --exclude='__pycache__' \
             --exclude='*.pyc' \
-            --exclude='dist' \
             --exclude='dashboard-*.tar.gz' \
             --exclude='dashboard-*.tar.gz.sha256' \
             --exclude='dashboard-*.sig' \
