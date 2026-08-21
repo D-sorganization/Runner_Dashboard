@@ -83,6 +83,7 @@ def test_script_documents_required_parameters() -> None:
         "DashboardPort",
         "DashboardServiceName",
         "Mode",
+        "EmergencyOverride",
         "Once",
     ):
         assert f"${param}" in text, f"parameter ${param} not declared"
@@ -105,9 +106,15 @@ def test_script_validates_dashboard_recovery_parameters() -> None:
     assert "DashboardPort must be in 1..65535" in text
     assert "DashboardServiceName must be a non-empty string" in text
     assert "dashboard_unhealthy_detected" in text
-    assert "dashboard_recovery_escalating_to_wsl_reset" in text
     assert "dashboard_recovery_failed_no_wsl_reset" in text
     assert "Start-DashboardServiceOnly" in text
+
+
+def test_dashboard_health_failure_never_escalates_to_wsl_reset() -> None:
+    """Issue #1067: Dashboard health failure must remain isolated from runner services."""
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert "dashboard_recovery_escalating_to_wsl_reset" not in text
+    assert "dashboard_recovery_after_wsl_reset" not in text
 
 
 def test_script_has_resident_mode_without_wsl_reset() -> None:
@@ -334,3 +341,85 @@ def test_log_jsonl_event_is_written(tmp_path: Path) -> None:
     assert "unresponsive_no_wsl_reset" in events, parsed
     assert "recovery_failed" not in events, parsed
     assert "recovery_succeeded" not in events, parsed
+
+
+@PWSH_REQUIRED
+def test_teardown_allowed_interlock_pure_helper(tmp_path: Path) -> None:
+    """Issue #1067: Test-WslTeardownAllowed must deny teardown when workers are active unless override is set."""
+    driver = textwrap.dedent(
+        f"""
+        . '{SCRIPT.as_posix()}' -Once -Distro 'noop' `
+            -CheckIntervalSeconds 10 -ProbeTimeoutSeconds 2 `
+            -Mode Resident `
+            -LogDir '{(tmp_path / "logs").as_posix()}' *> $null
+        $d1 = Test-WslTeardownAllowed -ActiveWorkers 0 -Reason 'test_clean'
+        $d2 = Test-WslTeardownAllowed -ActiveWorkers 4 -Reason 'test_busy' -EmergencyOverride $false
+        $d3 = Test-WslTeardownAllowed -ActiveWorkers 4 -Reason 'test_override' -EmergencyOverride $true
+
+        Write-Output ('T1=' + $d1.allowed + ';REASON=' + $d1.decision_reason)
+        Write-Output ('T2=' + $d2.allowed + ';REASON=' + $d2.decision_reason)
+        Write-Output ('T3=' + $d3.allowed + ';REASON=' + $d3.decision_reason)
+        """
+    )
+    result = _run_ps(driver)
+    out = result.stdout
+    assert "T1=True;REASON=no_active_workers" in out, result.stdout + result.stderr
+    assert "T2=False;REASON=active_runner_workers_running (4 active)" in out, result.stdout
+    assert "T3=True;REASON=emergency_override_used (4 active workers bypassed)" in out, result.stdout
+
+
+@PWSH_REQUIRED
+def test_watchdog_unresponsive_defers_when_workers_active(tmp_path: Path) -> None:
+    """Issue #1067: Watchdog mode must defer WSL recovery when active Runner.Worker processes exist."""
+    log_dir = tmp_path / "logs"
+    # Create driver that dot-sources script and overrides Get-ActiveRunnerWorkers to return 3 active workers
+    driver = textwrap.dedent(
+        f"""
+        $env:LOCALAPPDATA = '{(tmp_path / "appdata").as_posix()}'
+        . '{SCRIPT.as_posix()}' -Once -Distro 'noop' -Mode Resident -LogDir '{log_dir.as_posix()}' *> $null
+        function Get-ActiveRunnerWorkers {{ param($Distro, $WslExe, $TimeoutSeconds) return 3 }}
+        $res = Invoke-OneCycle `
+            -Distro 'test-distro' `
+            -ProbeTimeoutSeconds 2 `
+            -MaxConsecutive 5 `
+            -HealthyGap 600 `
+            -StatePath '{(log_dir / "wsl-keepalive-state.json").as_posix()}' `
+            -LogPath '{(log_dir / "wsl-keepalive.log").as_posix()}' `
+            -MaxLogBytes 5MB `
+            -LogBackups 3 `
+            -DashboardPort 8321 `
+            -DashboardServiceName 'runner-dashboard.service' `
+            -Mode 'Watchdog'
+        Write-Output ($res | ConvertTo-Json -Compress)
+        """
+    )
+    result = _run_ps(driver)
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["outcome"] == "teardown_deferred"
+    assert payload["active_workers"] == 3
+
+    # Check state file
+    state_file = log_dir / "wsl-keepalive-state.json"
+    assert state_file.is_file()
+    state = json.loads(state_file.read_text(encoding="utf-8"))
+    assert state["status"] == "unresponsive_teardown_deferred"
+    assert state["active_workers"] == 3
+    assert "active_runner_workers_running" in state["last_recovery_reason"]
+
+    # Check log lines
+    log_path = log_dir / "wsl-keepalive.log"
+    assert log_path.is_file()
+    events = [json.loads(line)["event"] for line in log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert "wsl_teardown_deferred_busy_runners" in events
+    assert "recovery_succeeded" not in events
+    assert "wsl_teardown_initiated" not in events
+
+    # Check audit log
+    audit_path = log_dir / "wsl-teardown-audit.jsonl"
+    assert audit_path.is_file()
+    audit_events = [json.loads(line) for line in audit_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert len(audit_events) == 1
+    assert audit_events[0]["action"] == "teardown_deferred"
+    assert audit_events[0]["active_workers"] == 3
+    assert audit_events[0]["emergency_override"] is False

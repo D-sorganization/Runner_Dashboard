@@ -21,3 +21,5 @@
 # Currently no CVEs are allow-listed — all dependencies are clean.
 # Add entries here when pip-audit reports MEDIUM/LOW findings that cannot
 # be immediately remediated.
+PYSEC-2026-3721  # CVE: PYSEC-2026-3721  Severity: LOW  Expires: 2026-11-21  Rationale: pip build isolation transient finding in CI venv
+
