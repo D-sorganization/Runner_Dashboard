@@ -55,7 +55,7 @@ def test_update_deployed_requires_successful_backup() -> None:
 
 def test_update_deployed_builds_and_syncs_frontend_dist() -> None:
     content = _read(_DEPLOY / "update-deployed.sh")
-    assert "npm install --no-audit --no-fund --package-lock=false" in content
+    assert "npm ci" in content
     assert "npm run build" in content
     assert 'sync_dir "$REPO/dist" "$DEPLOY_DIR/dist"' in content
 

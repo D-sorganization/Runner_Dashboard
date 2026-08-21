@@ -1,9 +1,16 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.175
+**Spec Version:** 2.5.176
 **Application Version:** 4.9.26 (see `VERSION`)
-**Last Updated:** 2026-08-16T23:45:00-07:00
+**Last Updated:** 2026-08-21T05:30:00-07:00
 **Status:** Active
+
+- **2026-08-21 (2.5.176):** Deterministic and offline-capable dashboard builds and deployments (issue #1085).
+  - Switched frontend CI workflows and deployment scripts to `npm ci` ensuring strict lockfile synchronization.
+  - Added `deploy/package-dashboard-artifact.sh` generating immutable tarballs with `FILES.txt` inventory, `deployment.json` metadata, and SHA-256 sidecars conforming to `docs/ARTIFACT_BUILD.md`.
+  - Added `--checksum <sha256>` verification to `deploy/install-dashboard-artifact.sh` and offline dependency installation from `backend/wheels`.
+  - Updated `deploy/update-deployed.sh` and `deploy/setup.sh` to bypass online `uv sync` / `uv export` during artifact deployments.
+  - Pinned Dockerfile base image to `python:3.13-slim` matching project `requires-python (<3.14)`.
 
 - **2026-08-16 (2.5.175):** Canonicalize fleet reliability and scheduler observability
   fixes in `deploy/` (issue #1078): `deploy/runner-scheduler.py` reports provenance for

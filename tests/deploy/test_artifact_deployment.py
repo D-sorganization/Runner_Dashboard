@@ -84,7 +84,7 @@ def test_artifact_layout_and_checksum_verification():
         deployment_data = {
             "app": "runner-dashboard",
             "version": "4.9.26",
-            "git_sha": "abcdef123456",
+            "git_sha": "test-git-sha-12345",
             "build_timestamp": "2026-08-21T00:00:00Z",
             "compatibility": {
                 "artifact_schema": "runner-dashboard-artifact-v1",
@@ -117,7 +117,7 @@ def test_artifact_layout_and_checksum_verification():
         assert calculated == sha256_hash
 
         # Tampered checksum mismatch detection
-        bad_hash = "0000000000000000000000000000000000000000000000000000000000000000"
+        bad_hash = "0" * 64
         assert calculated != bad_hash
 
 
