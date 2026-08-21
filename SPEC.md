@@ -20,7 +20,6 @@
   recovery is strictly isolated to avoid host/runner restarts on dashboard-only failures.
   Host recovery telemetry and structured audit logs (`wsl-teardown-audit.jsonl`) record all
   teardown decisions with initiator and active runner counts.
-
 - **2026-08-16 (2.5.175):** Canonicalize fleet reliability and scheduler observability
   fixes in `deploy/` (issue #1078): `deploy/runner-scheduler.py` reports provenance for
   `manual-target` capacity reasons, `deploy/fleet-health-monitor.ps1` explicitly isolates
