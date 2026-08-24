@@ -92,6 +92,8 @@ def test_script_alarms_on_suspected_registration_purge() -> None:
 def test_script_self_heals_desk_units_without_wsl_reset() -> None:
     text = SCRIPT.read_text(encoding="utf-8")
     assert "systemctl" in text and "start" in text
+    assert "runner-scheduler.service" in text
+    assert "for ($n = 1; $n -le $DeskRunnerTotal; $n++)" not in text
     assert "wsl --shutdown" not in text, "monitor must never tear down WSL"
 
 
@@ -144,6 +146,15 @@ def test_floor_breaches_are_verified_against_github() -> None:
     assert "Get-GitHubPoolCounts" in text
     assert "ConvertFrom-GitHubRunnerJson" in text
     assert "no action" in text.lower()
+
+
+def test_desktop_floor_comes_from_scheduler_state() -> None:
+    """The governed scheduler, not the monitor's installed-runner count, owns
+    desired Desktop capacity. A fixed floor causes a two-runner daytime target
+    to oscillate back to all installed services every five minutes."""
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert "Get-DeskScheduledCapacity" in text
+    assert "$effectiveFloors['Desktop'] = $deskDesired" in text
 
 
 # ---------------------------------------------------------------------------
@@ -255,3 +266,38 @@ def test_purge_signature_requires_zero_online_and_local_activity() -> None:
     assert "R1=True" in result.stdout
     assert "R2=False" in result.stdout
     assert "R3=False" in result.stdout
+
+
+@PWSH_REQUIRED
+def test_scheduler_state_parser_accepts_governed_target() -> None:
+    driver = _prefix() + textwrap.dedent(
+        """
+        $state = '{"desired":2,"reason":"weekday-day","online":2}'
+        Write-Output ("TARGET=" + (ConvertFrom-RunnerSchedulerState -Json $state))
+        Write-Output ("OVERNIGHT=" + (ConvertFrom-RunnerSchedulerState -Json '{"desired":4}'))
+        Write-Output ("ZERO=" + (ConvertFrom-RunnerSchedulerState -Json '{"desired":0}'))
+        """
+    )
+    result = _run_ps(driver)
+    assert result.returncode == 0, result.stderr
+    assert "TARGET=2" in result.stdout
+    assert "OVERNIGHT=4" in result.stdout
+    assert "ZERO=0" in result.stdout
+
+
+@PWSH_REQUIRED
+def test_scheduler_state_parser_fails_closed() -> None:
+    driver = _prefix() + textwrap.dedent(
+        """
+        Write-Output ("EMPTY=" + ($null -eq (ConvertFrom-RunnerSchedulerState -Json '')))
+        Write-Output ("BAD=" + ($null -eq (ConvertFrom-RunnerSchedulerState -Json 'not-json')))
+        Write-Output ("MISSING=" + ($null -eq (ConvertFrom-RunnerSchedulerState -Json '{}')))
+        Write-Output ("NEGATIVE=" + ($null -eq (ConvertFrom-RunnerSchedulerState -Json '{"desired":-1}')))
+        """
+    )
+    result = _run_ps(driver)
+    assert result.returncode == 0, result.stderr
+    assert "EMPTY=True" in result.stdout
+    assert "BAD=True" in result.stdout
+    assert "MISSING=True" in result.stdout
+    assert "NEGATIVE=True" in result.stdout
