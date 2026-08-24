@@ -12,6 +12,7 @@ import pytest  # noqa: E402
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 
 import dispatch_quota  # noqa: E402
+import quota_enforcement  # noqa: E402
 from agent_dispatch_router import (  # noqa: E402
     BulkDispatchResponse,
     DispatchItem,
@@ -26,10 +27,15 @@ from agent_dispatch_router import (  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
-def _reset_dispatch_quota():
-    """Reset the in-memory hourly quota between tests so cap accounting starts fresh."""
+def _reset_dispatch_quota(monkeypatch: pytest.MonkeyPatch):
+    """Reset quota state and prevent unit tests from writing operator data."""
     original = dispatch_quota.quota
     dispatch_quota.quota = dispatch_quota.DispatchQuota()
+    monkeypatch.setattr(
+        quota_enforcement.quota_enforcement,
+        "add_spend",
+        lambda _principal_id, _amount_usd: None,
+    )
     try:
         yield
     finally:

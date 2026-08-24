@@ -38,7 +38,7 @@ def test_agent_remediation_secret_key_rejected() -> None:
 
 
 def test_runner_schedule_valid() -> None:
-    data = {"enabled": True, "default_count": 4}
+    data = {"enabled": True, "default_count": 4, "max_count": 6}
     result = config_schema.validate_runner_schedule_config(data)
     assert result == data
 
@@ -49,6 +49,7 @@ def test_default_runner_schedule_keeps_all_runners_online() -> None:
     result = config_schema.validate_runner_schedule_config(data)
 
     assert result["default_count"] == 32
+    assert result["max_count"] == 32
     assert result["schedules"] == [
         {
             "name": "always-on",
@@ -68,6 +69,16 @@ def test_runner_schedule_negative_default_count() -> None:
 def test_runner_schedule_too_large_default_count() -> None:
     with pytest.raises(ValueError, match="default_count"):
         config_schema.validate_runner_schedule_config({"default_count": 99})
+
+
+def test_runner_schedule_negative_max_count() -> None:
+    with pytest.raises(ValueError, match="max_count"):
+        config_schema.validate_runner_schedule_config({"max_count": -1})
+
+
+def test_runner_schedule_too_large_max_count() -> None:
+    with pytest.raises(ValueError, match="max_count"):
+        config_schema.validate_runner_schedule_config({"max_count": 99})
 
 
 # ---------------------------------------------------------------------------

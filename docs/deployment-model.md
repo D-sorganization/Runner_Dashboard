@@ -309,6 +309,29 @@ gh auth refresh -s admin:org
 
 ## Scheduled Maintenance (Cron)
 
+### Safe Runner Capacity Ceilings
+
+Each machine's `runner-schedule.json` may define `max_count`. The scheduler
+caps the default count, timed schedule entries, and manual targets at that
+value. Fleet policy currently sets DeskComputer to four normal runners and a
+six-runner peak ceiling; machine-specific deployment must retain that ceiling
+when the schedule is edited through the dashboard.
+
+The scheduler treats a runner as busy when any of these independent signals is
+present:
+
+- a legacy `bin/Runner.Worker` or self-updated `bin.<version>/Runner.Worker`
+  process under the runner directory;
+- a recent `_work/_temp/_runner_file_commands` pickup directory created before
+  the worker forks; or
+- a fresh job-hook lockfile under `/var/run/runner-busy`.
+
+Process and marker probes fail closed. A surviving worker whose listener
+service is inactive is reported as `busy_without_listener` and is not eligible
+for a scheduler start. Operators must still drain runners through GitHub before
+stopping services; scheduler telemetry is a safety interlock, not a substitute
+for the governed drain procedure.
+
 `deploy/scheduled-dashboard-maintenance.sh` is a shell script designed to run
 from the system crontab. It performs three tasks each invocation:
 

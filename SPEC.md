@@ -1,9 +1,18 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.177
-**Application Version:** 4.9.26 (see `VERSION`)
-**Last Updated:** 2026-08-21T14:10:00-07:00
+**Spec Version:** 2.5.178
+**Application Version:** 4.9.27 (see `VERSION`)
+**Last Updated:** 2026-08-24T13:00:00-07:00
 **Status:** Active
+
+- **2026-08-24 (2.5.178):** Fail closed when determining runner occupancy and
+  enforce an optional host capacity ceiling (issue #1105). The scheduler now
+  recognizes legacy and self-updated `Runner.Worker` paths, reparented workers,
+  the pre-fork `_runner_file_commands` pickup marker, and job-hook lockfiles.
+  Unreadable process or marker metadata is treated as busy. Inactive services
+  with a surviving worker are excluded from start candidates and reported as
+  `busy_without_listener`. Schedule defaults, timed entries, and manual targets
+  are capped by `max_count`; dashboard schedule edits preserve the ceiling.
 
 - **2026-08-21 (2.5.177):** Deterministic and offline-capable dashboard builds and deployments (issue #1085).
 

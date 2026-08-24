@@ -3,6 +3,16 @@
 # See Repository_Management/docs/FLEET_TESTING_STANDARDS.md.
 # ---------------------------------------------------------------------------
 import os  # noqa: E402
+import tempfile  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+# Backend singletons resolve their state directories during test collection.
+# Give the whole process an isolated directory under the normal allowed config
+# root before any backend import can read or mutate operator-owned state.
+_test_config_root = Path.home() / ".config" / "runner-dashboard" / ".test-runs"
+_test_config_root.mkdir(parents=True, exist_ok=True)
+_test_config_dir = tempfile.TemporaryDirectory(prefix="pytest-", dir=_test_config_root)
+os.environ["RUNNER_DASHBOARD_CONFIG_DIR"] = _test_config_dir.name
 
 # C-extension thread safety. Many "xdist worker crashed" failures
 # come from MKL/OpenBLAS forking under xdist. Pin to single-threaded
@@ -23,7 +33,6 @@ os.environ.setdefault("MPLBACKEND", "Agg")
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import sys  # noqa: E402
-from pathlib import Path  # noqa: E402
 
 backend_dir = str(Path(__file__).parent.parent.resolve() / "backend")
 if backend_dir not in sys.path:
