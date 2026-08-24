@@ -14,8 +14,8 @@
           the 2026-07-30 outage went unseen for weeks because only the
           CT-SSD count was watched, and GitHub auto-purged the silent pools'
           registrations after ~14 days offline;
-       b. Desktop self-heal: below-floor Desktop pool -> start the local
-          systemd runner units (in-place; never a WSL reset);
+       b. Desktop self-heal: below-schedule Desktop pool -> invoke the governed
+          runner scheduler (in-place; never a WSL reset or all-runner start);
        c. purge alarm: zero Desktop runners online while local units run is
           the registration-purge signature -> ERROR pointing at
           docs/runbooks/runner-registration-purge-recovery.md;
@@ -38,7 +38,7 @@ param(
   # see 2026-05-29 postmortem), so a tight floor would false-alarm on any
   # idle fleet. What the floors must catch is silent pool decay toward the
   # ~14-day registration purge, where counts sit at/near zero for days.
-  [hashtable]$PoolFloors          = @{ 'Desktop' = 3; 'ControlTower-SSD' = 6; 'Oglaptop' = 2 },
+  [hashtable]$PoolFloors          = @{ 'Desktop' = 2; 'ControlTower-SSD' = 6; 'Oglaptop' = 2 },
   # Host free-space floors (GB) for the ControlTower drives. A WSL2 vhdx that
   # exhausts host disk mid-write corrupts the distro (null-byte files, corrupt
   # package DB) — the probable origin of the #1071 NVMe corruption, which on
@@ -46,7 +46,7 @@ param(
   # the 326GB live runner vhdx, so its floor is the larger one.
   [hashtable]$DiskFloorsGb        = @{ 'C' = 25; 'F' = 40 },
   [string]$DeskWslDistro          = "Ubuntu-22.04",
-  [int]   $DeskRunnerTotal        = 8,
+  [string]$RunnerSchedulerState   = "/var/lib/runner-scheduler/state.json",
   [string]$LocalKeepAliveTask     = "WSL-Runner-KeepAlive",
   [string]$LogDir                 = "C:\Users\diete\runner_fleet_monitor",
   # Dot-source with -FunctionsOnly to expose the pure helpers for tests.
@@ -107,6 +107,19 @@ function ConvertFrom-GitHubRunnerJson {
   return @($parsed.runners | ForEach-Object {
       [pscustomobject]@{ name = [string]$_.name; status = [string]$_.status }
     })
+}
+
+function ConvertFrom-RunnerSchedulerState {
+  <# Return the governed desired capacity from scheduler state. Invalid or
+     missing state returns $null so recovery fails closed instead of guessing. #>
+  param([AllowEmptyString()][string]$Json = '')
+  if ([string]::IsNullOrWhiteSpace($Json)) { return $null }
+  try { $parsed = $Json | ConvertFrom-Json } catch { return $null }
+  if (-not ($parsed.PSObject.Properties.Name -contains 'desired')) { return $null }
+  $desired = 0
+  if (-not [int]::TryParse([string]$parsed.desired, [ref]$desired)) { return $null }
+  if ($desired -lt 0) { return $null }
+  return $desired
 }
 
 function Test-DiskBelowFloor {
@@ -204,11 +217,15 @@ function Get-DeskActiveUnitCount {
   return $n
 }
 
-function Start-DeskRunnerUnits {
-  <# In-place unit starts only; never resets or restarts WSL itself. #>
-  for ($n = 1; $n -le $DeskRunnerTotal; $n++) {
-    & wsl -d $DeskWslDistro -u root -e systemctl start "actions.runner.D-sorganization.d-sorg-local-Desktop-$n.service" 2>$null
-  }
+function Get-DeskScheduledCapacity {
+  <# Read the last capacity decision emitted by the governed scheduler. #>
+  $json = & wsl -d $DeskWslDistro -u root -e cat $RunnerSchedulerState 2>$null | Out-String
+  return ConvertFrom-RunnerSchedulerState -Json $json
+}
+
+function Start-DeskRunnerScheduler {
+  <# Ask the single capacity authority to restore its current target. #>
+  & wsl -d $DeskWslDistro -u root -e systemctl start runner-scheduler.service 2>$null
 }
 
 $state = [ordered]@{
@@ -217,6 +234,7 @@ $state = [ordered]@{
   ct_wmi_max_handles = $null
   ct_disk_free_gb    = $null
   pool_counts        = $null
+  desk_desired       = $null
   pools_below_floor  = @()
   purge_suspected    = $false
   desk_keepalive     = $null
@@ -298,16 +316,25 @@ try {
   $runners = Invoke-RestMethod -Uri "$DashboardUrl/api/runners?local=true" -TimeoutSec 25
   $poolCounts = Get-RunnerPoolCounts -Runners $runners.runners
   $state.pool_counts = $poolCounts
+  $effectiveFloors = $PoolFloors.Clone()
+  $deskDesired = Get-DeskScheduledCapacity
+  $state.desk_desired = $deskDesired
+  if ($null -eq $deskDesired) {
+    [void]$effectiveFloors.Remove('Desktop')
+    Write-Log "Desktop scheduler state unavailable; disabling Desktop self-heal this cycle" "ERROR"
+  } else {
+    $effectiveFloors['Desktop'] = $deskDesired
+  }
   $summary = ($poolCounts.Keys | Sort-Object | ForEach-Object { "$($_)=$($poolCounts[$_].online)/$($poolCounts[$_].total)" }) -join ' '
   Write-Log "fleet pools online: $summary (WmiPrvSE max handles: $($state.ct_wmi_max_handles))"
 
-  $below = Get-PoolsBelowFloor -Counts $poolCounts -Floors $PoolFloors
+  $below = Get-PoolsBelowFloor -Counts $poolCounts -Floors $effectiveFloors
   if (@($below).Count -gt 0) {
     # The dashboard feed can be stale or falsely zeroed; verify any breach
     # against the GitHub API before warning or acting.
     $ghCounts = Get-GitHubPoolCounts
     if ($null -ne $ghCounts) {
-      $ghBelow = @(Get-PoolsBelowFloor -Counts $ghCounts -Floors $PoolFloors)
+      $ghBelow = @(Get-PoolsBelowFloor -Counts $ghCounts -Floors $effectiveFloors)
       if (Compare-Object @($below) $ghBelow) {
         Write-Log ("dashboard runner feed disagrees with GitHub " +
           "(dashboard breach: $($below -join ',') vs verified: $($ghBelow -join ',')) - dashboard data suspect") "WARN"
@@ -323,7 +350,7 @@ try {
   }
   $state.pools_below_floor = $below
   foreach ($pool in $below) {
-    Write-Log "pool '$pool' online $($poolCounts[$pool].online) below floor $($PoolFloors[$pool]) (GitHub-verified)" "WARN"
+    Write-Log "pool '$pool' online $($poolCounts[$pool].online) below floor $($effectiveFloors[$pool]) (GitHub-verified)" "WARN"
   }
 
   # 3b. Desktop self-heal + registration-purge alarm (local machine only).
@@ -334,9 +361,9 @@ try {
       Write-Log ("Desktop pool: 0 online on GitHub while $localActive local units run - REGISTRATION PURGE " +
         "suspected. Re-register: see docs/runbooks/runner-registration-purge-recovery.md") "ERROR"
     } else {
-      Start-DeskRunnerUnits
-      Write-Log "Desktop pool below floor; started local runner units in-place." "WARN"
-      $state.actions += "started-desk-runner-units"
+      Start-DeskRunnerScheduler
+      Write-Log "Desktop pool below scheduled capacity; invoked runner-scheduler.service." "WARN"
+      $state.actions += "invoked-desk-runner-scheduler"
     }
   }
 

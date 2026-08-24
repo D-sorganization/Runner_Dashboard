@@ -16,6 +16,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated the resolved `cryptography` dependency to 50.0.0 to remediate
   PYSEC-2026-3552 in both CI audit paths.
 
+## [4.9.31] - 2026-08-24
+
+### Fixed
+
+- Made the governed runner scheduler the sole DeskComputer capacity authority.
+  Fleet-health recovery now follows the current scheduled target and no longer
+  starts all eight configured runner services when two daytime runners are
+  intentionally online (#1113).
+
 ## [4.9.30] - 2026-08-24
 
 ### Fixed

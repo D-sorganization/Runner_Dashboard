@@ -1,9 +1,18 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.181
-**Application Version:** 4.9.30 (see `VERSION`)
-**Last Updated:** 2026-08-24T15:00:00-07:00
+**Spec Version:** 2.5.182
+**Application Version:** 4.9.31 (see `VERSION`)
+**Last Updated:** 2026-08-24T15:35:00-07:00
 **Status:** Active
+
+- **2026-08-24 (2.5.182):** Make governed runner scheduling the sole authority
+  for DeskComputer capacity recovery (issue #1113). The five-minute fleet
+  monitor reads the scheduler's last fail-closed desired-capacity decision,
+  uses that value as the Desktop pool floor, and invokes
+  `runner-scheduler.service` when recovery is required. It no longer starts
+  every installed runner service, preventing the monitor from oscillating a
+  two-runner daytime target back to all eight configured runners while
+  preserving four-runner overnight and weekend recovery.
 
 - **2026-08-24 (2.5.181):** Make immutable artifact deployment runtime-complete
   and fail closed (issue #1110). Artifact schema v2 includes the hash-locked
