@@ -10,6 +10,8 @@ cost.
 
 from __future__ import annotations
 
+import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -107,3 +109,53 @@ def test_runner_schedule_preserves_host_maximum() -> None:
     assert result["default_count"] == 6
     assert result["max_count"] == 6
     assert result["schedules"][0]["runners"] == 6
+
+
+def test_scheduler_status_uses_governed_python(tmp_path, monkeypatch) -> None:
+    """Status probes must not fall back to an unsupported shebang interpreter."""
+    import server
+
+    scheduler = tmp_path / "runner-scheduler"
+    scheduler.touch()
+    monkeypatch.setattr(server, "RUNNER_SCHEDULER_BIN", str(scheduler))
+    completed = subprocess.CompletedProcess(
+        args=[],
+        returncode=0,
+        stdout=json.dumps({"desired": 2}),
+        stderr="",
+    )
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append((command, kwargs))
+        return completed
+
+    monkeypatch.setattr(server.subprocess, "run", fake_run)
+
+    state = server._sync_runner_scheduler_state({"default_count": 2, "max_count": 4})
+
+    assert calls[0][0] == [sys.executable, str(scheduler), "--dry-run", "--json"]
+    assert state["available"] is True
+
+
+def test_capacity_snapshot_reports_effective_schedule_counts(tmp_path, monkeypatch) -> None:
+    """Displayed defaults and maxima must describe the schedule being enforced."""
+    import server
+
+    for runner_number in range(1, 9):
+        (tmp_path / f"runner-{runner_number}").mkdir()
+    schedule = {"enabled": True, "default_count": 2, "max_count": 4, "schedules": []}
+    monkeypatch.setattr(server, "RUNNER_BASE_DIR", tmp_path)
+    monkeypatch.setattr(server, "NUM_RUNNERS", 8)
+    monkeypatch.setattr(server, "_runner_limit", lambda: 8)
+    monkeypatch.setattr(server, "_load_runner_schedule_config", lambda: schedule)
+    monkeypatch.setattr(server, "_sync_runner_scheduler_state", lambda config: {"config": config})
+    monkeypatch.setattr(server, "_unit_active_sync", lambda _unit: False)
+
+    snapshot = server._build_runner_capacity_snapshot()
+
+    assert snapshot["configured_runners"] == 2
+    assert snapshot["default_runners"] == 2
+    assert snapshot["max_runners"] == 4
+    assert snapshot["host_runner_limit"] == 8
+    assert snapshot["installed_runners"] == 8

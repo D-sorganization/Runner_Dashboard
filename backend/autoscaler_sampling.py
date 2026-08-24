@@ -114,7 +114,7 @@ def _scheduled_desired_count(default: int) -> int:
         env = os.environ.copy()
         env["RUNNER_SCHEDULE_CONFIG"] = RUNNER_SCHEDULE_CONFIG
         result = subprocess.run(
-            [scheduler_bin, "--dry-run", "--json"],
+            [sys.executable, scheduler_bin, "--dry-run", "--json"],
             capture_output=True,
             text=True,
             timeout=20,

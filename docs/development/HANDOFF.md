@@ -2,20 +2,22 @@
 
 ## Current Work
 
-- Issue: [#1107](https://github.com/D-sorganization/Runner_Dashboard/issues/1107)
-- Branch: `fix/issue-1107-scheduler-python-runtime`
-- Base: remote-main commit `0b8462a3011d99f8af10ec52ef80c2af4da8c12b`
-  from merged PR #1106.
-- Objective: ensure the installed scheduler uses the governed dashboard Python
-  runtime rather than Ubuntu 22.04's unsupported system Python 3.10.
+- Branch: `fix/scheduler-status-runtime`
+- Base: remote-main commit `8ec28b684f20462a720e28823dc167419e9064d4`
+  from merged PR #1108.
+- Objective: ensure every scheduler probe uses the governed dashboard Python
+  runtime and make the dashboard's capacity-count meanings unambiguous.
 
 ## Implemented Locally
 
-- `install-runner-maintenance.sh` now writes the scheduler systemd unit with
-  the deployed dashboard virtual-environment interpreter and fails closed when
-  that executable is unavailable.
-- A static installer regression test was RED before the change and is GREEN;
-  all nine disk-guard/maintenance installer tests pass serially.
+- Scheduler status and autoscaler desired-capacity probes now invoke the
+  scheduler through `sys.executable`; they can no longer fall back through the
+  script shebang to Ubuntu 22.04's unsupported Python 3.10.
+- Capacity responses use the validated schedule for `configured_runners`,
+  `default_runners`, and `max_runners`; `host_runner_limit` and
+  `installed_runners` preserve the separate physical/configuration context.
+- The project contract remains Python `>=3.11,<3.14`; Python 3.10 is explicitly
+  unsupported rather than maintained as a second runtime.
 
 ## Merged #1105 Recovery
 
@@ -70,14 +72,12 @@ watching, search, and Python analysis while retaining active worktrees.
 
 ## Operational Boundary
 
-Runner Dashboard 4.9.27 is deployed from verified remote-main commit
-`0b8462a3011d99f8af10ec52ef80c2af4da8c12b`; rollback snapshots were created.
+Runner Dashboard 4.9.28 is deployed from verified remote-main commit
+`8ec28b684f20462a720e28823dc167419e9064d4`; rollback snapshots were created.
 The live schedule is backed up at
 `~/.config/runner-dashboard/runner-schedule.json.pre-1106-20260824` and now has
-`default_count: 4`, `max_count: 6`, and four runners in each timed entry. The
-patched unit uses dashboard Python 3.12.12. Its first successful application
-reported `desired=4`, `online=4`, `busy=4`, `offline=4`, and `actions=0`, with a
-five-minute timer scheduled. The installer-source correction is not yet merged;
-push PR #1107 only after the full pre-push gate succeeds. Do not move runners
-out of `Bandwidth-Draining` or restart Desktop-5 through Desktop-8 as part of
-that PR.
+`default_count: 2`, `max_count: 4`, weekday daytime count `2`, and overnight
+and weekend count `4`. The patched unit uses dashboard Python 3.12.12 and is
+draining safely. The 4.9.29 source correction is local only: do not deploy it,
+move runners out of `Bandwidth-Draining`, or restart Desktop-5 through
+Desktop-8 without a separately reviewed operational change.

@@ -1,9 +1,15 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.179
-**Application Version:** 4.9.28 (see `VERSION`)
-**Last Updated:** 2026-08-24T13:38:00-07:00
+**Spec Version:** 2.5.180
+**Application Version:** 4.9.29 (see `VERSION`)
+**Last Updated:** 2026-08-24T14:15:00-07:00
 **Status:** Active
+
+- **2026-08-24 (2.5.180):** Execute scheduler status and autoscaler probes
+  with the dashboard's governed Python interpreter instead of the scheduler
+  shebang, preventing Ubuntu 22.04 Python 3.10 from producing stale error or
+  fallback state. Runner-capacity metadata now reports the effective schedule
+  default and ceiling separately from the host slot limit and installed slots.
 
 - **2026-08-24 (2.5.179):** Run the installed scheduler with the deployed
   dashboard virtual environment (issue #1107). The maintenance installer fails
