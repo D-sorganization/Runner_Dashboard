@@ -13,6 +13,9 @@
 
 set -euo pipefail
 
+# shellcheck source=deploy/python-runtime.sh
+source "$(dirname "${BASH_SOURCE[0]}")/python-runtime.sh"
+
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
@@ -88,7 +91,8 @@ fetch_artifact() {
 
 validate_artifact_layout() {
     local stage_dir="$1"
-    for required in VERSION deployment.json FILES.txt backend frontend deploy local_apps.json refresh-token.sh; do
+    for required in VERSION deployment.json FILES.txt backend frontend deploy local_apps.json refresh-token.sh \
+        requirements.lock.txt backend/wheels wsl-mirrored-port-helper.sh; do
         [[ -e "${stage_dir}/${required}" ]] || fail "Artifact is missing required path: ${required}"
     done
     python3 - "$stage_dir/deployment.json" <<'PY'
@@ -103,9 +107,11 @@ for key in ("version", "git_sha", "build_timestamp", "compatibility"):
 compat = payload["compatibility"]
 if not isinstance(compat, dict):
     raise SystemExit("deployment.json compatibility block must be an object")
-for key in ("python_requires", "service_name", "artifact_schema"):
+for key in ("python_requires", "python_minor", "service_name", "artifact_schema"):
     if key not in compat:
         raise SystemExit(f"compatibility missing required key: {key}")
+if compat["artifact_schema"] != "runner-dashboard-artifact-v2":
+    raise SystemExit("unsupported artifact schema; expected runner-dashboard-artifact-v2")
 PY
 }
 
@@ -152,17 +158,18 @@ done < "${stage_dir}/FILES.txt"
 
 info "Installing artifact into ${DEPLOY_DIR}"
 mkdir -p "${DEPLOY_DIR}"
-if command -v rsync >/dev/null 2>&1; then
-    rsync -a --delete "${stage_dir}/" "${DEPLOY_DIR}/"
-else
-    warn "rsync not found; using cp fallback for install"
-    rm -rf "${DEPLOY_DIR}"
-    mkdir -p "${DEPLOY_DIR}"
-    cp -a "${stage_dir}/." "${DEPLOY_DIR}/"
-fi
+command -v rsync >/dev/null 2>&1 || fail "rsync is required for state-preserving artifact installation"
+rsync -a --delete \
+    --exclude='.env' \
+    --exclude='.*_state.json' \
+    --exclude='*_history.json' \
+    --exclude='*.db' \
+    --exclude='*.db-*' \
+    "${stage_dir}/" "${DEPLOY_DIR}/"
 
 apply_deployment_metadata "${stage_dir}" "${ARTIFACT_SOURCE}"
 chmod +x "${DEPLOY_DIR}/refresh-token.sh"
+chmod +x "${DEPLOY_DIR}/wsl-mirrored-port-helper.sh"
 if [[ -d "${DEPLOY_DIR}/deploy" ]]; then
     find "${DEPLOY_DIR}/deploy" -maxdepth 1 -type f -name '*.sh' -exec chmod +x {} +
 fi
@@ -171,17 +178,20 @@ find "${DEPLOY_DIR}/backend" -maxdepth 2 -type f \
     -exec chmod 0644 {} + 2>/dev/null || true
 chmod 644 "${DEPLOY_DIR}/deployment.json"
 
-if [[ -d "${stage_dir}/backend/wheels" ]] && [[ -n "$(ls -A "${stage_dir}/backend/wheels" 2>/dev/null)" ]]; then
-    info "Installing backend dependencies offline from vendored wheels..."
-    mkdir -p "${DEPLOY_DIR}/.venv"
-    if [[ ! -x "${DEPLOY_DIR}/.venv/bin/python" ]]; then
-        python3 -m venv "${DEPLOY_DIR}/.venv"
-    fi
-    if [[ -f "${stage_dir}/backend/requirements.txt" ]]; then
-        "${DEPLOY_DIR}/.venv/bin/pip" install --no-index --find-links="${stage_dir}/backend/wheels" -r "${stage_dir}/backend/requirements.txt" || true
-    elif [[ -f "${stage_dir}/requirements.lock.txt" ]]; then
-        "${DEPLOY_DIR}/.venv/bin/pip" install --no-index --find-links="${stage_dir}/backend/wheels" -r "${stage_dir}/requirements.lock.txt" || true
-    fi
-fi
+info "Installing backend dependencies offline from vendored wheels..."
+ARTIFACT_PYTHON_MINOR="$(python3 -c '
+import json, sys
+print(json.load(open(sys.argv[1], encoding="utf-8"))["compatibility"]["python_minor"])
+' "${DEPLOY_DIR}/deployment.json")"
+RUNTIME_PYTHON="$(select_dashboard_python "${ARTIFACT_PYTHON_MINOR}")" \
+    || fail "Python ${ARTIFACT_PYTHON_MINOR} is required by this artifact wheelhouse"
+"${RUNTIME_PYTHON}" -m venv "${DEPLOY_DIR}/.venv"
+"${DEPLOY_DIR}/.venv/bin/pip" install \
+    --no-index \
+    --require-hashes \
+    --find-links="${DEPLOY_DIR}/backend/wheels" \
+    -r "${DEPLOY_DIR}/requirements.lock.txt"
+"${DEPLOY_DIR}/.venv/bin/pip" check
+"${DEPLOY_DIR}/.venv/bin/python" -c 'import fastapi, httpx, psutil, uvicorn, yaml'
 
 ok "Dashboard artifact installed to ${DEPLOY_DIR}"

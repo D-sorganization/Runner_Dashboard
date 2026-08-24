@@ -16,6 +16,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated the resolved `cryptography` dependency to 50.0.0 to remediate
   PYSEC-2026-3552 in both CI audit paths.
 
+## [4.9.30] - 2026-08-24
+
+### Fixed
+
+- Made dashboard artifacts runtime-complete by packaging the locked backend
+  wheelhouse and root-level service helper, selecting only governed Python
+  versions with an exact wheel ABI match, preserving runtime state, and failing
+  closed on offline dependency or import validation.
+
 ## [4.9.29] - 2026-08-24
 
 ### Fixed

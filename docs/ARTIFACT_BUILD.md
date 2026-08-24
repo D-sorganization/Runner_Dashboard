@@ -6,10 +6,10 @@ It complements the existing source-copy deploy path documented in
 `docs/dashboard_deployment_guide.md` — the artifact flow is additive and does
 not replace the current `setup.sh` / `update-deployed.sh` wrappers.
 
-## What is the artifact?
+## What Is the Artifact?
 
-A single tarball `dashboard-<version>.tar.gz` produced by the
-`Build Dashboard Artifact` workflow (`.github/workflows/build-dashboard-artifact.yml`).
+A single tarball `dashboard-<version>.tar.gz` produced by
+`deploy/package-dashboard-artifact.sh`.
 It contains everything a runner node needs to install the dashboard without
 needing the full repository checkout:
 
@@ -21,9 +21,11 @@ dashboard-<version>.tar.gz
 ├── README.md               # copy of runner-dashboard/README.md
 ├── local_apps.json         # local app manifest used by the deployed dashboard
 ├── refresh-token.sh        # root-level service helper consumed by setup/systemd
+├── wsl-mirrored-port-helper.sh # root-level systemd pre/post-start helper
+├── requirements.lock.txt   # hash-locked Python runtime dependency contract
 ├── backend/
-│   ├── src/                # runner-dashboard/backend/*
-│   └── wheels/             # vendored pip wheels of backend/requirements.txt
+│   ├── *.py                # runner-dashboard/backend/*
+│   └── wheels/             # vendored wheels for requirements.lock.txt
 ├── frontend/               # static assets (index.html, JSX, icon, manifest)
 ├── deploy/                 # setup.sh, update-deployed.sh, systemd units, helpers
 └── config/                 # optional runner-dashboard/config/* (if present)
@@ -36,43 +38,33 @@ regardless of whether the node was installed from artifact or from the source
 tree.
 
 The published deployment metadata now also carries a `compatibility` block with
-the artifact schema, Python runtime floor, and dashboard service name so
-installers can reject mismatched release bundles before overwriting a host.
+the artifact schema, Python runtime range and exact wheel ABI minor, and
+dashboard service name so installers can reject mismatched release bundles
+before overwriting a host. Artifact updates preserve runtime databases, state
+ledgers, histories, and `.env`; those mutable files are not release contents.
 
-## Version source of truth
+## Version Source of Truth
 
 `runner-dashboard/VERSION` is the semantic version for the dashboard. Bump it
 on any deployment-relevant change.
 
-- **Push to `main`** (non-tag): the workflow builds `dashboard-<VERSION>.tar.gz`
-  using the `VERSION` file and uploads it as a **workflow artifact** with
-  30-day retention. Useful for smoke-testing and staged rollouts.
-- **Tag `dashboard-v<semver>`**: the workflow uses the tag's semver (stripping
-  the `dashboard-v` prefix) and attaches the tarball + `.sha256` as assets on
-  the matching **GitHub Release**. This is the canonical, immutable deliverable.
-- **Manual dispatch**: optional `version_suffix` input lets you produce
-  pre-release builds like `4.0.1-rc1`.
+- Build from an exact verified `main` commit and retain the generated tarball,
+  checksum sidecar, and commit identity together.
+- No automatic per-push artifact job is defined; this avoids consuming runner
+  capacity for releases that will not be deployed.
+- A tagged release may attach the tarball and checksum after the same local
+  build and isolated-install validation succeeds.
 
-## Building locally
+## Building Locally
 
-The workflow uses only stock tools, so you can reproduce it locally:
+Build on the Linux platform used by the runner host so native wheels match the
+deployment target:
 
 ```bash
-VERSION=$(cat runner-dashboard/VERSION | tr -d '[:space:]')
-mkdir -p dist/backend dist/frontend dist/deploy dist/config
-python -m pip wheel --wheel-dir dist/backend/wheels \
-    -r runner-dashboard/backend/requirements.txt
-cp -r runner-dashboard/backend  dist/backend/src
-cp -r runner-dashboard/frontend/. dist/frontend/
-cp -r runner-dashboard/deploy/.   dist/deploy/
-cp    runner-dashboard/deploy/refresh-token.sh dist/refresh-token.sh
-cp    runner-dashboard/local_apps.json         dist/local_apps.json
-cp    runner-dashboard/VERSION    dist/VERSION
-tar -czf "dashboard-${VERSION}.tar.gz" -C dist .
-sha256sum "dashboard-${VERSION}.tar.gz"
+bash deploy/package-dashboard-artifact.sh --output-dir /path/to/artifacts
 ```
 
-## Installing from artifact (sketch)
+## Installing From Artifact (Sketch)
 
 The existing `deploy/setup.sh` / `deploy/update-deployed.sh` now accept
 `--artifact PATH_OR_URL` and verify the release tarball checksum before
@@ -98,13 +90,8 @@ sudo systemctl restart runner-dashboard.service
 Rollback is symmetric: re-point `current` at the previous release directory
 and restart the service.
 
-## CI behaviour summary
-
-| Trigger                       | Artifact destination              |
-| ----------------------------- | --------------------------------- |
-| Push to `main` (paths filter) | Workflow artifact (30d retention) |
-| Tag `dashboard-v*`            | GitHub Release asset              |
-| `workflow_dispatch`           | Workflow artifact (30d retention) |
-
-The workflow smoke-tests every build by extracting the tarball, verifying the
-expected layout, and parsing `deployment.json` as JSON before upload.
+The package command performs an isolated offline install from the completed
+tarball and imports the service's core runtime modules before it reports
+success. The installer rejects old schemas, missing wheelhouses or helpers,
+unsupported Python versions, hash mismatches, dependency conflicts, and import
+failures before a service restart is attempted.
