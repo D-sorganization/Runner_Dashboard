@@ -45,6 +45,54 @@ def test_install_script_exists_and_supports_checksum():
     assert "deployment.json" in content
 
 
+def test_artifact_contract_requires_offline_runtime_and_service_helper():
+    """Artifact installs must be independently runnable, not source-tree dependent."""
+    package_content = PACKAGE_SCRIPT.read_text(encoding="utf-8")
+    install_content = INSTALL_SCRIPT.read_text(encoding="utf-8")
+
+    assert 'cp "${SCRIPT_DIR}/requirements.lock.txt"' in package_content
+    assert "pip wheel" in package_content
+    assert 'cp "${SCRIPT_DIR}/deploy/wsl-mirrored-port-helper.sh"' in package_content
+    assert "backend/wheels" in install_content
+    assert "wsl-mirrored-port-helper.sh" in install_content
+    assert "runner-dashboard-artifact-v2" in package_content
+
+
+def test_offline_dependency_install_fails_closed():
+    """A broken wheelhouse must abort deployment rather than restart a broken service."""
+    content = INSTALL_SCRIPT.read_text(encoding="utf-8")
+
+    assert "--require-hashes" in content
+    assert "|| true" not in "\n".join(line for line in content.splitlines() if ".venv/bin/pip" in line)
+    assert ".venv/bin/python" in content
+    assert "import fastapi" in content
+
+
+def test_runtime_selector_rejects_python_with_broken_pip():
+    content = (DEPLOY_DIR / "python-runtime.sh").read_text(encoding="utf-8")
+
+    assert "-m pip --version" in content
+
+
+def test_artifact_pins_wheelhouse_python_minor():
+    package_content = PACKAGE_SCRIPT.read_text(encoding="utf-8")
+    install_content = INSTALL_SCRIPT.read_text(encoding="utf-8")
+
+    assert '"python_minor": python_minor' in package_content
+    assert '["compatibility"]["python_minor"]' in install_content
+    assert 'select_dashboard_python "${ARTIFACT_PYTHON_MINOR}"' in install_content
+
+
+def test_artifact_install_preserves_mutable_runtime_state():
+    content = INSTALL_SCRIPT.read_text(encoding="utf-8")
+
+    assert "--exclude='.env'" in content
+    assert "--exclude='*.db'" in content
+    assert "--exclude='*.db-*'" in content
+    assert "--exclude='*_history.json'" in content
+    assert 'rm -rf "${DEPLOY_DIR}"' not in content
+
+
 def test_update_deployed_script_supports_checksum_and_skips_uv_on_artifact():
     assert UPDATE_SCRIPT.exists()
     content = UPDATE_SCRIPT.read_text(encoding="utf-8")
@@ -74,8 +122,11 @@ def test_artifact_layout_and_checksum_verification():
         (stage_dir / "README.md").write_text("# Runner Dashboard\n", encoding="utf-8")
         (stage_dir / "local_apps.json").write_text("[]\n", encoding="utf-8")
         (stage_dir / "refresh-token.sh").write_text("#!/bin/bash\nexit 0\n", encoding="utf-8")
+        (stage_dir / "wsl-mirrored-port-helper.sh").write_text("#!/bin/bash\nexit 0\n", encoding="utf-8")
+        (stage_dir / "requirements.lock.txt").write_text("", encoding="utf-8")
         (stage_dir / "backend").mkdir()
         (stage_dir / "backend" / "server.py").write_text("# server\n", encoding="utf-8")
+        (stage_dir / "backend" / "wheels").mkdir()
         (stage_dir / "frontend").mkdir()
         (stage_dir / "frontend" / "index.html").write_text("<!doctype html><html></html>\n", encoding="utf-8")
         (stage_dir / "deploy").mkdir()
@@ -87,8 +138,9 @@ def test_artifact_layout_and_checksum_verification():
             "git_sha": "mock-git-sha-val",  # pragma: allowlist secret
             "build_timestamp": "2026-08-21T00:00:00Z",
             "compatibility": {
-                "artifact_schema": "runner-dashboard-artifact-v1",
+                "artifact_schema": "runner-dashboard-artifact-v2",
                 "python_requires": ">=3.11",
+                "python_minor": "3.11",
                 "service_name": "runner-dashboard.service",
             },
         }

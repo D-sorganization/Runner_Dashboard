@@ -2,14 +2,21 @@
 
 ## Current Work
 
-- Branch: `fix/scheduler-status-runtime`
-- Base: remote-main commit `8ec28b684f20462a720e28823dc167419e9064d4`
-  from merged PR #1108.
-- Objective: ensure every scheduler probe uses the governed dashboard Python
-  runtime and make the dashboard's capacity-count meanings unambiguous.
+- Branch: `fix/issue-1110-runtime-complete-artifact`
+- Base: remote-main commit `2757f1743a06c2685cac7dd4b61d7637a9420bf6`
+  from merged PR #1109.
+- Objective: make the immutable artifact independently runnable and fail closed
+  before a dashboard restart when its runtime is incomplete.
 
 ## Implemented Locally
 
+- Artifact schema v2 now requires the locked dependency file, a Linux
+  wheelhouse, and the root-level WSL service helper.
+- Packaging selects Python `>=3.11,<3.14`, records the exact wheel ABI minor,
+  and performs a clean offline install plus dependency/import smoke test.
+- Installation selects that exact Python minor, installs with hashes, fails
+  closed on any dependency or import error, and preserves runtime databases,
+  state ledgers, histories, and `.env` across the code replacement.
 - Scheduler status and autoscaler desired-capacity probes now invoke the
   scheduler through `sys.executable`; they can no longer fall back through the
   script shebang to Ubuntu 22.04's unsupported Python 3.10.
@@ -44,13 +51,16 @@
 
 ## Validation
 
-Run tests serially to avoid adding pressure to the local runner host:
+Validated serially to avoid adding pressure to the local runner host:
 
-```powershell
-python -m pytest tests/deploy/test_runner_cleanup_disk_guard.py -q -n 0 --basetemp=.pytest_temp_scheduler_python
-ruff check tests/deploy/test_runner_cleanup_disk_guard.py
-ruff format --check tests/deploy/test_runner_cleanup_disk_guard.py
-```
+- Full Python suite passed with the governed default exclusions; platform-only
+  skips and one established frontend-integrity xfail remained.
+- All 1,062 Vitest tests passed across 117 files.
+- Ruff, Python formatting, ESLint, TypeScript, shell syntax, ShellCheck, and the
+  production Vite build passed.
+- The final 16 MiB v2 tarball completed a clean offline installation. A second
+  installation over sentinel `.env`, SQLite, and history files preserved all
+  three byte-for-byte and passed the runtime import smoke check.
 
 ## Live Drain State
 
@@ -58,10 +68,12 @@ On 2026-08-24, public repository access was disabled for the
 `Bandwidth-Draining` group and Desktop-5 through Desktop-8 were moved into it.
 All four in-flight jobs were allowed to finish. Each runner was then verified
 idle in both GitHub and the local process table before its exact service was
-stopped and disabled. Desktop-1 through Desktop-4 remain active and enabled;
-Desktop-5 through Desktop-8 are inactive and disabled. At the post-drain audit,
-host load settled to 28% CPU with 26.3 GiB free while all four retained runners
-were occupied.
+stopped and disabled. Desktop-1 through Desktop-4 remain enabled so the
+governed schedule can supply overnight capacity; Desktop-5 through Desktop-8
+are inactive and disabled. At 14:58 PDT the graceful drain reached its weekday
+target: Desktop-1 and Desktop-2 active and busy, Desktop-3 and Desktop-4
+inactive, six total runners offline, approximately 25 GiB available memory,
+and load average falling below 2. No worker process was killed.
 
 The Antigravity language server was also identified as an independent memory
 bottleneck at approximately 23.5 GiB. A controlled recycle reduced it to about
@@ -72,12 +84,17 @@ watching, search, and Python analysis while retaining active worktrees.
 
 ## Operational Boundary
 
-Runner Dashboard 4.9.28 is deployed from verified remote-main commit
+Runner Dashboard 4.9.28 remains deployed from verified remote-main commit
 `8ec28b684f20462a720e28823dc167419e9064d4`; rollback snapshots were created.
 The live schedule is backed up at
 `~/.config/runner-dashboard/runner-schedule.json.pre-1106-20260824` and now has
 `default_count: 2`, `max_count: 4`, weekday daytime count `2`, and overnight
 and weekend count `4`. The patched unit uses dashboard Python 3.12.12 and is
-draining safely. The 4.9.29 source correction is local only: do not deploy it,
-move runners out of `Bandwidth-Draining`, or restart Desktop-5 through
-Desktop-8 without a separately reviewed operational change.
+draining safely. PR #1109 and version 4.9.29 are merged, but the first 4.9.29
+artifact rollout was rolled back because the artifact omitted its runtime
+wheelhouse and root-level port helper. Issue #1110 owns the fail-closed v2
+artifact repair. A complete 16 MiB Linux v2 artifact was built and passed its
+isolated offline install/import smoke test locally; protected merge and an
+exact-main rebuild remain required before live deployment. Do not redeploy
+4.9.29, move runners out of `Bandwidth-Draining`, or restart Desktop-5 through
+Desktop-8.

@@ -12,6 +12,9 @@
 
 set -euo pipefail
 
+# shellcheck source=deploy/python-runtime.sh
+source "$(dirname "${BASH_SOURCE[0]}")/python-runtime.sh"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUTPUT_DIR="${OUTPUT_DIR:-${SCRIPT_DIR}/dist}"
 VERSION_OVERRIDE=""
@@ -92,10 +95,13 @@ mkdir -p "${STAGE_DIR}"
 echo "==> Staging artifact layout..."
 # 1. Base files
 cp "${SCRIPT_DIR}/VERSION" "${STAGE_DIR}/VERSION"
+cp "${SCRIPT_DIR}/requirements.lock.txt" "${STAGE_DIR}/requirements.lock.txt"
 [[ -f "${SCRIPT_DIR}/README.md" ]] && cp "${SCRIPT_DIR}/README.md" "${STAGE_DIR}/README.md"
 cp "${SCRIPT_DIR}/local_apps.json" "${STAGE_DIR}/local_apps.json"
 cp "${SCRIPT_DIR}/deploy/refresh-token.sh" "${STAGE_DIR}/refresh-token.sh"
+cp "${SCRIPT_DIR}/deploy/wsl-mirrored-port-helper.sh" "${STAGE_DIR}/wsl-mirrored-port-helper.sh"
 chmod +x "${STAGE_DIR}/refresh-token.sh"
+chmod +x "${STAGE_DIR}/wsl-mirrored-port-helper.sh"
 
 # 2. Backend source
 mkdir -p "${STAGE_DIR}/backend"
@@ -107,6 +113,15 @@ else
     find "${STAGE_DIR}/backend" -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
     find "${STAGE_DIR}/backend" -type f -name '*.pyc' -delete 2>/dev/null || true
 fi
+
+RUNTIME_PYTHON="$(select_dashboard_python "")"
+PYTHON_MINOR="$("${RUNTIME_PYTHON}" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+mkdir -p "${STAGE_DIR}/backend/wheels"
+echo "==> Building locked offline backend wheelhouse with ${RUNTIME_PYTHON}..."
+"${RUNTIME_PYTHON}" -m pip wheel \
+    --require-hashes \
+    --wheel-dir "${STAGE_DIR}/backend/wheels" \
+    -r "${SCRIPT_DIR}/requirements.lock.txt"
 
 # 3. Frontend static distribution
 mkdir -p "${STAGE_DIR}/frontend"
@@ -142,7 +157,7 @@ fi
 
 # 6. Generate deployment.json
 BUILD_TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date +"%Y-%m-%dT%H:%M:%SZ")
-python3 - "${STAGE_DIR}/deployment.json" "${VERSION}" "${GIT_SHA}" "${GIT_BRANCH}" "${BUILD_TIMESTAMP}" <<'PY'
+python3 - "${STAGE_DIR}/deployment.json" "${VERSION}" "${GIT_SHA}" "${GIT_BRANCH}" "${BUILD_TIMESTAMP}" "${PYTHON_MINOR}" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -152,6 +167,7 @@ version = sys.argv[2]
 git_sha = sys.argv[3]
 git_branch = sys.argv[4]
 build_timestamp = sys.argv[5]
+python_minor = sys.argv[6]
 
 metadata = {
     "app": "runner-dashboard",
@@ -162,8 +178,9 @@ metadata = {
     "build_timestamp": build_timestamp,
     "source": "github-actions-artifact-build",
     "compatibility": {
-        "artifact_schema": "runner-dashboard-artifact-v1",
-        "python_requires": ">=3.11",
+        "artifact_schema": "runner-dashboard-artifact-v2",
+        "python_requires": ">=3.11,<3.14",
+        "python_minor": python_minor,
         "service_name": "runner-dashboard.service"
     }
 }
@@ -188,6 +205,7 @@ echo "==> Building tarball ${ARTIFACT_PATH}..."
 
 echo "==> Verifying generated artifact against installer layout validator..."
 bash "${SCRIPT_DIR}/deploy/install-dashboard-artifact.sh" --artifact "${ARTIFACT_PATH}" --deploy-dir "${TMP_DIR}/test-install" >/dev/null
+"${TMP_DIR}/test-install/.venv/bin/python" -c 'import fastapi, httpx, psutil, uvicorn, yaml'
 
 echo "✓ Successfully built immutable artifact: ${ARTIFACT_PATH}"
 echo "✓ SHA-256: $(cat "${CHECKSUM_PATH}")"

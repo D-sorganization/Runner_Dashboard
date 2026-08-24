@@ -1,9 +1,15 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.180
-**Application Version:** 4.9.29 (see `VERSION`)
-**Last Updated:** 2026-08-24T14:15:00-07:00
+**Spec Version:** 2.5.181
+**Application Version:** 4.9.30 (see `VERSION`)
+**Last Updated:** 2026-08-24T15:00:00-07:00
 **Status:** Active
+
+- **2026-08-24 (2.5.181):** Make immutable artifact deployment runtime-complete
+  and fail closed (issue #1110). Artifact schema v2 includes the hash-locked
+  Linux wheelhouse and root service helper, records the exact Python wheel ABI,
+  performs dependency and import smoke checks, and preserves mutable runtime
+  databases, ledgers, histories, and `.env` while replacing release files.
 
 - **2026-08-24 (2.5.180):** Execute scheduler status and autoscaler probes
   with the dashboard's governed Python interpreter instead of the scheduler
