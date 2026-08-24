@@ -11,10 +11,16 @@ RUNNER_ROOT="${RUNNER_ROOT:-$HOME/actions-runners}"
 RUNNER_ROOTS="${RUNNER_ROOTS:-$RUNNER_ROOT}"
 RUNNER_USER="${RUNNER_USER:-$USER}"
 SCHEDULE_CONFIG="${RUNNER_SCHEDULE_CONFIG:-$HOME/.config/runner-dashboard/runner-schedule.json}"
+SCHEDULER_PYTHON="${SCHEDULER_PYTHON:-${HOME}/actions-runners/dashboard/.venv/bin/python}"
 SYSTEMCTL_BIN="${SYSTEMCTL_BIN:-$(command -v systemctl)}"
 TEXTFILE_COLLECTOR_DIR="${TEXTFILE_COLLECTOR_DIR:-/var/lib/node_exporter/textfile_collector}"
 
 echo "Installing runner maintenance services for ${RUNNER_USER}"
+
+if [[ ! -x "${SCHEDULER_PYTHON}" ]]; then
+    echo "Scheduler Python is not executable: ${SCHEDULER_PYTHON}" >&2
+    exit 1
+fi
 
 install -d -m 0755 "$(dirname "${SCHEDULE_CONFIG}")"
 if [[ ! -f "${SCHEDULE_CONFIG}" ]]; then
@@ -151,7 +157,7 @@ Type=oneshot
 User=root
 Environment=RUNNER_ROOT=${RUNNER_ROOT}
 Environment=RUNNER_SCHEDULE_CONFIG=${SCHEDULE_CONFIG}
-ExecStart=/usr/local/bin/runner-scheduler --apply
+ExecStart=${SCHEDULER_PYTHON} /usr/local/bin/runner-scheduler --apply
 SERVICE
 
 sudo tee /etc/systemd/system/runner-scheduler.timer > /dev/null <<'TIMER'

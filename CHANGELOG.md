@@ -16,6 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated the resolved `cryptography` dependency to 50.0.0 to remediate
   PYSEC-2026-3552 in both CI audit paths.
 
+## [4.9.28] - 2026-08-24
+
+### Fixed
+
+- Run the installed runner scheduler with the deployed dashboard virtual
+  environment and fail closed when that governed Python is unavailable.
+
 ## [4.9.27] - 2026-08-24
 
 ### Fixed

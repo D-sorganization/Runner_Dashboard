@@ -2,12 +2,22 @@
 
 ## Current Work
 
-- Issue: [#1105](https://github.com/D-sorganization/Runner_Dashboard/issues/1105)
-- Branch: `fix/issue-1105-runner-busy-detection`
-- Objective: correct fail-open runner occupancy detection and enforce the
-  machine schedule ceiling without interrupting active jobs.
+- Issue: [#1107](https://github.com/D-sorganization/Runner_Dashboard/issues/1107)
+- Branch: `fix/issue-1107-scheduler-python-runtime`
+- Base: remote-main commit `0b8462a3011d99f8af10ec52ef80c2af4da8c12b`
+  from merged PR #1106.
+- Objective: ensure the installed scheduler uses the governed dashboard Python
+  runtime rather than Ubuntu 22.04's unsupported system Python 3.10.
 
 ## Implemented Locally
+
+- `install-runner-maintenance.sh` now writes the scheduler systemd unit with
+  the deployed dashboard virtual-environment interpreter and fails closed when
+  that executable is unavailable.
+- A static installer regression test was RED before the change and is GREEN;
+  all nine disk-guard/maintenance installer tests pass serially.
+
+## Merged #1105 Recovery
 
 - Legacy and versioned `Runner.Worker` process paths are detected globally, so
   reparented workers remain visible.
@@ -35,9 +45,9 @@
 Run tests serially to avoid adding pressure to the local runner host:
 
 ```powershell
-python -m pytest tests/deploy/test_runner_scheduler.py tests/test_config_schema.py tests/test_runner_capacity_cache.py -q -n 0 --basetemp=.pytest_temp_1105
-ruff check deploy/runner-scheduler.py backend/config_schema.py backend/server.py tests/deploy/test_runner_scheduler.py tests/test_config_schema.py tests/test_runner_capacity_cache.py
-ruff format --check deploy/runner-scheduler.py backend/config_schema.py backend/server.py tests/deploy/test_runner_scheduler.py tests/test_config_schema.py tests/test_runner_capacity_cache.py
+python -m pytest tests/deploy/test_runner_cleanup_disk_guard.py -q -n 0 --basetemp=.pytest_temp_scheduler_python
+ruff check tests/deploy/test_runner_cleanup_disk_guard.py
+ruff format --check tests/deploy/test_runner_cleanup_disk_guard.py
 ```
 
 ## Live Drain State
@@ -54,12 +64,20 @@ were occupied.
 The Antigravity language server was also identified as an independent memory
 bottleneck at approximately 23.5 GiB. A controlled recycle reduced it to about
 0.3 GiB and restored host free memory from approximately 3.5 GiB to 28.5 GiB.
-The broad `Repositories.code-workspace` still opens the entire repository root
-plus `../../../tmp`; a future editor-workspace change should narrow indexing or
-add explicit watcher and analysis exclusions without hiding active worktrees.
+The local `Repositories.code-workspace` no longer opens `../../../tmp` and now
+excludes generated dependency, cache, build, and distribution trees from file
+watching, search, and Python analysis while retaining active worktrees.
 
 ## Operational Boundary
 
-The corrected dashboard has not been deployed. After review and merge, use the
-reversible dashboard rollout, configure DeskComputer with `default_count: 4`
-and `max_count: 6`, and verify scheduler state against the GitHub runner view.
+Runner Dashboard 4.9.27 is deployed from verified remote-main commit
+`0b8462a3011d99f8af10ec52ef80c2af4da8c12b`; rollback snapshots were created.
+The live schedule is backed up at
+`~/.config/runner-dashboard/runner-schedule.json.pre-1106-20260824` and now has
+`default_count: 4`, `max_count: 6`, and four runners in each timed entry. The
+patched unit uses dashboard Python 3.12.12. Its first successful application
+reported `desired=4`, `online=4`, `busy=4`, `offline=4`, and `actions=0`, with a
+five-minute timer scheduled. The installer-source correction is not yet merged;
+push PR #1107 only after the full pre-push gate succeeds. Do not move runners
+out of `Bandwidth-Draining` or restart Desktop-5 through Desktop-8 as part of
+that PR.
