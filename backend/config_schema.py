@@ -95,6 +95,9 @@ def validate_runner_schedule_config(data: dict[str, Any]) -> dict[str, Any]:
     if (default_count := data.get("default_count")) is not None:
         _validate_bounded_int(default_count, "runner_schedule 'default_count'", 0, 32)
 
+    if (max_count := data.get("max_count")) is not None:
+        _validate_bounded_int(max_count, "runner_schedule 'max_count'", 0, 32)
+
     if (schedules := data.get("schedules")) is not None:
         _validate_schedule_entries(schedules)
 

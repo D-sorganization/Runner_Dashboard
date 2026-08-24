@@ -16,6 +16,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated the resolved `cryptography` dependency to 50.0.0 to remediate
   PYSEC-2026-3552 in both CI audit paths.
 
+## [4.9.27] - 2026-08-24
+
+### Fixed
+
+- Detect versioned, reparented, and pre-fork GitHub Actions workers without
+  undercounting busy runners.
+- Fail closed on unreadable runner-occupancy probes and prevent duplicate
+  listener starts while an orphan worker remains active.
+- Preserve and enforce the per-host `max_count` schedule ceiling.
+- Keep the container on the qualified Python 3.13 base required by project
+  metadata and native-wheel cleanup paths.
+- Isolate dispatch-router tests from the live operator spend ledger.
+- Restore the WSL teardown-interlock tests required by the backend-module
+  coverage invariant.
+
 ## [4.9.26] - 2026-08-14
 
 ### Fixed

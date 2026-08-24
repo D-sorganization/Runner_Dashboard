@@ -1214,6 +1214,7 @@ DEFAULT_RUNNER_SCHEDULE = {
     "enabled": True,
     "timezone": os.environ.get("RUNNER_SCHEDULE_TIMEZONE", "America/Los_Angeles"),
     "default_count": min(NUM_RUNNERS, int(os.environ.get("RUNNER_SCHEDULE_DEFAULT", str(NUM_RUNNERS)))),
+    "max_count": min(NUM_RUNNERS, int(os.environ.get("RUNNER_SCHEDULE_MAX", str(NUM_RUNNERS)))),
     "schedules": [
         {
             "name": "always-on",
@@ -1239,10 +1240,12 @@ def _validate_runner_schedule(config: dict) -> dict:
     if not isinstance(config, dict):
         raise ValueError("schedule config must be an object")
     days_allowed = {"mon", "tue", "wed", "thu", "fri", "sat", "sun"}
+    max_count = max(0, min(_runner_limit(), int(config.get("max_count", _runner_limit()))))
     sanitized: dict[str, Any] = {
         "enabled": bool(config.get("enabled", True)),
         "timezone": str(config.get("timezone") or "America/Los_Angeles"),
-        "default_count": max(0, min(_runner_limit(), int(config.get("default_count", 1)))),
+        "default_count": max(0, min(max_count, int(config.get("default_count", 1)))),
+        "max_count": max_count,
         "schedules": [],
     }
     schedules = config.get("schedules", [])
@@ -1257,7 +1260,7 @@ def _validate_runner_schedule(config: dict) -> dict:
         normalized_days = [str(day).lower() for day in days]
         if any(day not in days_allowed for day in normalized_days):
             raise ValueError("schedule days must be mon/tue/wed/thu/fri/sat/sun")
-        runners = max(0, min(_runner_limit(), int(entry.get("runners", 0))))
+        runners = max(0, min(max_count, int(entry.get("runners", 0))))
         sanitized["schedules"].append(
             {
                 "name": str(entry.get("name") or "scheduled"),

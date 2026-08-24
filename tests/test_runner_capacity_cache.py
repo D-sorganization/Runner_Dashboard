@@ -80,3 +80,30 @@ def test_runner_capacity_snapshot_shape_preserved(monkeypatch) -> None:
     monkeypatch.setattr(server, "_build_runner_capacity_snapshot", lambda: payload)
     result = server.get_runner_capacity_snapshot()
     assert result == payload
+
+
+def test_runner_schedule_preserves_host_maximum() -> None:
+    """Dashboard schedule edits must not erase the host's safety ceiling."""
+    import server
+
+    result = server._validate_runner_schedule(
+        {
+            "enabled": True,
+            "timezone": "America/Los_Angeles",
+            "default_count": 7,
+            "max_count": 6,
+            "schedules": [
+                {
+                    "name": "peak",
+                    "days": ["mon"],
+                    "start": "08:00",
+                    "end": "17:00",
+                    "runners": 8,
+                }
+            ],
+        }
+    )
+
+    assert result["default_count"] == 6
+    assert result["max_count"] == 6
+    assert result["schedules"][0]["runners"] == 6
