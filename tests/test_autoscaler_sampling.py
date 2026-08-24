@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -33,8 +34,9 @@ class TestScheduledDesiredCount:
         fake_bin = tmp_path / "sched"
         fake_bin.touch()
         monkeypatch.setattr(samp, "RUNNER_SCHEDULER_BIN", str(fake_bin))
-        with patch("subprocess.run", return_value=_cp(json.dumps({"desired": 5}))):
+        with patch("subprocess.run", return_value=_cp(json.dumps({"desired": 5}))) as run:
             assert samp._scheduled_desired_count(0) == 5
+        assert run.call_args.args[0] == [sys.executable, str(fake_bin), "--dry-run", "--json"]
 
     def test_binary_failure_returns_default(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         fake_bin = tmp_path / "sched"

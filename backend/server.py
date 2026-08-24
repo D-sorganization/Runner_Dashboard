@@ -1299,7 +1299,7 @@ def _sync_runner_scheduler_state(config: dict) -> dict:
     env["RUNNER_SCHEDULER_STATE"] = str(RUNNER_SCHEDULER_STATE)
     try:
         result = subprocess.run(
-            [RUNNER_SCHEDULER_BIN, "--dry-run", "--json"],
+            [sys.executable, RUNNER_SCHEDULER_BIN, "--dry-run", "--json"],
             capture_output=True,
             text=True,
             timeout=20,
@@ -1360,10 +1360,11 @@ def _build_runner_capacity_snapshot() -> dict:
     return {
         "machine": HOSTNAME,
         "aliases": RUNNER_ALIASES,
-        "configured_runners": NUM_RUNNERS,
-        "default_runners": DEFAULT_NUM_RUNNERS,
+        "configured_runners": config["default_count"],
+        "default_runners": config["default_count"],
         "installed_runners": sum(1 for path in RUNNER_BASE_DIR.glob("runner-*") if path.is_dir()),
-        "max_runners": _runner_limit(),
+        "max_runners": config["max_count"],
+        "host_runner_limit": _runner_limit(),
         "config_path": str(RUNNER_SCHEDULE_CONFIG),
         "state_path": str(RUNNER_SCHEDULER_STATE),
         "timers": timer_states,
