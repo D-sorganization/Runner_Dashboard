@@ -91,3 +91,10 @@ class TestInstallerShipsDiskGuardTimer:
     def test_timer_is_enabled(self, installer_text: str) -> None:
         enable_lines = [ln for ln in installer_text.splitlines() if "enable --now" in ln]
         assert any("runner-disk-guard.timer" in ln for ln in enable_lines), "runner-disk-guard.timer must be enabled"
+
+
+class TestInstallerUsesGovernedSchedulerPython:
+    def test_scheduler_uses_dashboard_virtual_environment(self, installer_text: str) -> None:
+        governed_python = 'SCHEDULER_PYTHON="${SCHEDULER_PYTHON:-${HOME}/actions-runners/dashboard/.venv/bin/python}"'
+        assert governed_python in installer_text
+        assert "ExecStart=${SCHEDULER_PYTHON} /usr/local/bin/runner-scheduler --apply" in installer_text

@@ -332,6 +332,13 @@ for a scheduler start. Operators must still drain runners through GitHub before
 stopping services; scheduler telemetry is a safety interlock, not a substitute
 for the governed drain procedure.
 
+`install-runner-maintenance.sh` runs the scheduler with
+`~/actions-runners/dashboard/.venv/bin/python`, matching the dashboard's
+governed Python 3.11+ environment. Set `SCHEDULER_PYTHON` only when deploying to
+an alternate governed environment. Installation fails closed when the selected
+interpreter is absent or non-executable; it must not fall back to the host's
+system Python.
+
 `deploy/scheduled-dashboard-maintenance.sh` is a shell script designed to run
 from the system crontab. It performs three tasks each invocation:
 

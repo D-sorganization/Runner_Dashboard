@@ -1,9 +1,14 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.178
-**Application Version:** 4.9.27 (see `VERSION`)
-**Last Updated:** 2026-08-24T13:00:00-07:00
+**Spec Version:** 2.5.179
+**Application Version:** 4.9.28 (see `VERSION`)
+**Last Updated:** 2026-08-24T13:38:00-07:00
 **Status:** Active
+
+- **2026-08-24 (2.5.179):** Run the installed scheduler with the deployed
+  dashboard virtual environment (issue #1107). The maintenance installer fails
+  closed if the governed Python interpreter is absent or non-executable instead
+  of falling through to an unsupported system Python.
 
 - **2026-08-24 (2.5.178):** Fail closed when determining runner occupancy and
   enforce an optional host capacity ceiling (issue #1105). The scheduler now
