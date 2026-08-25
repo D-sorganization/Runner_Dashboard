@@ -109,6 +109,35 @@ starting a broken server.
 **Requirements:** Python 3.11+, Node.js 18+/npm (for the frontend build), and a
 GitHub PAT with `repo` and `admin:org` scopes.
 
+### Deterministic / offline-constrained installs
+
+`npm ci` is expected to succeed from the committed `package-lock.json` alone,
+with no network access, on any fleet machine. Run
+`npm run verify-lockfile` (or `bash scripts/verify-lockfile.sh`) to check
+this locally: it does a clean-state `npm ci`, confirms `npm ls` reports no
+unmet/invalid entries, and runs `npm run build`.
+
+If a machine's local npm cache is not yet warm (e.g. a WAN-constrained
+fleet host being provisioned for the first time), prime it once from a
+machine that already has a complete, working `node_modules` for this
+lockfile:
+
+```bash
+# On the healthy/reference machine (with a durable npm cache):
+npm cache verify
+
+# Copy that machine's npm cache directory (see `npm config get cache`) to
+# the constrained machine, or run `npm ci` there first over a working
+# network link. Once the cache is warm, `npm ci --prefer-offline` (or
+# plain `npm ci`) will succeed without depending on registry latency.
+```
+
+This priming step is a manual workaround, not an automated offline mirror.
+A scripted/versioned offline artifact pipeline (build once on `main`,
+publish a checksummed `dist/` artifact, let `deploy/update-deployed.sh`
+install from that artifact without touching npm at all) is tracked as a
+larger follow-up in issue #1085 and is out of scope for this lockfile fix.
+
 ## Production Deployment
 
 ```bash
