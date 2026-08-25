@@ -2782,6 +2782,26 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 ## 7. Changelog
 
+### 4.9.32 - 2026-08-25 (policy tooling)
+
+- chore(policy): add `config/required_status_checks_policy.json` and
+  `scripts/check_required_checks_drift.py`, a required-status-checks drift
+  detector, plus `tests/test_required_checks_drift.py` (part of #1119). PR
+  #1116 merged before a late pytest-matrix failure surfaced because the
+  `tests-required` aggregate job in `ci-standard.yml` is skipped (not
+  failed) when its `tests` dependency fails, and a SKIPPED conclusion does
+  not block merge; PR #1118 merged while the Anti-Phantom Merge Guard
+  (`guard` context) was still queued because `guard` is not listed in any
+  required-status-checks configuration for `main`. The new script asserts
+  both conditions offline against committed snapshots
+  (`tests/contracts/*.json`) and against the live `ci-standard.yml`
+  content, and is picked up automatically by the existing `pytest tests/`
+  step — no workflow file was added or edited. Closing the gap fully still
+  requires a human to add `guard` (and confirm `tests`) to the
+  `Repository_Protections` ruleset's `required_status_checks` and to add
+  `if: always()` fail-closed handling to the `tests-required` job; see the
+  ready-to-apply spec on issue #1119.
+
 ### 2.5.166 - 2026-06-20
 
 - fix(system): host `powershell.exe` spec probes run with
