@@ -69,6 +69,10 @@ Validated serially to avoid adding pressure to the local runner host:
 - Issue #1115 focused PowerShell contracts: 43 passed in isolated serial mode.
 - Ruff lint and format checks passed for both changed Python test files;
   `git diff --check` passed.
+- The first protected full-suite run exposed Linux `USERPROFILE` absence (7
+  failures, 3,015 passes). The default now uses the cross-platform .NET user
+  profile API; the 43 focused contracts passed again before the corrective
+  push.
 - An expanded artifact/deployment test selection stalled in established global
   test startup and was terminated without leaving a worker; it is not claimed
   as passing. Protected CI must run the repository-wide gates.
