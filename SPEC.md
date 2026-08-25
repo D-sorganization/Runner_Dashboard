@@ -2782,7 +2782,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 ## 7. Changelog
 
-### 4.9.33 - 2026-08-25
+### 4.9.32 - 2026-08-25 (policy tooling)
 
 - chore(policy): add `config/required_status_checks_policy.json` and
   `scripts/check_required_checks_drift.py`, a required-status-checks drift
