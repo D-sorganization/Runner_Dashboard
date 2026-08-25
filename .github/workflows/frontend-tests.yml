@@ -100,7 +100,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: npm ci || npm install
+        run: npm ci
 
       - name: Install backend dependencies for API contract generation
         run: |
@@ -137,7 +137,7 @@ jobs:
           node-version: "20"
 
       - name: Install dependencies
-        run: npm ci || npm install
+        run: npm ci
 
       - name: ESLint
         run: npm run lint
@@ -174,7 +174,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: npm ci || npm install
+        run: npm ci
 
       - name: Build production bundle
         run: npm run build
@@ -203,7 +203,7 @@ jobs:
           node-version: "20"
 
       - name: Install dependencies
-        run: npm ci || npm install
+        run: npm ci
 
       - name: Install Playwright browsers (Chromium only)
         run: npx playwright install chromium --with-deps

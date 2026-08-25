@@ -1,9 +1,15 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.183
-**Application Version:** 4.9.31 (see `VERSION`)
+**Spec Version:** 2.5.184
+**Application Version:** 4.9.32 (see `VERSION`)
 **Last Updated:** 2026-08-24T21:00:00-07:00
 **Status:** Active
+
+- **2026-08-24 (2.5.184):** Restore deterministic cross-platform frontend
+  installation by recording Vitest's esbuild 0.28.2 dependency tree in the
+  root lockfile. Frontend validation now fails closed on `npm ci` instead of
+  falling back to an ungoverned `npm install`, keeping pull-request and Release
+  lockfile behavior identical (issue #1085).
 
 - **2026-08-24 (2.5.183):** Add a shared fail-closed DeskComputer
   maintenance-drain marker (issue #1115). The Windows WSL keepalive and fleet
