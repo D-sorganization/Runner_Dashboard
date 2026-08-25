@@ -48,6 +48,7 @@ param(
   [string]$DeskWslDistro          = "Ubuntu-22.04",
   [string]$RunnerSchedulerState   = "/var/lib/runner-scheduler/state.json",
   [string]$LocalKeepAliveTask     = "WSL-Runner-KeepAlive",
+  [string]$DrainMarker            = (Join-Path $env:USERPROFILE "runner_fleet_monitor\deskcomputer-runner-drained.flag"),
   [string]$LogDir                 = "C:\Users\diete\runner_fleet_monitor",
   # Dot-source with -FunctionsOnly to expose the pure helpers for tests.
   [switch]$FunctionsOnly
@@ -148,6 +149,10 @@ function Test-PurgeSuspected {
 }
 
 if ($FunctionsOnly) { return }
+
+# Operator maintenance is authoritative over automatic recovery. Keep this
+# after FunctionsOnly so pure helper tests remain available while drained.
+if (Test-Path -LiteralPath $DrainMarker) { return }
 
 # ---------------------------------------------------------------------------
 # Cycle

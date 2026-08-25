@@ -30,6 +30,46 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "deploy" / "wsl-keepalive.ps1"
+
+
+def test_drain_marker_exits_before_validation_or_recovery(tmp_path: Path) -> None:
+    """A deliberate host drain must prevent WSL warm-up and recovery."""
+    marker = tmp_path / "deskcomputer-runner-drained.flag"
+    marker.write_text("drained\n", encoding="utf-8")
+    shell = shutil.which("pwsh") or shutil.which("powershell")
+    if shell is None:
+        pytest.skip("PowerShell not available")
+    result = subprocess.run(
+        [
+            shell,
+            "-NoProfile",
+            "-NonInteractive",
+            "-File",
+            str(SCRIPT),
+            "-DrainMarker",
+            str(marker),
+            "-CheckIntervalSeconds",
+            "1",
+            "-Once",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == ""
+
+
+def test_keepalive_and_monitor_share_the_same_default_drain_marker() -> None:
+    keepalive_text = SCRIPT.read_text(encoding="utf-8")
+    monitor_text = (REPO_ROOT / "deploy" / "fleet-health-monitor.ps1").read_text(encoding="utf-8")
+    marker_suffix = r"runner_fleet_monitor\deskcomputer-runner-drained.flag"
+    for text in (keepalive_text, monitor_text):
+        assert "$env:USERPROFILE" in text
+        assert marker_suffix in text
+
+
 INSTALLER = REPO_ROOT / "deploy" / "install-wsl-keepalive-task.ps1"
 
 
@@ -245,6 +285,7 @@ def test_backoff_helper_is_pure_and_capped(tmp_path: Path) -> None:
         . '{SCRIPT.as_posix()}' -Once -Distro 'noop' `
             -CheckIntervalSeconds 10 -ProbeTimeoutSeconds 2 `
             -Mode Resident `
+            -DrainMarker '{(tmp_path / "no-drain.flag").as_posix()}' `
             -LogDir '{(tmp_path / "logs").as_posix()}' *> $null
         for ($i = 0; $i -le 12; $i++) {{
             Write-Output (Get-BackoffSeconds -ConsecutiveRecoveries $i)
@@ -281,6 +322,7 @@ def test_probe_success_helper_ignores_exit_code(tmp_path: Path) -> None:
         . '{SCRIPT.as_posix()}' -Once -Distro 'noop' `
             -CheckIntervalSeconds 10 -ProbeTimeoutSeconds 2 `
             -Mode Resident `
+            -DrainMarker '{(tmp_path / "no-drain.flag").as_posix()}' `
             -LogDir '{(tmp_path / "logs").as_posix()}' *> $null
         $tok = '{token}'
         $ok = '{healthy_stdout}'
@@ -308,6 +350,7 @@ def test_state_file_is_written_and_parsable(tmp_path: Path) -> None:
         f"-Distro 'definitely-not-installed-{tmp_path.name}' "
         f"-CheckIntervalSeconds 10 -ProbeTimeoutSeconds 2 "
         f"-Mode Resident "
+        f"-DrainMarker '{(tmp_path / 'no-drain.flag').as_posix()}' "
         f"-LogDir '{log_dir.as_posix()}'"
     )
     assert result.returncode == 0, result.stderr
@@ -329,6 +372,7 @@ def test_log_jsonl_event_is_written(tmp_path: Path) -> None:
         f"-Distro 'definitely-not-installed-{tmp_path.name}' "
         f"-CheckIntervalSeconds 10 -ProbeTimeoutSeconds 2 "
         f"-Mode Resident "
+        f"-DrainMarker '{(tmp_path / 'no-drain.flag').as_posix()}' "
         f"-LogDir '{log_dir.as_posix()}'"
     )
     log_path = log_dir / "wsl-keepalive.log"
@@ -351,6 +395,7 @@ def test_teardown_allowed_interlock_pure_helper(tmp_path: Path) -> None:
         . '{SCRIPT.as_posix()}' -Once -Distro 'noop' `
             -CheckIntervalSeconds 10 -ProbeTimeoutSeconds 2 `
             -Mode Resident `
+            -DrainMarker '{(tmp_path / "no-drain.flag").as_posix()}' `
             -LogDir '{(tmp_path / "logs").as_posix()}' *> $null
         $d1 = Test-WslTeardownAllowed -ActiveWorkers 0 -Reason 'test_clean'
         $d2 = Test-WslTeardownAllowed -ActiveWorkers 4 -Reason 'test_busy' -EmergencyOverride $false
@@ -376,7 +421,9 @@ def test_watchdog_unresponsive_defers_when_workers_active(tmp_path: Path) -> Non
     driver = textwrap.dedent(
         f"""
         $env:LOCALAPPDATA = '{(tmp_path / "appdata").as_posix()}'
-        . '{SCRIPT.as_posix()}' -Once -Distro 'noop' -Mode Resident -LogDir '{log_dir.as_posix()}' *> $null
+        . '{SCRIPT.as_posix()}' -Once -Distro 'noop' -Mode Resident `
+            -DrainMarker '{(tmp_path / "no-drain.flag").as_posix()}' `
+            -LogDir '{log_dir.as_posix()}' *> $null
         function Get-ActiveRunnerWorkers {{ param($Distro, $WslExe, $TimeoutSeconds) return 3 }}
         $res = Invoke-OneCycle `
             -Distro 'test-distro' `

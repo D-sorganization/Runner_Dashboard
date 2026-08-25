@@ -2,14 +2,23 @@
 
 ## Current State
 
-- PR #1111 merged as remote-main commit
-  `52635e4d3e0e5fbe71ffd10d232bbad6321fed99`.
+- Branch: `fix/1115-maintenance-drain`; PR not created yet; issue #1115.
+- Base: remote-main commit `30de9d024465f562e38ec98165c8086a4209a1d8`.
+- PR #1114 merged as that remote-main commit and makes the governed scheduler
+  the sole DeskComputer capacity-recovery authority.
 - Runner Dashboard 4.9.30 is deployed from an exact-main schema-v2 artifact on
   DeskComputer and reports that commit through `/api/deployment`.
-- The live weekday schedule is at its two-runner target; four-runner overnight
-  and weekend capacity remains available through the governed scheduler.
+- DeskComputer is intentionally fully drained: all eight runner units are
+  disabled/inactive, the scheduler and fleet monitor are inactive, and no
+  Listener or Worker process remains. The shared drain marker is active.
 
 ## Implemented
+
+- Both canonical Windows entry points accept one shared configurable drain
+  marker and exit before WSL, scheduler, SSH, dashboard, or GitHub recovery
+  side effects while it exists. `-FunctionsOnly` remains available.
+- The runner-offline runbook records controlled drain and restoration under
+  the two-normal/four-maximum governed schedule.
 
 - Artifact schema v2 now requires the locked dependency file, a Linux
   wheelhouse, and the root-level WSL service helper.
@@ -53,6 +62,13 @@
 ## Validation
 
 Validated serially to avoid adding pressure to the local runner host:
+
+- Issue #1115 focused PowerShell contracts: 43 passed in isolated serial mode.
+- Ruff lint and format checks passed for both changed Python test files;
+  `git diff --check` passed.
+- An expanded artifact/deployment test selection stalled in established global
+  test startup and was terminated without leaving a worker; it is not claimed
+  as passing. Protected CI must run the repository-wide gates.
 
 - Full Python suite passed with the governed default exclusions; platform-only
   skips and one established frontend-integrity xfail remained.

@@ -67,9 +67,48 @@ def test_script_declares_contract_parameters() -> None:
         "WmiHandleKillThreshold",
         "PoolFloors",
         "DeskWslDistro",
+        "DrainMarker",
         "FunctionsOnly",
     ):
         assert f"${param}" in text, f"parameter ${param} not declared"
+
+
+def test_script_exits_before_side_effects_when_drain_marker_exists(tmp_path: Path) -> None:
+    """An operator drain must win over every keepalive and recovery action."""
+    marker = tmp_path / "deskcomputer-runner-drained.flag"
+    marker.write_text("drained\n", encoding="utf-8")
+    assert PWSH is not None
+    result = subprocess.run(
+        [
+            PWSH,
+            "-NoProfile",
+            "-NonInteractive",
+            "-File",
+            str(SCRIPT),
+            "-DrainMarker",
+            str(marker),
+            "-DashboardUrl",
+            "invalid://must-not-be-contacted",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == ""
+
+
+def test_functions_only_remains_available_while_drained(tmp_path: Path) -> None:
+    marker = tmp_path / "deskcomputer-runner-drained.flag"
+    marker.write_text("drained\n", encoding="utf-8")
+    driver = (
+        f". '{SCRIPT.as_posix()}' -FunctionsOnly -DrainMarker '{marker.as_posix()}'; "
+        "Write-Output ('HELPER=' + (Test-PurgeSuspected -PoolOnline 0 -LocalUnitsActive 1))"
+    )
+    result = _run_ps(driver)
+    assert result.returncode == 0, result.stderr
+    assert "HELPER=True" in result.stdout
 
 
 def test_script_watches_all_pools_not_just_ct_ssd() -> None:

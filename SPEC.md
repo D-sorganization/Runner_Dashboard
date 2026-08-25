@@ -1,9 +1,15 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.182
+**Spec Version:** 2.5.183
 **Application Version:** 4.9.31 (see `VERSION`)
-**Last Updated:** 2026-08-24T15:35:00-07:00
+**Last Updated:** 2026-08-24T21:00:00-07:00
 **Status:** Active
+
+- **2026-08-24 (2.5.183):** Add a shared fail-closed DeskComputer
+  maintenance-drain marker (issue #1115). The Windows WSL keepalive and fleet
+  health monitor exit before recovery side effects while the marker exists;
+  pure fleet-monitor helpers remain available for diagnostics. The operator
+  runbook defines controlled drain and scheduler-governed restoration.
 
 - **2026-08-24 (2.5.182):** Make governed runner scheduling the sole authority
   for DeskComputer capacity recovery (issue #1113). The five-minute fleet
