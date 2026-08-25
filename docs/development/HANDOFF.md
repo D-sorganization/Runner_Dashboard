@@ -2,13 +2,13 @@
 
 ## Current State
 
-- Branch: `fix/1115-maintenance-drain`; current head `a214fd1` plus this
-  handoff commit. PR #1116 merged as `4fc1c127` before its late full-suite
-  failure surfaced; protected follow-up PR #1117 carries the Linux portability
-  correction and issue #1115 is reopened until it merges.
-- Base: remote-main commit `30de9d024465f562e38ec98165c8086a4209a1d8`.
-- PR #1114 merged as that remote-main commit and makes the governed scheduler
-  the sole DeskComputer capacity-recovery authority.
+- Branch: `docs/1115-final-handoff`, based on remote `main` at
+  `4b1605c70e3aa712de822c38a6fdb73f69893497`. PR #1116 merged as `4fc1c127`
+  before its late full-suite failure surfaced. Protected corrective PR #1117
+  then passed the complete suite and merged as `4b1605c7`; issue #1115 is
+  closed.
+- PR #1114 merged as `30de9d02` and makes the governed scheduler the sole
+  DeskComputer capacity-recovery authority.
 - Runner Dashboard 4.9.30 is deployed from an exact-main schema-v2 artifact on
   DeskComputer and reports that commit through `/api/deployment`.
 - DeskComputer is stabilized at two local runners: Desktop-1 and Desktop-2 are
@@ -51,7 +51,8 @@
 - Inactive services with surviving workers cannot be started again.
 - `max_count` caps defaults, timed schedules, and manual targets and survives
   dashboard schedule edits.
-- DeskComputer's fleet contract remains four normal runners and six maximum.
+- PR #1114 superseded the older four-normal/six-maximum setting: the governed
+  DeskComputer contract is now two normal runners and four maximum.
 - The test process now selects an isolated, automatically cleaned configuration
   directory before backend singleton imports. Tests no longer read or write the
   live operator ledgers; dispatch-router unit tests also stub spend recording.
@@ -75,6 +76,8 @@ Validated serially to avoid adding pressure to the local runner host:
   failures, 3,015 passes). The default now uses the cross-platform .NET user
   profile API; the 43 focused contracts passed again before the corrective
   push.
+- Corrective PR #1117 passed all protected gates, including the full Python
+  suite, before squash merge to remote `main` as `4b1605c7`.
 - An expanded artifact/deployment test selection stalled in established global
   test startup and was terminated without leaving a worker; it is not claimed
   as passing. Protected CI must run the repository-wide gates.
@@ -96,12 +99,13 @@ On 2026-08-24, public repository access was disabled for the
 `Bandwidth-Draining` group and Desktop-5 through Desktop-8 were moved into it.
 All four in-flight jobs were allowed to finish. Each runner was then verified
 idle in both GitHub and the local process table before its exact service was
-stopped and disabled. Desktop-1 through Desktop-4 remain enabled so the
-governed schedule can supply overnight capacity; Desktop-5 through Desktop-8
-are inactive and disabled. At 14:58 PDT the graceful drain reached its weekday
-target: Desktop-1 and Desktop-2 active and busy, Desktop-3 and Desktop-4
-inactive, six total runners offline, approximately 25 GiB available memory,
-and load average falling below 2. No worker process was killed.
+stopped and disabled. The final controlled state keeps only Desktop-1 and
+Desktop-2 active; Desktop-3 through Desktop-8 and every automatic expansion
+service are disabled or inactive. The shared drain marker remains in place, so
+the two-runner floor can accept work without automatic expansion. Final
+post-merge evidence showed 31.0 GiB host memory available, 17.9% host CPU,
+19 GiB WSL memory available, and the recycled language server bounded at
+0.17 GiB. No worker process was killed.
 
 The Antigravity language server was also identified as an independent memory
 bottleneck at approximately 23.5 GiB. A controlled recycle reduced it to about
