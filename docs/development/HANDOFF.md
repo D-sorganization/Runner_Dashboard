@@ -2,9 +2,9 @@
 
 ## Current State
 
-- Branch: `fix/issue-1085-release-lockfile`, based on remote `main` at
-  `3dde1a659751371e83717d81e0e244790f59ffcf`. Pull request: protected #1123,
-  open and targeting `main`.
+- Branch: `docs/issue-1085-release-handoff`, based on remote `main` at
+  `4eb9facccd864dac86d902b7fe47f22ce5ab7953`. Pull request: not created.
+  Protected PR #1123 merged as that exact remote-main commit.
   Governing issue: reopened #1085. The immediate objective is to restore a
   deterministic 4.9.32 release after 4.9.30 and 4.9.31 release attempts failed
   because the root npm lockfile omitted Vitest's esbuild 0.28.2 tree.
@@ -15,8 +15,10 @@
 - PR #1114 merged as `30de9d02` and makes the governed scheduler the sole
   DeskComputer capacity-recovery authority.
 - Runner Dashboard 4.9.30 is the last deployed exact-main schema-v2 artifact on
-  DeskComputer. Runner Dashboard 4.9.31 maintenance-drain controls are merged
-  on remote `main` but are not yet the live runtime.
+  DeskComputer. Runner Dashboard 4.9.32 source and maintenance-drain controls
+  are merged on remote `main` but are not yet the live runtime. Release run
+  `32818795234` is queued for Linux fleet capacity; do not create a redundant
+  rerun.
 - DeskComputer is in a full operator-authorized maintenance drain:
   `Ubuntu-22.04` is stopped, no local runner listener or worker is present, and
   Desktop-1 through Desktop-8 are offline. The shared drain marker is present,
@@ -163,10 +165,12 @@ change.
 
 ## Next Steps
 
-1. Shepherd protected PR #1123 without bypassing checks or review.
-2. Close #1085 only after the merged 4.9.32 release artifact and checksum are
-   verified.
-3. Keep DeskComputer fully drained. Recover ControlTower Linux capacity only
+1. Publish and merge this handoff-only follow-up through normal protection.
+2. Close #1085 only after release run `32818795234` produces a verified 4.9.32
+   artifact and checksum; do not create a redundant rerun.
+3. Deploy 4.9.32 only from that immutable verified artifact, then validate the
+   drain interlock before considering controlled runner restoration.
+4. Keep DeskComputer fully drained. Recover ControlTower Linux capacity only
    after a verified VHDX safety copy and correction of its stale startup task
    and eight-runner override; then activate exactly two runners and observe
    pressure before allowing the four-runner ceiling.
