@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`save-exact=true`) and an `engines.node` pin for reproducible resolution,
   and added `scripts/verify-lockfile.sh` (`npm run verify-lockfile`) as a
   non-workflow sanity check that a clean-state `npm ci` + `npm ls` + `npm
-  run build` succeed with no unmet/invalid dependency entries. See #1085.
+run build` succeed with no unmet/invalid dependency entries. See #1085.
 - Bounded queue refreshes to an eight-second WAN budget with six concurrent
   repository and job-detail requests, cached per-run job counts, and explicit
   budget-exhaustion metadata instead of allowing a slow GitHub call to stall

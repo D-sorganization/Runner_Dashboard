@@ -46,10 +46,7 @@
         "context": "tests"
       }
     ],
-    "contexts": [
-      "quality-gate",
-      "tests"
-    ],
+    "contexts": ["quality-gate", "tests"],
     "contexts_url": "https://api.github.com/repos/D-sorganization/Runner_Dashboard/branches/main/protection/required_status_checks/contexts",
     "strict": true,
     "url": "https://api.github.com/repos/D-sorganization/Runner_Dashboard/branches/main/protection/required_status_checks"

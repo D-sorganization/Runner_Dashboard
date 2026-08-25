@@ -1,15 +1,29 @@
 {
   "enabled": true,
   "timezone": "America/Los_Angeles",
-  "default_count": 32,
-  "max_count": 32,
+  "default_count": 2,
+  "max_count": 4,
   "schedules": [
     {
-      "name": "always-on",
+      "name": "weekday-day",
+      "days": ["mon", "tue", "wed", "thu", "fri"],
+      "start": "07:00",
+      "end": "22:00",
+      "runners": 2
+    },
+    {
+      "name": "weekend-day",
+      "days": ["sat", "sun"],
+      "start": "07:00",
+      "end": "22:00",
+      "runners": 4
+    },
+    {
+      "name": "overnight",
       "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
-      "start": "00:00",
-      "end": "23:59",
-      "runners": 32
+      "start": "22:00",
+      "end": "07:00",
+      "runners": 4
     }
   ]
 }

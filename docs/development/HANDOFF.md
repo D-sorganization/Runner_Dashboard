@@ -2,12 +2,11 @@
 
 ## Current State
 
-- Branch: `docs/issue-1085-release-handoff`, based on remote `main` at
-  `4eb9facccd864dac86d902b7fe47f22ce5ab7953`. Pull request: not created.
-  Protected PR #1123 merged as that exact remote-main commit.
-  Governing issue: reopened #1085. The immediate objective is to restore a
-  deterministic 4.9.32 release after 4.9.30 and 4.9.31 release attempts failed
-  because the root npm lockfile omitted Vitest's esbuild 0.28.2 tree.
+- Branch: `fix/issue-1125-deskcomputer-capacity`, merged with remote `main` at
+  `a8e0396`. PR #1126 has protected squash auto-merge armed. Governing issue:
+  #1125. The immediate objective is to align the
+  canonical Runner Dashboard schedule with the governed DeskComputer policy
+  before any controlled re-entry from the live maintenance drain.
 - PR #1116 merged as `4fc1c127`
   before its late full-suite failure surfaced. Protected corrective PR #1117
   then passed the complete suite and merged as `4b1605c7`; issue #1115 is
@@ -34,6 +33,12 @@
   GitHub run conclusions are verified.
 
 ## Implemented
+
+- `config/runner-schedule.json` now defaults to two weekday-day runners, four
+  weekend-day runners, and four overnight runners, with `max_count: 4`.
+- `tests/test_config_schema.py` enforces the exact canonical windows and counts
+  so a 32-runner always-on default cannot silently return.
+- `docs/deployment-model.md` now matches the two-normal/four-maximum contract.
 
 - Root `package-lock.json` now contains the complete esbuild 0.28.2 platform
   dependency tree required by the resolved Vitest/Vite graph.
@@ -91,6 +96,15 @@
 
 Validated serially to avoid adding pressure to the local runner host:
 
+- RED: the canonical-schedule contract failed because the repository still
+  returned `default_count: 32` and `max_count: 32`.
+- GREEN: `tests/test_config_schema.py` and
+  `tests/deploy/test_runner_scheduler.py` pass with the 2/4 schedule.
+- Full serial suite: 3,038 collected tests completed successfully on Windows;
+  expected platform skips and one established frontend xfail remain.
+- Repository-wide Ruff lint and Ruff format checks pass. Unscoped Black and
+  Mypy checks expose pre-existing baselines (303 files and 761 errors); no
+  unrelated mass formatting or typing changes were made.
 - RED: `python -m pytest -q tests/test_frontend_typecheck_gate.py` failed on
   the four permissive `npm ci || npm install` workflow steps.
 - GREEN: the focused frontend/release workflow contract suite passed (16
@@ -165,11 +179,14 @@ change.
 
 ## Next Steps
 
-1. Publish and merge this handoff-only follow-up through normal protection.
+1. Let PR #1126's queued guard and container checks run once; do not create a
+   redundant rerun. Protected squash auto-merge is armed. Do not remove the
+   live drain marker or start WSL as part of this change.
 2. Close #1085 only after release run `32818795234` produces a verified 4.9.32
    artifact and checksum; do not create a redundant rerun.
-3. Deploy 4.9.32 only from that immutable verified artifact, then validate the
-   drain interlock before considering controlled runner restoration.
+3. Deploy a post-#1125 immutable artifact only after review, verify the 2/4
+   schedule through a complete five-minute timer cycle, then consider restoring
+   exactly two runners.
 4. Keep DeskComputer fully drained. Recover ControlTower Linux capacity only
    after a verified VHDX safety copy and correction of its stale startup task
    and eight-runner override; then activate exactly two runners and observe

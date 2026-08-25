@@ -313,9 +313,10 @@ gh auth refresh -s admin:org
 
 Each machine's `runner-schedule.json` may define `max_count`. The scheduler
 caps the default count, timed schedule entries, and manual targets at that
-value. Fleet policy currently sets DeskComputer to four normal runners and a
-six-runner peak ceiling; machine-specific deployment must retain that ceiling
-when the schedule is edited through the dashboard.
+value. The canonical DeskComputer policy uses two runners during weekday
+daytime and four runners overnight and during weekend daytime, with a hard
+four-runner ceiling. Machine-specific deployment must retain that ceiling when
+the schedule is edited through the dashboard.
 
 The scheduler treats a runner as busy when any of these independent signals is
 present:

@@ -1,9 +1,15 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.184
+**Spec Version:** 2.5.185
 **Application Version:** 4.9.32 (see `VERSION`)
-**Last Updated:** 2026-08-24T21:00:00-07:00
+**Last Updated:** 2026-08-25T09:30:00-07:00
 **Status:** Active
+
+- **2026-08-25 (2.5.185):** Bound the canonical DeskComputer runner schedule
+  to two weekday-day runners and four weekend/overnight runners, with a hard
+  maximum of four (issue #1125). Regression coverage prevents the repository
+  default from drifting back to an always-on schedule that can overload the
+  interactive workstation when a controlled maintenance drain is released.
 
 - **2026-08-24 (2.5.184):** Restore deterministic cross-platform frontend
   installation by recording Vitest's esbuild 0.28.2 dependency tree in the

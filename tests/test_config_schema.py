@@ -43,21 +43,35 @@ def test_runner_schedule_valid() -> None:
     assert result == data
 
 
-def test_default_runner_schedule_keeps_all_runners_online() -> None:
+def test_default_runner_schedule_preserves_deskcomputer_headroom() -> None:
     data = json.loads((Path(__file__).parent.parent / "config" / "runner-schedule.json").read_text(encoding="utf-8"))
 
     result = config_schema.validate_runner_schedule_config(data)
 
-    assert result["default_count"] == 32
-    assert result["max_count"] == 32
+    assert result["default_count"] == 2
+    assert result["max_count"] == 4
     assert result["schedules"] == [
         {
-            "name": "always-on",
+            "name": "weekday-day",
+            "days": ["mon", "tue", "wed", "thu", "fri"],
+            "start": "07:00",
+            "end": "22:00",
+            "runners": 2,
+        },
+        {
+            "name": "weekend-day",
+            "days": ["sat", "sun"],
+            "start": "07:00",
+            "end": "22:00",
+            "runners": 4,
+        },
+        {
+            "name": "overnight",
             "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
-            "start": "00:00",
-            "end": "23:59",
-            "runners": 32,
-        }
+            "start": "22:00",
+            "end": "07:00",
+            "runners": 4,
+        },
     ]
 
 
