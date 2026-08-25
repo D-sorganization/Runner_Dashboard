@@ -1,0 +1,24 @@
+{
+  "description": "Repository policy for required-status-checks on the default branch. This is the SOURCE OF TRUTH for what merge protection should require. scripts/check_required_checks_drift.py compares this against the live branch-protection/ruleset configuration (or a committed snapshot) and fails when the live configuration no longer requires everything listed here. See issue #1119.",
+  "branch": "main",
+  "required_contexts": [
+    {
+      "context": "quality-gate",
+      "source_workflow": "CI Standard",
+      "job_id": "quality-gate",
+      "reason": "Lint/format/type-check/placeholder gate. Already enforced; kept here so the policy file is a complete statement of intent."
+    },
+    {
+      "context": "tests",
+      "source_workflow": "CI Standard",
+      "job_id": "tests-required",
+      "reason": "Aggregate pytest gate. PR #1116 merged despite a failing 'tests (3.11)' matrix leg because the aggregate 'tests' job (tests-required in ci-standard.yml) has no `if: always()` guard: when its `needs: [tests]` dependency fails, GitHub Actions skips tests-required by default, and a SKIPPED conclusion on a required check does not block merge. The context name is already required at the branch-protection level, but the job that reports it is not fail-closed. See scripts/check_required_checks_drift.py:check_job_fails_closed for the corresponding static check on ci-standard.yml."
+    },
+    {
+      "context": "guard",
+      "source_workflow": "Anti-Phantom Merge Guard",
+      "job_id": "guard",
+      "reason": "PR #1118 (docs-only) merged while this check was still QUEUED. The 'guard' context is not present in either the classic branch-protection required_status_checks.contexts list or the 'Repository_Protections' ruleset's required_status_checks parameters, so GitHub never waited for it. This is the primary gap closed by issue #1119: add 'guard' to the required-status-checks list (classic protection and/or the ruleset) for the main branch."
+    }
+  ]
+}
