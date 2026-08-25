@@ -2,8 +2,9 @@
 
 ## Current State
 
-- Branch: `fix/issue-1125-deskcomputer-capacity`, based on remote `main` at
-  `575e3d2`. Governing issue: #1125. The immediate objective is to align the
+- Branch: `fix/issue-1125-deskcomputer-capacity`, merged with remote `main` at
+  `a8e0396`. PR #1126 has protected squash auto-merge armed. Governing issue:
+  #1125. The immediate objective is to align the
   canonical Runner Dashboard schedule with the governed DeskComputer policy
   before any controlled re-entry from the live maintenance drain.
 - PR #1116 merged as `4fc1c127`
@@ -178,8 +179,9 @@ change.
 
 ## Next Steps
 
-1. Publish issue #1125 through normal protected review. Do not remove the live
-   drain marker or start WSL as part of this change.
+1. Let PR #1126's queued guard and container checks run once; do not create a
+   redundant rerun. Protected squash auto-merge is armed. Do not remove the
+   live drain marker or start WSL as part of this change.
 2. Close #1085 only after release run `32818795234` produces a verified 4.9.32
    artifact and checksum; do not create a redundant rerun.
 3. Deploy a post-#1125 immutable artifact only after review, verify the 2/4
