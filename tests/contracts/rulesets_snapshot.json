@@ -11,9 +11,7 @@
     "conditions": {
       "ref_name": {
         "exclude": [],
-        "include": [
-          "~DEFAULT_BRANCH"
-        ]
+        "include": ["~DEFAULT_BRANCH"]
       }
     },
     "created_at": "2026-05-20T06:26:27.556-07:00",
@@ -31,11 +29,7 @@
       },
       {
         "parameters": {
-          "allowed_merge_methods": [
-            "merge",
-            "squash",
-            "rebase"
-          ],
+          "allowed_merge_methods": ["merge", "squash", "rebase"],
           "dismiss_stale_reviews_on_push": false,
           "require_code_owner_review": false,
           "require_extra_approval_for_unattributed_changes": false,
@@ -64,9 +58,7 @@
     "conditions": {
       "ref_name": {
         "exclude": [],
-        "include": [
-          "~DEFAULT_BRANCH"
-        ]
+        "include": ["~DEFAULT_BRANCH"]
       }
     },
     "created_at": "2026-05-21T13:35:52.953-07:00",
@@ -84,11 +76,7 @@
       },
       {
         "parameters": {
-          "allowed_merge_methods": [
-            "merge",
-            "squash",
-            "rebase"
-          ],
+          "allowed_merge_methods": ["merge", "squash", "rebase"],
           "dismiss_stale_reviews_on_push": false,
           "require_code_owner_review": false,
           "require_extra_approval_for_unattributed_changes": false,
