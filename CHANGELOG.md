@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Eliminated the nested `vitest -> vite@8.x -> esbuild@^0.27||^0.28` peer
+  conflict that left a clean `npm ci` install in an invalid state (`npm ls`
+  reported an unmet `esbuild` peer and pulled in an unpinned `rolldown`
+  bundler binary as a transitive hard dependency). Added an npm `overrides`
+  entry pinning `vitest`'s internal `vite` to the project's own `vite`
+  version so only one `vite`/`esbuild` pair is ever resolved, regenerated
+  `package-lock.json` from that constraint, added `.npmrc`
+  (`save-exact=true`) and an `engines.node` pin for reproducible resolution,
+  and added `scripts/verify-lockfile.sh` (`npm run verify-lockfile`) as a
+  non-workflow sanity check that a clean-state `npm ci` + `npm ls` + `npm
+  run build` succeed with no unmet/invalid dependency entries. See #1085.
 - Bounded queue refreshes to an eight-second WAN budget with six concurrent
   repository and job-detail requests, cached per-run job counts, and explicit
   budget-exhaustion metadata instead of allowing a slow GitHub call to stall
