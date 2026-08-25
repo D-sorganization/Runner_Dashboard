@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -44,6 +46,16 @@ def test_desired_capacity_default_fallback() -> None:
     desired, reason = runner_scheduler.desired_capacity(config)
     assert desired == 5
     assert reason == "default"
+
+
+def test_canonical_schedule_covers_daytime_and_overnight_windows() -> None:
+    config = json.loads((REPO_ROOT / "config" / "runner-schedule.json").read_text(encoding="utf-8"))
+    entries = {entry["name"]: entry for entry in config["schedules"]}
+
+    assert runner_scheduler.schedule_matches(entries["weekday-day"], datetime(2026, 8, 25, 12, 0))
+    assert runner_scheduler.schedule_matches(entries["weekend-day"], datetime(2026, 8, 29, 12, 0))
+    assert runner_scheduler.schedule_matches(entries["overnight"], datetime(2026, 8, 25, 23, 0))
+    assert runner_scheduler.schedule_matches(entries["overnight"], datetime(2026, 8, 26, 6, 0))
 
 
 def _process_result(stdout: str = "", returncode: int = 0):
