@@ -2,9 +2,13 @@
 
 ## Current State
 
-- Branch: `docs/issue-1120-full-maintenance-drain`, based on remote `main` at
-  `13adfe179bf988c61fa9b73e4cda66d489d09055`. Pull request #1121 carries this
-  handoff. Governing issue: #1120. PR #1116 merged as `4fc1c127`
+- Branch: `fix/issue-1085-release-lockfile`, based on remote `main` at
+  `3dde1a659751371e83717d81e0e244790f59ffcf`. Pull request: protected #1123,
+  open and targeting `main`.
+  Governing issue: reopened #1085. The immediate objective is to restore a
+  deterministic 4.9.32 release after 4.9.30 and 4.9.31 release attempts failed
+  because the root npm lockfile omitted Vitest's esbuild 0.28.2 tree.
+- PR #1116 merged as `4fc1c127`
   before its late full-suite failure surfaced. Protected corrective PR #1117
   then passed the complete suite and merged as `4b1605c7`; issue #1115 is
   closed.
@@ -18,11 +22,22 @@
   Desktop-1 through Desktop-8 are offline. The shared drain marker is present,
   and `RunnerFleet-Health-Monitor` is disabled so automatic recovery cannot
   restart WSL or expand capacity.
+- ControlTower retains one idle Windows/Matlab runner. Its Linux WSL pool is
+  stopped and must remain stopped pending a safety copy/recovery of the
+  suspect `ControlTower-SSD` VHDX and removal of the stale eight-runner startup
+  override. The weekly VHDX compaction task was disabled on 2026-08-24 so it
+  cannot mutate the suspect image before recovery.
 - The final dashboard snapshot before WSL quiesced reported Desktop-1 and
   Desktop-2 busy. Treat those jobs as potentially interrupted until their
   GitHub run conclusions are verified.
 
 ## Implemented
+
+- Root `package-lock.json` now contains the complete esbuild 0.28.2 platform
+  dependency tree required by the resolved Vitest/Vite graph.
+- Every frontend job uses strict `npm ci`; the former `npm ci || npm install`
+  fallback can no longer hide an invalid lockfile from pull-request CI.
+- A static regression contract enforces the fail-closed workflow behavior.
 
 - Both canonical Windows entry points accept one shared configurable drain
   marker and exit before WSL, scheduler, SSH, dashboard, or GitHub recovery
@@ -73,6 +88,12 @@
 ## Validation
 
 Validated serially to avoid adding pressure to the local runner host:
+
+- RED: `python -m pytest -q tests/test_frontend_typecheck_gate.py` failed on
+  the four permissive `npm ci || npm install` workflow steps.
+- GREEN: the focused frontend/release workflow contract suite passed (16
+  tests), and npm 10.8.2 accepted a Linux/x64 dry-run clean install from the
+  regenerated lockfile.
 
 - Issue #1115 focused PowerShell contracts: 43 passed in isolated serial mode.
 - Ruff lint and format checks passed for both changed Python test files;
@@ -139,3 +160,13 @@ average near 1, byte-identical state/history ledgers, and a healthy SQLite
 database. Desktop-5 through Desktop-8 remain disabled; do not move them out of
 `Bandwidth-Draining` or restart them without a separately reviewed capacity
 change.
+
+## Next Steps
+
+1. Shepherd protected PR #1123 without bypassing checks or review.
+2. Close #1085 only after the merged 4.9.32 release artifact and checksum are
+   verified.
+3. Keep DeskComputer fully drained. Recover ControlTower Linux capacity only
+   after a verified VHDX safety copy and correction of its stale startup task
+   and eight-runner override; then activate exactly two runners and observe
+   pressure before allowing the four-runner ceiling.

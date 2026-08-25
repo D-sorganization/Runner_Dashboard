@@ -16,6 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated the resolved `cryptography` dependency to 50.0.0 to remediate
   PYSEC-2026-3552 in both CI audit paths.
 
+## [4.9.32] - 2026-08-24
+
+### Fixed
+
+- Regenerated the root npm lockfile with the complete cross-platform esbuild
+  0.28.2 tree required by Vitest, and removed frontend CI's `npm install`
+  fallback so invalid lockfiles fail before the protected release workflow.
+
 ## [4.9.31] - 2026-08-24
 
 ### Fixed

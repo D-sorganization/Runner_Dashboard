@@ -47,6 +47,13 @@ def test_typecheck_job_present_in_frontend_workflow() -> None:
     assert "needs: frontend-scope" in window, "typecheck job must depend on frontend-scope"
 
 
+def test_frontend_workflow_fails_closed_on_invalid_lockfile() -> None:
+    """Frontend CI must expose the same lockfile failures as Release."""
+    text = FRONTEND_WORKFLOW.read_text(encoding="utf-8")
+
+    assert "npm ci || npm install" not in text
+
+
 def test_package_json_typecheck_script_targets_app_tsconfig() -> None:
     """The typecheck script must run tsc against tsconfig.app.json."""
     data = json.loads(PACKAGE_JSON.read_text(encoding="utf-8"))
