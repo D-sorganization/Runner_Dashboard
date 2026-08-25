@@ -91,6 +91,7 @@ param(
     [int]$MaxConsecutiveRecoveries = 5,
     [int]$HealthyGapSeconds = 600,
     [string]$LogDir = '',
+    [string]$DrainMarker = (Join-Path $env:USERPROFILE 'runner_fleet_monitor\deskcomputer-runner-drained.flag'),
     [int]$MaxLogBytes = 5MB,
     [int]$LogBackups = 3,
     [int]$DashboardPort = 8321,
@@ -108,6 +109,11 @@ param(
     [switch]$EmergencyOverride,
     [switch]$Once
 )
+
+# A deliberate host drain must win before validation, WSL probes, dashboard
+# recovery, or any other side effect. The marker is operator-controlled and
+# shared with fleet-health-monitor.ps1.
+if (Test-Path -LiteralPath $DrainMarker) { return }
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'

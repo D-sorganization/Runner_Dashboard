@@ -3,6 +3,32 @@
 One or more self-hosted GitHub Actions runners in the D-sorganization fleet
 are reporting `offline` to GitHub or are not picking up jobs.
 
+## Controlled DeskComputer Drain
+
+Use a drain when DeskComputer must remain responsive and local CI capacity is
+temporarily undesirable. The interlock is fail-closed: both the WSL keepalive
+and fleet health monitor exit before recovery side effects while this marker
+exists:
+
+```powershell
+C:\Users\diete\runner_fleet_monitor\deskcomputer-runner-drained.flag
+```
+
+1. Stop accepting new jobs by moving surplus runners to the no-access
+   `Bandwidth-Draining` group. Allow busy jobs to finish.
+2. Verify every exact local runner is idle, then stop and disable its systemd
+   unit. Do not kill `Runner.Worker` processes.
+3. Create the marker above and disable the `RunnerFleet-Health-Monitor` task.
+   The marker is the safety backstop when task changes require elevation.
+4. Confirm `Runner.Listener` and `Runner.Worker` are absent. Idle Buildx
+   containers may be stopped without deleting their cache volumes.
+
+To restore capacity, first verify the governed schedule is still two normal
+runners and four maximum. Remove the marker, enable the health monitor, and
+invoke `runner-scheduler.service`; do not start all installed units directly.
+Keep Desktop-5 through Desktop-8 in `Bandwidth-Draining` unless a separately
+reviewed capacity change explicitly restores them.
+
 ## Symptom
 
 - The Fleet tab in the dashboard shows runners with red/offline status.
