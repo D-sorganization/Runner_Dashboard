@@ -2,8 +2,10 @@
 
 ## Current State
 
-- Branch: `fix/1115-maintenance-drain`; local implementation commit
-  `76ec074`; protected PR #1116 is open for issue #1115.
+- Branch: `fix/1115-maintenance-drain`; current head `a214fd1` plus this
+  handoff commit. PR #1116 merged as `4fc1c127` before its late full-suite
+  failure surfaced; protected follow-up PR #1117 carries the Linux portability
+  correction and issue #1115 is reopened until it merges.
 - Base: remote-main commit `30de9d024465f562e38ec98165c8086a4209a1d8`.
 - PR #1114 merged as that remote-main commit and makes the governed scheduler
   the sole DeskComputer capacity-recovery authority.
@@ -69,6 +71,10 @@ Validated serially to avoid adding pressure to the local runner host:
 - Issue #1115 focused PowerShell contracts: 43 passed in isolated serial mode.
 - Ruff lint and format checks passed for both changed Python test files;
   `git diff --check` passed.
+- The first protected full-suite run exposed Linux `USERPROFILE` absence (7
+  failures, 3,015 passes). The default now uses the cross-platform .NET user
+  profile API; the 43 focused contracts passed again before the corrective
+  push.
 - An expanded artifact/deployment test selection stalled in established global
   test startup and was terminated without leaving a worker; it is not claimed
   as passing. Protected CI must run the repository-wide gates.

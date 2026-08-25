@@ -66,7 +66,7 @@ def test_keepalive_and_monitor_share_the_same_default_drain_marker() -> None:
     monitor_text = (REPO_ROOT / "deploy" / "fleet-health-monitor.ps1").read_text(encoding="utf-8")
     marker_suffix = r"runner_fleet_monitor\deskcomputer-runner-drained.flag"
     for text in (keepalive_text, monitor_text):
-        assert "$env:USERPROFILE" in text
+        assert "[Environment]::GetFolderPath('UserProfile')" in text
         assert marker_suffix in text
 
 

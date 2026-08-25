@@ -91,7 +91,7 @@ param(
     [int]$MaxConsecutiveRecoveries = 5,
     [int]$HealthyGapSeconds = 600,
     [string]$LogDir = '',
-    [string]$DrainMarker = (Join-Path $env:USERPROFILE 'runner_fleet_monitor\deskcomputer-runner-drained.flag'),
+    [string]$DrainMarker = (Join-Path ([Environment]::GetFolderPath('UserProfile')) 'runner_fleet_monitor\deskcomputer-runner-drained.flag'),
     [int]$MaxLogBytes = 5MB,
     [int]$LogBackups = 3,
     [int]$DashboardPort = 8321,
