@@ -2,20 +2,25 @@
 
 ## Current State
 
-- Branch: `docs/1115-final-handoff`, based on remote `main` at
-  `4b1605c70e3aa712de822c38a6fdb73f69893497`. PR #1116 merged as `4fc1c127`
+- Branch: `docs/issue-1120-full-maintenance-drain`, based on remote `main` at
+  `13adfe179bf988c61fa9b73e4cda66d489d09055`. Pull request #1121 is open for
+  protected review. Governing issue: #1120. PR #1116 merged as `4fc1c127`
   before its late full-suite failure surfaced. Protected corrective PR #1117
   then passed the complete suite and merged as `4b1605c7`; issue #1115 is
   closed.
 - PR #1114 merged as `30de9d02` and makes the governed scheduler the sole
   DeskComputer capacity-recovery authority.
-- Runner Dashboard 4.9.30 is deployed from an exact-main schema-v2 artifact on
-  DeskComputer and reports that commit through `/api/deployment`.
-- DeskComputer is stabilized at two local runners: Desktop-1 and Desktop-2 are
-  active, Desktop-3 through Desktop-8 remain disabled/inactive, and the fleet
-  monitor and scheduler are inactive. The shared drain marker prevents
-  automatic expansion. Post-restore host evidence showed about 37.8 GiB free
-  RAM, 27% CPU, and WSL load 0.36 while one of the two runners accepted work.
+- Runner Dashboard 4.9.30 is the last deployed exact-main schema-v2 artifact on
+  DeskComputer. Runner Dashboard 4.9.31 maintenance-drain controls are merged
+  on remote `main` but are not yet the live runtime.
+- DeskComputer is in a full operator-authorized maintenance drain:
+  `Ubuntu-22.04` is stopped, no local runner listener or worker is present, and
+  Desktop-1 through Desktop-8 are offline. The shared drain marker is present,
+  and `RunnerFleet-Health-Monitor` is disabled so automatic recovery cannot
+  restart WSL or expand capacity.
+- The final dashboard snapshot before WSL quiesced reported Desktop-1 and
+  Desktop-2 busy. Treat those jobs as potentially interrupted until their
+  GitHub run conclusions are verified.
 
 ## Implemented
 
@@ -97,15 +102,15 @@ Validated serially to avoid adding pressure to the local runner host:
 
 On 2026-08-24, public repository access was disabled for the
 `Bandwidth-Draining` group and Desktop-5 through Desktop-8 were moved into it.
-All four in-flight jobs were allowed to finish. Each runner was then verified
-idle in both GitHub and the local process table before its exact service was
-stopped and disabled. The final controlled state keeps only Desktop-1 and
-Desktop-2 active; Desktop-3 through Desktop-8 and every automatic expansion
-service are disabled or inactive. The shared drain marker remains in place, so
-the two-runner floor can accept work without automatic expansion. Final
-post-merge evidence showed 31.0 GiB host memory available, 17.9% host CPU,
-19 GiB WSL memory available, and the recycled language server bounded at
-0.17 GiB. No worker process was killed.
+The initial surplus-runner drain allowed all four in-flight jobs to finish,
+then left only Desktop-1 and Desktop-2 active. The subsequent
+operator-authorized full drain stopped the `Ubuntu-22.04` distribution and left
+every Desktop runner offline. The shared drain marker and disabled
+health-monitor task prevent automatic recovery. After the full drain, host
+evidence showed about 40.1 GiB available memory and 14.2% CPU, with WSL
+stopped. The last dashboard snapshot immediately before WSL quiesced still
+reported Desktop-1 and Desktop-2 busy, so their GitHub conclusions require
+verification and this handoff does not claim those workers completed normally.
 
 The Antigravity language server was also identified as an independent memory
 bottleneck at approximately 23.5 GiB. A controlled recycle reduced it to about
@@ -116,17 +121,19 @@ watching, search, and Python analysis while retaining active worktrees.
 
 ## Operational Boundary
 
-Runner Dashboard 4.9.30 is deployed from verified remote-main commit
+Runner Dashboard 4.9.30 remains the last deployed version, from verified
+remote-main commit
 `52635e4d3e0e5fbe71ffd10d232bbad6321fed99`. The immutable artifact is stored
 at `C:\Users\diete\Artifacts\Runner_Dashboard\4.9.30\dashboard-4.9.30.tar.gz`
 with SHA-256 `ded1bbfe64414d263bca338713262964145651dd244d983b8933d5de0f745933`.
 The immediate rollback snapshot is
 `/home/dieterolson/actions-runners/dashboard.bak.20260824_152249`.
-The live schedule is backed up at
+The stopped host's governed schedule is backed up at
 `~/.config/runner-dashboard/runner-schedule.json.pre-1106-20260824` and now has
 `default_count: 2`, `max_count: 4`, weekday daytime count `2`, and overnight
 and weekend count `4`. The deployed venv uses Python 3.11.14, matching the
-artifact ABI. Post-deploy checks reported `ready`, correct capacity semantics,
+artifact ABI. Earlier post-deploy checks reported `ready`, correct capacity
+semantics,
 two online/busy workers, six offline workers, 25 GiB available memory, load
 average near 1, byte-identical state/history ledgers, and a healthy SQLite
 database. Desktop-5 through Desktop-8 remain disabled; do not move them out of
