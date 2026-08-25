@@ -2,7 +2,8 @@
 
 ## Current State
 
-- Branch: `fix/1115-maintenance-drain`; PR not created yet; issue #1115.
+- Branch: `fix/1115-maintenance-drain`; local implementation commit
+  `76ec074`; protected PR #1116 is open for issue #1115.
 - Base: remote-main commit `30de9d024465f562e38ec98165c8086a4209a1d8`.
 - PR #1114 merged as that remote-main commit and makes the governed scheduler
   the sole DeskComputer capacity-recovery authority.
