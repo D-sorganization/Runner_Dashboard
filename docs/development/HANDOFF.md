@@ -3,8 +3,8 @@
 ## Current State
 
 - Branch: `docs/issue-1120-full-maintenance-drain`, based on remote `main` at
-  `13adfe179bf988c61fa9b73e4cda66d489d09055`. Pull request #1121 is open for
-  protected review. Governing issue: #1120. PR #1116 merged as `4fc1c127`
+  `13adfe179bf988c61fa9b73e4cda66d489d09055`. Pull request #1121 carries this
+  handoff. Governing issue: #1120. PR #1116 merged as `4fc1c127`
   before its late full-suite failure surfaced. Protected corrective PR #1117
   then passed the complete suite and merged as `4b1605c7`; issue #1115 is
   closed.
