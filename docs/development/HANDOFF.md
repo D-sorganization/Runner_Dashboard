@@ -9,9 +9,11 @@
   the sole DeskComputer capacity-recovery authority.
 - Runner Dashboard 4.9.30 is deployed from an exact-main schema-v2 artifact on
   DeskComputer and reports that commit through `/api/deployment`.
-- DeskComputer is intentionally fully drained: all eight runner units are
-  disabled/inactive, the scheduler and fleet monitor are inactive, and no
-  Listener or Worker process remains. The shared drain marker is active.
+- DeskComputer is stabilized at two local runners: Desktop-1 and Desktop-2 are
+  active, Desktop-3 through Desktop-8 remain disabled/inactive, and the fleet
+  monitor and scheduler are inactive. The shared drain marker prevents
+  automatic expansion. Post-restore host evidence showed about 37.8 GiB free
+  RAM, 27% CPU, and WSL load 0.36 while one of the two runners accepted work.
 
 ## Implemented
 
