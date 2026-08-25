@@ -3,7 +3,8 @@
 ## Current State
 
 - Branch: `fix/issue-1085-release-lockfile`, based on remote `main` at
-  `3dde1a659751371e83717d81e0e244790f59ffcf`. Pull request: not created.
+  `3dde1a659751371e83717d81e0e244790f59ffcf`. Pull request: protected #1123,
+  open and targeting `main`.
   Governing issue: reopened #1085. The immediate objective is to restore a
   deterministic 4.9.32 release after 4.9.30 and 4.9.31 release attempts failed
   because the root npm lockfile omitted Vitest's esbuild 0.28.2 tree.
@@ -162,10 +163,9 @@ change.
 
 ## Next Steps
 
-1. Regenerate `uv.lock`, run version, workflow, lint, formatting, and diff
-   checks, then commit and push the exact branch head.
-2. Open a protected PR tied to #1085. Close the issue only after the 4.9.32
-   release artifact and checksum are verified; do not bypass checks or review.
+1. Shepherd protected PR #1123 without bypassing checks or review.
+2. Close #1085 only after the merged 4.9.32 release artifact and checksum are
+   verified.
 3. Keep DeskComputer fully drained. Recover ControlTower Linux capacity only
    after a verified VHDX safety copy and correction of its stale startup task
    and eight-runner override; then activate exactly two runners and observe
