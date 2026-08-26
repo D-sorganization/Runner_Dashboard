@@ -36,7 +36,8 @@ cosign binary first. If `/usr/local/bin/cosign` is already root-owned and not
 group/other writable:
 
 ```bash
-sudo bash deploy/bootstrap-qualified-release-deploy.sh
+sudo bash deploy/bootstrap-qualified-release-deploy.sh \
+  --expected-commit <reviewed-protected-main-sha>
 ```
 
 To install a reviewed cosign binary as part of bootstrap, provide both its local
@@ -44,11 +45,14 @@ path and independently obtained SHA-256:
 
 ```bash
 sudo bash deploy/bootstrap-qualified-release-deploy.sh \
+  --expected-commit <reviewed-protected-main-sha> \
   --cosign-source /path/to/cosign-linux-amd64 \
   --cosign-sha256 <64-lowercase-hex>
 ```
 
-The bootstrap makes no service changes. It installs:
+Bootstrap fails unless the checkout is clean, its exact commit matches the
+operator-supplied protected-main SHA, and all three installed sources are
+tracked by that commit. It makes no service changes. It installs:
 
 - `/usr/local/sbin/runner-dashboard-qualified-deploy` (root:root, 0755);
 - `/usr/local/lib/runner-dashboard/qualified-release-lib.sh` (root:root, 0644);

@@ -127,6 +127,8 @@ def test_bootstrap_installs_root_authority_and_narrow_sudoers() -> None:
         "root:root",
         "0440",
         "0755",
+        "--expected-commit",
+        "status --porcelain",
     ):
         assert marker in text
     assert "NOPASSWD: ${HELPER_DEST}" in text

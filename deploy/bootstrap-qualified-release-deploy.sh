@@ -6,6 +6,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 RUNNER_USER="dieterolson"
+EXPECTED_COMMIT=""
 COSIGN_SOURCE=""
 COSIGN_SHA256=""
 STATE_ROOT="/var/lib/runner-dashboard-qualified-deploy"
@@ -19,6 +20,7 @@ usage() {
 Usage: sudo bash deploy/bootstrap-qualified-release-deploy.sh [options]
 
 Options:
+  --expected-commit SHA   Exact reviewed protected-main commit (required)
   --cosign-source PATH     Install a reviewed cosign binary at /usr/local/bin/cosign
   --cosign-sha256 SHA256   Required checksum for --cosign-source
   --project-root PATH      Protected-main checkout root (default: inferred)
@@ -35,6 +37,7 @@ fail() {
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --expected-commit) EXPECTED_COMMIT="$2"; shift 2 ;;
         --cosign-source) COSIGN_SOURCE="$2"; shift 2 ;;
         --cosign-sha256) COSIGN_SHA256="$2"; shift 2 ;;
         --project-root) PROJECT_ROOT="$(realpath "$2")"; shift 2 ;;
@@ -44,8 +47,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ "${EUID}" -eq 0 ]] || fail "bootstrap must run as root"
+[[ "${EXPECTED_COMMIT}" =~ ^[0-9a-f]{40}$ ]] || fail "--expected-commit is required"
 id "${RUNNER_USER}" > /dev/null 2>&1 || fail "required runner user is absent"
-for command in install visudo sha256sum stat realpath; do
+for command in git install visudo sha256sum stat realpath; do
     command -v "${command}" > /dev/null 2>&1 || fail "required command is absent: ${command}"
 done
 
@@ -54,6 +58,15 @@ LIB_SOURCE="${PROJECT_ROOT}/deploy/qualified-release-lib.sh"
 SCHEDULE_SOURCE="${PROJECT_ROOT}/config/runner-schedule-oglaptop.json"
 for source in "${HELPER_SOURCE}" "${LIB_SOURCE}" "${SCHEDULE_SOURCE}"; do
     [[ -f "${source}" && ! -L "${source}" ]] || fail "bootstrap source is absent or unsafe"
+done
+ACTUAL_COMMIT="$(git -c "safe.directory=${PROJECT_ROOT}" -C "${PROJECT_ROOT}" rev-parse HEAD)"
+[[ "${ACTUAL_COMMIT}" == "${EXPECTED_COMMIT}" ]] || fail "checkout does not match the reviewed commit"
+[[ -z "$(git -c "safe.directory=${PROJECT_ROOT}" -C "${PROJECT_ROOT}" status --porcelain)" ]] \
+    || fail "bootstrap checkout is not clean"
+for source in "${HELPER_SOURCE}" "${LIB_SOURCE}" "${SCHEDULE_SOURCE}"; do
+    git -c "safe.directory=${PROJECT_ROOT}" -C "${PROJECT_ROOT}" \
+        ls-files --error-unmatch "${source#"${PROJECT_ROOT}/"}" > /dev/null \
+        || fail "bootstrap source is not tracked by the reviewed commit"
 done
 
 if [[ -n "${COSIGN_SOURCE}" || -n "${COSIGN_SHA256}" ]]; then

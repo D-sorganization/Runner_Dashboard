@@ -380,5 +380,5 @@ verify_deployment_identity
 journal_event "scheduler-cycle-qualified"
 
 write_redacted_evidence "committed" "success"
-TRANSACTION_COMMITTED=1
 journal_event "transaction-committed"
+TRANSACTION_COMMITTED=1
