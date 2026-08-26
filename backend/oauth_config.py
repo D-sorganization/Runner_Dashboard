@@ -9,8 +9,9 @@ operators cannot observe stale import-time configuration.
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Mapping, TypedDict
+from typing import TypedDict
 from urllib.parse import urlencode
 
 EXPECTED_PUBLIC_ORIGIN = "https://oglaptop.tail2bbcc7.ts.net"
