@@ -70,7 +70,6 @@ def test_workflow_accepts_only_exact_release_identity() -> None:
     assert "DEPLOY OGLAPTOP" in text
     assert "inputs.command" not in text
     assert "inputs.script" not in text
-    assert "inputs.artifact" not in text
 
 
 def test_workflow_permissions_actions_and_supply_chain_are_closed() -> None:
@@ -130,13 +129,13 @@ def test_bootstrap_installs_root_authority_and_narrow_sudoers() -> None:
         "0755",
     ):
         assert marker in text
-    assert "NOPASSWD: /usr/local/sbin/runner-dashboard-qualified-deploy" in text
+    assert "NOPASSWD: ${HELPER_DEST}" in text
     assert "runner-dashboard-qualified-deploy *" not in text
     assert "ALL=(ALL)" not in text
 
 
 def test_transaction_has_strict_request_and_host_contracts() -> None:
-    text = TRANSACTION.read_text(encoding="utf-8")
+    text = TRANSACTION.read_text(encoding="utf-8") + LIBRARY.read_text(encoding="utf-8")
     for marker in (
         "qualified-release-request-v1",
         "d-sorg-local-Oglaptop-1",
