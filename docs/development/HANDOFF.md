@@ -2,12 +2,12 @@
 
 ## Current State
 
-- Branch: `fix/issue-1131-release-4933-v2`, based exactly on protected remote
-  `main` at `4495163d1bd4a32c607e1ae1d7c1a58dc1a2e0f2` (the normal protected
-  squash merge of PR #1136). Governing issue: #1131. The synchronized 4.9.33
-  release metadata is local and unpublished; 27 bounded serial release/version
-  contracts pass on this exact CVE-corrected base. A fresh protected PR must
-  supersede #1134 without rewriting its history.
+- Branch: `fix/issue-1142-interactive-safe-capacity`, based exactly on protected
+  remote `main` at `8773a1b7d190b7f7bf4489c0882ca22cdf9354ef`.
+  Governing issue: #1142. Repository Management already governs one
+  weekday-day runner, two weekend/overnight runners, and a hard maximum of two;
+  this branch removes Runner Dashboard's stale 2/4/4 default before any
+  controlled re-entry.
 - PR #1116 merged as `4fc1c127`
   before its late full-suite failure surfaced. Protected corrective PR #1117
   then passed the complete suite and merged as `4b1605c7`; issue #1115 is
@@ -41,11 +41,11 @@
 
 ## Implemented
 
-- `config/runner-schedule.json` now defaults to two weekday-day runners, four
-  weekend-day runners, and four overnight runners, with `max_count: 4`.
+- `config/runner-schedule.json` now defaults to one weekday-day runner, two
+  weekend-day runners, and two overnight runners, with `max_count: 2`.
 - `tests/test_config_schema.py` enforces the exact canonical windows and counts
   so a 32-runner always-on default cannot silently return.
-- `docs/deployment-model.md` now matches the two-normal/four-maximum contract.
+- `docs/deployment-model.md` now matches the one-normal/two-maximum contract.
 
 - Root `package-lock.json` now contains the complete esbuild 0.28.2 platform
   dependency tree required by the resolved Vitest/Vite graph.
@@ -57,7 +57,7 @@
   marker and exit before WSL, scheduler, SSH, dashboard, or GitHub recovery
   side effects while it exists. `-FunctionsOnly` remains available.
 - The runner-offline runbook records controlled drain and restoration under
-  the two-normal/four-maximum governed schedule.
+  the one-normal/two-maximum governed schedule.
 
 - Artifact schema v2 now requires the locked dependency file, a Linux
   wheelhouse, and the root-level WSL service helper.
@@ -91,8 +91,9 @@
 - Inactive services with surviving workers cannot be started again.
 - `max_count` caps defaults, timed schedules, and manual targets and survives
   dashboard schedule edits.
-- PR #1114 superseded the older four-normal/six-maximum setting: the governed
-  DeskComputer contract is now two normal runners and four maximum.
+- PR #1114 superseded the older four-normal/six-maximum setting. Issue #1142
+  further tightens the canonical DeskComputer contract to one weekday-day
+  runner and two maximum to preserve interactive workstation headroom.
 - The test process now selects an isolated, automatically cleaned configuration
   directory before backend singleton imports. Tests no longer read or write the
   live operator ledgers; dispatch-router unit tests also stub spend recording.
@@ -115,8 +116,8 @@ Validated serially to avoid adding pressure to the local runner host:
   hosted SARIF publication at exact head `caf5cd82`. DeskComputer remained
   fully drained throughout.
 - Exact-base 4.9.33 revalidation on OGLaptop: `python -m pytest -q -n 0
-  tests/test_version_single_source.py tests/test_release_workflow_yaml.py
-  tests/deploy/test_artifact_deployment.py` passed all 27 tests at protected
+tests/test_version_single_source.py tests/test_release_workflow_yaml.py
+tests/deploy/test_artifact_deployment.py` passed all 27 tests at protected
   base `4495163d`. The tested local and OGLaptop release/version diffs were
   byte-equivalent; DeskComputer ran no tests.
 - Issue #1135 RED on OGLaptop: the focused deploy-hardening selection failed
@@ -124,7 +125,7 @@ Validated serially to avoid adding pressure to the local runner host:
   digest and unpinned security package set. No Docker build or Trivy scan was
   run locally; both remain mandatory protected checks.
 - Issue #1135 GREEN on OGLaptop: `python -m pytest -q -n 0
-  tests/test_deploy_hardening.py` passed the complete 57-test static deployment
+tests/test_deploy_hardening.py` passed the complete 57-test static deployment
   contract, including immutable base identity, fixed OpenSSL package set,
   hash-locked application dependencies, non-root runtime, and `/livez`
   healthcheck. DeskComputer performed no test, build, Docker, or Trivy work.
@@ -132,7 +133,12 @@ Validated serially to avoid adding pressure to the local runner host:
 - RED: the canonical-schedule contract failed because the repository still
   returned `default_count: 32` and `max_count: 32`.
 - GREEN: `tests/test_config_schema.py` and
-  `tests/deploy/test_runner_scheduler.py` pass with the 2/4 schedule.
+  `tests/deploy/test_runner_scheduler.py` passed with the superseded 2/4
+  schedule during issue #1125.
+- Issue #1142 RED: the exact canonical-schedule test expected one weekday-day
+  runner and failed because protected main still returned two. GREEN validation
+  passed all 31 focused configuration, scheduler, and version-contract tests;
+  scoped Ruff lint/format and `git diff --check` also passed.
 - Full serial suite: 3,038 collected tests completed successfully on Windows;
   expected platform skips and one established frontend xfail remain.
 - Repository-wide Ruff lint and Ruff format checks pass. Unscoped Black and
@@ -200,8 +206,9 @@ The immediate rollback snapshot is
 `/home/dieterolson/actions-runners/dashboard.bak.20260824_152249`.
 The stopped host's governed schedule is backed up at
 `~/.config/runner-dashboard/runner-schedule.json.pre-1106-20260824` and now has
-`default_count: 2`, `max_count: 4`, weekday daytime count `2`, and overnight
-and weekend count `4`. The deployed venv uses Python 3.11.14, matching the
+the superseded `default_count: 2`, `max_count: 4`, weekday daytime count `2`,
+and overnight/weekend count `4`. Do not reuse that backup as the re-entry
+policy. The deployed venv uses Python 3.11.14, matching the
 artifact ABI. Earlier post-deploy checks reported `ready`, correct capacity
 semantics,
 two online/busy workers, six offline workers, 25 GiB available memory, load
@@ -212,16 +219,15 @@ change.
 
 ## Next Steps
 
-1. Complete exact-main post-merge validation for `4495163d`.
-2. Close #1134 as superseded without rewriting its history, publish this fresh
-   #1131 branch, and require an ordinary protected merge with all gates green.
-3. Verify the replacement PR's signed tarball, checksum, cosign bundle, SBOM,
-   provenance, schema-v2 metadata, offline wheelhouse, and exact protected
-   source SHA before deployment.
-4. Deploy the post-#1125 immutable artifact only after review, verify the 2/4
-   schedule through a complete five-minute timer cycle, then consider restoring
-   exactly two runners.
-5. Keep DeskComputer fully drained. Recover ControlTower Linux capacity only
+1. Validate issue #1142 serially, publish through an ordinary protected PR, and
+   preserve the live drain marker throughout CI.
+2. Verify the replacement release's signed tarball, checksum, cosign bundle,
+   SBOM, provenance, schema-v2 metadata, offline wheelhouse, exact protected
+   source SHA, and embedded 1/2/2 schedule before deployment.
+3. Keep DeskComputer fully drained until an operator-approved rollout verifies
+   the immutable artifact and one complete five-minute scheduler cycle; restore
+   no more than one runner during weekday daytime.
+4. Recover ControlTower Linux capacity only
    after a verified VHDX safety copy and correction of its stale startup task
    and eight-runner override; then activate exactly two runners and observe
    pressure before allowing the four-runner ceiling.

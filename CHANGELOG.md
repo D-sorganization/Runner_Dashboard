@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Aligned the canonical DeskComputer schedule with the fleet's
+  interactive-safe capacity policy: one weekday-day runner, two
+  weekend/overnight runners, and a hard two-runner ceiling (#1142).
+
 ## [4.9.33] - 2026-08-26
 
 ### Fixed
