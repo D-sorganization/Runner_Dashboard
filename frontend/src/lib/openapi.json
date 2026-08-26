@@ -1147,7 +1147,7 @@
   "info": {
     "description": "Monitor and control self-hosted GitHub Actions runners",
     "title": "D-sorganization Runner Dashboard",
-    "version": "4.9.32"
+    "version": "4.9.33"
   },
   "openapi": "3.1.0",
   "paths": {
