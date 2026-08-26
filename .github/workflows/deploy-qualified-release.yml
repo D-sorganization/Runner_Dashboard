@@ -1,0 +1,349 @@
+name: Deploy qualified dashboard release to OGLaptop
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Closed deployment target allowlist
+        required: true
+        type: choice
+        options:
+          - OGLaptop
+      version:
+        description: Exact published semver without the v prefix
+        required: true
+        type: string
+      tag:
+        description: Exact annotated release tag (vX.Y.Z)
+        required: true
+        type: string
+      release_commit:
+        description: Exact 40-character protected-main release commit
+        required: true
+        type: string
+      artifact_sha256:
+        description: Exact lowercase SHA-256 from the published sidecar
+        required: true
+        type: string
+      confirm:
+        description: Type DEPLOY OGLAPTOP
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  attestations: read
+  id-token: none
+
+concurrency:
+  group: qualified-release-deploy-oglaptop
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Verify and deploy the exact signed release
+    runs-on: [self-hosted, Linux, X64, d-sorg-local-Oglaptop-1]
+    timeout-minutes: 30
+    env:
+      EXPECTED_RUNNER: d-sorg-local-Oglaptop-1
+      QUALIFIED_INBOX_ROOT: /var/lib/runner-dashboard-qualified-deploy/inbox
+      VERSION_INPUT: ${{ inputs.version }}
+      TAG_INPUT: ${{ inputs.tag }}
+      COMMIT_INPUT: ${{ inputs.release_commit }}
+      SHA256_INPUT: ${{ inputs.artifact_sha256 }}
+      TARGET_INPUT: ${{ inputs.target }}
+      CONFIRM_INPUT: ${{ inputs.confirm }}
+      TRANSACTION_ID: run-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+    steps:
+      - name: Validate closed request and protected release identity
+        id: identity
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$TARGET_INPUT" == "OGLaptop" ]] || { echo "::error::target is not allowlisted"; exit 1; }
+          [[ "$CONFIRM_INPUT" == "DEPLOY OGLAPTOP" ]] || { echo "::error::confirmation phrase is incorrect"; exit 1; }
+          [[ "$RUNNER_NAME" == "$EXPECTED_RUNNER" ]] || { echo "::error::job is not on the exact deployment runner"; exit 1; }
+          [[ "$VERSION_INPUT" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::version is not strict semver"; exit 1; }
+          [[ "$TAG_INPUT" == "v$VERSION_INPUT" ]] || { echo "::error::tag does not match version"; exit 1; }
+          [[ "$COMMIT_INPUT" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::release commit is not a lowercase full SHA"; exit 1; }
+          [[ "$SHA256_INPUT" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::artifact hash is not lowercase SHA-256"; exit 1; }
+
+          API_DIR="$RUNNER_TEMP/qualified-release-api"
+          install -d -m 0700 "$API_DIR"
+          gh api "repos/$GITHUB_REPOSITORY/git/refs/tags/$TAG_INPUT" > "$API_DIR/ref.json"
+          TAG_OBJECT=$(jq -r '.object.sha' "$API_DIR/ref.json")
+          [[ $(jq -r '.object.type' "$API_DIR/ref.json") == "tag" ]] \
+            || { echo "::error::refs/tags/$TAG_INPUT is not an annotated tag"; exit 1; }
+          gh api "repos/$GITHUB_REPOSITORY/git/tags/$TAG_OBJECT" > "$API_DIR/tag.json"
+          [[ $(jq -r '.object.type' "$API_DIR/tag.json") == "commit" ]] \
+            || { echo "::error::annotated tag does not peel to a commit"; exit 1; }
+          [[ $(jq -r '.object.sha' "$API_DIR/tag.json") == "$COMMIT_INPUT" ]] \
+            || { echo "::error::git tag identity does not match release_commit"; exit 1; }
+
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG_INPUT" > "$API_DIR/release.json"
+          jq -e --arg tag "$TAG_INPUT" \
+            '.tag_name == $tag and .draft == false and .prerelease == false and .published_at != null' \
+            "$API_DIR/release.json" > /dev/null \
+            || { echo "::error::release is absent, draft, or prerelease"; exit 1; }
+          gh api "repos/$GITHUB_REPOSITORY/branches/main" > "$API_DIR/main.json"
+          MAIN_SHA=$(jq -r '.commit.sha' "$API_DIR/main.json")
+          gh api "repos/$GITHUB_REPOSITORY/compare/$COMMIT_INPUT...$MAIN_SHA" > "$API_DIR/ancestry.json"
+          jq -e '.status == "ahead" or .status == "identical"' "$API_DIR/ancestry.json" > /dev/null \
+            || { echo "::error::release commit is not on protected main ancestry"; exit 1; }
+          echo "Protected release identity accepted."
+
+      - name: Install ephemeral cosign verifier
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Download and independently verify published assets
+        id: assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          INBOX_DIR="$QUALIFIED_INBOX_ROOT/$TRANSACTION_ID"
+          install -d -m 0700 "$INBOX_DIR"
+          ARTIFACT="$INBOX_DIR/dashboard-$VERSION_INPUT.tar.gz"
+          CHECKSUM="$ARTIFACT.sha256"
+          BUNDLE="$INBOX_DIR/dashboard-$VERSION_INPUT.bundle"
+          if ! gh release download "$TAG_INPUT" --repo "$GITHUB_REPOSITORY" \
+            --pattern "dashboard-$VERSION_INPUT.tar.gz" \
+            --pattern "dashboard-$VERSION_INPUT.tar.gz.sha256" \
+            --pattern "dashboard-$VERSION_INPUT.bundle" \
+            --dir "$INBOX_DIR" > "$RUNNER_TEMP/release-download.log" 2>&1; then
+            echo "::error::release asset download failed"
+            exit 1
+          fi
+          chmod 0600 "$ARTIFACT" "$CHECKSUM" "$BUNDLE"
+          [[ $(awk 'NF {print $1; exit}' "$CHECKSUM") == "$SHA256_INPUT" ]] \
+            || { echo "::error::published checksum does not match the operator input"; exit 1; }
+          printf '%s  %s\n' "$SHA256_INPUT" "$(basename "$ARTIFACT")" > "$INBOX_DIR/expected.sha256"
+          (cd "$INBOX_DIR" && sha256sum -c expected.sha256 > /dev/null)
+          cosign verify-blob \
+            --bundle "$BUNDLE" \
+            --certificate-identity-regexp \
+            '^https://github.com/D-sorganization/Runner_Dashboard/.github/workflows/release.yml@refs/heads/main$' \
+            --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+            "$ARTIFACT" > /dev/null
+          if ! gh attestation verify "$ARTIFACT" \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" \
+            --source-ref refs/heads/main > "$RUNNER_TEMP/attestation-verify.log" 2>&1; then
+            echo "::error::SLSA build attestation verification failed"
+            exit 1
+          fi
+          python3 - "$ARTIFACT" "$VERSION_INPUT" "$COMMIT_INPUT" <<'PY'
+          import io
+          import json
+          import sys
+          import tarfile
+          from pathlib import PurePosixPath
+
+          with tarfile.open(sys.argv[1], "r:gz") as archive:
+              members = archive.getmembers()
+              for member in members:
+                  path = PurePosixPath(member.name)
+                  if path.is_absolute() or ".." in path.parts or member.issym() or member.islnk():
+                      raise SystemExit("release archive contains an unsafe member")
+              raw = archive.extractfile("deployment.json")
+              if raw is None:
+                  raise SystemExit("deployment metadata is absent")
+              metadata = json.load(io.TextIOWrapper(raw, encoding="utf-8"))
+          compatibility = metadata.get("compatibility", {})
+          if metadata.get("version") != sys.argv[2] or metadata.get("git_sha") != sys.argv[3]:
+              raise SystemExit("artifact identity does not match the release request")
+          if compatibility.get("artifact_schema") != "runner-dashboard-artifact-v2":
+              raise SystemExit("artifact schema is not runner-dashboard-artifact-v2")
+          if compatibility.get("python_minor") != "3.12":
+              raise SystemExit("artifact python_minor is not the qualified 3.12 ABI")
+          PY
+          echo "Published checksum, signature, attestation, archive, and ABI accepted."
+
+      - name: Prove the single current-worker exception and complete fleet inventory
+        id: inventory
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          WORKER_PID=$(python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          pid = os.getppid()
+          while pid > 1:
+              command = Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\0", b" ").decode(errors="replace")
+              if "Runner.Worker" in command:
+                  print(pid)
+                  raise SystemExit(0)
+              status = Path(f"/proc/{pid}/status").read_text(encoding="utf-8")
+              pid = int(next(line.split()[1] for line in status.splitlines() if line.startswith("PPid:")))
+          raise SystemExit("Runner.Worker ancestor was not found")
+          PY
+          )
+          [[ "$WORKER_PID" =~ ^[1-9][0-9]*$ ]] || { echo "::error::worker ancestry proof failed"; exit 1; }
+          echo "worker_pid=$WORKER_PID" >> "$GITHUB_OUTPUT"
+
+          gh api --paginate --slurp "orgs/D-sorganization/actions/runners?per_page=100" \
+            > "$RUNNER_TEMP/github-runners-before.json"
+          python3 - "$RUNNER_TEMP/github-runners-before.json" "$RUNNER_NAME" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          pages = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          all_runners = [runner for page in pages for runner in page.get("runners", [])]
+          total_count = pages[0].get("total_count") if pages else None
+          if total_count != len(all_runners):
+              raise SystemExit("total_count proves the GitHub runner inventory is incomplete")
+          prefix = "d-sorg-local-Oglaptop-"
+          target = sorted(
+              (runner for runner in all_runners if runner.get("name", "").startswith(prefix)),
+              key=lambda runner: int(runner["name"].removeprefix(prefix)),
+          )
+          if [runner["name"] for runner in target] != [f"{prefix}{number}" for number in range(1, 9)]:
+              raise SystemExit("GitHub OGLaptop inventory is not exactly runners 1 through 8")
+          for number, runner in enumerate(target, start=1):
+              if number == 1:
+                  if runner["name"] != sys.argv[2] or runner.get("status") != "online" or runner.get("busy") is not True:
+                      raise SystemExit('the exact deployment runner must report "busy":true')
+              elif runner.get("busy") is not False:
+                  raise SystemExit("every other OGLaptop runner must be idle")
+              if number <= 4 and runner.get("status") != "online":
+                  raise SystemExit("daytime runners 1 through 4 must be online")
+              if number > 4 and runner.get("status") != "offline":
+                  raise SystemExit("daytime runners 5 through 8 must be offline")
+          PY
+          echo "Complete GitHub inventory accepted the exact current-worker exception."
+
+      - name: Execute the preinstalled root-owned transaction
+        shell: bash
+        run: |
+          set -euo pipefail
+          INBOX_DIR="$QUALIFIED_INBOX_ROOT/$TRANSACTION_ID"
+          REQUEST="$INBOX_DIR/request.json"
+          python3 - "$REQUEST" "$VERSION_INPUT" "$TAG_INPUT" "$COMMIT_INPUT" "$SHA256_INPUT" \
+            "${{ steps.inventory.outputs.worker_pid }}" "$RUNNER_NAME" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          payload = {
+              "schema": "qualified-release-request-v1",
+              "operation": "apply",
+              "transaction_id": f"run-{sys.argv[8]}-attempt-{sys.argv[9]}",
+              "version": sys.argv[2],
+              "tag": sys.argv[3],
+              "commit": sys.argv[4],
+              "artifact_sha256": sys.argv[5],
+              "worker_pid": int(sys.argv[6]),
+              "runner_name": sys.argv[7],
+              "github_run_id": int(sys.argv[8]),
+              "github_run_attempt": int(sys.argv[9]),
+          }
+          Path(sys.argv[1]).write_text(json.dumps(payload, sort_keys=True) + "\n", encoding="utf-8")
+          PY
+          chmod 0600 "$REQUEST"
+          sudo -n /usr/local/sbin/runner-dashboard-qualified-deploy < "$REQUEST"
+
+      - name: Verify post-transaction GitHub steady state
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api --paginate --slurp "orgs/D-sorganization/actions/runners?per_page=100" \
+            > "$RUNNER_TEMP/github-runners-after.json"
+          python3 - "$RUNNER_TEMP/github-runners-after.json" "$RUNNER_NAME" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          pages = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          runners = [runner for page in pages for runner in page.get("runners", [])]
+          if not pages or pages[0].get("total_count") != len(runners):
+              raise SystemExit("post-transaction GitHub inventory is incomplete")
+          prefix = "d-sorg-local-Oglaptop-"
+          target = {runner["name"]: runner for runner in runners if runner.get("name", "").startswith(prefix)}
+          expected = {f"{prefix}{number}" for number in range(1, 9)}
+          if set(target) != expected:
+              raise SystemExit("post-transaction OGLaptop inventory is incomplete")
+          for number in range(1, 9):
+              runner = target[f"{prefix}{number}"]
+              if number == 1:
+                  if runner["name"] != sys.argv[2] or runner.get("busy") is not True:
+                      raise SystemExit("deployment runner lost its exact-current-worker proof")
+              elif runner.get("busy") is not False:
+                  raise SystemExit("a non-deployment OGLaptop runner became busy")
+              expected_status = "online" if number <= 4 else "offline"
+              if runner.get("status") != expected_status:
+                  raise SystemExit("post-transaction daytime capacity drifted")
+          PY
+          echo "Post-transaction GitHub inventory retained the qualified 4/8 posture."
+
+      - name: Prepare redacted evidence
+        if: always()
+        shell: bash
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          set -u
+          EVIDENCE_DIR="$RUNNER_TEMP/redacted-evidence"
+          HELPER_EVIDENCE="$QUALIFIED_INBOX_ROOT/$TRANSACTION_ID/redacted-evidence.json"
+          install -d -m 0700 "$EVIDENCE_DIR"
+          [[ ! -r "$HELPER_EVIDENCE" ]] || cp "$HELPER_EVIDENCE" "$EVIDENCE_DIR/host-transaction.json"
+          python3 - "$EVIDENCE_DIR/workflow.json" "$JOB_STATUS" "$TRANSACTION_ID" \
+            "$VERSION_INPUT" "$TAG_INPUT" "$COMMIT_INPUT" "$SHA256_INPUT" \
+            "$RUNNER_TEMP/github-runners-before.json" "$RUNNER_TEMP/github-runners-after.json" <<'PY'
+          import json
+          import sys
+          from datetime import UTC, datetime
+          from pathlib import Path
+
+          def summary(path_value: str):
+              path = Path(path_value)
+              if not path.is_file():
+                  return {"available": False}
+              pages = json.loads(path.read_text(encoding="utf-8"))
+              runners = [runner for page in pages for runner in page.get("runners", [])]
+              prefix = "d-sorg-local-Oglaptop-"
+              target = [runner for runner in runners if runner.get("name", "").startswith(prefix)]
+              return {
+                  "available": True,
+                  "complete": bool(pages) and pages[0].get("total_count") == len(runners),
+                  "online": sorted(int(item["name"].removeprefix(prefix)) for item in target if item.get("status") == "online"),
+                  "busy": sorted(int(item["name"].removeprefix(prefix)) for item in target if item.get("busy") is True),
+              }
+
+          payload = {
+              "schema": "qualified-release-workflow-evidence-v1",
+              "generated_at": datetime.now(UTC).isoformat(),
+              "status": sys.argv[2],
+              "transaction_id": sys.argv[3],
+              "target": "OGLaptop",
+              "release": {"version": sys.argv[4], "tag": sys.argv[5], "commit": sys.argv[6], "sha256": sys.argv[7]},
+              "github_inventory": {"before": summary(sys.argv[8]), "after": summary(sys.argv[9])},
+          }
+          Path(sys.argv[1]).write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          PY
+
+      - name: Upload redacted evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.3.0
+        with:
+          name: qualified-oglaptop-deploy-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/redacted-evidence
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Remove transient release inbox
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          INBOX_DIR="$QUALIFIED_INBOX_ROOT/$TRANSACTION_ID"
+          [[ "$INBOX_DIR" == "$QUALIFIED_INBOX_ROOT/run-$GITHUB_RUN_ID-attempt-$GITHUB_RUN_ATTEMPT" ]]
+          rm -rf -- "$INBOX_DIR"

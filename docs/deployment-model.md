@@ -432,6 +432,24 @@ The `--artifact` flag delegates file installation to
 deploy directory. The backup, dependency install, and service restart steps
 still run normally.
 
+### Qualified OGLaptop deployment
+
+Production OGLaptop releases use the manual, exact-release workflow described
+in [`docs/runbooks/qualified-release-deploy.md`](runbooks/qualified-release-deploy.md).
+It is deliberately separate from `setup.sh` and `update-deployed.sh`: a
+protected-main, root-owned helper validates the published checksum, cosign
+bundle, build-attestation contract, archive, metadata, runtime ABI, complete
+runner inventory, and exact current-workflow worker exception before any host
+mutation. It creates a verified rollback snapshot and mutable-state manifest,
+installs the artifact offline, enforces the canonical 4-normal/8-max schedule
+through a reversible systemd drop-in, and proves a complete five-minute
+scheduler cycle with no runner actions.
+
+The bootstrap is a one-time direct operator action. The workflow's sudoers rule
+permits only the no-argument root helper; the helper reads a closed JSON request
+from stdin and accepts no command, path, URL, or setup-script input. A deployment
+that cannot upload its redacted acceptance evidence is not qualified.
+
 Build artifacts are described in `deploy/ARTIFACT_BUILD.md`.
 
 ---

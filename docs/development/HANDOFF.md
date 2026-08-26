@@ -107,6 +107,27 @@
 
 ## Validation
 
+### Issue #1138 guarded OGLaptop deployment
+
+- Branch `fix/issue-1138-guarded-oglaptop-deploy` adds a manual-only,
+  exact-runner workflow plus a one-time root bootstrap and root-owned
+  transaction helper. The earlier rootless design was rejected because it
+  could neither establish systemd authority nor guarantee rollback.
+- The exact workflow's runner-1 `Runner.Worker` is the sole permitted busy
+  worker. Both process ancestry and complete local/GitHub inventories must
+  prove that exception; all other workers remain idle. Qualification is
+  daytime-only so the canonical scheduler target is already four and neither
+  the helper nor either observed scheduler invocation performs a runner action.
+- The request surface is a closed JSON object on stdin to one no-argument sudo
+  command. Exact tag/commit/hash/signature/attestation/archive/ABI checks occur
+  before a verified snapshot and mutable-state manifest. Failure after the
+  boundary restores the full prior deployment/config/systemd state.
+- DeskComputer validation remains prohibited during the capacity drain. The
+  new contract tests and shell/YAML checks must run only on approved OGLaptop
+  capacity with explicit `-n 0` after protected review. No local pytest,
+  pre-commit, render, build, or other CPU-heavy process was started while this
+  implementation was authored.
+
 Validated serially to avoid adding pressure to the local runner host:
 
 - PR #1136 protected evidence: native CI Standard attempt 3 passed after the

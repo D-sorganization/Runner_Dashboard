@@ -1,9 +1,21 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.188
+**Spec Version:** 2.5.189
 **Application Version:** 4.9.33 (see `VERSION`)
 **Last Updated:** 2026-08-26T11:48:00-07:00
 **Status:** Active
+
+- **2026-08-26 (2.5.189):** Add the issue #1138 qualified OGLaptop release
+  deployment contract. A workflow-dispatch-only job on the exact OGLaptop-1
+  runner verifies annotated protected-main release identity, checksum, cosign
+  bundle, build attestation, safe schema-v2 archive metadata, and Python ABI,
+  then crosses a one-time root-owned no-argument helper boundary. The helper
+  permits only the proven current workflow worker to be busy, requires every
+  other local and GitHub runner idle in the four-runner daytime steady state,
+  snapshots and journals every mutation, preserves mutable state byte-for-byte,
+  enforces the canonical 4-normal/8-max schedule and governed venv, disables
+  competing autoscaling, proves a no-action five-minute scheduler cycle, rolls
+  back on failure, and emits only redacted evidence.
 
 - **2026-08-26 (2.5.188):** Synchronize all canonical release metadata at
   version 4.9.33 so the first protected release after the #1126 capacity
