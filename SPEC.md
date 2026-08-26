@@ -1,9 +1,16 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.185
+**Spec Version:** 2.5.186
 **Application Version:** 4.9.32 (see `VERSION`)
-**Last Updated:** 2026-08-25T09:30:00-07:00
+**Last Updated:** 2026-08-26T08:30:00-07:00
 **Status:** Active
+
+- **2026-08-26 (2.5.186):** Make late-stage release publication recoverable
+  without weakening artifact identity (issue #1129). Manual recovery checks
+  out the existing tag, accepts it only when it is annotated, governed, and
+  exact to that source, skips tag mutation, and passes the repository identity
+  explicitly to GitHub CLI so WSL UNC ownership translation cannot block
+  release creation after signing and attestation have succeeded.
 
 - **2026-08-25 (2.5.185):** Bound the canonical DeskComputer runner schedule
   to two weekday-day runners and four weekend/overnight runners, with a hard

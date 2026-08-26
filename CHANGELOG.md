@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Added an explicit, fail-closed recovery path for releases whose artifact,
+  signature, SBOM, attestation, and tag succeeded before GitHub release
+  publication failed. Recovery rebuilds the exact tagged source and avoids
+  filesystem-based repository discovery on self-hosted WSL runners. See #1129.
 - Eliminated the nested `vitest -> vite@8.x -> esbuild@^0.27||^0.28` peer
   conflict that left a clean `npm ci` install in an invalid state (`npm ls`
   reported an unmet `esbuild` peer and pulled in an unpinned `rolldown`

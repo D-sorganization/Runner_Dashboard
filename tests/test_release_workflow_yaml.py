@@ -161,6 +161,8 @@ def test_release_workflow_defines_dry_run_input() -> None:
     assert "dry_run" in inputs, "release.yml workflow_dispatch must define a `dry_run` input"
     assert "version" in inputs, "release.yml workflow_dispatch must define a `version` input"
     assert inputs["version"].get("required") is True, "`version` input must be required"
+    assert inputs["recover_existing_tag"].get("type") == "boolean"
+    assert inputs["recover_existing_tag"].get("default") is False
 
 
 def test_release_tarball_excludes_generated_release_artifacts() -> None:
@@ -186,6 +188,57 @@ def test_release_workflow_uses_cosign_bundle_artifact() -> None:
     assert '"$BUNDLE_FILE" \\' in text
     assert "--output-signature" not in text
     assert "--output-certificate" not in text
+
+
+def test_release_workflow_recovers_only_an_exact_governed_tag() -> None:
+    """A late publish failure may reuse only the exact tag created by this workflow."""
+    text = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+    assert 'git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG"' in text
+    assert 'TAG_COMMIT=$(git rev-parse "$TAG^{commit}")' in text
+    assert 'if [ "$TAG_COMMIT" != "$SOURCE_SHA" ]; then' in text
+    assert 'OBJ_TYPE=$(git cat-file -t "$TAG")' in text
+    assert 'grep -Fq "$AUTO_NOTES_HEADER"' in text
+    assert 'echo "tag_exists=true" >> "$GITHUB_OUTPUT"' in text
+    assert 'if [ "$ALLOW_EXISTING_TAG" != "true" ]; then' in text
+    assert 'if [ "$RECOVER_EXISTING_TAG" = "true" ]; then' in text
+
+
+def test_release_workflow_skips_tag_mutation_during_recovery() -> None:
+    """Recovery must not recreate or repush an already-qualified tag."""
+    data = _load_workflow(RELEASE_WORKFLOW)
+    steps = data["jobs"]["release"]["steps"]
+    by_name = {step.get("name"): step for step in steps if isinstance(step, dict)}
+
+    expected_guard = "steps.resolve.outputs.dry_run != 'true' && steps.tag_state.outputs.tag_exists != 'true'"
+    assert by_name["Create unsigned annotated tag"]["if"] == expected_guard
+    assert by_name["Push tag to origin"]["if"] == expected_guard
+
+
+def test_release_workflow_uses_explicit_repo_for_release_publication() -> None:
+    """gh must not rediscover the repository through a WSL UNC worktree path."""
+    text = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+    assert "GH_REPO: ${{ github.repository }}" in text
+    assert 'gh release create "$TAG" \\' in text
+    assert '--repo "$GH_REPO" \\' in text
+    assert '--target "${{ steps.source.outputs.sha }}" \\' in text
+
+
+def test_manual_tag_recovery_checks_out_the_tagged_source() -> None:
+    data = _load_workflow(RELEASE_WORKFLOW)
+    inputs = data["on"]["workflow_dispatch"]["inputs"]
+    assert "recover_existing_tag" in inputs
+    checkout = data["jobs"]["release"]["steps"][0]
+    assert checkout["with"]["ref"] == (
+        "${{ inputs.recover_existing_tag && format('refs/tags/v{0}', inputs.version) || github.sha }}"
+    )
+    text = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+    assert "SOURCE_SHA=$(git rev-parse HEAD)" in text
+    assert 'echo "sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"' in text
+
+
+def test_release_notes_exclude_recovered_current_tag_from_previous_tag() -> None:
+    text = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+    assert 'grep -Fxv "$TAG"' in text
 
 
 def test_verify_tag_workflow_triggers_on_v_tag_push() -> None:

@@ -2,11 +2,12 @@
 
 ## Current State
 
-- Branch: `fix/issue-1125-deskcomputer-capacity`, merged with remote `main` at
-  `a8e0396`. PR #1126 has protected squash auto-merge armed. Governing issue:
-  #1125. The immediate objective is to align the
-  canonical Runner Dashboard schedule with the governed DeskComputer policy
-  before any controlled re-entry from the live maintenance drain.
+- Branch: `fix/issue-1129-release-recovery`, based on remote `main` at
+  `ea54d46`. Pull request: not created. Governing issue: #1129. The immediate
+  objective is to recover the failed 4.9.32 publication without changing its
+  source identity, then deploy only the verified immutable artifact.
+- Implementation commit: `SELF` — resolve with `git rev-parse HEAD` after
+  checkout.
 - PR #1116 merged as `4fc1c127`
   before its late full-suite failure surfaced. Protected corrective PR #1117
   then passed the complete suite and merged as `4b1605c7`; issue #1115 is
@@ -16,8 +17,9 @@
 - Runner Dashboard 4.9.30 is the last deployed exact-main schema-v2 artifact on
   DeskComputer. Runner Dashboard 4.9.32 source and maintenance-drain controls
   are merged on remote `main` but are not yet the live runtime. Release run
-  `32818795234` is queued for Linux fleet capacity; do not create a redundant
-  rerun.
+  `32818795234` built, signed, generated its SBOM and provenance attestation,
+  and pushed governed tag `v4.9.32`, but GitHub release creation failed when
+  `gh` treated the WSL checkout as an untrusted UNC repository path.
 - DeskComputer is in a full operator-authorized maintenance drain:
   `Ubuntu-22.04` is stopped, no local runner listener or worker is present, and
   Desktop-1 through Desktop-8 are offline. The shared drain marker is present,
@@ -33,6 +35,14 @@
   GitHub run conclusions are verified.
 
 ## Implemented
+
+- The release workflow now supports explicit recovery of an existing tag. It
+  checks out the tag source, verifies exact commit identity, annotated type,
+  and governed release header, then skips tag creation and push.
+- GitHub release publication now uses an explicit repository identity instead
+  of inferring it through the self-hosted runner filesystem.
+- Static workflow contracts cover recovery input, exact-source verification,
+  mutation guards, prior-tag selection, and explicit release targeting.
 
 - `config/runner-schedule.json` now defaults to two weekday-day runners, four
   weekend-day runners, and four overnight runners, with `max_count: 4`.
@@ -95,6 +105,11 @@
 ## Validation
 
 Validated serially to avoid adding pressure to the local runner host:
+
+- RED: four release-recovery workflow contracts failed before implementation.
+- GREEN: 139 focused release and workflow-governance tests pass serially.
+- File-scoped pre-commit passes Ruff lint/format, Prettier, duplicate-env
+  checks, gitleaks, and detect-secrets; `git diff --check` passes.
 
 - RED: the canonical-schedule contract failed because the repository still
   returned `default_count: 32` and `max_count: 32`.
@@ -179,12 +194,11 @@ change.
 
 ## Next Steps
 
-1. Let PR #1126's queued guard and container checks run once; do not create a
-   redundant rerun. Protected squash auto-merge is armed. Do not remove the
-   live drain marker or start WSL as part of this change.
-2. Close #1085 only after release run `32818795234` produces a verified 4.9.32
-   artifact and checksum; do not create a redundant rerun.
-3. Deploy a post-#1125 immutable artifact only after review, verify the 2/4
+1. Publish this branch through protected CI, then manually dispatch one
+   `recover_existing_tag=true`, version `4.9.32` release from merged main.
+2. Verify the release assets, checksum, signature bundle, SBOM, attestation,
+   and tag/source identity before closing #1129 or #1085.
+3. Deploy the verified post-#1125 immutable artifact only after review, verify the 2/4
    schedule through a complete five-minute timer cycle, then consider restoring
    exactly two runners.
 4. Keep DeskComputer fully drained. Recover ControlTower Linux capacity only
