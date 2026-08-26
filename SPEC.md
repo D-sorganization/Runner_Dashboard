@@ -1,9 +1,15 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.188
+**Spec Version:** 2.5.189
 **Application Version:** 4.9.33 (see `VERSION`)
-**Last Updated:** 2026-08-26T11:48:00-07:00
+**Last Updated:** 2026-08-26T17:00:00-07:00
 **Status:** Active
+
+- **2026-08-26 (2.5.189):** Align the canonical DeskComputer schedule with
+  Repository Management's interactive-safe fleet policy: one weekday-day
+  runner, two weekend/overnight runners, and a hard maximum of two. Exact
+  schedule regression coverage prevents a future drain release from restoring
+  twice the governed workstation load (issue #1142).
 
 - **2026-08-26 (2.5.188):** Synchronize all canonical release metadata at
   version 4.9.33 so the first protected release after the #1126 capacity
@@ -24,11 +30,9 @@
   also names the GitHub repository explicitly, avoiding WSL checkout discovery
   and dubious-ownership failures (issue #1132).
 
-- **2026-08-25 (2.5.185):** Bound the canonical DeskComputer runner schedule
-  to two weekday-day runners and four weekend/overnight runners, with a hard
-  maximum of four (issue #1125). Regression coverage prevents the repository
-  default from drifting back to an always-on schedule that can overload the
-  interactive workstation when a controlled maintenance drain is released.
+- **2026-08-25 (2.5.185):** Replaced the former 32-runner always-on default
+  with an initial bounded DeskComputer schedule (issue #1125). Issue #1142
+  subsequently tightened that policy for interactive-safe operation.
 
 - **2026-08-24 (2.5.184):** Restore deterministic cross-platform frontend
   installation by recording Vitest's esbuild 0.28.2 dependency tree in the

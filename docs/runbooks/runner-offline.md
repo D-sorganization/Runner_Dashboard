@@ -23,8 +23,8 @@ C:\Users\diete\runner_fleet_monitor\deskcomputer-runner-drained.flag
 4. Confirm `Runner.Listener` and `Runner.Worker` are absent. Idle Buildx
    containers may be stopped without deleting their cache volumes.
 
-To restore capacity, first verify the governed schedule is still two normal
-runners and four maximum. Remove the marker, enable the health monitor, and
+To restore capacity, first verify the governed schedule is still one weekday-day
+runner and two maximum. Remove the marker, enable the health monitor, and
 invoke `runner-scheduler.service`; do not start all installed units directly.
 Keep Desktop-5 through Desktop-8 in `Bandwidth-Draining` unless a separately
 reviewed capacity change explicitly restores them.
