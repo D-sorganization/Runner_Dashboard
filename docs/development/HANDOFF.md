@@ -3,7 +3,7 @@
 ## Current State
 
 - Branch: `fix/issue-1129-release-recovery`, based on remote `main` at
-  `ea54d46`. Pull request: not created. Governing issue: #1129. The immediate
+  `ea54d46`. Pull request: #1130, open against `main`. Governing issue: #1129. The immediate
   objective is to recover the failed 4.9.32 publication without changing its
   source identity, then deploy only the verified immutable artifact.
 - Implementation commit: `SELF` — resolve with `git rev-parse HEAD` after
