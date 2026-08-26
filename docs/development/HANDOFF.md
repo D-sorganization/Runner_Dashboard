@@ -2,12 +2,12 @@
 
 ## Current State
 
-- Branch: `fix/issue-1135-python-base-refresh`, based exactly on protected
-  remote `main` at `16a876fa9b35b1cd36a35761b96a4f1ab52ac393` (the merged
-  #1133 release-packaging correction). Governing issue: #1135. The immediate
-  objective is to clear the protected Docker/Trivy gate by refreshing the
-  immutable Python base identity and installing Debian's fixed OpenSSL package
-  set before the separate 4.9.33 publication change in #1134 is rebased.
+- Branch: `fix/issue-1131-release-4933-v2`, based exactly on protected remote
+  `main` at `4495163d1bd4a32c607e1ae1d7c1a58dc1a2e0f2` (the normal protected
+  squash merge of PR #1136). Governing issue: #1131. The synchronized 4.9.33
+  release metadata is local and unpublished; 27 bounded serial release/version
+  contracts pass on this exact CVE-corrected base. A fresh protected PR must
+  supersede #1134 without rewriting its history.
 - PR #1116 merged as `4fc1c127`
   before its late full-suite failure surfaced. Protected corrective PR #1117
   then passed the complete suite and merged as `4b1605c7`; issue #1115 is
@@ -19,6 +19,10 @@
   schedule correction. Release run `32818795234` pushed `v4.9.32` at the older
   `4eb9fac` commit, then failed publication on WSL checkout ownership; it left
   no release tarball or checksum. Do not rerun or delete that immutable tag.
+- PR #1136 passed native CI Standard attempt 3 and Docker/Trivy attempt 3 at
+  exact head `caf5cd82`, then protected-squash-merged as `4495163d`. The image
+  build, fixed-package scan, SARIF staging, and hosted SARIF publication all
+  passed; post-merge exact-main validation must complete before release.
 - DeskComputer is in a full operator-authorized maintenance drain:
   `Ubuntu-22.04` is stopped, no local runner listener or worker is present, and
   Desktop-1 through Desktop-8 are offline. The shared drain marker is present,
@@ -27,8 +31,10 @@
 - ControlTower retains one idle Windows/Matlab runner. Its Linux WSL pool is
   stopped and must remain stopped pending a safety copy/recovery of the
   suspect `ControlTower-SSD` VHDX and removal of the stale eight-runner startup
-  override. The weekly VHDX compaction task was disabled on 2026-08-24 so it
-  cannot mutate the suspect image before recovery.
+  override. The original and first evidence clone are sealed with matching
+  SHA-256 provenance; a third E: repair derivative copied successfully and is
+  being hashed before any container-level diagnosis. The weekly VHDX compaction
+  task was disabled on 2026-08-24 so it cannot mutate the suspect image.
 - The final dashboard snapshot before WSL quiesced reported Desktop-1 and
   Desktop-2 busy. Treat those jobs as potentially interrupted until their
   GitHub run conclusions are verified.
@@ -103,6 +109,16 @@
 
 Validated serially to avoid adding pressure to the local runner host:
 
+- PR #1136 protected evidence: native CI Standard attempt 3 passed after the
+  OGLaptop DNS correction and four-listener ceiling. Docker/Trivy attempt 3
+  passed the image build, Trivy scan, SARIF upload/staging, action cleanup, and
+  hosted SARIF publication at exact head `caf5cd82`. DeskComputer remained
+  fully drained throughout.
+- Exact-base 4.9.33 revalidation on OGLaptop: `python -m pytest -q -n 0
+  tests/test_version_single_source.py tests/test_release_workflow_yaml.py
+  tests/deploy/test_artifact_deployment.py` passed all 27 tests at protected
+  base `4495163d`. The tested local and OGLaptop release/version diffs were
+  byte-equivalent; DeskComputer ran no tests.
 - Issue #1135 RED on OGLaptop: the focused deploy-hardening selection failed
   only the new OpenSSL refresh contract against protected main's older image
   digest and unpinned security package set. No Docker build or Trivy scan was
@@ -196,16 +212,12 @@ change.
 
 ## Next Steps
 
-1. Review and publish the #1135 correction through a normal protected pull
-   request; do not bypass the Docker Build & Trivy Scan gate.
-2. Require the protected image build to prove all three OpenSSL binary packages
-   resolve to `3.5.7-1~deb13u2` and that Trivy reports no HIGH or CRITICAL fixed
-   vulnerability before merge. Record the exact merge SHA and post-merge run.
-3. After #1135 merges, publish the separate 4.9.33 change from a fresh branch
-   based on the new protected `main`, then close #1134 as superseded without
-   rewriting its history. Verify the replacement PR's signed tarball, checksum,
-   SBOM, provenance, schema-v2 metadata, and exact protected source SHA before
-   deployment.
+1. Complete exact-main post-merge validation for `4495163d`.
+2. Close #1134 as superseded without rewriting its history, publish this fresh
+   #1131 branch, and require an ordinary protected merge with all gates green.
+3. Verify the replacement PR's signed tarball, checksum, cosign bundle, SBOM,
+   provenance, schema-v2 metadata, offline wheelhouse, and exact protected
+   source SHA before deployment.
 4. Deploy the post-#1125 immutable artifact only after review, verify the 2/4
    schedule through a complete five-minute timer cycle, then consider restoring
    exactly two runners.

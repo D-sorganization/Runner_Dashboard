@@ -1,9 +1,14 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.187
-**Application Version:** 4.9.32 (see `VERSION`)
-**Last Updated:** 2026-08-26T09:55:00-07:00
+**Spec Version:** 2.5.188
+**Application Version:** 4.9.33 (see `VERSION`)
+**Last Updated:** 2026-08-26T11:48:00-07:00
 **Status:** Active
+
+- **2026-08-26 (2.5.188):** Synchronize all canonical release metadata at
+  version 4.9.33 so the first protected release after the #1126 capacity
+  correction is built from the CVE-corrected protected main using the
+  schema-v2 publication contract repaired by issue #1132 (issue #1131).
 
 - **2026-08-26 (2.5.187):** Refresh the immutable Python 3.13 slim base and
   pin Debian's `libssl3t64`, `openssl`, and `openssl-provider-legacy` security
