@@ -19,7 +19,7 @@ _DOCKERFILE = _ROOT / "Dockerfile"
 _LOCK = _ROOT / "requirements.lock.txt"
 _PYPROJECT = _ROOT / "pyproject.toml"
 
-_PYTHON_313_SLIM_DIGEST = "7e3a6aca9d74f93cca21a91d86a8dad8c34749afd5b4a98ee481c9c47b9f5ed4"
+_PYTHON_313_SLIM_DIGEST = "7e3a6aca9d74f93cca21a91d86a8dad8c34749afd5b4a98ee481c9c47b9f5ed4"  # pragma: allowlist secret
 _OPENSSL_DEBIAN_SECURITY_VERSION = "3.5.7-1~deb13u2"
 
 # ── Issue #391: new hardening directives ─────────────────────────────────────
