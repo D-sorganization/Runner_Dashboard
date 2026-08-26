@@ -225,3 +225,28 @@ change.
    after a verified VHDX safety copy and correction of its stale startup task
    and eight-runner override; then activate exactly two runners and observe
    pressure before allowing the four-runner ceiling.
+
+## Issue #1141 - OGLaptop production browser OAuth readiness
+
+## Issue #1141 — OGLaptop production browser OAuth readiness
+
+- Base: protected `main` at `8773a1b7d190b7f7bf4489c0882ca22cdf9354ef`
+  (Runner Dashboard v4.9.33).
+- Canonical RED: tests-only commit
+  `615597adc6f09613c69a36f38d39f9f3f38a9a66`; Repository_Management run
+  `33015543256`, job `98332690293`, on `d-sorg-local-Oglaptop-2`; focused
+  `python -m pytest -q -n 0 tests/test_oauth_production_readiness.py` produced
+  10 expected failures.
+- Source slice: call-time typed OAuth configuration, exact MagicDNS origin and
+  callback, explicit callback binding for authorization and token exchange,
+  no dev-login fallback, redacted health diagnostic, and controlled operator
+  provisioning/rotation/rollback documentation.
+- Operational boundary: no local validation, restart, bootstrap, deployment,
+  secret creation, environment administration, runner routing, public Funnel,
+  or PAT creation was performed. Validation was diverted to approved OGLaptop
+  capacity because the DeskComputer capacity drain remains active.
+- Remaining production blocker: a human/administrator must create the dedicated
+  GitHub OAuth credential, protect the mode-0600 EnvironmentFile, verify the
+  exact callback and tailnet-only Serve state, and perform an approved qualified
+  deployment. Source readiness is not evidence that those external controls
+  exist.

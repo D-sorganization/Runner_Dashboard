@@ -1,5 +1,4 @@
 # ruff: noqa: B008
-import os
 import secrets
 import time
 from typing import Any
@@ -15,16 +14,16 @@ from identity import (
     require_principal,
 )
 from middleware import check_auth_rate_limit
+from oauth_config import OAuthConfig, OAuthConfigurationError
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
-GITHUB_CLIENT_ID = os.environ.get("GITHUB_CLIENT_ID", "")
-GITHUB_CLIENT_SECRET = os.environ.get("GITHUB_CLIENT_SECRET", "")
-# When set, only members of this GitHub org may complete OAuth login (fixes #354).
-GITHUB_ORG = os.environ.get("GITHUB_ORG", os.environ.get("REQUIRED_GITHUB_ORG", ""))
-REQUIRED_GITHUB_ORG = GITHUB_ORG
 _OAUTH_STATE_TTL_SECONDS = 10 * 60
+_OAUTH_BLOCKED_HINT = (
+    "Ask an administrator to configure the dedicated GitHub OAuth app for the "
+    "OGLaptop MagicDNS HTTPS callback; development login is not a production fallback."
+)
 
 
 def _dev_login_enabled() -> bool:
@@ -33,7 +32,27 @@ def _dev_login_enabled() -> bool:
     Read at call time (not import time) so tests and operators can toggle it
     without re-importing the module.
     """
-    return os.environ.get("DASHBOARD_DEV_LOGIN") == "1"
+    return OAuthConfig.from_env().dev_login_enabled
+
+
+def _production_oauth_config() -> OAuthConfig:
+    """Return a fresh typed configuration snapshot for each auth request."""
+    return OAuthConfig.from_env()
+
+
+def _require_production_oauth(config: OAuthConfig) -> None:
+    """Translate the pure configuration contract into a redacted HTTP error."""
+    try:
+        config.require_ready()
+    except OAuthConfigurationError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "message": "Production GitHub OAuth is not ready.",
+                "reason": exc.diagnostic["reason"],
+                "hint": _OAUTH_BLOCKED_HINT,
+            },
+        ) from exc
 
 
 def _clear_oauth_state(request: Request) -> None:
@@ -44,25 +63,27 @@ def _clear_oauth_state(request: Request) -> None:
 @router.get("/github")
 async def github_login(request: Request):
     """Start GitHub OAuth flow."""
-    if not GITHUB_CLIENT_ID:
-        # Fallback to dev login if no client ID is configured
-        return RedirectResponse(url="/api/auth/dev-login")
+    config = _production_oauth_config()
+    _require_production_oauth(config)
 
     state = secrets.token_urlsafe(16)
     request.session["oauth_state"] = state
     request.session["oauth_state_ts"] = time.time()
-    redirect_uri = (
-        f"https://github.com/login/oauth/authorize?client_id={GITHUB_CLIENT_ID}&state={state}&scope=read:user"
-    )
-    return RedirectResponse(url=redirect_uri)
+    return RedirectResponse(url=config.authorization_url(state))
 
 
 @router.get("/callback")
 async def github_callback(request: Request, code: str, state: str):
     """Handle GitHub OAuth callback."""
     check_auth_rate_limit(request)  # issue #320: 5 attempts / 5 min per IP
+    config = _production_oauth_config()
+    try:
+        _require_production_oauth(config)
+    except HTTPException:
+        _clear_oauth_state(request)
+        raise
     saved_state = request.session.get("oauth_state")
-    if not saved_state or state != saved_state:
+    if not saved_state or not secrets.compare_digest(state, saved_state):
         _clear_oauth_state(request)
         raise HTTPException(status_code=400, detail="Invalid state")
     state_ts = float(request.session.get("oauth_state_ts") or 0)
@@ -77,11 +98,7 @@ async def github_callback(request: Request, code: str, state: str):
             # Exchange code for token
             token_resp = await client.post(
                 "https://github.com/login/oauth/access_token",
-                data={
-                    "client_id": GITHUB_CLIENT_ID,
-                    "client_secret": GITHUB_CLIENT_SECRET,
-                    "code": code,
-                },
+                data=config.token_exchange_data(code),
                 headers={"Accept": "application/json"},
             )
             try:
@@ -103,21 +120,19 @@ async def github_callback(request: Request, code: str, state: str):
             user_data = user_resp.json()
             github_login = user_data.get("login")
 
-            # Verify org membership when REQUIRED_GITHUB_ORG is configured (#354).
-            required_org = GITHUB_ORG or REQUIRED_GITHUB_ORG
-            if required_org:
-                org_resp = await client.get(
-                    f"https://api.github.com/orgs/{required_org}/members/{github_login}",
-                    headers={
-                        "Authorization": f"Bearer {access_token}",
-                        "Accept": "application/json",
-                    },
+            # Verify membership in the exact production organization (#354).
+            org_resp = await client.get(
+                f"https://api.github.com/orgs/{config.github_org}/members/{github_login}",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Accept": "application/json",
+                },
+            )
+            if org_resp.status_code != 204:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"You must be a member of the {config.github_org} GitHub organisation to log in.",
                 )
-                if org_resp.status_code != 204:
-                    raise HTTPException(
-                        status_code=403,
-                        detail=f"You must be a member of the {required_org} GitHub organisation to log in.",
-                    )
     except HTTPException:
         raise
     except httpx.HTTPError as exc:
@@ -154,11 +169,12 @@ async def dev_login(request: Request):
     indistinguishable from "not present" to a remote scanner.
     """
     check_auth_rate_limit(request)  # issue #320: 5 attempts / 5 min per IP
-    if GITHUB_CLIENT_ID:
+    config = _production_oauth_config()
+    if config.client_id_configured:
         raise HTTPException(status_code=400, detail="Dev login disabled when OAuth is configured")
 
     # Fail closed for any non-loopback peer or when the opt-in flag is unset.
-    if not (_dev_login_enabled() and _is_loopback_request(request)):
+    if not (config.dev_login_enabled and _is_loopback_request(request)):
         raise HTTPException(status_code=404, detail="Not Found")
 
     # Just grab the first human principal

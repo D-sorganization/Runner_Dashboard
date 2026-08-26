@@ -59,6 +59,8 @@ def test_exact_production_configuration_is_ready_and_redacted() -> None:
     assert _CLIENT_ID not in serialized
     assert _CLIENT_SECRET not in serialized
     assert _SESSION_SECRET not in serialized
+    assert _CLIENT_ID not in repr(config)
+    assert _CLIENT_SECRET not in repr(config)
 
 
 @pytest.mark.parametrize(
@@ -108,6 +110,7 @@ def test_missing_oauth_configuration_never_redirects_to_dev_login(
     assert exc_info.value.status_code == 503
     assert "dev-login" not in repr(exc_info.value.detail)
     assert _CLIENT_SECRET not in repr(exc_info.value.detail)
+    assert "administrator" in exc_info.value.detail["hint"].lower()
 
 
 def test_login_redirect_uses_exact_callback_and_least_privilege_scope(
@@ -137,3 +140,12 @@ def test_health_diagnostic_contract_contains_no_credential_fields() -> None:
     assert set(diagnostic) == {"ready", "status", "reason"}
     assert not any("client" in key or "secret" in key or "token" in key for key in diagnostic)
 
+
+def test_token_exchange_is_bound_to_the_exact_callback() -> None:
+    from oauth_config import OAuthConfig
+
+    data = OAuthConfig.from_env(_production_env()).token_exchange_data("one-time-code")
+
+    assert data["redirect_uri"] == _CALLBACK
+    assert data["client_id"] == _CLIENT_ID
+    assert data["client_secret"] == _CLIENT_SECRET

@@ -51,7 +51,8 @@ def _make_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> FastAPI:
     config_dir.mkdir(parents=True, exist_ok=True)
     mgr = IdentityManager(config_dir=config_dir)
     monkeypatch.setattr(auth_module, "identity_manager", mgr)
-    monkeypatch.setattr(auth_module, "GITHUB_CLIENT_ID", "")
+    monkeypatch.delenv("GITHUB_CLIENT_ID", raising=False)
+    monkeypatch.delenv("GITHUB_CLIENT_SECRET", raising=False)
 
     app = FastAPI()
     app.add_middleware(SessionMiddleware, secret_key="test-secret-key")  # pragma: allowlist secret

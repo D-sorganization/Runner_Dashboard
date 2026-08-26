@@ -60,7 +60,8 @@ def _make_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> FastAPI:
     monkeypatch.setattr(auth_module, "identity_manager", mgr)
 
     # Disable GitHub OAuth so dev-login is reachable
-    monkeypatch.setattr(auth_module, "GITHUB_CLIENT_ID", "")
+    monkeypatch.delenv("GITHUB_CLIENT_ID", raising=False)
+    monkeypatch.delenv("GITHUB_CLIENT_SECRET", raising=False)
 
     app = FastAPI()
     app.add_middleware(SessionMiddleware, secret_key="test-secret-key")
@@ -147,7 +148,8 @@ def test_dev_login_cookie_works_after_restart(
 
     config_dir = tmp_path / "config"
     config_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setattr(auth_module, "GITHUB_CLIENT_ID", "")
+    monkeypatch.delenv("GITHUB_CLIENT_ID", raising=False)
+    monkeypatch.delenv("GITHUB_CLIENT_SECRET", raising=False)
 
     # Boot 1 — trigger dev-login
     mgr1 = IdentityManager(config_dir=config_dir)
