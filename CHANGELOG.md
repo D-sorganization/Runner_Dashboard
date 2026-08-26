@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.9.33] - 2026-08-26
+
 ### Fixed
 
 - Routed protected dashboard releases through the canonical schema-v2

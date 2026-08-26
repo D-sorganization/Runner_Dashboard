@@ -1,9 +1,14 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.186
-**Application Version:** 4.9.32 (see `VERSION`)
-**Last Updated:** 2026-08-26T08:40:00-07:00
+**Spec Version:** 2.5.187
+**Application Version:** 4.9.33 (see `VERSION`)
+**Last Updated:** 2026-08-26T09:30:00-07:00
 **Status:** Active
+
+- **2026-08-26 (2.5.187):** Synchronize all canonical release metadata at
+  version 4.9.33 so the first protected release after the #1126 capacity
+  correction is built from a descendant of `ea54d465` using the schema-v2
+  publication contract repaired by issue #1132 (issue #1131).
 
 - **2026-08-26 (2.5.186):** Route protected release builds through the
   canonical schema-v2 artifact packager so every published dashboard bundle

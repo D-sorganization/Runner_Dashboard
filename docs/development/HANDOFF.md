@@ -2,11 +2,11 @@
 
 ## Current State
 
-- Branch: `fix/issue-1132-release-schema-v2`, based on protected remote `main`
-  at `ea54d465`. PR #1126 is merged. Governing issue: #1132. The immediate
-  objective is to repair protected release publication before the 4.9.33 bump
-  in #1131 produces the immutable #1126 deployment artifact required for
-  controlled DeskComputer re-entry.
+- Branch: `fix/issue-1131-release-4933`, based on protected remote `main` at
+  `16a876fa`, the protected squash merge of PR #1133 with the exact reviewed
+  tree. The synchronized 4.9.33 metadata is uncommitted and unpublished.
+  Governing issue: #1131. Bounded serial revalidation passed on OGLaptop; the
+  next action is to publish this exact tree for protected review.
 - PR #1116 merged as `4fc1c127`
   before its late full-suite failure surfaced. Protected corrective PR #1117
   then passed the complete suite and merged as `4b1605c7`; issue #1115 is
@@ -18,6 +18,9 @@
   schedule correction. Release run `32818795234` pushed `v4.9.32` at the older
   `4eb9fac` commit, then failed publication on WSL checkout ownership; it left
   no release tarball or checksum. Do not rerun or delete that immutable tag.
+- Runner Dashboard 4.9.33 release metadata is synchronized only in the local
+  #1131 worktree. PR #1133 protected-squash-merged as `16a876fa`; 4.9.33 must
+  remain unpublished until the bounded checks pass again on that exact base.
 - DeskComputer is in a full operator-authorized maintenance drain:
   `Ubuntu-22.04` is stopped, no local runner listener or worker is present, and
   Desktop-1 through Desktop-8 are offline. The shared drain marker is present,
@@ -95,6 +98,22 @@
 ## Validation
 
 Validated serially to avoid adding pressure to the local runner host:
+
+- OGLaptop TDD RED: with only `VERSION` changed to 4.9.33, exact command
+  `python -m pytest -q -n 0 tests/test_version_single_source.py` produced two
+  expected failures: static release metadata remained at 4.9.32 and the
+  `runner-dashboard` entry in `uv.lock` remained at 4.9.32. The independent
+  backend runtime-version test passed.
+- OGLaptop GREEN: after synchronizing every canonical version surface, the
+  same exact serial command passed all 3 tests.
+- OGLaptop bounded release contract: `python -m pytest -q -n 0
+  tests/test_release_workflow_yaml.py tests/deploy/test_artifact_deployment.py`
+  passed all 24 tests. No test or build command was run on DeskComputer, and no
+  npm build, render, artifact publication, tag, push, or release was performed.
+- Post-#1133 rebase confirmation: at exact protected base `16a876fa`, OGLaptop
+  reran `python -m pytest -q -n 0 tests/test_version_single_source.py
+  tests/test_release_workflow_yaml.py tests/deploy/test_artifact_deployment.py`;
+  all 27 tests passed and `git diff --check` was clean.
 
 - RED: the canonical-schedule contract failed because the repository still
   returned `default_count: 32` and `max_count: 32`.
@@ -179,15 +198,14 @@ change.
 
 ## Next Steps
 
-1. Merge #1132 through protected checks, then implement #1131 as a separate
-   synchronized 4.9.33 version-metadata bump so its release runs from a
-   descendant of `ea54d465`.
-2. Verify the signed 4.9.33 tarball, checksum, SBOM, provenance, schema-v2
-   metadata, and exact protected source SHA before deployment.
-3. Deploy the post-#1125 immutable artifact only after review, verify the 2/4
+1. Publish the exact validated synchronized #1131 metadata tree, then require a
+   fresh protected PR run and ordinary protected merge.
+3. Verify the signed 4.9.33 tarball, checksum, cosign bundle, SBOM, provenance,
+   schema-v2 metadata, offline wheelhouse, and exact protected source SHA.
+4. Deploy the post-#1125 immutable artifact only after review, verify the 2/4
    schedule through a complete five-minute timer cycle, then consider restoring
    exactly two runners.
-4. Keep DeskComputer fully drained. Recover ControlTower Linux capacity only
+5. Keep DeskComputer fully drained. Recover ControlTower Linux capacity only
    after a verified VHDX safety copy and correction of its stale startup task
    and eight-runner override; then activate exactly two runners and observe
    pressure before allowing the four-runner ceiling.
