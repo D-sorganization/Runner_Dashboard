@@ -216,36 +216,21 @@ jobs:
         if: steps.resolve.outputs.dry_run != 'true'
         shell: bash
         env:
-          TAG: ${{ steps.resolve.outputs.tag }}
           VERSION: ${{ steps.resolve.outputs.version }}
         run: |
           set -euo pipefail
-          ARTIFACT="dashboard-${VERSION}.tar.gz"
-          TMP_ARTIFACT="$RUNNER_TEMP/$ARTIFACT"
-          if [ ! -d "dist" ]; then
-            npm ci
-            npm run build
-          fi
-          bash deploy/write-deployment-metadata.sh . .
-          find . -maxdepth 3 -type f | sed 's|^\./||' | grep -vE '^(\.git|node_modules|\.venv|venv|__pycache__|dashboard-)' | sort > FILES.txt
-          # Exclude ephemeral / generated artefacts from the source tarball.
-          tar czf "$TMP_ARTIFACT" \
-            --exclude='.git' \
-            --exclude='node_modules' \
-            --exclude='venv' \
-            --exclude='.venv' \
-            --exclude='__pycache__' \
-            --exclude='*.pyc' \
-            --exclude='dashboard-*.tar.gz' \
-            --exclude='dashboard-*.tar.gz.sha256' \
-            --exclude='dashboard-*.sig' \
-            --exclude='dashboard-*.pem' \
-            --exclude='dashboard-*.bundle' \
-            .
-          mv "$TMP_ARTIFACT" "$ARTIFACT"
-          SHA256=$(sha256sum "$ARTIFACT" | awk '{print $1}')
-          echo "${SHA256}  ${ARTIFACT}" > "${ARTIFACT}.sha256"
+          OUTPUT_DIR="$RUNNER_TEMP/release-artifacts"
+          bash deploy/package-dashboard-artifact.sh \
+            --output-dir "$OUTPUT_DIR" \
+            --version "$VERSION" \
+            --sha "$GITHUB_SHA"
+          ARTIFACT="$OUTPUT_DIR/dashboard-${VERSION}.tar.gz"
+          CHECKSUM="${ARTIFACT}.sha256"
+          BUNDLE_FILE="$OUTPUT_DIR/dashboard-${VERSION}.bundle"
+          SHA256=$(awk '{print $1}' "$CHECKSUM")
           echo "artifact=$ARTIFACT" >> "$GITHUB_OUTPUT"
+          echo "checksum=$CHECKSUM" >> "$GITHUB_OUTPUT"
+          echo "bundle=$BUNDLE_FILE" >> "$GITHUB_OUTPUT"
           echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
           echo "Built $ARTIFACT (sha256=$SHA256)"
 
@@ -258,11 +243,10 @@ jobs:
         shell: bash
         env:
           ARTIFACT: ${{ steps.tarball.outputs.artifact }}
-          VERSION: ${{ steps.resolve.outputs.version }}
+          BUNDLE_FILE: ${{ steps.tarball.outputs.bundle }}
           COSIGN_EXPERIMENTAL: "1"
         run: |
           set -euo pipefail
-          BUNDLE_FILE="dashboard-${VERSION}.bundle"
           cosign sign-blob --yes \
             --bundle "$BUNDLE_FILE" \
             "$ARTIFACT"
@@ -351,17 +335,18 @@ jobs:
         env:
           TAG: ${{ steps.resolve.outputs.tag }}
           NOTES_FILE: ${{ steps.notes.outputs.notes_file }}
-          VERSION: ${{ steps.resolve.outputs.version }}
+          ARTIFACT: ${{ steps.tarball.outputs.artifact }}
+          CHECKSUM: ${{ steps.tarball.outputs.checksum }}
+          BUNDLE_FILE: ${{ steps.tarball.outputs.bundle }}
         run: |
           set -euo pipefail
-          ARTIFACT="dashboard-${VERSION}.tar.gz"
-          BUNDLE_FILE="dashboard-${VERSION}.bundle"
           gh release create "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
             --title "$TAG" \
             --notes-file "$NOTES_FILE" \
             --target "${{ github.sha }}" \
             "$ARTIFACT" \
-            "${ARTIFACT}.sha256" \
+            "$CHECKSUM" \
             "$BUNDLE_FILE" \
             sbom.spdx.json
           echo "Created GitHub release $TAG with signed artifacts and SBOM."

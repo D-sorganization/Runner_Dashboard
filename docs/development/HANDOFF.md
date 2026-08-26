@@ -2,11 +2,11 @@
 
 ## Current State
 
-- Branch: `fix/issue-1125-deskcomputer-capacity`, merged with remote `main` at
-  `a8e0396`. PR #1126 has protected squash auto-merge armed. Governing issue:
-  #1125. The immediate objective is to align the
-  canonical Runner Dashboard schedule with the governed DeskComputer policy
-  before any controlled re-entry from the live maintenance drain.
+- Branch: `fix/issue-1132-release-schema-v2`, based on protected remote `main`
+  at `ea54d465`. PR #1126 is merged. Governing issue: #1132. The immediate
+  objective is to repair protected release publication before the 4.9.33 bump
+  in #1131 produces the immutable #1126 deployment artifact required for
+  controlled DeskComputer re-entry.
 - PR #1116 merged as `4fc1c127`
   before its late full-suite failure surfaced. Protected corrective PR #1117
   then passed the complete suite and merged as `4b1605c7`; issue #1115 is
@@ -14,10 +14,10 @@
 - PR #1114 merged as `30de9d02` and makes the governed scheduler the sole
   DeskComputer capacity-recovery authority.
 - Runner Dashboard 4.9.30 is the last deployed exact-main schema-v2 artifact on
-  DeskComputer. Runner Dashboard 4.9.32 source and maintenance-drain controls
-  are merged on remote `main` but are not yet the live runtime. Release run
-  `32818795234` is queued for Linux fleet capacity; do not create a redundant
-  rerun.
+  DeskComputer. Runner Dashboard 4.9.32 source predates the final #1126
+  schedule correction. Release run `32818795234` pushed `v4.9.32` at the older
+  `4eb9fac` commit, then failed publication on WSL checkout ownership; it left
+  no release tarball or checksum. Do not rerun or delete that immutable tag.
 - DeskComputer is in a full operator-authorized maintenance drain:
   `Ubuntu-22.04` is stopped, no local runner listener or worker is present, and
   Desktop-1 through Desktop-8 are offline. The shared drain marker is present,
@@ -179,12 +179,12 @@ change.
 
 ## Next Steps
 
-1. Let PR #1126's queued guard and container checks run once; do not create a
-   redundant rerun. Protected squash auto-merge is armed. Do not remove the
-   live drain marker or start WSL as part of this change.
-2. Close #1085 only after release run `32818795234` produces a verified 4.9.32
-   artifact and checksum; do not create a redundant rerun.
-3. Deploy a post-#1125 immutable artifact only after review, verify the 2/4
+1. Merge #1132 through protected checks, then implement #1131 as a separate
+   synchronized 4.9.33 version-metadata bump so its release runs from a
+   descendant of `ea54d465`.
+2. Verify the signed 4.9.33 tarball, checksum, SBOM, provenance, schema-v2
+   metadata, and exact protected source SHA before deployment.
+3. Deploy the post-#1125 immutable artifact only after review, verify the 2/4
    schedule through a complete five-minute timer cycle, then consider restoring
    exactly two runners.
 4. Keep DeskComputer fully drained. Recover ControlTower Linux capacity only

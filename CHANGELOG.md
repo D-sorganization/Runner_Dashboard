@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Routed protected dashboard releases through the canonical schema-v2
+  packager and made GitHub release publication repository-explicit, preserving
+  the offline wheelhouse/install contract while avoiding WSL checkout
+  ownership discovery failures (#1132).
 - Eliminated the nested `vitest -> vite@8.x -> esbuild@^0.27||^0.28` peer
   conflict that left a clean `npm ci` install in an invalid state (`npm ls`
   reported an unmet `esbuild` peer and pulled in an unpinned `rolldown`
