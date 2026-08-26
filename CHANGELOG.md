@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Refreshed the immutable Python 3.13 slim container base and pinned Debian's
+  complete OpenSSL runtime package set to the CVE-2026-14456-fixed
+  `3.5.7-1~deb13u2` security version. The non-overridable package constraint
+  fails closed if the fixed version cannot be resolved (#1135).
 - Routed protected dashboard releases through the canonical schema-v2
   packager and made GitHub release publication repository-explicit, preserving
   the offline wheelhouse/install contract while avoiding WSL checkout

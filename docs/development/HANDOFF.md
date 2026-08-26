@@ -2,11 +2,12 @@
 
 ## Current State
 
-- Branch: `fix/issue-1132-release-schema-v2`, based on protected remote `main`
-  at `ea54d465`. PR #1126 is merged. Governing issue: #1132. The immediate
-  objective is to repair protected release publication before the 4.9.33 bump
-  in #1131 produces the immutable #1126 deployment artifact required for
-  controlled DeskComputer re-entry.
+- Branch: `fix/issue-1135-python-base-refresh`, based exactly on protected
+  remote `main` at `16a876fa9b35b1cd36a35761b96a4f1ab52ac393` (the merged
+  #1133 release-packaging correction). Governing issue: #1135. The immediate
+  objective is to clear the protected Docker/Trivy gate by refreshing the
+  immutable Python base identity and installing Debian's fixed OpenSSL package
+  set before the separate 4.9.33 publication change in #1134 is rebased.
 - PR #1116 merged as `4fc1c127`
   before its late full-suite failure surfaced. Protected corrective PR #1117
   then passed the complete suite and merged as `4b1605c7`; issue #1115 is
@@ -67,6 +68,12 @@
   `installed_runners` preserve the separate physical/configuration context.
 - The project contract remains Python `>=3.11,<3.14`; Python 3.10 is explicitly
   unsupported rather than maintained as a second runtime.
+- The container keeps Python 3.13 on an immutable multi-platform digest and
+  installs `libssl3t64`, `openssl`, and `openssl-provider-legacy` at Debian's
+  exact, non-overridable `3.5.7-1~deb13u2` security version. Package resolution
+  fails closed if that fixed version is unavailable, while the hash-locked
+  Python dependencies, UID 10001 runtime, command, and `/livez` healthcheck
+  remain unchanged.
 
 ## Merged #1105 Recovery
 
@@ -95,6 +102,16 @@
 ## Validation
 
 Validated serially to avoid adding pressure to the local runner host:
+
+- Issue #1135 RED on OGLaptop: the focused deploy-hardening selection failed
+  only the new OpenSSL refresh contract against protected main's older image
+  digest and unpinned security package set. No Docker build or Trivy scan was
+  run locally; both remain mandatory protected checks.
+- Issue #1135 GREEN on OGLaptop: `python -m pytest -q -n 0
+  tests/test_deploy_hardening.py` passed the complete 57-test static deployment
+  contract, including immutable base identity, fixed OpenSSL package set,
+  hash-locked application dependencies, non-root runtime, and `/livez`
+  healthcheck. DeskComputer performed no test, build, Docker, or Trivy work.
 
 - RED: the canonical-schedule contract failed because the repository still
   returned `default_count: 32` and `max_count: 32`.
@@ -179,15 +196,20 @@ change.
 
 ## Next Steps
 
-1. Merge #1132 through protected checks, then implement #1131 as a separate
-   synchronized 4.9.33 version-metadata bump so its release runs from a
-   descendant of `ea54d465`.
-2. Verify the signed 4.9.33 tarball, checksum, SBOM, provenance, schema-v2
-   metadata, and exact protected source SHA before deployment.
-3. Deploy the post-#1125 immutable artifact only after review, verify the 2/4
+1. Review and publish the #1135 correction through a normal protected pull
+   request; do not bypass the Docker Build & Trivy Scan gate.
+2. Require the protected image build to prove all three OpenSSL binary packages
+   resolve to `3.5.7-1~deb13u2` and that Trivy reports no HIGH or CRITICAL fixed
+   vulnerability before merge. Record the exact merge SHA and post-merge run.
+3. After #1135 merges, publish the separate 4.9.33 change from a fresh branch
+   based on the new protected `main`, then close #1134 as superseded without
+   rewriting its history. Verify the replacement PR's signed tarball, checksum,
+   SBOM, provenance, schema-v2 metadata, and exact protected source SHA before
+   deployment.
+4. Deploy the post-#1125 immutable artifact only after review, verify the 2/4
    schedule through a complete five-minute timer cycle, then consider restoring
    exactly two runners.
-4. Keep DeskComputer fully drained. Recover ControlTower Linux capacity only
+5. Keep DeskComputer fully drained. Recover ControlTower Linux capacity only
    after a verified VHDX safety copy and correction of its stale startup task
    and eight-runner override; then activate exactly two runners and observe
    pressure before allowing the four-runner ceiling.
