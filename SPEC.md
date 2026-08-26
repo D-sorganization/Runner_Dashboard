@@ -1,9 +1,16 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.186
+**Spec Version:** 2.5.187
 **Application Version:** 4.9.32 (see `VERSION`)
-**Last Updated:** 2026-08-26T08:40:00-07:00
+**Last Updated:** 2026-08-26T09:55:00-07:00
 **Status:** Active
+
+- **2026-08-26 (2.5.187):** Refresh the immutable Python 3.13 slim base and
+  pin Debian's `libssl3t64`, `openssl`, and `openssl-provider-legacy` security
+  package set to a non-overridable `3.5.7-1~deb13u2` constraint. Resolution
+  fails closed if the fixed version is unavailable while preserving the locked
+  application install, non-root runtime, and `/livez` healthcheck contracts
+  (issue #1135).
 
 - **2026-08-26 (2.5.186):** Route protected release builds through the
   canonical schema-v2 artifact packager so every published dashboard bundle

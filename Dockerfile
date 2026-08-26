@@ -7,14 +7,20 @@
 # of slow CPython 3.14 source builds.
 # To regenerate requirements.lock.txt:  uv export --no-dev -o requirements.lock.txt
 
-FROM python:3.13-slim@sha256:c33f0bc4364a6881bed1ec0cc2665e6c53c87a43e774aaeab88e6f17af105e4f
+FROM python:3.13-slim@sha256:7e3a6aca9d74f93cca21a91d86a8dad8c34749afd5b4a98ee481c9c47b9f5ed4
 
 WORKDIR /app
 
-# Install system dependencies (curl needed for HEALTHCHECK)
-RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
+# Install system dependencies (curl needed for HEALTHCHECK). Keep the Debian
+# OpenSSL security package set exact and non-overridable so resolution fails
+# closed if Debian's CVE-2026-14456-fixed version is unavailable.
+RUN OPENSSL_DEBIAN_SECURITY_VERSION='3.5.7-1~deb13u2' \
+    && apt-get update && apt-get install -y --no-install-recommends \
     curl \
     git \
+    libssl3t64="${OPENSSL_DEBIAN_SECURITY_VERSION}" \
+    openssl="${OPENSSL_DEBIAN_SECURITY_VERSION}" \
+    openssl-provider-legacy="${OPENSSL_DEBIAN_SECURITY_VERSION}" \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user and group
