@@ -128,6 +128,10 @@
   stops dashboard/scheduler/autoscaler writers, and only then snapshots and
   manifests mutable state. Failure after the boundary restores the full prior
   deployment/config/systemd state.
+- Data-tree rollback is gated by a root-owned completion sentinel written only
+  after all three snapshots and the mutable manifest verify. A mid-snapshot
+  failure restores service/unit authority and restarts the untouched original;
+  it cannot replace live data with a partial backup.
 - The deploy job requires the protected `oglaptop-production` environment and
   an environment-only `OGLAPTOP_DEPLOY_GITHUB_TOKEN` with private-repository
   read/attestation plus organization Actions runner-read authority. There is no

@@ -328,6 +328,11 @@ create_quiesced_rollback_snapshot() {
     verify_quiesced_snapshot
 }
 
+mark_quiesced_snapshot_complete() {
+    verify_quiesced_snapshot
+    install -o root -g root -m 0400 /dev/null "${SNAPSHOT_COMPLETE}"
+}
+
 restore_path() {
     local backup="$1"
     local destination="$2"
@@ -345,9 +350,12 @@ restore_rollback_snapshot() {
     systemctl stop runner-scheduler.timer runner-scheduler.service 2>/dev/null || true
     systemctl disable --now runner-autoscaler.service 2>/dev/null || true
     systemctl stop runner-dashboard.service 2>/dev/null || true
-    restore_path "${ROLLBACK_SNAPSHOT}/dashboard" "${QUALIFIED_DEPLOY_DIR}"
-    restore_path "${ROLLBACK_SNAPSHOT}/config" "${QUALIFIED_CONFIG_DIR}"
-    restore_path "${ROLLBACK_SNAPSHOT}/local-share" "${QUALIFIED_SHARE_DIR}"
+    if [[ -f "${SNAPSHOT_COMPLETE}" && ! -L "${SNAPSHOT_COMPLETE}" \
+        && "$(stat -c '%U:%G' "${SNAPSHOT_COMPLETE}")" == "root:root" ]]; then
+        restore_path "${ROLLBACK_SNAPSHOT}/dashboard" "${QUALIFIED_DEPLOY_DIR}"
+        restore_path "${ROLLBACK_SNAPSHOT}/config" "${QUALIFIED_CONFIG_DIR}"
+        restore_path "${ROLLBACK_SNAPSHOT}/local-share" "${QUALIFIED_SHARE_DIR}"
+    fi
     restore_path "${ROLLBACK_SNAPSHOT}/scheduler-release" "${QUALIFIED_SCHEDULER_RELEASE}"
     restore_path "${ROLLBACK_SNAPSHOT}/systemd-before/30-qualified-capacity.conf" \
         /etc/systemd/system/runner-dashboard.service.d/30-qualified-capacity.conf

@@ -316,6 +316,7 @@ TRANSACTION_DIR="${QUALIFIED_TRANSACTION_ROOT}/${TRANSACTION_ID}"
 install -d -o root -g root -m 0700 "${TRANSACTION_DIR}"
 TRANSACTION_JOURNAL="${TRANSACTION_DIR}/journal.jsonl"
 ROLLBACK_SNAPSHOT="${TRANSACTION_DIR}/rollback"
+SNAPSHOT_COMPLETE="${ROLLBACK_SNAPSHOT}/snapshot.complete"
 MUTABLE_BEFORE="${TRANSACTION_DIR}/mutable-before.json"
 MUTABLE_AFTER="${TRANSACTION_DIR}/mutable-after.json"
 MUTABLE_PAYLOAD="${TRANSACTION_DIR}/mutable-payload"
@@ -346,7 +347,7 @@ journal_event "begin_mutation"
 quiesce_for_snapshot
 create_quiesced_rollback_snapshot
 create_mutable_manifest "${MUTABLE_BEFORE}" "${MUTABLE_PAYLOAD}"
-verify_quiesced_snapshot
+mark_quiesced_snapshot_complete
 journal_event "quiesced-snapshot-verified"
 verify_sha256 "${ARTIFACT_COPY}" "${ARTIFACT_SHA256}"
 DEPLOY_DIR="${QUALIFIED_DEPLOY_DIR}" bash "${STAGE_DIR}/deploy/install-dashboard-artifact.sh" \

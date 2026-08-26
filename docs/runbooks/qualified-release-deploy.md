@@ -129,7 +129,10 @@ dashboard, and only then creates one consistent transaction snapshot containing:
 
 All three data trees are checksum-compared with their backups while writers
 remain stopped; the mutable manifest is generated and rechecked in that same
-quiesced interval. The signed artifact installs offline from root-only staging,
+quiesced interval. Only then is a root-owned snapshot-complete sentinel written.
+If snapshot creation fails midway, rollback restores only baseline unit files
+and service states and restarts the untouched application trees; it never
+replaces them with a partial backup. The signed artifact installs offline from root-only staging,
 and its checksum is repeated immediately before and after the installer call.
 Mutable files are restored byte-for-byte and verified before the dashboard
 restarts. The helper installs the exact schedule, a reversible

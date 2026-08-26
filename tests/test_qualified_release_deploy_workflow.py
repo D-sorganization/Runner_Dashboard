@@ -216,6 +216,25 @@ def test_transaction_quiesces_writers_before_consistent_snapshot() -> None:
         assert marker in library
 
 
+def test_partial_snapshot_failure_restores_only_baseline_authority() -> None:
+    transaction = TRANSACTION.read_text(encoding="utf-8")
+    manifest = transaction.index('create_mutable_manifest "${MUTABLE_BEFORE}"')
+    complete = transaction.index("mark_quiesced_snapshot_complete", manifest)
+    installer = transaction.index("install-dashboard-artifact.sh", complete)
+    assert manifest < complete < installer
+
+    library = LIBRARY.read_text(encoding="utf-8")
+    gate = library.index('if [[ -f "${SNAPSHOT_COMPLETE}"')
+    dashboard_restore = library.index(
+        'restore_path "${ROLLBACK_SNAPSHOT}/dashboard"', gate
+    )
+    unit_restore = library.index(
+        'restore_path "${ROLLBACK_SNAPSHOT}/systemd-before/30-qualified-capacity.conf"'
+    )
+    assert gate < dashboard_restore < unit_restore
+    assert 'install -o root -g root -m 0400 /dev/null "${SNAPSHOT_COMPLETE}"' in library
+
+
 def test_canonical_oglaptop_schedule_is_bounded() -> None:
     schedule = json.loads(SCHEDULE.read_text(encoding="utf-8"))
     assert schedule["enabled"] is True
