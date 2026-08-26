@@ -226,8 +226,6 @@ change.
    and eight-runner override; then activate exactly two runners and observe
    pressure before allowing the four-runner ceiling.
 
-## Issue #1141 - OGLaptop production browser OAuth readiness
-
 ## Issue #1141 — OGLaptop production browser OAuth readiness
 
 - Base: protected `main` at `8773a1b7d190b7f7bf4489c0882ca22cdf9354ef`
@@ -241,6 +239,16 @@ change.
   callback, explicit callback binding for authorization and token exchange,
   no dev-login fallback, redacted health diagnostic, and controlled operator
   provisioning/rotation/rollback documentation.
+- Corrected source commit:
+  `d59b96fc1dff16bbeda41fa26ae0e6634ff24cb9`, tree
+  `683a9b82157de0ab1adacc1e03a2bb5f85a01ef3`.
+- Canonical GREEN: Repository_Management run `33016376799`, job
+  `98335556285`, on `d-sorg-local-Oglaptop-1`; the exact corrected source
+  passed 27/27 focused callback/readiness/dev-login contracts with explicit
+  `pytest -n 0`.
+- Focused quality: Repository_Management run `33016320083`, job
+  `98335361209`, on `d-sorg-local-Oglaptop-1`; Ruff lint passed and all seven
+  changed Python files were already correctly formatted.
 - Operational boundary: no local validation, restart, bootstrap, deployment,
   secret creation, environment administration, runner routing, public Funnel,
   or PAT creation was performed. Validation was diverted to approved OGLaptop
@@ -250,3 +258,6 @@ change.
   exact callback and tailnet-only Serve state, and perform an approved qualified
   deployment. Source readiness is not evidence that those external controls
   exist.
+- No pull request was opened because this repository's pull-request workflow
+  starts the broad nonserial suite, which is prohibited during the active
+  capacity drain. The source branch is `fix/issue-1141-oauth-readiness`.
