@@ -163,26 +163,27 @@ def test_release_workflow_defines_dry_run_input() -> None:
     assert inputs["version"].get("required") is True, "`version` input must be required"
 
 
-def test_release_tarball_excludes_generated_release_artifacts() -> None:
+def test_release_uses_canonical_schema_v2_packager() -> None:
     text = RELEASE_WORKFLOW.read_text(encoding="utf-8")
-    assert 'TMP_ARTIFACT="$RUNNER_TEMP/$ARTIFACT"' in text
-    assert 'tar czf "$TMP_ARTIFACT"' in text
-    assert 'mv "$TMP_ARTIFACT" "$ARTIFACT"' in text
-    for pattern in (
-        "--exclude='.venv'",
-        "--exclude='dashboard-*.tar.gz'",
-        "--exclude='dashboard-*.tar.gz.sha256'",
-        "--exclude='dashboard-*.sig'",
-        "--exclude='dashboard-*.pem'",
-        "--exclude='dashboard-*.bundle'",
-    ):
-        assert pattern in text, f"release tarball must exclude generated artifact pattern {pattern}"
+    assert "bash deploy/package-dashboard-artifact.sh \\" in text
+    assert '--output-dir "$OUTPUT_DIR" \\' in text
+    assert '--version "$VERSION" \\' in text
+    assert '--sha "$GITHUB_SHA"' in text
+    assert "bash deploy/write-deployment-metadata.sh" not in text
+    assert 'tar czf "$TMP_ARTIFACT"' not in text
+
+
+def test_release_publication_does_not_depend_on_checkout_discovery() -> None:
+    text = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+    assert 'gh release create "$TAG" \\' in text
+    assert '--repo "$GITHUB_REPOSITORY" \\' in text
 
 
 def test_release_workflow_uses_cosign_bundle_artifact() -> None:
     text = RELEASE_WORKFLOW.read_text(encoding="utf-8")
     assert '--bundle "$BUNDLE_FILE"' in text
-    assert 'BUNDLE_FILE="dashboard-${VERSION}.bundle"' in text
+    assert 'BUNDLE_FILE="$OUTPUT_DIR/dashboard-${VERSION}.bundle"' in text
+    assert "BUNDLE_FILE: ${{ steps.tarball.outputs.bundle }}" in text
     assert '"$BUNDLE_FILE" \\' in text
     assert "--output-signature" not in text
     assert "--output-certificate" not in text

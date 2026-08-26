@@ -8,8 +8,8 @@ not replace the current `setup.sh` / `update-deployed.sh` wrappers.
 
 ## What Is the Artifact?
 
-A single tarball `dashboard-<version>.tar.gz` produced by
-`deploy/package-dashboard-artifact.sh`.
+A single tarball `dashboard-<version>.tar.gz` produced by the protected
+`Release` workflow through `deploy/package-dashboard-artifact.sh`.
 It contains everything a runner node needs to install the dashboard without
 needing the full repository checkout:
 
@@ -48,12 +48,12 @@ ledgers, histories, and `.env`; those mutable files are not release contents.
 `runner-dashboard/VERSION` is the semantic version for the dashboard. Bump it
 on any deployment-relevant change.
 
-- Build from an exact verified `main` commit and retain the generated tarball,
-  checksum sidecar, and commit identity together.
-- No automatic per-push artifact job is defined; this avoids consuming runner
-  capacity for releases that will not be deployed.
-- A tagged release may attach the tarball and checksum after the same local
-  build and isolated-install validation succeeds.
+- A protected `main` push that changes `VERSION` builds, signs, attests, tags,
+  and publishes the canonical artifact and checksum.
+- Tag and manual-dispatch releases require the requested version to match
+  `VERSION`; manual dispatch also supports a non-publishing dry run.
+- Every published artifact records the exact workflow source SHA and retains
+  the checksum, cosign bundle, SBOM, and build provenance together.
 
 ## Building Locally
 
@@ -61,7 +61,12 @@ Build on the Linux platform used by the runner host so native wheels match the
 deployment target:
 
 ```bash
-bash deploy/package-dashboard-artifact.sh --output-dir /path/to/artifacts
+VERSION=$(grep -vE '^\s*(#|$)' VERSION | head -n1 | tr -d '[:space:]')
+SHA=$(git rev-parse HEAD)
+bash deploy/package-dashboard-artifact.sh \
+  --output-dir /path/to/artifacts \
+  --version "$VERSION" \
+  --sha "$SHA"
 ```
 
 ## Installing From Artifact (Sketch)

@@ -1,9 +1,16 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.185
+**Spec Version:** 2.5.186
 **Application Version:** 4.9.32 (see `VERSION`)
-**Last Updated:** 2026-08-25T09:30:00-07:00
+**Last Updated:** 2026-08-26T08:40:00-07:00
 **Status:** Active
+
+- **2026-08-26 (2.5.186):** Route protected release builds through the
+  canonical schema-v2 artifact packager so every published dashboard bundle
+  includes the locked offline wheelhouse, exact source SHA, deterministic
+  inventory, checksum, and isolated-install validation. Release publication
+  also names the GitHub repository explicitly, avoiding WSL checkout discovery
+  and dubious-ownership failures (issue #1132).
 
 - **2026-08-25 (2.5.185):** Bound the canonical DeskComputer runner schedule
   to two weekday-day runners and four weekend/overnight runners, with a hard
