@@ -23,7 +23,7 @@
       "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
       "start": "22:00",
       "end": "07:00",
-      "runners": 8
+      "runners": 4
     }
   ]
 }

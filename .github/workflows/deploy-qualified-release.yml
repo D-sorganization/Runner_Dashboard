@@ -44,6 +44,8 @@ jobs:
     name: Verify and deploy the exact signed release
     runs-on: [self-hosted, Linux, X64, d-sorg-local-Oglaptop-1]
     timeout-minutes: 30
+    environment:
+      name: oglaptop-production
     env:
       EXPECTED_RUNNER: d-sorg-local-Oglaptop-1
       QUALIFIED_INBOX_ROOT: /var/lib/runner-dashboard-qualified-deploy/inbox
@@ -59,9 +61,10 @@ jobs:
         id: identity
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.OGLAPTOP_DEPLOY_GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          [[ -n "${GH_TOKEN:-}" ]] || { echo "::error::protected deployment token is absent"; exit 1; }
           [[ "$TARGET_INPUT" == "OGLaptop" ]] || { echo "::error::target is not allowlisted"; exit 1; }
           [[ "$CONFIRM_INPUT" == "DEPLOY OGLAPTOP" ]] || { echo "::error::confirmation phrase is incorrect"; exit 1; }
           [[ "$RUNNER_NAME" == "$EXPECTED_RUNNER" ]] || { echo "::error::job is not on the exact deployment runner"; exit 1; }
@@ -101,7 +104,7 @@ jobs:
         id: assets
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.OGLAPTOP_DEPLOY_GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           INBOX_DIR="$QUALIFIED_INBOX_ROOT/$TRANSACTION_ID"
@@ -166,7 +169,7 @@ jobs:
         id: inventory
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.OGLAPTOP_DEPLOY_GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           WORKER_PID=$(python3 - <<'PY'
@@ -252,7 +255,7 @@ jobs:
       - name: Verify post-transaction GitHub steady state
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.OGLAPTOP_DEPLOY_GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           gh api --paginate --slurp "orgs/D-sorganization/actions/runners?per_page=100" \

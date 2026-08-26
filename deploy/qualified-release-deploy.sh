@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # Root-owned, no-argument OGLaptop deployment transaction (issue #1138).
 set -euo pipefail
+umask 0077
 # The bootstrap copies this library to a root-owned immutable authority path.
 # shellcheck source=deploy/qualified-release-lib.sh
 source /usr/local/lib/runner-dashboard/qualified-release-lib.sh
+# shellcheck source=deploy/qualified-release-runtime-lib.sh
+source /usr/local/lib/runner-dashboard/qualified-release-runtime-lib.sh
 SCHEDULER_CYCLE_TIMEOUT_SECONDS=330
 MUTATION_STARTED=0
 TRANSACTION_COMMITTED=0
@@ -98,16 +101,13 @@ install_schedule_and_units() {
         "${QUALIFIED_CONFIG_DIR}"
     install -o "${QUALIFIED_RUNNER_USER}" -g "${QUALIFIED_RUNNER_USER}" -m 0644 \
         "${QUALIFIED_SCHEDULE_SOURCE}" "${QUALIFIED_SCHEDULE}"
-    install -o root -g root -m 0755 "${STAGE_DIR}/deploy/runner-scheduler.py" \
-        /usr/local/bin/runner-scheduler
-
     install -d -o root -g root -m 0755 /etc/systemd/system/runner-dashboard.service.d
     cat > /etc/systemd/system/runner-dashboard.service.d/30-qualified-capacity.conf <<EOF
 [Service]
 Environment=NUM_RUNNERS=4
 Environment=MAX_RUNNERS=8
-Environment=RUNNER_SCHEDULE_CONFIG=${QUALIFIED_SCHEDULE}
-Environment=RUNNER_SCHEDULER_BIN=/usr/local/bin/runner-scheduler
+Environment=RUNNER_SCHEDULE_CONFIG=${QUALIFIED_SCHEDULE_SOURCE}
+Environment=RUNNER_SCHEDULER_BIN=${QUALIFIED_SCHEDULER_BIN}
 EOF
     chmod 0644 /etc/systemd/system/runner-dashboard.service.d/30-qualified-capacity.conf
 
@@ -121,8 +121,8 @@ Wants=network-online.target
 Type=oneshot
 User=root
 Environment=RUNNER_ROOT=${QUALIFIED_RUNNER_ROOT}
-Environment=RUNNER_SCHEDULE_CONFIG=${QUALIFIED_SCHEDULE}
-ExecStart=${QUALIFIED_DEPLOY_DIR}/.venv/bin/python /usr/local/bin/runner-scheduler --apply
+Environment=RUNNER_SCHEDULE_CONFIG=${QUALIFIED_SCHEDULE_SOURCE}
+ExecStart=${QUALIFIED_SCHEDULER_RUNTIME}/bin/python ${QUALIFIED_SCHEDULER_BIN} --apply
 EOF
     chmod 0644 /etc/systemd/system/runner-scheduler.service
 
@@ -156,10 +156,11 @@ verify_systemd_authority() {
         || fail "dashboard capacity environment is not 4/8"
     scheduler_exec="$(systemctl show runner-scheduler.service --property=ExecStart --value)"
     scheduler_config="$(systemctl show runner-scheduler.service --property=Environment --value)"
-    [[ "${scheduler_exec}" == *"${QUALIFIED_DEPLOY_DIR}/.venv/bin/python /usr/local/bin/runner-scheduler --apply"* ]] \
-        || fail "scheduler is not using the governed virtual environment"
-    [[ "${scheduler_config}" == *"RUNNER_SCHEDULE_CONFIG=${QUALIFIED_SCHEDULE}"* ]] \
-        || fail "scheduler is not using the user schedule"
+    [[ "${scheduler_exec}" == *"${QUALIFIED_SCHEDULER_RUNTIME}/bin/python ${QUALIFIED_SCHEDULER_BIN} --apply"* ]] \
+        || fail "scheduler is not using the root-owned release runtime"
+    [[ "${scheduler_config}" == *"RUNNER_SCHEDULE_CONFIG=${QUALIFIED_SCHEDULE_SOURCE}"* ]] \
+        || fail "scheduler is not using the root-owned canonical schedule"
+    verify_root_owned_scheduler_runtime
     [[ "$(systemctl is-active runner-autoscaler.service 2>/dev/null || true)" != "active" ]] \
         || fail "runner autoscaler remains active"
     [[ "$(systemctl is-enabled runner-autoscaler.service 2>/dev/null || true)" != "enabled" ]] \
@@ -293,6 +294,7 @@ transaction_exit() {
 [[ "${SUDO_USER:-}" == "${QUALIFIED_RUNNER_USER}" ]] || fail "qualified helper requires the OGLaptop runner user"
 [[ -x "${COSIGN_BIN}" && "$(stat -c '%U:%G' "${COSIGN_BIN}")" == "root:root" ]] \
     || fail "root-owned cosign authority is unavailable"
+verify_root_authority_file "${QUALIFIED_SCHEDULE_SOURCE}"
 
 REQUEST_FILE="$(mktemp "${QUALIFIED_STATE_ROOT}/request.XXXXXX")"
 chmod 0600 "${REQUEST_FILE}"
@@ -300,6 +302,10 @@ head -c 16384 > "${REQUEST_FILE}"
 [[ ! -s "${REQUEST_FILE}" || "$(stat -c '%s' "${REQUEST_FILE}")" -lt 16384 ]] \
     || fail "request exceeds the size bound"
 read_request "${REQUEST_FILE}"
+
+QUALIFIED_SCHEDULER_RELEASE="${QUALIFIED_RELEASE_ROOT}/${RELEASE_VERSION}-${RELEASE_COMMIT}"
+QUALIFIED_SCHEDULER_RUNTIME="${QUALIFIED_SCHEDULER_RELEASE}/runtime"
+QUALIFIED_SCHEDULER_BIN="${QUALIFIED_SCHEDULER_RELEASE}/runner-scheduler.py"
 
 INBOX_DIR="${QUALIFIED_INBOX_ROOT}/${TRANSACTION_ID}"
 TRANSACTION_DIR="${QUALIFIED_TRANSACTION_ROOT}/${TRANSACTION_ID}"
@@ -328,22 +334,26 @@ verify_cosign_bundle "${ARTIFACT_COPY}" "${BUNDLE_COPY}"
 validate_archive "${ARTIFACT_COPY}"
 install -d -o root -g root -m 0700 "${STAGE_DIR}"
 tar -xzf "${ARTIFACT_COPY}" --no-same-owner --no-same-permissions -C "${STAGE_DIR}"
+verify_root_only_tree "${STAGE_DIR}"
 validate_artifact_metadata "${STAGE_DIR}" "${RELEASE_VERSION}" "${RELEASE_COMMIT}"
 validate_local_runner_inventory "${TRANSACTION_DIR}/local-inventory-before.json"
 journal_event "preflight-qualified"
 
-create_rollback_snapshot
-create_mutable_manifest "${MUTABLE_BEFORE}" "${MUTABLE_PAYLOAD}"
+record_rollback_baseline
 MUTATION_STARTED=1
 journal_event "begin_mutation"
 
-systemctl stop runner-scheduler.timer 2>/dev/null || true
-systemctl disable --now runner-autoscaler.service 2>/dev/null || true
-systemctl stop runner-dashboard.service
+quiesce_for_snapshot
+create_quiesced_rollback_snapshot
+create_mutable_manifest "${MUTABLE_BEFORE}" "${MUTABLE_PAYLOAD}"
+verify_quiesced_snapshot
+journal_event "quiesced-snapshot-verified"
+verify_sha256 "${ARTIFACT_COPY}" "${ARTIFACT_SHA256}"
 DEPLOY_DIR="${QUALIFIED_DEPLOY_DIR}" bash "${STAGE_DIR}/deploy/install-dashboard-artifact.sh" \
     --artifact "${ARTIFACT_COPY}" \
     --checksum "${ARTIFACT_SHA256}" \
     --deploy-dir "${QUALIFIED_DEPLOY_DIR}"
+verify_sha256 "${ARTIFACT_COPY}" "${ARTIFACT_SHA256}"
 chown -R "${QUALIFIED_RUNNER_USER}:${QUALIFIED_RUNNER_USER}" "${QUALIFIED_DEPLOY_DIR}"
 restore_mutable_manifest "${MUTABLE_BEFORE}" "${MUTABLE_PAYLOAD}"
 verify_mutable_manifest "${MUTABLE_BEFORE}"
@@ -354,6 +364,7 @@ rm -rf -- "${MUTABLE_AFTER_PAYLOAD}"
     || fail "deployed governed runtime is not Python 3.12"
 journal_event "artifact-installed"
 
+install_root_owned_scheduler_runtime
 install_schedule_and_units
 systemctl daemon-reload
 systemctl restart runner-dashboard.service

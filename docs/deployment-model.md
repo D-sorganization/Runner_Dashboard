@@ -437,13 +437,23 @@ still run normally.
 Production OGLaptop releases use the manual, exact-release workflow described
 in [`docs/runbooks/qualified-release-deploy.md`](runbooks/qualified-release-deploy.md).
 It is deliberately separate from `setup.sh` and `update-deployed.sh`: a
+protected `oglaptop-production` environment supplies the human approval gate
+and a no-fallback credential with organization-runner-read authority. The
 protected-main, root-owned helper validates the published checksum, cosign
 bundle, build-attestation contract, archive, metadata, runtime ABI, complete
 runner inventory, and exact current-workflow worker exception before any host
-mutation. It creates a verified rollback snapshot and mutable-state manifest,
-installs the artifact offline, enforces the canonical 4-normal/8-max schedule
-through a reversible systemd drop-in, and proves a complete five-minute
-scheduler cycle with no runner actions.
+mutation. It records prior service authority, stops dashboard/scheduler writers,
+then creates and verifies the rollback snapshot and mutable-state manifest. It
+installs the artifact offline, holds every current schedule window at four
+active runners with eight only as the installed-inventory ceiling
+through a reversible systemd drop-in, runs the root scheduler only from a
+root-owned release-specific Python 3.12 runtime under `/opt`, and proves a
+complete five-minute scheduler cycle with no runner actions.
+
+Runners 5-8 remain stopped/offline during the capacity drain. Expanding a
+future window above four requires a separate protected-main schedule revision,
+explicit fleet approval, and new serial qualification; deployment inputs cannot
+raise capacity.
 
 The bootstrap is a one-time direct operator action. The workflow's sudoers rule
 permits only the no-argument root helper; the helper reads a closed JSON request

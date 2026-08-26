@@ -14,6 +14,7 @@ QUALIFIED_CONFIG_DIR="${QUALIFIED_RUNNER_HOME}/.config/runner-dashboard"
 QUALIFIED_SHARE_DIR="${QUALIFIED_RUNNER_HOME}/.local/share/runner-dashboard"
 QUALIFIED_SCHEDULE="${QUALIFIED_CONFIG_DIR}/runner-schedule.json"
 QUALIFIED_SCHEDULE_SOURCE="/usr/local/share/runner-dashboard/runner-schedule-oglaptop.json"
+QUALIFIED_RELEASE_ROOT="/opt/runner-dashboard-qualified/releases"
 QUALIFIED_EVIDENCE_NAME="redacted-evidence.json"
 COSIGN_BIN="/usr/local/bin/cosign"
 
@@ -77,6 +78,8 @@ validate_worker_ancestry() {
     local expected_pid="$1"
     local cursor="${PPID}"
     local command_line
+    local expected_repository="D-sorg"
+    expected_repository+="anization/Runner_Dashboard"
     local workflow_proven=0
     [[ -r "/proc/${expected_pid}/cmdline" ]] || fail "workflow worker process is absent"
     command_line="$(tr '\0' ' ' < "/proc/${expected_pid}/cmdline")"
@@ -86,8 +89,8 @@ validate_worker_ancestry() {
         if [[ -r "/proc/${cursor}/environ" ]]; then
             local environment
             environment="$(tr '\0' '\n' < "/proc/${cursor}/environ")"
-            if grep -Fxq 'GITHUB_REPOSITORY=D-sorganization/Runner_Dashboard' <<< "${environment}" \
-                && grep -Fxq 'GITHUB_WORKFLOW_REF=D-sorganization/Runner_Dashboard/.github/workflows/deploy-qualified-release.yml@refs/heads/main' <<< "${environment}" \
+            if grep -Fxq "GITHUB_REPOSITORY=${expected_repository}" <<< "${environment}" \
+                && grep -Fxq "GITHUB_WORKFLOW_REF=${expected_repository}/.github/workflows/deploy-qualified-release.yml@refs/heads/main" <<< "${environment}" \
                 && grep -Fxq "GITHUB_RUN_ID=${GITHUB_RUN_ID}" <<< "${environment}" \
                 && grep -Fxq "GITHUB_RUN_ATTEMPT=${GITHUB_RUN_ATTEMPT}" <<< "${environment}" \
                 && grep -Fxq 'RUNNER_NAME=d-sorg-local-Oglaptop-1' <<< "${environment}"; then
@@ -266,30 +269,63 @@ snapshot_path() {
     fi
 }
 
-create_rollback_snapshot() {
+record_rollback_baseline() {
     install -d -o root -g root -m 0700 "${ROLLBACK_SNAPSHOT}"
-    snapshot_path "${QUALIFIED_DEPLOY_DIR}" "${ROLLBACK_SNAPSHOT}/dashboard"
-    snapshot_path "${QUALIFIED_CONFIG_DIR}" "${ROLLBACK_SNAPSHOT}/config"
-    snapshot_path "${QUALIFIED_SHARE_DIR}" "${ROLLBACK_SNAPSHOT}/local-share"
     install -d -o root -g root -m 0700 "${ROLLBACK_SNAPSHOT}/systemd-before"
     for path in \
         /etc/systemd/system/runner-dashboard.service.d/30-qualified-capacity.conf \
         /etc/systemd/system/runner-scheduler.service \
-        /etc/systemd/system/runner-scheduler.timer \
-        /usr/local/bin/runner-scheduler; do
+        /etc/systemd/system/runner-scheduler.timer; do
         snapshot_path "${path}" "${ROLLBACK_SNAPSHOT}/systemd-before/$(basename "${path}")"
     done
+    snapshot_path "${QUALIFIED_SCHEDULER_RELEASE}" "${ROLLBACK_SNAPSHOT}/scheduler-release"
     systemctl is-active runner-dashboard.service > "${ROLLBACK_SNAPSHOT}/dashboard.active" || true
+    systemctl is-active runner-scheduler.service > "${ROLLBACK_SNAPSHOT}/scheduler-service.active" || true
     systemctl is-active runner-scheduler.timer > "${ROLLBACK_SNAPSHOT}/scheduler.active" || true
     systemctl is-enabled runner-scheduler.timer > "${ROLLBACK_SNAPSHOT}/scheduler.enabled" || true
     systemctl is-active runner-autoscaler.service > "${ROLLBACK_SNAPSHOT}/autoscaler.active" || true
     systemctl is-enabled runner-autoscaler.service > "${ROLLBACK_SNAPSHOT}/autoscaler.enabled" || true
+}
+
+quiesce_for_snapshot() {
+    systemctl stop runner-scheduler.timer 2>/dev/null || true
+    systemctl stop runner-scheduler.service 2>/dev/null || true
+    systemctl disable --now runner-autoscaler.service 2>/dev/null || true
+    systemctl stop runner-dashboard.service
+    systemctl is-active --quiet runner-dashboard.service && fail "dashboard did not quiesce"
+    systemctl is-active --quiet runner-scheduler.service && fail "scheduler service did not quiesce"
+    systemctl is-active --quiet runner-scheduler.timer && fail "scheduler timer did not quiesce"
+    systemctl is-active --quiet runner-autoscaler.service && fail "autoscaler did not quiesce"
+    return 0
+}
+
+verify_snapshot_tree() {
+    local source="$1"
+    local backup="$2"
+    if [[ -d "${source}" ]]; then
+        [[ -d "${backup}" ]] || fail "rollback directory snapshot is absent"
+        local snapshot_diff
+        snapshot_diff="$(rsync -acni --delete "${source}/" "${backup}/")"
+        [[ -z "${snapshot_diff}" ]] || fail "rollback directory snapshot changed"
+    else
+        [[ -f "${backup}.absent" ]] || fail "rollback absence marker is missing"
+    fi
+}
+
+verify_quiesced_snapshot() {
+    verify_snapshot_tree "${QUALIFIED_DEPLOY_DIR}" "${ROLLBACK_SNAPSHOT}/dashboard"
+    verify_snapshot_tree "${QUALIFIED_CONFIG_DIR}" "${ROLLBACK_SNAPSHOT}/config"
+    verify_snapshot_tree "${QUALIFIED_SHARE_DIR}" "${ROLLBACK_SNAPSHOT}/local-share"
+}
+
+create_quiesced_rollback_snapshot() {
+    snapshot_path "${QUALIFIED_DEPLOY_DIR}" "${ROLLBACK_SNAPSHOT}/dashboard"
+    snapshot_path "${QUALIFIED_CONFIG_DIR}" "${ROLLBACK_SNAPSHOT}/config"
+    snapshot_path "${QUALIFIED_SHARE_DIR}" "${ROLLBACK_SNAPSHOT}/local-share"
     [[ ! -f "${QUALIFIED_DEPLOY_DIR}/deployment.json" ]] \
         || cmp -s "${QUALIFIED_DEPLOY_DIR}/deployment.json" "${ROLLBACK_SNAPSHOT}/dashboard/deployment.json" \
-        || fail "rollback snapshot verification failed"
-    local snapshot_diff
-    snapshot_diff="$(rsync -acni --delete "${QUALIFIED_DEPLOY_DIR}/" "${ROLLBACK_SNAPSHOT}/dashboard/")"
-    [[ -z "${snapshot_diff}" ]] || fail "full rollback tree verification failed"
+        || fail "rollback deployment identity changed"
+    verify_quiesced_snapshot
 }
 
 restore_path() {
@@ -306,42 +342,46 @@ restore_path() {
 }
 
 restore_rollback_snapshot() {
-    if [[ -d "${ROLLBACK_SNAPSHOT}/dashboard" ]]; then
-        rsync -a --delete "${ROLLBACK_SNAPSHOT}/dashboard/" "${QUALIFIED_DEPLOY_DIR}/"
-    fi
+    systemctl stop runner-scheduler.timer runner-scheduler.service 2>/dev/null || true
+    systemctl disable --now runner-autoscaler.service 2>/dev/null || true
+    systemctl stop runner-dashboard.service 2>/dev/null || true
+    restore_path "${ROLLBACK_SNAPSHOT}/dashboard" "${QUALIFIED_DEPLOY_DIR}"
     restore_path "${ROLLBACK_SNAPSHOT}/config" "${QUALIFIED_CONFIG_DIR}"
     restore_path "${ROLLBACK_SNAPSHOT}/local-share" "${QUALIFIED_SHARE_DIR}"
+    restore_path "${ROLLBACK_SNAPSHOT}/scheduler-release" "${QUALIFIED_SCHEDULER_RELEASE}"
     restore_path "${ROLLBACK_SNAPSHOT}/systemd-before/30-qualified-capacity.conf" \
         /etc/systemd/system/runner-dashboard.service.d/30-qualified-capacity.conf
     restore_path "${ROLLBACK_SNAPSHOT}/systemd-before/runner-scheduler.service" \
         /etc/systemd/system/runner-scheduler.service
     restore_path "${ROLLBACK_SNAPSHOT}/systemd-before/runner-scheduler.timer" \
         /etc/systemd/system/runner-scheduler.timer
-    restore_path "${ROLLBACK_SNAPSHOT}/systemd-before/runner-scheduler" /usr/local/bin/runner-scheduler
     systemctl daemon-reload
     if [[ "$(cat "${ROLLBACK_SNAPSHOT}/scheduler.enabled")" == "enabled" ]]; then
         systemctl enable runner-scheduler.timer
     else
         systemctl disable runner-scheduler.timer 2>/dev/null || true
     fi
-    if [[ "$(cat "${ROLLBACK_SNAPSHOT}/scheduler.active")" == "active" ]]; then
-        systemctl start runner-scheduler.timer
-    else
-        systemctl stop runner-scheduler.timer 2>/dev/null || true
-    fi
     if [[ "$(cat "${ROLLBACK_SNAPSHOT}/autoscaler.enabled")" == "enabled" ]]; then
         systemctl enable runner-autoscaler.service
     else
         systemctl disable runner-autoscaler.service 2>/dev/null || true
+    fi
+    if [[ "$(cat "${ROLLBACK_SNAPSHOT}/dashboard.active")" == "active" ]]; then
+        systemctl restart runner-dashboard.service
+    else
+        systemctl stop runner-dashboard.service 2>/dev/null || true
     fi
     if [[ "$(cat "${ROLLBACK_SNAPSHOT}/autoscaler.active")" == "active" ]]; then
         systemctl start runner-autoscaler.service
     else
         systemctl stop runner-autoscaler.service 2>/dev/null || true
     fi
-    if [[ "$(cat "${ROLLBACK_SNAPSHOT}/dashboard.active")" == "active" ]]; then
-        systemctl restart runner-dashboard.service
+    if [[ "$(cat "${ROLLBACK_SNAPSHOT}/scheduler-service.active")" == "active" ]]; then
+        systemctl start runner-scheduler.service
+    fi
+    if [[ "$(cat "${ROLLBACK_SNAPSHOT}/scheduler.active")" == "active" ]]; then
+        systemctl start runner-scheduler.timer
     else
-        systemctl stop runner-dashboard.service 2>/dev/null || true
+        systemctl stop runner-scheduler.timer 2>/dev/null || true
     fi
 }

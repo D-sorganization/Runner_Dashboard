@@ -14,6 +14,7 @@ WORKFLOW = ROOT / ".github" / "workflows" / "deploy-qualified-release.yml"
 BOOTSTRAP = ROOT / "deploy" / "bootstrap-qualified-release-deploy.sh"
 TRANSACTION = ROOT / "deploy" / "qualified-release-deploy.sh"
 LIBRARY = ROOT / "deploy" / "qualified-release-lib.sh"
+RUNTIME_LIBRARY = ROOT / "deploy" / "qualified-release-runtime-lib.sh"
 SCHEDULE = ROOT / "config" / "runner-schedule-oglaptop.json"
 RUNBOOK = ROOT / "docs" / "runbooks" / "qualified-release-deploy.md"
 PINNED_ACTION = re.compile(r"^[\w.\-]+/[\w.\-]+(?:/[\w.\-/]+)?@[0-9a-f]{40}$")
@@ -37,7 +38,7 @@ def _uses() -> list[str]:
 
 
 def test_guarded_deployment_assets_exist() -> None:
-    for path in (WORKFLOW, BOOTSTRAP, TRANSACTION, LIBRARY, SCHEDULE, RUNBOOK):
+    for path in (WORKFLOW, BOOTSTRAP, TRANSACTION, LIBRARY, RUNTIME_LIBRARY, SCHEDULE, RUNBOOK):
         assert path.is_file(), path
 
 
@@ -46,6 +47,7 @@ def test_workflow_is_manual_exact_host_and_serialized() -> None:
     assert set(payload["on"]) == {"workflow_dispatch"}
     job = payload["jobs"]["deploy"]
     assert job["runs-on"] == ["self-hosted", "Linux", "X64", "d-sorg-local-Oglaptop-1"]
+    assert job["environment"] == {"name": "oglaptop-production"}
     assert job["timeout-minutes"] >= 12
     assert payload["concurrency"] == {
         "group": "qualified-release-deploy-oglaptop",
@@ -79,6 +81,9 @@ def test_workflow_permissions_actions_and_supply_chain_are_closed() -> None:
     assert refs
     assert all(PINNED_ACTION.match(ref) for ref in refs)
     text = WORKFLOW.read_text(encoding="utf-8")
+    assert "GH_TOKEN: ${{ secrets.OGLAPTOP_DEPLOY_GITHUB_TOKEN }}" in text
+    assert "${{ github.token }}" not in text
+    assert "orgs/D-sorganization/actions/runners" in text
     for marker in (
         "refs/tags/",
         "git/refs/tags/",
@@ -172,11 +177,12 @@ def test_transaction_verifies_signed_archive_before_mutation() -> None:
 
 
 def test_transaction_journals_and_rolls_back_all_host_mutations() -> None:
-    text = TRANSACTION.read_text(encoding="utf-8")
+    text = TRANSACTION.read_text(encoding="utf-8") + RUNTIME_LIBRARY.read_text(encoding="utf-8")
     library = LIBRARY.read_text(encoding="utf-8")
     for marker in (
         "trap transaction_exit EXIT",
-        "create_rollback_snapshot",
+        "record_rollback_baseline",
+        "create_quiesced_rollback_snapshot",
         "create_mutable_manifest",
         "restore_rollback_snapshot",
         "journal_event",
@@ -190,6 +196,26 @@ def test_transaction_journals_and_rolls_back_all_host_mutations() -> None:
     assert "sha256" in library
 
 
+def test_transaction_quiesces_writers_before_consistent_snapshot() -> None:
+    text = TRANSACTION.read_text(encoding="utf-8")
+    baseline = text.index('record_rollback_baseline\nMUTATION_STARTED=1')
+    mutation = text.index('journal_event "begin_mutation"', baseline)
+    quiesce = text.index("quiesce_for_snapshot", mutation)
+    snapshot = text.index("create_quiesced_rollback_snapshot", quiesce)
+    manifest = text.index("create_mutable_manifest", snapshot)
+    assert baseline < mutation < quiesce < snapshot < manifest
+
+    library = LIBRARY.read_text(encoding="utf-8")
+    for marker in (
+        "systemctl stop runner-scheduler.timer",
+        "systemctl stop runner-scheduler.service",
+        "systemctl stop runner-dashboard.service",
+        "systemctl disable --now runner-autoscaler.service",
+        "verify_quiesced_snapshot",
+    ):
+        assert marker in library
+
+
 def test_canonical_oglaptop_schedule_is_bounded() -> None:
     schedule = json.loads(SCHEDULE.read_text(encoding="utf-8"))
     assert schedule["enabled"] is True
@@ -197,16 +223,22 @@ def test_canonical_oglaptop_schedule_is_bounded() -> None:
     assert schedule["default_count"] == 4
     assert schedule["max_count"] == 8
     counts = {item["name"]: item["runners"] for item in schedule["schedules"]}
-    assert counts == {"weekday-day": 4, "weekend-day": 4, "overnight": 8}
+    assert counts == {"weekday-day": 4, "weekend-day": 4, "overnight": 4}
 
 
 def test_transaction_enforces_governed_runtime_and_scheduler_authority() -> None:
-    text = TRANSACTION.read_text(encoding="utf-8")
+    text = (
+        TRANSACTION.read_text(encoding="utf-8")
+        + LIBRARY.read_text(encoding="utf-8")
+        + RUNTIME_LIBRARY.read_text(encoding="utf-8")
+    )
+    library = LIBRARY.read_text(encoding="utf-8")
     for marker in (
         "NUM_RUNNERS=4",
         "MAX_RUNNERS=8",
         "30-qualified-capacity.conf",
-        ".venv/bin/python",
+        "QUALIFIED_SCHEDULER_RUNTIME",
+        "QUALIFIED_SCHEDULER_BIN",
         "RUNNER_SCHEDULE_CONFIG",
         "runner-scheduler.timer",
         "OnUnitActiveSec=5m",
@@ -214,6 +246,14 @@ def test_transaction_enforces_governed_runtime_and_scheduler_authority() -> None
         "disable --now",
     ):
         assert marker in text
+    assert "/opt/runner-dashboard-qualified/releases" in library
+    assert "ExecStart=${QUALIFIED_SCHEDULER_RUNTIME}/bin/python ${QUALIFIED_SCHEDULER_BIN} --apply" in text
+    assert "ExecStart=${QUALIFIED_DEPLOY_DIR}/.venv/bin/python" not in text
+    assert "/usr/local/bin/runner-scheduler --apply" not in text
+    assert "verify_root_owned_scheduler_runtime" in text
+    assert "-m venv --copies --without-pip" in text
+    assert 'find "${QUALIFIED_SCHEDULER_RELEASE}" -type l' in text
+    assert 'chmod 0555 "${candidate}"/runtime/bin/python*' in text
 
 
 def test_transaction_verifies_health_identity_state_and_full_cycle() -> None:

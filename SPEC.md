@@ -1,9 +1,19 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.189
+**Spec Version:** 2.5.190
 **Application Version:** 4.9.33 (see `VERSION`)
-**Last Updated:** 2026-08-26T11:48:00-07:00
+**Last Updated:** 2026-08-26T13:05:00-07:00
 **Status:** Active
+
+- **2026-08-26 (2.5.190):** Harden the issue #1138 deployment boundary before
+  bootstrap. The exact deploy job now requires the protected
+  `oglaptop-production` environment and its no-fallback organization-runner-read
+  credential. The transaction records prior service authority, crosses the
+  rollback boundary, quiesces all dashboard/scheduler/autoscaler writers, and
+  only then snapshots and manifests mutable state. The root scheduler now uses
+  a root-owned, release-specific Python 3.12 runtime and signed scheduler under
+  `/opt`, plus the root-owned canonical schedule; it never executes user-writable
+  scheduler code, configuration, or an interpreter.
 
 - **2026-08-26 (2.5.189):** Add the issue #1138 qualified OGLaptop release
   deployment contract. A workflow-dispatch-only job on the exact OGLaptop-1
@@ -13,7 +23,8 @@
   permits only the proven current workflow worker to be busy, requires every
   other local and GitHub runner idle in the four-runner daytime steady state,
   snapshots and journals every mutation, preserves mutable state byte-for-byte,
-  enforces the canonical 4-normal/8-max schedule and governed venv, disables
+  enforces four active runners in every current schedule window (eight remains
+  only the installed-inventory ceiling) and the governed runtime, disables
   competing autoscaling, proves a no-action five-minute scheduler cycle, rolls
   back on failure, and emits only redacted evidence.
 

@@ -34,6 +34,7 @@ _PR_GROUP_TOKENS = (
 )
 
 _CANCEL_FALSE_ALLOWLIST: dict[str, str] = {
+    "deploy-qualified-release.yml": "A root transaction must run to commit or rollback; never interrupt it mid-stream.",
     "release.yml": "Publishes release artifacts and tags; never interrupt a release mid-stream.",
 }
 

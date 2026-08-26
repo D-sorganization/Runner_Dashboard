@@ -12,6 +12,7 @@ COSIGN_SHA256=""
 STATE_ROOT="/var/lib/runner-dashboard-qualified-deploy"
 HELPER_DEST="/usr/local/sbin/runner-dashboard-qualified-deploy"
 LIB_DEST="/usr/local/lib/runner-dashboard/qualified-release-lib.sh"
+RUNTIME_LIB_DEST="/usr/local/lib/runner-dashboard/qualified-release-runtime-lib.sh"
 SCHEDULE_DEST="/usr/local/share/runner-dashboard/runner-schedule-oglaptop.json"
 SUDOERS_DEST="/etc/sudoers.d/runner-dashboard-qualified-deploy"
 
@@ -55,15 +56,16 @@ done
 
 HELPER_SOURCE="${PROJECT_ROOT}/deploy/qualified-release-deploy.sh"
 LIB_SOURCE="${PROJECT_ROOT}/deploy/qualified-release-lib.sh"
+RUNTIME_LIB_SOURCE="${PROJECT_ROOT}/deploy/qualified-release-runtime-lib.sh"
 SCHEDULE_SOURCE="${PROJECT_ROOT}/config/runner-schedule-oglaptop.json"
-for source in "${HELPER_SOURCE}" "${LIB_SOURCE}" "${SCHEDULE_SOURCE}"; do
+for source in "${HELPER_SOURCE}" "${LIB_SOURCE}" "${RUNTIME_LIB_SOURCE}" "${SCHEDULE_SOURCE}"; do
     [[ -f "${source}" && ! -L "${source}" ]] || fail "bootstrap source is absent or unsafe"
 done
 ACTUAL_COMMIT="$(git -c "safe.directory=${PROJECT_ROOT}" -C "${PROJECT_ROOT}" rev-parse HEAD)"
 [[ "${ACTUAL_COMMIT}" == "${EXPECTED_COMMIT}" ]] || fail "checkout does not match the reviewed commit"
 [[ -z "$(git -c "safe.directory=${PROJECT_ROOT}" -C "${PROJECT_ROOT}" status --porcelain)" ]] \
     || fail "bootstrap checkout is not clean"
-for source in "${HELPER_SOURCE}" "${LIB_SOURCE}" "${SCHEDULE_SOURCE}"; do
+for source in "${HELPER_SOURCE}" "${LIB_SOURCE}" "${RUNTIME_LIB_SOURCE}" "${SCHEDULE_SOURCE}"; do
     git -c "safe.directory=${PROJECT_ROOT}" -C "${PROJECT_ROOT}" \
         ls-files --error-unmatch "${source#"${PROJECT_ROOT}/"}" > /dev/null \
         || fail "bootstrap source is not tracked by the reviewed commit"
@@ -90,6 +92,7 @@ install -d -o root -g root -m 0700 "${STATE_ROOT}" "${STATE_ROOT}/transactions"
 install -d -o "${RUNNER_USER}" -g "${RUNNER_USER}" -m 0700 "${STATE_ROOT}/inbox"
 install -o root -g root -m 0755 "${HELPER_SOURCE}" "${HELPER_DEST}"
 install -o root -g root -m 0644 "${LIB_SOURCE}" "${LIB_DEST}"
+install -o root -g root -m 0644 "${RUNTIME_LIB_SOURCE}" "${RUNTIME_LIB_DEST}"
 install -o root -g root -m 0644 "${SCHEDULE_SOURCE}" "${SCHEDULE_DEST}"
 
 SUDOERS_TEMP="$(mktemp)"
@@ -104,7 +107,7 @@ visudo -cf "${SUDOERS_TEMP}" > /dev/null || fail "sudoers validation failed"
 install -o root -g root -m 0440 "${SUDOERS_TEMP}" "${SUDOERS_DEST}"
 visudo -cf "${SUDOERS_DEST}" > /dev/null || fail "installed sudoers validation failed"
 
-for installed in "${HELPER_DEST}" "${LIB_DEST}" "${SCHEDULE_DEST}" "${SUDOERS_DEST}"; do
+for installed in "${HELPER_DEST}" "${LIB_DEST}" "${RUNTIME_LIB_DEST}" "${SCHEDULE_DEST}" "${SUDOERS_DEST}"; do
     [[ "$(stat -c '%U:%G' "${installed}")" == "root:root" ]] \
         || fail "installed authority is not root:root"
 done

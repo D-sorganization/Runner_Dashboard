@@ -118,10 +118,29 @@
   prove that exception; all other workers remain idle. Qualification is
   daytime-only so the canonical scheduler target is already four and neither
   the helper nor either observed scheduler invocation performs a runner action.
+- The issue #1138 canonical schedule now holds every current window, including
+  overnight, at four active runners. `max_count: 8` is inventory validation, not
+  activation authority. Runners 5-8 remain stopped/offline until a separate
+  protected drain-lift change receives fleet approval and fresh serial proof.
 - The request surface is a closed JSON object on stdin to one no-argument sudo
   command. Exact tag/commit/hash/signature/attestation/archive/ABI checks occur
-  before a verified snapshot and mutable-state manifest. Failure after the
-  boundary restores the full prior deployment/config/systemd state.
+  before the rollback boundary. The helper records prior service authority,
+  stops dashboard/scheduler/autoscaler writers, and only then snapshots and
+  manifests mutable state. Failure after the boundary restores the full prior
+  deployment/config/systemd state.
+- The deploy job requires the protected `oglaptop-production` environment and
+  an environment-only `OGLAPTOP_DEPLOY_GITHUB_TOKEN` with private-repository
+  read/attestation plus organization Actions runner-read authority. There is no
+  default-token fallback; missing authority or a 403 rejects before sudo.
+- As of 2026-08-26 the environment was absent. The isolated GitHub App's
+  attempt to create it failed closed with HTTP 403 (`Resource not accessible by
+  integration`). An authorized repository administrator must create the exact
+  protected environment/reviewer policy and provision the environment secret;
+  do not dispatch, bootstrap, or weaken authentication before that hold clears.
+- The root scheduler no longer executes the user-owned dashboard venv or
+  `/usr/local/bin` script. Each signed release gets a root-owned, non-writable
+  Python 3.12 runtime and scheduler under `/opt/runner-dashboard-qualified`, and
+  systemd reads the root-owned canonical schedule.
 - DeskComputer validation remains prohibited during the capacity drain. The
   new contract tests and shell/YAML checks must run only on approved OGLaptop
   capacity with explicit `-n 0` after protected review. No local pytest,
