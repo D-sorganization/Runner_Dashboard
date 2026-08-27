@@ -19,6 +19,9 @@ _DOCKERFILE = _ROOT / "Dockerfile"
 _LOCK = _ROOT / "requirements.lock.txt"
 _PYPROJECT = _ROOT / "pyproject.toml"
 
+_PYTHON_313_SLIM_DIGEST = "7e3a6aca9d74f93cca21a91d86a8dad8c34749afd5b4a98ee481c9c47b9f5ed4"  # pragma: allowlist secret
+_OPENSSL_DEBIAN_SECURITY_VERSION = "3.5.7-1~deb13u2"
+
 # ── Issue #391: new hardening directives ─────────────────────────────────────
 # These must appear in both the .service template files AND in the setup.sh
 # heredoc so that installed units stay in sync.
@@ -114,6 +117,19 @@ def test_dockerfile_python_is_allowed_by_project_metadata() -> None:
         f"Dockerfile Python {base_version} violates requires-python {requires_python!r}; "
         "update project metadata and locked wheels before advancing the container runtime"
     )
+
+
+def test_dockerfile_refreshes_cve_2026_14456_affected_packages() -> None:
+    """The image must install Debian's fixed OpenSSL package set deterministically."""
+    content = _read(_DOCKERFILE)
+    assert f"FROM python:3.13-slim@sha256:{_PYTHON_313_SLIM_DIGEST}" in content
+    version_arg = "OPENSSL_DEBIAN_SECURITY_VERSION"
+    assert f"ARG {version_arg}" not in content
+    assert f"RUN {version_arg}='{_OPENSSL_DEBIAN_SECURITY_VERSION}'" in content
+    for package in ("libssl3t64", "openssl", "openssl-provider-legacy"):
+        assert f'{package}="${{{version_arg}}}"' in content
+    assert "3.5.6-1~deb13u2" not in content
+    assert "apt-get upgrade" not in content
 
 
 def test_dockerfile_installs_with_require_hashes() -> None:

@@ -1,8 +1,8 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.186
-**Application Version:** 4.9.32 (see `VERSION`)
-**Last Updated:** 2026-08-26T08:30:00-07:00
+**Spec Version:** 2.5.192
+**Application Version:** 4.9.34 (see `VERSION`)
+**Last Updated:** 2026-08-27T06:00:00-07:00
 **Status:** Active
 
 - **2026-08-26 (2.5.186):** Make late-stage release publication recoverable
@@ -12,11 +12,58 @@
   explicitly to GitHub CLI so WSL UNC ownership translation cannot block
   release creation after signing and attestation have succeeded.
 
-- **2026-08-25 (2.5.185):** Bound the canonical DeskComputer runner schedule
-  to two weekday-day runners and four weekend/overnight runners, with a hard
-  maximum of four (issue #1125). Regression coverage prevents the repository
-  default from drifting back to an always-on schedule that can overload the
-  interactive workstation when a controlled maintenance drain is released.
+- **2026-08-27 (2.5.192):** Route the lightweight anti-phantom and
+  hosted-routing pull-request guards through the existing reversible public-CI
+  selector. Public repositories use GitHub-hosted Ubuntu capacity unless
+  `CI_RUNNER_MODE=local`; private repositories and explicit local mode remain
+  on `d-sorg-fleet`. The routing guard explicitly allowlists the anti-phantom
+  selector, preventing governance-only checks from deadlocking while local
+  runner pools are intentionally drained or quarantined.
+
+- **2026-08-27 (2.5.191):** Strengthen the DeskComputer maintenance drain
+  into a two-key operator contract. The Windows keepalive and fleet monitor
+  may perform automatic recovery only when the drain marker is absent and the
+  explicit enable marker is present. Removing the drain marker alone therefore
+  cannot restart WSL or local runners (issue #1144).
+
+- **2026-08-26 (2.5.190):** Synchronize release metadata at version 4.9.34
+  so protected `main` publishes the first immutable schema-v2 artifact that
+  contains the interactive-safe DeskComputer capacity policy: one weekday-day
+  runner, two weekend/overnight runners, and a hard maximum of two. The live
+  drain remains fail-closed until the signed artifact, checksum, SBOM,
+  provenance, offline install, rollback, exact-revision APIs, and one governed
+  scheduler cycle are verified (issue #1144).
+
+- **2026-08-26 (2.5.189):** Align the canonical DeskComputer schedule with
+  Repository Management's interactive-safe fleet policy: one weekday-day
+  runner, two weekend/overnight runners, and a hard maximum of two. Exact
+  schedule regression coverage prevents a future drain release from restoring
+  twice the governed workstation load (issue #1142).
+
+- **2026-08-26 (2.5.188):** Synchronize all canonical release metadata at
+  version 4.9.33 so the first protected release after the #1126 capacity
+  correction is built from the CVE-corrected protected main using the
+  schema-v2 publication contract repaired by issue #1132 (issue #1131).
+
+- **2026-08-26 (2.5.187):** Refresh the immutable Python 3.13 slim base and
+  pin Debian's `libssl3t64`, `openssl`, and `openssl-provider-legacy` security
+  package set to a non-overridable `3.5.7-1~deb13u2` constraint. Resolution
+  fails closed if the fixed version is unavailable while preserving the locked
+  application install, non-root runtime, and `/livez` healthcheck contracts
+  (issue #1135).
+
+- **2026-08-26 (2.5.186):** Route protected release builds through the
+  canonical schema-v2 artifact packager so every published dashboard bundle
+  includes the locked offline wheelhouse, exact source SHA, deterministic
+  inventory, checksum, and isolated-install validation. Release publication
+  also names the GitHub repository explicitly, avoiding WSL checkout discovery
+  and dubious-ownership failures (issue #1132).
+
+- **2026-08-25 (2.5.185):** Replaced the former 32-runner always-on default
+  with an initial bounded DeskComputer schedule (issue #1125). Issue #1142
+  subsequently tightened that policy for interactive-safe operation.
+
+  > > > > > > > origin/main
 
 - **2026-08-24 (2.5.184):** Restore deterministic cross-platform frontend
   installation by recording Vitest's esbuild 0.28.2 dependency tree in the

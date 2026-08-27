@@ -7,12 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.9.34] - 2026-08-26
+
 ### Fixed
 
 - Added an explicit, fail-closed recovery path for releases whose artifact,
   signature, SBOM, attestation, and tag succeeded before GitHub release
   publication failed. Recovery rebuilds the exact tagged source and avoids
   filesystem-based repository discovery on self-hosted WSL runners. See #1129.
+- Aligned the canonical DeskComputer schedule with the fleet's
+  interactive-safe capacity policy: one weekday-day runner, two
+  weekend/overnight runners, and a hard two-runner ceiling (#1142).
+- Prepared the protected policy-bearing source for immutable schema-v2 release
+  and controlled re-entry while retaining the fail-closed DeskComputer drain
+  until artifact, rollback, runtime identity, and scheduler-cycle validation
+  complete (#1144).
+
+## [4.9.33] - 2026-08-26
+
+### Fixed
+
+- Refreshed the immutable Python 3.13 slim container base and pinned Debian's
+  complete OpenSSL runtime package set to the CVE-2026-14456-fixed
+  `3.5.7-1~deb13u2` security version. The non-overridable package constraint
+  fails closed if the fixed version cannot be resolved (#1135).
+- Routed protected dashboard releases through the canonical schema-v2
+  packager and made GitHub release publication repository-explicit, preserving
+  the offline wheelhouse/install contract while avoiding WSL checkout
+  ownership discovery failures (#1132).
 - Eliminated the nested `vitest -> vite@8.x -> esbuild@^0.27||^0.28` peer
   conflict that left a clean `npm ci` install in an invalid state (`npm ls`
   reported an unmet `esbuild` peer and pulled in an unpinned `rolldown`
