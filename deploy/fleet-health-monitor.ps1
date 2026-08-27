@@ -49,6 +49,7 @@ param(
   [string]$RunnerSchedulerState   = "/var/lib/runner-scheduler/state.json",
   [string]$LocalKeepAliveTask     = "WSL-Runner-KeepAlive",
   [string]$DrainMarker            = (Join-Path ([Environment]::GetFolderPath('UserProfile')) "runner_fleet_monitor\deskcomputer-runner-drained.flag"),
+  [string]$EnableMarker           = (Join-Path ([Environment]::GetFolderPath('UserProfile')) "runner_fleet_monitor\deskcomputer-runner-enabled.flag"),
   [string]$LogDir                 = "C:\Users\diete\runner_fleet_monitor",
   # Dot-source with -FunctionsOnly to expose the pure helpers for tests.
   [switch]$FunctionsOnly
@@ -152,7 +153,9 @@ if ($FunctionsOnly) { return }
 
 # Operator maintenance is authoritative over automatic recovery. Keep this
 # after FunctionsOnly so pure helper tests remain available while drained.
-if (Test-Path -LiteralPath $DrainMarker) { return }
+# Re-entry requires explicit enablement as well as removal of the drain marker.
+if ((Test-Path -LiteralPath $DrainMarker) -or
+    -not (Test-Path -LiteralPath $EnableMarker)) { return }
 
 # ---------------------------------------------------------------------------
 # Cycle

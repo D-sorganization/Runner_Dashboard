@@ -92,6 +92,7 @@ param(
     [int]$HealthyGapSeconds = 600,
     [string]$LogDir = '',
     [string]$DrainMarker = (Join-Path ([Environment]::GetFolderPath('UserProfile')) 'runner_fleet_monitor\deskcomputer-runner-drained.flag'),
+    [string]$EnableMarker = (Join-Path ([Environment]::GetFolderPath('UserProfile')) 'runner_fleet_monitor\deskcomputer-runner-enabled.flag'),
     [int]$MaxLogBytes = 5MB,
     [int]$LogBackups = 3,
     [int]$DashboardPort = 8321,
@@ -110,10 +111,11 @@ param(
     [switch]$Once
 )
 
-# A deliberate host drain must win before validation, WSL probes, dashboard
-# recovery, or any other side effect. The marker is operator-controlled and
-# shared with fleet-health-monitor.ps1.
-if (Test-Path -LiteralPath $DrainMarker) { return }
+# Automatic recovery requires two deliberate operator conditions: the drain
+# marker is absent and the enable marker is present. This fails closed if a
+# cleanup tool removes the drain marker without an explicit re-entry decision.
+if ((Test-Path -LiteralPath $DrainMarker) -or
+    -not (Test-Path -LiteralPath $EnableMarker)) { return }
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
