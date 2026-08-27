@@ -1,5 +1,6 @@
 {
   "cancel_in_progress_false_allowlist": {
+    "deploy-qualified-release.yml": "A root deployment transaction must reach commit or rollback and cannot be interrupted safely.",
     "release.yml": "Release publishing must not be interrupted after versioning and tag orchestration begin."
   },
   "pr_concurrency_singleton_allowlist": {

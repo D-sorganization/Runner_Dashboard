@@ -1,0 +1,29 @@
+{
+  "enabled": true,
+  "timezone": "America/Los_Angeles",
+  "default_count": 4,
+  "max_count": 8,
+  "schedules": [
+    {
+      "name": "weekday-day",
+      "days": ["mon", "tue", "wed", "thu", "fri"],
+      "start": "07:00",
+      "end": "22:00",
+      "runners": 4
+    },
+    {
+      "name": "weekend-day",
+      "days": ["sat", "sun"],
+      "start": "07:00",
+      "end": "22:00",
+      "runners": 4
+    },
+    {
+      "name": "overnight",
+      "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+      "start": "22:00",
+      "end": "07:00",
+      "runners": 4
+    }
+  ]
+}

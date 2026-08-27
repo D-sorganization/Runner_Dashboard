@@ -40,6 +40,29 @@
   schedule regression coverage prevents a future drain release from restoring
   twice the governed workstation load (issue #1142).
 
+- **2026-08-26 (2.5.188):** Harden the issue #1138 deployment boundary before
+  bootstrap. The exact deploy job now requires the protected
+  `oglaptop-production` environment and its no-fallback organization-runner-read
+  credential. The transaction records prior service authority, crosses the
+  rollback boundary, quiesces all dashboard/scheduler/autoscaler writers, and
+  only then snapshots and manifests mutable state. The root scheduler now uses
+  a root-owned, release-specific Python 3.12 runtime and signed scheduler under
+  `/opt`, plus the root-owned canonical schedule; it never executes user-writable
+  scheduler code, configuration, or an interpreter.
+
+- **2026-08-26 (2.5.187):** Add the issue #1138 qualified OGLaptop release
+  deployment contract. A workflow-dispatch-only job on the exact OGLaptop-1
+  runner verifies annotated protected-main release identity, checksum, cosign
+  bundle, build attestation, safe schema-v2 archive metadata, and Python ABI,
+  then crosses a one-time root-owned no-argument helper boundary. The helper
+  permits only the proven current workflow worker to be busy, requires every
+  other local and GitHub runner idle in the four-runner daytime steady state,
+  snapshots and journals every mutation, preserves mutable state byte-for-byte,
+  enforces four active runners in every current schedule window (eight remains
+  only the installed-inventory ceiling) and the governed runtime, disables
+  competing autoscaling, proves a no-action five-minute scheduler cycle, rolls
+  back on failure, and emits only redacted evidence.
+
 - **2026-08-26 (2.5.188):** Synchronize all canonical release metadata at
   version 4.9.33 so the first protected release after the #1126 capacity
   correction is built from the CVE-corrected protected main using the
