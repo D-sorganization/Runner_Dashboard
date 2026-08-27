@@ -2,12 +2,12 @@
 
 ## Current State
 
-- Branch: `fix/issue-1142-interactive-safe-capacity`, based exactly on protected
-  remote `main` at `8773a1b7d190b7f7bf4489c0882ca22cdf9354ef`.
-  Governing issue: #1142. Repository Management already governs one
-  weekday-day runner, two weekend/overnight runners, and a hard maximum of two;
-  this branch removes Runner Dashboard's stale 2/4/4 default before any
-  controlled re-entry.
+- Branch: `chore/1144-controlled-reentry`, based exactly on protected remote
+  `main` at `f8d81811cb82aacb6249e429203ccae929e77dcf`. Governing issue:
+  #1144. PR #1143 merged the one-weekday/two-overnight-or-weekend/hard-two
+  policy. This branch synchronizes release metadata at 4.9.34 so the first
+  immutable artifact containing that policy can be published and qualified.
+  It does not remove the drain marker or start WSL, runners, or campaigns.
 - PR #1116 merged as `4fc1c127`
   before its late full-suite failure surfaced. Protected corrective PR #1117
   then passed the complete suite and merged as `4b1605c7`; issue #1115 is
@@ -219,9 +219,9 @@ change.
 
 ## Next Steps
 
-1. Validate issue #1142 serially, publish through an ordinary protected PR, and
-   preserve the live drain marker throughout CI.
-2. Verify the replacement release's signed tarball, checksum, cosign bundle,
+1. Validate the 4.9.34 metadata serially, publish through an ordinary protected
+   PR for issue #1144, and preserve the live drain marker throughout CI.
+2. Verify the resulting release's signed tarball, checksum, cosign bundle,
    SBOM, provenance, schema-v2 metadata, offline wheelhouse, exact protected
    source SHA, and embedded 1/2/2 schedule before deployment.
 3. Keep DeskComputer fully drained until an operator-approved rollout verifies
