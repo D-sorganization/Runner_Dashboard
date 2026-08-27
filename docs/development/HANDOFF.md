@@ -35,5 +35,37 @@ Last updated: 2026-08-27T06:00:00-07:00
 
 ## Next Steps
 
-1. Merge PR #1140 via squash auto-merge after CI passes.
-2. Bootstrap root-owned deploy helper on OGLaptop per `docs/runbooks/qualified-release-deploy.md`.
+1. Merge PR for feat(deploy) via squash auto-merge after CI passes.
+2. Verify production OAuth readiness on OGLaptop per `docs/runbooks/oglaptop-production-oauth.md`.
+3. Verify WSL resident keepalive task runs under the signed-in interactive user principal without SYSTEM/S4U failure modes.
+4. Verify DeskComputer interactive-safe 1/2 capacity policy and drain marker boundary before re-entry.
+
+## Issue #1141 — OGLaptop production browser OAuth readiness
+
+- Base: protected `main`
+- Source slice: call-time typed OAuth configuration, exact MagicDNS origin and
+  callback, explicit callback binding for authorization and token exchange,
+  no dev-login fallback, redacted health diagnostic, and controlled operator
+  provisioning/rotation/rollback documentation.
+- Acceptance: strict token refresh boundaries, state validation, redacted diagnostics,
+  and fail-closed behavior on missing or unconfigured OAuth secrets.
+
+## Issue #1139 — Windows WSL keepalive under WSL-capable user principal
+
+- Acceptance: Windows keepalive installer `deploy/install-wsl-keepalive-task.ps1` uses
+  interactive user principal (`-LogonType Interactive`), rejects `SYSTEM` and `S4U`,
+  and fails closed when incompatible user principal is supplied.
+
+## Issue #1144 — Interactive-Safe DeskComputer 1/2 Schedule
+
+- Acceptance: Schedule aligned to 1 weekday-day / 2 weekend-day / 2 overnight (`max_count: 2`).
+  Drain marker fail-closed boundary enforced.
+
+## Issue #1119 — Require All Protected Gates Before Auto-Merge
+
+- Acceptance: Branch protection and ruleset drift detector enforced and verified.
+
+## Issue #1085 — Deterministic offline dashboard deployment
+
+- Acceptance: Artifact packaging and installation with strict checksums, schema-v2 verification,
+  and offline wheelhouse support.
