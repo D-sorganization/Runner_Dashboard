@@ -255,18 +255,18 @@ def test_resident_task_installer_registers_no_reset_mode() -> None:
     assert "Start-ScheduledTask" in text
 
 
-def test_resident_task_installer_runs_when_logged_off() -> None:
-    """The keepalive holds the host-side handle that keeps the WSL VM resident.
+def test_resident_task_installer_requires_interactive_principal() -> None:
+    """Issue #1139: The keepalive must run under an interactive user principal.
 
-    It MUST survive logoff (S4U principal, run whether logged on or not),
-    otherwise the VM is torn down on logoff and both split-disk distros
-    cold-boot together on next logon, racing WSL's ~10s boot timeout into a
-    crash loop. It must also run unbounded (no 72h ExecutionTimeLimit kill) and
-    start at boot, not only at logon.
+    SYSTEM is rejected with WSL_E_LOCAL_SYSTEM_NOT_SUPPORTED and S4U lacks
+    user session context to access user-scoped WSL registrations. It must also
+    run unbounded (no 72h ExecutionTimeLimit kill) and start at boot/logon.
     """
     text = INSTALLER.read_text(encoding="utf-8")
     assert "New-ScheduledTaskPrincipal" in text, "must register an explicit principal"
-    assert "-LogonType S4U" in text, "must use S4U so it runs whether logged on or not"
+    assert "-LogonType $LogonType" in text, "must use dynamic LogonType parameter defaulting to Interactive"
+    assert "[ValidateSet('Interactive', 'InteractiveToken', 'S4U', 'SYSTEM')][string]$LogonType = 'Interactive'" in text
+    assert "Test-WslPrincipalCompatible" in text, "must validate principal compatibility"
     assert "-RunLevel Highest" in text
     assert "-Principal $principal" in text, "principal must be passed to Register-ScheduledTask"
     assert "[TimeSpan]::Zero" in text, "ExecutionTimeLimit must be unbounded (no 72h kill)"
@@ -297,7 +297,7 @@ def test_script_parses_cleanly(tmp_path: Path) -> None:
 
 @PWSH_REQUIRED
 def test_resident_task_installer_dry_run_parses_cleanly(tmp_path: Path) -> None:
-    """The scheduled-task installer must parse and expose the Resident command."""
+    """The scheduled-task installer must parse and expose the Resident command with Interactive logon."""
     script_copy = tmp_path / "wsl-keepalive.ps1"
     script_copy.write_text(SCRIPT.read_text(encoding="utf-8"), encoding="utf-8")
     result = _run_ps(
@@ -305,13 +305,80 @@ def test_resident_task_installer_dry_run_parses_cleanly(tmp_path: Path) -> None:
         f"-ScriptPath '{script_copy.as_posix()}' "
         "-TaskName 'UnitTest-WSL-KeepAlive' "
         "-Distro 'WSL' "
+        "-RunAsUser 'testrunner' "
         "-CheckIntervalSeconds 10 "
         "-ProbeTimeoutSeconds 3"
     )
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
     assert payload["mode"] == "Resident"
+    assert payload["logon_type"] == "Interactive"
+    assert payload["runas_user"] == "testrunner"
     assert "-Mode Resident" in payload["arguments"]
+
+
+@PWSH_REQUIRED
+def test_resident_task_installer_rejects_system_principal(tmp_path: Path) -> None:
+    """Issue #1139: SYSTEM principal must be rejected with fail-closed error."""
+    script_copy = tmp_path / "wsl-keepalive.ps1"
+    script_copy.write_text(SCRIPT.read_text(encoding="utf-8"), encoding="utf-8")
+    result = _run_ps(
+        f"& '{INSTALLER.as_posix()}' -DryRun "
+        f"-ScriptPath '{script_copy.as_posix()}' "
+        "-TaskName 'UnitTest-WSL-KeepAlive' "
+        "-Distro 'WSL' "
+        "-RunAsUser 'SYSTEM' "
+    )
+    assert result.returncode != 0
+    assert "WSL_E_LOCAL_SYSTEM_NOT_SUPPORTED" in result.stderr
+
+
+@PWSH_REQUIRED
+def test_resident_task_installer_rejects_s4u_logon_type(tmp_path: Path) -> None:
+    """Issue #1139: S4U logon type must be rejected as incompatible with user WSL."""
+    script_copy = tmp_path / "wsl-keepalive.ps1"
+    script_copy.write_text(SCRIPT.read_text(encoding="utf-8"), encoding="utf-8")
+    result = _run_ps(
+        f"& '{INSTALLER.as_posix()}' -DryRun "
+        f"-ScriptPath '{script_copy.as_posix()}' "
+        "-TaskName 'UnitTest-WSL-KeepAlive' "
+        "-Distro 'WSL' "
+        "-RunAsUser 'testrunner' "
+        "-LogonType 'S4U' "
+    )
+    assert result.returncode != 0
+    assert "S4U is unsupported" in result.stderr
+
+
+@PWSH_REQUIRED
+def test_wsl_principal_compatible_helper(tmp_path: Path) -> None:
+    """Issue #1139: Test-WslPrincipalCompatible must distinguish SYSTEM, S4U, and Interactive."""
+    driver = textwrap.dedent(
+        f"""
+        . '{INSTALLER.as_posix()}' -DryRun -RunAsUser 'testrunner' *> $null
+        $c1 = Test-WslPrincipalCompatible -User 'SYSTEM' -LogonType 'Interactive'
+        $c2 = Test-WslPrincipalCompatible -User 'NT AUTHORITY\\SYSTEM' -LogonType 'Interactive'
+        $c3 = Test-WslPrincipalCompatible -User 'testuser' -LogonType 'S4U'
+        $c4 = Test-WslPrincipalCompatible -User 'testuser' -LogonType 'Interactive'
+        $c5 = Test-WslPrincipalCompatible -User 'testuser' -LogonType 'InteractiveToken'
+        $c6 = Test-WslPrincipalCompatible -User '' -LogonType 'Interactive'
+
+        Write-Output ('C1=' + $c1.Compatible + ';REASON=' + $c1.Reason)
+        Write-Output ('C2=' + $c2.Compatible + ';REASON=' + $c2.Reason)
+        Write-Output ('C3=' + $c3.Compatible + ';REASON=' + $c3.Reason)
+        Write-Output ('C4=' + $c4.Compatible + ';REASON=' + $c4.Reason)
+        Write-Output ('C5=' + $c5.Compatible + ';REASON=' + $c5.Reason)
+        Write-Output ('C6=' + $c6.Compatible + ';REASON=' + $c6.Reason)
+        """
+    )
+    result = _run_ps(driver)
+    out = result.stdout
+    assert "C1=False" in out and "WSL_E_LOCAL_SYSTEM_NOT_SUPPORTED" in out, out
+    assert "C2=False" in out and "WSL_E_LOCAL_SYSTEM_NOT_SUPPORTED" in out, out
+    assert "C3=False" in out and "S4U is unsupported" in out, out
+    assert "C4=True" in out, out
+    assert "C5=True" in out, out
+    assert "C6=False" in out, out
 
 
 @PWSH_REQUIRED

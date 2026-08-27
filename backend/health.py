@@ -27,6 +27,7 @@ import dashboard_config
 from cache_utils import cache_size
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
+from oauth_config import OAuthConfig
 from prometheus_metrics import record_dashboard_health
 from proxy_utils import hub_in_cooldown
 from readiness import aggregate, get_default_probes
@@ -150,6 +151,7 @@ async def _health_impl() -> dict:
         "runners_registered": runner_count,
         "dashboard_uptime_seconds": int(time.time() - BOOT_TIME),
         "deployment": _deployment_info(),
+        "oauth": OAuthConfig.from_env().diagnostic(),
     }
 
 

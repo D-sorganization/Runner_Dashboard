@@ -25,6 +25,21 @@ def _mock_request(session: dict) -> MagicMock:
     return req
 
 
+@pytest.fixture(autouse=True)
+def _production_oauth_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Configure the exact production contract for callback-focused tests."""
+    origin = "https://oglaptop.tail2bbcc7.ts.net"
+    monkeypatch.setenv("GITHUB_CLIENT_ID", "Ov23liCallbackTests")
+    monkeypatch.setenv("GITHUB_CLIENT_SECRET", "s" * 40)  # pragma: allowlist secret
+    monkeypatch.setenv("GITHUB_ORG", "D-sorganization")
+    monkeypatch.setenv("DASHBOARD_PUBLIC_ORIGIN", origin)
+    monkeypatch.setenv("GITHUB_OAUTH_CALLBACK_URL", f"{origin}/api/auth/callback")
+    monkeypatch.setenv("DASHBOARD_TLS", "1")
+    monkeypatch.setenv("SESSION_SECRET", "c" * 64)  # pragma: allowlist secret
+    monkeypatch.delenv("DASHBOARD_DEV_LOGIN", raising=False)
+    monkeypatch.delenv("DASHBOARD_LOOPBACK_AUTH", raising=False)
+
+
 # ---------------------------------------------------------------------------
 # State validity and expiry (issue #354)
 # ---------------------------------------------------------------------------
@@ -114,13 +129,10 @@ def test_oauth_callback_network_error_returns_502() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_oauth_callback_non_member_rejected_with_403(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Non-org member is rejected with 403 when GITHUB_ORG is set (issue #354)."""
+def test_oauth_callback_non_member_rejected_with_403() -> None:
+    """Non-org member is rejected with 403 for the production org."""
     from fastapi import HTTPException
-    from routers import auth as auth_router
     from routers.auth import github_callback
-
-    monkeypatch.setattr(auth_router, "GITHUB_ORG", "test-org")
 
     token_resp = MagicMock()
     token_resp.json.return_value = {"access_token": "tok123"}
@@ -145,5 +157,5 @@ def test_oauth_callback_non_member_rejected_with_403(monkeypatch: pytest.MonkeyP
             asyncio.run(github_callback(req, code="code", state="st4"))
 
     assert exc_info.value.status_code == 403
-    assert "member" in exc_info.value.detail.lower()
+    assert "D-sorganization" in exc_info.value.detail
     assert "oauth_state" not in req.session
