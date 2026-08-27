@@ -50,11 +50,12 @@
   start either image or run repair tools against the originals. The original
   ControlTower image and first evidence clone are sealed with matching SHA-256
   provenance; diagnose only from a verified derivative.
-- PR #1148 also routes the lightweight anti-phantom guard through the existing
-  reversible public-CI selector. Public repositories use `ubuntu-latest`
-  unless `CI_RUNNER_MODE=local`; private repositories and explicit local mode
-  remain on `d-sorg-fleet`. This preserves protected-check capacity while the
-  local WSL pools are intentionally quarantined.
+- PR #1148 also routes the lightweight anti-phantom and hosted-routing guards
+  through the existing reversible public-CI selector. Public repositories use
+  `ubuntu-latest` unless `CI_RUNNER_MODE=local`; private repositories and
+  explicit local mode remain on `d-sorg-fleet`. This preserves
+  protected-check capacity while local WSL pools are intentionally
+  quarantined, without allowing unrelated workflows onto hosted runners.
 - The final dashboard snapshot before WSL quiesced reported Desktop-1 and
   Desktop-2 busy. Treat those jobs as potentially interrupted until their
   GitHub run conclusions are verified.

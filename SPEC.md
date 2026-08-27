@@ -5,12 +5,13 @@
 **Last Updated:** 2026-08-27T06:00:00-07:00
 **Status:** Active
 
-- **2026-08-27 (2.5.192):** Route the lightweight anti-phantom pull-request
-  guard through the existing reversible public-CI selector. Public repositories
-  use GitHub-hosted Ubuntu capacity unless `CI_RUNNER_MODE=local`; private
-  repositories and explicit local mode remain on `d-sorg-fleet`. This prevents
-  a governance-only check from stalling protected work while local runner pools
-  are intentionally drained or quarantined.
+- **2026-08-27 (2.5.192):** Route the lightweight anti-phantom and
+  hosted-routing pull-request guards through the existing reversible public-CI
+  selector. Public repositories use GitHub-hosted Ubuntu capacity unless
+  `CI_RUNNER_MODE=local`; private repositories and explicit local mode remain
+  on `d-sorg-fleet`. The routing guard explicitly allowlists the anti-phantom
+  selector, preventing governance-only checks from deadlocking while local
+  runner pools are intentionally drained or quarantined.
 
 - **2026-08-27 (2.5.191):** Strengthen the DeskComputer maintenance drain
   into a two-key operator contract. The Windows keepalive and fleet monitor
