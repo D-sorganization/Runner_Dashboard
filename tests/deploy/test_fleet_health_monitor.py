@@ -68,6 +68,7 @@ def test_script_declares_contract_parameters() -> None:
         "PoolFloors",
         "DeskWslDistro",
         "DrainMarker",
+        "EnableMarker",
         "FunctionsOnly",
     ):
         assert f"${param}" in text, f"parameter ${param} not declared"
@@ -87,6 +88,32 @@ def test_script_exits_before_side_effects_when_drain_marker_exists(tmp_path: Pat
             str(SCRIPT),
             "-DrainMarker",
             str(marker),
+            "-DashboardUrl",
+            "invalid://must-not-be-contacted",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == ""
+
+
+def test_script_exits_before_side_effects_when_enable_marker_is_absent(tmp_path: Path) -> None:
+    """Marker cleanup alone must not re-enable automatic fleet recovery."""
+    assert PWSH is not None
+    result = subprocess.run(
+        [
+            PWSH,
+            "-NoProfile",
+            "-NonInteractive",
+            "-File",
+            str(SCRIPT),
+            "-DrainMarker",
+            str(tmp_path / "no-drain.flag"),
+            "-EnableMarker",
+            str(tmp_path / "no-enable.flag"),
             "-DashboardUrl",
             "invalid://must-not-be-contacted",
         ],

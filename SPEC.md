@@ -1,9 +1,23 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.190
+**Spec Version:** 2.5.192
 **Application Version:** 4.9.34 (see `VERSION`)
-**Last Updated:** 2026-08-26T20:20:00-07:00
+**Last Updated:** 2026-08-27T06:00:00-07:00
 **Status:** Active
+
+- **2026-08-27 (2.5.192):** Route the lightweight anti-phantom and
+  hosted-routing pull-request guards through the existing reversible public-CI
+  selector. Public repositories use GitHub-hosted Ubuntu capacity unless
+  `CI_RUNNER_MODE=local`; private repositories and explicit local mode remain
+  on `d-sorg-fleet`. The routing guard explicitly allowlists the anti-phantom
+  selector, preventing governance-only checks from deadlocking while local
+  runner pools are intentionally drained or quarantined.
+
+- **2026-08-27 (2.5.191):** Strengthen the DeskComputer maintenance drain
+  into a two-key operator contract. The Windows keepalive and fleet monitor
+  may perform automatic recovery only when the drain marker is absent and the
+  explicit enable marker is present. Removing the drain marker alone therefore
+  cannot restart WSL or local runners (issue #1144).
 
 - **2026-08-26 (2.5.190):** Synchronize release metadata at version 4.9.34
   so protected `main` publishes the first immutable schema-v2 artifact that

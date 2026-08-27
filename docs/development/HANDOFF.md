@@ -2,12 +2,13 @@
 
 ## Current State
 
-- Branch: `docs/1144-release-qualification`, based exactly on protected remote
-  `main` at `b47c43ed1980fce36f26f0b05c88c41e6416ca76`. Governing issue:
+- Branch: `fix/issue-1144-two-key-drain`, based exactly on protected remote
+  `main` at `787197ce9bfa1075457e0dcc50b5318026f774b5`. Governing issue:
   #1144. PR #1143 merged the one-weekday/two-overnight-or-weekend/hard-two
   policy, and PR #1145 published release 4.9.34 from that protected source.
-  DeskComputer remains drained; this branch records qualification evidence and
-  does not start WSL, runners, services, or campaigns.
+  DeskComputer remains drained. This branch makes controlled re-entry require
+  an explicit enable marker as well as removal of the drain marker; it does
+  not start WSL, runners, services, or campaigns.
 - Release run `33035716275` completed on `d-sorg-local-Oglaptop-3`, not
   DeskComputer. It built and offline-tested the schema-v2 artifact, signed it
   with cosign, generated an SPDX 2.3 SBOM and SLSA provenance, pushed tag
@@ -42,11 +43,19 @@
   restart WSL or expand capacity.
 - ControlTower retains one idle Windows/Matlab runner. Its Linux WSL pool is
   stopped and must remain stopped pending a safety copy/recovery of the
-  suspect `ControlTower-SSD` VHDX and removal of the stale eight-runner startup
-  override. The original and first evidence clone are sealed with matching
-  SHA-256 provenance; a third E: repair derivative copied successfully and is
-  being hashed before any container-level diagnosis. The weekly VHDX compaction
-  task was disabled on 2026-08-24 so it cannot mutate the suspect image.
+  `ControlTower-SSD` VHDX. A live 2026-08-27 qualification attempt failed with
+  `Wsl/Service/CreateInstance/MountDisk/HCS/0x80070570`; the SSD keepalive was
+  immediately stopped and disabled again. OGLaptop's `Ubuntu` VHDX produced
+  the same mount error and its keepalives remain disabled. Do not repeatedly
+  start either image or run repair tools against the originals. The original
+  ControlTower image and first evidence clone are sealed with matching SHA-256
+  provenance; diagnose only from a verified derivative.
+- PR #1148 also routes the lightweight anti-phantom and hosted-routing guards
+  through the existing reversible public-CI selector. Public repositories use
+  `ubuntu-latest` unless `CI_RUNNER_MODE=local`; private repositories and
+  explicit local mode remain on `d-sorg-fleet`. This preserves
+  protected-check capacity while local WSL pools are intentionally
+  quarantined, without allowing unrelated workflows onto hosted runners.
 - The final dashboard snapshot before WSL quiesced reported Desktop-1 and
   Desktop-2 busy. Treat those jobs as potentially interrupted until their
   GitHub run conclusions are verified.
@@ -65,9 +74,10 @@
   fallback can no longer hide an invalid lockfile from pull-request CI.
 - A static regression contract enforces the fail-closed workflow behavior.
 
-- Both canonical Windows entry points accept one shared configurable drain
-  marker and exit before WSL, scheduler, SSH, dashboard, or GitHub recovery
-  side effects while it exists. `-FunctionsOnly` remains available.
+- Both canonical Windows entry points accept shared configurable drain and
+  enable markers. They exit before WSL, scheduler, SSH, dashboard, or GitHub
+  recovery side effects unless the drain marker is absent and the enable
+  marker is present. `-FunctionsOnly` remains available.
 - The runner-offline runbook records controlled drain and restoration under
   the one-normal/two-maximum governed schedule.
 
@@ -163,6 +173,9 @@ tests/test_deploy_hardening.py` passed the complete 57-test static deployment
   regenerated lockfile.
 
 - Issue #1115 focused PowerShell contracts: 43 passed in isolated serial mode.
+- Issue #1144 two-key interlock RED failed three new contracts because neither
+  controller exposed `-EnableMarker`; GREEN passed all 45 focused keepalive
+  and fleet-monitor contracts serially.
 - Ruff lint and format checks passed for both changed Python test files;
   `git diff --check` passed.
 - The first protected full-suite run exposed Linux `USERPROFILE` absence (7
@@ -244,15 +257,16 @@ is returned to service.
 
 1. With an organization-runner administrator, move Desktop-1 through Desktop-4
    into `Bandwidth-Draining` before WSL starts; 5 through 8 are already parked.
-2. Keep the drain marker present, start WSL only for controlled maintenance,
+2. Keep the drain marker present and the enable marker absent; start WSL only
+   for controlled maintenance,
    stop the scheduler, preserve the 4.9.30 deployment and live schedule, deploy
    the verified 4.9.34 artifact, and explicitly replace the stale runtime
    schedule with the qualified 1/2 policy.
 3. Verify `/health`, `/api/deployment`, and `/api/fleet/schedule` report 4.9.34,
    source `b47c43ed`, and the exact 1/2 policy. Restore only Desktop-1 during
-   weekday daytime (at most two in other windows), remove the drain marker only
-   after explicit operator approval, and observe one complete five-minute
-   scheduler cycle plus host responsiveness.
+   weekday daytime (at most two in other windows), create the enable marker and
+   remove the drain marker only after explicit operator approval, and observe
+   one complete five-minute scheduler cycle plus host responsiveness.
 4. Recover ControlTower Linux capacity only
    after a verified VHDX safety copy and correction of its stale startup task
    and eight-runner override; then activate exactly two runners and observe
