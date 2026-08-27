@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Added an explicit, fail-closed recovery path for releases whose artifact,
+  signature, SBOM, attestation, and tag succeeded before GitHub release
+  publication failed. Recovery rebuilds the exact tagged source and avoids
+  filesystem-based repository discovery on self-hosted WSL runners. See #1129.
 - Aligned the canonical DeskComputer schedule with the fleet's
   interactive-safe capacity policy: one weekday-day runner, two
   weekend/overnight runners, and a hard two-runner ceiling (#1142).

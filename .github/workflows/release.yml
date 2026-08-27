@@ -24,6 +24,11 @@ on:
         required: false
         type: boolean
         default: false
+      recover_existing_tag:
+        description: Rebuild and publish an exact existing governed tag after a late release failure.
+        required: false
+        type: boolean
+        default: false
   push:
     tags:
       - "v*.*.*"
@@ -54,6 +59,16 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          ref: ${{ inputs.recover_existing_tag && format('refs/tags/v{0}', inputs.version) || github.sha }}
+
+      - name: Record checked-out source identity
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_SHA=$(git rev-parse HEAD)
+          echo "sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+          echo "Checked out release source $SOURCE_SHA."
 
       - name: Read VERSION file
         id: read_version
@@ -118,21 +133,48 @@ jobs:
           fi
           echo "VERSION file matches target ($TARGET)."
 
-      - name: Verify tag does not already exist
+      - name: Resolve existing tag state
+        id: tag_state
+        if: steps.resolve.outputs.dry_run != 'true'
         shell: bash
         env:
           TAG: ${{ steps.resolve.outputs.tag }}
+          ALLOW_EXISTING_TAG: ${{ inputs.recover_existing_tag || startsWith(github.ref, 'refs/tags/v') }}
+          RECOVER_EXISTING_TAG: ${{ inputs.recover_existing_tag }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
         run: |
           set -euo pipefail
-          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
-            echo "::error::Tag $TAG already exists locally."
-            exit 1
-          fi
+          echo "tag_exists=false" >> "$GITHUB_OUTPUT"
           if git ls-remote --exit-code --tags origin "$TAG" >/dev/null 2>&1; then
-            echo "::error::Tag $TAG already exists on origin."
-            exit 1
+            if [ "$ALLOW_EXISTING_TAG" != "true" ]; then
+              echo "::error::Tag $TAG already exists; use the explicit recovery input after a verified late publish failure."
+              exit 1
+            fi
+            git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG"
+            TAG_COMMIT=$(git rev-parse "$TAG^{commit}")
+            if [ "$TAG_COMMIT" != "$SOURCE_SHA" ]; then
+              echo "::error::Existing tag $TAG resolves to $TAG_COMMIT, expected checked-out source $SOURCE_SHA."
+              exit 1
+            fi
+            OBJ_TYPE=$(git cat-file -t "$TAG")
+            if [ "$OBJ_TYPE" != "tag" ]; then
+              echo "::error::Existing $TAG is a $OBJ_TYPE, expected an annotated tag."
+              exit 1
+            fi
+            MSG=$(git tag -l --format='%(contents)' "$TAG")
+            if ! grep -Fq "$AUTO_NOTES_HEADER" <<< "$MSG"; then
+              echo "::error::Existing $TAG annotation is missing the governed release header."
+              exit 1
+            fi
+            echo "tag_exists=true" >> "$GITHUB_OUTPUT"
+            echo "Existing tag $TAG is exact and governed; recovering release publication."
+          else
+            if [ "$RECOVER_EXISTING_TAG" = "true" ]; then
+              echo "::error::Recovery requested, but tag $TAG does not exist on origin."
+              exit 1
+            fi
+            echo "Tag $TAG is available."
           fi
-          echo "Tag $TAG is available."
 
       - name: Generate release notes from Conventional Commits
         id: notes
@@ -141,7 +183,7 @@ jobs:
           TAG: ${{ steps.resolve.outputs.tag }}
         run: |
           set -euo pipefail
-          PREV_TAG=$(git tag --list 'v*' --sort=-v:refname | head -n1 || true)
+          PREV_TAG=$(git tag --list 'v*' --sort=-v:refname | grep -Fxv "$TAG" | head -n1 || true)
           if [ -n "$PREV_TAG" ]; then
             RANGE="${PREV_TAG}..HEAD"
             echo "Comparing against previous tag: $PREV_TAG"
@@ -282,7 +324,7 @@ jobs:
           cat "$NOTES_FILE"
 
       - name: Create unsigned annotated tag
-        if: steps.resolve.outputs.dry_run != 'true'
+        if: steps.resolve.outputs.dry_run != 'true' && steps.tag_state.outputs.tag_exists != 'true'
         shell: bash
         env:
           TAG: ${{ steps.resolve.outputs.tag }}
@@ -320,7 +362,7 @@ jobs:
           echo "Tag $TAG passed inline verification."
 
       - name: Push tag to origin
-        if: steps.resolve.outputs.dry_run != 'true'
+        if: steps.resolve.outputs.dry_run != 'true' && steps.tag_state.outputs.tag_exists != 'true'
         shell: bash
         env:
           TAG: ${{ steps.resolve.outputs.tag }}
@@ -344,7 +386,7 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --title "$TAG" \
             --notes-file "$NOTES_FILE" \
-            --target "${{ github.sha }}" \
+            --target "${{ steps.source.outputs.sha }}" \
             "$ARTIFACT" \
             "$CHECKSUM" \
             "$BUNDLE_FILE" \
