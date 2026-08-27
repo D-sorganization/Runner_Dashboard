@@ -1,11 +1,39 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.190
-**Application Version:** 4.9.33 (see `VERSION`)
-**Last Updated:** 2026-08-26T13:05:00-07:00
+**Spec Version:** 2.5.192
+**Application Version:** 4.9.34 (see `VERSION`)
+**Last Updated:** 2026-08-27T06:00:00-07:00
 **Status:** Active
 
-- **2026-08-26 (2.5.190):** Harden the issue #1138 deployment boundary before
+- **2026-08-27 (2.5.192):** Route the lightweight anti-phantom and
+  hosted-routing pull-request guards through the existing reversible public-CI
+  selector. Public repositories use GitHub-hosted Ubuntu capacity unless
+  `CI_RUNNER_MODE=local`; private repositories and explicit local mode remain
+  on `d-sorg-fleet`. The routing guard explicitly allowlists the anti-phantom
+  selector, preventing governance-only checks from deadlocking while local
+  runner pools are intentionally drained or quarantined.
+
+- **2026-08-27 (2.5.191):** Strengthen the DeskComputer maintenance drain
+  into a two-key operator contract. The Windows keepalive and fleet monitor
+  may perform automatic recovery only when the drain marker is absent and the
+  explicit enable marker is present. Removing the drain marker alone therefore
+  cannot restart WSL or local runners (issue #1144).
+
+- **2026-08-26 (2.5.190):** Synchronize release metadata at version 4.9.34
+  so protected `main` publishes the first immutable schema-v2 artifact that
+  contains the interactive-safe DeskComputer capacity policy: one weekday-day
+  runner, two weekend/overnight runners, and a hard maximum of two. The live
+  drain remains fail-closed until the signed artifact, checksum, SBOM,
+  provenance, offline install, rollback, exact-revision APIs, and one governed
+  scheduler cycle are verified (issue #1144).
+
+- **2026-08-26 (2.5.189):** Align the canonical DeskComputer schedule with
+  Repository Management's interactive-safe fleet policy: one weekday-day
+  runner, two weekend/overnight runners, and a hard maximum of two. Exact
+  schedule regression coverage prevents a future drain release from restoring
+  twice the governed workstation load (issue #1142).
+
+- **2026-08-26 (2.5.188):** Harden the issue #1138 deployment boundary before
   bootstrap. The exact deploy job now requires the protected
   `oglaptop-production` environment and its no-fallback organization-runner-read
   credential. The transaction records prior service authority, crosses the
@@ -15,7 +43,7 @@
   `/opt`, plus the root-owned canonical schedule; it never executes user-writable
   scheduler code, configuration, or an interpreter.
 
-- **2026-08-26 (2.5.189):** Add the issue #1138 qualified OGLaptop release
+- **2026-08-26 (2.5.187):** Add the issue #1138 qualified OGLaptop release
   deployment contract. A workflow-dispatch-only job on the exact OGLaptop-1
   runner verifies annotated protected-main release identity, checksum, cosign
   bundle, build attestation, safe schema-v2 archive metadata, and Python ABI,
@@ -47,11 +75,9 @@
   also names the GitHub repository explicitly, avoiding WSL checkout discovery
   and dubious-ownership failures (issue #1132).
 
-- **2026-08-25 (2.5.185):** Bound the canonical DeskComputer runner schedule
-  to two weekday-day runners and four weekend/overnight runners, with a hard
-  maximum of four (issue #1125). Regression coverage prevents the repository
-  default from drifting back to an always-on schedule that can overload the
-  interactive workstation when a controlled maintenance drain is released.
+- **2026-08-25 (2.5.185):** Replaced the former 32-runner always-on default
+  with an initial bounded DeskComputer schedule (issue #1125). Issue #1142
+  subsequently tightened that policy for interactive-safe operation.
 
 - **2026-08-24 (2.5.184):** Restore deterministic cross-platform frontend
   installation by recording Vitest's esbuild 0.28.2 dependency tree in the

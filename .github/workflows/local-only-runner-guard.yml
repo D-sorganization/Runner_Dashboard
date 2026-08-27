@@ -1,8 +1,8 @@
 name: Local-Only Workflow Runner Guard
 
-# Enforces that every workflow in this repo routes its jobs to the d-sorg
-# self-hosted fleet. The guard itself also runs on the local fleet so this repo
-# does not depend on hosted GitHub runners when validating local-only routing.
+# Enforces that unapproved workflows route their jobs to the d-sorg self-hosted
+# fleet. The guard uses the reversible public-CI selector so a deliberate local
+# drain cannot deadlock the check that governs hosted-runner exceptions.
 
 on:
   pull_request:
@@ -20,7 +20,7 @@ concurrency:
 jobs:
   reject-hosted-runner-routing:
     name: Reject hosted runner routing
-    runs-on: d-sorg-fleet
+    runs-on: ${{ !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -48,6 +48,7 @@ jobs:
           ALLOWLIST_FILES = {
               # Public lightweight CI may use the reversible CI_RUNNER_MODE
               # selector. Docker and deployment workflows remain local-only.
+              "anti-phantom-merge.yml",
               "ci-standard.yml",
               "Agent-Redundant-PR-Closer.yml",
               "ci-secrets.yml",

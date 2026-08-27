@@ -2,12 +2,25 @@
 
 ## Current State
 
-- Branch: `fix/issue-1131-release-4933-v2`, based exactly on protected remote
-  `main` at `4495163d1bd4a32c607e1ae1d7c1a58dc1a2e0f2` (the normal protected
-  squash merge of PR #1136). Governing issue: #1131. The synchronized 4.9.33
-  release metadata is local and unpublished; 27 bounded serial release/version
-  contracts pass on this exact CVE-corrected base. A fresh protected PR must
-  supersede #1134 without rewriting its history.
+- Branch: `fix/issue-1144-two-key-drain`, based exactly on protected remote
+  `main` at `787197ce9bfa1075457e0dcc50b5318026f774b5`. Governing issue:
+  #1144. PR #1143 merged the one-weekday/two-overnight-or-weekend/hard-two
+  policy, and PR #1145 published release 4.9.34 from that protected source.
+  DeskComputer remains drained. This branch makes controlled re-entry require
+  an explicit enable marker as well as removal of the drain marker; it does
+  not start WSL, runners, services, or campaigns.
+- Release run `33035716275` completed on `d-sorg-local-Oglaptop-3`, not
+  DeskComputer. It built and offline-tested the schema-v2 artifact, signed it
+  with cosign, generated an SPDX 2.3 SBOM and SLSA provenance, pushed tag
+  `v4.9.34`, and published the release assets.
+- The downloaded tarball SHA-256 is
+  `35c023b8c18b3a12c417f78d482974c656158bc59db8c1f5ae67e894bb085b97`.
+  Cosign 3.0.6 independently verified the GitHub Actions OIDC bundle, and
+  `gh attestation verify` accepted the artifact for this repository.
+- A separate disposable OGLaptop WSL install verified the checksum, complete
+  304-file inventory, exact source SHA, Python 3.12 wheelhouse, dependency
+  closure, runtime imports, schema-v2 metadata, and embedded schedule:
+  default 1, maximum 2, weekday day 1, weekend day 2, overnight 2.
 - PR #1116 merged as `4fc1c127`
   before its late full-suite failure surfaced. Protected corrective PR #1117
   then passed the complete suite and merged as `4b1605c7`; issue #1115 is
@@ -30,22 +43,30 @@
   restart WSL or expand capacity.
 - ControlTower retains one idle Windows/Matlab runner. Its Linux WSL pool is
   stopped and must remain stopped pending a safety copy/recovery of the
-  suspect `ControlTower-SSD` VHDX and removal of the stale eight-runner startup
-  override. The original and first evidence clone are sealed with matching
-  SHA-256 provenance; a third E: repair derivative copied successfully and is
-  being hashed before any container-level diagnosis. The weekly VHDX compaction
-  task was disabled on 2026-08-24 so it cannot mutate the suspect image.
+  `ControlTower-SSD` VHDX. A live 2026-08-27 qualification attempt failed with
+  `Wsl/Service/CreateInstance/MountDisk/HCS/0x80070570`; the SSD keepalive was
+  immediately stopped and disabled again. OGLaptop's `Ubuntu` VHDX produced
+  the same mount error and its keepalives remain disabled. Do not repeatedly
+  start either image or run repair tools against the originals. The original
+  ControlTower image and first evidence clone are sealed with matching SHA-256
+  provenance; diagnose only from a verified derivative.
+- PR #1148 also routes the lightweight anti-phantom and hosted-routing guards
+  through the existing reversible public-CI selector. Public repositories use
+  `ubuntu-latest` unless `CI_RUNNER_MODE=local`; private repositories and
+  explicit local mode remain on `d-sorg-fleet`. This preserves
+  protected-check capacity while local WSL pools are intentionally
+  quarantined, without allowing unrelated workflows onto hosted runners.
 - The final dashboard snapshot before WSL quiesced reported Desktop-1 and
   Desktop-2 busy. Treat those jobs as potentially interrupted until their
   GitHub run conclusions are verified.
 
 ## Implemented
 
-- `config/runner-schedule.json` now defaults to two weekday-day runners, four
-  weekend-day runners, and four overnight runners, with `max_count: 4`.
+- `config/runner-schedule.json` now defaults to one weekday-day runner, two
+  weekend-day runners, and two overnight runners, with `max_count: 2`.
 - `tests/test_config_schema.py` enforces the exact canonical windows and counts
   so a 32-runner always-on default cannot silently return.
-- `docs/deployment-model.md` now matches the two-normal/four-maximum contract.
+- `docs/deployment-model.md` now matches the one-normal/two-maximum contract.
 
 - Root `package-lock.json` now contains the complete esbuild 0.28.2 platform
   dependency tree required by the resolved Vitest/Vite graph.
@@ -53,11 +74,12 @@
   fallback can no longer hide an invalid lockfile from pull-request CI.
 - A static regression contract enforces the fail-closed workflow behavior.
 
-- Both canonical Windows entry points accept one shared configurable drain
-  marker and exit before WSL, scheduler, SSH, dashboard, or GitHub recovery
-  side effects while it exists. `-FunctionsOnly` remains available.
+- Both canonical Windows entry points accept shared configurable drain and
+  enable markers. They exit before WSL, scheduler, SSH, dashboard, or GitHub
+  recovery side effects unless the drain marker is absent and the enable
+  marker is present. `-FunctionsOnly` remains available.
 - The runner-offline runbook records controlled drain and restoration under
-  the two-normal/four-maximum governed schedule.
+  the one-normal/two-maximum governed schedule.
 
 - Artifact schema v2 now requires the locked dependency file, a Linux
   wheelhouse, and the root-level WSL service helper.
@@ -91,8 +113,9 @@
 - Inactive services with surviving workers cannot be started again.
 - `max_count` caps defaults, timed schedules, and manual targets and survives
   dashboard schedule edits.
-- PR #1114 superseded the older four-normal/six-maximum setting: the governed
-  DeskComputer contract is now two normal runners and four maximum.
+- PR #1114 superseded the older four-normal/six-maximum setting. Issue #1142
+  further tightens the canonical DeskComputer contract to one weekday-day
+  runner and two maximum to preserve interactive workstation headroom.
 - The test process now selects an isolated, automatically cleaned configuration
   directory before backend singleton imports. Tests no longer read or write the
   live operator ledgers; dispatch-router unit tests also stub spend recording.
@@ -138,7 +161,7 @@
   default-token fallback; missing authority or a 403 rejects before sudo.
 - As of 2026-08-26 the environment was absent. The isolated GitHub App's
   attempt to create it failed closed with HTTP 403 (`Resource not accessible by
-  integration`). An authorized repository administrator must create the exact
+integration`). An authorized repository administrator must create the exact
   protected environment/reviewer policy and provision the environment secret;
   do not dispatch, bootstrap, or weaken authentication before that hold clears.
 - The root scheduler no longer executes the user-owned dashboard venv or
@@ -159,8 +182,8 @@ Validated serially to avoid adding pressure to the local runner host:
   hosted SARIF publication at exact head `caf5cd82`. DeskComputer remained
   fully drained throughout.
 - Exact-base 4.9.33 revalidation on OGLaptop: `python -m pytest -q -n 0
-  tests/test_version_single_source.py tests/test_release_workflow_yaml.py
-  tests/deploy/test_artifact_deployment.py` passed all 27 tests at protected
+tests/test_version_single_source.py tests/test_release_workflow_yaml.py
+tests/deploy/test_artifact_deployment.py` passed all 27 tests at protected
   base `4495163d`. The tested local and OGLaptop release/version diffs were
   byte-equivalent; DeskComputer ran no tests.
 - Issue #1135 RED on OGLaptop: the focused deploy-hardening selection failed
@@ -168,7 +191,7 @@ Validated serially to avoid adding pressure to the local runner host:
   digest and unpinned security package set. No Docker build or Trivy scan was
   run locally; both remain mandatory protected checks.
 - Issue #1135 GREEN on OGLaptop: `python -m pytest -q -n 0
-  tests/test_deploy_hardening.py` passed the complete 57-test static deployment
+tests/test_deploy_hardening.py` passed the complete 57-test static deployment
   contract, including immutable base identity, fixed OpenSSL package set,
   hash-locked application dependencies, non-root runtime, and `/livez`
   healthcheck. DeskComputer performed no test, build, Docker, or Trivy work.
@@ -176,7 +199,12 @@ Validated serially to avoid adding pressure to the local runner host:
 - RED: the canonical-schedule contract failed because the repository still
   returned `default_count: 32` and `max_count: 32`.
 - GREEN: `tests/test_config_schema.py` and
-  `tests/deploy/test_runner_scheduler.py` pass with the 2/4 schedule.
+  `tests/deploy/test_runner_scheduler.py` passed with the superseded 2/4
+  schedule during issue #1125.
+- Issue #1142 RED: the exact canonical-schedule test expected one weekday-day
+  runner and failed because protected main still returned two. GREEN validation
+  passed all 31 focused configuration, scheduler, and version-contract tests;
+  scoped Ruff lint/format and `git diff --check` also passed.
 - Full serial suite: 3,038 collected tests completed successfully on Windows;
   expected platform skips and one established frontend xfail remain.
 - Repository-wide Ruff lint and Ruff format checks pass. Unscoped Black and
@@ -189,6 +217,9 @@ Validated serially to avoid adding pressure to the local runner host:
   regenerated lockfile.
 
 - Issue #1115 focused PowerShell contracts: 43 passed in isolated serial mode.
+- Issue #1144 two-key interlock RED failed three new contracts because neither
+  controller exposed `-EnableMarker`; GREEN passed all 45 focused keepalive
+  and fleet-monitor contracts serially.
 - Ruff lint and format checks passed for both changed Python test files;
   `git diff --check` passed.
 - The first protected full-suite run exposed Linux `USERPROFILE` absence (7
@@ -235,7 +266,9 @@ watching, search, and Python analysis while retaining active worktrees.
 
 ## Operational Boundary
 
-Runner Dashboard 4.9.30 remains the last deployed version, from verified
+Runner Dashboard 4.9.30 remains the last version deployed on DeskComputer,
+while 4.9.34 is the qualified replacement release. Version 4.9.30 came from
+verified
 remote-main commit
 `52635e4d3e0e5fbe71ffd10d232bbad6321fed99`. The immutable artifact is stored
 at `C:\Users\diete\Artifacts\Runner_Dashboard\4.9.30\dashboard-4.9.30.tar.gz`
@@ -244,8 +277,9 @@ The immediate rollback snapshot is
 `/home/dieterolson/actions-runners/dashboard.bak.20260824_152249`.
 The stopped host's governed schedule is backed up at
 `~/.config/runner-dashboard/runner-schedule.json.pre-1106-20260824` and now has
-`default_count: 2`, `max_count: 4`, weekday daytime count `2`, and overnight
-and weekend count `4`. The deployed venv uses Python 3.11.14, matching the
+the superseded `default_count: 2`, `max_count: 4`, weekday daytime count `2`,
+and overnight/weekend count `4`. Do not reuse that backup as the re-entry
+policy. The deployed venv uses Python 3.11.14, matching the
 artifact ABI. Earlier post-deploy checks reported `ready`, correct capacity
 semantics,
 two online/busy workers, six offline workers, 25 GiB available memory, load
@@ -254,18 +288,30 @@ database. Desktop-5 through Desktop-8 remain disabled; do not move them out of
 `Bandwidth-Draining` or restart them without a separately reviewed capacity
 change.
 
+Artifact installation does not overwrite an existing live scheduler config.
+The stopped DeskComputer still has the superseded 2/4 runtime schedule, so a
+4.9.34 deploy alone is not sufficient for safe re-entry. Before starting WSL,
+an organization-runner administrator must park Desktop-1 through Desktop-4 in
+the no-access `Bandwidth-Draining` group. Keep the Windows drain marker in
+place, stop the Linux scheduler before restoring eligibility, back up the live
+schedule, and explicitly install the verified 1/2 schedule before any runner
+is returned to service.
+
 ## Next Steps
 
-1. Complete exact-main post-merge validation for `4495163d`.
-2. Close #1134 as superseded without rewriting its history, publish this fresh
-   #1131 branch, and require an ordinary protected merge with all gates green.
-3. Verify the replacement PR's signed tarball, checksum, cosign bundle, SBOM,
-   provenance, schema-v2 metadata, offline wheelhouse, and exact protected
-   source SHA before deployment.
-4. Deploy the post-#1125 immutable artifact only after review, verify the 2/4
-   schedule through a complete five-minute timer cycle, then consider restoring
-   exactly two runners.
-5. Keep DeskComputer fully drained. Recover ControlTower Linux capacity only
+1. With an organization-runner administrator, move Desktop-1 through Desktop-4
+   into `Bandwidth-Draining` before WSL starts; 5 through 8 are already parked.
+2. Keep the drain marker present and the enable marker absent; start WSL only
+   for controlled maintenance,
+   stop the scheduler, preserve the 4.9.30 deployment and live schedule, deploy
+   the verified 4.9.34 artifact, and explicitly replace the stale runtime
+   schedule with the qualified 1/2 policy.
+3. Verify `/health`, `/api/deployment`, and `/api/fleet/schedule` report 4.9.34,
+   source `b47c43ed`, and the exact 1/2 policy. Restore only Desktop-1 during
+   weekday daytime (at most two in other windows), create the enable marker and
+   remove the drain marker only after explicit operator approval, and observe
+   one complete five-minute scheduler cycle plus host responsiveness.
+4. Recover ControlTower Linux capacity only
    after a verified VHDX safety copy and correction of its stale startup task
    and eight-runner override; then activate exactly two runners and observe
    pressure before allowing the four-runner ceiling.

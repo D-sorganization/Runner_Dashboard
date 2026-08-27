@@ -190,11 +190,13 @@ def test_docker_sarif_publication_uses_reversible_lightweight_route() -> None:
     assert "github/codeql-action/upload-sarif" in str(publisher)
 
 
-def test_local_only_guard_runs_on_fleet() -> None:
-    """The hosted-runner guard must not depend on hosted runners itself."""
+def test_local_only_guard_uses_reversible_public_fast_lane() -> None:
+    """The routing guard must remain available while local pools are drained."""
     text = _local_only_guard_text()
-    assert "runs-on: d-sorg-fleet" in text
-    assert "runs-on: ubuntu-latest" not in text
+    assert "ubuntu-latest" in text
+    assert "CI_RUNNER_MODE" in text
+    assert "d-sorg-fleet" in text
+    assert '"anti-phantom-merge.yml"' in text
 
 
 def test_main_line_cap_exempts_current_legacy_frontend_baseline() -> None:

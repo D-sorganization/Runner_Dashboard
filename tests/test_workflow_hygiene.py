@@ -369,6 +369,16 @@ def test_anti_phantom_guard_uses_rest_file_listing() -> None:
     assert "--jq '.[].filename'" in text
 
 
+def test_anti_phantom_guard_uses_reversible_public_fast_lane() -> None:
+    """A lightweight public guard must not stall when local pools are drained."""
+    workflow = _load_workflow(_WORKFLOWS_DIR / "anti-phantom-merge.yml")
+    runs_on = str(workflow["jobs"]["guard"]["runs-on"])
+
+    assert "ubuntu-latest" in runs_on
+    assert "CI_RUNNER_MODE" in runs_on
+    assert "d-sorg-fleet" in runs_on
+
+
 def test_anti_phantom_guard_recognizes_dashboard_code_roots() -> None:
     """Feature PR checks must include this repo's real app roots."""
     workflow = (_WORKFLOWS_DIR / "anti-phantom-merge.yml").read_text(encoding="utf-8")

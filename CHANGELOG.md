@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.9.34] - 2026-08-26
+
+### Fixed
+
+- Aligned the canonical DeskComputer schedule with the fleet's
+  interactive-safe capacity policy: one weekday-day runner, two
+  weekend/overnight runners, and a hard two-runner ceiling (#1142).
+- Prepared the protected policy-bearing source for immutable schema-v2 release
+  and controlled re-entry while retaining the fail-closed DeskComputer drain
+  until artifact, rollback, runtime identity, and scheduler-cycle validation
+  complete (#1144).
+
 ## [4.9.33] - 2026-08-26
 
 ### Fixed

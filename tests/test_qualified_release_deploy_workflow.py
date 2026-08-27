@@ -8,7 +8,6 @@ from pathlib import Path
 
 import yaml
 
-
 ROOT = Path(__file__).resolve().parent.parent
 WORKFLOW = ROOT / ".github" / "workflows" / "deploy-qualified-release.yml"
 BOOTSTRAP = ROOT / "deploy" / "bootstrap-qualified-release-deploy.sh"
@@ -198,7 +197,7 @@ def test_transaction_journals_and_rolls_back_all_host_mutations() -> None:
 
 def test_transaction_quiesces_writers_before_consistent_snapshot() -> None:
     text = TRANSACTION.read_text(encoding="utf-8")
-    baseline = text.index('record_rollback_baseline\nMUTATION_STARTED=1')
+    baseline = text.index("record_rollback_baseline\nMUTATION_STARTED=1")
     mutation = text.index('journal_event "begin_mutation"', baseline)
     quiesce = text.index("quiesce_for_snapshot", mutation)
     snapshot = text.index("create_quiesced_rollback_snapshot", quiesce)
@@ -225,12 +224,8 @@ def test_partial_snapshot_failure_restores_only_baseline_authority() -> None:
 
     library = LIBRARY.read_text(encoding="utf-8")
     gate = library.index('if [[ -f "${SNAPSHOT_COMPLETE}"')
-    dashboard_restore = library.index(
-        'restore_path "${ROLLBACK_SNAPSHOT}/dashboard"', gate
-    )
-    unit_restore = library.index(
-        'restore_path "${ROLLBACK_SNAPSHOT}/systemd-before/30-qualified-capacity.conf"'
-    )
+    dashboard_restore = library.index('restore_path "${ROLLBACK_SNAPSHOT}/dashboard"', gate)
+    unit_restore = library.index('restore_path "${ROLLBACK_SNAPSHOT}/systemd-before/30-qualified-capacity.conf"')
     assert gate < dashboard_restore < unit_restore
     assert 'install -o root -g root -m 0400 /dev/null "${SNAPSHOT_COMPLETE}"' in library
 
