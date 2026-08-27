@@ -380,11 +380,10 @@ jobs:
           ARTIFACT: ${{ steps.tarball.outputs.artifact }}
           CHECKSUM: ${{ steps.tarball.outputs.checksum }}
           BUNDLE_FILE: ${{ steps.tarball.outputs.bundle }}
-          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           gh release create "$TAG" \
-            --repo "$GH_REPO" \
+            --repo "$GITHUB_REPOSITORY" \
             --title "$TAG" \
             --notes-file "$NOTES_FILE" \
             --target "${{ steps.source.outputs.sha }}" \
