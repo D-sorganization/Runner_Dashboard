@@ -23,11 +23,51 @@ param(
     [string]$ScriptPath = '',
     [string]$LogDir = '',
     [string]$RunAsUser = '',
+    [ValidateSet('Interactive', 'InteractiveToken', 'S4U', 'SYSTEM')][string]$LogonType = 'Interactive',
     [switch]$DryRun
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+function Test-WslPrincipalCompatible {
+    [CmdletBinding()]
+    param(
+        [string]$User,
+        [string]$LogonType = 'Interactive'
+    )
+    if ([string]::IsNullOrWhiteSpace($User)) {
+        return [pscustomobject]@{
+            Compatible = $false
+            Reason = "User principal must be specified and non-empty."
+            Principal = $User
+            LogonType = $LogonType
+        }
+    }
+    $incompatibleUsers = @('SYSTEM', 'NT AUTHORITY\SYSTEM', 'LocalSystem', 'S-1-5-18')
+    if ($incompatibleUsers -contains $User.Trim() -or $User.Trim() -match '^(?i)((NT AUTHORITY\\)?SYSTEM|LocalSystem|S-1-5-18)$') {
+        return [pscustomobject]@{
+            Compatible = $false
+            Reason = "WSL keepalive cannot run under SYSTEM (WSL_E_LOCAL_SYSTEM_NOT_SUPPORTED). An interactive user principal is required."
+            Principal = $User
+            LogonType = $LogonType
+        }
+    }
+    if ($LogonType -notin @('Interactive', 'InteractiveToken')) {
+        return [pscustomobject]@{
+            Compatible = $false
+            Reason = "WSL keepalive requires LogonType Interactive or InteractiveToken (got '$LogonType'). S4U is unsupported for user WSL registrations."
+            Principal = $User
+            LogonType = $LogonType
+        }
+    }
+    return [pscustomobject]@{
+        Compatible = $true
+        Reason = "Compatible interactive user principal."
+        Principal = $User
+        LogonType = $LogonType
+    }
+}
 
 if ([string]::IsNullOrWhiteSpace($LogDir)) {
     $localAppData = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } elseif ($env:HOME) { [System.IO.Path]::Combine($env:HOME, '.runner-dashboard') } else { [System.IO.Path]::GetTempPath() }
@@ -39,8 +79,13 @@ if ([string]::IsNullOrWhiteSpace($RunAsUser)) {
     } elseif ($env:USERNAME) {
         $env:USERNAME
     } else {
-        'runner'
+        ''
     }
+}
+
+$principalCheck = Test-WslPrincipalCompatible -User $RunAsUser -LogonType $LogonType
+if (-not $principalCheck.Compatible) {
+    throw $principalCheck.Reason
 }
 
 if ([string]::IsNullOrWhiteSpace($TaskName)) {
@@ -95,7 +140,7 @@ if ($DryRun) {
         mode = 'Resident'
         distro = $Distro
         runas_user = $RunAsUser
-        logon_type = 'S4U'
+        logon_type = $LogonType
         run_level = 'Highest'
     } | ConvertTo-Json -Depth 4
     exit 0
@@ -115,14 +160,11 @@ $settings = New-ScheduledTaskSettingsSet `
     -RestartInterval (New-TimeSpan -Minutes 1) `
     -StartWhenAvailable
 
-# Run whether or not the user is logged on (S4U: no stored password). This is
-# the keystone of split-disk fleet stability: the keepalive holds the host-side
-# handle that keeps the WSL2 utility VM resident. Under an interactive-only
-# logon trigger the task dies at logoff, the VM is torn down, and both distros
-# cold-boot together on next logon — racing WSL's ~10s WaitForBootProcess
-# timeout into the reboot(RB_POWER_OFF) crash loop. RunLevel Highest lets the
-# resident probes manage systemd units inside the distro.
-$principal = New-ScheduledTaskPrincipal -UserId $RunAsUser -LogonType S4U -RunLevel Highest
+# Run under a WSL-capable user principal (Interactive token: no stored password).
+# S4U and SYSTEM principals cannot access user-scoped WSL registrations
+# (SYSTEM fails with WSL_E_LOCAL_SYSTEM_NOT_SUPPORTED and S4U lacks user session state).
+# RunLevel Highest lets the resident probes manage systemd units inside the distro.
+$principal = New-ScheduledTaskPrincipal -UserId $RunAsUser -LogonType $LogonType -RunLevel Highest
 
 if ($PSCmdlet.ShouldProcess($TaskName, 'Register WSL resident keepalive scheduled task')) {
     Register-ScheduledTask `

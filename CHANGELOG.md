@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Provisioned production OAuth readiness and token validation boundaries for Tailscale egress with redacted health diagnostics and runbook documentation (#1141).
+- Updated Windows WSL resident keepalive task installer (`install-wsl-keepalive-task.ps1`) to run under an interactive user principal mode (`-LogonType Interactive`), failing closed against unsupported `SYSTEM` and `S4U` modes (#1139).
+- Enforced interactive-safe DeskComputer 1/2 runner schedule validation and capacity bounds (#1144).
+- Added branch protection and ruleset drift detector to require all protected gates before auto-merge (#1119).
+- Hardened deterministic offline deployment bundle packaging, checksum verification, and offline wheelhouse installation (#1085).
+
 ## [4.9.34] - 2026-08-26
 
 ### Fixed

@@ -1787,11 +1787,11 @@ distros in one shared utility VM. Two hardening steps keep them out of the
   starts shortly after boot, off the critical path. On SSD-backed distros this
   drops boot-ready from ~15s to ~4–5s. Effective on next boot; idempotent.
 - **`deploy/install-wsl-keepalive-task.ps1`** registers the resident keepalive
-  with an **S4U principal** (`-LogonType S4U -RunLevel Highest`) so it runs
-  whether or not the user is logged on, with an unbounded `ExecutionTimeLimit`
-  and an `AtStartup` trigger. This keeps the host-side handle that holds the WSL
-  VM resident across logoff, preventing the teardown that otherwise forces both
-  distros to cold-boot together and race the 10s window.
+  under a **WSL-capable interactive user principal** (`-LogonType Interactive -RunLevel Highest`)
+  with an unbounded `ExecutionTimeLimit` and `AtStartup`/`AtLogOn` triggers (issue #1139).
+  This avoids the `WSL_E_LOCAL_SYSTEM_NOT_SUPPORTED` failure under `SYSTEM` and the missing
+  user-scoped WSL registration access under `S4U`, while keeping the host-side handle that holds
+  the WSL VM resident.
 - **`deploy/fleet-health-monitor.ps1`** is the canonical DeskComputer fleet
   monitor (5-minute scheduled task, launched via `run-hidden.vbs`). Beyond the
   original DeskComputer-keepalive check and ControlTower WMI-handle guard, it
