@@ -43,11 +43,18 @@
   restart WSL or expand capacity.
 - ControlTower retains one idle Windows/Matlab runner. Its Linux WSL pool is
   stopped and must remain stopped pending a safety copy/recovery of the
-  suspect `ControlTower-SSD` VHDX and removal of the stale eight-runner startup
-  override. The original and first evidence clone are sealed with matching
-  SHA-256 provenance; a third E: repair derivative copied successfully and is
-  being hashed before any container-level diagnosis. The weekly VHDX compaction
-  task was disabled on 2026-08-24 so it cannot mutate the suspect image.
+  `ControlTower-SSD` VHDX. A live 2026-08-27 qualification attempt failed with
+  `Wsl/Service/CreateInstance/MountDisk/HCS/0x80070570`; the SSD keepalive was
+  immediately stopped and disabled again. OGLaptop's `Ubuntu` VHDX produced
+  the same mount error and its keepalives remain disabled. Do not repeatedly
+  start either image or run repair tools against the originals. The original
+  ControlTower image and first evidence clone are sealed with matching SHA-256
+  provenance; diagnose only from a verified derivative.
+- PR #1148 also routes the lightweight anti-phantom guard through the existing
+  reversible public-CI selector. Public repositories use `ubuntu-latest`
+  unless `CI_RUNNER_MODE=local`; private repositories and explicit local mode
+  remain on `d-sorg-fleet`. This preserves protected-check capacity while the
+  local WSL pools are intentionally quarantined.
 - The final dashboard snapshot before WSL quiesced reported Desktop-1 and
   Desktop-2 busy. Treat those jobs as potentially interrupted until their
   GitHub run conclusions are verified.

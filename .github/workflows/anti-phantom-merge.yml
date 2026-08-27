@@ -18,7 +18,7 @@ concurrency:
 jobs:
   guard:
     timeout-minutes: 60
-    runs-on: d-sorg-fleet
+    runs-on: ${{ !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
     if: >-
       github.event.pull_request.base.ref == 'main' &&
       (github.event_name == 'pull_request' ||

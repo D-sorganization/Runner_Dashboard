@@ -1,9 +1,16 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.191
+**Spec Version:** 2.5.192
 **Application Version:** 4.9.34 (see `VERSION`)
 **Last Updated:** 2026-08-27T06:00:00-07:00
 **Status:** Active
+
+- **2026-08-27 (2.5.192):** Route the lightweight anti-phantom pull-request
+  guard through the existing reversible public-CI selector. Public repositories
+  use GitHub-hosted Ubuntu capacity unless `CI_RUNNER_MODE=local`; private
+  repositories and explicit local mode remain on `d-sorg-fleet`. This prevents
+  a governance-only check from stalling protected work while local runner pools
+  are intentionally drained or quarantined.
 
 - **2026-08-27 (2.5.191):** Strengthen the DeskComputer maintenance drain
   into a two-key operator contract. The Windows keepalive and fleet monitor
