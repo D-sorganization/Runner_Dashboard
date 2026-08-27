@@ -5,6 +5,13 @@
 **Last Updated:** 2026-08-27T06:00:00-07:00
 **Status:** Active
 
+- **2026-08-26 (2.5.186):** Make late-stage release publication recoverable
+  without weakening artifact identity (issue #1129). Manual recovery checks
+  out the existing tag, accepts it only when it is annotated, governed, and
+  exact to that source, skips tag mutation, and passes the repository identity
+  explicitly to GitHub CLI so WSL UNC ownership translation cannot block
+  release creation after signing and attestation have succeeded.
+
 - **2026-08-27 (2.5.192):** Route the lightweight anti-phantom and
   hosted-routing pull-request guards through the existing reversible public-CI
   selector. Public repositories use GitHub-hosted Ubuntu capacity unless
@@ -78,6 +85,8 @@
 - **2026-08-25 (2.5.185):** Replaced the former 32-runner always-on default
   with an initial bounded DeskComputer schedule (issue #1125). Issue #1142
   subsequently tightened that policy for interactive-safe operation.
+
+  > > > > > > > origin/main
 
 - **2026-08-24 (2.5.184):** Restore deterministic cross-platform frontend
   installation by recording Vitest's esbuild 0.28.2 dependency tree in the
