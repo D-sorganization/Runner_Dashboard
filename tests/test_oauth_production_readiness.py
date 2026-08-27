@@ -23,19 +23,19 @@ if str(_BACKEND_DIR) not in sys.path:
 _ORIGIN = "https://oglaptop.tail2bbcc7.ts.net"
 _CALLBACK = f"{_ORIGIN}/api/auth/callback"
 _CLIENT_ID = "Ov23liProductionClient"
-_CLIENT_SECRET = "s" * 40
-_SESSION_SECRET = "c" * 64
+_CLIENT_SECRET = "s" * 40  # pragma: allowlist secret
+_SESSION_SECRET = "c" * 64  # pragma: allowlist secret
 
 
 def _production_env() -> dict[str, str]:
     return {
         "GITHUB_CLIENT_ID": _CLIENT_ID,
-        "GITHUB_CLIENT_SECRET": _CLIENT_SECRET,
+        "GITHUB_CLIENT_SECRET": _CLIENT_SECRET,  # pragma: allowlist secret
         "GITHUB_ORG": "D-sorganization",
         "DASHBOARD_PUBLIC_ORIGIN": _ORIGIN,
         "GITHUB_OAUTH_CALLBACK_URL": _CALLBACK,
         "DASHBOARD_TLS": "1",
-        "SESSION_SECRET": _SESSION_SECRET,
+        "SESSION_SECRET": _SESSION_SECRET,  # pragma: allowlist secret
     }
 
 
@@ -66,7 +66,7 @@ def test_exact_production_configuration_is_ready_and_redacted() -> None:
 @pytest.mark.parametrize(
     ("updates", "reason"),
     [
-        ({"GITHUB_CLIENT_SECRET": "short"}, "github_client_secret_invalid"),
+        ({"GITHUB_CLIENT_SECRET": "short"}, "github_client_secret_invalid"),  # pragma: allowlist secret
         ({"DASHBOARD_PUBLIC_ORIGIN": "https://100.125.64.108"}, "public_origin_mismatch"),
         (
             {"GITHUB_OAUTH_CALLBACK_URL": "https://evil.example/api/auth/callback"},

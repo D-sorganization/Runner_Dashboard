@@ -8,14 +8,14 @@ secret.
 
 ## Fixed contract
 
-| Setting | Required value or rule |
-| --- | --- |
-| Homepage / public origin | `https://oglaptop.tail2bbcc7.ts.net` |
-| Authorization callback | `https://oglaptop.tail2bbcc7.ts.net/api/auth/callback` |
-| OAuth scope | `read:user` |
-| Organization admission | Exact `D-sorganization` membership, then an existing `principals.yml` match |
-| Transport | Tailscale Serve over HTTPS, tailnet-only |
-| Session cookie | `Secure`, `HttpOnly`, `SameSite=Strict` |
+| Setting                  | Required value or rule                                                      |
+| ------------------------ | --------------------------------------------------------------------------- |
+| Homepage / public origin | `https://oglaptop.tail2bbcc7.ts.net`                                        |
+| Authorization callback   | `https://oglaptop.tail2bbcc7.ts.net/api/auth/callback`                      |
+| OAuth scope              | `read:user`                                                                 |
+| Organization admission   | Exact `D-sorganization` membership, then an existing `principals.yml` match |
+| Transport                | Tailscale Serve over HTTPS, tailnet-only                                    |
+| Session cookie           | `Secure`, `HttpOnly`, `SameSite=Strict`                                     |
 
 Raw IPs, alternate Host headers, LAN names, HTTP URLs, callback wildcards, and
 public Funnel exposure are outside the contract. The configured canonical
@@ -43,6 +43,7 @@ origin is authoritative; forwarded Host and protocol headers do not alter it.
    Omit `DASHBOARD_DEV_LOGIN` and `DASHBOARD_LOOPBACK_AUTH` completely. Do not
    write either key as `0`; production readiness requires that neither variable
    exist in the service environment.
+
 3. Reference the protected file from the service unit. Never place a secret in
    unit text, repository files, shell history, workflow inputs, logs,
    diagnostics, screenshots, or artifacts.
@@ -75,16 +76,16 @@ has completed:
 
 `/api/health` reports semicolon-delimited reason codes without values:
 
-| Reason | Operator action |
-| --- | --- |
-| `github_client_id_invalid` | Install the dedicated OAuth client ID; do not log it. |
-| `github_client_secret_invalid` | Install or rotate the dedicated OAuth client secret. |
-| `github_org_mismatch` | Restore the exact organization admission policy. |
-| `public_origin_mismatch` | Restore the fixed MagicDNS HTTPS origin. |
-| `callback_url_mismatch` | Restore the exact registered callback. |
-| `session_secret_invalid` | Install an independent explicit session secret of at least 32 characters. |
-| `tls_required` | Enable TLS mode before admitting browser sessions. |
-| `development_auth_must_be_unset` | Remove both development-auth variables from the service environment. |
+| Reason                           | Operator action                                                           |
+| -------------------------------- | ------------------------------------------------------------------------- |
+| `github_client_id_invalid`       | Install the dedicated OAuth client ID; do not log it.                     |
+| `github_client_secret_invalid`   | Install or rotate the dedicated OAuth client secret.                      |
+| `github_org_mismatch`            | Restore the exact organization admission policy.                          |
+| `public_origin_mismatch`         | Restore the fixed MagicDNS HTTPS origin.                                  |
+| `callback_url_mismatch`          | Restore the exact registered callback.                                    |
+| `session_secret_invalid`         | Install an independent explicit session secret of at least 32 characters. |
+| `tls_required`                   | Enable TLS mode before admitting browser sessions.                        |
+| `development_auth_must_be_unset` | Remove both development-auth variables from the service environment.      |
 
 Diagnostics must never include client IDs, client secrets, OAuth state, access
 tokens, session identifiers, or session secrets.

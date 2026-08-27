@@ -30,12 +30,12 @@ def _production_oauth_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Configure the exact production contract for callback-focused tests."""
     origin = "https://oglaptop.tail2bbcc7.ts.net"
     monkeypatch.setenv("GITHUB_CLIENT_ID", "Ov23liCallbackTests")
-    monkeypatch.setenv("GITHUB_CLIENT_SECRET", "s" * 40)
+    monkeypatch.setenv("GITHUB_CLIENT_SECRET", "s" * 40)  # pragma: allowlist secret
     monkeypatch.setenv("GITHUB_ORG", "D-sorganization")
     monkeypatch.setenv("DASHBOARD_PUBLIC_ORIGIN", origin)
     monkeypatch.setenv("GITHUB_OAUTH_CALLBACK_URL", f"{origin}/api/auth/callback")
     monkeypatch.setenv("DASHBOARD_TLS", "1")
-    monkeypatch.setenv("SESSION_SECRET", "c" * 64)
+    monkeypatch.setenv("SESSION_SECRET", "c" * 64)  # pragma: allowlist secret
     monkeypatch.delenv("DASHBOARD_DEV_LOGIN", raising=False)
     monkeypatch.delenv("DASHBOARD_LOOPBACK_AUTH", raising=False)
 
