@@ -2,12 +2,24 @@
 
 ## Current State
 
-- Branch: `chore/1144-controlled-reentry`, based exactly on protected remote
-  `main` at `f8d81811cb82aacb6249e429203ccae929e77dcf`. Governing issue:
+- Branch: `docs/1144-release-qualification`, based exactly on protected remote
+  `main` at `b47c43ed1980fce36f26f0b05c88c41e6416ca76`. Governing issue:
   #1144. PR #1143 merged the one-weekday/two-overnight-or-weekend/hard-two
-  policy. This branch synchronizes release metadata at 4.9.34 so the first
-  immutable artifact containing that policy can be published and qualified.
-  It does not remove the drain marker or start WSL, runners, or campaigns.
+  policy, and PR #1145 published release 4.9.34 from that protected source.
+  DeskComputer remains drained; this branch records qualification evidence and
+  does not start WSL, runners, services, or campaigns.
+- Release run `33035716275` completed on `d-sorg-local-Oglaptop-3`, not
+  DeskComputer. It built and offline-tested the schema-v2 artifact, signed it
+  with cosign, generated an SPDX 2.3 SBOM and SLSA provenance, pushed tag
+  `v4.9.34`, and published the release assets.
+- The downloaded tarball SHA-256 is
+  `35c023b8c18b3a12c417f78d482974c656158bc59db8c1f5ae67e894bb085b97`.
+  Cosign 3.0.6 independently verified the GitHub Actions OIDC bundle, and
+  `gh attestation verify` accepted the artifact for this repository.
+- A separate disposable OGLaptop WSL install verified the checksum, complete
+  304-file inventory, exact source SHA, Python 3.12 wheelhouse, dependency
+  closure, runtime imports, schema-v2 metadata, and embedded schedule:
+  default 1, maximum 2, weekday day 1, weekend day 2, overnight 2.
 - PR #1116 merged as `4fc1c127`
   before its late full-suite failure surfaced. Protected corrective PR #1117
   then passed the complete suite and merged as `4b1605c7`; issue #1115 is
@@ -197,7 +209,9 @@ watching, search, and Python analysis while retaining active worktrees.
 
 ## Operational Boundary
 
-Runner Dashboard 4.9.30 remains the last deployed version, from verified
+Runner Dashboard 4.9.30 remains the last version deployed on DeskComputer,
+while 4.9.34 is the qualified replacement release. Version 4.9.30 came from
+verified
 remote-main commit
 `52635e4d3e0e5fbe71ffd10d232bbad6321fed99`. The immutable artifact is stored
 at `C:\Users\diete\Artifacts\Runner_Dashboard\4.9.30\dashboard-4.9.30.tar.gz`
@@ -217,16 +231,28 @@ database. Desktop-5 through Desktop-8 remain disabled; do not move them out of
 `Bandwidth-Draining` or restart them without a separately reviewed capacity
 change.
 
+Artifact installation does not overwrite an existing live scheduler config.
+The stopped DeskComputer still has the superseded 2/4 runtime schedule, so a
+4.9.34 deploy alone is not sufficient for safe re-entry. Before starting WSL,
+an organization-runner administrator must park Desktop-1 through Desktop-4 in
+the no-access `Bandwidth-Draining` group. Keep the Windows drain marker in
+place, stop the Linux scheduler before restoring eligibility, back up the live
+schedule, and explicitly install the verified 1/2 schedule before any runner
+is returned to service.
+
 ## Next Steps
 
-1. Validate the 4.9.34 metadata serially, publish through an ordinary protected
-   PR for issue #1144, and preserve the live drain marker throughout CI.
-2. Verify the resulting release's signed tarball, checksum, cosign bundle,
-   SBOM, provenance, schema-v2 metadata, offline wheelhouse, exact protected
-   source SHA, and embedded 1/2/2 schedule before deployment.
-3. Keep DeskComputer fully drained until an operator-approved rollout verifies
-   the immutable artifact and one complete five-minute scheduler cycle; restore
-   no more than one runner during weekday daytime.
+1. With an organization-runner administrator, move Desktop-1 through Desktop-4
+   into `Bandwidth-Draining` before WSL starts; 5 through 8 are already parked.
+2. Keep the drain marker present, start WSL only for controlled maintenance,
+   stop the scheduler, preserve the 4.9.30 deployment and live schedule, deploy
+   the verified 4.9.34 artifact, and explicitly replace the stale runtime
+   schedule with the qualified 1/2 policy.
+3. Verify `/health`, `/api/deployment`, and `/api/fleet/schedule` report 4.9.34,
+   source `b47c43ed`, and the exact 1/2 policy. Restore only Desktop-1 during
+   weekday daytime (at most two in other windows), remove the drain marker only
+   after explicit operator approval, and observe one complete five-minute
+   scheduler cycle plus host responsiveness.
 4. Recover ControlTower Linux capacity only
    after a verified VHDX safety copy and correction of its stale startup task
    and eight-runner override; then activate exactly two runners and observe
