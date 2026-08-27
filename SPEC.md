@@ -1,9 +1,17 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.189
-**Application Version:** 4.9.33 (see `VERSION`)
-**Last Updated:** 2026-08-26T17:00:00-07:00
+**Spec Version:** 2.5.190
+**Application Version:** 4.9.34 (see `VERSION`)
+**Last Updated:** 2026-08-26T20:20:00-07:00
 **Status:** Active
+
+- **2026-08-26 (2.5.190):** Synchronize release metadata at version 4.9.34
+  so protected `main` publishes the first immutable schema-v2 artifact that
+  contains the interactive-safe DeskComputer capacity policy: one weekday-day
+  runner, two weekend/overnight runners, and a hard maximum of two. The live
+  drain remains fail-closed until the signed artifact, checksum, SBOM,
+  provenance, offline install, rollback, exact-revision APIs, and one governed
+  scheduler cycle are verified (issue #1144).
 
 - **2026-08-26 (2.5.189):** Align the canonical DeskComputer schedule with
   Repository Management's interactive-safe fleet policy: one weekday-day
