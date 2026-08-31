@@ -74,6 +74,16 @@ def _no_real_network_in_unit_lane(request, monkeypatch):
             pass
 
 
+@pytest.fixture(autouse=True)
+def _reset_main_cache_between_tests():
+    """Clear the shared backend cache before and after every test."""
+    from cache_utils import cache_clear  # noqa: PLC0415
+
+    cache_clear()
+    yield
+    cache_clear()
+
+
 def _make_principal(principal_id: str, role: str):
     """Factory: build a Principal with a single role for use in tests."""
     from identity import Principal  # noqa: PLC0415
