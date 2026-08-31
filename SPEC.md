@@ -1,9 +1,14 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.192
+**Spec Version:** 2.5.193
 **Application Version:** 4.9.34 (see `VERSION`)
-**Last Updated:** 2026-08-27T06:00:00-07:00
+**Last Updated:** 2026-08-31T06:30:00-07:00
 **Status:** Active
+
+- **2026-08-31 (2.5.193):** Refactor credentials router (`get_credentials()`) to
+  adhere to the Law of Demeter and single-responsibility principle. Decomposed
+  the 301-line monolithic route into modular helper functions with full unit
+  test coverage and strict typing (issue #1151).
 
 - **2026-08-26 (2.5.186):** Make late-stage release publication recoverable
   without weakening artifact identity (issue #1129). Manual recovery checks
@@ -85,8 +90,6 @@
 - **2026-08-25 (2.5.185):** Replaced the former 32-runner always-on default
   with an initial bounded DeskComputer schedule (issue #1125). Issue #1142
   subsequently tightened that policy for interactive-safe operation.
-
-  > > > > > > > origin/main
 
 - **2026-08-24 (2.5.184):** Restore deterministic cross-platform frontend
   installation by recording Vitest's esbuild 0.28.2 dependency tree in the
