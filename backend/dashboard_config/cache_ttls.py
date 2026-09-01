@@ -54,3 +54,7 @@ class CacheTtl:
     # 15 s cache keeps the panel effectively live while collapsing the per-poll
     # fork cost to near zero.
     RUNNER_CAPACITY_S: int = 15
+
+    # Credentials probe cache: 15 s balances near-live status updates against
+    # repeated subprocess forks (gh auth status, etc.) from fast frontend polling.
+    CREDENTIALS_S: int = 15
