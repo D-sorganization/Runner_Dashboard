@@ -1,9 +1,23 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.193
+**Spec Version:** 2.5.194
 **Application Version:** 4.9.34 (see `VERSION`)
-**Last Updated:** 2026-08-31T06:30:00-07:00
+**Last Updated:** 2026-09-01T10:35:00-07:00
 **Status:** Active
+
+- **2026-09-01 (2.5.194):** Extend `deploy/runner-cleanup.sh` with `/tmp`
+  CI-litter garbage collection (Repository_Management#1489 / #1495).
+  Cancelled CI jobs orphan pip build directories (`pip-install-*`,
+  `pip-build-env-*`, `node-compile-cache`, …) directly in `/tmp`; on hosts
+  where `/tmp` is RAM-backed tmpfs this exhausts `/tmp` while every
+  root-disk gate stays green, and all subsequent pip installs on the host
+  die with ENOSPC — skipping every real quality step and hard-blocking
+  required checks fleet-wide. `cleanup_tmp()` removes top-level `/tmp`
+  entries matching a fixed litter-pattern allowlist aged past
+  `TMP_LITTER_HOURS` (default 6h), tightening to 30 minutes when `/tmp`
+  usage crosses `TMP_PRESSURE_PERCENT` (default 75%). Runs in both the
+  hourly `--disk-guard` pass and the daily full pass; never touches
+  non-litter paths or fresh entries a live install is writing.
 
 - **2026-08-31 (2.5.193):** Refactor credentials router (`get_credentials()`) to
   adhere to the Law of Demeter and single-responsibility principle. Decomposed

@@ -36,6 +36,19 @@ DOCKER_AGGRESSIVE="${DOCKER_AGGRESSIVE:-0}"
 # frequently (hourly timer) to catch docker bloat long before the daily full
 # cleanup. The full cleanup still bounces idle runners to clear _work.
 DISK_GUARD="${DISK_GUARD:-0}"
+# /tmp GC (Repository_Management#1489 / #1495): cancelled or crashed CI jobs
+# orphan pip build dirs (pip-install-*, pip-build-env-*, ...) directly in
+# /tmp. On hosts where /tmp is a RAM-backed tmpfs this exhausts /tmp long
+# before any root-disk gate fires, and every subsequent pip install on the
+# host dies with ENOSPC — the dependency-install step fails, all real
+# quality steps are skipped, and required checks hard-block PRs fleet-wide.
+# GC known CI litter patterns by age; drop the age window under tmp
+# pressure. Patterns are exact-name-anchored so live job files outside the
+# litter set are never touched, and the default age comfortably exceeds any
+# healthy install's lifetime.
+TMP_DIR="${TMP_DIR:-/tmp}"
+TMP_LITTER_HOURS="${TMP_LITTER_HOURS:-6}"
+TMP_PRESSURE_PERCENT="${TMP_PRESSURE_PERCENT:-75}"
 DRY_RUN="${DRY_RUN:-0}"
 COMPACT_VHD="${COMPACT_VHD:-0}"
 COMPACT_VHD_ONLY="${COMPACT_VHD_ONLY:-0}"
@@ -74,7 +87,7 @@ DISK_PRESSURE_PERCENT, AGGRESSIVE_ON_PRESSURE, PRUNE_DOCKER_VOLUMES,
 DOCKER_AGGRESSIVE, DISK_GUARD, COMPACT_VHD, COMPACT_VHD_ONLY,
 COMPACT_VHD_DISTRO, DRY_RUN.
 
---disk-guard        Lightweight, runner-safe pass: reclaim docker + journal +
+--disk-guard        Lightweight, runner-safe pass: reclaim docker + /tmp CI litter + journal +
                     fstrim ONLY (never stops runner units). Goes aggressive on
                     docker when used% >= DISK_PRESSURE_PERCENT. Safe to run
                     frequently (hourly timer) to keep docker bloat in check
@@ -404,6 +417,32 @@ cleanup_docker() {
     fi
 }
 
+tmp_used_percent() {
+    df -P "$TMP_DIR" 2>/dev/null | awk 'NR == 2 {gsub("%", "", $5); print $5}'
+}
+
+cleanup_tmp() {
+    # Only ever removes entries matching the known CI litter patterns below,
+    # aged past the window. rm -rf on a still-referenced dir is safe: a job
+    # that somehow still holds an fd keeps its data via the open handle.
+    local age_min=$(( TMP_LITTER_HOURS * 60 ))
+    local used
+    used="$(tmp_used_percent)"
+    if [[ -n "$used" && "$used" -ge "$TMP_PRESSURE_PERCENT" ]]; then
+        log "tmp pressure detected (${used}% >= ${TMP_PRESSURE_PERCENT}% on ${TMP_DIR}); lowering litter age window to 30m"
+        age_min=30
+    fi
+    run find "$TMP_DIR" -mindepth 1 -maxdepth 1 \
+        \( -name 'pip-install-*' -o -name 'pip-ephem-wheel-cache-*' \
+           -o -name 'pip-build-env-*' -o -name 'pip-metadata-*' \
+           -o -name 'pip-req-build-*' -o -name 'pip-unpack-*' \
+           -o -name 'pip-uninstall-*' -o -name 'pip-build-tracker-*' \
+           -o -name 'pip-target-*' -o -name 'pytest-of-*' \
+           -o -name 'node-compile-cache' -o -name 'npm-*' \) \
+        -mmin "+${age_min}" -exec rm -rf -- {} +
+    log "tmp cleanup done tmp_used=$(tmp_used_percent)% (was ${used:-?}%)"
+}
+
 cleanup_common_caches() {
     run apt-get autoclean
     command -v pip3 >/dev/null 2>&1 && run sudo -u "$RUNNER_USER" -H pip3 cache purge
@@ -461,13 +500,15 @@ main() {
         # touches runner units, so it can run on a frequent timer without
         # bouncing idle runners every pass. Goes aggressive on docker when the
         # pressure block above fired.
-        log "disk-guard mode: docker + journal + fstrim only (no runner bounce)"
+        log "disk-guard mode: docker + tmp + journal + fstrim only (no runner bounce)"
         cleanup_docker
+        cleanup_tmp
         command -v journalctl >/dev/null 2>&1 && run journalctl --vacuum-size="$JOURNAL_MAX_SIZE"
         command -v fstrim >/dev/null 2>&1 && run fstrim -av
     elif [[ "$COMPACT_VHD_ONLY" != "1" ]]; then
         cleanup_runners
         cleanup_docker
+        cleanup_tmp
         cleanup_common_caches
         command -v fstrim >/dev/null 2>&1 && run fstrim -av
     else
