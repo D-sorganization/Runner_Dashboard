@@ -98,3 +98,67 @@ class TestInstallerUsesGovernedSchedulerPython:
         governed_python = 'SCHEDULER_PYTHON="${SCHEDULER_PYTHON:-${HOME}/actions-runners/dashboard/.venv/bin/python}"'
         assert governed_python in installer_text
         assert "ExecStart=${SCHEDULER_PYTHON} /usr/local/bin/runner-scheduler --apply" in installer_text
+
+
+class TestTmpLitterGC:
+    """Pins the /tmp CI-litter GC (Repository_Management#1489 / #1495).
+
+    Cancelled CI jobs orphan pip build dirs directly in /tmp. On hosts where
+    /tmp is RAM-backed tmpfs this exhausts /tmp while every disk gate stays
+    green, and all subsequent pip installs on the host die with ENOSPC —
+    skipping every real quality step and hard-blocking required checks
+    fleet-wide. The GC must run in BOTH the frequent disk-guard pass and the
+    daily full pass, cover the observed litter patterns, and tighten its age
+    window under tmp pressure.
+    """
+
+    def test_tmp_gc_config_defaults(self, cleanup_text: str) -> None:
+        assert 'TMP_DIR="${TMP_DIR:-/tmp}"' in cleanup_text
+        assert 'TMP_LITTER_HOURS="${TMP_LITTER_HOURS:-' in cleanup_text
+        assert 'TMP_PRESSURE_PERCENT="${TMP_PRESSURE_PERCENT:-' in cleanup_text
+
+    def test_tmp_gc_covers_observed_litter_patterns(self, cleanup_text: str) -> None:
+        """Every pattern observed filling /tmp in the two incidents must be
+        GC'd: pip-install-* (200MB+ each), the ephem wheel cache, build envs,
+        and node-compile-cache."""
+        for pattern in (
+            "pip-install-*",
+            "pip-ephem-wheel-cache-*",
+            "pip-build-env-*",
+            "pip-metadata-*",
+            "pip-uninstall-*",
+            "node-compile-cache",
+            "pytest-of-*",
+        ):
+            assert f"-name '{pattern}'" in cleanup_text, f"tmp GC must cover {pattern}"
+
+    def test_tmp_gc_is_age_windowed_and_top_level_only(self, cleanup_text: str) -> None:
+        """The GC must only touch top-level /tmp entries older than the age
+        window — never recurse into arbitrary trees or delete fresh files a
+        live install is still writing."""
+        fn_idx = cleanup_text.index("cleanup_tmp() {")
+        fn_block = cleanup_text[fn_idx : cleanup_text.index("\n}", fn_idx)]
+        assert "-mindepth 1 -maxdepth 1" in fn_block
+        assert '-mmin "+${age_min}"' in fn_block
+
+    def test_tmp_pressure_tightens_age_window(self, cleanup_text: str) -> None:
+        """When /tmp usage crosses TMP_PRESSURE_PERCENT the age window must
+        drop so a nearly-full tmpfs is reclaimed now, not six hours later."""
+        fn_idx = cleanup_text.index("cleanup_tmp() {")
+        fn_block = cleanup_text[fn_idx : cleanup_text.index("\n}", fn_idx)]
+        assert "TMP_PRESSURE_PERCENT" in fn_block
+        assert "age_min=30" in fn_block
+
+    def test_tmp_gc_runs_in_disk_guard_mode(self, cleanup_text: str) -> None:
+        """The hourly disk-guard pass is the one that catches tmpfs fill
+        between daily runs — cleanup_tmp must be part of it."""
+        guard_idx = cleanup_text.index('if [[ "$DISK_GUARD" == "1" ]]; then')
+        elif_idx = cleanup_text.index("elif", guard_idx)
+        guard_block = cleanup_text[guard_idx:elif_idx]
+        assert "cleanup_tmp" in guard_block
+
+    def test_tmp_gc_runs_in_full_mode(self, cleanup_text: str) -> None:
+        guard_idx = cleanup_text.index('if [[ "$DISK_GUARD" == "1" ]]; then')
+        full_idx = cleanup_text.index('elif [[ "$COMPACT_VHD_ONLY" != "1" ]]; then', guard_idx)
+        full_block = cleanup_text[full_idx : cleanup_text.index("else", full_idx)]
+        assert "cleanup_tmp" in full_block
