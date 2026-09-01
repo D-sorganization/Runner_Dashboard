@@ -1,9 +1,21 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.194
+**Spec Version:** 2.5.195
 **Application Version:** 4.9.34 (see `VERSION`)
-**Last Updated:** 2026-09-01T10:35:00-07:00
+**Last Updated:** 2026-09-01T11:00:00-07:00
 **Status:** Active
+
+- **2026-09-01 (2.5.195):** Update `backend/machine_registry.yml` to the
+  post-rebuild ControlTower topology. The active pool is
+  **ControlTower-Runner** (fresh distro at `F:\WSL\ControlTower-Runner`,
+  runners `d-sorg-local-ControlTower-1..4`, min 2 / default 4 / max 4,
+  scheduler-managed daytime reduction), replacing the ControlTower-SSD
+  pool whose vhdx went corrupt on 2026-08-24
+  (Repository_Management#1453; vhdx retained on F:, its 8 GitHub runner
+  registrations are offline ghosts). Docker engine (docker.io 29.1.3 +
+  buildx + compose-v2) now lives in-distro and the pool carries
+  `d-sorg-fleet-docker`, ending the period where DeskComputer's single
+  online runner was the fleet's only docker capacity.
 
 - **2026-09-01 (2.5.194):** Extend `deploy/runner-cleanup.sh` with `/tmp`
   CI-litter garbage collection (Repository_Management#1489 / #1495).
