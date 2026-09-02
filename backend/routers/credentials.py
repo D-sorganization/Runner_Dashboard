@@ -21,6 +21,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import httpx
+import yaml
 from cache_utils import cache_delete, cache_get, cache_set
 from dashboard_config import CacheTtl
 from fastapi import APIRouter, HTTPException, Request
@@ -95,7 +97,8 @@ async def _vscode_has_extension(extension_id: str) -> bool | None:
 
     try:
         result = await asyncio.to_thread(_run_headless)
-    except (OSError, subprocess.SubprocessError, TimeoutError):
+    except (OSError, subprocess.SubprocessError, TimeoutError) as exc:
+        log.warning("VS Code extension probe failed for extension_id=%s: %s", extension_id, type(exc).__name__)
         return None
     return extension_id in (result.stdout or "")
 
@@ -143,8 +146,8 @@ def _env_present_anywhere(key: str) -> bool:
             text = env_file.read_text(encoding="utf-8")
             if re.search(rf"^{re.escape(key)}=\S", text, re.MULTILINE):
                 return True
-        except (OSError, UnicodeDecodeError):
-            pass
+        except (OSError, UnicodeDecodeError) as exc:
+            log.debug("Failed reading env file %s for key=%s: %s", env_file, key, type(exc).__name__)
     return False
 
 
@@ -211,7 +214,8 @@ async def _vscode_extension_installed(extension_id: str, binary: str | None) -> 
             text=True,
             timeout=8,
         )
-    except (OSError, subprocess.SubprocessError, TimeoutError):
+    except (OSError, subprocess.SubprocessError, TimeoutError) as exc:
+        log.warning("VS Code CLI extension probe failed for extension_id=%s: %s", extension_id, type(exc).__name__)
         return False
     return extension_id in result.stdout
 
@@ -283,8 +287,6 @@ def _patch_maxwell_yaml_api_key(env_var: str, value: str) -> None:
     if not backends:
         return
     try:
-        import yaml  # type: ignore[import]
-
         with open(_MAXWELL_YAML) as f:
             cfg = yaml.safe_load(f)
         if not isinstance(cfg, dict) or "backends" not in cfg:
@@ -298,10 +300,12 @@ def _patch_maxwell_yaml_api_key(env_var: str, value: str) -> None:
             with open(_MAXWELL_YAML, "w") as f:
                 yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
             log.info("Patched maxwell YAML api_key for backends %s", backends)
-    except Exception as e:
-        if isinstance(e, (KeyboardInterrupt, SystemExit)):
+    except (OSError, yaml.YAMLError, KeyError, TypeError, ValueError) as exc:
+        log.warning("Could not patch maxwell YAML api_key for env_var=%s: %s", env_var, type(exc).__name__)
+    except Exception as exc:
+        if isinstance(exc, (KeyboardInterrupt, SystemExit)):
             raise
-        log.exception("Could not patch maxwell YAML api_key for env_var=%s", env_var)
+        log.warning("Unexpected failure patching maxwell YAML api_key for env_var=%s: %s", env_var, type(exc).__name__)
 
 
 def _clear_maxwell_yaml_api_key(env_var: str) -> None:
@@ -340,7 +344,8 @@ async def _probe_github_cli() -> dict[str, Any]:
             )
             gh_auth_ok = result.returncode == 0
             gh_auth_detail = "authenticated" if gh_auth_ok else "not logged in"
-        except (OSError, subprocess.SubprocessError, TimeoutError):
+        except (OSError, subprocess.SubprocessError, TimeoutError) as exc:
+            log.warning("GitHub CLI probe failed: %s", type(exc).__name__)
             gh_auth_detail = "probe failed"  # subprocess / OS error; non-fatal probe failure
 
     return {
@@ -458,6 +463,30 @@ def _probe_claude_code_cli() -> dict[str, Any]:
     }
 
 
+def _resolve_cline_detail(
+    by_path: bool,
+    by_ext: bool,
+    skipped: bool,
+    vscode_found: bool,
+    compatible_key: bool,
+    installed: bool,
+) -> str:
+    """Build user-facing diagnostic detail for Cline extension."""
+    if installed and compatible_key:
+        return "VS Code extension + compatible API key found"
+    if installed:
+        return "VS Code extension installed; set ANTHROPIC_API_KEY or OPENAI_API_KEY"
+    if by_path:
+        return "VS Code extension installed (globalStorage)"
+    if by_ext:
+        return "VS Code extension installed (code --list-extensions)"
+    if skipped:
+        return "VS Code CLI probe skipped to avoid launching the desktop UI"
+    if vscode_found:
+        return "VS Code found but Cline not installed"
+    return "VS Code not found"
+
+
 async def _probe_cline() -> dict[str, Any]:
     """Probe Cline VS Code extension installation and API key configuration."""
     _cline_storage = Path.home() / ".config" / "Code" / "User" / "globalStorage" / "saoudrizwan.claude-dev"
@@ -469,20 +498,15 @@ async def _probe_cline() -> dict[str, Any]:
         _cline_by_ext = bool(ext_check)
     cline_installed = _cline_by_path or _cline_by_ext
     vscode_cli_probe_skipped = _vscode_binary is not None and not _should_probe_vscode_cli(_vscode_binary)
-    _cline_detail = (
-        "VS Code extension installed (globalStorage)"
-        if _cline_by_path
-        else (
-            "VS Code extension installed (code --list-extensions)"
-            if _cline_by_ext
-            else (
-                "VS Code CLI probe skipped to avoid launching the desktop UI"
-                if vscode_cli_probe_skipped
-                else ("VS Code found but Cline not installed" if _vscode_binary else "VS Code not found")
-            )
-        )
-    )
     _cline_compatible_key = _env_present("ANTHROPIC_API_KEY") or _env_present("OPENAI_API_KEY")
+    detail = _resolve_cline_detail(
+        by_path=_cline_by_path,
+        by_ext=_cline_by_ext,
+        skipped=vscode_cli_probe_skipped,
+        vscode_found=_vscode_binary is not None,
+        compatible_key=_cline_compatible_key,
+        installed=cline_installed,
+    )
     return {
         "id": "cline",
         "label": "Cline (VS Code)",
@@ -499,15 +523,7 @@ async def _probe_cline() -> dict[str, Any]:
             if (cline_installed and _cline_compatible_key)
             else ("extension_installed" if cline_installed else "not_installed")
         ),
-        "detail": (
-            "VS Code extension + compatible API key found"
-            if (cline_installed and _cline_compatible_key)
-            else (
-                "VS Code extension installed; set ANTHROPIC_API_KEY or OPENAI_API_KEY"
-                if cline_installed
-                else _cline_detail
-            )
-        ),
+        "detail": detail,
         "config_source": "vscode" if cline_installed else "unavailable",
         "docs_url": "https://marketplace.visualstudio.com/items?itemName=saoudrizwan.claude-dev",
         "setup_hint": "Install Cline extension in VS Code: ext install saoudrizwan.claude-dev",
@@ -599,10 +615,12 @@ async def _probe_linear_workspaces() -> list[dict[str, Any]]:
                     "workspace_id": workspace_id,
                 }
             )
-    except Exception as e:
-        if isinstance(e, (KeyboardInterrupt, SystemExit)):
+    except (OSError, httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError) as exc:
+        log.warning("Failed to enumerate Linear workspace credential probes: %s", type(exc).__name__)
+    except Exception as exc:
+        if isinstance(exc, (KeyboardInterrupt, SystemExit)):
             raise
-        log.exception("Failed to enumerate Linear workspace credential probes")
+        log.warning("Unexpected failure enumerating Linear workspace probes: %s", type(exc).__name__)
     return probes
 
 
@@ -682,14 +700,13 @@ async def get_cline_status(request: Request) -> dict[str, Any]:
 
 
 @router.get("/ollama/status")
-async def get_ollama_status(request: Request) -> dict:
+async def get_ollama_status(request: Request) -> dict[str, Any]:
     """Return whether ollama serve is running and the base URL."""
     _require_local_request(request)
     ollama_binary = shutil.which("ollama")
     if not ollama_binary:
         raise HTTPException(status_code=503, detail="ollama not found on PATH")
 
-    # Check if ollama serve is responsive
     try:
         result = await asyncio.to_thread(
             subprocess.run,
@@ -699,7 +716,8 @@ async def get_ollama_status(request: Request) -> dict:
             timeout=10,
         )
         running = result.returncode == 0
-    except (OSError, subprocess.SubprocessError, TimeoutError):
+    except (OSError, subprocess.SubprocessError, TimeoutError) as exc:
+        log.warning("Ollama status probe failed: %s", type(exc).__name__)
         running = False
 
     return {
@@ -710,7 +728,7 @@ async def get_ollama_status(request: Request) -> dict:
 
 
 @router.get("/ollama/models")
-async def get_ollama_models(request: Request) -> dict:
+async def get_ollama_models(request: Request) -> dict[str, Any]:
     """List installed Ollama models via `ollama list`."""
     _require_local_request(request)
     ollama_binary = shutil.which("ollama")
@@ -730,7 +748,6 @@ async def get_ollama_models(request: Request) -> dict:
                 status_code=502,
                 detail=f"ollama list failed: {result.stderr.strip()[:200]}",
             )
-        # Parse output: NAME\tID\tSIZE\tMODIFIED
         models = []
         for line in result.stdout.splitlines()[1:]:  # skip header
             if not line.strip():
@@ -741,16 +758,38 @@ async def get_ollama_models(request: Request) -> dict:
         return {"models": models}
     except HTTPException:
         raise
-    except Exception as exc:
-        log.exception("Failed to list ollama models")
-        raise HTTPException(status_code=500, detail=f"Failed to list models: {exc}") from exc
+    except (OSError, subprocess.SubprocessError, TimeoutError, ValueError, KeyError) as exc:
+        log.warning("Failed to list ollama models: %s", type(exc).__name__)
+        raise HTTPException(status_code=500, detail=f"Failed to list models: {type(exc).__name__}") from exc
+
+
+async def _restart_maxwell_daemon() -> dict[str, Any]:
+    """Attempt restarting maxwell-daemon via systemctl without raising."""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "sudo",
+            "systemctl",
+            "restart",
+            "maxwell-daemon",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=15)
+        return {
+            "attempted": True,
+            "success": proc.returncode == 0,
+            "detail": (stdout + stderr).decode(errors="replace").strip()[:200],
+        }
+    except (OSError, subprocess.SubprocessError, TimeoutError) as exc:
+        log.warning("Failed to restart maxwell-daemon: %s", type(exc).__name__)
+        return {"attempted": True, "success": False, "detail": type(exc).__name__}
 
 
 # Key management endpoints
 
 
 @router.post("/credentials/set-key")
-async def set_credential_key(body: SetKeyRequest, request: Request) -> dict:
+async def set_credential_key(body: SetKeyRequest, request: Request) -> dict[str, Any]:
     """Write an API key to the server-side env files. Never returns the key value.
 
     Writes to ~/.config/maxwell-daemon/env and ~/.config/runner-dashboard/env,
@@ -774,9 +813,9 @@ async def set_credential_key(body: SetKeyRequest, request: Request) -> dict:
     try:
         _write_env_var(_MAXWELL_ENV, env_var, value)
         _write_env_var(_DASHBOARD_ENV, env_var, value)
-    except Exception as exc:
-        log.exception("Failed to write env var %s", env_var)
-        raise HTTPException(status_code=500, detail=f"Failed to write key: {exc}") from exc
+    except (OSError, UnicodeEncodeError) as exc:
+        log.warning("Failed to write env var %s: %s", env_var, type(exc).__name__)
+        raise HTTPException(status_code=500, detail=f"Failed to write key: {type(exc).__name__}") from exc
 
     os.environ[env_var] = value
     log.info("Set %s for provider=%s (length=%d)", env_var, provider, len(value))
@@ -784,26 +823,7 @@ async def set_credential_key(body: SetKeyRequest, request: Request) -> dict:
     _patch_maxwell_yaml_api_key(env_var, value)
     cache_delete("credentials_probe")
 
-    restart_result: dict = {}
-    if body.restart_maxwell:
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                "sudo",
-                "systemctl",
-                "restart",
-                "maxwell-daemon",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=15)
-            restart_result = {
-                "attempted": True,
-                "success": proc.returncode == 0,
-                "detail": (stdout + stderr).decode(errors="replace").strip()[:200],
-            }
-        except Exception as exc:
-            restart_result = {"attempted": True, "success": False, "detail": str(exc)[:200]}
-
+    restart_result = await _restart_maxwell_daemon() if body.restart_maxwell else {}
     return {
         "ok": True,
         "env_var": env_var,
@@ -813,7 +833,7 @@ async def set_credential_key(body: SetKeyRequest, request: Request) -> dict:
 
 
 @router.post("/credentials/clear-key")
-async def clear_credential_key(body: ClearKeyRequest, request: Request) -> dict:
+async def clear_credential_key(body: ClearKeyRequest, request: Request) -> dict[str, Any]:
     """Remove an API key from the server-side env files and maxwell YAML."""
     _require_local_request(request)
 
@@ -826,34 +846,16 @@ async def clear_credential_key(body: ClearKeyRequest, request: Request) -> dict:
     try:
         _clear_env_var(_MAXWELL_ENV, env_var)
         _clear_env_var(_DASHBOARD_ENV, env_var)
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Failed to clear key: {exc}") from exc
+    except (OSError, UnicodeEncodeError) as exc:
+        log.warning("Failed to clear env var %s: %s", env_var, type(exc).__name__)
+        raise HTTPException(status_code=500, detail=f"Failed to clear key: {type(exc).__name__}") from exc
 
     os.environ.pop(env_var, None)
     _clear_maxwell_yaml_api_key(env_var)
     cache_delete("credentials_probe")
     log.info("Cleared %s for provider=%s", env_var, provider)
 
-    restart_result: dict = {}
-    if body.restart_maxwell:
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                "sudo",
-                "systemctl",
-                "restart",
-                "maxwell-daemon",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=15)
-            restart_result = {
-                "attempted": True,
-                "success": proc.returncode == 0,
-                "detail": (stdout + stderr).decode(errors="replace").strip()[:200],
-            }
-        except Exception as exc:
-            restart_result = {"attempted": True, "success": False, "detail": str(exc)[:200]}
-
+    restart_result = await _restart_maxwell_daemon() if body.restart_maxwell else {}
     return {"ok": True, "env_var": env_var, "provider": provider, "maxwell_restart": restart_result}
 
 
@@ -862,7 +864,7 @@ class LaunchAuthRequest(BaseModel):
 
 
 @router.post("/credentials/launch-auth")
-async def launch_auth(body: LaunchAuthRequest, request: Request) -> dict:
+async def launch_auth(body: LaunchAuthRequest, request: Request) -> dict[str, Any]:
     """Launch a provider's browser auth flow in a subprocess.
 
     Returns immediately with a job_id; the UI can poll /status.
@@ -892,7 +894,6 @@ async def launch_auth(body: LaunchAuthRequest, request: Request) -> dict:
     client_host = request.client.host if request.client else "unknown"
     log.info("launch_auth: provider=%s job_id=%s by=%s", provider_id, job_id, client_host)
 
-    # Fire-and-forget subprocess (auth flows are interactive and blocking)
     try:
         subprocess.Popen(
             cmd,
@@ -901,12 +902,13 @@ async def launch_auth(body: LaunchAuthRequest, request: Request) -> dict:
             start_new_session=True,
         )
     except FileNotFoundError as exc:
+        log.warning("launch_auth binary not found for provider %s: %s", provider_id, type(exc).__name__)
         raise HTTPException(
             status_code=502,
             detail=f"Binary not found for provider '{provider_id}'",
         ) from exc
-    except Exception as exc:
-        log.warning("launch_auth failed: %s", exc)
+    except (OSError, subprocess.SubprocessError) as exc:
+        log.warning("launch_auth failed for provider %s: %s", provider_id, type(exc).__name__)
         raise HTTPException(status_code=500, detail="Failed to launch auth subprocess") from exc
 
     return {"ok": True, "provider_id": provider_id, "job_id": job_id}

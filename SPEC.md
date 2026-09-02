@@ -1,9 +1,15 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.195
+**Spec Version:** 2.5.196
 **Application Version:** 4.9.34 (see `VERSION`)
-**Last Updated:** 2026-09-01T11:00:00-07:00
+**Last Updated:** 2026-09-02T00:30:00-07:00
 **Status:** Active
+
+- **2026-09-02 (2.5.196):** Decompose credentials router (`get_credentials()`)
+  into small, cohesive resolvers (< 50 lines each) adhering to Design by
+  Contract, Law of Demeter, and DRY. Replace broad and silent exception handlers
+  with narrow typed exceptions logging source names and error classes without
+  leaking credential values, and add comprehensive unit test coverage (issue #1151).
 
 - **2026-09-01 (2.5.195):** Update `backend/machine_registry.yml` to the
   post-rebuild ControlTower topology. The active pool is
