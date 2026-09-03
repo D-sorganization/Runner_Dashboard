@@ -452,9 +452,32 @@ cleanup_litter_in() {
     # open handle. `tmp*` is Python tempfile's default prefix (mkdtemp /
     # NamedTemporaryFile), the second-largest consumer after pip-* in the
     # 2026-08-29 and 2026-09-01 incidents; `pymp-*` is multiprocessing's.
+    #
+    # Vanishing-entry race (#9443 follow-up): a CI job routinely deletes its
+    # own pip temporaries between find's readdir and its stat/-exec, so find
+    # prints
+    #     find: '/tmp/pip-unpack-54p8nq45': No such file or directory
+    # and exits non-zero. Under `set -Eeuo pipefail` that failed the whole
+    # unit and silently skipped every later stage of the daily pass -- the
+    # unit sat in `Result: exit-code` for hours while only the hourly
+    # disk-guard pass worked. That race is benign (the entry we wanted gone
+    # is gone), so it must not fail the pass.
+    #
+    # It is filtered by exact condition, NOT by blanket `2>/dev/null ||
+    # true`: a real fault -- above all "Permission denied", the symptom of
+    # the ownership damage this series is about -- must still fail loudly.
     local dir="$1" age_min="$2"
     [[ -d "$dir" ]] || return 0
-    run find "$dir" -mindepth 1 -maxdepth 1 \
+
+    if [[ "$DRY_RUN" == "1" ]]; then
+        log "[dry-run] litter GC in $dir (age >${age_min}m)"
+        return 0
+    fi
+
+    local err_file rc=0 unexpected vanished
+    err_file="$(mktemp)"
+    log "+ litter GC in $dir (age >${age_min}m)"
+    find "$dir" -mindepth 1 -maxdepth 1 \
         \( -name 'pip-install-*' -o -name 'pip-ephem-wheel-cache-*' \
            -o -name 'pip-build-env-*' -o -name 'pip-metadata-*' \
            -o -name 'pip-req-build-*' -o -name 'pip-unpack-*' \
@@ -462,7 +485,21 @@ cleanup_litter_in() {
            -o -name 'pip-target-*' -o -name 'pytest-of-*' \
            -o -name 'node-compile-cache' -o -name 'npm-*' \
            -o -name 'tmp*' -o -name 'pymp-*' \) \
-        -mmin "+${age_min}" -exec rm -rf -- {} +
+        -mmin "+${age_min}" -exec rm -rf -- {} + 2>"$err_file" || rc=$?
+
+    unexpected="$(grep -v 'No such file or directory' -- "$err_file" || true)"
+    vanished="$(grep -c 'No such file or directory' -- "$err_file" || true)"
+    rm -f -- "$err_file"
+
+    if [[ -n "$unexpected" ]]; then
+        log "litter GC in $dir failed (find rc=${rc}):"
+        printf '%s\n' "$unexpected" >&2
+        return "$(( rc == 0 ? 1 : rc ))"
+    fi
+    if [[ "${vanished:-0}" -gt 0 ]]; then
+        log "litter GC in $dir: ${vanished} entr(ies) vanished mid-scan (benign concurrent-job race)"
+    fi
+    return 0
 }
 
 cleanup_tmp() {

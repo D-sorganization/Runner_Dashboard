@@ -1,9 +1,51 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.197
+**Spec Version:** 2.5.198
 **Application Version:** 4.9.34 (see `VERSION`)
 **Last Updated:** 2026-09-03T00:00:00-07:00
 **Status:** Active
+
+- **2026-09-03 (2.5.198):** Heal poisoned runner workspaces at job start and
+  stop the daily cleanup unit failing on a benign race (UpstreamDrift#9443,
+  program #1505). (1) `deploy/runner-hooks/job-started.sh` now clears the two
+  workspace states that make the NEXT job's `actions/checkout` report success
+  while leaving a half-populated or empty working tree — so the job dies on a
+  path its PR never touched (`scripts/ci/rehydrate_docker_context.py: No such
+  file or directory`; `Can't find 'action.yml' under
+  .github/actions/fetch-pinned-tools`). State A: `core.sparseCheckout=true`
+  with an absent/empty `.git/info/sparse-checkout` — an empty pattern set
+  matches nothing, so unpack-trees treats every path as belonging outside the
+  working tree, `git checkout --force` empties the tree and still exits 0, and
+  the "Path '<p>' not uptodate; will not remove from working tree" lines are
+  git's `WARNING_SPARSE_NOT_UPTODATE_FILE`, a *warning* on the sparse code
+  path (verified on ControlTower). A genuine sparse checkout (config on AND
+  patterns present) is left alone. State B: a stale index stat cache — a
+  recursive `chown -R` over a runner `_work` tree bumps every inode's ctime
+  without touching content, so every tracked path reads stat-dirty while `git
+  status` still calls the tree clean (measured live: 13,220 of 13,224 tracked
+  paths on ControlTower runner-4, ctime diverged, mtime/size/inode identical);
+  `git update-index -q --really-refresh` restores it. Both are guarded to
+  paths under a runner `_work` tree and bounded by `timeout 120`; the hook
+  deliberately does NOT chown/chmod the workspace, which is the *cause* of
+  state B rather than a remedy. Hooks are read per job, so deployment needs no
+  runner restart. (2) `cleanup_litter_in` in `deploy/runner-cleanup.sh` no
+  longer fails the whole pass when a concurrent CI job deletes its own pip
+  temporary between `find`'s readdir and its `-exec`: `find` printed `No such
+  file or directory` and exited non-zero, which under `set -Eeuo pipefail`
+  left `runner-cleanup.service` in `Result: exit-code` for hours and skipped
+  every later stage of the daily pass while only the hourly disk-guard pass
+  ran. The filter is by exact condition, not a blanket `2>/dev/null || true` —
+  "Permission denied" and any other unexpected stderr still fail loudly, and
+  vanished entries are counted and logged. TDD:
+  `tests/deploy/test_job_started_index_heal.py` (13 cases: seeds real repos,
+  asserts the stat-cache heal, preservation of genuine local edits, the
+  sparse-state clear, that a real sparse checkout survives, the `_work` path
+  guard, a missing workspace, a pin on the upstream tree-emptying behaviour,
+  and a regression guard against reintroducing a recursive ownership sweep)
+  and `tests/deploy/test_runner_cleanup_litter_race.py` (sources the real
+  shell function: vanished entry passes, permission denied fails, mixed output
+  fails, real-`find` sweep reaps aged litter only, dry-run is inert). Runbook:
+  `docs/runbooks/checkout-not-uptodate.md`.
 
 - **2026-09-03 (2.5.197):** Durable half of the runner `/tmp` exhaustion fix
   (Repository_Management#1489 via #1511, program #1505). (1) The `/tmp`
