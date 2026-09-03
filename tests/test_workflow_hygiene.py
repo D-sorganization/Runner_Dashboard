@@ -23,7 +23,9 @@ import pytest
 import yaml
 
 _WORKFLOWS_DIR = Path(__file__).parent.parent / ".github" / "workflows"
-_POLICY_PATH = Path(__file__).parent.parent / "config" / "workflow_concurrency_policy.json"
+_POLICY_PATH = (
+    Path(__file__).parent.parent / "config" / "workflow_concurrency_policy.json"
+)
 _PR_TRIGGER_KEYS = ("pull_request", "pull_request_target")
 _PR_GROUP_TOKENS = (
     "github.ref",
@@ -45,7 +47,6 @@ _SINGLETON_GROUP_ALLOWLIST: dict[str, str] = {
     "Agent-Redundant-PR-Closer.yml": "Singleton closer avoids competing PR-close decisions.",
     "ci-nightly.yml": "Nightly singleton; only one nightly run should occupy the fleet.",
     "issue-taxonomy-backfill.yml": "Backfill is an explicit singleton maintenance workflow.",
-    "Jules-Control-Tower.yml": "Control Tower is the single automatic remediation coordinator.",
     "taxonomy-rollout.yml": "Taxonomy rollout is a singleton governance workflow.",
     "util-queued-job-reaper.yml": "Queue reaper is a singleton maintenance workflow with a max-cancel cap.",
 }
@@ -83,7 +84,9 @@ def _workflow_triggers(path: Path) -> dict:
     triggers = data.get("on")
     if triggers is None and True in data:
         triggers = data[True]
-    assert isinstance(triggers, dict), f"{path.name}: workflow `on:` block must be a mapping"
+    assert isinstance(
+        triggers, dict
+    ), f"{path.name}: workflow `on:` block must be a mapping"
     return triggers
 
 
@@ -121,8 +124,12 @@ def test_workflow_has_concurrency_block(workflow_path: Path) -> None:
         f"deploy/release/repair flows)."
     )
     block = data["concurrency"]
-    assert isinstance(block, dict), f"{workflow_path.name}: `concurrency:` must be a mapping with `group:`."
-    assert block.get("group"), f"{workflow_path.name}: `concurrency.group` must be a non-empty string."
+    assert isinstance(
+        block, dict
+    ), f"{workflow_path.name}: `concurrency:` must be a mapping with `group:`."
+    assert block.get(
+        "group"
+    ), f"{workflow_path.name}: `concurrency.group` must be a non-empty string."
     assert "cancel-in-progress" in block, (
         f"{workflow_path.name}: `concurrency.cancel-in-progress` must be set "
         f"(true for fast-forward CI, false for deploy/release/repair flows)."
@@ -142,7 +149,9 @@ def test_cancel_false_allowlist_is_documented_and_current() -> None:
         "_CANCEL_FALSE_ALLOWLIST with a release/deploy/PR-write rationale."
     )
     for workflow, reason in _CANCEL_FALSE_ALLOWLIST.items():
-        assert reason and len(reason) >= 20, f"{workflow}: allowlist rationale is too thin"
+        assert (
+            reason and len(reason) >= 20
+        ), f"{workflow}: allowlist rationale is too thin"
 
 
 @pytest.mark.parametrize(
@@ -153,7 +162,9 @@ def test_cancel_false_allowlist_is_documented_and_current() -> None:
 def test_pr_triggered_workflows_cancel_superseded_runs(workflow_path: Path) -> None:
     """PR workflows must cancel superseded runs unless explicitly allowlisted."""
     data = _load_workflow(workflow_path)
-    if not (_has_trigger(data, "pull_request") or _has_trigger(data, "pull_request_target")):
+    if not (
+        _has_trigger(data, "pull_request") or _has_trigger(data, "pull_request_target")
+    ):
         return
     if workflow_path.name in _CANCEL_FALSE_ALLOWLIST:
         return
@@ -173,13 +184,19 @@ def test_pr_triggered_workflows_cancel_superseded_runs(workflow_path: Path) -> N
 def test_pr_concurrency_groups_do_not_collapse_all_prs(workflow_path: Path) -> None:
     """PR workflow groups should distinguish PR/ref unless intentionally singleton."""
     data = _load_workflow(workflow_path)
-    if not (_has_trigger(data, "pull_request") or _has_trigger(data, "pull_request_target")):
+    if not (
+        _has_trigger(data, "pull_request") or _has_trigger(data, "pull_request_target")
+    ):
         return
     if workflow_path.name in _SINGLETON_GROUP_ALLOWLIST:
         return
 
     group = str(data["concurrency"].get("group") or "")
-    assert "github.ref" in group or "pull_request.number" in group or "github.head_ref" in group, (
+    assert (
+        "github.ref" in group
+        or "pull_request.number" in group
+        or "github.head_ref" in group
+    ), (
         f"{workflow_path.name}: PR-triggered concurrency group must include "
         "github.ref, github.head_ref, or github.event.pull_request.number "
         "unless documented as a singleton."
@@ -229,12 +246,16 @@ def test_workflow_concurrency_policy_references_real_workflows() -> None:
     workflow_names = {path.name for path in _workflow_files()}
 
     for policy_name, entries in policy.items():
-        assert isinstance(entries, dict), f"{policy_name} must map workflow filenames to rationale strings."
+        assert isinstance(
+            entries, dict
+        ), f"{policy_name} must map workflow filenames to rationale strings."
         for workflow_name, rationale in entries.items():
-            assert workflow_name in workflow_names, f"{policy_name}: unknown workflow `{workflow_name}` in policy file."
-            assert isinstance(rationale, str) and rationale.strip(), (
-                f"{policy_name}: `{workflow_name}` must have a non-empty rationale."
-            )
+            assert (
+                workflow_name in workflow_names
+            ), f"{policy_name}: unknown workflow `{workflow_name}` in policy file."
+            assert (
+                isinstance(rationale, str) and rationale.strip()
+            ), f"{policy_name}: `{workflow_name}` must have a non-empty rationale."
 
 
 def test_pr_workflows_use_cancel_in_progress_true_or_documented_exception() -> None:
@@ -255,7 +276,9 @@ def test_pr_workflows_use_cancel_in_progress_true_or_documented_exception() -> N
             )
 
 
-def test_pr_workflow_concurrency_groups_are_pr_scoped_or_documented_singletons() -> None:
+def test_pr_workflow_concurrency_groups_are_pr_scoped_or_documented_singletons() -> (
+    None
+):
     """Issue #689: PR concurrency groups must not collapse unrelated PRs by accident."""
     policy = _load_concurrency_policy()
     singleton_allowlist = policy["pr_concurrency_singleton_allowlist"]
@@ -277,7 +300,9 @@ def test_pr_workflow_concurrency_groups_are_pr_scoped_or_documented_singletons()
 
 def test_ci_triage_runbook_documents_workflow_concurrency_policy() -> None:
     """Issue #689: operators need one canonical reference for concurrency rules."""
-    runbook = (Path(__file__).parent.parent / "docs" / "runbooks" / "ci-failure-triage.md").read_text(encoding="utf-8")
+    runbook = (
+        Path(__file__).parent.parent / "docs" / "runbooks" / "ci-failure-triage.md"
+    ).read_text(encoding="utf-8")
 
     assert "workflow_concurrency_policy.json" in runbook
     assert "cancel-in-progress: true" in runbook
@@ -286,48 +311,37 @@ def test_ci_triage_runbook_documents_workflow_concurrency_policy() -> None:
 
 def test_lint_workflow_references_documented_concurrency_policy() -> None:
     """Issue #689: workflow-only PRs should enforce the same exception policy in lint."""
-    lint_workflow = (_WORKFLOWS_DIR / "lint-workflow-files.yml").read_text(encoding="utf-8")
+    lint_workflow = (_WORKFLOWS_DIR / "lint-workflow-files.yml").read_text(
+        encoding="utf-8"
+    )
 
     assert "workflow_concurrency_policy.json" in lint_workflow
 
 
-def test_pr_autofix_is_not_a_second_automatic_ci_remediation_entrypoint() -> None:
-    """Issue #596: automatic CI remediation must be owned by Control Tower."""
-    autofix = _load_workflow(_WORKFLOWS_DIR / "Jules-PR-AutoFix.yml")
-    triggers = autofix.get(True) or autofix.get("on") or {}
+def test_the_jules_remediation_suite_stays_retired() -> None:
+    """Issues #596/#597, closed out by Repository_Management#1483.
 
-    assert "workflow_run" not in triggers, (
-        "Jules-PR-AutoFix.yml must not listen directly to workflow_run; "
-        "Control Tower is the single automatic CI remediation owner."
-    )
-    assert "workflow_call" in triggers, "Jules-PR-AutoFix.yml must remain callable by Control Tower."
-    assert "workflow_dispatch" in triggers, "Jules-PR-AutoFix.yml must preserve manual maintainer dispatch."
+    Those issues asked that automatic CI remediation have exactly one owner, and
+    pinned three contracts onto ``Jules-PR-AutoFix.yml`` and
+    ``Jules-Control-Tower.yml``: no direct ``workflow_run`` trigger, bounded REST
+    verification instead of ``gh pr checks`` polling, and a protected-branch
+    guard. All three workflows have since been retired - unowned, last run a
+    failure or cancellation, and CI repair in this fleet is now done by the
+    Claude and Codex remediation agents, not by the Jules suite.
 
-    control_tower_text = (_WORKFLOWS_DIR / "Jules-Control-Tower.yml").read_text(encoding="utf-8")
-    assert "uses: ./.github/workflows/Jules-PR-AutoFix.yml" in control_tower_text
-    assert 'remediation_owner: "Jules Control Tower"' in control_tower_text
-
-
-def test_pr_autofix_uses_bounded_rest_verification_not_tight_pr_checks_polling() -> None:
-    """Issue #597: avoid tight GraphQL polling through `gh pr checks`."""
-    text = (_WORKFLOWS_DIR / "Jules-PR-AutoFix.yml").read_text(encoding="utf-8")
-
-    assert "gh pr checks" not in text
-    assert "CI_POLL_INTERVAL" not in text
-    assert "CI_VERIFY_ATTEMPTS" in text
-    assert "actions/runs?branch=" in text
-    assert "deferred" in text
-
-
-def test_pr_autofix_preserves_branch_safety_and_status_contract() -> None:
-    """Issues #596/#597: keep protected branch guard and explicit outcomes."""
-    text = (_WORKFLOWS_DIR / "Jules-PR-AutoFix.yml").read_text(encoding="utf-8")
-
-    assert '"$BRANCH" == "main"' in text
-    assert '"$BRANCH" == "master"' in text
-    assert "Cannot auto-fix protected branch" in text
-    for status in ("passed", "failed", "deferred", "manual_required"):
-        assert status in text
+    The requirement outlives the files, so the assertion is inverted rather than
+    deleted: there must be no automatic CI remediation entrypoint here at all.
+    Reintroducing one is a deliberate act that should fail this test first.
+    """
+    for name in (
+        "Jules-PR-AutoFix.yml",
+        "Jules-Control-Tower.yml",
+        "Jules-Auto-Repair.yml",
+    ):
+        assert not (_WORKFLOWS_DIR / name).exists(), (
+            f"{name} was retired by Repository_Management#1483; reinstating it "
+            "needs an owner and a fresh decision, not a silent restore"
+        )
 
 
 def test_workflow_linter_false_cancel_allowlist_matches_static_policy() -> None:
@@ -338,9 +352,18 @@ def test_workflow_linter_false_cancel_allowlist_matches_static_policy() -> None:
 
     assert "workflow_concurrency_policy.json" in text
     for workflow in _CANCEL_FALSE_ALLOWLIST:
-        assert workflow in false_allowlist, f"{workflow} missing from workflow concurrency policy"
-    for stale_exception in ("publish-artifacts.yml", "publish.yml", "deploy.yml", "nightly-publish.yml"):
-        assert stale_exception not in false_allowlist, f"stale broad exception remains in policy: {stale_exception}"
+        assert (
+            workflow in false_allowlist
+        ), f"{workflow} missing from workflow concurrency policy"
+    for stale_exception in (
+        "publish-artifacts.yml",
+        "publish.yml",
+        "deploy.yml",
+        "nightly-publish.yml",
+    ):
+        assert (
+            stale_exception not in false_allowlist
+        ), f"stale broad exception remains in policy: {stale_exception}"
 
 
 def test_queued_job_reaper_has_safe_stale_controls() -> None:
@@ -383,7 +406,11 @@ def test_anti_phantom_guard_recognizes_dashboard_code_roots() -> None:
     """Feature PR checks must include this repo's real app roots."""
     workflow = (_WORKFLOWS_DIR / "anti-phantom-merge.yml").read_text(encoding="utf-8")
     action = (
-        Path(__file__).parent.parent / ".github" / "actions" / "verify-issue-resolution" / "action.yml"
+        Path(__file__).parent.parent
+        / ".github"
+        / "actions"
+        / "verify-issue-resolution"
+        / "action.yml"
     ).read_text(encoding="utf-8")
 
     for text in (workflow, action):
@@ -394,7 +421,9 @@ def test_anti_phantom_guard_recognizes_dashboard_code_roots() -> None:
 
 def test_pre_push_mypy_dependencies_are_installable() -> None:
     """The mypy pre-push hook must not depend on removed or nonexistent packages."""
-    text = (Path(__file__).parent.parent / ".pre-commit-config.yaml").read_text(encoding="utf-8")
+    text = (Path(__file__).parent.parent / ".pre-commit-config.yaml").read_text(
+        encoding="utf-8"
+    )
 
     assert "psutil-stubs" not in text
     assert "types-psutil" in text
