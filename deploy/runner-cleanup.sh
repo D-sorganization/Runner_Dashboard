@@ -49,6 +49,14 @@ DISK_GUARD="${DISK_GUARD:-0}"
 TMP_DIR="${TMP_DIR:-/tmp}"
 TMP_LITTER_HOURS="${TMP_LITTER_HOURS:-6}"
 TMP_PRESSURE_PERCENT="${TMP_PRESSURE_PERCENT:-75}"
+# Per-runner scratch (Repository_Management#1489 durable fix): jobs whose
+# runner .env sets TMPDIR=<runner_dir>/_work/_tmp (see
+# deploy/configure-runner-tmpdir.sh) write pip/pytest/tempfile scratch onto
+# the data disk instead of the RAM-backed /tmp. Those dirs get the same
+# litter GC as /tmp, but only while the owning runner is idle, so a live
+# job's scratch is never touched. Name is fixed so cleanup and configure
+# agree without sharing state.
+RUNNER_TMP_SUBDIR="${RUNNER_TMP_SUBDIR:-_work/_tmp}"
 DRY_RUN="${DRY_RUN:-0}"
 COMPACT_VHD="${COMPACT_VHD:-0}"
 COMPACT_VHD_ONLY="${COMPACT_VHD_ONLY:-0}"
@@ -85,9 +93,11 @@ Environment overrides: RUNNER_ROOT, RUNNER_USER, LOG_DIR, RUNNER_WORK_DAYS,
 RUNNER_TEMP_DAYS, TOOL_CACHE_DAYS, DOCKER_PRUNE_UNTIL, JOURNAL_MAX_SIZE,
 DISK_PRESSURE_PERCENT, AGGRESSIVE_ON_PRESSURE, PRUNE_DOCKER_VOLUMES,
 DOCKER_AGGRESSIVE, DISK_GUARD, COMPACT_VHD, COMPACT_VHD_ONLY,
-COMPACT_VHD_DISTRO, DRY_RUN.
+COMPACT_VHD_DISTRO, DRY_RUN, TMP_DIR, TMP_LITTER_HOURS, TMP_PRESSURE_PERCENT,
+RUNNER_TMP_SUBDIR.
 
---disk-guard        Lightweight, runner-safe pass: reclaim docker + /tmp CI litter + journal +
+--disk-guard        Lightweight, runner-safe pass: reclaim docker + /tmp and idle-runner
+                    TMPDIR CI litter + journal +
                     fstrim ONLY (never stops runner units). Goes aggressive on
                     docker when used% >= DISK_PRESSURE_PERCENT. Safe to run
                     frequently (hourly timer) to keep docker bloat in check
@@ -421,10 +431,9 @@ tmp_used_percent() {
     df -P "$TMP_DIR" 2>/dev/null | awk 'NR == 2 {gsub("%", "", $5); print $5}'
 }
 
-cleanup_tmp() {
-    # Only ever removes entries matching the known CI litter patterns below,
-    # aged past the window. rm -rf on a still-referenced dir is safe: a job
-    # that somehow still holds an fd keeps its data via the open handle.
+tmp_litter_age_min() {
+    # Age window in minutes for litter GC. Tightens to 30m under /tmp
+    # pressure so a nearly-full tmpfs is reclaimed now, not six hours later.
     local age_min=$(( TMP_LITTER_HOURS * 60 ))
     local used
     used="$(tmp_used_percent)"
@@ -432,15 +441,58 @@ cleanup_tmp() {
         log "tmp pressure detected (${used}% >= ${TMP_PRESSURE_PERCENT}% on ${TMP_DIR}); lowering litter age window to 30m"
         age_min=30
     fi
-    run find "$TMP_DIR" -mindepth 1 -maxdepth 1 \
+    printf '%s' "$age_min"
+}
+
+cleanup_litter_in() {
+    # GC known CI-litter entries directly under "$1" older than "$2" minutes.
+    # Top-level only, exact-name-anchored allowlist: live job files outside
+    # the litter set are never touched. rm -rf on a still-referenced dir is
+    # safe: a job that somehow still holds an fd keeps its data via the
+    # open handle. `tmp*` is Python tempfile's default prefix (mkdtemp /
+    # NamedTemporaryFile), the second-largest consumer after pip-* in the
+    # 2026-08-29 and 2026-09-01 incidents; `pymp-*` is multiprocessing's.
+    local dir="$1" age_min="$2"
+    [[ -d "$dir" ]] || return 0
+    run find "$dir" -mindepth 1 -maxdepth 1 \
         \( -name 'pip-install-*' -o -name 'pip-ephem-wheel-cache-*' \
            -o -name 'pip-build-env-*' -o -name 'pip-metadata-*' \
            -o -name 'pip-req-build-*' -o -name 'pip-unpack-*' \
            -o -name 'pip-uninstall-*' -o -name 'pip-build-tracker-*' \
            -o -name 'pip-target-*' -o -name 'pytest-of-*' \
-           -o -name 'node-compile-cache' -o -name 'npm-*' \) \
+           -o -name 'node-compile-cache' -o -name 'npm-*' \
+           -o -name 'tmp*' -o -name 'pymp-*' \) \
         -mmin "+${age_min}" -exec rm -rf -- {} +
+}
+
+cleanup_tmp() {
+    # Only ever removes entries matching the known CI litter patterns,
+    # aged past the window (see cleanup_litter_in).
+    local age_min used
+    used="$(tmp_used_percent)"
+    age_min="$(tmp_litter_age_min)"
+    cleanup_litter_in "$TMP_DIR" "$age_min"
     log "tmp cleanup done tmp_used=$(tmp_used_percent)% (was ${used:-?}%)"
+}
+
+cleanup_runner_tmpdirs() {
+    # Same litter GC for each runner's relocated TMPDIR
+    # (<runner_dir>/$RUNNER_TMP_SUBDIR), skipping busy runners. Runner-safe:
+    # never stops units, so it runs in the hourly disk-guard pass too.
+    local unit runner_dir tmp_dir age_min
+    age_min="$(tmp_litter_age_min)"
+    while read -r unit; do
+        [[ -n "$unit" ]] || continue
+        runner_dir="$(service_workdir "$unit")"
+        tmp_dir="${runner_dir}/${RUNNER_TMP_SUBDIR}"
+        [[ -n "$runner_dir" && -d "$tmp_dir" ]] || continue
+        if runner_busy "$unit" "$runner_dir"; then
+            log "skip runner tmpdir $tmp_dir: runner is busy"
+            continue
+        fi
+        log "cleaning runner tmpdir: $tmp_dir"
+        cleanup_litter_in "$tmp_dir" "$age_min"
+    done < <(list_runner_units)
 }
 
 cleanup_common_caches() {
@@ -503,12 +555,14 @@ main() {
         log "disk-guard mode: docker + tmp + journal + fstrim only (no runner bounce)"
         cleanup_docker
         cleanup_tmp
+        cleanup_runner_tmpdirs
         command -v journalctl >/dev/null 2>&1 && run journalctl --vacuum-size="$JOURNAL_MAX_SIZE"
         command -v fstrim >/dev/null 2>&1 && run fstrim -av
     elif [[ "$COMPACT_VHD_ONLY" != "1" ]]; then
         cleanup_runners
         cleanup_docker
         cleanup_tmp
+        cleanup_runner_tmpdirs
         cleanup_common_caches
         command -v fstrim >/dev/null 2>&1 && run fstrim -av
     else

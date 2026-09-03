@@ -43,7 +43,9 @@ class TestAggressiveDockerUnderPressure:
         """When used% >= DISK_PRESSURE_PERCENT the script must flip
         DOCKER_AGGRESSIVE on, not just lower the _work retention windows."""
         assert "DISK_PRESSURE_PERCENT" in cleanup_text
-        assert "DOCKER_AGGRESSIVE=1" in cleanup_text, "disk-pressure path must enable aggressive docker pruning"
+        assert (
+            "DOCKER_AGGRESSIVE=1" in cleanup_text
+        ), "disk-pressure path must enable aggressive docker pruning"
 
     def test_aggressive_branch_prunes_everything(self, cleanup_text: str) -> None:
         """Aggressive mode must reclaim ALL build cache, unused images, and
@@ -72,7 +74,9 @@ class TestDiskGuardMode:
         guard_idx = cleanup_text.index('if [[ "$DISK_GUARD" == "1" ]]; then')
         elif_idx = cleanup_text.index("elif", guard_idx)
         guard_block = cleanup_text[guard_idx:elif_idx]
-        assert "cleanup_runners" not in guard_block, "disk-guard must never bounce runner units"
+        assert (
+            "cleanup_runners" not in guard_block
+        ), "disk-guard must never bounce runner units"
         assert "cleanup_docker" in guard_block
         assert "journalctl --vacuum-size" in guard_block
 
@@ -86,18 +90,30 @@ class TestInstallerShipsDiskGuardTimer:
         assert "runner-disk-guard.timer" in installer_text
         guard_timer_idx = installer_text.index("runner-disk-guard.timer")
         # the timer heredoc with OnCalendar=hourly should appear near it
-        assert "OnCalendar=hourly" in installer_text[guard_timer_idx : guard_timer_idx + 600]
+        assert (
+            "OnCalendar=hourly"
+            in installer_text[guard_timer_idx : guard_timer_idx + 600]
+        )
 
     def test_timer_is_enabled(self, installer_text: str) -> None:
-        enable_lines = [ln for ln in installer_text.splitlines() if "enable --now" in ln]
-        assert any("runner-disk-guard.timer" in ln for ln in enable_lines), "runner-disk-guard.timer must be enabled"
+        enable_lines = [
+            ln for ln in installer_text.splitlines() if "enable --now" in ln
+        ]
+        assert any(
+            "runner-disk-guard.timer" in ln for ln in enable_lines
+        ), "runner-disk-guard.timer must be enabled"
 
 
 class TestInstallerUsesGovernedSchedulerPython:
-    def test_scheduler_uses_dashboard_virtual_environment(self, installer_text: str) -> None:
+    def test_scheduler_uses_dashboard_virtual_environment(
+        self, installer_text: str
+    ) -> None:
         governed_python = 'SCHEDULER_PYTHON="${SCHEDULER_PYTHON:-${HOME}/actions-runners/dashboard/.venv/bin/python}"'
         assert governed_python in installer_text
-        assert "ExecStart=${SCHEDULER_PYTHON} /usr/local/bin/runner-scheduler --apply" in installer_text
+        assert (
+            "ExecStart=${SCHEDULER_PYTHON} /usr/local/bin/runner-scheduler --apply"
+            in installer_text
+        )
 
 
 class TestTmpLitterGC:
@@ -136,7 +152,7 @@ class TestTmpLitterGC:
         """The GC must only touch top-level /tmp entries older than the age
         window — never recurse into arbitrary trees or delete fresh files a
         live install is still writing."""
-        fn_idx = cleanup_text.index("cleanup_tmp() {")
+        fn_idx = cleanup_text.index("cleanup_litter_in() {")
         fn_block = cleanup_text[fn_idx : cleanup_text.index("\n}", fn_idx)]
         assert "-mindepth 1 -maxdepth 1" in fn_block
         assert '-mmin "+${age_min}"' in fn_block
@@ -144,7 +160,7 @@ class TestTmpLitterGC:
     def test_tmp_pressure_tightens_age_window(self, cleanup_text: str) -> None:
         """When /tmp usage crosses TMP_PRESSURE_PERCENT the age window must
         drop so a nearly-full tmpfs is reclaimed now, not six hours later."""
-        fn_idx = cleanup_text.index("cleanup_tmp() {")
+        fn_idx = cleanup_text.index("tmp_litter_age_min() {")
         fn_block = cleanup_text[fn_idx : cleanup_text.index("\n}", fn_idx)]
         assert "TMP_PRESSURE_PERCENT" in fn_block
         assert "age_min=30" in fn_block
@@ -159,6 +175,8 @@ class TestTmpLitterGC:
 
     def test_tmp_gc_runs_in_full_mode(self, cleanup_text: str) -> None:
         guard_idx = cleanup_text.index('if [[ "$DISK_GUARD" == "1" ]]; then')
-        full_idx = cleanup_text.index('elif [[ "$COMPACT_VHD_ONLY" != "1" ]]; then', guard_idx)
+        full_idx = cleanup_text.index(
+            'elif [[ "$COMPACT_VHD_ONLY" != "1" ]]; then', guard_idx
+        )
         full_block = cleanup_text[full_idx : cleanup_text.index("else", full_idx)]
         assert "cleanup_tmp" in full_block

@@ -1,9 +1,31 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.196
+**Spec Version:** 2.5.197
 **Application Version:** 4.9.34 (see `VERSION`)
-**Last Updated:** 2026-09-02T00:30:00-07:00
+**Last Updated:** 2026-09-03T00:00:00-07:00
 **Status:** Active
+
+- **2026-09-03 (2.5.197):** Durable half of the runner `/tmp` exhaustion fix
+  (Repository_Management#1489 via #1511, program #1505). (1) The `/tmp`
+  litter GC from 2.5.194 is factored into `cleanup_litter_in <dir> <age_min>`
+  + `tmp_litter_age_min` and gains the `tmp*` (Python `tempfile` default
+  prefix) and `pymp-*` (multiprocessing) patterns observed alongside `pip-*`
+  in both incidents. (2) New `cleanup_runner_tmpdirs` applies the same GC to
+  each runner's relocated scratch dir `<runner_dir>/_work/_tmp`
+  (`RUNNER_TMP_SUBDIR`) while that runner is idle (`runner_busy`), in both
+  the hourly `--disk-guard` pass and the daily full pass — runner-safe,
+  never stops units. (3) New `deploy/configure-runner-tmpdir.sh` writes
+  `TMPDIR=<runner_dir>/_work/_tmp` into each `actions.runner.*.service`
+  workdir's `.env` (idempotent, atomic, `--dry-run`, `--runner-dir` for
+  tests/no-systemd hosts) and creates the directory, so pip/pytest/tempfile
+  scratch lands on the data disk instead of the RAM-backed tmpfs; it never
+  restarts runners — the operator restarts idle units afterwards (runbook:
+  Repository_Management `docs/runbooks/runner_tmp_exhaustion.md`). TDD:
+  `tests/deploy/test_runner_tmp_litter_gc.py` sources the real shell
+  functions into a stubbed bash and asserts survivors on a seeded tree
+  (aged litter reaped, fresh litter and non-litter kept, 30 m pressure
+  window, no recursion) plus configure-script behaviour; existing
+  `TestTmpLitterGC` pins retargeted to the factored functions.
 
 - **2026-09-02 (2.5.196):** Decompose credentials router (`get_credentials()`)
   into small, cohesive resolvers (< 50 lines each) adhering to Design by
