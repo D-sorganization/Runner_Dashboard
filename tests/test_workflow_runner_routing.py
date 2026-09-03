@@ -40,6 +40,51 @@ def test_repo_policy_references_real_workflows() -> None:
             assert workflow_name in workflow_names
 
 
+# Workflows that deliberately carry no tier class. Each needs a reason: the
+# policy assigns recommended/forbidden *fleet* labels, which is meaningless for
+# a job pinned to one host or routed by an expression.
+_UNCLASSIFIED: dict[str, str] = {
+    "deploy-qualified-release.yml": (
+        "Pinned to a single named host (d-sorg-local-Oglaptop-1); tier labels do not apply."
+    ),
+    "local-only-runner-guard.yml": "runs-on is an expression that falls back to ubuntu-latest on public forks.",
+    "maxwell-contract-drift.yml": "Neutral d-sorg-fleet placement; no tier preference has been decided.",
+    "util-queued-job-reaper.yml": "Neutral self-hosted placement; the reaper must run wherever the queue is.",
+}
+
+
+def test_every_workflow_is_classified_or_explicitly_exempt() -> None:
+    """The policy's workflow lists are hand-maintained, so they rot in both
+    directions. ``test_repo_policy_references_real_workflows`` catches names
+    that outlived their file; this catches files that no one classified -
+    adding a workflow forces a tier decision or a written exemption.
+    """
+    policy = json.loads(POLICY.read_text(encoding="utf-8"))
+    classified = {
+        name
+        for class_policy in policy["workflow_classes"].values()
+        for name in class_policy["workflows"]
+    }
+    on_disk = {path.name for path in WORKFLOW_DIR.glob("*.yml")}
+
+    unaccounted = sorted(on_disk - classified - set(_UNCLASSIFIED))
+    assert not unaccounted, (
+        "New workflows must be given a tier in "
+        f"{POLICY.name} or an exemption with a rationale in _UNCLASSIFIED: {unaccounted}"
+    )
+
+    stale_exemptions = sorted(set(_UNCLASSIFIED) - on_disk)
+    assert (
+        not stale_exemptions
+    ), f"Exemption named a workflow that no longer exists: {stale_exemptions}"
+
+    overlap = sorted(classified & set(_UNCLASSIFIED))
+    assert not overlap, f"Workflow is both classified and exempt: {overlap}"
+
+    for name, reason in _UNCLASSIFIED.items():
+        assert len(reason) >= 20, f"{name}: exemption rationale is too thin"
+
+
 def test_repo_audit_is_green_but_reports_migration_recommendations() -> None:
     result = _run_script("--format", "json")
     assert result.returncode == 0, result.stderr or result.stdout
@@ -47,7 +92,9 @@ def test_repo_audit_is_green_but_reports_migration_recommendations() -> None:
     payload = json.loads(result.stdout)
     assert payload["policy_errors"] == []
     assert payload["violations"] == []
-    assert payload["recommendations"], "Expected neutral-label migration recommendations for current workflows"
+    assert payload[
+        "recommendations"
+    ], "Expected neutral-label migration recommendations for current workflows"
 
 
 def test_audit_flags_docker_workflow_pinned_only_to_bulk(tmp_path: Path) -> None:
@@ -79,7 +126,10 @@ def test_audit_flags_docker_workflow_pinned_only_to_bulk(tmp_path: Path) -> None
                 "workflow_classes": {
                     "docker": {
                         "description": "Docker jobs need fast disk",
-                        "recommended_labels": ["d-sorg-fleet-docker", "d-sorg-fleet-nvme"],
+                        "recommended_labels": [
+                            "d-sorg-fleet-docker",
+                            "d-sorg-fleet-nvme",
+                        ],
                         "forbidden_labels": ["d-sorg-fleet-bulk"],
                         "workflows": ["docker-build.yml"],
                     }
@@ -134,7 +184,10 @@ def test_audit_flags_lightweight_workflow_overusing_nvme(tmp_path: Path) -> None
                     "bulk": {
                         "description": "Lightweight workflows should stay bulk",
                         "recommended_labels": ["d-sorg-fleet-bulk"],
-                        "forbidden_labels": ["d-sorg-fleet-fast-io", "d-sorg-fleet-nvme"],
+                        "forbidden_labels": [
+                            "d-sorg-fleet-fast-io",
+                            "d-sorg-fleet-nvme",
+                        ],
                         "workflows": ["labels-sync.yml"],
                     }
                 },

@@ -55,8 +55,6 @@
         "ci-nightly.yml",
         "ci-standard.yml",
         "frontend-tests.yml",
-        "Jules-Auto-Repair.yml",
-        "Jules-PR-AutoFix.yml",
         "lockfile-upgrade.yml",
         "release.yml"
       ]
