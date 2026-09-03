@@ -78,7 +78,7 @@ once tiered pools are available.
 **Forbidden:** `d-sorg-fleet-bulk`
 
 Examples: `ci-standard.yml`, `ci-nightly.yml`, `frontend-tests.yml`,
-`Jules-Auto-Repair.yml`, `Jules-PR-AutoFix.yml`, `release.yml`.
+`lockfile-upgrade.yml`, `release.yml`.
 
 ### `docker`
 

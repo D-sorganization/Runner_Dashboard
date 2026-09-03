@@ -70,6 +70,9 @@ def _run_litter_gc(tmp_path: Path, target: Path, *, used_percent: int = 10) -> N
             'run() { "$@"; }',
             f"tmp_used_percent() {{ echo {used_percent}; }}",
             f'TMP_DIR="{_bash_path(target)}"',
+            # cleanup_litter_in consults DRY_RUN; the real script defaults it at
+            # the top level, which the sourced-function harness never runs.
+            'DRY_RUN="${DRY_RUN:-0}"',
             'TMP_LITTER_HOURS="${TMP_LITTER_HOURS:-6}"',
             'TMP_PRESSURE_PERCENT="${TMP_PRESSURE_PERCENT:-75}"',
             _extract(text, "tmp_litter_age_min"),
