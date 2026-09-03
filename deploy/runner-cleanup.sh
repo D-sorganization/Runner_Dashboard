@@ -469,7 +469,9 @@ cleanup_litter_in() {
     local dir="$1" age_min="$2"
     [[ -d "$dir" ]] || return 0
 
-    if [[ "$DRY_RUN" == "1" ]]; then
+    # ${DRY_RUN:-0}: the function is sourced standalone by the deploy tests,
+    # which do not export DRY_RUN, and the script runs under `set -u`.
+    if [[ "${DRY_RUN:-0}" == "1" ]]; then
         log "[dry-run] litter GC in $dir (age >${age_min}m)"
         return 0
     fi
