@@ -1,10 +1,35 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.200
+**Spec Version:** 2.5.201
 **Application Version:** 4.9.34 (see `VERSION`)
 **Last Updated:** 2026-09-04T00:00:00-07:00
 **Status:** Active
 
+- **2026-09-04 (2.5.201):** Repoint the agent workflow health probe at the live
+  agent surface (#1483, program #1505). `inspect_jules_workflows()` asserted a
+  hardcoded tuple of five `Jules-*.yml` filenames; #1160 deleted the Jules
+  workflows, so the probe emitted `exists=False` with "Workflow file is
+  missing." for every one and the Remediation tab rendered five phantom
+  failures. No test pinned the tuple, so CI stayed green. The probe is now
+  `inspect_remediation_workflows()`, which **discovers** `.github/workflows/agent-*.yml`
+  (case-insensitive, `.yml`/`.yaml`) from disk instead of asserting an
+  inventory — the next retirement cannot resurrect the failure mode. The
+  Control-Tower-specific cron branch, unreachable since #1160, is replaced by a
+  generic summary counting dormant and flagged workflows, and a new
+  `RETIRED_WORKFLOW_PATTERNS` scan flags any resurrected
+  `.github/workflows/Jules-` reference. `GET /api/agent-remediation/workflows`
+  gains a `summary` key; the pre-retirement `control_tower_summary` ships
+  alongside it as an alias for one release (two-step schema change) and is
+  removed in the next. `inspect_jules_workflows` is retained as a deprecated
+  alias on the same schedule. Because the panel now lists *this* repo's
+  workflows, `POST /api/agent-remediation/dispatch-jules` — which was hardcoded
+  to dispatch into `Repository_Management` — now targets the dashboard repo via
+  the new `workflow_dispatch_endpoint()` helper (`DASHBOARD_REPO`,
+  env-overridable via `RUNNER_DASHBOARD_REPO_NAME`); the route path keeps its
+  legacy name for one release. `AGENTS.md`, `CLAUDE.md` and
+  `docs/issue-migration-plan.md` no longer document the retired Jules
+  workflows as live. Regression coverage:
+  `tests/test_remediation_workflow_probe.py`.
 - **2026-09-04 (2.5.200):** Make the deploy tests pick their bash by probe, so
   the tmp-litter GC harness stops depending on which shell launched pytest
   (#1164). Six tests in `tests/deploy/test_runner_tmp_litter_gc.py` passed under
@@ -1718,7 +1743,7 @@ the fleet runner CLI version does not support that flag consistently.
 
 | Module                    | Responsibility                                                                                                                                                                                                            |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `agent_remediation.py`    | AI agent dispatch plans, Jules/GAAI/Claude invocation                                                                                                                                                                     |
+| `agent_remediation.py`    | AI agent dispatch plans, GAAI/Claude/Codex invocation                                                                                                                                                                     |
 | `dispatch_contract.py`    | Type contracts for workflow dispatch payloads                                                                                                                                                                             |
 | `machine_registry.py`     | Multi-node fleet registry (load, merge with live data)                                                                                                                                                                    |
 | `scheduled_workflows.py`  | Inventory of scheduled workflow definitions                                                                                                                                                                               |
@@ -2448,10 +2473,10 @@ env var.
 | ------ | --------------------------------------- | ----------------------------------------------- |
 | GET    | `/api/agent-remediation/config`         | Current remediation configuration               |
 | PUT    | `/api/agent-remediation/config`         | Update remediation configuration                |
-| GET    | `/api/agent-remediation/workflows`      | Eligible workflows for remediation              |
+| GET    | `/api/agent-remediation/workflows`      | Health of this repo's `agent-*.yml` workflows   |
 | POST   | `/api/agent-remediation/plan`           | Generate a remediation plan                     |
 | POST   | `/api/agent-remediation/dispatch`       | Dispatch a remediation plan (GAAI/Claude/Codex) |
-| POST   | `/api/agent-remediation/dispatch-jules` | Dispatch via Jules API                          |
+| POST   | `/api/agent-remediation/dispatch-jules` | Dispatch one agent workflow (legacy route name) |
 | GET    | `/api/agent-remediation/history`        | Remediation dispatch history                    |
 
 ### Quick Dispatch

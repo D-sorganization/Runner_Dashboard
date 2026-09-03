@@ -272,7 +272,7 @@ describe("RemediationTab — config + panels", () => {
   });
 });
 
-describe("RemediationTab — Jules workflow health", () => {
+describe("RemediationTab — agent workflow health", () => {
   it("renders a manual workflow with a Run button that POSTs and flashes success", async () => {
     const fetchFn = vi.fn(() =>
       Promise.resolve({ ok: true, json: () => Promise.resolve({}) } as Response),
@@ -280,11 +280,11 @@ describe("RemediationTab — Jules workflow health", () => {
     vi.stubGlobal("fetch", fetchFn);
 
     const workflows = {
-      control_tower_summary: "all good",
+      summary: "all good",
       workflows: [
         {
-          workflow_file: "jules.yml",
-          workflow_name: "Jules CT",
+          workflow_file: "Agent-Lease-Reaper.yml",
+          workflow_name: "Agent Lease Reaper",
           trigger_type: "manual",
           manual_dispatch: true,
           scheduled: false,
@@ -303,7 +303,7 @@ describe("RemediationTab — Jules workflow health", () => {
         expect.objectContaining({ method: "POST" }),
       );
     });
-    expect(await screen.findByText("Dispatched jules.yml")).toBeInTheDocument();
+    expect(await screen.findByText("Dispatched Agent-Lease-Reaper.yml")).toBeInTheDocument();
   });
 });
 

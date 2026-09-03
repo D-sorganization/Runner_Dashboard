@@ -323,7 +323,7 @@ export interface paths {
         put?: never;
         /**
          * Dispatch Jules Workflow
-         * @description Dispatch a specific Jules workflow via workflow_dispatch.
+         * @description Dispatch one of this repo's agent workflows via workflow_dispatch.
          */
         post: operations["dispatch_jules_workflow_api_agent_remediation_dispatch_jules_post"];
         delete?: never;
@@ -381,7 +381,7 @@ export interface paths {
         };
         /**
          * Get Agent Remediation Workflows
-         * @description Inspect local Jules workflow health and legacy command usage.
+         * @description Inspect local agent remediation workflow health and legacy command usage.
          */
         get: operations["get_agent_remediation_workflows_api_agent_remediation_workflows_get"];
         put?: never;

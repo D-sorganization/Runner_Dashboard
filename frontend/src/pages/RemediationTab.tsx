@@ -1217,7 +1217,7 @@ export function RemediationTab(p: RemediationTabProps): React.ReactElement {
               ),
             ),
           ),
-          // Right column: History + Plan Preview + Jules Workflow Health
+          // Right column: History + Plan Preview + Agent Workflow Health
           h(
             "div",
             null,
@@ -1496,13 +1496,13 @@ export function RemediationTab(p: RemediationTabProps): React.ReactElement {
                   "span",
                   { className: "section-title" },
                   h(ClockGlyph, { size: 14 }),
-                  "Jules Workflow Health",
+                  "Agent Workflow Health",
                 ),
               ),
               h(
                 "div",
                 { className: "section-body" },
-                workflows.control_tower_summary
+                workflows.summary
                   ? h(
                       "div",
                       {
@@ -1515,7 +1515,7 @@ export function RemediationTab(p: RemediationTabProps): React.ReactElement {
                           fontSize: 12,
                         },
                       },
-                      workflows.control_tower_summary,
+                      workflows.summary,
                     )
                   : null,
                 ((workflows.workflows || []).length === 0
@@ -1529,14 +1529,14 @@ export function RemediationTab(p: RemediationTabProps): React.ReactElement {
                             fontSize: 12,
                           },
                         },
-                        "No Jules workflow health data loaded yet.",
+                        "No agent workflow health data loaded yet.",
                       ),
                     ]
                   : workflows.workflows
                 ).map(function (entry: any) {
                   if (entry.workflow_file) {
                     const ghActionsLink =
-                      "https://github.com/D-sorganization/Repository_Management/actions/workflows/" +
+                      "https://github.com/D-sorganization/Runner_Dashboard/actions/workflows/" +
                       entry.workflow_file;
                     const triggerType = entry.trigger_type || "dormant";
                     const triggerColor =
@@ -1556,7 +1556,7 @@ export function RemediationTab(p: RemediationTabProps): React.ReactElement {
                             ? "rgba(139,148,158,0.15)"
                             : "rgba(227,179,65,0.15)";
                     const ghLink =
-                      "https://github.com/D-sorganization/Repository_Management/blob/main/.github/workflows/" +
+                      "https://github.com/D-sorganization/Runner_Dashboard/blob/main/.github/workflows/" +
                       entry.workflow_file;
                     return h(
                       "div",

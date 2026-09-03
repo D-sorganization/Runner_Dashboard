@@ -424,135 +424,92 @@ If sensitive data is accidentally committed:
 
 ## 🏗️ System Architecture & Agent Roles
 
-**Reference:** [JULES_ARCHITECTURE.md](JULES_ARCHITECTURE.md)
+This section defines the active agent workflows in this repository and the
+scope each one operates within.
 
-This section defines the active agents within the Jules "Control Tower" Architecture. All agents must operate within their defined scope.
+> **Retired:** the Jules "Control Tower" architecture — `Jules-Control-Tower.yml`
+> and its nine worker workflows (Assessment Generator, Code Quality Reviewer,
+> Completist, Documentation Auditor, Sentinel, Auto-Refactor, Issue Resolver,
+> PR Compiler, Auto-Rebase) plus `Jules-Auto-Repair.yml` and
+> `Jules-PR-AutoFix.yml` — was retired fleet-wide by
+> [D-sorganization/Repository_Management#1483](https://github.com/D-sorganization/Repository_Management/issues/1483),
+> under program
+> [D-sorganization/Repository_Management#1505](https://github.com/D-sorganization/Repository_Management/issues/1505).
+> None of those workflow files exist any more, and the overnight PST automation
+> schedule they drove no longer runs. CI remediation is handled by the
+> Claude/Codex providers configured in `config/agent_remediation.json` and
+> dispatched through `/api/agent-remediation/*`. Do not reference or attempt to
+> dispatch a `Jules-*` workflow in this repo.
 
-### Overview: Overnight Automation Schedule (PST)
+### Active agent workflows
 
-| Time (PST) | Agent                 | Purpose                                   |
-| ---------- | --------------------- | ----------------------------------------- |
-| 12:00 AM   | Assessment Generator  | Generate code quality assessment reports  |
-| 12:30 AM   | Code Quality Reviewer | Review and fix code quality issues        |
-| 1:00 AM    | Completist            | Find and fix incomplete implementations   |
-| 1:30 AM    | Documentation Auditor | Update and improve documentation          |
-| 2:30 AM    | Sentinel              | Security scanning and vulnerability fixes |
-| 3:00 AM    | Auto-Refactor         | Apply DRY/orthogonality improvements      |
-| 3:30 AM    | Issue Resolver        | Work on open GitHub issues                |
-| 4:00 AM    | PR Compiler           | Consolidate multiple PRs into one         |
-| 5:00 AM    | Auto-Rebase           | Rebase PRs onto main, resolve conflicts   |
+| Workflow                        | Role                     | Trigger                                |
+| ------------------------------- | ------------------------ | -------------------------------------- |
+| `Agent-Fleet-Dashboard.yml`     | Fleet snapshot           | Every 30 min (`7,37 * * * *`) + manual |
+| `Agent-Lease-Reaper.yml`        | Coordination lease sweep | Hourly (`17 * * * *`) + manual         |
+| `Agent-Redundant-PR-Closer.yml` | Duplicate PR closer      | PR events, every 3 hours, + manual     |
+| `agent-panel-review.yml`        | Multi-agent design panel | Weekly (Mon 09:00 UTC) + manual        |
+| `Verify-Issue-Closure.yml`      | Closure evidence guard   | On issue closed                        |
 
----
+The Remediation tab probes the `agent-*.yml` files above via
+`GET /api/agent-remediation/workflows`, discovering them from disk rather than
+asserting a fixed inventory — so retiring one does not leave the tab reporting
+a phantom missing file. `Verify-Issue-Closure.yml` is event-only and sits
+outside that probe.
 
-### 1. The Control Tower (Orchestrator)
+### 1. Agent Fleet Dashboard (The Cartographer)
 
-**Role:** Air Traffic Controller
-**Workflow:** `.github/workflows/Jules-Control-Tower.yml`
+**Workflow:** `.github/workflows/Agent-Fleet-Dashboard.yml`
 **Responsibilities:**
 
-- **Orchestrator:** Coordinates specialized agent workflows via scheduled cron jobs and event triggers.
-- **Decision Maker:** Analyzes the event context (Triage) and dispatches the appropriate specialized worker.
-- **Loop Prevention:** Enforces `if: github.actor != 'jules-bot'` to prevent infinite recursion.
-- **Schedule Router:** Routes scheduled jobs to the correct worker based on cron time.
+- **Read:** Open issues, PRs and `claim:*` labels across the fleet.
+- **Write:** Regenerates `docs/fleet-in-flight.md`; commits only on change.
+- **Constraint:** Fail-open — a generation failure writes a placeholder and the
+  next run retries.
 
-### 2. Assessment Generator (The Auditor)
+### 2. Agent Lease Reaper (The Bailiff)
 
-**Role:** Quality Assessment Reporter
-**Workflow:** `.github/workflows/Jules-Assessment-Generator.yml`
-**Schedule:** Midnight PST (0 8 ** \* UTC)
-**Capabilities:\*\*
+**Workflow:** `.github/workflows/Agent-Lease-Reaper.yml`
+**Responsibilities:**
 
-- **Read:** Entire codebase for quality analysis
-- **Write:** Assessment reports to `docs/assessments/`
-- **Constraint:** Read-only for source code; only writes reports.
+- **Read:** Issues carrying a `claim:<agent>` label and their `lease:` comments.
+- **Write:** Removes expired `claim:*` labels and posts an audit comment.
+- **Constraint:** A claim is kept while an open PR covers the issue, or while
+  the most recent lease comment has not expired. See
+  `docs/agent-lease-protocol.md`.
 
-### 3. Code Quality Reviewer (The Inspector)
+### 3. Agent Redundant PR Closer (The Adjudicator)
 
-**Role:** Code Quality Enforcer
-**Workflow:** `.github/workflows/Jules-Code-Quality-Reviewer.yml`
-**Schedule:** 12:30 AM PST (30 8 ** \* UTC)
-**Capabilities:\*\*
+**Workflow:** `.github/workflows/Agent-Redundant-PR-Closer.yml`
+**Responsibilities:**
 
-- **Read:** Linting results, type check outputs
-- **Write:** Fixes for style, formatting, and minor code issues
-- **Constraint:** Limited to auto-fixable issues (ruff).
+- **Read:** Open PRs referencing the same issue via a closing keyword.
+- **Write:** Closes the lower-priority PRs with a deferral comment.
+- **Constraint:** Priority is `user > maxwell-daemon > claude > codex > jules >
+  local > gaai`; `user`-authored PRs are never closed by automation.
 
-### 4. Completist (The Finisher)
+### 4. Agent Panel Review (The Convener)
 
-**Role:** Incomplete Implementation Hunter
-**Workflow:** `.github/workflows/Jules-Completist.yml`
-**Schedule:** 1:00 AM PST (0 9 ** \* UTC)
-**Capabilities:\*\*
+**Workflow:** `.github/workflows/agent-panel-review.yml`
+**Responsibilities:**
 
-- **Read:** Codebase for TRACKED_TASK, TRACKED_DEFECT, NotImplementedError, pass statements
-- **Write:** Implementations for incomplete code
-- **Constraint:** Creates PRs for review; does not merge directly.
+- **Read:** Issues labelled `panel-review` (typically `judgement:design` or
+  `judgement:contested`).
+- **Write:** Posts a dispatch brief, then a summary tally once enough opinions
+  land.
+- **Constraint:** Does not invoke panelists itself and does not implement; the
+  label stays until a human removes it.
 
-### 5. Documentation Auditor (The Librarian)
+### 5. Verify Issue Closure (The Auditor)
 
-**Role:** Documentation Maintainer
-**Workflow:** `.github/workflows/Jules-Documentation-Auditor.yml`
-**Schedule:** 1:30 AM PST (30 9 ** \* UTC)
-**Capabilities:\*\*
+**Workflow:** `.github/workflows/Verify-Issue-Closure.yml`
+**Responsibilities:**
 
-- **Read:** Code and existing documentation
-- **Write:** Updates to `docs/`, README files, docstrings
-- **Mode:** "CodeWiki" - treats the codebase as a living encyclopedia.
-
-### 6. Sentinel (The Guardian)
-
-**Role:** Security Scanner
-**Workflow:** `.github/workflows/Jules-Sentinel.yml`
-**Schedule:** 2:30 AM PST (30 10 ** \* UTC)
-**Capabilities:\*\*
-
-- **Read:** Codebase for security vulnerabilities (OWASP Top 10)
-- **Write:** Security fixes, dependency updates
-- **Constraint:** Focuses on high-priority security issues only.
-
-### 7. Auto-Refactor (The Architect)
-
-**Role:** Code Improvement Specialist
-**Workflow:** `.github/workflows/Jules-Auto-Refactor.yml`
-**Schedule:** 3:00 AM PST (0 11 ** \* UTC)
-**Capabilities:\*\*
-
-- **Read:** Codebase for DRY violations, code smells
-- **Write:** Refactoring improvements
-- **Constraint:** One file per PR; preserves behavior.
-
-### 8. Issue Resolver (The Fixer)
-
-**Role:** GitHub Issue Worker
-**Workflow:** `.github/workflows/Jules-Issue-Resolver.yml`
-**Schedule:** 3:30 AM PST (30 11 ** \* UTC)
-**Capabilities:\*\*
-
-- **Read:** Open GitHub issues with appropriate labels
-- **Write:** Code fixes, closes issues via PR
-- **Constraint:** Only works on issues labeled for automation.
-
-### 9. PR Compiler (The Consolidator)
-
-**Role:** Pull Request Merger
-**Workflow:** `.github/workflows/Jules-PR-Compiler.yml`
-**Schedule:** 4:00 AM PST (0 12 ** \* UTC)
-**Capabilities:\*\*
-
-- **Read:** All open PRs from automation
-- **Write:** Consolidated PRs combining multiple changes
-- **Constraint:** Only merges non-conflicting automation PRs.
-
-### 10. Auto-Rebase (The Diplomat)
-
-**Role:** Merge Conflict Resolver
-**Workflow:** `.github/workflows/Jules-Auto-Rebase.yml`
-**Schedule:** 5:00 AM PST (0 13 ** \* UTC)
-**Capabilities:\*\*
-
-- **Read:** PR branches, main branch
-- **Write:** Rebased branches, conflict resolutions
-- **Constraint:** Labels PRs with "conflict" if manual intervention needed.
+- **Read:** Closed issues, their labels, and referencing merged PRs.
+- **Write:** Reopens issues closed without implementation evidence, with an
+  explanatory comment.
+- **Constraint:** Honours `wontfix`, `roadmap`, `duplicate`, `invalid` and
+  `not-planned`, plus bot closures on `auto-generated` issues.
 
 ---
 

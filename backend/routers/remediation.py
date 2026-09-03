@@ -33,6 +33,18 @@ _remediation_history_lock: asyncio.Lock = asyncio.Lock()
 
 REPO_ROOT = Path(os.environ.get("RUNNER_DASHBOARD_REPO_ROOT", Path(__file__).parents[2]))
 
+#: GitHub repository backing this dashboard. The agent workflow health probe
+#: reads ``REPO_ROOT/.github/workflows``, so manual dispatch from that panel
+#: must target the same repository. Before RM#1483 the panel listed fleet
+#: ``Jules-*`` workflows that lived in Repository_Management; those are retired.
+DASHBOARD_REPO = os.environ.get("RUNNER_DASHBOARD_REPO_NAME", "Runner_Dashboard").strip()
+
+
+def workflow_dispatch_endpoint(workflow_file: str) -> str:
+    """Return the ``gh api`` path that dispatches ``workflow_file`` in this repo."""
+    assert workflow_file, "workflow_file must be non-empty"
+    return f"/repos/{ORG}/{DASHBOARD_REPO}/actions/workflows/{workflow_file}/dispatches"
+
 
 def _normalize_repository_input(value: str) -> tuple[str, str]:
     """Return (repo_name, full_name) from a bare or qualified repo name (issue #326).
@@ -126,8 +138,8 @@ async def update_agent_remediation_config(
 
 @router.get("/api/agent-remediation/workflows")
 async def get_agent_remediation_workflows() -> dict:
-    """Inspect local Jules workflow health and legacy command usage."""
-    report = agent_remediation.inspect_jules_workflows(REPO_ROOT)
+    """Inspect local agent remediation workflow health and legacy command usage."""
+    report = agent_remediation.inspect_remediation_workflows(REPO_ROOT)
     return report.to_dict()
 
 
@@ -558,13 +570,16 @@ async def _append_remediation_history(entry: dict) -> None:
             pass  # history is best-effort
 
 
+# The route path keeps its ``dispatch-jules`` name for one release so the
+# deployed frontend keeps working; the Jules suite it was named for was retired
+# by RM#1483 and the panel now lists this repo's ``agent-*.yml`` workflows.
 @router.post("/api/agent-remediation/dispatch-jules")
 async def dispatch_jules_workflow(
     request: Request,
     *,
     principal: Principal = Depends(require_scope("remediation.dispatch")),  # noqa: B008
 ) -> dict:
-    """Dispatch a specific Jules workflow via workflow_dispatch."""
+    """Dispatch one of this repo's agent workflows via workflow_dispatch."""
     body = await request.json()
     workflow_file = str(body.get("workflow_file", "")).strip()
     ref = str(body.get("ref", "main")).strip()
@@ -577,7 +592,7 @@ async def dispatch_jules_workflow(
     inputs["correlation_id"] = correlation_id
     if not workflow_file:
         raise HTTPException(status_code=422, detail="workflow_file required")
-    endpoint = f"/repos/{ORG}/Repository_Management/actions/workflows/{workflow_file}/dispatches"
+    endpoint = workflow_dispatch_endpoint(workflow_file)
     payload = {"ref": ref, "inputs": inputs}
     with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".json", delete=False) as f:
         json.dump(payload, f)
@@ -593,11 +608,11 @@ async def dispatch_jules_workflow(
             Path(pf).unlink()
     if code != 0:
         log.warning(
-            "jules dispatch failed: workflow=%s stderr=%s",
+            "agent workflow dispatch failed: workflow=%s stderr=%s",
             workflow_file,
             stderr.strip()[:300],
         )
-        raise HTTPException(status_code=502, detail="Jules dispatch failed")
+        raise HTTPException(status_code=502, detail="Workflow dispatch failed")
     return {"status": "dispatched", "workflow_file": workflow_file}
 
 
