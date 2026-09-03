@@ -40,12 +40,20 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # ---------------------------------------------------------------------------
 # Each pattern targets a documented credential prefix. Keep this list narrow:
 # false positives here block CI and erode trust in the gate.
+# GitHub token bodies: the classic shape is 36+ alphanumerics, but App
+# installation tokens now arrive as ``ghs_<app_id>_<base64url-JWT>``, so the
+# body class must admit ``_``, ``.`` and ``-``. The body is anchored to start
+# with an alphanumeric so a bare ``ghs_|`` inside a validation regex cannot
+# match, and deliberately carries no trailing ``\b``: base64url payloads can
+# end in ``-`` or ``_``, where a word boundary would fail.
+_GITHUB_TOKEN_BODY = r"[A-Za-z0-9][A-Za-z0-9_.\-]{35,254}"
+
 _TOKEN_PATTERNS: dict[str, re.Pattern[str]] = {
-    "github_pat": re.compile(r"\bghp_[A-Za-z0-9]{36,255}\b"),
-    "github_oauth": re.compile(r"\bgho_[A-Za-z0-9]{36,255}\b"),
-    "github_user_to_server": re.compile(r"\bghu_[A-Za-z0-9]{36,255}\b"),
-    "github_server_to_server": re.compile(r"\bghs_[A-Za-z0-9]{36,255}\b"),
-    "github_refresh": re.compile(r"\bghr_[A-Za-z0-9]{36,255}\b"),
+    "github_pat": re.compile(r"\bghp_" + _GITHUB_TOKEN_BODY),
+    "github_oauth": re.compile(r"\bgho_" + _GITHUB_TOKEN_BODY),
+    "github_user_to_server": re.compile(r"\bghu_" + _GITHUB_TOKEN_BODY),
+    "github_server_to_server": re.compile(r"\bghs_" + _GITHUB_TOKEN_BODY),
+    "github_refresh": re.compile(r"\bghr_" + _GITHUB_TOKEN_BODY),
     # AWS access key id — strict 20-char alnum after AKIA/ASIA prefix.
     "aws_access_key": re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"),
     # OpenAI keys (sk-...). Require enough length to dodge `sk-test` placeholders.
@@ -156,3 +164,58 @@ def test_no_known_credential_patterns_in_tracked_files() -> None:
         "line with '# pragma: allowlist secret' if the value is genuinely "
         "fake. Findings (path, pattern, line):\n  " + "\n  ".join(f"{p}:{ln} -> {name}" for p, name, ln in findings)
     )
+
+
+# ---------------------------------------------------------------------------
+# Pattern-shape regression tests
+#
+# The patterns above must match the token formats this fleet actually issues,
+# not just the classic 36-char alphanumeric shape. The dashboard's agents
+# authenticate with GitHub App *installation* tokens minted by
+# ~/.claude/mint-gh-token.ps1, which arrive as
+# ``ghs_<app_id>_<base64url-JWT>`` -- underscores and dots inside the body.
+# ``\bghs_[A-Za-z0-9]{36,255}\b`` stops dead at the first underscore, so the
+# gate was blind to the one credential shape most likely to reach a file here.
+# ---------------------------------------------------------------------------
+
+# Structurally accurate, cryptographically meaningless: the signature segment is
+# literal filler, and no such installation exists.
+_FAKE_APP_INSTALLATION_TOKEN = (  # pragma: allowlist secret
+    "ghs_0000000_eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9."
+    "eyJhdWQiOiJleGFtcGxlIiwiZXhwIjoxLCJpYXQiOjEsImlzcyI6ImdpdGh1YiJ9."
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+)
+
+
+def test_github_pattern_matches_app_installation_token_format() -> None:
+    """The ghs_ pattern must catch the JWT-shaped installation tokens we mint."""
+
+    pattern = _TOKEN_PATTERNS["github_server_to_server"]
+    assert pattern.search(_FAKE_APP_INSTALLATION_TOKEN), (
+        "ghs_ pattern does not match the ghs_<app_id>_<jwt> installation-token "
+        "format this fleet mints; a leaked agent token would pass the gate"
+    )
+
+
+def test_github_pattern_still_matches_classic_token_format() -> None:
+    """Widening the body character class must not lose the original shape."""
+
+    classic = "ghs_" + "a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8"  # pragma: allowlist secret
+    assert _TOKEN_PATTERNS["github_server_to_server"].search(classic)
+
+
+def test_github_patterns_do_not_match_prefix_mentions() -> None:
+    """Bare prefixes in prose and validation regexes must not trip the gate.
+
+    ``deploy/lib.sh`` and friends legitimately name these prefixes when
+    validating operator-supplied tokens; matching those would make the gate
+    unusable.
+    """
+
+    for benign in (
+        'if [[ ! "$token" =~ ^(ghp_|github_pat_|ghs_|gho_)[A-Za-z0-9_]{20,}$ ]]; then',
+        "#                    ghs_ (GitHub Apps installation), gho_ (OAuth)",
+        "ghs_short",
+    ):
+        for name, pattern in _TOKEN_PATTERNS.items():
+            assert not pattern.search(benign), f"{name} false-positives on: {benign}"

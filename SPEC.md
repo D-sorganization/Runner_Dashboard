@@ -1,9 +1,26 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.201
+**Spec Version:** 2.5.202
 **Application Version:** 4.9.34 (see `VERSION`)
 **Last Updated:** 2026-09-04T00:00:00-07:00
 **Status:** Active
+
+- **2026-09-04 (2.5.202):** Close two secret-hygiene gaps found while tracing a
+  `GH_TOKEN` leak in agent tooling. (1) `tests/test_no_secrets_in_repo.py`
+  matched GitHub tokens as `ghs_[A-Za-z0-9]{36,255}`, which cannot match the
+  App *installation* tokens this fleet actually mints
+  (`ghs_<app_id>_<base64url-JWT>`) - the underscore after the app id ends the
+  character class, so the gate was blind to the one credential shape most
+  likely to reach a file here. The five GitHub patterns now share a
+  `_GITHUB_TOKEN_BODY` class admitting `_`, `.` and `-`, anchored to an
+  alphanumeric first character so bare prefixes inside the `deploy/*.sh`
+  validation regexes still do not match, and with no trailing `` (base64url
+  payloads can end in `-` or `_`). Three shape tests pin the behaviour.
+  (2) `.gitignore` now ignores `.claude/settings.local.json` itself instead of
+  relying on a developer's machine-local global ignore; that file records
+  approved tool calls verbatim and had captured live tokens elsewhere in the
+  fleet. The same edit strips two stray NUL bytes that had been committed into
+  `.gitignore`, which made git and grep treat it as a binary file.
 
 - **2026-09-04 (2.5.201):** Repoint the agent workflow health probe at the live
   agent surface (#1483, program #1505). `inspect_jules_workflows()` asserted a
