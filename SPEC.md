@@ -1,9 +1,30 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.198
+**Spec Version:** 2.5.199
 **Application Version:** 4.9.34 (see `VERSION`)
 **Last Updated:** 2026-09-03T00:00:00-07:00
 **Status:** Active
+
+- **2026-09-03 (2.5.199):** Retire the last two references to the Jules
+  remediation workflows and make the runner-routing policy rot-proof in both
+  directions (#1483, program #1505). `config/workflow_runner_routing_policy.json`
+  no longer classifies `Jules-Auto-Repair.yml` or `Jules-PR-AutoFix.yml`, which
+  #1160 deleted; the dangling names failed
+  `test_repo_policy_references_real_workflows` and produced `policy_errors` from
+  `scripts/check_workflow_runner_routing.py`, turning `main` red. The tier
+  classification is a per-workflow judgement and cannot be derived from the
+  directory, but its *coverage* can: the new
+  `test_every_workflow_is_classified_or_explicitly_exempt` derives the on-disk
+  workflow set and requires every file to be either classified or listed in a
+  `_UNCLASSIFIED` map with a written rationale (four qualify — they are pinned
+  to a single named host or routed by an expression, so fleet tier labels are
+  meaningless for them). It also rejects a stale exemption and a name that is
+  both classified and exempt. Adding a workflow now forces a tier decision.
+  Separately, the `tests/deploy/test_runner_tmp_litter_gc.py` harness sources
+  `cleanup_litter_in` out of `deploy/runner-cleanup.sh` under `set -u`; that
+  function gained a `$DRY_RUN` reference in #1161 while the default lives at the
+  script's top level, which the harness never executes, so the harness now
+  declares `DRY_RUN="${DRY_RUN:-0}"` alongside the other variables it stubs.
 
 - **2026-09-03 (2.5.198):** Heal poisoned runner workspaces at job start and
   stop the daily cleanup unit failing on a benign race (UpstreamDrift#9443,
