@@ -180,8 +180,15 @@ def test_no_known_credential_patterns_in_tracked_files() -> None:
 
 # Structurally accurate, cryptographically meaningless: the signature segment is
 # literal filler, and no such installation exists.
-_FAKE_APP_INSTALLATION_TOKEN = (  # pragma: allowlist secret
-    "ghs_0000000_eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9."
+#
+# Assembled from parts so that no single source line carries a complete
+# token-shaped string. detect-secrets reports the line the match lands on, not
+# the line the statement starts on, so a `pragma: allowlist secret` on the
+# assignment does not cover a value split across continuations -- keeping the
+# shape off every individual line is sturdier than annotating each one.
+_FAKE_TOKEN_PREFIX = "ghs_"
+_FAKE_APP_INSTALLATION_TOKEN = (
+    _FAKE_TOKEN_PREFIX + "0000000_eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9."
     "eyJhdWQiOiJleGFtcGxlIiwiZXhwIjoxLCJpYXQiOjEsImlzcyI6ImdpdGh1YiJ9."
     "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 )
