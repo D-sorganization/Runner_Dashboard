@@ -43,7 +43,7 @@ KEEP = ("keep-me", "systemd-private-x", "ssh-agent-sock", "mytmp-not-prefixed")
 def test_resolved_bash_can_drive_files_python_writes(tmp_path: Path) -> None:
     """The bash these tests source scripts into must see, and ``find``, our files.
 
-    Regression guard for RM#1164: PowerShell puts WSL's
+    Regression guard for #1164: PowerShell puts WSL's
     ``C:\\Windows\\System32\\bash.exe`` ahead of Git Bash on PATH. WSL bash is a
     perfectly good POSIX bash that resolves paths in a *different* filesystem
     namespace, so every scratch path handed to it came back "No such file or

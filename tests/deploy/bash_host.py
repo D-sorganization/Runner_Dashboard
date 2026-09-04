@@ -6,7 +6,7 @@ an equally valid POSIX bash that resolves paths inside a *separate* Linux
 namespace. Which one ``shutil.which("bash")`` returns depends on the shell that
 launched pytest: Git Bash leads with MSYS, PowerShell leads with WSL. Tests
 that source deploy scripts therefore passed or failed purely on the launching
-shell (RM#1164), which is not a property a test suite may have.
+shell (#1164), which is not a property a test suite may have.
 
 Resolution here does not trust PATH order or executable names. Every candidate
 is *probed*: it must both stat and ``find`` a file this process just wrote.
