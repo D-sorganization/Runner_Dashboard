@@ -16,35 +16,17 @@ syntactically valid and that the drop-in writer emits a per-runner
 
 from __future__ import annotations
 
-import os
-import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
+from bash_host import find_bash
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "deploy" / "migrate-runner-units.sh"
 
 
-def _find_bash() -> str | None:
-    candidates = [
-        os.environ.get("BASH"),
-        r"C:\Program Files\Git\usr\bin\bash.exe",
-        r"C:\Program Files\Git\bin\bash.exe",
-        "/usr/bin/bash",
-        "/bin/bash",
-        shutil.which("bash"),
-    ]
-    for candidate in candidates:
-        if candidate and Path(candidate).exists():
-            if candidate.lower().endswith(r"system32\bash.exe"):
-                continue
-            return candidate
-    return None
-
-
-BASH = _find_bash()
+BASH = find_bash()
 
 
 def _as_bash_path(p: Path) -> str:

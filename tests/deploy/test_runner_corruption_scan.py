@@ -23,42 +23,18 @@ from __future__ import annotations
 
 import os
 import re
-import shutil
 import subprocess
 import time
 from pathlib import Path
 
 import pytest
+from bash_host import find_bash
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "deploy" / "runner-corruption-scan.sh"
 
 
-def _find_bash() -> str | None:
-    """Locate a POSIX bash that can resolve host filesystem paths.
-
-    On Windows, ``shutil.which("bash")`` typically returns ``C:\\Windows\\
-    System32\\bash.exe`` (WSL), which sees a separate Linux filesystem and
-    cannot resolve repo paths. Prefer Git Bash when it is installed.
-    """
-    candidates = [
-        os.environ.get("BASH"),
-        r"C:\Program Files\Git\usr\bin\bash.exe",
-        r"C:\Program Files\Git\bin\bash.exe",
-        "/usr/bin/bash",
-        "/bin/bash",
-        shutil.which("bash"),
-    ]
-    for candidate in candidates:
-        if candidate and Path(candidate).exists():
-            # Skip the WSL bash shim — it cannot see Windows paths.
-            if candidate.lower().endswith(r"system32\bash.exe"):
-                continue
-            return candidate
-    return None
-
-
-BASH = _find_bash()
+BASH = find_bash()
 
 pytestmark = pytest.mark.skipif(
     BASH is None,
