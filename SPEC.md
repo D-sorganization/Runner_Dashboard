@@ -1,9 +1,26 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.202
+**Spec Version:** 2.5.203
 **Application Version:** 4.9.34 (see `VERSION`)
 **Last Updated:** 2026-09-04T00:00:00-07:00
 **Status:** Active
+
+- **2026-09-04 (2.5.203):** Remove the `pull_request` `paths-ignore` filter
+  from `ci-standard.yml`, which made `LICENSE`-only and `.gitignore`-only PRs
+  permanently unmergeable. `quality-gate` and `tests` are required status
+  checks on main, so branch protection waits for them to report; the filter
+  skipped the whole workflow for such PRs, and a required context that never
+  runs is indistinguishable from one that has not started yet - the PR sits
+  BLOCKED with zero failures and nothing pending, forever. The file already
+  documented this reasoning for `**.md` ("intentionally NOT excluded so
+  quality-gate runs on docs-only PRs and satisfies branch protection required
+  status checks") but never applied it to its remaining two entries. The
+  `push` filter is unchanged: post-merge CI does not gate the required
+  context. New `tests/test_workflow_hygiene.py::
+  test_required_context_workflows_have_no_pull_request_path_filters` fails if
+  any workflow providing a context in `config/required_status_checks_policy.json`
+  reintroduces a `paths`/`paths-ignore` filter on `pull_request`. Found while
+  auditing the fleet after RM#1529 and Tools#4974 deadlocked the same way.
 
 - **2026-09-04 (2.5.202):** Close two secret-hygiene gaps found while tracing a
   `GH_TOKEN` leak in agent tooling. (1) `tests/test_no_secrets_in_repo.py`
