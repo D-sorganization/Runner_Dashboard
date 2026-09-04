@@ -1,9 +1,29 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.199
+**Spec Version:** 2.5.200
 **Application Version:** 4.9.34 (see `VERSION`)
-**Last Updated:** 2026-09-03T00:00:00-07:00
+**Last Updated:** 2026-09-04T00:00:00-07:00
 **Status:** Active
+
+- **2026-09-04 (2.5.200):** Make the deploy tests pick their bash by probe, so
+  the tmp-litter GC harness stops depending on which shell launched pytest
+  (#1164). Six tests in `tests/deploy/test_runner_tmp_litter_gc.py` passed under
+  Git Bash and failed under PowerShell. Not a flake and not a missing bash — a
+  *wrong* one: Windows carries two valid POSIX bashes and PATH order is set by
+  the launching shell, so `shutil.which("bash")` returned MSYS under Git Bash and
+  `C:\Windows\System32\bash.exe` (the WSL launcher, a separate filesystem
+  namespace) under PowerShell, where every scratch path came back "No such file
+  or directory". The new `tests/deploy/bash_host.py` resolves bash by *probing
+  capability* rather than by PATH order or executable name: a candidate qualifies
+  only if it can both stat and `find -maxdepth 0` a file the test process just
+  wrote, and `BASH is None` drives the same `skipif` the sibling deploy tests
+  use. The `find` half is load-bearing — a raw MSYS `usr/bin/bash.exe` passes the
+  stat probe but inherits Windows' `PATH`, so the GC's `find` resolves to
+  `System32\find.exe` and the purge silently no-ops; `bin/bash.exe` (the Git Bash
+  launcher) prepends the MSYS coreutils. No assertion in the #1158/#1161 GC
+  coverage was weakened. `test_runner_corruption_scan.py` and
+  `test_runner_toolcache_isolation.py` carried near-identical `_find_bash` copies
+  that guessed by executable name; both now call the shared `find_bash()`.
 
 - **2026-09-03 (2.5.199):** Retire the last two references to the Jules
   remediation workflows and make the runner-routing policy rot-proof in both

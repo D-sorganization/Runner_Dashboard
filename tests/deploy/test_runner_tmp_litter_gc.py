@@ -5,26 +5,26 @@ deploy/runner-cleanup.sh and for deploy/configure-runner-tmpdir.sh
 The purge *selection* logic is exercised for real: the relevant shell
 functions are sourced into a throwaway bash with stubs for the host-touching
 helpers, run against a seeded scratch tree, and the survivors are asserted.
-Skipped where bash/find are unavailable (native Windows lanes); the fleet
-runs this on Linux self-hosted runners.
+Skipped where no bash sharing this host's filesystem exists (native Windows
+lanes without Git Bash); the fleet runs this on Linux self-hosted runners.
+The bash is resolved by probe, not by PATH order — see ``bash_host``.
 """
 
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 import time
 from pathlib import Path
 
 import pytest
+from bash_host import BASH, SKIP_REASON, as_bash_path
 
 DEPLOY = Path(__file__).resolve().parents[2] / "deploy"
 CLEANUP = DEPLOY / "runner-cleanup.sh"
 CONFIGURE = DEPLOY / "configure-runner-tmpdir.sh"
 
-bash = shutil.which("bash")
-pytestmark = pytest.mark.skipif(bash is None, reason="bash unavailable on this host")
+pytestmark = pytest.mark.skipif(BASH is None, reason=SKIP_REASON)
 
 # Entries that must be reaped once aged (top-level litter allowlist) ...
 LITTER = (
@@ -40,18 +40,30 @@ LITTER = (
 KEEP = ("keep-me", "systemd-private-x", "ssh-agent-sock", "mytmp-not-prefixed")
 
 
-def _bash_path(path: Path) -> str:
-    """Path form the bash on this host understands (MSYS on Windows)."""
-    if bash is not None and os.name == "nt":
-        out = subprocess.run(
-            [bash, "-c", 'cygpath -u "$1"', "_", str(path)],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if out.returncode == 0 and out.stdout.strip():
-            return out.stdout.strip()
-    return path.as_posix()
+def test_resolved_bash_can_drive_files_python_writes(tmp_path: Path) -> None:
+    """The bash these tests source scripts into must see, and ``find``, our files.
+
+    Regression guard for #1164: PowerShell puts WSL's
+    ``C:\\Windows\\System32\\bash.exe`` ahead of Git Bash on PATH. WSL bash is a
+    perfectly good POSIX bash that resolves paths in a *different* filesystem
+    namespace, so every scratch path handed to it came back "No such file or
+    directory" and six tests in this module failed — under Git Bash the same
+    command passed. Which shell launched pytest is not allowed to decide.
+
+    The ``find -maxdepth`` half guards the near miss: a raw MSYS
+    ``usr/bin/bash.exe`` sees the file but inherits Windows' PATH, so the GC's
+    ``find`` resolves to ``System32\\find.exe`` and the purge silently no-ops.
+    """
+    probe = tmp_path / "probe"
+    probe.write_text("ok", encoding="utf-8")
+    assert BASH is not None
+    result = subprocess.run(
+        [BASH, "-c", 'test -f "$1" && find "$1" -maxdepth 0', "_", as_bash_path(probe)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, f"{BASH} cannot drive {probe}: {result.stderr}"
 
 
 def _extract(text: str, name: str) -> str:
@@ -69,7 +81,7 @@ def _run_litter_gc(tmp_path: Path, target: Path, *, used_percent: int = 10) -> N
             "log() { :; }",
             'run() { "$@"; }',
             f"tmp_used_percent() {{ echo {used_percent}; }}",
-            f'TMP_DIR="{_bash_path(target)}"',
+            f'TMP_DIR="{as_bash_path(target)}"',
             # cleanup_litter_in consults DRY_RUN; the real script defaults it at
             # the top level, which the sourced-function harness never runs.
             'DRY_RUN="${DRY_RUN:-0}"',
@@ -83,10 +95,8 @@ def _run_litter_gc(tmp_path: Path, target: Path, *, used_percent: int = 10) -> N
     )
     script = tmp_path / "harness.sh"
     script.write_text(harness, encoding="utf-8", newline="\n")
-    assert bash is not None
-    result = subprocess.run(
-        [bash, _bash_path(script)], capture_output=True, text=True, check=False
-    )
+    assert BASH is not None
+    result = subprocess.run([BASH, as_bash_path(script)], capture_output=True, text=True, check=False)
     assert result.returncode == 0, result.stderr
 
 
@@ -171,9 +181,9 @@ class TestRunnerTmpdirWiring:
 
 class TestConfigureRunnerTmpdir:
     def _run(self, *args: str) -> subprocess.CompletedProcess[str]:
-        assert bash is not None
+        assert BASH is not None
         return subprocess.run(
-            [bash, _bash_path(CONFIGURE), *args],
+            [BASH, as_bash_path(CONFIGURE), *args],
             capture_output=True,
             text=True,
             check=False,
@@ -187,27 +197,23 @@ class TestConfigureRunnerTmpdir:
         return runner
 
     @pytest.mark.skipif(os.name == "nt", reason="install -o/chown need a POSIX host")
-    def test_writes_tmpdir_line_and_creates_dir_idempotently(
-        self, tmp_path: Path
-    ) -> None:
+    def test_writes_tmpdir_line_and_creates_dir_idempotently(self, tmp_path: Path) -> None:
         runner = self._fake_runner(tmp_path)
         (runner / ".env").write_text("KEEP=1\nTMPDIR=/tmp\n", encoding="utf-8")
-        first = self._run("--runner-dir", _bash_path(runner))
+        first = self._run("--runner-dir", as_bash_path(runner))
         assert first.returncode == 0, first.stderr
         env = (runner / ".env").read_text(encoding="utf-8").splitlines()
         assert env.count("KEEP=1") == 1
-        assert [line for line in env if line.startswith("TMPDIR=")] == [
-            f"TMPDIR={_bash_path(runner)}/_work/_tmp"
-        ]
+        assert [line for line in env if line.startswith("TMPDIR=")] == [f"TMPDIR={as_bash_path(runner)}/_work/_tmp"]
         assert (runner / "_work" / "_tmp").is_dir()
         assert "1 runner(s) changed" in first.stdout
-        second = self._run("--runner-dir", _bash_path(runner))
+        second = self._run("--runner-dir", as_bash_path(runner))
         assert "unchanged" in second.stdout
         assert "0 runner(s) changed" in second.stdout
 
     def test_dry_run_changes_nothing(self, tmp_path: Path) -> None:
         runner = self._fake_runner(tmp_path)
-        result = self._run("--dry-run", "--runner-dir", _bash_path(runner))
+        result = self._run("--dry-run", "--runner-dir", as_bash_path(runner))
         assert result.returncode == 0, result.stderr
         assert "would set TMPDIR=" in result.stdout
         assert not (runner / ".env").exists()
@@ -216,7 +222,7 @@ class TestConfigureRunnerTmpdir:
     def test_non_runner_dir_is_skipped(self, tmp_path: Path) -> None:
         plain = tmp_path / "not-a-runner"
         plain.mkdir()
-        result = self._run("--runner-dir", _bash_path(plain))
+        result = self._run("--runner-dir", as_bash_path(plain))
         assert result.returncode == 0, result.stderr
         assert "not a runner directory" in result.stdout
         assert not (plain / ".env").exists()
