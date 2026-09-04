@@ -431,3 +431,59 @@ def test_pre_push_mypy_dependencies_are_installable() -> None:
     assert '"tests/"' in text
     assert '"-ll"' in text
     assert '"-ii"' in text
+
+
+_REQUIRED_CHECKS_POLICY = (
+    Path(__file__).parent.parent / "config" / "required_status_checks_policy.json"
+)
+
+
+def _required_contexts() -> set[str]:
+    data = json.loads(_REQUIRED_CHECKS_POLICY.read_text(encoding="utf-8"))
+    contexts = {entry["context"] for entry in data["required_contexts"]}
+    assert contexts, "required_status_checks_policy.json lists no contexts"
+    return contexts
+
+
+def test_required_context_workflows_have_no_pull_request_path_filters() -> None:
+    """A required status check that cannot run is a permanent merge deadlock.
+
+    Branch protection waits for every required context to report. A path
+    filter on ``pull_request`` skips the whole workflow when a PR touches only
+    filtered paths, so the context never reports at all - the PR sits BLOCKED
+    with zero failures and nothing pending, forever. It is indistinguishable
+    from a check that simply has not started yet.
+
+    ``ci-standard.yml`` already documented this reasoning for ``**.md`` but
+    never applied it to the remaining entries, so a ``.gitignore``-only or
+    ``LICENSE``-only PR was unmergeable.
+
+    ``push`` filters are unaffected - post-merge CI does not gate the required
+    context. Filtering by ``types`` is fine too: it cannot skip a workflow
+    based on which files a PR touches.
+    """
+    required = _required_contexts()
+
+    for path in sorted(_WORKFLOWS_DIR.glob("*.yml")):
+        data = _load_workflow(path)
+        jobs = data.get("jobs") or {}
+        provided = required & set(jobs)
+        if not provided:
+            continue
+
+        triggers = _triggers(data)
+        if not isinstance(triggers, dict):
+            continue
+        pull_request = triggers.get("pull_request")
+        if not isinstance(pull_request, dict):
+            continue
+
+        for key in ("paths", "paths-ignore"):
+            assert not pull_request.get(key), (
+                f"{path.name} provides required status check(s) "
+                f"{sorted(provided)} but filters its `pull_request` trigger on "
+                f"`{key}: {pull_request[key]}`. A PR touching only those paths "
+                "skips the workflow, so the required context never reports and "
+                "the PR can never merge. Remove the filter (keep it on `push` "
+                "if post-merge cost matters)."
+            )

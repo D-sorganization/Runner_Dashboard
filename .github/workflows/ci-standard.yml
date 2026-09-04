@@ -10,11 +10,14 @@ on:
       - LICENSE
       - .gitignore
   pull_request:
-    # NOTE: **.md intentionally NOT excluded so quality-gate runs on docs-only
-    # PRs and satisfies branch protection required status checks.
-    paths-ignore:
-      - LICENSE
-      - .gitignore
+    # NOTE: no `paths`/`paths-ignore` filter here, deliberately. `quality-gate`
+    # and `tests` are required status checks on main, so a PR that skips this
+    # workflow never reports them and can never merge -- it sits BLOCKED with
+    # zero failures and nothing pending. That is why `**.md` was already left
+    # out of this filter; `LICENSE` and `.gitignore` were dropped for exactly
+    # the same reason. `push` below still ignores them: post-merge CI does not
+    # gate the required context. Enforced by tests/test_workflow_hygiene.py::
+    # test_required_context_workflows_have_no_pull_request_path_filters.
   workflow_dispatch:
     inputs:
       force_local:
