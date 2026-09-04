@@ -6,6 +6,7 @@ Extracted from agent_remediation.py (issue #361).
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -61,13 +62,17 @@ class WorkflowHealthEntry:
 @dataclass(frozen=True, slots=True)
 class WorkflowHealthReport:
     generated_at: str
-    control_tower_summary: str
+    summary: str
     workflows: tuple[WorkflowHealthEntry, ...]
 
     def to_dict(self) -> dict[str, Any]:
+        # ``control_tower_summary`` is the pre-RM#1483 key name, still read by
+        # the Remediation tab. Two-step schema change: ship ``summary``
+        # alongside it now, drop the alias in the next release.
         return {
             "generated_at": self.generated_at,
-            "control_tower_summary": self.control_tower_summary,
+            "summary": self.summary,
+            "control_tower_summary": self.summary,
             "workflows": [item.to_dict() for item in self.workflows],
         }
 
@@ -286,75 +291,84 @@ def plan_dispatch(
     )
 
 
-from .policy import LEGACY_WORKFLOW_PATTERNS  # noqa: E402
+from .policy import LEGACY_WORKFLOW_PATTERNS, RETIRED_WORKFLOW_PATTERNS  # noqa: E402
+
+#: Filename prefix that marks a workflow as part of the agent remediation
+#: surface. The probe discovers these from disk rather than asserting a
+#: hardcoded inventory: the Jules suite was retired fleet-wide by
+#: D-sorganization/Repository_Management#1483 (program RM#1505) and the old
+#: hardcoded tuple then reported every retired file as missing. Discovery keeps
+#: the probe correct across the next retirement without a code change.
+AGENT_WORKFLOW_PREFIX = "agent-"
+AGENT_WORKFLOW_SUFFIXES = (".yml", ".yaml")
 
 
-def inspect_jules_workflows(repo_root: Path) -> WorkflowHealthReport:
+def _classify_trigger(raw: str) -> tuple[bool, bool, bool, str]:
+    """Return (manual_dispatch, scheduled, workflow_run_trigger, trigger_type)."""
+    manual_dispatch = "workflow_dispatch:" in raw
+    scheduled = re.search(r"^\s*schedule:\s*$", raw, re.MULTILINE) is not None
+    workflow_run_trigger = "workflow_run:" in raw
+    if manual_dispatch:
+        trigger_type = "manual"
+    elif scheduled:
+        trigger_type = "scheduled"
+    elif workflow_run_trigger:
+        trigger_type = "workflow_run"
+    else:
+        trigger_type = "dormant"
+    return manual_dispatch, scheduled, workflow_run_trigger, trigger_type
+
+
+def _summarize(entries: Sequence[WorkflowHealthEntry]) -> str:
+    """Human-readable health line for the Remediation tab banner."""
+    if not entries:
+        return (
+            "No agent remediation workflows were found in .github/workflows/. "
+            "The dashboard has no local automation surface to report on."
+        )
+    dormant = [entry.workflow_file for entry in entries if entry.trigger_type == "dormant"]
+    flagged = [entry.workflow_file for entry in entries if entry.issues]
+    parts = [f"Found {len(entries)} agent remediation workflow(s)."]
+    if dormant:
+        parts.append(f"Dormant (no manual, scheduled or workflow_run trigger): {', '.join(dormant)}.")
+    if flagged:
+        parts.append(f"Flagged for legacy or retired references: {', '.join(flagged)}.")
+    if not dormant and not flagged:
+        parts.append("All are triggerable and free of legacy references.")
+    return " ".join(parts)
+
+
+def inspect_remediation_workflows(repo_root: Path) -> WorkflowHealthReport:
+    """Report health of the agent remediation workflows present in ``repo_root``.
+
+    Discovers every ``.github/workflows/agent-*.yml`` file (case-insensitive)
+    and classifies its trigger surface, flagging legacy dispatch patterns and
+    references to workflows retired by RM#1483.
+    """
     from time_utils import utc_now_iso
 
     workflows_dir = repo_root / ".github" / "workflows"
     entries: list[WorkflowHealthEntry] = []
-    expected = (
-        "Jules-Control-Tower.yml",
-        "Jules-Auto-Repair.yml",
-        "Jules-Issue-Triage.yml",
-        "Jules-Issue-Resolver.yml",
-        "Jules-Dispatch.yml",
+    candidates = sorted(
+        (
+            path
+            for path in (workflows_dir.iterdir() if workflows_dir.is_dir() else ())
+            if path.is_file()
+            and path.name.lower().startswith(AGENT_WORKFLOW_PREFIX)
+            and path.suffix.lower() in AGENT_WORKFLOW_SUFFIXES
+        ),
+        key=lambda path: path.name,
     )
-    control_tower_issues: list[str] = []
-    for filename in expected:
-        path = workflows_dir / filename
-        if not path.exists():
-            entries.append(
-                WorkflowHealthEntry(
-                    workflow_file=filename,
-                    workflow_name=filename.removesuffix(".yml"),
-                    exists=False,
-                    manual_dispatch=False,
-                    scheduled=False,
-                    workflow_run_trigger=False,
-                    trigger_type="dormant",
-                    issues=("Workflow file is missing.",),
-                )
-            )
-            continue
+    for path in candidates:
         raw = path.read_text(encoding="utf-8")
-        issues: list[str] = []
-        for needle, message in LEGACY_WORKFLOW_PATTERNS:
-            if needle in raw:
-                issues.append(message)
-        manual_dispatch = "workflow_dispatch:" in raw
-        scheduled = re.search(r"^\s*schedule:\s*$", raw, re.MULTILINE) is not None
-        workflow_run_trigger = "workflow_run:" in raw
-        if manual_dispatch:
-            trigger_type = "manual"
-        elif scheduled:
-            trigger_type = "scheduled"
-        elif workflow_run_trigger:
-            trigger_type = "workflow_run"
-        else:
-            trigger_type = "dormant"
+        issues = [message for needle, message in LEGACY_WORKFLOW_PATTERNS if needle in raw]
+        issues.extend(message for needle, message in RETIRED_WORKFLOW_PATTERNS if needle in raw)
+        manual_dispatch, scheduled, workflow_run_trigger, trigger_type = _classify_trigger(raw)
         workflow_name_match = re.search(r"^name:\s*(.+)$", raw, re.MULTILINE)
-        workflow_name = (
-            workflow_name_match.group(1).strip().strip('"').strip("'")
-            if workflow_name_match
-            else filename.removesuffix(".yml")
-        )
-        if filename == "Jules-Control-Tower.yml":
-            cron_count = len(re.findall(r"-\s+cron:\s+", raw))
-            if cron_count <= 1:
-                control_tower_issues.append(
-                    "Control Tower currently has only one scheduled cron entry, so low Jules activity"
-                    " is expected unless manual or workflow_run triggers fire."
-                )
-            if 'target = "auto-repair"' in raw and "call-repair:" in raw:
-                control_tower_issues.append(
-                    "Control Tower still routes CI failures through the legacy repair worker"
-                    " unless explicitly migrated."
-                )
+        workflow_name = workflow_name_match.group(1).strip().strip('"').strip("'") if workflow_name_match else path.stem
         entries.append(
             WorkflowHealthEntry(
-                workflow_file=filename,
+                workflow_file=path.name,
                 workflow_name=workflow_name,
                 exists=True,
                 manual_dispatch=manual_dispatch,
@@ -364,12 +378,18 @@ def inspect_jules_workflows(repo_root: Path) -> WorkflowHealthReport:
                 issues=tuple(issues),
             )
         )
-    if not control_tower_issues:
-        control_tower_summary = "No obvious local Control Tower health issue was detected."
-    else:
-        control_tower_summary = " ".join(control_tower_issues)
     return WorkflowHealthReport(
         generated_at=utc_now_iso(),
-        control_tower_summary=control_tower_summary,
+        summary=_summarize(entries),
         workflows=tuple(entries),
     )
+
+
+def inspect_jules_workflows(repo_root: Path) -> WorkflowHealthReport:
+    """Deprecated alias for :func:`inspect_remediation_workflows`.
+
+    The Jules workflow suite was retired fleet-wide by RM#1483. Kept for one
+    release so any out-of-tree caller fails loudly on removal, not silently
+    here.
+    """
+    return inspect_remediation_workflows(repo_root)

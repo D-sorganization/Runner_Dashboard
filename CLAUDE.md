@@ -238,14 +238,15 @@ PRs also run **Spec Check** (`ci-spec-check.yml`) — if backend source files
 change without a SPEC.md update, the check fails. Apply `spec-exempt` label
 to bypass.
 
-Agent workflows:
+Agent workflows (the `Jules-*` suite was retired fleet-wide by RM#1483 —
+CI remediation now runs through the Claude/Codex providers in
+`config/agent_remediation.json`):
 
-- **Jules Control Tower** — orchestrates CI remediation and weekly maintenance
-- **Jules PR AutoFix** — iteratively fixes CI failures by pushing to PR branches
-- **Jules Auto-Repair** — worker called by Control Tower for complex repairs
 - **Agent Redundant PR Closer** — closes duplicate agent PRs by priority
-- **Agent Lease Reaper** — sweeps expired coordination leases every 30 min
-- **Agent Fleet Dashboard** — regenerates `docs/fleet-in-flight.md` every 15 min
+- **Agent Lease Reaper** — sweeps expired coordination leases hourly
+- **Agent Fleet Dashboard** — regenerates `docs/fleet-in-flight.md` every 30 min
+- **Agent Panel Review** — collects multi-agent opinions on `panel-review` issues
+- **Verify Issue Closure** — reopens issues closed without implementation evidence
 
 ## Coding Conventions
 

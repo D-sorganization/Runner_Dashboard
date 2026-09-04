@@ -226,10 +226,11 @@ our own legacy issues.
   Agents that ignore labels are unaffected.
 - **After Phase 4:** agents can self-dispatch from the quick-win lane or
   by complexity tier. Redundant-pick rate should drop. Agent workflows
-  (`Jules-Control-Tower.yml`, `Jules-Auto-Repair.yml`,
-  `Agent-Redundant-PR-Closer.yml`, `Agent-Lease-Reaper.yml`) do not need
-  edits — they already key off issue state and `claim:*` labels, which
-  are unchanged. They can be upgraded to use the new labels later.
+  (`Agent-Redundant-PR-Closer.yml`, `Agent-Lease-Reaper.yml`,
+  `Agent-Fleet-Dashboard.yml`) do not need edits — they already key off
+  issue state and `claim:*` labels, which are unchanged. They can be
+  upgraded to use the new labels later. (The `Jules-*` workflows this plan
+  originally also named were retired fleet-wide by RM#1483.)
 - **The existing `lease:` comment protocol and `claim:*` labels are
   untouched.** Orthogonal mechanisms; they coexist.
 
