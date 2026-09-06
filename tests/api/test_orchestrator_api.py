@@ -16,6 +16,7 @@ from collections.abc import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
+from httpx import Response
 
 # The feature flag is read at request time (not import time), so no module
 # reload is needed — flipping the env var is sufficient and keeps the router
@@ -29,8 +30,9 @@ _XHR = {"X-Requested-With": "XMLHttpRequest"}
 
 @pytest.fixture
 def enabled_client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
-    """A TestClient with the Conductor feature flag enabled and a fixed capacity."""
+    """A TestClient with Conductor enabled, simulating local Conductor loopback."""
     monkeypatch.setenv("DASHBOARD_ENABLE_CONDUCTOR", "1")
+    monkeypatch.setenv("DASHBOARD_LOOPBACK_AUTH", "1")
 
     import orchestrator_api
 
@@ -38,7 +40,7 @@ def enabled_client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
 
     from server import app
 
-    client = TestClient(app, raise_server_exceptions=False)
+    client = TestClient(app, raise_server_exceptions=False, client=("127.0.0.1", 50000))
     yield client
     orchestrator_api.reset_state()
 
@@ -47,6 +49,7 @@ def enabled_client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
 def disabled_client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     """A TestClient with the Conductor feature flag explicitly disabled."""
     monkeypatch.setenv("DASHBOARD_ENABLE_CONDUCTOR", "0")
+    monkeypatch.setenv("DASHBOARD_LOOPBACK_AUTH", "1")
 
     import orchestrator_api
 
@@ -54,7 +57,7 @@ def disabled_client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
 
     from server import app
 
-    client = TestClient(app, raise_server_exceptions=False)
+    client = TestClient(app, raise_server_exceptions=False, client=("127.0.0.1", 50000))
     yield client
 
 
@@ -76,16 +79,16 @@ def _set_capacity(idle: int, total: int = 10, busy: int = 0) -> None:
 # ─── Feature flag gating (orthogonality / reversibility) ────────────────────
 
 
-def _lease(client: TestClient, **body: object):
+def _lease(client: TestClient, **body: object) -> Response:
     body.setdefault("requested_by", "conductor")
     return client.post("/api/orchestrator/lease", json=body, headers=_XHR)
 
 
-def _release(client: TestClient, lease_id: str):
+def _release(client: TestClient, lease_id: str) -> Response:
     return client.post("/api/orchestrator/release", json={"lease_id": lease_id}, headers=_XHR)
 
 
-def _queue_action(client: TestClient, action: str):
+def _queue_action(client: TestClient, action: str) -> Response:
     return client.post("/api/orchestrator/queue", json={"action": action}, headers=_XHR)
 
 
@@ -236,3 +239,141 @@ def test_blocked_work_reported_while_paused(enabled_client: TestClient) -> None:
     )
     paused = _queue_action(enabled_client, "pause").json()
     assert paused["work"]["blocked"] == 1
+
+
+# ─── Security perimeter / authentication (issue #1173) ──────────────────────
+
+
+def test_remote_unauthenticated_lease_rejected_401(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A remote, unauthenticated lease POST must be rejected with 401 (#1173)."""
+    monkeypatch.setenv("DASHBOARD_ENABLE_CONDUCTOR", "1")
+    monkeypatch.delenv("DASHBOARD_LOOPBACK_AUTH", raising=False)
+    monkeypatch.delenv("HUB_FLEET_TOKEN", raising=False)
+
+    import orchestrator_api
+
+    orchestrator_api.reset_state()
+    from server import app
+
+    # Default TestClient connects with client.host == 'testclient' (non-loopback remote)
+    client = TestClient(app, raise_server_exceptions=False)
+    resp = client.post(
+        "/api/orchestrator/lease",
+        json={"requested_by": "remote-probe", "slots": 1, "reserve": 1},
+        headers=_XHR,
+    )
+    assert resp.status_code == 401
+    assert resp.json()["detail"] == "Authentication required"
+
+
+def test_remote_unauthenticated_release_rejected_401(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A remote, unauthenticated release POST must be rejected with 401 (#1173)."""
+    monkeypatch.setenv("DASHBOARD_ENABLE_CONDUCTOR", "1")
+    monkeypatch.delenv("DASHBOARD_LOOPBACK_AUTH", raising=False)
+    monkeypatch.delenv("HUB_FLEET_TOKEN", raising=False)
+
+    from server import app
+
+    client = TestClient(app, raise_server_exceptions=False)
+    resp = client.post(
+        "/api/orchestrator/release",
+        json={"lease_id": "lease-1234"},
+        headers=_XHR,
+    )
+    assert resp.status_code == 401
+    assert resp.json()["detail"] == "Authentication required"
+
+
+def test_remote_unauthenticated_queue_control_rejected_401(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A remote, unauthenticated queue control POST must be rejected with 401 (#1173)."""
+    monkeypatch.setenv("DASHBOARD_ENABLE_CONDUCTOR", "1")
+    monkeypatch.delenv("DASHBOARD_LOOPBACK_AUTH", raising=False)
+    monkeypatch.delenv("HUB_FLEET_TOKEN", raising=False)
+
+    from server import app
+
+    client = TestClient(app, raise_server_exceptions=False)
+    resp = client.post(
+        "/api/orchestrator/queue",
+        json={"action": "pause"},
+        headers=_XHR,
+    )
+    assert resp.status_code == 401
+    assert resp.json()["detail"] == "Authentication required"
+
+
+def test_remote_lease_accepted_with_hub_fleet_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A remote caller presenting a matching HUB_FLEET_TOKEN is admitted (#1173)."""
+    monkeypatch.setenv("DASHBOARD_ENABLE_CONDUCTOR", "1")
+    monkeypatch.setenv("HUB_FLEET_TOKEN", "secret-fleet-bearer-token-1234")
+    monkeypatch.delenv("DASHBOARD_LOOPBACK_AUTH", raising=False)
+
+    import orchestrator_api
+
+    orchestrator_api.reset_state()
+    _set_capacity(idle=5)
+    from server import app
+
+    client = TestClient(app, raise_server_exceptions=False)
+    headers = dict(_XHR)
+    headers["Authorization"] = "Bearer secret-fleet-bearer-token-1234"
+
+    resp = client.post(
+        "/api/orchestrator/lease",
+        json={"requested_by": "remote-peer", "slots": 1, "reserve": 1},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["granted"] is True
+
+
+def test_remote_lease_rejected_with_invalid_hub_fleet_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A remote caller presenting an invalid HUB_FLEET_TOKEN is rejected with 401."""
+    monkeypatch.setenv("DASHBOARD_ENABLE_CONDUCTOR", "1")
+    monkeypatch.setenv("HUB_FLEET_TOKEN", "secret-fleet-bearer-token-1234")
+
+    from server import app
+
+    client = TestClient(app, raise_server_exceptions=False)
+    headers = dict(_XHR)
+    headers["Authorization"] = "Bearer wrong-token"
+
+    resp = client.post(
+        "/api/orchestrator/lease",
+        json={"requested_by": "remote-attacker", "slots": 1, "reserve": 1},
+        headers=headers,
+    )
+    assert resp.status_code == 401
+
+
+def test_loopback_lease_rejected_when_loopback_auth_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Loopback calls without credentials are rejected when DASHBOARD_LOOPBACK_AUTH is not set."""
+    monkeypatch.setenv("DASHBOARD_ENABLE_CONDUCTOR", "1")
+    monkeypatch.delenv("DASHBOARD_LOOPBACK_AUTH", raising=False)
+
+    from server import app
+
+    client = TestClient(app, raise_server_exceptions=False, client=("127.0.0.1", 50000))
+    resp = client.post(
+        "/api/orchestrator/lease",
+        json={"requested_by": "local-caller", "slots": 1, "reserve": 1},
+        headers=_XHR,
+    )
+    assert resp.status_code == 401
+
+
+def test_remote_lease_rejected_even_when_loopback_auth_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Remote caller is NOT exempted by DASHBOARD_LOOPBACK_AUTH=1 (IP check)."""
+    monkeypatch.setenv("DASHBOARD_ENABLE_CONDUCTOR", "1")
+    monkeypatch.setenv("DASHBOARD_LOOPBACK_AUTH", "1")
+
+    from server import app
+
+    # Non-loopback client IP (e.g. Tailscale CGNAT IP 100.64.0.5)
+    client = TestClient(app, raise_server_exceptions=False, client=("100.64.0.5", 50000))
+    resp = client.post(
+        "/api/orchestrator/lease",
+        json={"requested_by": "tailnet-probe", "slots": 1, "reserve": 1},
+        headers=_XHR,
+    )
+    assert resp.status_code == 401

@@ -450,6 +450,38 @@ def require_fleet_peer(
     raise HTTPException(status_code=401, detail="Fleet authentication required")
 
 
+def require_orchestrator_peer(
+    request: Request,
+    header_token: str | None = Depends(auth_header),
+) -> str:
+    """Authenticate an orchestrator caller for lease/release/queue endpoints (#1173).
+
+    State-changing orchestrator operations (lease, release, queue control) require
+    authentication regardless of whether ``HUB_FLEET_TOKEN`` is configured:
+      1. An operator principal (resolved from service token or session) is always accepted.
+      2. If ``HUB_FLEET_TOKEN`` is configured and matches the presented bearer token
+         (constant-time compare), it is accepted as a fleet peer.
+      3. If ``DASHBOARD_LOOPBACK_AUTH=1`` and the request originates from loopback,
+         it is accepted so a node's local Conductor agent functions without credentials.
+
+    Unauthenticated remote callers (e.g. over the tailnet) are strictly rejected with 401.
+    """
+    principal = _resolve_principal_optional(request, header_token)
+    if principal is not None:
+        return f"principal:{principal.id}"
+
+    hub_token = os.environ.get("HUB_FLEET_TOKEN", "")
+    if hub_token and header_token and header_token.startswith("Bearer "):
+        presented = header_token[len("Bearer ") :]
+        if hmac.compare_digest(presented, hub_token):
+            return "fleet-peer"
+
+    if _loopback_auth_enabled() and _is_loopback_request(request):
+        return "loopback-dev"
+
+    raise HTTPException(status_code=401, detail="Authentication required")
+
+
 def resolve_perimeter_principal(request: Request) -> Principal | None:
     """Resolve the calling principal for the structural auth perimeter (#924).
 

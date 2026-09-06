@@ -1,9 +1,22 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.206
+**Spec Version:** 2.5.207
 **Application Version:** 4.9.34 (see `VERSION`)
-**Last Updated:** 2026-09-06T10:15:00-07:00
+**Last Updated:** 2026-09-06T16:17:00-07:00
 **Status:** Active
+
+- **2026-09-06 (2.5.207):** Orchestrator authentication perimeter hardening (#1173).
+  Conductor orchestrator state-changing endpoints (/api/orchestrator/lease, /release,
+  /queue control) previously accepted unauthenticated callers across the tailnet when
+  HUB_FLEET_TOKEN was unset, creating risk of capacity reservation exhaustion and
+  dispatch starvation. Implemented `require_orchestrator_peer` in `backend/identity.py`
+  and enforced on state-changing orchestrator routes. Calls are strictly authenticated
+  against: (1) valid operator principals (service token or session), (2) intra-fleet
+  bearer token matching HUB_FLEET_TOKEN (constant-time compare), or (3) local loopback
+  peer with `DASHBOARD_LOOPBACK_AUTH=1` so local node Conductor agents function without
+  credentials. Remote unauthenticated callers are strictly rejected with HTTP 401.
+  Enforced `require_fleet_peer` on `GET /api/orchestrator/queue`. TDD: 22 tests in
+  `tests/api/test_orchestrator_api.py`.
 
 - **2026-09-06 (2.5.206):** Runner host reality vs /tmp runbook, per-host distro parity,
   and profile cargo cleanup (#1159). Host environments like OGLaptop lack a local
