@@ -13,7 +13,9 @@ from fastapi import APIRouter
 router = APIRouter(tags=["metrics"])
 
 
-def _resolve_windows_host_disk_path(configured_path: str | Path | None = None) -> Path | None:
+def _resolve_windows_host_disk_path(
+    configured_path: str | Path | None = None,
+) -> Path | None:
     """Return the mounted Windows path that backs this runner pool's WSL VHDX.
 
     Operators can set RUNNER_WINDOWS_HOST_PATH for non-C: WSL installs such as
@@ -120,12 +122,19 @@ async def get_pool_disk_pressure():
                     io_pressure_full_avg10=io_full_avg10,
                 )
 
+                runner_backing_drive: str = storage.get("runner_backing_drive") or storage.get("host_drive", "")
+                from host_volume import probe_host_volume  # noqa: PLC0415
+
+                host_volume = probe_host_volume(drive=runner_backing_drive) if runner_backing_drive else None
+
                 reports.append(
                     {
                         "pool_name": pool_name,
                         "parent_machine": pool.get("parent_machine", machine.get("name", "")),
                         "storage_tier": storage_tier,
                         "backing_disk": backing_disk,
+                        "runner_backing_drive": runner_backing_drive,
+                        "host_volume": host_volume,
                         "vhdx_path": vhdx_path,
                         "disk_bus": disk_bus,
                         "disk_media_type": disk_media_type,

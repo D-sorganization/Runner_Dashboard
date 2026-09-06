@@ -15,7 +15,9 @@ from dashboard_config import (
     runner_limit,
 )
 from fastapi import APIRouter, Depends, Request, Response
-from fleet_autoconfig import derive_pool_topology  # issue #942 — registry-driven pool topology
+from fleet_autoconfig import (
+    derive_pool_topology,
+)  # issue #942 — registry-driven pool topology
 from fleet_events import (  # issue #863 — record runner/disk transitions
     FleetEventPoller,
     nodes_from_fleet_status,
@@ -23,7 +25,11 @@ from fleet_events import (  # issue #863 — record runner/disk transitions
 from gh_utils import gh_api_admin
 from identity import require_fleet_peer  # issue #922 — intra-fleet auth gate
 from machine_registry import load_machine_registry
-from proxy_utils import proxy_to_hub, should_mark_hub_circuit_degraded, should_proxy_fleet_to_hub
+from proxy_utils import (
+    proxy_to_hub,
+    should_mark_hub_circuit_degraded,
+    should_proxy_fleet_to_hub,
+)
 from routers.runners import run_runner_svc, runner_num_from_id, runner_svc_path
 from runner_inventory import fetch_org_runners
 from system_utils import (
@@ -141,11 +147,23 @@ async def _fetch_peer_pool(peer: dict) -> dict[str, dict]:
             if resp.status_code == 200:
                 return dict(resp.json())
             reason = classify_node_offline(status_code=resp.status_code)
-            return {peer_pool_name: {"status": "offline", "error": reason["offline_detail"], **reason}}
+            return {
+                peer_pool_name: {
+                    "status": "offline",
+                    "error": reason["offline_detail"],
+                    **reason,
+                }
+            }
     except Exception as e:  # noqa: BLE001 — any failure means the peer is offline
         log.warning("Failed to query peer pool %s at %s: %s", peer_pool_name, peer_url, e)
         reason = classify_node_offline(e)
-        return {peer_pool_name: {"status": "offline", "error": reason["offline_detail"], **reason}}
+        return {
+            peer_pool_name: {
+                "status": "offline",
+                "error": reason["offline_detail"],
+                **reason,
+            }
+        }
 
 
 @router.get("/api/fleet/status", dependencies=[Depends(require_fleet_peer)])
@@ -163,6 +181,9 @@ async def get_fleet_status(request: Request, response: Response, exclude_pools: 
     responses = {}
     local_metrics = await get_system_metrics_snapshot()
     local_metrics["_role"] = "hub" if MACHINE_ROLE == "hub" else "node"
+    local_res_reason = resource_offline_reason(local_metrics)
+    if local_res_reason:
+        local_metrics.update(local_res_reason)
 
     from dashboard_config import PORT, RUNNER_ALIASES
 

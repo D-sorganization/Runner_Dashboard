@@ -29,6 +29,7 @@ from dashboard_config import (
     HOSTNAME,
     RUNNER_BASE_DIR,
 )
+from host_volume import get_host_volume_metrics, resolve_runner_backing_drive
 from security import safe_subprocess_env
 
 UTC = timezone.utc  # noqa: UP017
@@ -704,11 +705,11 @@ def get_storage_pools() -> list[dict[str, Any]]:
         base_path = get_cached_wsl_base_path()
         vhdx_path = get_wsl_vhdx_path(base_path) if base_path else None
 
-        host_disk_path = "/mnt/c"
-        drive_letter = "C"
-        if base_path and len(base_path) >= 2 and base_path[1] == ":":
+        resolved_drive = resolve_runner_backing_drive()
+        drive_letter = resolved_drive[0].upper()
+        if base_path and len(base_path) >= 2 and base_path[1] == ":" and not os.environ.get("RUNNER_BACKING_DRIVE"):
             drive_letter = base_path[0].upper()
-            host_disk_path = f"/mnt/{drive_letter.lower()}"
+        host_disk_path = f"/mnt/{drive_letter.lower()}"
 
         phys = get_cached_windows_drive_physical_properties(drive_letter)
         media_type = phys.get("media_type", "Unknown")
@@ -800,10 +801,10 @@ def get_host_disk_for_pool(pool: dict[str, Any]) -> str:
     """
     storage = pool.get("storage") or {}
 
-    # Prefer explicitly declared host_drive
-    host_drive: str | None = storage.get("host_drive")
-    if host_drive and len(host_drive) >= 1 and host_drive[0].isalpha():
-        return f"/mnt/{host_drive[0].lower()}"
+    # Prefer explicitly declared runner_backing_drive or host_drive
+    backing_drive: str | None = storage.get("runner_backing_drive") or storage.get("host_drive")
+    if backing_drive and len(backing_drive) >= 1 and backing_drive[0].isalpha():
+        return f"/mnt/{backing_drive[0].lower()}"
 
     # Fall back to drive letter from vhdx_path
     vhdx_path: str | None = storage.get("vhdx_path")
@@ -1047,6 +1048,8 @@ async def get_system_metrics_snapshot(
                         "pressure": pool["pressure"],
                     }
 
+        host_vol_metrics = get_host_volume_metrics()
+
         metrics = {
             "hostname": HOSTNAME,
             "platform": platform.platform(),
@@ -1073,11 +1076,11 @@ async def get_system_metrics_snapshot(
                     if host_resources
                     else (host_memory_gb or HOST_MEMORY_GB) or round(mem.total / (1024**3), 1)
                 ),
-                "used_gb": host_resources["memory_used_gb"] if host_resources else round(mem.used / (1024**3), 1),
+                "used_gb": (host_resources["memory_used_gb"] if host_resources else round(mem.used / (1024**3), 1)),
                 "available_gb": (
                     host_resources["memory_available_gb"] if host_resources else round(mem.available / (1024**3), 1)
                 ),
-                "percent": host_resources["memory_percent"] if host_resources else mem.percent,
+                "percent": (host_resources["memory_percent"] if host_resources else mem.percent),
                 "source": "windows-host" if host_resources else "wsl",
                 "swap_total_gb": round(swap.total / (1024**3), 1),
                 "swap_used_gb": round(swap.used / (1024**3), 1),
@@ -1092,7 +1095,9 @@ async def get_system_metrics_snapshot(
                 "pressure": overall_pressure,
                 "pools": pools,
                 "windows_host": windows_host,
+                "host_volume": host_vol_metrics,
             },
+            "host_volume": host_vol_metrics,
             "network": {
                 "bytes_sent": net.bytes_sent,
                 "bytes_recv": net.bytes_recv,
@@ -1102,8 +1107,8 @@ async def get_system_metrics_snapshot(
             "gpu": gpu_info,
             "hardware_specs": hardware_specs,
             "workload_capacity": get_workload_capacity_from_specs(hardware_specs),
-            "runner_processes": get_per_runner_resources(runner_limit) if runner_limit else [],
-            "runner_capacity": get_runner_capacity_snapshot() if get_runner_capacity_snapshot else {},
+            "runner_processes": (get_per_runner_resources(runner_limit) if runner_limit else []),
+            "runner_capacity": (get_runner_capacity_snapshot() if get_runner_capacity_snapshot else {}),
             "io_pressure": get_io_pressure_snapshot(),
             "host_recovery": _get_host_recovery_diagnostics(),
         }
@@ -1168,7 +1173,11 @@ def classify_node_offline(exc: Exception | None = None, *, status_code: int | No
         os_err = cause if isinstance(cause, OSError) else None
         if os_err and os_err.errno == errno.ECONNREFUSED:
             return {"offline_reason": "refused", "offline_detail": "Connection refused"}
-        if os_err and os_err.errno in {errno.ENETUNREACH, errno.EHOSTUNREACH, errno.ECONNRESET}:
+        if os_err and os_err.errno in {
+            errno.ENETUNREACH,
+            errno.EHOSTUNREACH,
+            errno.ECONNRESET,
+        }:
             return {"offline_reason": "network", "offline_detail": "No route to host"}
         return {"offline_reason": "refused", "offline_detail": "Connection refused"}
 
@@ -1177,12 +1186,28 @@ def classify_node_offline(exc: Exception | None = None, *, status_code: int | No
 
 def resource_offline_reason(system: dict) -> dict | None:
     """Classify if a node is 'offline' due to resource pressure."""
-    disk = system.get("disk", {})
-    pressure = disk.get("pressure", {})
-    if pressure.get("status") == "critical":
-        return {"offline_reason": "disk-pressure", "offline_detail": pressure.get("reasons", ["Disk critical"])[0]}
+    disk_obj = system.get("disk")
+    disk: dict[str, Any] = disk_obj if isinstance(disk_obj, dict) else {}
+    host_vol_obj = system.get("host_volume") or disk.get("host_volume")
+    host_vol: dict[str, Any] = host_vol_obj if isinstance(host_vol_obj, dict) else {}
+    if host_vol.get("status") == "critical" or host_vol.get("scheduling_inhibited"):
+        reasons = host_vol.get("reasons") or ["Host volume disk exhaustion floor reached"]
+        return {
+            "offline_reason": "host-volume-exhaustion",
+            "offline_detail": reasons[0],
+            "scheduling_inhibited": True,
+        }
 
-    mem = system.get("memory", {})
+    pressure_obj = disk.get("pressure")
+    pressure: dict[str, Any] = pressure_obj if isinstance(pressure_obj, dict) else {}
+    if pressure.get("status") == "critical":
+        return {
+            "offline_reason": "disk-pressure",
+            "offline_detail": pressure.get("reasons", ["Disk critical"])[0],
+        }
+
+    mem_obj = system.get("memory")
+    mem: dict[str, Any] = mem_obj if isinstance(mem_obj, dict) else {}
     if mem.get("percent", 0) >= 98:
         return {"offline_reason": "oom-pressure", "offline_detail": "Memory usage >= 98%"}
 

@@ -119,6 +119,9 @@ machines:
           disk_bus: SATA
           disk_media_type: SSD
           cache_budget_gb: 360
+    storage:
+      runner_backing_drive: "F:"
+      host_drive: "F:"
     hardware:
       cpu_model: null
       cpu_physical_cores: null

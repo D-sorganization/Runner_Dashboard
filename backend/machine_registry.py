@@ -109,6 +109,7 @@ def _normalize_storage(value: Any, *, field_prefix: str) -> dict[str, Any]:
 
     normalized = dict(value)
     for field in (
+        "runner_backing_drive",
         "host_drive",
         "windows_host_path",
         "wsl_distro",
@@ -446,6 +447,13 @@ def merge_registry_with_live_nodes(
             parent_machine = registry_entry.get("parent_machine")
             if parent_machine:
                 seen.add(_normalize_token(str(parent_machine)))
+        host_vol = (
+            merged_node.get("host_volume")
+            or merged_node.get("system", {}).get("host_volume")
+            or merged_node.get("system", {}).get("disk", {}).get("host_volume")
+        )
+        if host_vol is not None:
+            merged_node["host_volume"] = host_vol
         merged.append(merged_node)
 
     for entry in _iter_registry_entries(registry):

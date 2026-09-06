@@ -86,6 +86,7 @@ async def get_fleet_hardware(
                 "hardware_specs": specs,
                 "workload_capacity": capacity,
                 "offline_reason": node.get("offline_reason"),
+                "host_volume": node.get("host_volume") or node.get("system", {}).get("host_volume"),
             }
         )
     return {
