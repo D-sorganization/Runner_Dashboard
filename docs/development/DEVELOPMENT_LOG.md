@@ -18,6 +18,16 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-0005 · Runner Host Reality vs /tmp Runbook and Profile Cleanup 1159
+
+- **State:** in_progress
+- **Owner:** agent
+- **PR:** not created
+- **Paths:** `deploy/clean-stale-shell-profiles.sh`, `deploy/install-runner-maintenance.sh`, `docs/runbooks/runner-tmp-exhaustion.md`, `tests/deploy/test_clean_stale_shell_profiles.py`
+- **Started:** 2026-09-06
+- **Last verified:** 2026-09-06
+- **Summary:** Resolve Issue #1159: Support standalone maintenance script deployment on hosts without a local repo checkout, document explicit per-host WSL distro names, and add automated pruning of stale cargo/env source statements from ~/.profile and ~/.bashrc.
+
 ### DL-0004 · Hub Dashboard Fleet Telemetry Aggregation 1169
 
 - **State:** in_progress

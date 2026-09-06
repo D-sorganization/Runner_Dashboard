@@ -1,28 +1,27 @@
-# Current Handoff — Hub Dashboard Fleet Telemetry Aggregation & Stale Registry Validation (#1169)
+# Current Handoff — Runner Host Reality vs /tmp Runbook & Profile Cleanup (#1159)
 
-Last updated: 2026-09-06T09:25:00-07:00
+Last updated: 2026-09-06T10:15:00-07:00
 
 ## Identity
 
 - Repository: `D-sorganization/Runner_Dashboard`
 - Working directory: `C:\Users\diete\Repositories\Runner_Dashboard`
-- Branch: `fix/1169-hub-fleet-aggregation`
-- Baseline commit: `1cabb01`
-- Governing issue: [#1169](https://github.com/D-sorganization/Runner_Dashboard/issues/1169)
+- Branch: `fix/1159-runner-tmp-runbook-host-parity`
+- Baseline commit: `origin/main`
+- Governing issue: [#1159](https://github.com/D-sorganization/Runner_Dashboard/issues/1159)
 
 ## Current Objective
 
-1. Add startup registry validation ensuring every non-retired machine and runner pool resolves to a reachable/valid dashboard URL and configuration (#1169).
-2. Ensure `/api/fleet/status` on the Hub dashboard aggregates telemetry across all healthy machines (`DeskComputer`, `OGLaptop`, `ControlTower-Runner`) and identifies the local pool by its active name (`ControlTower-Runner`) rather than the retired `ControlTower-NVMe`.
-3. Ensure graceful handling of offline or connection-refused nodes without dropping telemetry from healthy nodes.
+1. Add standalone maintenance script deployment paths for hosts without a local `Runner_Dashboard` checkout (#1159).
+2. Document explicit per-host WSL distribution names (`Ubuntu`, `Ubuntu-22.04`, `ControlTower-Runner`) for host maintenance procedures.
+3. Automatically prune stale and missing cargo/env source lines from `~/.profile` and `~/.bashrc` via `deploy/clean-stale-shell-profiles.sh` and wire into `install-runner-maintenance.sh`.
 
 ## Implemented
 
-- Added `assert_valid_active_registry` to `backend/fleet_autoconfig.py` and wired into `backend/server.py` (`_startup` and autoderivation boundary) to fail fast on invalid URLs, missing machine/pool names, or duplicate port assignments on active pools.
-- Updated `derive_pool_topology` in `backend/fleet_autoconfig.py` to filter out retired runner pools (`retired: true`), ensuring the local pool resolves to `ControlTower-Runner` and prevents phantom peer probing of retired pools.
-- Updated `_iter_registry_entries` in `backend/machine_registry.py` to skip retired entries so they are not treated as missing active machines.
-- Unified `FLEET_NODES` across `backend/server.py`, `backend/dashboard_config`, and `backend/routers/fleet.py`, enabling registry autoderivation in `routers/fleet.py` when `FLEET_NODES` is empty and autoderivation is enabled.
-- Authored comprehensive unit tests in `tests/test_hub_fleet_aggregation.py` and `tests/test_fleet_autoconfig.py` covering multi-node aggregation, connection refused offline handling, and startup assertions.
+- Created `deploy/clean-stale-shell-profiles.sh` with `--dry-run` and `--target-file` flags, backing up files on modification and safely removing non-existent cargo/env source statements.
+- Integrated `clean-stale-shell-profiles.sh` into `deploy/install-runner-maintenance.sh` so host maintenance cleans dead profile entries automatically.
+- Updated runbooks in `docs/runbooks/runner-tmp-exhaustion.md` and `Repository_Management/docs/runbooks/runner_tmp_exhaustion.md` documenting curl/gh api installation and per-host distro arguments.
+- Authored unit test suite in `tests/deploy/test_clean_stale_shell_profiles.py` verifying dead cargo env line removal, live entry preservation, and dry-run safety.
 
 ## Validation
 

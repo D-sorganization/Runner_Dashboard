@@ -1,9 +1,20 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.205
+**Spec Version:** 2.5.206
 **Application Version:** 4.9.34 (see `VERSION`)
-**Last Updated:** 2026-09-06T09:25:00-07:00
+**Last Updated:** 2026-09-06T10:15:00-07:00
 **Status:** Active
+
+- **2026-09-06 (2.5.206):** Runner host reality vs /tmp runbook, per-host distro parity,
+  and profile cargo cleanup (#1159). Host environments like OGLaptop lack a local
+  `Runner_Dashboard` checkout, execute across varying WSL distribution names (`Ubuntu`,
+  `Ubuntu-22.04`, `ControlTower-Runner`), and accumulated 12 deleted cargo env source
+  lines in `~/.profile` causing noise in login shells. Created
+  `deploy/clean-stale-shell-profiles.sh` to safely prune non-existent cargo/env lines from
+  shell profiles and integrated it into `deploy/install-runner-maintenance.sh` as well as
+  the URL/curl-based standalone runbook path. Documented explicit per-host distro mapping
+  and standalone script deployment in `docs/runbooks/runner-tmp-exhaustion.md`. TDD:
+  `tests/deploy/test_clean_stale_shell_profiles.py`.
 
 - **2026-09-06 (2.5.205):** Hub dashboard telemetry aggregation and stale registry
   validation (#1169). The hub dashboard previously reported telemetry for only one node
