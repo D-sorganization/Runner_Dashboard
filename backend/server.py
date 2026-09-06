@@ -103,7 +103,11 @@ from diagnostics.keepalive_inspector import (  # noqa: E402
     _inspect_wslconfig,
     _probe_detail,
 )
-from error_models import from_http_exception, internal_error, validation_error  # noqa: E402
+from error_models import (  # noqa: E402
+    from_http_exception,
+    internal_error,
+    validation_error,
+)
 from fleet_autoconfig import derive_fleet_nodes_from_registry  # noqa: E402
 from http_clients import initialize_http_clients, shutdown_http_clients  # noqa: E402
 from local_app_monitoring import collect_local_apps  # noqa: E402
@@ -123,7 +127,9 @@ from routers import assessments as _assessments_router  # noqa: E402
 
 # parse_report_metrics and sanitize_report_date moved to routers/reports.py (issue #358)
 from routers import assistant as _assistant_router  # noqa: E402
-from routers import autoscaler_pools as _autoscaler_pools_router  # noqa: E402  # issue #755
+from routers import (  # noqa: E402
+    autoscaler_pools as _autoscaler_pools_router,
+)  # issue #755
 from routers import credentials as _credentials_router  # noqa: E402
 from routers import deployment as _deployment_router  # noqa: E402
 from routers import diagnostics as _diagnostics_router  # noqa: E402
@@ -624,14 +630,21 @@ async def _systemd_watchdog_loop() -> None:
     try:
         watchdog_usec = int(raw)
     except ValueError:
-        log.warning("systemd_watchdog: WATCHDOG_USEC=%r is not an integer; skipping heartbeat", raw)
+        log.warning(
+            "systemd_watchdog: WATCHDOG_USEC=%r is not an integer; skipping heartbeat",
+            raw,
+        )
         return
     if watchdog_usec <= 0:
         return
 
     # Send twice as often as systemd's deadline so one stutter doesn't trip it.
     interval_s = (watchdog_usec / 1_000_000) / 2.0
-    log.info("systemd_watchdog: heartbeat every %.2fs (WATCHDOG_USEC=%d)", interval_s, watchdog_usec)
+    log.info(
+        "systemd_watchdog: heartbeat every %.2fs (WATCHDOG_USEC=%d)",
+        interval_s,
+        watchdog_usec,
+    )
 
     while True:
         await asyncio.sleep(interval_s)
@@ -1147,6 +1160,9 @@ def _resource_offline_reason(system: dict) -> dict | None:
         pressure.append(f"CPU >= {ResourceThreshold.CPU_HARD_STOP_PERCENT:g}%")
     if (memory.get("percent") or 0) >= ResourceThreshold.MEMORY_CRITICAL_PERCENT:
         pressure.append(f"memory >= {ResourceThreshold.MEMORY_CRITICAL_PERCENT:g}%")
+    host_vol = system.get("host_volume") or disk.get("host_volume") or {}
+    if host_vol.get("status") == "critical" or host_vol.get("scheduling_inhibited"):
+        pressure.append("host volume disk critical (scheduling inhibited)")
     if (disk.get("pressure") or {}).get("status") == "critical":
         pressure.append("disk pressure critical")
     elif (disk.get("percent") or 0) >= ResourceThreshold.DISK_HARD_STOP_PERCENT:
@@ -2400,7 +2416,12 @@ async def _orchestrator_capacity_provider() -> dict[str, int]:
         return count_runner_capacity(runners)
     except Exception as exc:  # noqa: BLE001 — fail safe: report zero capacity
         log.warning("orchestrator capacity provider failed, denying by default: %s", exc)
-        return {"idle_runners": 0, "online_runners": 0, "busy_runners": 0, "total_runners": 0}
+        return {
+            "idle_runners": 0,
+            "online_runners": 0,
+            "busy_runners": 0,
+            "total_runners": 0,
+        }
 
 
 _orchestrator_api.set_capacity_provider(_orchestrator_capacity_provider)
@@ -2577,7 +2598,10 @@ async def drain_endpoint(request: Request) -> dict:
     # let ANY network peer drain the server. Enforce the loopback restriction
     # with an explicit check that raises regardless of optimization level.
     if client_host not in ("127.0.0.1", "::1", "localhost"):
-        log.warning("/_drain refused for non-loopback client %s", sanitize_log_value(client_host))
+        log.warning(
+            "/_drain refused for non-loopback client %s",
+            sanitize_log_value(client_host),
+        )
         raise HTTPException(status_code=403, detail="drain only from loopback")
     _drain_mode = True
     log.info("/_drain activated by %s", client_host)

@@ -44,7 +44,7 @@ param(
   # package DB) — the probable origin of the #1071 NVMe corruption, which on
   # 2026-07-31 came within minutes of repeating on the LIVE SSD pool. F: holds
   # the 326GB live runner vhdx, so its floor is the larger one.
-  [hashtable]$DiskFloorsGb        = @{ 'C' = 25; 'F' = 40 },
+  [hashtable]$DiskFloorsGb        = @{ 'C' = 25; 'F' = 40; 'D' = 30 },
   [string]$DeskWslDistro          = "Ubuntu-22.04",
   [string]$RunnerSchedulerState   = "/var/lib/runner-scheduler/state.json",
   [string]$LocalKeepAliveTask     = "WSL-Runner-KeepAlive",
@@ -280,7 +280,7 @@ foreach (`$p in Get-Process WmiPrvSE -ErrorAction SilentlyContinue) {
 }
 "WMIMAX=`$max"
 "WMIKILLED=`$(`$killed -join ',')"
-foreach (`$dl in 'C', 'F') {
+foreach (`$dl in 'C', 'F', 'D') {
   `$v = Get-Volume -DriveLetter `$dl -ErrorAction SilentlyContinue
   # `${dl} braces are required: "`$dl:" would parse as a scope qualifier.
   if (`$v) { "DISKFREE=`${dl}:`$([math]::Round(`$v.SizeRemaining/1GB,2))" }
