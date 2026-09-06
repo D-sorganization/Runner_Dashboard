@@ -311,9 +311,9 @@ async def auth_perimeter_check(request: Request, call_next: Any) -> Any:
     app = request.scope.get("app")
     overrides = getattr(app, "dependency_overrides", {}) if app is not None else {}
     if overrides:
-        from identity import require_fleet_peer, require_principal
+        from identity import require_fleet_peer, require_orchestrator_peer, require_principal
 
-        if require_principal in overrides or require_fleet_peer in overrides:
+        if require_principal in overrides or require_fleet_peer in overrides or require_orchestrator_peer in overrides:
             return await call_next(request)
 
     from identity import resolve_perimeter_principal

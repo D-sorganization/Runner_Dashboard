@@ -18,11 +18,21 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-0005 · Runner Host Reality vs /tmp Runbook and Profile Cleanup 1159
+### DL-0006 · Orchestrator Authentication Perimeter Hardening 1173
 
 - **State:** in_progress
 - **Owner:** agent
 - **PR:** not created
+- **Paths:** `backend/identity.py`, `backend/middleware.py`, `backend/orchestrator_api.py`, `tests/api/test_orchestrator_api.py`
+- **Started:** 2026-09-06
+- **Last verified:** 2026-09-06
+- **Summary:** Resolve Issue #1173: Require authentication on orchestrator state-changing endpoints (/api/orchestrator/lease, /release, /queue control) via require_orchestrator_peer, supporting principal tokens, HUB_FLEET_TOKEN bearer matching, and loopback when DASHBOARD_LOOPBACK_AUTH=1, while rejecting unauthenticated remote callers with HTTP 401.
+
+### DL-0005 · Runner Host Reality vs /tmp Runbook and Profile Cleanup 1159
+
+- **State:** shipped
+- **Owner:** agent
+- **PR:** #1172
 - **Paths:** `deploy/clean-stale-shell-profiles.sh`, `deploy/install-runner-maintenance.sh`, `docs/runbooks/runner-tmp-exhaustion.md`, `tests/deploy/test_clean_stale_shell_profiles.py`
 - **Started:** 2026-09-06
 - **Last verified:** 2026-09-06
@@ -30,9 +40,9 @@ reachable from any live state and `abandoned` from `parked`.
 
 ### DL-0004 · Hub Dashboard Fleet Telemetry Aggregation 1169
 
-- **State:** in_progress
+- **State:** shipped
 - **Owner:** agent
-- **PR:** not created
+- **PR:** #1171
 - **Paths:** `backend/fleet_autoconfig.py`, `backend/machine_registry.py`, `backend/routers/fleet.py`, `backend/server.py`, `tests/test_fleet_autoconfig.py`, `tests/test_hub_fleet_aggregation.py`
 - **Started:** 2026-09-06
 - **Last verified:** 2026-09-06

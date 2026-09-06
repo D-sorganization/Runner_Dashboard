@@ -40,7 +40,8 @@ import uuid
 from collections.abc import Awaitable, Callable
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from identity import require_fleet_peer, require_orchestrator_peer
 from pydantic import BaseModel, Field, field_validator
 
 log = logging.getLogger("dashboard.orchestrator")
@@ -285,7 +286,10 @@ def _budget_limit_usd() -> float:
 
 
 @router.post("/api/orchestrator/lease", response_model=LeaseResponse)
-async def request_lease(req: LeaseRequest) -> LeaseResponse:
+async def request_lease(
+    req: LeaseRequest,
+    _caller: str = Depends(require_orchestrator_peer),
+) -> LeaseResponse:
     """Admission gate: grant a dispatch slot iff capacity and mode allow."""
     _require_enabled()
     capacity = await _fetch_capacity()
@@ -331,11 +335,12 @@ async def request_lease(req: LeaseRequest) -> LeaseResponse:
         )
         _state.leases[lease.lease_id] = lease
         log.info(
-            "orchestrator: GRANT lease %s to %s (slots=%d idle=%d)",
+            "orchestrator: GRANT lease %s to %s (slots=%d idle=%d caller=%s)",
             lease.lease_id,
             req.requested_by,
             req.slots,
             idle,
+            _caller,
         )
         return LeaseResponse(
             granted=True,
@@ -348,18 +353,23 @@ async def request_lease(req: LeaseRequest) -> LeaseResponse:
 
 
 @router.post("/api/orchestrator/release", response_model=ReleaseResponse)
-async def release_lease(req: ReleaseRequest) -> ReleaseResponse:
+async def release_lease(
+    req: ReleaseRequest,
+    _caller: str = Depends(require_orchestrator_peer),
+) -> ReleaseResponse:
     """Release a lease, freeing its slots. Idempotent for unknown ids."""
     _require_enabled()
     with _state.lock:
         existed = _state.leases.pop(req.lease_id, None) is not None
     if existed:
-        log.info("orchestrator: released lease %s", req.lease_id)
+        log.info("orchestrator: released lease %s (caller=%s)", req.lease_id, _caller)
     return ReleaseResponse(released=existed, lease_id=req.lease_id)
 
 
 @router.get("/api/orchestrator/queue", response_model=QueueStatusResponse)
-async def get_queue() -> QueueStatusResponse:
+async def get_queue(
+    _peer: str = Depends(require_fleet_peer),
+) -> QueueStatusResponse:
     """Visibility surface for the Conductor tab."""
     _require_enabled()
     capacity = await _fetch_capacity()
@@ -369,7 +379,10 @@ async def get_queue() -> QueueStatusResponse:
 
 
 @router.post("/api/orchestrator/queue", response_model=QueueStatusResponse)
-async def control_queue(req: QueueActionRequest) -> QueueStatusResponse:
+async def control_queue(
+    req: QueueActionRequest,
+    _caller: str = Depends(require_orchestrator_peer),
+) -> QueueStatusResponse:
     """Manual override: pause / resume / drain orchestrator work."""
     _require_enabled()
     capacity = await _fetch_capacity()
@@ -381,5 +394,5 @@ async def control_queue(req: QueueActionRequest) -> QueueStatusResponse:
                 _state.mode = "running"
             case "drain":
                 _state.mode = "draining"
-        log.info("orchestrator: queue mode set to %s via %s", _state.mode, req.action)
+        log.info("orchestrator: queue mode set to %s via %s (caller=%s)", _state.mode, req.action, _caller)
         return _build_status(capacity)
