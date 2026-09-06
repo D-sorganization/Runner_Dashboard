@@ -1,9 +1,23 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.203
+**Spec Version:** 2.5.204
 **Application Version:** 4.9.34 (see `VERSION`)
-**Last Updated:** 2026-09-04T00:00:00-07:00
+**Last Updated:** 2026-09-06T08:30:00-07:00
 **Status:** Active
+
+- **2026-09-06 (2.5.204):** Monitor host volume disk guard and inhibit scheduling
+  on exhaustion (#1168). Guest runner VMs and WSL distributions cannot see the
+  host backing volume that their virtual disks expand into. When the host drive
+  runs low on disk space, the virtual disk cannot expand, causing abrupt I/O
+  errors across all runners hosted on that volume. Added `backend/host_volume.py`
+  to probe host volume disk metrics (`total_bytes`, `used_bytes`, `free_bytes`,
+  `free_percent`) using Windows API / `shutil.disk_usage` and normalized host
+  drive paths from `backend/machine_registry.yml` (`runner_backing_drive`). Enforced
+  a hard floor alarm (< 5% free or < 30 GB free) that flags critical state and sets
+  `offline_reason="host-volume-exhaustion"` to inhibit runner job scheduling before
+  catastrophic host volume exhaustion occurs. Distinctly separated `host_volume`
+  from guest distro-root disk metrics across backend models and `/api/fleet/status`.
+  TDD: `tests/test_host_volume.py`.
 
 - **2026-09-04 (2.5.203):** Remove the `pull_request` `paths-ignore` filter
   from `ci-standard.yml`, which made `LICENSE`-only and `.gitignore`-only PRs
@@ -17,7 +31,7 @@
   status checks") but never applied it to its remaining two entries. The
   `push` filter is unchanged: post-merge CI does not gate the required
   context. New `tests/test_workflow_hygiene.py::
-  test_required_context_workflows_have_no_pull_request_path_filters` fails if
+test_required_context_workflows_have_no_pull_request_path_filters` fails if
   any workflow providing a context in `config/required_status_checks_policy.json`
   reintroduces a `paths`/`paths-ignore` filter on `pull_request`. Found while
   auditing the fleet after RM#1529 and Tools#4974 deadlocked the same way.
@@ -25,7 +39,7 @@
 - **2026-09-04 (2.5.202):** Close two secret-hygiene gaps found while tracing a
   `GH_TOKEN` leak in agent tooling. (1) `tests/test_no_secrets_in_repo.py`
   matched GitHub tokens as `ghs_[A-Za-z0-9]{36,255}`, which cannot match the
-  App *installation* tokens this fleet actually mints
+  App _installation_ tokens this fleet actually mints
   (`ghs_<app_id>_<base64url-JWT>`) - the underscore after the app id ends the
   character class, so the gate was blind to the one credential shape most
   likely to reach a file here. The five GitHub patterns now share a
@@ -55,7 +69,7 @@
   gains a `summary` key; the pre-retirement `control_tower_summary` ships
   alongside it as an alias for one release (two-step schema change) and is
   removed in the next. `inspect_jules_workflows` is retained as a deprecated
-  alias on the same schedule. Because the panel now lists *this* repo's
+  alias on the same schedule. Because the panel now lists _this_ repo's
   workflows, `POST /api/agent-remediation/dispatch-jules` — which was hardcoded
   to dispatch into `Repository_Management` — now targets the dashboard repo via
   the new `workflow_dispatch_endpoint()` helper (`DASHBOARD_REPO`,
@@ -68,12 +82,12 @@
   the tmp-litter GC harness stops depending on which shell launched pytest
   (#1164). Six tests in `tests/deploy/test_runner_tmp_litter_gc.py` passed under
   Git Bash and failed under PowerShell. Not a flake and not a missing bash — a
-  *wrong* one: Windows carries two valid POSIX bashes and PATH order is set by
+  _wrong_ one: Windows carries two valid POSIX bashes and PATH order is set by
   the launching shell, so `shutil.which("bash")` returned MSYS under Git Bash and
   `C:\Windows\System32\bash.exe` (the WSL launcher, a separate filesystem
   namespace) under PowerShell, where every scratch path came back "No such file
-  or directory". The new `tests/deploy/bash_host.py` resolves bash by *probing
-  capability* rather than by PATH order or executable name: a candidate qualifies
+  or directory". The new `tests/deploy/bash_host.py` resolves bash by _probing
+  capability_ rather than by PATH order or executable name: a candidate qualifies
   only if it can both stat and `find -maxdepth 0` a file the test process just
   wrote, and `BASH is None` drives the same `skipif` the sibling deploy tests
   use. The `find` half is load-bearing — a raw MSYS `usr/bin/bash.exe` passes the
@@ -92,7 +106,7 @@
   `test_repo_policy_references_real_workflows` and produced `policy_errors` from
   `scripts/check_workflow_runner_routing.py`, turning `main` red. The tier
   classification is a per-workflow judgement and cannot be derived from the
-  directory, but its *coverage* can: the new
+  directory, but its _coverage_ can: the new
   `test_every_workflow_is_classified_or_explicitly_exempt` derives the on-disk
   workflow set and requires every file to be either classified or listed in a
   `_UNCLASSIFIED` map with a written rationale (four qualify — they are pinned
@@ -111,27 +125,27 @@
   workspace states that make the NEXT job's `actions/checkout` report success
   while leaving a half-populated or empty working tree — so the job dies on a
   path its PR never touched (`scripts/ci/rehydrate_docker_context.py: No such
-  file or directory`; `Can't find 'action.yml' under
-  .github/actions/fetch-pinned-tools`). State A: `core.sparseCheckout=true`
+file or directory`; `Can't find 'action.yml' under
+.github/actions/fetch-pinned-tools`). State A: `core.sparseCheckout=true`
   with an absent/empty `.git/info/sparse-checkout` — an empty pattern set
   matches nothing, so unpack-trees treats every path as belonging outside the
   working tree, `git checkout --force` empties the tree and still exits 0, and
   the "Path '<p>' not uptodate; will not remove from working tree" lines are
-  git's `WARNING_SPARSE_NOT_UPTODATE_FILE`, a *warning* on the sparse code
+  git's `WARNING_SPARSE_NOT_UPTODATE_FILE`, a _warning_ on the sparse code
   path (verified on ControlTower). A genuine sparse checkout (config on AND
   patterns present) is left alone. State B: a stale index stat cache — a
   recursive `chown -R` over a runner `_work` tree bumps every inode's ctime
   without touching content, so every tracked path reads stat-dirty while `git
-  status` still calls the tree clean (measured live: 13,220 of 13,224 tracked
+status` still calls the tree clean (measured live: 13,220 of 13,224 tracked
   paths on ControlTower runner-4, ctime diverged, mtime/size/inode identical);
   `git update-index -q --really-refresh` restores it. Both are guarded to
   paths under a runner `_work` tree and bounded by `timeout 120`; the hook
-  deliberately does NOT chown/chmod the workspace, which is the *cause* of
+  deliberately does NOT chown/chmod the workspace, which is the _cause_ of
   state B rather than a remedy. Hooks are read per job, so deployment needs no
   runner restart. (2) `cleanup_litter_in` in `deploy/runner-cleanup.sh` no
   longer fails the whole pass when a concurrent CI job deletes its own pip
   temporary between `find`'s readdir and its `-exec`: `find` printed `No such
-  file or directory` and exited non-zero, which under `set -Eeuo pipefail`
+file or directory` and exited non-zero, which under `set -Eeuo pipefail`
   left `runner-cleanup.service` in `Result: exit-code` for hours and skipped
   every later stage of the daily pass while only the hourly disk-guard pass
   ran. The filter is by exact condition, not a blanket `2>/dev/null || true` —
@@ -150,24 +164,25 @@
 - **2026-09-03 (2.5.197):** Durable half of the runner `/tmp` exhaustion fix
   (Repository_Management#1489 via #1511, program #1505). (1) The `/tmp`
   litter GC from 2.5.194 is factored into `cleanup_litter_in <dir> <age_min>`
-  + `tmp_litter_age_min` and gains the `tmp*` (Python `tempfile` default
-  prefix) and `pymp-*` (multiprocessing) patterns observed alongside `pip-*`
-  in both incidents. (2) New `cleanup_runner_tmpdirs` applies the same GC to
-  each runner's relocated scratch dir `<runner_dir>/_work/_tmp`
-  (`RUNNER_TMP_SUBDIR`) while that runner is idle (`runner_busy`), in both
-  the hourly `--disk-guard` pass and the daily full pass — runner-safe,
-  never stops units. (3) New `deploy/configure-runner-tmpdir.sh` writes
-  `TMPDIR=<runner_dir>/_work/_tmp` into each `actions.runner.*.service`
-  workdir's `.env` (idempotent, atomic, `--dry-run`, `--runner-dir` for
-  tests/no-systemd hosts) and creates the directory, so pip/pytest/tempfile
-  scratch lands on the data disk instead of the RAM-backed tmpfs; it never
-  restarts runners — the operator restarts idle units afterwards (runbook:
-  Repository_Management `docs/runbooks/runner_tmp_exhaustion.md`). TDD:
-  `tests/deploy/test_runner_tmp_litter_gc.py` sources the real shell
-  functions into a stubbed bash and asserts survivors on a seeded tree
-  (aged litter reaped, fresh litter and non-litter kept, 30 m pressure
-  window, no recursion) plus configure-script behaviour; existing
-  `TestTmpLitterGC` pins retargeted to the factored functions.
+
+  - `tmp_litter_age_min` and gains the `tmp*` (Python `tempfile` default
+    prefix) and `pymp-*` (multiprocessing) patterns observed alongside `pip-*`
+    in both incidents. (2) New `cleanup_runner_tmpdirs` applies the same GC to
+    each runner's relocated scratch dir `<runner_dir>/_work/_tmp`
+    (`RUNNER_TMP_SUBDIR`) while that runner is idle (`runner_busy`), in both
+    the hourly `--disk-guard` pass and the daily full pass — runner-safe,
+    never stops units. (3) New `deploy/configure-runner-tmpdir.sh` writes
+    `TMPDIR=<runner_dir>/_work/_tmp` into each `actions.runner.*.service`
+    workdir's `.env` (idempotent, atomic, `--dry-run`, `--runner-dir` for
+    tests/no-systemd hosts) and creates the directory, so pip/pytest/tempfile
+    scratch lands on the data disk instead of the RAM-backed tmpfs; it never
+    restarts runners — the operator restarts idle units afterwards (runbook:
+    Repository_Management `docs/runbooks/runner_tmp_exhaustion.md`). TDD:
+    `tests/deploy/test_runner_tmp_litter_gc.py` sources the real shell
+    functions into a stubbed bash and asserts survivors on a seeded tree
+    (aged litter reaped, fresh litter and non-litter kept, 30 m pressure
+    window, no recursion) plus configure-script behaviour; existing
+    `TestTmpLitterGC` pins retargeted to the factored functions.
 
 - **2026-09-02 (2.5.196):** Decompose credentials router (`get_credentials()`)
   into small, cohesive resolvers (< 50 lines each) adhering to Design by
