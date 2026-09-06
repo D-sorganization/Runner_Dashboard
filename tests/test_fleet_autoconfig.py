@@ -173,3 +173,183 @@ def test_assert_no_maxwell_port_collision_allows_local_port_and_distinct_port() 
     # Maxwell sharing *this* dashboard's own port is the co-located reverse-proxy
     # case, not a peer-pool collision, so it is allowed here.
     assert_no_maxwell_port_collision(_SPLIT_POOL_REGISTRY, maxwell_port=8321, local_port=8321)
+
+
+# ---------------------------------------------------------------------------
+# Issue #1169: Active registry validation and retired pool topology handling
+# ---------------------------------------------------------------------------
+
+
+def test_derive_pool_topology_ignores_retired_pools() -> None:
+    registry = {
+        "machines": [
+            {
+                "name": "ControlTower",
+                "aliases": ["controltower"],
+                "dashboard_url": "http://controltower.tail2bbcc7.ts.net:8321",
+                "runner_pools": [
+                    {
+                        "name": "ControlTower-NVMe",
+                        "aliases": ["controltower-nvme"],
+                        "dashboard_url": "http://controltower.tail2bbcc7.ts.net:8321",
+                        "retired": True,
+                    },
+                    {
+                        "name": "ControlTower-Runner",
+                        "aliases": ["controltower-runner"],
+                        "dashboard_url": "http://controltower.tail2bbcc7.ts.net:8321",
+                    },
+                ],
+            },
+        ],
+    }
+
+    local, peers = derive_pool_topology(
+        registry,
+        local_port=8321,
+        display_name="ControlTower",
+        platform_node="controltower",
+    )
+    assert local == "ControlTower-Runner"
+    assert peers == []
+
+
+def test_derive_fleet_nodes_skips_retired_machines() -> None:
+    registry = {
+        "machines": [
+            {
+                "name": "ControlTower",
+                "aliases": ["controltower"],
+                "dashboard_url": "http://ct:8321",
+            },
+            {
+                "name": "brick",
+                "dashboard_url": "http://brick:8321",
+                "retired": True,
+            },
+            {
+                "name": "OGLaptop",
+                "dashboard_url": "http://oglaptop:8321",
+            },
+        ],
+    }
+
+    nodes = derive_fleet_nodes_from_registry(
+        registry,
+        display_name="ControlTower",
+        platform_node="controltower",
+    )
+    assert nodes == {"OGLaptop": "http://oglaptop:8321"}
+    assert "brick" not in nodes
+
+
+def test_assert_valid_active_registry_passes_on_valid_registry() -> None:
+    from fleet_autoconfig import assert_valid_active_registry
+
+    valid_registry = {
+        "machines": [
+            {
+                "name": "ControlTower",
+                "dashboard_url": "http://controltower.tail2bbcc7.ts.net:8321",
+                "runner_pools": [
+                    {
+                        "name": "ControlTower-NVMe",
+                        "dashboard_url": "http://controltower.tail2bbcc7.ts.net:8321",
+                        "retired": True,
+                    },
+                    {
+                        "name": "ControlTower-Runner",
+                        "dashboard_url": "http://controltower.tail2bbcc7.ts.net:8321",
+                    },
+                ],
+            },
+            {
+                "name": "DeskComputer",
+                "dashboard_url": "http://deskcomputer.tail2bbcc7.ts.net:8321",
+            },
+            {
+                "name": "OGLaptop",
+                "dashboard_url": "http://oglaptop.tail2bbcc7.ts.net:8321",
+            },
+        ]
+    }
+    assert_valid_active_registry(valid_registry)
+
+
+def test_assert_valid_active_registry_rejects_missing_machine_name() -> None:
+    from fleet_autoconfig import assert_valid_active_registry
+
+    bad_registry = {
+        "machines": [
+            {"dashboard_url": "http://deskcomputer:8321"},
+        ]
+    }
+    with pytest.raises(RuntimeError, match="Active machine missing name"):
+        assert_valid_active_registry(bad_registry)
+
+
+def test_assert_valid_active_registry_rejects_unresolvable_machine_url() -> None:
+    from fleet_autoconfig import assert_valid_active_registry
+
+    bad_registry = {
+        "machines": [
+            {"name": "DeskComputer", "dashboard_url": ""},
+        ]
+    }
+    with pytest.raises(RuntimeError, match="no resolvable dashboard URL"):
+        assert_valid_active_registry(bad_registry)
+
+
+def test_assert_valid_active_registry_rejects_all_pools_retired() -> None:
+    from fleet_autoconfig import assert_valid_active_registry
+
+    bad_registry = {
+        "machines": [
+            {
+                "name": "ControlTower",
+                "dashboard_url": "http://controltower.tail2bbcc7.ts.net:8321",
+                "runner_pools": [
+                    {"name": "Pool-1", "dashboard_url": "http://controltower.tail2bbcc7.ts.net:8321", "retired": True},
+                ],
+            }
+        ]
+    }
+    with pytest.raises(RuntimeError, match="all are retired"):
+        assert_valid_active_registry(bad_registry)
+
+
+def test_assert_valid_active_registry_rejects_active_pool_without_url() -> None:
+    from fleet_autoconfig import assert_valid_active_registry
+
+    bad_registry = {
+        "machines": [
+            {
+                "name": "ControlTower",
+                "dashboard_url": "http://controltower.tail2bbcc7.ts.net:8321",
+                "runner_pools": [
+                    {"name": "Pool-1", "dashboard_url": ""},
+                ],
+            }
+        ]
+    }
+    with pytest.raises(RuntimeError, match="missing dashboard_url"):
+        assert_valid_active_registry(bad_registry)
+
+
+def test_assert_valid_active_registry_rejects_duplicate_ports_on_active_pools() -> None:
+    from fleet_autoconfig import assert_valid_active_registry
+
+    bad_registry = {
+        "machines": [
+            {
+                "name": "ControlTower",
+                "dashboard_url": "http://controltower.tail2bbcc7.ts.net:8321",
+                "runner_pools": [
+                    {"name": "ControlTower-NVMe", "dashboard_url": "http://controltower.tail2bbcc7.ts.net:8321"},
+                    {"name": "ControlTower-Runner", "dashboard_url": "http://controltower.tail2bbcc7.ts.net:8321"},
+                ],
+            }
+        ]
+    }
+    with pytest.raises(RuntimeError, match="duplicate port 8321.*retired"):
+        assert_valid_active_registry(bad_registry)

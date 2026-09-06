@@ -1,44 +1,40 @@
-# Current Handoff — Release 4.9.34 Qualification, Release Recovery & Guarded OGLaptop Deployment
+# Current Handoff — Hub Dashboard Fleet Telemetry Aggregation & Stale Registry Validation (#1169)
 
-Last updated: 2026-08-27T06:00:00-07:00
+Last updated: 2026-09-06T09:25:00-07:00
 
 ## Identity
 
 - Repository: `D-sorganization/Runner_Dashboard`
-- Working directory:
-  `C:\Users\diete\Repositories\_worktrees\runner-dashboard-issue-1138`
-- Branch: `fix/issue-1138-guarded-oglaptop-deploy`
-- Baseline commit: `60ecfff`
-- Implementation commit: `SELF` — resolve with `git rev-parse HEAD`
-- Pull request: [#1140](https://github.com/D-sorganization/Runner_Dashboard/pull/1140)
-- Governing issue: [#1138](https://github.com/D-sorganization/Runner_Dashboard/issues/1138)
+- Working directory: `C:\Users\diete\Repositories\Runner_Dashboard`
+- Branch: `fix/1169-hub-fleet-aggregation`
+- Baseline commit: `1cabb01`
+- Governing issue: [#1169](https://github.com/D-sorganization/Runner_Dashboard/issues/1169)
 
 ## Current Objective
 
-1. Guard exact OGLaptop release deployment transactions with a workflow-dispatch-only path crossing into a root-owned no-argument helper boundary (#1138).
-2. Maintain interactive-safe DeskComputer capacity policies and qualified 4.9.34 release state.
+1. Add startup registry validation ensuring every non-retired machine and runner pool resolves to a reachable/valid dashboard URL and configuration (#1169).
+2. Ensure `/api/fleet/status` on the Hub dashboard aggregates telemetry across all healthy machines (`DeskComputer`, `OGLaptop`, `ControlTower-Runner`) and identifies the local pool by its active name (`ControlTower-Runner`) rather than the retired `ControlTower-NVMe`.
+3. Ensure graceful handling of offline or connection-refused nodes without dropping telemetry from healthy nodes.
 
 ## Implemented
 
-- Guarded OGLaptop release deployment workflow (`.github/workflows/deploy-qualified-release.yml`), helper script (`deploy/bootstrap-qualified-release-deploy.sh`), and runtime libraries.
-- Strict request validation, single-busy-worker verification, signed release archive and provenance validation before host mutation.
-- Rollback snapshotting, transaction journaling, and automatic rollback on post-boundary failures.
-- Release recovery path for late-stage publication failures (#1129).
-- Canonical schedule defaults and configuration schemas.
+- Added `assert_valid_active_registry` to `backend/fleet_autoconfig.py` and wired into `backend/server.py` (`_startup` and autoderivation boundary) to fail fast on invalid URLs, missing machine/pool names, or duplicate port assignments on active pools.
+- Updated `derive_pool_topology` in `backend/fleet_autoconfig.py` to filter out retired runner pools (`retired: true`), ensuring the local pool resolves to `ControlTower-Runner` and prevents phantom peer probing of retired pools.
+- Updated `_iter_registry_entries` in `backend/machine_registry.py` to skip retired entries so they are not treated as missing active machines.
+- Unified `FLEET_NODES` across `backend/server.py`, `backend/dashboard_config`, and `backend/routers/fleet.py`, enabling registry autoderivation in `routers/fleet.py` when `FLEET_NODES` is empty and autoderivation is enabled.
+- Authored comprehensive unit tests in `tests/test_hub_fleet_aggregation.py` and `tests/test_fleet_autoconfig.py` covering multi-node aggregation, connection refused offline handling, and startup assertions.
 
 ## Validation
 
-- 16 guarded deployment workflow contract tests passed in `tests/test_qualified_release_deploy_workflow.py`.
-- Release recovery and workflow hygiene tests pass serially.
-- Scoped pre-commit passes Ruff lint/format, Prettier, gitleaks, and detect-secrets.
-- `git diff --check` passes.
+- `ruff check .` passes with zero errors.
+- `mypy backend/` and test type checking pass cleanly.
+- `pytest -v tests/test_hub_fleet_aggregation.py tests/test_fleet_autoconfig.py` passes 20/20.
 
 ## Next Steps
 
-1. Merge PR for feat(deploy) via squash auto-merge after CI passes.
-2. Verify production OAuth readiness on OGLaptop per `docs/runbooks/oglaptop-production-oauth.md`.
-3. Verify WSL resident keepalive task runs under the signed-in interactive user principal without SYSTEM/S4U failure modes.
-4. Verify DeskComputer interactive-safe 1/2 capacity policy and drain marker boundary before re-entry.
+1. Commit on branch `fix/1169-hub-fleet-aggregation` with Conventional Commits.
+2. Push branch to origin.
+3. Open PR via GitHub CLI referencing Issue #1169 and enable auto-merge.
 
 ## Issue #1141 — OGLaptop production browser OAuth readiness
 

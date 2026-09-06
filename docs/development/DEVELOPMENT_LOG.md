@@ -18,6 +18,16 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-0004 · Hub Dashboard Fleet Telemetry Aggregation 1169
+
+- **State:** in_progress
+- **Owner:** agent
+- **PR:** not created
+- **Paths:** `backend/fleet_autoconfig.py`, `backend/machine_registry.py`, `backend/routers/fleet.py`, `backend/server.py`, `tests/test_fleet_autoconfig.py`, `tests/test_hub_fleet_aggregation.py`
+- **Started:** 2026-09-06
+- **Last verified:** 2026-09-06
+- **Summary:** Resolve Issue #1169: Hub dashboard telemetry aggregation and stale registry validation. Ensure /api/fleet/status polls and aggregates DeskComputer, OGLaptop, and ControlTower-Runner, while filtering out retired pools and validating non-retired machines on startup.
+
 ### DL-0001 · Fix Autoscaler Oglaptop Regression 907
 
 - **State:** parked

@@ -16,8 +16,9 @@ from dashboard_config import (
 )
 from fastapi import APIRouter, Depends, Request, Response
 from fleet_autoconfig import (
+    derive_fleet_nodes_from_registry,
     derive_pool_topology,
-)  # issue #942 — registry-driven pool topology
+)  # issue #942, #1169 — registry-driven pool topology & federation
 from fleet_events import (  # issue #863 — record runner/disk transitions
     FleetEventPoller,
     nodes_from_fleet_status,
@@ -196,7 +197,7 @@ async def get_fleet_status(request: Request, response: Response, exclude_pools: 
         registry,
         local_port=PORT,
         display_name=HOSTNAME,
-        platform_node=None,
+        platform_node="",
         runner_aliases=RUNNER_ALIASES,
     )
 
@@ -229,8 +230,19 @@ async def get_fleet_status(request: Request, response: Response, exclude_pools: 
                 **reason,
             }
 
-    if FLEET_NODES:
-        results = await asyncio.gather(*[fetch_node(n, u) for n, u in FLEET_NODES.items()])
+    import os
+
+    nodes_to_query = dict(FLEET_NODES)
+    if not nodes_to_query and os.environ.get("AUTODERIVE_FLEET_NODES", "1").lower() not in {"0", "false", "no", ""}:
+        nodes_to_query = derive_fleet_nodes_from_registry(
+            registry,
+            display_name=HOSTNAME,
+            platform_node="",
+            runner_aliases=RUNNER_ALIASES,
+        )
+
+    if nodes_to_query:
+        results = await asyncio.gather(*[fetch_node(n, u) for n, u in nodes_to_query.items()])
         for name, data in results:
             responses[name] = data
 

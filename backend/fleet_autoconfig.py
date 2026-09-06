@@ -59,6 +59,12 @@ def registry_machine_url(machine: Mapping[str, Any]) -> str:
     candidate = str(machine.get("dashboard_url") or "").strip()
     if candidate:
         return candidate
+    for pool in machine.get("runner_pools", []) or []:
+        if not isinstance(pool, Mapping) or pool.get("retired"):
+            continue
+        pool_url = str(pool.get("dashboard_url") or "").strip()
+        if pool_url:
+            return pool_url
     for node in machine.get("tailscale_nodes", []) or []:
         if not isinstance(node, Mapping):
             continue
@@ -88,21 +94,10 @@ def derive_pool_topology(
 ) -> tuple[str | None, list[dict[str, Any]]]:
     """Derive this dashboard's pool identity and its sibling pools to probe.
 
-    A *pool* is a ``runner_pools`` entry under the physical machine this
-    dashboard runs on (for example ``ControlTower-NVMe`` / ``ControlTower-SSD``
-    under ``ControlTower``).  Single-pool machines (the common case) own no
-    sibling pools, so nothing is probed and no phantom peer node appears.
-
-    Returns ``(local_pool_name, peer_pools)`` where ``peer_pools`` is a list of
-    ``{"name", "url", "port"}`` dicts for every *other* pool under the same
-    physical machine.  ``local_pool_name`` is ``None`` when the host is not a
-    split-pool machine.
-
-    The local pool is matched first by identity name (display name / aliases),
-    then — when identity is ambiguous — by the port in the pool's
-    ``dashboard_url`` matching ``local_port``.  This replaces the old
-    ``if PORT == 8322`` hardcoding so a third pool or a renamed host needs only
-    a registry edit, never a code change (issue #942).
+    A *pool* is a non-retired ``runner_pools`` entry under the physical machine
+    this dashboard runs on. Single-pool or retired-pool machines get
+    ``local_pool_name=None`` (or the single active pool name) and no peer pools,
+    so no phantom peer node is emitted.
     """
     identities = current_identity_names(
         display_name=display_name,
@@ -112,8 +107,8 @@ def derive_pool_topology(
     for machine in registry.get("machines", []) or []:
         if not isinstance(machine, Mapping):
             continue
-        pools = [p for p in (machine.get("runner_pools") or []) if isinstance(p, Mapping)]
-        if len(pools) < 2:
+        pools = [p for p in (machine.get("runner_pools") or []) if isinstance(p, Mapping) and not p.get("retired")]
+        if not pools:
             continue
         if not registry_machine_matches_current_dashboard(machine, identities):
             continue
@@ -130,6 +125,8 @@ def derive_pool_topology(
                 if _pool_url_port(str(pool.get("dashboard_url") or "")) == local_port:
                     local_pool = pool
                     break
+        if local_pool is None and len(pools) == 1:
+            local_pool = pools[0]
         if local_pool is None:
             continue
 
@@ -173,16 +170,16 @@ def assert_no_maxwell_port_collision(
 
 
 def registry_dashboard_url_ports(registry: Mapping[str, Any]) -> set[int]:
-    """Return every explicit port used by a machine or pool ``dashboard_url``."""
+    """Return every explicit port used by an active machine or pool ``dashboard_url``."""
     ports: set[int] = set()
     for machine in registry.get("machines", []) or []:
-        if not isinstance(machine, Mapping):
+        if not isinstance(machine, Mapping) or machine.get("retired"):
             continue
         port = _pool_url_port(str(machine.get("dashboard_url") or ""))
         if port is not None:
             ports.add(port)
         for pool in machine.get("runner_pools", []) or []:
-            if not isinstance(pool, Mapping):
+            if not isinstance(pool, Mapping) or pool.get("retired"):
                 continue
             port = _pool_url_port(str(pool.get("dashboard_url") or ""))
             if port is not None:
@@ -213,6 +210,8 @@ def derive_fleet_nodes_from_registry(
     for machine in registry.get("machines", []) or []:
         if not isinstance(machine, Mapping):
             continue
+        if machine.get("retired"):
+            continue
         name = str(machine.get("name", "")).strip()
         if not name or registry_machine_matches_current_dashboard(machine, identities):
             continue
@@ -220,3 +219,76 @@ def derive_fleet_nodes_from_registry(
         if url:
             nodes[name] = url
     return nodes
+
+
+def assert_valid_active_registry(registry: Mapping[str, Any]) -> None:
+    """Validate that every non-retired machine and pool has a valid dashboard URL and config.
+
+    Issue #1169: Fail fast when an active machine or runner pool has no resolvable
+    dashboard URL, invalid URL format, or conflicting ports with other pools.
+    """
+    if not isinstance(registry, Mapping):
+        raise RuntimeError("Machine registry must be a mapping")
+
+    machines = registry.get("machines", [])
+    if not isinstance(machines, list):
+        raise RuntimeError("Machine registry field 'machines' must be a list")
+
+    for machine in machines:
+        if not isinstance(machine, Mapping):
+            continue
+        if machine.get("retired"):
+            continue
+
+        name = str(machine.get("name", "")).strip()
+        if not name:
+            raise RuntimeError(f"Active machine missing name: {machine}")
+
+        url = registry_machine_url(machine)
+        if not url:
+            raise RuntimeError(f"Active machine '{name}' has no resolvable dashboard URL or Tailscale IP")
+
+        try:
+            from security import validate_fleet_node_url
+
+            validate_fleet_node_url(url)
+        except Exception as exc:
+            raise RuntimeError(f"Active machine '{name}' has invalid dashboard URL {url!r}: {exc}") from exc
+
+        pools_raw = machine.get("runner_pools")
+        if pools_raw is not None:
+            if not isinstance(pools_raw, list):
+                raise RuntimeError(f"Active machine '{name}' runner_pools must be a list")
+            active_pools = [p for p in pools_raw if isinstance(p, Mapping) and not p.get("retired")]
+            if pools_raw and not active_pools:
+                raise RuntimeError(
+                    f"Active machine '{name}' defines runner pools but all are retired. "
+                    "Either activate a pool or retire the machine."
+                )
+
+            ports_seen: dict[int, str] = {}
+            for pool in active_pools:
+                pool_name = str(pool.get("name", "")).strip()
+                if not pool_name:
+                    raise RuntimeError(f"Active runner pool under '{name}' missing name: {pool}")
+                pool_url = str(pool.get("dashboard_url") or "").strip()
+                if not pool_url:
+                    raise RuntimeError(f"Active runner pool '{pool_name}' under '{name}' missing dashboard_url")
+                try:
+                    from security import validate_fleet_node_url
+
+                    validate_fleet_node_url(pool_url)
+                except Exception as exc:
+                    raise RuntimeError(
+                        f"Active runner pool '{pool_name}' under '{name}' has invalid dashboard_url {pool_url!r}: {exc}"
+                    ) from exc
+
+                port = _pool_url_port(pool_url)
+                if port is not None:
+                    if port in ports_seen:
+                        raise RuntimeError(
+                            f"Active runner pools under '{name}' have duplicate port {port} "
+                            f"('{ports_seen[port]}', '{pool_name}'). "
+                            "Did you forget to mark the retired pool as 'retired: true'?"
+                        )
+                    ports_seen[port] = pool_name

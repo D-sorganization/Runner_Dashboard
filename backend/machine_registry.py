@@ -407,11 +407,11 @@ def build_machine_registry_index(
 def _iter_registry_entries(registry: dict[str, Any]) -> list[dict[str, Any]]:
     entries: list[dict[str, Any]] = []
     for machine in registry.get("machines", []):
-        if not isinstance(machine, dict):
+        if not isinstance(machine, dict) or machine.get("retired"):
             continue
         entries.append(machine)
         for pool in machine.get("runner_pools", []):
-            if isinstance(pool, dict):
+            if isinstance(pool, dict) and not pool.get("retired"):
                 entries.append(pool)
     return entries
 
