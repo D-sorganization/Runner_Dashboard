@@ -33,6 +33,11 @@ sudo install -m 0755 "${SCRIPT_DIR}/runner-corruption-scan.sh" /usr/local/bin/ru
 # Operator break-glass from #661 — drains, heals, and restarts every
 # actions.runner.*.service on the host.
 sudo install -m 0755 "${SCRIPT_DIR}/heal-host.sh" /usr/local/bin/heal-host
+# Prune stale cargo/env source statements from shell profiles (#1159)
+if [[ -f "${SCRIPT_DIR}/clean-stale-shell-profiles.sh" ]]; then
+    sudo install -m 0755 "${SCRIPT_DIR}/clean-stale-shell-profiles.sh" /usr/local/bin/clean-stale-shell-profiles
+    sudo -u "${RUNNER_USER}" /usr/local/bin/clean-stale-shell-profiles || true
+fi
 # Runner job-pickup hooks from #664 — referenced by the per-unit
 # drop-ins written by migrate-runner-units.sh. Installed at a stable
 # system path so the drop-ins don't depend on a repo checkout location.
@@ -261,4 +266,4 @@ echo "Installed:"
 systemctl list-timers runner-cleanup.timer runner-disk-guard.timer runner-scheduler.timer runner-corruption-scan.timer --all
 echo ""
 echo "Binaries:"
-ls -l /usr/local/bin/runner-cleanup /usr/local/bin/heal-host /usr/local/bin/runner-corruption-scan /usr/local/bin/runner-hooks-restore "${HOOK_INSTALL_DIR}"/ | grep -v '^total'
+ls -l /usr/local/bin/runner-cleanup /usr/local/bin/heal-host /usr/local/bin/runner-corruption-scan /usr/local/bin/runner-hooks-restore /usr/local/bin/clean-stale-shell-profiles "${HOOK_INSTALL_DIR}"/ 2>/dev/null | grep -v '^total' || true
