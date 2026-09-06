@@ -1,9 +1,25 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.204
+**Spec Version:** 2.5.205
 **Application Version:** 4.9.34 (see `VERSION`)
-**Last Updated:** 2026-09-06T08:30:00-07:00
+**Last Updated:** 2026-09-06T09:25:00-07:00
 **Status:** Active
+
+- **2026-09-06 (2.5.205):** Hub dashboard telemetry aggregation and stale registry
+  validation (#1169). The hub dashboard previously reported telemetry for only one node
+  and identified it by a retired pool (`ControlTower-NVMe` retired 2026-07-31).
+  Added startup registry validation (`assert_valid_active_registry`) in
+  `backend/fleet_autoconfig.py` and `backend/server.py` ensuring every non-retired
+  machine and runner pool resolves to a valid, reachable dashboard URL and fails fast
+  on unresolvable endpoints or duplicate port collisions across active pools.
+  Updated `derive_pool_topology` and `_iter_registry_entries` to filter out retired
+  pools (`retired: true`), ensuring the hub identifies itself as `ControlTower-Runner`
+  and eliminates phantom peer self-probes. Unified `FLEET_NODES` between `server.py`
+  and `dashboard_config`, and enabled registry autoderivation in `routers/fleet.py` so
+  `/api/fleet/status` concurrently polls and aggregates telemetry across all active
+  fleet nodes (`DeskComputer`, `OGLaptop`, `ControlTower-Runner`) with graceful offline
+  handling for connection-refused peers. TDD: `tests/test_hub_fleet_aggregation.py`
+  and `tests/test_fleet_autoconfig.py`.
 
 - **2026-09-06 (2.5.204):** Monitor host volume disk guard and inhibit scheduling
   on exhaustion (#1168). Guest runner VMs and WSL distributions cannot see the

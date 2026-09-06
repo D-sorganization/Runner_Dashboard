@@ -90,6 +90,7 @@ import usage_monitoring as usage_monitoring  # noqa: E402
 from cache_utils import cache_delete as _cache_delete  # noqa: E402
 from cache_utils import cache_get as _cache_get  # noqa: E402
 from cache_utils import cache_set as _cache_set  # noqa: E402
+from dashboard_config import FLEET_NODES  # noqa: E402
 from dashboard_config.cache_ttls import CacheTtl  # noqa: E402
 from dashboard_config.timeouts import (  # noqa: E402
     HttpTimeout,
@@ -799,7 +800,7 @@ def _deployment_info() -> dict:
 #   Environment=FLEET_NODES=envy:http://100.x.x.x:8321,thinkpad:http://100.x.x.x:8321
 MACHINE_ROLE = os.environ.get("MACHINE_ROLE", "node")
 _fleet_raw = os.environ.get("FLEET_NODES", "")
-FLEET_NODES: dict[str, str] = {}
+FLEET_NODES.clear()
 for _entry in _fleet_raw.split(","):
     _entry = _entry.strip()
     if not _entry:
@@ -844,9 +845,11 @@ _AUTODERIVE_FLEET = os.environ.get("AUTODERIVE_FLEET_NODES", "1").lower() not in
 FLEET_NODES_SOURCE = "env" if FLEET_NODES else "empty"
 if _AUTODERIVE_FLEET and not FLEET_NODES:
     try:
+        from fleet_autoconfig import assert_valid_active_registry
         from machine_registry import load_machine_registry as _load_registry_for_fleet
 
         _registry = _load_registry_for_fleet()
+        assert_valid_active_registry(_registry)
         _derived_nodes = derive_fleet_nodes_from_registry(
             _registry,
             display_name=os.environ.get("DISPLAY_NAME"),
@@ -2453,14 +2456,16 @@ async def _startup() -> None:
     # dashboard port declared in machine_registry.yml — a silent mis-probe
     # otherwise misreports a sibling dashboard as the Maxwell daemon.
     from dashboard_config import MAXWELL_PORT
-    from fleet_autoconfig import assert_no_maxwell_port_collision
-    from machine_registry import load_machine_registry
+    from fleet_autoconfig import assert_no_maxwell_port_collision, assert_valid_active_registry
 
+    _startup_reg = load_machine_registry()
     assert_no_maxwell_port_collision(
-        load_machine_registry(),
+        _startup_reg,
         maxwell_port=MAXWELL_PORT,
         local_port=PORT,
     )
+    # Issue #1169: Fail fast if an active machine or pool has invalid configuration
+    assert_valid_active_registry(_startup_reg)
 
     # Wire injected dependencies for extracted routers (issue #360)
     _repos_router.set_dependencies(
