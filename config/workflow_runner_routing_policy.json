@@ -29,6 +29,7 @@
         "agent-panel-review.yml",
         "Agent-Redundant-PR-Closer.yml",
         "anti-phantom-merge.yml",
+        "architecture-map-contract.yml",
         "ci-secrets.yml",
         "ci-spec-check.yml",
         "dependabot-auto-merge.yml",

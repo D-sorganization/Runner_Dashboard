@@ -18,6 +18,16 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-0007 · Adopt Mermaid C4 Architecture Map Contract 1613
+
+- **State:** in_progress
+- **Owner:** agent
+- **PR:** not created
+- **Paths:** `docs/architecture/C4.md`, `scripts/architecture_map_contract.py`, `tests/test_architecture_map_contract.py`, `.github/workflows/architecture-map-contract.yml`, `config/workflow_runner_routing_policy.json`
+- **Started:** 2026-09-10
+- **Last verified:** 2026-09-10 (`38f2b2f`)
+- **Summary:** Resolve Issue #1613: Adopt maintainable Mermaid C4 architecture-map contract and automated CI verification. Establish docs/architecture/C4.md with C4Context, C4Container, Feature Map, and Architecture Change Log, validated by scripts/architecture_map_contract.py and test_architecture_map_contract.py.
+
 ### DL-0006 · Orchestrator Authentication Perimeter Hardening 1173
 
 - **State:** in_progress

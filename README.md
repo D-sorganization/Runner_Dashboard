@@ -20,6 +20,10 @@ contract is in
 The Maxwell tab calls Maxwell-Daemon over HTTP using the contract documented
 in the sibling-repos doc. Maxwell-Daemon never calls back into the dashboard.
 
+## Architecture
+
+- **C4 Architecture Map**: See [docs/architecture/C4.md](docs/architecture/C4.md) for system context, container boundaries, and feature mappings.
+
 ---
 
 The dashboard is a local FastAPI server that proxies the GitHub API and exposes

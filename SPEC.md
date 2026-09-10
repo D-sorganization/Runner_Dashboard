@@ -5,6 +5,13 @@
 **Last Updated:** 2026-09-07T00:01:00-07:00
 **Status:** Active
 
+- **2026-09-10:** Adopt Mermaid C4 architecture-map contract and automated CI verification (#1613).
+  Established canonical docs/architecture/C4.md with C4Context and C4Container views,
+  Feature Map table mapping core capabilities to components, interfaces, and test evidence,
+  and an Architecture Change Log baseline table. Added scripts/architecture_map_contract.py
+  and tests/test_architecture_map_contract.py, and wired verification into
+  .github/workflows/architecture-map-contract.yml.
+
 - **2026-09-07 (2.5.208):** Suppress pytest exit code 5 on empty marker in CI Nightly workflow (#1175).
   Scheduled integration CI runs (`ci-nightly.yml`) run pytest with `-m integration`.
   When no tests are marked with `@pytest.mark.integration`, pytest exits with code 5
