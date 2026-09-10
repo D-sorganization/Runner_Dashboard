@@ -1,0 +1,36 @@
+name: Architecture Map Contract
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-architecture-map:
+    name: Validate Architecture Map Contract
+    runs-on: ${{ !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v6
+        with:
+          python-version: "3.11"
+
+      - name: Validate Architecture Map Contract
+        run: |
+          python scripts/architecture_map_contract.py --path docs/architecture/C4.md
+
+      - name: Run Architecture Map Contract Tests
+        run: |
+          python -m pip install pytest
+          python -m pytest tests/test_architecture_map_contract.py -v

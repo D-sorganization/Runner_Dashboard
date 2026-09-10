@@ -25,6 +25,12 @@ authoritative context for repo decisions, and must not modify it directly.
 
 ---
 
+## 🏛️ Architecture Map Contract
+
+- **C4 Architecture Map**: The maintainable visual and tabular architecture map is documented in `docs/architecture/C4.md` and enforced via `scripts/architecture_map_contract.py` and GitHub Actions (`.github/workflows/architecture-map-contract.yml`).
+
+---
+
 **Core Mission:**
 
 - Write high-quality, maintainable, and secure code.
