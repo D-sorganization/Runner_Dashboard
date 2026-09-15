@@ -142,7 +142,11 @@ def test_script_watches_all_pools_not_just_ct_ssd() -> None:
     """Regression guard for the 2026-07-30 blind spot."""
     text = SCRIPT.read_text(encoding="utf-8")
     assert "d-sorg-local-Desktop-" in text
-    assert "d-sorg-local-ControlTower-SSD-" in text
+    assert "d-sorg-local-ControlTower-" in text
+    # The SSD / NVMe pools were retired 2026-08-28; watching their prefixes
+    # again would re-create the 2026-09 blind spot in reverse (always 0/0).
+    assert "d-sorg-local-ControlTower-SSD-" not in text
+    assert "'ControlTower-Runner'" in text
     assert "d-sorg-local-Oglaptop-" in text
 
 
@@ -235,20 +239,23 @@ def test_pool_counts_classify_by_prefix() -> None:
         $runners = @(
             @{ name = 'd-sorg-local-Desktop-1'; status = 'online' },
             @{ name = 'd-sorg-local-Desktop-2'; status = 'offline' },
-            @{ name = 'd-sorg-local-ControlTower-SSD-1'; status = 'online' },
-            @{ name = 'd-sorg-local-ControlTower-nvme-6'; status = 'offline' },
+            @{ name = 'd-sorg-local-ControlTower-1'; status = 'online' },
+            @{ name = 'd-sorg-local-ControlTower-3'; status = 'offline' },
+            @{ name = 'd-sorg-local-ControlTower-windows-matlab-1'; status = 'online' },
             @{ name = 'd-sorg-local-Oglaptop-8'; status = 'online' }
         ) | ForEach-Object { [pscustomobject]$_ }
         $c = Get-RunnerPoolCounts -Runners $runners
         Write-Output ("DESK=" + $c['Desktop'].online + "/" + $c['Desktop'].total)
-        Write-Output ("SSD=" + $c['ControlTower-SSD'].online + "/" + $c['ControlTower-SSD'].total)
+        Write-Output ("CT=" + $c['ControlTower-Runner'].online + "/" + $c['ControlTower-Runner'].total)
         Write-Output ("OG=" + $c['Oglaptop'].online + "/" + $c['Oglaptop'].total)
         """
     )
     result = _run_ps(driver)
     assert result.returncode == 0, result.stderr
     assert "DESK=1/2" in result.stdout
-    assert "SSD=1/1" in result.stdout
+    # The Windows MATLAB runner shares the name prefix but is not part of the
+    # Linux pool the keepalive task manages.
+    assert "CT=1/2" in result.stdout
     assert "OG=1/1" in result.stdout
 
 
@@ -258,10 +265,10 @@ def test_pools_below_floor_detected() -> None:
         """
         $counts = @{
             'Desktop' = @{ online = 2; total = 8 }
-            'ControlTower-SSD' = @{ online = 15; total = 17 }
+            'ControlTower-Runner' = @{ online = 3; total = 4 }
             'Oglaptop' = @{ online = 8; total = 8 }
         }
-        $floors = @{ 'Desktop' = 6; 'ControlTower-SSD' = 12; 'Oglaptop' = 4 }
+        $floors = @{ 'Desktop' = 6; 'ControlTower-Runner' = 2; 'Oglaptop' = 4 }
         $below = Get-PoolsBelowFloor -Counts $counts -Floors $floors
         Write-Output ("BELOW=" + ($below -join ','))
         """
