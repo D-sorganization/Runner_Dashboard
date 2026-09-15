@@ -20,7 +20,7 @@ Last updated: 2026-09-14T22:15:00-07:00
 ## Implemented
 
 - `deploy/fleet-health-monitor.ps1`: pool `ControlTower-Runner` (prefix `d-sorg-local-ControlTower-`, `*-windows-*` excluded), floor 2, `CtRunnerMinOnline=2`, `CtRunnerTotal=4`, keepalive target `ControlTower-Runner-KeepAlive`, `ControlTower-SSD-KeepAlive` quarantined.
-- `deploy/runner-cleanup.sh`: `DOCKER_DANGLING_UNTIL` (6h) used for the routine dangling-image prune; new `cleanup_rustup_tmp` (age `RUSTUP_TMP_HOURS`, skipped while rustup runs) on the daily pass only.
+- `deploy/runner-cleanup.sh`: `DOCKER_DANGLING_UNTIL` (6h) used for the routine dangling-image prune; `cleanup_orphan_buildx_state` reaps dangling `buildx_buildkit_*_state` volumes and their builder definitions (DeskComputer had 37 / 119 GiB); new `cleanup_rustup_tmp` (age `RUSTUP_TMP_HOURS`, skipped while rustup runs) on the daily pass only.
 - Tests updated/added in `tests/deploy/test_fleet_health_monitor.py` and `tests/deploy/test_runner_cleanup_disk_guard.py`.
 
 ## Validation
