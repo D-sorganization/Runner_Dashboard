@@ -19,6 +19,20 @@ RUNNER_WORK_DAYS="${RUNNER_WORK_DAYS:-3}"
 RUNNER_TEMP_DAYS="${RUNNER_TEMP_DAYS:-1}"
 TOOL_CACHE_DAYS="${TOOL_CACHE_DAYS:-21}"
 DOCKER_PRUNE_UNTIL="${DOCKER_PRUNE_UNTIL:-168h}"
+# Dangling (untagged) images get a much shorter window than build cache.
+# Every rebuild of a tagged image (UpstreamDrift rebuilds five
+# upstream-drift:<profile> images several times a day) leaves the previous
+# image dangling, and nothing else ever removes it: on 2026-09-14
+# ControlTower carried 42 dangling images (~100 GiB, none older than 41 h)
+# under the 168h window, which is what drove the runner vhdx from 432 to
+# 465 GB in nine days. A dangling image is by definition superseded, so a
+# few hours is plenty of grace for an in-flight `docker load`/retag.
+DOCKER_DANGLING_UNTIL="${DOCKER_DANGLING_UNTIL:-6h}"
+# rustup leaks one ~/.rustup/tmp/<id>_dir per interrupted toolchain
+# operation (jobs killed mid-`rustup update` by cancel/timeout); 19,627 of
+# them (37 GiB) had accumulated on ControlTower in 17 days. Only reaped
+# while no rustup process is running so a live install is never touched.
+RUSTUP_TMP_HOURS="${RUSTUP_TMP_HOURS:-6}"
 JOURNAL_MAX_SIZE="${JOURNAL_MAX_SIZE:-1G}"
 DISK_PRESSURE_PERCENT="${DISK_PRESSURE_PERCENT:-85}"
 AGGRESSIVE_ON_PRESSURE="${AGGRESSIVE_ON_PRESSURE:-1}"
@@ -90,7 +104,8 @@ Usage: runner-cleanup.sh [--compact-vhd] [--compact-vhd-only]
                          [--compact-vhd-distro NAME] [--disk-guard] [--dry-run]
 
 Environment overrides: RUNNER_ROOT, RUNNER_USER, LOG_DIR, RUNNER_WORK_DAYS,
-RUNNER_TEMP_DAYS, TOOL_CACHE_DAYS, DOCKER_PRUNE_UNTIL, JOURNAL_MAX_SIZE,
+RUNNER_TEMP_DAYS, TOOL_CACHE_DAYS, DOCKER_PRUNE_UNTIL, DOCKER_DANGLING_UNTIL,
+RUSTUP_TMP_HOURS, JOURNAL_MAX_SIZE,
 DISK_PRESSURE_PERCENT, AGGRESSIVE_ON_PRESSURE, PRUNE_DOCKER_VOLUMES,
 DOCKER_AGGRESSIVE, DISK_GUARD, COMPACT_VHD, COMPACT_VHD_ONLY,
 COMPACT_VHD_DISTRO, DRY_RUN, TMP_DIR, TMP_LITTER_HOURS, TMP_PRESSURE_PERCENT,
@@ -422,7 +437,7 @@ cleanup_docker() {
     else
         run docker container prune --force --filter "until=72h"
         run docker builder prune --all --force --filter "until=${DOCKER_PRUNE_UNTIL}"
-        run docker image prune --force --filter "until=${DOCKER_PRUNE_UNTIL}"
+        run docker image prune --force --filter "until=${DOCKER_DANGLING_UNTIL}"
         if [[ "$PRUNE_DOCKER_VOLUMES" == "1" ]]; then run docker volume prune --force; fi
     fi
 }
@@ -532,6 +547,23 @@ cleanup_runner_tmpdirs() {
     done < <(list_runner_units)
 }
 
+cleanup_rustup_tmp() {
+    local home tmp
+    home="$(getent passwd "$RUNNER_USER" 2>/dev/null | cut -d: -f6)"
+    tmp="${home:-/nonexistent}/.rustup/tmp"
+    [[ -d "$tmp" ]] || return 0
+    if pgrep -x rustup >/dev/null 2>&1 || pgrep -f "rustup-init" >/dev/null 2>&1; then
+        log "rustup is running; skipping rustup tmp GC"
+        return 0
+    fi
+    local count
+    count="$(find "$tmp" -mindepth 1 -maxdepth 1 -mmin "+$(( RUSTUP_TMP_HOURS * 60 ))" 2>/dev/null | wc -l)"
+    [[ "$count" -gt 0 ]] || return 0
+    log "rustup tmp GC: reaping $count entries older than ${RUSTUP_TMP_HOURS}h in $tmp"
+    if [[ "$DRY_RUN" == "1" ]]; then return 0; fi
+    find "$tmp" -mindepth 1 -maxdepth 1 -mmin "+$(( RUSTUP_TMP_HOURS * 60 ))" -exec rm -rf {} + 2>/dev/null || true
+}
+
 cleanup_common_caches() {
     run apt-get autoclean
     command -v pip3 >/dev/null 2>&1 && run sudo -u "$RUNNER_USER" -H pip3 cache purge
@@ -600,6 +632,7 @@ main() {
         cleanup_docker
         cleanup_tmp
         cleanup_runner_tmpdirs
+        cleanup_rustup_tmp
         cleanup_common_caches
         command -v fstrim >/dev/null 2>&1 && run fstrim -av
     else

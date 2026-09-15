@@ -10,7 +10,7 @@
     2. ControlTower WMI-handle guard: kill any WmiPrvSE leaking > threshold
        handles (root cause of the 2026-06-11 ControlTower outage).
     3. Query the dashboard /api/runners (GitHub App auth, authoritative):
-       a. per-pool online floors for Desktop / ControlTower-SSD / Oglaptop —
+       a. per-pool online floors for Desktop / ControlTower-Runner / Oglaptop —
           the 2026-07-30 outage went unseen for weeks because only the
           CT-SSD count was watched, and GitHub auto-purged the silent pools'
           registrations after ~14 days offline;
@@ -19,7 +19,7 @@
        c. purge alarm: zero Desktop runners online while local units run is
           the registration-purge signature -> ERROR pointing at
           docs/runbooks/runner-registration-purge-recovery.md;
-       d. restart the ControlTower SSD keepalive task when its pool is low.
+       d. restart the ControlTower-Runner keepalive task when its pool is low.
     4. Log + write state JSON.
 
   ControlTower remote ops go over SSH (key auth, host alias 'controltower').
@@ -31,14 +31,17 @@ param(
   [string]$DashboardUrl          = "http://127.0.0.1:8321",
   [string]$CtSsh                 = "controltower",
   [int]   $WmiHandleKillThreshold = 120000,
-  [int]   $CtRunnerMinOnline      = 6,
-  [int]   $CtRunnerTotal          = 17,
+  # The ControlTower-SSD / -NVMe pools were retired; since 2026-08-28 the only
+  # Linux pool on ControlTower is the single `ControlTower-Runner` distro with
+  # runner-1..4 (scheduler-managed, 3 by day / 4 overnight).
+  [int]   $CtRunnerMinOnline      = 2,
+  [int]   $CtRunnerTotal          = 4,
   # Floors are REAL-OUTAGE thresholds, deliberately below nominal capacity:
   # GitHub's "online" flag flaps for idle runners (broker session cycling,
   # see 2026-05-29 postmortem), so a tight floor would false-alarm on any
   # idle fleet. What the floors must catch is silent pool decay toward the
   # ~14-day registration purge, where counts sit at/near zero for days.
-  [hashtable]$PoolFloors          = @{ 'Desktop' = 2; 'ControlTower-SSD' = 6; 'Oglaptop' = 2 },
+  [hashtable]$PoolFloors          = @{ 'Desktop' = 2; 'ControlTower-Runner' = 2; 'Oglaptop' = 2 },
   # Host free-space floors (GB) for the ControlTower drives. A WSL2 vhdx that
   # exhausts host disk mid-write corrupts the distro (null-byte files, corrupt
   # package DB) — the probable origin of the #1071 NVMe corruption, which on
@@ -61,7 +64,9 @@ param(
 
 $script:PoolPrefixes = @{
   'Desktop'          = 'd-sorg-local-Desktop-'
-  'ControlTower-SSD' = 'd-sorg-local-ControlTower-SSD-'
+  # Matches d-sorg-local-ControlTower-1..4; the Windows MATLAB runner shares the
+  # prefix (d-sorg-local-ControlTower-windows-matlab-1) and is excluded below.
+  'ControlTower-Runner' = 'd-sorg-local-ControlTower-'
   'Oglaptop'         = 'd-sorg-local-Oglaptop-'
 }
 
@@ -74,7 +79,9 @@ function Get-RunnerPoolCounts {
   )
   $counts = @{}
   foreach ($pool in $PoolPrefixes.Keys) {
-    $members = @($Runners | Where-Object { $_.name -like ($PoolPrefixes[$pool] + '*') })
+    $members = @($Runners | Where-Object {
+      $_.name -like ($PoolPrefixes[$pool] + '*') -and $_.name -notlike '*-windows-*'
+    })
     $counts[$pool] = @{
       online = @($members | Where-Object { $_.status -eq 'online' }).Count
       total  = $members.Count
@@ -375,13 +382,13 @@ try {
     }
   }
 
-  # 3c. ControlTower SSD keepalive restart when its pool is low.
-  $ctOnline = [int]$poolCounts['ControlTower-SSD'].online
+  # 3c. ControlTower-Runner keepalive restart when its pool is low.
+  $ctOnline = [int]$poolCounts['ControlTower-Runner'].online
   if ($ctOnline -lt $CtRunnerMinOnline) {
-    Write-Log "ControlTower SSD online ($ctOnline/$CtRunnerTotal) below min ($CtRunnerMinOnline); restarting SSD keepalive task." "WARN"
+    Write-Log "ControlTower-Runner online ($ctOnline/$CtRunnerTotal) below min ($CtRunnerMinOnline); restarting ControlTower-Runner keepalive task." "WARN"
     $restart = @'
-$quarantined = @("ControlTower-NVMe-KeepAlive", "ControlTower-NVMe-WSL-KeepAlive")
-foreach ($tn in @("ControlTower-SSD-KeepAlive")) {
+$quarantined = @("ControlTower-NVMe-KeepAlive", "ControlTower-NVMe-WSL-KeepAlive", "ControlTower-SSD-KeepAlive")
+foreach ($tn in @("ControlTower-Runner-KeepAlive")) {
   if ($quarantined -contains $tn) {
     "skipping quarantined task $tn (#1071 / #1078)"
     continue
@@ -394,7 +401,7 @@ foreach ($tn in @("ControlTower-SSD-KeepAlive")) {
 '@
     $r = Invoke-CtPowerShell $restart
     Write-Log "Keepalive restart result: $($r.Trim() -replace '\s+',' ')"
-    $state.actions += "restarted-ct-ssd-keepalive"
+    $state.actions += "restarted-ct-runner-keepalive"
   }
 } catch {
   Write-Log "Runner status query failed: $($_.Exception.Message)" "ERROR"
