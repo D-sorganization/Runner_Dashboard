@@ -22,6 +22,8 @@ reachable from any live state and `abandoned` from `parked`.
 
 - **State:** in_review
 - **Owner:** agent
+- **Issue:** #1184
+- **Branch:** `fix/monitor-controltower-runner-pool`
 - **PR:** not created
 - **Paths:** `deploy/fleet-health-monitor.ps1`, `deploy/runner-cleanup.sh`, `tests/deploy/test_fleet_health_monitor.py`, `tests/deploy/test_runner_cleanup_disk_guard.py`
 - **Started:** 2026-09-14
