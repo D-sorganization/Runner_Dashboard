@@ -37,6 +37,15 @@ JOURNAL_MAX_SIZE="${JOURNAL_MAX_SIZE:-1G}"
 DISK_PRESSURE_PERCENT="${DISK_PRESSURE_PERCENT:-85}"
 AGGRESSIVE_ON_PRESSURE="${AGGRESSIVE_ON_PRESSURE:-1}"
 PRUNE_DOCKER_VOLUMES="${PRUNE_DOCKER_VOLUMES:-0}"
+# Orphaned buildx builder state volumes are always reaped, independent of
+# PRUNE_DOCKER_VOLUMES. docker/setup-buildx-action creates a fresh
+# docker-container builder per job and never removes its
+# buildx_buildkit_<builder>_state volume; on 2026-09-14 DeskComputer carried
+# 37 of them (119 GiB, 78 stale builder definitions) that no container
+# referenced. Only volumes matching that name AND unreferenced by any
+# container (dangling) are removed, so user volumes and live builders are
+# never touched.
+PRUNE_ORPHAN_BUILDX_STATE="${PRUNE_ORPHAN_BUILDX_STATE:-1}"
 # Set to 1 automatically when disk pressure is detected (see main()). When on,
 # cleanup_docker() ignores age windows and reclaims ALL build cache (incl.
 # buildx builders), unused images, and dangling volumes. Docker is the dominant
@@ -107,6 +116,7 @@ Environment overrides: RUNNER_ROOT, RUNNER_USER, LOG_DIR, RUNNER_WORK_DAYS,
 RUNNER_TEMP_DAYS, TOOL_CACHE_DAYS, DOCKER_PRUNE_UNTIL, DOCKER_DANGLING_UNTIL,
 RUSTUP_TMP_HOURS, JOURNAL_MAX_SIZE,
 DISK_PRESSURE_PERCENT, AGGRESSIVE_ON_PRESSURE, PRUNE_DOCKER_VOLUMES,
+PRUNE_ORPHAN_BUILDX_STATE,
 DOCKER_AGGRESSIVE, DISK_GUARD, COMPACT_VHD, COMPACT_VHD_ONLY,
 COMPACT_VHD_DISTRO, DRY_RUN, TMP_DIR, TMP_LITTER_HOURS, TMP_PRESSURE_PERCENT,
 RUNNER_TMP_SUBDIR.
@@ -439,6 +449,31 @@ cleanup_docker() {
         run docker builder prune --all --force --filter "until=${DOCKER_PRUNE_UNTIL}"
         run docker image prune --force --filter "until=${DOCKER_DANGLING_UNTIL}"
         if [[ "$PRUNE_DOCKER_VOLUMES" == "1" ]]; then run docker volume prune --force; fi
+    fi
+    if [[ "$PRUNE_ORPHAN_BUILDX_STATE" == "1" ]]; then cleanup_orphan_buildx_state; fi
+}
+
+cleanup_orphan_buildx_state() {
+    # Reap buildx builder state volumes no container references, then the
+    # builder definitions whose containers are gone. `dangling=true` is the
+    # engine's own "unreferenced" predicate, so a builder mid-job (its
+    # buildkitd container running) keeps its volume.
+    local vols count=0
+    vols="$(docker volume ls -q --filter dangling=true --filter name=buildx_buildkit_ 2>/dev/null | grep "_state$" || true)"
+    [[ -n "$vols" ]] || return 0
+    count="$(printf "%s\n" "$vols" | wc -l)"
+    log "reaping $count orphaned buildx builder state volumes"
+    if [[ "$DRY_RUN" == "1" ]]; then return 0; fi
+    printf "%s\n" "$vols" | xargs -r docker volume rm >/dev/null 2>&1 || true
+    # Drop only the builder definitions whose state volume was just reaped
+    # (volume buildx_buildkit_<builder>0_state <-> builder <builder>); a
+    # builder that still owns a volume is left alone even if idle.
+    if docker buildx version >/dev/null 2>&1; then
+        local v b
+        for v in $vols; do
+            b="${v#buildx_buildkit_}"; b="${b%0_state}"
+            docker buildx rm "$b" >/dev/null 2>&1 || true
+        done
     fi
 }
 

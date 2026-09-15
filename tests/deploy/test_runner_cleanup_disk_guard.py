@@ -87,6 +87,20 @@ class TestAggressiveDockerUnderPressure:
         assert "cleanup_rustup_tmp" not in cleanup_text[guard_idx:elif_idx]
         assert "cleanup_rustup_tmp\n        cleanup_common_caches" in cleanup_text
 
+    def test_orphan_buildx_state_volumes_are_reaped(self, cleanup_text: str) -> None:
+        """docker/setup-buildx-action leaves one buildx_buildkit_<id>_state
+        volume per job; DeskComputer had 37 unreferenced ones (119 GiB) on
+        2026-09-14 because PRUNE_DOCKER_VOLUMES=0 skips every volume. The
+        reaper must be name-scoped AND dangling-scoped so user volumes and a
+        builder mid-job are never removed."""
+        assert 'PRUNE_ORPHAN_BUILDX_STATE="${PRUNE_ORPHAN_BUILDX_STATE:-1}"' in cleanup_text
+        fn = cleanup_text[cleanup_text.index("cleanup_orphan_buildx_state() {") :]
+        fn = fn[: fn.index("\n}\n")]
+        assert "--filter dangling=true" in fn
+        assert "--filter name=buildx_buildkit_" in fn
+        assert "docker volume prune" not in fn
+        assert 'b="${b%0_state}"' in fn, "only builders whose state volume was reaped are removed"
+
 
 class TestDiskGuardMode:
     def test_disk_guard_flag_and_env(self, cleanup_text: str) -> None:
