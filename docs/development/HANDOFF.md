@@ -1,6 +1,41 @@
-# Current Handoff — Runner Host Reality vs /tmp Runbook & Profile Cleanup (#1159)
+# Current Handoff — Fleet monitor pool retarget + dangling-image prune (#1184)
 
-Last updated: 2026-09-06T10:15:00-07:00
+Last updated: 2026-09-14T22:15:00-07:00
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `C:\Users\diete\Repositories\_wt_rd_monitor` (worktree)
+- Branch: `fix/monitor-controltower-runner-pool`
+- Baseline commit: `origin/main` (`b25c745`)
+- Implementation commit: `4fee405`
+- Governing issue: [#1184](https://github.com/D-sorganization/Runner_Dashboard/issues/1184)
+- PR: not created at commit time (opened right after push)
+
+## Current Objective
+
+1. Point `deploy/fleet-health-monitor.ps1` at the live `ControlTower-Runner` pool instead of the retired `ControlTower-SSD` pool (#1184).
+2. Make `deploy/runner-cleanup.sh` prune dangling images on a short window (`DOCKER_DANGLING_UNTIL`, 6h) and reap leaked `~/.rustup/tmp` entries.
+
+## Implemented
+
+- `deploy/fleet-health-monitor.ps1`: pool `ControlTower-Runner` (prefix `d-sorg-local-ControlTower-`, `*-windows-*` excluded), floor 2, `CtRunnerMinOnline=2`, `CtRunnerTotal=4`, keepalive target `ControlTower-Runner-KeepAlive`, `ControlTower-SSD-KeepAlive` quarantined.
+- `deploy/runner-cleanup.sh`: `DOCKER_DANGLING_UNTIL` (6h) used for the routine dangling-image prune; new `cleanup_rustup_tmp` (age `RUSTUP_TMP_HOURS`, skipped while rustup runs) on the daily pass only.
+- Tests updated/added in `tests/deploy/test_fleet_health_monitor.py` and `tests/deploy/test_runner_cleanup_disk_guard.py`.
+
+## Validation
+
+- `python -m pytest tests/deploy/test_runner_cleanup_disk_guard.py tests/deploy/test_fleet_health_monitor.py` → 38 passed.
+- `bash -n deploy/runner-cleanup.sh` OK.
+- Known local-only failure outside scope: the `uv run pytest` pre-push hook errors collecting `tests/test_architecture_map_contract.py` (`No module named 'scripts'`) in this Windows venv; CI runs the suite.
+
+## Next Steps
+
+1. After merge, deploy `deploy/runner-cleanup.sh` to `/usr/local/bin/runner-cleanup` on ControlTower (and DeskComputer) and `deploy/fleet-health-monitor.ps1` to `C:\Users\diete\runner_fleet_monitor\` on DeskComputer.
+
+---
+
+## Previous handoff — Runner Host Reality vs /tmp Runbook & Profile Cleanup (#1159)
 
 ## Identity
 

@@ -18,6 +18,17 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1184 · Fleet monitor pool retarget + dangling-image prune
+
+- **State:** in_review
+- **Owner:** agent
+- **PR:** not created
+- **Paths:** `deploy/fleet-health-monitor.ps1`, `deploy/runner-cleanup.sh`, `tests/deploy/test_fleet_health_monitor.py`, `tests/deploy/test_runner_cleanup_disk_guard.py`
+- **Started:** 2026-09-14
+- **Last verified:** 2026-09-14 (`4fee405`)
+- **Summary:** Resolve Issue #1184: retarget the DeskComputer fleet monitor from the retired ControlTower-SSD pool to ControlTower-Runner, prune dangling docker images on a 6h window instead of 168h, and reap leaked ~/.rustup/tmp entries on the daily cleanup pass.
+- **Next step:** Deploy the merged runner-cleanup.sh and fleet-health-monitor.ps1 to ControlTower and DeskComputer.
+
 ### DL-0007 · Adopt Mermaid C4 Architecture Map Contract 1613
 
 - **State:** in_progress
