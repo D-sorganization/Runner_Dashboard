@@ -256,7 +256,7 @@ jobs:
             echo "No tests directory â€” skipping collect check"
           fi
 
-  quality-gate:
+  lint:
     needs: [pick-runner, ci-health-check]
     if: needs.ci-health-check.outputs.run_python_tests == 'true'
     runs-on: ${{ needs.pick-runner.outputs.runner }}
@@ -445,7 +445,7 @@ jobs:
   tests:
     needs:
       - ci-health-check
-      - quality-gate
+      - lint
       - pick-runner
     if: needs.ci-health-check.outputs.run_python_tests == 'true'
     runs-on: ${{ needs.pick-runner.outputs.runner }}
@@ -505,15 +505,91 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
+  # Posts the required `tests` context. It must run even when the matrix
+  # failed: without `if: always()` a red matrix *skips* this job, and GitHub
+  # treats a skipped required check as passing (six PRs merged with
+  # `tests (3.11)` red that way before 2026-09-15).
   tests-required:
     name: tests
     needs:
       - ci-health-check
       - tests
       - pick-runner
-    if: needs.ci-health-check.outputs.run_python_tests == 'true'
+    if: always()
     runs-on: ${{ needs.pick-runner.outputs.runner }}
     timeout-minutes: 5
     steps:
       - name: Confirm Python test matrix
-        run: echo "Python test matrix passed."
+        shell: bash
+        env:
+          HEALTH: ${{ needs.ci-health-check.result }}
+          RUN_PYTHON_TESTS: ${{ needs.ci-health-check.outputs.run_python_tests }}
+          TESTS: ${{ needs.tests.result }}
+        run: |
+          echo "ci-health-check: $HEALTH (run_python_tests=$RUN_PYTHON_TESTS)"
+          echo "tests: $TESTS"
+          if [ "$HEALTH" != "success" ]; then
+            echo "::error::ci-health-check reported '$HEALTH'; cannot trust the Python scope decision."
+            exit 1
+          fi
+          if [ "$RUN_PYTHON_TESTS" != "true" ] && [ "$TESTS" = "skipped" ]; then
+            echo "PR touches no Python surface; test matrix intentionally skipped."
+            exit 0
+          fi
+          if [ "$TESTS" != "success" ]; then
+            echo "::error::Python test matrix reported '$TESTS', expected 'success'."
+            exit 1
+          fi
+          echo "Python test matrix passed."
+
+  # Required branch-protection context for `main` (org ruleset
+  # Repository_Protections requires exactly this name). Before 2026-09-15 this
+  # name belonged to the lint job above, conditioned on the PR touching
+  # Python - so when ci-health-check failed (empty outputs) or the PR was
+  # frontend-only, the required check was *skipped*, which GitHub treats as
+  # passing: 23 of the last 65 merges landed that way, some with
+  # ci-health-check itself red.
+  #
+  # `if: always()` is load-bearing for the same reason.
+  quality-gate:
+    needs: [pick-runner, ci-health-check, lint, tests-required, security-scan]
+    if: always()
+    runs-on: ${{ needs.pick-runner.outputs.runner }}
+    timeout-minutes: 5
+    steps:
+      - name: Require every gated job to succeed
+        shell: bash
+        env:
+          HEALTH: ${{ needs.ci-health-check.result }}
+          RUN_PYTHON_TESTS: ${{ needs.ci-health-check.outputs.run_python_tests }}
+          RESULT_LINT: ${{ needs.lint.result }}
+          RESULT_TESTS: ${{ needs.tests-required.result }}
+          RESULT_SECURITY: ${{ needs.security-scan.result }}
+        run: |
+          failed=0
+          echo "ci-health-check: $HEALTH (run_python_tests=$RUN_PYTHON_TESTS)"
+          if [ "$HEALTH" != "success" ]; then
+            echo "::error::ci-health-check reported '$HEALTH', expected 'success'."
+            failed=1
+          fi
+          for pair in "lint=$RESULT_LINT" "tests=$RESULT_TESTS" "security-scan=$RESULT_SECURITY"; do
+            job="${pair%%=*}"
+            result="${pair#*=}"
+            echo "$job: $result"
+            if [ "$result" = "success" ]; then
+              continue
+            fi
+            # lint and security-scan skip by design on non-Python PRs;
+            # tests-required always runs and encodes that rule itself.
+            if [ "$result" = "skipped" ] && [ "$RUN_PYTHON_TESTS" != "true" ] && [ "$job" != "tests" ]; then
+              echo "::notice::$job skipped: PR touches no Python surface."
+              continue
+            fi
+            echo "::error::$job reported '$result', expected 'success'."
+            failed=1
+          done
+          if [ "$failed" -ne 0 ]; then
+            echo "::error::quality-gate: one or more gated jobs did not succeed."
+            exit 1
+          fi
+          echo "quality-gate: all gated jobs succeeded."
