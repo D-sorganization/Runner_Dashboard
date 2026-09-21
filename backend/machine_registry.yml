@@ -1,5 +1,5 @@
 version: 1
-updated_at: 2026-09-01
+updated_at: 2026-09-21
 machines:
   - name: ControlTower
     aliases:
@@ -188,14 +188,15 @@ machines:
       disk_media_type: null
       cache_budget_gb: null
     hardware:
-      cpu_model: Intel Core i7-10750H
-      cpu_physical_cores: 10
+      cpu_model: Intel Core i7-13700H
+      cpu_physical_cores: 14
       cpu_logical_cores: 20
-      memory_gb: 31
+      memory_gb: 64
       disk_total_gb: 1007
       disk_windows_host_gb: 804
       gpu_vram_gb: null
-      accelerators: []
+      accelerators:
+        - egpu-host-attached  # operator: eGPU relocated from DeskComputer; WSL nvidia-smi NVML N/A as of 2026-09-21
       workload_tags:
         - parallel-ci
         - node
@@ -235,8 +236,8 @@ machines:
       - d-sorg-fleet
       - d-sorg-fleet-docker
     runners:
-      min: 6
-      default: 8
+      min: 4
+      default: 6
       max: 8
     storage:
       # Runner-backing volume is D:, NOT the system drive. The WSL distro and
@@ -256,13 +257,13 @@ machines:
       disk_media_type: external
       cache_budget_gb: null
     hardware:
-      cpu_model: null
-      cpu_physical_cores: null
-      cpu_logical_cores: null
-      memory_gb: 54
+      cpu_model: Intel Core i7-13700H
+      cpu_physical_cores: 14
+      cpu_logical_cores: 20
+      memory_gb: 64
       disk_total_gb: 1007
       gpu_vram_gb: null
-      accelerators: []
+      accelerators: []  # eGPU moved to OGLaptop as of 2026-09-21; Iris Xe only
       workload_tags:
         - parallel-ci
         - node
@@ -274,4 +275,6 @@ machines:
         HP Envy laptop running WSL2 Ubuntu. Canonical machine name is
         DeskComputer; desktop is retained only as a legacy alias for older
         runner names. The WSL distro lives on the external D: drive — do not
-        gate capacity on C:.
+        gate capacity on C:. eGPU relocated to OGLaptop as of
+        2026-09-21; host WSL sized ~28GB/12CPU with Desktop-7/8
+        inventory disabled by default.
