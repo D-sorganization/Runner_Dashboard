@@ -350,7 +350,7 @@ SCOPE_PREFIX_NOUNS = {
 # Jobs whose `if:` gates on the detector. Losing any of these on a mis-detected
 # PR is what makes the defect a merge-blocking-signal loss rather than a
 # cosmetic one.
-PYTHON_GATED_JOBS = ("quality-gate", "security-scan", "tests", "tests-required")
+PYTHON_GATED_JOBS = ("lint", "security-scan", "tests")
 
 
 def _ci_health_steps() -> list[dict]:

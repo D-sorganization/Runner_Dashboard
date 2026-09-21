@@ -162,19 +162,14 @@ def test_main_exits_nonzero_on_known_snapshot(capsys) -> None:
 
 
 def test_actual_ci_standard_tests_required_job_is_not_yet_fail_closed() -> None:
-    """Documents today's real state of ci-standard.yml: the 'tests-required'
-    job (which reports the required 'tests' context) has no `if: always()`
-    guard, so it is silently SKIPPED -- not FAILED -- whenever the pytest
-    matrix job fails. This reproduces the PR #1116 mechanism directly
-    against the live workflow file. Fixing this is a workflow-YAML change
-    and is therefore left to a human per issue #1119's governance note; when
-    it is fixed, this test should be updated to assert an empty list.
+    """Verifies that the 'tests-required' job has `if: always()` guard so it
+    reports a FAILED context (not a skipped one) when the pytest matrix fails.
+    This was fixed per issue #1119; the job now has the required `if: always()`.
     """
     workflow_path = _ROOT / ".github" / "workflows" / "ci-standard.yml"
     problems = drift.check_job_fails_closed(workflow_path.read_text(encoding="utf-8"), "tests-required")
 
-    assert len(problems) == 1
-    assert "if: always()" in problems[0]
+    assert len(problems) == 0, f"tests-required should have if: always(): {problems}"
 
 
 def test_main_exits_zero_on_fixed_example(capsys) -> None:
