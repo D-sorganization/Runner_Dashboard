@@ -34,11 +34,14 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import sys  # noqa: E402
 
-backend_dir = str(Path(__file__).parent.parent.resolve() / "backend")
+REPO_ROOT = Path(__file__).parent.parent.resolve()
+backend_dir = str(REPO_ROOT / "backend")
 if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
 
-REPO_ROOT = Path(__file__).parent.parent
+repo_root_str = str(REPO_ROOT)
+if repo_root_str not in sys.path:
+    sys.path.insert(0, repo_root_str)
 
 import pytest  # noqa: E402
 
