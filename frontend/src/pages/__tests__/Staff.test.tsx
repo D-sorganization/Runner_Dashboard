@@ -9,6 +9,7 @@
  * 4. Run detail shows the stored events and appends SSE events while alive.
  * 5. Cancel POSTs /api/staff/runs/{id}/cancel with the CSRF header.
  * 6. Holds 404 renders the "unavailable" state, not an error.
+ * 7. Board lists late/dead scheduled roles as liveness alerts (#1209).
  */
 import "@testing-library/jest-dom/vitest";
 import React from "react";
@@ -207,6 +208,43 @@ describe("StaffPage", () => {
     await waitFor(() => expect(screen.getByTestId("board-spend")).toHaveTextContent("$3.50"));
     expect(screen.getByTestId("board-machine-DeskComputer")).toHaveTextContent("1 running");
     expect(screen.getByTestId("board-machine-ControlTower")).toHaveTextContent("1 queued");
+  });
+
+  it("board lists late and dead scheduled roles as liveness alerts", async () => {
+    const alerts = [
+      {
+        role: "night-watch",
+        schedule: "0 2 * * *",
+        status: "dead",
+        last_success: null,
+        last_attempt: null,
+        last_fired: "2026-09-01T09:00:00Z",
+        next_fire: "2026-09-23T09:00:00Z",
+        expected_interval_seconds: 86400,
+        age_seconds: 1_800_000,
+        machine: "ControlTower",
+      },
+    ];
+    stubFetch((url) =>
+      url === "/api/staff/board" ? { status: 200, body: { ...BOARD, liveness_alerts: alerts } } : undefined,
+    );
+    render(<StaffPage />);
+    await waitFor(() => expect(screen.getByTestId("board-liveness-alerts")).toBeInTheDocument());
+    const list = screen.getByTestId("board-liveness-alerts");
+    expect(within(list).getByText("dead")).toBeInTheDocument();
+    expect(list).toHaveTextContent("night-watch on ControlTower");
+    expect(list).toHaveTextContent("last success never");
+  });
+
+  it("board hides the liveness list when nothing is late or dead", async () => {
+    stubFetch((url) =>
+      url === "/api/staff/board"
+        ? { status: 200, body: { ...BOARD, liveness: [{ role: "hourly", status: "ok" }], liveness_alerts: [] } }
+        : undefined,
+    );
+    render(<StaffPage />);
+    await waitFor(() => expect(screen.getByTestId("board-spend")).toHaveTextContent("$3.50"));
+    expect(screen.queryByTestId("board-liveness-alerts")).not.toBeInTheDocument();
   });
 
   it("assign preview posts dry_run with CSRF header and shows the plan", async () => {

@@ -25,6 +25,7 @@ import httpx
 from dashboard_config import FLEET_NODES, HOSTNAME, RUNNER_ALIASES
 from fleet_autoconfig import derive_fleet_nodes_from_registry
 from machine_registry import load_machine_registry
+from staff import liveness as staff_liveness
 
 log = logging.getLogger("dashboard.staff.fleet")
 
@@ -109,7 +110,8 @@ async def aggregate_board(local_board: dict[str, Any], peers: dict[str, str] | N
 
     Post: ``machines`` has one entry per known node (online or offline);
     ``running``/``queued`` are the concatenation across online nodes; spend
-    totals are summed per provider.
+    totals are summed per provider; ``liveness_alerts`` are the late/dead
+    scheduled roles across online nodes, each tagged with its machine (#1209).
     """
     peers = peer_nodes() if peers is None else peers
     local_name = str(local_board.get("machine") or HOSTNAME)
@@ -122,11 +124,13 @@ async def aggregate_board(local_board: dict[str, Any], peers: dict[str, str] | N
     queued: list[dict[str, Any]] = []
     spend: dict[str, float] = {}
     providers: dict[str, dict[str, bool]] = {}
+    liveness_alerts: list[dict[str, Any]] = []
     for name, board in machines.items():
         if board.get("status") != "online":
             continue
         running.extend(board.get("running", []))
         queued.extend(board.get("queued", []))
+        liveness_alerts.extend(staff_liveness.alerts(board.get("liveness") or [], name))
         for provider, usd in (board.get("spend_today_usd") or {}).items():
             spend[provider] = round(spend.get(provider, 0.0) + float(usd), 6)
         providers[name] = dict(board.get("providers") or {})
@@ -140,6 +144,7 @@ async def aggregate_board(local_board: dict[str, Any], peers: dict[str, str] | N
         "queued": queued,
         "spend_today_usd": spend,
         "providers": providers,
+        "liveness_alerts": liveness_alerts,
     }
 
 

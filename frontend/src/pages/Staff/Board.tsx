@@ -2,8 +2,9 @@
  * Board.tsx — the status monitor panel at the top of the Staff tab (#1198).
  *
  * Polls `GET /api/staff/board` every 10 s and shows running / queued runs
- * per machine plus spend today. Orthogonal to the other panels: a board
- * failure renders an inline notice and never blocks Roster/Runs/Assign.
+ * per machine plus spend today, and a warning list of scheduled roles that
+ * are late or dead (#1209). Orthogonal to the other panels: a board failure
+ * renders an inline notice and never blocks Roster/Runs/Assign.
  */
 import { useCallback, useEffect, useState } from "react";
 import { Badge } from "../../primitives/Badge";
@@ -14,6 +15,7 @@ import {
   fetchBoard,
   formatUsd,
   groupByMachine,
+  livenessAlerts,
   statusTone,
   type BoardResponse,
 } from "./staffApi";
@@ -62,6 +64,19 @@ export function Board({ onOpenRun }: BoardProps) {
       </div>
       {error ? <p className="staff-muted">Board unavailable: {error}</p> : null}
       {!board && !error ? <p className="staff-muted">Loading board...</p> : null}
+      {board && livenessAlerts(board).length > 0 ? (
+        <ul className="staff-board__alerts" data-testid="board-liveness-alerts" aria-label="Liveness alerts">
+          {livenessAlerts(board).map((row) => (
+            <li key={`${row.machine ?? board.machine}:${row.role}`}>
+              <Badge tone={row.status === "dead" ? "danger" : "warning"} size="sm">
+                {row.status}
+              </Badge>{" "}
+              {row.role} on {row.machine ?? board.machine} · last success{" "}
+              {row.last_success ? <TimeAgo iso={row.last_success} /> : "never"}
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {board ? (
         <div className="staff-board__machines">
           {groupByMachine(board).map((row) => (

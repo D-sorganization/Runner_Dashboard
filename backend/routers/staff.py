@@ -29,6 +29,7 @@ from fastapi.responses import StreamingResponse
 from identity import require_fleet_peer, require_orchestrator_peer
 from pydantic import BaseModel, Field, field_validator
 from staff import fleet as staff_fleet
+from staff import liveness as staff_liveness
 from staff.adapters import available_providers
 from staff.runner import RunRequest, StaffRunner, get_runner
 from staff.store import ACTIVE_STATUSES, RUN_STATUSES
@@ -86,14 +87,18 @@ def _local_board(runner: StaffRunner) -> dict[str, Any]:
     store = runner.store
     active = store.active_runs()
     recent = store.list_runs(limit=20)
+    now = datetime.now(UTC)
+    liveness = staff_liveness.compute_liveness(runner.roles(), store, staff_liveness.load_scheduler_state(), now)
+    staff_liveness.notify_dead(liveness, runner.machine)
     return {
         "machine": runner.machine,
-        "generated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "generated_at": now.isoformat().replace("+00:00", "Z"),
         "running": [r.to_dict() for r in active if r.status == "running"],
         "queued": [r.to_dict() for r in active if r.status in ("queued", "preparing")],
         "recent": [r.to_dict() for r in recent if r.status not in ACTIVE_STATUSES],
         "spend_today_usd": store.spend_since(_today_iso()),
         "providers": available_providers(),
+        "liveness": liveness,
     }
 
 
@@ -133,7 +138,8 @@ async def summary(_peer: str = Depends(require_fleet_peer)) -> dict[str, Any]:
 
     Flat payload: what is in flight fleet-wide, what needs attention (failed or
     blocked in the last 24 h on this node), spend today, provider availability
-    per machine, active holds and the roster with schedules.
+    per machine, active holds, late/dead scheduled roles (#1209) and the
+    roster with schedules.
     """
     runner = get_runner()
     board_view = await staff_fleet.aggregate_board(_local_board(runner))
@@ -161,6 +167,7 @@ async def summary(_peer: str = Depends(require_fleet_peer)) -> dict[str, Any]:
         "spend_today_usd": board_view["spend_today_usd"],
         "providers": board_view["providers"],
         "holds": _holds_snapshot(),
+        "liveness_alerts": board_view.get("liveness_alerts", []),
         "roles": [
             {"name": s.name, "title": s.title, "schedule": s.schedule, "surface": s.surface, "retired": s.retired}
             for s in sorted(roles.values(), key=lambda s: s.name)

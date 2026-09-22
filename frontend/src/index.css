@@ -4904,6 +4904,15 @@ th.sortable.active .sort-indicator {
   color: var(--accent-blue);
 }
 
+.staff-board__alerts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
 .staff-board__machines {
   display: grid;
   gap: 12px;

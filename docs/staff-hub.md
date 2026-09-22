@@ -19,8 +19,8 @@ every run, and streams the output to the operator console.
 | Method | Path                          | Auth              | Purpose                                                               |
 | ------ | ----------------------------- | ----------------- | --------------------------------------------------------------------- |
 | GET    | `/api/staff/roster`           | fleet peer        | Roster: roles, provider availability, active counts                   |
-| GET | `/api/staff/board` | fleet peer | Status monitor. Fleet-wide when peers are configured (`machines`, `online`, `offline`, merged `running`/`queued`/spend); `?local=1` returns this node only |
-| GET | `/api/staff/summary` | fleet peer | One-call brief for Barb/Orchestrator: `in_flight`, `attention` (failed/blocked 24 h), `recent_24h`, `spend_today_usd`, `providers` per machine, `holds`, `roles` |
+| GET | `/api/staff/board` | fleet peer | Status monitor. Fleet-wide when peers are configured (`machines`, `online`, `offline`, merged `running`/`queued`/spend, `liveness_alerts`); `?local=1` returns this node only (with its `liveness` list) |
+| GET | `/api/staff/summary` | fleet peer | One-call brief for Barb/Orchestrator: `in_flight`, `attention` (failed/blocked 24 h), `recent_24h`, `spend_today_usd`, `providers` per machine, `holds`, `liveness_alerts`, `roles` |
 | GET    | `/api/staff/runs`             | fleet peer        | History; filters `role`, `status`, `since`, `limit`                   |
 | GET    | `/api/staff/runs/{id}`        | fleet peer        | One run plus its events                                               |
 | GET    | `/api/staff/runs/{id}/stream` | fleet peer        | Server-sent events until the run ends                                 |
@@ -101,6 +101,47 @@ seeded on first load from the `holds:` lists of the role YAML (same text on
 several roles merges into one hold). Each hold is `{id, text, set_on,
 lifted_when, applies_to, active}`; `PUT /api/staff/holds` replaces the whole
 list. Lifting a hold means `active: false` (or removing it).
+
+## Liveness (#1209)
+
+The Codex desktop sweeps stopped on 2026-05-27 and nobody noticed for four
+months because nothing watched "when did this job last succeed". The Staff
+Hub watches. `backend/staff/liveness.py` derives, for every dispatchable role
+with a `schedule`, one row in the node's board `liveness` list:
+
+| Field | Meaning |
+| --- | --- |
+| `last_success` | `ended_at` of the latest `succeeded` run for the role in this node's store |
+| `last_attempt` | `created_at` of the latest run of any status |
+| `last_fired` | the scheduler's `last_fired` for the role (`staff_schedule_state.json`) |
+| `next_fire`, `expected_interval_seconds` | next slot after now, and the gap to the slot after that |
+| `status` | `ok` · `late` · `dead` · `never` |
+
+**How to read the badge.** `ok`: the last success is younger than 1.5
+intervals. `late`: older than 1.5 intervals (one missed slot plus slack).
+`dead`: older than 3 intervals, or the scheduler has fired the role (or a run
+exists) and it has never succeeded — a still-running first attempt shows as
+`late`. `never`: no run and no fire yet, which is normal for a freshly added
+role until its first slot. Only `late` and `dead` rows are alerts.
+
+The hub board (`GET /api/staff/board` with peers) keeps each node's list under
+`machines[<name>].liveness` and lifts the late/dead rows of every **online**
+node, tagged with `machine`, into `liveness_alerts`; `GET /api/staff/summary`
+carries the same `liveness_alerts`. The Staff tab's Board panel shows them as
+a warning list above the machines. No GitHub call is involved: stopping the
+scheduler on one node turns that node's roles `late` then `dead` on the hub
+from the stores alone.
+
+A role turning `dead` also records a `staff_role_dead` fleet event (severity
+`warning`, `node` = the machine) in the fleet event log, once per role per six
+hours (in-memory debounce, evaluated whenever the local board is built).
+
+**What to do.** `late`: check `GET /api/staff/schedule` for the blocker
+(`outside run window`, a hold, an active run, budget) and `/api/staff/runs?role=`
+for the last failure. `dead`: the scheduler on that node is not running
+(`STAFF_SCHEDULER_ENABLED`, service down) or every attempt fails — read the
+last run's events, fix, then dispatch the role by hand; the row returns to
+`ok` on the next success.
 
 ## Environment
 
