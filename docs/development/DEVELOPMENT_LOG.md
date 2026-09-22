@@ -24,7 +24,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Owner:** claude
 - **Issue:** #1209 (epic #1192)
 - **Branch:** `feat/1209-staff-liveness`
-- **PR:** draft, opened after push
+- **PR:** #1211
 - **Paths:** `backend/staff/liveness.py`, `backend/staff/fleet.py`, `backend/routers/staff.py`, `backend/fleet_events.py`, `frontend/src/pages/Staff/Board.tsx`, `frontend/src/pages/Staff/staffApi.ts`, `frontend/src/lib/fleetEvents.ts`, `tests/api/test_staff_liveness.py`
 - **Started:** 2026-09-22
 - **Last verified:** 2026-09-22 (`cde8c32`)

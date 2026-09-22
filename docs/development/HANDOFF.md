@@ -9,7 +9,7 @@ Last updated: 2026-09-22T22:30:00-07:00
 - Branch: `feat/1209-staff-liveness`
 - Baseline commit: `origin/main` (`cde8c32`)
 - Implementation commit: `SELF`
-- Pull request: draft, opened right after push (see PR body)
+- Pull request: #1211 (https://github.com/D-sorganization/Runner_Dashboard/pull/1211), ready for review with auto-merge armed
 - Governing issue/epic: #1209 in epic #1192
 
 ## Objective and Status
