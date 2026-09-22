@@ -706,8 +706,10 @@ app.include_router(_orchestrator_api.router)  # Conductor admission gate (issue 
 
 # Fleet Staff Hub (epic #1192): named AI staff roles run as local CLI subprocesses.
 from routers import staff as _staff_router  # noqa: E402
+from routers import staff_schedule as _staff_schedule_router  # noqa: E402
 
 app.include_router(_staff_router.router)
+app.include_router(_staff_schedule_router.router)  # scheduler, holds, budgets (issue #1196)
 
 # Issue #924 — structural auth perimeter. Registered BEFORE SessionMiddleware so
 # that, in Starlette's outer→inner stack, SessionMiddleware wraps this gate and
@@ -2561,6 +2563,7 @@ async def _startup() -> None:
                 log.info("Acquired leader lock at %s, starting background tasks", candidate)
                 _runner_audit_router.start_audit_loop()
                 _linear_sync_router.start_sync_loop()  # issue #236
+                _staff_schedule_router.start_scheduler()  # issue #1196
                 acquired = True
                 break
             except OSError as exc:
@@ -2581,6 +2584,7 @@ async def _startup() -> None:
         log.warning("fcntl not available on this platform, running without file lock")
         _runner_audit_router.start_audit_loop()
         _linear_sync_router.start_sync_loop()  # issue #236
+        _staff_schedule_router.start_scheduler()  # issue #1196
 
 
 @app.on_event("shutdown")
