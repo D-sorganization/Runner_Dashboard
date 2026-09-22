@@ -374,3 +374,16 @@ def test_scheduler_state_parser_fails_closed() -> None:
     assert "BAD=True" in result.stdout
     assert "MISSING=True" in result.stdout
     assert "NEGATIVE=True" in result.stdout
+
+
+def test_script_probes_the_staff_hub_board() -> None:
+    """Runner_Dashboard#1201: a dead Staff Hub means scheduled roles silently stop.
+
+    The monitor must read the node's own board (``?local=1``, read-only) and
+    record a WARN plus a state error when it is unreachable, never abort the
+    cycle.
+    """
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert "/api/staff/board?local=1" in text
+    assert "staff-board:" in text
+    assert "staff hub board unreachable" in text

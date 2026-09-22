@@ -326,6 +326,22 @@ foreach (`$dl in 'C', 'F', 'D') {
   $state.errors += "ct-wmi: $($_.Exception.Message)"
 }
 
+# -- 2b. Staff Hub liveness (Runner_Dashboard#1201) ---------------------------
+# The Staff Hub runs AI staff roles as local subprocesses on every node; a node
+# whose board stops answering is a node whose scheduled roles are silently not
+# running. Read-only probe of this node's own board.
+try {
+  $staffBoard = Invoke-RestMethod -Uri "$DashboardUrl/api/staff/board?local=1" -TimeoutSec 20
+  $staffRunning = @($staffBoard.running).Count
+  $staffQueued = @($staffBoard.queued).Count
+  $state.staff_running = $staffRunning
+  $state.staff_queued = $staffQueued
+  Write-Log "staff hub board ok: running=$staffRunning queued=$staffQueued machine=$($staffBoard.machine)"
+} catch {
+  Write-Log "staff hub board unreachable at $DashboardUrl/api/staff/board: $($_.Exception.Message)" "WARN"
+  $state.errors += "staff-board: $($_.Exception.Message)"
+}
+
 # -- 3. Fleet pool floors + self-heal + CT keepalive restart ------------------
 try {
   $runners = Invoke-RestMethod -Uri "$DashboardUrl/api/runners?local=true" -TimeoutSec 25

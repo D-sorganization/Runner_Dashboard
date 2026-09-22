@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.10.0] - 2026-09-22
+
+### Added
+
+- Fleet health monitor probes this node's Staff Hub board (`/api/staff/board?local=1`) and records a WARN when it is unreachable (#1201).
+
 ### Added
 
 - Provider registry v2: added `antigravity` (`agy`), `cursor_agent` (`cursor-agent`, Grok models via the Cursor subscription) and optional `maxwell` providers; marked the retired `jules_cli`/`jules_api` entries `enabled: false` and removed them from the default provider order; `GET /api/providers/registry` now reports a 60 s-cached per-node CLI probe (`node_availability` + `hostname`) reusing the credentials-router probes (#1193, epic #1192).

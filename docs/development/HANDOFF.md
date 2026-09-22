@@ -1,4 +1,50 @@
-# Current Handoff — Provider registry v2: antigravity, cursor-agent, maxwell; Jules disabled; per-node CLI probe (#1193)
+# Current Handoff — Release 4.10.0 and Staff Hub health probe (#1201)
+
+Last updated: 2026-09-22T20:30:00-07:00
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/staff-hub` (worktree)
+- Branch: `chore/1201-release-4.10.0`
+- Baseline commit: `origin/main` (`34cfdae`)
+- Implementation commit: `SELF`
+- Pull request: not created at commit time
+- Governing issue/epic: #1201 in epic #1192
+
+## Objective and Status
+
+- Objective: cut release 4.10.0 (first with the Fleet Staff Hub) and alarm on a dead Staff Hub board from the fleet health monitor.
+- Status: ready for review.
+- Completed: version bumped in VERSION, pyproject, package.json, package-lock.json, uv.lock, openapi snapshot, SPEC header; CHANGELOG 4.10.0 section; monitor probe + test.
+- Remaining: merge → `release.yml` builds `dashboard-4.10.0.tar.gz` → install on DeskComputer via `deploy/update-deployed.sh --artifact <url>`; ControlTower and OGLaptop need the operator (no SSH keys from DeskComputer; OGLaptop uses `deploy-qualified-release.yml`). Set `STAFF_SCHEDULER_ENABLED=0` on all nodes but one.
+
+## Files and Decisions
+
+- Files changed: `VERSION`, `pyproject.toml`, `package.json`, `package-lock.json`, `uv.lock`, `frontend/src/lib/openapi.json`, `SPEC.md`, `CHANGELOG.md`, `deploy/fleet-health-monitor.ps1`, `tests/deploy/test_fleet_health_monitor.py`, this file, `docs/development/DEVELOPMENT_LOG.md`.
+- Key decisions: the monitor probe is read-only and node-local (`?local=1`) so it never depends on peers; failure is a WARN plus `state.errors`, never a cycle abort. Minor version bump because the release adds new API surfaces.
+- User-owned or unrelated worktree changes: none observed.
+
+## Validation
+
+- `PYTHONPATH=backend python -m pytest tests/test_version_single_source.py tests/deploy/test_fleet_health_monitor.py -p no:pytest-qt -o addopts="" -q` — 25 passed.
+
+## Blockers and Risks
+
+- Blockers: none.
+- Risks/assumptions: `release.yml` must accept the VERSION push on main (tag `v4.10.0` must not pre-exist); the monitor's copy on DeskComputer (`C:\Users\diete\runner_fleet_monitor\fleet-health-monitor.ps1`) is deployed separately from the repo and must be re-copied.
+
+## Next Steps
+
+1. Merge this PR after RD#1206; watch `release.yml` for `v4.10.0` assets.
+2. Install on DeskComputer, verify `/api/health` reports 4.10.0 and `/api/staff/board` answers.
+3. Copy the monitor script to `C:\Users\diete\runner_fleet_monitor\`.
+
+---
+
+---
+
+## Previous Handoff — Current Handoff — Provider registry v2: antigravity, cursor-agent, maxwell; Jules disabled; per-node CLI probe (#1193)
 
 Last updated: 2026-09-22T00:00:00-07:00
 

@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1201 · Release 4.10.0 and Staff Hub health probe
+
+- **State:** in_review
+- **Owner:** agent
+- **Issue:** #1201
+- **Branch:** `chore/1201-release-4.10.0`
+- **PR:** not created
+- **Paths:** `VERSION`, `pyproject.toml`, `package.json`, `package-lock.json`, `uv.lock`, `frontend/src/lib/openapi.json`, `deploy/fleet-health-monitor.ps1`, `tests/deploy/test_fleet_health_monitor.py`
+- **Started:** 2026-09-22
+- **Last verified:** 2026-09-22 (`34cfdae`)
+- **Summary:** Cut 4.10.0 (first release with the Fleet Staff Hub, epic #1192) so `release.yml` builds the artifact, and make the DeskComputer fleet health monitor probe `/api/staff/board?local=1` so a dead Staff Hub is alarmed instead of silently skipping scheduled roles.
+- **Next step:** After the release artifact publishes, install it on DeskComputer with `deploy/update-deployed.sh --artifact` and hand ControlTower/OGLaptop the same command.
+
 ### DL-#1193 · Provider registry v2 (antigravity, cursor-agent, maxwell; Jules disabled; node probe)
 
 - **State:** in_review
