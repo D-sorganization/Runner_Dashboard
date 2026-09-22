@@ -19,12 +19,11 @@ import os
 import threading
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from staff.roles import RoleSpec, load_roles
-from staff.store import _config_dir
+from staff.store import _config_dir, _now
 
 log = logging.getLogger("dashboard.staff.holds")
 
@@ -34,10 +33,6 @@ MAX_TEXT = 500
 
 def holds_path() -> Path:
     return Path(os.environ.get("STAFF_HOLDS_FILE", str(_config_dir() / HOLDS_FILE))).expanduser()
-
-
-def _now() -> str:
-    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _hold_id(text: str) -> str:
