@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1209 · Staff board scheduled-role liveness
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1209 (epic #1192)
+- **Branch:** `feat/1209-staff-liveness`
+- **PR:** draft, opened after push
+- **Paths:** `backend/staff/liveness.py`, `backend/staff/fleet.py`, `backend/routers/staff.py`, `backend/fleet_events.py`, `frontend/src/pages/Staff/Board.tsx`, `frontend/src/pages/Staff/staffApi.ts`, `frontend/src/lib/fleetEvents.ts`, `tests/api/test_staff_liveness.py`
+- **Started:** 2026-09-22
+- **Last verified:** 2026-09-22 (`cde8c32`)
+- **Summary:** Per scheduled role, derive last success / last attempt / expected interval and a status `ok | late | dead | never` from the node store and scheduler state; expose `liveness` on the local board and `liveness_alerts` on the hub board and summary; record a `staff_role_dead` fleet event (6 h debounce); list alerts on the Staff tab Board panel.
+- **Next step:** Mark the draft PR ready once CI Standard, Spec Check and frontend tests are green.
+
 ### DL-#1201 · Release 4.10.0 and Staff Hub health probe
 
 - **State:** in_review

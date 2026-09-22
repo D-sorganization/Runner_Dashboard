@@ -6,6 +6,18 @@
 **Last Updated:** 2026-09-22T00:00:00-07:00
 **Status:** Active
 
+- **2026-09-22:** Staff board scheduled-role liveness (#1209, epic #1192). New
+  `backend/staff/liveness.py::compute_liveness(roles, store, scheduler_state, now)` derives, per
+  dispatchable role with a `schedule`, `last_success`, `last_attempt`, `last_fired`, `next_fire`,
+  `expected_interval_seconds` (gap between the next two fires) and `status` `ok | late | dead |
+  never` (late > 1.5 intervals since the last success, dead > 3 intervals or fired/attempted and
+  never succeeded, never = no run and no fire). Additive: `GET /api/staff/board?local=1` gains
+  `liveness`; the hub board and `GET /api/staff/summary` gain `liveness_alerts` (late/dead rows
+  across online nodes tagged with `machine`, kept per node under `machines[name].liveness`).
+  A role turning `dead` records a `staff_role_dead` fleet event (new `EventKind`, severity
+  warning, one per role per 6 h in memory). The Staff tab Board panel lists the alerts.
+  TDD: `tests/api/test_staff_liveness.py`, `frontend/src/pages/__tests__/Staff.test.tsx`.
+
 - **2026-09-22:** Provider registry v2 — antigravity, cursor-agent, maxwell providers; Jules disabled; per-node CLI probe (#1193, epic #1192).
   `PROVIDER_REGISTRY` gains `antigravity` (`antigravity-cli`, probe `agy`), `cursor_agent`
   (`cursor-agent`, whose curated model list includes Grok entries so Grok is a worker seat

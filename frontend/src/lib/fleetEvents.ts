@@ -28,7 +28,8 @@ export type EventKind =
   | "runner_online"
   | "low_disk"
   | "saturation"
-  | "watchdog";
+  | "watchdog"
+  | "staff_role_dead";
 
 export interface FleetEvent {
   /** Epoch milliseconds. */

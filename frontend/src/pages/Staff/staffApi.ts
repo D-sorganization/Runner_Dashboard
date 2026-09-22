@@ -102,6 +102,21 @@ export interface RunEvent {
   text: string;
 }
 
+/** Liveness of one scheduled role (#1209): `ok | late | dead | never`. */
+export interface RoleLiveness {
+  role: string;
+  schedule: string;
+  status: "ok" | "late" | "dead" | "never" | string;
+  last_success: string | null;
+  last_attempt: string | null;
+  last_fired: string | null;
+  next_fire: string | null;
+  expected_interval_seconds: number | null;
+  age_seconds: number | null;
+  /** Set on hub `liveness_alerts` entries: the node the row came from. */
+  machine?: string;
+}
+
 export interface BoardResponse {
   machine: string;
   generated_at: string;
@@ -110,6 +125,10 @@ export interface BoardResponse {
   recent: RunRecord[];
   spend_today_usd: number;
   providers: Record<string, boolean>;
+  /** Scheduled-role liveness on this node (#1209); absent on older nodes. */
+  liveness?: RoleLiveness[];
+  /** Hub view only: late/dead scheduled roles across online nodes (#1209). */
+  liveness_alerts?: RoleLiveness[];
 }
 
 export interface RunsResponse {
@@ -281,6 +300,12 @@ export function groupByMachine(board: BoardResponse): MachineRow[] {
   for (const run of board.running) ensure(run.machine || board.machine).running.push(run);
   for (const run of board.queued) ensure(run.machine || board.machine).queued.push(run);
   return Array.from(rows.values());
+}
+
+/** Late/dead scheduled roles to warn about: the hub list when present, else this node's own rows. */
+export function livenessAlerts(board: BoardResponse): RoleLiveness[] {
+  if (board.liveness_alerts) return board.liveness_alerts;
+  return (board.liveness ?? []).filter((r) => r.status === "late" || r.status === "dead");
 }
 
 /** Human label for a run's target (issue / PR / free prompt). */
