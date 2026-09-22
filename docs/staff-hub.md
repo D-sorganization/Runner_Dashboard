@@ -119,4 +119,4 @@ list. Lifting a hold means `active: false` (or removing it).
 ## Not yet here (tracked in the epic)
 
 The Staff tab (#1198), the Project Steward role and Projects tab (#1199), the
-the Project Steward role and Projects tab (#1199), the usage ledger (#1200).
+usage ledger (#1200).
