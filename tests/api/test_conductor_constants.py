@@ -88,3 +88,18 @@ def test_vendored_values_match_conductor_source(constant: tuple[str, ...], enum_
         pytest.skip("conductor source not checked out")
     expected = _enum_values(path.read_text(encoding="utf-8"), enum_name)
     assert set(constant) == expected
+
+
+# ---------------------------------------------------------------------------
+# Registry-side drift (issue #1193): every provider row, including the v2
+# additions (antigravity, cursor_agent, maxwell), must only use vendored values.
+# ---------------------------------------------------------------------------
+def test_every_registry_entry_uses_vendored_values() -> None:
+    from agent_remediation.provider_registry import PROVIDER_REGISTRY  # noqa: PLC0415
+
+    ids = {e.dashboard_id for e in PROVIDER_REGISTRY}
+    assert {"antigravity", "cursor_agent", "maxwell"} <= ids
+    for entry in PROVIDER_REGISTRY:
+        assert entry.auth_mode in AUTH_KINDS, entry.dashboard_id
+        assert entry.resource in RESOURCES, entry.dashboard_id
+        assert set(entry.capabilities) <= set(CAPABILITIES), entry.dashboard_id

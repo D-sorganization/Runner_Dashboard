@@ -63,6 +63,9 @@ class ProviderEntry:
         editable: Whether the provider is operator-editable.
         remote: Whether the provider runs a remote session.
         experimental: Whether the provider is gated/experimental.
+        enabled: Whether the provider may be selected for dispatch (#1193).
+            Retired providers stay in the table for back-compat (their ids,
+            routes and history remain resolvable) but are never planned.
         notes: Free-form operator notes.
     """
 
@@ -85,6 +88,7 @@ class ProviderEntry:
     editable: bool = False
     remote: bool = False
     experimental: bool = False
+    enabled: bool = True
     notes: str = ""
 
     @property
@@ -107,6 +111,16 @@ OLLAMA_TAGS_ENDPOINT = f"{OLLAMA_BASE_URL}/api/tags"
 _CLAUDE_MODELS = ("claude-opus-4", "claude-sonnet-4", "claude-haiku-4")
 _CODEX_MODELS = ("gpt-5-codex", "gpt-5", "o4-mini")
 _GEMINI_MODELS = ("gemini-2.5-pro", "gemini-2.5-flash")
+# Cursor Agent routes to several vendors under one Cursor subscription. The
+# Grok entries are how Grok is used as a worker seat (#1193): the standalone
+# Grok Build CLI needs a SuperGrok plan the fleet does not hold.
+_CURSOR_AGENT_MODELS = ("auto", "gpt-5", "claude-sonnet-4", "grok-code-fast-1", "grok-4")
+
+#: Notes for the providers retired fleet-wide by RM#1483 / RM#1505 (#1193).
+_JULES_RETIRED_NOTE = (
+    " Retired: the Jules workflow suite was removed fleet-wide "
+    "(Repository_Management#1483, program #1505); kept for back-compat only."
+)
 
 
 #: The ONE canonical provider table. Order is the dashboard display order.
@@ -127,7 +141,8 @@ PROVIDER_REGISTRY: tuple[ProviderEntry, ...] = (
         setup_hint="Install Jules CLI from jules.google",
         editable=False,
         remote=True,
-        notes=("Best for an operator-triggered remote Jules session from the dashboard host."),
+        enabled=False,
+        notes=("Best for an operator-triggered remote Jules session from the dashboard host." + _JULES_RETIRED_NOTE),
     ),
     ProviderEntry(
         dashboard_id="jules_api",
@@ -145,8 +160,10 @@ PROVIDER_REGISTRY: tuple[ProviderEntry, ...] = (
         setup_hint="Set JULES_API_KEY environment variable",
         editable=False,
         remote=True,
+        enabled=False,
         notes=(
             "Best automation backend for GitHub Actions because the documented Jules CLI login flow is interactive."
+            + _JULES_RETIRED_NOTE
         ),
     ),
     ProviderEntry(
@@ -254,6 +271,67 @@ PROVIDER_REGISTRY: tuple[ProviderEntry, ...] = (
         experimental=True,
         notes=("Reserved for future plugin-driven local remediation; no stable CLI contract is assumed here yet."),
     ),
+    # --- Provider registry v2 (#1193) -----------------------------------------
+    ProviderEntry(
+        dashboard_id="antigravity",
+        conductor_id="antigravity-cli",
+        label="Antigravity CLI",
+        execution_mode="local_exec",
+        dispatch_mode="dashboard_local",
+        auth_mode="local",
+        resource="runner",
+        capabilities=("code_edit", "ci_fix", "test_fix", "refactor", "doc"),
+        cost_per_task=0.0,
+        max_concurrency=1,
+        availability_probe=("agy",),
+        credential_id="antigravity",
+        setup_hint="Install Antigravity CLI (agy) on the node",
+        editable=True,
+        notes=(
+            "Uses `agy --print --output-format stream-json` for headless branch-local "
+            "remediation on the dashboard node; the CLI carries its own login session."
+        ),
+    ),
+    ProviderEntry(
+        dashboard_id="cursor_agent",
+        conductor_id="cursor-agent",
+        label="Cursor Agent",
+        execution_mode="local_exec",
+        dispatch_mode="dashboard_local",
+        auth_mode="local",
+        resource="runner",
+        capabilities=("code_edit", "ci_fix", "test_fix", "refactor", "doc"),
+        cost_per_task=0.0,
+        max_concurrency=1,
+        models=_CURSOR_AGENT_MODELS,
+        availability_probe=("cursor-agent",),
+        credential_id="cursor_agent",
+        setup_hint="Install Cursor CLI (cursor-agent) on the node, then `cursor-agent login`",
+        editable=True,
+        notes=(
+            "Uses `cursor-agent -p` for headless branch-local remediation. Grok models are "
+            "reached through the Cursor subscription; the Grok Build CLI is not used because "
+            "it requires SuperGrok."
+        ),
+    ),
+    ProviderEntry(
+        dashboard_id="maxwell",
+        conductor_id="maxwell-daemon",
+        label="Maxwell Daemon",
+        execution_mode="remote_session",
+        dispatch_mode="dashboard_local",
+        auth_mode="local",
+        resource="local",
+        capabilities=("code_edit", "code_review", "doc"),
+        cost_per_task=0.0,
+        max_concurrency=1,
+        credential_id="maxwell",
+        setup_hint="Optional: run Maxwell_Daemon on this host; the dashboard proxies it over HTTP",
+        editable=False,
+        remote=True,
+        experimental=True,
+        notes="optional; daemon has been dormant since 2026-06",
+    ),
 )
 
 
@@ -266,7 +344,10 @@ def validate_registry(entries: tuple[ProviderEntry, ...] = PROVIDER_REGISTRY) ->
         - each ``auth_mode`` is an allowed auth kind,
         - each ``resource`` is an allowed resource,
         - every capability is an allowed conductor capability,
-        - ``cost_per_task >= 0`` and ``max_concurrency >= 1``.
+        - ``cost_per_task >= 0`` and ``max_concurrency >= 1``,
+        - every ``local_exec`` provider declares an ``availability_probe``
+          (the per-node CLI probe, #1193, has nothing to check otherwise),
+        - ``enabled`` is a real bool.
 
     Raises:
         AssertionError: If any invariant is violated.
@@ -282,6 +363,9 @@ def validate_registry(entries: tuple[ProviderEntry, ...] = PROVIDER_REGISTRY) ->
         assert e.resource in RESOURCES, f"{e.dashboard_id}: bad resource {e.resource!r}"
         assert e.cost_per_task >= 0.0, f"{e.dashboard_id}: negative cost"
         assert e.max_concurrency >= 1, f"{e.dashboard_id}: max_concurrency < 1"
+        assert isinstance(e.enabled, bool), f"{e.dashboard_id}: enabled must be bool"
+        if e.execution_mode == "local_exec":
+            assert e.availability_probe, f"{e.dashboard_id}: local_exec provider needs an availability_probe"
         for cap in e.capabilities:
             assert cap in CAPABILITIES, f"{e.dashboard_id}: bad capability {cap!r}"
 

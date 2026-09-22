@@ -1,4 +1,49 @@
-# Current Handoff — Projects tab: per-repo charter, status and steward runs (#1199)
+# Current Handoff — Provider registry v2: antigravity, cursor-agent, maxwell; Jules disabled; per-node CLI probe (#1193)
+
+Last updated: 2026-09-22T00:00:00-07:00
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `C:\Users\diete\Repositories\Runner_Dashboard\.claude\worktrees\agent-a924e22d8c1965606` (isolated worktree)
+- Branch: `feat/1193-provider-registry-v2`
+- Baseline commit: `origin/main` (`52fd0b9`)
+- Implementation commit: `SELF`
+- Governing issue: [#1193](https://github.com/D-sorganization/Runner_Dashboard/issues/1193) (Staff Hub 3), epic [#1192](https://github.com/D-sorganization/Runner_Dashboard/issues/1192)
+- PR: draft, opened right after push (see PR body; draft is mandatory because org automation auto-merges non-draft green PRs)
+
+## Current Objective
+
+1. Extend `PROVIDER_REGISTRY` with `antigravity` (`antigravity-cli`, probe `agy`), `cursor_agent` (`cursor-agent`, Grok models via the Cursor subscription) and optional `maxwell` (`maxwell-daemon`).
+2. Mark `jules_cli` / `jules_api` `enabled: false` and drop them from `provider_order` / `enabled_providers` (Jules retired fleet-wide, RM#1483 / RM#1505) without deleting the entries or `/dispatch-jules`.
+3. Add a per-node CLI probe (`installed` + `authenticated`) reusing `routers/credentials.py` probes and expose it as `node_availability` + `hostname` on `GET /api/providers/registry`, cached 60 s.
+
+## Implemented
+
+- `backend/agent_remediation/provider_registry.py`: `ProviderEntry.enabled` (default `True`), three new rows, Jules rows `enabled=False` with a retirement note, `validate_registry` now also asserts `enabled` is bool and every `local_exec` row has an `availability_probe`.
+- `backend/agent_remediation/provider_probe.py` (new): `probe_provider_availability()` — `shutil.which` for `installed`; `authenticated` from the credentials-router probes (lazy import, injectable mapping, never raises); `auth_mode: local` CLIs without a probe report `authenticated == installed`.
+- `backend/routers/providers.py`: `enabled` in each provider payload; `hostname` + `node_availability` top-level; `cached_node_availability()` (60 s via `cache_utils`); `build_registry(node_availability=...)` injection seam. `schema_version` stays `1.0.0` (additive change).
+- `backend/agent_remediation/providers.py`: `AgentProvider.enabled` projected from the table. `planner.py`: `plan_dispatch` skips registry-disabled providers even when a saved policy lists them. `policy.py`: `DEFAULT_PROVIDER_ORDER` without Jules, with the new providers.
+- `config/agent_remediation.json`: Jules removed from `provider_order` / `enabled_providers`; `antigravity`, `cursor_agent` added to both; `maxwell` in order only (dormant). Workflow-type rules still name `jules_api` / `jules_cli` as preferred provider — the planner now falls through to the enabled order; retargeting those rules was left out of scope.
+- `backend/conductor_constants.py`: unchanged — the vendored enums already match `Repository_Management/conductor/provider.py` (verified by reading the source); the new rows use existing values and `tests/api/test_conductor_constants.py` gained a registry-side drift test.
+- Docs: `SPEC.md` (change-log bullet + section 4 registry contract), `CHANGELOG.md` (Unreleased), this handoff, `DEVELOPMENT_LOG.md` (`DL-#1193`).
+
+## Validation
+
+- `python -m pytest tests/api/test_providers_registry.py tests/api/test_conductor_constants.py tests/test_agent_remediation.py -q` → 54 passed, 7 skipped (skips = conductor source not checked out from this worktree path).
+- `ruff check backend tests` → clean. `ruff format --check backend` → clean (4 pre-existing `tests/` files differ under local ruff 0.15.11; CI pins 0.14.10 and checks `backend/` only).
+- `mypy backend/ --ignore-missing-imports --no-implicit-optional` → Success (133 files).
+- Endpoint timing: node probe 0.36 s (cached 60 s); the pre-existing live Ollama fetch is the 4.7 s cost when Ollama is down — outside scope.
+
+## Next Steps
+
+1. Review the draft PR, mark ready when CI is green; then consider retargeting the `jules_api` / `jules_cli` workflow-type rules in `config/agent_remediation.json` and `policy.py` defaults (follow-up, not in #1193's scope).
+
+---
+
+---
+
+## Previous Handoff — Current Handoff — Projects tab: per-repo charter, status and steward runs (#1199)
 
 Last updated: 2026-09-22T10:30:00-07:00
 

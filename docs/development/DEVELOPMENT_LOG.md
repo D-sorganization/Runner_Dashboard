@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1193 · Provider registry v2 (antigravity, cursor-agent, maxwell; Jules disabled; node probe)
+
+- **State:** in_review
+- **Owner:** agent
+- **Issue:** #1193 (epic #1192)
+- **Branch:** `feat/1193-provider-registry-v2`
+- **PR:** draft, opened after push
+- **Paths:** `backend/agent_remediation/provider_registry.py`, `backend/agent_remediation/provider_probe.py`, `backend/agent_remediation/providers.py`, `backend/agent_remediation/planner.py`, `backend/agent_remediation/policy.py`, `backend/routers/providers.py`, `config/agent_remediation.json`, `tests/api/test_providers_registry.py`, `tests/api/test_conductor_constants.py`, `tests/test_agent_remediation.py`
+- **Started:** 2026-09-22
+- **Last verified:** 2026-09-22 (`SELF`)
+- **Summary:** Resolve Issue #1193: add antigravity, cursor_agent (Grok via Cursor subscription) and optional maxwell providers to the canonical registry, mark the retired jules_cli/jules_api entries enabled=false and drop them from the default provider order, and expose a 60 s-cached per-node CLI probe (installed + authenticated, reusing the credentials-router probes) as node_availability + hostname on GET /api/providers/registry.
+- **Next step:** Mark the draft PR ready for review once CI Standard and Spec Check are green.
+
 ### DL-#1199 · Projects tab: per-repo charter, status and steward runs
 
 - **State:** in_review
