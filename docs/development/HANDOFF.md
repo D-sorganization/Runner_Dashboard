@@ -1,4 +1,50 @@
-# Current Handoff — Staff Hub core: runner, run store, /api/staff routes (#1194)
+# Current Handoff — Staff Hub fleet board, summary and machine targeting (#1195, #1197)
+
+Last updated: 2026-09-22T18:10:00-07:00
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\staff-hub` (worktree)
+- Branch: `feat/1195-hub-board-targeting` (based on `feat/staff-hub`, PR #1202)
+- Baseline commit: `feat/staff-hub` (`4c0a1e6`)
+- Implementation commit: `SELF`
+- Pull request: not created at commit time (draft with base `feat/staff-hub` opened right after push)
+- Governing issue/epic: [#1195](https://github.com/D-sorganization/Runner_Dashboard/issues/1195), [#1197](https://github.com/D-sorganization/Runner_Dashboard/issues/1197) in epic [#1192](https://github.com/D-sorganization/Runner_Dashboard/issues/1192)
+
+## Objective and Status
+
+- Objective: make `/api/staff/board` the fleet-wide status monitor, add the one-call `/api/staff/summary` brief, and let a dispatch target any machine (`local | <peer> | auto`) with forwarding to the chosen node.
+- Status: ready for review (stacked draft PR).
+- Completed: `backend/staff/fleet.py` (peer discovery, board fan-out/merge, `choose_machine`, `forward_run`, injectable `get_json`/`post_json`), router changes (`board?local`, `summary`, `_resolve_target`, `_forward`), docs, SPEC, CHANGELOG, 10 tests.
+- Remaining: holds in the summary populate once #1196 lands (`staff.holds.active_holds`); scheduler (#1196), Staff tab (#1198), Steward (#1199), usage ledger (#1200), deploy (#1201).
+
+## Files and Decisions
+
+- Files changed: `backend/staff/fleet.py`, `backend/routers/staff.py`, `tests/api/test_staff_fleet.py`, `docs/staff-hub.md`, `SPEC.md`, `CHANGELOG.md`.
+- Key decisions: peers come from `FLEET_NODES` or the machine registry (same derivation as `/api/fleet/status`); an unreachable peer is reported `offline` and never fails the board; `auto` picks the least-loaded online node with the provider installed, ties to local, and stays local when no peer answers; forwarding passes the node's 4xx through and maps transport failure to 503; `summary` counts failed/blocked from the local store only (fleet-wide history aggregation deferred).
+- User-owned or unrelated worktree changes: none observed.
+
+## Validation
+
+- `PYTHONPATH=backend python -m pytest tests/api/test_staff_fleet.py tests/api/test_staff_runner.py tests/api/test_staff_auth_perimeter.py tests/api/test_structural_auth_perimeter.py tests/api/test_route_uniqueness.py -p no:pytest-qt -o addopts="" -q` — 50 passed.
+- `ruff check` / `ruff format --check` on the changed files — clean.
+- `mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional` — Success (141 files).
+
+## Blockers and Risks
+
+- Blockers: none.
+- Risks/assumptions: peer boards are fetched on every `board`/`summary`/`auto` call with a 6 s per-peer timeout and no cache; add a short cache if the hub is polled more often than every few seconds.
+
+## Next Steps
+
+1. Open the draft PR with base `feat/staff-hub`.
+2. Merge #1202 first, then rebase or merge this branch into it.
+3. After #1196 merges, confirm `summary.holds` is populated on a node with holds.
+
+---
+
+## Previous handoff — Staff Hub core: runner, run store, /api/staff routes (#1194)
 
 Last updated: 2026-09-22T17:30:00-07:00
 

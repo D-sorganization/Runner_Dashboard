@@ -5,6 +5,18 @@
 **Last Updated:** 2026-09-07T00:01:00-07:00
 **Status:** Active
 
+- **2026-09-22:** Staff Hub fleet view and machine targeting (#1195, #1197, epic #1192). New
+  `backend/staff/fleet.py`: peer discovery (`FLEET_NODES` or the machine registry), concurrent fan-out of
+  every peer's `GET /api/staff/board?local=1` with the `HUB_FLEET_TOKEN` bearer, merge into one fleet board
+  (`machines`, `online`, `offline`, concatenated `running`/`queued`, summed spend, providers per machine;
+  an unreachable peer is `offline`, never a failure), least-loaded placement (`choose_machine`) and
+  forwarding of dispatches to a peer's `/api/staff/{role}/run`. `GET /api/staff/board` is now fleet-wide
+  when peers exist (`?local=1` for this node); new `GET /api/staff/summary` is the one-call brief for Barb
+  and Orchestrator (`in_flight`, `attention`, `recent_24h`, `spend_today_usd`, `providers`, `holds` when
+  #1196 lands, `roles`). `POST /api/staff/{role}/run` accepts `machine: local | <peer name> | auto`;
+  unknown → 422, unreachable peer → 503, peer rejection passes through. Env: `STAFF_PEER_TIMEOUT_SECONDS`.
+  TDD: 10 tests in `tests/api/test_staff_fleet.py` with injected `get_json`/`post_json` fakes.
+
 - **2026-09-22:** Staff Hub core — run, record and stream AI staff roles as local CLI subprocesses (#1194,
   epic #1192). New package `backend/staff/` (`roles.py` reads Repository_Management `staff/roles/*.yml` by
   path; `adapters.py` launch recipes for claude / codex / agy / gemini / cursor-agent / ollama; `store.py`
