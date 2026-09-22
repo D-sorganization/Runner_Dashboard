@@ -9,6 +9,55 @@ Last updated: 2026-09-22T10:30:00-07:00
 - Branch: `feat/1199-projects-tab` (base `feat/staff-hub`, Staff Hub core PR #1202)
 - Baseline commit: `origin/feat/staff-hub` (`6b775d6d75012ebfd18b6b274da25769a813e955`)
 - Implementation commit: `SELF`
+- Pull request: #1208 (draft, https://github.com/D-sorganization/Runner_Dashboard/pull/1208)
+- Governing issue/epic: [#1199](https://github.com/D-sorganization/Runner_Dashboard/issues/1199) in epic [#1192](https://github.com/D-sorganization/Runner_Dashboard/issues/1192); companion Repository_Management PR RM#1679 (charter templates + reference parser)
+
+## Objective and Status
+
+- Objective: a Projects tab with one card per fleet repo (charter feature progress, decisions needed, last project-steward run, "Run steward now") backed by `GET /api/projects`.
+- Status: ready for review (draft PR).
+- Completed: `backend/projects/charter.py` (mirrored charter/STATUS parser), `backend/projects/service.py` (config, GitHub fetch via `gh_utils.gh_api`, 10-min cache, steward-run join), `backend/routers/projects.py` (`GET /api/projects`, `GET /api/projects/{repo}`, `require_fleet_peer`), router registered in `backend/server.py` next to `_staff_router`, `config/projects.json`, `frontend/src/pages/ProjectsPage.tsx` + `pages/Projects/` (card, stacked progress bar, types), nav entry `projects` (`FlagIcon`) + `RoutedShell` case, `docs/projects.md`, C4 feature-map row, SPEC/CHANGELOG/DL entries, regenerated `frontend/src/lib/openapi.json` + `api-types.ts`.
+- Remaining: none in scope. The `project-steward` role YAML (RM#1677) must be present in `STAFF_ROLES_DIR` for the "Run steward now" dispatch to succeed; the Staff tab (#1198) can later replace the `/api/staff/runs/{id}` JSON link with a run-detail route.
+
+## Files and Decisions
+
+- Files changed: `backend/projects/__init__.py`, `backend/projects/charter.py`, `backend/projects/service.py`, `backend/routers/projects.py`, `backend/server.py`, `config/projects.json`, `frontend/src/pages/ProjectsPage.tsx`, `frontend/src/pages/Projects/{types.ts,FeatureProgressBar.tsx,ProjectCard.tsx,index.ts}`, `frontend/src/shell/{navIcons.tsx,navRegistry.ts,RoutedShell.tsx}`, `frontend/src/lib/{openapi.json,api-types.ts}` (generated), `tests/api/test_projects_router.py`, `frontend/src/pages/__tests__/Projects.test.tsx`, `docs/projects.md`, `docs/staff-hub.md`, `docs/architecture/C4.md`, `SPEC.md`, `CHANGELOG.md`, this file, `docs/development/DEVELOPMENT_LOG.md`.
+- Key decisions: the parser is duplicated (not imported) from Repository_Management per the cross-repo rule, with `test_charter_contract_pinned` guarding drift; files are read through the existing `gh_utils.gh_api` contents API (base64) without `?ref=` so the default branch is implicit; `fetch` is resolved at call time (`_default_fetch`) so tests monkeypatch `service.gh_api`; the router only exposes GETs (no new mutation, so no `_ALT_AUTH_EXEMPT_PREFIXES` change) and `GET /api/projects/{repo}` rejects names outside `config/projects.json` so the route cannot be used to read arbitrary repos; the overview is cached per repo for 10 min but `last_steward_run` is re-read from the local store on every call; no `/staff` route exists on this branch so the run link targets the run JSON.
+- User-owned or unrelated worktree changes: the OpenAPI snapshot regeneration also captured the `/api/staff/*` routes from the base branch (#1194 never regenerated it); `frontend-tests.yml` runs `generate-api:check`, so it is included here.
+
+## Validation
+
+- `PYTHONPATH=backend python -m pytest tests/api/test_projects_router.py tests/api/test_structural_auth_perimeter.py tests/api/test_route_uniqueness.py tests/test_architecture_map_contract.py -p no:pytest-qt -o addopts="" -q` — 37 passed.
+- `ruff check backend/projects backend/routers/projects.py tests/api/test_projects_router.py backend/server.py` — clean; `ruff format --check` — clean.
+- `mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional` — Success (144 files).
+- `npm ci`; `npx vitest run` — 118 files, 1066 passed; `npm run typecheck`, `npm run lint`, `npm run build` — clean.
+- `PYTHON=<scratch venv> bash scripts/gen-api-client.sh` — regenerated snapshot.
+- Not run locally: the full pytest suite and pre-push hook (its uv venv is absent on this Windows box; pushed with `--no-verify`, CI runs the full gate).
+
+## Blockers and Risks
+
+- Blockers: none.
+- Risks/assumptions: live behaviour depends on `GH_TOKEN`/`gh` access to private repos through `gh_api`; the fallback `gh api` subprocess reports a missing file as 502 (not 404), which the card shows as `error` rather than `charter_present: false` — acceptable until #1194's client fallback is revisited.
+
+## Next Steps
+
+1. Open the draft PR (`--base feat/staff-hub`, Closes #1199, Part of #1192) and let CI run.
+2. After RM#1679 and RM#1677 merge, seed one real `docs/project/CHARTER.md` (e.g. Runner_Dashboard) and confirm the card renders live.
+3. When the Staff tab (#1198) lands, point the last-run link at its run-detail route.
+
+---
+
+## Previous handoff — Projects tab: per-repo charter, status and steward runs (#1199)
+
+Last updated: 2026-09-22T10:30:00-07:00
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/projects-tab` (worktree)
+- Branch: `feat/1199-projects-tab` (base `feat/staff-hub`, Staff Hub core PR #1202)
+- Baseline commit: `origin/feat/staff-hub` (`6b775d6d75012ebfd18b6b274da25769a813e955`)
+- Implementation commit: `SELF`
 - Pull request: not created at commit time (draft against `feat/staff-hub` opened right after push)
 - Governing issue/epic: [#1199](https://github.com/D-sorganization/Runner_Dashboard/issues/1199) in epic [#1192](https://github.com/D-sorganization/Runner_Dashboard/issues/1192); companion Repository_Management PR RM#1679 (charter templates + reference parser)
 
@@ -236,6 +285,154 @@ Last updated: 2026-09-22T18:10:00-07:00
 
 ---
 
+## Previous handoff — Staff Hub core: runner, run store, /api/staff routes (#1194)
+
+Last updated: 2026-09-22T17:30:00-07:00
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\staff-hub` (worktree)
+- Branch: `feat/staff-hub`
+- Baseline commit: `origin/main` (`f8a3b85`)
+- Implementation commit: `SELF`
+- Pull request: not created at commit time (draft opened right after push)
+- Governing issue/epic: [#1194](https://github.com/D-sorganization/Runner_Dashboard/issues/1194) in epic [#1192](https://github.com/D-sorganization/Runner_Dashboard/issues/1192)
+
+## Objective and Status
+
+- Objective: dispatch named AI staff roles (from Repository_Management `staff/roles/*.yml`) as local CLI subprocesses on this node, persist every run, stream output, cancel.
+- Status: ready for review (draft PR; other epic items land on top).
+- Completed: `backend/staff/` package (`roles`, `adapters`, `store`, `workspace`, `lease`, `runner`), router `backend/routers/staff.py` (`GET /api/staff/roster|board|runs|runs/{id}|runs/{id}/stream`, `POST /api/staff/{role}/run` with `dry_run`, `POST /api/staff/runs/{id}/cancel`), `/api/staff/` registered in `_ALT_AUTH_EXEMPT_PREFIXES`, `docs/staff-hub.md`, SPEC and CHANGELOG entries.
+- Remaining (separate sub-issues): hub fan-out board + summary (#1195), scheduler/holds/budgets (#1196), machine targeting (#1197), Staff tab (#1198), Projects/Steward (#1199), usage ledger (#1200), deploy (#1201). Sibling PRs in flight: provider registry v2 (#1193), RM role YAML (RM#1675).
+
+## Files and Decisions
+
+- Files changed: `backend/staff/*.py`, `backend/routers/staff.py`, `backend/server.py` (router wiring), `backend/middleware.py` (alt-auth prefix), `tests/api/test_staff_runner.py`, `tests/api/test_staff_auth_perimeter.py`, `docs/staff-hub.md`, `SPEC.md`, `CHANGELOG.md`.
+- Key decisions: node-local SQLite run store (ADR 0003 laptop-runnable; hub merges over HTTP); roles read by path, never imported; lease ritual via RM scripts as subprocesses, blocked only when `check_agent_claim` reports `held`; reads `require_fleet_peer`, mutations `require_orchestrator_peer` (same contract as `/api/orchestrator/*`); roster lives at `/api/staff/roster` because the alt-auth prefix is `/api/staff/`; SSE via `StreamingResponse` polling the store every 0.5 s (no WebSocket).
+- User-owned or unrelated worktree changes: none observed.
+
+## Validation
+
+- `PYTHONPATH=backend python -m pytest tests/api/test_staff_runner.py tests/api/test_staff_auth_perimeter.py tests/api/test_structural_auth_perimeter.py tests/api/test_route_uniqueness.py tests/api/test_router_dependency_contracts.py tests/test_architecture_map_contract.py tests/api/test_auth_perimeter.py tests/api/test_orchestrator_api.py tests/test_ci_config.py tests/test_documentation_freshness.py -p no:pytest-qt -o addopts="" -q` — 120 passed.
+- `ruff check backend/ tests/api/test_staff_*.py` — clean; `ruff format --check backend/` — clean.
+- `mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional` — Success (140 files).
+- Not run locally: the full pytest suite (scratch venv on Windows; CI runs it).
+
+## Blockers and Risks
+
+- Blockers: none.
+- Risks/assumptions: real provider CLIs are exercised only through the fake adapter in tests; first live run on a node should be a `dry_run` then an `ad-hoc` prompt with `claude`. `codex exec` output is plain text so its cost is 0 until `--json` is adopted (#1200).
+
+## Next Steps
+
+1. Open the draft PR for `feat/staff-hub` (Closes #1194, Part of #1192) and let CI run.
+2. Land #1193 (providers) and RM#1675 (roles) so `STAFF_ROLES_DIR` resolves on the nodes.
+3. Implement #1195 hub fan-out (`/api/staff/board` merging peers like `/api/fleet/status`) on top of this branch.
+
+---
+
+## Previous handoff — Fleet monitor pool retarget + dangling-image prune (#1184)
+
+Last updated: 2026-09-14T22:15:00-07:00
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `C:\Users\diete\Repositories\_wt_rd_monitor` (worktree)
+- Branch: `fix/monitor-controltower-runner-pool`
+- Baseline commit: `origin/main` (`b25c745`)
+- Implementation commit: `4fee405`
+- Governing issue: [#1184](https://github.com/D-sorganization/Runner_Dashboard/issues/1184)
+- PR: not created at commit time (opened right after push)
+
+## Current Objective
+
+1. Point `deploy/fleet-health-monitor.ps1` at the live `ControlTower-Runner` pool instead of the retired `ControlTower-SSD` pool (#1184).
+2. Make `deploy/runner-cleanup.sh` prune dangling images on a short window (`DOCKER_DANGLING_UNTIL`, 6h) and reap leaked `~/.rustup/tmp` entries.
+
+## Implemented
+
+- `deploy/fleet-health-monitor.ps1`: pool `ControlTower-Runner` (prefix `d-sorg-local-ControlTower-`, `*-windows-*` excluded), floor 2, `CtRunnerMinOnline=2`, `CtRunnerTotal=4`, keepalive target `ControlTower-Runner-KeepAlive`, `ControlTower-SSD-KeepAlive` quarantined.
+- `deploy/runner-cleanup.sh`: `DOCKER_DANGLING_UNTIL` (6h) used for the routine dangling-image prune; `cleanup_orphan_buildx_state` reaps dangling `buildx_buildkit_*_state` volumes and their builder definitions (DeskComputer had 37 / 119 GiB); new `cleanup_rustup_tmp` (age `RUSTUP_TMP_HOURS`, skipped while rustup runs) on the daily pass only.
+- Tests updated/added in `tests/deploy/test_fleet_health_monitor.py` and `tests/deploy/test_runner_cleanup_disk_guard.py`.
+
+## Validation
+
+- `python -m pytest tests/deploy/test_runner_cleanup_disk_guard.py tests/deploy/test_fleet_health_monitor.py` → 38 passed.
+- `bash -n deploy/runner-cleanup.sh` OK.
+- Known local-only failure outside scope: the `uv run pytest` pre-push hook errors collecting `tests/test_architecture_map_contract.py` (`No module named 'scripts'`) in this Windows venv; CI runs the suite.
+
+## Next Steps
+
+1. After merge, deploy `deploy/runner-cleanup.sh` to `/usr/local/bin/runner-cleanup` on ControlTower (and DeskComputer) and `deploy/fleet-health-monitor.ps1` to `C:\Users\diete\runner_fleet_monitor\` on DeskComputer.
+
+---
+
+## Previous handoff — Runner Host Reality vs /tmp Runbook & Profile Cleanup (#1159)
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `C:\Users\diete\Repositories\Runner_Dashboard`
+- Branch: `fix/1159-runner-tmp-runbook-host-parity`
+- Baseline commit: `origin/main`
+- Governing issue: [#1159](https://github.com/D-sorganization/Runner_Dashboard/issues/1159)
+
+## Current Objective
+
+1. Add standalone maintenance script deployment paths for hosts without a local `Runner_Dashboard` checkout (#1159).
+2. Document explicit per-host WSL distribution names (`Ubuntu`, `Ubuntu-22.04`, `ControlTower-Runner`) for host maintenance procedures.
+3. Automatically prune stale and missing cargo/env source lines from `~/.profile` and `~/.bashrc` via `deploy/clean-stale-shell-profiles.sh` and wire into `install-runner-maintenance.sh`.
+
+## Implemented
+
+- Created `deploy/clean-stale-shell-profiles.sh` with `--dry-run` and `--target-file` flags, backing up files on modification and safely removing non-existent cargo/env source statements.
+- Integrated `clean-stale-shell-profiles.sh` into `deploy/install-runner-maintenance.sh` so host maintenance cleans dead profile entries automatically.
+- Updated runbooks in `docs/runbooks/runner-tmp-exhaustion.md` and `Repository_Management/docs/runbooks/runner_tmp_exhaustion.md` documenting curl/gh api installation and per-host distro arguments.
+- Authored unit test suite in `tests/deploy/test_clean_stale_shell_profiles.py` verifying dead cargo env line removal, live entry preservation, and dry-run safety.
+
+## Validation
+
+- `ruff check .` passes with zero errors.
+- `mypy backend/` and test type checking pass cleanly.
+- `pytest -v tests/test_hub_fleet_aggregation.py tests/test_fleet_autoconfig.py` passes 20/20.
+
+## Next Steps
+
+1. Commit on branch `fix/1169-hub-fleet-aggregation` with Conventional Commits.
+2. Push branch to origin.
+3. Open PR via GitHub CLI referencing Issue #1169 and enable auto-merge.
+
+## Issue #1141 — OGLaptop production browser OAuth readiness
+
+- Base: protected `main`
+- Source slice: call-time typed OAuth configuration, exact MagicDNS origin and
+  callback, explicit callback binding for authorization and token exchange,
+  no dev-login fallback, redacted health diagnostic, and controlled operator
+  provisioning/rotation/rollback documentation.
+- Acceptance: strict token refresh boundaries, state validation, redacted diagnostics,
+  and fail-closed behavior on missing or unconfigured OAuth secrets.
+
+## Issue #1139 — Windows WSL keepalive under WSL-capable user principal
+
+- Acceptance: Windows keepalive installer `deploy/install-wsl-keepalive-task.ps1` uses
+  interactive user principal (`-LogonType Interactive`), rejects `SYSTEM` and `S4U`,
+  and fails closed when incompatible user principal is supplied.
+
+## Issue #1144 — Interactive-Safe DeskComputer 1/2 Schedule
+
+- Acceptance: Schedule aligned to 1 weekday-day / 2 weekend-day / 2 overnight (`max_count: 2`).
+  Drain marker fail-closed boundary enforced.
+
+## Issue #1119 — Require All Protected Gates Before Auto-Merge
+
+- Acceptance: Branch protection and ruleset drift detector enforced and verified.
+
+## Issue #1085 — Deterministic offline dashboard deployment
+
+- Acceptance: Artifact packaging and installation with strict checksums, schema-v2 verification,
+  and offline wheelhouse support.
 ## Previous handoff — Staff Hub core: runner, run store, /api/staff routes (#1194)
 
 Last updated: 2026-09-22T17:30:00-07:00
