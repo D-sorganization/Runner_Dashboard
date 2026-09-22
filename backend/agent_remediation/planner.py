@@ -229,6 +229,9 @@ def plan_dispatch(
         provider_status = availability.get(provider_id)
         if provider is None or provider_status is None or not provider_status.available:
             continue
+        if not provider.enabled:
+            # Registry-disabled (retired) provider: a stale saved policy must not resurrect it (#1193).
+            continue
 
         provider_attempts = _attempts_for_provider(
             fingerprint, provider_id, attempts, window_hours=policy.attempt_window_hours

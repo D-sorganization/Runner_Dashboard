@@ -30,6 +30,7 @@ class AgentProvider:
     editable: bool = False
     remote: bool = False
     experimental: bool = False
+    enabled: bool = True
     notes: str = ""
 
     def to_dict(self) -> dict[str, Any]:
@@ -67,6 +68,7 @@ def _agent_provider_from_entry(entry: ProviderEntry) -> AgentProvider:
         editable=entry.editable,
         remote=entry.remote,
         experimental=entry.experimental,
+        enabled=entry.enabled,
         notes=entry.notes,
     )
 

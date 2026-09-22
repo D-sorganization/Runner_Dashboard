@@ -416,18 +416,24 @@ def test_plan_dispatch_b12_accepted_decision_full_payload() -> None:
 
 
 def test_plan_dispatch_b13_all_providers_exhausted_loop_guard() -> None:
-    """B13: When every candidate provider is exhausted, return loop-guard reject."""
+    """B13: When every candidate provider is exhausted, return loop-guard reject.
+
+    Uses gemini_cli as the third provider: jules_api is registry-disabled
+    since #1193 and is skipped before the attempt-limit check, so it can never
+    be named as "exhausted".
+    """
     fp = build_failure_fingerprint(_ctx())
     attempts = (
         _attempts_against(fp, "codex_cli", 3)
         + _attempts_against(fp, "claude_code_cli", 3)
-        + _attempts_against(fp, "jules_api", 3)
+        + _attempts_against(fp, "gemini_cli", 3)
     )
+    live = ("codex_cli", "claude_code_cli", "gemini_cli")
 
     decision = plan_dispatch(
         _ctx(),
-        policy=_make_policy(),
-        availability=_make_availability("codex_cli", "claude_code_cli", "jules_api"),
+        policy=_make_policy(provider_order=live, enabled=live),
+        availability=_make_availability(*live),
         attempts=attempts,
         dispatch_origin="manual",
     )
@@ -438,7 +444,7 @@ def test_plan_dispatch_b13_all_providers_exhausted_loop_guard() -> None:
     # Each exhausted provider is named in the reason
     assert "Codex CLI" in decision.reason
     assert "Claude Code CLI" in decision.reason
-    assert "Jules API" in decision.reason
+    assert "Gemini CLI" in decision.reason
     assert decision.remaining_attempts == 0
     assert decision.provider_id is None
 

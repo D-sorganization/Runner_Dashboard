@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Provider registry v2: added `antigravity` (`agy`), `cursor_agent` (`cursor-agent`, Grok models via the Cursor subscription) and optional `maxwell` providers; marked the retired `jules_cli`/`jules_api` entries `enabled: false` and removed them from the default provider order; `GET /api/providers/registry` now reports a 60 s-cached per-node CLI probe (`node_availability` + `hostname`) reusing the credentials-router probes (#1193, epic #1192).
 - Projects tab: `GET /api/projects` (+ `/{repo}`) reads each fleet repo's `docs/project/CHARTER.md` and
   `STATUS.md` through the shared GitHub client, joins the latest project-steward run, and renders one card per
   repo with feature progress, decisions needed and a "Run steward now" dispatch (#1199, epic #1192).

@@ -383,3 +383,55 @@ def test_per_provider_attempt_count_separate_from_global() -> None:
     assert decision.provider_id == "claude_code_cli"
     assert decision.attempt_count == 0  # fresh provider
     assert decision.remaining_attempts == 3
+
+
+# ---------------------------------------------------------------------------
+# Provider registry v2 (issue #1193): Jules retired, disabled providers skipped
+# ---------------------------------------------------------------------------
+
+
+def test_shipped_config_excludes_retired_jules_providers() -> None:
+    import json  # noqa: PLC0415
+
+    from agent_remediation import DEFAULT_CONFIG_PATH, DEFAULT_PROVIDER_ORDER  # noqa: PLC0415
+
+    config = json.loads(DEFAULT_CONFIG_PATH.read_text(encoding="utf-8"))
+    for key in ("provider_order", "enabled_providers"):
+        assert "jules_cli" not in config[key], key
+        assert "jules_api" not in config[key], key
+    assert "antigravity" in config["enabled_providers"]
+    assert "cursor_agent" in config["enabled_providers"]
+    assert "jules_cli" not in DEFAULT_PROVIDER_ORDER
+    assert "jules_api" not in DEFAULT_PROVIDER_ORDER
+
+
+def test_disabled_provider_is_never_selected_even_if_policy_lists_it() -> None:
+    """A registry-disabled provider (jules_api) is skipped even when a stale policy still enables it."""
+    from agent_remediation import PROVIDERS  # noqa: PLC0415
+
+    assert PROVIDERS["jules_api"].enabled is False
+    assert PROVIDERS["claude_code_cli"].enabled is True
+
+    policy = RemediationPolicy(
+        auto_dispatch_on_failure=True,
+        require_failure_summary=False,
+        require_non_protected_branch=False,
+        max_same_failure_attempts=3,
+        attempt_window_hours=24,
+        provider_order=("jules_api", "claude_code_cli"),
+        enabled_providers=("jules_api", "claude_code_cli"),
+        default_provider="jules_api",
+    )
+    context = FailureContext(repository="foo/bar", workflow_name="CI", branch="main", failure_reason="lint")
+    availability = _make_availability("jules_api", "claude_code_cli")
+
+    decision = plan_dispatch(
+        context,
+        policy=policy,
+        availability=availability,
+        attempts=[],
+        dispatch_origin="manual",
+    )
+
+    assert decision.accepted is True
+    assert decision.provider_id == "claude_code_cli"

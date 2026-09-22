@@ -19,14 +19,18 @@ datetime = _dt_mod.datetime
 
 SCHEMA_VERSION = "agent-remediation.v1"
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "agent_remediation.json"
+# jules_cli / jules_api were removed from the default order when the Jules
+# workflow suite was retired fleet-wide (RM#1483 / RM#1505, #1193). Their
+# registry entries remain (enabled=False) for back-compat.
 DEFAULT_PROVIDER_ORDER = (
-    "jules_cli",
-    "jules_api",
     "gemini_cli",
     "codex_cli",
     "claude_code_cli",
+    "antigravity",
+    "cursor_agent",
     "ollama",
     "cline",
+    "maxwell",
 )
 DEFAULT_WORKFLOW_TYPE_RULES: tuple[dict[str, Any], ...] = (
     {

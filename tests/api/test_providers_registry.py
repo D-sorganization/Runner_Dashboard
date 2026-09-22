@@ -11,8 +11,12 @@ task_classes / capabilities / auth_kinds match the conductor enums exactly.
 from __future__ import annotations
 
 import os
+import shutil
+import socket
 import sys
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -314,3 +318,207 @@ class TestLegacyEndpointStillWorks:
         data = resp.json()
         assert "providers" in data
         assert "availability" in data
+
+
+# ---------------------------------------------------------------------------
+# Provider registry v2 (issue #1193): new providers, enabled flag, node probe
+# ---------------------------------------------------------------------------
+_V2_ID_PAIRS = {
+    "antigravity": "antigravity-cli",
+    "cursor_agent": "cursor-agent",
+    "maxwell": "maxwell-daemon",
+}
+
+
+def _fake_which(installed: set[str]) -> Callable[[str], str | None]:
+    def fake_which(name: str) -> str | None:
+        return f"/usr/local/bin/{name}" if name in installed else None
+
+    return fake_which
+
+
+class TestRegistryV2Providers:
+    def test_new_providers_present_with_expected_ids(self, client: TestClient) -> None:
+        by_dash = _by_dashboard_id(_registry(client))
+        for dashboard_id, conductor_id in _V2_ID_PAIRS.items():
+            assert dashboard_id in by_dash, f"missing {dashboard_id}"
+            assert by_dash[dashboard_id]["id"] == conductor_id
+
+    def test_antigravity_static_fields(self) -> None:
+        from agent_remediation import by_dashboard_id  # noqa: PLC0415
+
+        entry = by_dashboard_id()["antigravity"]
+        assert entry.execution_mode == "local_exec"
+        assert entry.dispatch_mode == "dashboard_local"
+        assert entry.auth_mode == "local"
+        assert entry.availability_probe == ("agy",)
+        assert set(entry.capabilities) == {"code_edit", "ci_fix", "test_fix", "refactor", "doc"}
+        assert entry.max_concurrency == 1
+        assert entry.setup_hint == "Install Antigravity CLI (agy) on the node"
+
+    def test_cursor_agent_exposes_a_grok_model(self) -> None:
+        from agent_remediation import by_dashboard_id  # noqa: PLC0415
+
+        entry = by_dashboard_id()["cursor_agent"]
+        assert entry.availability_probe == ("cursor-agent",)
+        assert entry.execution_mode == "local_exec"
+        assert entry.dispatch_mode == "dashboard_local"
+        assert entry.auth_mode == "local"
+        assert any("grok" in m for m in entry.models), entry.models
+        assert "SuperGrok" in entry.notes
+
+    def test_maxwell_is_optional_remote_session(self) -> None:
+        from agent_remediation import by_dashboard_id  # noqa: PLC0415
+
+        entry = by_dashboard_id()["maxwell"]
+        assert entry.execution_mode == "remote_session"
+        assert entry.dispatch_mode == "dashboard_local"
+        assert entry.auth_mode == "local"
+        assert entry.editable is False
+        assert entry.experimental is True
+        assert "dormant since 2026-06" in entry.notes
+
+    def test_every_provider_carries_enabled_flag(self, client: TestClient) -> None:
+        for prov in _registry(client)["providers"]:
+            assert isinstance(prov["enabled"], bool), prov["dashboard_id"]
+
+    def test_jules_providers_are_disabled_but_still_listed(self, client: TestClient) -> None:
+        by_dash = _by_dashboard_id(_registry(client))
+        assert by_dash["jules_cli"]["enabled"] is False
+        assert by_dash["jules_api"]["enabled"] is False
+        for dashboard_id in ("claude_code_cli", "codex_cli", "antigravity", "cursor_agent"):
+            assert by_dash[dashboard_id]["enabled"] is True
+
+    def test_validate_registry_rejects_local_exec_without_probe(self) -> None:
+        from agent_remediation.provider_registry import ProviderEntry, validate_registry  # noqa: PLC0415
+
+        bad = ProviderEntry(
+            dashboard_id="x",
+            conductor_id="x-cli",
+            label="X",
+            execution_mode="local_exec",
+            dispatch_mode="dashboard_local",
+            auth_mode="local",
+            resource="runner",
+            capabilities=("code_edit",),
+            cost_per_task=0.0,
+            max_concurrency=1,
+        )
+        with pytest.raises(AssertionError, match="availability_probe"):
+            validate_registry((bad,))
+
+
+class TestNodeAvailabilityProbe:
+    """``probe_provider_availability`` reports installed + authenticated per node."""
+
+    def test_only_providers_with_a_probe_are_reported(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from agent_remediation.provider_probe import probe_provider_availability  # noqa: PLC0415
+
+        monkeypatch.setattr(shutil, "which", _fake_which(set()))
+        result = probe_provider_availability(credential_probes={})
+        assert "maxwell" not in result  # no availability_probe -> not a node-probe target
+        for dashboard_id in ("antigravity", "cursor_agent", "claude_code_cli", "codex_cli", "jules_cli"):
+            assert dashboard_id in result
+            assert set(result[dashboard_id]) == {"installed", "authenticated", "detail"}
+
+    def test_installed_reflects_shutil_which(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from agent_remediation.provider_probe import probe_provider_availability  # noqa: PLC0415
+
+        monkeypatch.setattr(shutil, "which", _fake_which({"agy"}))
+        result = probe_provider_availability(credential_probes={})
+        assert result["antigravity"]["installed"] is True
+        assert result["cursor_agent"]["installed"] is False
+        assert result["cursor_agent"]["authenticated"] is False
+        assert "cursor-agent" in result["cursor_agent"]["detail"]
+
+    def test_local_auth_without_credential_probe_is_authenticated_when_installed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from agent_remediation.provider_probe import probe_provider_availability  # noqa: PLC0415
+
+        monkeypatch.setattr(shutil, "which", _fake_which({"cursor-agent"}))
+        result = probe_provider_availability(credential_probes={})
+        assert result["cursor_agent"] == {
+            "installed": True,
+            "authenticated": True,
+            "detail": "cursor-agent found on PATH; CLI manages its own login session (no credential probe)",
+        }
+
+    def test_authenticated_reuses_credentials_router_probe(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from agent_remediation.provider_probe import probe_provider_availability  # noqa: PLC0415
+
+        monkeypatch.setattr(shutil, "which", _fake_which({"claude"}))
+        calls: list[str] = []
+
+        def fake_claude_probe() -> dict[str, Any]:
+            calls.append("claude_code_cli")
+            return {"id": "claude_code_cli", "installed": True, "authenticated": True, "detail": "Ready"}
+
+        result = probe_provider_availability(credential_probes={"claude_code_cli": fake_claude_probe})
+        assert calls == ["claude_code_cli"]
+        assert result["claude_code_cli"] == {"installed": True, "authenticated": True, "detail": "Ready"}
+
+    def test_default_credential_probes_come_from_credentials_router(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from agent_remediation.provider_probe import probe_provider_availability  # noqa: PLC0415
+        from routers import credentials  # noqa: PLC0415
+
+        monkeypatch.setattr(shutil, "which", _fake_which({"codex"}))
+        monkeypatch.setattr(credentials, "_probe_codex_cli", lambda: {"authenticated": True, "detail": "via router"})
+        result = probe_provider_availability()
+        assert result["codex_cli"] == {"installed": True, "authenticated": True, "detail": "via router"}
+
+    def test_probe_failure_never_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from agent_remediation.provider_probe import probe_provider_availability  # noqa: PLC0415
+
+        monkeypatch.setattr(shutil, "which", _fake_which({"gemini"}))
+
+        def boom() -> dict[str, Any]:
+            raise RuntimeError("probe exploded")
+
+        result = probe_provider_availability(credential_probes={"gemini_cli": boom})
+        assert result["gemini_cli"]["installed"] is True
+        assert result["gemini_cli"]["authenticated"] is False
+        assert "RuntimeError" in result["gemini_cli"]["detail"]
+
+
+class TestNodeAvailabilityInRegistryPayload:
+    def test_payload_carries_hostname_and_node_availability(self, client: TestClient) -> None:
+        data = _registry(client)
+        assert data["hostname"] == socket.gethostname()
+        node = data["node_availability"]
+        assert isinstance(node, dict)
+        by_dash = _by_dashboard_id(data)
+        for dashboard_id, status in node.items():
+            assert dashboard_id in by_dash
+            assert set(status) == {"installed", "authenticated", "detail"}
+            assert isinstance(status["installed"], bool)
+            assert isinstance(status["authenticated"], bool)
+            assert isinstance(status["detail"], str)
+
+    def test_build_registry_accepts_injected_node_availability(self) -> None:
+        injected = {"antigravity": {"installed": True, "authenticated": True, "detail": "x"}}
+        payload = providers_router.build_registry(ollama_models_fetcher=lambda _u: [], node_availability=injected)
+        assert payload["node_availability"] == injected
+
+    def test_endpoint_caches_node_probe_for_sixty_seconds(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from cache_utils import cache_delete  # noqa: PLC0415
+
+        cache_delete(providers_router.NODE_AVAILABILITY_CACHE_KEY)
+        calls: list[int] = []
+        fixed = {"antigravity": {"installed": False, "authenticated": False, "detail": "agy not found on PATH"}}
+
+        def fake_probe() -> dict[str, dict[str, Any]]:
+            calls.append(1)
+            return fixed
+
+        monkeypatch.setattr(providers_router, "probe_provider_availability", fake_probe)
+        assert providers_router.NODE_AVAILABILITY_TTL_SECONDS == 60
+        try:
+            first = _registry(client)["node_availability"]
+            second = _registry(client)["node_availability"]
+        finally:
+            cache_delete(providers_router.NODE_AVAILABILITY_CACHE_KEY)
+        assert first == second == fixed
+        assert len(calls) == 1, "second GET must be served from the 60 s cache"

@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import logging
 import os
+import socket
 from collections.abc import Callable
 from typing import Any
 
@@ -32,8 +33,10 @@ import httpx
 from agent_remediation import (
     PROVIDER_REGISTRY,
     ProviderEntry,
-    probe_provider_availability,
 )
+from agent_remediation import probe_provider_availability as probe_legacy_availability
+from agent_remediation.provider_probe import NodeAvailability, probe_provider_availability
+from cache_utils import cache_get, cache_set
 from conductor_constants import AUTH_KINDS, CAPABILITIES, TASK_CLASSES
 from fastapi import APIRouter
 
@@ -42,7 +45,14 @@ log = logging.getLogger("dashboard.providers")
 router = APIRouter(prefix="/api", tags=["providers"])
 
 #: Versioned registry contract. Bump on any breaking change to the shape.
+#: #1193 added ``enabled`` per provider plus top-level ``hostname`` and
+#: ``node_availability`` — additive, so the version is unchanged.
 REGISTRY_SCHEMA_VERSION = "1.0.0"
+
+#: Per-node CLI probe cache (#1193): ``shutil.which`` + env/file checks per
+#: request would be cheap but not free; the frontend polls this endpoint.
+NODE_AVAILABILITY_CACHE_KEY = "providers:node_availability"
+NODE_AVAILABILITY_TTL_SECONDS = 60
 
 #: The four allowed login_status literals (DbC). Any other value is a bug.
 _LOGIN_STATUS_LITERALS: frozenset[str] = frozenset({"authenticated", "unauthenticated", "error", "unknown"})
@@ -147,13 +157,29 @@ def _provider_payload(
         "experimental": entry.experimental,
         "editable": entry.editable,
         "remote": entry.remote,
+        "enabled": entry.enabled,
     }
+
+
+def cached_node_availability() -> dict[str, NodeAvailability]:
+    """Return the per-node CLI probe, cached for :data:`NODE_AVAILABILITY_TTL_SECONDS`.
+
+    The probe itself never raises (see :mod:`agent_remediation.provider_probe`),
+    so a cache miss simply recomputes and stores.
+    """
+    cached = cache_get(NODE_AVAILABILITY_CACHE_KEY, NODE_AVAILABILITY_TTL_SECONDS)
+    if isinstance(cached, dict):
+        return cached
+    fresh = probe_provider_availability()
+    cache_set(NODE_AVAILABILITY_CACHE_KEY, fresh)
+    return fresh
 
 
 def build_registry(
     *,
     ollama_models_fetcher: OllamaModelsFetcher | None = None,
     env: dict[str, str] | None = None,
+    node_availability: dict[str, NodeAvailability] | None = None,
 ) -> dict[str, Any]:
     """Assemble the full registry payload (pure, injectable, never raises).
 
@@ -163,12 +189,16 @@ def build_registry(
             raises is caught here and degraded to ``models: []`` so the endpoint
             never 500s (orthogonality / resilience).
         env: Optional environment override for availability probing (testing).
+        node_availability: Optional pre-computed per-node CLI probe (#1193).
+            ``None`` runs the probe uncached; the HTTP endpoint passes the
+            60 s-cached result so it stays fast under frontend polling.
 
     Returns:
         The registry dict matching the versioned contract.
     """
     fetcher = ollama_models_fetcher or fetch_ollama_models
-    availability = probe_provider_availability(env=env)
+    availability = probe_legacy_availability(env=env)
+    node = probe_provider_availability() if node_availability is None else node_availability
 
     providers: list[dict[str, Any]] = []
     for entry in PROVIDER_REGISTRY:
@@ -208,10 +238,12 @@ def build_registry(
         "auth_kinds": list(AUTH_KINDS),
         "task_classes": list(TASK_CLASSES),
         "capabilities": list(CAPABILITIES),
+        "hostname": socket.gethostname(),
+        "node_availability": node,
     }
 
 
 @router.get("/providers/registry")
 async def get_provider_registry() -> dict[str, Any]:
     """Return the shared provider registry (dashboard + Conductor contract)."""
-    return build_registry()
+    return build_registry(node_availability=cached_node_availability())
