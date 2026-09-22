@@ -275,3 +275,11 @@ export const BriefcaseIcon = svg(
     <line x1="2" y1="13" x2="22" y2="13" />
   </>,
 );
+
+/** Project charter / milestone flag glyph for the Projects tab (issue #1199). */
+export const FlagIcon = svg(
+  <>
+    <path d="M4 22V4a1 1 0 0 1 1-1h11l-1.5 4L16 11H5" />
+    <line x1="4" y1="22" x2="4" y2="15" />
+  </>,
+);

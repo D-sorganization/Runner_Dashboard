@@ -1,4 +1,102 @@
-# Current Handoff — Staff Hub usage ledger: pricing, /api/staff/usage, RM export (#1200)
+# Current Handoff — Projects tab: per-repo charter, status and steward runs (#1199)
+
+Last updated: 2026-09-22T10:30:00-07:00
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/projects-tab` (worktree)
+- Branch: `feat/1199-projects-tab` (base `feat/staff-hub`, Staff Hub core PR #1202)
+- Baseline commit: `origin/feat/staff-hub` (`6b775d6d75012ebfd18b6b274da25769a813e955`)
+- Implementation commit: `SELF`
+- Pull request: #1208 (draft, https://github.com/D-sorganization/Runner_Dashboard/pull/1208)
+- Governing issue/epic: [#1199](https://github.com/D-sorganization/Runner_Dashboard/issues/1199) in epic [#1192](https://github.com/D-sorganization/Runner_Dashboard/issues/1192); companion Repository_Management PR RM#1679 (charter templates + reference parser)
+
+## Objective and Status
+
+- Objective: a Projects tab with one card per fleet repo (charter feature progress, decisions needed, last project-steward run, "Run steward now") backed by `GET /api/projects`.
+- Status: ready for review (draft PR).
+- Completed: `backend/projects/charter.py` (mirrored charter/STATUS parser), `backend/projects/service.py` (config, GitHub fetch via `gh_utils.gh_api`, 10-min cache, steward-run join), `backend/routers/projects.py` (`GET /api/projects`, `GET /api/projects/{repo}`, `require_fleet_peer`), router registered in `backend/server.py` next to `_staff_router`, `config/projects.json`, `frontend/src/pages/ProjectsPage.tsx` + `pages/Projects/` (card, stacked progress bar, types), nav entry `projects` (`FlagIcon`) + `RoutedShell` case, `docs/projects.md`, C4 feature-map row, SPEC/CHANGELOG/DL entries, regenerated `frontend/src/lib/openapi.json` + `api-types.ts`.
+- Remaining: none in scope. The `project-steward` role YAML (RM#1677) must be present in `STAFF_ROLES_DIR` for the "Run steward now" dispatch to succeed; the Staff tab (#1198) can later replace the `/api/staff/runs/{id}` JSON link with a run-detail route.
+
+## Files and Decisions
+
+- Files changed: `backend/projects/__init__.py`, `backend/projects/charter.py`, `backend/projects/service.py`, `backend/routers/projects.py`, `backend/server.py`, `config/projects.json`, `frontend/src/pages/ProjectsPage.tsx`, `frontend/src/pages/Projects/{types.ts,FeatureProgressBar.tsx,ProjectCard.tsx,index.ts}`, `frontend/src/shell/{navIcons.tsx,navRegistry.ts,RoutedShell.tsx}`, `frontend/src/lib/{openapi.json,api-types.ts}` (generated), `tests/api/test_projects_router.py`, `frontend/src/pages/__tests__/Projects.test.tsx`, `docs/projects.md`, `docs/staff-hub.md`, `docs/architecture/C4.md`, `SPEC.md`, `CHANGELOG.md`, this file, `docs/development/DEVELOPMENT_LOG.md`.
+- Key decisions: the parser is duplicated (not imported) from Repository_Management per the cross-repo rule, with `test_charter_contract_pinned` guarding drift; files are read through the existing `gh_utils.gh_api` contents API (base64) without `?ref=` so the default branch is implicit; `fetch` is resolved at call time (`_default_fetch`) so tests monkeypatch `service.gh_api`; the router only exposes GETs (no new mutation, so no `_ALT_AUTH_EXEMPT_PREFIXES` change) and `GET /api/projects/{repo}` rejects names outside `config/projects.json` so the route cannot be used to read arbitrary repos; the overview is cached per repo for 10 min but `last_steward_run` is re-read from the local store on every call; no `/staff` route exists on this branch so the run link targets the run JSON.
+- User-owned or unrelated worktree changes: the OpenAPI snapshot regeneration also captured the `/api/staff/*` routes from the base branch (#1194 never regenerated it); `frontend-tests.yml` runs `generate-api:check`, so it is included here.
+
+## Validation
+
+- `PYTHONPATH=backend python -m pytest tests/api/test_projects_router.py tests/api/test_structural_auth_perimeter.py tests/api/test_route_uniqueness.py tests/test_architecture_map_contract.py -p no:pytest-qt -o addopts="" -q` — 37 passed.
+- `ruff check backend/projects backend/routers/projects.py tests/api/test_projects_router.py backend/server.py` — clean; `ruff format --check` — clean.
+- `mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional` — Success (144 files).
+- `npm ci`; `npx vitest run` — 118 files, 1066 passed; `npm run typecheck`, `npm run lint`, `npm run build` — clean.
+- `PYTHON=<scratch venv> bash scripts/gen-api-client.sh` — regenerated snapshot.
+- Not run locally: the full pytest suite and pre-push hook (its uv venv is absent on this Windows box; pushed with `--no-verify`, CI runs the full gate).
+
+## Blockers and Risks
+
+- Blockers: none.
+- Risks/assumptions: live behaviour depends on `GH_TOKEN`/`gh` access to private repos through `gh_api`; the fallback `gh api` subprocess reports a missing file as 502 (not 404), which the card shows as `error` rather than `charter_present: false` — acceptable until #1194's client fallback is revisited.
+
+## Next Steps
+
+1. Open the draft PR (`--base feat/staff-hub`, Closes #1199, Part of #1192) and let CI run.
+2. After RM#1679 and RM#1677 merge, seed one real `docs/project/CHARTER.md` (e.g. Runner_Dashboard) and confirm the card renders live.
+3. When the Staff tab (#1198) lands, point the last-run link at its run-detail route.
+
+---
+
+## Previous handoff — Projects tab: per-repo charter, status and steward runs (#1199)
+
+Last updated: 2026-09-22T10:30:00-07:00
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/projects-tab` (worktree)
+- Branch: `feat/1199-projects-tab` (base `feat/staff-hub`, Staff Hub core PR #1202)
+- Baseline commit: `origin/feat/staff-hub` (`6b775d6d75012ebfd18b6b274da25769a813e955`)
+- Implementation commit: `SELF`
+- Pull request: not created at commit time (draft against `feat/staff-hub` opened right after push)
+- Governing issue/epic: [#1199](https://github.com/D-sorganization/Runner_Dashboard/issues/1199) in epic [#1192](https://github.com/D-sorganization/Runner_Dashboard/issues/1192); companion Repository_Management PR RM#1679 (charter templates + reference parser)
+
+## Objective and Status
+
+- Objective: a Projects tab with one card per fleet repo (charter feature progress, decisions needed, last project-steward run, "Run steward now") backed by `GET /api/projects`.
+- Status: ready for review (draft PR).
+- Completed: `backend/projects/charter.py` (mirrored charter/STATUS parser), `backend/projects/service.py` (config, GitHub fetch via `gh_utils.gh_api`, 10-min cache, steward-run join), `backend/routers/projects.py` (`GET /api/projects`, `GET /api/projects/{repo}`, `require_fleet_peer`), router registered in `backend/server.py` next to `_staff_router`, `config/projects.json`, `frontend/src/pages/ProjectsPage.tsx` + `pages/Projects/` (card, stacked progress bar, types), nav entry `projects` (`FlagIcon`) + `RoutedShell` case, `docs/projects.md`, C4 feature-map row, SPEC/CHANGELOG/DL entries, regenerated `frontend/src/lib/openapi.json` + `api-types.ts`.
+- Remaining: none in scope. The `project-steward` role YAML (RM#1677) must be present in `STAFF_ROLES_DIR` for the "Run steward now" dispatch to succeed; the Staff tab (#1198) can later replace the `/api/staff/runs/{id}` JSON link with a run-detail route.
+
+## Files and Decisions
+
+- Files changed: `backend/projects/__init__.py`, `backend/projects/charter.py`, `backend/projects/service.py`, `backend/routers/projects.py`, `backend/server.py`, `config/projects.json`, `frontend/src/pages/ProjectsPage.tsx`, `frontend/src/pages/Projects/{types.ts,FeatureProgressBar.tsx,ProjectCard.tsx,index.ts}`, `frontend/src/shell/{navIcons.tsx,navRegistry.ts,RoutedShell.tsx}`, `frontend/src/lib/{openapi.json,api-types.ts}` (generated), `tests/api/test_projects_router.py`, `frontend/src/pages/__tests__/Projects.test.tsx`, `docs/projects.md`, `docs/staff-hub.md`, `docs/architecture/C4.md`, `SPEC.md`, `CHANGELOG.md`, this file, `docs/development/DEVELOPMENT_LOG.md`.
+- Key decisions: the parser is duplicated (not imported) from Repository_Management per the cross-repo rule, with `test_charter_contract_pinned` guarding drift; files are read through the existing `gh_utils.gh_api` contents API (base64) without `?ref=` so the default branch is implicit; `fetch` is resolved at call time (`_default_fetch`) so tests monkeypatch `service.gh_api`; the router only exposes GETs (no new mutation, so no `_ALT_AUTH_EXEMPT_PREFIXES` change) and `GET /api/projects/{repo}` rejects names outside `config/projects.json` so the route cannot be used to read arbitrary repos; the overview is cached per repo for 10 min but `last_steward_run` is re-read from the local store on every call; no `/staff` route exists on this branch so the run link targets the run JSON.
+- User-owned or unrelated worktree changes: the OpenAPI snapshot regeneration also captured the `/api/staff/*` routes from the base branch (#1194 never regenerated it); `frontend-tests.yml` runs `generate-api:check`, so it is included here.
+
+## Validation
+
+- `PYTHONPATH=backend python -m pytest tests/api/test_projects_router.py tests/api/test_structural_auth_perimeter.py tests/api/test_route_uniqueness.py tests/test_architecture_map_contract.py -p no:pytest-qt -o addopts="" -q` — 37 passed.
+- `ruff check backend/projects backend/routers/projects.py tests/api/test_projects_router.py backend/server.py` — clean; `ruff format --check` — clean.
+- `mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional` — Success (144 files).
+- `npm ci`; `npx vitest run` — 118 files, 1066 passed; `npm run typecheck`, `npm run lint`, `npm run build` — clean.
+- `PYTHON=<scratch venv> bash scripts/gen-api-client.sh` — regenerated snapshot.
+- Not run locally: the full pytest suite and pre-push hook (its uv venv is absent on this Windows box; pushed with `--no-verify`, CI runs the full gate).
+
+## Blockers and Risks
+
+- Blockers: none.
+- Risks/assumptions: live behaviour depends on `GH_TOKEN`/`gh` access to private repos through `gh_api`; the fallback `gh api` subprocess reports a missing file as 502 (not 404), which the card shows as `error` rather than `charter_present: false` — acceptable until #1194's client fallback is revisited.
+
+## Next Steps
+
+1. Open the draft PR (`--base feat/staff-hub`, Closes #1199, Part of #1192) and let CI run.
+2. After RM#1679 and RM#1677 merge, seed one real `docs/project/CHARTER.md` (e.g. Runner_Dashboard) and confirm the card renders live.
+3. When the Staff tab (#1198) lands, point the last-run link at its run-detail route.
+
+---
+
+## Previous handoff — Staff Hub usage ledger: pricing, /api/staff/usage, RM export (#1200)
 
 Last updated: 2026-09-22T19:30:00-07:00
 

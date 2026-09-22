@@ -133,4 +133,4 @@ today's totals to the Repository_Management credit ledger.
 
 ## Not yet here (tracked in the epic)
 
-The Project Steward role and Projects tab (#1199) and the fleet deploy (#1201).
+The fleet deploy (#1201).

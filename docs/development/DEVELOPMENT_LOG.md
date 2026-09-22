@@ -18,18 +18,18 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1200 · Staff Hub usage ledger: pricing, /api/staff/usage, RM credit_usage export
+### DL-#1199 · Projects tab: per-repo charter, status and steward runs
 
 - **State:** in_review
-- **Owner:** agent
-- **Issue:** #1200
-- **Branch:** `feat/1200-staff-usage` (base `feat/staff-hub`)
-- **PR:** not created
-- **Paths:** `backend/staff/pricing.py`, `backend/staff/usage.py`, `backend/staff/store.py`, `backend/staff/runner.py`, `backend/routers/staff_usage.py`, `backend/server.py`, `tests/api/test_staff_usage.py`, `docs/staff-hub.md`
+- **Owner:** claude
+- **Issue:** #1199 (epic #1192)
+- **Branch:** `feat/1199-projects-tab` (base `feat/staff-hub`)
+- **PR:** #1208
+- **Paths:** `backend/projects/`, `backend/routers/projects.py`, `backend/server.py`, `config/projects.json`, `frontend/src/pages/ProjectsPage.tsx`, `frontend/src/pages/Projects/`, `frontend/src/shell/navRegistry.ts`, `frontend/src/shell/navIcons.tsx`, `frontend/src/shell/RoutedShell.tsx`, `tests/api/test_projects_router.py`, `frontend/src/pages/__tests__/Projects.test.tsx`, `docs/projects.md`
 - **Started:** 2026-09-22
-- **Last verified:** 2026-09-22 (`6b775d6`)
-- **Summary:** Epic #1192 usage ledger: price each finished staff run (CLI-reported cost kept as `reported`, else USD-per-1M-token table, else wall-time rate from `STAFF_WALL_USD_PER_MIN`), record `cost_method`, aggregate by provider/role/day with a daily budget from `STAFF_BUDGET_USD_PER_DAY`, and append daily per-provider totals to Repository_Management `data/credit_usage.json` by running RM `scripts/append_credit_usage.py` as a subprocess.
-- **Next step:** Open the draft PR against `feat/staff-hub` and the companion RM draft PR, then let CI run.
+- **Last verified:** 2026-09-22 (`6b775d6` + this change; 37 passed in tests/api/test_projects_router.py + perimeter/uniqueness/C4 contract; vitest 1066 passed; ruff, mypy, tsc, eslint, vite build clean)
+- **Summary:** `/api/projects` fetches `docs/project/CHARTER.md` + `STATUS.md` per configured repo via `gh_utils.gh_api`, parses them with a parser mirrored from Repository_Management `shared_scripts/project_charter.py` (columns pinned by test), joins the newest `project-steward` staff run, caches 10 min, never 5xx for one bad repo. Projects tab (nav `projects`) renders a card per repo with a stacked progress bar, decisions needed, last-run link and a "Run steward now" POST to `/api/staff/project-steward/run`.
+- **Next step:** Open the draft PR against `feat/staff-hub` (Closes #1199) and let CI run.
 
 ### DL-#1194 · Staff Hub core: runner, run store, /api/staff routes
 
@@ -174,6 +174,19 @@ reachable from any live state and `abandoned` from `parked`.
 `shipped` never returns to `in_progress`; open a new entry instead.
 
 ## Active
+
+### DL-#1200 · Staff Hub usage ledger: pricing, /api/staff/usage, RM credit_usage export
+
+- **State:** in_review
+- **Owner:** agent
+- **Issue:** #1200
+- **Branch:** `feat/1200-staff-usage` (base `feat/staff-hub`)
+- **PR:** not created
+- **Paths:** `backend/staff/pricing.py`, `backend/staff/usage.py`, `backend/staff/store.py`, `backend/staff/runner.py`, `backend/routers/staff_usage.py`, `backend/server.py`, `tests/api/test_staff_usage.py`, `docs/staff-hub.md`
+- **Started:** 2026-09-22
+- **Last verified:** 2026-09-22 (`6b775d6`)
+- **Summary:** Epic #1192 usage ledger: price each finished staff run (CLI-reported cost kept as `reported`, else USD-per-1M-token table, else wall-time rate from `STAFF_WALL_USD_PER_MIN`), record `cost_method`, aggregate by provider/role/day with a daily budget from `STAFF_BUDGET_USD_PER_DAY`, and append daily per-provider totals to Repository_Management `data/credit_usage.json` by running RM `scripts/append_credit_usage.py` as a subprocess.
+- **Next step:** Open the draft PR against `feat/staff-hub` and the companion RM draft PR, then let CI run.
 
 ### DL-#1198 · Staff tab: roster, run log with live tail, Assign, Holds
 

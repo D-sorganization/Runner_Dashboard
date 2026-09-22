@@ -713,6 +713,11 @@ app.include_router(_staff_router.router)
 app.include_router(_staff_schedule_router.router)  # scheduler, holds, budgets (issue #1196)
 app.include_router(_staff_usage_router.router)  # usage ledger (issue #1200)
 
+# Projects tab (issue #1199): per-repo charter, status and steward runs.
+from routers import projects as _projects_router  # noqa: E402
+
+app.include_router(_projects_router.router)
+
 # Issue #924 — structural auth perimeter. Registered BEFORE SessionMiddleware so
 # that, in Starlette's outer→inner stack, SessionMiddleware wraps this gate and
 # request.session is populated by the time the perimeter resolves a principal.
