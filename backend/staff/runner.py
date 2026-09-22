@@ -1,0 +1,372 @@
+"""Staff runner: turns a run request into a CLI subprocess and records it.
+
+Lifecycle of one run (all state lives in ``store.RunStore``):
+
+  queued ─▶ preparing ─▶ running ─▶ succeeded | failed | cancelled
+                 └────────────────▶ blocked   (someone else holds the issue claim)
+
+``preparing`` = resolve the repository checkout, create an isolated git
+worktree, run the Repository_Management lease ritual as subprocesses.
+``running``   = the provider CLI is alive; stdout lines become events.
+
+Concurrency is bounded by ``STAFF_MAX_CONCURRENT_RUNS`` (default 3) with one
+daemon thread per run; the semaphore is held only while the CLI runs.
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+import platform
+import re
+import shutil
+import subprocess
+import threading
+import time
+import uuid
+from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from staff import lease as lease_ritual
+from staff import workspace
+from staff.adapters import ADAPTERS, ProviderAdapter
+from staff.roles import RoleSpec, load_roles
+from staff.store import RunRecord, RunStore, _now, get_store
+
+log = logging.getLogger("dashboard.staff.runner")
+
+MAX_CONCURRENT_RUNS = int(os.environ.get("STAFF_MAX_CONCURRENT_RUNS", "3"))
+RUN_TIMEOUT_SECONDS = int(os.environ.get("STAFF_RUN_TIMEOUT_SECONDS", str(4 * 3600)))
+_SAFE_REF = re.compile(r"^[A-Za-z0-9._/-]{1,120}$")
+
+
+@dataclass(frozen=True)
+class RunRequest:
+    """Validated, flat run request (built by the router from the POST body)."""
+
+    role: str
+    provider: str | None = None
+    model: str | None = None
+    repo: str = ""
+    issue: int | None = None
+    pr: int | None = None
+    prompt: str = ""
+    machine: str = "local"
+    requested_by: str = ""
+
+    @property
+    def target_kind(self) -> str:
+        if self.issue:
+            return "issue"
+        if self.pr:
+            return "pr"
+        return "prompt"
+
+    @property
+    def target_ref(self) -> str:
+        if self.issue:
+            return f"#{self.issue}"
+        if self.pr:
+            return f"PR #{self.pr}"
+        return ""
+
+
+@dataclass(frozen=True)
+class RunPlan:
+    """What a run *would* do; returned by dry runs and used by the worker."""
+
+    role: str
+    provider: str
+    model: str | None
+    repo: str
+    target_kind: str
+    target_ref: str
+    operator_prompt: str
+    prompt: str
+    argv: list[str]
+    branch: str
+    lease_ritual: bool
+
+    @property
+    def issue_number(self) -> str:
+        return self.target_ref.lstrip("#") if self.target_kind == "issue" else ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "role": self.role,
+            "provider": self.provider,
+            "model": self.model,
+            "repo": self.repo,
+            "target_kind": self.target_kind,
+            "target_ref": self.target_ref,
+            "prompt": self.prompt,
+            "argv": list(self.argv),
+            "branch": self.branch,
+            "lease_ritual": self.lease_ritual,
+        }
+
+
+class StaffRunner:
+    """Owns run threads and the process table for this node."""
+
+    def __init__(
+        self,
+        store: RunStore | None = None,
+        roles_loader: Callable[[], dict[str, RoleSpec]] = load_roles,
+        adapters: dict[str, ProviderAdapter] | None = None,
+        machine: str | None = None,
+    ) -> None:
+        self._store = store
+        self._roles_loader = roles_loader
+        self._adapters = adapters if adapters is not None else ADAPTERS
+        self.machine = machine or os.environ.get("DISPLAY_NAME") or platform.node() or "local"
+        self._procs: dict[str, subprocess.Popen[str]] = {}
+        self._cancel_flags: set[str] = set()
+        self._lock = threading.Lock()
+        self._sema = threading.BoundedSemaphore(MAX_CONCURRENT_RUNS)
+
+    @property
+    def store(self) -> RunStore:
+        return self._store or get_store()
+
+    def roles(self) -> dict[str, RoleSpec]:
+        return self._roles_loader()
+
+    # ── planning ─────────────────────────────────────────────────────────
+    def plan(self, req: RunRequest) -> RunPlan:
+        """Resolve role + provider + prompt without side effects.
+
+        Raises ``ValueError`` with an operator-readable message on bad input.
+        """
+        role = self._resolve_role(req)
+        provider = self._resolve_provider(req, role)
+        if req.repo and not _SAFE_REF.match(req.repo):
+            raise ValueError("repo must be a bare repository name")
+        if role.repos and req.repo and req.repo not in role.repos:
+            raise ValueError(f"role '{req.role}' is scoped to {', '.join(role.repos)}")
+        if not (req.issue or req.pr or req.prompt.strip()):
+            raise ValueError("one of issue, pr or prompt is required")
+        branch = f"staff/{role.name}-{req.issue or req.pr or 'task'}-{uuid.uuid4().hex[:6]}"
+        lease = bool(role.permissions.get("lease", True)) and bool(req.issue) and bool(req.repo)
+        prompt = workspace.compose_prompt(
+            role, repo=req.repo, target_ref=req.target_ref, operator_prompt=req.prompt, branch=branch
+        )
+        argv = self._adapters[provider].build_command(prompt, "<workdir>", req.model or role.model)
+        return RunPlan(
+            role=role.name,
+            provider=provider,
+            model=req.model or role.model,
+            repo=req.repo,
+            target_kind=req.target_kind,
+            target_ref=req.target_ref,
+            operator_prompt=req.prompt,
+            prompt=prompt,
+            argv=argv,
+            branch=branch,
+            lease_ritual=lease,
+        )
+
+    def _resolve_role(self, req: RunRequest) -> RoleSpec:
+        role = self.roles().get(req.role)
+        if role is None:
+            raise ValueError(f"unknown role '{req.role}'")
+        if not role.dispatchable:
+            raise ValueError(
+                f"role '{req.role}' is not dispatchable from the dashboard "
+                f"(surface={role.surface}, retired={role.retired})"
+            )
+        return role
+
+    def _resolve_provider(self, req: RunRequest, role: RoleSpec) -> str:
+        provider = req.provider or self._first_available(role.providers)
+        if provider not in self._adapters:
+            raise ValueError(f"unknown provider '{provider}'")
+        if req.provider and req.provider not in role.providers and role.name != "ad-hoc":
+            allowed = ", ".join(role.providers)
+            raise ValueError(f"provider '{req.provider}' is not allowed for role '{role.name}' (allowed: {allowed})")
+        return provider
+
+    def _first_available(self, providers: tuple[str, ...]) -> str:
+        for pid in providers:
+            adapter = self._adapters.get(pid)
+            if adapter is not None and adapter.installed():
+                return pid
+        return providers[0] if providers else "claude"
+
+    # ── submission ───────────────────────────────────────────────────────
+    def submit(self, req: RunRequest) -> RunRecord:
+        """Validate, persist as ``queued`` and start the worker thread."""
+        plan = self.plan(req)
+        rec = RunRecord(
+            id=f"run-{uuid.uuid4().hex[:12]}",
+            role=plan.role,
+            provider=plan.provider,
+            model=plan.model,
+            machine=self.machine,
+            repo=plan.repo,
+            target_kind=plan.target_kind,
+            target_ref=plan.target_ref,
+            prompt=plan.prompt,
+            requested_by=req.requested_by,
+            branch=plan.branch,
+        )
+        self.store.create_run(rec)
+        self.store.append_event(rec.id, "queued", f"queued on {self.machine} for {plan.provider}")
+        thread = threading.Thread(target=self._worker, args=(rec, plan), name=f"staff-{rec.id}", daemon=True)
+        thread.start()
+        return rec
+
+    def cancel(self, run_id: str) -> bool:
+        with self._lock:
+            self._cancel_flags.add(run_id)
+            proc = self._procs.get(run_id)
+        rec = self.store.get_run(run_id)
+        if rec is None:
+            return False
+        if proc is not None and proc.poll() is None:
+            proc.terminate()
+            self.store.append_event(run_id, "cancel", "terminate signal sent")
+            return True
+        if rec.status in ("queued", "preparing"):
+            self.store.update_run(run_id, status="cancelled", ended_at=_now())
+            self.store.append_event(run_id, "cancel", "cancelled before start")
+            return True
+        return False
+
+    # ── worker ───────────────────────────────────────────────────────────
+    def _worker(self, rec: RunRecord, plan: RunPlan) -> None:
+        store = self.store
+        with self._sema:
+            if rec.id in self._cancel_flags:
+                return
+            try:
+                store.update_run(rec.id, status="preparing", started_at=_now())
+                workdir = self._prepare_workdir(rec, plan)
+                lease_note = ""
+                if plan.lease_ritual:
+                    note = lease_ritual.acquire(
+                        store, rec.id, repo=plan.repo, issue=plan.issue_number, agent=plan.provider, branch=plan.branch
+                    )
+                    if note is None:
+                        return  # blocked; status already recorded
+                    lease_note = note
+                self._execute(rec, plan, workdir, lease_note)
+            except Exception as exc:  # noqa: BLE001
+                log.exception("staff run %s crashed", rec.id)
+                store.update_run(rec.id, status="failed", ended_at=_now(), error=str(exc)[:1000])
+                store.append_event(rec.id, "error", str(exc)[:1000])
+            finally:
+                if plan.lease_ritual:
+                    lease_ritual.release(store, rec.id, repo=plan.repo, issue=plan.issue_number, agent=plan.provider)
+
+    def _prepare_workdir(self, rec: RunRecord, plan: RunPlan) -> Path:
+        store = self.store
+        if not plan.repo:
+            workdir = workspace.staff_worktrees_root() / rec.id
+            workdir.mkdir(parents=True, exist_ok=True)
+            store.update_run(rec.id, workdir=str(workdir))
+            return workdir
+        checkout = workspace.find_repo_checkout(plan.repo)
+        if checkout is None:
+            store.append_event(rec.id, "clone", f"no local checkout of {plan.repo}; cloning")
+            checkout = workspace.clone_repo(plan.repo)
+        worktree = workspace.staff_worktrees_root() / f"{plan.repo}-{rec.id}"
+        workspace.add_worktree(checkout, worktree, plan.branch)
+        store.update_run(rec.id, workdir=str(worktree))
+        store.append_event(rec.id, "worktree", f"{worktree} on {plan.branch}")
+        return worktree
+
+    def _execute(self, rec: RunRecord, plan: RunPlan, workdir: Path, lease_note: str) -> None:
+        store = self.store
+        adapter = self._adapters[plan.provider]
+        role = self.roles()[plan.role]
+        prompt = workspace.compose_prompt(
+            role,
+            repo=plan.repo,
+            target_ref=plan.target_ref,
+            operator_prompt=plan.operator_prompt,
+            branch=plan.branch,
+            lease_note=lease_note,
+        )
+        argv = adapter.build_command(prompt, str(workdir), plan.model)
+        transcript = workdir / ".staff" / "transcript.log"
+        transcript.parent.mkdir(parents=True, exist_ok=True)
+        env = {**os.environ, **adapter.extra_env, "STAFF_RUN_ID": rec.id, "STAFF_ROLE": plan.role}
+        store.update_run(rec.id, status="running", transcript_path=str(transcript), prompt=prompt)
+        store.append_event(rec.id, "start", f"{adapter.executable} ({plan.provider}) in {workdir}")
+        exe = shutil.which(adapter.executable) or adapter.executable
+        proc = subprocess.Popen(  # noqa: S603
+            [exe, *argv[1:]],
+            cwd=str(workdir),
+            env=env,
+            stdin=subprocess.PIPE if adapter.prompt_via_stdin else subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            bufsize=1,
+        )
+        with self._lock:
+            self._procs[rec.id] = proc
+        if adapter.prompt_via_stdin and proc.stdin is not None:
+            proc.stdin.write(prompt + "\n")
+            proc.stdin.close()
+        usage = self._pump_output(rec, adapter, proc, transcript)
+        rc = proc.wait()
+        with self._lock:
+            self._procs.pop(rec.id, None)
+        cancelled = rec.id in self._cancel_flags
+        status = "cancelled" if cancelled else ("succeeded" if rc == 0 else "failed")
+        store.update_run(
+            rec.id,
+            status=status,
+            ended_at=_now(),
+            exit_code=rc,
+            cost_usd=float(usage.get("cost_usd", 0.0)),
+            input_tokens=int(usage.get("input_tokens", 0)),
+            output_tokens=int(usage.get("output_tokens", 0)),
+        )
+        store.append_event(rec.id, "exit", f"exit code {rc} → {status}")
+
+    def _pump_output(
+        self, rec: RunRecord, adapter: ProviderAdapter, proc: subprocess.Popen[str], transcript: Path
+    ) -> dict[str, Any]:
+        """Stream stdout lines into the transcript file and the event store."""
+        usage: dict[str, Any] = {}
+        deadline = time.monotonic() + RUN_TIMEOUT_SECONDS
+        assert proc.stdout is not None  # noqa: S101
+        with transcript.open("a", encoding="utf-8") as tf:
+            for line in proc.stdout:
+                tf.write(line)
+                event = adapter.parse_line(line)
+                if event.get("usage"):
+                    usage.update(event["usage"])
+                text = event.get("text") or ""
+                if text.strip():
+                    self.store.append_event(rec.id, event.get("kind", "text"), text)
+                if time.monotonic() > deadline:
+                    proc.terminate()
+                    self.store.append_event(rec.id, "timeout", f"run exceeded {RUN_TIMEOUT_SECONDS}s; terminated")
+                    break
+        return usage
+
+
+_runner: StaffRunner | None = None
+_runner_lock = threading.Lock()
+
+
+def get_runner() -> StaffRunner:
+    global _runner  # noqa: PLW0603
+    with _runner_lock:
+        if _runner is None:
+            _runner = StaffRunner()
+        return _runner
+
+
+def reset_runner() -> None:
+    global _runner  # noqa: PLW0603
+    with _runner_lock:
+        _runner = None

@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Staff Hub core: `backend/staff/` runner, node-local SQLite run store and `/api/staff/*` routes that dispatch named AI staff roles as local CLI subprocesses with live SSE output, dry-run plans and cancellation (#1194, epic #1192).
+
 - Provisioned production OAuth readiness and token validation boundaries for Tailscale egress with redacted health diagnostics and runbook documentation (#1141).
 - Updated Windows WSL resident keepalive task installer (`install-wsl-keepalive-task.ps1`) to run under an interactive user principal mode (`-LogonType Interactive`), failing closed against unsupported `SYSTEM` and `S4U` modes (#1139).
 - Enforced interactive-safe DeskComputer 1/2 runner schedule validation and capacity bounds (#1144).

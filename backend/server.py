@@ -704,6 +704,11 @@ app.include_router(_diagnostics_router.router)  # issue #360
 app.include_router(_autoscaler_pools_router.router)  # issue #755 tier-aware autoscaler
 app.include_router(_orchestrator_api.router)  # Conductor admission gate (issue #1282)
 
+# Fleet Staff Hub (epic #1192): named AI staff roles run as local CLI subprocesses.
+from routers import staff as _staff_router  # noqa: E402
+
+app.include_router(_staff_router.router)
+
 # Issue #924 — structural auth perimeter. Registered BEFORE SessionMiddleware so
 # that, in Starlette's outer→inner stack, SessionMiddleware wraps this gate and
 # request.session is populated by the time the perimeter resolves a principal.

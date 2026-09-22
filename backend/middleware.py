@@ -158,10 +158,17 @@ _AUTH_EXEMPT_PATHS = {
 #                              must work from the local browser before any login,
 #                              so a principal cannot be required; the local-origin
 #                              check is the (independently tested) alternate auth.
+#   - /api/staff/*           → Staff Hub (epic #1192). Reads use require_fleet_peer
+#                              and mutations require_orchestrator_peer, the same
+#                              principal / HUB_FLEET_TOKEN / loopback contract as
+#                              /api/orchestrator/* so Barb, Orchestrator and the
+#                              hub can call it with the fleet bearer token
+#                              (tests/api/test_staff_auth_perimeter.py).
 _ALT_AUTH_EXEMPT_PREFIXES = (
     "/api/fleet/dispatch/",
     "/api/orchestrator/",
     "/api/credentials/",
+    "/api/staff/",
 )
 
 DEFAULT_MAX_BODY_SIZE = 1 * 1024 * 1024  # 1 MB
