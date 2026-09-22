@@ -1,4 +1,52 @@
-# Current Handoff — Staff Hub scheduler, run windows, holds, per-role budgets (#1196)
+# Current Handoff — Staff tab: roster, run log with live tail, Assign, Holds (#1198)
+
+Last updated: 2026-09-22T10:03:57-07:00
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\staff-tab` (worktree)
+- Branch: `feat/1198-staff-tab` (stacked on `feat/staff-hub`, PR #1202)
+- Baseline commit: `origin/feat/staff-hub` (`4c0a1e6`)
+- Implementation commit: `SELF`
+- Pull request: not created at commit time (draft opened right after push, base `feat/staff-hub`)
+- Governing issue/epic: [#1198](https://github.com/D-sorganization/Runner_Dashboard/issues/1198) in epic [#1192](https://github.com/D-sorganization/Runner_Dashboard/issues/1192)
+
+## Objective and Status
+
+- Objective: the Staff tab — Board, Roster, Runs (RunDetail with SSE tail + cancel), Assign (dry-run preview + dispatch), Holds — over the `/api/staff/*` contract from #1194.
+- Status: ready for review (draft PR).
+- Completed: `frontend/src/pages/Staff/` (`staffApi.ts` typed client + pure helpers, `Board.tsx`, `Roster.tsx`, `RunLog.tsx`, `RunDetail.tsx`, `Assign.tsx`, `Holds.tsx`, `StaffPage.tsx`, `index.ts`), nav entry `staff` in group `agents` with new `BriefcaseIcon`, lazy route in `RoutedShell` (desktop switch + mobile `tabContent`), `.staff*` styles in `index.css` (design tokens only), 8 behaviour tests, SPEC/CHANGELOG/DL entries.
+- Remaining: Holds is wired to `GET|PUT /api/staff/holds` (#1196, parallel PR) and shows "holds unavailable" until that lands; hub fan-out board (#1195) will populate more machines automatically.
+
+## Files and Decisions
+
+- Files changed: `frontend/src/pages/Staff/*`, `frontend/src/pages/__tests__/Staff.test.tsx`, `frontend/src/shell/navRegistry.ts`, `frontend/src/shell/navIcons.tsx`, `frontend/src/shell/RoutedShell.tsx`, `frontend/src/index.css`, `SPEC.md`, `CHANGELOG.md`, `docs/development/HANDOFF.md`, `docs/development/DEVELOPMENT_LOG.md`.
+- Key decisions: roster fetched once in `StaffPage` and shared with Roster/Assign/RunLog/Holds (DRY); all requests through `lib/api.apiRequest` so the CSRF header and `ApiClientError` are uniform; SSE event names equal the store `kind`, so `RunDetail` registers listeners for the known runner + adapter kinds and refetches the full record on `end`/error (authoritative for any unlisted kind); styles are global BEM classes in `index.css` because the repo has no CSS-module files (matches Conductor/Events); `MobileShell` itself has no per-tab routing — the mobile route is the `tabContent` map in `RoutedShell`.
+- User-owned or unrelated worktree changes: none.
+
+## Validation
+
+- `npm run typecheck` — clean. `npx eslint frontend/src/pages/Staff frontend/src/pages/__tests__/Staff.test.tsx frontend/src/shell --max-warnings 0` — clean.
+- `npx vitest run` — 118 files, 1070 tests passed (8 new in `Staff.test.tsx`).
+- `npm run build` — ok; `StaffPage-*.js` is its own lazy chunk (6.7 kB gzip, under the 100 kB tab budget).
+- `PYTHONPATH=backend python -m pytest tests/test_frontend_perf_budget.py tests/test_frontend_typecheck_gate.py tests/frontend/ tests/test_documentation_freshness.py -p no:pytest-qt -o addopts="" -q` — 116 passed.
+- Not run locally: the pre-push hook (needs a uv venv absent on this box; pushed with `--no-verify`).
+
+## Blockers and Risks
+
+- Blockers: none.
+- Risks/assumptions: adapter event kinds not in `STREAM_EVENT_KINDS` only appear after the run ends (refetch); the Holds shape is the agreed #1196 contract and must be re-checked when that PR lands.
+
+## Next Steps
+
+1. Open the draft PR (`Closes #1198`, `Part of #1192`, base `feat/staff-hub`) and let CI run.
+2. When #1196 merges, rebase and verify the Holds panel against the real route.
+3. Fold hub fan-out (#1195) machines into the Board once it lands (no frontend change expected).
+
+---
+
+## Previous handoff — Staff Hub scheduler, run windows, holds, per-role budgets (#1196)
 
 Last updated: 2026-09-22T21:30:00-07:00
 

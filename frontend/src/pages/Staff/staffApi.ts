@@ -1,0 +1,319 @@
+/**
+ * staffApi.ts — typed client for the Staff Hub routes (`/api/staff/*`).
+ *
+ * Issue #1198 (epic #1192). Mirrors the backend contract in
+ * `backend/routers/staff.py`: every shape here is a flat record the API
+ * returns verbatim (Law of Demeter — the page never reaches into nested
+ * runner internals). All requests go through the shared `apiRequest` helper
+ * so the CSRF sentinel header (`X-Requested-With: XMLHttpRequest`) and the
+ * structured `ApiClientError` contract are applied uniformly.
+ */
+import { ApiClientError, apiRequest } from "../../lib/api";
+
+export { ApiClientError };
+
+// ── Shapes ───────────────────────────────────────────────────────────────────
+
+export type RunStatus =
+  | "queued"
+  | "preparing"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "cancelled"
+  | "blocked";
+
+/** Statuses for which the run is still alive (mirrors `ACTIVE_STATUSES`). */
+export const ACTIVE_STATUSES: ReadonlySet<string> = new Set([
+  "queued",
+  "preparing",
+  "running",
+]);
+
+export const RUN_STATUSES: readonly RunStatus[] = [
+  "queued",
+  "preparing",
+  "running",
+  "succeeded",
+  "failed",
+  "cancelled",
+  "blocked",
+];
+
+export interface RoleSpec {
+  name: string;
+  title: string;
+  summary: string;
+  playbook: string;
+  providers: string[];
+  model: string | null;
+  schedule: string | null;
+  window: string | null;
+  repos: string[];
+  budget: { usd_per_run: number | null; usd_per_day: number | null };
+  permissions: Record<string, unknown>;
+  reports_to: string | null;
+  holds: string[];
+  surface: string | null;
+  retired: boolean;
+  dispatchable: boolean;
+  source_path: string;
+  active_runs: number;
+}
+
+export interface RosterResponse {
+  machine: string;
+  roles: RoleSpec[];
+  providers: Record<string, boolean>;
+  active_runs: number;
+}
+
+export interface RunRecord {
+  id: string;
+  role: string;
+  provider: string;
+  model: string | null;
+  machine: string;
+  repo: string;
+  target_kind: string;
+  target_ref: string;
+  prompt: string;
+  status: RunStatus | string;
+  requested_by: string;
+  created_at: string;
+  started_at: string | null;
+  ended_at: string | null;
+  exit_code: number | null;
+  cost_usd: number;
+  input_tokens: number;
+  output_tokens: number;
+  workdir: string;
+  branch: string;
+  transcript_path: string;
+  lease_id: string;
+  error: string;
+  last_line: string;
+}
+
+export interface RunEvent {
+  seq: number;
+  ts: string;
+  kind: string;
+  text: string;
+}
+
+export interface BoardResponse {
+  machine: string;
+  generated_at: string;
+  running: RunRecord[];
+  queued: RunRecord[];
+  recent: RunRecord[];
+  spend_today_usd: number;
+  providers: Record<string, boolean>;
+}
+
+export interface RunsResponse {
+  runs: RunRecord[];
+  count: number;
+}
+
+export interface RunDetailResponse {
+  run: RunRecord;
+  events: RunEvent[];
+}
+
+export interface RunPlan {
+  role: string;
+  provider: string;
+  model: string | null;
+  repo: string;
+  target_kind: string;
+  target_ref: string;
+  prompt: string;
+  argv: string[];
+  branch: string;
+  lease_ritual: boolean;
+}
+
+export interface DispatchBody {
+  provider?: string | null;
+  model?: string | null;
+  repo: string;
+  issue?: number | null;
+  pr?: number | null;
+  prompt: string;
+  machine: string;
+  dry_run: boolean;
+}
+
+export type DispatchResponse =
+  | { dry_run: true; plan: RunPlan; machine: string }
+  | { dry_run: false; run: RunRecord; machine: string };
+
+export interface CancelResponse {
+  cancelled: boolean;
+  run: RunRecord | null;
+}
+
+/** Hold shape agreed with the parallel #1196 PR (`PUT /api/staff/holds`). */
+export interface Hold {
+  id: string;
+  text: string;
+  set_on: string;
+  lifted_when: string;
+  applies_to: string[];
+  active: boolean;
+}
+
+export interface HoldsResponse {
+  holds: Hold[];
+}
+
+// ── Calls ────────────────────────────────────────────────────────────────────
+
+export const STAFF_BASE = "/api/staff";
+
+export function fetchRoster(signal?: AbortSignal): Promise<RosterResponse> {
+  return apiRequest<RosterResponse>(`${STAFF_BASE}/roster`, { signal });
+}
+
+export function fetchBoard(signal?: AbortSignal): Promise<BoardResponse> {
+  return apiRequest<BoardResponse>(`${STAFF_BASE}/board`, { signal });
+}
+
+export interface RunsFilter {
+  role?: string;
+  status?: string;
+  limit?: number;
+}
+
+export function fetchRuns(filter: RunsFilter = {}, signal?: AbortSignal): Promise<RunsResponse> {
+  const params = new URLSearchParams();
+  if (filter.role) params.set("role", filter.role);
+  if (filter.status) params.set("status", filter.status);
+  if (filter.limit) params.set("limit", String(filter.limit));
+  const qs = params.toString();
+  return apiRequest<RunsResponse>(`${STAFF_BASE}/runs${qs ? `?${qs}` : ""}`, { signal });
+}
+
+export function fetchRun(id: string, signal?: AbortSignal): Promise<RunDetailResponse> {
+  return apiRequest<RunDetailResponse>(`${STAFF_BASE}/runs/${encodeURIComponent(id)}`, { signal });
+}
+
+export function runStreamUrl(id: string, after = 0): string {
+  return `${STAFF_BASE}/runs/${encodeURIComponent(id)}/stream?after=${after}`;
+}
+
+export function cancelRun(id: string): Promise<CancelResponse> {
+  return apiRequest<CancelResponse>(`${STAFF_BASE}/runs/${encodeURIComponent(id)}/cancel`, {
+    method: "POST",
+    body: {},
+  });
+}
+
+export function dispatchRun(role: string, body: DispatchBody): Promise<DispatchResponse> {
+  return apiRequest<DispatchResponse>(`${STAFF_BASE}/${encodeURIComponent(role)}/run`, { body });
+}
+
+export function fetchHolds(signal?: AbortSignal): Promise<HoldsResponse> {
+  return apiRequest<HoldsResponse>(`${STAFF_BASE}/holds`, { signal });
+}
+
+export function putHolds(body: HoldsResponse): Promise<HoldsResponse> {
+  return apiRequest<HoldsResponse>(`${STAFF_BASE}/holds`, { method: "PUT", body });
+}
+
+/** True when the error is a structured 404 from the API (feature absent). */
+export function isNotFound(err: unknown): boolean {
+  return err instanceof ApiClientError && err.status === 404;
+}
+
+export function errorMessage(err: unknown): string {
+  if (err instanceof ApiClientError) return err.detail;
+  return err instanceof Error ? err.message : String(err);
+}
+
+/** Badge tone for a run status (shared by Board, RunLog and RunDetail). */
+export function statusTone(status: string): "success" | "warning" | "danger" | "info" | "neutral" {
+  switch (status) {
+    case "succeeded":
+      return "success";
+    case "running":
+    case "preparing":
+      return "info";
+    case "queued":
+    case "blocked":
+      return "warning";
+    case "failed":
+    case "cancelled":
+      return "danger";
+    default:
+      return "neutral";
+  }
+}
+
+export function formatUsd(value: number | null | undefined): string {
+  return `$${(value ?? 0).toFixed(2)}`;
+}
+
+// ── Pure helpers shared by the Staff panels ─────────────────────────────────
+
+export const BOARD_POLL_MS = 10_000;
+
+export interface MachineRow {
+  machine: string;
+  running: RunRecord[];
+  queued: RunRecord[];
+}
+
+/** Group running/queued runs by machine, in first-seen order. */
+export function groupByMachine(board: BoardResponse): MachineRow[] {
+  const rows = new Map<string, MachineRow>();
+  const ensure = (machine: string): MachineRow => {
+    let row = rows.get(machine);
+    if (!row) {
+      row = { machine, running: [], queued: [] };
+      rows.set(machine, row);
+    }
+    return row;
+  };
+  ensure(board.machine);
+  for (const run of board.running) ensure(run.machine || board.machine).running.push(run);
+  for (const run of board.queued) ensure(run.machine || board.machine).queued.push(run);
+  return Array.from(rows.values());
+}
+
+/** Human label for a run's target (issue / PR / free prompt). */
+export function targetLabel(run: RunRecord): string {
+  if (run.target_kind === "issue") return `#${run.target_ref}`;
+  if (run.target_kind === "pr") return `PR #${run.target_ref}`;
+  return run.target_ref || "prompt";
+}
+
+/** SSE event names the backend emits (runner lifecycle + adapter kinds). */
+export const STREAM_EVENT_KINDS: readonly string[] = [
+  "queued",
+  "clone",
+  "worktree",
+  "start",
+  "exit",
+  "error",
+  "cancel",
+  "timeout",
+  "text",
+  "json",
+  "system",
+  "assistant",
+  "user",
+  "result",
+  "message",
+  "tool_use",
+  "tool_result",
+  "item",
+  "response",
+  "thread",
+  "turn",
+  "content",
+  "status",
+  "log",
+];

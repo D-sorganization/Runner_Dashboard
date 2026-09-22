@@ -46,6 +46,7 @@ import {
   ClipboardCheckIcon,
   HardDriveIcon,
   ScrollTextIcon,
+  BriefcaseIcon,
 } from "./navIcons";
 
 /** Ordered group identifiers used to bucket categories in the sidebar. */
@@ -282,6 +283,17 @@ export const NAV_ITEMS: readonly NavItem[] = [
     Icon: TerminalIcon,
     tooltip: "Launch Cline agent sessions against the fleet.",
     tabId: "cline-launcher",
+    frequent: false,
+    mobilePrimary: false,
+    mobileDrawer: true,
+  },
+  {
+    id: "staff",
+    label: "Staff",
+    group: "agents",
+    Icon: BriefcaseIcon,
+    tooltip: "Staff Hub: AI staff roster, run log with live tail, assign and holds.",
+    tabId: "staff",
     frequent: false,
     mobilePrimary: false,
     mobileDrawer: true,

@@ -266,3 +266,12 @@ export const ScrollTextIcon = svg(
     <line x1="15" y1="12" x2="11" y2="12" />
   </>,
 );
+
+/** Staff Hub briefcase glyph (issue #1198). */
+export const BriefcaseIcon = svg(
+  <>
+    <rect x="2" y="7" width="20" height="14" rx="2" />
+    <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+    <line x1="2" y1="13" x2="22" y2="13" />
+  </>,
+);
