@@ -60,6 +60,8 @@ class RunRecord:
     lease_id: str = ""
     error: str = ""
     last_line: str = ""
+    # How cost_usd was obtained: reported | token_table | wall_time | none | "" (not finalised). Issue #1200.
+    cost_method: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return dict(self.__dict__)
@@ -107,6 +109,14 @@ CREATE INDEX IF NOT EXISTS events_run_idx ON events(run_id, seq);
 
 _COLUMNS = tuple(RunRecord.__dataclass_fields__.keys())
 
+# Columns added after the first schema shipped. Applied with a guarded
+# ``ALTER TABLE ... ADD COLUMN`` so an existing store upgrades in place and a
+# rollback to the previous code keeps working (extra columns are ignored).
+_ADDED_COLUMNS: tuple[tuple[str, str], ...] = (("cost_method", "TEXT NOT NULL DEFAULT ''"),)
+
+USAGE_GROUPS = ("provider", "role", "day")
+_USAGE_GROUP_SQL = {"provider": "provider", "role": "role", "day": "substr(created_at, 1, 10)"}
+
 
 class RunStore:
     """Thread-safe SQLite-backed run + event store."""
@@ -120,7 +130,20 @@ class RunStore:
         with self._lock:
             self._conn.execute("PRAGMA journal_mode=WAL")
             self._conn.executescript(_SCHEMA)
+            self._migrate()
         self._seq: dict[str, int] = {}
+
+    def _migrate(self) -> None:
+        """Add any column in ``_ADDED_COLUMNS`` that the on-disk table lacks (idempotent)."""
+        present = {str(r["name"]) for r in self._conn.execute("PRAGMA table_info(runs)").fetchall()}
+        for name, decl in _ADDED_COLUMNS:
+            if name not in present:
+                self._conn.execute(f"ALTER TABLE runs ADD COLUMN {name} {decl}")  # noqa: S608
+
+    def columns(self) -> set[str]:
+        """Column names currently present on the ``runs`` table (for migration tests)."""
+        with self._lock:
+            return {str(r["name"]) for r in self._conn.execute("PRAGMA table_info(runs)").fetchall()}
 
     # ── runs ─────────────────────────────────────────────────────────────
     def create_run(self, rec: RunRecord) -> RunRecord:
@@ -196,6 +219,38 @@ class RunStore:
                 (since_iso,),
             ).fetchall()
         return {str(r["role"]): float(r["usd"]) for r in rows}
+
+    def usage_by(self, group: str = "provider", since: str | None = None) -> list[dict[str, Any]]:
+        """Aggregate runs by ``provider``, ``role`` or ``day`` (issue #1200).
+
+        Pre: ``group`` in ``USAGE_GROUPS``. Post: one row per key, ordered by key,
+        with ``runs``, ``cost_usd``, ``input_tokens``, ``output_tokens`` and
+        ``wall_seconds`` (sum of ended_at - started_at over runs that have both).
+        """
+        assert group in USAGE_GROUPS, group  # noqa: S101
+        key_sql = _USAGE_GROUP_SQL[group]
+        where = "WHERE created_at >= ?" if since else ""
+        params: tuple[Any, ...] = (since,) if since else ()
+        sql = (
+            f"SELECT {key_sql} AS key, COUNT(*) AS runs, COALESCE(SUM(cost_usd), 0) AS cost_usd, "
+            "COALESCE(SUM(input_tokens), 0) AS input_tokens, COALESCE(SUM(output_tokens), 0) AS output_tokens, "
+            "COALESCE(SUM(CASE WHEN started_at IS NOT NULL AND ended_at IS NOT NULL "
+            "THEN (julianday(ended_at) - julianday(started_at)) * 86400.0 ELSE 0 END), 0) AS wall_seconds "
+            f"FROM runs {where} GROUP BY key ORDER BY key"  # noqa: S608
+        )
+        with self._lock:
+            rows = self._conn.execute(sql, params).fetchall()
+        return [
+            {
+                "key": str(r["key"]),
+                "runs": int(r["runs"]),
+                "cost_usd": round(float(r["cost_usd"]), 6),
+                "input_tokens": int(r["input_tokens"]),
+                "output_tokens": int(r["output_tokens"]),
+                "wall_seconds": round(max(0.0, float(r["wall_seconds"])), 1),
+            }
+            for r in rows
+        ]
 
     # ── events ───────────────────────────────────────────────────────────
     def append_event(self, run_id: str, kind: str, text: str) -> int:

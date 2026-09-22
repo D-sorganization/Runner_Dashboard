@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Any
 
 from staff import lease as lease_ritual
+from staff import usage as usage_mod
 from staff import workspace
 from staff.adapters import ADAPTERS, ProviderAdapter
 from staff.roles import RoleSpec, load_roles
@@ -329,6 +330,7 @@ class StaffRunner:
             input_tokens=int(usage.get("input_tokens", 0)),
             output_tokens=int(usage.get("output_tokens", 0)),
         )
+        usage_mod.finalize_cost(store, rec.id, plan.provider, plan.model)  # issue #1200
         store.append_event(rec.id, "exit", f"exit code {rc} → {status}")
 
     def _pump_output(
