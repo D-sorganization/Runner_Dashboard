@@ -1,49 +1,48 @@
-# Current Handoff — Provider registry v2: antigravity, cursor-agent, maxwell; Jules disabled; per-node CLI probe (#1193)
+# Current Handoff — Release 4.10.0 and Staff Hub health probe (#1201)
 
-Last updated: 2026-09-22T00:00:00-07:00
+Last updated: 2026-09-22T20:30:00-07:00
 
 ## Identity
 
 - Repository: `D-sorganization/Runner_Dashboard`
-- Working directory: `C:\Users\diete\Repositories\Runner_Dashboard\.claude\worktrees\agent-a924e22d8c1965606` (isolated worktree)
-- Branch: `feat/1193-provider-registry-v2`
-- Baseline commit: `origin/main` (`52fd0b9`)
+- Working directory: `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/staff-hub` (worktree)
+- Branch: `chore/1201-release-4.10.0`
+- Baseline commit: `origin/main` (`34cfdae`)
 - Implementation commit: `SELF`
-- Governing issue: [#1193](https://github.com/D-sorganization/Runner_Dashboard/issues/1193) (Staff Hub 3), epic [#1192](https://github.com/D-sorganization/Runner_Dashboard/issues/1192)
-- PR: draft, opened right after push (see PR body; draft is mandatory because org automation auto-merges non-draft green PRs)
+- Pull request: not created at commit time
+- Governing issue/epic: #1201 in epic #1192
 
-## Current Objective
+## Objective and Status
 
-1. Extend `PROVIDER_REGISTRY` with `antigravity` (`antigravity-cli`, probe `agy`), `cursor_agent` (`cursor-agent`, Grok models via the Cursor subscription) and optional `maxwell` (`maxwell-daemon`).
-2. Mark `jules_cli` / `jules_api` `enabled: false` and drop them from `provider_order` / `enabled_providers` (Jules retired fleet-wide, RM#1483 / RM#1505) without deleting the entries or `/dispatch-jules`.
-3. Add a per-node CLI probe (`installed` + `authenticated`) reusing `routers/credentials.py` probes and expose it as `node_availability` + `hostname` on `GET /api/providers/registry`, cached 60 s.
+- Objective: cut release 4.10.0 (first with the Fleet Staff Hub) and alarm on a dead Staff Hub board from the fleet health monitor.
+- Status: ready for review.
+- Completed: version bumped in VERSION, pyproject, package.json, package-lock.json, uv.lock, openapi snapshot, SPEC header; CHANGELOG 4.10.0 section; monitor probe + test.
+- Remaining: merge → `release.yml` builds `dashboard-4.10.0.tar.gz` → install on DeskComputer via `deploy/update-deployed.sh --artifact <url>`; ControlTower and OGLaptop need the operator (no SSH keys from DeskComputer; OGLaptop uses `deploy-qualified-release.yml`). Set `STAFF_SCHEDULER_ENABLED=0` on all nodes but one.
 
-## Implemented
+## Files and Decisions
 
-- `backend/agent_remediation/provider_registry.py`: `ProviderEntry.enabled` (default `True`), three new rows, Jules rows `enabled=False` with a retirement note, `validate_registry` now also asserts `enabled` is bool and every `local_exec` row has an `availability_probe`.
-- `backend/agent_remediation/provider_probe.py` (new): `probe_provider_availability()` — `shutil.which` for `installed`; `authenticated` from the credentials-router probes (lazy import, injectable mapping, never raises); `auth_mode: local` CLIs without a probe report `authenticated == installed`.
-- `backend/routers/providers.py`: `enabled` in each provider payload; `hostname` + `node_availability` top-level; `cached_node_availability()` (60 s via `cache_utils`); `build_registry(node_availability=...)` injection seam. `schema_version` stays `1.0.0` (additive change).
-- `backend/agent_remediation/providers.py`: `AgentProvider.enabled` projected from the table. `planner.py`: `plan_dispatch` skips registry-disabled providers even when a saved policy lists them. `policy.py`: `DEFAULT_PROVIDER_ORDER` without Jules, with the new providers.
-- `config/agent_remediation.json`: Jules removed from `provider_order` / `enabled_providers`; `antigravity`, `cursor_agent` added to both; `maxwell` in order only (dormant). Workflow-type rules still name `jules_api` / `jules_cli` as preferred provider — the planner now falls through to the enabled order; retargeting those rules was left out of scope.
-- `backend/conductor_constants.py`: unchanged — the vendored enums already match `Repository_Management/conductor/provider.py` (verified by reading the source); the new rows use existing values and `tests/api/test_conductor_constants.py` gained a registry-side drift test.
-- Docs: `SPEC.md` (change-log bullet + section 4 registry contract), `CHANGELOG.md` (Unreleased), this handoff, `DEVELOPMENT_LOG.md` (`DL-#1193`).
+- Files changed: `VERSION`, `pyproject.toml`, `package.json`, `package-lock.json`, `uv.lock`, `frontend/src/lib/openapi.json`, `SPEC.md`, `CHANGELOG.md`, `deploy/fleet-health-monitor.ps1`, `tests/deploy/test_fleet_health_monitor.py`, this file, `docs/development/DEVELOPMENT_LOG.md`.
+- Key decisions: the monitor probe is read-only and node-local (`?local=1`) so it never depends on peers; failure is a WARN plus `state.errors`, never a cycle abort. Minor version bump because the release adds new API surfaces.
+- User-owned or unrelated worktree changes: none observed.
 
 ## Validation
 
-- `python -m pytest tests/api/test_providers_registry.py tests/api/test_conductor_constants.py tests/test_agent_remediation.py -q` → 54 passed, 7 skipped (skips = conductor source not checked out from this worktree path).
-- `ruff check backend tests` → clean. `ruff format --check backend` → clean (4 pre-existing `tests/` files differ under local ruff 0.15.11; CI pins 0.14.10 and checks `backend/` only).
-- `mypy backend/ --ignore-missing-imports --no-implicit-optional` → Success (133 files).
-- Endpoint timing: node probe 0.36 s (cached 60 s); the pre-existing live Ollama fetch is the 4.7 s cost when Ollama is down — outside scope.
+- `PYTHONPATH=backend python -m pytest tests/test_version_single_source.py tests/deploy/test_fleet_health_monitor.py -p no:pytest-qt -o addopts="" -q` — 25 passed.
+
+## Blockers and Risks
+
+- Blockers: none.
+- Risks/assumptions: `release.yml` must accept the VERSION push on main (tag `v4.10.0` must not pre-exist); the monitor's copy on DeskComputer (`C:\Users\diete\runner_fleet_monitor\fleet-health-monitor.ps1`) is deployed separately from the repo and must be re-copied.
 
 ## Next Steps
 
-1. Review the draft PR, mark ready when CI is green; then consider retargeting the `jules_api` / `jules_cli` workflow-type rules in `config/agent_remediation.json` and `policy.py` defaults (follow-up, not in #1193's scope).
+1. Merge this PR after RD#1206; watch `release.yml` for `v4.10.0` assets.
+2. Install on DeskComputer, verify `/api/health` reports 4.10.0 and `/api/staff/board` answers.
+3. Copy the monitor script to `C:\Users\diete\runner_fleet_monitor\`.
 
 ---
 
----
-
-## Previous Handoff — Current Handoff — Projects tab: per-repo charter, status and steward runs (#1199)
+## Previous handoff — Current Handoff — Projects tab: per-repo charter, status and steward runs (#1199)
 
 Last updated: 2026-09-22T10:30:00-07:00
 

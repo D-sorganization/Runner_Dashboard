@@ -1,6 +1,7 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
 **Spec Version:** 2.5.208
+**Application Version:** 4.10.0 (see `VERSION`)
 **Application Version:** 4.9.34 (see `VERSION`)
 **Last Updated:** 2026-09-22T00:00:00-07:00
 **Status:** Active
@@ -4700,6 +4701,15 @@ scheduled-surplus trim is logged as such rather than "host overloaded".
 **Application Version:** 4.9.34 (see `VERSION`)
 **Last Updated:** 2026-09-07T00:01:00-07:00
 **Status:** Active
+
+- **2026-09-22 (4.10.0):** Release 4.10.0 — Fleet Staff Hub (#1201, epic #1192). First release carrying
+  `backend/staff/` (roles, adapters, run store, workspace, lease ritual, runner, fleet fan-out, scheduler,
+  holds, budgets, usage ledger), `/api/staff/*`, `/api/projects/*`, the Staff and Projects tabs and provider
+  registry v2. `deploy/fleet-health-monitor.ps1` gains a read-only probe of this node's
+  `GET /api/staff/board?local=1` (WARN + state error when unreachable, never aborts the cycle;
+  `tests/deploy/test_fleet_health_monitor.py::test_script_probes_the_staff_hub_board`). Rollout: nodes install
+  `dashboard-4.10.0.tar.gz` with `deploy/update-deployed.sh --artifact`; set `STAFF_SCHEDULER_ENABLED=0` on
+  every node except the one that should own scheduled roles until placement is pinned.
 
 - **2026-09-22:** Projects tab — per-repo charter progress, decisions needed and last project-steward run
   (#1199, epic #1192). New package `backend/projects/` (`charter.py` mirrors the Repository_Management
