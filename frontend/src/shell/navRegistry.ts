@@ -295,6 +295,11 @@ export const NAV_ITEMS: readonly NavItem[] = [
     Icon: BriefcaseIcon,
     tooltip: "Staff Hub: AI staff roster, run log with live tail, assign and holds.",
     tabId: "staff",
+    frequent: false,
+    mobilePrimary: false,
+    mobileDrawer: true,
+  },
+  {
     id: "projects",
     label: "Projects",
     group: "agents",
