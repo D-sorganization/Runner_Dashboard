@@ -83,6 +83,7 @@ const LazyOverviewPage = React.lazy(() => import("../pages/OverviewPage"));
 const LazyRemediationPage = React.lazy(
   () => import("../pages/RemediationPage"),
 );
+const LazyStaffPage = React.lazy(() => import("../pages/Staff/StaffPage"));
 
 /**
  * Persistent/global provider control for the shell topbar (#811). Fetches the
@@ -168,6 +169,8 @@ function nativeDesktopTabContent(tabId: string): React.ReactNode | null {
       return <ScheduledJobs />;
     case "settings":
       return <ThemeSettings />;
+    case "staff":
+      return <LazyStaffPage />;
     case "tests":
       return <TestsPage />;
     case "workflows":
@@ -254,6 +257,7 @@ export function AppShell({
       ),
       reports: <ReportsMobile />,
       credentials: <CredentialsMobile />,
+      staff: <LazyStaffPage />,
     } as Partial<Record<TabId, React.ReactNode>>;
     const nativeMobileContent = mobileTabContent[mobileTab];
     const legacyMobileFallback = nativeMobileContent ? null : (
