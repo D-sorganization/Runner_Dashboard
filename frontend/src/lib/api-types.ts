@@ -3671,10 +3671,31 @@ export interface paths {
         };
         /**
          * Board
-         * @description Local status monitor. Hub aggregation across nodes is issue #1195.
+         * @description Status monitor. With peers configured this is the fleet-wide view (#1195).
          */
         get: operations["board_api_staff_board_get"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/staff/holds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Holds */
+        get: operations["get_holds_api_staff_holds_get"];
+        /**
+         * Put Holds
+         * @description Replace the holds list. Postcondition: the file on disk equals the response.
+         */
+        put: operations["put_holds_api_staff_holds_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -3762,6 +3783,107 @@ export interface paths {
          * @description SSE feed of run events. Ends with an ``end`` event when the run finishes.
          */
         get: operations["stream_run_api_staff_runs__run_id__stream_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/staff/schedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Schedule */
+        get: operations["get_schedule_api_staff_schedule_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/staff/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Summary
+         * @description The one-call brief for Barb and Orchestrator (#1195).
+         *
+         *     Flat payload: what is in flight fleet-wide, what needs attention (failed or
+         *     blocked in the last 24 h on this node), spend today, provider availability
+         *     per machine, active holds and the roster with schedules.
+         */
+        get: operations["summary_api_staff_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/staff/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Usage
+         * @description Usage rows for this node. ``since`` defaults to the start of today (UTC).
+         */
+        get: operations["get_usage_api_staff_usage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/staff/usage/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Export Usage
+         * @description Append today's per-provider totals to RM ``data/credit_usage.json``.
+         *
+         *     503 when no Repository_Management checkout (``STAFF_RM_ROOT`` or sibling)
+         *     with ``scripts/append_credit_usage.py`` is available on this node.
+         */
+        post: operations["export_usage_api_staff_usage_export_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/staff/usage/pricing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Pricing */
+        get: operations["get_pricing_api_staff_usage_pricing_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4345,6 +4467,38 @@ export interface components {
              * @description Question to ask the assistant
              */
             question: string;
+        };
+        /**
+         * HoldBody
+         * @description One hold as sent by the operator console. DbC: the JSON shape of ``staff.holds.Hold``.
+         */
+        HoldBody: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** Applies To */
+            applies_to?: string[];
+            /** Id */
+            id?: string | null;
+            /**
+             * Lifted When
+             * @default
+             */
+            lifted_when: string;
+            /**
+             * Set On
+             * @default
+             */
+            set_on: string;
+            /** Text */
+            text: string;
+        };
+        /** HoldsBody */
+        HoldsBody: {
+            /** Holds */
+            holds: components["schemas"]["HoldBody"][];
         };
         /** LaunchAuthRequest */
         LaunchAuthRequest: {
@@ -9318,6 +9472,40 @@ export interface operations {
     };
     board_api_staff_board_get: {
         parameters: {
+            query?: {
+                /** @description Return only this node's board (used by hub fan-out). */
+                local?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_holds_api_staff_holds_get: {
+        parameters: {
             query?: never;
             header?: never;
             path?: never;
@@ -9334,6 +9522,41 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    put_holds_api_staff_holds_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HoldsBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -9493,6 +9716,128 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_schedule_api_staff_schedule_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    summary_api_staff_summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    get_usage_api_staff_usage_get: {
+        parameters: {
+            query?: {
+                since?: string | null;
+                group?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_usage_api_staff_usage_export_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    get_pricing_api_staff_usage_pricing_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };

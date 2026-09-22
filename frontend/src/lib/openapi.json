@@ -322,6 +322,72 @@
         "title": "HelpChatRequest",
         "type": "object"
       },
+      "HoldBody": {
+        "description": "One hold as sent by the operator console. DbC: the JSON shape of ``staff.holds.Hold``.",
+        "properties": {
+          "active": {
+            "default": true,
+            "title": "Active",
+            "type": "boolean"
+          },
+          "applies_to": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Applies To",
+            "type": "array"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "lifted_when": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Lifted When",
+            "type": "string"
+          },
+          "set_on": {
+            "default": "",
+            "maxLength": 40,
+            "title": "Set On",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": ["text"],
+        "title": "HoldBody",
+        "type": "object"
+      },
+      "HoldsBody": {
+        "properties": {
+          "holds": {
+            "items": {
+              "$ref": "#/components/schemas/HoldBody"
+            },
+            "maxItems": 200,
+            "title": "Holds",
+            "type": "array"
+          }
+        },
+        "required": ["holds"],
+        "title": "HoldsBody",
+        "type": "object"
+      },
       "LaunchAuthRequest": {
         "properties": {
           "provider": {
@@ -7415,8 +7481,22 @@
     },
     "/api/staff/board": {
       "get": {
-        "description": "Local status monitor. Hub aggregation across nodes is issue #1195.",
+        "description": "Status monitor. With peers configured this is the fleet-wide view (#1195).",
         "operationId": "board_api_staff_board_get",
+        "parameters": [
+          {
+            "description": "Return only this node's board (used by hub fan-out).",
+            "in": "query",
+            "name": "local",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Return only this node's board (used by hub fan-out).",
+              "title": "Local",
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -7429,6 +7509,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [
@@ -7437,6 +7527,77 @@
           }
         ],
         "summary": "Board",
+        "tags": ["staff"]
+      }
+    },
+    "/api/staff/holds": {
+      "get": {
+        "operationId": "get_holds_api_staff_holds_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Holds Api Staff Holds Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Holds",
+        "tags": ["staff"]
+      },
+      "put": {
+        "description": "Replace the holds list. Postcondition: the file on disk equals the response.",
+        "operationId": "put_holds_api_staff_holds_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HoldsBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Put Holds Api Staff Holds Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Put Holds",
         "tags": ["staff"]
       }
     },
@@ -7725,6 +7886,179 @@
           }
         ],
         "summary": "Stream Run",
+        "tags": ["staff"]
+      }
+    },
+    "/api/staff/schedule": {
+      "get": {
+        "operationId": "get_schedule_api_staff_schedule_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Schedule Api Staff Schedule Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Schedule",
+        "tags": ["staff"]
+      }
+    },
+    "/api/staff/summary": {
+      "get": {
+        "description": "The one-call brief for Barb and Orchestrator (#1195).\n\nFlat payload: what is in flight fleet-wide, what needs attention (failed or\nblocked in the last 24 h on this node), spend today, provider availability\nper machine, active holds and the roster with schedules.",
+        "operationId": "summary_api_staff_summary_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Summary Api Staff Summary Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Summary",
+        "tags": ["staff"]
+      }
+    },
+    "/api/staff/usage": {
+      "get": {
+        "description": "Usage rows for this node. ``since`` defaults to the start of today (UTC).",
+        "operationId": "get_usage_api_staff_usage_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "group",
+            "required": false,
+            "schema": {
+              "default": "provider",
+              "maxLength": 10,
+              "title": "Group",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Usage Api Staff Usage Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Usage",
+        "tags": ["staff"]
+      }
+    },
+    "/api/staff/usage/export": {
+      "post": {
+        "description": "Append today's per-provider totals to RM ``data/credit_usage.json``.\n\n503 when no Repository_Management checkout (``STAFF_RM_ROOT`` or sibling)\nwith ``scripts/append_credit_usage.py`` is available on this node.",
+        "operationId": "export_usage_api_staff_usage_export_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Export Usage Api Staff Usage Export Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Export Usage",
+        "tags": ["staff"]
+      }
+    },
+    "/api/staff/usage/pricing": {
+      "get": {
+        "operationId": "get_pricing_api_staff_usage_pricing_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Pricing Api Staff Usage Pricing Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Pricing",
         "tags": ["staff"]
       }
     },
