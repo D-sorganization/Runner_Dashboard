@@ -707,9 +707,11 @@ app.include_router(_orchestrator_api.router)  # Conductor admission gate (issue 
 # Fleet Staff Hub (epic #1192): named AI staff roles run as local CLI subprocesses.
 from routers import staff as _staff_router  # noqa: E402
 from routers import staff_schedule as _staff_schedule_router  # noqa: E402
+from routers import staff_usage as _staff_usage_router  # noqa: E402
 
 app.include_router(_staff_router.router)
 app.include_router(_staff_schedule_router.router)  # scheduler, holds, budgets (issue #1196)
+app.include_router(_staff_usage_router.router)  # usage ledger (issue #1200)
 
 # Issue #924 — structural auth perimeter. Registered BEFORE SessionMiddleware so
 # that, in Starlette's outer→inner stack, SessionMiddleware wraps this gate and

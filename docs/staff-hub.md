@@ -29,6 +29,9 @@ every run, and streams the output to the operator console.
 | GET    | `/api/staff/schedule`         | fleet peer        | Per role: next fire, in window now, blocking hold, budget, last fired |
 | GET    | `/api/staff/holds`            | fleet peer        | The holds list                                                        |
 | PUT    | `/api/staff/holds`            | orchestrator peer | Replace the holds list                                                |
+| GET | `/api/staff/usage` | fleet peer | Cost and token usage grouped by `provider`, `role` or `day` (`?group=`, `?since=`), with totals and the daily budget percent |
+| GET | `/api/staff/usage/pricing` | fleet peer | The price table used for estimates |
+| POST | `/api/staff/usage/export` | orchestrator peer | Append today's per-provider totals to Repository_Management `data/credit_usage.json` via `scripts/append_credit_usage.py` (503 without an RM checkout) |
 
 POST bodies need the CSRF sentinel header `X-Requested-With: XMLHttpRequest`
 like every other dashboard POST. "Orchestrator peer" means an operator
@@ -115,8 +118,19 @@ list. Lifting a hold means `active: false` (or removing it).
 | `STAFF_MAX_CONCURRENT_RUNS` | `3`                                                                             | Runs executing at once on this node                  |
 | `STAFF_RUN_TIMEOUT_SECONDS` | `14400`                                                                         | Hard stop per run                                    |
 | `STAFF_PEER_TIMEOUT_SECONDS` | `6` | Per-peer timeout for board fan-out (forwarded dispatches allow 5×) |
+| `STAFF_BUDGET_USD_PER_DAY` | `0` (unlimited) | Fleet-wide daily ceiling reported by `/api/staff/usage` |
+| `STAFF_WALL_USD_PER_MIN` | unset | `provider=rate,...` wall-time fallback for providers without token accounting |
+
+## Usage and cost (#1200)
+
+Every finished run gets a `cost_usd` and a `cost_method`: `reported` when the
+CLI emitted cost (Claude stream-json), `token_table` from `backend/staff/pricing.py`
+when only tokens are known, `wall_time` from `STAFF_WALL_USD_PER_MIN`, else
+`none` (Codex plain-text output until `--json` is adopted; Ollama is free).
+`GET /api/staff/usage` aggregates the store by provider, role or day and reports
+the `STAFF_BUDGET_USD_PER_DAY` ceiling; `POST /api/staff/usage/export` appends
+today's totals to the Repository_Management credit ledger.
 
 ## Not yet here (tracked in the epic)
 
-The Staff tab (#1198), the Project Steward role and Projects tab (#1199), the
-usage ledger (#1200).
+The Project Steward role and Projects tab (#1199) and the fleet deploy (#1201).
