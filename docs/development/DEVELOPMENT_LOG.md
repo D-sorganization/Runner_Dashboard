@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1194 · Staff Hub core: runner, run store, /api/staff routes
+
+- **State:** in_review
+- **Owner:** agent
+- **Issue:** #1194
+- **Branch:** `feat/staff-hub`
+- **PR:** not created
+- **Paths:** `backend/staff/`, `backend/routers/staff.py`, `backend/server.py`, `backend/middleware.py`, `tests/api/test_staff_runner.py`, `tests/api/test_staff_auth_perimeter.py`, `docs/staff-hub.md`
+- **Started:** 2026-09-22
+- **Last verified:** 2026-09-22 (`f8a3b85`)
+- **Summary:** Epic #1192 foundation: dispatch named AI staff roles (Repository_Management `staff/roles/*.yml`) as local CLI subprocesses (claude, codex, agy, gemini, cursor-agent, ollama) in isolated worktrees with the RM lease ritual, persist runs and events in node-local SQLite, stream output over SSE, dry-run plans and cancellation via `/api/staff/*`.
+- **Next step:** Implement #1195 hub fan-out of `/api/staff/board` on top of this branch.
+
 ### DL-#1184 · Fleet monitor pool retarget + dangling-image prune
 
 - **State:** in_review

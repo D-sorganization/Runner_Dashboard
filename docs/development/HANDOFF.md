@@ -1,4 +1,51 @@
-# Current Handoff — Fleet monitor pool retarget + dangling-image prune (#1184)
+# Current Handoff — Staff Hub core: runner, run store, /api/staff routes (#1194)
+
+Last updated: 2026-09-22T17:30:00-07:00
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\staff-hub` (worktree)
+- Branch: `feat/staff-hub`
+- Baseline commit: `origin/main` (`f8a3b85`)
+- Implementation commit: `SELF`
+- Pull request: not created at commit time (draft opened right after push)
+- Governing issue/epic: [#1194](https://github.com/D-sorganization/Runner_Dashboard/issues/1194) in epic [#1192](https://github.com/D-sorganization/Runner_Dashboard/issues/1192)
+
+## Objective and Status
+
+- Objective: dispatch named AI staff roles (from Repository_Management `staff/roles/*.yml`) as local CLI subprocesses on this node, persist every run, stream output, cancel.
+- Status: ready for review (draft PR; other epic items land on top).
+- Completed: `backend/staff/` package (`roles`, `adapters`, `store`, `workspace`, `lease`, `runner`), router `backend/routers/staff.py` (`GET /api/staff/roster|board|runs|runs/{id}|runs/{id}/stream`, `POST /api/staff/{role}/run` with `dry_run`, `POST /api/staff/runs/{id}/cancel`), `/api/staff/` registered in `_ALT_AUTH_EXEMPT_PREFIXES`, `docs/staff-hub.md`, SPEC and CHANGELOG entries.
+- Remaining (separate sub-issues): hub fan-out board + summary (#1195), scheduler/holds/budgets (#1196), machine targeting (#1197), Staff tab (#1198), Projects/Steward (#1199), usage ledger (#1200), deploy (#1201). Sibling PRs in flight: provider registry v2 (#1193), RM role YAML (RM#1675).
+
+## Files and Decisions
+
+- Files changed: `backend/staff/*.py`, `backend/routers/staff.py`, `backend/server.py` (router wiring), `backend/middleware.py` (alt-auth prefix), `tests/api/test_staff_runner.py`, `tests/api/test_staff_auth_perimeter.py`, `docs/staff-hub.md`, `SPEC.md`, `CHANGELOG.md`.
+- Key decisions: node-local SQLite run store (ADR 0003 laptop-runnable; hub merges over HTTP); roles read by path, never imported; lease ritual via RM scripts as subprocesses, blocked only when `check_agent_claim` reports `held`; reads `require_fleet_peer`, mutations `require_orchestrator_peer` (same contract as `/api/orchestrator/*`); roster lives at `/api/staff/roster` because the alt-auth prefix is `/api/staff/`; SSE via `StreamingResponse` polling the store every 0.5 s (no WebSocket).
+- User-owned or unrelated worktree changes: none observed.
+
+## Validation
+
+- `PYTHONPATH=backend python -m pytest tests/api/test_staff_runner.py tests/api/test_staff_auth_perimeter.py tests/api/test_structural_auth_perimeter.py tests/api/test_route_uniqueness.py tests/api/test_router_dependency_contracts.py tests/test_architecture_map_contract.py tests/api/test_auth_perimeter.py tests/api/test_orchestrator_api.py tests/test_ci_config.py tests/test_documentation_freshness.py -p no:pytest-qt -o addopts="" -q` — 120 passed.
+- `ruff check backend/ tests/api/test_staff_*.py` — clean; `ruff format --check backend/` — clean.
+- `mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional` — Success (140 files).
+- Not run locally: the full pytest suite (scratch venv on Windows; CI runs it).
+
+## Blockers and Risks
+
+- Blockers: none.
+- Risks/assumptions: real provider CLIs are exercised only through the fake adapter in tests; first live run on a node should be a `dry_run` then an `ad-hoc` prompt with `claude`. `codex exec` output is plain text so its cost is 0 until `--json` is adopted (#1200).
+
+## Next Steps
+
+1. Open the draft PR for `feat/staff-hub` (Closes #1194, Part of #1192) and let CI run.
+2. Land #1193 (providers) and RM#1675 (roles) so `STAFF_ROLES_DIR` resolves on the nodes.
+3. Implement #1195 hub fan-out (`/api/staff/board` merging peers like `/api/fleet/status`) on top of this branch.
+
+---
+
+## Previous handoff — Fleet monitor pool retarget + dangling-image prune (#1184)
 
 Last updated: 2026-09-14T22:15:00-07:00
 

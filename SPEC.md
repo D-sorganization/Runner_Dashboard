@@ -5,6 +5,21 @@
 **Last Updated:** 2026-09-07T00:01:00-07:00
 **Status:** Active
 
+- **2026-09-22:** Staff Hub core — run, record and stream AI staff roles as local CLI subprocesses (#1194,
+  epic #1192). New package `backend/staff/` (`roles.py` reads Repository_Management `staff/roles/*.yml` by
+  path; `adapters.py` launch recipes for claude / codex / agy / gemini / cursor-agent / ollama; `store.py`
+  node-local SQLite run + event store; `workspace.py` checkout discovery, blobless clone, git worktree and
+  prompt assembly; `lease.py` RM lease ritual as subprocesses; `runner.py` bounded worker threads with
+  cancel and timeout) and router `backend/routers/staff.py` registering `GET /api/staff/roster`,
+  `GET /api/staff/board`, `GET /api/staff/runs`, `GET /api/staff/runs/{id}`,
+  `GET /api/staff/runs/{id}/stream` (first server-sent-events surface), `POST /api/staff/{role}/run`
+  (with `dry_run` plan preview) and `POST /api/staff/runs/{id}/cancel`. Reads use `require_fleet_peer`,
+  mutations `require_orchestrator_peer`; `/api/staff/` added to `_ALT_AUTH_EXEMPT_PREFIXES` with the
+  same justification as `/api/orchestrator/`. Env: `STAFF_ROLES_DIR`, `STAFF_RUNS_DB`, `STAFF_REPOS_ROOT`,
+  `STAFF_WORKTREES_ROOT`, `STAFF_RM_ROOT`, `STAFF_RM_PYTHON`, `STAFF_MAX_CONCURRENT_RUNS`,
+  `STAFF_RUN_TIMEOUT_SECONDS`. Docs: `docs/staff-hub.md`. TDD: 16 tests in
+  `tests/api/test_staff_runner.py` (fake CLI end-to-end) and 4 in `tests/api/test_staff_auth_perimeter.py`.
+
 - **2026-09-10:** Adopt Mermaid C4 architecture-map contract and automated CI verification (#1613).
   Established canonical docs/architecture/C4.md with C4Context and C4Container views,
   Feature Map table mapping core capabilities to components, interfaces, and test evidence,
