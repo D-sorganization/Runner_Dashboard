@@ -134,3 +134,7 @@ today's totals to the Repository_Management credit ledger.
 ## Not yet here (tracked in the epic)
 
 The Project Steward role and Projects tab (#1199) and the fleet deploy (#1201).
+Hub fan-out of `/api/staff/board` across nodes (#1195), scheduler, windows,
+holds and budgets (#1196), machine targeting (#1197), the Staff tab (#1198),
+the Project Steward role YAML (RM#1677), the usage ledger (#1200). The Projects tab
+(#1199) is documented in [`projects.md`](projects.md).

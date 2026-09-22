@@ -1,0 +1,12 @@
+{
+  "_comment": "Repositories shown on the Projects tab (issue #1199). Bare names under GITHUB_ORG; each is read at docs/project/CHARTER.md and docs/project/STATUS.md on its default branch. Override the path with RUNNER_DASHBOARD_PROJECTS_CONFIG.",
+  "repos": [
+    "UpstreamDrift",
+    "AffineDrift",
+    "Gasification_Model",
+    "Tools",
+    "Tools_Private",
+    "Repository_Management",
+    "Runner_Dashboard"
+  ]
+}
