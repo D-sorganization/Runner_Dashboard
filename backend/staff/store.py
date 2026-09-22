@@ -188,6 +188,15 @@ class RunStore:
         out["total"] = round(sum(out.values()), 6)
         return out
 
+    def spend_by_role_since(self, since_iso: str) -> dict[str, float]:
+        """Cost per role for runs created at/after ``since_iso`` (issue #1196 budgets)."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT role, COALESCE(SUM(cost_usd), 0) AS usd FROM runs WHERE created_at >= ? GROUP BY role",
+                (since_iso,),
+            ).fetchall()
+        return {str(r["role"]): float(r["usd"]) for r in rows}
+
     # ── events ───────────────────────────────────────────────────────────
     def append_event(self, run_id: str, kind: str, text: str) -> int:
         with self._lock:

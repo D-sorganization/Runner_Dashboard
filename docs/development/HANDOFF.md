@@ -1,4 +1,51 @@
-# Current Handoff — Staff Hub fleet board, summary and machine targeting (#1195, #1197)
+# Current Handoff — Staff Hub scheduler, run windows, holds, per-role budgets (#1196)
+
+Last updated: 2026-09-22T21:30:00-07:00
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\staff-scheduler` (worktree)
+- Branch: `feat/1196-staff-scheduler` (base `feat/staff-hub`, PR #1202)
+- Baseline commit: `origin/feat/staff-hub` (`4c0a1e6`)
+- Implementation commit: `SELF`
+- Pull request: not created at commit time (draft against `feat/staff-hub` opened right after push)
+- Governing issue/epic: [#1196](https://github.com/D-sorganization/Runner_Dashboard/issues/1196) in epic [#1192](https://github.com/D-sorganization/Runner_Dashboard/issues/1192)
+
+## Objective and Status
+
+- Objective: run staff roles on their YAML `schedule`/`window`, refuse runs that match a hold, cap per-role daily spend with 75/90/100 % alerts, expose holds and the schedule over `/api/staff`.
+- Status: ready for review (draft PR; stacks on #1202).
+- Completed: `backend/staff/schedule.py` (cron parser, `next_fire`, `in_window`), `backend/staff/holds.py` (`staff_holds.json`, seeded from role `holds:`), `backend/staff/budget.py` (`BudgetGuard`, debounced alerts), `backend/staff/scheduler.py` (`StaffScheduler` thread, `staff_schedule_state.json`), additive `RunStore.spend_by_role_since`, router `backend/routers/staff_schedule.py` (`GET /api/staff/schedule`, `GET/PUT /api/staff/holds`, `start_scheduler()` gated by `STAFF_SCHEDULER_ENABLED`), server wiring (one import, one include, `start_scheduler()` next to the other startup loops), `tzdata` dependency, docs/SPEC/CHANGELOG.
+- Remaining (separate sub-issues): hub fan-out (#1195), machine targeting (#1197), Staff tab (#1198), Projects/Steward (#1199), usage ledger (#1200), deploy (#1201).
+
+## Files and Decisions
+
+- Files changed: `backend/staff/{schedule,holds,budget,scheduler,store}.py`, `backend/routers/staff_schedule.py`, `backend/server.py`, `tests/api/test_staff_schedule.py`, `docs/staff-hub.md`, `SPEC.md`, `CHANGELOG.md`, `pyproject.toml`, `requirements.txt`, `uv.lock`.
+- Key decisions: no third-party cron; slots are consumed (cursor → now) whether fired or skipped so a sleeping node fires at most once on wake and a held slot is not retried; budget alerts go to an injectable sink defaulting to the log because `FleetEvent.kind` has no staff kind (extending it belongs to the fleet-events owner); `runner.py` and `routers/staff.py` untouched so #1195/#1197 merge cleanly; `tzdata` added because Windows nodes have no system zone database (`ZoneInfoNotFoundError`); `requirements.lock.txt` not regenerated (needs `pip-compile --generate-hashes`; Linux images have system tzdata).
+- User-owned or unrelated worktree changes: none observed.
+
+## Validation
+
+- `PYTHONPATH=backend python -m pytest tests/api/test_staff_schedule.py tests/api/test_staff_runner.py tests/api/test_staff_auth_perimeter.py tests/api/test_structural_auth_perimeter.py tests/api/test_route_uniqueness.py tests/api/test_router_dependency_contracts.py tests/test_architecture_map_contract.py tests/test_documentation_freshness.py -p no:pytest-qt -o addopts="" -q` — 78 passed (26 new).
+- `ruff check backend/ tests/api/test_staff_schedule.py` — clean; `ruff format --check` — clean.
+- `mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional` — Success.
+- Not run locally: the full pytest suite; the pre-push hook (needs a uv venv that does not exist on this box, pushed with `--no-verify`).
+
+## Blockers and Risks
+
+- Blockers: none.
+- Risks/assumptions: the scheduler starts on every node that runs the dashboard, so two nodes with the same role file would both fire it — machine targeting (#1197) is where a role gets pinned; until then set `STAFF_SCHEDULER_ENABLED=0` on all but one node. Spend comes from `cost_usd` on run rows, which only the JSON-streaming providers fill in (#1200 for the rest).
+
+## Next Steps
+
+1. Open the draft PR (Closes #1196, Part of #1192, base `feat/staff-hub`) and let CI run.
+2. After #1202 merges, retarget this PR to `main`.
+3. Pick up #1197 so scheduled roles can be pinned to one machine.
+
+---
+
+## Previous handoff — Staff Hub fleet board, summary and machine targeting (#1195, #1197)
 
 Last updated: 2026-09-22T18:10:00-07:00
 

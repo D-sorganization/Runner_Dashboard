@@ -1,3 +1,113 @@
+<<<<<<< ours
+# Staff Hub
+
+Epic [#1192](https://github.com/D-sorganization/Runner_Dashboard/issues/1192).
+The Staff Hub runs named AI "staff" roles (Night Watch, Issue Remediator,
+Project Steward, …) as local CLI subprocesses on a dashboard node, records
+every run, and streams the output to the operator console.
+
+## Contract
+
+| Concern                                                                     | Owner                                                           | Mechanism                                                                 |
+| --------------------------------------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Role definitions (`staff/roles/*.yml`) and playbooks (`docs/fleet-*.md`)    | Repository_Management                                           | Read by path (`STAFF_ROLES_DIR`, or the sibling checkout); never imported |
+| Lease ritual (`check_agent_claim`, `post_agent_lease`, `agent_communicate`) | Repository_Management                                           | Subprocess from `STAFF_RM_ROOT` or the sibling checkout                   |
+| Run store, scheduler, board, stream, API                                    | Runner Dashboard (`backend/staff/`, `backend/routers/staff.py`) | Node-local SQLite `staff_runs.sqlite3` under the config dir               |
+| Provider CLIs                                                               | The node                                                        | `claude`, `codex`, `agy`, `gemini`, `cursor-agent`, `ollama` on `PATH`    |
+
+## API (`/api/staff`)
+
+| Method | Path                          | Auth              | Purpose                                                               |
+| ------ | ----------------------------- | ----------------- | --------------------------------------------------------------------- |
+| GET    | `/api/staff/roster`           | fleet peer        | Roster: roles, provider availability, active counts                   |
+| GET    | `/api/staff/board`            | fleet peer        | This node's status monitor: running, queued, recent, spend today      |
+| GET    | `/api/staff/runs`             | fleet peer        | History; filters `role`, `status`, `since`, `limit`                   |
+| GET    | `/api/staff/runs/{id}`        | fleet peer        | One run plus its events                                               |
+| GET    | `/api/staff/runs/{id}/stream` | fleet peer        | Server-sent events until the run ends                                 |
+| POST   | `/api/staff/{role}/run`       | orchestrator peer | Dispatch; `dry_run: true` returns the plan only                       |
+| POST   | `/api/staff/runs/{id}/cancel` | orchestrator peer | Terminate a run                                                       |
+| GET    | `/api/staff/schedule`         | fleet peer        | Per role: next fire, in window now, blocking hold, budget, last fired |
+| GET    | `/api/staff/holds`            | fleet peer        | The holds list                                                        |
+| PUT    | `/api/staff/holds`            | orchestrator peer | Replace the holds list                                                |
+
+POST bodies need the CSRF sentinel header `X-Requested-With: XMLHttpRequest`
+like every other dashboard POST. "Orchestrator peer" means an operator
+principal, the `HUB_FLEET_TOKEN` bearer, or loopback with
+`DASHBOARD_LOOPBACK_AUTH=1` (the same rule as `/api/orchestrator/*`).
+
+Example dispatch:
+
+```bash
+curl -s -X POST http://127.0.0.1:8321/api/staff/night-watch/run \
+  -H 'Authorization: Bearer $HUB_FLEET_TOKEN' -H 'X-Requested-With: XMLHttpRequest' \
+  -H 'Content-Type: application/json' \
+  -d '{"repo": "UpstreamDrift", "issue": 10622, "provider": "claude"}'
+```
+
+## Run lifecycle
+
+`queued → preparing → running → succeeded | failed | cancelled`, or
+`blocked` when `check_agent_claim` reports the issue is held by another agent.
+`preparing` creates a git worktree under `STAFF_WORKTREES_ROOT`
+(default `<repos root>/_staff_worktrees`) from `origin/main` on a
+`staff/<role>-<target>-<id>` branch, cloning the repository bloblessly when no
+local checkout exists. The prompt is the role instructions, the playbook path,
+the target, and the fixed fleet rules (worktree only, TDD, draft PR, no merge).
+
+## Scheduling, holds and budgets (#1196)
+
+`backend/staff/scheduler.py` runs an in-process ticker (default every 30 s,
+started from server startup next to the other background loops, gated by
+`STAFF_SCHEDULER_ENABLED`). For each dispatchable role with a `schedule`
+(five-field cron, `America/Los_Angeles`, parsed by `staff/schedule.py` with
+no third-party dependency) it computes the next slot after the role's cursor
+and, once that slot has passed, submits `RunRequest(role, repo=<first repo>,
+prompt="Scheduled run", requested_by="scheduler")` when every gate opens:
+
+1. **Window** — `window: {start, end}` in role YAML, wall clock in LA; `start >
+end` is overnight (`22:00`–`06:00`), start inclusive, end exclusive, empty
+   means always open.
+2. **Holds** — no active hold in the holds list matches the role (`applies_to`
+   contains the role name, `*`, or `repo:<name>` for the role's first repo).
+3. **One run per role** — no queued/preparing/running run for the role.
+4. **Budget** — `staff/budget.py` compares today's spend for the role (local
+   midnight, `RunStore.spend_by_role_since`) with `budget.usd_per_day`; a run
+   is refused when the cap is reached or when `usd_per_run` would push past
+   it. Alerts log at 75 %, 90 % and 100 % of the cap, once per threshold per
+   role with a six-hour debounce (in memory).
+
+A handled slot moves the role's cursor to _now_ whether it fired or was
+skipped, so a node that was asleep fires at most once when it wakes and a slot
+skipped for a hold is not retried until the next slot. Cursor, last fire time
+and last reason persist in `<config dir>/staff_schedule_state.json`.
+
+The **holds list** (`staff/holds.py`) is `<config dir>/staff_holds.json`,
+seeded on first load from the `holds:` lists of the role YAML (same text on
+several roles merges into one hold). Each hold is `{id, text, set_on,
+lifted_when, applies_to, active}`; `PUT /api/staff/holds` replaces the whole
+list. Lifting a hold means `active: false` (or removing it).
+
+## Environment
+
+| Variable                    | Default                                                                         | Meaning                                              |
+| --------------------------- | ------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `STAFF_SCHEDULER_ENABLED`   | `1`                                                                             | `0`/`false` keeps the scheduler thread from starting |
+| `STAFF_HOLDS_FILE`          | `<config dir>/staff_holds.json`                                                 | Holds list                                           |
+| `STAFF_SCHEDULE_STATE`      | `<config dir>/staff_schedule_state.json`                                        | Per-role cursor / last fired                         |
+| `STAFF_ROLES_DIR`           | sibling `Repository_Management/staff/roles`                                     | Role YAML directory                                  |
+| `STAFF_RUNS_DB`             | `<config dir>/staff_runs.sqlite3`                                               | Run store                                            |
+| `STAFF_REPOS_ROOT`          | `~/Repositories`, `~/actions-runners/repos`, `/mnt/c/Users/<user>/Repositories` | Where checkouts live (`os.pathsep` list)             |
+| `STAFF_WORKTREES_ROOT`      | `<first repos root>/_staff_worktrees`                                           | Worktree location                                    |
+| `STAFF_RM_ROOT`             | sibling `Repository_Management`                                                 | Lease ritual scripts                                 |
+| `STAFF_RM_PYTHON`           | `python3` / `python`                                                            | Interpreter for the RM scripts                       |
+| `STAFF_MAX_CONCURRENT_RUNS` | `3`                                                                             | Runs executing at once on this node                  |
+| `STAFF_RUN_TIMEOUT_SECONDS` | `14400`                                                                         | Hard stop per run                                    |
+
+## Not yet here (tracked in the epic)
+
+Hub fan-out of `/api/staff/board` across nodes (#1195), machine targeting (#1197), the Staff tab (#1198),
+the Project Steward role and Projects tab (#1199), the usage ledger (#1200).
+=======
 # Staff Hub
 
 Epic [#1192](https://github.com/D-sorganization/Runner_Dashboard/issues/1192).
@@ -82,3 +192,4 @@ the target, and the fixed fleet rules (worktree only, TDD, draft PR, no merge).
 
 Scheduler, windows, holds and budgets (#1196), the Staff tab (#1198), the
 Project Steward role and Projects tab (#1199), the usage ledger (#1200).
+>>>>>>> theirs
