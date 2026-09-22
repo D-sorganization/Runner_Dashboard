@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1195 · Staff Hub fleet board, summary and machine targeting (#1195, #1197)
+
+- **State:** in_review
+- **Owner:** agent
+- **Issue:** #1195
+- **Branch:** `feat/1195-hub-board-targeting`
+- **PR:** not created
+- **Paths:** `backend/staff/fleet.py`, `backend/routers/staff.py`, `tests/api/test_staff_fleet.py`, `docs/staff-hub.md`
+- **Started:** 2026-09-22
+- **Last verified:** 2026-09-22 (`4c0a1e6`)
+- **Summary:** Hub fan-out of `/api/staff/board` across peer nodes, the one-call `/api/staff/summary` brief for Barb/Orchestrator, and `machine: local|<peer>|auto` targeting that forwards dispatches to the chosen node (also closes #1197).
+- **Next step:** After #1196 merges, verify `summary.holds` is populated on a node with holds.
+
 ### DL-#1194 · Staff Hub core: runner, run store, /api/staff routes
 
 - **State:** in_review
