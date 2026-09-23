@@ -275,9 +275,10 @@ class StaffRunner:
                 store.update_run(rec.id, status="preparing", started_at=_now())
                 workdir = self._prepare_workdir(rec, plan)
                 lease_note = ""
+                agent = self._adapters[plan.provider].lease_agent
                 if plan.lease_ritual:
                     note = lease_ritual.acquire(
-                        store, rec.id, repo=plan.repo, issue=plan.issue_number, agent=plan.provider, branch=plan.branch
+                        store, rec.id, repo=plan.repo, issue=plan.issue_number, agent=agent, branch=plan.branch
                     )
                     if note is None:
                         return  # blocked; status already recorded
@@ -289,7 +290,13 @@ class StaffRunner:
                 store.append_event(rec.id, "error", str(exc)[:1000])
             finally:
                 if plan.lease_ritual:
-                    lease_ritual.release(store, rec.id, repo=plan.repo, issue=plan.issue_number, agent=plan.provider)
+                    lease_ritual.release(
+                        store,
+                        rec.id,
+                        repo=plan.repo,
+                        issue=plan.issue_number,
+                        agent=self._adapters[plan.provider].lease_agent,
+                    )
 
     def _prepare_workdir(self, rec: RunRecord, plan: RunPlan) -> Path:
         store = self.store
