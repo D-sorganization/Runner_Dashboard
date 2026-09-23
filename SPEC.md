@@ -5,6 +5,13 @@
 **Last Updated:** 2026-09-22T00:00:00-07:00
 **Status:** Active
 
+- **2026-09-22:** Fleet API agent clients (#1228, epic #1192). New stdlib-only `clients/fleet/` (Python 3.10+):
+  `fleet_client.py` (`FleetClient`, one validated method per staff/coordination/priorities endpoint; `FLEET_API_URL`,
+  `FLEET_API_TOKEN` bearer, CSRF header on every request, `FleetAPIError(status, body)`), `fleetctl.py` (JSON CLI; exit
+  1 API error, 2 bad arguments) and `fleet_mcp.py` (hand-written MCP stdio server, protocol `2025-06-18`, 15 `fleet_*`
+  tools), all generated from one command table `fleet_tools.py`. Setup for Claude Code, Codex, Gemini CLI and Grok Bot
+  plus per-agent bot tokens in `docs/agents/connect.md`; CI lint/format/mypy/bandit and the python-scope detector cover
+  `clients/`.
 - **2026-09-22:** Runner hosts: new `deploy/clean-gitconfig-token-rewrites.sh` (installed by
   `install-runner-maintenance.sh`) prunes credential-bearing `url.*.insteadOf` sections that CI jobs left in the
   runner user's global git config, with a 0600 backup, `--dry-run` and redacted logs (#1216).

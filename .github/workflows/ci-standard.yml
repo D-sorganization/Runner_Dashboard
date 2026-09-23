@@ -202,7 +202,7 @@ jobs:
           # check — plus security-scan, tests, tests-required) is skipped when
           # this predicate is false, so a missing prefix means a PR merges with
           # no test signal at all.
-          prefixes = ("backend/", "deploy/", "tests/")
+          prefixes = ("backend/", "clients/", "deploy/", "tests/")
           exact = {
               "pyproject.toml",
               "uv.lock",
@@ -221,7 +221,7 @@ jobs:
           EOF
       - name: Report skipped Python validation
         if: steps.python-scope.outputs.run_python_tests != 'true'
-        run: echo "Skipping Python dependency bootstrap and pytest collection; this PR does not touch backend, deploy, tests, or Python dependency policy files."
+        run: echo "Skipping Python dependency bootstrap and pytest collection; this PR does not touch backend, clients, deploy, tests, or Python dependency policy files."
       - name: Bootstrap environment
         if: steps.python-scope.outputs.run_python_tests == 'true'
         run: |
@@ -301,9 +301,9 @@ jobs:
           fi
           echo "All tool versions are consistent"
       - name: Lint
-        run: ruff check backend/
+        run: ruff check backend/ clients/
       - name: Check Formatting
-        run: ruff format --check backend/
+        run: ruff format --check backend/ clients/
       - name: Install type stubs
         run: pip install types-PyYAML types-requests
       - name: Type Check
@@ -337,12 +337,14 @@ jobs:
             echo "::notice::Override count dropped below baseline — lower MYPY_OVERRIDE_BASELINE to ${OVERRIDE_COUNT} to lock in the win."
           fi
           mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional
+          # Agent clients (#1228) are stdlib-only scripts, checked as their own module set.
+          mypy clients/fleet/ --ignore-missing-imports --no-implicit-optional
       - name: Run bandit security scan
         # Blocking for HIGH severity (-lll = high severity, -i = low+ confidence).
         # MEDIUM findings are allow-listed in bandit.yaml with rationale per finding.
         # Exits non-zero on HIGH; MEDIUM/LOW are suppressed via config.
         run: |
-          bandit -r backend/ -lll -i --exclude backend/__pycache__ \
+          bandit -r backend/ clients/ -lll -i --exclude backend/__pycache__ \
             -c bandit.yaml \
             -f json -o bandit-report.json
         # HIGH severity causes exit 1 — bandit returns non-zero; do NOT add

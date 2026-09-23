@@ -343,6 +343,7 @@ def test_requirements_audit_ignore_has_policy_header() -> None:
 # a prefix the detector actually tests, and vice versa.
 SCOPE_PREFIX_NOUNS = {
     "backend/": "backend",
+    "clients/": "clients",
     "tests/": "tests",
     "deploy/": "deploy",
 }
