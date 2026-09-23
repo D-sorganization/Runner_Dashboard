@@ -1,4 +1,15 @@
-# Current machine handoff — OGLaptop Staff Hub worker (#1192 / #1223)
+# Current handoff — Live RM role source (#1258)
+
+- Worktree `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/issue-1258-rm`; branch `fix/issue-1258-live-rm-source`; commit `SELF`; PR not created; DL-#1258.
+- Timer alternative chosen explicitly: no Git/network in dashboard requests or scheduler; clean-main updates at most every 15 minutes, preserve dirty/diverged/ahead state, Git backup refs before fast-forward, timestamped status backups. No role cache exists, so reads immediately see updated YAML.
+- `GET /api/staff/board?local=1` now reports last checked RM revision and commit/check ages; `/roles` aliases `/roster`. Node migration instructions preserve scheduler flags and holds. Existing bundle is retained for rollback.
+- RED: helper test collection failed before implementation. GREEN: `python -m pytest tests/unit/test_staff_rm_sync.py tests/api/test_staff_fleet.py tests/api/test_staff_schedule.py -q -o addopts=''` — 47 pass. Changed-file Ruff check/format pass.
+- Next: merge, deploy to OGLaptop, back up env/holds/units, switch to Linux clone, start user timer, inspect schedule holds, rerun both Ollama harnesses. Update OGLaptop runbook with measured revision, backups and run IDs.
+- #1259 docs and #1261 bridge merged. Bridge elevated installation/reboot validation belongs to owner and is pending. Bridge CI architecture document passed but its separate pytest job failed on an existing unknown asyncio option; protected merge succeeded without overrides.
+
+---
+
+## Previous machine handoff — OGLaptop Staff Hub worker (#1192 / #1223)
 
 - Verified locally on 2026-09-23: deployment `a82699223e07153ae85ca15707805665f15c96fe`
   contains merged provider PRs #1250 and #1253. All six requested provider health

@@ -1,0 +1,10 @@
+[Unit]
+Description=Refresh Staff Hub roles from Repository Management every 15 minutes
+
+[Timer]
+OnStartupSec=2min
+OnUnitInactiveSec=15min
+Unit=runner-dashboard-rm-sync.service
+
+[Install]
+WantedBy=timers.target

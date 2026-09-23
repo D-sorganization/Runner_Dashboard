@@ -250,6 +250,57 @@ way on 2026-09-22; `_deploy/node_bootstrap_staff_hub.sh` in the operator workspa
    `STAFF_WORKTREES_ROOT=~/staff-worktrees`. Git inside WSL cannot use worktrees that Windows git created
    under `/mnt/c`.
 
+### Live Repository Management source (#1258)
+
+Use the dedicated **Linux** clone on `main`, with these absolute paths in
+`~/.config/runner-dashboard/env` (back up that file before changing it):
+
+```ini
+STAFF_RM_ROOT=/home/dieterolson/staff-repos/Repository_Management
+STAFF_ROLES_DIR=/home/dieterolson/staff-repos/Repository_Management/staff/roles
+GIT_CONFIG_GLOBAL=/home/dieterolson/.config/runner-dashboard/staff.gitconfig
+```
+
+Keep the former `~/staff-bundle/rm` directory for rollback; it is no longer the
+role source after migration. Preserve each node's scheduler setting: OGLaptop
+and ControlTower stay at `STAFF_SCHEDULER_ENABLED=0`; DeskComputer owns scheduling.
+
+Install the packaged `deploy/systemd-user/runner-dashboard-rm-sync.service` and
+`.timer` into `~/.config/systemd/user` (back up existing units first), then:
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now runner-dashboard-rm-sync.timer
+systemctl --user start runner-dashboard-rm-sync.service
+systemctl --user status runner-dashboard-rm-sync.timer --no-pager
+```
+
+This assumes the normal `~/actions-runners/dashboard` deployment. Adjust the
+unit paths for a different deployment. Enable user lingering if this user
+manager is not kept running (`sudo loginctl enable-linger "$USER"`). The timer
+runs independently of the staff scheduler, including on worker nodes. It fetches
+at most once per 15 minutes, with a persisted throttle, and only fast-forwards
+clean `main`. Dirty, untracked, ahead, diverged or non-main checkouts are skipped
+and logged; fetch failures do not interrupt the dashboard. Existing Git
+`refs/staff-rm-backups/bak-<date>` preserve every pre-update tracked tree. Never
+reset or clean a skipped checkout automatically. Use `systemctl --user start`
+for manual checks so the oneshot unit serializes invocations.
+
+The dashboard rereads YAML on each roster/run/scheduler evaluation; it has no
+role cache to restart. The timer alternative deliberately keeps Git/network work
+outside request and scheduler threads. `/api/staff/roles` aliases `/roster`.
+`/api/staff/board?local=1` includes `rm_source` with last checked commit,
+commit/check ages in seconds, status, reason and backup ref. `not_checked` means
+the timer has not reported this configured clone. A stale check age means the
+timer is not refreshing, even if the commit itself happens to be current.
+
+**Holds trap:** the first read seeds a missing holds file from role YAML. Preserve
+and back up the existing `staff_holds.json` during migration; do not delete it to
+refresh roles. After switching and restarting once to reload the env, inspect
+`GET /api/staff/schedule`: worker roles' `hold` fields must be empty. Review and
+explicitly lift stale seeded holds through the holds API if present; do not clear
+unrelated operator holds. Future role fast-forwards need no dashboard restart.
+
 ## Provider Options (#1252)
 
 | Provider        | Launch                                                                                        | Models                                          |
