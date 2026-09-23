@@ -22,11 +22,24 @@ agent's machine. Nothing needs to be installed.
 | `FLEET_API_URL`     | Dashboard base URL (a tailnet name works)                  | `http://127.0.0.1:8321` |
 | `FLEET_API_TOKEN`   | Per-agent bot token (see [below](#mint-a-per-agent-token)) | none                    |
 | `FLEET_AGENT`       | Default `agent` for presence and claims                    | none                    |
-| `FLEET_SESSION`     | Default `session` for presence, messages and claims        | none                    |
+| `FLEET_SESSION`     | Default `session` for presence, messages and claims        | `<agent>-<host>-<date>` |
 | `FLEET_API_TIMEOUT` | Request timeout in seconds                                 | `30`                    |
 
 Every request sends `X-Requested-With: XMLHttpRequest` (the CSRF header the dashboard
 requires on writes) and, when a token is set, `Authorization: Bearer <token>`.
+
+### Session Ids
+
+A bot token for principal `agent-<name>` may only act as `agent` `<name>`, and every session
+id it uses must start with `<name>-` (sessions match `[A-Za-z0-9][A-Za-z0-9_.-]{0,127}`).
+The clients follow the same rule so a mismatch fails before anything is sent (CLI exit 2):
+
+- With an agent known (`FLEET_AGENT`, `--as-agent`, or a call's `agent`) and no session
+  given, the client derives `<agent>-<short host>-<YYYYMMDD>`, for example
+  `codex-DeskComputer-20260923`.
+- An explicit session (`FLEET_SESSION`, `--as-session`, or a call's `session`) that does not
+  start with `<agent>-` is rejected with an error naming the expected prefix.
+- Without an agent, any valid session id is accepted and a session is required.
 
 ## Claude Code
 
@@ -109,6 +122,7 @@ curl -s -H "X-Requested-With: XMLHttpRequest" -H "Authorization: Bearer $FLEET_A
 | `fleet_register_presence` | `POST /api/coordination/presence`         |
 | `fleet_release_presence`  | `POST /api/coordination/presence/release` |
 | `fleet_send_message`      | `POST /api/coordination/messages`         |
+| `fleet_ack_message`       | `POST /api/coordination/messages/ack`     |
 | `fleet_check_claim`       | `GET /api/coordination/claims`            |
 | `fleet_claim_issue`       | `POST /api/coordination/claims`           |
 | `fleet_release_claim`     | `POST /api/coordination/claims/release`   |
@@ -118,7 +132,7 @@ curl -s -H "X-Requested-With: XMLHttpRequest" -H "Authorization: Bearer $FLEET_A
 | `fleet_run_status`        | `GET /api/staff/runs/{run_id}`            |
 
 `fleetctl --help` lists every CLI subcommand. The CLI covers every endpoint: it adds
-`ack`, `meetings`, `meeting`, `set-directives`, `staff-board`, `staff-runs`, `schedule`,
+`meetings`, `meeting`, `set-directives`, `staff-board`, `staff-runs`, `schedule`,
 `holds`, `usage` and `cancel`. The CLI and the MCP server are generated from one table,
 `clients/fleet/fleet_tools.py`.
 
@@ -167,7 +181,13 @@ Auth requirements by endpoint:
   `coordination.write` scope, which the `bot` and `operator` presets carry.
 - **Staff dispatch and cancel** need an orchestrator caller: any principal token,
   `HUB_FLEET_TOKEN`, or loopback with `DASHBOARD_LOOPBACK_AUTH=1`.
-- **`set-directives`** needs write auth.
+- **`set-directives`** needs `priorities.write`, which only the `operator` preset (and
+  `admin`) carries. Agent bot tokens cannot set directives: directive text is pasted
+  into every staff prompt. `set_by` is always the authenticated caller. Pass the
+  `version` from `directives` to get a 409 instead of overwriting a concurrent edit.
+- **Messages** go to a session id (see `fleet_sessions`) or `*` for every session in
+  the repo, not to an agent name. Register presence before sending; the board drops
+  messages from unregistered sessions. Acknowledge with `fleet_ack_message`.
 
 ## Recommended Agent Loop
 

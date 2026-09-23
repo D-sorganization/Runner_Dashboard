@@ -15,38 +15,70 @@ Environment:
     FLEET_API_TIMEOUT  request timeout in seconds (default 30)
     FLEET_AGENT        default ``agent`` for presence/claims (e.g. ``claude``)
     FLEET_SESSION      default ``session`` for presence/messages/claims
+
+Session convention: a bot token ``agent-<name>`` may only act as ``agent == <name>`` with a
+session id that starts with ``<name>-``. When an agent is known the client enforces that prefix
+before sending, and when no session is given it derives ``<agent>-<short host>-<YYYYMMDD>``.
 """
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 import os
 import re
+import socket
 import urllib.error
 import urllib.parse
 import urllib.request
+from dataclasses import dataclass
 from typing import Any
 
-__all__ = ["DEFAULT_URL", "FleetAPIError", "FleetArgumentError", "FleetClient"]
+__all__ = ["DEFAULT_URL", "FleetAPIError", "FleetArgumentError", "FleetClient", "default_session"]
 
 DEFAULT_URL = "http://127.0.0.1:8321"
 DEFAULT_TIMEOUT = 30.0
 USER_AGENT = "fleet-client/1.0 (+Runner_Dashboard clients/fleet)"
 
-# Contract patterns. Bare repo names for staff dispatch (server rejects owner/path);
-# coordination accepts an optional ``owner/`` prefix because board sessions may carry one.
-_BARE_REPO = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
-_REPO = re.compile(r"^(?:[A-Za-z0-9-]{1,39}/)?[A-Za-z0-9._-]{1,100}$")
-_ROLE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
-_IDENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,119}$")  # agent / session / run id / message id
-_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-_ISO = re.compile(r"^\d{4}-\d{2}-\d{2}(?:[T ][0-9:.]+(?:Z|[+-]\d{2}:?\d{2})?)?$")
+# --------------------------------------------------------------------------- server contract
+# One place for every limit and pattern the server enforces, so the client fails fast with the
+# same verdict instead of drifting into 422s. Sources of truth (the client is stdlib-only and
+# cannot import them; tests/clients/test_fleet_client.py asserts they stay equal):
+#   backend/coordination/models.py   SESSION/AGENT/REPO/BRANCH/MESSAGE_ID patterns, MAX_TEXT, intent/reason
+#                                    lengths, single_line() (printable) and message_text() (no controls)
+#   backend/priorities/directives.py MAX_TEXT;  backend/routers/priorities.py MAX_DIRECTIVES
 
-MAX_TEXT = 4000  # message / intent / reason text
-MAX_PROMPT = 20000  # matches RunBody.prompt on the server
-MAX_DIRECTIVE_TEXT = 500
-MAX_DIRECTIVES = 50
-MAX_PATHS = 50
+
+@dataclass(frozen=True)
+class _Patterns:
+    session: re.Pattern[str] = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+    agent: re.Pattern[str] = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+    # Coordination accepts an optional ``owner/`` prefix (board sessions may carry one).
+    repo: re.Pattern[str] = re.compile(r"^(?:[A-Za-z0-9-]{1,39}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
+    bare_repo: re.Pattern[str] = re.compile(r"^[A-Za-z0-9._-]{1,100}$")  # staff dispatch, directives
+    branch: re.Pattern[str] = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/@+-]{0,199}$")
+    message_id: re.Pattern[str] = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")  # RM _IDENTIFIER
+    role: re.Pattern[str] = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+    ident: re.Pattern[str] = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,119}$")  # run id, model, machine
+    date: re.Pattern[str] = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+    iso: re.Pattern[str] = re.compile(r"^\d{4}-\d{2}-\d{2}(?:[T ][0-9:.]+(?:Z|[+-]\d{2}:?\d{2})?)?$")
+
+
+@dataclass(frozen=True)
+class _Limits:
+    max_message_text: int = 4000
+    max_intent: int = 200
+    max_reason: int = 300
+    max_prompt: int = 20000  # RunBody.prompt
+    max_directive_text: int = 500
+    max_directives: int = 100
+    max_version: int = 64
+    max_paths: int = 50
+
+
+PATTERNS = _Patterns()
+LIMITS = _Limits()
+BROADCAST = "*"  # ``to`` value that reaches every session registered in the repo
 USAGE_GROUPS = ("provider", "role", "day")  # backend/staff/store.py
 RUN_STATUSES = ("queued", "preparing", "running", "succeeded", "failed", "cancelled", "blocked")
 
@@ -85,16 +117,51 @@ def _positive_int(value: Any, name: str) -> int:
     return int(value)
 
 
-def _text(value: Any, name: str, limit: int = MAX_TEXT, *, required: bool = True) -> str:
+def _text(
+    value: Any, name: str, limit: int = LIMITS.max_message_text, *, required: bool = True, form: str = "free"
+) -> str:
+    """Stripped text within ``limit``. ``form`` mirrors the server rule for the field:
+    ``line`` = one printable line (``single_line``), ``message`` = no controls but newline/tab
+    (``message_text``), ``no_crlf`` = no CR/LF (directive text), ``free`` = length only.
+    """
     _check(isinstance(value, str), f"{name} must be a string")
     stripped = str(value).strip()
     _check(bool(stripped) or not required, f"{name} must not be empty")
     _check(len(stripped) <= limit, f"{name} exceeds {limit} characters")
+    _check(form != "line" or stripped.isprintable(), f"{name} must be one line of printable text")
+    _check(
+        form != "message" or not any(ord(ch) < 32 and ch not in _TEXT_CONTROLS for ch in stripped),
+        f"{name} must not contain control characters other than newline and tab",
+    )
+    _check(form != "no_crlf" or not ("\r" in stripped or "\n" in stripped), f"{name} must be a single line")
     return stripped
+
+
+def _opt_text(value: Any, name: str, limit: int) -> str | None:
+    """Optional one-line text: ``None`` is omitted so the server applies its default."""
+    return None if value is None else _text(value, name, limit, form="line")
 
 
 def _opt(pattern: re.Pattern[str], value: Any, name: str) -> str | None:
     return None if value is None else _match(pattern, value, name)
+
+
+_TEXT_CONTROLS = "\n\t"  # the only control characters message text may carry (server message_text)
+_SESSION_UNSAFE = re.compile(r"[^A-Za-z0-9_.-]")
+_MAX_SESSION = 128
+
+
+def default_session(agent: str, host: str | None = None, day: dt.date | None = None) -> str:
+    """``<agent>-<short host>-<YYYYMMDD>`` sanitised to the session pattern (unsafe chars -> ``-``).
+
+    Pre: ``agent`` matches the agent pattern. Post: the result matches the session pattern and
+    starts with ``<agent>-``.
+    """
+    short_host = (host if host is not None else socket.gethostname()).split(".", 1)[0] or "host"
+    stamp = (day or dt.datetime.now(dt.timezone.utc).date()).strftime("%Y%m%d")  # noqa: UP017 - clients support 3.10
+    prefix = f"{agent}-"
+    middle = _SESSION_UNSAFE.sub("-", short_host)[: max(1, _MAX_SESSION - len(prefix) - len(stamp) - 1)]
+    return f"{prefix}{middle}-{stamp}"
 
 
 def _compact(data: dict[str, Any]) -> dict[str, Any]:
@@ -104,10 +171,11 @@ def _compact(data: dict[str, Any]) -> dict[str, Any]:
 
 def _validate_directive(item: Any, index: int) -> dict[str, Any]:
     _check(isinstance(item, dict), f"directives[{index}] must be an object")
-    allowed = {"id", "text", "repo", "priority", "expires", "set_by"}
+    allowed = {"id", "text", "repo", "priority", "expires"}  # set_by is always the authenticated caller
     unknown = set(item) - allowed
     _check(not unknown, f"directives[{index}] has unknown fields: {sorted(unknown)}")
-    out: dict[str, Any] = {"text": _text(item.get("text"), f"directives[{index}].text", MAX_DIRECTIVE_TEXT)}
+    text = _text(item.get("text"), f"directives[{index}].text", LIMITS.max_directive_text, form="no_crlf")
+    out: dict[str, Any] = {"text": text}
     priority = item.get("priority", 3)
     _check(
         isinstance(priority, int) and not isinstance(priority, bool) and 1 <= priority <= 5,
@@ -116,14 +184,12 @@ def _validate_directive(item: Any, index: int) -> dict[str, Any]:
     out["priority"] = priority
     repo = item.get("repo", "*")
     if repo != "*":
-        _match(_REPO, repo, f"directives[{index}].repo")
+        _match(PATTERNS.bare_repo, repo, f"directives[{index}].repo (bare name or '*')")
     out["repo"] = repo
     if item.get("id") is not None:
-        out["id"] = _match(_IDENT, item["id"], f"directives[{index}].id")
+        out["id"] = _match(PATTERNS.ident, item["id"], f"directives[{index}].id")
     if item.get("expires") is not None:
-        out["expires"] = _match(_ISO, item["expires"], f"directives[{index}].expires")
-    if item.get("set_by") is not None:
-        out["set_by"] = _match(_IDENT, item["set_by"], f"directives[{index}].set_by")
+        out["expires"] = _match(PATTERNS.iso, item["expires"], f"directives[{index}].expires")
     return out
 
 
@@ -151,10 +217,14 @@ class FleetClient:
         raw_timeout = timeout if timeout is not None else float(os.environ.get("FLEET_API_TIMEOUT") or DEFAULT_TIMEOUT)
         _check(raw_timeout > 0, "timeout must be > 0")
         self.timeout = float(raw_timeout)
-        self.agent = _opt(_IDENT, agent if agent is not None else (os.environ.get("FLEET_AGENT") or None), "agent")
-        self.session = _opt(
-            _IDENT, session if session is not None else (os.environ.get("FLEET_SESSION") or None), "session"
+        self.agent = _opt(
+            PATTERNS.agent, agent if agent is not None else (os.environ.get("FLEET_AGENT") or None), "agent"
         )
+        self._configured_session = _opt(
+            PATTERNS.session, session if session is not None else (os.environ.get("FLEET_SESSION") or None), "session"
+        )
+        # Effective default (explicit, else derived from the agent), checked against the agent prefix.
+        self.session = self._session(None) if (self._configured_session or self.agent) else None
 
     # ------------------------------------------------------------------ transport
 
@@ -188,13 +258,27 @@ class FleetClient:
             reason = getattr(exc, "reason", exc)
             raise FleetAPIError(0, {"error": "unreachable", "url": self.base_url, "reason": str(reason)}) from None
 
-    def _session(self, session: str | None) -> str:
-        value = session if session is not None else self.session
-        _check(value is not None, "session is required (argument or FLEET_SESSION)")
-        return _match(_IDENT, value, "session")
+    def _session(self, session: str | None, agent: str | None = None) -> str:
+        """The session for a call: explicit, else ``FLEET_SESSION``/constructor, else derived from the agent.
+
+        Pre: when an agent is known (``agent`` argument or default) the session starts with ``<agent>-``;
+        the server binds bot tokens to that prefix, so a mismatch is rejected here instead of as a 403.
+        """
+        who = agent if agent is not None else self.agent
+        value = session if session is not None else self._configured_session
+        if value is None and who is not None:
+            value = default_session(who)
+        _check(value is not None, "session is required (argument, FLEET_SESSION, or an agent to derive one from)")
+        checked = _match(PATTERNS.session, value, "session")
+        _check(
+            who is None or checked.startswith(f"{who}-"),
+            f"session {checked!r} must start with '{who}-' (sessions are bound to their agent; "
+            "see docs/agents/connect.md)",
+        )
+        return checked
 
     def _agent(self, agent: str | None) -> str | None:
-        return _opt(_IDENT, agent if agent is not None else self.agent, "agent")
+        return _opt(PATTERNS.agent, agent if agent is not None else self.agent, "agent")
 
     # ------------------------------------------------------------------ staff
 
@@ -214,15 +298,15 @@ class FleetClient:
         _check(status is None or status in RUN_STATUSES, f"status must be one of {RUN_STATUSES}")
         params = {
             "limit": limit,
-            "role": _opt(_ROLE, role, "role"),
+            "role": _opt(PATTERNS.role, role, "role"),
             "status": status,
-            "since": _opt(_ISO, since, "since"),
+            "since": _opt(PATTERNS.iso, since, "since"),
         }
         return self.request("GET", "/api/staff/runs", params=params)
 
     def run(self, run_id: str, events: int = 200) -> Any:
         _check(isinstance(events, int) and 0 <= events <= 500, "events must be an integer 0-500")
-        rid = _match(_IDENT, run_id, "run_id")
+        rid = _match(PATTERNS.ident, run_id, "run_id")
         return self.request("GET", f"/api/staff/runs/{urllib.parse.quote(rid, safe='')}", params={"events": events})
 
     def staff_schedule(self) -> Any:
@@ -233,7 +317,9 @@ class FleetClient:
 
     def usage(self, since: str | None = None, group: str = "provider") -> Any:
         _check(group in USAGE_GROUPS, f"group must be one of {USAGE_GROUPS}")
-        return self.request("GET", "/api/staff/usage", params={"since": _opt(_ISO, since, "since"), "group": group})
+        return self.request(
+            "GET", "/api/staff/usage", params={"since": _opt(PATTERNS.iso, since, "since"), "group": group}
+        )
 
     def dispatch(
         self,
@@ -248,28 +334,28 @@ class FleetClient:
         model: str | None = None,
     ) -> Any:
         """Dispatch (or with ``dry_run`` preview) a staff role run. Pre: one of issue/pr/prompt."""
-        role = _match(_ROLE, role, "role")
+        role = _match(PATTERNS.role, role, "role")
         _check(issue is not None or pr is not None or bool(prompt), "one of issue, pr or prompt is required")
         body = {
-            "repo": _opt(_BARE_REPO, repo, "repo (bare name, no owner)"),
+            "repo": _opt(PATTERNS.bare_repo, repo, "repo (bare name, no owner)"),
             "issue": None if issue is None else _positive_int(issue, "issue"),
             "pr": None if pr is None else _positive_int(pr, "pr"),
-            "prompt": None if prompt is None else _text(prompt, "prompt", MAX_PROMPT, required=False),
-            "provider": _opt(_ROLE, provider, "provider"),
-            "model": _opt(_IDENT, model, "model"),
-            "machine": _match(_IDENT, machine, "machine"),
+            "prompt": None if prompt is None else _text(prompt, "prompt", LIMITS.max_prompt, required=False),
+            "provider": _opt(PATTERNS.role, provider, "provider"),
+            "model": _opt(PATTERNS.ident, model, "model"),
+            "machine": _match(PATTERNS.ident, machine, "machine"),
             "dry_run": bool(dry_run),
         }
         return self.request("POST", f"/api/staff/{role}/run", body=_compact(body))
 
     def cancel(self, run_id: str) -> Any:
-        rid = _match(_IDENT, run_id, "run_id")
+        rid = _match(PATTERNS.ident, run_id, "run_id")
         return self.request("POST", f"/api/staff/runs/{urllib.parse.quote(rid, safe='')}/cancel", body={})
 
     # ------------------------------------------------------------------ coordination
 
     def sessions(self, repo: str | None = None) -> Any:
-        return self.request("GET", "/api/coordination/sessions", params={"repo": _opt(_REPO, repo, "repo")})
+        return self.request("GET", "/api/coordination/sessions", params={"repo": _opt(PATTERNS.repo, repo, "repo")})
 
     def inbox(self, session: str | None = None) -> Any:
         return self.request("GET", "/api/coordination/inbox", params={"session": self._session(session)})
@@ -286,7 +372,8 @@ class FleetClient:
         ttl_hours: float | None = None,
     ) -> Any:
         if paths is not None:
-            _check(isinstance(paths, list) and len(paths) <= MAX_PATHS, f"paths must be a list of <= {MAX_PATHS}")
+            limit = LIMITS.max_paths
+            _check(isinstance(paths, list) and len(paths) <= limit, f"paths must be a list of <= {limit}")
             paths = [_text(p, "paths[]", 300) for p in paths]
         _check(goals is None or isinstance(goals, dict), "goals must be an object")
         _check(
@@ -295,10 +382,10 @@ class FleetClient:
         )
         body = {
             "agent": self._agent(agent),
-            "session": self._session(session),
-            "repo": _match(_REPO, repo, "repo"),
+            "session": self._session(session, agent),
+            "repo": _match(PATTERNS.repo, repo, "repo"),
             "issue": _positive_int(issue, "issue"),  # RM presence requires issue + branch
-            "branch": _match(_IDENT, branch, "branch"),
+            "branch": _match(PATTERNS.branch, branch, "branch"),
             "paths": paths,
             "goals": goals,
             "ttl_hours": ttl_hours,
@@ -306,57 +393,62 @@ class FleetClient:
         return self.request("POST", "/api/coordination/presence", body=_compact(body))
 
     def release_presence(self, repo: str, session: str | None = None) -> Any:
-        body = {"session": self._session(session), "repo": _match(_REPO, repo, "repo")}
+        body = {"session": self._session(session), "repo": _match(PATTERNS.repo, repo, "repo")}
         return self.request("POST", "/api/coordination/presence/release", body=body)
 
     def send_message(self, repo: str, to: str, text: str, session: str | None = None) -> Any:
+        """Message one session id, or ``*`` for every session registered in ``repo``."""
+        recipient = to if to == BROADCAST else _match(PATTERNS.session, to, "to (session id or '*')")
         body = {
             "session": self._session(session),
-            "repo": _match(_REPO, repo, "repo"),
-            "to": _match(_IDENT, to, "to"),
-            "text": _text(text, "text"),
+            "repo": _match(PATTERNS.repo, repo, "repo"),
+            "to": recipient,
+            "text": _text(text, "text", form="message"),
         }
         return self.request("POST", "/api/coordination/messages", body=body)
 
     def ack(self, repo: str, message_id: str, session: str | None = None) -> Any:
         body = {
             "session": self._session(session),
-            "repo": _match(_REPO, repo, "repo"),
-            "message_id": _match(_IDENT, message_id, "message_id"),
+            "repo": _match(PATTERNS.repo, repo, "repo"),
+            "message_id": _match(PATTERNS.message_id, message_id, "message_id"),
         }
         return self.request("POST", "/api/coordination/messages/ack", body=body)
 
     def check_claim(self, repo: str, issue: int) -> Any:
-        params = {"repo": _match(_REPO, repo, "repo"), "issue": _positive_int(issue, "issue")}
+        params = {"repo": _match(PATTERNS.repo, repo, "repo"), "issue": _positive_int(issue, "issue")}
         return self.request("GET", "/api/coordination/claims", params=params)
 
     def claim(
-        self, repo: str, issue: int, intent: str = "", agent: str | None = None, session: str | None = None
+        self, repo: str, issue: int, intent: str | None = None, agent: str | None = None, session: str | None = None
     ) -> Any:
-        """Lease an issue. Raises FleetAPIError(409) when another agent holds it."""
+        """Lease an issue. Raises FleetAPIError(409) when another agent holds it. No intent = server default."""
+        intent_text = _opt_text(intent, "intent", LIMITS.max_intent)
+        _check(intent_text is None or not intent_text.startswith("-"), "intent must not start with '-'")
         body = {
-            "repo": _match(_REPO, repo, "repo"),
+            "repo": _match(PATTERNS.repo, repo, "repo"),
             "issue": _positive_int(issue, "issue"),
             "agent": self._agent(agent),
-            "session": self._session(session),
-            "intent": _text(intent, "intent", required=False),
+            "session": self._session(session, agent),
+            "intent": intent_text,
         }
         return self.request("POST", "/api/coordination/claims", body=_compact(body))
 
     def release_claim(
-        self, repo: str, issue: int, reason: str = "", agent: str | None = None, session: str | None = None
+        self, repo: str, issue: int, reason: str | None = None, agent: str | None = None, session: str | None = None
     ) -> Any:
+        """Release this agent's lease. No reason = server default."""
         body = {
-            "repo": _match(_REPO, repo, "repo"),
+            "repo": _match(PATTERNS.repo, repo, "repo"),
             "issue": _positive_int(issue, "issue"),
             "agent": self._agent(agent),
-            "session": self._session(session),
-            "reason": _text(reason, "reason", required=False),
+            "session": self._session(session, agent),
+            "reason": _opt_text(reason, "reason", LIMITS.max_reason),
         }
         return self.request("POST", "/api/coordination/claims/release", body=_compact(body))
 
     def briefing(self, repo: str | None = None, agent: str | None = None) -> Any:
-        params = {"repo": _opt(_REPO, repo, "repo"), "agent": self._agent(agent)}
+        params = {"repo": _opt(PATTERNS.repo, repo, "repo"), "agent": self._agent(agent)}
         return self.request("GET", "/api/coordination/briefing", params=params)
 
     # ------------------------------------------------------------------ priorities
@@ -368,17 +460,23 @@ class FleetClient:
         return self.request("GET", "/api/priorities/meetings")
 
     def meeting(self, date: str) -> Any:
-        return self.request("GET", f"/api/priorities/meetings/{_match(_DATE, date, 'date (YYYY-MM-DD)')}")
+        return self.request("GET", f"/api/priorities/meetings/{_match(PATTERNS.date, date, 'date (YYYY-MM-DD)')}")
 
     def directives(self) -> Any:
         return self.request("GET", "/api/priorities/directives")
 
-    def set_directives(self, directives: list[dict[str, Any]]) -> Any:
-        """Replace the operator directive list (write auth). Each item: text, priority 1-5, repo|"*"."""
+    def set_directives(self, directives: list[dict[str, Any]], version: str | None = None) -> Any:
+        """Replace the operator directive list (``priorities.write``). Each item: text, priority 1-5, repo|"*".
+
+        Pass the ``version`` from :meth:`directives` to get a 409 instead of overwriting a concurrent edit.
+        """
         _check(isinstance(directives, list), "directives must be a list")
-        _check(len(directives) <= MAX_DIRECTIVES, f"at most {MAX_DIRECTIVES} directives")
+        _check(len(directives) <= LIMITS.max_directives, f"at most {LIMITS.max_directives} directives")
         items = [_validate_directive(item, i) for i, item in enumerate(directives)]
-        return self.request("PUT", "/api/priorities/directives", body={"directives": items})
+        body: dict[str, Any] = {"directives": items}
+        if version is not None:
+            body["version"] = _text(version, "version", LIMITS.max_version, form="line")
+        return self.request("PUT", "/api/priorities/directives", body=body)
 
 
 def _decode(raw: bytes) -> Any:

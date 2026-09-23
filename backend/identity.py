@@ -333,23 +333,13 @@ def require_principal(
 
 SCOPE_PRESETS = {
     "admin": ["*"],
-    "operator": [
-        "workflows.dispatch",
-        "workflows.control",
-        "runners.control",
-        "fleet.control",
-        "remediation.dispatch",
-        "heavy-tests.dispatch",
-        "tests.rerun",
-        "github.dispatch",
-        "assistant.chat",
-        "assistant.execute",
-        "maxwell.control",
-        "assessments.dispatch",
-        "feature-requests.manage",
-        "system.control",
-        "coordination.write",
-    ],
+    # Whitespace-separated to keep this module under the 500-line cap. ``priorities.write`` sets the
+    # directives pasted into every staff prompt (#1243): operators only, never the bot preset.
+    "operator": (
+        "workflows.dispatch workflows.control runners.control fleet.control remediation.dispatch "
+        "heavy-tests.dispatch tests.rerun github.dispatch assistant.chat assistant.execute maxwell.control "
+        "assessments.dispatch feature-requests.manage system.control coordination.write priorities.write"
+    ).split(),
     "viewer": ["assistant.chat"],
     "bot": [
         "remediation.dispatch",

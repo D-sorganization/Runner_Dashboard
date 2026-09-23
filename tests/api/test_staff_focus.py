@@ -73,3 +73,37 @@ def test_plan_without_priorities_has_no_focus(tmp_path, monkeypatch) -> None:  #
     staff = runner_mod.StaffRunner(roles_loader=lambda: {role.name: role}, focus_loader=lambda: [])
     plan = staff.plan(runner_mod.RunRequest(role="issue-remediator", repo="Tools", prompt="sweep"))
     assert plan.focus == "" and "Fleet focus" not in plan.prompt
+
+
+CHECKLIST = {"kind": "directive", "text": "Finish:\n- [ ] A\n- [ ] B", "repo": "*", "priority": 1}
+
+
+@pytest.mark.unit
+def test_multiline_items_collapse_to_one_line() -> None:
+    text = focus_mod.focus_paragraph("Tools", [CHECKLIST, {**BOARD, "project": "Tools", "acceptance": "a\n\nb"}])
+    assert "Finish: - [ ] A - [ ] B" in text
+    assert "done when: a b" in text
+    assert text.count("\n") == 2  # header + one line per item
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("items", [[{"kind": "directive", "text": None, "repo": None}], [{"kind": 3, "item": {}}]])
+def test_focus_paragraph_is_total(items: list[dict[str, Any]]) -> None:
+    assert isinstance(focus_mod.focus_paragraph("Tools", items), str)
+
+
+@pytest.mark.unit
+def test_focus_paragraph_never_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom(item: dict[str, Any]) -> str:
+        raise RuntimeError("bad item")
+
+    monkeypatch.setattr(focus_mod, "_line", boom)
+    assert focus_mod.focus_paragraph("Tools", [ALL]) == ""
+
+
+@pytest.mark.unit
+def test_plan_survives_a_checklist_directive(tmp_path, monkeypatch) -> None:  # noqa: ANN001
+    monkeypatch.setenv("STAFF_RUNS_DB", str(tmp_path / "runs.sqlite3"))
+    staff = runner_mod.StaffRunner(roles_loader=lambda: {_role().name: _role()}, focus_loader=lambda: [CHECKLIST])
+    plan = staff.plan(runner_mod.RunRequest(role="issue-remediator", repo="Tools", prompt="sweep"))
+    assert "Finish: - [ ] A - [ ] B" in plan.prompt

@@ -31,13 +31,13 @@ All reads return HTTP 200 and carry `generated_at`. When the RM checkout or a
 meeting is missing they answer `{"available": false, "reason": "..."}` instead
 of an error.
 
-| Method | Path                              | Auth                             | Returns                                                                                                                                                                                                                                      |
-| ------ | --------------------------------- | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/api/priorities`                 | fleet peer                       | `{available, reason?, board:{date, metadata, active[], deferred[], borda[], disagreements[]} \| null, directives[], portfolios[], portfolios_reason?, generated_at}`. `board` comes from the newest dated meeting that has a `consensus.md`. |
-| GET    | `/api/priorities/meetings`        | fleet peer                       | `{available, meetings:[{date, files[], has_consensus}], generated_at}`, newest first.                                                                                                                                                        |
-| GET    | `/api/priorities/meetings/{date}` | fleet peer                       | Parsed `consensus` plus raw `consensus_markdown`, `packet`, `instructions`, `pathway_log_entry` (null when absent). `422` for a malformed or impossible date, `404` for a date with no folder.                                               |
-| GET    | `/api/priorities/directives`      | fleet peer                       | `{directives[], path}`, unexpired only, priority 1 first.                                                                                                                                                                                    |
-| PUT    | `/api/priorities/directives`      | `coordination.write` or loopback | Replaces the list; returns the active list.                                                                                                                                                                                                  |
+| Method | Path                              | Auth                           | Returns                                                                                                                                                                                                                                      |
+| ------ | --------------------------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/priorities`                 | fleet peer                     | `{available, reason?, board:{date, metadata, active[], deferred[], borda[], disagreements[]} \| null, directives[], portfolios[], portfolios_reason?, generated_at}`. `board` comes from the newest dated meeting that has a `consensus.md`. |
+| GET    | `/api/priorities/meetings`        | fleet peer                     | `{available, meetings:[{date, files[], has_consensus}], generated_at}`, newest first.                                                                                                                                                        |
+| GET    | `/api/priorities/meetings/{date}` | fleet peer                     | Parsed `consensus` plus raw `consensus_markdown`, `packet`, `instructions`, `pathway_log_entry` (null when absent). `422` for a malformed or impossible date, `404` for a date with no folder.                                               |
+| GET    | `/api/priorities/directives`      | fleet peer                     | `{directives[], version}`, unexpired only, priority 1 first. `version` fingerprints the stored list; the storage path is never returned.                                                                                                     |
+| PUT    | `/api/priorities/directives`      | `priorities.write` or loopback | Replaces the list; returns `{directives[], version}`. `409` when the body's `version` is stale.                                                                                                                                              |
 
 Active item: `{rank, item, project, scope, assigned_to, tracking, acceptance}`.
 Deferred item: `{item, project, reason, reassess}`. Borda row:
@@ -53,32 +53,45 @@ Deferred item: `{item, project, reason, reassess}`. Borda row:
       "text": "Finish the coordination API first",
       "repo": "Runner_Dashboard",
       "priority": 1,
-      "expires": "2026-09-30T00:00:00Z",
-      "set_by": "dieter"
+      "expires": "2026-09-30T00:00:00Z"
     }
-  ]
+  ],
+  "version": "<version from the GET>"
 }
 ```
 
-- `text` 1–500 characters; `repo` is `*` (default) or a bare repository name.
+- `text` 1–500 characters on **one line** (CR/LF is rejected with 422): every
+  directive is pasted into every staff prompt as a single bullet. Put
+  checklists in the tracking issue. `repo` is `*` (default) or a bare
+  repository name.
 - `priority` 1 (highest) to 5, default 3.
 - `expires` optional ISO-8601; stored as UTC `...Z`. Expired directives are
   filtered from every read and dropped on the next PUT.
-- `set_by` defaults to the authenticated caller (`principal:<id>` or `loopback-dev`).
+- `set_by` is always set by the server: the authenticated caller (`principal:<id>` or
+  `loopback-dev`) for new or changed directives, the stored author for unchanged ones.
+  A `set_by` in the body is ignored.
+- `version` (optional) is the value from the GET you edited. When another writer saved
+  in between, the PUT answers `409` and writes nothing; reload and re-apply. Omit it only
+  for scripted, single-writer updates.
+- A stored entry that no longer validates is skipped (and logged) on read; the other
+  directives are kept.
 - `id` defaults to a hash of text and repo; duplicate ids are rejected (422).
 
 ### Auth
 
 - Reads: `require_fleet_peer` — an operator principal or, when
   `HUB_FLEET_TOKEN` is set, `Authorization: Bearer <HUB_FLEET_TOKEN>`.
-- PUT: `coordination.auth.require_coordination_writer` (shared with `/api/coordination/`) — a principal whose roles grant
-  `coordination.write` (`admin`, `operator`, `bot` presets; other principals get
-  403), or a loopback caller when `DASHBOARD_LOOPBACK_AUTH=1`. The shared fleet
-  token alone is not accepted for writes. Every write needs
-  `X-Requested-With: XMLHttpRequest` (bearer callers too).
-- `/api/priorities` is in `_ALT_AUTH_EXEMPT_PREFIXES` so fleet-token readers are
-  not stopped by the structural perimeter; the route dependencies above are the
-  gate.
+- PUT: `coordination.auth.require_priorities_writer` — a principal whose roles grant
+  `priorities.write` (`operator` preset, `admin` via `*`; `bot`, `viewer` and other
+  principals get 403), or a loopback caller when `DASHBOARD_LOOPBACK_AUTH=1`.
+  Directives steer every staff prompt, so agent bot tokens (which hold
+  `coordination.write`) cannot set them (#1243). The shared fleet token alone is
+  not accepted for writes. Every write needs `X-Requested-With: XMLHttpRequest`
+  (bearer callers too).
+- The exact path `/api/priorities` and the prefix `/api/priorities/` are exempt
+  from the structural perimeter (`_ALT_AUTH_EXEMPT_EXACT` /
+  `_ALT_AUTH_EXEMPT_PREFIXES`) so fleet-token readers are not stopped by it; the
+  route dependencies above are the gate. `/api/prioritiesX` is not exempt.
 
 ## For other modules
 

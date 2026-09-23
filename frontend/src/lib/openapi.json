@@ -6,7 +6,7 @@
         "description": "``ack``: confirm receipt (not agreement) of a message.",
         "properties": {
           "message_id": {
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
             "title": "Message Id",
             "type": "string"
           },
@@ -16,7 +16,7 @@
             "type": "string"
           },
           "session": {
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
             "title": "Session",
             "type": "string"
           }
@@ -311,7 +311,8 @@
           },
           "intent": {
             "default": "implement",
-            "pattern": "^[A-Za-z0-9][^\\r\\n]{0,199}$",
+            "maxLength": 200,
+            "minLength": 1,
             "title": "Intent",
             "type": "string"
           },
@@ -326,7 +327,7 @@
             "type": "string"
           },
           "session": {
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
             "title": "Session",
             "type": "string"
           }
@@ -369,7 +370,7 @@
             "type": "string"
           },
           "session": {
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
             "title": "Session",
             "type": "string"
           }
@@ -445,6 +446,7 @@
                 "type": "null"
               }
             ],
+            "description": "Ignored; the server sets it.",
             "title": "Set By"
           },
           "set_on": {
@@ -479,6 +481,19 @@
             "maxItems": 100,
             "title": "Directives",
             "type": "array"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "``version`` from the GET you edited; 409 when stale.",
+            "title": "Version"
           }
         },
         "required": ["directives"],
@@ -738,7 +753,7 @@
             "type": "string"
           },
           "session": {
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
             "title": "Session",
             "type": "string"
           },
@@ -749,7 +764,7 @@
             "type": "string"
           },
           "to": {
-            "pattern": "^(\\*|[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127})$",
+            "pattern": "^(\\*|[A-Za-z0-9][A-Za-z0-9_.-]{0,127})$",
             "title": "To",
             "type": "string"
           }
@@ -932,7 +947,7 @@
             "type": "string"
           },
           "session": {
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
             "title": "Session",
             "type": "string"
           },
@@ -1152,7 +1167,7 @@
             "type": "string"
           },
           "session": {
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
             "title": "Session",
             "type": "string"
           }
@@ -3612,7 +3627,7 @@
             "name": "session",
             "required": true,
             "schema": {
-              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
               "title": "Session",
               "type": "string"
             }
@@ -6373,7 +6388,7 @@
         "tags": ["priorities"]
       },
       "put": {
-        "description": "Replace the directive list. ``set_by`` defaults to the authenticated caller. Returns the active list.",
+        "description": "Replace the directive list. ``set_by`` is the authenticated caller (body values are ignored).",
         "operationId": "put_directives_api_priorities_directives_put",
         "requestBody": {
           "content": {

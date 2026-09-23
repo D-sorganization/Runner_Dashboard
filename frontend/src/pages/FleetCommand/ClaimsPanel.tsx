@@ -10,8 +10,16 @@
 import { useState } from "react";
 import { Badge } from "../../primitives/Badge";
 import { TouchButton } from "../../primitives/TouchButton";
-import { checkClaim, describeError, expiryLabel, parseIssue, postClaim, releaseClaim, useResource } from "./fleetApi";
-import { OPERATOR_SESSION } from "./MessagesPanel";
+import {
+  checkClaim,
+  describeError,
+  expiryLabel,
+  operatorSession,
+  parseIssue,
+  postClaim,
+  releaseClaim,
+  useResource,
+} from "./fleetApi";
 import { PanelFrame } from "./PanelFrame";
 
 interface Target {
@@ -23,7 +31,7 @@ export function ClaimsPanel() {
   const [repo, setRepo] = useState("");
   const [issue, setIssue] = useState("");
   const [target, setTarget] = useState<Target | null>(null);
-  const [session, setSession] = useState(OPERATOR_SESSION);
+  const [session, setSession] = useState(operatorSession);
   const [agent, setAgent] = useState("");
   const [intent, setIntent] = useState("implement");
   const [reason, setReason] = useState("work completed");

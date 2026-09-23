@@ -3,7 +3,9 @@
 A staff run should work on what the board and the operator asked for. This module turns
 ``priorities.service.top_priorities`` into one prompt paragraph scoped to the run's repo.
 The priorities module is optional at runtime (older nodes, missing RM checkout): any
-failure yields an empty paragraph, never a failed run.
+failure yields an empty paragraph, never a failed run. Every item renders as exactly one
+line (whitespace, including newlines from a checklist, is collapsed) so a directive can
+neither break the bullet list nor fail a dispatch (#1243).
 """
 
 from __future__ import annotations
@@ -43,29 +45,39 @@ def _applies(item: dict[str, Any], repo: str) -> bool:
     return bool(wanted) and wanted in project
 
 
+def _one_line(value: Any) -> str:
+    """``value`` as text with every whitespace run (CR/LF included) collapsed to one space."""
+    return " ".join(str(value if value is not None else "").split())
+
+
 def _line(item: dict[str, Any]) -> str:
+    """One bullet line. Post: no newline in the result."""
     if item.get("kind") == "directive":
-        return f"- [directive p{item.get('priority', '?')}] {item.get('text', '').strip()}"
-    parts = [f"- [board #{item.get('rank', '?')}] {str(item.get('item', '')).strip()}"]
+        return f"- [directive p{_one_line(item.get('priority', '?'))}] {_one_line(item.get('text'))}"
+    parts = [f"- [board #{_one_line(item.get('rank', '?'))}] {_one_line(item.get('item'))}"]
     if item.get("tracking"):
-        parts.append(f"(tracking {item['tracking']})")
+        parts.append(f"(tracking {_one_line(item['tracking'])})")
     if item.get("acceptance"):
-        parts.append(f"— done when: {str(item['acceptance']).strip()}")
+        parts.append(f"— done when: {_one_line(item['acceptance'])}")
     return " ".join(parts)
 
 
 def focus_paragraph(repo: str, items: list[dict[str, Any]]) -> str:
     """Prompt paragraph with the items that apply to ``repo`` (all-repo directives included).
 
-    Post: empty string when nothing applies; otherwise at most ``MAX_ITEMS`` bullet lines.
+    Total: never raises (focus is advisory; ``StaffRunner.plan`` calls it unguarded).
+    Post: empty string when nothing applies or an item cannot be rendered; otherwise a header
+    plus at most ``MAX_ITEMS`` single-line bullets.
     """
-    relevant = [i for i in items if _applies(i, repo)][:MAX_ITEMS]
-    if not relevant:
+    try:
+        relevant = [i for i in items if isinstance(i, dict) and _applies(i, repo)][:MAX_ITEMS]
+        lines = [_line(i) for i in relevant]
+    except Exception as exc:  # noqa: BLE001 - a malformed item must not fail a dispatch
+        log.warning("staff focus skipped: %s", exc)
         return ""
-    lines = "\n".join(_line(i) for i in relevant)
-    paragraph = (
+    if not lines:
+        return ""
+    return (
         "Fleet focus (latest board meeting and operator directives). When you choose between items, "
-        "prefer work that advances these; do not start work that contradicts a directive:\n" + lines
+        "prefer work that advances these; do not start work that contradicts a directive:\n" + "\n".join(lines)
     )
-    assert paragraph.count("\n- [") <= MAX_ITEMS  # noqa: S101 - postcondition
-    return paragraph

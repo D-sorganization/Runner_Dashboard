@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
-from priorities.directives import Directive, DirectivesList, directives_path
+from priorities.directives import Directive, DirectivesList, VersionConflictError, directives_path
 
 NOW = datetime(2026, 9, 22, 12, 0, tzinfo=UTC)
 
@@ -41,6 +41,8 @@ def test_from_dict_defaults_and_stable_id() -> None:
         {"text": "ok", "set_by": "a", "repo": "owner/repo"},
         {"text": "ok", "set_by": "a", "repo": "../x"},
         {"text": "ok", "set_by": "a", "expires": "next tuesday"},
+        {"text": "Finish:\n- [ ] A", "set_by": "a"},
+        {"text": "line\rbreak", "set_by": "a"},
     ],
 )
 def test_from_dict_rejects_bad_input(data: dict) -> None:
@@ -100,3 +102,29 @@ def test_file_round_trip_shape(tmp_path: Path) -> None:
 def test_env_override_for_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("STAFF_DIRECTIVES_FILE", str(tmp_path / "custom.json"))
     assert directives_path() == tmp_path / "custom.json"
+
+
+@pytest.mark.unit
+def test_one_invalid_stored_entry_is_skipped_not_the_whole_file(tmp_path: Path, caplog) -> None:  # noqa: ANN001
+    path = tmp_path / "d.json"
+    good = {"text": "keep me", "set_by": "a"}
+    bad = {"text": "Finish:\n- [ ] A", "set_by": "a"}
+    path.write_text(json.dumps({"directives": [good, bad, "junk"]}), encoding="utf-8")
+    store = DirectivesList(path)
+    assert [d.text for d in store.load()] == ["keep me"]
+    assert "skipping invalid directive" in caplog.text
+
+
+@pytest.mark.unit
+def test_version_changes_on_write_and_guards_replace(tmp_path: Path) -> None:
+    store = DirectivesList(tmp_path / "d.json")
+    empty = store.version()
+    assert empty == DirectivesList(tmp_path / "other.json").version()
+    store.replace([{"text": "one", "set_by": "a"}], expected_version=empty)
+    current = store.version()
+    assert current != empty
+    with pytest.raises(VersionConflictError):
+        store.replace([], expected_version=empty)
+    assert [d.text for d in store.load()] == ["one"]
+    store.replace([], expected_version=current)
+    assert store.load() == []

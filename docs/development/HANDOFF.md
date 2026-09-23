@@ -1,4 +1,27 @@
-# Current Handoff — Coordination API hardening (#1244)
+# Current Handoff — Priorities, staff focus and fleet clients hardening (#1243)
+
+Last updated: 2026-09-23T02:00:00-07:00
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/prio-harden` (worktree)
+- Branch: `fix/priorities-clients-hardening`; commit `SELF`; PR opened after push. Governing issue #1243 (epic #1192); DL-#1243.
+
+## Work
+
+- Directives: `priorities.write` scope (operator only) via `coordination.auth.require_writer(scope)` (one factory; `require_coordination_writer` / `require_priorities_writer`); `set_by` from the caller; one-line text; `version` + 409; invalid stored entries skipped; no `path` in responses.
+- `staff/focus.py`: `_one_line` collapses whitespace; `focus_paragraph` never raises.
+- Middleware: `_ALT_AUTH_EXEMPT_EXACT = {"/api/priorities"}` plus prefix `/api/priorities/`.
+- Clients: `PATTERNS`/`LIMITS` block mirrors server models (test asserts equality); intent/reason omitted when unset; `to='*'`; `fleet_ack_message`; `default_session()` and `<agent>-` prefix check (#1245).
+- Frontend: Directives panel sends `version`, reload prompt on 409; Messages panel registers `operator-<yyyymmdd>` presence (agent `user`, 2 h) before sending and explains a 409.
+- Rebased onto #1245; client session/intent/reason/message rules mirror its models (RM `_IDENTIFIER`, printable single line, no leading `-`).
+- Board cache: `reset_cache` bumps the generation (a leaked refresh from an earlier test could re-store stale data, the CI flake in `test_stale_board_read_is_served_immediately_while_refreshing`); `join_refreshes()` replaces the 10 s polling in tests and runs in the fake-RM fixture teardown.
+- Validation: WSL `pytest tests/api -k "priorities or staff or auth or coordination" tests/clients` (354 passed) (only the known flaky `test_submit_runs_fake_cli_to_success_with_events_and_cost` intermittently fails on /mnt/c timing); `npx vitest run FleetCommand`, `npm run typecheck`, `npm run lint`, `npm run build` clean; OpenAPI snapshot regenerated.
+
+---
+
+## Previous Handoff — Coordination API hardening (#1244)
 
 Last updated: 2026-09-23T09:30:00-07:00
 

@@ -5,6 +5,14 @@
 **Last Updated:** 2026-09-22T00:00:00-07:00
 **Status:** Active
 
+- **2026-09-23:** Priorities/clients hardening (#1243, epic #1192). `PUT /api/priorities/directives` needs the new
+  `priorities.write` scope (operator preset; bots refused) or loopback; `set_by` is always the caller; directive
+  text is one line (CR/LF 422); GET/PUT return `version` (PUT 409 when stale) and no storage path; one invalid
+  stored entry is skipped, not the whole list. `staff.focus.focus_paragraph` is total and single-line per item.
+  Perimeter exempts exactly `/api/priorities` plus `/api/priorities/`. Fleet clients mirror server limits, omit
+  unset intent/reason, allow `to='*'`, add `fleet_ack_message`, and derive/enforce `<agent>-` session ids.
+  One write dependency `coordination.auth.require_writer(scope)` serves both APIs; board `reset_cache` bumps the
+  generation and `join_refreshes()` waits for background refreshes.
 - **2026-09-23:** Coordination API hardening (#1244, epic #1192). Claims: 409 whenever RM reports `held` and the
   holder is not this agent+session (empty holder, other agent, or session unknown); RM fail-open
   `reason: error:*` is `available:false` / 502; check-then-post serialized per `repo#issue`; RM `errors: [...]`

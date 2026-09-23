@@ -11,7 +11,7 @@ from fleet_fixtures import _clean_fleet_env, fake_api  # pytest fixtures
 
 @pytest.fixture
 def client(fake_api: Any) -> FleetClient:
-    return FleetClient(fake_api.url, token="tok-123", agent="claude", session="sess-1")
+    return FleetClient(fake_api.url, token="tok-123", agent="claude", session="claude-1")
 
 
 # (method name, kwargs, expected HTTP method, expected path, expected query, expected body)
@@ -33,14 +33,14 @@ ENDPOINTS: list[tuple[str, dict[str, Any], str, str, dict[str, str], Any]] = [
     ("usage", {"group": "role"}, "GET", "/api/staff/usage", {"group": "role"}, None),
     ("cancel", {"run_id": "run-1"}, "POST", "/api/staff/runs/run-1/cancel", {}, {}),
     ("sessions", {"repo": "Runner_Dashboard"}, "GET", "/api/coordination/sessions", {"repo": "Runner_Dashboard"}, None),
-    ("inbox", {}, "GET", "/api/coordination/inbox", {"session": "sess-1"}, None),
+    ("inbox", {}, "GET", "/api/coordination/inbox", {"session": "claude-1"}, None),
     (
         "release_presence",
         {"repo": "Runner_Dashboard"},
         "POST",
         "/api/coordination/presence/release",
         {},
-        {"session": "sess-1", "repo": "Runner_Dashboard"},
+        {"session": "claude-1", "repo": "Runner_Dashboard"},
     ),
     (
         "send_message",
@@ -48,7 +48,15 @@ ENDPOINTS: list[tuple[str, dict[str, Any], str, str, dict[str, str], Any]] = [
         "POST",
         "/api/coordination/messages",
         {},
-        {"session": "sess-1", "repo": "Runner_Dashboard", "to": "codex-7", "text": "hi"},
+        {"session": "claude-1", "repo": "Runner_Dashboard", "to": "codex-7", "text": "hi"},
+    ),
+    (
+        "send_message",
+        {"repo": "Runner_Dashboard", "to": "*", "text": "heads up"},
+        "POST",
+        "/api/coordination/messages",
+        {},
+        {"session": "claude-1", "repo": "Runner_Dashboard", "to": "*", "text": "heads up"},
     ),
     (
         "ack",
@@ -56,7 +64,7 @@ ENDPOINTS: list[tuple[str, dict[str, Any], str, str, dict[str, str], Any]] = [
         "POST",
         "/api/coordination/messages/ack",
         {},
-        {"session": "sess-1", "repo": "Runner_Dashboard", "message_id": "m-9"},
+        {"session": "claude-1", "repo": "Runner_Dashboard", "message_id": "m-9"},
     ),
     (
         "check_claim",
@@ -72,7 +80,23 @@ ENDPOINTS: list[tuple[str, dict[str, Any], str, str, dict[str, str], Any]] = [
         "POST",
         "/api/coordination/claims",
         {},
-        {"repo": "Runner_Dashboard", "issue": 7, "agent": "claude", "session": "sess-1", "intent": "fix"},
+        {"repo": "Runner_Dashboard", "issue": 7, "agent": "claude", "session": "claude-1", "intent": "fix"},
+    ),
+    (
+        "claim",
+        {"repo": "Runner_Dashboard", "issue": 7},
+        "POST",
+        "/api/coordination/claims",
+        {},
+        {"repo": "Runner_Dashboard", "issue": 7, "agent": "claude", "session": "claude-1"},
+    ),
+    (
+        "release_claim",
+        {"repo": "Runner_Dashboard", "issue": 7},
+        "POST",
+        "/api/coordination/claims/release",
+        {},
+        {"repo": "Runner_Dashboard", "issue": 7, "agent": "claude", "session": "claude-1"},
     ),
     (
         "release_claim",
@@ -80,7 +104,7 @@ ENDPOINTS: list[tuple[str, dict[str, Any], str, str, dict[str, str], Any]] = [
         "POST",
         "/api/coordination/claims/release",
         {},
-        {"repo": "Runner_Dashboard", "issue": 7, "agent": "claude", "session": "sess-1", "reason": "PR #8"},
+        {"repo": "Runner_Dashboard", "issue": 7, "agent": "claude", "session": "claude-1", "reason": "PR #8"},
     ),
     (
         "briefing",
@@ -98,7 +122,9 @@ ENDPOINTS: list[tuple[str, dict[str, Any], str, str, dict[str, str], Any]] = [
 
 
 @pytest.mark.parametrize(
-    ("name", "kwargs", "method", "path", "query", "body"), ENDPOINTS, ids=[e[0] for e in ENDPOINTS]
+    ("name", "kwargs", "method", "path", "query", "body"),
+    ENDPOINTS,
+    ids=[f"{e[0]}-{i}" for i, e in enumerate(ENDPOINTS)],
 )
 def test_endpoint_shapes(
     client: FleetClient,
@@ -136,7 +162,7 @@ def test_environment_configuration(fake_api: Any, monkeypatch: pytest.MonkeyPatc
     monkeypatch.setenv("FLEET_API_URL", fake_api.url + "/")
     monkeypatch.setenv("FLEET_API_TOKEN", "env-tok")
     monkeypatch.setenv("FLEET_AGENT", "gemini")
-    monkeypatch.setenv("FLEET_SESSION", "g-1")
+    monkeypatch.setenv("FLEET_SESSION", "gemini-1")
     monkeypatch.setenv("FLEET_API_TIMEOUT", "4")
     client = FleetClient()
     assert (client.base_url, client.timeout) == (fake_api.url, 4.0)
@@ -146,7 +172,7 @@ def test_environment_configuration(fake_api: Any, monkeypatch: pytest.MonkeyPatc
     assert rec.path == "/api/coordination/presence"
     assert rec.body == {
         "agent": "gemini",
-        "session": "g-1",
+        "session": "gemini-1",
         "repo": "Runner_Dashboard",
         "issue": 12,
         "branch": "feat/x",
@@ -167,12 +193,50 @@ def test_dispatch_body_and_defaults(client: FleetClient, fake_api: Any) -> None:
 
 
 def test_set_directives_normalises(client: FleetClient, fake_api: Any) -> None:
-    client.set_directives([{"text": " Ship #1192 ", "priority": 1, "repo": "Runner_Dashboard", "set_by": "dieter"}])
+    client.set_directives([{"text": " Ship #1192 ", "priority": 1, "repo": "Runner_Dashboard"}])
     rec = fake_api.last
     assert (rec.method, rec.path) == ("PUT", "/api/priorities/directives")
-    assert rec.body == {
-        "directives": [{"text": "Ship #1192", "priority": 1, "repo": "Runner_Dashboard", "set_by": "dieter"}]
-    }
+    assert rec.body == {"directives": [{"text": "Ship #1192", "priority": 1, "repo": "Runner_Dashboard"}]}
+
+
+def test_set_directives_passes_version(client: FleetClient, fake_api: Any) -> None:
+    client.set_directives([{"text": "Ship"}], version="abc123")
+    assert fake_api.last.body == {"directives": [{"text": "Ship", "priority": 3, "repo": "*"}], "version": "abc123"}
+
+
+def test_client_limits_mirror_the_server_models() -> None:
+    import re  # noqa: PLC0415
+
+    import fleet_client as fc  # noqa: PLC0415
+    from coordination import models  # noqa: PLC0415
+    from priorities import directives  # noqa: PLC0415
+    from routers import priorities as prio_router  # noqa: PLC0415
+
+    assert fc.LIMITS.max_directives == prio_router.MAX_DIRECTIVES
+    assert fc.LIMITS.max_directive_text == directives.MAX_TEXT
+    assert fc.LIMITS.max_message_text == models.MAX_TEXT
+    assert fc.LIMITS.max_reason == models.ClaimReleaseBody.model_fields["reason"].metadata[-1].max_length
+    assert fc.PATTERNS.branch.pattern == models.BRANCH_PATTERN
+    assert fc.PATTERNS.agent.pattern == models.AGENT_PATTERN
+    assert fc.PATTERNS.repo.pattern == models.REPO_PATTERN
+    assert fc.PATTERNS.session.pattern == models.SESSION_PATTERN
+    assert fc.PATTERNS.message_id.pattern == models.MESSAGE_ID_PATTERN
+    assert fc.LIMITS.max_intent == models.ClaimBody.model_fields["intent"].metadata[-1].max_length
+    assert re.fullmatch(fc.PATTERNS.session, "claude-rd.2026")
+
+
+def test_client_session_prefix_rule_matches_the_server() -> None:
+    import fleet_client as fc  # noqa: PLC0415
+    from coordination.auth import Caller  # noqa: PLC0415
+    from coordination.auth import ImpersonationError as ServerRejects  # noqa: PLC0415
+
+    bot = Caller(label="principal:agent-codex", restricted=True, agent="codex")
+    derived = fc.default_session("codex", "DeskComputer")
+    bot.check_session(derived)  # the server accepts what the client derives
+    with pytest.raises(ServerRejects):
+        bot.check_session("codexfoo-1")  # ...and rejects what the client rejects
+    with pytest.raises(FleetArgumentError):
+        FleetClient("http://127.0.0.1:9", agent="codex", session="codexfoo-1")
 
 
 def test_http_error_raises_with_status_and_body(client: FleetClient, fake_api: Any) -> None:
@@ -212,6 +276,25 @@ BAD_CALLS: list[tuple[str, dict[str, Any]]] = [
     ("register_presence", {"repo": "Runner_Dashboard", "issue": 1, "branch": "b", "ttl_hours": 0}),
     ("register_presence", {"repo": "Runner_Dashboard", "issue": 1, "branch": "b", "ttl_hours": 9}),
     ("register_presence", {"repo": "Runner_Dashboard", "issue": 0, "branch": "b"}),
+    ("register_presence", {"repo": "Runner_Dashboard", "issue": 1, "branch": "-rf"}),
+    ("register_presence", {"repo": "Runner_Dashboard", "issue": 1, "branch": "a b"}),
+    ("register_presence", {"repo": "Runner_Dashboard", "issue": 1, "branch": "b", "session": "has space"}),
+    ("register_presence", {"repo": "Runner_Dashboard", "issue": 1, "branch": "b", "session": "s" * 129}),
+    ("claim", {"repo": "Runner_Dashboard", "issue": 1, "intent": "fix\nrm -rf"}),
+    ("claim", {"repo": "Runner_Dashboard", "issue": 1, "intent": "i" * 201}),
+    ("claim", {"repo": "Runner_Dashboard", "issue": 1, "intent": "-flag"}),
+    ("claim", {"repo": "Runner_Dashboard", "issue": 1, "intent": "fix\u2028forged"}),
+    ("release_claim", {"repo": "Runner_Dashboard", "issue": 1, "reason": "done\x0bnow"}),
+    ("send_message", {"repo": "Runner_Dashboard", "to": "x", "text": "bell\x07"}),
+    ("send_message", {"repo": "Runner_Dashboard", "to": "claude:1", "text": "t"}),
+    ("ack", {"repo": "Runner_Dashboard", "message_id": "m@1"}),
+    ("release_claim", {"repo": "Runner_Dashboard", "issue": 1, "reason": "done\rnow"}),
+    ("release_claim", {"repo": "Runner_Dashboard", "issue": 1, "reason": "r" * 301}),
+    ("send_message", {"repo": "Runner_Dashboard", "to": "**", "text": "t"}),
+    ("set_directives", {"directives": [{"text": "x"}] * 101}),
+    ("set_directives", {"directives": [{"text": "Finish:\n- [ ] A"}]}),
+    ("set_directives", {"directives": [{"text": "x", "set_by": "dieter"}]}),
+    ("set_directives", {"directives": [], "version": ""}),
 ]
 
 
@@ -233,3 +316,58 @@ def test_session_required_when_not_configured(fake_api: Any) -> None:
 def test_invalid_base_url_rejected() -> None:
     with pytest.raises(FleetArgumentError):
         FleetClient("file:///etc/passwd")
+
+
+# ---------------------------------------------------------------- session convention (#1243 / #1245)
+
+
+def test_default_session_is_agent_host_date() -> None:
+    import datetime as dt  # noqa: PLC0415
+
+    import fleet_client as fc  # noqa: PLC0415
+
+    day = dt.date(2026, 9, 23)
+    assert fc.default_session("claude", "DeskComputer.tail1234.ts.net", day) == "claude-DeskComputer-20260923"
+    assert fc.default_session("codex", "my host!", day) == "codex-my-host--20260923"
+    long = fc.default_session("grok", "h" * 300, day)
+    assert len(long) <= 128 and long.startswith("grok-") and fc.PATTERNS.session.match(long)
+
+
+def test_session_defaults_from_agent_when_unset(fake_api: Any) -> None:
+    client = FleetClient(fake_api.url, agent="gemini")
+    client.inbox()
+    session = fake_api.last.query["session"]
+    import fleet_client as fc  # noqa: PLC0415
+
+    assert session.startswith("gemini-") and fc.PATTERNS.session.match(session)
+
+
+def test_env_agent_derives_session(fake_api: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("FLEET_AGENT", "codex")
+    FleetClient(fake_api.url).claim("Runner_Dashboard", 4)
+    assert fake_api.last.body["session"].startswith("codex-")
+    assert fake_api.last.body["agent"] == "codex"
+
+
+def test_per_call_agent_derives_its_own_session(fake_api: Any) -> None:
+    FleetClient(fake_api.url).claim("Runner_Dashboard", 4, agent="grok")
+    assert fake_api.last.body["session"].startswith("grok-")
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "call"),
+    [
+        ({"agent": "claude", "session": "codex-1"}, lambda c: c.inbox()),
+        ({"agent": "claude", "session": "claude-1"}, lambda c: c.claim("Runner_Dashboard", 1, agent="codex")),
+        ({"agent": "claude"}, lambda c: c.send_message("Runner_Dashboard", "*", "hi", session="claudeX")),
+    ],
+)
+def test_explicit_session_must_carry_the_agent_prefix(fake_api: Any, kwargs: dict[str, Any], call: Any) -> None:
+    with pytest.raises(FleetArgumentError, match="must start with"):
+        call(FleetClient(fake_api.url, **kwargs))
+    assert fake_api.requests == []
+
+
+def test_without_an_agent_any_valid_session_is_accepted(fake_api: Any) -> None:
+    FleetClient(fake_api.url, session="anything-1").inbox()
+    assert fake_api.last.query == {"session": "anything-1"}

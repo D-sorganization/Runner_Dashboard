@@ -9,7 +9,10 @@ served stale while one background thread refreshes it (stale-while-revalidate);
 only the very first read, and the first read after a write, waits. Writes
 invalidate the cache and bump a generation counter: a read that started
 before the write is never stored afterwards (#1244). Concurrent misses on one
-key share a single load (single-flight). The per-repo fallback cannot see
+key share a single load (single-flight). ``reset_cache`` also bumps the
+generation, so a refresh still running from before a reset cannot repopulate
+the cache; ``join_refreshes`` waits for background refreshes (tests, shutdown).
+The per-repo fallback cannot see
 sessions in repos outside ``fleet_repos()``, so it is never ``complete``.
 
 Read results: ``{available, complete, sessions, messages, conflicts, warnings}``
@@ -33,11 +36,13 @@ SCRIPT = "agent_communicate"
 SESSION_KEYS = ("session", "agent", "repo", "issue", "branch", "paths", "goals", "expires", "at")
 DEFAULT_GUIDANCE = "Coordination unavailable; retain leases and inspect active PRs before editing."
 
-_clock = time.monotonic
+_clock = time.monotonic  # cache ages; tests replace it with a fake clock
+_real_clock = time.monotonic  # wall time for join timeouts, never faked
 _lock = threading.Lock()
 _cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _refreshing: set[str] = set()
 _key_locks: dict[str, threading.Lock] = {}
+_threads: set[threading.Thread] = set()
 _generation = 0
 MAX_PARALLEL_READS = 4
 _all_repos_supported: bool | None = None
@@ -60,13 +65,27 @@ class RMScriptError(RuntimeError):
 
 
 def reset_cache() -> None:
-    """Forget cached reads and the ``--all-repos`` probe (tests, and after writes)."""
-    global _all_repos_supported
+    """Forget cached reads and the ``--all-repos`` probe (tests, and after writes).
+
+    Post: reads in flight when this ran can no longer be stored (their generation is stale).
+    """
+    global _all_repos_supported, _generation
     with _lock:
         _cache.clear()
         _refreshing.clear()
         _key_locks.clear()
         _all_repos_supported = None
+        _generation += 1
+
+
+def join_refreshes(timeout: float = 30.0) -> bool:
+    """Wait for background refreshes started so far; True when all finished within ``timeout``."""
+    deadline = _real_clock() + timeout
+    with _lock:
+        pending = list(_threads)
+    for thread in pending:
+        thread.join(max(0.0, deadline - _real_clock()))
+    return not any(t.is_alive() for t in pending)
 
 
 def _invalidate() -> None:
@@ -91,6 +110,7 @@ def _refresh(key: str, loader: Any, generation: int) -> None:
     finally:
         with _lock:
             _refreshing.discard(key)
+            _threads.discard(threading.current_thread())
 
 
 def _fresh(key: str, now: float) -> dict[str, Any] | None:
@@ -129,8 +149,12 @@ def _cached(key: str, loader: Any) -> dict[str, Any]:
     if hit is None:
         return _load_once(key, loader)
     if start_refresh:
-        args = (key, loader, generation)
-        threading.Thread(target=_refresh, args=args, name=f"coord-refresh-{key}", daemon=True).start()
+        thread = threading.Thread(
+            target=_refresh, args=(key, loader, generation), name=f"coord-refresh-{key}", daemon=True
+        )
+        with _lock:
+            _threads.add(thread)
+        thread.start()
     return hit[1]
 
 

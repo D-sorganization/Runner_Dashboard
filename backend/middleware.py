@@ -167,16 +167,18 @@ _AUTH_EXEMPT_PATHS = {
 #   - /api/priorities*       → Fleet Coordination API priorities (#1227). Reads use
 #                              require_fleet_peer so agents holding only the fleet
 #                              bearer token can read them; the PUT uses
-#                              coordination.auth.require_coordination_writer
-#                              (coordination.write scope or loopback). No trailing slash: the summary route is
-#                              exactly /api/priorities (tests/api/test_priorities_routes.py).
+#                              coordination.auth.require_priorities_writer
+#                              (priorities.write scope or loopback). The summary route is the
+#                              exact path /api/priorities (in _ALT_AUTH_EXEMPT_EXACT) and the rest the
+#                              /api/priorities/ prefix, so /api/prioritiesX is NOT exempt (#1243).
+_ALT_AUTH_EXEMPT_EXACT = frozenset({"/api/priorities"})
 _ALT_AUTH_EXEMPT_PREFIXES = (
     "/api/fleet/dispatch/",
     "/api/orchestrator/",
     "/api/credentials/",
     "/api/staff/",
     "/api/coordination/",
-    "/api/priorities",
+    "/api/priorities/",
 )
 
 DEFAULT_MAX_BODY_SIZE = 1 * 1024 * 1024  # 1 MB
@@ -281,7 +283,7 @@ def is_auth_exempt(path: str) -> bool:
     Conductor orchestrator) are also treated as exempt from the *principal*
     perimeter because they enforce their own equally-strong check.
     """
-    if path in _AUTH_EXEMPT_PATHS:
+    if path in _AUTH_EXEMPT_PATHS or path in _ALT_AUTH_EXEMPT_EXACT:
         return True
     return any(path.startswith(prefix) for prefix in _ALT_AUTH_EXEMPT_PREFIXES)
 

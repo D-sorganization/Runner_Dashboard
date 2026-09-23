@@ -12,15 +12,20 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from fleet_client import FleetArgumentError, FleetClient
+from fleet_client import LIMITS, FleetArgumentError, FleetClient
 
 REPO = {"type": "string", "description": "Repository name, e.g. Runner_Dashboard (owner/ prefix optional)."}
 BARE_REPO = {"type": "string", "description": "Bare repository name, e.g. Runner_Dashboard."}
 ISSUE = {"type": "integer", "minimum": 1, "description": "Issue number."}
-SESSION = {"type": "string", "description": "Your session id (defaults to $FLEET_SESSION)."}
+SESSION = {
+    "type": "string",
+    "description": "Your session id; must start with '<agent>-' (defaults to $FLEET_SESSION, else "
+    "<agent>-<host>-<YYYYMMDD>).",
+}
 AGENT = {
     "type": "string",
-    "description": "Your agent name, e.g. claude, codex, gemini, grok (defaults to $FLEET_AGENT).",
+    "description": "Your agent name, e.g. claude, codex, gemini, grok (defaults to $FLEET_AGENT); a bot token "
+    "agent-<name> may only act as <name>.",
 }
 RUN_ID = {"type": "string", "description": "Staff run id, e.g. run-905a8b3586a7."}
 
@@ -90,7 +95,7 @@ COMMANDS: tuple[Command, ...] = (
             "session": SESSION,
             "agent": AGENT,
             "issue": ISSUE,
-            "branch": {"type": "string", "description": "Your working branch."},
+            "branch": {"type": "string", "maxLength": 200, "description": "Your working branch, e.g. main."},
             "paths": {"type": "array", "items": {"type": "string"}, "description": "Paths you will edit."},
             "goals": {"type": "object", "description": "Free-form goals object."},
             "ttl_hours": {
@@ -114,11 +119,15 @@ COMMANDS: tuple[Command, ...] = (
     Command(
         "send-message",
         "send_message",
-        "Send a coordination message to another session or agent (posted to the fleet board).",
+        "Send a coordination message to another session, or to every session in the repo with to='*' "
+        "(posted to the fleet board). Register presence first: the board drops messages from unknown sessions.",
         {
             "repo": REPO,
-            "to": {"type": "string", "description": "Recipient session id or agent name."},
-            "text": {"type": "string", "maxLength": 4000, "description": "Message text."},
+            "to": {
+                "type": "string",
+                "description": "Recipient session id (see fleet_sessions), or '*' for every session in the repo.",
+            },
+            "text": {"type": "string", "maxLength": LIMITS.max_message_text, "description": "Message text."},
             "session": SESSION,
         },
         required=("repo", "to", "text"),
@@ -127,9 +136,14 @@ COMMANDS: tuple[Command, ...] = (
     Command(
         "ack",
         "ack",
-        "Acknowledge a received message.",
-        {"repo": REPO, "message_id": {"type": "string", "description": "Message id."}, "session": SESSION},
+        "Acknowledge a message from your inbox (confirms receipt, not agreement) so it stops being re-delivered.",
+        {
+            "repo": REPO,
+            "message_id": {"type": "string", "description": "Message id from fleet_inbox."},
+            "session": SESSION,
+        },
         required=("repo", "message_id"),
+        tool="fleet_ack_message",
     ),
     Command(
         "check-claim",
@@ -146,7 +160,11 @@ COMMANDS: tuple[Command, ...] = (
         {
             "repo": REPO,
             "issue": ISSUE,
-            "intent": {"type": "string", "maxLength": 4000, "description": "What you intend to do."},
+            "intent": {
+                "type": "string",
+                "maxLength": LIMITS.max_intent,
+                "description": "One line: what you intend to do (server default 'implement').",
+            },
             "agent": AGENT,
             "session": SESSION,
         },
@@ -160,7 +178,11 @@ COMMANDS: tuple[Command, ...] = (
         {
             "repo": REPO,
             "issue": ISSUE,
-            "reason": {"type": "string", "maxLength": 4000, "description": "Why, e.g. 'PR #123 opened'."},
+            "reason": {
+                "type": "string",
+                "maxLength": LIMITS.max_reason,
+                "description": "One line: why, e.g. 'PR #123 opened' (server default 'work completed').",
+            },
             "agent": AGENT,
             "session": SESSION,
         },
@@ -192,23 +214,27 @@ COMMANDS: tuple[Command, ...] = (
     Command(
         "set-directives",
         "set_directives",
-        "Replace the operator directive list (requires write auth).",
+        "Replace the operator directive list (operator credentials: priorities.write; set_by is the caller).",
         {
             "directives": {
                 "type": "array",
+                "maxItems": LIMITS.max_directives,
                 "items": {
                     "type": "object",
                     "properties": {
                         "id": {"type": "string"},
-                        "text": {"type": "string", "maxLength": 500},
-                        "repo": {"type": "string", "description": "Repository or '*'."},
+                        "text": {"type": "string", "maxLength": LIMITS.max_directive_text, "description": "One line."},
+                        "repo": {"type": "string", "description": "Bare repository name or '*'."},
                         "priority": {"type": "integer", "minimum": 1, "maximum": 5},
                         "expires": {"type": "string", "description": "ISO-8601 expiry."},
-                        "set_by": {"type": "string"},
                     },
                     "required": ["text"],
                 },
-            }
+            },
+            "version": {
+                "type": "string",
+                "description": "'version' from the directives read you edited; the server answers 409 if it changed.",
+            },
         },
         required=("directives",),
     ),

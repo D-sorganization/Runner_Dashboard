@@ -1,8 +1,8 @@
 """HTTP surface and auth for /api/priorities (issue #1227, epic #1192).
 
 Reads need a fleet peer once ``HUB_FLEET_TOKEN`` is set; the PUT needs a
-principal holding ``coordination.write`` (``bot`` / ``operator`` presets) or a
-loopback orchestrator peer, plus the CSRF header.
+principal holding ``priorities.write`` (``operator`` preset; ``admin`` via ``*``) or a
+loopback orchestrator peer, plus the CSRF header (#1243: bots may not steer staff prompts).
 """
 
 from __future__ import annotations
@@ -23,6 +23,7 @@ _LOOPBACK = ("127.0.0.1", 51000)
 _TOKENS = {
     "bot-tok": Principal(id="bot-1", type="bot", name="Bot", roles=["bot"]),
     "viewer-tok": Principal(id="viewer-1", type="human", name="Viewer", roles=["viewer"]),
+    "op-tok": Principal(id="op-1", type="human", name="Operator", roles=["operator"]),
 }
 _BODY = {"directives": [{"text": "Finish the coordination API", "priority": 1, "repo": "Runner_Dashboard"}]}
 
@@ -70,10 +71,11 @@ def _bearer(token: str) -> dict[str, str]:
 
 
 @pytest.mark.unit
-def test_scope_presets_grant_coordination_write() -> None:
-    assert "coordination.write" in SCOPE_PRESETS["bot"]
-    assert "coordination.write" in SCOPE_PRESETS["operator"]
-    assert "coordination.write" not in SCOPE_PRESETS["viewer"]
+def test_scope_presets_grant_priorities_write_to_operators_only() -> None:
+    assert "priorities.write" in SCOPE_PRESETS["operator"]
+    assert "priorities.write" not in SCOPE_PRESETS["bot"]
+    assert "priorities.write" not in SCOPE_PRESETS["viewer"]
+    assert "coordination.write" in SCOPE_PRESETS["bot"]  # bots still coordinate, they just cannot set policy
 
 
 @pytest.mark.unit
@@ -111,23 +113,78 @@ def test_meeting_detail_validates_date_and_404s(remote: TestClient) -> None:
 
 
 @pytest.mark.unit
-def test_put_directives_with_bot_scope(remote: TestClient) -> None:
-    resp = remote.put("/api/priorities/directives", json=_BODY, headers={**_XHR, **_bearer("bot-tok")})
+def test_put_directives_with_operator_scope_ignores_body_set_by(remote: TestClient) -> None:
+    forged = {"directives": [{**_BODY["directives"][0], "set_by": "dieter"}]}
+    resp = remote.put("/api/priorities/directives", json=forged, headers={**_XHR, **_bearer("op-tok")})
     assert resp.status_code == 200, resp.text
     saved = resp.json()["directives"]
-    assert saved[0]["set_by"] == "principal:bot-1"
+    assert saved[0]["set_by"] == "principal:op-1"
     got = remote.get("/api/priorities/directives", headers=_bearer("fleet-secret-token")).json()
     assert [d["text"] for d in got["directives"]] == ["Finish the coordination API"]
 
 
 @pytest.mark.unit
-def test_put_directives_rejects_missing_scope_and_fleet_token(remote: TestClient) -> None:
+def test_put_directives_rejects_bots_viewers_and_fleet_token(remote: TestClient) -> None:
+    bot = remote.put("/api/priorities/directives", json=_BODY, headers={**_XHR, **_bearer("bot-tok")})
+    assert bot.status_code == 403
+    assert bot.json()["detail"]["required_scope"] == "priorities.write"
     viewer = remote.put("/api/priorities/directives", json=_BODY, headers={**_XHR, **_bearer("viewer-tok")})
     assert viewer.status_code == 403
     fleet = remote.put("/api/priorities/directives", json=_BODY, headers={**_XHR, **_bearer("fleet-secret-token")})
     assert fleet.status_code == 401
     anon = remote.put("/api/priorities/directives", json=_BODY, headers=_XHR)
     assert anon.status_code == 401
+
+
+@pytest.mark.unit
+def test_get_directives_hides_server_path_and_returns_version(remote: TestClient) -> None:
+    body = remote.get("/api/priorities/directives", headers=_bearer("fleet-secret-token")).json()
+    assert "path" not in body
+    assert isinstance(body["version"], str) and body["version"]
+
+
+@pytest.mark.unit
+def test_put_directives_optimistic_concurrency(loopback: TestClient) -> None:
+    fleet = _bearer("fleet-secret-token")
+    first = loopback.get("/api/priorities/directives", headers=fleet).json()["version"]
+    ok = loopback.put("/api/priorities/directives", json={**_BODY, "version": first}, headers=_XHR)
+    assert ok.status_code == 200, ok.text
+    assert "path" not in ok.json()
+    assert ok.json()["version"] != first
+    stale = loopback.put("/api/priorities/directives", json={"directives": [], "version": first}, headers=_XHR)
+    assert stale.status_code == 409
+    texts = [d["text"] for d in loopback.get("/api/priorities/directives", headers=fleet).json()["directives"]]
+    assert texts == ["Finish the coordination API"]
+    unversioned = loopback.put("/api/priorities/directives", json={"directives": []}, headers=_XHR)
+    assert unversioned.status_code == 200  # version is optional (scripts, fleetctl)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("text", ["Finish:\n- [ ] A", "carriage\rreturn"])
+def test_put_directives_rejects_multiline_text(loopback: TestClient, text: str) -> None:
+    body = {"directives": [{"text": text}]}
+    assert loopback.put("/api/priorities/directives", json=body, headers=_XHR).status_code == 422
+
+
+@pytest.mark.unit
+def test_one_scope_parameterised_writer_dependency() -> None:
+    from coordination import auth  # noqa: PLC0415
+    from routers import priorities as prio_router  # noqa: PLC0415
+
+    assert auth.require_priorities_writer.__name__ == "require_priorities_writer"
+    assert auth.require_coordination_writer.__name__ == "require_coordination_writer"
+    put = next(r for r in prio_router.router.routes if getattr(r, "methods", None) == {"PUT"})
+    assert auth.require_priorities_writer in {d.call for d in put.dependant.dependencies}
+
+
+@pytest.mark.unit
+def test_priorities_perimeter_exemption_is_exact() -> None:
+    from middleware import is_auth_exempt  # noqa: PLC0415
+
+    assert is_auth_exempt("/api/priorities")
+    assert is_auth_exempt("/api/priorities/directives")
+    assert not is_auth_exempt("/api/prioritiesX")
+    assert not is_auth_exempt("/api/priorities-admin/secret")
 
 
 @pytest.mark.unit

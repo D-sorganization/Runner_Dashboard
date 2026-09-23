@@ -11,10 +11,15 @@ only act as agent ``<name>``, on sessions whose id starts with ``<name>-``
 (the fleet session convention, e.g. ``codex-20260923-1045``). A bot with the
 ``admin`` or ``operator`` role, a human operator/admin, and the loopback peer
 may act as any agent on any session.
+
+``require_writer(scope)`` is the one write dependency: coordination writes use
+``coordination.write`` and operator directives use ``priorities.write`` (#1243),
+which only operators and admins hold, so bots cannot steer staff prompts.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from fastapi import Depends, HTTPException, Request
@@ -28,6 +33,7 @@ from identity import (
 )
 
 WRITE_SCOPE = "coordination.write"
+PRIORITIES_WRITE_SCOPE = "priorities.write"
 BOT_PREFIX = "agent-"
 UNRESTRICTED_ROLES = frozenset({"admin", "operator"})
 
@@ -85,19 +91,33 @@ def _caller(principal: Principal) -> Caller:
     return Caller(label=label, restricted=True, agent=principal.id.removeprefix(BOT_PREFIX) if named else None)
 
 
-def require_coordination_writer(
-    request: Request,
-    header_token: str | None = Depends(auth_header),  # noqa: B008
-) -> Caller:
-    """401 without credentials, 403 for a principal lacking ``coordination.write``."""
-    principal = _resolve_principal_optional(request, header_token)
-    if principal is not None:
-        if principal_has_scope(principal, WRITE_SCOPE):
-            return _caller(principal)
-        raise HTTPException(
-            status_code=403,
-            detail={"error": "Authorization failed", "required_scope": WRITE_SCOPE, "principal": principal.id},
-        )
-    if _loopback_auth_enabled() and _is_loopback_request(request):
-        return Caller(label="loopback-dev")
-    raise HTTPException(status_code=401, detail="Authentication required")
+def require_writer(scope: str) -> Callable[..., Caller]:
+    """FastAPI dependency accepting a principal holding ``scope`` or the loopback peer.
+
+    The dependency answers 401 without credentials and 403 for a principal lacking ``scope``;
+    the shared ``HUB_FLEET_TOKEN`` is never a write credential.
+    """
+    assert scope and "." in scope, f"scope must look like 'area.write', got {scope!r}"
+
+    def writer(
+        request: Request,
+        header_token: str | None = Depends(auth_header),  # noqa: B008
+    ) -> Caller:
+        principal = _resolve_principal_optional(request, header_token)
+        if principal is not None:
+            if principal_has_scope(principal, scope):
+                return _caller(principal)
+            raise HTTPException(
+                status_code=403,
+                detail={"error": "Authorization failed", "required_scope": scope, "principal": principal.id},
+            )
+        if _loopback_auth_enabled() and _is_loopback_request(request):
+            return Caller(label="loopback-dev")
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    writer.__name__ = f"require_{scope.split('.', 1)[0]}_writer"
+    return writer
+
+
+require_coordination_writer = require_writer(WRITE_SCOPE)
+require_priorities_writer = require_writer(PRIORITIES_WRITE_SCOPE)

@@ -17,6 +17,7 @@ import React from "react";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FleetCommandPage } from "../FleetCommand";
+import { operatorSession } from "../FleetCommand/fleetApi";
 
 afterEach(cleanup);
 beforeEach(() => {
@@ -275,7 +276,7 @@ describe("FleetCommandPage — directives", () => {
     expect(headerOf(opts, "X-Requested-With")).toBe("XMLHttpRequest");
     const body = JSON.parse(String(opts.body));
     expect(body.directives).toEqual([
-      { ...DIRECTIVE, priority: 2 },
+      { ...DIRECTIVE, set_by: undefined, priority: 2 }, // set_by is server-assigned (#1243)
       { text: "No bulk queue cancels", repo: "*", priority: 3, expires: "2026-10-01T23:59:59Z" },
     ]);
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Saved 2 active directives."));
@@ -337,7 +338,7 @@ describe("FleetCommandPage — active work", () => {
 describe("FleetCommandPage — messages", () => {
   it("prefills from Active work and sends with the CSRF header", async () => {
     const fetchMock = stubFetch((url, opts) =>
-      url === "/api/coordination/messages" && opts?.method === "POST" ? { status: 200, body: { ok: true } } : undefined,
+      url.startsWith("/api/coordination/") && opts?.method === "POST" ? { status: 200, body: { ok: true } } : undefined,
     );
     render(<FleetCommandPage />);
     openSection("Active work");
@@ -346,15 +347,17 @@ describe("FleetCommandPage — messages", () => {
 
     expect(screen.getByLabelText("To")).toHaveValue("s-2");
     expect(screen.getByLabelText("Repo")).toHaveValue("Runner_Dashboard");
+    fireEvent.change(screen.getByLabelText("Issue"), { target: { value: "7" } });
     fireEvent.change(screen.getByLabelText("Message"), { target: { value: "Please rebase on main" } });
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
 
-    await waitFor(() => expect(writes(fetchMock, "POST")).toHaveLength(1));
-    const [url, opts] = writes(fetchMock, "POST")[0];
+    await waitFor(() => expect(writes(fetchMock, "POST")).toHaveLength(2));
+    expect(writes(fetchMock, "POST")[0][0]).toBe("/api/coordination/presence");
+    const [url, opts] = writes(fetchMock, "POST")[1];
     expect(url).toBe("/api/coordination/messages");
     expect(headerOf(opts, "X-Requested-With")).toBe("XMLHttpRequest");
     expect(JSON.parse(String(opts.body))).toEqual({
-      session: "dashboard-operator",
+      session: operatorSession(),
       repo: "Runner_Dashboard",
       to: "s-2",
       text: "Please rebase on main",
@@ -434,7 +437,7 @@ describe("FleetCommandPage — claims", () => {
     expect(JSON.parse(String(release![1].body))).toEqual({
       repo: "Tools",
       issue: 42,
-      session: "dashboard-operator",
+      session: operatorSession(),
       reason: "work completed",
     });
   });

@@ -2742,7 +2742,7 @@ export interface paths {
         get: operations["get_directives_route_api_priorities_directives_get"];
         /**
          * Put Directives
-         * @description Replace the directive list. ``set_by`` defaults to the authenticated caller. Returns the active list.
+         * @description Replace the directive list. ``set_by`` is the authenticated caller (body values are ignored).
          */
         put: operations["put_directives_api_priorities_directives_put"];
         post?: never;
@@ -4748,7 +4748,10 @@ export interface components {
              * @default *
              */
             repo: string;
-            /** Set By */
+            /**
+             * Set By
+             * @description Ignored; the server sets it.
+             */
             set_by?: string | null;
             /** Set On */
             set_on?: string | null;
@@ -4759,6 +4762,11 @@ export interface components {
         DirectivesBody: {
             /** Directives */
             directives: components["schemas"]["DirectiveBody"][];
+            /**
+             * Version
+             * @description ``version`` from the GET you edited; 409 when stale.
+             */
+            version?: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
