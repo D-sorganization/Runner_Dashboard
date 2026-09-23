@@ -5,6 +5,10 @@
 **Last Updated:** 2026-09-22T00:00:00-07:00
 **Status:** Active
 
+- **2026-09-23:** Staff provider adapters match current CLIs (#1249, epic #1192). `codex` runs
+  `exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check` (codex 0.156 removed `--full-auto`);
+  stream-json text extraction reads agy's `result.response` and usage from a nested `result.usage`, so agy runs
+  that print `STAFF_RESULT:` count as succeeded. Pinned by `tests/api/test_staff_adapter_cli_contracts.py`.
 - **2026-09-23:** Priorities/clients hardening (#1243, epic #1192). `PUT /api/priorities/directives` needs the new
   `priorities.write` scope (operator preset; bots refused) or loopback; `set_by` is always the caller; directive
   text is one line (CR/LF 422); GET/PUT return `version` (PUT 409 when stale) and no storage path; one invalid

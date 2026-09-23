@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1249 · Staff Codex and Antigravity Adapters Match Current CLIs
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1249 (epic #1192)
+- **Branch:** `fix/1249-codex-agy-adapters`
+- **PR:** opened after push
+- **Paths:** `backend/staff/adapters.py`, `tests/api/test_staff_adapter_cli_contracts.py`
+- **Started:** 2026-09-23
+- **Last verified:** 2026-09-23 (`28959a2` + this change; WSL pytest `tests/api/test_staff_adapter_cli_contracts.py tests/api/test_staff_runner.py` 20 passed, RED first for the two contract tests)
+- **Summary:** Health-check ad-hoc runs on DeskComputer failed for codex (`--full-auto` rejected by codex 0.156.1) and antigravity (answer and `STAFF_RESULT:` inside `result.response` were not read). Adapter flags and parsing fixed; the CLI contracts are pinned by tests.
+- **Next step:** Merge, redeploy DeskComputer, re-run the codex and antigravity health checks.
+
 ### DL-#1243 · Priorities, staff focus and fleet clients hardening
 
 - **State:** in_review
