@@ -52,6 +52,14 @@ class ProviderAdapter:
     # Env computed at launch (e.g. the Ollama URL, which depends on the host network).
     env_builder: Callable[[], dict[str, str]] | None = None
 
+    # RM agent id used for issue leases; ``None`` means the provider id itself.
+    lease_as: str | None = None
+
+    @property
+    def lease_agent(self) -> str:
+        """RM ``AGENT_IDS`` entry this provider's runs lease under."""
+        return self.lease_as or self.provider_id
+
     def runtime_env(self) -> dict[str, str]:
         """Static ``extra_env`` overlaid with the launch-time ``env_builder`` values."""
         return {**self.extra_env, **(self.env_builder() if self.env_builder else {})}
@@ -242,6 +250,7 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
         argv=(*_UNATTENDED_CODEX, "--oss", "--local-provider", "ollama", "--model", "{model}", "{prompt}"),
         default_model=ollama_env.DEFAULT_OLLAMA_MODEL,
         env_builder=ollama_env.codex_ollama_env,
+        lease_as="local",  # RM has no per-harness id for local models
         notes="Ollama (local or :cloud) models inside the Codex agent so they can edit, commit and open PRs.",
     ),
     "claude-ollama": ProviderAdapter(
@@ -252,6 +261,7 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
         default_model=ollama_env.DEFAULT_OLLAMA_MODEL,
         json_lines=True,
         env_builder=ollama_env.claude_ollama_env,
+        lease_as="local",  # RM has no per-harness id for local models
         notes="Claude Code against Ollama's Anthropic-compatible API; never touches the Claude seat's credentials.",
     ),
 }

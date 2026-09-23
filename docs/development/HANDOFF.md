@@ -14,8 +14,9 @@ Last updated: 2026-09-23T11:40:00-07:00
 - `ollama`: was `ollama run llama3.1` (chat only, model absent, no WSL server). Now Codex `exec --oss --local-provider ollama` with `CODEX_OSS_BASE_URL`; default `glm-5.3-flash:cloud`. New `claude-ollama`: Claude Code with `ANTHROPIC_BASE_URL=<ollama>`, `ANTHROPIC_AUTH_TOKEN=ollama`, own `CLAUDE_CONFIG_DIR=~/.config/runner-dashboard/claude-ollama`. Both verified by hand with a tool call against the Windows Ollama app (0.33.3) at the WSL NAT gateway.
 - `backend/staff/ollama_env.py`: `STAFF_OLLAMA_URL` → localhost if listening → `/proc/net/route` default gateway; `ProviderAdapter.env_builder` / `runtime_env()` applied by the runner at launch.
 - Service drop-in must add `ReadWritePaths` `~/.cursor` and `~/.config/cursor` (cursor-agent keeps auth and state there); documented in `docs/staff-hub.md`.
+- Leases: `ProviderAdapter.lease_as`/`lease_agent`; `ollama` and `claude-ollama` lease as RM agent `local` (the old `ollama` provider would have been refused by `post_agent_lease`).
 - Paired RM change: `shared_scripts/staff_roles.PROVIDERS` gains `claude-ollama` so role YAML can list it.
-- Validation: WSL `PYTHONPATH=backend pytest tests/api -k "staff or provider or pricing or usage"` 165 passed, 3 skipped.
+- Validation: WSL `PYTHONPATH=backend pytest tests/api -k "staff or provider or pricing or usage"` 166 passed, 3 skipped.
 
 ---
 
