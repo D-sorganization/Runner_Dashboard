@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Any
 
 from staff import consolidation, workspace
+from staff import focus as focus_mod
 from staff import lease as lease_ritual
 from staff import usage as usage_mod
 from staff.adapters import ADAPTERS, ProviderAdapter
@@ -93,6 +94,7 @@ class RunPlan:
     branch: str
     lease_ritual: bool
     consolidation: dict[str, Any] | None = None
+    focus: str = ""  # board priorities + directives for this repo (#1239)
 
     @property
     def strategy_mode(self) -> str:
@@ -118,6 +120,7 @@ class RunPlan:
             "argv": list(self.argv),
             "branch": self.branch,
             "lease_ritual": self.lease_ritual,
+            "focus": self.focus,
             "consolidation": dict(self.consolidation) if self.consolidation else None,
         }
 
@@ -131,8 +134,10 @@ class StaffRunner:
         roles_loader: Callable[[], dict[str, RoleSpec]] = load_roles,
         adapters: dict[str, ProviderAdapter] | None = None,
         machine: str | None = None,
+        focus_loader: Callable[[], list[dict[str, Any]]] | None = None,
     ) -> None:
         self._store = store
+        self._focus_loader = focus_loader
         self._roles_loader = roles_loader
         self._adapters = adapters if adapters is not None else ADAPTERS
         self.machine = machine or os.environ.get("DISPLAY_NAME") or platform.node() or "local"
@@ -165,6 +170,7 @@ class StaffRunner:
         branch = f"staff/{role.name}-{req.issue or req.pr or 'task'}-{uuid.uuid4().hex[:6]}"
         lease = bool(role.permissions.get("lease", True)) and bool(req.issue) and bool(req.repo)
         paragraph = consolidation.prompt_paragraph(req.consolidation) if req.consolidation else ""
+        focus = focus_mod.focus_paragraph(req.repo, focus_mod.load_items(self._focus_loader)) if req.repo else ""
         prompt = workspace.compose_prompt(
             role,
             repo=req.repo,
@@ -172,6 +178,7 @@ class StaffRunner:
             operator_prompt=req.prompt,
             branch=branch,
             consolidation=paragraph,
+            focus=focus,
         )
         argv = self._adapters[provider].build_command(prompt, "<workdir>", req.model or role.model)
         return RunPlan(
@@ -187,6 +194,7 @@ class StaffRunner:
             branch=branch,
             lease_ritual=lease,
             consolidation=dict(req.consolidation) if req.consolidation else None,
+            focus=focus,
         )
 
     def _resolve_role(self, req: RunRequest) -> RoleSpec:
@@ -312,6 +320,7 @@ class StaffRunner:
             branch=plan.branch,
             lease_note=lease_note,
             consolidation=plan.consolidation_paragraph,
+            focus=plan.focus,
         )
         argv = adapter.build_command(prompt, str(workdir), plan.model)
         transcript = workdir / ".staff" / "transcript.log"
