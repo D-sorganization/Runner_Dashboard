@@ -9,20 +9,22 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-SESSION_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$"
+SESSION_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$"
 AGENT_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
-REPO_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"
+# An optional ``owner/`` prefix is accepted (board sessions may carry one) and stripped before RM sees it.
+REPO_PATTERN = r"^(?:[A-Za-z0-9-]{1,39}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"
 BRANCH_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._/@+-]{0,199}$"
-MESSAGE_ID_PATTERN = r"^[A-Za-z0-9._:-]{1,128}$"
-RECIPIENT_PATTERN = r"^(\*|[A-Za-z0-9][A-Za-z0-9._:@-]{0,127})$"
-INTENT_PATTERN = r"^[a-z][a-z-]{0,39}$"
+MESSAGE_ID_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$"
+RECIPIENT_PATTERN = r"^(\*|[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127})$"
+INTENT_PATTERN = r"^[A-Za-z0-9][^\r\n]{0,199}$"
 MAX_TEXT = 4000
 
 
-def _bare_repo(value: str) -> str:
-    if value in {".", ".."} or ".." in value:
-        raise ValueError("repo must be a bare repository name (no owner, no path)")
-    return value
+def bare_repo(value: str) -> str:
+    """``owner/name`` → ``name``; rejects ``..`` anywhere. Pre: ``value`` matched ``REPO_PATTERN``."""
+    if ".." in value:
+        raise ValueError("repo must be a repository name, not a path")
+    return value.rsplit("/", 1)[-1]
 
 
 class _Body(BaseModel):
@@ -36,7 +38,7 @@ class _SessionRepo(_Body):
     @field_validator("repo")
     @classmethod
     def _repo(cls, value: str) -> str:
-        return _bare_repo(value)
+        return bare_repo(value)
 
 
 class PresenceBody(_SessionRepo):

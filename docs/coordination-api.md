@@ -41,19 +41,19 @@ Code: `backend/routers/coordination.py` (routes), `backend/coordination/` (logic
 
 ## Request contracts
 
-| Field       | Rule                                                                        |
-| ----------- | --------------------------------------------------------------------------- |
-| `repo`      | bare repository name `^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$`, no `..`, no owner |
-| `session`   | `^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$`                                      |
-| `agent`     | `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`                                         |
-| `issue`     | integer > 0                                                                 |
-| `text`      | 1–4000 characters                                                           |
-| `ttl_hours` | 0.1–8 (default 2)                                                           |
-| `branch`    | `^[A-Za-z0-9][A-Za-z0-9._/@+-]{0,199}$`                                     |
-| `paths`     | ≤ 50 entries, each ≤ 300 characters, not starting with `-`                  |
-| `goals`     | ≤ 20 `key: outcome` pairs; keys 1–80 characters without `=`                 |
-| `to`        | a session id or `*` (everyone in `repo`)                                    |
-| `intent`    | `^[a-z][a-z-]{0,39}$` (default `implement`)                                 |
+| Field       | Rule                                                                                                          |
+| ----------- | ------------------------------------------------------------------------------------------------------------- |
+| `repo`      | repository name `^(?:owner/)?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$`; an `owner/` prefix is stripped, `..` rejected |
+| `session`   | `^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$` (also `to` and `message_id`)                                          |
+| `agent`     | `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`                                                                           |
+| `issue`     | integer > 0                                                                                                   |
+| `text`      | 1–4000 characters                                                                                             |
+| `ttl_hours` | 0.1–8 (default 2)                                                                                             |
+| `branch`    | `^[A-Za-z0-9][A-Za-z0-9._/@+-]{0,199}$`                                                                       |
+| `paths`     | ≤ 50 entries, each ≤ 300 characters, not starting with `-`                                                    |
+| `goals`     | ≤ 20 `key: outcome` pairs; keys 1–80 characters without `=`                                                   |
+| `to`        | a session id or `*` (everyone in `repo`)                                                                      |
+| `intent`    | 1–200 characters on one line, starting with a letter or digit (default `implement`)                           |
 
 Unknown body fields are rejected (422).
 
@@ -145,7 +145,8 @@ Body `{repo, issue, agent?, session, reason}` → RM `release_agent_lease`.
 
 ### `GET /api/coordination/briefing?repo=&agent=`
 
-The one call an agent makes before starting work:
+The one call an agent makes before starting work (`repo` optional; without it sessions and staff runs cover
+every repository):
 
 ```json
 {

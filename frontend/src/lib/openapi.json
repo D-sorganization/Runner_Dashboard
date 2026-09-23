@@ -6,17 +6,17 @@
         "description": "``ack``: confirm receipt (not agreement) of a message.",
         "properties": {
           "message_id": {
-            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$",
             "title": "Message Id",
             "type": "string"
           },
           "repo": {
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+            "pattern": "^(?:[A-Za-z0-9-]{1,39}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
             "title": "Repo",
             "type": "string"
           },
           "session": {
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$",
             "title": "Session",
             "type": "string"
           }
@@ -311,7 +311,7 @@
           },
           "intent": {
             "default": "implement",
-            "pattern": "^[a-z][a-z-]{0,39}$",
+            "pattern": "^[A-Za-z0-9][^\\r\\n]{0,199}$",
             "title": "Intent",
             "type": "string"
           },
@@ -321,12 +321,12 @@
             "type": "integer"
           },
           "repo": {
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+            "pattern": "^(?:[A-Za-z0-9-]{1,39}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
             "title": "Repo",
             "type": "string"
           },
           "session": {
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$",
             "title": "Session",
             "type": "string"
           }
@@ -364,12 +364,12 @@
             "type": "string"
           },
           "repo": {
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+            "pattern": "^(?:[A-Za-z0-9-]{1,39}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
             "title": "Repo",
             "type": "string"
           },
           "session": {
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$",
             "title": "Session",
             "type": "string"
           }
@@ -643,12 +643,12 @@
         "description": "``send``: message one session, or ``*`` for everyone working in ``repo``.",
         "properties": {
           "repo": {
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+            "pattern": "^(?:[A-Za-z0-9-]{1,39}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
             "title": "Repo",
             "type": "string"
           },
           "session": {
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$",
             "title": "Session",
             "type": "string"
           },
@@ -659,7 +659,7 @@
             "type": "string"
           },
           "to": {
-            "pattern": "^(\\*|[A-Za-z0-9][A-Za-z0-9._:@-]{0,127})$",
+            "pattern": "^(\\*|[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127})$",
             "title": "To",
             "type": "string"
           }
@@ -837,12 +837,12 @@
             "type": "array"
           },
           "repo": {
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+            "pattern": "^(?:[A-Za-z0-9-]{1,39}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
             "title": "Repo",
             "type": "string"
           },
           "session": {
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$",
             "title": "Session",
             "type": "string"
           },
@@ -1057,12 +1057,12 @@
         "description": "``release``: drop this session's presence.",
         "properties": {
           "repo": {
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+            "pattern": "^(?:[A-Za-z0-9-]{1,39}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
             "title": "Repo",
             "type": "string"
           },
           "session": {
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$",
             "title": "Session",
             "type": "string"
           }
@@ -3300,11 +3300,18 @@
           {
             "in": "query",
             "name": "repo",
-            "required": true,
+            "required": false,
             "schema": {
-              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
-              "title": "Repo",
-              "type": "string"
+              "anyOf": [
+                {
+                  "pattern": "^(?:[A-Za-z0-9-]{1,39}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
             }
           },
           {
@@ -3367,7 +3374,7 @@
             "name": "repo",
             "required": true,
             "schema": {
-              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+              "pattern": "^(?:[A-Za-z0-9-]{1,39}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
               "title": "Repo",
               "type": "string"
             }
@@ -3515,7 +3522,7 @@
             "name": "session",
             "required": true,
             "schema": {
-              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$",
               "title": "Session",
               "type": "string"
             }
@@ -3526,7 +3533,7 @@
             "required": false,
             "schema": {
               "default": "Repository_Management",
-              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+              "pattern": "^(?:[A-Za-z0-9-]{1,39}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
               "title": "Repo",
               "type": "string"
             }
@@ -3760,7 +3767,7 @@
             "schema": {
               "anyOf": [
                 {
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+                  "pattern": "^(?:[A-Za-z0-9-]{1,39}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
                   "type": "string"
                 },
                 {

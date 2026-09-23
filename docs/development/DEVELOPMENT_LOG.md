@@ -27,7 +27,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **PR:** opened after push
 - **Paths:** `backend/coordination/`, `backend/routers/coordination.py`, `backend/staff/lease.py`, `backend/staff/usage.py`, `backend/identity.py`, `backend/middleware.py`, `tests/api/test_coordination_*.py`, `docs/coordination-api.md`, `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`
 - **Started:** 2026-09-22
-- **Last verified:** 2026-09-22 (`26ffa70` + this change; `pytest tests/api -k "coordination or staff or auth"` 217 passed / 2 skipped; full tests/api 702 passed, 1 timing flake in test_staff_runner passes on rerun; mypy backend/ clean)
+- **Last verified:** 2026-09-22 (`9fd440d` + this change; `pytest tests/api -k "coordination or staff or auth"` 220 passed / 2 skipped; full tests/api 702 passed, 1 timing flake in test_staff_runner passes on rerun; mypy backend/ clean)
 - **Summary:** One HTTP surface for every agent: board sessions + staff runs, inbox, presence, messages, claims (409 when held) and a pre-work briefing, all through the RM scripts (shared subprocess helper extracted from the staff lease ritual). Writes need `coordination.write` or the loopback orchestrator peer.
 - **Next step:** Merge, then switch the board read to `list --all-repos` on nodes once the RM change lands (the fallback already covers older RM checkouts).
 

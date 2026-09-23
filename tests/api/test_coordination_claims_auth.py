@@ -237,3 +237,11 @@ def test_write_without_agent_needs_a_bot_principal(rm: FakeRM, monkeypatch: pyte
     assert resp.status_code == 422
     assert "agent is required" in resp.json()["detail"]
     assert rm.calls() == []
+
+
+@pytest.mark.unit
+def test_briefing_without_repo_covers_every_repo(rm: FakeRM, client: TestClient) -> None:
+    rm.respond("agent_communicate:list", board(session("s1", "Tools"), session("s2", "Games")))
+    body = client.get("/api/coordination/briefing").json()
+    assert body["repo"] is None
+    assert {s["session"] for s in body["sessions"]} == {"s1", "s2"}

@@ -70,7 +70,8 @@ def _holds() -> tuple[list[dict[str, Any]], list[str]]:
         return [], [f"holds unavailable: {exc}"]
 
 
-async def build_briefing(repo: str, agent: str | None) -> dict[str, Any]:
+async def build_briefing(repo: str | None, agent: str | None) -> dict[str, Any]:
+    """Everything an agent should know before starting in ``repo`` (all repos when None)."""
     priorities, w_priorities = await _priorities(PRIORITY_LIMIT)
     holds, w_holds = _holds()
     board_view = await asyncio.to_thread(board.read_sessions, repo)

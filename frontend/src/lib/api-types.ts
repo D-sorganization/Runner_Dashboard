@@ -6533,8 +6533,8 @@ export interface operations {
     };
     get_briefing_api_coordination_briefing_get: {
         parameters: {
-            query: {
-                repo: string;
+            query?: {
+                repo?: string | null;
                 agent?: string | null;
             };
             header?: never;

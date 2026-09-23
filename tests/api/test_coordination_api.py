@@ -190,6 +190,17 @@ def test_presence_register_passes_every_field_and_invalidates_cache(rm: FakeRM, 
 
 
 @pytest.mark.unit
+def test_owner_prefixed_repo_is_normalised_to_the_bare_name(rm: FakeRM, client: TestClient) -> None:
+    rm.respond("check_agent_claim", {"held": False, "agent": "", "reason": "", "expires_at": None})
+    assert client.get("/api/coordination/claims?repo=D-sorganization/Tools&issue=3").json()["available"] is True
+    rm.respond("agent_communicate:release", {"ok": True})
+    rel = {"session": "s-1", "repo": "D-sorganization/Tools"}
+    assert client.post("/api/coordination/presence/release", json=rel, headers=_BOT).status_code == 200
+    assert [argv[1] for _, argv in rm.calls()] == ["Tools", "Tools"]
+    assert client.get("/api/coordination/claims?repo=a..b&issue=3").status_code == 422
+
+
+@pytest.mark.unit
 def test_agent_defaults_to_bot_principal(rm: FakeRM, client: TestClient) -> None:
     rm.respond("agent_communicate:register", {"ok": True})
     body = {"session": "s-1", "repo": "Tools", "issue": 1, "branch": "b"}
@@ -232,7 +243,8 @@ def test_send_ack_and_release_call_the_matching_subcommands(rm: FakeRM, client: 
         ("/api/coordination/presence", {"session": "s", "repo": "Tools", "issue": 1, "branch": "b", "ttl_hours": 0}),
         ("/api/coordination/presence", {"session": "s", "repo": "../etc", "issue": 1, "branch": "b"}),
         ("/api/coordination/claims", {"session": "s", "repo": "Tools", "issue": 0}),
-        ("/api/coordination/claims", {"session": "s", "repo": "Owner/Tools", "issue": 3}),
+        ("/api/coordination/claims", {"session": "s", "repo": "a/b/Tools", "issue": 3}),
+        ("/api/coordination/claims", {"session": "s", "repo": "Tools", "issue": 3, "intent": "-x"}),
     ],
 )
 def test_request_contracts_reject_bad_input(rm: FakeRM, client: TestClient, path: str, body: dict) -> None:
