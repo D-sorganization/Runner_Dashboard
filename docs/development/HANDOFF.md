@@ -1,4 +1,26 @@
-# Current Handoff — Priorities, staff focus and fleet clients hardening (#1243)
+# Current Handoff — Staff Codex and Antigravity Adapters (#1249)
+
+Last updated: 2026-09-23T10:40:00-07:00
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/fix-1249-adapters` (worktree)
+- Branch: `fix/1249-codex-agy-adapters`; base `28959a2`; commit `SELF`; PR opened after push. Governing issue #1249 (epic #1192); DL-#1249.
+
+## Work
+
+- Trigger: after the owner signed in Codex (0.156.1) and agy in DeskComputer WSL, ad-hoc health checks failed: codex `run-d6b7e8a831da` exit 2 (`unexpected argument '--full-auto'`), antigravity `run-7b8f6728aa90` exit 0 but "without a STAFF_RESULT line" although agy answered `OK` and `STAFF_RESULT: ok` inside `result.response` of its final `result` event.
+
+- `backend/staff/adapters.py`: codex argv `exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check [--model] <prompt>`; `_extract_text` also reads `response`; `_extract_usage` falls back to `result.usage`.
+- `tests/api/test_staff_adapter_cli_contracts.py`: pins the codex flags and the agy result shape (RED before the fix).
+- Environment facts: WSL `~/.local/bin/agy` is a symlink to the Windows `agy.exe` (WinGet); WSL `~/.local/bin/codex` now execs the official `@openai/codex@0.156.1-linux-x64` binary in `~/.local/lib/codex-linux-x64` (old wrapper kept as `codex.wrapper-bak-20260923`, it pointed into the Windows npm package, which no longer bundles the Linux binary).
+- Validation: WSL `PYTHONPATH=backend pytest tests/api/test_staff_adapter_cli_contracts.py tests/api/test_staff_runner.py` 20 passed.
+- Next: merge, redeploy DeskComputer (§4 of `_deploy/STAFF_HUB_HANDOFF_2026-09-23.md`), re-run `POST /api/staff/ad-hoc/run` with `provider` codex and antigravity.
+
+---
+
+## Previous Handoff — Priorities, staff focus and fleet clients hardening (#1243)
 
 Last updated: 2026-09-23T02:00:00-07:00
 

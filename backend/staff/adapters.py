@@ -9,7 +9,7 @@ Adapters never spawn anything themselves; ``runner.py`` owns the subprocess.
 Flags below were verified against the installed CLIs on 2026-09-22:
 
   claude  -p --output-format stream-json --verbose --permission-mode bypassPermissions (default model sonnet)
-  codex   exec --full-auto
+  codex   exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check (0.156; --full-auto removed)
   agy     --print --output-format stream-json --dangerously-skip-permissions
   gemini  -p
   cursor-agent -p
@@ -95,7 +95,7 @@ class ProviderAdapter:
 
 def _extract_text(raw: dict[str, Any]) -> str:
     """Best-effort human text from a stream-json event (claude/agy/codex shapes)."""
-    for key in ("result", "text", "message", "content", "output"):
+    for key in ("result", "text", "message", "content", "output", "response"):  # agy: result.response
         val = raw.get(key)
         if isinstance(val, str) and val.strip():
             return val
@@ -115,6 +115,9 @@ def _extract_usage(raw: dict[str, Any]) -> dict[str, Any]:
     """Pull token/cost accounting out of a final event when present."""
     usage: dict[str, Any] = {}
     src = raw.get("usage")
+    nested = raw.get("result")
+    if not isinstance(src, dict) and isinstance(nested, dict):
+        src = nested.get("usage")  # agy reports usage inside the result event
     if isinstance(src, dict):
         for key in (
             "input_tokens",
@@ -158,8 +161,18 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
         provider_id="codex",
         label="Codex CLI",
         executable="codex",
-        argv=("exec", "--full-auto", "--model", "{model}", "{prompt}"),
-        notes="Plain text stdout; cost derived from wall time until --json is adopted.",
+        argv=(
+            "exec",
+            "--dangerously-bypass-approvals-and-sandbox",
+            "--skip-git-repo-check",
+            "--model",
+            "{model}",
+            "{prompt}",
+        ),
+        notes=(
+            "Plain text stdout; cost derived from wall time until --json is adopted. Bypass mode for the same reason "
+            "as claude bypassPermissions (commit/push/PR in its own worktree); the systemd unit is the sandbox."
+        ),
     ),
     "antigravity": ProviderAdapter(
         provider_id="antigravity",
