@@ -104,3 +104,10 @@ def test_ollama_url_prefers_localhost_then_gateway(monkeypatch: pytest.MonkeyPat
 @pytest.mark.unit
 def test_ollama_backed_providers_are_free() -> None:
     assert {"ollama", "claude-ollama"} <= pricing.FREE_PROVIDERS
+
+
+@pytest.mark.unit
+def test_ollama_backed_runs_lease_as_local_agent() -> None:
+    assert adapters_mod.ADAPTERS["ollama"].lease_agent == "local"
+    assert adapters_mod.ADAPTERS["claude-ollama"].lease_agent == "local"
+    assert adapters_mod.ADAPTERS["cursor-agent"].lease_agent == "cursor-agent"
