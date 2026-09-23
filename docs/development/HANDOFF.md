@@ -1,4 +1,15 @@
-# Current machine handoff — OGLaptop Staff Hub worker (#1192 / #1223)
+# Current Handoff — WSL Ollama bridge (#1257)
+
+- Repository/worktree: `D-sorganization/Runner_Dashboard`, `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/issue-1257-bridge`.
+- Branch `fix/issue-1257-ollama-wsl-bridge`; commit `SELF`; PR [#1261](https://github.com/D-sorganization/Runner_Dashboard/pull/1261), open; DL-#1257.
+- Adds `deploy/windows/ollama-wsl-bridge.ps1` and Python-driven PowerShell planner regressions. Installation is owner-only; live OGLaptop forwarding and scheduler remain unchanged.
+- RED: 12 planner tests failed before script existed. GREEN: all 15 pass, including the Windows dotted-mask regression discovered by a live read-only dry-run. Changed-test Ruff passes. Dry-run on Windows PowerShell 5.1 recognizes `192.168.208.1/20`, retains the forward and plans rule adoption and task registration.
+- Next: publish and arm protected squash auto-merge, give owner elevated install command with `-AdoptExisting`, verify restart/reboot and both Ollama harnesses. Then #1258 role-source updater. No actual reboot or remote tailnet validation is claimed.
+- Backups: pre-edit docs and script in local `_deploy`; deployed script creates timestamped ProgramData backups before mutations. #1259 documentation merged; #1256 awaits node redeploy.
+
+---
+
+## Previous machine handoff — OGLaptop Staff Hub worker (#1192 / #1223)
 
 - Verified locally on 2026-09-23: deployment `a82699223e07153ae85ca15707805665f15c96fe`
   contains merged provider PRs #1250 and #1253. All six requested provider health
