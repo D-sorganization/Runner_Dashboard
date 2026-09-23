@@ -1,4 +1,27 @@
-# Current Handoff — Fleet Command polish (#1241)
+# Current Handoff — Coordination API hardening (#1244)
+
+Last updated: 2026-09-23T09:30:00-07:00
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/coord-harden` (worktree)
+- Branch: `fix/coordination-hardening`; base `c0399b6`; commit `SELF`; PR opened after push.
+- Governing issue: #1244 (epic #1192); development log entry DL-#1244.
+
+## Work
+
+- `claims.py`: 409 unless holder == this agent+session (RM exposes no session today, so any hold is 409); `error:` reason = unavailable; per-issue lock; `LeaseWriteResult` mapping (comment posted → 200 + `warnings`).
+- `auth.py`: `Caller.agent_for` / `check_session`; bot `agent-<name>` bound to `<name>` and `<name>-*` sessions; misnamed bots 403 on coordination writes only (priorities PUT unaffected).
+- `models.py`: RM `_IDENTIFIER`, single-line `intent`/`reason`/goal outcomes, message control chars. `roster.py`: RM `AGENT_IDS` via `python -c`, cached, static fallback.
+- `board.py`: generation counter, single-flight misses, fallback `complete:false`, `has_live_session` (fresh read) gating send/ack.
+- Tests: new `tests/api/test_coordination_hardening.py`; `coordination_fake_rm.py` emits real RM shapes and owns the shared fixture (`install`).
+- Validation: WSL `PYTHONPATH=backend pytest tests/api -k "coordination or auth or staff"` 283 passed, 2 skipped; ruff check/format and `mypy backend/ --python-version 3.12` clean.
+- Next: deployed agents using sessions not prefixed `<agent>-` or bot ids not `agent-<name>` get 403 after merge; mint tokens accordingly.
+
+---
+
+## Previous Handoff — Fleet Command polish (#1241)
 
 Last updated: 2026-09-23T01:20:00-07:00
 

@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1244 · Coordination API hardening against real RM shapes
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1244 (epic #1192)
+- **Branch:** `fix/coordination-hardening`
+- **PR:** opened after push
+- **Paths:** `backend/coordination/`, `backend/routers/coordination.py`, `tests/api/coordination_fake_rm.py`, `tests/api/test_coordination_*.py`, `docs/coordination-api.md`
+- **Started:** 2026-09-23
+- **Last verified:** 2026-09-23 (`c0399b6` + this change; `pytest tests/api -k "coordination or auth or staff"` 283 passed, 2 skipped; ruff + `mypy backend/` clean)
+- **Summary:** Review findings 1-4, 8, 9, 12-15 on the #1229 coordination API: claim holds, fail-open checks, lease-text forgery, bot impersonation, unregistered senders, claim race, RM-aligned validation, cache generation, fallback completeness, RM `errors` shape.
+- **Next step:** Merge, then mint `agent-<name>` bot tokens on each dashboard node and re-point agents to `<agent>-*` session ids.
+
 ### DL-#1241 · Fleet Command polish: dispatchable roles, collapsed warnings
 
 - **State:** in_review

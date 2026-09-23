@@ -7,7 +7,10 @@ caller: ``list --all-repos`` when RM supports it, else one ``list`` per fleet
 repo (in parallel), merged. A board read takes seconds, so an expired entry is
 served stale while one background thread refreshes it (stale-while-revalidate);
 only the very first read, and the first read after a write, waits. Writes
-invalidate the cache.
+invalidate the cache and bump a generation counter: a read that started
+before the write is never stored afterwards (#1244). Concurrent misses on one
+key share a single load (single-flight). The per-repo fallback cannot see
+sessions in repos outside ``fleet_repos()``, so it is never ``complete``.
 
 Read results: ``{available, complete, sessions, messages, conflicts, warnings}``
 or ``{available: False, reason}``. Writes raise ``RMScriptError``.
@@ -34,8 +37,14 @@ _clock = time.monotonic
 _lock = threading.Lock()
 _cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _refreshing: set[str] = set()
+_key_locks: dict[str, threading.Lock] = {}
+_generation = 0
 MAX_PARALLEL_READS = 4
 _all_repos_supported: bool | None = None
+FALLBACK_WARNING = (
+    "RM agent_communicate lacks `list --all-repos` (RM #1704); read one repo at a time, so sessions in repos "
+    "outside COORDINATION_REPOS / the staff roles may be missing"
+)
 
 
 class RMScriptError(RuntimeError):
@@ -56,30 +65,58 @@ def reset_cache() -> None:
     with _lock:
         _cache.clear()
         _refreshing.clear()
+        _key_locks.clear()
         _all_repos_supported = None
 
 
 def _invalidate() -> None:
+    """Drop every cached read; reads already in flight become stale (their generation no longer matches)."""
+    global _generation
     with _lock:
         _cache.clear()
+        _generation += 1
 
 
-def _store(key: str, stamp: float, value: dict[str, Any]) -> None:
+def _store(key: str, stamp: float, value: dict[str, Any], generation: int) -> None:
+    """Cache ``value`` unless a write happened since the read began. Pre: ``generation`` sampled before loading."""
     if value.get("available"):
         with _lock:
-            _cache[key] = (stamp, value)
+            if generation == _generation:
+                _cache[key] = (stamp, value)
 
 
-def _refresh(key: str, loader: Any) -> None:
+def _refresh(key: str, loader: Any, generation: int) -> None:
     try:
-        _store(key, _clock(), loader())
+        _store(key, _clock(), loader(), generation)
     finally:
         with _lock:
             _refreshing.discard(key)
 
 
+def _fresh(key: str, now: float) -> dict[str, Any] | None:
+    """Pre: ``_lock`` held."""
+    hit = _cache.get(key)
+    return hit[1] if hit is not None and now - hit[0] < CACHE_SECONDS else None
+
+
+def _load_once(key: str, loader: Any) -> dict[str, Any]:
+    """Single-flight miss: the first caller loads, concurrent callers wait and reuse the stored result."""
+    with _lock:
+        key_lock = _key_locks.setdefault(key, threading.Lock())
+    with key_lock:
+        now = _clock()
+        with _lock:
+            hit = _fresh(key, now)
+            generation = _generation
+        if hit is not None:
+            return hit
+        value = loader()
+        _store(key, now, value, generation)
+        return value
+
+
 def _cached(key: str, loader: Any) -> dict[str, Any]:
-    """Fresh hit → value; stale hit → value now + one background refresh; miss → load inline."""
+    """Fresh hit → value; stale hit → value now + one background refresh; miss → load inline (single-flight)."""
     now = _clock()
     with _lock:
         hit = _cache.get(key)
@@ -88,13 +125,13 @@ def _cached(key: str, loader: Any) -> dict[str, Any]:
         start_refresh = hit is not None and key not in _refreshing
         if start_refresh:
             _refreshing.add(key)
-    if hit is not None:
-        if start_refresh:
-            threading.Thread(target=_refresh, args=(key, loader), name=f"coord-refresh-{key}", daemon=True).start()
-        return hit[1]
-    value = loader()
-    _store(key, now, value)
-    return value
+        generation = _generation
+    if hit is None:
+        return _load_once(key, loader)
+    if start_refresh:
+        args = (key, loader, generation)
+        threading.Thread(target=_refresh, args=args, name=f"coord-refresh-{key}", daemon=True).start()
+    return hit[1]
 
 
 def fleet_repos() -> list[str]:
@@ -154,7 +191,10 @@ def _read_all() -> dict[str, Any]:
     repos = fleet_repos()
     with ThreadPoolExecutor(max_workers=min(MAX_PARALLEL_READS, max(len(repos), 1))) as pool:
         parts = list(pool.map(lambda repo: _parse_read(run_module(SCRIPT, "--repo", repo, "list")), repos))
-    return _merge(parts)
+    merged = _merge(parts)
+    if merged["available"]:
+        merged = {**merged, "complete": False, "warnings": [*merged["warnings"], FALLBACK_WARNING]}
+    return merged
 
 
 def _merge(parts: list[dict[str, Any]]) -> dict[str, Any]:
@@ -184,6 +224,20 @@ def read_sessions(repo: str | None = None) -> dict[str, Any]:
         return data
     wanted = repo.casefold()
     return {**data, "sessions": [s for s in data["sessions"] if str(s.get("repo") or "").casefold() == wanted]}
+
+
+def has_live_session(session: str, repo: str) -> bool:
+    """Does ``session`` hold live presence in ``repo`` right now? Reads the board fresh (bypasses the cache).
+
+    RM binds a session to the repo it registered in and silently drops messages and acks from any other
+    sender, so this is the precondition for ``send`` / ``ack``. Raises ``RMScriptError`` when the board
+    cannot be read (an unknown answer must not be treated as "registered").
+    """
+    _invalidate()
+    data = read_sessions(repo)
+    if not data["available"]:
+        raise RMScriptError(f"board unavailable, cannot confirm presence of {session}: {data.get('reason')}")
+    return any(str(s.get("session")) == session for s in data["sessions"])
 
 
 def read_inbox(session: str, repo: str) -> dict[str, Any]:

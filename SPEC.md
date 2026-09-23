@@ -5,6 +5,15 @@
 **Last Updated:** 2026-09-22T00:00:00-07:00
 **Status:** Active
 
+- **2026-09-23:** Coordination API hardening (#1244, epic #1192). Claims: 409 whenever RM reports `held` and the
+  holder is not this agent+session (empty holder, other agent, or session unknown); RM fail-open
+  `reason: error:*` is `available:false` / 502; check-then-post serialized per `repo#issue`; RM `errors: [...]`
+  surfaced and a posted comment with a failed label is 200 + `warnings`. Auth: bot principal `agent-<name>` acts
+  only as `<name>` on sessions `<name>-*` (403 otherwise); operator/admin/loopback unrestricted. Validation mirrors
+  RM (`_IDENTIFIER` sessions/recipients/message ids/goal keys, outcomes <= 250, single-line `intent`/`reason`/goal
+  outcomes, message control chars, agent in RM roster via new `coordination/roster.py`). Messages/acks need live
+  presence in a fresh board read (409). Board cache: write-generation guard, single-flight misses, per-repo
+  fallback reported `complete:false` with a warning.
 - **2026-09-23:** Assign role picker filters `dispatchable`; Active work warnings collapse into `<details>` (#1241, epic #1192).
 - **2026-09-23:** Staff prompt fleet focus (#1239, epic #1192). `staff.focus.focus_paragraph(repo, items)` filters
   `priorities.service.top_priorities` to board items whose project matches the repo and directives scoped to it or `*`
