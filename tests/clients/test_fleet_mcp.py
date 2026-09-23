@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from fleet_fixtures import _clean_fleet_env, fake_api  # pytest fixtures
 
 SERVER = Path(__file__).resolve().parents[2] / "clients" / "fleet" / "fleet_mcp.py"
 

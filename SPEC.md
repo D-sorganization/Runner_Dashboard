@@ -98,6 +98,8 @@ never` (late > 1.5 intervals since the last success, dead > 3 intervals or fired
 - **2026-09-22:** Staff Hub node setup documented (#1223, epic #1192).
   `docs/staff-hub.md` "Node setup": drop-in paths, `CLAUDE_CONFIG_DIR` for token refresh under the read-only home,
   `GIT_CONFIG_GLOBAL`, `~/staff-repos` + `~/staff-worktrees`.
+- **2026-09-23:** Fleet API follow-ups (#1234, epic #1192). `staff.holds.active_holds()` feeds the summary `holds`;
+  client `register_presence` requires `issue`/`branch`, TTL ≤ 8 h; `tests/clients/fleet_fixtures.py` replaces its conftest.
 - **2026-09-22:** Staff Hub skip linked issues (#1225, epic #1192). `FLEET_RULES` adds: skip an issue an open PR
   already references (`gh pr list --state open --search <n>`).
 - **2026-09-22:** Staff Hub unattended runs (#1221, epic #1192).

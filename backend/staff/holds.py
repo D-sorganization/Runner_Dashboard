@@ -153,3 +153,8 @@ class HoldsList:
         tmp = path.with_suffix(".tmp")
         tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         os.replace(tmp, path)
+
+
+def active_holds() -> list[dict[str, Any]]:
+    """Active holds as plain dicts, for read-only views such as ``GET /api/staff/summary``."""
+    return [h.to_dict() for h in HoldsList().load() if h.active]

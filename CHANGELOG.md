@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `GET /api/staff/summary` now lists active holds (`staff.holds.active_holds` was missing); the fleet client requires `issue` + `branch` for presence and caps TTL at 8 h like the server; client test fixtures no longer shadow `tests/conftest.py` (#1234).
 - Staff Hub fleet rules tell agents to skip an issue that an open pull request already references, so remediator runs stop opening duplicate PRs (#1225).
 - Staff Hub node setup documented in `docs/staff-hub.md`: systemd drop-in, service-owned `CLAUDE_CONFIG_DIR` (the CLI cannot refresh its OAuth token under `ProtectHome=read-only` without it), `GIT_CONFIG_GLOBAL`, and Linux-side clones (#1223).
 - Staff Hub scheduled runs can now finish unattended: the Claude adapter uses `--permission-mode bypassPermissions` (the run is confined to its own worktree) with default model `sonnet`; the role playbook is inlined from `STAFF_RM_ROOT`; scheduled prompts name the role and repo, and repos rotate daily; exit 0 without a `STAFF_RESULT` line is recorded as `failed` (#1221, epic #1192).

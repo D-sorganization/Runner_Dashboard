@@ -428,3 +428,14 @@ def test_scheduled_repo_rotates_one_repo_per_day() -> None:
     picked = [scheduler_mod.scheduled_repo(repos, d) for d in days]
     assert sorted(picked[:3]) == ["A", "B", "C"] and picked[3] == picked[0]
     assert scheduler_mod.scheduled_repo((), days[0]) == ""
+
+
+def test_active_holds_feeds_summary_view(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """``GET /api/staff/summary`` reads ``holds.active_holds`` (it was missing, so summary showed none)."""
+    path = tmp_path / "holds.json"
+    path.write_text(
+        json.dumps({"holds": [{"text": "keep", "applies_to": ["barb"]}, {"text": "old", "active": False}]}),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("STAFF_HOLDS_FILE", str(path))
+    assert [h["text"] for h in holds_mod.active_holds()] == ["keep"]

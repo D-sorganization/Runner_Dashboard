@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 from fleet_client import DEFAULT_URL, FleetAPIError, FleetArgumentError, FleetClient
+from fleet_fixtures import _clean_fleet_env, fake_api  # pytest fixtures
 
 
 @pytest.fixture
@@ -139,7 +140,7 @@ def test_environment_configuration(fake_api: Any, monkeypatch: pytest.MonkeyPatc
     monkeypatch.setenv("FLEET_API_TIMEOUT", "4")
     client = FleetClient()
     assert (client.base_url, client.timeout) == (fake_api.url, 4.0)
-    client.register_presence("Runner_Dashboard", issue=12, paths=["clients/"], ttl_hours=2)
+    client.register_presence("Runner_Dashboard", issue=12, branch="feat/x", paths=["clients/"], ttl_hours=2)
     rec = fake_api.last
     assert rec.headers["authorization"] == "Bearer env-tok"
     assert rec.path == "/api/coordination/presence"
@@ -148,6 +149,7 @@ def test_environment_configuration(fake_api: Any, monkeypatch: pytest.MonkeyPatc
         "session": "g-1",
         "repo": "Runner_Dashboard",
         "issue": 12,
+        "branch": "feat/x",
         "paths": ["clients/"],
         "ttl_hours": 2,
     }
@@ -207,7 +209,9 @@ BAD_CALLS: list[tuple[str, dict[str, Any]]] = [
     ("staff_runs", {"status": "weird"}),
     ("set_directives", {"directives": [{"text": "x", "priority": 9}]}),
     ("set_directives", {"directives": [{"text": "x", "colour": "red"}]}),
-    ("register_presence", {"repo": "Runner_Dashboard", "ttl_hours": 0}),
+    ("register_presence", {"repo": "Runner_Dashboard", "issue": 1, "branch": "b", "ttl_hours": 0}),
+    ("register_presence", {"repo": "Runner_Dashboard", "issue": 1, "branch": "b", "ttl_hours": 9}),
+    ("register_presence", {"repo": "Runner_Dashboard", "issue": 0, "branch": "b"}),
 ]
 
 

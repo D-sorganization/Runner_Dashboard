@@ -8,6 +8,7 @@ from typing import Any
 import fleetctl
 import pytest
 from fleet_client import FleetClient
+from fleet_fixtures import _clean_fleet_env, fake_api  # pytest fixtures
 from fleet_tools import BY_CLI, BY_TOOL, COMMANDS
 
 
@@ -47,6 +48,10 @@ def test_register_presence_repeated_paths(capsys: pytest.CaptureFixture[str], fa
         "register-presence",
         "--repo",
         "Runner_Dashboard",
+        "--issue",
+        "1228",
+        "--branch",
+        "feat/fleet-clients",
         "--session",
         "s-1",
         "--paths",
