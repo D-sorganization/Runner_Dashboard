@@ -40,7 +40,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **PR:** opened after push
 - **Paths:** `deploy/ollama-wsl-bridge.ps1`, `tests/deploy/test_ollama_wsl_bridge_script.py`, `docs/staff-hub.md`
 - **Started:** 2026-09-23
-- **Last verified:** 2026-09-23 (`478ae89` + this change; `pytest tests/deploy/test_ollama_wsl_bridge_script.py` 11 passed under pwsh 7; helpers also run under Windows PowerShell 5.1; live `-Action Status` on DeskComputer reports `ollama-exposed`, non-elevated `Apply` refused)
+- **Last verified:** 2026-09-23 (`478ae89` + this change; `pytest tests/deploy/test_ollama_wsl_bridge_script.py` 11 passed under pwsh 7; helpers also run under Windows PowerShell 5.1; live `-Action Status` on DeskComputer reported `ollama-exposed`, non-elevated `Apply` refused; DeskComputer installed 14:05 PT and verified)
 - **Summary:** Standardises OGLaptop's approach (Ollama on 127.0.0.1, portproxy on the WSL adapter address, firewall rule limited to the WSL subnet) as one idempotent script with a re-apply task, so the bridge survives WSL adapter address changes. Replaces DeskComputer's "Expose Ollama to the network" + `ollama.exe` Allow-Any rules.
 - **Next step:** Merge, then the owner runs the DeskComputer steps in `docs/staff-hub.md` "Ollama for WSL".
 

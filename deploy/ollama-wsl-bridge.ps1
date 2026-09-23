@@ -224,7 +224,9 @@ function Invoke-BridgeApply {
         Write-BridgeResult -Plan $plan -Outcome $(if ($plan.Status -eq 'apply') { 'planned' } else { $plan.Status })
         return $plan
     }
-    Backup-PortProxy
+    # Back up only when a forward changes: the task re-applies every 15 min and a no-op run
+    # (rule refresh only) must not leave a backup file behind each time.
+    if (@($plan.Actions | Where-Object { $_.Op -in @('add-forward', 'remove-forward') }).Count -gt 0) { Backup-PortProxy }
     foreach ($step in $plan.Actions) {
         switch ($step.Op) {
             'remove-forward' { Invoke-Netsh @('interface', 'portproxy', 'delete', 'v4tov4', "listenaddress=$($step.ListenAddress)", "listenport=$($step.ListenPort)") | Out-Null }
