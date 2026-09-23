@@ -277,10 +277,10 @@ class FleetClient:
     def register_presence(
         self,
         repo: str,
+        issue: int,
+        branch: str,
         session: str | None = None,
         agent: str | None = None,
-        issue: int | None = None,
-        branch: str | None = None,
         paths: list[str] | None = None,
         goals: dict[str, Any] | None = None,
         ttl_hours: float | None = None,
@@ -290,15 +290,15 @@ class FleetClient:
             paths = [_text(p, "paths[]", 300) for p in paths]
         _check(goals is None or isinstance(goals, dict), "goals must be an object")
         _check(
-            ttl_hours is None or (isinstance(ttl_hours, (int, float)) and 0 < ttl_hours <= 72),
-            "ttl_hours must be in (0, 72]",
+            ttl_hours is None or (isinstance(ttl_hours, (int, float)) and 0 < ttl_hours <= 8),
+            "ttl_hours must be in (0, 8]",
         )
         body = {
             "agent": self._agent(agent),
             "session": self._session(session),
             "repo": _match(_REPO, repo, "repo"),
-            "issue": None if issue is None else _positive_int(issue, "issue"),
-            "branch": _opt(_IDENT, branch, "branch"),
+            "issue": _positive_int(issue, "issue"),  # RM presence requires issue + branch
+            "branch": _match(_IDENT, branch, "branch"),
             "paths": paths,
             "goals": goals,
             "ttl_hours": ttl_hours,

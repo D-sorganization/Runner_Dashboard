@@ -1,4 +1,23 @@
-# Current Handoff — Fleet Coordination API (#1229)
+# Current Handoff — Fleet API follow-ups (#1234)
+
+Last updated: 2026-09-23T00:40:00-07:00
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/fleet-followups` (worktree)
+- Branch: `fix/fleet-api-followups`; commit `SELF`; PR opened after push.
+
+## Work
+
+- `staff.holds.active_holds()` added, so `/api/staff/summary` shows active holds.
+- `clients/fleet`: `register_presence(repo, issue, branch, ...)`, TTL ≤ 8 h; the tool schema requires `repo`, `issue` and `branch`.
+- `tests/clients/conftest.py` → `fleet_fixtures.py`, imported explicitly; `clients/fleet` goes on `sys.path` in `tests/conftest.py`; ruff per-file ignore F401/F811 for `tests/clients`.
+- Validation (WSL 3.12): `pytest tests/api tests/clients -o addopts=""` → 733 passed.
+
+---
+
+## Previous Handoff — Current Handoff — Fleet Coordination API (#1229)
 
 Last updated: 2026-09-22T23:59:00-07:00
 

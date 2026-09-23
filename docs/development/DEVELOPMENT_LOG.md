@@ -57,6 +57,19 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** Node setup for staff roles (drop-in, `CLAUDE_CONFIG_DIR`, `GIT_CONFIG_GLOBAL`, Linux clones) moves from operator scripts into the Staff Hub doc, including why a read-only home blocks Claude token refresh.
 - **Next step:** Merge; apply the same setup on ControlTower and OGLaptop.
 
+### DL-#1234 · Fleet API follow-ups
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1234 (epic #1192)
+- **Branch:** `fix/fleet-api-followups`
+- **PR:** opened after push
+- **Paths:** `backend/staff/holds.py`, `clients/fleet/fleet_client.py`, `clients/fleet/fleet_tools.py`, `tests/clients/`, `tests/conftest.py`, `tests/api/test_staff_schedule.py`, `pyproject.toml`
+- **Started:** 2026-09-23
+- **Last verified:** 2026-09-23 (main + this change; `pytest tests/api tests/clients` together: 733 passed, 7 skipped, cancel-timing test deselected)
+- **Summary:** Summary holds were always empty; client presence contract drifted from the server; a second conftest broke combined test runs.
+- **Next step:** Merge.
+
 ### DL-#1225 · Staff runs skip issues with an open linked PR
 
 - **State:** in_review

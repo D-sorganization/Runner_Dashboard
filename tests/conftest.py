@@ -43,6 +43,11 @@ repo_root_str = str(REPO_ROOT)
 if repo_root_str not in sys.path:
     sys.path.insert(0, repo_root_str)
 
+# Fleet API clients (#1228) are stdlib scripts, imported by module name in tests/clients.
+clients_dir = str(REPO_ROOT / "clients" / "fleet")
+if clients_dir not in sys.path:
+    sys.path.insert(0, clients_dir)
+
 import pytest  # noqa: E402
 
 

@@ -93,9 +93,14 @@ COMMANDS: tuple[Command, ...] = (
             "branch": {"type": "string", "description": "Your working branch."},
             "paths": {"type": "array", "items": {"type": "string"}, "description": "Paths you will edit."},
             "goals": {"type": "object", "description": "Free-form goals object."},
-            "ttl_hours": {"type": "number", "exclusiveMinimum": 0, "maximum": 72, "description": "Presence TTL."},
+            "ttl_hours": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 8,
+                "description": "Presence TTL (RM cap 8 h).",
+            },
         },
-        required=("repo",),
+        required=("repo", "issue", "branch"),
         tool="fleet_register_presence",
     ),
     Command(

@@ -1,5 +1,9 @@
 """Shared fixtures for the Fleet API client tests (#1228).
 
+Not a ``conftest.py``: a second conftest module shadows ``tests/conftest.py`` for tests that
+``from conftest import ...`` when both directories are collected together. Test modules import
+the fixtures explicitly instead.
+
 ``fake_api`` is a real ``http.server`` on an ephemeral loopback port that records every
 request (method, path, query, headers, JSON body) and answers ``{"ok": true, "echo": ...}``
 unless a canned response was registered with ``fake_api.respond(...)``.
@@ -8,20 +12,14 @@ unless a canned response was registered with ``fake_api.respond(...)``.
 from __future__ import annotations
 
 import json
-import sys
 import threading
 import urllib.parse
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 from typing import Any
 
 import pytest
-
-CLIENT_DIR = Path(__file__).resolve().parents[2] / "clients" / "fleet"
-if str(CLIENT_DIR) not in sys.path:
-    sys.path.insert(0, str(CLIENT_DIR))
 
 
 @dataclass
