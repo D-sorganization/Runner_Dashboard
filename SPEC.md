@@ -83,6 +83,9 @@ never` (late > 1.5 intervals since the last success, dead > 3 intervals or fired
   #1196 lands, `roles`). `POST /api/staff/{role}/run` accepts `machine: local | <peer name> | auto`;
   unknown → 422, unreachable peer → 503, peer rejection passes through. Env: `STAFF_PEER_TIMEOUT_SECONDS`.
   TDD: 10 tests in `tests/api/test_staff_fleet.py` with injected `get_json`/`post_json` fakes.
+- **2026-09-22:** Staff Hub fleet-rule guardrails (#1217, epic #1192, companion RM#1700).
+  `FLEET_RULES` adds: never take `claim:local` or another agent's live lease; never file bulk remediation
+  issues. Role `holds:` are scheduler blocks only. TDD: `tests/api/test_staff_fleet_rules.py`.
 - **2026-09-22:** Staff Hub PR-consolidation strategy (#1213, epic #1192, companion RM#1690).
   `RoleSpec` gains an optional `strategy` dict parsed from the role YAML
   (`strategy: {consolidate_when: {open_prs, utilisation_pct}}`, unknown keys ignored). New

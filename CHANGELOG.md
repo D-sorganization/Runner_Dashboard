@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Staff Hub built-in fleet rules now also forbid taking `claim:local` / leased work and filing bulk remediation issues, so every staff prompt carries all three agent guardrails independent of role text (#1217, companion Repository_Management#1700).
+
 ### Added
 
 - Staff Hub PR-consolidation strategy: roles may declare `strategy.consolidate_when` (`open_prs`, `utilisation_pct`); the scheduler and `POST /api/staff/{role}/run` evaluate it against the repo's open non-draft PRs and fleet utilisation, inject a `consolidate` / `serial` paragraph into the prompt, return `plan.consolidation`, store `strategy_mode` and the parsed `outcome` ("consolidated N PRs into #M") on the run; the Staff tab shows the threshold on the roster card and the outcome in the run log (#1213, epic #1192).

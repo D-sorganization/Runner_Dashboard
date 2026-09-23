@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1217 · Staff Hub fleet-rule guardrails
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1217 (epic #1192; companion Repository_Management#1700)
+- **Branch:** `fix/staff-fleet-rules-guardrails`
+- **PR:** opened after push
+- **Paths:** `backend/staff/workspace.py`, `tests/api/test_staff_fleet_rules.py`
+- **Started:** 2026-09-22
+- **Last verified:** 2026-09-22 (`26b238f` + this change; 45 passed across staff fleet-rules/consolidation/schedule tests)
+- **Summary:** Role files carried agent guardrails as `holds:`, which the scheduler seeds as blocks; RM#1701 removes them and this change puts the missing two (claim:local/leases, no bulk issue filing) into the built-in `FLEET_RULES` every prompt ends with.
+- **Next step:** Merge; no deploy action beyond the next build.
+
 ### DL-#1213 · Staff Hub PR-consolidation strategy
 
 - **State:** in_review
