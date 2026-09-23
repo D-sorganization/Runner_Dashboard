@@ -27,6 +27,26 @@ def bare_repo(value: str) -> str:
     return value.rsplit("/", 1)[-1]
 
 
+SCOPE_FORBIDDEN_CHARS = "\\:*?[]"
+
+
+def normalize_scope_path(raw: str) -> str:
+    """Normalise a presence scope to RM's rule (relative, no globs, no ``.``/``..`` parts).
+
+    ``./backend/coordination/`` becomes ``backend/coordination``; anything RM would reject raises
+    ``ValueError`` so the caller gets a 422 here instead of a 502 from the board script.
+    """
+    path = raw.strip()
+    while path.startswith("./"):
+        path = path[2:]
+    path = path.rstrip("/")
+    if not path or len(path) > 300 or path.startswith(("-", "/")):
+        raise ValueError("paths must be relative, non-empty, at most 300 characters and not start with '-'")
+    if any(ch in path for ch in SCOPE_FORBIDDEN_CHARS) or any(p in {"", ".", ".."} for p in path.split("/")):
+        raise ValueError(f"path {raw!r} must be a normalised relative path without globs")
+    return path
+
+
 class _Body(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
@@ -54,9 +74,7 @@ class PresenceBody(_SessionRepo):
     @field_validator("paths")
     @classmethod
     def _paths(cls, value: list[str]) -> list[str]:
-        if any(not p.strip() or len(p) > 300 or p.startswith("-") for p in value):
-            raise ValueError("paths must be non-empty, at most 300 characters and not start with '-'")
-        return value
+        return [normalize_scope_path(p) for p in value]
 
     @field_validator("goals")
     @classmethod

@@ -4,7 +4,10 @@ The board (Repository_Management issue #1576) stays the single message store;
 this module only calls ``python -m scripts.agent_communicate``. Reads are
 cached in-process for ``CACHE_SECONDS`` so one GitHub read serves every
 caller: ``list --all-repos`` when RM supports it, else one ``list`` per fleet
-repo, merged. Writes invalidate the cache.
+repo (in parallel), merged. A board read takes seconds, so an expired entry is
+served stale while one background thread refreshes it (stale-while-revalidate);
+only the very first read, and the first read after a write, waits. Writes
+invalidate the cache.
 
 Read results: ``{available, complete, sessions, messages, conflicts, warnings}``
 or ``{available: False, reason}``. Writes raise ``RMScriptError``.
@@ -15,6 +18,7 @@ from __future__ import annotations
 import os
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from coordination.rm_scripts import ScriptResult, run_module
@@ -29,6 +33,8 @@ DEFAULT_GUIDANCE = "Coordination unavailable; retain leases and inspect active P
 _clock = time.monotonic
 _lock = threading.Lock()
 _cache: dict[str, tuple[float, dict[str, Any]]] = {}
+_refreshing: set[str] = set()
+MAX_PARALLEL_READS = 4
 _all_repos_supported: bool | None = None
 
 
@@ -49,6 +55,7 @@ def reset_cache() -> None:
     global _all_repos_supported
     with _lock:
         _cache.clear()
+        _refreshing.clear()
         _all_repos_supported = None
 
 
@@ -57,16 +64,36 @@ def _invalidate() -> None:
         _cache.clear()
 
 
+def _store(key: str, stamp: float, value: dict[str, Any]) -> None:
+    if value.get("available"):
+        with _lock:
+            _cache[key] = (stamp, value)
+
+
+def _refresh(key: str, loader: Any) -> None:
+    try:
+        _store(key, _clock(), loader())
+    finally:
+        with _lock:
+            _refreshing.discard(key)
+
+
 def _cached(key: str, loader: Any) -> dict[str, Any]:
+    """Fresh hit → value; stale hit → value now + one background refresh; miss → load inline."""
     now = _clock()
     with _lock:
         hit = _cache.get(key)
         if hit is not None and now - hit[0] < CACHE_SECONDS:
             return hit[1]
+        start_refresh = hit is not None and key not in _refreshing
+        if start_refresh:
+            _refreshing.add(key)
+    if hit is not None:
+        if start_refresh:
+            threading.Thread(target=_refresh, args=(key, loader), name=f"coord-refresh-{key}", daemon=True).start()
+        return hit[1]
     value = loader()
-    if value.get("available"):
-        with _lock:
-            _cache[key] = (now, value)
+    _store(key, now, value)
     return value
 
 
@@ -124,7 +151,10 @@ def _read_all() -> dict[str, Any]:
             _all_repos_supported = True if parsed["available"] else None
             return parsed
         _all_repos_supported = False
-    return _merge([_parse_read(run_module(SCRIPT, "--repo", repo, "list")) for repo in fleet_repos()])
+    repos = fleet_repos()
+    with ThreadPoolExecutor(max_workers=min(MAX_PARALLEL_READS, max(len(repos), 1))) as pool:
+        parts = list(pool.map(lambda repo: _parse_read(run_module(SCRIPT, "--repo", repo, "list")), repos))
+    return _merge(parts)
 
 
 def _merge(parts: list[dict[str, Any]]) -> dict[str, Any]:

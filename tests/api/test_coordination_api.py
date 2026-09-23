@@ -7,6 +7,7 @@ a temp RM root whose ``scripts/*.py`` log their argv and print canned JSON.
 from __future__ import annotations
 
 import sys
+import time
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,7 @@ from typing import Any
 import identity
 import pytest
 from coordination import board as board_mod
+from coordination.models import normalize_scope_path
 from coordination_fake_rm import FakeRM, board, session
 from fastapi.testclient import TestClient
 from staff import fleet as staff_fleet
@@ -98,8 +100,48 @@ def test_board_reads_are_cached_for_60_seconds(rm: FakeRM, client: TestClient, m
     client.get("/api/coordination/sessions?repo=Tools")
     assert len(_argv(rm, "agent_communicate")) == 1
     now[0] += 61
-    client.get("/api/coordination/sessions")
+    client.get("/api/coordination/sessions")  # stale: served from cache, one background refresh
+    _wait_for(lambda: len(_argv(rm, "agent_communicate")) == 2)
+    client.get("/api/coordination/sessions")  # refreshed entry is fresh again
     assert len(_argv(rm, "agent_communicate")) == 2
+
+
+def _wait_for(cond: Any, timeout: float = 10.0) -> None:
+    deadline = time.monotonic() + timeout
+    while not cond():
+        assert time.monotonic() < deadline, "condition not met in time"
+        time.sleep(0.02)
+
+
+@pytest.mark.unit
+def test_stale_board_read_is_served_immediately_while_refreshing(
+    rm: FakeRM, client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    now = [1000.0]
+    monkeypatch.setattr(board_mod, "_clock", lambda: now[0])
+    rm.respond("agent_communicate:list", board(session("s1", "Tools")))
+    assert [s["session"] for s in client.get("/api/coordination/sessions").json()["sessions"]] == ["s1"]
+    rm.respond("agent_communicate:list", board(session("s2", "Tools")))
+    now[0] += 61
+    stale = client.get("/api/coordination/sessions").json()["sessions"]
+    assert [s["session"] for s in stale] == ["s1"]  # no wait on the slow GitHub read
+    _wait_for(lambda: [s["session"] for s in client.get("/api/coordination/sessions").json()["sessions"]] == ["s2"])
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [("./backend/coordination/", "backend/coordination"), ("docs/x.md", "docs/x.md"), (" clients/ ", "clients")],
+)
+def test_presence_paths_are_normalised(raw: str, expected: str) -> None:
+    assert normalize_scope_path(raw) == expected
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("raw", ["", "/abs", "../up", "a/./b", "src/*.py", "C:/x", "-flag", "a//b"])
+def test_presence_paths_rm_would_reject_are_422(raw: str) -> None:
+    with pytest.raises(ValueError):
+        normalize_scope_path(raw)
 
 
 @pytest.mark.unit

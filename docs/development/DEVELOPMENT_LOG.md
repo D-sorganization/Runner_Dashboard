@@ -57,6 +57,19 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** Node setup for staff roles (drop-in, `CLAUDE_CONFIG_DIR`, `GIT_CONFIG_GLOBAL`, Linux clones) moves from operator scripts into the Staff Hub doc, including why a read-only home blocks Claude token refresh.
 - **Next step:** Merge; apply the same setup on ControlTower and OGLaptop.
 
+### DL-#1237 · Coordination read latency and path normalisation
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1237 (epic #1192)
+- **Branch:** `fix/coordination-swr-cache`
+- **PR:** opened after push
+- **Paths:** `backend/coordination/board.py`, `backend/coordination/models.py`, `tests/api/test_coordination_api.py`
+- **Started:** 2026-09-23
+- **Last verified:** 2026-09-23 (main + this change; `pytest tests/api -k coordination` 52 passed in WSL 3.12)
+- **Summary:** A cold briefing took about 24 s (sequential per-repo board reads), and Claude's MCP tool call timed out. Stale-while-revalidate and parallel fallback reads fix it; presence paths are normalised to RM's rule at the API.
+- **Next step:** Merge and redeploy DeskComputer.
+
 ### DL-#1234 · Fleet API follow-ups
 
 - **State:** in_review
