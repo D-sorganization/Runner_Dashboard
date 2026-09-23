@@ -168,11 +168,11 @@ reachable from any live state and `abandoned` from `parked`.
 - **Issue:** #1223 (epic #1192)
 - **Branch:** `docs/staff-hub-node-setup`
 - **PR:** opened after push
-- **Paths:** `docs/staff-hub.md`
+- **Paths:** `docs/staff-hub.md`, `docs/operations/oglaptop-staff-worker.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-22
-- **Last verified:** 2026-09-22 (`c12a7dc` + this change; the fix was reproduced and verified on DeskComputer with `systemd-run` under the unit sandbox)
-- **Summary:** Node setup for staff roles (drop-in, `CLAUDE_CONFIG_DIR`, `GIT_CONFIG_GLOBAL`, Linux clones) moves from operator scripts into the Staff Hub doc, including why a read-only home blocks Claude token refresh.
-- **Next step:** Merge; apply the same setup on ControlTower and OGLaptop.
+- **Last verified:** 2026-09-23 (OGLaptop deployed `a82699223e07153ae85ca15707805665f15c96fe`, including #1250/#1253; all six provider health checks succeeded; running scheduler flag remains 0).
+- **Summary:** Node setup for staff roles (drop-in, `CLAUDE_CONFIG_DIR`, `GIT_CONFIG_GLOBAL`, Linux clones) moves from operator scripts into the Staff Hub doc, including why a read-only home blocks Claude token refresh. OGLaptop now has a machine runbook with deployed identity, sign-in state, scoped Ollama forwarding, health run IDs, backups, and rollback. Follow-up documentation branch: `docs/issue-1192-oglaptop-worker-status`; PR not created pending owner approval; ControlTower was not changed in this session.
+- **Next step:** Publish the OGLaptop machine-status documentation after the owner's required approval for outward-facing actions.
 
 ### DL-#1237 · Coordination read latency and path normalisation
 

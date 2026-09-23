@@ -216,6 +216,11 @@ them and never to contradict a directive. The paragraph appears as `focus` in a 
 
 ## Node setup (#1223)
 
+Verified machine state, deployment identity, provider health evidence, network
+configuration, and rollback paths are recorded in the
+[OGLaptop worker runbook](operations/oglaptop-staff-worker.md). Check its
+verification date and the live API before assuming the recorded state still holds.
+
 A node that runs staff roles needs four things beyond the dashboard install. DeskComputer was set up this
 way on 2026-09-22; `_deploy/node_bootstrap_staff_hub.sh` in the operator workspace does all of it.
 
