@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1252 · Staff Provider Options: Cursor Agent and Ollama via Codex/Claude Code
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1252 (epic #1192)
+- **Branch:** `feat/1252-cursor-ollama-providers`
+- **PR:** opened after push
+- **Paths:** `backend/staff/adapters.py`, `backend/staff/ollama_env.py`, `backend/staff/runner.py`, `backend/staff/pricing.py`, `tests/api/test_staff_provider_options.py`, `docs/staff-hub.md`
+- **Started:** 2026-09-23
+- **Last verified:** 2026-09-23 (`c174896` + this change; WSL pytest `tests/api -k "staff or provider or pricing or usage"` 165 passed, 3 skipped; each CLI path verified by hand on DeskComputer WSL)
+- **Summary:** cursor-agent unattended stream-json (Grok via Cursor); `ollama` = Ollama models inside Codex `--oss`; new `claude-ollama` = Ollama models inside Claude Code on Ollama's Anthropic API with its own config dir; Ollama URL from env, localhost or the WSL gateway; drop-in docs add `~/.cursor`, `~/.config/cursor`.
+- **Next step:** Merge the paired RM PR (`staff_roles.PROVIDERS` + `claude-ollama`), deploy, run one health check per provider.
+
 ### DL-#1249 · Staff Codex and Antigravity Adapters Match Current CLIs
 
 - **State:** in_review

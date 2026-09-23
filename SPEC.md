@@ -5,6 +5,12 @@
 **Last Updated:** 2026-09-22T00:00:00-07:00
 **Status:** Active
 
+- **2026-09-23:** Staff provider options (#1252, epic #1192). `cursor-agent` runs `-p --output-format stream-json
+--force --trust --workspace <wt>` (Grok via the Cursor subscription; camelCase usage mapped). `ollama` now runs
+  Ollama models inside Codex (`exec --oss --local-provider ollama`) instead of bare `ollama run` chat; new
+  `claude-ollama` runs them inside Claude Code on Ollama's Anthropic-compatible API with its own
+  `CLAUDE_CONFIG_DIR`. `STAFF_OLLAMA_URL`, else localhost, else the WSL default gateway (`staff/ollama_env.py`).
+  Service drop-in adds `ReadWritePaths` `~/.cursor` and `~/.config/cursor`. Both Ollama providers are free.
 - **2026-09-23:** Staff provider adapters match current CLIs (#1249, epic #1192). `codex` runs
   `exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check` (codex 0.156 removed `--full-auto`);
   stream-json text extraction reads agy's `result.response` and usage from a nested `result.usage`, so agy runs

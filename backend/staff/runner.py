@@ -325,7 +325,7 @@ class StaffRunner:
         argv = adapter.build_command(prompt, str(workdir), plan.model)
         transcript = workdir / ".staff" / "transcript.log"
         transcript.parent.mkdir(parents=True, exist_ok=True)
-        env = {**os.environ, **adapter.extra_env, "STAFF_RUN_ID": rec.id, "STAFF_ROLE": plan.role}
+        env = {**os.environ, **adapter.runtime_env(), "STAFF_RUN_ID": rec.id, "STAFF_ROLE": plan.role}
         store.update_run(rec.id, status="running", transcript_path=str(transcript), prompt=prompt)
         store.append_event(rec.id, "start", f"{adapter.executable} ({plan.provider}) in {workdir}")
         exe = shutil.which(adapter.executable) or adapter.executable
