@@ -1,4 +1,25 @@
-# Current Handoff — Staff Hub node setup docs (#1223)
+# Current Handoff — Staff runs skip issues with an open linked PR (#1225)
+
+Last updated: 2026-09-22T23:30:00-07:00
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/staff-skip-linked` (worktree)
+- Branch: `fix/staff-skip-linked-issues`; base `c12a7dc`; commit `SELF`; PR opened after push.
+
+## Work
+
+- Evidence: run-905a8b3586a7 succeeded end to end (sonnet, $0.65, draft PR). It chose Gasification_Model#5059, which #5060 already fixes, so its #5061 was closed as a duplicate.
+- `FLEET_RULES` gains the skip-linked-issue rule; the test was extended.
+
+## Next
+
+1. Merge; redeploy DeskComputer from main.
+
+---
+
+## Previous Handoff — Current Handoff — Staff Hub node setup docs (#1223)
 
 Last updated: 2026-09-22T23:20:00-07:00
 
