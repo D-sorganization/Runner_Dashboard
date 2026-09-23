@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Fleet Coordination API priorities: `GET /api/priorities` (latest board-meeting consensus, directives, portfolios), `GET /api/priorities/meetings[/{date}]` and `GET/PUT /api/priorities/directives` (PUT needs `coordination.write` or loopback). See `docs/priorities-api.md` (#1227, epic #1192).
 - Fleet Coordination API `/api/coordination/*`: sessions across repos plus staff runs, inbox, presence register/release, messages and acks, issue claims (409 when held by another agent) and a one-call pre-work `briefing`; backed by the Repository_Management board and lease scripts (no second store), 60 s cached reads, new `coordination.write` scope for `bot`/`operator` principals. See `docs/coordination-api.md` (#1229).
 - Fleet API agent clients in `clients/fleet/`: a stdlib-only Python client, the `fleetctl` JSON CLI and a `fleet_mcp.py` MCP server with 15 `fleet_*` tools, so Claude Code, Codex CLI, Gemini CLI and Grok Bot call the same staff, coordination and priorities API; setup and per-agent token minting in `docs/agents/connect.md` (#1228).
 - Runner maintenance prunes credential-bearing `url.*.insteadOf` sections (e.g. `https://x-access-token:<token>@github.com/`) from the runner user's global git config via `deploy/clean-gitconfig-token-rewrites.sh` (`--dry-run`, 0600 timestamped backup, redacted output), installed and run by `install-runner-maintenance.sh` (#1216).

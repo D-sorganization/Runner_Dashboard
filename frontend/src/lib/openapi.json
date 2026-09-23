@@ -395,6 +395,96 @@
         "title": "ClearKeyRequest",
         "type": "object"
       },
+      "DirectiveBody": {
+        "description": "One directive as sent by an operator or agent. DbC: the JSON shape of ``priorities.directives.Directive``.",
+        "properties": {
+          "expires": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "priority": {
+            "default": 3,
+            "maximum": 5.0,
+            "minimum": 1.0,
+            "title": "Priority",
+            "type": "integer"
+          },
+          "repo": {
+            "default": "*",
+            "maxLength": 100,
+            "title": "Repo",
+            "type": "string"
+          },
+          "set_by": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Set By"
+          },
+          "set_on": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Set On"
+          },
+          "text": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": ["text"],
+        "title": "DirectiveBody",
+        "type": "object"
+      },
+      "DirectivesBody": {
+        "properties": {
+          "directives": {
+            "items": {
+              "$ref": "#/components/schemas/DirectiveBody"
+            },
+            "maxItems": 100,
+            "title": "Directives",
+            "type": "array"
+          }
+        },
+        "required": ["directives"],
+        "title": "DirectivesBody",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -6228,6 +6318,180 @@
         ],
         "summary": "Release Lease",
         "tags": ["orchestrator"]
+      }
+    },
+    "/api/priorities": {
+      "get": {
+        "description": "Latest board consensus + directives + portfolios; ``available:false`` with ``reason`` when no board.",
+        "operationId": "get_priorities_api_priorities_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Priorities Api Priorities Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Priorities",
+        "tags": ["priorities"]
+      }
+    },
+    "/api/priorities/directives": {
+      "get": {
+        "operationId": "get_directives_route_api_priorities_directives_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Directives Route Api Priorities Directives Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Directives Route",
+        "tags": ["priorities"]
+      },
+      "put": {
+        "description": "Replace the directive list. ``set_by`` defaults to the authenticated caller. Returns the active list.",
+        "operationId": "put_directives_api_priorities_directives_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DirectivesBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Put Directives Api Priorities Directives Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Put Directives",
+        "tags": ["priorities"]
+      }
+    },
+    "/api/priorities/meetings": {
+      "get": {
+        "operationId": "list_meetings_api_priorities_meetings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Meetings Api Priorities Meetings Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "List Meetings",
+        "tags": ["priorities"]
+      }
+    },
+    "/api/priorities/meetings/{meeting_date}": {
+      "get": {
+        "operationId": "get_meeting_api_priorities_meetings__meeting_date__get",
+        "parameters": [
+          {
+            "description": "Meeting date, YYYY-MM-DD.",
+            "in": "path",
+            "name": "meeting_date",
+            "required": true,
+            "schema": {
+              "description": "Meeting date, YYYY-MM-DD.",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "title": "Meeting Date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Meeting Api Priorities Meetings  Meeting Date  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Meeting",
+        "tags": ["priorities"]
       }
     },
     "/api/projects": {
