@@ -200,33 +200,6 @@ reachable from any live state and `abandoned` from `parked`.
   state; a live entry without a real issue is orphaned by
   definition.
 
-## Shipped (Last 90 Days)
-
-Entries stay here for 90 days after merge, then move to the archive.
-
-## Archive
-
-Older entries live in `DEVELOPMENT_LOG_ARCHIVE_<year>.md`.
-# Development Log — Runner_Dashboard
-
-State table for every feature in flight in this repository. Update
-entries **in place**; never append dated sections. One entry per
-feature, from proposal to ship. See the `development-logs` section of
-`AGENTS.md` for the binding rules and
-`shared_scripts/development_log.py` for the validator.
-
-- **Portfolio:** infra
-- **WIP limit:** 4
-- **Last audited:** 2026-08-28 by bootstrap
-
-## States
-
-`proposed` → `in_progress` → `in_review` → `shipped`, with `parked`
-reachable from any live state and `abandoned` from `parked`.
-`shipped` never returns to `in_progress`; open a new entry instead.
-
-## Active
-
 ### DL-#1200 · Staff Hub usage ledger: pricing, /api/staff/usage, RM credit_usage export
 
 - **State:** in_review
@@ -279,3 +252,10 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** Hub fan-out of `/api/staff/board` across peer nodes, the one-call `/api/staff/summary` brief for Barb/Orchestrator, and `machine: local|<peer>|auto` targeting that forwards dispatches to the chosen node (also closes #1197).
 - **Next step:** After #1196 merges, verify `summary.holds` is populated on a node with holds.
 
+## Shipped (Last 90 Days)
+
+Entries stay here for 90 days after merge, then move to the archive.
+
+## Archive
+
+Older entries live in `DEVELOPMENT_LOG_ARCHIVE_<year>.md`.
