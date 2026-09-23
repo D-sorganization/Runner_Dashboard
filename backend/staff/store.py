@@ -62,6 +62,10 @@ class RunRecord:
     last_line: str = ""
     # How cost_usd was obtained: reported | token_table | wall_time | none | "" (not finalised). Issue #1200.
     cost_method: str = ""
+    # PR-consolidation strategy (issue #1213): "consolidate" | "serial" | "" (role has no strategy or no repo);
+    # ``outcome`` is the normalised "consolidated N PRs into #M" parsed from the final STAFF_RESULT: line.
+    strategy_mode: str = ""
+    outcome: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return dict(self.__dict__)
@@ -112,7 +116,11 @@ _COLUMNS = tuple(RunRecord.__dataclass_fields__.keys())
 # Columns added after the first schema shipped. Applied with a guarded
 # ``ALTER TABLE ... ADD COLUMN`` so an existing store upgrades in place and a
 # rollback to the previous code keeps working (extra columns are ignored).
-_ADDED_COLUMNS: tuple[tuple[str, str], ...] = (("cost_method", "TEXT NOT NULL DEFAULT ''"),)
+_ADDED_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("cost_method", "TEXT NOT NULL DEFAULT ''"),
+    ("strategy_mode", "TEXT NOT NULL DEFAULT ''"),
+    ("outcome", "TEXT NOT NULL DEFAULT ''"),
+)
 
 USAGE_GROUPS = ("provider", "role", "day")
 _USAGE_GROUP_SQL = {"provider": "provider", "role": "role", "day": "substr(created_at, 1, 10)"}

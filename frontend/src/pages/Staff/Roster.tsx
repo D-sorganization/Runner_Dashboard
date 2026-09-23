@@ -9,7 +9,7 @@
 import { Badge } from "../../primitives/Badge";
 import { EmptyState } from "../../primitives/EmptyState";
 import { TouchButton } from "../../primitives/TouchButton";
-import { formatUsd, type RoleSpec, type RosterResponse } from "./staffApi";
+import { formatUsd, strategyLabel, type RoleSpec, type RosterResponse } from "./staffApi";
 
 export interface RosterProps {
   roster: RosterResponse | null;
@@ -37,6 +37,7 @@ export function RoleCard({
 }) {
   const state = role.retired ? "retired" : role.dispatchable ? "dispatchable" : "not dispatchable";
   const stateTone = role.retired ? "neutral" : role.dispatchable ? "success" : "warning";
+  const strategy = strategyLabel(role);
   return (
     <article
       className={role.retired ? "staff-role staff-role--retired" : "staff-role"}
@@ -78,6 +79,12 @@ export function RoleCard({
         <dd data-testid={`role-active-${role.name}`}>{role.active_runs}</dd>
         <dt>Budget</dt>
         <dd>{budgetLabel(role)}</dd>
+        {strategy ? (
+          <>
+            <dt>Strategy</dt>
+            <dd data-testid={`role-strategy-${role.name}`}>{strategy}</dd>
+          </>
+        ) : null}
         {role.repos.length > 0 ? (
           <>
             <dt>Repos</dt>

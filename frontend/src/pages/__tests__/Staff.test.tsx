@@ -10,6 +10,8 @@
  * 5. Cancel POSTs /api/staff/runs/{id}/cancel with the CSRF header.
  * 6. Holds 404 renders the "unavailable" state, not an error.
  * 7. Board lists late/dead scheduled roles as liveness alerts (#1209).
+ * 8. PR consolidation (#1213): roster shows the threshold, the plan shows the decision,
+ *    run log and run detail show the outcome.
  */
 import "@testing-library/jest-dom/vitest";
 import React from "react";
@@ -51,6 +53,27 @@ const ROSTER = {
       dispatchable: true,
       source_path: "staff/roles/night-watch.yml",
       active_runs: 1,
+    },
+    {
+      name: "pr-remediator",
+      title: "PR Remediator",
+      summary: "",
+      playbook: "",
+      providers: ["claude"],
+      model: null,
+      schedule: "0 3 * * *",
+      window: null,
+      repos: ["UpstreamDrift"],
+      budget: { usd_per_run: null, usd_per_day: null },
+      permissions: {},
+      reports_to: null,
+      holds: [],
+      surface: null,
+      retired: false,
+      strategy: { consolidate_when: { open_prs: 6, utilisation_pct: 70 } },
+      dispatchable: true,
+      source_path: "staff/roles/pr-remediator.yml",
+      active_runs: 0,
     },
     {
       name: "archivist",
@@ -102,6 +125,15 @@ const RUN = {
   last_line: "working",
 };
 
+const CONSOLIDATED_RUN = {
+  ...RUN,
+  id: "run-9",
+  role: "pr-remediator",
+  status: "succeeded",
+  strategy_mode: "consolidate",
+  outcome: "consolidated 12 PRs into #1801",
+};
+
 const BOARD = {
   machine: "DeskComputer",
   generated_at: "2026-09-22T10:01:00Z",
@@ -128,6 +160,7 @@ const PLAN = {
   argv: ["claude", "-p", "--output-format", "stream-json"],
   branch: "staff/night-watch-10622-preview",
   lease_ritual: true,
+  consolidation: { mode: "serial", reason: "open PRs 3 < 6", threshold: { open_prs: 6 } },
 };
 
 type Handler = (url: string, opts?: RequestInit) => { status: number; body: unknown } | undefined;
@@ -147,8 +180,11 @@ function stubFetch(extra: Handler = () => undefined) {
     if (custom) return jsonResponse(custom.status, custom.body);
     if (url === "/api/staff/roster") return jsonResponse(200, ROSTER);
     if (url === "/api/staff/board") return jsonResponse(200, BOARD);
-    if (url.startsWith("/api/staff/runs?")) return jsonResponse(200, { runs: [RUN], count: 1 });
+    if (url.startsWith("/api/staff/runs?")) {
+      return jsonResponse(200, { runs: [RUN, CONSOLIDATED_RUN], count: 2 });
+    }
     if (url === "/api/staff/runs/run-1") return jsonResponse(200, { run: RUN, events: EVENTS });
+    if (url === "/api/staff/runs/run-9") return jsonResponse(200, { run: CONSOLIDATED_RUN, events: [] });
     return jsonResponse(404, { detail: "Not Found" });
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -200,6 +236,30 @@ describe("StaffPage", () => {
     const retired = screen.getByTestId("role-card-archivist");
     expect(within(retired).getByText("retired")).toBeInTheDocument();
     expect(within(retired).getByRole("button", { name: /assign/i })).toBeDisabled();
+  });
+
+  it("roster shows the consolidation threshold only for roles with a strategy", async () => {
+    stubFetch();
+    render(<StaffPage />);
+    await waitFor(() => expect(screen.getByTestId("role-card-pr-remediator")).toBeInTheDocument());
+    expect(screen.getByTestId("role-strategy-pr-remediator")).toHaveTextContent(
+      "consolidate when open PRs ≥ 6 and utilisation ≥ 70%",
+    );
+    expect(screen.queryByTestId("role-strategy-night-watch")).not.toBeInTheDocument();
+  });
+
+  it("run log and run detail show the consolidation outcome when present", async () => {
+    stubFetch();
+    render(<StaffPage />);
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Runs" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("tab", { name: "Runs" }));
+    await waitFor(() => expect(screen.getByTestId("run-row-run-9")).toBeInTheDocument());
+    expect(screen.getByTestId("run-outcome-run-9")).toHaveTextContent("consolidated 12 PRs into #1801");
+    expect(screen.getByTestId("run-outcome-run-1")).toHaveTextContent("—");
+    fireEvent.click(screen.getByTestId("run-row-run-9"));
+    await waitFor(() => expect(screen.getByTestId("run-detail")).toBeInTheDocument());
+    expect(screen.getByTestId("run-strategy")).toHaveTextContent("consolidate");
+    expect(screen.getByTestId("run-outcome")).toHaveTextContent("consolidated 12 PRs into #1801");
   });
 
   it("board shows spend today and per-machine running/queued counts", async () => {
@@ -267,6 +327,7 @@ describe("StaffPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /^preview$/i }));
 
     await waitFor(() => expect(screen.getByTestId("assign-plan")).toBeInTheDocument());
+    expect(screen.getByTestId("plan-consolidation")).toHaveTextContent("serial — open PRs 3 < 6");
     expect(screen.getByTestId("plan-prompt")).toHaveTextContent("You are Night Watch. Fix #10622.");
     expect(screen.getByTestId("plan-argv")).toHaveTextContent("claude -p --output-format stream-json");
     expect(screen.getByTestId("plan-branch")).toHaveTextContent("staff/night-watch-10622-preview");

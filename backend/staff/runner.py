@@ -29,9 +29,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from staff import consolidation, workspace
 from staff import lease as lease_ritual
 from staff import usage as usage_mod
-from staff import workspace
 from staff.adapters import ADAPTERS, ProviderAdapter
 from staff.roles import RoleSpec, load_roles
 from staff.store import RunRecord, RunStore, _now, get_store
@@ -56,6 +56,8 @@ class RunRequest:
     prompt: str = ""
     machine: str = "local"
     requested_by: str = ""
+    # PR-consolidation decision from ``staff.consolidation.decide`` (#1213); None when not applicable.
+    consolidation: dict[str, Any] | None = None
 
     @property
     def target_kind(self) -> str:
@@ -89,6 +91,15 @@ class RunPlan:
     argv: list[str]
     branch: str
     lease_ritual: bool
+    consolidation: dict[str, Any] | None = None
+
+    @property
+    def strategy_mode(self) -> str:
+        return str(self.consolidation.get("mode", "")) if self.consolidation else ""
+
+    @property
+    def consolidation_paragraph(self) -> str:
+        return consolidation.prompt_paragraph(self.consolidation) if self.consolidation else ""
 
     @property
     def issue_number(self) -> str:
@@ -106,6 +117,7 @@ class RunPlan:
             "argv": list(self.argv),
             "branch": self.branch,
             "lease_ritual": self.lease_ritual,
+            "consolidation": dict(self.consolidation) if self.consolidation else None,
         }
 
 
@@ -151,8 +163,14 @@ class StaffRunner:
             raise ValueError("one of issue, pr or prompt is required")
         branch = f"staff/{role.name}-{req.issue or req.pr or 'task'}-{uuid.uuid4().hex[:6]}"
         lease = bool(role.permissions.get("lease", True)) and bool(req.issue) and bool(req.repo)
+        paragraph = consolidation.prompt_paragraph(req.consolidation) if req.consolidation else ""
         prompt = workspace.compose_prompt(
-            role, repo=req.repo, target_ref=req.target_ref, operator_prompt=req.prompt, branch=branch
+            role,
+            repo=req.repo,
+            target_ref=req.target_ref,
+            operator_prompt=req.prompt,
+            branch=branch,
+            consolidation=paragraph,
         )
         argv = self._adapters[provider].build_command(prompt, "<workdir>", req.model or role.model)
         return RunPlan(
@@ -167,6 +185,7 @@ class StaffRunner:
             argv=argv,
             branch=branch,
             lease_ritual=lease,
+            consolidation=dict(req.consolidation) if req.consolidation else None,
         )
 
     def _resolve_role(self, req: RunRequest) -> RoleSpec:
@@ -212,6 +231,7 @@ class StaffRunner:
             prompt=plan.prompt,
             requested_by=req.requested_by,
             branch=plan.branch,
+            strategy_mode=plan.strategy_mode,
         )
         self.store.create_run(rec)
         self.store.append_event(rec.id, "queued", f"queued on {self.machine} for {plan.provider}")
@@ -290,6 +310,7 @@ class StaffRunner:
             operator_prompt=plan.operator_prompt,
             branch=plan.branch,
             lease_note=lease_note,
+            consolidation=plan.consolidation_paragraph,
         )
         argv = adapter.build_command(prompt, str(workdir), plan.model)
         transcript = workdir / ".staff" / "transcript.log"
@@ -315,7 +336,7 @@ class StaffRunner:
         if adapter.prompt_via_stdin and proc.stdin is not None:
             proc.stdin.write(prompt + "\n")
             proc.stdin.close()
-        usage = self._pump_output(rec, adapter, proc, transcript)
+        usage, result_line = self._pump_output(rec, adapter, proc, transcript)
         rc = proc.wait()
         with self._lock:
             self._procs.pop(rec.id, None)
@@ -329,15 +350,20 @@ class StaffRunner:
             cost_usd=float(usage.get("cost_usd", 0.0)),
             input_tokens=int(usage.get("input_tokens", 0)),
             output_tokens=int(usage.get("output_tokens", 0)),
+            outcome=consolidation.parse_outcome(result_line),  # issue #1213
         )
         usage_mod.finalize_cost(store, rec.id, plan.provider, plan.model)  # issue #1200
         store.append_event(rec.id, "exit", f"exit code {rc} → {status}")
 
     def _pump_output(
         self, rec: RunRecord, adapter: ProviderAdapter, proc: subprocess.Popen[str], transcript: Path
-    ) -> dict[str, Any]:
-        """Stream stdout lines into the transcript file and the event store."""
+    ) -> tuple[dict[str, Any], str]:
+        """Stream stdout lines into the transcript file and the event store.
+
+        Returns the usage the adapter reported and the last ``STAFF_RESULT:`` text seen.
+        """
         usage: dict[str, Any] = {}
+        result_line = ""
         deadline = time.monotonic() + RUN_TIMEOUT_SECONDS
         assert proc.stdout is not None  # noqa: S101
         with transcript.open("a", encoding="utf-8") as tf:
@@ -349,11 +375,13 @@ class StaffRunner:
                 text = event.get("text") or ""
                 if text.strip():
                     self.store.append_event(rec.id, event.get("kind", "text"), text)
+                    if "STAFF_RESULT:" in text:
+                        result_line = text[text.index("STAFF_RESULT:") :]
                 if time.monotonic() > deadline:
                     proc.terminate()
                     self.store.append_event(rec.id, "timeout", f"run exceeded {RUN_TIMEOUT_SECONDS}s; terminated")
                     break
-        return usage
+        return usage, result_line
 
 
 _runner: StaffRunner | None = None

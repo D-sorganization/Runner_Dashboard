@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1213 · Staff Hub PR-consolidation strategy
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1213 (epic #1192; companion Repository_Management#1690)
+- **Branch:** `feat/1213-pr-consolidation`
+- **PR:** not created at commit time (draft opened after push)
+- **Paths:** `backend/staff/consolidation.py`, `backend/staff/roles.py`, `backend/staff/store.py`, `backend/staff/runner.py`, `backend/staff/scheduler.py`, `backend/staff/workspace.py`, `backend/routers/staff.py`, `frontend/src/pages/Staff/`, `tests/api/test_staff_consolidation.py`
+- **Started:** 2026-09-22
+- **Last verified:** 2026-09-22 (`eca7381`)
+- **Summary:** Optional `strategy.consolidate_when` (`open_prs`, `utilisation_pct`) on a role; the scheduler tick and the dispatch route evaluate it against the repo's open non-draft PRs and fleet utilisation, inject a `consolidate` / `serial` paragraph into the prompt, return `plan.consolidation`, store `strategy_mode` and the parsed `outcome` ("consolidated N PRs into #M") on the run; Staff tab shows the threshold on the roster card and the outcome in the run log.
+- **Next step:** Mark the draft PR ready once CI Standard, Spec Check and frontend tests are green.
+
 ### DL-#1209 · Staff board scheduled-role liveness
 
 - **State:** in_review

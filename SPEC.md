@@ -6,6 +6,22 @@
 **Last Updated:** 2026-09-22T00:00:00-07:00
 **Status:** Active
 
+- **2026-09-22:** Staff Hub PR-consolidation strategy (#1213, epic #1192, companion RM#1690).
+  `RoleSpec` gains an optional `strategy` dict parsed from the role YAML
+  (`strategy: {consolidate_when: {open_prs, utilisation_pct}}`, unknown keys ignored). New
+  `backend/staff/consolidation.py`: pure `evaluate(role, repo, open_pr_count, utilisation_pct)` →
+  `{mode: consolidate|serial, reason, threshold}` (consolidate when every configured threshold is met);
+  `decide` fetches the repo's open non-draft PR count (`gh api --paginate .../pulls?state=open`) and the
+  fleet utilisation (`busy/online` from the `orchestrator_api` capacity provider), both injectable,
+  and falls back to `serial` / `inputs unavailable` on any fetch error. The scheduler tick and
+  `POST /api/staff/{role}/run` (dry run and dispatch) evaluate it when the role has the block and a
+  repo, append the "Consolidation mode: …" paragraph (exclusions, never cancel or re-run other PRs'
+  CI) to the prompt, return it as `plan.consolidation` and store `strategy_mode` on the run. The
+  runner parses `consolidated N PRs into #M` (case-insensitive) from the final `STAFF_RESULT:` line
+  into the additive `outcome` column (both columns via the `cost_method` ALTER TABLE pattern). Staff
+  tab: Roster card shows the threshold, Assign preview shows the decision, RunLog/RunDetail show
+  `outcome`. TDD: `tests/api/test_staff_consolidation.py`, `frontend/src/pages/__tests__/Staff.test.tsx`.
+
 - **2026-09-22:** Staff board scheduled-role liveness (#1209, epic #1192). New
   `backend/staff/liveness.py::compute_liveness(roles, store, scheduler_state, now)` derives, per
   dispatchable role with a `schedule`, `last_success`, `last_attempt`, `last_fired`, `next_fire`,

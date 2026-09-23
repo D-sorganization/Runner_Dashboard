@@ -143,6 +143,46 @@ for the last failure. `dead`: the scheduler on that node is not running
 last run's events, fix, then dispatch the role by hand; the row returns to
 `ok` on the next success.
 
+## PR consolidation (#1213)
+
+Owner decision relayed 2026-09-22 (RM#1690): when a repository has many open
+PRs the fleet folds them into **one PR per repository** instead of draining
+them one at a time. A role opts in through its YAML:
+
+```yaml
+strategy:
+  consolidate_when:
+    open_prs: 6          # repo's open non-draft PRs
+    utilisation_pct: 70  # fleet runners busy / online
+```
+
+`backend/staff/consolidation.py` evaluates the block whenever a run for the
+role has a repository — in the scheduler tick and in `POST /api/staff/{role}/run`
+(dry run and real dispatch alike). Inputs: the open non-draft PR count from
+`gh api --paginate /repos/<org>/<repo>/pulls?state=open` and the utilisation
+`busy_runners / online_runners` from the capacity provider the Conductor gate
+uses (`orchestrator_api`). The mode is `consolidate` when **every** configured
+threshold is met (a key left out is always met) and `serial` otherwise; if
+either input cannot be fetched the mode is `serial` with the reason
+`inputs unavailable`, so a GitHub outage never blocks a slot.
+
+The decision is injected into the prompt as one paragraph
+(`Consolidation mode: consolidate — <reason>. Fold the eligible open PRs of this
+repository into ONE PR; exclusions: draft, do-not-merge, do-not-automate,
+claim:local, PRs of other live sessions, workflow changes, bot snapshot PRs
+that delete main lines. Never cancel or re-run other PRs' CI.`, or the serial
+variant) and surfaces as:
+
+| Where | Field |
+| --- | --- |
+| `GET /api/staff/roster` | `roles[].strategy` (the raw block; the Roster card shows the threshold) |
+| `POST /api/staff/{role}/run` with `dry_run` | `plan.consolidation` = `{mode, reason, threshold}` (the Assign preview shows it) |
+| run records | `strategy_mode` (`consolidate` / `serial` / empty when not applicable) |
+| run records | `outcome`, e.g. `consolidated 12 PRs into #1801`, parsed case-insensitively from the final `STAFF_RESULT:` line (`consolidated N PRs into #M`); shown in the run log and run detail |
+
+Both run columns are additive (`PRAGMA`-guarded `ALTER TABLE`, like
+`cost_method`); older nodes simply omit them.
+
 ## Environment
 
 | Variable                    | Default                                                                         | Meaning                                              |

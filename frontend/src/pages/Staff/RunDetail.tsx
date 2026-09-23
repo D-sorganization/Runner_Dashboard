@@ -196,6 +196,18 @@ export function RunDetail({ runId, onBack }: RunDetailProps) {
         <dd>
           {formatUsd(run.cost_usd)} ({run.input_tokens} in / {run.output_tokens} out)
         </dd>
+        {run.strategy_mode ? (
+          <>
+            <dt>Strategy</dt>
+            <dd data-testid="run-strategy">{run.strategy_mode}</dd>
+          </>
+        ) : null}
+        {run.outcome ? (
+          <>
+            <dt>Outcome</dt>
+            <dd data-testid="run-outcome">{run.outcome}</dd>
+          </>
+        ) : null}
         {run.error ? (
           <>
             <dt>Error</dt>

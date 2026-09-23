@@ -112,6 +112,7 @@ export function RunLog({ roles, onOpenRun, refreshKey = 0 }: RunLogProps) {
                 <th>Machine</th>
                 <th>Created</th>
                 <th>Cost</th>
+                <th>Outcome</th>
                 <th>Last line</th>
               </tr>
             </thead>
@@ -146,6 +147,7 @@ export function RunLog({ roles, onOpenRun, refreshKey = 0 }: RunLogProps) {
                     <TimeAgo iso={run.created_at} />
                   </td>
                   <td>{formatUsd(run.cost_usd)}</td>
+                  <td data-testid={`run-outcome-${run.id}`}>{run.outcome || "—"}</td>
                   <td className="staff-table__last-line" title={run.last_line}>
                     {run.error || run.last_line || ""}
                   </td>

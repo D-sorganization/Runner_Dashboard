@@ -3908,7 +3908,10 @@ export interface paths {
          *
          *     Precondition: the role exists and is dispatchable; the provider is allowed
          *     for the role; one of issue/pr/prompt is given. Postcondition: on a real
-         *     dispatch a ``queued`` run row exists before the response is returned.
+         *     dispatch a ``queued`` run row exists before the response is returned. When
+         *     the role carries ``strategy.consolidate_when`` and a repo is given, the
+         *     PR-consolidation decision (#1213) is evaluated first and lands in
+         *     ``plan.consolidation`` and the run's ``strategy_mode``.
          */
         post: operations["dispatch_api_staff__role__run_post"];
         delete?: never;
