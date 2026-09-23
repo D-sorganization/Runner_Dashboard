@@ -84,8 +84,10 @@ every 15 minutes. User lingering is enabled. The first invocation fast-forwarded
 `refs/staff-rm-backups/bak-2026-09-23-204230-755749`.
 `/api/staff/board?local=1` reports revision and freshness in `rm_source`.
 `/api/staff/roles` returned 16 roles, and `/api/staff/schedule` had no worker holds.
-RM PR #1719 was still open at verification; its `claude-ollama` schema acceptance
-must be checked after it merges and the next timer tick. No manual pull is needed.
+The timer subsequently picked up merged RM PR #1719 at
+`5494676e42dc80b69ffd729d7a98b29dcf4d1100` without a manual pull. The local schema
+now includes `claude-ollama`; the roles endpoint still returns 16 roles and
+worker holds remain empty.
 
 ## Follow-up rollout: #1256 / #1257 / #1258
 
@@ -94,9 +96,9 @@ must be checked after it merges and the next timer tick. No manual pull is neede
 | Documentation | Initial setup report merged as #1259; this runbook is the node status source. |
 | Ollama lease fix #1256 | Deployed in `35686c4`; both Ollama harness checks below succeeded. |
 | Bridge implementation #1257 | #1261 merged; 15 PowerShell planner tests and real Windows 5.1 dry-run passed. |
-| Windows bridge installation | Owner installed at 13:50 PT; SYSTEM/highest task registered. Task exit 1 was diagnosed as execution policy blocking script startup; corrected task action requires owner reinstall and verification. Scoped forwarding remains working. |
+| Windows bridge installation | Owner reinstalled the #1265 fix; SYSTEM task returned **0 at 14:24:13 PT**, next run 14:25:12. Installed script hash matches tested source. Scoped forwarding remains working. |
 | Live RM source #1258 | #1262 merged and deployed; env migrated, timer active, lingering enabled, first automatic fast-forward verified, worker holds empty. |
-| Reboot acceptance | **Pending owner installation, WSL restart and Windows reboot**; external tailnet port isolation also remains unverified. |
+| Reboot acceptance | **Pending safe restart window, WSL restart and Windows reboot**; three active CI worker processes were detected after task verification. External tailnet port isolation also remains unverified. |
 
 The owner runs this exact command in **PowerShell as Administrator**:
 
