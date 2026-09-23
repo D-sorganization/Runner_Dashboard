@@ -1,9 +1,9 @@
 # Current handoff — Windows reboot and duplicate-IP diagnosis (#1257)
 
-- Worktree `/home/dieterolson/staff-builds/oglaptop-windows-recovery`; branch `docs/oglaptop-windows-recovery`; commit `SELF`.
+- Worktree `/home/dieterolson/staff-builds/oglaptop-windows-recovery`; branch `docs/oglaptop-firewall-confirmed`; worktree `/home/dieterolson/staff-builds/oglaptop-firewall-confirmed`; commit `SELF`.
 - Windows booted at 15:05:09 PT; bridge configured result at 15:06:35; dashboard and all six providers recovered. Post-Windows-reboot provider runs all succeeded; IDs in canonical node runbook. Staff scheduler stays off.
 - Windows TCP/IP logged duplicate DHCP address 192.168.4.202 three times; reconnection obtained 192.168.4.203. Controlled DNS/HTTPS tests passed with all firewall profiles enabled. Original outage is best explained by the duplicate address, not the narrow WSL Ollama rule.
-- A delayed rollback from the first diagnostic undid the second successful Domain-enable test. Operational scripts were backed up and corrected; owner asked to enable Domain again. Verify live firewall state before claiming final protection restored.
+- Final firewall verification: owner re-enabled Domain in Windows Security; all three profiles now enabled. Windows GitHub/Google/Cloudflare HTTPS passed, WSL GitHub HTTPS passed, and Ollama bridge returned 0.34.2. The first diagnostic rollback race is resolved and documented.
 - CI capacity restored at 15:33 PT: IDs 217–224 back in group 1, original enabled states restored, CI scheduler timer active and units 1–4 running. Staff scheduler remains off. Keep empty maintenance group and backups.
 - Router allocation conflict and external port-isolation checks remain follow-ups. Preserve firewall backups in `_deploy/firewall-diagnosis-*` and drain metadata in `_deploy/oglaptop-drain-20260923`.
 
