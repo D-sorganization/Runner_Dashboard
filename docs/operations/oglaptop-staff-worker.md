@@ -1,7 +1,8 @@
 # OGLaptop Staff Hub worker
 
 Last verified: **2026-09-23**, on OGLaptop itself. Governing epic: #1192;
-node setup: #1223; deployed provider changes: PRs #1250 and #1253.
+node setup: #1223; deployed provider changes: PRs #1250, #1253 and #1256;
+reusable node standards: #1257 / #1258 (merged PRs #1261 / #1262).
 This is a verified snapshot, not a claim about other machines or future uptime.
 
 ## Current status
@@ -14,8 +15,8 @@ This setup did not change DeskComputer or ControlTower or enable a second schedu
 | Windows host / WSL distro | `OGLaptop` / `Ubuntu` |
 | Linux user / home | `dieterolson` / `/home/dieterolson` |
 | Dashboard service | `runner-dashboard`, active; loopback port `8321` |
-| Dashboard version / deployed commit | `4.10.0` / `a82699223e07153ae85ca15707805665f15c96fe` |
-| Required changes | Includes #1250 (`c174896088dd09a65e68000512b3c2b9fe522c9f`) and #1253 (`ce601d449be3b0d432076650fa3356bffd2f1dfe`); verified by Git ancestry |
+| Dashboard version / deployed commit | `4.10.0` / `35686c4ebb3c6b65596a43ed6028fc535fea1b27` |
+| Required changes | Includes #1250, #1253, #1256, #1261 and #1262; built from merged main |
 | Runtime | uv-managed CPython `3.11.15`; artifact wheel ABI `3.11` |
 | Scheduler | `0`, verified in the running process environment after deployment |
 | Final board | All six requested providers available; zero running or queued staff jobs |
@@ -71,12 +72,77 @@ Paths beginning with `~` below refer to `/home/dieterolson` in **Ubuntu WSL**.
 | Staff git config | `GIT_CONFIG_GLOBAL=~/.config/runner-dashboard/staff.gitconfig` |
 | Linux repository root | `STAFF_REPOS_ROOT=~/staff-repos` |
 | Staff worktree root | `STAFF_WORKTREES_ROOT=~/staff-worktrees` |
-| Existing RM bundle | `STAFF_RM_ROOT=~/staff-bundle/rm` |
-| Existing role source | `STAFF_ROLES_DIR=~/staff-bundle/rm/staff/roles` |
+| Live RM clone | `STAFF_RM_ROOT=/home/dieterolson/staff-repos/Repository_Management` |
+| Live role source | `STAFF_ROLES_DIR=/home/dieterolson/staff-repos/Repository_Management/staff/roles` |
 | Windows setup artifacts | `C:\Users\diete\Repositories\_deploy` |
 
-The RM role bundle is a separate deployed source. Updating the new RM clone does
-not automatically update this bundle or the running role definitions.
+The old `~/staff-bundle/rm` directory is retained for rollback only. The active
+user timer `runner-dashboard-rm-sync.timer` refreshes the Linux clone at most
+every 15 minutes. User lingering is enabled. The first invocation fast-forwarded
+`3057824ebf6ad9d974ebde5514b6e386d4d0ac93` to
+`a59cb194fe9a04c8ecc655c112539356a268a45d`, preserving the prior tree as
+`refs/staff-rm-backups/bak-2026-09-23-204230-755749`.
+`/api/staff/board?local=1` reports revision and freshness in `rm_source`.
+`/api/staff/roles` returned 16 roles, and `/api/staff/schedule` had no worker holds.
+RM PR #1719 was still open at verification; its `claude-ollama` schema acceptance
+must be checked after it merges and the next timer tick. No manual pull is needed.
+
+## Follow-up rollout: #1256 / #1257 / #1258
+
+| Step | Status / evidence |
+| --- | --- |
+| Documentation | Initial setup report merged as #1259; this runbook is the node status source. |
+| Ollama lease fix #1256 | Deployed in `35686c4`; both Ollama harness checks below succeeded. |
+| Bridge implementation #1257 | #1261 merged; 15 PowerShell planner tests and real Windows 5.1 dry-run passed. |
+| Windows bridge installation | **Pending owner elevation**; original scoped rule/forward remains working. No scheduled bridge task installed at last check. |
+| Live RM source #1258 | #1262 merged and deployed; env migrated, timer active, lingering enabled, first automatic fast-forward verified, worker holds empty. |
+| Reboot acceptance | **Pending owner installation, WSL restart and Windows reboot**; external tailnet port isolation also remains unverified. |
+
+The owner runs this exact command in **PowerShell as Administrator**:
+
+```powershell
+powershell.exe -NoProfile -File "C:\Users\diete\Repositories\Runner_Dashboard-worktrees\issue-1257-bridge\deploy\windows\ollama-wsl-bridge.ps1" -Install -AdoptExisting
+```
+
+Then verify task `StaffHub-Ollama-WSL-Bridge`, its last result, and
+`C:\ProgramData\RunnerDashboard\OllamaWslBridge\result.json`. Coordinate WSL
+shutdown and reboot with the owner when no staff or CI jobs are active. Follow
+[Ollama for WSL](../staff-hub.md#ollama-for-wsl-1257) for repeat health and
+external-connectivity checks. Do not claim these acceptance steps from dry-run tests.
+
+After deployment and RM migration, these runs succeeded with exit code 0:
+
+| Provider | Run |
+| --- | --- |
+| `ollama` (Codex) | `run-0b132c0615f3` |
+| `claude-ollama` | `run-1e1e8264a027` |
+
+Release artifact: `~/staff-bundle/rd-rm-1258-py311/dashboard-4.10.0.tar.gz`;
+SHA-256 `f0aa4d351326d6c209a85345064154ca598612d711a00a8720062ec1cbe119c1`.
+Production frontend build, 37-wheel ABI validation, installer preflight and
+offline dependency check passed. Combined local regressions: **62 passed**;
+updater mypy, full backend/client Ruff and systemd user-unit validation passed.
+The architecture map itself validates; its existing standalone CI pytest job
+fails on a missing asyncio plugin option. Required PR checks passed and normal
+protected merges completed without an override.
+
+Rollout backups (preserved):
+
+- `~/actions-runners/dashboard.bak-2026-09-23-134138` (complete previous deployment).
+- `~/.config/runner-dashboard/env.bak-2026-09-23-134229`.
+- `~/.config/runner-dashboard/staff_holds.json.bak-2026-09-23-134229` (holds unchanged).
+- RM Git backup ref above; subsequent refreshes retain timestamped status backups.
+- Windows `_deploy/STAFF_NODE_LOGIN_PROMPT.md.bak-2026-09-23-1344`; prompt now documents the live clone/timer standard.
+- Windows `_deploy/rollout-docs.bak-20260923-1344` and earlier `docs-backups-2026-09-23-124041`, `bridge-docs-backups-20260923`, `rm-docs.bak-20260923-1333` preserve edited documentation.
+
+For role-source rollback, stop/disable the user timer, back up current env, restore
+the saved env and restart the dashboard; keep scheduler disabled. Before a full
+application rollback, preserve the current deployment and restore the complete
+backup above. Do not delete the new deployment or either RM source.
+
+The Windows automation GitHub credential expired during rollout. WSL `gh` remains
+authenticated; continued publishing uses Linux Git with the isolated staff config
+and `GH_TOKEN` / `GITHUB_TOKEN` unset. Never copy credentials between environments.
 
 The isolated git config contains identity and a GitHub CLI credential helper,
 not an embedded token. It avoids CI-written credential rewrites in `~/.gitconfig`.
@@ -122,7 +188,7 @@ The local administrator setup script is
 It validates the inspected address and refuses to replace existing entries;
 it is not a general subnet migration script.
 
-## Deployment and rollback
+## Initial deployment history and rollback
 
 The source was built without application changes in detached worktree
 `~/staff-builds/runner-dashboard-a826992`. The repository's
@@ -151,7 +217,7 @@ undo networking, remove only `StaffHub-Ollama-WSL` and the portproxy entry for
 `192.168.208.1:11434`, using an administrator shell. Preserve unrelated rules.
 Neither backup deletion nor rollback is part of routine verification.
 
-## Verification evidence and repeat checks
+## Initial six-provider verification and repeat checks
 
 | Provider | Successful dashboard run | Result |
 | --- | --- | --- |
