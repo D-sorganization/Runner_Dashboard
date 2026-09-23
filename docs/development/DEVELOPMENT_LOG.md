@@ -46,15 +46,28 @@ reachable from any live state and `abandoned` from `parked`.
 
 ### DL-#1216 · Prune credential-bearing url.insteadOf entries from runner ~/.gitconfig
 
-- **State:** in_review
+- **State:** shipped
 - **Owner:** claude
 - **Issue:** #1216 (part of the #1192 rollout; source fixed by Gasification_Model#5060)
 - **Branch:** `fix/1216-prune-gitconfig-insteadof`
-- **PR:** not created at commit time (draft opened after push)
+- **PR:** #1219
 - **Paths:** `deploy/clean-gitconfig-token-rewrites.sh`, `deploy/install-runner-maintenance.sh`, `tests/deploy/test_clean_gitconfig_token_rewrites.py`
 - **Started:** 2026-09-22
-- **Last verified:** 2026-09-22 (`26b238f`)
+- **Last verified:** 2026-09-22 (squash-merged to main via #1219)
 - **Summary:** New `clean-gitconfig-token-rewrites` removes every `url` section whose http(s) URL embeds userinfo (insteadOf/pushInsteadOf) from the runner user's global git config with a 0600 timestamped backup, `--dry-run`, idempotent re-runs and redacted logging; installed and run by `install-runner-maintenance.sh` beside the #1159 profile cleanup.
+- **Next step:** Run `clean-gitconfig-token-rewrites --dry-run` then a real run on fleet hosts as the runner user.
+
+### DL-#1212 · Artifact wheelhouse ABI contract and fail-closed install
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1212 (rollout of epic #1192 / #1201)
+- **Branch:** `fix/1212-artifact-abi`
+- **PR:** #1220
+- **Paths:** `deploy/check-wheelhouse-abi.py`, `deploy/python-runtime.sh`, `deploy/install-dashboard-artifact.sh`, `deploy/package-dashboard-artifact.sh`, `.github/workflows/release.yml`, `tests/deploy/test_artifact_install_fail_closed.py`
+- **Started:** 2026-09-22
+- **Last verified:** 2026-09-22 (rebased onto main after #1219)
+- **Summary:** Packaging builds the wheelhouse for an explicit `--python-minor` (release pins 3.12) and fails when any wheel's ABI/platform cannot install on it; the installer runs the ABI check, selects an interpreter that can build a venv with ensurepip (host pip no longer required) and completes an offline install into a staging venv before touching the deploy dir, then swaps `.venv` with restore-on-failure and excludes it from `rsync --delete`.
 - **Next step:** Mark the draft PR ready once CI Standard and Spec Check are green.
 
 ### DL-#1213 · Staff Hub PR-consolidation strategy

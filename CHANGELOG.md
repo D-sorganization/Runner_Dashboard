@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Staff Hub scheduled runs can now finish unattended: the Claude adapter uses `--permission-mode bypassPermissions` (the run is confined to its own worktree) with default model `sonnet`; the role playbook is inlined from `STAFF_RM_ROOT`; scheduled prompts name the role and repo, and repos rotate daily; exit 0 without a `STAFF_RESULT` line is recorded as `failed` (#1221, epic #1192).
 - Staff Hub built-in fleet rules now also forbid taking `claim:local` / leased work and filing bulk remediation issues, so every staff prompt carries all three agent guardrails independent of role text (#1217, companion Repository_Management#1700).
+- Artifact install no longer takes the dashboard down on an interpreter or wheelhouse mismatch: `deploy/install-dashboard-artifact.sh` checks the wheelhouse ABI against `python_minor`, selects a Python that can build a venv (host `pip` no longer required) and completes an offline install in a staging venv before touching the deploy dir, then swaps `.venv` with restore-on-failure; packaging builds for an explicit `--python-minor` (release: 3.12) and fails on any mismatched wheel (#1212).
 
 ### Added
 

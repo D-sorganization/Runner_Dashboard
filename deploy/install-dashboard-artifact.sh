@@ -6,6 +6,11 @@
 # file inventory, stages the artifact into the deployed dashboard directory, and
 # writes deployment metadata that preserves the artifact's build identity.
 #
+# Fail-closed ordering (#1212): the wheelhouse ABI check, interpreter selection
+# and a complete offline dependency install into a throwaway venv all run
+# BEFORE the deploy directory is touched. Only then is the live `.venv` swapped
+# (the previous one is restored if the rebuild fails) and the code synced.
+#
 # Usage:
 #   bash deploy/install-dashboard-artifact.sh --artifact /path/to/dashboard-4.0.1.tar.gz
 #   bash deploy/install-dashboard-artifact.sh --artifact https://.../dashboard-4.0.1.tar.gz
@@ -30,6 +35,8 @@ fail() { echo -e "${RED}[FAIL]${NC} $*"; exit 1; }
 ARTIFACT_SOURCE=""
 CHECKSUM_INPUT=""
 DEPLOY_DIR="${DEPLOY_DIR:-$HOME/actions-runners/dashboard}"
+INSTALLER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RUNTIME_IMPORT_CHECK='import fastapi, httpx, psutil, uvicorn, yaml'
 
 usage() {
     cat <<'EOF'
@@ -57,8 +64,18 @@ done
 [[ -n "${ARTIFACT_SOURCE}" ]] || fail "Missing --artifact PATH_OR_URL"
 
 tmpdir="$(mktemp -d)"
+live_venv=""
+previous_venv=""
+VENV_SWAP_ACTIVE=0
 cleanup() {
+    local status=$?
+    if [[ "${VENV_SWAP_ACTIVE}" == "1" ]]; then
+        echo -e "${YELLOW}[WARN]${NC} Install failed; restoring the previous runtime venv" >&2
+        rm -rf "${live_venv}"
+        [[ -d "${previous_venv}" ]] && mv "${previous_venv}" "${live_venv}"
+    fi
     rm -rf "${tmpdir}"
+    exit "${status}"
 }
 trap cleanup EXIT
 
@@ -139,6 +156,30 @@ output_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", enc
 PY
 }
 
+read_artifact_python_minor() {
+    python3 -c '
+import json, sys
+print(json.load(open(sys.argv[1], encoding="utf-8"))["compatibility"]["python_minor"])
+' "$1"
+}
+
+# build_runtime_venv PYTHON VENV_DIR STAGE_DIR — venv + offline hashed install + pip check + import smoke.
+# Uses the venv's own pip (bootstrapped by ensurepip), never host pip (#1212).
+build_runtime_venv() {
+    local python="$1"
+    local venv_dir="$2"
+    local source_dir="$3"
+    "${python}" -m venv "${venv_dir}" || return 1
+    "${venv_dir}/bin/python" -m pip install \
+        --disable-pip-version-check \
+        --no-index \
+        --require-hashes \
+        --find-links="${source_dir}/backend/wheels" \
+        -r "${source_dir}/requirements.lock.txt" || return 1
+    "${venv_dir}/bin/python" -m pip check || return 1
+    "${venv_dir}/bin/python" -c "${RUNTIME_IMPORT_CHECK}" || return 1
+}
+
 fetch_artifact "${ARTIFACT_SOURCE}"
 
 info "Verifying checksum for ${artifact_name}"
@@ -156,10 +197,46 @@ while IFS= read -r file_path; do
     [[ -e "${stage_dir}/${file_path}" ]] || fail "FILES.txt references missing path: ${file_path}"
 done < "${stage_dir}/FILES.txt"
 
-info "Installing artifact into ${DEPLOY_DIR}"
+# ── Preflight: everything below must pass before the deploy dir is touched ──
+ARTIFACT_PYTHON_MINOR="$(read_artifact_python_minor "${stage_dir}/deployment.json")"
+
+info "Checking wheelhouse ABI against declared Python ${ARTIFACT_PYTHON_MINOR}"
+[[ -f "${INSTALLER_DIR}/check-wheelhouse-abi.py" ]] || fail "check-wheelhouse-abi.py missing next to installer"
+python3 "${INSTALLER_DIR}/check-wheelhouse-abi.py" \
+    --python-minor "${ARTIFACT_PYTHON_MINOR}" \
+    --wheel-dir "${stage_dir}/backend/wheels" \
+    || fail "Artifact wheelhouse does not match its declared Python ${ARTIFACT_PYTHON_MINOR}; deploy dir untouched"
+
+RUNTIME_PYTHON="$(select_dashboard_python "${ARTIFACT_PYTHON_MINOR}" venv)" \
+    || fail "Python ${ARTIFACT_PYTHON_MINOR} with venv support is required by this artifact; deploy dir untouched"
+info "Using ${RUNTIME_PYTHON} for the runtime venv"
+
+info "Preflight: installing backend dependencies offline into a staging venv..."
+build_runtime_venv "${RUNTIME_PYTHON}" "${tmpdir}/preflight-venv" "${stage_dir}" \
+    || fail "Offline dependency preflight failed; deploy dir untouched"
+ok "Preflight passed"
+
+# ── Mutation: swap the runtime venv first (restorable), then sync code ──
 mkdir -p "${DEPLOY_DIR}"
 command -v rsync >/dev/null 2>&1 || fail "rsync is required for state-preserving artifact installation"
+live_venv="${DEPLOY_DIR}/.venv"
+previous_venv="${DEPLOY_DIR}/.venv.previous-install"
+if [[ -d "${previous_venv}" && ! -e "${live_venv}" ]]; then
+    warn "Recovering ${previous_venv} left by an interrupted install"
+    mv "${previous_venv}" "${live_venv}"
+fi
+rm -rf "${previous_venv}"
+[[ -e "${live_venv}" ]] && mv "${live_venv}" "${previous_venv}"
+VENV_SWAP_ACTIVE=1
+
+info "Installing backend dependencies offline into ${live_venv}..."
+build_runtime_venv "${RUNTIME_PYTHON}" "${live_venv}" "${stage_dir}" \
+    || fail "Runtime venv rebuild failed after a passing preflight"
+
+info "Installing artifact into ${DEPLOY_DIR}"
 rsync -a --delete \
+    --exclude='/.venv' \
+    --exclude='/.venv.previous-install' \
     --exclude='.env' \
     --exclude='.*_state.json' \
     --exclude='*_history.json' \
@@ -178,20 +255,8 @@ find "${DEPLOY_DIR}/backend" -maxdepth 2 -type f \
     -exec chmod 0644 {} + 2>/dev/null || true
 chmod 644 "${DEPLOY_DIR}/deployment.json"
 
-info "Installing backend dependencies offline from vendored wheels..."
-ARTIFACT_PYTHON_MINOR="$(python3 -c '
-import json, sys
-print(json.load(open(sys.argv[1], encoding="utf-8"))["compatibility"]["python_minor"])
-' "${DEPLOY_DIR}/deployment.json")"
-RUNTIME_PYTHON="$(select_dashboard_python "${ARTIFACT_PYTHON_MINOR}")" \
-    || fail "Python ${ARTIFACT_PYTHON_MINOR} is required by this artifact wheelhouse"
-"${RUNTIME_PYTHON}" -m venv "${DEPLOY_DIR}/.venv"
-"${DEPLOY_DIR}/.venv/bin/pip" install \
-    --no-index \
-    --require-hashes \
-    --find-links="${DEPLOY_DIR}/backend/wheels" \
-    -r "${DEPLOY_DIR}/requirements.lock.txt"
-"${DEPLOY_DIR}/.venv/bin/pip" check
-"${DEPLOY_DIR}/.venv/bin/python" -c 'import fastapi, httpx, psutil, uvicorn, yaml'
+"${DEPLOY_DIR}/.venv/bin/python" -c "${RUNTIME_IMPORT_CHECK}"
+VENV_SWAP_ACTIVE=0
+rm -rf "${previous_venv}"
 
 ok "Dashboard artifact installed to ${DEPLOY_DIR}"
