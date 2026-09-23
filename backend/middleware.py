@@ -169,6 +169,7 @@ _ALT_AUTH_EXEMPT_PREFIXES = (
     "/api/orchestrator/",
     "/api/credentials/",
     "/api/staff/",
+    "/api/coordination/",
 )
 
 DEFAULT_MAX_BODY_SIZE = 1 * 1024 * 1024  # 1 MB

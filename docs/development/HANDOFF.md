@@ -1,4 +1,36 @@
-# Current Handoff — Fleet API agent clients (#1228)
+# Current Handoff — Fleet Coordination API (#1229)
+
+Last updated: 2026-09-22T23:59:00-07:00
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/coord-api` (worktree)
+- Branch: `feat/coordination-api`; base `9fd440d`; commit `SELF`; PR opened after push. Development log: DL-#1229.
+
+## Work
+
+- New `backend/coordination/` (`rm_scripts`, `board`, `claims`, `staff_view`, `briefing`, `models`, `auth`, `service`) and `backend/routers/coordination.py`, registered in `server.py`; contract as built in `docs/coordination-api.md`.
+- `staff/lease.py` and `staff/usage.py` now use the shared `coordination.rm_scripts` helper (no behaviour change).
+- `identity.SCOPE_PRESETS`: `coordination.write` added to `bot` and `operator`; `principal_has_scope()` extracted from `require_scope`. `/api/coordination/` added to `_ALT_AUTH_EXEMPT_PREFIXES` (mirrors `/api/staff/`).
+- Briefing calls `priorities.service.top_priorities(limit)` only if that module exists (the Priorities half is a parallel change).
+- OpenAPI snapshot + `api-types.ts` regenerated (additive only).
+- Aligned with the merged `clients/fleet` client (#1230): `owner/repo` accepted and stripped to the bare name, `/` allowed in session/message ids, free-text `intent`, `repo` optional on `briefing`. The client still lets `register_presence` omit `issue`/`branch`; the server keeps them required because RM `register` requires them (422).
+
+## Validation
+
+- WSL venv: `PYTHONPATH=backend pytest tests/api -k "coordination or staff or auth" -o addopts=""` → 220 passed, 2 skipped (tests/clients 66 passed); full `tests/api` 702 passed with one timing flake (`test_staff_runner::test_submit_runs_fake_cli_to_success_with_events_and_cost`) that passes 3/3 on rerun.
+- `python -m mypy backend/ --ignore-missing-imports --no-implicit-optional --python-version 3.12` → no issues (166 files).
+- `ruff check` / `ruff format --check` clean on changed files.
+
+## Next
+
+1. Merge; redeploy nodes so agents can call `/api/coordination/briefing`.
+2. When RM ships `agent_communicate list --all-repos`, nothing changes here — the probe picks it up.
+
+---
+
+## Previous Handoff — Current Handoff — Fleet API agent clients (#1228)
 
 Last updated: 2026-09-22T23:55:00-07:00
 
@@ -6,7 +38,7 @@ Last updated: 2026-09-22T23:55:00-07:00
 
 - Repository: `D-sorganization/Runner_Dashboard`
 - Working directory: `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/fleet-clients` (worktree)
-- Branch: `feat/fleet-clients`; base `26ffa70`; commit `SELF`; PR opened after push.
+- Branch: `feat/fleet-clients`; base `9fd440d`; commit `SELF`; PR opened after push.
 - Governing issue: #1228 (epic #1192); development log entry DL-#1228.
 
 ## Work

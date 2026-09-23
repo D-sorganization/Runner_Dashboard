@@ -348,31 +348,34 @@ SCOPE_PRESETS = {
         "assessments.dispatch",
         "feature-requests.manage",
         "system.control",
+        "coordination.write",
     ],
     "viewer": ["assistant.chat"],
     "bot": [
         "remediation.dispatch",
         "workflows.dispatch",
         "heavy-tests.dispatch",
+        "coordination.write",
     ],
 }
+
+
+def principal_has_scope(principal: Principal, required_scope: str) -> bool:
+    """True when any of the principal's role presets grants ``required_scope`` (``*`` and ``x.*`` wildcards)."""
+    principal_scopes: set[str] = set()
+    for role in principal.roles:
+        principal_scopes.update(SCOPE_PRESETS.get(role, []))
+    if "*" in principal_scopes:
+        return True
+    return any(s == required_scope or (s.endswith("*") and required_scope.startswith(s[:-1])) for s in principal_scopes)
 
 
 def require_scope(required_scope: str):
     def checker(
         principal: Principal = Depends(require_principal),
     ) -> Principal:  # noqa: B008
-        principal_scopes = set()
-        for role in principal.roles:
-            if role in SCOPE_PRESETS:
-                principal_scopes.update(SCOPE_PRESETS[role])
-
-        if "*" in principal_scopes:
+        if principal_has_scope(principal, required_scope):
             return principal
-
-        for s in principal_scopes:
-            if s == required_scope or (s.endswith("*") and required_scope.startswith(s[:-1])):
-                return principal
 
         raise HTTPException(
             status_code=403,
