@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Coordination API hardening (#1244): claims no longer granted when RM reports a hold with no agent, another session of the same agent, or a fail-open `error:` reason; lease `reason`/`intent`/goal text rejects line breaks (lease forgery); bot principals are bound to their own agent and `<agent>-*` sessions; messages from sessions without presence are 409 instead of silently dropped; input RM would reject is 422 instead of 502; RM `errors` and partial lease outcomes are surfaced; board cache no longer re-stores pre-write reads.
 - Staff/Fleet Command Assign lists only dispatchable, non-retired roles (Barb/Orchestrator are grok-chat only); Active work collapses board replay warnings into an "N board warnings" summary (#1241).
 - Coordination API board reads use stale-while-revalidate with parallel per-repo fallback, so agent tool calls no longer wait tens of seconds on GitHub; presence `paths` are normalised (`./`, trailing `/`), and paths RM would reject return 422 instead of 502 (#1237).
 - `GET /api/staff/summary` now lists active holds (`staff.holds.active_holds` was missing); the fleet client requires `issue` + `branch` for presence and caps TTL at 8 h like the server; client test fixtures no longer shadow `tests/conftest.py` (#1234).

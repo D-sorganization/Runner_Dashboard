@@ -14,8 +14,10 @@ Routes (all under ``/api/coordination``):
 
 Auth: reads ``require_fleet_peer``; writes ``require_coordination_writer``
 (scope ``coordination.write`` or the loopback orchestrator peer) plus the
-CSRF header. Reads degrade to ``available: false`` with HTTP 200; failed RM
-writes return 502 with the script's ``error`` and ``guidance``.
+CSRF header. A bot principal ``agent-<name>`` may only act as ``<name>`` on
+sessions ``<name>-*`` (403 otherwise). Reads degrade to ``available: false``
+with HTTP 200; failed RM writes return 502 with the script's ``error`` and
+``guidance``; 409 when the issue is held or the sender has no live presence.
 """
 
 from __future__ import annotations
@@ -64,8 +66,11 @@ async def _write(action: Callable[[], dict[str, Any]], caller: Caller, what: str
     """Run one RM write off the event loop and map its failures to HTTP (DRY for every POST)."""
     try:
         result = await run_in_threadpool(action)
-    except ClaimHeldError as exc:
+    except (ClaimHeldError, service.NotRegisteredError) as exc:
         raise HTTPException(status_code=409, detail=exc.to_detail()) from exc
+    except service.ImpersonationError as exc:
+        log.warning("coordination: %s refused for %s: %s", what, caller.label, exc)
+        raise HTTPException(status_code=403, detail={"error": str(exc)}) from exc
     except RMScriptError as exc:
         log.warning("coordination: %s by %s failed: %s", what, caller.label, exc.error)
         raise HTTPException(status_code=502, detail=exc.to_detail()) from exc
@@ -99,17 +104,17 @@ async def post_presence(body: PresenceBody, caller: Caller = WRITER) -> dict[str
 
 @router.post("/presence/release")
 async def post_presence_release(body: ReleaseBody, caller: Caller = WRITER) -> dict[str, Any]:
-    return await _write(lambda: service.release_presence(body), caller, "presence release")
+    return await _write(lambda: service.release_presence(body, caller), caller, "presence release")
 
 
 @router.post("/messages")
 async def post_message(body: MessageBody, caller: Caller = WRITER) -> dict[str, Any]:
-    return await _write(lambda: service.send_message(body), caller, "message send")
+    return await _write(lambda: service.send_message(body, caller), caller, "message send")
 
 
 @router.post("/messages/ack")
 async def post_message_ack(body: AckBody, caller: Caller = WRITER) -> dict[str, Any]:
-    return await _write(lambda: service.ack_message(body), caller, "message ack")
+    return await _write(lambda: service.ack_message(body, caller), caller, "message ack")
 
 
 @router.get("/claims")

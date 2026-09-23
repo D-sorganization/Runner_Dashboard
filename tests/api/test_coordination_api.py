@@ -6,21 +6,17 @@ a temp RM root whose ``scripts/*.py`` log their argv and print canned JSON.
 
 from __future__ import annotations
 
-import sys
 import time
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
-import identity
 import pytest
 from coordination import board as board_mod
 from coordination.models import normalize_scope_path
-from coordination_fake_rm import FakeRM, board, session
+from coordination_fake_rm import FakeRM, board, bot, claim_status, install, session
 from fastapi.testclient import TestClient
-from staff import fleet as staff_fleet
 from staff import runner as runner_mod
-from staff import scheduler as scheduler_mod
 from staff import store as store_mod
 
 _XHR = {"X-Requested-With": "XMLHttpRequest"}
@@ -29,27 +25,8 @@ _BOT = {"Authorization": "Bearer bot-token", **_XHR}
 
 @pytest.fixture
 def rm(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeRM]:
-    fake = FakeRM(tmp_path / "rm")
-    monkeypatch.setenv("STAFF_RM_ROOT", str(fake.root))
-    monkeypatch.setenv("STAFF_RM_PYTHON", sys.executable)
-    monkeypatch.setenv("STAFF_RUNS_DB", str(tmp_path / "runs.sqlite3"))
-    monkeypatch.setenv("STAFF_ROLES_DIR", str(tmp_path / "no-roles"))
-    monkeypatch.setenv("STAFF_HOLDS_FILE", str(tmp_path / "holds.json"))
-    monkeypatch.setenv("COORDINATION_REPOS", "Tools,Games")
-    monkeypatch.setenv("DASHBOARD_LOOPBACK_AUTH", "0")
-    monkeypatch.delenv("HUB_FLEET_TOKEN", raising=False)
-    monkeypatch.setattr(staff_fleet, "peer_nodes", lambda: {})
-    bot = identity.Principal(id="claude-code", type="bot", name="Claude Code", roles=["bot"])
-    monkeypatch.setattr(identity.identity_manager, "verify_token", lambda raw: bot if raw == "bot-token" else None)
-    store_mod.reset_store()
-    runner_mod.reset_runner()
-    scheduler_mod.reset_scheduler()
-    board_mod.reset_cache()
-    yield fake
-    board_mod.reset_cache()
-    scheduler_mod.reset_scheduler()
-    runner_mod.reset_runner()
-    store_mod.reset_store()
+    principals = {"bot-token": bot("agent-codex")}
+    yield from install(tmp_path, monkeypatch, principals, repos="Tools,Games")
 
 
 @pytest.fixture
@@ -214,14 +191,14 @@ def test_presence_register_passes_every_field_and_invalidates_cache(rm: FakeRM, 
     rm.respond("agent_communicate:register", {"ok": True, "receipt": "c-1", "event": {"id": "e1"}})
     client.get("/api/coordination/sessions")
     body = {
-        "agent": "codex", "session": "s-42", "repo": "Tools", "issue": 42, "branch": "feat/x",
+        "agent": "codex", "session": "codex-42", "repo": "Tools", "issue": 42, "branch": "feat/x",
         "paths": ["a.py", "b.py"], "goals": {"api": "ship v1"}, "ttl_hours": 3,
     }  # fmt: skip
     resp = client.post("/api/coordination/presence", json=body, headers=_BOT)
     assert resp.status_code == 200, resp.text
     assert resp.json()["ok"] is True
     argv = [a for a in _argv(rm, "agent_communicate") if "register" in a][0]
-    assert argv[:4] == ["--repo", "Tools", "--session", "s-42"]
+    assert argv[:4] == ["--repo", "Tools", "--session", "codex-42"]
     tail = argv[argv.index("register") :]
     assert tail == [
         "register", "--agent", "codex", "--issue", "42", "--branch", "feat/x",
@@ -233,10 +210,10 @@ def test_presence_register_passes_every_field_and_invalidates_cache(rm: FakeRM, 
 
 @pytest.mark.unit
 def test_owner_prefixed_repo_is_normalised_to_the_bare_name(rm: FakeRM, client: TestClient) -> None:
-    rm.respond("check_agent_claim", {"held": False, "agent": "", "reason": "", "expires_at": None})
+    rm.respond("check_agent_claim", claim_status(False))
     assert client.get("/api/coordination/claims?repo=D-sorganization/Tools&issue=3").json()["available"] is True
     rm.respond("agent_communicate:release", {"ok": True})
-    rel = {"session": "s-1", "repo": "D-sorganization/Tools"}
+    rel = {"session": "codex-1", "repo": "D-sorganization/Tools"}
     assert client.post("/api/coordination/presence/release", json=rel, headers=_BOT).status_code == 200
     assert [argv[1] for _, argv in rm.calls()] == ["Tools", "Tools"]
     assert client.get("/api/coordination/claims?repo=a..b&issue=3").status_code == 422
@@ -245,16 +222,17 @@ def test_owner_prefixed_repo_is_normalised_to_the_bare_name(rm: FakeRM, client: 
 @pytest.mark.unit
 def test_agent_defaults_to_bot_principal(rm: FakeRM, client: TestClient) -> None:
     rm.respond("agent_communicate:register", {"ok": True})
-    body = {"session": "s-1", "repo": "Tools", "issue": 1, "branch": "b"}
+    body = {"session": "codex-1", "repo": "Tools", "issue": 1, "branch": "b"}
     assert client.post("/api/coordination/presence", json=body, headers=_BOT).status_code == 200
     argv = _argv(rm, "agent_communicate")[0]
-    assert argv[argv.index("--agent") + 1] == "claude-code"
+    assert argv[argv.index("--agent") + 1] == "codex"  # bot principal agent-codex
 
 
 @pytest.mark.unit
 def test_write_failure_returns_502_with_error_and_guidance(rm: FakeRM, client: TestClient) -> None:
+    rm.respond("agent_communicate:list", board(session("codex-1", "Tools", agent="codex")))
     rm.respond("agent_communicate:send", {"ok": False, "error": "board locked", "guidance": "retry later"}, rc=2)
-    body = {"session": "s-1", "repo": "Tools", "to": "*", "text": "heads up"}
+    body = {"session": "codex-1", "repo": "Tools", "to": "*", "text": "heads up"}
     resp = client.post("/api/coordination/messages", json=body, headers=_BOT)
     assert resp.status_code == 502
     detail = resp.json()["detail"]
@@ -263,16 +241,17 @@ def test_write_failure_returns_502_with_error_and_guidance(rm: FakeRM, client: T
 
 @pytest.mark.unit
 def test_send_ack_and_release_call_the_matching_subcommands(rm: FakeRM, client: TestClient) -> None:
+    rm.respond("agent_communicate:list", board(session("codex-1", "Tools", agent="codex")))
     for cmd in ("send", "ack", "release"):
         rm.respond(f"agent_communicate:{cmd}", {"ok": True})
-    msg = {"session": "s-1", "repo": "Tools", "to": "s-2", "text": "rebasing"}
+    msg = {"session": "codex-1", "repo": "Tools", "to": "claude-2", "text": "rebasing"}
     assert client.post("/api/coordination/messages", json=msg, headers=_BOT).status_code == 200
-    ack = {"session": "s-1", "repo": "Tools", "message_id": "evt-9"}
+    ack = {"session": "codex-1", "repo": "Tools", "message_id": "evt-9"}
     assert client.post("/api/coordination/messages/ack", json=ack, headers=_BOT).status_code == 200
-    rel = {"session": "s-1", "repo": "Tools"}
+    rel = {"session": "codex-1", "repo": "Tools"}
     assert client.post("/api/coordination/presence/release", json=rel, headers=_BOT).status_code == 200
-    tails = [a[4:] for a in _argv(rm, "agent_communicate")]
-    assert tails == [["send", "--to", "s-2", "--text=rebasing"], ["ack", "evt-9"], ["release"]]
+    tails = [a[4:] for a in _argv(rm, "agent_communicate") if "list" not in a]
+    assert tails == [["send", "--to", "claude-2", "--text=rebasing"], ["ack", "evt-9"], ["release"]]
 
 
 @pytest.mark.unit

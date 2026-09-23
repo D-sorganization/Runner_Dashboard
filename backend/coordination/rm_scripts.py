@@ -48,10 +48,12 @@ class ScriptResult:
         return None
 
     def failure(self) -> str:
-        """Short human reason for a failed call (error field, else stderr tail, else rc)."""
+        """Short human reason for a failed call (``error``, else RM's ``errors`` list, else stderr tail, else rc)."""
         data = self.json() or {}
         if data.get("error"):
             return str(data["error"])
+        if isinstance(data.get("errors"), list) and data["errors"]:
+            return "; ".join(str(e) for e in data["errors"])
         tail = self.output[-300:]
         return tail or f"exit code {self.rc}"
 

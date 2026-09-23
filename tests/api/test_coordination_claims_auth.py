@@ -9,48 +9,25 @@ from pathlib import Path
 
 import identity
 import pytest
-from coordination import board as board_mod
-from coordination_fake_rm import FakeRM, board, session
+from coordination_fake_rm import FakeRM, board, bot, claim_status, install, lease_result, release_result, session
 from fastapi.testclient import TestClient
-from staff import fleet as staff_fleet
-from staff import runner as runner_mod
 from staff import scheduler as scheduler_mod
-from staff import store as store_mod
 from staff.workspace import FLEET_RULES
 
 _XHR = {"X-Requested-With": "XMLHttpRequest"}
 _BOT = {"Authorization": "Bearer bot-token", **_XHR}
 _VIEWER = {"Authorization": "Bearer viewer-token", **_XHR}
 _REMOTE = ("100.64.0.9", 51000)
-_CLAIM = {"repo": "Tools", "issue": 12, "agent": "codex", "session": "s-12", "intent": "implement"}
+_CLAIM = {"repo": "Tools", "issue": 12, "agent": "codex", "session": "codex-12", "intent": "implement"}
 
 
 @pytest.fixture
 def rm(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeRM]:
-    fake = FakeRM(tmp_path / "rm")
-    monkeypatch.setenv("STAFF_RM_ROOT", str(fake.root))
-    monkeypatch.setenv("STAFF_RM_PYTHON", sys.executable)
-    monkeypatch.setenv("STAFF_RUNS_DB", str(tmp_path / "runs.sqlite3"))
-    monkeypatch.setenv("STAFF_ROLES_DIR", str(tmp_path / "no-roles"))
-    monkeypatch.setenv("STAFF_HOLDS_FILE", str(tmp_path / "holds.json"))
-    monkeypatch.setenv("COORDINATION_REPOS", "Tools")
-    monkeypatch.setenv("DASHBOARD_LOOPBACK_AUTH", "0")
-    monkeypatch.delenv("HUB_FLEET_TOKEN", raising=False)
-    monkeypatch.setattr(staff_fleet, "peer_nodes", lambda: {})
     principals = {
-        "bot-token": identity.Principal(id="claude-code", type="bot", name="Claude Code", roles=["bot"]),
+        "bot-token": bot("agent-codex"),
         "viewer-token": identity.Principal(id="watcher", type="human", name="Watcher", roles=["viewer"]),
     }
-    monkeypatch.setattr(identity.identity_manager, "verify_token", lambda raw: principals.get(raw))
-    store_mod.reset_store()
-    runner_mod.reset_runner()
-    scheduler_mod.reset_scheduler()
-    board_mod.reset_cache()
-    yield fake
-    board_mod.reset_cache()
-    scheduler_mod.reset_scheduler()
-    runner_mod.reset_runner()
-    store_mod.reset_store()
+    yield from install(tmp_path, monkeypatch, principals, repos="Tools")
 
 
 def _client(peer: tuple[str, int] = _REMOTE) -> TestClient:
@@ -71,7 +48,7 @@ def _scripts(rm: FakeRM) -> list[str]:
 # ── claims ───────────────────────────────────────────────────────────────
 @pytest.mark.unit
 def test_claim_check_returns_rm_json(rm: FakeRM, client: TestClient) -> None:
-    held = {"held": True, "agent": "gemini", "reason": "lease", "expires_at": "2026-09-22T12:00"}
+    held = claim_status(True, "gemini", "active lease", "2026-09-22T12:00:00+00:00")
     rm.respond("check_agent_claim", held)
     body = client.get("/api/coordination/claims?repo=Tools&issue=12").json()
     assert body["available"] is True and body["held"] is True and body["agent"] == "gemini"
@@ -80,7 +57,7 @@ def test_claim_check_returns_rm_json(rm: FakeRM, client: TestClient) -> None:
 
 @pytest.mark.unit
 def test_claim_held_by_another_agent_is_409_and_posts_nothing(rm: FakeRM, client: TestClient) -> None:
-    rm.respond("check_agent_claim", {"held": True, "agent": "gemini", "reason": "lease", "expires_at": None})
+    rm.respond("check_agent_claim", claim_status(True, "gemini", "active lease"))
     resp = client.post("/api/coordination/claims", json=_CLAIM, headers=_BOT)
     assert resp.status_code == 409
     assert resp.json()["detail"]["held_by"] == "gemini"
@@ -88,23 +65,22 @@ def test_claim_held_by_another_agent_is_409_and_posts_nothing(rm: FakeRM, client
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("holder", ["", "codex"])
-def test_free_or_own_claim_posts_lease(rm: FakeRM, client: TestClient, holder: str) -> None:
-    rm.respond("check_agent_claim", {"held": bool(holder), "agent": holder, "reason": "", "expires_at": None})
-    rm.respond("post_agent_lease", {"ok": True, "agent": "codex", "expires_at": "2026-09-22T12:00:00+00:00"})
+def test_free_claim_posts_lease(rm: FakeRM, client: TestClient) -> None:
+    rm.respond("check_agent_claim", claim_status(False))
+    rm.respond("post_agent_lease", lease_result())
     resp = client.post("/api/coordination/claims", json=_CLAIM, headers=_BOT)
     assert resp.status_code == 200, resp.text
     assert resp.json()["lease"]["ok"] is True
     post = [argv for name, argv in rm.calls() if name == "post_agent_lease"][0]
     assert post == [
         *("--repo", "Tools", "--issue", "12"),
-        *("--agent", "codex", "--session", "s-12", "--intent", "implement"),
+        *("--agent", "codex", "--session", "codex-12", "--intent", "implement"),
     ]
 
 
 @pytest.mark.unit
 def test_unknown_agent_lease_without_json_is_502(rm: FakeRM, client: TestClient) -> None:
-    rm.respond("check_agent_claim", {"held": False, "agent": "", "reason": "", "expires_at": None})
+    rm.respond("check_agent_claim", claim_status(False))
     rm.respond("post_agent_lease", None, stderr="ERROR: unknown agent")
     resp = client.post("/api/coordination/claims", json=_CLAIM, headers=_BOT)
     assert resp.status_code == 502
@@ -113,7 +89,7 @@ def test_unknown_agent_lease_without_json_is_502(rm: FakeRM, client: TestClient)
 
 @pytest.mark.unit
 def test_claim_release(rm: FakeRM, client: TestClient) -> None:
-    rm.respond("release_agent_lease", {"ok": True, "removed_label": True})
+    rm.respond("release_agent_lease", release_result())
     body = {**_CLAIM, "reason": "handed off"}
     body.pop("intent")
     resp = client.post("/api/coordination/claims/release", json=body, headers=_BOT)
