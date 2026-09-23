@@ -16,22 +16,22 @@ every run, and streams the output to the operator console.
 
 ## API (`/api/staff`)
 
-| Method | Path                          | Auth              | Purpose                                                               |
-| ------ | ----------------------------- | ----------------- | --------------------------------------------------------------------- |
-| GET    | `/api/staff/roster`           | fleet peer        | Roster: roles, provider availability, active counts                   |
-| GET | `/api/staff/board` | fleet peer | Status monitor. Fleet-wide when peers are configured (`machines`, `online`, `offline`, merged `running`/`queued`/spend, `liveness_alerts`); `?local=1` returns this node only (with its `liveness` list) |
-| GET | `/api/staff/summary` | fleet peer | One-call brief for Barb/Orchestrator: `in_flight`, `attention` (failed/blocked 24 h), `recent_24h`, `spend_today_usd`, `providers` per machine, `holds`, `liveness_alerts`, `roles` |
-| GET    | `/api/staff/runs`             | fleet peer        | History; filters `role`, `status`, `since`, `limit`                   |
-| GET    | `/api/staff/runs/{id}`        | fleet peer        | One run plus its events                                               |
-| GET    | `/api/staff/runs/{id}/stream` | fleet peer        | Server-sent events until the run ends                                 |
-| POST   | `/api/staff/{role}/run`       | orchestrator peer | Dispatch; `dry_run: true` returns the plan only                       |
-| POST   | `/api/staff/runs/{id}/cancel` | orchestrator peer | Terminate a run                                                       |
-| GET    | `/api/staff/schedule`         | fleet peer        | Per role: next fire, in window now, blocking hold, budget, last fired |
-| GET    | `/api/staff/holds`            | fleet peer        | The holds list                                                        |
-| PUT    | `/api/staff/holds`            | orchestrator peer | Replace the holds list                                                |
-| GET | `/api/staff/usage` | fleet peer | Cost and token usage grouped by `provider`, `role` or `day` (`?group=`, `?since=`), with totals and the daily budget percent |
-| GET | `/api/staff/usage/pricing` | fleet peer | The price table used for estimates |
-| POST | `/api/staff/usage/export` | orchestrator peer | Append today's per-provider totals to Repository_Management `data/credit_usage.json` via `scripts/append_credit_usage.py` (503 without an RM checkout) |
+| Method | Path                          | Auth              | Purpose                                                                                                                                                                                                  |
+| ------ | ----------------------------- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/staff/roster`           | fleet peer        | Roster: roles, provider availability, active counts                                                                                                                                                      |
+| GET    | `/api/staff/board`            | fleet peer        | Status monitor. Fleet-wide when peers are configured (`machines`, `online`, `offline`, merged `running`/`queued`/spend, `liveness_alerts`); `?local=1` returns this node only (with its `liveness` list) |
+| GET    | `/api/staff/summary`          | fleet peer        | One-call brief for Barb/Orchestrator: `in_flight`, `attention` (failed/blocked 24 h), `recent_24h`, `spend_today_usd`, `providers` per machine, `holds`, `liveness_alerts`, `roles`                      |
+| GET    | `/api/staff/runs`             | fleet peer        | History; filters `role`, `status`, `since`, `limit`                                                                                                                                                      |
+| GET    | `/api/staff/runs/{id}`        | fleet peer        | One run plus its events                                                                                                                                                                                  |
+| GET    | `/api/staff/runs/{id}/stream` | fleet peer        | Server-sent events until the run ends                                                                                                                                                                    |
+| POST   | `/api/staff/{role}/run`       | orchestrator peer | Dispatch; `dry_run: true` returns the plan only                                                                                                                                                          |
+| POST   | `/api/staff/runs/{id}/cancel` | orchestrator peer | Terminate a run                                                                                                                                                                                          |
+| GET    | `/api/staff/schedule`         | fleet peer        | Per role: next fire, in window now, blocking hold, budget, last fired                                                                                                                                    |
+| GET    | `/api/staff/holds`            | fleet peer        | The holds list                                                                                                                                                                                           |
+| PUT    | `/api/staff/holds`            | orchestrator peer | Replace the holds list                                                                                                                                                                                   |
+| GET    | `/api/staff/usage`            | fleet peer        | Cost and token usage grouped by `provider`, `role` or `day` (`?group=`, `?since=`), with totals and the daily budget percent                                                                             |
+| GET    | `/api/staff/usage/pricing`    | fleet peer        | The price table used for estimates                                                                                                                                                                       |
+| POST   | `/api/staff/usage/export`     | orchestrator peer | Append today's per-provider totals to Repository_Management `data/credit_usage.json` via `scripts/append_credit_usage.py` (503 without an RM checkout)                                                   |
 
 POST bodies need the CSRF sentinel header `X-Requested-With: XMLHttpRequest`
 like every other dashboard POST. "Orchestrator peer" means an operator
@@ -109,13 +109,13 @@ months because nothing watched "when did this job last succeed". The Staff
 Hub watches. `backend/staff/liveness.py` derives, for every dispatchable role
 with a `schedule`, one row in the node's board `liveness` list:
 
-| Field | Meaning |
-| --- | --- |
-| `last_success` | `ended_at` of the latest `succeeded` run for the role in this node's store |
-| `last_attempt` | `created_at` of the latest run of any status |
-| `last_fired` | the scheduler's `last_fired` for the role (`staff_schedule_state.json`) |
-| `next_fire`, `expected_interval_seconds` | next slot after now, and the gap to the slot after that |
-| `status` | `ok` · `late` · `dead` · `never` |
+| Field                                    | Meaning                                                                    |
+| ---------------------------------------- | -------------------------------------------------------------------------- |
+| `last_success`                           | `ended_at` of the latest `succeeded` run for the role in this node's store |
+| `last_attempt`                           | `created_at` of the latest run of any status                               |
+| `last_fired`                             | the scheduler's `last_fired` for the role (`staff_schedule_state.json`)    |
+| `next_fire`, `expected_interval_seconds` | next slot after now, and the gap to the slot after that                    |
+| `status`                                 | `ok` · `late` · `dead` · `never`                                           |
 
 **How to read the badge.** `ok`: the last success is younger than 1.5
 intervals. `late`: older than 1.5 intervals (one missed slot plus slack).
@@ -152,8 +152,8 @@ them one at a time. A role opts in through its YAML:
 ```yaml
 strategy:
   consolidate_when:
-    open_prs: 6          # repo's open non-draft PRs
-    utilisation_pct: 70  # fleet runners busy / online
+    open_prs: 6 # repo's open non-draft PRs
+    utilisation_pct: 70 # fleet runners busy / online
 ```
 
 `backend/staff/consolidation.py` evaluates the block whenever a run for the
@@ -173,34 +173,70 @@ claim:local, PRs of other live sessions, workflow changes, bot snapshot PRs
 that delete main lines. Never cancel or re-run other PRs' CI.`, or the serial
 variant) and surfaces as:
 
-| Where | Field |
-| --- | --- |
-| `GET /api/staff/roster` | `roles[].strategy` (the raw block; the Roster card shows the threshold) |
-| `POST /api/staff/{role}/run` with `dry_run` | `plan.consolidation` = `{mode, reason, threshold}` (the Assign preview shows it) |
-| run records | `strategy_mode` (`consolidate` / `serial` / empty when not applicable) |
-| run records | `outcome`, e.g. `consolidated 12 PRs into #1801`, parsed case-insensitively from the final `STAFF_RESULT:` line (`consolidated N PRs into #M`); shown in the run log and run detail |
+| Where                                       | Field                                                                                                                                                                               |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/staff/roster`                     | `roles[].strategy` (the raw block; the Roster card shows the threshold)                                                                                                             |
+| `POST /api/staff/{role}/run` with `dry_run` | `plan.consolidation` = `{mode, reason, threshold}` (the Assign preview shows it)                                                                                                    |
+| run records                                 | `strategy_mode` (`consolidate` / `serial` / empty when not applicable)                                                                                                              |
+| run records                                 | `outcome`, e.g. `consolidated 12 PRs into #1801`, parsed case-insensitively from the final `STAFF_RESULT:` line (`consolidated N PRs into #M`); shown in the run log and run detail |
 
 Both run columns are additive (`PRAGMA`-guarded `ALTER TABLE`, like
 `cost_method`); older nodes simply omit them.
 
 ## Environment
 
-| Variable                    | Default                                                                         | Meaning                                              |
-| --------------------------- | ------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| `STAFF_SCHEDULER_ENABLED`   | `1`                                                                             | `0`/`false` keeps the scheduler thread from starting |
-| `STAFF_HOLDS_FILE`          | `<config dir>/staff_holds.json`                                                 | Holds list                                           |
-| `STAFF_SCHEDULE_STATE`      | `<config dir>/staff_schedule_state.json`                                        | Per-role cursor / last fired                         |
-| `STAFF_ROLES_DIR`           | sibling `Repository_Management/staff/roles`                                     | Role YAML directory                                  |
-| `STAFF_RUNS_DB`             | `<config dir>/staff_runs.sqlite3`                                               | Run store                                            |
-| `STAFF_REPOS_ROOT`          | `~/Repositories`, `~/actions-runners/repos`, `/mnt/c/Users/<user>/Repositories` | Where checkouts live (`os.pathsep` list)             |
-| `STAFF_WORKTREES_ROOT`      | `<first repos root>/_staff_worktrees`                                           | Worktree location                                    |
-| `STAFF_RM_ROOT`             | sibling `Repository_Management`                                                 | Lease ritual scripts                                 |
-| `STAFF_RM_PYTHON`           | `python3` / `python`                                                            | Interpreter for the RM scripts                       |
-| `STAFF_MAX_CONCURRENT_RUNS` | `3`                                                                             | Runs executing at once on this node                  |
-| `STAFF_RUN_TIMEOUT_SECONDS` | `14400`                                                                         | Hard stop per run                                    |
-| `STAFF_PEER_TIMEOUT_SECONDS` | `6` | Per-peer timeout for board fan-out (forwarded dispatches allow 5×) |
-| `STAFF_BUDGET_USD_PER_DAY` | `0` (unlimited) | Fleet-wide daily ceiling reported by `/api/staff/usage` |
-| `STAFF_WALL_USD_PER_MIN` | unset | `provider=rate,...` wall-time fallback for providers without token accounting |
+| Variable                     | Default                                                                         | Meaning                                                                            |
+| ---------------------------- | ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `STAFF_SCHEDULER_ENABLED`    | `1`                                                                             | `0`/`false` keeps the scheduler thread from starting                               |
+| `STAFF_HOLDS_FILE`           | `<config dir>/staff_holds.json`                                                 | Holds list                                                                         |
+| `STAFF_SCHEDULE_STATE`       | `<config dir>/staff_schedule_state.json`                                        | Per-role cursor / last fired                                                       |
+| `STAFF_ROLES_DIR`            | sibling `Repository_Management/staff/roles`                                     | Role YAML directory                                                                |
+| `STAFF_RUNS_DB`              | `<config dir>/staff_runs.sqlite3`                                               | Run store                                                                          |
+| `STAFF_REPOS_ROOT`           | `~/Repositories`, `~/actions-runners/repos`, `/mnt/c/Users/<user>/Repositories` | Where checkouts live (`os.pathsep` list)                                           |
+| `STAFF_WORKTREES_ROOT`       | `<first repos root>/_staff_worktrees`                                           | Worktree location                                                                  |
+| `STAFF_RM_ROOT`              | sibling `Repository_Management`                                                 | Lease ritual scripts                                                               |
+| `STAFF_RM_PYTHON`            | `python3` / `python`                                                            | Interpreter for the RM scripts                                                     |
+| `STAFF_MAX_CONCURRENT_RUNS`  | `3`                                                                             | Runs executing at once on this node                                                |
+| `STAFF_RUN_TIMEOUT_SECONDS`  | `14400`                                                                         | Hard stop per run                                                                  |
+| `STAFF_PEER_TIMEOUT_SECONDS` | `6`                                                                             | Per-peer timeout for board fan-out (forwarded dispatches allow 5×)                 |
+| `STAFF_BUDGET_USD_PER_DAY`   | `0` (unlimited)                                                                 | Fleet-wide daily ceiling reported by `/api/staff/usage`                            |
+| `STAFF_WALL_USD_PER_MIN`     | unset                                                                           | `provider=rate,...` wall-time fallback for providers without token accounting      |
+| `CLAUDE_CONFIG_DIR`          | unset (CLI uses `~/.claude`)                                                    | Service-owned Claude seat; required under `ProtectHome=read-only` (see Node setup) |
+| `GIT_CONFIG_GLOBAL`          | unset                                                                           | Isolated git config for staff clones and pushes (see Node setup)                   |
+
+## Node setup (#1223)
+
+A node that runs staff roles needs four things beyond the dashboard install. DeskComputer was set up this
+way on 2026-09-22; `_deploy/node_bootstrap_staff_hub.sh` in the operator workspace does all of it.
+
+1. **systemd drop-in** `/etc/systemd/system/runner-dashboard.service.d/staff-hub.conf`. The provider CLIs are
+   Node/V8 (they need W^X memory) and keep state in the home directory, which the unit mounts read-only:
+
+   ```ini
+   [Service]
+   MemoryDenyWriteExecute=false
+   ReadWritePaths=%h/.claude %h/.claude.json %h/.codex %h/.gemini %h/.antigravity %h/.cache %h/.local/share
+   ReadWritePaths=%h/staff-repos %h/staff-worktrees %h/.config/gh
+   ```
+
+   Create each path before `daemon-reload`. A missing `ReadWritePaths` entry stops the unit from starting.
+
+2. **Service-owned Claude config**: `CLAUDE_CONFIG_DIR=~/.config/runner-dashboard/claude` in the service env.
+   Under `ProtectHome=read-only` the Claude CLI cannot create its `~/.claude.lock` / `~/.claude.json.lock`
+   lock directories, so it never refreshes its 8-hour OAuth access token. Every run after expiry then fails
+   with `401 OAuth access token has expired`. Inside the writable config directory the lock is
+   `~/.config/runner-dashboard/claude.lock`, which the unit can create. Log the seat in once with
+   `CLAUDE_CONFIG_DIR=~/.config/runner-dashboard/claude claude auth login`, or copy `~/.claude/.credentials.json`
+   into it. A login in the plain shell does not update the service's copy.
+3. **Isolated git config**: `GIT_CONFIG_GLOBAL=~/.config/runner-dashboard/staff.gitconfig` with the user identity
+   and a credential helper that returns `gh auth token`. Runner hosts' `~/.gitconfig` can collect CI-written
+   token rewrites (#1216) that break private clones.
+4. **Linux-side clones**: `STAFF_REPOS_ROOT=~/staff-repos` (blobless clones) and
+   `STAFF_WORKTREES_ROOT=~/staff-worktrees`. Git inside WSL cannot use worktrees that Windows git created
+   under `/mnt/c`.
+
+Check a node with a short ad-hoc run (`POST /api/staff/ad-hoc/run` with `{"provider": "claude", "prompt": "..."}`)
+and read `GET /api/staff/schedule`. Its `hold` column must be empty for scheduled worker roles.
 
 ## Usage and cost (#1200)
 

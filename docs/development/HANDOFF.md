@@ -1,4 +1,27 @@
-# Current Handoff — Artifact wheelhouse ABI contract and fail-closed install (#1212)
+# Current Handoff — Staff Hub node setup docs (#1223)
+
+Last updated: 2026-09-22T23:20:00-07:00
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/staff-node-setup` (worktree)
+- Branch: `docs/staff-hub-node-setup`; base `c12a7dc`; commit `SELF`; PR opened after push.
+
+## Work
+
+- run-2a8137158f4b (issue remediator, 23:00 PT) failed with an expired Claude OAuth token. Root cause: the unit's `ProtectHome=read-only` blocks `mkdir ~/.claude.lock`, seen with strace under `systemd-run`, so the CLI cannot refresh.
+- DeskComputer fix, applied live: `CLAUDE_CONFIG_DIR=~/.config/runner-dashboard/claude` in the service env, credentials copied in, service restarted. A sandboxed test refreshed the token.
+- Docs only: the "Node setup" section and env-table rows in `docs/staff-hub.md`.
+
+## Next
+
+1. Merge.
+2. Apply the setup on ControlTower and OGLaptop (operator: `_deploy/node_bootstrap_staff_hub.sh --scheduler 0`).
+
+---
+
+## Previous Handoff — Current Handoff — Artifact wheelhouse ABI contract and fail-closed install (#1212)
 
 Last updated: 2026-09-23T05:30:00+00:00
 
