@@ -7,12 +7,12 @@ every run, and streams the output to the operator console.
 
 ## Contract
 
-| Concern                                                                     | Owner                                                           | Mechanism                                                                 |
-| --------------------------------------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| Role definitions (`staff/roles/*.yml`) and playbooks (`docs/fleet-*.md`)    | Repository_Management                                           | Read by path (`STAFF_ROLES_DIR`, or the sibling checkout); never imported |
-| Lease ritual (`check_agent_claim`, `post_agent_lease`, `agent_communicate`) | Repository_Management                                           | Subprocess from `STAFF_RM_ROOT` or the sibling checkout                   |
-| Run store, scheduler, board, stream, API                                    | Runner Dashboard (`backend/staff/`, `backend/routers/staff.py`) | Node-local SQLite `staff_runs.sqlite3` under the config dir               |
-| Provider CLIs                                                               | The node                                                        | `claude`, `codex`, `agy`, `gemini`, `cursor-agent`, `ollama` on `PATH`    |
+| Concern                                                                     | Owner                                                           | Mechanism                                                                                                   |
+| --------------------------------------------------------------------------- | --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Role definitions (`staff/roles/*.yml`) and playbooks (`docs/fleet-*.md`)    | Repository_Management                                           | Read by path (`STAFF_ROLES_DIR`, or the sibling checkout); never imported                                   |
+| Lease ritual (`check_agent_claim`, `post_agent_lease`, `agent_communicate`) | Repository_Management                                           | Subprocess from `STAFF_RM_ROOT` or the sibling checkout                                                     |
+| Run store, scheduler, board, stream, API                                    | Runner Dashboard (`backend/staff/`, `backend/routers/staff.py`) | Node-local SQLite `staff_runs.sqlite3` under the config dir                                                 |
+| Provider CLIs                                                               | The node                                                        | `claude`, `codex`, `agy`, `gemini`, `cursor-agent` on `PATH`; an Ollama server for `ollama`/`claude-ollama` |
 
 ## API (`/api/staff`)
 
@@ -193,6 +193,7 @@ Both run columns are additive (`PRAGMA`-guarded `ALTER TABLE`, like
 | `STAFF_ROLES_DIR`            | sibling `Repository_Management/staff/roles`                                     | Role YAML directory                                                                |
 | `STAFF_RUNS_DB`              | `<config dir>/staff_runs.sqlite3`                                               | Run store                                                                          |
 | `STAFF_REPOS_ROOT`           | `~/Repositories`, `~/actions-runners/repos`, `/mnt/c/Users/<user>/Repositories` | Where checkouts live (`os.pathsep` list)                                           |
+| `STAFF_OLLAMA_URL`           | `127.0.0.1:11434` if listening, else the WSL default gateway `:11434`           | Ollama server for the `ollama` and `claude-ollama` providers                       |
 | `STAFF_WORKTREES_ROOT`       | `<first repos root>/_staff_worktrees`                                           | Worktree location                                                                  |
 | `STAFF_RM_ROOT`              | sibling `Repository_Management`                                                 | Lease ritual scripts                                                               |
 | `STAFF_RM_PYTHON`            | `python3` / `python`                                                            | Interpreter for the RM scripts                                                     |
@@ -225,7 +226,7 @@ way on 2026-09-22; `_deploy/node_bootstrap_staff_hub.sh` in the operator workspa
    [Service]
    MemoryDenyWriteExecute=false
    ReadWritePaths=%h/.claude %h/.claude.json %h/.codex %h/.gemini %h/.antigravity %h/.cache %h/.local/share
-   ReadWritePaths=%h/staff-repos %h/staff-worktrees %h/.config/gh
+   ReadWritePaths=%h/staff-repos %h/staff-worktrees %h/.config/gh %h/.cursor %h/.config/cursor
    ```
 
    Create each path before `daemon-reload`. A missing `ReadWritePaths` entry stops the unit from starting.
@@ -243,6 +244,23 @@ way on 2026-09-22; `_deploy/node_bootstrap_staff_hub.sh` in the operator workspa
 4. **Linux-side clones**: `STAFF_REPOS_ROOT=~/staff-repos` (blobless clones) and
    `STAFF_WORKTREES_ROOT=~/staff-worktrees`. Git inside WSL cannot use worktrees that Windows git created
    under `/mnt/c`.
+
+## Provider Options (#1252)
+
+| Provider        | Launch                                                                                        | Models                                          |
+| --------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| `claude`        | `claude -p --output-format stream-json --permission-mode bypassPermissions`                   | Claude seat (`CLAUDE_CONFIG_DIR` service copy)  |
+| `codex`         | `codex exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check` (0.156+)        | ChatGPT seat                                    |
+| `antigravity`   | `agy --print --output-format stream-json --dangerously-skip-permissions`                      | Google sign-in (replaces the older Gemini CLI)  |
+| `cursor-agent`  | `cursor-agent -p --output-format stream-json --force --trust --workspace <wt>`                | Cursor subscription, incl. Grok (`grok-4.7-*`)  |
+| `ollama`        | `codex exec --oss --local-provider ollama` with `CODEX_OSS_BASE_URL=<ollama>/v1`              | Any Ollama model; default `glm-5.3-flash:cloud` |
+| `claude-ollama` | Claude Code with `ANTHROPIC_BASE_URL=<ollama>`, own `CLAUDE_CONFIG_DIR` (`.../claude-ollama`) | Any Ollama model; default `glm-5.3-flash:cloud` |
+| `gemini`        | `gemini -p` (legacy; prefer `antigravity`)                                                    | Google                                          |
+
+Ollama models always run inside an agent harness (Codex or Claude Code), so they can edit, commit and
+open PRs; bare `ollama run` chat cannot. On a NAT-mode WSL node the server is the Windows Ollama app,
+reached through the default gateway. Pass `model` on a run to pick another Ollama model
+(`kimi-k3:cloud`, `deepseek-v4-pro:cloud`, …) or another Cursor model (`cursor-grok-4.6-high`, …).
 
 Check a node with a short ad-hoc run (`POST /api/staff/ad-hoc/run` with `{"provider": "claude", "prompt": "..."}`)
 and read `GET /api/staff/schedule`. Its `hold` column must be empty for scheduled worker roles.

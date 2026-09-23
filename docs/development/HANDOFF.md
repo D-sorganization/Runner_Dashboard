@@ -34,6 +34,9 @@
 - Coordination: leases posted on #1248 and #1251, but claim-label updates failed;
   central presence and notice succeeded (RM mailbox 5799580572). No peer conflict
   was reported; board replay contains existing rejected-sender warnings.
+- Main sync: preserves incoming provider PR #1253 at ce601d44 exactly;
+  only handoff/log/SPEC conflicts required resolution. Fresh combined validation
+  remains required before pushing this merge.
 - Next: merge this visibility child through protected CI; keep #1248
   open for owner charter/status publication, deployment and actual twenty-plan
   API/UI verification. Coordinate staff adoption with RM PR #1717 and the Claude
@@ -41,7 +44,28 @@
 
 ---
 
-# Current Handoff — Staff Codex and Antigravity Adapters (#1249)
+# Current Handoff — Staff Provider Options: Cursor Agent and Ollama (#1252)
+
+Last updated: 2026-09-23T11:40:00-07:00
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/feat-1252-providers` (worktree)
+- Branch: `feat/1252-cursor-ollama-providers`; base `c174896`; commit `SELF`; PR opened after push. Governing issue #1252 (epic #1192); DL-#1252.
+
+## Work
+
+- `cursor-agent` (installed 2026-09-23 in DeskComputer WSL via the official installer, signed in on the Cursor subscription, 241 models incl. Grok 4.5/4.6/4.7): adapter now `-p --output-format stream-json --force --trust --workspace <wt>`; its `result` event is Claude-shaped, usage camelCase mapped.
+- `ollama`: was `ollama run llama3.1` (chat only, model absent, no WSL server). Now Codex `exec --oss --local-provider ollama` with `CODEX_OSS_BASE_URL`; default `glm-5.3-flash:cloud`. New `claude-ollama`: Claude Code with `ANTHROPIC_BASE_URL=<ollama>`, `ANTHROPIC_AUTH_TOKEN=ollama`, own `CLAUDE_CONFIG_DIR=~/.config/runner-dashboard/claude-ollama`. Both verified by hand with a tool call against the Windows Ollama app (0.33.3) at the WSL NAT gateway.
+- `backend/staff/ollama_env.py`: `STAFF_OLLAMA_URL` → localhost if listening → `/proc/net/route` default gateway; `ProviderAdapter.env_builder` / `runtime_env()` applied by the runner at launch.
+- Service drop-in must add `ReadWritePaths` `~/.cursor` and `~/.config/cursor` (cursor-agent keeps auth and state there); documented in `docs/staff-hub.md`.
+- Paired RM change: `shared_scripts/staff_roles.PROVIDERS` gains `claude-ollama` so role YAML can list it.
+- Validation: WSL `PYTHONPATH=backend pytest tests/api -k "staff or provider or pricing or usage"` 165 passed, 3 skipped.
+
+---
+
+## Previous Handoff — Staff Codex and Antigravity Adapters (#1249)
 
 Last updated: 2026-09-23T10:40:00-07:00
 

@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Staff Hub provider options (#1252): `cursor-agent` runs unattended with stream-json (Grok models through the Cursor subscription); `ollama` runs Ollama models inside the Codex agent and new `claude-ollama` runs them inside Claude Code, so local and `:cloud` Ollama models can take remediation roles; the Ollama server is found via `STAFF_OLLAMA_URL`, localhost or the WSL default gateway.
 - Staff prompts carry a **Fleet focus** paragraph: the latest board meeting's active priorities for the run's repo plus operator directives for that repo or `*` (at most 5), shown in the dry-run plan as `focus`; advisory and fail-safe when priorities are unavailable (#1239).
 - Fleet Command tab: board priorities with meeting history, operator directives editor, active work (board sessions merged with staff runs, conflicts highlighted), board messages and inbox, issue claims, and one-click staff dispatch with dry-run preview; every panel shows "not available on this node" when its API is absent; the Staff tab opens a run from `?run=<id>` (#1233, epic #1192).
 - Fleet Coordination API priorities: `GET /api/priorities` (latest board-meeting consensus, directives, portfolios), `GET /api/priorities/meetings[/{date}]` and `GET/PUT /api/priorities/directives` (PUT needs `coordination.write` or loopback). See `docs/priorities-api.md` (#1227, epic #1192).

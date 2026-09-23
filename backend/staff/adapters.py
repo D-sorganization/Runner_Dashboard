@@ -12,16 +12,20 @@ Flags below were verified against the installed CLIs on 2026-09-22:
   codex   exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check (0.156; --full-auto removed)
   agy     --print --output-format stream-json --dangerously-skip-permissions
   gemini  -p
-  cursor-agent -p
-  ollama  run <model>
+  cursor-agent -p --output-format stream-json --force --trust --workspace <wt> (2026.09.18; Grok via Cursor)
+  ollama         codex exec --oss --local-provider ollama (Ollama models inside the Codex agent, #1252)
+  claude-ollama  claude on Ollama's Anthropic-compatible API (own CLAUDE_CONFIG_DIR, #1252)
 """
 
 from __future__ import annotations
 
 import json
 import shutil
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
+
+from staff import ollama_env
 
 # Provider ids used by staff roles. They intentionally match the
 # ``dashboard_id`` values in agent_remediation/provider_registry.py where an
@@ -45,6 +49,12 @@ class ProviderAdapter:
     max_concurrency: int = 1
     notes: str = ""
     extra_env: dict[str, str] = field(default_factory=dict)
+    # Env computed at launch (e.g. the Ollama URL, which depends on the host network).
+    env_builder: Callable[[], dict[str, str]] | None = None
+
+    def runtime_env(self) -> dict[str, str]:
+        """Static ``extra_env`` overlaid with the launch-time ``env_builder`` values."""
+        return {**self.extra_env, **(self.env_builder() if self.env_builder else {})}
 
     def build_command(self, prompt: str, workdir: str, model: str | None = None) -> list[str]:
         """Return argv for one run.
@@ -128,28 +138,41 @@ def _extract_usage(raw: dict[str, Any]) -> dict[str, Any]:
         ):
             if isinstance(src.get(key), int | float):
                 usage[key] = src[key]
+        for camel, snake in _CAMEL_USAGE.items():  # cursor-agent reports camelCase
+            if snake not in usage and isinstance(src.get(camel), int | float):
+                usage[snake] = src[camel]
     for key in ("total_cost_usd", "cost_usd"):
         if isinstance(raw.get(key), int | float):
             usage["cost_usd"] = float(raw[key])
     return usage
 
 
+_CAMEL_USAGE = {
+    "inputTokens": "input_tokens",
+    "outputTokens": "output_tokens",
+    "cacheReadTokens": "cache_read_input_tokens",
+    "cacheWriteTokens": "cache_creation_input_tokens",
+}
+
+_UNATTENDED_CLAUDE = (
+    "-p",
+    "{prompt}",
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--permission-mode",
+    "bypassPermissions",
+    "--model",
+    "{model}",
+)
+_UNATTENDED_CODEX = ("exec", "--dangerously-bypass-approvals-and-sandbox", "--skip-git-repo-check")
+
 ADAPTERS: dict[ProviderId, ProviderAdapter] = {
     "claude": ProviderAdapter(
         provider_id="claude",
         label="Claude Code CLI",
         executable="claude",
-        argv=(
-            "-p",
-            "{prompt}",
-            "--output-format",
-            "stream-json",
-            "--verbose",
-            "--permission-mode",
-            "bypassPermissions",
-            "--model",
-            "{model}",
-        ),
+        argv=_UNATTENDED_CLAUDE,
         default_model="sonnet",
         json_lines=True,
         notes=(
@@ -161,14 +184,7 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
         provider_id="codex",
         label="Codex CLI",
         executable="codex",
-        argv=(
-            "exec",
-            "--dangerously-bypass-approvals-and-sandbox",
-            "--skip-git-repo-check",
-            "--model",
-            "{model}",
-            "{prompt}",
-        ),
+        argv=(*_UNATTENDED_CODEX, "--model", "{model}", "{prompt}"),
         notes=(
             "Plain text stdout; cost derived from wall time until --json is adopted. Bypass mode for the same reason "
             "as claude bypassPermissions (commit/push/PR in its own worktree); the systemd unit is the sandbox."
@@ -201,18 +217,42 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
         provider_id="cursor-agent",
         label="Cursor Agent CLI",
         executable="cursor-agent",
-        argv=("-p", "{prompt}", "--model", "{model}"),
-        notes="Grok models are available here through the Cursor subscription.",
+        argv=(
+            "-p",
+            "{prompt}",
+            "--output-format",
+            "stream-json",
+            "--force",
+            "--trust",
+            "--workspace",
+            "{workdir}",
+            "--model",
+            "{model}",
+        ),
+        json_lines=True,
+        notes=(
+            "Cursor subscription; Grok models (grok-4.7-*, cursor-grok-4.6-*) are reached here, no separate xAI plan. "
+            "--force/--trust because an unattended run cannot answer command or workspace-trust prompts."
+        ),
     ),
     "ollama": ProviderAdapter(
         provider_id="ollama",
-        label="Ollama (local)",
-        executable="ollama",
-        argv=("run", "{model}"),
-        default_model="llama3.1",
-        prompt_via_stdin=True,
-        max_concurrency=2,
-        notes="Read-only analysis roles only; cannot edit repositories.",
+        label="Ollama models via Codex",
+        executable="codex",
+        argv=(*_UNATTENDED_CODEX, "--oss", "--local-provider", "ollama", "--model", "{model}", "{prompt}"),
+        default_model=ollama_env.DEFAULT_OLLAMA_MODEL,
+        env_builder=ollama_env.codex_ollama_env,
+        notes="Ollama (local or :cloud) models inside the Codex agent so they can edit, commit and open PRs.",
+    ),
+    "claude-ollama": ProviderAdapter(
+        provider_id="claude-ollama",
+        label="Ollama models via Claude Code",
+        executable="claude",
+        argv=_UNATTENDED_CLAUDE,
+        default_model=ollama_env.DEFAULT_OLLAMA_MODEL,
+        json_lines=True,
+        env_builder=ollama_env.claude_ollama_env,
+        notes="Claude Code against Ollama's Anthropic-compatible API; never touches the Claude seat's credentials.",
     ),
 }
 
