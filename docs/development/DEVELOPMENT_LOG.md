@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1270 · Node LAN Duplicate-Address Prevention
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1270 (epic #1192)
+- **Branch:** `docs/1270-duplicate-address-prevention`
+- **PR:** opened after push
+- **Paths:** `docs/staff-hub.md`
+- **Started:** 2026-09-23
+- **Last verified:** 2026-09-23 (`02adc74` + this change; conflicting device confirmed live from DeskComputer (wired) and OGLaptop (shop Wi-Fi): answers ARP, not ping; same gateway MAC from both, so one flat LAN)
+- **Summary:** Docs-only prevention and diagnosis guidance for DHCP duplicate-address outages on staff nodes; household MACs and topology kept in private deploy notes.
+- **Next step:** Merge; owner adds eero reservations for DeskComputer, OGLaptop, ControlTower and the conflicting device.
+
 ### DL-#1258 · Live RM role source
 
 - **State:** in_review

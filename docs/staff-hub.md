@@ -351,6 +351,50 @@ confirm both reach `succeeded`. From a different tailnet host, port 11434 must
 remain unreachable. These are operator acceptance steps; dry-run tests do not
 establish reboot or external-connectivity success. OGLaptop remains scheduler-off.
 
+### Node LAN addressing: duplicate-address outages (#1270)
+
+A node that reboots can be handed a DHCP address that another LAN device still
+uses. Windows then logs System/Tcpip event **4199** ("duplicate IP address"),
+and the node loses DNS, internet and Tailscale although its services recover.
+This happened to OGLaptop on 2026-09-23. The other device kept answering ARP,
+but not ping, for an address outside the router's lease table. Typical sources
+are TVs, cameras and IoT devices with a static address inside the DHCP pool, or
+devices that keep an old lease across a router or mesh-node restart. Firewall
+settings and the Ollama bridge play no part. Do not disable firewall profiles
+to diagnose it.
+
+**Prevent (owner, on the router or mesh app):**
+
+- Give every staff node a DHCP reservation, tied to the MAC of its active LAN
+  interface. On eero: _Settings → Network settings → Reservations & port
+  forwarding_.
+- Find the conflicting device by its MAC in the router's client list. Give it a
+  reservation too, or move its static address outside the DHCP pool.
+- Turn off random/private hardware addresses on the node's Wi-Fi profile, so the
+  reservation matches.
+- Keep one active interface per node on the LAN. A wired node with Wi-Fi also
+  joined to the same network can keep an expired Wi-Fi lease or a `169.254.x`
+  address that confuses route selection.
+- Record node MACs and reservations in the private deploy notes, not in this
+  public repository.
+
+**Diagnose (read-only), on the node:**
+
+```powershell
+Get-WinEvent -FilterHashtable @{LogName='System'; ProviderName='Tcpip'; Id=4199; StartTime=(Get-Date).AddDays(-1)} |
+  Format-List TimeCreated, Message
+Get-NetNeighbor -AddressFamily IPv4 | Where-Object State -ne 'Unreachable' |
+  Group-Object LinkLayerAddress | Where-Object Count -gt 1   # one MAC on many IPs = stale entries or a bridge
+```
+
+To compare what two nodes see for the conflicting address, run on each:
+`Test-Connection -Count 1 -Quiet <ip>`, then `Get-NetNeighbor -IPAddress <ip>`. A MAC with
+no ping reply is a device holding that address.
+
+**Recover:** reconnect the adapter, or run `ipconfig /release` then `ipconfig /renew`,
+to get a different lease. Then fix the router reservations so the next reboot
+does not repeat it.
+
 ## Provider Options (#1252)
 
 | Provider        | Launch                                                                                        | Models                                          |
