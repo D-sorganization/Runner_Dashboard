@@ -102,12 +102,14 @@ checks succeeded with exit 0:
 | Ollama via Claude | `run-b04b13787763` |
 
 The owner reported all Windows websites unavailable after reboot. System/Tcpip
-event **4199** recorded duplicate address `192.168.4.202` at **15:05:46,
-15:11:00 and 15:18:03**, conflicting with MAC `90-6A-EB-81-45-30` (not a local
-adapter). DNS also timed out. Wi-Fi is DHCP-managed by `192.168.4.1`; after
-reconnection it acquired `192.168.4.203` at **15:21:24**. The duplicate address
+event **4199** recorded a duplicate address (the laptop's DHCP lease) at **15:05:46,
+15:11:00 and 15:18:03**, conflicting with another LAN device (not a local
+adapter). DNS also timed out. Wi-Fi is DHCP-managed by the home router; after
+reconnection it acquired a different lease at **15:21:24**. The duplicate address
 is the strongest observed explanation for the outage. Prevent recurrence by
-identifying that device and correcting router DHCP/static-address allocation;
+identifying that device and correcting router DHCP/static-address allocation
+(see `docs/staff-hub.md` "Node LAN addressing"; device identifiers are kept
+in the owner's private deploy notes, not in this public repository);
 do not assign this laptop an arbitrary static address.
 
 The owner disabled Domain firewall at 15:21:11, shortly before reconnecting.
@@ -126,7 +128,7 @@ or success. The owner then re-enabled Domain protection in Windows Security.
 Final live checks confirmed **Domain, Private and Public all enabled**; Windows
 HTTPS returned 200/204/200 for GitHub/Google/Cloudflare, WSL GitHub HTTPS
 returned 200, and the WSL Ollama bridge returned version 0.34.2. Wi-Fi retained
-DHCP address 192.168.4.203. CI workers were active again after capacity restoration.
+its new DHCP lease. CI workers were active again after capacity restoration.
 
 CI capacity was restored at approximately **15:33 PT**: runner IDs 217–224
 returned to group 1, original boot-enabled states were restored, and the CI

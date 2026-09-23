@@ -1,11 +1,27 @@
-# Current handoff — Windows reboot, network and eGPU recovery (#1257)
+# Current Handoff — Node LAN Duplicate-Address Prevention (#1270)
+
+Last updated: 2026-09-23T16:40:00-07:00
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/docs-1270-dup-address`; branch `docs/1270-duplicate-address-prevention`; commit `SELF`; PR #1272. Issue #1270 (epic #1192); DL-#1270.
+
+## Work
+
+- Docs only: `docs/staff-hub.md` "Node LAN addressing: duplicate-address outages". Cause, eero reservation path, one-interface rule, read-only diagnosis (event 4199, `Get-NetNeighbor`), and lease-renewal recovery in place of firewall changes.
+- Evidence (2026-09-23 ~16:00 PT): both nodes see the same gateway MAC (one flat LAN across mesh nodes and the wired backhaul). The conflicting device still holds OGLaptop's old address and answers ARP but not ping from both the wired and Wi-Fi sides. An earlier "one MAC on four IPs" view was stale ARP.
+- Repository is public: household LAN addresses and device MACs are kept out; the specifics live in the owner's private deploy notes. The owner chose cleanup of current files only, without a history rewrite.
+
+---
+
+## Previous Handoff — Current handoff — Windows reboot, network and eGPU recovery (#1257)
 
 - Follow-up: direct-attached Sonnet Breakaway Box 750ex / RTX 5070 was absent after Windows reboot; administrator hardware scan did not help. Owner power-cycle/reconnect restored the Sonnet link and GPU. Windows and WSL NVIDIA-SMI both pass (610.88, 12227 MiB). No persistent startup fix is claimed; exact enumeration failure cause remains unknown.
 - Current update: worktree `/home/dieterolson/staff-builds/oglaptop-egpu-recovery`, branch `docs/oglaptop-egpu-recovery`, commit `SELF`.
 
 - Worktree `/home/dieterolson/staff-builds/oglaptop-windows-recovery`; branch `docs/oglaptop-firewall-confirmed`; worktree `/home/dieterolson/staff-builds/oglaptop-firewall-confirmed`; commit `SELF`.
 - Windows booted at 15:05:09 PT; bridge configured result at 15:06:35; dashboard and all six providers recovered. Post-Windows-reboot provider runs all succeeded; IDs in canonical node runbook. Staff scheduler stays off.
-- Windows TCP/IP logged duplicate DHCP address 192.168.4.202 three times; reconnection obtained 192.168.4.203. Controlled DNS/HTTPS tests passed with all firewall profiles enabled. Original outage is best explained by the duplicate address, not the narrow WSL Ollama rule.
+- Windows TCP/IP logged a duplicate DHCP address three times; reconnection obtained a different lease. Controlled DNS/HTTPS tests passed with all firewall profiles enabled. Original outage is best explained by the duplicate address, not the narrow WSL Ollama rule.
 - Final firewall verification: owner re-enabled Domain in Windows Security; all three profiles now enabled. Windows GitHub/Google/Cloudflare HTTPS passed, WSL GitHub HTTPS passed, and Ollama bridge returned 0.34.2. The first diagnostic rollback race is resolved and documented.
 - CI capacity restored at 15:33 PT: IDs 217–224 back in group 1, original enabled states restored, CI scheduler timer active and units 1–4 running. Staff scheduler remains off. Keep empty maintenance group and backups.
 - Router allocation conflict and external port-isolation checks remain follow-ups. Preserve firewall backups in `_deploy/firewall-diagnosis-*` and drain metadata in `_deploy/oglaptop-drain-20260923`.

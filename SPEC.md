@@ -21,6 +21,10 @@
 | 2026-09-23 | #1192      | Record verified OGLaptop worker deployment, six-provider health checks, scoped WSL Ollama connectivity, and rollback paths. |
 | 2026-09-23 | #1251      | Expose all deferred-plan owners and feature IDs/statuses/safe links in Projects; retain owner authority and live rollout under #1248. |
 
+- **2026-09-23:** Node LAN duplicate-address prevention (#1270, epic #1192). `docs/staff-hub.md` documents
+  the OGLaptop 2026-09-23 outage cause (DHCP address held by a silent LAN device, Tcpip event 4199), router
+  reservations for every node and the conflicting device, one active LAN interface per node, read-only diagnosis
+  and lease-renewal recovery. No household identifiers in the public repo.
 - **2026-09-23:** Staff provider options (#1252, epic #1192). `cursor-agent` runs `-p --output-format stream-json
 --force --trust --workspace <wt>` (Grok via the Cursor subscription; camelCase usage mapped). `ollama` now runs
   Ollama models inside Codex (`exec --oss --local-provider ollama`) instead of bare `ollama run` chat; new
