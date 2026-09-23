@@ -245,6 +245,56 @@ way on 2026-09-22; `_deploy/node_bootstrap_staff_hub.sh` in the operator workspa
    `STAFF_WORKTREES_ROOT=~/staff-worktrees`. Git inside WSL cannot use worktrees that Windows git created
    under `/mnt/c`.
 
+### Ollama for WSL (#1257)
+
+Keep Windows Ollama's **Expose to network** setting off. Remove non-loopback
+`OLLAMA_HOST` values from User/Machine settings as the owner and restart Ollama.
+The server must listen on `127.0.0.1:11434`. Do not use mirrored networking.
+Leave `STAFF_OLLAMA_URL` unset: the provider discovers the WSL default gateway.
+
+From a checkout containing this change, inspect the plan in PowerShell:
+
+```powershell
+powershell.exe -NoProfile -File .\deploy\windows\ollama-wsl-bridge.ps1 -Install -DryRun
+```
+
+The **owner**, in an elevated PowerShell, installs it with the same command
+without `-DryRun`. OGLaptop's earlier manually configured bridge requires the
+explicit `-AdoptExisting` flag on both commands; adoption only accepts its exact
+narrow address/subnet/interface rule and loopback forward. Foreign resources
+are refused, including conflicting port 11434 forwards and same-name tasks.
+
+The script copies itself into `%ProgramData%\RunnerDashboard\OllamaWslBridge`,
+secured for administrators/SYSTEM writes, and registers hidden highest-privilege
+SYSTEM task `StaffHub-Ollama-WSL-Bridge`. Startup, logon and five-minute retry
+triggers discover an already-running WSL adapter; the task does not start WSL
+as SYSTEM. A missing adapter causes a safe wait. Repeated unchanged runs do
+not create backups or rewrite rules. An IP change replaces only owned forwards.
+Port 8321 and the existing `WSL-PortForward` task are untouched.
+
+The single `StaffHub-Ollama-WSL` firewall rule permits inbound TCP 11434 only
+on the discovered WSL interface, local IPv4 address and WSL subnet. Broad inbound
+`ollama.exe` rules with remote `Any` are backed up and **disabled**, never deleted.
+Portproxy dumps, firewall/filter XML, task XML, prior script/state and JSON result
+backups remain in that ProgramData directory. `result.json` records the last
+change; Task Scheduler records execution status. `-Uninstall` disables the task
+and owned firewall rule and removes only backed-up owned forwards, retaining files.
+Rollback is owner-reviewed from those backups; do not restore an entire portproxy
+dump blindly over other forwards added since the backup.
+
+After installation, after WSL shutdown/restart, and after a Windows reboot,
+verify from a WSL script file:
+
+```bash
+gateway=$(ip route | awk '/default/{print $3; exit}')
+curl --fail --max-time 10 "http://$gateway:11434/api/version"
+```
+
+Then run the `ollama` and `claude-ollama` dashboard ad-hoc health checks and
+confirm both reach `succeeded`. From a different tailnet host, port 11434 must
+remain unreachable. These are operator acceptance steps; dry-run tests do not
+establish reboot or external-connectivity success. OGLaptop remains scheduler-off.
+
 ## Provider Options (#1252)
 
 | Provider        | Launch                                                                                        | Models                                          |

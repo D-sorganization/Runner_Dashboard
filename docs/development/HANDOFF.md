@@ -1,4 +1,15 @@
-# Current Handoff — Re-Land: Ollama-Backed Runs Lease as `local` (#1252)
+# Current Handoff — WSL Ollama bridge (#1257)
+
+- Repository/worktree: `D-sorganization/Runner_Dashboard`, `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/issue-1257-bridge`.
+- Branch `fix/issue-1257-ollama-wsl-bridge`; commit `SELF`; PR not created; DL-#1257.
+- Adds `deploy/windows/ollama-wsl-bridge.ps1` and Python-driven PowerShell planner regressions. Installation is owner-only; live OGLaptop forwarding and scheduler remain unchanged.
+- RED: 12 planner tests failed before script existed. GREEN: initial 14 pass; final suite adds the Windows dotted-mask regression discovered by a live read-only dry-run. Changed-test Ruff passes. Dry-run on Windows PowerShell 5.1 recognizes `192.168.208.1/20`, retains current forward and plans task registration only.
+- Next: publish and arm protected squash auto-merge, give owner elevated install command with `-AdoptExisting`, verify restart/reboot and both Ollama harnesses. Then #1258 role-source updater. No actual reboot or remote tailnet validation is claimed.
+- Backups: pre-edit docs and script in local `_deploy`; deployed script creates timestamped ProgramData backups before mutations. #1259 documentation merged; #1256 awaits node redeploy.
+
+---
+
+## Previous Handoff — Re-Land: Ollama-Backed Runs Lease as `local` (#1252)
 
 Last updated: 2026-09-23T12:55:00-07:00
 

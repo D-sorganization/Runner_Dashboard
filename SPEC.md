@@ -9,6 +9,7 @@
 
 | Date       | PR / Issue | Summary                                                                                                                               |
 | ---------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-09-23 | #1257 | Add an owner-installed, reboot-safe WSL-only Ollama bridge with dry-run planning, ownership checks, backups and a hidden scheduled task. |
 | 2026-09-23 | #1251      | Expose all deferred-plan owners and feature IDs/statuses/safe links in Projects; retain owner authority and live rollout under #1248. |
 
 - **2026-09-23:** Staff provider options (#1252, epic #1192). `cursor-agent` runs `-p --output-format stream-json
