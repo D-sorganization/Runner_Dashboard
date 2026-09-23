@@ -44,6 +44,8 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** Dynamic WSL NAT discovery, ownership-checked forward/rule reconciliation, explicit legacy adoption, disable-only firewall/task uninstall, backups and owner-installed hidden startup/logon/retry task. Existing OGLaptop bridge remains unchanged until owner installation.
 - **Next step:** Final Domain protection verified; retain external isolation acceptance as pending. Router DHCP/static-allocation conflict needs owner follow-up. Both reboot checks, six-provider recovery and CI capacity restoration are verified.
 
+- **Post-reboot GPU follow-up:** Sonnet 750ex/RTX 5070 link was absent despite hardware rescan; owner power-cycle/reconnect restored Windows and WSL NVIDIA-SMI (driver 610.88, 12227 MiB). Future unattended GPU startup remains unproven.
+
 ### DL-#1251 · Deferred Project Visibility
 
 - **State:** in_review
