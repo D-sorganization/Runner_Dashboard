@@ -57,11 +57,13 @@ def test_handshake_list_and_call(fake_api: Any) -> None:
     assert "tools" in init["capabilities"]
 
     tools = {t["name"]: t for t in responses[1]["result"]["tools"]}
-    assert len(tools) == 15
+    assert len(tools) == 16
     claim_schema = tools["fleet_claim_issue"]["inputSchema"]
     assert claim_schema["type"] == "object"
     assert set(claim_schema["required"]) == {"repo", "issue"}
     assert tools["fleet_dispatch_role"]["inputSchema"]["properties"]["dry_run"]["type"] == "boolean"
+    assert set(tools["fleet_ack_message"]["inputSchema"]["required"]) == {"repo", "message_id"}
+    assert "agent name" not in tools["fleet_send_message"]["inputSchema"]["properties"]["to"]["description"]
 
     call = responses[2]["result"]
     assert call["isError"] is False
@@ -80,14 +82,14 @@ def test_write_tool_uses_env_identity(fake_api: Any) -> None:
     responses = _session(
         fake_api,
         [INIT, _call(2, "fleet_claim_issue", {"repo": "Runner_Dashboard", "issue": 9, "intent": "tests"})],
-        {"FLEET_AGENT": "gemini", "FLEET_SESSION": "gem-1"},
+        {"FLEET_AGENT": "gemini", "FLEET_SESSION": "gemini-1"},
     )
     assert responses[1]["result"]["isError"] is False
     assert fake_api.last.body == {
         "repo": "Runner_Dashboard",
         "issue": 9,
         "agent": "gemini",
-        "session": "gem-1",
+        "session": "gemini-1",
         "intent": "tests",
     }
 

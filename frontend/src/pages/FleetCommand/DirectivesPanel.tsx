@@ -5,12 +5,15 @@
  * saves with `PUT /api/priorities/directives`, which replaces the whole list
  * (same edit-then-save model as the Staff Holds editor). "Expire now" drops a
  * directive from the list on the next save; an expiry date lapses it later.
- * The PUT goes through `apiRequest`, so it carries the CSRF header.
+ * The PUT goes through `apiRequest`, so it carries the CSRF header, and sends
+ * the `version` it loaded: a 409 means someone else saved first, so the panel
+ * asks for a reload instead of overwriting their list (#1243). `set_by` is
+ * never sent; the server records the authenticated caller.
  */
 import { useEffect, useState } from "react";
 import { Badge } from "../../primitives/Badge";
 import { TouchButton } from "../../primitives/TouchButton";
-import { describeError, expiryLabel, fetchDirectives, putDirectives, useResource } from "./fleetApi";
+import { describeError, expiryLabel, fetchDirectives, isConflict, putDirectives, useResource } from "./fleetApi";
 import { PanelFrame } from "./PanelFrame";
 import type { Directive } from "./types";
 
@@ -40,7 +43,6 @@ function toBody(d: Draft): Directive {
     repo: d.repo.trim() || "*",
     priority: d.priority,
     expires: d.expires || null,
-    ...(d.set_by ? { set_by: d.set_by } : {}),
     ...(d.set_on ? { set_on: d.set_on } : {}),
   };
 }
@@ -52,11 +54,15 @@ export function DirectivesPanel() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [version, setVersion] = useState<string | undefined>(undefined);
+  const [conflict, setConflict] = useState(false);
 
   useEffect(() => {
     if (res.data) {
       setDrafts(res.data.directives.map(toDraft));
+      setVersion(res.data.version);
       setDirty(false);
+      setConflict(false);
     }
   }, [res.data]);
 
@@ -83,13 +89,14 @@ export function DirectivesPanel() {
   const save = () => {
     setSaving(true);
     setSaveError(null);
-    putDirectives(drafts.map(toBody))
+    putDirectives(drafts.map(toBody), version)
       .then((data) => {
         setDrafts(data.directives.map(toDraft));
+        setVersion(data.version);
         setDirty(false);
         setNotice(`Saved ${data.directives.length} active directive${data.directives.length === 1 ? "" : "s"}.`);
       })
-      .catch((e: unknown) => setSaveError(describeError(e)))
+      .catch((e: unknown) => (isConflict(e) ? setConflict(true) : setSaveError(describeError(e))))
       .finally(() => setSaving(false));
   };
 
@@ -115,6 +122,12 @@ export function DirectivesPanel() {
         Standing operator guidance every agent sees in its briefing. Priority 1 is the most urgent; repo <code>*</code>{" "}
         applies fleet-wide.
       </p>
+      {conflict ? (
+        <div className="staff-error" role="alert" data-testid="directives-conflict">
+          The directives changed since you loaded them (another operator saved). Reload to see their version, then
+          re-apply your edits. <TouchButton onClick={res.reload}>Reload directives</TouchButton>
+        </div>
+      ) : null}
       {saveError ? (
         <p className="staff-error" role="alert">
           {saveError}

@@ -38,7 +38,33 @@ def test_dispatch_positional_role_and_dry_run(capsys: pytest.CaptureFixture[str]
 def test_claim_uses_default_session(capsys: pytest.CaptureFixture[str], fake_api: Any) -> None:
     code, _ = _run(capsys, fake_api, "--as-session", "s-9", "claim", "--repo", "Runner_Dashboard", "--issue", "12")
     assert code == 0
-    assert fake_api.last.body == {"repo": "Runner_Dashboard", "issue": 12, "session": "s-9", "intent": ""}
+    assert fake_api.last.body == {"repo": "Runner_Dashboard", "issue": 12, "session": "s-9"}
+
+
+def test_as_agent_derives_an_agent_prefixed_session(capsys: pytest.CaptureFixture[str], fake_api: Any) -> None:
+    code, _ = _run(capsys, fake_api, "--as-agent", "grok", "claim", "--repo", "Runner_Dashboard", "--issue", "12")
+    assert code == 0
+    assert fake_api.last.body["agent"] == "grok"
+    assert fake_api.last.body["session"].startswith("grok-")
+
+
+def test_mismatched_session_is_exit_2(capsys: pytest.CaptureFixture[str], fake_api: Any) -> None:
+    code, out = _run(capsys, fake_api, "--as-agent", "grok", "--as-session", "codex-1", "inbox")
+    assert code == 2
+    assert "must start with 'grok-'" in out["message"]
+    assert fake_api.requests == []
+
+
+def test_release_claim_without_reason(capsys: pytest.CaptureFixture[str], fake_api: Any) -> None:
+    code, _ = _run(capsys, fake_api, "release-claim", "--repo", "Runner_Dashboard", "--issue", "12", "--session", "s")
+    assert code == 0
+    assert fake_api.last.body == {"repo": "Runner_Dashboard", "issue": 12, "session": "s"}
+
+
+def test_ack_command(capsys: pytest.CaptureFixture[str], fake_api: Any) -> None:
+    code, _ = _run(capsys, fake_api, "ack", "--repo", "Runner_Dashboard", "--message-id", "m-1", "--session", "s")
+    assert code == 0
+    assert fake_api.last.path == "/api/coordination/messages/ack"
 
 
 def test_register_presence_repeated_paths(capsys: pytest.CaptureFixture[str], fake_api: Any) -> None:
@@ -104,6 +130,7 @@ def test_mcp_tool_set_is_the_contracted_list() -> None:
         "fleet_register_presence",
         "fleet_release_presence",
         "fleet_send_message",
+        "fleet_ack_message",
         "fleet_check_claim",
         "fleet_claim_issue",
         "fleet_release_claim",

@@ -6,6 +6,10 @@ Staff Hub roles", optionally scoped to one repository, with a priority
 JSON under the dashboard config dir, exactly like ``staff.holds``
 (``STAFF_DIRECTIVES_FILE`` overrides the path). Expired directives stay on
 disk until the next PUT but are filtered from every read.
+
+Directive text is pasted into every staff prompt (``staff.focus``), so it is one
+line: CR/LF is rejected. Writers pass ``expected_version`` (``version()`` of the
+list they edited) so two operators cannot silently overwrite each other (#1243).
 """
 
 from __future__ import annotations
@@ -58,6 +62,17 @@ def _parse_expiry(value: Any) -> str:
     return _iso_z(parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC))
 
 
+def _parse_text(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        raise ValueError("directive text is required")
+    if len(text) > MAX_TEXT:
+        raise ValueError(f"directive text longer than {MAX_TEXT} characters")
+    if "\r" in text or "\n" in text:
+        raise ValueError("directive text must be a single line (no CR/LF); put checklists in the issue")
+    return text
+
+
 def _parse_repo(value: Any) -> str:
     repo = str(value or ALL_REPOS).strip()
     if repo != ALL_REPOS and (not _BARE_REPO.match(repo) or repo in (".", "..")):
@@ -90,11 +105,7 @@ class Directive:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Directive:
         """Validate a JSON object into a Directive. Raises ``ValueError`` on bad input."""
-        text = str(data.get("text", "")).strip()
-        if not text:
-            raise ValueError("directive text is required")
-        if len(text) > MAX_TEXT:
-            raise ValueError(f"directive text longer than {MAX_TEXT} characters")
+        text = _parse_text(data.get("text"))
         set_by = str(data.get("set_by") or "").strip()
         if not set_by or len(set_by) > MAX_SET_BY:
             raise ValueError(f"set_by is required (at most {MAX_SET_BY} characters)")
@@ -119,6 +130,15 @@ class Directive:
         return asdict(self)
 
 
+class VersionConflictError(Exception):
+    """The stored list changed since the caller read ``version``; nothing was written."""
+
+
+def _version_of(directives: list[Directive]) -> str:
+    canonical = json.dumps([d.to_dict() for d in directives], sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+
+
 class DirectivesList:
     """JSON-file-backed directive list with process-wide locking (mirrors ``staff.holds.HoldsList``)."""
 
@@ -131,33 +151,56 @@ class DirectivesList:
         return self._path or directives_path()
 
     def load(self) -> list[Directive]:
-        """Every stored directive, expired included. A missing or corrupt file reads as empty."""
+        """Every valid stored directive, expired included.
+
+        A missing or unparseable file reads as empty; one invalid entry is skipped (and logged),
+        never the whole list, so the next save cannot wipe the valid ones.
+        """
         with self._lock:
             path = self.path
             if not path.exists():
                 return []
             try:
                 raw = json.loads(path.read_text(encoding="utf-8"))
-                items = raw.get("directives", []) if isinstance(raw, dict) else raw
-                return [Directive.from_dict(d) for d in items if isinstance(d, dict)]
-            except (OSError, ValueError, AttributeError) as exc:
+            except (OSError, ValueError) as exc:
                 log.warning("priorities: directives file %s unreadable (%s); treating as empty", path, exc)
                 return []
+            items = raw.get("directives", []) if isinstance(raw, dict) else raw
+            return [d for i, item in enumerate(items if isinstance(items, list) else []) if (d := _valid(item, i))]
+
+    def version(self) -> str:
+        """Opaque fingerprint of the stored list; changes on every effective write."""
+        with self._lock:
+            return _version_of(self.load())
 
     def active(self, now: datetime | None = None) -> list[Directive]:
         """Unexpired directives, highest priority (lowest number) first, then oldest first."""
         moment = now or datetime.now(UTC)
         return sorted((d for d in self.load() if d.is_active(moment)), key=lambda d: (d.priority, d.set_on))
 
-    def replace(self, items: list[dict[str, Any]]) -> list[Directive]:
-        """Replace the whole list (PUT semantics). Raises ``ValueError`` before writing on bad input."""
-        directives = [Directive.from_dict(d) for d in items]
-        seen: set[str] = set()
-        for directive in directives:
-            if directive.id in seen:
-                raise ValueError(f"duplicate directive id {directive.id}")
-            seen.add(directive.id)
+    def replace(
+        self,
+        items: list[dict[str, Any]],
+        *,
+        author: str | None = None,
+        expected_version: str | None = None,
+    ) -> list[Directive]:
+        """Replace the whole list (PUT semantics).
+
+        ``author`` (the authenticated caller) overrides any ``set_by`` in ``items``, except that a
+        directive already stored unchanged keeps its stored author. Raises ``ValueError`` on bad
+        input and ``VersionConflictError`` when ``expected_version`` is stale; both before writing.
+        """
         with self._lock:
+            stored = self.load()
+            if expected_version is not None and expected_version != _version_of(stored):
+                raise VersionConflictError("directives changed since you loaded them; reload and re-apply")
+            directives = [Directive.from_dict(_attributed(d, author, stored)) for d in items]
+            seen: set[str] = set()
+            for directive in directives:
+                if directive.id in seen:
+                    raise ValueError(f"duplicate directive id {directive.id}")
+                seen.add(directive.id)
             self._write(directives)
         return directives
 
@@ -168,6 +211,26 @@ class DirectivesList:
         tmp = path.with_suffix(".tmp")
         tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         os.replace(tmp, path)
+
+
+def _valid(item: Any, index: int) -> Directive | None:
+    try:
+        if not isinstance(item, dict):
+            raise ValueError("not an object")
+        return Directive.from_dict(item)
+    except ValueError as exc:
+        log.warning("priorities: skipping invalid directive #%d (%s)", index, exc)
+        return None
+
+
+def _attributed(item: dict[str, Any], author: str | None, stored: list[Directive]) -> dict[str, Any]:
+    """``item`` with ``set_by`` taken from the server: the stored author when unchanged, else ``author``."""
+    if author is None:
+        return item
+    text = str(item.get("text") or "").strip()
+    repo = str(item.get("repo") or ALL_REPOS).strip()
+    same = next((d for d in stored if d.text == text and d.repo == repo and d.id == item.get("id", d.id)), None)
+    return {**item, "set_by": same.set_by if same else author}
 
 
 _DIRECTIVES = DirectivesList()

@@ -101,7 +101,8 @@ export interface MeetingDetail extends Availability {
 
 export interface DirectivesResponse {
   directives: Directive[];
-  path?: string;
+  /** Fingerprint of the stored list; send it back with the PUT (409 when stale). */
+  version?: string;
 }
 
 // ── Coordination (/api/coordination) ─────────────────────────────────────────
@@ -170,6 +171,16 @@ export interface ClaimStatus extends Availability {
   held: boolean;
   agent?: string | null;
   expires_at?: string | null;
+}
+
+/** `POST /api/coordination/presence` — advertise a session on the board (RM drops mail from unknown senders). */
+export interface PresenceBody {
+  agent: string;
+  session: string;
+  repo: string;
+  issue: number;
+  branch: string;
+  ttl_hours: number;
 }
 
 export interface MessageBody {

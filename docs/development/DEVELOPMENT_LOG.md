@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1243 · Priorities, staff focus and fleet clients hardening
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1243 (epic #1192)
+- **Branch:** `fix/priorities-clients-hardening`
+- **PR:** opened after push
+- **Paths:** `backend/priorities/`, `backend/routers/priorities.py`, `backend/staff/focus.py`, `backend/identity.py`, `backend/middleware.py`, `clients/fleet/`, `frontend/src/pages/FleetCommand/`, `docs/priorities-api.md`, `docs/agents/connect.md`
+- **Started:** 2026-09-23
+- **Last verified:** 2026-09-23 (WSL pytest `tests/api -k "priorities or staff or auth" tests/clients` green except the pre-existing flaky `test_staff_runner` event-order test; vitest FleetCommand 22 passed; typecheck, lint, build clean)
+- **Summary:** Verified review findings 5, 6, 7, 8 (frontend), 10, 11, 16, 17 plus client/server limit drift and the `<agent>-` session convention required by #1245.
+- **Next step:** Merge once CI is green and redeploy DeskComputer.
+
 ### DL-#1244 · Coordination API hardening against real RM shapes
 
 - **State:** in_review

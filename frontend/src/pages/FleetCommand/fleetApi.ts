@@ -21,6 +21,7 @@ import type {
   MeetingDetail,
   MeetingsResponse,
   MessageBody,
+  PresenceBody,
   PrioritiesResponse,
   SessionsResponse,
   StaffRunSummary,
@@ -54,14 +55,21 @@ export const fetchMeeting = (date: string, signal?: AbortSignal) =>
 export const fetchDirectives = (signal?: AbortSignal) =>
   apiRequest<DirectivesResponse>(`${PRIORITIES_BASE}/directives`, { signal });
 
-export const putDirectives = (directives: Directive[]) =>
-  apiRequest<DirectivesResponse>(`${PRIORITIES_BASE}/directives`, { method: "PUT", body: { directives } });
+/** Replace the list. `version` (from the GET) turns a concurrent edit into a 409 instead of a silent overwrite. */
+export const putDirectives = (directives: Directive[], version?: string) =>
+  apiRequest<DirectivesResponse>(`${PRIORITIES_BASE}/directives`, {
+    method: "PUT",
+    body: version ? { directives, version } : { directives },
+  });
 
 export const fetchSessions = (repo?: string, signal?: AbortSignal) =>
   apiRequest<SessionsResponse>(`${COORDINATION_BASE}/sessions${qs({ repo })}`, { signal });
 
 export const fetchInbox = (session: string, repo?: string, signal?: AbortSignal) =>
   apiRequest<InboxResponse>(`${COORDINATION_BASE}/inbox${qs({ session, repo })}`, { signal });
+
+export const registerPresence = (body: PresenceBody) =>
+  apiRequest<WriteReceipt>(`${COORDINATION_BASE}/presence`, { body });
 
 export const sendMessage = (body: MessageBody) => apiRequest<WriteReceipt>(`${COORDINATION_BASE}/messages`, { body });
 
@@ -74,6 +82,11 @@ export const releaseClaim = (body: ClaimReleaseBody) =>
   apiRequest<WriteReceipt>(`${COORDINATION_BASE}/claims/release`, { body });
 
 // ── Errors and availability ──────────────────────────────────────────────────
+
+/** True for an HTTP 409 (stale version, held claim, unregistered sender). */
+export function isConflict(err: unknown): boolean {
+  return err instanceof ApiClientError && err.status === 409;
+}
 
 /** True when the route is absent on this node (backend PR not deployed). */
 export function isNotFound(err: unknown): boolean {
@@ -294,6 +307,11 @@ export function findConflicts(rows: WorkRow[]): Map<string, string[]> {
 /** Sorted, de-duplicated repositories named by the rows (for the repo filter). */
 export function reposOf(rows: WorkRow[]): string[] {
   return Array.from(new Set(rows.map((r) => r.repo).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+}
+
+/** The session id this console speaks as on the board: `operator-<yyyymmdd>` (UTC). */
+export function operatorSession(now: Date = new Date()): string {
+  return `operator-${now.toISOString().slice(0, 10).replace(/-/g, "")}`;
 }
 
 export function parseIssue(value: string): number | null {

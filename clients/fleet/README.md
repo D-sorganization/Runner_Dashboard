@@ -8,7 +8,7 @@ Dashboard Fleet API: staff, coordination and priorities (epic #1192, #1228).
 | `fleet_client.py` | `FleetClient`: one validated method per endpoint; raises `FleetAPIError`.            |
 | `fleet_tools.py`  | The command table (method, JSON Schema, CLI name, MCP tool name) shared by both.     |
 | `fleetctl.py`     | The CLI. Prints JSON; exits 0 on success, 1 on an API error, 2 on bad arguments.     |
-| `fleet_mcp.py`    | The MCP stdio server (JSON-RPC 2.0, protocol `2025-06-18`), with 15 `fleet_*` tools. |
+| `fleet_mcp.py`    | The MCP stdio server (JSON-RPC 2.0, protocol `2025-06-18`), with 16 `fleet_*` tools. |
 
 ```bash
 export FLEET_API_URL=http://deskcomputer:8321 FLEET_API_TOKEN=svc_... FLEET_AGENT=claude
@@ -22,7 +22,8 @@ from fleet_client import FleetClient, FleetAPIError
 
 client = FleetClient()  # reads the FLEET_* environment variables
 try:
-    client.claim("Runner_Dashboard", 1228, intent="fleet clients", session="me-1")
+    # No session given: derived as <agent>-<host>-<YYYYMMDD>; an explicit one must start with "<agent>-".
+    client.claim("Runner_Dashboard", 1228, intent="fleet clients")
 except FleetAPIError as exc:
     if exc.status == 409:
         ...  # another agent holds the issue, so pick other work

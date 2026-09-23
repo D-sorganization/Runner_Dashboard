@@ -445,6 +445,7 @@
                 "type": "null"
               }
             ],
+            "description": "Ignored; the server sets it.",
             "title": "Set By"
           },
           "set_on": {
@@ -479,6 +480,19 @@
             "maxItems": 100,
             "title": "Directives",
             "type": "array"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "``version`` from the GET you edited; 409 when stale.",
+            "title": "Version"
           }
         },
         "required": ["directives"],
@@ -6373,7 +6387,7 @@
         "tags": ["priorities"]
       },
       "put": {
-        "description": "Replace the directive list. ``set_by`` defaults to the authenticated caller. Returns the active list.",
+        "description": "Replace the directive list. ``set_by`` is the authenticated caller (body values are ignored).",
         "operationId": "put_directives_api_priorities_directives_put",
         "requestBody": {
           "content": {
