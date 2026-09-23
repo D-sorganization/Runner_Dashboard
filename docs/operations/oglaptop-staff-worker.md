@@ -122,8 +122,11 @@ even with Domain off. Its delayed rollback then erroneously ran after the
 successful second probe, turning Domain off again at 15:29:56. This was a
 diagnostic-script error, not the original outage. The scripts were backed up
 and corrected to disarm delayed rollback after either a completed rollback
-or success. Owner was asked to re-enable Domain once more; verify live state
-before claiming final protection restored.
+or success. The owner then re-enabled Domain protection in Windows Security.
+Final live checks confirmed **Domain, Private and Public all enabled**; Windows
+HTTPS returned 200/204/200 for GitHub/Google/Cloudflare, WSL GitHub HTTPS
+returned 200, and the WSL Ollama bridge returned version 0.34.2. Wi-Fi retained
+DHCP address 192.168.4.203. CI workers were active again after capacity restoration.
 
 CI capacity was restored at approximately **15:33 PT**: runner IDs 217–224
 returned to group 1, original boot-enabled states were restored, and the CI
