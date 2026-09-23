@@ -35,8 +35,11 @@
   central presence and notice succeeded (RM mailbox 5799580572). No peer conflict
   was reported; board replay contains existing rejected-sender warnings.
 - Main sync: preserves incoming provider PR #1253 at ce601d44 exactly;
-  only handoff/log/SPEC conflicts required resolution. Fresh combined validation
-  remains required before pushing this merge.
+  only handoff/log/SPEC conflicts required resolution. Combined validation at
+  34ccf1c passes every pre-push hook: 3,602 Python passes, 42 skips and one
+  expected failure (3,645 JUnit cases; zero failures/errors; 597.340 seconds).
+  TypeScript and all six Projects UI tests pass. Two initial UI invocations used
+  the wrong working directory/executable path; the repository-root command passed.
 - Next: merge this visibility child through protected CI; keep #1248
   open for owner charter/status publication, deployment and actual twenty-plan
   API/UI verification. Coordinate staff adoption with RM PR #1717 and the Claude

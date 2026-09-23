@@ -27,7 +27,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **PR:** https://github.com/D-sorganization/Runner_Dashboard/pull/1254
 - **Paths:** `config/projects.json`, `tests/api/test_projects_router.py`, `docs/projects.md`, `frontend/src/pages/Projects/`, `frontend/src/pages/__tests__/Projects.test.tsx`
 - **Started:** 2026-09-23
-- **Last verified:** 2026-09-23 (f8b44ad; 2 API RED then 15 GREEN; 2 UI RED then 6 GREEN; sanitization-audit failure repaired by colocated sanitization/rendering; frontend-integrity, Ruff, TypeScript, ESLint and build pass; all configured pre-push hooks pass, including 3,595 Python passes, 42 skips and one expected failure)
+- **Last verified:** 2026-09-23 (34ccf1c after preserving provider PR1253; 2 API RED then 15 GREEN; 2 UI RED then 6 GREEN; sanitization-audit failure repaired by colocated sanitization/rendering; frontend-integrity, Ruff, TypeScript, ESLint and build pass; all configured pre-push hooks pass, including 3,602 Python passes, 42 skips and one expected failure)
 - **Summary:** Adds all six omitted published-plan owners to the packaged Projects list. Shows IDs/statuses and safely rendered owner links in feature disclosures. Preserves existing source parsing and overrides; synthetic API/UI regressions retain plan identity, links, parked state and pending decisions.
 - **Next step:** Publish the visibility child through protected CI. Full owner publication/deployment/live verification remains #1248 / RM#1687.
 
