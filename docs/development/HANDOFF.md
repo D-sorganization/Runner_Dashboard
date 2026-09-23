@@ -1,4 +1,7 @@
-# Current handoff — Windows reboot and duplicate-IP diagnosis (#1257)
+# Current handoff — Windows reboot, network and eGPU recovery (#1257)
+
+- Follow-up: direct-attached Sonnet Breakaway Box 750ex / RTX 5070 was absent after Windows reboot; administrator hardware scan did not help. Owner power-cycle/reconnect restored the Sonnet link and GPU. Windows and WSL NVIDIA-SMI both pass (610.88, 12227 MiB). No persistent startup fix is claimed; exact enumeration failure cause remains unknown.
+- Current update: worktree `/home/dieterolson/staff-builds/oglaptop-egpu-recovery`, branch `docs/oglaptop-egpu-recovery`, commit `SELF`.
 
 - Worktree `/home/dieterolson/staff-builds/oglaptop-windows-recovery`; branch `docs/oglaptop-firewall-confirmed`; worktree `/home/dieterolson/staff-builds/oglaptop-firewall-confirmed`; commit `SELF`.
 - Windows booted at 15:05:09 PT; bridge configured result at 15:06:35; dashboard and all six providers recovered. Post-Windows-reboot provider runs all succeeded; IDs in canonical node runbook. Staff scheduler stays off.

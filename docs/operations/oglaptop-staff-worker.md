@@ -140,6 +140,26 @@ Full firewall/profile backups and probe logs:
 and `firewall-diagnosis-20260923-152938`. Drain and reboot records remain in
 `_deploy\oglaptop-drain-20260923`. External port isolation remains unverified.
 
+## External GPU recovery after Windows reboot
+
+The directly connected **Sonnet eGPU Breakaway Box 750ex** contains an
+**NVIDIA GeForce RTX 5070**. It is not connected through the CalDigit TS4.
+After the Windows reboot, both the GPU and its upstream PCIe switch port
+reported `Present=false`. The host USB4 controllers and TS4 remained healthy.
+An owner-run elevated `pnputil /scan-devices` did not recover the missing device.
+
+The owner power-cycled the enclosure and reconnected its Thunderbolt cable.
+Windows then enumerated the Sonnet Thunderbolt routers, PCIe switch and RTX
+5070, all with status OK. Windows and Ubuntu WSL both successfully returned
+`NVIDIA GeForce RTX 5070, 610.88, 12227 MiB` from NVIDIA-SMI. No driver,
+firmware, BIOS or power-policy changes were made; no GPU workload benchmark ran.
+
+The failed stage was Thunderbolt/PCIe device enumeration; the exact startup
+cause remains unproven. The power-cycle/reconnect is a verified recovery,
+not proof of unattended GPU recovery across future reboots. Check both Windows
+and WSL GPU visibility after maintenance before scheduling GPU-dependent work.
+Coordinate any enclosure reset with active GPU jobs and attached peripherals.
+
 ## Installed tools and authentication
 
 All sign-ins were completed by the owner. Do not inspect, copy, print, or put

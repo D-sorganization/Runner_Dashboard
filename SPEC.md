@@ -9,6 +9,7 @@
 
 | Date       | PR / Issue | Summary                                                                                                                               |
 | ---------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-09-23 | #1257 eGPU follow-up | Record Sonnet 750ex/RTX 5070 recovery after reboot and successful Windows/WSL detection; retain unattended-startup limitation. |
 | 2026-09-23 | #1257 final firewall | Confirm all firewall profiles enabled with Windows/WSL connectivity intact and CI capacity restored. |
 | 2026-09-23 | #1257 Windows recovery | Record Windows reboot, six-provider recovery, duplicate-IP diagnosis, firewall checks and remaining acceptance steps. |
 | 2026-09-23 | #1257 restart | Record safe OGLaptop CI drain, verified WSL restart and six-provider recovery, RM user-bus observation and restoration procedure. |
