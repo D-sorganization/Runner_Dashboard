@@ -31,6 +31,19 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** Adds all six omitted published-plan owners to the packaged Projects list. Shows IDs/statuses and safely rendered owner links in feature disclosures. Preserves existing source parsing and overrides; synthetic API/UI regressions retain plan identity, links, parked state and pending decisions.
 - **Next step:** Publish the visibility child through protected CI. Full owner publication/deployment/live verification remains #1248 / RM#1687.
 
+### DL-#1257 · Loopback-Only Ollama With a Reboot-Safe WSL Bridge
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1257 (epic #1192)
+- **Branch:** `feat/1257-ollama-wsl-bridge`
+- **PR:** opened after push
+- **Paths:** `deploy/ollama-wsl-bridge.ps1`, `tests/deploy/test_ollama_wsl_bridge_script.py`, `docs/staff-hub.md`
+- **Started:** 2026-09-23
+- **Last verified:** 2026-09-23 (`478ae89` + this change; `pytest tests/deploy/test_ollama_wsl_bridge_script.py` 11 passed under pwsh 7; helpers also run under Windows PowerShell 5.1; live `-Action Status` on DeskComputer reports `ollama-exposed`, non-elevated `Apply` refused)
+- **Summary:** Standardises OGLaptop's approach (Ollama on 127.0.0.1, portproxy on the WSL adapter address, firewall rule limited to the WSL subnet) as one idempotent script with a re-apply task, so the bridge survives WSL adapter address changes. Replaces DeskComputer's "Expose Ollama to the network" + `ollama.exe` Allow-Any rules.
+- **Next step:** Merge, then the owner runs the DeskComputer steps in `docs/staff-hub.md` "Ollama for WSL".
+
 ### DL-#1252 · Staff Provider Options: Cursor Agent and Ollama via Codex/Claude Code
 
 - **State:** in_review

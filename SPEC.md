@@ -11,6 +11,11 @@
 | ---------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | 2026-09-23 | #1251      | Expose all deferred-plan owners and feature IDs/statuses/safe links in Projects; retain owner authority and live rollout under #1248. |
 
+- **2026-09-23:** Loopback-only Ollama for staff nodes (#1257, epic #1192). `deploy/ollama-wsl-bridge.ps1`
+  (`Status`/`Apply`/`Install`/`Uninstall`, `-DryRun`) bridges the WSL subnet to a 127.0.0.1-only Windows Ollama:
+  portproxy on the current `vEthernet (WSL*)` address, firewall rule `StaffHub-Ollama-WSL` scoped to that address
+  and the WSL subnet, SYSTEM task re-applying every 15 min / at startup / at logon. Refuses while Ollama listens
+  beyond loopback and never touches forwards or rules it did not create. Documented in `docs/staff-hub.md`.
 - **2026-09-23:** Staff provider options (#1252, epic #1192). `cursor-agent` runs `-p --output-format stream-json
 --force --trust --workspace <wt>` (Grok via the Cursor subscription; camelCase usage mapped). `ollama` now runs
   Ollama models inside Codex (`exec --oss --local-provider ollama`) instead of bare `ollama run` chat; new

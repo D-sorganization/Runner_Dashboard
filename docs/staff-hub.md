@@ -262,6 +262,29 @@ open PRs; bare `ollama run` chat cannot. On a NAT-mode WSL node the server is th
 reached through the default gateway. Pass `model` on a run to pick another Ollama model
 (`kimi-k3:cloud`, `deepseek-v4-pro:cloud`, …) or another Cursor model (`cursor-grok-4.6-high`, …).
 
+### Ollama for WSL (#1257)
+
+Staff runs execute in WSL (NAT networking); the Ollama server is the Windows Ollama app. The standard on every
+worker node keeps Ollama on loopback and bridges only the WSL subnet to it:
+
+1. **Owner:** in the Ollama app turn off "Expose Ollama to the network" and leave `OLLAMA_HOST` unset, so
+   `Get-NetTCPConnection -LocalPort 11434 -State Listen` shows only `127.0.0.1`. Disable (do not delete) any
+   inbound `ollama.exe` firewall rule with `RemoteAddress=Any`.
+2. **Owner, elevated PowerShell:** `deploy\ollama-wsl-bridge.ps1 -Action Install`. It adds
+   `netsh interface portproxy <WSL adapter IP>:11434 -> 127.0.0.1:11434`, the firewall rule `StaffHub-Ollama-WSL`
+   (inbound TCP 11434, local address = WSL adapter IP, remote = WSL subnet, `vEthernet (WSL*)` only) and the
+   SYSTEM task `StaffHub-Ollama-WSL-Bridge` (startup, logon, every 15 min) that re-applies it when the adapter
+   address changes. The task runs a copy under `%ProgramData%\RunnerDashboard\ollama-wsl-bridge\`, which also
+   holds `state.json`, `last-result.json` and `portproxy.bak-*` backups.
+3. `-Action Status` (no elevation) prints the plan; it refuses with `ollama-exposed` while step 1 is not done and
+   with `refused` when a forward it did not create sits on its address. `-Action Uninstall` removes only its own
+   forward, rule and task.
+4. Verify from WSL: `curl -s http://$(ip route | awk '/default/{print $3}'):11434/api/version`, then an `ollama`
+   and a `claude-ollama` ad-hoc run. From another tailnet host `curl http://<node>:11434/api/version` must fail.
+
+Do not switch WSL to `networkingMode=mirrored` for this; those distros host GitHub Actions runners and Docker.
+`backend/staff/ollama_env.py` finds the bridge through the WSL default gateway, so `STAFF_OLLAMA_URL` stays unset.
+
 Check a node with a short ad-hoc run (`POST /api/staff/ad-hoc/run` with `{"provider": "claude", "prompt": "..."}`)
 and read `GET /api/staff/schedule`. Its `hold` column must be empty for scheduled worker roles.
 

@@ -1,4 +1,20 @@
-# Current Handoff — Re-Land: Ollama-Backed Runs Lease as `local` (#1252)
+# Current Handoff — Loopback-Only Ollama With a Reboot-Safe WSL Bridge (#1257)
+
+Last updated: 2026-09-23T13:20:00-07:00
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`; worktree `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/feat-1257-ollama-bridge`; branch `feat/1257-ollama-wsl-bridge`; base `478ae89`; commit `SELF`; PR opened after push. Issue #1257 (epic #1192); DL-#1257. Claimed on the issue by claude-DeskComputer-20260923.
+
+## Work
+
+- `deploy/ollama-wsl-bridge.ps1`: pure planner `Get-OllamaBridgePlan` (status `apply` / `refused` / `ollama-exposed` / `no-wsl-adapter`), `Get-SubnetCidr` (plain arithmetic; `-shl` overflows in PowerShell 5.1), `ConvertFrom-PortProxyTable`; side effects only execute the plan. Ownership: state file or exact `<adapter>:11434 -> 127.0.0.1:11434` shape (adopts OGLaptop's existing forward); anything else on that address → refuse. Install copies the script to `%ProgramData%\RunnerDashboard\ollama-wsl-bridge\` and registers SYSTEM task `StaffHub-Ollama-WSL-Bridge` (startup, logon, 15 min). Results go to the host, not the pipeline.
+- Node state 2026-09-23: OGLaptop already bridged by hand (`192.168.208.1`, rule `StaffHub-Ollama-WSL`), needs `-Action Install` for the re-apply task. DeskComputer: Ollama listens on `::`, two `ollama.exe` inbound Allow rules (Public, RemoteAddress Any) → owner turns off "Expose Ollama to the network", disables those rules, runs `-Action Install` elevated.
+- Validation: `pytest tests/deploy/test_ollama_wsl_bridge_script.py` 11 passed (pwsh 7); helpers checked under Windows PowerShell 5.1; live `-Action Status` → `ollama-exposed`; non-elevated `Apply` refused.
+
+---
+
+## Previous Handoff — Current Handoff — Re-Land: Ollama-Backed Runs Lease as `local` (#1252)
 
 Last updated: 2026-09-23T12:55:00-07:00
 
