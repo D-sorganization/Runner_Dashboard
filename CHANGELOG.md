@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Staff Hub scheduled runs can now finish unattended: the Claude adapter uses `--permission-mode bypassPermissions` (the run is confined to its own worktree) with default model `sonnet`; the role playbook is inlined from `STAFF_RM_ROOT`; scheduled prompts name the role and repo, and repos rotate daily; exit 0 without a `STAFF_RESULT` line is recorded as `failed` (#1221, epic #1192).
 - Staff Hub built-in fleet rules now also forbid taking `claim:local` / leased work and filing bulk remediation issues, so every staff prompt carries all three agent guardrails independent of role text (#1217, companion Repository_Management#1700).
 
 ### Added

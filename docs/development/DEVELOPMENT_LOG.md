@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1221 · Staff Hub unattended runs
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1221 (epic #1192)
+- **Branch:** `fix/staff-unattended-runs`
+- **PR:** opened after push
+- **Paths:** `backend/staff/adapters.py`, `backend/staff/workspace.py`, `backend/staff/scheduler.py`, `backend/staff/runner.py`, `tests/api/test_staff_runner.py`, `tests/api/test_staff_schedule.py`, `tests/api/test_staff_fleet_rules.py`
+- **Started:** 2026-09-22
+- **Last verified:** 2026-09-22 (`a41473d` + this change; 100 staff tests passed twice in WSL Python 3.12; the Windows-only cancel-test timing flake also occurs on main)
+- **Summary:** The first scheduled Night Watch stopped to ask permission to commit, ran on the CLI default model, could not see its playbook, and was recorded as succeeded. Fixed with bypassPermissions + sonnet default, an inlined playbook, a concrete rotating scheduled prompt, and failure when no `STAFF_RESULT` line is printed.
+- **Next step:** Merge, rebuild the DeskComputer install from main, and confirm the next scheduled slot opens a draft PR.
+
 ### DL-#1217 · Staff Hub fleet-rule guardrails
 
 - **State:** in_review
