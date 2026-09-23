@@ -1,0 +1,122 @@
+# Board Consensus Template
+
+Weekly consensus document recording ranked priorities, voting results,
+disagreement flags, and deferred backlog.
+
+---
+
+## Meeting Metadata
+
+| Field                  | Value                 |
+| ---------------------- | --------------------- | ------- | ---- |
+| **Meeting Date**       | `2026-09-21`          |
+| **Quorum**             | `4/4 seats present`   |
+| **Instruction Writer** | `Alpha`               |
+| **Consensus Reached**  | `partial`             |
+
+---
+
+## Seat Rankings
+
+### Alpha Ranking
+
+| Rank | Item                     | Project            | Justification            |
+| ---- | ------------------------ | ------------------ | ------------------------ |
+| 1    | `Fleet coordination API` | `Runner_Dashboard` | `agents collide daily`   |
+| 2    | `DC return electrode`    | `Tools_Private`    | `customer date`          |
+
+---
+
+## Borda Count Results
+
+Scoring: `score(item) = Σ (active_seats - rank_position + 1)`.
+
+| Rank | Item                     | Project            | Total Score | Votes                                      |
+| ---- | ------------------------ | ------------------ | ----------- | ------------------------------------------ |
+| 1    | `Fleet coordination API` | `Runner_Dashboard` | `14`        | `Alpha(1), Bravo(2), Charlie(1), Delta(3)` |
+| 2    | `DC return electrode`    | `Tools_Private`    | `11`        | `Alpha(2), Bravo(1), Charlie(3)`           |
+| 3    | `Ash fusion review`      | `Design-Procedures` | `5`        | `Alpha(3), Delta(1)`                       |
+| ...  | ...                      | ...                | ...         | ...                                        |
+
+---
+
+## Consensus Priority List
+
+The authoritative priority list for this cycle. Items above the line are
+**active**; items below are **documented for future assessment**.
+
+### Active Priorities (Execute This Cycle)
+
+1. **`Fleet coordination API`** — `Runner_Dashboard` — `one API for priorities, presence and claims`
+
+   - Assigned to: `claude`
+   - Epic/Issue: `#1192`
+   - Acceptance criteria: `briefing endpoint answers in one call`
+
+2. **`DC return electrode`** — `Tools_Private` — `sector solver - r-theta-z`
+
+   - Assigned to: `Dispatcher will assign`
+   - Epic/Issue: `#1561`
+   - Acceptance criteria: `G1-G4 gates green`
+
+3. **`Ash fusion review`** — `Design-Procedures` — `Rev 4 of FEED-SPEC-ASHFUSION-001`
+   - Assigned to: `codex`
+   - Epic/Issue: `to be filed`
+   - Acceptance criteria: `DOIs verified against Crossref`
+
+---
+
+### Deferred Backlog (Documented, Not Executed)
+
+| Item                  | Project         | Reason for Deferral     | Reassess Date |
+| --------------------- | --------------- | ----------------------- | ------------- |
+| `Bunkershot inversion` | `UpstreamDrift` | `blocked on F0 frame`   | `2026-10-05`  |
+| `Historian retention` | `P1AM`          | `needs CAGG migration`  | `2026-10-12`  | extra |
+
+---
+
+## Disagreement Flags
+
+### Flag 1: `Bravo`
+
+| Field                       | Value    |
+| --------------------------- | -------- | -------- | ----------- | -------- | ------- |
+| **Flagging Seat**           | `Bravo`  |
+| **Consensus Item Disputed** | `Fleet coordination API` |
+| **Nature of Disagreement**  | `priority` |
+
+**Objection:**
+
+`DC return electrode has a customer date and should rank first`
+
+**Alternative Proposal:**
+
+`Swap ranks 1 and 2`
+
+**Resolution:**
+
+`noted`
+
+---
+
+### Flag 2: `<seat-name>` (If Any)
+
+| Field                       | Value    |
+| --------------------------- | -------- |
+| **Flagging Seat**           | `<seat>` |
+| **Consensus Item Disputed** | `<item>` |
+| **Nature of Disagreement**  | `<type>` |
+
+---
+
+## Instruction Writer Assignment
+
+| Check   | Seat     | Top Item | Matches Consensus #1? |
+| ------- | -------- | -------- | --------------------- |
+| Alpha   | `Fleet coordination API` | `yes    | no>`                  |
+
+**Assigned Instruction Writer:** `Alpha`
+
+---
+
+_Consensus document generated on `2026-09-21T18:00:00Z`. Meeting `2026-09-21`._

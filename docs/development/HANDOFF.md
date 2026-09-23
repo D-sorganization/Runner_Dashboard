@@ -1,4 +1,37 @@
-# Current Handoff — Coordination read latency and path normalisation (#1237)
+# Current Handoff — Fleet Coordination API: priorities endpoints (#1227)
+
+Last updated: 2026-09-22T23:59:00-07:00
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/priorities-api` (worktree)
+- Branch: `feat/priorities-api`; base `afb414d`; commit `SELF`; PR opened after push.
+- Governing issue: #1227 (part of epic #1192); development-log entry `DL-#1227`.
+
+## Work
+
+- `backend/priorities/`: `consensus.py` (tolerant parser for RM `board-consensus.md`), `sources.py` (meeting folders, fleet manifest portfolios), `directives.py` (JSON list like holds, `STAFF_DIRECTIVES_FILE`), `service.py` (`priorities_snapshot`, `meetings_index`, `meeting_detail`, `top_priorities`), `models.py` (pydantic shapes).
+- `backend/routers/priorities.py`: `GET /api/priorities`, `GET /api/priorities/meetings[/{date}]`, `GET/PUT /api/priorities/directives`.
+- Auth reuses #1232: `coordination.auth.require_coordination_writer` (returns `Caller`; `set_by` defaults to `caller.label`) and the `coordination.write` presets / `principal_has_scope` it added to `identity.py`; this branch no longer touches `identity.py`.
+- `middleware.py`: `/api/priorities` added (next to #1232's `/api/coordination/`) to `_ALT_AUTH_EXEMPT_PREFIXES` (no trailing slash, the summary route is exactly `/api/priorities`).
+- OpenAPI snapshot + `api-types.ts` regenerated with `scripts/gen-api-client.sh` (WSL Python, Windows npx).
+- No board meeting has been held yet, so live `GET /api/priorities` answers `available:false`.
+
+## Validation
+
+- WSL: `PYTHONPATH=backend pytest tests/api -k "priorities or coordination or auth" -o addopts="" -p no:cacheprovider` → 169 passed, 2 skipped (on `afb414d`, which contains #1232).
+- Also green: `tests/test_identity.py`, `test_no_duplicate_top_level_functions.py`, `test_module_coverage_invariant.py`, `test_backend_routers.py`, `test_middleware.py`, `tests/api/test_staff_schedule.py`, `test_fleet_peer_auth.py`.
+- `ruff check` / `ruff format --check` clean on changed Python.
+
+## Next
+
+1. Merge.
+2. Coordination briefing imports `priorities.service.top_priorities(limit)`.
+
+---
+
+## Previous Handoff — Current Handoff — Coordination read latency and path normalisation (#1237)
 
 Last updated: 2026-09-23T01:10:00-07:00
 

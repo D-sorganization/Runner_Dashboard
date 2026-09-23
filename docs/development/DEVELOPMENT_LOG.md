@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1227 · Fleet Coordination API: priorities endpoints
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1227 (epic #1192)
+- **Branch:** `feat/priorities-api`
+- **PR:** opened after push
+- **Paths:** `backend/priorities/`, `backend/routers/priorities.py`, `backend/middleware.py`, `tests/api/test_priorities_*.py`, `docs/priorities-api.md`
+- **Started:** 2026-09-22
+- **Last verified:** 2026-09-22 (`afb414d` + this change; `pytest tests/api -k "priorities or coordination or auth"` 169 passed, 2 skipped)
+- **Summary:** Priorities half of the Fleet Coordination API contract v1: board-meeting consensus, portfolios and operator directives over HTTP, plus `top_priorities(limit)` for the coordination briefing.
+- **Next step:** Merge; the coordination briefing (#1232) already imports `priorities.service.top_priorities`.
+
 ### DL-#1229 · Fleet Coordination API (sessions, messages, claims, briefing)
 
 - **State:** in_review

@@ -2711,6 +2711,81 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/priorities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Priorities
+         * @description Latest board consensus + directives + portfolios; ``available:false`` with ``reason`` when no board.
+         */
+        get: operations["get_priorities_api_priorities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/priorities/directives": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Directives Route */
+        get: operations["get_directives_route_api_priorities_directives_get"];
+        /**
+         * Put Directives
+         * @description Replace the directive list. ``set_by`` defaults to the authenticated caller. Returns the active list.
+         */
+        put: operations["put_directives_api_priorities_directives_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/priorities/meetings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Meetings */
+        get: operations["list_meetings_api_priorities_meetings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/priorities/meetings/{meeting_date}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Meeting */
+        get: operations["get_meeting_api_priorities_meetings__meeting_date__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects": {
         parameters: {
             query?: never;
@@ -4653,6 +4728,37 @@ export interface components {
              * @default true
              */
             restart_maxwell: boolean;
+        };
+        /**
+         * DirectiveBody
+         * @description One directive as sent by an operator or agent. DbC: the JSON shape of ``priorities.directives.Directive``.
+         */
+        DirectiveBody: {
+            /** Expires */
+            expires?: string | null;
+            /** Id */
+            id?: string | null;
+            /**
+             * Priority
+             * @default 3
+             */
+            priority: number;
+            /**
+             * Repo
+             * @default *
+             */
+            repo: string;
+            /** Set By */
+            set_by?: string | null;
+            /** Set On */
+            set_on?: string | null;
+            /** Text */
+            text: string;
+        };
+        /** DirectivesBody */
+        DirectivesBody: {
+            /** Directives */
+            directives: components["schemas"]["DirectiveBody"][];
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -8763,6 +8869,141 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReleaseResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_priorities_api_priorities_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    get_directives_route_api_priorities_directives_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    put_directives_api_priorities_directives_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DirectivesBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_meetings_api_priorities_meetings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    get_meeting_api_priorities_meetings__meeting_date__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Meeting date, YYYY-MM-DD. */
+                meeting_date: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */

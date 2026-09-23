@@ -723,6 +723,11 @@ from routers import projects as _projects_router  # noqa: E402
 
 app.include_router(_projects_router.router)
 
+# Fleet Coordination API priorities (issue #1227): board meetings, portfolios, directives.
+from routers import priorities as _priorities_router  # noqa: E402
+
+app.include_router(_priorities_router.router)
+
 # Issue #924 — structural auth perimeter. Registered BEFORE SessionMiddleware so
 # that, in Starlette's outer→inner stack, SessionMiddleware wraps this gate and
 # request.session is populated by the time the perimeter resolves a principal.

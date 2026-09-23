@@ -164,12 +164,19 @@ _AUTH_EXEMPT_PATHS = {
 #                              /api/orchestrator/* so Barb, Orchestrator and the
 #                              hub can call it with the fleet bearer token
 #                              (tests/api/test_staff_auth_perimeter.py).
+#   - /api/priorities*       → Fleet Coordination API priorities (#1227). Reads use
+#                              require_fleet_peer so agents holding only the fleet
+#                              bearer token can read them; the PUT uses
+#                              coordination.auth.require_coordination_writer
+#                              (coordination.write scope or loopback). No trailing slash: the summary route is
+#                              exactly /api/priorities (tests/api/test_priorities_routes.py).
 _ALT_AUTH_EXEMPT_PREFIXES = (
     "/api/fleet/dispatch/",
     "/api/orchestrator/",
     "/api/credentials/",
     "/api/staff/",
     "/api/coordination/",
+    "/api/priorities",
 )
 
 DEFAULT_MAX_BODY_SIZE = 1 * 1024 * 1024  # 1 MB
