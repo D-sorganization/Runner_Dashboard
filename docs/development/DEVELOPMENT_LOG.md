@@ -29,7 +29,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-23
 - **Last verified:** 2026-09-23 (`SELF`; #1262 merged, OGLaptop deployed at 35686c4; 62 combined tests pass, mypy/Ruff/unit checks pass; automatic RM fast-forward, 16-role API, empty holds and two Ollama health checks verified)
 - **Summary:** Dedicated Linux RM clone refreshed by a serialized systemd user timer at most every 15 minutes, clean-main fast-forward only, backup refs, secret-safe errors, persisted freshness on board. Existing uncached roles load each evaluation; roles route aliases roster. No scheduler or hold changes in application code.
-- **Next step:** Verify RM#1719 schema after merge through the active timer; other-node rollout remains owner-directed. OGLaptop env/timer migration complete with scheduler off; rollout status branch `docs/issue-1258-oglaptop-rollout`, PR not created.
+- **Next step:** Other-node rollout remains owner-directed. OGLaptop timer automatically picked up merged RM#1719 at 5494676e; schema includes claude-ollama, 16 roles load, holds empty, scheduler off. Rollout docs #1263 merged.
 
 ### DL-#1257 · Reboot-safe WSL Ollama bridge
 
@@ -40,9 +40,9 @@ reachable from any live state and `abandoned` from `parked`.
 - **PR:** https://github.com/D-sorganization/Runner_Dashboard/pull/1261
 - **Paths:** `deploy/windows/ollama-wsl-bridge.ps1`, `tests/unit/test_ollama_wsl_bridge.py`, `docs/staff-hub.md`
 - **Started:** 2026-09-23
-- **Last verified:** 2026-09-23 (`SELF`; owner SYSTEM failure captured; task-policy regression RED then 16 tests GREEN from local Windows copies; Ruff and PowerShell syntax pass; owner task rerun pending)
+- **Last verified:** 2026-09-23 (`SELF`; #1265 merged, owner reinstalled and SYSTEM task returned 0 at 14:24:13 PT; installed hash matches tested source; 16 tests pass; reboot checks pending safe CI window)
 - **Summary:** Dynamic WSL NAT discovery, ownership-checked forward/rule reconciliation, explicit legacy adoption, disable-only firewall/task uninstall, backups and owner-installed hidden startup/logon/retry task. Existing OGLaptop bridge remains unchanged until owner installation.
-- **Next step:** Publish `fix/issue-1257-system-task-policy`; owner reinstalls corrected task and verifies exit 0, WSL restart, Windows reboot and external isolation. Original install exists and scoped forwarding works; SYSTEM execution is not yet verified successful.
+- **Next step:** Coordinate a safe CI drain/restart window with owner, then verify WSL restart, Windows reboot and external isolation. SYSTEM execution is verified successful; do not interrupt the three CI jobs observed at preflight.
 
 ### DL-#1251 · Deferred Project Visibility
 

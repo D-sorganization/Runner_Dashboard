@@ -1,4 +1,14 @@
-# Current handoff — SYSTEM bridge execution policy (#1257)
+# Current handoff — SYSTEM bridge task verified (#1257)
+
+- Worktree `/home/dieterolson/staff-builds/ollama-task-verified-docs`; branch `docs/issue-1257-task-verified`; commit `SELF`; PR not created.
+- Owner reinstalled corrected bridge from #1265 (merged bc5a6369) and supplied Administrator Task Scheduler output: last run 2026-09-23 14:24:13 PT, result **0**, next run 14:25:12. Installed script hash equals tested staged source. Original policy failure is resolved for an actual SYSTEM run.
+- RM timer automatically advanced to merged #1719 at `5494676e42dc80b69ffd729d7a98b29dcf4d1100`. Local schema includes claude-ollama; 16 roles load; worker holds empty; scheduler remains off.
+- Three Runner.Worker processes were active at restart preflight. Asked owner whether to drain this node for a safe restart window; no runners were stopped and no reboot was issued. Remaining: WSL restart, Windows reboot and external tailnet port-isolation verification.
+- Canonical [node status](../operations/oglaptop-staff-worker.md) updated from direct filesystem/API observations and owner task output. Documentation-only diff; no new application tests required.
+
+---
+
+## Previous handoff — SYSTEM bridge execution policy (#1257)
 
 - Worktree `/home/dieterolson/staff-builds/ollama-task-policy`, branch `fix/issue-1257-system-task-policy`, commit `SELF`; PR not created. Existing lease belongs to this session; presence refreshed.
 - Owner installed bridge at 13:50 PT. Saved task XML proves SYSTEM/highest/startup/logon/five-minute triggers. Original task exits 1: owner-run diagnostic captured `running scripts is disabled on this system` before script execution. User-context dry-run alone was insufficient evidence.
