@@ -1,4 +1,20 @@
-# Deferred Project Visibility — #1251 / #1248
+# Current Handoff — Re-Land: Ollama-Backed Runs Lease as `local` (#1252)
+
+Last updated: 2026-09-23T12:55:00-07:00
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`; worktree `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/feat-1252-providers`; branch `fix/1252-ollama-lease-local`; base `a8c6f8c`; commit `SELF`; PR opened after push. Issue #1252 (epic #1192); DL-#1252.
+
+## Work
+
+- PR #1253 auto-merged at its first commit (`b52e31e`, merge `ce601d4`) before the follow-up `8dd2220` was pushed, so `main` still leases staff runs as `agent=plan.provider`; `ollama`/`claude-ollama` are not RM agent ids and `post_agent_lease` refuses them. This cherry-picks `8dd2220`: `ProviderAdapter.lease_as`/`lease_agent`, both Ollama providers lease as `local`.
+- Validation: WSL `PYTHONPATH=backend pytest tests/api -k "staff or provider or pricing or usage"` 166 passed, 3 skipped (on the original branch; cherry-pick applied cleanly).
+- OGLaptop (verified 2026-09-23 12:42 PT via S4U probe): 4.10.0 `a826992`, all of claude/codex/antigravity/cursor-agent/ollama/claude-ollama `true` and each ad-hoc health run succeeded; Ollama reached through a Windows portproxy `192.168.208.1:11434 → 127.0.0.1:11434` + firewall rule `StaffHub-Ollama-WSL` (WSL subnet only).
+
+---
+
+## Previous Handoff — Deferred Project Visibility — #1251 / #1248
 
 - Repository/worktree: D-sorganization/Runner_Dashboard,
   `C:/Users/diete/Repositories/Worktrees/Runner_Dashboard-deferred-projects`.
@@ -63,8 +79,9 @@ Last updated: 2026-09-23T11:40:00-07:00
 - `ollama`: was `ollama run llama3.1` (chat only, model absent, no WSL server). Now Codex `exec --oss --local-provider ollama` with `CODEX_OSS_BASE_URL`; default `glm-5.3-flash:cloud`. New `claude-ollama`: Claude Code with `ANTHROPIC_BASE_URL=<ollama>`, `ANTHROPIC_AUTH_TOKEN=ollama`, own `CLAUDE_CONFIG_DIR=~/.config/runner-dashboard/claude-ollama`. Both verified by hand with a tool call against the Windows Ollama app (0.33.3) at the WSL NAT gateway.
 - `backend/staff/ollama_env.py`: `STAFF_OLLAMA_URL` → localhost if listening → `/proc/net/route` default gateway; `ProviderAdapter.env_builder` / `runtime_env()` applied by the runner at launch.
 - Service drop-in must add `ReadWritePaths` `~/.cursor` and `~/.config/cursor` (cursor-agent keeps auth and state there); documented in `docs/staff-hub.md`.
+- Leases: `ProviderAdapter.lease_as`/`lease_agent`; `ollama` and `claude-ollama` lease as RM agent `local` (the old `ollama` provider would have been refused by `post_agent_lease`).
 - Paired RM change: `shared_scripts/staff_roles.PROVIDERS` gains `claude-ollama` so role YAML can list it.
-- Validation: WSL `PYTHONPATH=backend pytest tests/api -k "staff or provider or pricing or usage"` 165 passed, 3 skipped.
+- Validation: WSL `PYTHONPATH=backend pytest tests/api -k "staff or provider or pricing or usage"` 166 passed, 3 skipped.
 
 ---
 
