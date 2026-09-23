@@ -32,6 +32,7 @@ from staff import consolidation
 from staff import fleet as staff_fleet
 from staff import liveness as staff_liveness
 from staff.adapters import available_providers
+from staff.rm_sync import source_status
 from staff.runner import RunRequest, StaffRunner, get_runner
 from staff.store import ACTIVE_STATUSES, RUN_STATUSES
 
@@ -69,6 +70,7 @@ def _today_iso() -> str:
 
 
 @router.get("/roster")
+@router.get("/roles")
 async def roster(_peer: str = Depends(require_fleet_peer)) -> dict[str, Any]:
     runner = get_runner()
     roles = runner.roles()
@@ -100,6 +102,7 @@ def _local_board(runner: StaffRunner) -> dict[str, Any]:
         "spend_today_usd": store.spend_since(_today_iso()),
         "providers": available_providers(),
         "liveness": liveness,
+        "rm_source": source_status(),
     }
 
 

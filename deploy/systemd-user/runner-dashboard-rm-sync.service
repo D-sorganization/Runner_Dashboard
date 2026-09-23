@@ -1,0 +1,11 @@
+[Unit]
+Description=Safely fast-forward the Staff Hub Repository Management clone
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/actions-runners/dashboard/backend
+EnvironmentFile=%h/.config/runner-dashboard/env
+Environment=GIT_TERMINAL_PROMPT=0
+ExecStart=%h/actions-runners/dashboard/.venv/bin/python -m staff.rm_sync
+TimeoutStartSec=5min
+NoNewPrivileges=true

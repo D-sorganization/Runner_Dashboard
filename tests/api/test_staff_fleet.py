@@ -82,6 +82,15 @@ async def test_aggregate_board_merges_online_peers_and_marks_offline(monkeypatch
 
 
 # ── routes ───────────────────────────────────────────────────────────────
+def test_board_reports_rm_revision_and_roles_alias(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    from routers import staff as staff_router
+
+    expected = {"commit": "a" * 40, "status": "updated", "commit_age_seconds": 30, "check_age_seconds": 5}
+    monkeypatch.setattr(staff_router, "source_status", lambda: expected)
+    assert client.get("/api/staff/board?local=1").json()["rm_source"] == expected
+    assert client.get("/api/staff/roles").json()["roles"] == client.get("/api/staff/roster").json()["roles"]
+
+
 @pytest.fixture
 def staff(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[runner_mod.StaffRunner]:
     monkeypatch.setenv("STAFF_RUNS_DB", str(tmp_path / "runs.sqlite3"))

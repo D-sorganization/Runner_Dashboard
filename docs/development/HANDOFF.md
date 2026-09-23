@@ -1,4 +1,14 @@
-# Current Handoff — WSL Ollama bridge (#1257)
+# Current handoff — Live RM role source (#1258)
+
+- Worktree `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/issue-1258-rm`; branch `fix/issue-1258-live-rm-source`; commit `SELF`; PR [#1262](https://github.com/D-sorganization/Runner_Dashboard/pull/1262), open; DL-#1258.
+- Timer alternative chosen explicitly: no Git/network in dashboard requests or scheduler; clean-main updates at most every 15 minutes, preserve dirty/diverged/ahead state, Git backup refs before fast-forward, timestamped status backups. No role cache exists, so reads immediately see updated YAML.
+- `GET /api/staff/board?local=1` now reports last checked RM revision and commit/check ages; `/roles` aliases `/roster`. Node migration instructions preserve scheduler flags and holds. Existing bundle is retained for rollback.
+- RED: helper test collection failed before implementation. GREEN: `python -m pytest tests/unit/test_staff_rm_sync.py tests/api/test_staff_fleet.py tests/api/test_staff_schedule.py -q -o addopts=''` — 47 pass. Changed-file Ruff check/format pass.
+- CI caught a missed formatter run on the changed router imports; corrected. Full `ruff format --check backend/ clients/` and `ruff check backend/ clients/` now pass locally. The initial Python matrix was skipped because lint failed, not because tests failed.
+- Next: merge, deploy to OGLaptop, back up env/holds/units, switch to Linux clone, start user timer, inspect schedule holds, rerun both Ollama harnesses. Update OGLaptop runbook with measured revision, backups and run IDs.
+- #1259 docs and #1261 bridge merged. Bridge elevated installation/reboot validation belongs to owner and is pending. Bridge CI architecture document passed but its separate pytest job failed on an existing unknown asyncio option; protected merge succeeded without overrides.
+
+## Previous Handoff — WSL Ollama bridge (#1257)
 
 - Repository/worktree: `D-sorganization/Runner_Dashboard`, `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/issue-1257-bridge`.
 - Branch `fix/issue-1257-ollama-wsl-bridge`; commit `SELF`; PR [#1261](https://github.com/D-sorganization/Runner_Dashboard/pull/1261), open; DL-#1257.
