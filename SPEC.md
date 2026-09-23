@@ -5,6 +5,7 @@
 **Last Updated:** 2026-09-22T00:00:00-07:00
 **Status:** Active
 
+- **2026-09-22:** Fleet Coordination API (#1229, epic #1192). New `/api/coordination/*` (`backend/routers/coordination.py`, logic in `backend/coordination/`): `GET sessions` (board sessions across repos + staff runs in flight), `GET inbox`, `POST presence`, `POST presence/release`, `POST messages`, `POST messages/ack`, `GET|POST claims` (409 when another agent holds the lease), `POST claims/release` and `GET briefing` (priorities when the Priorities module is present, active holds, repo sessions/runs, claim protocol, `FLEET_RULES`). Presence/messages stay on the RM board and leases on the issue; the dashboard only runs the RM scripts (`coordination/rm_scripts.py`, now shared with `staff/lease.py`), caches board reads 60 s (`list --all-repos`, per-repo fallback), degrades reads to `available: false` and returns 502 `{error, guidance}` for failed writes. Writes need scope `coordination.write` (new in the `bot` and `operator` presets) or the loopback orchestrator peer; contract in `docs/coordination-api.md`.
 - **2026-09-22:** Fleet API agent clients (#1228, epic #1192). New stdlib-only `clients/fleet/` (Python 3.10+):
   `fleet_client.py` (`FleetClient`, one validated method per staff/coordination/priorities endpoint; `FLEET_API_URL`,
   `FLEET_API_TOKEN` bearer, CSRF header on every request, `FleetAPIError(status, body)`), `fleetctl.py` (JSON CLI; exit

@@ -1,6 +1,30 @@
 {
   "components": {
     "schemas": {
+      "AckBody": {
+        "additionalProperties": false,
+        "description": "``ack``: confirm receipt (not agreement) of a message.",
+        "properties": {
+          "message_id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "title": "Message Id",
+            "type": "string"
+          },
+          "repo": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+            "title": "Repo",
+            "type": "string"
+          },
+          "session": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$",
+            "title": "Session",
+            "type": "string"
+          }
+        },
+        "required": ["session", "repo", "message_id"],
+        "title": "AckBody",
+        "type": "object"
+      },
       "AgentStatus": {
         "properties": {
           "enabled": {
@@ -269,6 +293,91 @@
         "title": "BudgetSummary",
         "type": "object"
       },
+      "ClaimBody": {
+        "additionalProperties": false,
+        "description": "Lease ``repo#issue`` for ``agent``; 409 when another agent holds it.",
+        "properties": {
+          "agent": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent"
+          },
+          "intent": {
+            "default": "implement",
+            "pattern": "^[a-z][a-z-]{0,39}$",
+            "title": "Intent",
+            "type": "string"
+          },
+          "issue": {
+            "exclusiveMinimum": 0.0,
+            "title": "Issue",
+            "type": "integer"
+          },
+          "repo": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+            "title": "Repo",
+            "type": "string"
+          },
+          "session": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$",
+            "title": "Session",
+            "type": "string"
+          }
+        },
+        "required": ["session", "repo", "issue"],
+        "title": "ClaimBody",
+        "type": "object"
+      },
+      "ClaimReleaseBody": {
+        "additionalProperties": false,
+        "description": "Release this agent's lease on ``repo#issue``.",
+        "properties": {
+          "agent": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent"
+          },
+          "issue": {
+            "exclusiveMinimum": 0.0,
+            "title": "Issue",
+            "type": "integer"
+          },
+          "reason": {
+            "default": "work completed",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "repo": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+            "title": "Repo",
+            "type": "string"
+          },
+          "session": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$",
+            "title": "Session",
+            "type": "string"
+          }
+        },
+        "required": ["session", "repo", "issue"],
+        "title": "ClaimReleaseBody",
+        "type": "object"
+      },
       "ClearKeyRequest": {
         "properties": {
           "provider": {
@@ -529,6 +638,36 @@
         "title": "MaxwellChatBody",
         "type": "object"
       },
+      "MessageBody": {
+        "additionalProperties": false,
+        "description": "``send``: message one session, or ``*`` for everyone working in ``repo``.",
+        "properties": {
+          "repo": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+            "title": "Repo",
+            "type": "string"
+          },
+          "session": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$",
+            "title": "Session",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          },
+          "to": {
+            "pattern": "^(\\*|[A-Za-z0-9][A-Za-z0-9._:@-]{0,127})$",
+            "title": "To",
+            "type": "string"
+          }
+        },
+        "required": ["session", "repo", "to", "text"],
+        "title": "MessageBody",
+        "type": "object"
+      },
       "MintTokenRequest": {
         "properties": {
           "expires_in_days": {
@@ -653,6 +792,70 @@
         },
         "required": ["pools", "cooldown_secs", "dry_run"],
         "title": "PoolsResponse",
+        "type": "object"
+      },
+      "PresenceBody": {
+        "additionalProperties": false,
+        "description": "``register``: advertise what this session is working on (advisory, not a lock).",
+        "properties": {
+          "agent": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent"
+          },
+          "branch": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._/@+-]{0,199}$",
+            "title": "Branch",
+            "type": "string"
+          },
+          "goals": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "maxProperties": 20,
+            "title": "Goals",
+            "type": "object"
+          },
+          "issue": {
+            "exclusiveMinimum": 0.0,
+            "title": "Issue",
+            "type": "integer"
+          },
+          "paths": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Paths",
+            "type": "array"
+          },
+          "repo": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+            "title": "Repo",
+            "type": "string"
+          },
+          "session": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$",
+            "title": "Session",
+            "type": "string"
+          },
+          "ttl_hours": {
+            "default": 2.0,
+            "maximum": 8.0,
+            "minimum": 0.1,
+            "title": "Ttl Hours",
+            "type": "number"
+          }
+        },
+        "required": ["session", "repo", "issue", "branch"],
+        "title": "PresenceBody",
         "type": "object"
       },
       "PushKeys": {
@@ -847,6 +1050,25 @@
         },
         "required": ["credential"],
         "title": "RegisterCompleteRequest",
+        "type": "object"
+      },
+      "ReleaseBody": {
+        "additionalProperties": false,
+        "description": "``release``: drop this session's presence.",
+        "properties": {
+          "repo": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+            "title": "Repo",
+            "type": "string"
+          },
+          "session": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$",
+            "title": "Session",
+            "type": "string"
+          }
+        },
+        "required": ["session", "repo"],
+        "title": "ReleaseBody",
         "type": "object"
       },
       "ReleaseRequest": {
@@ -3069,6 +3291,517 @@
         },
         "summary": "Get Cline Status",
         "tags": ["credentials"]
+      }
+    },
+    "/api/coordination/briefing": {
+      "get": {
+        "operationId": "get_briefing_api_coordination_briefing_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "repo",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+              "title": "Repo",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "agent",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Briefing Api Coordination Briefing Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Briefing",
+        "tags": ["coordination"]
+      }
+    },
+    "/api/coordination/claims": {
+      "get": {
+        "operationId": "get_claim_api_coordination_claims_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "repo",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+              "title": "Repo",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "issue",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "title": "Issue",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Claim Api Coordination Claims Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Claim",
+        "tags": ["coordination"]
+      },
+      "post": {
+        "operationId": "post_claim_api_coordination_claims_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClaimBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Claim Api Coordination Claims Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Post Claim",
+        "tags": ["coordination"]
+      }
+    },
+    "/api/coordination/claims/release": {
+      "post": {
+        "operationId": "post_claim_release_api_coordination_claims_release_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClaimReleaseBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Claim Release Api Coordination Claims Release Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Post Claim Release",
+        "tags": ["coordination"]
+      }
+    },
+    "/api/coordination/inbox": {
+      "get": {
+        "operationId": "get_inbox_api_coordination_inbox_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "session",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$",
+              "title": "Session",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "repo",
+            "required": false,
+            "schema": {
+              "default": "Repository_Management",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+              "title": "Repo",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Inbox Api Coordination Inbox Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Inbox",
+        "tags": ["coordination"]
+      }
+    },
+    "/api/coordination/messages": {
+      "post": {
+        "operationId": "post_message_api_coordination_messages_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessageBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Message Api Coordination Messages Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Post Message",
+        "tags": ["coordination"]
+      }
+    },
+    "/api/coordination/messages/ack": {
+      "post": {
+        "operationId": "post_message_ack_api_coordination_messages_ack_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AckBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Message Ack Api Coordination Messages Ack Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Post Message Ack",
+        "tags": ["coordination"]
+      }
+    },
+    "/api/coordination/presence": {
+      "post": {
+        "operationId": "post_presence_api_coordination_presence_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PresenceBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Presence Api Coordination Presence Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Post Presence",
+        "tags": ["coordination"]
+      }
+    },
+    "/api/coordination/presence/release": {
+      "post": {
+        "operationId": "post_presence_release_api_coordination_presence_release_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReleaseBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Presence Release Api Coordination Presence Release Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Post Presence Release",
+        "tags": ["coordination"]
+      }
+    },
+    "/api/coordination/sessions": {
+      "get": {
+        "operationId": "get_sessions_api_coordination_sessions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "repo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Sessions Api Coordination Sessions Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Sessions",
+        "tags": ["coordination"]
       }
     },
     "/api/credentials": {

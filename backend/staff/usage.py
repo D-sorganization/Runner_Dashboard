@@ -19,8 +19,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from coordination.rm_scripts import python_for_rm
 from staff import workspace
-from staff.lease import _python_for_rm
 from staff.pricing import estimate_cost
 from staff.store import USAGE_GROUPS, RunStore
 
@@ -140,7 +140,7 @@ def export_to_rm(
     for row in rows:
         provider = row["key"]
         argv = [
-            _python_for_rm(),
+            python_for_rm(),
             str(root / EXPORT_SCRIPT),
             "--date",
             day,

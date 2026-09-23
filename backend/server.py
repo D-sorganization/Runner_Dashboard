@@ -713,6 +713,11 @@ app.include_router(_staff_router.router)
 app.include_router(_staff_schedule_router.router)  # scheduler, holds, budgets (issue #1196)
 app.include_router(_staff_usage_router.router)  # usage ledger (issue #1200)
 
+# Fleet Coordination API (epic #1192, issue #1229): sessions, messages, claims, briefing.
+from routers import coordination as _coordination_router  # noqa: E402
+
+app.include_router(_coordination_router.router)
+
 # Projects tab (issue #1199): per-repo charter, status and steward runs.
 from routers import projects as _projects_router  # noqa: E402
 
