@@ -18,6 +18,8 @@ FLEET_RULES = (
     "Fleet rules: work only inside this worktree; TDD, DbC, LoD, DRY; commit with a Conventional Commits "
     "subject; if docs/development/HANDOFF.md exists update it in the same commit; push the branch and open a "
     "DRAFT pull request; never merge, never force-push, never touch other worktrees or host configuration; "
+    "never take an issue or PR labelled claim:local or under another agent's live lease; never file bulk "
+    "remediation issues (report findings in one issue or the PR instead); "
     "when done, print a final line starting with 'STAFF_RESULT:' followed by a one-sentence summary and the "
     "PR URL if any."
 )

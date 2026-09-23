@@ -1,4 +1,22 @@
-# Current Handoff — De-duplicate SPEC.md and CHANGELOG.md after stacked-PR conflict resolution (#1192)
+# Current Handoff — Staff Hub fleet-rule guardrails (#1217)
+
+Last updated: 2026-09-22T22:00:00-07:00
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/staff-fleet-rules` (worktree)
+- Branch: `fix/staff-fleet-rules-guardrails`; base `26b238f`; commit `SELF`.
+
+## Work
+
+- Found on DeskComputer 2026-09-22 21:40 PT: every worker role's three agent guardrails were seeded as active scheduler holds, so no scheduled role could fire. Live holds were deactivated by hand (backup `~/.config/runner-dashboard/staff_holds.json.bak-*`); RM#1701 removes them from the role files.
+- `FLEET_RULES` (`backend/staff/workspace.py`) now also says never take `claim:local` / live-leased work and never file bulk remediation issues.
+- Tests: `tests/api/test_staff_fleet_rules.py` (2); staff consolidation + schedule suites still green (45 passed).
+
+---
+
+## Previous Handoff — Current Handoff — De-duplicate SPEC.md and CHANGELOG.md after stacked-PR conflict resolution (#1192)
 
 Last updated: 2026-09-22T23:30:00-07:00
 
