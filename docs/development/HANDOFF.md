@@ -1,3 +1,52 @@
+# Deferred Project Visibility — #1251 / #1248
+
+- Repository/worktree: D-sorganization/Runner_Dashboard,
+  `C:/Users/diete/Repositories/Worktrees/Runner_Dashboard-deferred-projects`.
+- Branch: `fix/1248-deferred-project-coverage`; base `c1748960`; commit `SELF`;
+  PR: [#1254](https://github.com/D-sorganization/Runner_Dashboard/pull/1254), open with protected auto-merge armed. Development entry DL-#1251; full rollout #1248 and RM#1687.
+- Adds the six missing published-plan owners to `config/projects.json`, retaining
+  the original seven entries. No parser, staff scheduler or provider adapter change.
+- Existing cards ignored the features array. `FeatureDetails.tsx` now exposes IDs,
+  names, statuses and owner links in an accessible disclosure. Notes reuse marked
+  and DOMPurify with a restricted element/attribute set and HTTP(S) links only.
+- TDD: two RED regressions identified six omitted owners and a 404 for the
+  Launch-Monitor-Flight-Model-Campaign route. GREEN: all 15 Projects API tests pass
+  with `uv run --locked pytest tests/api/test_projects_router.py -q --tb=short`.
+  Ruff format/check pass on the changed test file; two existing dependency
+  deprecation warnings remain. Fixture data is synthetic, not experimental evidence.
+- Frontend TDD: 2 RED missing-details tests, then all 6 Projects tests pass.
+  TypeScript, changed-file ESLint and production Vite build pass. Tests preserve
+  dispatch behavior and refuse script/data links and executable HTML in notes.
+  Normal commit hooks pass. The first full Python run had no test failures but
+  its hook wrapper detected concurrent docs/UI edits. A frozen rerun then exposed
+  the static HTML-sanitization audit: the sanitizer helper was outside its local
+  inspection window. `FeatureNotes` now colocates sanitization and HTML rendering.
+  The unchanged frontend-integrity module passes (one existing expected failure),
+  as do all six UI tests, TypeScript, ESLint and the rebuilt production bundle.
+  Final frozen pre-push validation at f8b44ad passes all configured hooks:
+  3,595 Python tests passed, 42 skipped and one expected failure (3,638 JUnit
+  cases, zero errors/failures, 565.831 seconds). The source stayed unchanged
+  throughout this run. Both implementation commits are pushed.
+- `docs/projects.md` documents owner authority, environment overrides, the limited
+  fallback list, pending decisions, deployment verification and rollback.
+- Root fixture configuration and original API error contracts are unchanged.
+  No real charter or measurement is inferred from this configuration change.
+- Coordination: leases posted on #1248 and #1251, but claim-label updates failed;
+  central presence and notice succeeded (RM mailbox 5799580572). No peer conflict
+  was reported; board replay contains existing rejected-sender warnings.
+- Main sync: preserves incoming provider PR #1253 at ce601d44 exactly;
+  only handoff/log/SPEC conflicts required resolution. Combined validation at
+  34ccf1c passes every pre-push hook: 3,602 Python passes, 42 skips and one
+  expected failure (3,645 JUnit cases; zero failures/errors; 597.340 seconds).
+  TypeScript and all six Projects UI tests pass. Two initial UI invocations used
+  the wrong working directory/executable path; the repository-root command passed.
+- Next: merge this visibility child through protected CI; keep #1248
+  open for owner charter/status publication, deployment and actual twenty-plan
+  API/UI verification. Coordinate staff adoption with RM PR #1717 and the Claude
+  Staff Hub owner. Do not weaken Tools' invalid-charter error or duplicate catalogs.
+
+---
+
 # Current Handoff — Staff Provider Options: Cursor Agent and Ollama (#1252)
 
 Last updated: 2026-09-23T11:40:00-07:00

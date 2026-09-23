@@ -223,4 +223,76 @@ describe("ProjectsPage", () => {
     );
     expect(screen.getByRole("alert")).toHaveTextContent("502");
   });
+
+  it("exposes parked plan identity and its owner link in feature details", async () => {
+    const url =
+      "https://github.com/D-sorganization/Alpha/blob/main/docs/development/planning/DV-24.md";
+    const project: ProjectOverview = {
+      ...ALPHA,
+      features: [
+        {
+          id: "DV-24",
+          feature: "Physical validation",
+          status: "parked",
+          tracking: "-",
+          notes: `Awaiting resources. [Owner plan](${url})`,
+        },
+      ],
+      progress: {
+        planned: 0,
+        in_progress: 0,
+        shipped: 0,
+        parked: 1,
+        percent_shipped: 0,
+      },
+      decisions_needed: ["DV-24: approve resources and experimental access?"],
+    };
+    global.fetch = vi.fn(() =>
+      Promise.resolve(
+        jsonResponse({ ...RESPONSE, projects: [project], count: 1 }),
+      ),
+    ) as unknown as typeof fetch;
+    render(<ProjectsPage />);
+    const card = within(await screen.findByTestId("project-card-Alpha"));
+    fireEvent.click(card.getByText("Features and plans (1)"));
+    expect(card.getByText("DV-24")).toBeVisible();
+    expect(card.getByText("Physical validation")).toBeVisible();
+    expect(card.getByText("parked", { exact: true })).toBeVisible();
+    expect(card.getByRole("link", { name: "Owner plan" })).toHaveAttribute(
+      "href",
+      url,
+    );
+    expect(
+      card.getByText("DV-24: approve resources and experimental access?"),
+    ).toBeVisible();
+  });
+
+  it("renders untrusted feature notes without executable links or HTML", async () => {
+    const project: ProjectOverview = {
+      ...ALPHA,
+      features: [
+        {
+          id: "DV-unsafe",
+          feature: "Review pending",
+          status: "parked",
+          tracking: "-",
+          notes:
+            '[Run](javascript:alert%281%29) [Data](data:text/html,unsafe) <img src="x" onerror="alert(1)"> <script>alert(1)</script>',
+        },
+      ],
+    };
+    global.fetch = vi.fn(() =>
+      Promise.resolve(
+        jsonResponse({ ...RESPONSE, projects: [project], count: 1 }),
+      ),
+    ) as unknown as typeof fetch;
+    render(<ProjectsPage />);
+    const cardElement = await screen.findByTestId("project-card-Alpha");
+    const card = within(cardElement);
+    fireEvent.click(card.getByText("Features and plans (1)"));
+    expect(card.getByText("DV-unsafe")).toBeVisible();
+    expect(card.queryByRole("link", { name: "Run" })).toBeNull();
+    expect(card.queryByRole("link", { name: "Data" })).toBeNull();
+    expect(cardElement.querySelector("img, script, [onerror]")).toBeNull();
+  });
 });

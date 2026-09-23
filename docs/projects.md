@@ -23,6 +23,32 @@ project-steward run on this node. It replaces the per-repo Grok PM bots.
   bullets under `## Decisions Needed` are what the card lists (the placeholder `None recorded.` is ignored).
 - `DECISIONS.md` is an append-only `| Date | Decision | Source (board packet / issue) |` log; the tab does not read it yet.
 
+## Deferred Validation Plans
+
+The packaged configuration includes all ten owners of the twenty external scopes
+reviewed under Repository_Management#1687, alongside the existing fleet entries
+(thirteen repositories in total; #1251 under #1248). A deployment using
+`RUNNER_DASHBOARD_PROJECTS_CONFIG` must include the required owners in that file;
+an override remains authoritative. The existing seven-repository fallback is an
+availability fallback, not proof of complete deferred-plan coverage.
+
+Each repository owns its planning catalog and charter/status projection. Project
+Steward publishes a feature with the original plan ID, `parked` status, `-`
+tracking and a durable owner-plan link in Notes. Pending resource, access and
+approval decisions belong under `Decisions Needed`; neither a parked feature nor
+a generated status is approval or experimental validation. The dashboard reads
+these files through its existing parser and reports malformed sources explicitly.
+Cards expose each feature ID, name, status, tracking reference and notes under
+**Features and plans**. Notes support basic inline Markdown and HTTP(S) links;
+executable URLs and HTML are removed before rendering.
+
+#1248 and Repository_Management#1687 retain end-to-end rollout acceptance: publish
+owner files, deploy the reviewed configuration, allow the ten-minute cache to
+refresh, then verify all twenty real IDs/links, parked states and pending decisions
+in the live API and UI. Passing the synthetic API fixture proves projection
+behavior only. Restore the prior configuration to roll back this additive owner
+list; no plan or source issue is deleted by a configuration change.
+
 ## API (`/api/projects`)
 
 | Method | Path                   | Auth       | Purpose                                                                  |
@@ -83,6 +109,6 @@ error is shown on the card. The role itself is defined in Repository_Management 
 ## Tests
 
 - `tests/api/test_projects_router.py` — contract pins, parser, config loading, charter present / missing /
-  malformed / GitHub error, steward-run join, both routes, cache-vs-live steward run (13 tests).
+  malformed / GitHub error, steward-run join, both routes, cache-vs-live steward run (15 tests, including packaged owner coverage and deferred-plan projection).
 - `frontend/src/pages/__tests__/Projects.test.tsx` — cards, progress bar, decisions, run link, CSRF
-  POST body, dispatch error, load error (4 tests).
+  POST body, dispatch error, load error, visible deferred details and untrusted notes (6 tests).

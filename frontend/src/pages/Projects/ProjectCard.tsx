@@ -7,6 +7,7 @@ import React from "react";
 import { Badge } from "../../primitives/Badge";
 import { TimeAgo } from "../../primitives/TimeAgo";
 import { FeatureProgressBar } from "./FeatureProgressBar";
+import { FeatureDetails } from "./FeatureDetails";
 import type { ProjectOverview, StewardRun } from "./types";
 
 export interface ProjectCardProps {
@@ -69,6 +70,7 @@ export function ProjectCard({
   const {
     repo,
     charter_present,
+    features,
     progress,
     decisions_needed,
     last_steward_run,
@@ -112,6 +114,7 @@ export function ProjectCard({
           one on its first pass.
         </p>
       )}
+      <FeatureDetails features={features} />
       <div style={{ marginTop: 8, fontSize: 13 }}>
         <strong>Decisions needed</strong>
         {decisions_needed.length === 0 ? (
