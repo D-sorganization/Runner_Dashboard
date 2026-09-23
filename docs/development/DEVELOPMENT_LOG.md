@@ -44,6 +44,19 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** Role files carried agent guardrails as `holds:`, which the scheduler seeds as blocks; RM#1701 removes them and this change puts the missing two (claim:local/leases, no bulk issue filing) into the built-in `FLEET_RULES` every prompt ends with.
 - **Next step:** Merge; no deploy action beyond the next build.
 
+### DL-#1216 · Prune credential-bearing url.insteadOf entries from runner ~/.gitconfig
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1216 (part of the #1192 rollout; source fixed by Gasification_Model#5060)
+- **Branch:** `fix/1216-prune-gitconfig-insteadof`
+- **PR:** not created at commit time (draft opened after push)
+- **Paths:** `deploy/clean-gitconfig-token-rewrites.sh`, `deploy/install-runner-maintenance.sh`, `tests/deploy/test_clean_gitconfig_token_rewrites.py`
+- **Started:** 2026-09-22
+- **Last verified:** 2026-09-22 (`26b238f`)
+- **Summary:** New `clean-gitconfig-token-rewrites` removes every `url` section whose http(s) URL embeds userinfo (insteadOf/pushInsteadOf) from the runner user's global git config with a 0600 timestamped backup, `--dry-run`, idempotent re-runs and redacted logging; installed and run by `install-runner-maintenance.sh` beside the #1159 profile cleanup.
+- **Next step:** Mark the draft PR ready once CI Standard and Spec Check are green.
+
 ### DL-#1213 · Staff Hub PR-consolidation strategy
 
 - **State:** in_review
