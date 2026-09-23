@@ -1,4 +1,23 @@
-# Current Handoff — Fleet API follow-ups (#1234)
+# Current Handoff — Coordination read latency and path normalisation (#1237)
+
+Last updated: 2026-09-23T01:10:00-07:00
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/coord-swr` (worktree)
+- Branch: `fix/coordination-swr-cache`; commit `SELF`; PR opened after push.
+
+## Work
+
+- Evidence (DeskComputer, afb414d): a cold `fleet_briefing` MCP call timed out in headless Claude, and a stdio harness measured 23.8 s. `fleetctl` took 2 s once the cache was warm.
+- `board._cached`: fresh hit → value; stale hit → value now plus one background refresh thread (keyed, de-duplicated); miss → inline load.
+- Per-repo fallback reads run in a 4-worker pool; RM#1704 (`list --all-repos`) reduces this to one read.
+- `models.normalize_scope_path`: strips `./` and trailing `/`, and rejects globs, `..`, absolute paths and empty parts with 422.
+
+---
+
+## Previous Handoff — Current Handoff — Fleet API follow-ups (#1234)
 
 Last updated: 2026-09-23T00:40:00-07:00
 

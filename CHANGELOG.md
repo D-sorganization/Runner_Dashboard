@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Coordination API board reads use stale-while-revalidate with parallel per-repo fallback, so agent tool calls no longer wait tens of seconds on GitHub; presence `paths` are normalised (`./`, trailing `/`), and paths RM would reject return 422 instead of 502 (#1237).
 - `GET /api/staff/summary` now lists active holds (`staff.holds.active_holds` was missing); the fleet client requires `issue` + `branch` for presence and caps TTL at 8 h like the server; client test fixtures no longer shadow `tests/conftest.py` (#1234).
 - Staff Hub fleet rules tell agents to skip an issue that an open pull request already references, so remediator runs stop opening duplicate PRs (#1225).
 - Staff Hub node setup documented in `docs/staff-hub.md`: systemd drop-in, service-owned `CLAUDE_CONFIG_DIR` (the CLI cannot refresh its OAuth token under `ProtectHome=read-only` without it), `GIT_CONFIG_GLOBAL`, and Linux-side clones (#1223).
