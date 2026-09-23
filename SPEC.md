@@ -5,6 +5,9 @@
 **Last Updated:** 2026-09-22T00:00:00-07:00
 **Status:** Active
 
+- **2026-09-22:** Runner hosts: new `deploy/clean-gitconfig-token-rewrites.sh` (installed by
+  `install-runner-maintenance.sh`) prunes credential-bearing `url.*.insteadOf` sections that CI jobs left in the
+  runner user's global git config, with a 0600 backup, `--dry-run` and redacted logs (#1216).
 - **2026-09-22:** De-duplicate SPEC.md (6 copies → 1, NUL bytes removed) and CHANGELOG.md (4 copies → 1) left by stacked-PR conflict resolution; no content removed (#1192).
 - **2026-09-22:** Staff board scheduled-role liveness (#1209, epic #1192). New
   `backend/staff/liveness.py::compute_liveness(roles, store, scheduler_state, now)` derives, per

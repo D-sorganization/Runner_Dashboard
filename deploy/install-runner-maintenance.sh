@@ -38,6 +38,11 @@ if [[ -f "${SCRIPT_DIR}/clean-stale-shell-profiles.sh" ]]; then
     sudo install -m 0755 "${SCRIPT_DIR}/clean-stale-shell-profiles.sh" /usr/local/bin/clean-stale-shell-profiles
     sudo -u "${RUNNER_USER}" /usr/local/bin/clean-stale-shell-profiles || true
 fi
+# Prune credential-bearing url.*.insteadOf sections CI jobs left in ~/.gitconfig (#1216)
+if [[ -f "${SCRIPT_DIR}/clean-gitconfig-token-rewrites.sh" ]]; then
+    sudo install -m 0755 "${SCRIPT_DIR}/clean-gitconfig-token-rewrites.sh" /usr/local/bin/clean-gitconfig-token-rewrites
+    sudo -u "${RUNNER_USER}" -H /usr/local/bin/clean-gitconfig-token-rewrites || true
+fi
 # Runner job-pickup hooks from #664 — referenced by the per-unit
 # drop-ins written by migrate-runner-units.sh. Installed at a stable
 # system path so the drop-ins don't depend on a repo checkout location.
@@ -266,4 +271,4 @@ echo "Installed:"
 systemctl list-timers runner-cleanup.timer runner-disk-guard.timer runner-scheduler.timer runner-corruption-scan.timer --all
 echo ""
 echo "Binaries:"
-ls -l /usr/local/bin/runner-cleanup /usr/local/bin/heal-host /usr/local/bin/runner-corruption-scan /usr/local/bin/runner-hooks-restore /usr/local/bin/clean-stale-shell-profiles "${HOOK_INSTALL_DIR}"/ 2>/dev/null | grep -v '^total' || true
+ls -l /usr/local/bin/runner-cleanup /usr/local/bin/heal-host /usr/local/bin/runner-corruption-scan /usr/local/bin/runner-hooks-restore /usr/local/bin/clean-stale-shell-profiles /usr/local/bin/clean-gitconfig-token-rewrites "${HOOK_INSTALL_DIR}"/ 2>/dev/null | grep -v '^total' || true
