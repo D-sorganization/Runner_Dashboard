@@ -19,6 +19,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUTPUT_DIR="${OUTPUT_DIR:-${SCRIPT_DIR}/dist}"
 VERSION_OVERRIDE=""
 SHA_OVERRIDE=""
+# CPython minor the wheelhouse is built for and deployment.json declares (#1212).
+TARGET_PYTHON_MINOR="${ARTIFACT_PYTHON_MINOR:-}"
 SKIP_BUILD=false
 
 usage() {
@@ -30,6 +32,8 @@ Options:
   --output-dir PATH   Output directory for tarball and checksum (default: ./dist)
   --version VERSION   Override version (default: read from VERSION file)
   --sha SHA           Override git commit SHA (default: git rev-parse HEAD)
+  --python-minor X.Y  Build the wheelhouse for CPython X.Y and declare it as python_minor
+                      (default: $ARTIFACT_PYTHON_MINOR, else the first supported interpreter)
   --skip-build        Skip npm build if frontend bundle is already present
   -h, --help          Show this help
 EOF
@@ -40,6 +44,7 @@ while [[ $# -gt 0 ]]; do
         --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
         --version) VERSION_OVERRIDE="$2"; shift 2 ;;
         --sha) SHA_OVERRIDE="$2"; shift 2 ;;
+        --python-minor) TARGET_PYTHON_MINOR="$2"; shift 2 ;;
         --skip-build) SKIP_BUILD=true; shift ;;
         -h|--help) usage; exit 0 ;;
         *) echo "Unknown option: $1" >&2; exit 1 ;;
@@ -114,14 +119,27 @@ else
     find "${STAGE_DIR}/backend" -type f -name '*.pyc' -delete 2>/dev/null || true
 fi
 
-RUNTIME_PYTHON="$(select_dashboard_python "")"
+# The wheelhouse is built by an interpreter of the declared minor, so compiled
+# wheels carry that ABI; the ABI check below proves it before anything ships.
+RUNTIME_PYTHON="$(select_dashboard_python "${TARGET_PYTHON_MINOR}" pip)" || {
+    echo "Cannot build a Python ${TARGET_PYTHON_MINOR:-3.x} wheelhouse: no matching interpreter with pip" >&2
+    exit 1
+}
 PYTHON_MINOR="$("${RUNTIME_PYTHON}" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+if [[ -n "${TARGET_PYTHON_MINOR}" && "${PYTHON_MINOR}" != "${TARGET_PYTHON_MINOR}" ]]; then
+    echo "Selected ${RUNTIME_PYTHON} is Python ${PYTHON_MINOR}, expected ${TARGET_PYTHON_MINOR}" >&2
+    exit 1
+fi
 mkdir -p "${STAGE_DIR}/backend/wheels"
-echo "==> Building locked offline backend wheelhouse with ${RUNTIME_PYTHON}..."
+echo "==> Building locked offline backend wheelhouse for Python ${PYTHON_MINOR} with ${RUNTIME_PYTHON}..."
 "${RUNTIME_PYTHON}" -m pip wheel \
     --require-hashes \
     --wheel-dir "${STAGE_DIR}/backend/wheels" \
     -r "${SCRIPT_DIR}/requirements.lock.txt"
+echo "==> Verifying every wheel matches declared python_minor ${PYTHON_MINOR}..."
+"${RUNTIME_PYTHON}" "${SCRIPT_DIR}/deploy/check-wheelhouse-abi.py" \
+    --python-minor "${PYTHON_MINOR}" \
+    --wheel-dir "${STAGE_DIR}/backend/wheels"
 
 # 3. Frontend static distribution
 mkdir -p "${STAGE_DIR}/frontend"

@@ -8,6 +8,7 @@
 - **2026-09-22:** Runner hosts: new `deploy/clean-gitconfig-token-rewrites.sh` (installed by
   `install-runner-maintenance.sh`) prunes credential-bearing `url.*.insteadOf` sections that CI jobs left in the
   runner user's global git config, with a 0600 backup, `--dry-run` and redacted logs (#1216).
+- **2026-09-22:** Artifact wheelhouse ABI contract and fail-closed install (#1212). Packaging takes `--python-minor` (release pins `3.12`) and `deploy/check-wheelhouse-abi.py` fails when any wheel's `cpXY`/platform tag cannot install on the declared `python_minor` (abi3 at or below it and pure wheels pass); `install-dashboard-artifact.sh` runs that check, interpreter selection (`select_dashboard_python MINOR venv` — venv+ensurepip suffices, host pip not required) and a full offline install into a throwaway venv before touching the deploy dir, then swaps `.venv` (restoring the previous one on failure) before syncing code; rsync no longer deletes `.venv`.
 - **2026-09-22:** De-duplicate SPEC.md (6 copies → 1, NUL bytes removed) and CHANGELOG.md (4 copies → 1) left by stacked-PR conflict resolution; no content removed (#1192).
 - **2026-09-22:** Staff board scheduled-role liveness (#1209, epic #1192). New
   `backend/staff/liveness.py::compute_liveness(roles, store, scheduler_state, now)` derives, per
@@ -3080,6 +3081,13 @@ DRY_RUN=true bash deploy/update-deployed.sh
 ```bash
 bash deploy/update-deployed.sh --artifact runner-dashboard-v4.0.1.tar.gz
 ```
+
+The installer fails closed (#1212): the wheelhouse ABI check against
+`compatibility.python_minor`, interpreter selection (any matching CPython that
+can build a venv with `ensurepip`; host `pip` is not required) and a complete
+offline dependency install into a staging venv all pass before the deploy
+directory is modified. A failure at any of those steps leaves the live install,
+including `.venv`, untouched.
 
 ### 6.4 Rollback
 
