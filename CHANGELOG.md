@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Staff/Fleet Command Assign lists only dispatchable, non-retired roles (Barb/Orchestrator are grok-chat only); Active work collapses board replay warnings into an "N board warnings" summary (#1241).
 - Coordination API board reads use stale-while-revalidate with parallel per-repo fallback, so agent tool calls no longer wait tens of seconds on GitHub; presence `paths` are normalised (`./`, trailing `/`), and paths RM would reject return 422 instead of 502 (#1237).
 - `GET /api/staff/summary` now lists active holds (`staff.holds.active_holds` was missing); the fleet client requires `issue` + `branch` for presence and caps TTL at 8 h like the server; client test fixtures no longer shadow `tests/conftest.py` (#1234).
 - Staff Hub fleet rules tell agents to skip an issue that an open pull request already references, so remediator runs stop opening duplicate PRs (#1225).

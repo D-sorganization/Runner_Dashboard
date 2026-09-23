@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1241 · Fleet Command polish: dispatchable roles, collapsed warnings
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1241 (epic #1192)
+- **Branch:** `fix/fleet-command-polish`
+- **PR:** opened after push
+- **Paths:** `frontend/src/pages/Staff/Assign.tsx`, `frontend/src/pages/FleetCommand/ActiveWorkPanel.tsx`, `frontend/src/pages/__tests__/Staff.test.tsx`
+- **Started:** 2026-09-23
+- **Last verified:** 2026-09-23 (`62e45ba` + this change; vitest Staff + FleetCommand 25 passed; `npm run typecheck` and `npm run lint` clean)
+- **Summary:** Found reviewing the live tab on DeskComputer: grok-chat roles were offered for dispatch, and raw replay warnings crowded Active work.
+- **Next step:** Merge and redeploy DeskComputer.
+
 ### DL-#1239 · Staff prompt fleet focus
 
 - **State:** in_review

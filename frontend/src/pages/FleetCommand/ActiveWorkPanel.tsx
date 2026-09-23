@@ -94,11 +94,16 @@ export function ActiveWorkPanel({ onMessage }: ActiveWorkPanelProps) {
         ) : null}
       </div>
       {warnings.length > 0 ? (
-        <ul className="fleet-cmd__list staff-muted" data-testid="active-work-warnings">
-          {warnings.map((w) => (
-            <li key={w}>{w}</li>
-          ))}
-        </ul>
+        <details className="staff-muted" data-testid="active-work-warnings">
+          <summary>
+            {warnings.length} board {warnings.length === 1 ? "warning" : "warnings"}
+          </summary>
+          <ul className="fleet-cmd__list">
+            {warnings.map((w) => (
+              <li key={w}>{w}</li>
+            ))}
+          </ul>
+        </details>
       ) : null}
       {shown.length === 0 ? (
         <p className="staff-muted" data-testid="active-work-empty">

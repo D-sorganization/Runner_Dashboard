@@ -34,7 +34,7 @@ function parseNumber(value: string): number | null {
 }
 
 export function Assign({ roster, initialRole, onDispatched }: AssignProps) {
-  const roles = useMemo(() => (roster?.roles ?? []).filter((r) => !r.retired), [roster]);
+  const roles = useMemo(() => (roster?.roles ?? []).filter((r) => !r.retired && r.dispatchable), [roster]);
   const [role, setRole] = useState(initialRole ?? "");
   const [provider, setProvider] = useState("");
   const [repo, setRepo] = useState("");

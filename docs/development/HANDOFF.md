@@ -1,4 +1,22 @@
-# Current Handoff — Fleet Command tab (#1233)
+# Current Handoff — Fleet Command polish (#1241)
+
+Last updated: 2026-09-23T01:20:00-07:00
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/fc-polish` (worktree)
+- Branch: `fix/fleet-command-polish`; commit `SELF`; PR opened after push.
+
+## Work
+
+- `Assign.tsx` filters roles to `!retired && dispatchable`, with a new test in `Staff.test.tsx`.
+- `ActiveWorkPanel.tsx`: warnings sit in `<details data-testid="active-work-warnings">` with an "N board warnings" summary.
+- Validation: `npx vitest run frontend/src/pages/__tests__/Staff.test.tsx frontend/src/pages/__tests__/FleetCommand.test.tsx` gives 25 passed; `npm run typecheck` and `npm run lint` are clean.
+
+---
+
+## Previous Handoff — Current Handoff — Fleet Command tab (#1233)
 
 Last updated: 2026-09-23T00:40:00-07:00
 
