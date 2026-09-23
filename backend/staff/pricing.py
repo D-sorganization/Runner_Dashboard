@@ -72,6 +72,7 @@ PRICE_TABLE: dict[str, dict[str, Price]] = {
     },
     # Local inference: any model, always free.
     "ollama": {},
+    "claude-ollama": {},
 }
 
 # Default model per provider when the run recorded none (mirrors the CLIs' own
@@ -79,11 +80,16 @@ PRICE_TABLE: dict[str, dict[str, Price]] = {
 DEFAULT_MODEL: dict[str, str] = {"claude": "opus-5", "codex": "gpt-5", "gemini": "gemini-2.5-pro"}
 
 # Providers that never carry per-token cost regardless of model.
-FREE_PROVIDERS: frozenset[str] = frozenset({"ollama"})
+FREE_PROVIDERS: frozenset[str] = frozenset({"ollama", "claude-ollama"})
 
 # USD per minute of CLI wall time for providers without token accounting.
 # All zero by default: seat subscriptions are paid whether or not a run happens.
-WALL_TIME_USD_PER_MINUTE: dict[str, float] = {"antigravity": 0.0, "cursor-agent": 0.0, "ollama": 0.0}
+WALL_TIME_USD_PER_MINUTE: dict[str, float] = {
+    "antigravity": 0.0,
+    "cursor-agent": 0.0,
+    "ollama": 0.0,
+    "claude-ollama": 0.0,
+}
 
 METHODS = ("reported", "token_table", "wall_time", "none")
 
