@@ -1,4 +1,17 @@
-# Current handoff — Live RM role source (#1258)
+# Current handoff — OGLaptop deployed node standards (#1257 / #1258)
+
+- Linux worktree `/home/dieterolson/staff-builds/oglaptop-rollout-docs`; branch `docs/issue-1258-oglaptop-rollout`; commit `SELF`; PR not created.
+- #1259, #1261 and #1262 merged. Deployed `35686c4ebb3c6b65596a43ed6028fc535fea1b27` (contains #1256). Full deployment backup `~/actions-runners/dashboard.bak-2026-09-23-134138`; env/holds backups suffix `2026-09-23-134229`.
+- RM env now points at `~/staff-repos/Repository_Management`; user timer active and lingering enabled. First timer run safely advanced RM to `a59cb194fe9a04c8ecc655c112539356a268a45d`. Board freshness works; 16 roles load; worker holds empty; scheduler proven `0` in live process.
+- Both post-deploy health runs succeeded: Codex/Ollama `run-0b132c0615f3`, Claude/Ollama `run-1e1e8264a027`. Combined local regressions 62 pass, mypy/Ruff/unit validation pass, production build/ABI/offline installer pass.
+- **Remaining owner steps:** elevated bridge install command is in the [node runbook](../operations/oglaptop-staff-worker.md). Existing forward still works; scheduled bridge task is not yet installed. WSL restart, Windows reboot and external-tailnet isolation acceptance are pending. Do not mark #1257 complete from planner tests.
+- RM#1719 remains open; verify its schema arrives after merge through the timer. Other machines were not changed. Read the node runbook for exact backups, paths and rollback.
+- Windows GitHub credential expired (401). WSL `gh` remains valid with token env overrides unset; Linux Git uses the isolated staff config. No credential transfer or new sign-in needed.
+- Next: publish this status PR, verify owner installation, then coordinate reboot checks. Keep scheduler off throughout. Do not claim fleet-wide acceptance.
+
+---
+
+## Previous handoff — Live RM role source (#1258)
 
 - Worktree `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/issue-1258-rm`; branch `fix/issue-1258-live-rm-source`; commit `SELF`; PR [#1262](https://github.com/D-sorganization/Runner_Dashboard/pull/1262), open; DL-#1258.
 - Timer alternative chosen explicitly: no Git/network in dashboard requests or scheduler; clean-main updates at most every 15 minutes, preserve dirty/diverged/ahead state, Git backup refs before fast-forward, timestamped status backups. No role cache exists, so reads immediately see updated YAML.

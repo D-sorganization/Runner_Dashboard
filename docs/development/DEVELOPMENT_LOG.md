@@ -27,9 +27,9 @@ reachable from any live state and `abandoned` from `parked`.
 - **PR:** https://github.com/D-sorganization/Runner_Dashboard/pull/1262
 - **Paths:** `backend/staff/rm_sync.py`, `backend/routers/staff.py`, `deploy/systemd-user/`, `tests/unit/test_staff_rm_sync.py`, `tests/api/test_staff_fleet.py`, `docs/staff-hub.md`
 - **Started:** 2026-09-23
-- **Last verified:** 2026-09-23 (`SELF`; 47 updater/fleet/scheduler tests pass; CI-detected router import formatting fixed; full backend/client Ruff check and format pass)
+- **Last verified:** 2026-09-23 (`SELF`; #1262 merged, OGLaptop deployed at 35686c4; 62 combined tests pass, mypy/Ruff/unit checks pass; automatic RM fast-forward, 16-role API, empty holds and two Ollama health checks verified)
 - **Summary:** Dedicated Linux RM clone refreshed by a serialized systemd user timer at most every 15 minutes, clean-main fast-forward only, backup refs, secret-safe errors, persisted freshness on board. Existing uncached roles load each evaluation; roles route aliases roster. No scheduler or hold changes in application code.
-- **Next step:** Merge, deploy on OGLaptop, back up and switch env, install timer, verify worker holds empty and both Ollama harnesses after #1256. Other node rollout remains owner-directed.
+- **Next step:** Verify RM#1719 schema after merge through the active timer; other-node rollout remains owner-directed. OGLaptop env/timer migration complete with scheduler off; rollout status branch `docs/issue-1258-oglaptop-rollout`, PR not created.
 
 ### DL-#1257 · Reboot-safe WSL Ollama bridge
 
@@ -42,7 +42,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-23
 - **Last verified:** 2026-09-23 (`SELF`; all 15 planner regressions pass, Ruff passes, Windows 5.1 live dry-run passes)
 - **Summary:** Dynamic WSL NAT discovery, ownership-checked forward/rule reconciliation, explicit legacy adoption, disable-only firewall/task uninstall, backups and owner-installed hidden startup/logon/retry task. Existing OGLaptop bridge remains unchanged until owner installation.
-- **Next step:** Publish through protected CI; owner installs then verifies WSL restart, Windows reboot and external port isolation. Other hosts remain outside this local rollout.
+- **Next step:** #1261 merged; owner still must run elevated install and verify WSL restart, Windows reboot and external port isolation. Existing OGLaptop forward remains working. Other hosts remain outside this local rollout.
 
 ### DL-#1251 · Deferred Project Visibility
 
