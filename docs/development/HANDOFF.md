@@ -1,4 +1,14 @@
-# Current handoff — OGLaptop deployed node standards (#1257 / #1258)
+# Current handoff — SYSTEM bridge execution policy (#1257)
+
+- Worktree `/home/dieterolson/staff-builds/ollama-task-policy`, branch `fix/issue-1257-system-task-policy`, commit `SELF`; PR not created. Existing lease belongs to this session; presence refreshed.
+- Owner installed bridge at 13:50 PT. Saved task XML proves SYSTEM/highest/startup/logon/five-minute triggers. Original task exits 1: owner-run diagnostic captured `running scripts is disabled on this system` before script execution. User-context dry-run alone was insufficient evidence.
+- Task action now explicitly selects process-scoped `RemoteSigned`; no machine/user policy mutation. Admin-protected installed script and existing narrow firewall remain unchanged until owner reinstalls the corrected package.
+- Regression test failed before fix on missing task argument. GREEN: all 16 tests pass from byte-identical local Windows copies in `_deploy/task-policy-validation` (UNC execution is treated as remote under RemoteSigned). Ruff and PowerShell syntax validation pass. Owner must reinstall, then confirm task result 0; reboot acceptance remains pending.
+- Existing firewall matches 192.168.208.1 / 192.168.208.0/20; installed source hash matched reviewed script. Post-install health runs succeeded: `run-d4e0454e6a8a` and `run-ad35cb933555`. Diagnostic backs up/restores task actions; no networking changes during diagnosis.
+
+---
+
+## Previous handoff — OGLaptop deployed node standards (#1257 / #1258)
 
 - Linux worktree `/home/dieterolson/staff-builds/oglaptop-rollout-docs`; branch `docs/issue-1258-oglaptop-rollout`; commit `SELF`; PR not created.
 - #1259, #1261 and #1262 merged. Deployed `35686c4ebb3c6b65596a43ed6028fc535fea1b27` (contains #1256). Full deployment backup `~/actions-runners/dashboard.bak-2026-09-23-134138`; env/holds backups suffix `2026-09-23-134229`.
