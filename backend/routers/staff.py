@@ -28,6 +28,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from identity import require_fleet_peer, require_orchestrator_peer
 from pydantic import BaseModel, Field, field_validator
+from staff import consolidation
 from staff import fleet as staff_fleet
 from staff import liveness as staff_liveness
 from staff.adapters import available_providers
@@ -295,9 +296,16 @@ async def dispatch(role: str, body: RunBody, caller: str = Depends(require_orche
 
     Precondition: the role exists and is dispatchable; the provider is allowed
     for the role; one of issue/pr/prompt is given. Postcondition: on a real
-    dispatch a ``queued`` run row exists before the response is returned.
+    dispatch a ``queued`` run row exists before the response is returned. When
+    the role carries ``strategy.consolidate_when`` and a repo is given, the
+    PR-consolidation decision (#1213) is evaluated first and lands in
+    ``plan.consolidation`` and the run's ``strategy_mode``.
     """
     runner = get_runner()
+    spec = runner.roles().get(role)
+    decision = None
+    if spec is not None and body.repo and consolidation.threshold(spec) is not None:
+        decision = await asyncio.to_thread(consolidation.decide, spec, body.repo)  # #1213: gh + capacity I/O
     req = RunRequest(
         role=role,
         provider=body.provider,
@@ -308,6 +316,7 @@ async def dispatch(role: str, body: RunBody, caller: str = Depends(require_orche
         prompt=body.prompt,
         machine=body.machine,
         requested_by=caller,
+        consolidation=decision,
     )
     try:
         plan = runner.plan(req)

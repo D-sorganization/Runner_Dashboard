@@ -46,6 +46,9 @@ class RoleSpec:
     holds: tuple[str, ...] = ()
     surface: str = "dashboard"
     retired: bool = False
+    # Optional ``strategy:`` block (RM#1690 / #1213), e.g.
+    # ``{"consolidate_when": {"open_prs": 6, "utilisation_pct": 70}}``. Kept as-is; unknown keys ignored downstream.
+    strategy: dict[str, Any] = field(default_factory=dict)
     source_path: str = ""
 
     @property
@@ -70,6 +73,7 @@ class RoleSpec:
             "holds": list(self.holds),
             "surface": self.surface,
             "retired": self.retired,
+            "strategy": dict(self.strategy),
             "dispatchable": self.dispatchable,
             "source_path": self.source_path,
         }
@@ -115,6 +119,7 @@ def parse_role(data: dict[str, Any], source_path: str = "") -> RoleSpec:
     budget = data.get("budget") or {}
     perms = data.get("permissions") or {}
     window = data.get("window") or None
+    strategy = data.get("strategy")
     return RoleSpec(
         name=name,
         title=str(data.get("title") or name),
@@ -137,6 +142,7 @@ def parse_role(data: dict[str, Any], source_path: str = "") -> RoleSpec:
         holds=_as_tuple(data.get("holds")),
         surface=str(data.get("surface") or "dashboard"),
         retired=bool(data.get("retired", False)),
+        strategy=dict(strategy) if isinstance(strategy, dict) else {},
         source_path=source_path,
     )
 

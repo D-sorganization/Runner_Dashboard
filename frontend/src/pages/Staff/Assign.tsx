@@ -269,6 +269,14 @@ export function Assign({ roster, initialRole, onDispatched }: AssignProps) {
             </dd>
             <dt>Lease ritual</dt>
             <dd>{plan.lease_ritual ? "yes" : "no"}</dd>
+            {plan.consolidation ? (
+              <>
+                <dt>Consolidation</dt>
+                <dd data-testid="plan-consolidation">
+                  {plan.consolidation.mode} — {plan.consolidation.reason}
+                </dd>
+              </>
+            ) : null}
             <dt>argv</dt>
             <dd>
               <code data-testid="plan-argv">{plan.argv.join(" ")}</code>

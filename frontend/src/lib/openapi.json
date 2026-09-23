@@ -8064,7 +8064,7 @@
     },
     "/api/staff/{role}/run": {
       "post": {
-        "description": "Dispatch a staff run on this node, or preview it with ``dry_run``.\n\nPrecondition: the role exists and is dispatchable; the provider is allowed\nfor the role; one of issue/pr/prompt is given. Postcondition: on a real\ndispatch a ``queued`` run row exists before the response is returned.",
+        "description": "Dispatch a staff run on this node, or preview it with ``dry_run``.\n\nPrecondition: the role exists and is dispatchable; the provider is allowed\nfor the role; one of issue/pr/prompt is given. Postcondition: on a real\ndispatch a ``queued`` run row exists before the response is returned. When\nthe role carries ``strategy.consolidate_when`` and a repo is given, the\nPR-consolidation decision (#1213) is evaluated first and lands in\n``plan.consolidation`` and the run's ``strategy_mode``.",
         "operationId": "dispatch_api_staff__role__run_post",
         "parameters": [
           {

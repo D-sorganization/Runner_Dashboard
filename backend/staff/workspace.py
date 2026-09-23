@@ -102,11 +102,13 @@ def compose_prompt(
     operator_prompt: str,
     branch: str,
     lease_note: str = "",
+    consolidation: str = "",
 ) -> str:
     """Assemble the agent prompt from the role, the target and the fleet rules.
 
     Kept deliberately plain: role instructions (from RM), the playbook path,
-    the target, and the non-negotiable fleet rules for an unattended run.
+    the target, the PR-consolidation decision when the role has one (#1213),
+    and the non-negotiable fleet rules for an unattended run.
     """
     target = target_ref or "free-form task"
     parts = [
@@ -129,5 +131,7 @@ def compose_prompt(
         parts.append("Task from the operator:\n" + operator_prompt.strip())
     if lease_note:
         parts.append(lease_note)
+    if consolidation:
+        parts.append(consolidation)
     parts.append(FLEET_RULES)
     return "\n\n".join(parts)

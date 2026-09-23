@@ -56,9 +56,28 @@ export interface RoleSpec {
   holds: string[];
   surface: string | null;
   retired: boolean;
+  /** Optional `strategy:` block from the role YAML (#1213); absent on older nodes. */
+  strategy?: RoleStrategy;
   dispatchable: boolean;
   source_path: string;
   active_runs: number;
+}
+
+/** PR-consolidation thresholds (#1213): consolidate when every configured value is met. */
+export interface ConsolidateWhen {
+  open_prs?: number;
+  utilisation_pct?: number;
+}
+
+export interface RoleStrategy {
+  consolidate_when?: ConsolidateWhen;
+}
+
+/** The decision the backend injects into the prompt (#1213). */
+export interface ConsolidationDecision {
+  mode: "consolidate" | "serial" | string;
+  reason: string;
+  threshold: ConsolidateWhen;
 }
 
 export interface RosterResponse {
@@ -93,6 +112,10 @@ export interface RunRecord {
   lease_id: string;
   error: string;
   last_line: string;
+  /** PR-consolidation strategy (#1213): `consolidate` | `serial` | `` (not applicable). */
+  strategy_mode?: string;
+  /** Normalised "consolidated N PRs into #M" from the final STAFF_RESULT line (#1213). */
+  outcome?: string;
 }
 
 export interface RunEvent {
@@ -152,6 +175,8 @@ export interface RunPlan {
   argv: string[];
   branch: string;
   lease_ritual: boolean;
+  /** Present when the role has `strategy.consolidate_when` and a repo was given (#1213). */
+  consolidation?: ConsolidationDecision | null;
 }
 
 export interface DispatchBody {
@@ -309,6 +334,16 @@ export function livenessAlerts(board: BoardResponse): RoleLiveness[] {
 }
 
 /** Human label for a run's target (issue / PR / free prompt). */
+/** Human form of a role's consolidation threshold, or null when the role has none (#1213). */
+export function strategyLabel(role: Pick<RoleSpec, "strategy">): string | null {
+  const when = role.strategy?.consolidate_when;
+  if (!when) return null;
+  const parts: string[] = [];
+  if (when.open_prs != null) parts.push(`open PRs ≥ ${when.open_prs}`);
+  if (when.utilisation_pct != null) parts.push(`utilisation ≥ ${when.utilisation_pct}%`);
+  return parts.length ? `consolidate when ${parts.join(" and ")}` : null;
+}
+
 export function targetLabel(run: RunRecord): string {
   if (run.target_kind === "issue") return `#${run.target_ref}`;
   if (run.target_kind === "pr") return `PR #${run.target_ref}`;

@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from staff import consolidation
 from staff.budget import BudgetGuard
 from staff.holds import HoldsList
 from staff.roles import RoleSpec
@@ -60,9 +61,11 @@ class StaffScheduler:
         clock: Callable[[], datetime] | None = None,
         state_file: Path | None = None,
         tz: str = DEFAULT_TZ,
+        decider: Callable[[RoleSpec, str], dict[str, Any] | None] = consolidation.decide,
     ) -> None:
         assert tick_seconds > 0, "tick_seconds must be positive"  # noqa: S101
         self.runner = runner
+        self._decider = decider  # PR-consolidation decision per due slot (#1213); injectable for tests
         self.holds = holds
         self.budget = budget
         self.tick_seconds = tick_seconds
@@ -192,7 +195,10 @@ class StaffScheduler:
                     decisions.append({"role": name, "slot": due, "fired": False, "reason": blocker})
                     continue
                 repo = role.repos[0] if role.repos else ""
-                req = RunRequest(role=name, repo=repo, prompt=SCHEDULED_PROMPT, requested_by=REQUESTED_BY)
+                decision = self._decider(role, repo)
+                req = RunRequest(
+                    role=name, repo=repo, prompt=SCHEDULED_PROMPT, requested_by=REQUESTED_BY, consolidation=decision
+                )
                 try:
                     rec = self.runner.submit(req)
                 except ValueError as exc:
@@ -203,7 +209,10 @@ class StaffScheduler:
                 entry["last_fired"] = now.isoformat()
                 entry["last_reason"] = f"fired {due} as {rec.id}"
                 log.info("staff scheduler: %s slot %s → %s", name, due, rec.id)
-                decisions.append({"role": name, "slot": due, "fired": True, "run_id": rec.id})
+                fired: dict[str, Any] = {"role": name, "slot": due, "fired": True, "run_id": rec.id}
+                if decision:
+                    fired["consolidation"] = decision
+                decisions.append(fired)
             if decisions:
                 self._save_state()
         return decisions
