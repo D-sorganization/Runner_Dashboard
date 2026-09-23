@@ -269,3 +269,63 @@ def test_overview_is_cached_but_steward_run_is_live(client: TestClient, monkeypa
     assert again["last_steward_run"]["id"] == "r9"
     assert again["charter_present"] is True
     assert len(calls) == first_calls  # served from cache
+
+
+# Published owner coverage: Repository_Management#1687, Runner_Dashboard#1248.
+# Names are an acceptance fixture for the September 22 reviewed rollout, not a
+# second plan catalog. Plan content remains in each owner's repository.
+DEFERRED_PLAN_OWNERS = {
+    "AffineDrift",
+    "Design-Procedures",
+    "ICR-Operations",
+    "Launch-Monitor-Data",
+    "Launch-Monitor-Flight-Model-Campaign",
+    "Operations_Manual_and_Training",
+    "REE-Recovery",
+    "Tools",
+    "Tools_Private",
+    "UpstreamDrift",
+}
+
+
+def test_packaged_projects_include_published_plan_owners(monkeypatch: pytest.MonkeyPatch) -> None:
+    config = _BACKEND.parent / "config" / "projects.json"
+    monkeypatch.setattr(service, "_CONFIG_PATH", config)
+    repos = service.configured_repos()
+    assert DEFERRED_PLAN_OWNERS <= set(repos)
+    assert set(service.DEFAULT_REPOS) <= set(repos)
+    assert len(repos) == len(set(repos))
+
+
+def test_deferred_owner_route_preserves_plan_and_pending_decision(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Synthetic charter fixture verifies projection, never experimental approval."""
+    monkeypatch.setattr(service, "_CONFIG_PATH", _BACKEND.parent / "config" / "projects.json")
+    owner = "Launch-Monitor-Flight-Model-Campaign"
+    plan_url = f"https://github.com/{service.ORG}/{owner}/blob/main/docs/development/planning/catalog.json"
+    row = f"| DV-24 | Physical validation | parked | - | [Owner plan]({plan_url}) |"
+    charter_text = CHARTER[: CHARTER.index("| F1")] + row + "\n"
+    decision = "DV-24: Board decision pending on resources and experimental access"
+    status_text = STATUS[: STATUS.index("## Decisions Needed")] + f"## Decisions Needed\n\n- {decision}.\n"
+    monkeypatch.setattr(
+        service,
+        "gh_api",
+        _fake_gh({f"{owner}/{service.CHARTER_PATH}": charter_text, f"{owner}/{service.STATUS_PATH}": status_text}),
+    )
+    response = client.get(f"/api/projects/{owner}")
+    assert response.status_code == 200, response.text
+    project = response.json()
+    assert project["features"] == [
+        {
+            "id": "DV-24",
+            "feature": "Physical validation",
+            "status": "parked",
+            "tracking": "-",
+            "notes": f"[Owner plan]({plan_url})",
+        }
+    ]
+    assert project["progress"]["parked"] == 1
+    assert project["progress"]["percent_shipped"] == 0
+    assert project["decisions_needed"] == [decision]
+    assert "error" not in project

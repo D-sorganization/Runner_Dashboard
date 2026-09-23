@@ -7,6 +7,12 @@
     "Tools",
     "Tools_Private",
     "Repository_Management",
-    "Runner_Dashboard"
+    "Runner_Dashboard",
+    "Design-Procedures",
+    "ICR-Operations",
+    "Launch-Monitor-Data",
+    "Launch-Monitor-Flight-Model-Campaign",
+    "Operations_Manual_and_Training",
+    "REE-Recovery"
   ]
 }

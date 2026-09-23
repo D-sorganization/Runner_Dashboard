@@ -5,6 +5,12 @@
 **Last Updated:** 2026-09-22T00:00:00-07:00
 **Status:** Active
 
+## Change Log
+
+| Date       | PR / Issue | Summary                                                                                                                               |
+| ---------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-09-23 | #1251      | Expose all deferred-plan owners and feature IDs/statuses/safe links in Projects; retain owner authority and live rollout under #1248. |
+
 - **2026-09-23:** Staff provider adapters match current CLIs (#1249, epic #1192). `codex` runs
   `exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check` (codex 0.156 removed `--full-auto`);
   stream-json text extraction reads agy's `result.response` and usage from a nested `result.usage`, so agy runs
