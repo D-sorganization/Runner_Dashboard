@@ -1,4 +1,29 @@
-# Current Handoff — Staff prompt fleet focus (#1239)
+# Current Handoff — Fleet Command tab (#1233)
+
+Last updated: 2026-09-23T00:40:00-07:00
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/fleet-command-ui` (worktree)
+- Branch: `feat/fleet-command-ui`; base `9fd440d`; commit `SELF`; PR opened after push.
+- Governing issue: #1233 (epic #1192); development log entry DL-#1233.
+
+## Work
+
+- `frontend/src/pages/FleetCommand/`: `FleetCommandPage` (SubTabs: Priorities + Directives, Active work, Messages, Claims, Dispatch), `PanelFrame` (shared header + 404 / `available:false` / error / loading states), `fleetApi.ts` (calls via `apiRequest`, `useResource`, `describeError` for structured 409/502 details, tracking-link, expiry and conflict helpers), `types.ts` (mirrors `docs/priorities-api.md` and `docs/coordination-api.md`; the routes return `dict[str, Any]` so the generated `api-types.ts` has no shapes for them — same approach as `staffApi.ts`).
+- Dispatch reuses the Staff tab `Assign` form and `fetchRoster`; after a real dispatch it links to `/t/staff?run=<id>`, which `StaffPage` now opens directly.
+- Nav: `fleet-command` entry (agents group, `CompassIcon`), lazy route desktop + mobile; styles in the `Fleet Command Tab (#1233)` section of `index.css` (tokens only).
+- Validation: `npx vitest run` full suite green (FleetCommand + helpers 17 tests); `npm run typecheck`, `npm run lint`, `npm run build` (FleetCommandPage chunk 7.7 kB gzip); `pytest tests/test_frontend_perf_budget.py tests/frontend` 106 passed; `scripts/check_frontend_perf_budget.py --bundle` exit 0.
+- Backend PRs #1231 (priorities) and #1232 (coordination) were still open at push; until they deploy, those panels show "not available on this node".
+
+## Next
+
+1. When #1231 and #1232 are merged, rebase on main, rerun vitest + build, then `gh pr merge --squash --auto`.
+
+---
+
+## Previous Handoff — Current Handoff — Staff prompt fleet focus (#1239)
 
 Last updated: 2026-09-23T01:30:00-07:00
 

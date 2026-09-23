@@ -48,6 +48,7 @@ import {
   HardDriveIcon,
   ScrollTextIcon,
   BriefcaseIcon,
+  CompassIcon,
 } from "./navIcons";
 
 /** Ordered group identifiers used to bucket categories in the sidebar. */
@@ -295,6 +296,17 @@ export const NAV_ITEMS: readonly NavItem[] = [
     Icon: BriefcaseIcon,
     tooltip: "Staff Hub: AI staff roster, run log with live tail, assign and holds.",
     tabId: "staff",
+    frequent: false,
+    mobilePrimary: false,
+    mobileDrawer: true,
+  },
+  {
+    id: "fleet-command",
+    label: "Fleet Command",
+    group: "agents",
+    Icon: CompassIcon,
+    tooltip: "Fleet Command: board priorities, directives, who is working on what, messages, claims and staff dispatch.",
+    tabId: "fleet-command",
     frequent: false,
     mobilePrimary: false,
     mobileDrawer: true,

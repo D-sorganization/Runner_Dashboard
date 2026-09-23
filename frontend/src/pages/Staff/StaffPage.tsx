@@ -7,7 +7,8 @@
  * (role filter / applies-to) — one source of truth per page (DRY).
  *
  * Selecting a run (from the Runs table or the Board) swaps the Runs section
- * for RunDetail; dispatching from Assign jumps straight to the new run.
+ * for RunDetail; dispatching from Assign jumps straight to the new run, and a
+ * `?run=<id>` query opens that run directly (deep link from Fleet Command).
  */
 import { useCallback, useEffect, useState } from "react";
 import { SubTabs } from "../../components/SubTabs";
@@ -28,12 +29,18 @@ const SECTION_TABS: { key: StaffSection; label: string }[] = [
   { key: "holds", label: "Holds" },
 ];
 
+/** Run id deep-linked via `?run=<id>` (Fleet Command's "Open run", #1233). */
+function runFromUrl(): string | null {
+  if (typeof window === "undefined") return null;
+  return new URLSearchParams(window.location.search).get("run") || null;
+}
+
 export function StaffPage() {
   const [roster, setRoster] = useState<RosterResponse | null>(null);
   const [rosterLoading, setRosterLoading] = useState(true);
   const [rosterError, setRosterError] = useState<string | null>(null);
-  const [section, setSection] = useState<StaffSection>("roster");
-  const [selectedRun, setSelectedRun] = useState<string | null>(null);
+  const [selectedRun, setSelectedRun] = useState<string | null>(runFromUrl);
+  const [section, setSection] = useState<StaffSection>(() => (selectedRun ? "runs" : "roster"));
   const [assignRole, setAssignRole] = useState<string | undefined>(undefined);
   const [runsRefresh, setRunsRefresh] = useState(0);
 

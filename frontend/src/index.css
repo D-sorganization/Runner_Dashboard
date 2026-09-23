@@ -5175,3 +5175,207 @@ th.sortable.active .sort-indicator {
   flex-wrap: wrap;
   gap: 8px;
 }
+
+/* ── Fleet Command Tab (#1233) ── */
+.fleet-cmd__header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fleet-cmd__title {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.fleet-cmd__stack,
+.fleet-cmd__dispatch {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.fleet-cmd__actions,
+.fleet-cmd__row,
+.fleet-cmd__meta {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.fleet-cmd__meta {
+  color: var(--text-secondary);
+  font-size: 13px;
+  margin: 0;
+}
+
+.fleet-cmd__subtitle {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  margin: 4px 0 0;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.fleet-cmd__grow {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.fleet-cmd__short {
+  max-width: 160px;
+}
+
+.fleet-cmd__table-wrap {
+  overflow-x: auto;
+}
+
+.fleet-cmd__table {
+  border-collapse: collapse;
+  font-size: 13px;
+  width: 100%;
+}
+
+.fleet-cmd__table th {
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 6px 8px;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.fleet-cmd__table td {
+  border-bottom: 1px solid var(--border);
+  padding: 8px;
+  vertical-align: top;
+}
+
+.fleet-cmd__rank {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  width: 32px;
+}
+
+.fleet-cmd__conflict {
+  background: var(--status-critical-bg);
+  box-shadow: inset 3px 0 0 var(--accent-red);
+}
+
+.fleet-cmd__reasons {
+  color: var(--accent-red);
+  font-size: 12px;
+  margin: 4px 0 0;
+  padding-left: 16px;
+}
+
+.fleet-cmd__list {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
+.fleet-cmd__flags {
+  align-items: flex-start;
+  border-left: 3px solid var(--accent-yellow);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 10px;
+}
+
+.fleet-cmd__details summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.fleet-cmd__directives,
+.fleet-cmd__messages {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.fleet-cmd__directive,
+.fleet-cmd__message {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.fleet-cmd__message-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.fleet-cmd__split {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}
+
+.fleet-cmd__half,
+.fleet-cmd__form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.fleet-cmd__grid {
+  display: grid;
+  gap: 8px 12px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.fleet-cmd__form .form-input,
+.fleet-cmd__grid .form-input {
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.fleet-cmd__grid .form-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fleet-cmd__claim-status {
+  align-items: center;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 12px;
+}
+
+.fleet-cmd__notice {
+  color: var(--accent-green);
+  font-size: 12px;
+  margin: 0;
+}
+
+.fleet-cmd__dispatched {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 16px;
+}
+
+.fleet-cmd__dispatched a,
+.fleet-cmd__table a {
+  color: var(--accent-blue);
+}

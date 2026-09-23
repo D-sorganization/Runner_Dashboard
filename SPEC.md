@@ -8,6 +8,15 @@
 - **2026-09-23:** Staff prompt fleet focus (#1239, epic #1192). `staff.focus.focus_paragraph(repo, items)` filters
   `priorities.service.top_priorities` to board items whose project matches the repo and directives scoped to it or `*`
   (≤5); `compose_prompt(focus=)` places it before the fleet rules; `RunPlan.focus` is in the dry-run plan.
+- **2026-09-22:** Fleet Command tab (#1233, epic #1192). New nav entry `fleet-command` (agents group, compass icon,
+  lazy route desktop + mobile) rendering `frontend/src/pages/FleetCommand/`: Priorities (latest board consensus from
+  `GET /api/priorities` with GitHub tracking links, deferred backlog, disagreement flags, meeting history via
+  `/api/priorities/meetings[/{date}]`, "no board meeting yet" empty state), Directives editor
+  (`PUT /api/priorities/directives`, priority 1–5, repo scope, expiry), Active work
+  (`GET /api/coordination/sessions` board sessions merged with staff runs, repo filter, same-issue / overlapping-path
+  conflicts highlighted), Messages (send to a session or `*`, inbox per session), Claims (check / claim / release; a
+  409 shows the holder) and Dispatch (the Staff tab's Assign form with dry-run preview). Each panel degrades on its
+  own: a 404 or `available:false` renders "not available on this node". The Staff tab opens a run from `?run=<id>`.
 - **2026-09-22:** Fleet Coordination API priorities (#1227, epic #1192). New `backend/priorities/` (board-meeting
   `consensus.md` parser tolerant of the RM template's malformed tables, meeting listing, portfolios from RM
   `config/fleet_manifest.yaml`, operator directives stored like holds with expiry) and `backend/routers/priorities.py`:

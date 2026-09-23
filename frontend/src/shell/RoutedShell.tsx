@@ -85,6 +85,9 @@ const LazyRemediationPage = React.lazy(
 );
 const LazyStaffPage = React.lazy(() => import("../pages/Staff/StaffPage"));
 const LazyProjectsPage = React.lazy(() => import("../pages/ProjectsPage"));
+const LazyFleetCommandPage = React.lazy(
+  () => import("../pages/FleetCommand/FleetCommandPage"),
+);
 
 /**
  * Persistent/global provider control for the shell topbar (#811). Fetches the
@@ -142,6 +145,8 @@ function nativeDesktopTabContent(tabId: string): React.ReactNode | null {
       return <EventsTab />;
     case "feature-requests":
       return <FeatureRequestsPage />;
+    case "fleet-command":
+      return <LazyFleetCommandPage />;
     case "fleet-orchestration":
       return <LazyFleetOrchestrationPage />;
     case "linear-setup":
@@ -261,6 +266,7 @@ export function AppShell({
       reports: <ReportsMobile />,
       credentials: <CredentialsMobile />,
       staff: <LazyStaffPage />,
+      "fleet-command": <LazyFleetCommandPage />,
     } as Partial<Record<TabId, React.ReactNode>>;
     const nativeMobileContent = mobileTabContent[mobileTab];
     const legacyMobileFallback = nativeMobileContent ? null : (
