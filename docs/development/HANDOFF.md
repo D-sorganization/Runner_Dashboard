@@ -1,4 +1,30 @@
-# Current Handoff — Staff Hub fleet-rule guardrails (#1217)
+# Current Handoff — Staff Hub unattended runs (#1221)
+
+Last updated: 2026-09-22T22:30:00-07:00
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/staff-unattended` (worktree)
+- Branch: `fix/staff-unattended-runs`; base `a41473d`; commit `SELF`; PR opened after push.
+
+## Work
+
+- Evidence: run-7b5d71be546e (Night Watch, UpstreamDrift, 22:00 PT) exited 0 as "succeeded". It left an uncommitted report in `~/staff-worktrees/UpstreamDrift-run-7b5d71be546e` and asked "Should I proceed with git commit?". The model was claude-haiku (CLI default).
+- `adapters.py`: claude `--permission-mode bypassPermissions`, `default_model="sonnet"`.
+- `workspace.py`: `playbook_text()` inlines `STAFF_RM_ROOT/<playbook>` into the prompt (16k cap, rejects absolute/`..`).
+- `scheduler.py`: `SCHEDULED_PROMPT` names role and repo; `scheduled_repo()` rotates one repo per day; the repo hold is re-checked for the rotated repo.
+- `runner.py`: exit 0 without `STAFF_RESULT` → `failed`, `error=NO_RESULT_ERROR`.
+- Tests: WSL `PYTHONPATH=backend pytest tests/api -k staff -o addopts=""` → 100 passed (twice). On Windows, `test_cancel_*` flakes on timing; the same flake happens on main.
+
+## Next
+
+1. Merge, then run `_deploy/build_install_main.sh` on DeskComputer.
+2. Remove `~/staff-worktrees/UpstreamDrift-run-7b5d71be546e` once reviewed.
+
+---
+
+## Previous Handoff — Current Handoff — Staff Hub fleet-rule guardrails (#1217)
 
 Last updated: 2026-09-22T22:00:00-07:00
 

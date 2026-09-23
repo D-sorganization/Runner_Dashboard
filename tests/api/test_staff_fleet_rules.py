@@ -24,3 +24,16 @@ def test_compose_prompt_always_ends_with_fleet_rules() -> None:
     )
     assert prompt.endswith(workspace.FLEET_RULES)
     assert "claim:local" in prompt
+
+
+def test_compose_prompt_inlines_playbook_from_rm_root(tmp_path, monkeypatch) -> None:  # noqa: ANN001
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "scripts" / "check_agent_claim.py").write_text("", encoding="utf-8")
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "fleet-night-watch.md").write_text("# Night Watch\n\nStep 1: triage.", encoding="utf-8")
+    monkeypatch.setenv("STAFF_RM_ROOT", str(tmp_path))
+    role = RoleSpec(name="night-watch", title="Night Watch", playbook="docs/fleet-night-watch.md")
+    prompt = workspace.compose_prompt(role, repo="Tools", target_ref="", operator_prompt="x", branch="b")
+    assert "Step 1: triage." in prompt
+    assert workspace.playbook_text("../etc/passwd") == ""
+    assert workspace.playbook_text("docs/missing.md") == ""

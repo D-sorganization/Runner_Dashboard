@@ -34,6 +34,9 @@ if "--slow" in sys.argv:
     time.sleep(30)
 if "--fail" in sys.argv:
     sys.exit(3)
+if "--ask" in sys.argv:
+    print(json.dumps({"type": "result", "result": "Should I proceed with git commit?"}))
+    sys.exit(0)
 usage = {"input_tokens": 120, "output_tokens": 30}
 print(json.dumps({"type": "result", "result": "STAFF_RESULT: done", "usage": usage, "total_cost_usd": 0.0123}))
 """
@@ -107,7 +110,20 @@ def staff(
         argv=(str(fake_cli), "{prompt}", "--fail"),
         json_lines=True,
     )
-    adapters = {**adapters_mod.ADAPTERS, "fake": fake, "fake-slow": slow, "fake-fail": failing}
+    asking = adapters_mod.ProviderAdapter(
+        provider_id="fake-ask",
+        label="Ask",
+        executable=sys.executable,
+        argv=(str(fake_cli), "{prompt}", "--ask"),
+        json_lines=True,
+    )
+    adapters = {
+        **adapters_mod.ADAPTERS,
+        "fake": fake,
+        "fake-slow": slow,
+        "fake-fail": failing,
+        "fake-ask": asking,
+    }
     monkeypatch.setattr(adapters_mod, "ADAPTERS", adapters)
     store_mod.reset_store()
     runner_mod.reset_runner()
@@ -158,8 +174,11 @@ def test_build_command_substitutes_and_drops_empty_model_flag() -> None:
     claude = adapters_mod.ADAPTERS["claude"]
     argv = claude.build_command("do the thing", "/tmp/wt", model=None)
     assert argv[0] == "claude"
-    assert "--model" not in argv
+    assert argv[-2:] == ["--model", "sonnet"]  # role model "default" never falls through to the CLI's own default
+    assert argv[argv.index("--permission-mode") + 1] == "bypassPermissions"
     assert "do the thing" in argv
+    codex = adapters_mod.ADAPTERS["codex"]
+    assert "--model" not in codex.build_command("x", "/tmp/wt", model=None)
     argv2 = claude.build_command("x", "/tmp/wt", model="claude-opus-5")
     assert argv2[-2:] == ["--model", "claude-opus-5"]
 
@@ -373,3 +392,11 @@ def test_cancel_route(client: TestClient, staff: runner_mod.StaffRunner) -> None
     assert resp.status_code == 200 and resp.json()["cancelled"] is True
     assert _wait(staff.store, run_id, ("cancelled",)).status == "cancelled"
     assert client.post("/api/staff/runs/nope/cancel", headers=_XHR).status_code == 404
+
+
+@pytest.mark.integration
+def test_exit_zero_without_staff_result_is_failed(staff: runner_mod.StaffRunner) -> None:
+    rec = staff.submit(runner_mod.RunRequest(role="ad-hoc", provider="fake-ask", prompt="sweep"))
+    done = _wait(staff.store, rec.id, ("succeeded", "failed"))
+    assert done.status == "failed" and done.exit_code == 0
+    assert done.error == runner_mod.NO_RESULT_ERROR

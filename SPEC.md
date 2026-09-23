@@ -83,6 +83,11 @@ never` (late > 1.5 intervals since the last success, dead > 3 intervals or fired
   #1196 lands, `roles`). `POST /api/staff/{role}/run` accepts `machine: local | <peer name> | auto`;
   unknown → 422, unreachable peer → 503, peer rejection passes through. Env: `STAFF_PEER_TIMEOUT_SECONDS`.
   TDD: 10 tests in `tests/api/test_staff_fleet.py` with injected `get_json`/`post_json` fakes.
+- **2026-09-22:** Staff Hub unattended runs (#1221, epic #1192).
+  Claude adapter `--permission-mode bypassPermissions`, default model `sonnet`; `workspace.playbook_text` inlines the
+  role playbook from the RM checkout (16k cap, no `..`); scheduled prompt names role + repo and
+  `scheduler.scheduled_repo` rotates repos daily (repo holds re-checked); exit 0 without `STAFF_RESULT` → `failed`
+  with `runner.NO_RESULT_ERROR`.
 - **2026-09-22:** Staff Hub fleet-rule guardrails (#1217, epic #1192, companion RM#1700).
   `FLEET_RULES` adds: never take `claim:local` or another agent's live lease; never file bulk remediation
   issues. Role `holds:` are scheduler blocks only. TDD: `tests/api/test_staff_fleet_rules.py`.

@@ -37,7 +37,18 @@ from staff.store import _config_dir
 log = logging.getLogger("dashboard.staff.scheduler")
 
 STATE_FILE = "staff_schedule_state.json"
-SCHEDULED_PROMPT = "Scheduled run"
+SCHEDULED_PROMPT = (
+    "Scheduled {title} pass on {repo}. Follow your playbook for this repository: pick the highest-value items you "
+    "can finish safely in this one run and ship them as a single draft pull request. If nothing qualifies, open no "
+    "PR and say why in the STAFF_RESULT line."
+)
+
+
+def scheduled_repo(repos: tuple[str, ...] | list[str], now: datetime) -> str:
+    """Rotate a scheduled role through its repos, one per calendar day (first repo when none rotate)."""
+    return repos[now.toordinal() % len(repos)] if repos else ""
+
+
 REQUESTED_BY = "scheduler"
 
 
@@ -194,11 +205,15 @@ class StaffScheduler:
                     log.info("staff scheduler: %s slot %s skipped — %s", name, due, blocker)
                     decisions.append({"role": name, "slot": due, "fired": False, "reason": blocker})
                     continue
-                repo = role.repos[0] if role.repos else ""
+                repo = scheduled_repo(role.repos, now)
+                repo_hold = self.holds.blocking(name, repo)
+                if repo_hold:
+                    entry["last_reason"] = f"skipped {due}: hold: {repo_hold.text}"
+                    decisions.append({"role": name, "slot": due, "fired": False, "reason": f"hold: {repo_hold.text}"})
+                    continue
                 decision = self._decider(role, repo)
-                req = RunRequest(
-                    role=name, repo=repo, prompt=SCHEDULED_PROMPT, requested_by=REQUESTED_BY, consolidation=decision
-                )
+                prompt = SCHEDULED_PROMPT.format(title=role.title, repo=repo or "the fleet")
+                req = RunRequest(role=name, repo=repo, prompt=prompt, requested_by=REQUESTED_BY, consolidation=decision)
                 try:
                     rec = self.runner.submit(req)
                 except ValueError as exc:

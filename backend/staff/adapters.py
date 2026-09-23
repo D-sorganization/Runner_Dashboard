@@ -8,7 +8,7 @@ One adapter per CLI. An adapter is pure data + two pure functions:
 Adapters never spawn anything themselves; ``runner.py`` owns the subprocess.
 Flags below were verified against the installed CLIs on 2026-09-22:
 
-  claude  -p --output-format stream-json --verbose
+  claude  -p --output-format stream-json --verbose --permission-mode bypassPermissions (default model sonnet)
   codex   exec --full-auto
   agy     --print --output-format stream-json --dangerously-skip-permissions
   gemini  -p
@@ -143,12 +143,16 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
             "stream-json",
             "--verbose",
             "--permission-mode",
-            "acceptEdits",
+            "bypassPermissions",
             "--model",
             "{model}",
         ),
+        default_model="sonnet",
         json_lines=True,
-        notes="Emits usage + total_cost_usd in the final result event.",
+        notes=(
+            "Emits usage + total_cost_usd in the final result event. bypassPermissions because an unattended run "
+            "must commit, push and open its PR inside its own worktree; acceptEdits stalls on the first git call."
+        ),
     ),
     "codex": ProviderAdapter(
         provider_id="codex",

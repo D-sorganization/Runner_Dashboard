@@ -276,7 +276,8 @@ def test_scheduler_fires_once_per_slot_and_persists_state(
     slot = _la(2026, 9, 22, 22, 0).isoformat()
     assert s.tick() == [{"role": "night-watch", "slot": slot, "fired": True, "run_id": "run-1"}]
     req = runner.submitted[0]
-    assert (req.role, req.repo, req.prompt) == ("night-watch", "UpstreamDrift", "Scheduled run")
+    assert (req.role, req.repo) == ("night-watch", "UpstreamDrift")
+    assert req.prompt.startswith("Scheduled ") and "pass on UpstreamDrift." in req.prompt
     assert req.requested_by == "scheduler"
     clock["now"] = _la(2026, 9, 22, 22, 0, 40)
     assert s.tick() == [] and len(runner.submitted) == 1  # same slot, not refired
@@ -419,3 +420,11 @@ def test_start_scheduler_respects_env_gate(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setenv("STAFF_SCHEDULER_ENABLED", "1")
     schedule_router.start_scheduler()
     assert started == [True]
+
+
+def test_scheduled_repo_rotates_one_repo_per_day() -> None:
+    repos = ("A", "B", "C")
+    days = [_la(2026, 9, d, 22, 0) for d in (22, 23, 24, 25)]
+    picked = [scheduler_mod.scheduled_repo(repos, d) for d in days]
+    assert sorted(picked[:3]) == ["A", "B", "C"] and picked[3] == picked[0]
+    assert scheduler_mod.scheduled_repo((), days[0]) == ""

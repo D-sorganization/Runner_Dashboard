@@ -39,6 +39,7 @@ from staff.store import RunRecord, RunStore, _now, get_store
 log = logging.getLogger("dashboard.staff.runner")
 
 MAX_CONCURRENT_RUNS = int(os.environ.get("STAFF_MAX_CONCURRENT_RUNS", "3"))
+NO_RESULT_ERROR = "agent exited 0 without a STAFF_RESULT line (it stopped before finishing, e.g. to ask a question)"
 RUN_TIMEOUT_SECONDS = int(os.environ.get("STAFF_RUN_TIMEOUT_SECONDS", str(4 * 3600)))
 _SAFE_REF = re.compile(r"^[A-Za-z0-9._/-]{1,120}$")
 
@@ -342,9 +343,14 @@ class StaffRunner:
             self._procs.pop(rec.id, None)
         cancelled = rec.id in self._cancel_flags
         status = "cancelled" if cancelled else ("succeeded" if rc == 0 else "failed")
+        error = ""
+        if status == "succeeded" and not result_line:
+            # An unattended agent that stops to ask a question exits 0 without finishing (DeskComputer 2026-09-22).
+            status, error = "failed", NO_RESULT_ERROR
         store.update_run(
             rec.id,
             status=status,
+            error=error,
             ended_at=_now(),
             exit_code=rc,
             cost_usd=float(usage.get("cost_usd", 0.0)),

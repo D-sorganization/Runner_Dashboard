@@ -24,6 +24,8 @@ FLEET_RULES = (
     "PR URL if any."
 )
 
+PLAYBOOK_MAX_CHARS = 16000
+
 
 def repos_roots() -> list[Path]:
     """Directories that may contain fleet checkouts (first match wins)."""
@@ -49,6 +51,19 @@ def rm_root() -> Path | None:
         if (cand / "scripts" / "check_agent_claim.py").is_file():
             return cand
     return None
+
+
+def playbook_text(rel: str, limit: int = PLAYBOOK_MAX_CHARS) -> str:
+    """Inline a role playbook from the RM checkout; the run's worktree is another repo, so it cannot read it."""
+    root = rm_root()
+    if root is None or not rel or Path(rel).is_absolute() or ".." in Path(rel).parts:
+        return ""
+    path = root / rel
+    try:
+        text = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+    return text if len(text) <= limit else text[:limit] + "\n[playbook truncated]"
 
 
 def staff_worktrees_root() -> Path:
@@ -117,10 +132,14 @@ def compose_prompt(
         f"You are the fleet staff role '{role.title}' ({role.name}) running unattended from the Runner Dashboard.",
     ]
     if role.playbook:
-        parts.append(
-            f"Your playbook is Repository_Management/{role.playbook}; read it first if it is available in this "
-            "checkout or as a sibling repository."
-        )
+        text = playbook_text(role.playbook)
+        if text:
+            parts.append(f"Your playbook (Repository_Management/{role.playbook}):\n" + text)
+        else:
+            parts.append(
+                f"Your playbook is Repository_Management/{role.playbook}; read it first if it is available in this "
+                "checkout or as a sibling repository."
+            )
     if role.instructions:
         parts.append("Role instructions:\n" + role.instructions.strip())
     if repo:
