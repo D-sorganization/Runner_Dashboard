@@ -31,6 +31,19 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** Board priorities and operator directives now steer every staff run through a repo-scoped paragraph in the prompt, injected through `StaffRunner(focus_loader=)` for tests.
 - **Next step:** Open the PR once #1231 is on main.
 
+### DL-#1233 · Fleet Command tab (priorities, directives, active work, messages, claims, dispatch)
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1233 (epic #1192)
+- **Branch:** `feat/fleet-command-ui`
+- **PR:** opened after push
+- **Paths:** `frontend/src/pages/FleetCommand/`, `frontend/src/pages/__tests__/FleetCommand*.test.tsx`, `frontend/src/pages/Staff/StaffPage.tsx`, `frontend/src/shell/{navRegistry.ts,navIcons.tsx,RoutedShell.tsx}`, `frontend/src/index.css`
+- **Started:** 2026-09-22
+- **Last verified:** 2026-09-23 (`9fd440d` + this change; vitest FleetCommand suites 17 passed, full suite green; `npm run build`, typecheck, lint, `tests/test_frontend_perf_budget.py` + `tests/frontend` and `check_frontend_perf_budget.py --bundle` pass)
+- **Summary:** Operator tab over the Priorities API (#1227) and Coordination API (#1229) plus the Staff Hub dispatch: board priorities with meeting history, directives editor, active work with conflict highlighting, messages, claims and dispatch; each panel degrades independently to "not available on this node". Local TS types in `FleetCommand/types.ts` because the routes return untyped dicts in OpenAPI.
+- **Next step:** After #1231 and #1232 merge, rebase `feat/fleet-command-ui` on main, rerun `npx vitest run` and `npm run build`, then enable squash auto-merge.
+
 ### DL-#1227 · Fleet Coordination API: priorities endpoints
 
 - **State:** in_review
