@@ -1,4 +1,35 @@
-# Current Handoff — Re-Land: Ollama-Backed Runs Lease as `local` (#1252)
+# Current machine handoff — OGLaptop Staff Hub worker (#1192 / #1223)
+
+- Verified locally on 2026-09-23: deployment `a82699223e07153ae85ca15707805665f15c96fe`
+  contains merged provider PRs #1250 and #1253. All six requested provider health
+  checks succeeded. **STAFF_SCHEDULER_ENABLED=0 remains set in the running service.**
+- Operational source: [OGLaptop worker runbook](../operations/oglaptop-staff-worker.md).
+  It records the Ubuntu distro, CLI/auth configuration, seven Linux clones,
+  service paths, scoped Windows-to-WSL Ollama forwarding, exact health run IDs,
+  backups, rollback, and repeat verification commands. Other hosts were unchanged.
+- Documentation worktree:
+  `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/staff-node-oglaptop-20260923`;
+  branch `docs/issue-1192-oglaptop-worker-status`; base HEAD `a82699223e07153ae85ca15707805665f15c96fe`;
+  documentation commit: `SELF`; PR: not created. Updates existing DL-#1223 in place.
+- Scope is documentation of the deployed machine; no application source changes.
+  The previous deployment directory and changed configuration files were backed up.
+  Antigravity passed on one retry after a transient WSL interop timeout. The Ollama
+  port forward is scoped to the current WSL NAT subnet and must track any future
+  subnet reassignment. The role source remains the separate `~/staff-bundle/rm` bundle.
+- Documentation validation: `git diff --check` and the new relative links pass;
+  all six verified run IDs are recorded. The shared development-log validator
+  is absent from this checkout, so the Repository_Management copy was used.
+  It reports 20 findings on both base HEAD and the edited log (including the
+  pre-existing WIP breach); comparison confirms zero new findings. Unrelated
+  entries were preserved.
+- Next: publish this documentation PR with the owner's authorization, then implement
+  #1257 (reboot-safe bridge; owner runs elevated installation) and #1258 (updating
+  role source). #1256 has merged and awaits redeployment here. Keep scheduling off.
+  Coordination lease comment and presence succeeded; the claim-label update failed.
+
+---
+
+## Previous Handoff — Re-Land: Ollama-Backed Runs Lease as `local` (#1252)
 
 Last updated: 2026-09-23T12:55:00-07:00
 
