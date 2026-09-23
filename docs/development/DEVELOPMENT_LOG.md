@@ -24,10 +24,10 @@ reachable from any live state and `abandoned` from `parked`.
 - **Owner:** codex
 - **Issue:** #1257
 - **Branch:** `fix/issue-1257-ollama-wsl-bridge`
-- **PR:** not created
+- **PR:** https://github.com/D-sorganization/Runner_Dashboard/pull/1261
 - **Paths:** `deploy/windows/ollama-wsl-bridge.ps1`, `tests/unit/test_ollama_wsl_bridge.py`, `docs/staff-hub.md`
 - **Started:** 2026-09-23
-- **Last verified:** 2026-09-23 (`SELF`; planner regressions, Windows live dry-run)
+- **Last verified:** 2026-09-23 (`SELF`; all 15 planner regressions pass, Ruff passes, Windows 5.1 live dry-run passes)
 - **Summary:** Dynamic WSL NAT discovery, ownership-checked forward/rule reconciliation, explicit legacy adoption, disable-only firewall/task uninstall, backups and owner-installed hidden startup/logon/retry task. Existing OGLaptop bridge remains unchanged until owner installation.
 - **Next step:** Publish through protected CI; owner installs then verifies WSL restart, Windows reboot and external port isolation. Other hosts remain outside this local rollout.
 
