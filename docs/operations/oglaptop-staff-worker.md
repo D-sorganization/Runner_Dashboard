@@ -24,6 +24,66 @@ This setup did not change DeskComputer or ControlTower or enable a second schedu
 The version string alone cannot distinguish the old `f510c4c` deployment from
 this deployment. Check `deployment.git_sha` in `GET /api/health`.
 
+## Controlled restart maintenance (2026-09-23)
+
+The owner authorized a CI drain before restart validation. WSL GitHub login
+needed an owner-operated `gh auth refresh -h github.com -s admin:org` first.
+Runner IDs 217–224 belong to this node (GitHub spells its name `Oglaptop`,
+while local systemd units use `OGLaptop`). Their original group is ID 1.
+
+Do not assume the existing `Bandwidth-Draining` group denies jobs: group 5
+currently permits four repositories and contains another host's runners.
+This maintenance uses `OGLaptop-Maintenance-20260923` (ID 6), visibility
+`selected`, zero selected repositories and no public repository access.
+Only OGLaptop's eight runners were moved there; active jobs were allowed to
+finish. Do not invoke the runner units' force-drain stop hook while busy.
+
+Maintenance records are under
+`C:\Users\diete\Repositories\_deploy\oglaptop-drain-20260923`:
+original runner IDs/group membership, enabled/active unit states, keepalive
+task XML backup, pre-restart boot ID, and completion evidence. The CI
+`runner-scheduler.timer` and runner auto-starts were temporarily disabled;
+the independent Staff Hub scheduler remains off throughout.
+
+Restore group membership to ID 1 after validation, restore the original
+enabled states (units 1–4 enabled, 5–8 disabled), and re-enable the existing
+CI scheduler timer. Let the governed scheduler select active capacity;
+do not start all eight runners. Retain the empty maintenance group and
+backups. Windows reboot and remote port-isolation acceptance require their
+own observed results; a successful WSL restart alone does not prove them.
+
+At **14:53:55 PT**, GitHub reported all eight runners idle and no local
+`Runner.Worker` remained. All listeners were stopped before `wsl --shutdown`.
+Only Ubuntu was running. The Windows keepalive task was paused, its drain
+marker archived afterward, and the task resumed after startup. Boot ID changed
+from `5e9c7e7b-5ed0-4dd3-aa5a-16c513582428` to
+`98d96adc-ed37-4677-a3a4-a6c0cf2249b6`.
+
+The dashboard started automatically at the same deployed commit. Gateway
+`192.168.208.1:11434` returned Ollama `0.34.2` without a bridge repair;
+`/run/WSL/1_interop` again resolved to the live `2_interop` socket. Scheduler
+remained `0`, all six provider flags were true, and worker holds were empty.
+Post-restart health runs all succeeded with exit 0:
+
+| Provider | Run |
+| --- | --- |
+| Claude | `run-a51cc1408152` |
+| Codex | `run-318d9b6b39aa` |
+| Antigravity | `run-77a4d6df013f` |
+| Cursor | `run-058dbc8b19c5` |
+| Ollama via Codex | `run-80a6f535fa67` |
+| Ollama via Claude | `run-d8707eb93210` |
+
+WSLg mounted another tmpfs over `/run/user/1000`, hiding the user bus socket
+from `systemctl --user`. This was a control-socket problem: the system journal
+proves `runner-dashboard-rm-sync.timer` started at 14:54:31 and its service ran
+successfully at 14:56:35. After provider checks finished,
+`sudo systemctl restart user@1000.service` restored control-socket access and
+the timer was confirmed active. No permanent unit or WSLg setting was changed.
+If this recurs, inspect the system journal before concluding the timer stopped;
+restarting a user manager interrupts its user services and requires a quiet
+maintenance window.
+
 ## Installed tools and authentication
 
 All sign-ins were completed by the owner. Do not inspect, copy, print, or put
