@@ -122,6 +122,7 @@ def compose_prompt(
     branch: str,
     lease_note: str = "",
     consolidation: str = "",
+    focus: str = "",
 ) -> str:
     """Assemble the agent prompt from the role, the target and the fleet rules.
 
@@ -156,5 +157,7 @@ def compose_prompt(
         parts.append(lease_note)
     if consolidation:
         parts.append(consolidation)
+    if focus:
+        parts.append(focus)
     parts.append(FLEET_RULES)
     return "\n\n".join(parts)

@@ -5,6 +5,9 @@
 **Last Updated:** 2026-09-22T00:00:00-07:00
 **Status:** Active
 
+- **2026-09-23:** Staff prompt fleet focus (#1239, epic #1192). `staff.focus.focus_paragraph(repo, items)` filters
+  `priorities.service.top_priorities` to board items whose project matches the repo and directives scoped to it or `*`
+  (≤5); `compose_prompt(focus=)` places it before the fleet rules; `RunPlan.focus` is in the dry-run plan.
 - **2026-09-22:** Fleet Coordination API priorities (#1227, epic #1192). New `backend/priorities/` (board-meeting
   `consensus.md` parser tolerant of the RM template's malformed tables, meeting listing, portfolios from RM
   `config/fleet_manifest.yaml`, operator directives stored like holds with expiry) and `backend/routers/priorities.py`:

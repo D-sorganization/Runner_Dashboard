@@ -204,6 +204,15 @@ Both run columns are additive (`PRAGMA`-guarded `ALTER TABLE`, like
 | `CLAUDE_CONFIG_DIR`          | unset (CLI uses `~/.claude`)                                                    | Service-owned Claude seat; required under `ProtectHome=read-only` (see Node setup) |
 | `GIT_CONFIG_GLOBAL`          | unset                                                                           | Isolated git config for staff clones and pushes (see Node setup)                   |
 
+## Fleet focus (#1239)
+
+Every staff prompt ends with the role instructions, the target, the PR-consolidation paragraph (when
+the role has one), a **Fleet focus** paragraph and the fleet rules. Fleet focus lists at most five items
+from `GET /api/priorities`: active items from the latest board meeting whose project names the run's
+repo, and operator directives scoped to that repo or `*`. The agent is told to prefer work that advances
+them and never to contradict a directive. The paragraph appears as `focus` in a dry-run plan
+(`"dry_run": true`). A node without the priorities module or an RM checkout just omits it.
+
 ## Node setup (#1223)
 
 A node that runs staff roles needs four things beyond the dashboard install. DeskComputer was set up this

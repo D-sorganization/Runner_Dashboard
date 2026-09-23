@@ -1,4 +1,22 @@
-# Current Handoff — Fleet Coordination API: priorities endpoints (#1227)
+# Current Handoff — Staff prompt fleet focus (#1239)
+
+Last updated: 2026-09-23T01:30:00-07:00
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/staff-focus` (worktree)
+- Branch: `feat/staff-prompt-focus`, stacked on `feat/priorities-api` (#1231); commit `SELF`; PR opened after #1231 merges.
+
+## Work
+
+- New `backend/staff/focus.py` (`load_items`, `focus_paragraph`). The lazy import of `priorities.service` is fail-safe.
+- `StaffRunner(focus_loader=...)`, `RunPlan.focus` (also in `to_dict`), and `compose_prompt(focus=)`, placed before `FLEET_RULES`.
+- Tests: `tests/api/test_staff_focus.py` (6).
+
+---
+
+## Previous Handoff — Current Handoff — Fleet Coordination API: priorities endpoints (#1227)
 
 Last updated: 2026-09-22T23:59:00-07:00
 

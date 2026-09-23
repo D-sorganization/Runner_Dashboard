@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1239 · Staff prompt fleet focus
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1239 (epic #1192)
+- **Branch:** `feat/staff-prompt-focus`
+- **PR:** opened after push
+- **Paths:** `backend/staff/focus.py`, `backend/staff/workspace.py`, `backend/staff/runner.py`, `tests/api/test_staff_focus.py`, `docs/staff-hub.md`
+- **Started:** 2026-09-23
+- **Last verified:** 2026-09-23 (on #1231; `tests/api/test_staff_focus.py` 6 passed; staff/priorities/coordination 205 passed in WSL 3.12)
+- **Summary:** Board priorities and operator directives now steer every staff run through a repo-scoped paragraph in the prompt, injected through `StaffRunner(focus_loader=)` for tests.
+- **Next step:** Open the PR once #1231 is on main.
+
 ### DL-#1227 · Fleet Coordination API: priorities endpoints
 
 - **State:** in_review
