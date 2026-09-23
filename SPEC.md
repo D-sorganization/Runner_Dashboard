@@ -9,6 +9,7 @@
 
 | Date       | PR / Issue | Summary                                                                                                                               |
 | ---------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-09-23 | #1257 restart | Record safe OGLaptop CI drain, verified WSL restart and six-provider recovery, RM user-bus observation and restoration procedure. |
 | 2026-09-23 | #1257 verification | Record successful SYSTEM task execution and automatic RM#1719 uptake; retain restart and external-isolation checks pending a safe CI window. |
 | 2026-09-23 | #1257 task policy | Explicitly use process-scoped RemoteSigned for the SYSTEM bridge task; preserve machine-wide execution policy. |
 | 2026-09-23 | #1258 rollout | Record OGLaptop deployment, live RM timer, empty holds, successful Ollama checks, backups and remaining owner bridge/reboot acceptance. |

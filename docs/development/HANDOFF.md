@@ -1,4 +1,15 @@
-# Current handoff — SYSTEM bridge task verified (#1257)
+# Current handoff — drained WSL restart verified (#1257)
+
+- Worktree `/home/dieterolson/staff-builds/oglaptop-restart-validation`; branch `docs/oglaptop-restart-validation`; commit `SELF`.
+- Owner authorized drain and refreshed WSL GitHub admin:org permission. Only runner IDs 217–224 moved from group 1 into dedicated empty-access group 6; existing Bandwidth-Draining group 5 has repository access and was not changed.
+- Four active CI jobs finished without cancellation. GitHub/local idle gates passed at 14:53:55 PT, then all listeners stopped. Original group/unit/task state is saved under `_deploy/oglaptop-drain-20260923`.
+- Controlled WSL shutdown/start changed boot ID; dashboard, Windows interop and Ollama bridge recovered. All six provider health checks succeeded; see canonical node runbook for IDs. Staff scheduler remains 0 and worker holds are empty.
+- RM timer automatically ran after boot. WSLg hid the user control socket with a runtime-directory mount; restarting user@1000 after the checks restored CLI access. No permanent runtime configuration change was needed.
+- Windows reboot and external port isolation remain unverified. Runners are temporarily drained pending the owner's choice of immediate Windows restart or restoring CI capacity. Never restore all eight units indiscriminately; preserve saved capacity settings.
+
+---
+
+## Previous handoff — SYSTEM bridge task verified (#1257)
 
 - Worktree `/home/dieterolson/staff-builds/ollama-task-verified-docs`; branch `docs/issue-1257-task-verified`; commit `SELF`; PR not created.
 - Owner reinstalled corrected bridge from #1265 (merged bc5a6369) and supplied Administrator Task Scheduler output: last run 2026-09-23 14:24:13 PT, result **0**, next run 14:25:12. Installed script hash equals tested staged source. Original policy failure is resolved for an actual SYSTEM run.
