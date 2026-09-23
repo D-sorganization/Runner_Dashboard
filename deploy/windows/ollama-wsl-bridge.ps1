@@ -195,7 +195,8 @@ try {
             if (Test-Path -LiteralPath $installedScript) { Copy-Item -LiteralPath $installedScript -Destination "$installedScript.bak-$stamp" }
             Copy-Item -LiteralPath $PSCommandPath -Destination $installedScript
         }
-        $action = New-ScheduledTaskAction -Execute "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -Argument "-NoProfile -NonInteractive -WindowStyle Hidden -File `"$installedScript`""
+        # SYSTEM does not inherit the owner's CurrentUser policy. Scope this to the task process.
+        $action = New-ScheduledTaskAction -Execute "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -Argument "-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy RemoteSigned -File `"$installedScript`""
         $triggers = @(New-ScheduledTaskTrigger -AtStartup; New-ScheduledTaskTrigger -AtLogOn;
             New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 5))
         $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest

@@ -94,17 +94,22 @@ must be checked after it merges and the next timer tick. No manual pull is neede
 | Documentation | Initial setup report merged as #1259; this runbook is the node status source. |
 | Ollama lease fix #1256 | Deployed in `35686c4`; both Ollama harness checks below succeeded. |
 | Bridge implementation #1257 | #1261 merged; 15 PowerShell planner tests and real Windows 5.1 dry-run passed. |
-| Windows bridge installation | **Pending owner elevation**; original scoped rule/forward remains working. No scheduled bridge task installed at last check. |
+| Windows bridge installation | Owner installed at 13:50 PT; SYSTEM/highest task registered. Task exit 1 was diagnosed as execution policy blocking script startup; corrected task action requires owner reinstall and verification. Scoped forwarding remains working. |
 | Live RM source #1258 | #1262 merged and deployed; env migrated, timer active, lingering enabled, first automatic fast-forward verified, worker holds empty. |
 | Reboot acceptance | **Pending owner installation, WSL restart and Windows reboot**; external tailnet port isolation also remains unverified. |
 
 The owner runs this exact command in **PowerShell as Administrator**:
 
 ```powershell
-powershell.exe -NoProfile -File "C:\Users\diete\Repositories\Runner_Dashboard-worktrees\issue-1257-bridge\deploy\windows\ollama-wsl-bridge.ps1" -Install -AdoptExisting
+powershell.exe -NoProfile -File "C:\Users\diete\Repositories\_deploy\ollama-wsl-bridge-policy-fix.ps1" -Install
 ```
 
-Then verify task `StaffHub-Ollama-WSL-Bridge`, its last result, and
+The correction selects `RemoteSigned` only for the SYSTEM task's PowerShell process;
+it does not change machine-wide or user execution policy. The installed script is
+in the administrator-protected ProgramData directory. The original user-context
+dry-run succeeded but did not establish that SYSTEM could execute it.
+
+Then verify task `StaffHub-Ollama-WSL-Bridge`, its last result (must be 0), and
 `C:\ProgramData\RunnerDashboard\OllamaWslBridge\result.json`. Coordinate WSL
 shutdown and reboot with the owner when no staff or CI jobs are active. Follow
 [Ollama for WSL](../staff-hub.md#ollama-for-wsl-1257) for repeat health and

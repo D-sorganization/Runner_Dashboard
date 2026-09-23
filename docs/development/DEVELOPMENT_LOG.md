@@ -40,9 +40,9 @@ reachable from any live state and `abandoned` from `parked`.
 - **PR:** https://github.com/D-sorganization/Runner_Dashboard/pull/1261
 - **Paths:** `deploy/windows/ollama-wsl-bridge.ps1`, `tests/unit/test_ollama_wsl_bridge.py`, `docs/staff-hub.md`
 - **Started:** 2026-09-23
-- **Last verified:** 2026-09-23 (`SELF`; all 15 planner regressions pass, Ruff passes, Windows 5.1 live dry-run passes)
+- **Last verified:** 2026-09-23 (`SELF`; owner SYSTEM failure captured; task-policy regression RED then 16 tests GREEN from local Windows copies; Ruff and PowerShell syntax pass; owner task rerun pending)
 - **Summary:** Dynamic WSL NAT discovery, ownership-checked forward/rule reconciliation, explicit legacy adoption, disable-only firewall/task uninstall, backups and owner-installed hidden startup/logon/retry task. Existing OGLaptop bridge remains unchanged until owner installation.
-- **Next step:** #1261 merged; owner still must run elevated install and verify WSL restart, Windows reboot and external port isolation. Existing OGLaptop forward remains working. Other hosts remain outside this local rollout.
+- **Next step:** Publish `fix/issue-1257-system-task-policy`; owner reinstalls corrected task and verifies exit 0, WSL restart, Windows reboot and external isolation. Original install exists and scoped forwarding works; SYSTEM execution is not yet verified successful.
 
 ### DL-#1251 · Deferred Project Visibility
 
