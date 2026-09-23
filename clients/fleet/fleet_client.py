@@ -44,7 +44,8 @@ USER_AGENT = "fleet-client/1.0 (+Runner_Dashboard clients/fleet)"
 # One place for every limit and pattern the server enforces, so the client fails fast with the
 # same verdict instead of drifting into 422s. Sources of truth (the client is stdlib-only and
 # cannot import them; tests/clients/test_fleet_client.py asserts they stay equal):
-#   backend/coordination/models.py   AGENT/REPO/BRANCH/INTENT/MESSAGE_ID patterns, MAX_TEXT, reason
+#   backend/coordination/models.py   SESSION/AGENT/REPO/BRANCH/MESSAGE_ID patterns, MAX_TEXT, intent/reason
+#                                    lengths, single_line() (printable) and message_text() (no controls)
 #   backend/priorities/directives.py MAX_TEXT;  backend/routers/priorities.py MAX_DIRECTIVES
 
 
@@ -56,8 +57,7 @@ class _Patterns:
     repo: re.Pattern[str] = re.compile(r"^(?:[A-Za-z0-9-]{1,39}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
     bare_repo: re.Pattern[str] = re.compile(r"^[A-Za-z0-9._-]{1,100}$")  # staff dispatch, directives
     branch: re.Pattern[str] = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/@+-]{0,199}$")
-    message_id: re.Pattern[str] = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$")
-    intent: re.Pattern[str] = re.compile(r"^[A-Za-z0-9][^\r\n]{0,199}$")
+    message_id: re.Pattern[str] = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")  # RM _IDENTIFIER
     role: re.Pattern[str] = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
     ident: re.Pattern[str] = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,119}$")  # run id, model, machine
     date: re.Pattern[str] = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -67,7 +67,7 @@ class _Patterns:
 @dataclass(frozen=True)
 class _Limits:
     max_message_text: int = 4000
-    max_intent: int = 200  # INTENT_PATTERN
+    max_intent: int = 200
     max_reason: int = 300
     max_prompt: int = 20000  # RunBody.prompt
     max_directive_text: int = 500
@@ -118,25 +118,35 @@ def _positive_int(value: Any, name: str) -> int:
 
 
 def _text(
-    value: Any, name: str, limit: int = LIMITS.max_message_text, *, required: bool = True, one_line: bool = False
+    value: Any, name: str, limit: int = LIMITS.max_message_text, *, required: bool = True, form: str = "free"
 ) -> str:
+    """Stripped text within ``limit``. ``form`` mirrors the server rule for the field:
+    ``line`` = one printable line (``single_line``), ``message`` = no controls but newline/tab
+    (``message_text``), ``no_crlf`` = no CR/LF (directive text), ``free`` = length only.
+    """
     _check(isinstance(value, str), f"{name} must be a string")
     stripped = str(value).strip()
     _check(bool(stripped) or not required, f"{name} must not be empty")
     _check(len(stripped) <= limit, f"{name} exceeds {limit} characters")
-    _check(not one_line or not ("\r" in stripped or "\n" in stripped), f"{name} must be a single line (no CR/LF)")
+    _check(form != "line" or stripped.isprintable(), f"{name} must be one line of printable text")
+    _check(
+        form != "message" or not any(ord(ch) < 32 and ch not in _TEXT_CONTROLS for ch in stripped),
+        f"{name} must not contain control characters other than newline and tab",
+    )
+    _check(form != "no_crlf" or not ("\r" in stripped or "\n" in stripped), f"{name} must be a single line")
     return stripped
 
 
 def _opt_text(value: Any, name: str, limit: int) -> str | None:
     """Optional one-line text: ``None`` is omitted so the server applies its default."""
-    return None if value is None else _text(value, name, limit, one_line=True)
+    return None if value is None else _text(value, name, limit, form="line")
 
 
 def _opt(pattern: re.Pattern[str], value: Any, name: str) -> str | None:
     return None if value is None else _match(pattern, value, name)
 
 
+_TEXT_CONTROLS = "\n\t"  # the only control characters message text may carry (server message_text)
 _SESSION_UNSAFE = re.compile(r"[^A-Za-z0-9_.-]")
 _MAX_SESSION = 128
 
@@ -164,7 +174,7 @@ def _validate_directive(item: Any, index: int) -> dict[str, Any]:
     allowed = {"id", "text", "repo", "priority", "expires"}  # set_by is always the authenticated caller
     unknown = set(item) - allowed
     _check(not unknown, f"directives[{index}] has unknown fields: {sorted(unknown)}")
-    text = _text(item.get("text"), f"directives[{index}].text", LIMITS.max_directive_text, one_line=True)
+    text = _text(item.get("text"), f"directives[{index}].text", LIMITS.max_directive_text, form="no_crlf")
     out: dict[str, Any] = {"text": text}
     priority = item.get("priority", 3)
     _check(
@@ -393,7 +403,7 @@ class FleetClient:
             "session": self._session(session),
             "repo": _match(PATTERNS.repo, repo, "repo"),
             "to": recipient,
-            "text": _text(text, "text"),
+            "text": _text(text, "text", form="message"),
         }
         return self.request("POST", "/api/coordination/messages", body=body)
 
@@ -414,7 +424,7 @@ class FleetClient:
     ) -> Any:
         """Lease an issue. Raises FleetAPIError(409) when another agent holds it. No intent = server default."""
         intent_text = _opt_text(intent, "intent", LIMITS.max_intent)
-        _check(intent_text is None or bool(PATTERNS.intent.match(intent_text)), "intent must start with a letter/digit")
+        _check(intent_text is None or not intent_text.startswith("-"), "intent must not start with '-'")
         body = {
             "repo": _match(PATTERNS.repo, repo, "repo"),
             "issue": _positive_int(issue, "issue"),
@@ -465,7 +475,7 @@ class FleetClient:
         items = [_validate_directive(item, i) for i, item in enumerate(directives)]
         body: dict[str, Any] = {"directives": items}
         if version is not None:
-            body["version"] = _text(version, "version", LIMITS.max_version, one_line=True)
+            body["version"] = _text(version, "version", LIMITS.max_version, form="line")
         return self.request("PUT", "/api/priorities/directives", body=body)
 
 

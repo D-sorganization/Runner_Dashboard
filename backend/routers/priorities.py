@@ -7,7 +7,7 @@ Routes (all under ``/api/priorities``):
   GET /directives          Active (unexpired) operator directives + the list ``version``.
   PUT /directives          Replace the directive list (409 when ``version`` is stale).
 
-Auth: reads use ``require_fleet_peer``; the PUT uses ``priorities.auth.require_priorities_writer``
+Auth: reads use ``require_fleet_peer``; the PUT uses ``coordination.auth.require_priorities_writer``
 (principal with ``priorities.write`` — operators, not bots — or a loopback orchestrator peer) plus
 the CSRF header enforced by middleware. ``set_by`` always comes from the authenticated caller (#1243).
 Logic lives in ``priorities.service``.
@@ -18,12 +18,11 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from coordination.auth import Caller
+from coordination.auth import Caller, require_priorities_writer
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi import Path as PathParam
 from identity import require_fleet_peer
 from priorities import service
-from priorities.auth import require_priorities_writer
 from priorities.directives import (
     MAX_PRIORITY,
     MAX_SET_BY,

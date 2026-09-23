@@ -167,7 +167,7 @@ _AUTH_EXEMPT_PATHS = {
 #   - /api/priorities*       → Fleet Coordination API priorities (#1227). Reads use
 #                              require_fleet_peer so agents holding only the fleet
 #                              bearer token can read them; the PUT uses
-#                              coordination.auth.require_coordination_writer
+#                              coordination.auth.require_priorities_writer
 #                              (priorities.write scope or loopback). The summary route is the
 #                              exact path /api/priorities (in _ALT_AUTH_EXEMPT_EXACT) and the rest the
 #                              /api/priorities/ prefix, so /api/prioritiesX is NOT exempt (#1243).

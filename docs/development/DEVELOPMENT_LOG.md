@@ -25,9 +25,9 @@ reachable from any live state and `abandoned` from `parked`.
 - **Issue:** #1243 (epic #1192)
 - **Branch:** `fix/priorities-clients-hardening`
 - **PR:** opened after push
-- **Paths:** `backend/priorities/`, `backend/routers/priorities.py`, `backend/staff/focus.py`, `backend/identity.py`, `backend/middleware.py`, `clients/fleet/`, `frontend/src/pages/FleetCommand/`, `docs/priorities-api.md`, `docs/agents/connect.md`
+- **Paths:** `backend/priorities/`, `backend/coordination/auth.py`, `backend/routers/priorities.py`, `backend/staff/focus.py`, `backend/identity.py`, `backend/middleware.py`, `clients/fleet/`, `frontend/src/pages/FleetCommand/`, `docs/priorities-api.md`, `docs/agents/connect.md`
 - **Started:** 2026-09-23
-- **Last verified:** 2026-09-23 (WSL pytest `tests/api -k "priorities or staff or auth" tests/clients` green except the pre-existing flaky `test_staff_runner` event-order test; vitest FleetCommand 22 passed; typecheck, lint, build clean)
+- **Last verified:** 2026-09-23 (rebased on #1245; WSL pytest `tests/api -k "priorities or staff or auth or coordination" tests/clients` 354 passed, coordination API/hardening 5x green; vitest FleetCommand 22 passed; typecheck, lint, build clean)
 - **Summary:** Verified review findings 5, 6, 7, 8 (frontend), 10, 11, 16, 17 plus client/server limit drift and the `<agent>-` session convention required by #1245.
 - **Next step:** Merge once CI is green and redeploy DeskComputer.
 
@@ -90,7 +90,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Issue:** #1227 (epic #1192)
 - **Branch:** `feat/priorities-api`
 - **PR:** opened after push
-- **Paths:** `backend/priorities/`, `backend/routers/priorities.py`, `backend/middleware.py`, `tests/api/test_priorities_*.py`, `docs/priorities-api.md`
+- **Paths:** `backend/priorities/`, `backend/coordination/auth.py`, `backend/routers/priorities.py`, `backend/middleware.py`, `tests/api/test_priorities_*.py`, `docs/priorities-api.md`
 - **Started:** 2026-09-22
 - **Last verified:** 2026-09-22 (`afb414d` + this change; `pytest tests/api -k "priorities or coordination or auth"` 169 passed, 2 skipped)
 - **Summary:** Priorities half of the Fleet Coordination API contract v1: board-meeting consensus, portfolios and operator directives over HTTP, plus `top_priorities(limit)` for the coordination briefing.

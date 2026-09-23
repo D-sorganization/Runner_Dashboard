@@ -6,7 +6,7 @@ a temp RM root whose ``scripts/*.py`` log their argv and print canned JSON.
 
 from __future__ import annotations
 
-import time
+import threading
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -78,16 +78,10 @@ def test_board_reads_are_cached_for_60_seconds(rm: FakeRM, client: TestClient, m
     assert len(_argv(rm, "agent_communicate")) == 1
     now[0] += 61
     client.get("/api/coordination/sessions")  # stale: served from cache, one background refresh
-    _wait_for(lambda: len(_argv(rm, "agent_communicate")) == 2)
+    assert board_mod.join_refreshes(), "background refresh did not finish"
+    assert len(_argv(rm, "agent_communicate")) == 2
     client.get("/api/coordination/sessions")  # refreshed entry is fresh again
     assert len(_argv(rm, "agent_communicate")) == 2
-
-
-def _wait_for(cond: Any, timeout: float = 10.0) -> None:
-    deadline = time.monotonic() + timeout
-    while not cond():
-        assert time.monotonic() < deadline, "condition not met in time"
-        time.sleep(0.02)
 
 
 @pytest.mark.unit
@@ -102,7 +96,37 @@ def test_stale_board_read_is_served_immediately_while_refreshing(
     now[0] += 61
     stale = client.get("/api/coordination/sessions").json()["sessions"]
     assert [s["session"] for s in stale] == ["s1"]  # no wait on the slow GitHub read
-    _wait_for(lambda: [s["session"] for s in client.get("/api/coordination/sessions").json()["sessions"]] == ["s2"])
+    assert board_mod.join_refreshes(), "background refresh did not finish"
+    assert [s["session"] for s in client.get("/api/coordination/sessions").json()["sessions"]] == ["s2"]
+
+
+@pytest.mark.unit
+def test_reset_cache_discards_reads_still_in_flight() -> None:
+    """A refresh leaked from an earlier test must not repopulate the next test's cache (CI flake, #1243)."""
+    board_mod.reset_cache()
+    before = board_mod._generation
+    board_mod.reset_cache()
+    board_mod._store("k", 0.0, {"available": True}, before)
+    assert "k" not in board_mod._cache
+    board_mod.reset_cache()
+
+
+@pytest.mark.unit
+def test_join_refreshes_waits_for_background_threads() -> None:
+    board_mod.reset_cache()
+    gate = threading.Event()
+    board_mod._cache["k"] = (-1e9, {"available": True, "value": "old"})
+
+    def slow() -> dict[str, Any]:
+        gate.wait(5)
+        return {"available": True, "value": "new"}
+
+    assert board_mod._cached("k", slow)["value"] == "old"
+    assert not board_mod.join_refreshes(timeout=0.05)  # still running
+    gate.set()
+    assert board_mod.join_refreshes()
+    assert board_mod._cache["k"][1]["value"] == "new"
+    board_mod.reset_cache()
 
 
 @pytest.mark.unit

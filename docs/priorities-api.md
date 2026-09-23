@@ -81,7 +81,7 @@ Deferred item: `{item, project, reason, reassess}`. Borda row:
 
 - Reads: `require_fleet_peer` — an operator principal or, when
   `HUB_FLEET_TOKEN` is set, `Authorization: Bearer <HUB_FLEET_TOKEN>`.
-- PUT: `priorities.auth.require_priorities_writer` — a principal whose roles grant
+- PUT: `coordination.auth.require_priorities_writer` — a principal whose roles grant
   `priorities.write` (`operator` preset, `admin` via `*`; `bot`, `viewer` and other
   principals get 403), or a loopback caller when `DASHBOARD_LOOPBACK_AUTH=1`.
   Directives steer every staff prompt, so agent bot tokens (which hold

@@ -6,7 +6,7 @@
         "description": "``ack``: confirm receipt (not agreement) of a message.",
         "properties": {
           "message_id": {
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
             "title": "Message Id",
             "type": "string"
           },
@@ -16,7 +16,7 @@
             "type": "string"
           },
           "session": {
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
             "title": "Session",
             "type": "string"
           }
@@ -311,7 +311,8 @@
           },
           "intent": {
             "default": "implement",
-            "pattern": "^[A-Za-z0-9][^\\r\\n]{0,199}$",
+            "maxLength": 200,
+            "minLength": 1,
             "title": "Intent",
             "type": "string"
           },
@@ -326,7 +327,7 @@
             "type": "string"
           },
           "session": {
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
             "title": "Session",
             "type": "string"
           }
@@ -369,7 +370,7 @@
             "type": "string"
           },
           "session": {
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
             "title": "Session",
             "type": "string"
           }
@@ -752,7 +753,7 @@
             "type": "string"
           },
           "session": {
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
             "title": "Session",
             "type": "string"
           },
@@ -763,7 +764,7 @@
             "type": "string"
           },
           "to": {
-            "pattern": "^(\\*|[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127})$",
+            "pattern": "^(\\*|[A-Za-z0-9][A-Za-z0-9_.-]{0,127})$",
             "title": "To",
             "type": "string"
           }
@@ -946,7 +947,7 @@
             "type": "string"
           },
           "session": {
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
             "title": "Session",
             "type": "string"
           },
@@ -1166,7 +1167,7 @@
             "type": "string"
           },
           "session": {
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
             "title": "Session",
             "type": "string"
           }
@@ -3626,7 +3627,7 @@
             "name": "session",
             "required": true,
             "schema": {
-              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
               "title": "Session",
               "type": "string"
             }

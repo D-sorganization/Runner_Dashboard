@@ -219,8 +219,24 @@ def test_client_limits_mirror_the_server_models() -> None:
     assert fc.PATTERNS.branch.pattern == models.BRANCH_PATTERN
     assert fc.PATTERNS.agent.pattern == models.AGENT_PATTERN
     assert fc.PATTERNS.repo.pattern == models.REPO_PATTERN
-    assert fc.PATTERNS.intent.pattern == models.INTENT_PATTERN
+    assert fc.PATTERNS.session.pattern == models.SESSION_PATTERN
+    assert fc.PATTERNS.message_id.pattern == models.MESSAGE_ID_PATTERN
+    assert fc.LIMITS.max_intent == models.ClaimBody.model_fields["intent"].metadata[-1].max_length
     assert re.fullmatch(fc.PATTERNS.session, "claude-rd.2026")
+
+
+def test_client_session_prefix_rule_matches_the_server() -> None:
+    import fleet_client as fc  # noqa: PLC0415
+    from coordination.auth import Caller  # noqa: PLC0415
+    from coordination.auth import ImpersonationError as ServerRejects  # noqa: PLC0415
+
+    bot = Caller(label="principal:agent-codex", restricted=True, agent="codex")
+    derived = fc.default_session("codex", "DeskComputer")
+    bot.check_session(derived)  # the server accepts what the client derives
+    with pytest.raises(ServerRejects):
+        bot.check_session("codexfoo-1")  # ...and rejects what the client rejects
+    with pytest.raises(FleetArgumentError):
+        FleetClient("http://127.0.0.1:9", agent="codex", session="codexfoo-1")
 
 
 def test_http_error_raises_with_status_and_body(client: FleetClient, fake_api: Any) -> None:
@@ -267,6 +283,11 @@ BAD_CALLS: list[tuple[str, dict[str, Any]]] = [
     ("claim", {"repo": "Runner_Dashboard", "issue": 1, "intent": "fix\nrm -rf"}),
     ("claim", {"repo": "Runner_Dashboard", "issue": 1, "intent": "i" * 201}),
     ("claim", {"repo": "Runner_Dashboard", "issue": 1, "intent": "-flag"}),
+    ("claim", {"repo": "Runner_Dashboard", "issue": 1, "intent": "fix\u2028forged"}),
+    ("release_claim", {"repo": "Runner_Dashboard", "issue": 1, "reason": "done\x0bnow"}),
+    ("send_message", {"repo": "Runner_Dashboard", "to": "x", "text": "bell\x07"}),
+    ("send_message", {"repo": "Runner_Dashboard", "to": "claude:1", "text": "t"}),
+    ("ack", {"repo": "Runner_Dashboard", "message_id": "m@1"}),
     ("release_claim", {"repo": "Runner_Dashboard", "issue": 1, "reason": "done\rnow"}),
     ("release_claim", {"repo": "Runner_Dashboard", "issue": 1, "reason": "r" * 301}),
     ("send_message", {"repo": "Runner_Dashboard", "to": "**", "text": "t"}),

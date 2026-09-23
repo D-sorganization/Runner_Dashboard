@@ -167,6 +167,17 @@ def test_put_directives_rejects_multiline_text(loopback: TestClient, text: str) 
 
 
 @pytest.mark.unit
+def test_one_scope_parameterised_writer_dependency() -> None:
+    from coordination import auth  # noqa: PLC0415
+    from routers import priorities as prio_router  # noqa: PLC0415
+
+    assert auth.require_priorities_writer.__name__ == "require_priorities_writer"
+    assert auth.require_coordination_writer.__name__ == "require_coordination_writer"
+    put = next(r for r in prio_router.router.routes if getattr(r, "methods", None) == {"PUT"})
+    assert auth.require_priorities_writer in {d.call for d in put.dependant.dependencies}
+
+
+@pytest.mark.unit
 def test_priorities_perimeter_exemption_is_exact() -> None:
     from middleware import is_auth_exempt  # noqa: PLC0415
 

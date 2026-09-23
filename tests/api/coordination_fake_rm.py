@@ -115,6 +115,7 @@ def install(
     for reset in resets:
         reset()
     yield fake
+    board_mod.join_refreshes()  # no background refresh may outlive the test and touch the next one
     for reset in reversed(resets):
         reset()
 
