@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1223 · Staff Hub node setup documentation
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1223 (epic #1192)
+- **Branch:** `docs/staff-hub-node-setup`
+- **PR:** opened after push
+- **Paths:** `docs/staff-hub.md`
+- **Started:** 2026-09-22
+- **Last verified:** 2026-09-22 (`c12a7dc` + this change; the fix was reproduced and verified on DeskComputer with `systemd-run` under the unit sandbox)
+- **Summary:** Node setup for staff roles (drop-in, `CLAUDE_CONFIG_DIR`, `GIT_CONFIG_GLOBAL`, Linux clones) moves from operator scripts into the Staff Hub doc, including why a read-only home blocks Claude token refresh.
+- **Next step:** Merge; apply the same setup on ControlTower and OGLaptop.
+
 ### DL-#1221 · Staff Hub unattended runs
 
 - **State:** in_review

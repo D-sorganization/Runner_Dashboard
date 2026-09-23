@@ -87,6 +87,9 @@ never` (late > 1.5 intervals since the last success, dead > 3 intervals or fired
   #1196 lands, `roles`). `POST /api/staff/{role}/run` accepts `machine: local | <peer name> | auto`;
   unknown → 422, unreachable peer → 503, peer rejection passes through. Env: `STAFF_PEER_TIMEOUT_SECONDS`.
   TDD: 10 tests in `tests/api/test_staff_fleet.py` with injected `get_json`/`post_json` fakes.
+- **2026-09-22:** Staff Hub node setup documented (#1223, epic #1192).
+  `docs/staff-hub.md` "Node setup": drop-in paths, `CLAUDE_CONFIG_DIR` for token refresh under the read-only home,
+  `GIT_CONFIG_GLOBAL`, `~/staff-repos` + `~/staff-worktrees`.
 - **2026-09-22:** Staff Hub unattended runs (#1221, epic #1192).
   Claude adapter `--permission-mode bypassPermissions`, default model `sonnet`; `workspace.playbook_text` inlines the
   role playbook from the RM checkout (16k cap, no `..`); scheduled prompt names role + repo and
