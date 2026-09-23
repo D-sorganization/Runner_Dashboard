@@ -90,6 +90,8 @@ never` (late > 1.5 intervals since the last success, dead > 3 intervals or fired
 - **2026-09-22:** Staff Hub node setup documented (#1223, epic #1192).
   `docs/staff-hub.md` "Node setup": drop-in paths, `CLAUDE_CONFIG_DIR` for token refresh under the read-only home,
   `GIT_CONFIG_GLOBAL`, `~/staff-repos` + `~/staff-worktrees`.
+- **2026-09-22:** Staff Hub skip linked issues (#1225, epic #1192). `FLEET_RULES` adds: skip an issue an open PR
+  already references (`gh pr list --state open --search <n>`).
 - **2026-09-22:** Staff Hub unattended runs (#1221, epic #1192).
   Claude adapter `--permission-mode bypassPermissions`, default model `sonnet`; `workspace.playbook_text` inlines the
   role playbook from the RM checkout (16k cap, no `..`); scheduled prompt names role + repo and

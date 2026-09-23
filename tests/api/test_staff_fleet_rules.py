@@ -16,6 +16,7 @@ def test_fleet_rules_carry_all_agent_guardrails() -> None:
     assert "claim:local" in rules
     assert "live lease" in rules
     assert "bulk remediation issues" in rules
+    assert "open pull request already references it" in rules  # #1225: no duplicate PRs for linked issues
 
 
 def test_compose_prompt_always_ends_with_fleet_rules() -> None:

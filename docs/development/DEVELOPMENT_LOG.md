@@ -31,6 +31,19 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** Node setup for staff roles (drop-in, `CLAUDE_CONFIG_DIR`, `GIT_CONFIG_GLOBAL`, Linux clones) moves from operator scripts into the Staff Hub doc, including why a read-only home blocks Claude token refresh.
 - **Next step:** Merge; apply the same setup on ControlTower and OGLaptop.
 
+### DL-#1225 · Staff runs skip issues with an open linked PR
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1225 (epic #1192)
+- **Branch:** `fix/staff-skip-linked-issues`
+- **PR:** opened after push
+- **Paths:** `backend/staff/workspace.py`, `tests/api/test_staff_fleet_rules.py`
+- **Started:** 2026-09-22
+- **Last verified:** 2026-09-22 (`c12a7dc` + this change; tests/api/test_staff_fleet_rules.py 3 passed)
+- **Summary:** run-905a8b3586a7 opened Gasification_Model#5061 for #5059 while #5060 was already open for it. The built-in fleet rules now say to skip issues an open PR references.
+- **Next step:** Merge and redeploy DeskComputer.
+
 ### DL-#1221 · Staff Hub unattended runs
 
 - **State:** in_review
