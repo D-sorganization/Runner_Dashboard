@@ -1,4 +1,30 @@
-# Current Handoff — Staff runs skip issues with an open linked PR (#1225)
+# Current Handoff — Fleet API agent clients (#1228)
+
+Last updated: 2026-09-22T23:55:00-07:00
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/fleet-clients` (worktree)
+- Branch: `feat/fleet-clients`; base `26ffa70`; commit `SELF`; PR opened after push.
+- Governing issue: #1228 (epic #1192); development log entry DL-#1228.
+
+## Work
+
+- `clients/fleet/`: `fleet_client.py` (`FleetClient`, DbC validation, `FleetAPIError`), `fleet_tools.py` (single command table), `fleetctl.py` (CLI), `fleet_mcp.py` (MCP stdio server, protocol 2025-06-18), README.
+- `tests/clients/`: fake `http.server` fixture; client, CLI and subprocess MCP tests (66 passed).
+- `docs/agents/connect.md`: Claude Code / Codex / Gemini / Grok setup, bot token minting, agent loop.
+- CI: `ci-standard.yml` lint, format, mypy and bandit include `clients/`; the python-scope detector and `SCOPE_PREFIX_NOUNS` gain `clients/`.
+- Validation: WSL venv `pytest tests/clients -o addopts="" -p no:cacheprovider` → 66 passed; `ruff@0.14.10 check/format --check clients/ tests/clients/` clean; `mypy clients/fleet/` clean.
+- The coordination/priorities endpoints are being built in a parallel PR; until it merges, those client calls return 404 from a live node.
+
+## Next
+
+1. Merge; after the server PR lands, smoke-test `fleetctl briefing` against DeskComputer and register the MCP server in each agent.
+
+---
+
+## Previous Handoff — Current Handoff — Staff runs skip issues with an open linked PR (#1225)
 
 Last updated: 2026-09-22T23:30:00-07:00
 

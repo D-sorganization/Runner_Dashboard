@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1228 · Fleet API agent clients (client, fleetctl, MCP server)
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1228 (epic #1192)
+- **Branch:** `feat/fleet-clients`
+- **PR:** opened after push
+- **Paths:** `clients/fleet/`, `tests/clients/`, `docs/agents/connect.md`, `.github/workflows/ci-standard.yml`, `tests/test_ci_config.py`
+- **Started:** 2026-09-22
+- **Last verified:** 2026-09-22 (`26ffa70` + this change; `pytest tests/clients` 66 passed on the WSL venv; ruff 0.14.10 check/format and mypy 1.13.0 clean on `clients/`)
+- **Summary:** Stdlib-only `FleetClient`, `fleetctl` CLI and hand-written MCP stdio server (15 `fleet_*` tools) generated from one command table, so Claude Code, Codex, Gemini CLI and Grok Bot share the Fleet Coordination API contract v1. The coordination/priorities server side is being built in parallel; the clients follow the contract paths.
+- **Next step:** After the coordination/priorities server PR merges, run `fleetctl briefing --repo Runner_Dashboard` against DeskComputer and register the MCP server in Claude Code, Codex and Gemini.
+
 ### DL-#1223 · Staff Hub node setup documentation
 
 - **State:** in_review
