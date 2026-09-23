@@ -31,6 +31,19 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** Dedicated Linux RM clone refreshed by a serialized systemd user timer at most every 15 minutes, clean-main fast-forward only, backup refs, secret-safe errors, persisted freshness on board. Existing uncached roles load each evaluation; roles route aliases roster. No scheduler or hold changes in application code.
 - **Next step:** Merge, deploy on OGLaptop, back up and switch env, install timer, verify worker holds empty and both Ollama harnesses after #1256. Other node rollout remains owner-directed.
 
+### DL-#1257 · Reboot-safe WSL Ollama bridge
+
+- **State:** in_review
+- **Owner:** codex
+- **Issue:** #1257
+- **Branch:** `fix/issue-1257-ollama-wsl-bridge`
+- **PR:** https://github.com/D-sorganization/Runner_Dashboard/pull/1261
+- **Paths:** `deploy/windows/ollama-wsl-bridge.ps1`, `tests/unit/test_ollama_wsl_bridge.py`, `docs/staff-hub.md`
+- **Started:** 2026-09-23
+- **Last verified:** 2026-09-23 (`SELF`; all 15 planner regressions pass, Ruff passes, Windows 5.1 live dry-run passes)
+- **Summary:** Dynamic WSL NAT discovery, ownership-checked forward/rule reconciliation, explicit legacy adoption, disable-only firewall/task uninstall, backups and owner-installed hidden startup/logon/retry task. Existing OGLaptop bridge remains unchanged until owner installation.
+- **Next step:** Publish through protected CI; owner installs then verifies WSL restart, Windows reboot and external port isolation. Other hosts remain outside this local rollout.
+
 ### DL-#1251 · Deferred Project Visibility
 
 - **State:** in_review
