@@ -17,9 +17,13 @@
 - Frontend TDD: 2 RED missing-details tests, then all 6 Projects tests pass.
   TypeScript, changed-file ESLint and production Vite build pass. Tests preserve
   dispatch behavior and refuse script/data links and executable HTML in notes.
-  Normal commit hooks pass. The full pre-push Python command completed without
-  test failures (existing platform skips and one expected failure). The hook
-  wrapper detected concurrent documentation/UI edits; a frozen rerun is pending.
+  Normal commit hooks pass. The first full Python run had no test failures but
+  its hook wrapper detected concurrent docs/UI edits. A frozen rerun then exposed
+  the static HTML-sanitization audit: the sanitizer helper was outside its local
+  inspection window. `FeatureNotes` now colocates sanitization and HTML rendering.
+  The unchanged frontend-integrity module passes (one existing expected failure),
+  as do all six UI tests, TypeScript, ESLint and the rebuilt production bundle.
+  A final frozen full pre-push run is required before publication.
 - `docs/projects.md` documents owner authority, environment overrides, the limited
   fallback list, pending decisions, deployment verification and rollback.
 - Root fixture configuration and original API error contracts are unchanged.

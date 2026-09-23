@@ -5,12 +5,21 @@ import { marked } from "marked";
 import { Badge } from "../../primitives/Badge";
 import type { ProjectFeature } from "./types";
 
-function safeNotes(notes: string): string {
-  return DOMPurify.sanitize(marked.parseInline(notes, { async: false }), {
-    ALLOWED_TAGS: ["a", "strong", "em", "code", "br"],
-    ALLOWED_ATTR: ["href", "title"],
-    ALLOWED_URI_REGEXP: /^https?:\/\//i,
-  });
+function FeatureNotes({ notes }: { notes: string }): React.ReactElement {
+  return (
+    <div
+      dangerouslySetInnerHTML={{
+        __html: DOMPurify.sanitize(
+          marked.parseInline(notes, { async: false }),
+          {
+            ALLOWED_TAGS: ["a", "strong", "em", "code", "br"],
+            ALLOWED_ATTR: ["href", "title"],
+            ALLOWED_URI_REGEXP: /^https?:\/\//i,
+          },
+        ),
+      }}
+    />
+  );
 }
 
 export function FeatureDetails({
@@ -32,11 +41,7 @@ export function FeatureDetails({
             {feature.tracking !== "-" && (
               <div>Tracking: {feature.tracking}</div>
             )}
-            {feature.notes && (
-              <div
-                dangerouslySetInnerHTML={{ __html: safeNotes(feature.notes) }}
-              />
-            )}
+            {feature.notes && <FeatureNotes notes={feature.notes} />}
           </li>
         ))}
       </ul>
