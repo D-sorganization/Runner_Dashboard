@@ -307,6 +307,20 @@ describe("StaffPage", () => {
     expect(screen.queryByTestId("board-liveness-alerts")).not.toBeInTheDocument();
   });
 
+  it("assign lists only dispatchable, non-retired roles", async () => {
+    const chatOnly = { ...ROSTER.roles[0], name: "barb", title: "Barb", dispatchable: false, surface: "grok-chat" };
+    stubFetch((url) =>
+      url === "/api/staff/roster" ? { status: 200, body: { ...ROSTER, roles: [...ROSTER.roles, chatOnly] } } : undefined,
+    );
+    render(<StaffPage />);
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Assign" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("tab", { name: "Assign" }));
+    await waitFor(() => expect(screen.getByLabelText("Role")).toHaveValue("night-watch"));
+    const options = Array.from((screen.getByLabelText("Role") as HTMLSelectElement).options).map((o) => o.value);
+    expect(options).not.toContain("barb");
+    expect(options).not.toContain("archivist");
+  });
+
   it("assign preview posts dry_run with CSRF header and shows the plan", async () => {
     const fetchMock = stubFetch((url, opts) => {
       if (url === "/api/staff/night-watch/run" && opts?.method === "POST") {

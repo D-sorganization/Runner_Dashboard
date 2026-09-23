@@ -5,6 +5,7 @@
 **Last Updated:** 2026-09-22T00:00:00-07:00
 **Status:** Active
 
+- **2026-09-23:** Assign role picker filters `dispatchable`; Active work warnings collapse into `<details>` (#1241, epic #1192).
 - **2026-09-23:** Staff prompt fleet focus (#1239, epic #1192). `staff.focus.focus_paragraph(repo, items)` filters
   `priorities.service.top_priorities` to board items whose project matches the repo and directives scoped to it or `*`
   (≤5); `compose_prompt(focus=)` places it before the fleet rules; `RunPlan.focus` is in the dry-run plan.
