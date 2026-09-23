@@ -1,4 +1,15 @@
-# Current handoff — drained WSL restart verified (#1257)
+# Current handoff — Windows reboot and duplicate-IP diagnosis (#1257)
+
+- Worktree `/home/dieterolson/staff-builds/oglaptop-windows-recovery`; branch `docs/oglaptop-windows-recovery`; commit `SELF`.
+- Windows booted at 15:05:09 PT; bridge configured result at 15:06:35; dashboard and all six providers recovered. Post-Windows-reboot provider runs all succeeded; IDs in canonical node runbook. Staff scheduler stays off.
+- Windows TCP/IP logged duplicate DHCP address 192.168.4.202 three times; reconnection obtained 192.168.4.203. Controlled DNS/HTTPS tests passed with all firewall profiles enabled. Original outage is best explained by the duplicate address, not the narrow WSL Ollama rule.
+- A delayed rollback from the first diagnostic undid the second successful Domain-enable test. Operational scripts were backed up and corrected; owner asked to enable Domain again. Verify live firewall state before claiming final protection restored.
+- CI capacity restored at 15:33 PT: IDs 217–224 back in group 1, original enabled states restored, CI scheduler timer active and units 1–4 running. Staff scheduler remains off. Keep empty maintenance group and backups.
+- Router allocation conflict and external port-isolation checks remain follow-ups. Preserve firewall backups in `_deploy/firewall-diagnosis-*` and drain metadata in `_deploy/oglaptop-drain-20260923`.
+
+---
+
+## Previous handoff — drained WSL restart verified (#1257)
 
 - Worktree `/home/dieterolson/staff-builds/oglaptop-restart-validation`; branch `docs/oglaptop-restart-validation`; commit `SELF`.
 - Owner authorized drain and refreshed WSL GitHub admin:org permission. Only runner IDs 217–224 moved from group 1 into dedicated empty-access group 6; existing Bandwidth-Draining group 5 has repository access and was not changed.
