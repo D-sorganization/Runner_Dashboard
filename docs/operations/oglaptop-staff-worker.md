@@ -84,6 +84,59 @@ If this recurs, inspect the system journal before concluding the timer stopped;
 restarting a user manager interrupts its user services and requires a quiet
 maintenance window.
 
+## Windows reboot and network diagnosis (2026-09-23)
+
+Windows boot time changed to **15:05:09 PT**. The bridge wrote a successful
+configured result at **15:06:35**, and WSL could reach Windows Ollama afterward.
+The dashboard recovered at the same deployed commit, with Staff scheduling
+off, empty worker holds and all six providers available. All post-Windows-reboot
+checks succeeded with exit 0:
+
+| Provider | Run |
+| --- | --- |
+| Claude | `run-864e41672c0b` |
+| Codex | `run-ecbdbcfcd9f7` |
+| Antigravity | `run-0ddcad1824a4` |
+| Cursor | `run-ecc6678e11bb` |
+| Ollama via Codex | `run-342a2641c92c` |
+| Ollama via Claude | `run-b04b13787763` |
+
+The owner reported all Windows websites unavailable after reboot. System/Tcpip
+event **4199** recorded duplicate address `192.168.4.202` at **15:05:46,
+15:11:00 and 15:18:03**, conflicting with MAC `90-6A-EB-81-45-30` (not a local
+adapter). DNS also timed out. Wi-Fi is DHCP-managed by `192.168.4.1`; after
+reconnection it acquired `192.168.4.203` at **15:21:24**. The duplicate address
+is the strongest observed explanation for the outage. Prevent recurrence by
+identifying that device and correcting router DHCP/static-address allocation;
+do not assign this laptop an arbitrary static address.
+
+The owner disabled Domain firewall at 15:21:11, shortly before reconnecting.
+Private protection remained enabled on the active Wi-Fi profile. A controlled
+administrator check subsequently passed GitHub/Google/Cloudflare DNS+HTTPS
+with **all three profiles enabled**, demonstrating that disabling Domain was
+unnecessary for current connectivity. The bridge only allows inbound TCP11434
+from the WSL subnet and does not change profile defaults or outbound policy.
+
+Diagnostic caveat: the first probe rolled back because microsoft.com timed out
+even with Domain off. Its delayed rollback then erroneously ran after the
+successful second probe, turning Domain off again at 15:29:56. This was a
+diagnostic-script error, not the original outage. The scripts were backed up
+and corrected to disarm delayed rollback after either a completed rollback
+or success. Owner was asked to re-enable Domain once more; verify live state
+before claiming final protection restored.
+
+CI capacity was restored at approximately **15:33 PT**: runner IDs 217–224
+returned to group 1, original boot-enabled states were restored, and the CI
+scheduler timer resumed. The governed scheduler started units 1–4; units 5–8
+were not manually started. The empty maintenance group and all backups remain.
+The separate Staff Hub scheduler is still off. Windows repository work may
+resume; coordinate any future runner restarts around active jobs.
+
+Full firewall/profile backups and probe logs:
+`C:\Users\diete\Repositories\_deploy\firewall-diagnosis-20260923-152654`
+and `firewall-diagnosis-20260923-152938`. Drain and reboot records remain in
+`_deploy\oglaptop-drain-20260923`. External port isolation remains unverified.
+
 ## Installed tools and authentication
 
 All sign-ins were completed by the owner. Do not inspect, copy, print, or put

@@ -40,9 +40,9 @@ reachable from any live state and `abandoned` from `parked`.
 - **PR:** https://github.com/D-sorganization/Runner_Dashboard/pull/1261
 - **Paths:** `deploy/windows/ollama-wsl-bridge.ps1`, `tests/unit/test_ollama_wsl_bridge.py`, `docs/staff-hub.md`
 - **Started:** 2026-09-23
-- **Last verified:** 2026-09-23 (`SELF`; SYSTEM task result 0; safe CI drain and actual WSL shutdown/start passed; all six providers succeeded afterward; automatic RM timer execution verified in journal; Windows reboot and external isolation pending)
+- **Last verified:** 2026-09-23 (`SELF`; WSL and Windows reboots completed; bridge recovered automatically and all six providers succeeded afterward; duplicate-address evidence explains browser outage; all-profile-enabled DNS/HTTPS test passed; CI capacity restored; final Domain re-enable pending)
 - **Summary:** Dynamic WSL NAT discovery, ownership-checked forward/rule reconciliation, explicit legacy adoption, disable-only firewall/task uninstall, backups and owner-installed hidden startup/logon/retry task. Existing OGLaptop bridge remains unchanged until owner installation.
-- **Next step:** Complete owner-coordinated Windows reboot and external isolation acceptance, then restore saved CI capacity. Dedicated OGLaptop maintenance group 6 has zero repository access; original membership and unit states are backed up. WSL restart verification is complete.
+- **Next step:** Confirm final Domain protection; retain external isolation acceptance as pending. Router DHCP/static-allocation conflict needs owner follow-up. Both reboot checks, six-provider recovery and CI capacity restoration are verified.
 
 ### DL-#1251 · Deferred Project Visibility
 
