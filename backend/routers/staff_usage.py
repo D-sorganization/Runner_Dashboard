@@ -10,13 +10,14 @@ Routes (under ``/api/staff``; the ``/api/staff/`` alt-auth prefix applies):
 Kept out of ``routers/staff.py`` so it lands alongside #1195/#1196 without conflicts.
 """
 
+# ruff: noqa: B008
 from __future__ import annotations
 
 import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from identity import require_fleet_peer, require_orchestrator_peer
+from identity import Principal, format_caller, require_scope
 from staff import usage
 from staff.pricing import price_table_rows
 from staff.runner import get_runner
@@ -30,7 +31,7 @@ router = APIRouter(prefix="/api/staff", tags=["staff"])
 async def get_usage(
     since: str | None = Query(default=None, max_length=40),
     group: str = Query(default="provider", max_length=10),
-    _peer: str = Depends(require_fleet_peer),
+    _peer: Principal = Depends(require_scope("staff.read")),
 ) -> dict[str, Any]:
     """Usage rows for this node. ``since`` defaults to the start of today (UTC)."""
     if group not in USAGE_GROUPS:
@@ -42,12 +43,16 @@ async def get_usage(
 
 
 @router.get("/usage/pricing")
-async def get_pricing(_peer: str = Depends(require_fleet_peer)) -> dict[str, Any]:
+async def get_pricing(
+    _peer: Principal = Depends(require_scope("staff.read")),
+) -> dict[str, Any]:
     return {"rows": price_table_rows()}
 
 
 @router.post("/usage/export")
-async def export_usage(caller: str = Depends(require_orchestrator_peer)) -> dict[str, Any]:
+async def export_usage(
+    caller: Principal = Depends(require_scope("staff.admin")),
+) -> dict[str, Any]:
     """Append today's per-provider totals to RM ``data/credit_usage.json``.
 
     503 when no Repository_Management checkout (``STAFF_RM_ROOT`` or sibling)
@@ -57,5 +62,10 @@ async def export_usage(caller: str = Depends(require_orchestrator_peer)) -> dict
         result = usage.export_to_rm(get_runner().store)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
-    log.info("staff: usage export by %s → %s", caller, "ok" if result["ok"] else "partial failure")
+    caller_str = format_caller(caller)
+    log.info(
+        "staff: usage export by %s → %s",
+        caller_str,
+        "ok" if result["ok"] else "partial failure",
+    )
     return result

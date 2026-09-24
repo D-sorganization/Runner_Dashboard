@@ -10,6 +10,7 @@ Auth mirrors ``routers/staff.py``: reads ``require_fleet_peer``, mutations
 hook, gated by ``STAFF_SCHEDULER_ENABLED`` (default ``1``).
 """
 
+# ruff: noqa: B008
 from __future__ import annotations
 
 import logging
@@ -18,7 +19,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from identity import require_fleet_peer, require_orchestrator_peer
+from identity import Principal, format_caller, require_scope
 from pydantic import BaseModel, Field
 from staff.holds import MAX_TEXT
 from staff.scheduler import get_scheduler
@@ -72,25 +73,30 @@ def start_scheduler() -> None:
 
 
 @router.get("/holds")
-async def get_holds(_peer: str = Depends(require_fleet_peer)) -> dict[str, Any]:
+async def get_holds(
+    _peer: Principal = Depends(require_scope("staff.read")),
+) -> dict[str, Any]:
     holds = get_scheduler().holds
     return {"holds": [h.to_dict() for h in holds.load()], "path": str(holds.path)}
 
 
 @router.put("/holds")
-async def put_holds(body: HoldsBody, caller: str = Depends(require_orchestrator_peer)) -> dict[str, Any]:
+async def put_holds(body: HoldsBody, caller: Principal = Depends(require_scope("staff.holds.write"))) -> dict[str, Any]:
     """Replace the holds list. Postcondition: the file on disk equals the response."""
     holds = get_scheduler().holds
     try:
         saved = holds.replace([h.model_dump() for h in body.holds])
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    log.info("staff: holds replaced by %s (%d holds)", caller, len(saved))
+    caller_str = format_caller(caller)
+    log.info("staff: holds replaced by %s (%d holds)", caller_str, len(saved))
     return {"holds": [h.to_dict() for h in saved], "path": str(holds.path)}
 
 
 @router.get("/schedule")
-async def get_schedule(_peer: str = Depends(require_fleet_peer)) -> dict[str, Any]:
+async def get_schedule(
+    _peer: Principal = Depends(require_scope("staff.read")),
+) -> dict[str, Any]:
     sched = get_scheduler()
     now = datetime.now(UTC)
     return {

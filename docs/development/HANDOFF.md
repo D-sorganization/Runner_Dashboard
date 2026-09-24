@@ -1,4 +1,66 @@
-# Current handoff — Staff run watchdog and idle timeout (#1294)
+# Current handoff — Enforce scopes on staff mutations and reads (#1295)
+
+Last updated: 2026-09-24
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `C:/Users/diete/Repositories/_worktrees/Runner_Dashboard-1295`; branch `fix/1295-staff-scopes`; baseline `ad49dff`; commit `SELF`; PR not created at commit time. Issue #1295, epic #1347 / umbrella #1354; DL-#1295.
+
+## Work
+
+- `backend/identity.py`:
+  - Added new fine-grained staff and maintenance scopes: `staff.read`, `staff.chat`, `staff.dispatch`, `staff.cancel`, `staff.holds.write`, `staff.approve`, `staff.admin`, `fleet.maintain`.
+  - Updated `SCOPE_PRESETS`:
+    - `operator`: includes all staff scopes (`staff.read staff.chat staff.dispatch staff.cancel staff.holds.write staff.approve staff.admin fleet.maintain`).
+    - `viewer`: includes `staff.read` (along with `assistant.chat`).
+    - `bot`: includes `staff.read`, `staff.chat`, `staff.dispatch`, `staff.cancel` (Grok Bot/Barb, Claude Cowork, Codex orchestrate and cancel stale runs, but cannot write holds or perform staff admin).
+    - `fleet-peer`: fixed set (`staff.read`, `staff.dispatch`, `staff.cancel`, `staff.chat`, `fleet.maintain`).
+    - `loopback`: scoped development capabilities without unrestricted wildcard admin (`roles=["loopback"]`).
+  - Enhanced `require_scope(required_scope: str)` with `@functools.cache`:
+    - Checks `request.app.dependency_overrides` for `require_principal`, `require_orchestrator_peer`, `require_fleet_peer`.
+    - Resolves caller via service token, session cookie, intra-fleet peer bearer token (`HUB_FLEET_TOKEN`), or loopback address (`DASHBOARD_LOOPBACK_AUTH=1`).
+    - Tailnet fallback for `staff.read` when no `HUB_FLEET_TOKEN` is configured.
+    - Rejects unauthenticated requests with 401 and unauthorized requests with 403 naming the missing scope.
+  - Updated `resolve_perimeter_principal()` to recognize `HUB_FLEET_TOKEN` bearer tokens as `fleet-peer`.
+- `backend/routers/staff.py`:
+  - Read routes (`/roster`, `/roles`, `/board`, `/summary`, `/runs`, `/runs/{id}`, `/runs/{id}/stream`) now require `staff.read`.
+  - Dispatch route (`/{role}/run`) requires `staff.dispatch`.
+  - Cancel route (`/runs/{id}/cancel`) requires `staff.cancel`.
+  - Preserved caller logging via `format_caller` helper in `backend/identity.py`.
+- `backend/routers/staff_schedule.py`:
+  - Read routes (`/holds`, `/schedule`) require `staff.read`.
+  - Mutation route (`PUT /holds`) requires `staff.holds.write`.
+- `backend/routers/staff_usage.py`:
+  - Read routes (`/usage`, `/usage/pricing`) require `staff.read`.
+  - Export route (`POST /usage/export`) requires `staff.admin`.
+- `tests/api/test_staff_scopes.py`:
+  - Added 9 unit and integration tests covering the scope presets matrix, 403 on missing scope for dispatch/cancel/holds/admin, 200 on valid scope, fleet peer token admission, and loopback auth scoping.
+- `tests/api/test_auth_perimeter.py`:
+  - Updated loopback test assertion to expect `roles=['loopback']`.
+- `tests/api/test_structural_auth_perimeter.py`:
+  - Added `_all_routes()` helper to traverse Starlette 0.40+ / FastAPI included routers.
+- `SPEC.md`: Bumped to 2.5.214 with change log and specification updates.
+- `docs/development/DEVELOPMENT_LOG.md`: Added DL-#1295 and marked DL-#1294 shipped.
+
+## Validation
+
+- `pytest tests/api/test_staff_scopes.py`: 9 passed.
+- `pytest tests/api/test_auth_perimeter.py`: 17 passed.
+- `pytest tests/api/test_structural_auth_perimeter.py`: 13 passed.
+- Full staff test suite (14 test files): 149 passed.
+- `ruff check`: passed with 0 errors.
+- `black --check`: passed with 0 errors.
+- `mypy`: passed with 0 errors in 5 source files.
+
+## Next
+
+1. Commit changes, push branch, open PR with `Fixes #1295`, and enable auto-merge.
+2. Monitor CI to green and merge.
+3. Release lease on #1295 and clean up worktree.
+
+---
+
+# Previous handoff — Staff run watchdog and idle timeout (#1294)
 
 Last updated: 2026-09-24
 

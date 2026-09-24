@@ -199,7 +199,7 @@ def test_loopback_allowed_when_env_var_set() -> None:
         mock_request.state = MagicMock()
 
         prin = _identity.require_principal(request=mock_request, header_token=None, cookie_token=None)
-        assert "admin" in prin.roles
+        assert "loopback" in prin.roles
         assert prin.id == "__loopback__"
     finally:
         os.environ.pop("DASHBOARD_LOOPBACK_AUTH", None)

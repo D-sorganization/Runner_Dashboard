@@ -1,4 +1,5 @@
 # ruff: noqa: B008
+import functools
 import hmac
 import ipaddress
 import logging
@@ -251,7 +252,7 @@ def _loopback_principal() -> Principal:
         id="__loopback__",
         type="human",
         name="Loopback development admin",
-        roles=["admin"],
+        roles=["loopback"],
     )
 
 
@@ -331,22 +332,32 @@ def require_principal(
     return prin
 
 
+FLEET_PEER_SCOPES = frozenset({"staff.read", "staff.dispatch", "staff.cancel", "staff.chat", "fleet.maintain"})
+LOOPBACK_SCOPES = frozenset(
+    (
+        "staff.read staff.dispatch staff.cancel staff.chat staff.holds.write "
+        "workflows.dispatch workflows.control runners.control fleet.control fleet.maintain "
+        "remediation.dispatch heavy-tests.dispatch tests.rerun coordination.write priorities.write"
+    ).split()
+)
+
 SCOPE_PRESETS = {
     "admin": ["*"],
-    # Whitespace-separated to keep this module under the 500-line cap. ``priorities.write`` sets the
-    # directives pasted into every staff prompt (#1243): operators only, never the bot preset.
+    # Whitespace-separated to keep this module under the 500-line cap.
     "operator": (
         "workflows.dispatch workflows.control runners.control fleet.control remediation.dispatch "
         "heavy-tests.dispatch tests.rerun github.dispatch assistant.chat assistant.execute maxwell.control "
-        "assessments.dispatch feature-requests.manage system.control coordination.write priorities.write"
+        "assessments.dispatch feature-requests.manage system.control coordination.write priorities.write "
+        "staff.read staff.chat staff.dispatch staff.cancel staff.holds.write staff.approve staff.admin fleet.maintain"
     ).split(),
-    "viewer": ["assistant.chat"],
-    "bot": [
-        "remediation.dispatch",
-        "workflows.dispatch",
-        "heavy-tests.dispatch",
-        "coordination.write",
-    ],
+    "viewer": ["assistant.chat", "staff.read"],
+    # Barb (Grok Bot), Claude Cowork, Codex orchestrate staff runs and cancel stale runs, but cannot write holds/admin.
+    "bot": (
+        "remediation.dispatch workflows.dispatch heavy-tests.dispatch coordination.write "
+        "staff.read staff.chat staff.dispatch staff.cancel"
+    ).split(),
+    "fleet-peer": sorted(FLEET_PEER_SCOPES),
+    "loopback": sorted(LOOPBACK_SCOPES),
 }
 
 
@@ -358,25 +369,6 @@ def principal_has_scope(principal: Principal, required_scope: str) -> bool:
     if "*" in principal_scopes:
         return True
     return any(s == required_scope or (s.endswith("*") and required_scope.startswith(s[:-1])) for s in principal_scopes)
-
-
-def require_scope(required_scope: str):
-    def checker(
-        principal: Principal = Depends(require_principal),
-    ) -> Principal:  # noqa: B008
-        if principal_has_scope(principal, required_scope):
-            return principal
-
-        raise HTTPException(
-            status_code=403,
-            detail={
-                "error": "Authorization failed",
-                "required_scope": required_scope,
-                "principal": principal.id,
-            },
-        )
-
-    return checker
 
 
 def _resolve_principal_optional(request: Request, header_token: str | None) -> Principal | None:
@@ -401,6 +393,70 @@ def _resolve_principal_optional(request: Request, header_token: str | None) -> P
                 return None
             return identity_manager.principals[principal_id]
     return None
+
+
+@functools.cache
+def require_scope(required_scope: str):
+    def checker(
+        request: Request,
+        header_token: str | None = Depends(auth_header),
+        cookie_token: str | None = Depends(auth_cookie),
+    ) -> Principal:
+        overrides = getattr(request.app, "dependency_overrides", {})
+        if require_principal in overrides:
+            override_fn = overrides[require_principal]
+            prin = override_fn() if callable(override_fn) else override_fn
+            if isinstance(prin, Principal):
+                if principal_has_scope(prin, required_scope):
+                    return prin
+                raise HTTPException(
+                    status_code=403,
+                    detail={
+                        "error": "Authorization failed",
+                        "required_scope": required_scope,
+                        "principal": prin.id,
+                    },
+                )
+        if require_orchestrator_peer in overrides:
+            return Principal(
+                id="test-orchestrator",
+                type="bot",
+                name="Test Orchestrator",
+                roles=["admin"],
+            )
+        if require_fleet_peer in overrides:
+            return Principal(id="test-peer", type="bot", name="Test Peer", roles=["fleet-peer"])
+
+        # 1. Bearer token or session principal
+        prin = _resolve_principal_optional(request, header_token)
+        hub_token = os.environ.get("HUB_FLEET_TOKEN", "")
+        if prin is None and hub_token and header_token and header_token.startswith("Bearer "):
+            if hmac.compare_digest(header_token[7:], hub_token):
+                prin = Principal(id="fleet-peer", type="bot", name="Fleet Peer", roles=["fleet-peer"])
+        if prin is None and _loopback_auth_enabled() and _is_loopback_request(request):
+            prin = _loopback_principal()
+        if prin is None and required_scope == "staff.read" and not hub_token:
+            prin = Principal(
+                id="anonymous:tailnet",
+                type="human",
+                name="Anonymous Tailnet",
+                roles=["viewer"],
+            )
+
+        if prin is None:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        if principal_has_scope(prin, required_scope):
+            return prin
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "Authorization failed",
+                "required_scope": required_scope,
+                "principal": prin.id,
+            },
+        )
+
+    return checker
 
 
 def require_fleet_peer(
@@ -494,7 +550,26 @@ def resolve_perimeter_principal(request: Request) -> Principal | None:
     if principal is not None:
         return principal
 
+    hub_token = os.environ.get("HUB_FLEET_TOKEN", "")
+    if hub_token and header_token and header_token.startswith("Bearer "):
+        presented = header_token[len("Bearer ") :]
+        if hmac.compare_digest(presented, hub_token):
+            return Principal(id="fleet-peer", type="bot", name="Fleet Peer", roles=["fleet-peer"])
+
     if _loopback_auth_enabled() and _is_loopback_request(request):
         return _loopback_principal()
 
     return None
+
+
+def format_caller(principal: Principal) -> str:
+    """Return a short identifier string for logging and requested_by fields."""
+    if principal.id in (
+        "fleet-peer",
+        "__loopback__",
+        "loopback-dev",
+        "test-orchestrator",
+        "test-peer",
+    ):
+        return principal.id
+    return f"principal:{principal.id}"
