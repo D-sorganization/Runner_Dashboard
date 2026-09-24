@@ -8620,6 +8620,32 @@
         "tags": ["staff"]
       }
     },
+    "/api/staff/roles": {
+      "get": {
+        "operationId": "roster_api_staff_roles_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Roster Api Staff Roles Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Roster",
+        "tags": ["staff"]
+      }
+    },
     "/api/staff/roster": {
       "get": {
         "operationId": "roster_api_staff_roster_get",
