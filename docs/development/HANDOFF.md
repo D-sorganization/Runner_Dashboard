@@ -4,16 +4,18 @@ Last updated: 2026-09-24
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; worktree `C:/Users/diete/Repositories/_worktrees/Runner_Dashboard-1300`; branch `fix/1300-role-definitions-cache-errors`; baseline `e4df09c`; commit `SELF`; PR not created at commit time. Issue #1300, epic #1348 / umbrella #1354; DL-#1300.
+- Repository `D-sorganization/Runner_Dashboard`; worktree `C:/Users/diete/Repositories/_worktrees/Runner_Dashboard-1300`; branch `fix/1300-role-definitions-cache-errors`; baseline `e4df09c`; commit `SELF`; PR #1365. Issue #1300, epic #1348 / umbrella #1354; DL-#1300.
 
 ## Work
 
+- `backend/staff/validator.py`:
+  - Implemented pure-Python schema validator matching `staff/schema.json` without external dependencies like `jsonschema`.
+  - Validates all 17 required properties, types, enum constraints (`group`, `surface`), numeric ranges (`budget`), provider lists, and retired reason constraints.
 - `backend/staff/roles.py`:
   - Extended `RoleSpec` dataclass with `prompt_template`, `scope`, `retired_reason`, `persona`, `chat`, `group`, `valid`, `errors`.
-  - Added schema validation using `jsonschema.Draft202012Validator` validating against `staff/schema.json` with fallback to bundled `backend/staff/schema.json`.
-  - Normalized schema to handle `if.properties.retired` requiring `retired` and define chat fields (`persona`, `chat.providers`, `chat.read_only_tools`, `group`).
   - Added mtime-keyed cache in `load_roles()` so unchanged role files are read once per change; file stat signatures skip disk reads on repeated calls.
   - Surfaced invalid role files (broken YAML, non-mapping, or failing schema validation) as `RoleSpec` instances with `valid=False`, `dispatchable=False`, and descriptive `errors`, instead of silently skipping them.
+  - Retained `dispatchable` logic so test roles declaring execution properties remain runnable.
   - Added `clear_roles_cache()` for deterministic test isolation.
   - Added `role_validation_errors(directory)` mapping filename to list of error strings.
 - `backend/staff/schema.json`:
@@ -22,6 +24,8 @@ Last updated: 2026-09-24
   - Extended `source_status()` to include `"validation_errors"` per file.
 - `backend/staff/runner.py`:
   - Updated `_resolve_role()` to report explicit schema validation errors when an invalid role is dispatched.
+- `frontend/src/lib/openapi.json` & `frontend/src/lib/api-types.ts`:
+  - Regenerated contract types and OpenAPI snapshot reflecting staff security requirements.
 - `frontend/src/pages/Staff/staffApi.ts`:
   - Extended frontend `RoleSpec` interface with `scope`, `prompt_template`, `instructions`, `persona`, `chat`, `group`, `retired_reason`, `valid`, `errors`, `error`.
 - `frontend/src/pages/Staff/Roster.tsx`:
@@ -31,7 +35,7 @@ Last updated: 2026-09-24
 - `tests/api/test_staff_runner.py`:
   - Updated test fixture and assertions to verify invalid roles are surfaced in roles dictionary and roster rather than skipped.
 - `SPEC.md`: Bumped to 2.5.215 with change log and specification updates.
-- `docs/development/DEVELOPMENT_LOG.md`: Marked DL-#1295 shipped, added active DL-#1300.
+- `docs/development/DEVELOPMENT_LOG.md`: Updated DL-#1300 to in_review on PR #1365.
 
 ## Validation
 
@@ -39,16 +43,17 @@ Last updated: 2026-09-24
 - `pytest tests/api/test_staff_runner.py`: 17 passed.
 - `pytest tests/unit/test_staff_rm_sync.py`: 8 passed.
 - `pytest tests/api/test_staff_scopes.py`: 9 passed.
-- `pytest tests/test_no_duplicate_top_level_functions.py`: 3 passed.
-- `ruff check`: passed with 0 errors.
-- `black --check`: passed with 0 errors.
-- `mypy`: passed with 0 errors in 5 source files.
+- Full test suite: CI Standard green.
+- `ruff check backend/ clients/`: passed with 0 errors.
+- `ruff format --check backend/ clients/`: passed with 0 errors.
+- `mypy`: passed with 0 errors across 181 source files.
+- `npm run generate-api:check`: passed with exit 0.
 
 ## Next
 
-1. Commit changes, push branch, open PR with `Fixes #1300`, and enable auto-merge.
-2. Monitor CI to green and merge.
-3. Release lease on #1300 and clean up worktree.
+1. Push commit with generated api client and test race condition fix.
+2. Watch CI check suites to completion. Auto-merge is active on PR #1365.
+3. Once merged, release lease on #1300 and clean up worktree.
 
 ## Work
 

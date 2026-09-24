@@ -20,16 +20,16 @@ reachable from any live state and `abandoned` from `parked`.
 
 ### DL-#1300 · SC-B8: Load full role definitions and surface invalid roles
 
-- **State:** in_progress
+- **State:** in_review
 - **Owner:** antigravity
 - **Issue:** #1300 (epic #1348 / umbrella #1354)
 - **Branch:** `fix/1300-role-definitions-cache-errors`
-- **PR:** not created
-- **Paths:** `backend/staff/roles.py`, `backend/staff/schema.json`, `backend/staff/rm_sync.py`, `backend/staff/runner.py`, `tests/unit/test_staff_roles.py`, `tests/api/test_staff_runner.py`, `frontend/src/pages/Staff/staffApi.ts`, `frontend/src/pages/Staff/Roster.tsx`, `SPEC.md`
+- **PR:** #1365
+- **Paths:** `backend/staff/roles.py`, `backend/staff/validator.py`, `backend/staff/schema.json`, `backend/staff/rm_sync.py`, `backend/staff/runner.py`, `tests/unit/test_staff_roles.py`, `tests/api/test_staff_runner.py`, `frontend/src/pages/Staff/staffApi.ts`, `frontend/src/pages/Staff/Roster.tsx`, `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `SPEC.md`
 - **Started:** 2026-09-24
 - **Last verified:** 2026-09-24 (`SELF`)
-- **Summary:** Parse and retain full schema and chat role definitions (`scope`, `prompt_template`, `persona`, `chat`, `group`, `retired_reason`). Validate role files against `schema.json` using `jsonschema.Draft202012Validator`. Implement mtime-keyed cache in `load_roles()` so YAML is read once per file change. Surface schema-invalid and broken YAML role files as invalid roles (`valid=False`, `dispatchable=False`, `errors=[...]`) in the roster instead of skipping them. Expose validation errors per file in `rm_sync.source_status()`.
-- **Next step:** Push branch, open PR with gh, enable auto-merge, watch CI to merge.
+- **Summary:** Parse and retain full schema and chat role definitions (`scope`, `prompt_template`, `persona`, `chat`, `group`, `retired_reason`). Validate role files against `schema.json` using pure-Python zero-dependency validator in `staff.validator`. Implement mtime-keyed cache in `load_roles()` so YAML is read once per file change. Surface schema-invalid and broken YAML role files as invalid roles (`valid=False`, `dispatchable=False`, `errors=[...]`) in the roster instead of skipping them. Expose validation errors per file in `rm_sync.source_status()`. Synchronize OpenAPI client schema and API types.
+- **Next step:** Watch CI checks complete and auto-merge land into main.
 
 ### DL-#1295 · SC-F1: Enforce scopes on staff mutations and reads
 

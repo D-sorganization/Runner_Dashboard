@@ -8891,6 +8891,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Board",
@@ -8917,6 +8920,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Holds",
@@ -8962,6 +8968,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Put Holds",
@@ -8988,6 +8997,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Roster",
@@ -9014,6 +9026,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Roster",
@@ -9115,6 +9130,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "List Runs",
@@ -9174,6 +9192,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Run",
@@ -9221,6 +9242,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Cancel Run",
@@ -9276,6 +9300,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Stream Run",
@@ -9302,6 +9329,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Schedule",
@@ -9327,6 +9357,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Summary",
@@ -9394,6 +9427,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Usage",
@@ -9421,6 +9457,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Export Usage",
@@ -9447,6 +9486,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Pricing",
@@ -9505,6 +9547,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Dispatch",
