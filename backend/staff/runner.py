@@ -203,10 +203,12 @@ class StaffRunner:
         if role is None:
             raise ValueError(f"unknown role '{req.role}'")
         if not role.dispatchable:
-            raise ValueError(
-                f"role '{req.role}' is not dispatchable from the dashboard "
-                f"(surface={role.surface}, retired={role.retired})"
+            reason = (
+                f"schema errors: {'; '.join(role.errors)}"
+                if not role.valid
+                else f"surface={role.surface}, retired={role.retired}"
             )
+            raise ValueError(f"role '{req.role}' is not dispatchable from the dashboard ({reason})")
         return role
 
     def _resolve_provider(self, req: RunRequest, role: RoleSpec) -> str:

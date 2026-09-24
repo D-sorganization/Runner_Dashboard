@@ -56,8 +56,18 @@ export interface RoleSpec {
   holds: string[];
   surface: string | null;
   retired: boolean;
+  retired_reason?: string;
   /** Optional `strategy:` block from the role YAML (#1213); absent on older nodes. */
   strategy?: RoleStrategy;
+  scope?: Record<string, unknown>;
+  prompt_template?: string | null;
+  instructions?: string;
+  persona?: string;
+  chat?: Record<string, unknown>;
+  group?: string | null;
+  valid?: boolean;
+  errors?: string[];
+  error?: string | null;
   dispatchable: boolean;
   source_path: string;
   active_runs: number;

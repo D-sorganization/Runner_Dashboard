@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from staff.roles import role_validation_errors
 from staff.store import _config_dir
 
 log = logging.getLogger("dashboard.staff.rm_sync")
@@ -62,14 +63,24 @@ def source_status(root: Path | None = None, *, state_path: Path | None = None) -
     """Read revision/freshness without Git or network work in the request path."""
     configured = os.environ.get("STAFF_RM_ROOT")
     root = root or (Path(configured).expanduser() if configured else None)
+    roles_path = (root / "staff" / "roles") if root and (root / "staff" / "roles").is_dir() else None
+    validation_errs = role_validation_errors(roles_path)
+
     state = _read(state_path or _state_path())
     if root is None or state.get("root") != str(root.resolve()):
-        return {"status": "not_checked", "commit": None, "commit_age_seconds": None, "check_age_seconds": None}
+        return {
+            "status": "not_checked",
+            "commit": None,
+            "commit_age_seconds": None,
+            "check_age_seconds": None,
+            "validation_errors": validation_errs,
+        }
     now = time.time()
     return {
         **state,
-        "commit_age_seconds": max(0, int(now - state["commit_time"])) if state.get("commit_time") else None,
-        "check_age_seconds": max(0, int(now - state["checked_at"])) if state.get("checked_at") else None,
+        "commit_age_seconds": (max(0, int(now - state["commit_time"])) if state.get("commit_time") else None),
+        "check_age_seconds": (max(0, int(now - state["checked_at"])) if state.get("checked_at") else None),
+        "validation_errors": validation_errs,
     }
 
 
@@ -85,7 +96,12 @@ def refresh(root: Path, *, state_path: Path | None = None) -> dict[str, Any]:
     now = time.time()
     if previous.get("root") == str(root) and 0 <= now - previous.get("checked_at", 0) < INTERVAL_SECONDS:
         return previous
-    state: dict[str, Any] = {"root": str(root), "checked_at": now, "status": "unchanged", "commit": None}
+    state: dict[str, Any] = {
+        "root": str(root),
+        "checked_at": now,
+        "status": "unchanged",
+        "commit": None,
+    }
     try:
         config = os.environ.get("GIT_CONFIG_GLOBAL")
         if not config or not Path(config).expanduser().is_file():
@@ -124,7 +140,11 @@ def refresh(root: Path, *, state_path: Path | None = None) -> dict[str, Any]:
     except (OSError, ValueError, subprocess.SubprocessError):
         pass
     _write(path, state)
-    log.info("RM source refresh: %s (%s)", state["status"], state.get("reason", state.get("commit")))
+    log.info(
+        "RM source refresh: %s (%s)",
+        state["status"],
+        state.get("reason", state.get("commit")),
+    )
     return state
 
 

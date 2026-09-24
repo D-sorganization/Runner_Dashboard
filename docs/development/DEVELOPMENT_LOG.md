@@ -18,18 +18,31 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1295 · SC-F1: Enforce scopes on staff mutations and reads
+### DL-#1300 · SC-B8: Load full role definitions and surface invalid roles
 
 - **State:** in_progress
 - **Owner:** antigravity
-- **Issue:** #1295 (epic #1347 / umbrella #1354)
-- **Branch:** `fix/1295-staff-scopes`
+- **Issue:** #1300 (epic #1348 / umbrella #1354)
+- **Branch:** `fix/1300-role-definitions-cache-errors`
 - **PR:** not created
-- **Paths:** `backend/identity.py`, `backend/routers/staff.py`, `backend/routers/staff_schedule.py`, `backend/routers/staff_usage.py`, `tests/api/test_staff_scopes.py`, `tests/api/test_auth_perimeter.py`, `tests/api/test_structural_auth_perimeter.py`, `SPEC.md`
+- **Paths:** `backend/staff/roles.py`, `backend/staff/schema.json`, `backend/staff/rm_sync.py`, `backend/staff/runner.py`, `tests/unit/test_staff_roles.py`, `tests/api/test_staff_runner.py`, `frontend/src/pages/Staff/staffApi.ts`, `frontend/src/pages/Staff/Roster.tsx`, `SPEC.md`
 - **Started:** 2026-09-24
 - **Last verified:** 2026-09-24 (`SELF`)
-- **Summary:** Enforced fine-grained scopes on all staff endpoints (`staff.read`, `staff.dispatch`, `staff.cancel`, `staff.holds.write`, `staff.admin`). Updated `SCOPE_PRESETS` for operator, viewer, bot, fleet-peer, and loopback. Scoped loopback development auth away from unrestricted wildcard admin. Enhanced `require_scope` with `@functools.cache`, supporting service tokens, sessions, fleet peer tokens, loopback dev, and test dependency overrides. Unauthorized requests fail with 401; callers lacking required scope fail with 403 naming the missing scope.
+- **Summary:** Parse and retain full schema and chat role definitions (`scope`, `prompt_template`, `persona`, `chat`, `group`, `retired_reason`). Validate role files against `schema.json` using `jsonschema.Draft202012Validator`. Implement mtime-keyed cache in `load_roles()` so YAML is read once per file change. Surface schema-invalid and broken YAML role files as invalid roles (`valid=False`, `dispatchable=False`, `errors=[...]`) in the roster instead of skipping them. Expose validation errors per file in `rm_sync.source_status()`.
 - **Next step:** Push branch, open PR with gh, enable auto-merge, watch CI to merge.
+
+### DL-#1295 · SC-F1: Enforce scopes on staff mutations and reads
+
+- **State:** shipped
+- **Owner:** antigravity
+- **Issue:** #1295 (epic #1347 / umbrella #1354)
+- **Branch:** `fix/1295-staff-scopes`
+- **PR:** #1364
+- **Paths:** `backend/identity.py`, `backend/routers/staff.py`, `backend/routers/staff_schedule.py`, `backend/routers/staff_usage.py`, `tests/api/test_staff_scopes.py`, `tests/api/test_auth_perimeter.py`, `tests/api/test_structural_auth_perimeter.py`, `SPEC.md`
+- **Started:** 2026-09-24
+- **Last verified:** 2026-09-24 (`87161cd`)
+- **Summary:** Enforced fine-grained scopes on all staff endpoints (`staff.read`, `staff.dispatch`, `staff.cancel`, `staff.holds.write`, `staff.admin`). Updated `SCOPE_PRESETS` for operator, viewer, bot, fleet-peer, and loopback. Scoped loopback development auth away from unrestricted wildcard admin. Enhanced `require_scope` with `@functools.cache`, supporting service tokens, sessions, fleet peer tokens, loopback dev, and test dependency overrides. Unauthorized requests fail with 401; callers lacking required scope fail with 403 naming the missing scope.
+- **Next step:** None (shipped in PR #1364).
 
 ### DL-#1294 · SC-A5: Staff run watchdog and idle timeout
 
