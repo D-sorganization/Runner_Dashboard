@@ -11,7 +11,6 @@ RM checkout (e.g. a fresh laptop), so the Staff tab renders instead of 503ing.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import threading
@@ -19,8 +18,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import jsonschema
 import yaml
+from staff.validator import validate_role_data
 
 log = logging.getLogger("dashboard.staff.roles")
 
@@ -159,63 +158,6 @@ def schema_path() -> Path:
     return _LOCAL_SCHEMA_PATH
 
 
-_VALIDATOR: jsonschema.Draft202012Validator | None = None
-_VALIDATOR_LOCK = threading.Lock()
-
-
-def _get_validator() -> jsonschema.Draft202012Validator:
-    global _VALIDATOR
-    with _VALIDATOR_LOCK:
-        if _VALIDATOR is not None:
-            return _VALIDATOR
-        path = schema_path()
-        try:
-            schema_data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            schema_data = json.loads(_LOCAL_SCHEMA_PATH.read_text(encoding="utf-8"))
-
-        for clause in schema_data.get("allOf", []):
-            if "if" in clause and "properties" in clause["if"] and "retired" in clause["if"]["properties"]:
-                reqs = clause["if"].setdefault("required", [])
-                if "retired" not in reqs:
-                    reqs.append("retired")
-
-        providers_prop = schema_data.get("properties", {}).get("providers", {})
-        if "items" in providers_prop and "enum" in providers_prop["items"]:
-            del providers_prop["items"]["enum"]
-
-        props = schema_data.setdefault("properties", {})
-        props.setdefault("persona", {"type": "string"})
-        props.setdefault("group", {"type": ["string", "null"]})
-        props.setdefault(
-            "chat",
-            {
-                "type": "object",
-                "properties": {
-                    "providers": {"type": "array", "items": {"type": "string"}},
-                    "read_only_tools": {"type": "array", "items": {"type": "string"}},
-                },
-            },
-        )
-        _VALIDATOR = jsonschema.Draft202012Validator(schema_data)
-        return _VALIDATOR
-
-
-def validate_role_data(data: Any) -> list[str]:
-    """Validate parsed role mapping against staff/schema.json."""
-    if not isinstance(data, dict):
-        return ["top level is not a mapping"]
-    validator = _get_validator()
-    errors: list[str] = []
-    for err in sorted(validator.iter_errors(data), key=lambda e: (list(e.path), e.message)):
-        loc = ".".join(str(p) for p in err.path)
-        if loc:
-            errors.append(f"{loc}: {err.message}")
-        else:
-            errors.append(err.message)
-    return errors
-
-
 def _as_tuple(value: Any) -> tuple[str, ...]:
     if isinstance(value, str):
         return (value,)
@@ -336,14 +278,12 @@ _CACHE_ERRORS: dict[str, list[str]] = {}
 
 def clear_roles_cache() -> None:
     """Clear in-memory roles and validation cache (useful in tests)."""
-    global _CACHE_DIR_SIG, _CACHE_ROLES, _CACHE_FILE_ENTRIES, _CACHE_ERRORS, _VALIDATOR
+    global _CACHE_DIR_SIG, _CACHE_ROLES, _CACHE_FILE_ENTRIES, _CACHE_ERRORS
     with _CACHE_LOCK:
         _CACHE_DIR_SIG = None
         _CACHE_ROLES = {}
         _CACHE_FILE_ENTRIES = {}
         _CACHE_ERRORS = {}
-    with _VALIDATOR_LOCK:
-        _VALIDATOR = None
 
 
 def _read_and_parse_role_file(path: Path) -> RoleSpec:
