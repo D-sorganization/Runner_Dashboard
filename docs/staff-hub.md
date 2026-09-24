@@ -218,8 +218,9 @@ them and never to contradict a directive. The paragraph appears as `focus` in a 
 
 Verified machine state, deployment identity, provider health evidence, network
 configuration, and rollback paths are recorded in the
-[OGLaptop worker runbook](operations/oglaptop-staff-worker.md). Check its
-verification date and the live API before assuming the recorded state still holds.
+[OGLaptop worker runbook](operations/oglaptop-staff-worker.md) and
+[ControlTower worker runbook](operations/controltower-staff-worker.md). Check their
+verification dates and the live API before assuming the recorded state still holds.
 
 A node that runs staff roles needs four things beyond the dashboard install. DeskComputer was set up this
 way on 2026-09-22; `_deploy/node_bootstrap_staff_hub.sh` in the operator workspace does all of it.
@@ -394,6 +395,48 @@ no ping reply is a device holding that address.
 **Recover:** reconnect the adapter, or run `ipconfig /release` then `ipconfig /renew`,
 to get a different lease. Then fix the router reservations so the next reboot
 does not repeat it.
+
+## Three-node fleet acceptance (#1273)
+
+The Staff Hub operates across three primary hardware nodes:
+1. **DeskComputer** — The dedicated fleet scheduler (`STAFF_SCHEDULER_ENABLED=1`).
+2. **OGLaptop** — Worker node (`STAFF_SCHEDULER_ENABLED=0`). Runbook: [OGLaptop worker runbook](operations/oglaptop-staff-worker.md).
+3. **ControlTower** — Worker node (`STAFF_SCHEDULER_ENABLED=0`). Runbook: [ControlTower worker runbook](operations/controltower-staff-worker.md).
+
+### Unified Acceptance Standard
+
+All nodes must pass the single unified acceptance test:
+
+```bash
+deploy/staff-node-acceptance.sh [--role worker|scheduler] [--run-ad-hoc]
+```
+
+### Fleet Qualification Matrix
+
+| Dimension | DeskComputer | OGLaptop | ControlTower |
+| --- | --- | --- | --- |
+| **Role** | Scheduler | Worker | Worker |
+| **`STAFF_SCHEDULER_ENABLED`** | `1` | `0` | `0` |
+| **Deployment** | 4.10.0+ on loopback `:8321` | 4.10.0+ on loopback `:8321` | 4.10.0+ on loopback `:8321` |
+| **Live RM Source** | `~/staff-repos/Repository_Management` | `~/staff-repos/Repository_Management` | `~/staff-repos/Repository_Management` |
+| **Sync Timer** | `runner-dashboard-rm-sync.timer` | `runner-dashboard-rm-sync.timer` | `runner-dashboard-rm-sync.timer` |
+| **User Lingering** | Enabled (`Linger=yes`) | Enabled (`Linger=yes`) | Enabled (`Linger=yes`) |
+| **Git Config** | `staff.gitconfig` (gh auth helper) | `staff.gitconfig` (gh auth helper) | `staff.gitconfig` (gh auth helper) |
+| **Windows Ollama** | Bound `127.0.0.1:11434` | Bound `127.0.0.1:11434` | Bound `127.0.0.1:11434` |
+| **Ollama WSL Bridge** | `StaffHub-Ollama-WSL-Bridge` SYSTEM task | `StaffHub-Ollama-WSL-Bridge` SYSTEM task | `StaffHub-Ollama-WSL-Bridge` SYSTEM task |
+| **Provider Suite** | Claude, Codex, Antigravity, Cursor, Ollama | Claude, Codex, Antigravity, Cursor, Ollama | Claude, Codex, Antigravity, Cursor, Ollama |
+| **Worker Holds** | N/A (manages holds) | Zero blocking worker holds | Zero blocking worker holds |
+
+### Acceptance Criteria Checklist
+1. **Deployment & API**: `curl -fsS http://127.0.0.1:8321/api/health` returns status `ok`.
+2. **Identity**: `gh auth status` confirms valid WSL GitHub authentication with no embedded tokens.
+3. **CLIs**: Node v24 LTS in PATH; `claude`, `codex`, `agy`, `cursor-agent` executable.
+4. **Service Drop-in**: `staff-hub.conf` has `MemoryDenyWriteExecute=false`, provider PATH, and all required `ReadWritePaths`.
+5. **Dynamic Role Sync**: `rm_source` in `/api/staff/board?local=1` reports status `ok`; active timer refreshes at most every 15 min.
+6. **Holds**: `/api/staff/schedule` reports no worker roles blocked by active holds.
+7. **Scheduler Invariant**: Only DeskComputer runs with `STAFF_SCHEDULER_ENABLED=1`; worker nodes strictly enforce `0`.
+8. **Ollama Reachability**: Gateway `11434/api/version` returns HTTP 200 without exposing Ollama to the physical LAN or Tailscale.
+9. **Provider Verification**: Ad-hoc health check runs succeed with exit code 0 and emit `STAFF_RESULT: ok`.
 
 ## Provider Options (#1252)
 
