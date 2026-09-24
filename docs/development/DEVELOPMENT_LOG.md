@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1289 · Staff tab spend today dictionary support
+
+- **State:** in_progress
+- **Owner:** local
+- **Issue:** #1289 (epic #1354)
+- **Branch:** `fix/1289-staff-spend-today-dict`
+- **PR:** not created
+- **Paths:** `backend/routers/staff.py`, `backend/staff/fleet.py`, `frontend/src/pages/Staff/Board.tsx`, `frontend/src/pages/Staff/staffApi.ts`, `frontend/src/pages/__tests__/Staff.test.tsx`, `tests/api/test_staff_fleet.py`, `SPEC.md`
+- **Started:** 2026-09-24
+- **Last verified:** 2026-09-24 (`SELF`)
+- **Summary:** Opening Staff crashed when spend_today_usd was a per-provider dict because Board passed it to (value ?? 0).toFixed. Fixed by making formatUsd defensive (renders em dash on non-numbers/non-finites and logs once), typing spend_today_usd as Record<string, number>, rendering total and per-provider tooltip breakdown, and adding Pydantic response models for /board and /summary.
+- **Next step:** Open PR, verify CI passes, and land via auto-merge.
+
 ### DL-#1280 · Feature Request dispatch reports its real outcome
 
 - **State:** in_review

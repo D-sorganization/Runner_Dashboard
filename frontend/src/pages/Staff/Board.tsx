@@ -9,10 +9,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { Badge } from "../../primitives/Badge";
 import { TimeAgo } from "../../primitives/TimeAgo";
+import { Tooltip } from "../../primitives/Tooltip";
 import {
   BOARD_POLL_MS,
   errorMessage,
   fetchBoard,
+  formatSpendSummary,
   formatUsd,
   groupByMachine,
   livenessAlerts,
@@ -50,13 +52,31 @@ export function Board({ onOpenRun }: BoardProps) {
     };
   }, [load]);
 
+  const spendSummary = board ? formatSpendSummary(board.spend_today_usd) : null;
+
   return (
     <section className="glass-card staff-board" aria-label="Staff board">
       <div className="staff-board__header">
         <h3 className="staff-board__title">Board</h3>
-        {board ? (
+        {board && spendSummary ? (
           <span className="staff-board__meta">
-            spend today <strong data-testid="board-spend">{formatUsd(board.spend_today_usd)}</strong>
+            spend today{" "}
+            {spendSummary.breakdown ? (
+              <Tooltip content={spendSummary.breakdown} placement="bottom">
+                <strong
+                  data-testid="board-spend"
+                  title={spendSummary.breakdown}
+                  tabIndex={0}
+                  style={{ cursor: "help" }}
+                >
+                  {formatUsd(spendSummary.total)}
+                </strong>
+              </Tooltip>
+            ) : (
+              <strong data-testid="board-spend">
+                {formatUsd(spendSummary.total)}
+              </strong>
+            )}
             {" · "}
             <TimeAgo iso={board.generated_at} live />
           </span>

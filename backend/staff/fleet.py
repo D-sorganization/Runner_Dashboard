@@ -132,8 +132,10 @@ async def aggregate_board(local_board: dict[str, Any], peers: dict[str, str] | N
         queued.extend(board.get("queued", []))
         liveness_alerts.extend(staff_liveness.alerts(board.get("liveness") or [], name))
         for provider, usd in (board.get("spend_today_usd") or {}).items():
-            spend[provider] = round(spend.get(provider, 0.0) + float(usd), 6)
+            if provider != "total":
+                spend[provider] = round(spend.get(provider, 0.0) + float(usd), 6)
         providers[name] = dict(board.get("providers") or {})
+    spend["total"] = round(sum(v for k, v in spend.items() if k != "total"), 6)
     return {
         "generated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "hub": local_name,

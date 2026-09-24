@@ -9,6 +9,7 @@
 
 | Date       | PR / Issue | Summary                                                                                                                               |
 | ---------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-09-24 | #1289      | Staff board spend defensive handling: type spend_today_usd as dict with total, show per-provider breakdown in tooltip, add Pydantic response models. |
 | 2026-09-23 | #1280      | Feature Request dispatch reports the real outcome: 502 + `failed` history entry when the RM workflow is missing; list exposes cached `dispatchTarget`; UI disables dispatch and shows errors. |
 | 2026-09-23 | #1257 / #1273 rollout | Record OGLaptop 31a9104 Python 3.11 redeployment, unified 44/0 worker acceptance, backups and portproxy cleanup status. |
 | 2026-09-23 | #1276      | Staff node acceptance: parse API JSON, real scheduler/provider/rm_source fields, OGLaptop timer link, 15 min ad-hoc wait, --expect-sha; ControlTower runbook facts. |
