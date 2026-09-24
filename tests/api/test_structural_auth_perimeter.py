@@ -25,6 +25,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 from starlette.routing import Route
@@ -43,7 +44,12 @@ from middleware import (  # noqa: E402
 )
 
 _MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
-_AUTH_DEP_NAMES = {"require_principal", "require_fleet_peer", "require_scope", "checker"}
+_AUTH_DEP_NAMES = {
+    "require_principal",
+    "require_fleet_peer",
+    "require_scope",
+    "checker",
+}
 
 
 def _dependency_callable_names(route: Route) -> set[str]:
@@ -67,9 +73,21 @@ def _route_is_auth_protected(route: Route) -> bool:
     return bool(_dependency_callable_names(route) & _AUTH_DEP_NAMES)
 
 
+def _all_routes(routes: Any) -> list[Route]:
+    out: list[Route] = []
+    for r in routes:
+        if isinstance(r, Route):
+            out.append(r)
+        elif hasattr(r, "original_router") and hasattr(r.original_router, "routes"):
+            out.extend(_all_routes(r.original_router.routes))
+        elif hasattr(r, "routes"):
+            out.extend(_all_routes(r.routes))
+    return out
+
+
 def _mutating_api_routes() -> list[tuple[str, str, Route]]:
     rows: list[tuple[str, str, Route]] = []
-    for route in server.app.routes:
+    for route in _all_routes(server.app.routes):
         if not isinstance(route, Route) or not route.methods:
             continue
         if not route.path.startswith("/api/"):
@@ -106,7 +124,7 @@ def test_alt_auth_prefixes_actually_cover_routes() -> None:
     """Guard the alt-auth allowlist: every prefix must match a real route, so a
     stale entry (e.g. after a route is removed) surfaces instead of silently
     widening the perimeter."""
-    all_paths = {route.path for route in server.app.routes if isinstance(route, Route)}
+    all_paths = {route.path for route in _all_routes(server.app.routes)}
     for prefix in _ALT_AUTH_EXEMPT_PREFIXES:
         assert any(p.startswith(prefix) for p in all_paths), (
             f"_ALT_AUTH_EXEMPT_PREFIXES entry {prefix!r} matches no route; prune it."
@@ -220,7 +238,7 @@ def test_fleet_status_keeps_its_own_fleet_peer_dependency() -> None:
     """Exempting `/api/fleet/status` from the structural perimeter must not strip
     its dedicated `require_fleet_peer` auth — it stays governed by the fleet
     model, just not by the operator-principal perimeter."""
-    routes = [r for r in server.app.routes if getattr(r, "path", None) == "/api/fleet/status"]
+    routes = [r for r in _all_routes(server.app.routes) if getattr(r, "path", None) == "/api/fleet/status"]
     assert routes, "/api/fleet/status route not found"
     names: set[str] = set()
     for r in routes:

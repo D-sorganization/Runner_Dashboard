@@ -18,18 +18,31 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1294 · SC-A5: Staff run watchdog and idle timeout
+### DL-#1295 · SC-F1: Enforce scopes on staff mutations and reads
 
 - **State:** in_progress
 - **Owner:** antigravity
+- **Issue:** #1295 (epic #1347 / umbrella #1354)
+- **Branch:** `fix/1295-staff-scopes`
+- **PR:** not created
+- **Paths:** `backend/identity.py`, `backend/routers/staff.py`, `backend/routers/staff_schedule.py`, `backend/routers/staff_usage.py`, `tests/api/test_staff_scopes.py`, `tests/api/test_auth_perimeter.py`, `tests/api/test_structural_auth_perimeter.py`, `SPEC.md`
+- **Started:** 2026-09-24
+- **Last verified:** 2026-09-24 (`SELF`)
+- **Summary:** Enforced fine-grained scopes on all staff endpoints (`staff.read`, `staff.dispatch`, `staff.cancel`, `staff.holds.write`, `staff.admin`). Updated `SCOPE_PRESETS` for operator, viewer, bot, fleet-peer, and loopback. Scoped loopback development auth away from unrestricted wildcard admin. Enhanced `require_scope` with `@functools.cache`, supporting service tokens, sessions, fleet peer tokens, loopback dev, and test dependency overrides. Unauthorized requests fail with 401; callers lacking required scope fail with 403 naming the missing scope.
+- **Next step:** Push branch, open PR with gh, enable auto-merge, watch CI to merge.
+
+### DL-#1294 · SC-A5: Staff run watchdog and idle timeout
+
+- **State:** shipped
+- **Owner:** antigravity
 - **Issue:** #1294 (epic #1347 / umbrella #1354)
 - **Branch:** `fix/1294-staff-watchdog`
-- **PR:** not created
+- **PR:** #1363
 - **Paths:** `backend/staff/watchdog.py`, `tests/unit/test_staff_watchdog.py`, `backend/staff/runner.py`, `backend/staff/roles.py`, `backend/staff/reconcile.py`, `SPEC.md`
 - **Started:** 2026-09-24
 - **Last verified:** 2026-09-24 (`SELF`)
 - **Summary:** Added independent staff process watchdog monitoring wall-clock deadline (`budget.max_minutes`, default 4h) and idle deadline (`idle_minutes`, default 20m) independent of stdout line pumping; on expiry terminates/kills child process group (recursively cleaning up child and grandchild processes); marks run failed with failure_class='timeout', 'stalled', or 'unkillable'; emits periodic heartbeats every minute; emits critical fleet event on unkillable processes.
-- **Next step:** Run linters, push branch, open PR, enable auto-merge.
+- **Next step:** None (shipped).
 
 ### DL-#1293 · SC-A4: Reconcile orphaned staff runs
 

@@ -16,6 +16,7 @@ routes); mutations use ``require_orchestrator_peer`` so Barb/Orchestrator can
 call with the fleet bearer token and a local Conductor can call over loopback.
 """
 
+# ruff: noqa: B008
 from __future__ import annotations
 
 import asyncio
@@ -26,7 +27,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from identity import require_fleet_peer, require_orchestrator_peer
+from identity import Principal, require_scope
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from staff import consolidation
 from staff import fleet as staff_fleet
@@ -117,7 +118,9 @@ def _today_iso() -> str:
 
 @router.get("/roster")
 @router.get("/roles")
-async def roster(_peer: str = Depends(require_fleet_peer)) -> dict[str, Any]:
+async def roster(
+    _peer: Principal = Depends(require_scope("staff.read")),
+) -> dict[str, Any]:
     runner = get_runner()
     roles = runner.roles()
     active = runner.store.active_runs()
@@ -158,7 +161,7 @@ async def board(
         default=False,
         description="Return only this node's board (used by hub fan-out).",
     ),
-    _peer: str = Depends(require_fleet_peer),
+    _peer: Principal = Depends(require_scope("staff.read")),
 ) -> dict[str, Any]:
     """Status monitor. With peers configured this is the fleet-wide view (#1195)."""
     runner = get_runner()
@@ -186,7 +189,9 @@ def _holds_snapshot() -> list[dict[str, Any]]:
 
 
 @router.get("/summary", response_model=StaffSummaryResponse, response_model_exclude_none=True)
-async def summary(_peer: str = Depends(require_fleet_peer)) -> dict[str, Any]:
+async def summary(
+    _peer: Principal = Depends(require_scope("staff.read")),
+) -> dict[str, Any]:
     """The one-call brief for Barb and Orchestrator (#1195).
 
     Flat payload: what is in flight fleet-wide, what needs attention (failed or
@@ -258,7 +263,7 @@ async def list_runs(
     role: str | None = Query(default=None, max_length=60),
     status: str | None = Query(default=None, max_length=20),
     since: str | None = Query(default=None, max_length=40),
-    _peer: str = Depends(require_fleet_peer),
+    _peer: Principal = Depends(require_scope("staff.read")),
 ) -> dict[str, Any]:
     if status is not None and status not in RUN_STATUSES:
         raise HTTPException(status_code=422, detail=f"status must be one of {', '.join(RUN_STATUSES)}")
@@ -270,7 +275,7 @@ async def list_runs(
 async def get_run(
     run_id: str,
     events: int = Query(default=200, ge=0, le=MAX_LIMIT),
-    _peer: str = Depends(require_fleet_peer),
+    _peer: Principal = Depends(require_scope("staff.read")),
 ) -> dict[str, Any]:
     store = get_runner().store
     rec = store.get_run(run_id)
@@ -284,7 +289,7 @@ async def get_run(
 async def stream_run(
     run_id: str,
     after: int = Query(default=0, ge=0),
-    _peer: str = Depends(require_fleet_peer),
+    _peer: Principal = Depends(require_scope("staff.read")),
 ) -> StreamingResponse:
     """SSE feed of run events. Ends with an ``end`` event when the run finishes."""
     store = get_runner().store
@@ -322,13 +327,26 @@ async def stream_run(
     )
 
 
+def _caller_name(principal: Principal) -> str:
+    if principal.id in (
+        "fleet-peer",
+        "__loopback__",
+        "loopback-dev",
+        "test-orchestrator",
+        "test-peer",
+    ):
+        return principal.id
+    return f"principal:{principal.id}"
+
+
 @router.post("/runs/{run_id}/cancel")
-async def cancel_run(run_id: str, caller: str = Depends(require_orchestrator_peer)) -> dict[str, Any]:
+async def cancel_run(run_id: str, caller: Principal = Depends(require_scope("staff.cancel"))) -> dict[str, Any]:
     runner = get_runner()
     if runner.store.get_run(run_id) is None:
         raise HTTPException(status_code=404, detail="run not found")
     ok = runner.cancel(run_id)
-    log.info("staff: cancel %s by %s → %s", run_id, caller, ok)
+    caller_str = _caller_name(caller)
+    log.info("staff: cancel %s by %s → %s", run_id, caller_str, ok)
     rec = runner.store.get_run(run_id)
     return {"cancelled": ok, "run": rec.to_dict() if rec else None}
 
@@ -372,7 +390,11 @@ async def _forward(target: str, role: str, body: RunBody, caller: str) -> dict[s
 
 
 @router.post("/{role}/run")
-async def dispatch(role: str, body: RunBody, caller: str = Depends(require_orchestrator_peer)) -> dict[str, Any]:
+async def dispatch(
+    role: str,
+    body: RunBody,
+    caller: Principal = Depends(require_scope("staff.dispatch")),
+) -> dict[str, Any]:
     """Dispatch a staff run on this node, or preview it with ``dry_run``.
 
     Precondition: the role exists and is dispatchable; the provider is allowed
@@ -387,6 +409,7 @@ async def dispatch(role: str, body: RunBody, caller: str = Depends(require_orche
     decision = None
     if spec is not None and body.repo and consolidation.threshold(spec) is not None:
         decision = await asyncio.to_thread(consolidation.decide, spec, body.repo)  # #1213: gh + capacity I/O
+    caller_str = _caller_name(caller)
     req = RunRequest(
         role=role,
         provider=body.provider,
@@ -396,7 +419,7 @@ async def dispatch(role: str, body: RunBody, caller: str = Depends(require_orche
         pr=body.pr,
         prompt=body.prompt,
         machine=body.machine,
-        requested_by=caller,
+        requested_by=caller_str,
         consolidation=decision,
     )
     try:
@@ -405,7 +428,7 @@ async def dispatch(role: str, body: RunBody, caller: str = Depends(require_orche
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     target = await _resolve_target(runner, body.machine, plan.provider)
     if target != "local":
-        return await _forward(target, role, body, caller)
+        return await _forward(target, role, body, caller_str)
     if body.dry_run:
         return {"dry_run": True, "plan": plan.to_dict(), "machine": runner.machine}
     rec = runner.submit(req)
@@ -416,6 +439,6 @@ async def dispatch(role: str, body: RunBody, caller: str = Depends(require_orche
         rec.provider,
         rec.repo,
         rec.target_ref,
-        caller,
+        caller_str,
     )
     return {"dry_run": False, "run": rec.to_dict(), "machine": runner.machine}
