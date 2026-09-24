@@ -7,6 +7,7 @@ the run store or the provider CLIs.
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -93,7 +94,15 @@ def clone_repo(repo: str) -> Path:
     dest = base / repo
     if not (dest / ".git").exists():
         subprocess.run(  # noqa: S603
-            ["gh", "repo", "clone", f"{ORG}/{repo}", str(dest), "--", "--filter=blob:none"],
+            [
+                "gh",
+                "repo",
+                "clone",
+                f"{ORG}/{repo}",
+                str(dest),
+                "--",
+                "--filter=blob:none",
+            ],
             check=True,
             capture_output=True,
             text=True,
@@ -110,7 +119,72 @@ def add_worktree(checkout: Path, worktree: Path, branch: str) -> None:
 
 
 def _git(cwd: Path, *args: str) -> None:
-    subprocess.run(["git", *args], cwd=str(cwd), check=True, capture_output=True, text=True, timeout=600)  # noqa: S603
+    subprocess.run(
+        ["git", *args],
+        cwd=str(cwd),
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )  # noqa: S603
+
+
+def worktree_has_unpushed_commits(worktree: Path, base_ref: str = "origin/main") -> bool:
+    """Return True if worktree has commits ahead of base_ref or uncommitted changes."""
+    if not worktree.exists() or not worktree.is_dir():
+        return False
+    try:
+        status_res = subprocess.run(  # noqa: S603
+            ["git", "status", "--porcelain"],
+            cwd=str(worktree),
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if status_res.returncode == 0 and status_res.stdout.strip():
+            return True
+        # Try checking against upstream tracking branch first, fallback to base_ref
+        log_res = subprocess.run(  # noqa: S603
+            ["git", "rev-list", "@{u}..HEAD", "--count"],
+            cwd=str(worktree),
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if log_res.returncode == 0:
+            count = int(log_res.stdout.strip() or "0")
+            return count > 0
+
+        fallback_res = subprocess.run(  # noqa: S603
+            ["git", "rev-list", f"{base_ref}..HEAD", "--count"],
+            cwd=str(worktree),
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if fallback_res.returncode == 0:
+            count = int(fallback_res.stdout.strip() or "0")
+            return count > 0
+    except Exception:  # noqa: BLE001
+        return True
+    return False
+
+
+def remove_worktree(worktree: Path, checkout: Path | None = None) -> None:
+    """Safely remove a git worktree."""
+    if checkout is not None and checkout.exists():
+        try:
+            subprocess.run(  # noqa: S603
+                ["git", "worktree", "remove", "--force", str(worktree)],
+                cwd=str(checkout),
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+        except Exception:  # noqa: BLE001
+            pass
+    if worktree.exists():
+        shutil.rmtree(worktree, ignore_errors=True)
 
 
 def compose_prompt(

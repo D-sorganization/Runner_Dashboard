@@ -278,7 +278,12 @@ class StaffRunner:
                 agent = self._adapters[plan.provider].lease_agent
                 if plan.lease_ritual:
                     note = lease_ritual.acquire(
-                        store, rec.id, repo=plan.repo, issue=plan.issue_number, agent=agent, branch=plan.branch
+                        store,
+                        rec.id,
+                        repo=plan.repo,
+                        issue=plan.issue_number,
+                        agent=agent,
+                        branch=plan.branch,
                     )
                     if note is None:
                         return  # blocked; status already recorded
@@ -332,9 +337,12 @@ class StaffRunner:
         argv = adapter.build_command(prompt, str(workdir), plan.model)
         transcript = workdir / ".staff" / "transcript.log"
         transcript.parent.mkdir(parents=True, exist_ok=True)
-        env = {**os.environ, **adapter.runtime_env(), "STAFF_RUN_ID": rec.id, "STAFF_ROLE": plan.role}
-        store.update_run(rec.id, status="running", transcript_path=str(transcript), prompt=prompt)
-        store.append_event(rec.id, "start", f"{adapter.executable} ({plan.provider}) in {workdir}")
+        env = {
+            **os.environ,
+            **adapter.runtime_env(),
+            "STAFF_RUN_ID": rec.id,
+            "STAFF_ROLE": plan.role,
+        }
         exe = shutil.which(adapter.executable) or adapter.executable
         proc = subprocess.Popen(  # noqa: S603
             [exe, *argv[1:]],
@@ -350,6 +358,17 @@ class StaffRunner:
         )
         with self._lock:
             self._procs[rec.id] = proc
+            cancelled = rec.id in self._cancel_flags
+        store.update_run(
+            rec.id,
+            status="running",
+            transcript_path=str(transcript),
+            prompt=prompt,
+            pid=proc.pid,
+        )
+        store.append_event(rec.id, "start", f"{adapter.executable} ({plan.provider}) in {workdir}")
+        if cancelled:
+            proc.terminate()
         if adapter.prompt_via_stdin and proc.stdin is not None:
             proc.stdin.write(prompt + "\n")
             proc.stdin.close()
@@ -378,7 +397,11 @@ class StaffRunner:
         store.append_event(rec.id, "exit", f"exit code {rc} → {status}")
 
     def _pump_output(
-        self, rec: RunRecord, adapter: ProviderAdapter, proc: subprocess.Popen[str], transcript: Path
+        self,
+        rec: RunRecord,
+        adapter: ProviderAdapter,
+        proc: subprocess.Popen[str],
+        transcript: Path,
     ) -> tuple[dict[str, Any], str]:
         """Stream stdout lines into the transcript file and the event store.
 
@@ -401,7 +424,11 @@ class StaffRunner:
                         result_line = text[text.index("STAFF_RESULT:") :]
                 if time.monotonic() > deadline:
                     proc.terminate()
-                    self.store.append_event(rec.id, "timeout", f"run exceeded {RUN_TIMEOUT_SECONDS}s; terminated")
+                    self.store.append_event(
+                        rec.id,
+                        "timeout",
+                        f"run exceeded {RUN_TIMEOUT_SECONDS}s; terminated",
+                    )
                     break
         return usage, result_line
 

@@ -154,7 +154,10 @@ def _local_board(runner: StaffRunner) -> dict[str, Any]:
 
 @router.get("/board", response_model=StaffBoardResponse, response_model_exclude_none=True)
 async def board(
-    local: bool = Query(default=False, description="Return only this node's board (used by hub fan-out)."),
+    local: bool = Query(
+        default=False,
+        description="Return only this node's board (used by hub fan-out).",
+    ),
     _peer: str = Depends(require_fleet_peer),
 ) -> dict[str, Any]:
     """Status monitor. With peers configured this is the fleet-wide view (#1195)."""
@@ -199,11 +202,29 @@ async def summary(_peer: str = Depends(require_fleet_peer)) -> dict[str, Any]:
     for run in recent:
         counts[run.status] = counts.get(run.status, 0) + 1
     attention = [
-        {"id": r.id, "role": r.role, "repo": r.repo, "target_ref": r.target_ref, "status": r.status, "error": r.error}
+        {
+            "id": r.id,
+            "role": r.role,
+            "repo": r.repo,
+            "target_ref": r.target_ref,
+            "status": r.status,
+            "error": r.error,
+            "failure_class": getattr(r, "failure_class", ""),
+        }
         for r in recent
         if r.status in ("failed", "blocked")
     ]
-    keep = ("id", "role", "provider", "machine", "repo", "target_ref", "status", "started_at", "last_line")
+    keep = (
+        "id",
+        "role",
+        "provider",
+        "machine",
+        "repo",
+        "target_ref",
+        "status",
+        "started_at",
+        "last_line",
+    )
     in_flight = [{k: r.get(k) for k in keep} for r in [*board_view["running"], *board_view["queued"]]]
     roles = runner.roles()
     return {
@@ -219,7 +240,13 @@ async def summary(_peer: str = Depends(require_fleet_peer)) -> dict[str, Any]:
         "holds": _holds_snapshot(),
         "liveness_alerts": board_view.get("liveness_alerts", []),
         "roles": [
-            {"name": s.name, "title": s.title, "schedule": s.schedule, "surface": s.surface, "retired": s.retired}
+            {
+                "name": s.name,
+                "title": s.title,
+                "schedule": s.schedule,
+                "surface": s.surface,
+                "retired": s.retired,
+            }
             for s in sorted(roles.values(), key=lambda s: s.name)
         ],
     }
@@ -289,7 +316,9 @@ async def stream_run(
             await asyncio.sleep(STREAM_POLL_SECONDS)
 
     return StreamingResponse(
-        _gen(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+        _gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 
@@ -315,7 +344,10 @@ async def _resolve_target(runner: StaffRunner, machine: str, provider: str) -> s
     resolved = staff_fleet.resolve_machine(machine, runner.machine, peers)
     if resolved is None:
         known = ", ".join([runner.machine, *sorted(peers)]) or runner.machine
-        raise HTTPException(status_code=422, detail=f"unknown machine '{machine}' (known: {known}, or 'auto')")
+        raise HTTPException(
+            status_code=422,
+            detail=f"unknown machine '{machine}' (known: {known}, or 'auto')",
+        )
     return resolved
 
 

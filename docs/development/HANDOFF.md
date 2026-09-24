@@ -1,4 +1,45 @@
-# Current handoff — Per-tab error boundaries and Suspense (#1292)
+# Current handoff — Reconcile orphaned staff runs (#1293)
+
+Last updated: 2026-09-24
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `C:/Users/diete/Repositories/_worktrees/Runner_Dashboard-1293`; branch `fix/1293-reconcile-orphaned-staff-runs`; baseline `8ea99be`; commit `SELF`; PR not created at commit time. Issue #1293, epic #1347 / umbrella #1354; DL-#1293.
+
+## Work
+
+- `backend/staff/reconcile.py`: Created reconciliation module that reconciles runs left active across dashboard restarts on boot before scheduler ticks:
+  - Terminates child processes via PID (`terminate_pid()`) if alive.
+  - Checks worktrees for unpushed commits (`workspace.worktree_has_unpushed_commits()`): preserves dirty/unpushed worktrees with path recorded on the run, and removes clean worktrees (`workspace.remove_worktree()`).
+  - Releases RM issue leases (`_release_lease_with_retry()`) with synchronous attempt and exponential backoff retry in a background daemon thread so RM network failures never block dashboard startup.
+  - Marks runs as `status="failed"`, `failure_class="orphaned"`, `ended_at=_now()`.
+  - Emits `FleetEvent(kind="staff_run_orphaned")` to `EventStore` and surfaces in `summary.attention`.
+- `backend/staff/store.py`: Added `failure_class` and `pid` fields to `RunRecord` and `_ADDED_COLUMNS` schema migration.
+- `backend/staff/runner.py`: Recorded `pid=proc.pid` and synchronized `status="running"` atomically with process registration in `_execute`.
+- `backend/staff/workspace.py`: Added `worktree_has_unpushed_commits()` and `remove_worktree()`.
+- `backend/fleet_events.py`: Added `"staff_run_orphaned"` to `EventKind` literal and `FleetEvent` validation.
+- `backend/routers/staff.py`: Surfaced `failure_class` in `GET /api/staff/summary` attention entries.
+- `backend/routers/staff_schedule.py`: Hooked `reconcile_orphaned_runs()` into `start_scheduler()`.
+- `backend/server.py`: Ensured `start_scheduler()` runs on startup for both leader and non-leader nodes.
+- `tests/unit/test_staff_reconcile.py`: Added 8 tests covering active runs reconciliation, PID termination, unpushed worktree preservation, clean worktree removal, lease release resilience, startup hook execution, scheduler role gate unblocking, and summary attention visibility.
+- `SPEC.md`: Bumped to 2.5.212 and added change log entry.
+- `docs/development/DEVELOPMENT_LOG.md`: Added DL-#1293 and marked DL-#1292 shipped.
+
+## Validation
+
+- `pytest tests/unit/test_staff_reconcile.py`: 8 passed.
+- `pytest tests/api/test_staff*.py tests/unit/test_staff*.py`: 142 passed.
+- `& "C:\Program Files\Git\bin\bash.exe" scripts/gen-api-client.sh --check`: clean (0 drift).
+
+## Next
+
+1. Run linters (`ruff`, `black`, `mypy`), commit, push branch, open PR, and arm auto-merge.
+2. Monitor CI checks to merge.
+3. Release lease on #1293 and clean up worktree.
+
+---
+
+# Previous handoff — Per-tab error boundaries and Suspense (#1292)
 
 Last updated: 2026-09-24
 
