@@ -210,11 +210,12 @@ machines:
         Disk pressure resolved: C: measured 194.8 GB free (20.5%) on
         2026-08-16, not the ~96% used recorded previously. Unlike the other
         hosts, OGLaptop's WSL distro really does live on C:, so C: IS the
-        runner-backing volume here. Network caveat: OGLaptop sits on a separate
-        LAN segment reached over carrier-grade NAT (~96 ms), while
-        ControlTower and DeskComputer share one home LAN (~46 ms direct) —
-        prefer the other hosts for bandwidth-heavy jobs until that link is
-        upgraded. Runner labels use d-sorg-fleet-4core.
+        runner-backing volume here. Network (verified 2026-09-23): OGLaptop is
+        on the same home LAN and router as DeskComputer, over Wi-Fi; the older
+        separate-segment/carrier-grade-NAT note no longer applies. Being on
+        Wi-Fi, it is still the weaker choice for bandwidth-heavy jobs. Give it a
+        DHCP reservation (docs/staff-hub.md, Node LAN addressing).
+        Runner labels use d-sorg-fleet-4core.
   - name: DeskComputer
     aliases:
       - deskcomputer

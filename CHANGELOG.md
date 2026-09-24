@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Staff node acceptance (#1273): `deploy/staff-node-acceptance.sh` gives one pass/fail check per node (with optional per-provider ad-hoc runs); ControlTower runbook `docs/operations/controltower-staff-worker.md`; three-node fleet acceptance in `docs/staff-hub.md`.
 - Staff node LAN guidance (#1270): prevent and diagnose duplicate-address outages after node reboots (router reservations, one LAN interface per node, event 4199 checks, lease renewal instead of firewall changes).
 - Staff Hub provider options (#1252): `cursor-agent` runs unattended with stream-json (Grok models through the Cursor subscription); `ollama` runs Ollama models inside the Codex agent and new `claude-ollama` runs them inside Claude Code, so local and `:cloud` Ollama models can take remediation roles; the Ollama server is found via `STAFF_OLLAMA_URL`, localhost or the WSL default gateway.
 - Staff prompts carry a **Fleet focus** paragraph: the latest board meeting's active priorities for the run's repo plus operator directives for that repo or `*` (at most 5), shown in the dry-run plan as `focus`; advisory and fail-safe when priorities are unavailable (#1239).

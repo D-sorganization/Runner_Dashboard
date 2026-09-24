@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1273 · ControlTower Staff Worker Runbook and Three-Node Fleet Acceptance
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1273 (epic #1192)
+- **Branch:** `docs/1192-controltower-runbook-acceptance`
+- **PR:** opened after push
+- **Paths:** `deploy/staff-node-acceptance.sh`, `tests/deploy/test_staff_node_acceptance_script.py`, `docs/operations/controltower-staff-worker.md`, `docs/staff-hub.md`, `backend/machine_registry.yml`
+- **Started:** 2026-09-23
+- **Last verified:** 2026-09-23 (`5c143ac` + this change; `pytest tests/deploy/test_staff_node_acceptance_script.py` 5 passed; live: DeskComputer 21/21, plus 27/27 with `--dispatch` before the drop-in PATH check was removed; OGLaptop 21/22, failing only the commit check (`35686c4`); ControlTower 7/22 at `5c143ac`, the expected pre-setup gaps)
+- **Summary:** One acceptance script for every staff node and an ordered owner/agent runbook for ControlTower. ControlTower is deployed to `5c143ac` from a Python 3.12 artifact, with lingering and Cursor drop-in paths set; its sign-ins, CLIs, clones, role source and Ollama remain. The registry network note is corrected.
+- **Next step:** Merge, then run the ControlTower runbook steps 1–9 and the three-node acceptance.
+
 ### DL-#1270 · Node LAN Duplicate-Address Prevention
 
 - **State:** in_review

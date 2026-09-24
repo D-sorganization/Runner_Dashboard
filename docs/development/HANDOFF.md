@@ -1,4 +1,21 @@
-# Current Handoff — Node LAN Duplicate-Address Prevention (#1270)
+# Current Handoff — ControlTower Runbook and Three-Node Fleet Acceptance (#1273)
+
+Last updated: 2026-09-23T17:25:00-07:00
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/ct-runbook`; branch `docs/1192-controltower-runbook-acceptance`; commit `SELF`; PR opened after push. Issue #1273 (epic #1192); DL-#1273.
+
+## Work
+
+- `deploy/staff-node-acceptance.sh`: per-node pass/fail. The timer check uses the `timers.target.wants` link, because OGLaptop's WSL has no user D-Bus socket and `systemctl --user` fails from S4U even while the timer runs (its journal shows runs). There is no drop-in PATH check; `provider-installed:*` covers the service PATH.
+- `docs/operations/controltower-staff-worker.md`: state table plus steps 1–9, each marked owner or agent. ControlTower Ollama follows the loopback standard; no config consumes its tailnet Ollama (checked RD, RM and node env).
+- ControlTower deployed to `5c143ac` from DeskComputer with a Python 3.12 artifact (`/mnt/c/Users/diete/Artifacts/Runner_Dashboard/ref-5c143ac-py312`) through `run_task.py`. Lingering is on, the Cursor `ReadWritePaths` are added and the scheduler stays off. The bridge and acceptance scripts are copied to ControlTower's `_deploy`.
+- Baselines: DeskComputer 21/21 (`71500c9`); OGLaptop 21/22, failing only the commit check (`35686c4`, #1262 — redeploy); ControlTower 7/22.
+
+---
+
+## Previous Handoff — Current Handoff — Node LAN Duplicate-Address Prevention (#1270)
 
 Last updated: 2026-09-23T16:40:00-07:00
 

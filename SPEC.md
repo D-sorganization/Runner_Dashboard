@@ -21,6 +21,13 @@
 | 2026-09-23 | #1192      | Record verified OGLaptop worker deployment, six-provider health checks, scoped WSL Ollama connectivity, and rollback paths. |
 | 2026-09-23 | #1251      | Expose all deferred-plan owners and feature IDs/statuses/safe links in Projects; retain owner authority and live rollout under #1248. |
 
+- **2026-09-23:** Staff node acceptance and ControlTower runbook (#1273, epic #1192).
+  `deploy/staff-node-acceptance.sh --scheduler on|off [--dispatch] [--expect-sha]` checks a node end to end: the
+  deployment; sign-ins; drop-in; staff git config and clones; the live RM role source, rm-sync timer enable link and
+  lingering; rm_source freshness; the scheduler expectation; holds; providers on the service PATH; Ollama via the WSL
+  gateway; and optionally one ad-hoc run per provider (its only write). `docs/operations/controltower-staff-worker.md`
+  is the ordered owner/agent path for ControlTower; `docs/staff-hub.md` defines three-node fleet acceptance. The
+  `machine_registry.yml` OGLaptop network note now reflects the shared home LAN.
 - **2026-09-23:** Node LAN duplicate-address prevention (#1270, epic #1192). `docs/staff-hub.md` documents
   the OGLaptop 2026-09-23 outage cause (DHCP address held by a silent LAN device, Tcpip event 4199), router
   reservations for every node and the conflicting device, one active LAN interface per node, read-only diagnosis

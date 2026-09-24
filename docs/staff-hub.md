@@ -395,6 +395,38 @@ no ping reply is a device holding that address.
 to get a different lease. Then fix the router reservations so the next reboot
 does not repeat it.
 
+### Fleet Acceptance: Three Nodes (#1273)
+
+A node is done when `deploy/staff-node-acceptance.sh` passes on it. The script
+runs inside the node's WSL as the dashboard user and checks:
+
+- the deployment and GitHub sign-in;
+- each provider sign-in (Claude service seat, Codex, Cursor);
+- the drop-in, `staff.gitconfig`, the 7 staff clones, the live RM role source,
+  the `rm-sync` timer and user lingering;
+- `rm_source` freshness, the expected scheduler state and no held worker roles;
+- that every provider is installed from the service's own `PATH`, and that
+  Ollama answers through the WSL gateway.
+
+With `--dispatch` it also starts one harmless ad-hoc run per provider and
+requires `succeeded`. That is the only write it makes. The last line is a JSON
+summary; the exit code is 0 only when everything passed.
+
+| Node         | Command                                                           | Runbook                                        |
+| ------------ | ----------------------------------------------------------------- | ---------------------------------------------- |
+| DeskComputer | `bash deploy/staff-node-acceptance.sh --scheduler on --dispatch`  | this page, "Node setup"                        |
+| OGLaptop     | `bash deploy/staff-node-acceptance.sh --scheduler off --dispatch` | `docs/operations/oglaptop-staff-worker.md`     |
+| ControlTower | `bash deploy/staff-node-acceptance.sh --scheduler off --dispatch` | `docs/operations/controltower-staff-worker.md` |
+
+Run it on each node from its `~/staff-repos/Runner_Dashboard` clone. To run it
+on another node from one host, wrap it in a one-line `.ps1` that runs
+`wsl.exe -d <distro> -- bash <script> ... | Add-Content <log>` and pass it to
+`_deploy\remote\run_task.py <host> <name> <ps1> staff-node-acceptance.sh`.
+Never run `wsl.exe` over SSH. The fleet is accepted when all three nodes
+report `"failed":0` on the same commit (`--expect-sha <main sha>`). The hub's
+`GET /api/staff/board` should then list three online machines with their
+providers.
+
 ## Provider Options (#1252)
 
 | Provider        | Launch                                                                                        | Models                                          |
