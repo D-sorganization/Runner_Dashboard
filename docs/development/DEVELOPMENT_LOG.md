@@ -59,6 +59,8 @@ reachable from any live state and `abandoned` from `parked`.
 
 ### DL-#1257 · Reboot-safe WSL Ollama bridge
 
+- **Fleet acceptance follow-up:** OGLaptop redeployed to requested 31a9104 on uv Python 3.11.15; worker acceptance 44 passed / 0 failed with all six provider runs. Previous deployment/env backed up; Staff scheduler stays 0. Owner removed invalid dashboard portproxy at 19:51 PT and disabled its legacy WSL-PortForward recreator at 19:56 PT; netsh confirms only the valid Ollama forward remains. Task XML, script and forwarding backups retained; acceptance confirmed exit 0. Owner reports eero reservations corrected for Xbox .202 and OGLaptop .203.
+
 - **State:** in_review
 - **Owner:** codex
 - **Issue:** #1257

@@ -15,7 +15,7 @@ This setup did not change DeskComputer or ControlTower or enable a second schedu
 | Windows host / WSL distro | `OGLaptop` / `Ubuntu` |
 | Linux user / home | `dieterolson` / `/home/dieterolson` |
 | Dashboard service | `runner-dashboard`, active; loopback port `8321` |
-| Dashboard version / deployed commit | `4.10.0` / `35686c4ebb3c6b65596a43ed6028fc535fea1b27` |
+| Dashboard version / deployed commit | `4.10.0` / `31a91047463695d8506495dcca674a7ae58fdd6b` |
 | Required changes | Includes #1250, #1253, #1256, #1261 and #1262; built from merged main |
 | Runtime | uv-managed CPython `3.11.15`; artifact wheel ABI `3.11` |
 | Scheduler | `0`, verified in the running process environment after deployment |
@@ -23,6 +23,48 @@ This setup did not change DeskComputer or ControlTower or enable a second schedu
 
 The version string alone cannot distinguish the old `f510c4c` deployment from
 this deployment. Check `deployment.git_sha` in `GET /api/health`.
+
+## Fleet acceptance redeployment (2026-09-23)
+
+Deployed the owner's requested main commit **31a9104**, using uv CPython
+3.11.15 and a fresh Python 3.11 artifact. Frontend build, 37-wheel ABI check,
+checksum/inventory checks and offline installer dependency preflight passed.
+No Staff runs were active before deployment. The Windows keepalive task was
+paused during installation and resumed afterward; CI runner services continued.
+
+- Artifact: `~/staff-bundle/rd-31a9104-py311/dashboard-4.10.0.tar.gz`.
+- SHA-256: `30bf613d96c8b137d645509292027b9aab77d3592f52e8e780899425f1b59b18`.
+- Full previous deployment: `~/actions-runners/dashboard.bak-2026-09-23-194302`.
+- Environment backup: `~/.config/runner-dashboard/env.bak-2026-09-23-194302`.
+- Requested acceptance: `bash -l /mnt/c/Users/diete/Repositories/_deploy/staff-node-acceptance.sh --role worker --run-ad-hoc --expect-sha 31a9104`.
+- Result: **44 passed, 0 failed**, confirmed exit code **0**, including all six provider ad-hoc runs;
+  live and configured Staff scheduler both `0`, worker holds empty, live RM source.
+- Receipt: `C:\Users\diete\Repositories\_deploy\staff-acceptance-31a9104-confirmed.log`.
+
+The owner removed the pre-existing invalid portproxy `0.0.0.0:8321 -> R:8321`
+at 19:51 PT with `_deploy/remove-invalid-dashboard-portproxy.ps1`. A subsequent
+local `netsh` inspection confirms only the valid WSL Ollama forward remains:
+`192.168.208.1:11434 -> 127.0.0.1:11434`.
+
+The legacy `WSL-PortForward` task ran `C:\Users\diete\wsl-portforward.ps1`,
+which targets nonexistent distro `Ubuntu-22.04`, does not check WSL failure or
+validate the IP, and creates a dashboard forward on every interface. It could
+recreate an invalid entry. At 19:56 PT the owner ran
+`_deploy/disable-legacy-dashboard-portforward.ps1` and reported task state
+**Disabled**. The task and script were preserved; the Ollama bridge task was
+not changed. Do not re-enable this legacy task.
+
+Cleanup backups under `C:\Users\diete\Repositories\_deploy`:
+
+- `portproxy.bak-20260923-195102.txt`
+- `WSL-PortForward.bak-20260923-195102.xml`
+- `WSL-PortForward.bak-20260923-195609.xml`
+- `wsl-portforward.ps1.bak-20260923-195609`
+
+Owner identified the conflicting LAN device as Xbox and reported correcting
+eero reservations: Xbox MAC `90:6A:EB:81:45:30` to `192.168.4.202`, OGLaptop
+MAC `58:1C:F8:D7:3C:7D` to `192.168.4.203`. Xbox remains Automatic/DHCP.
+OGLaptop's live address is .203; router reservation contents are owner-reported.
 
 ## Controlled restart maintenance (2026-09-23)
 
