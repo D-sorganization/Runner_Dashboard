@@ -303,6 +303,7 @@ export function formatUsd(value: unknown): string {
     const key = String(value);
     if (!warnedFormatUsdInputs.has(key)) {
       warnedFormatUsdInputs.add(key);
+      // eslint-disable-next-line no-console
       console.warn(`[formatUsd] Non-finite or non-number value: ${key}`);
     }
     return "—";

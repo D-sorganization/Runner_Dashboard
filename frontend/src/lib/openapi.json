@@ -1405,6 +1405,231 @@
         "title": "SimpleResponse",
         "type": "object"
       },
+      "StaffBoardResponse": {
+        "additionalProperties": true,
+        "description": "Response model for /api/staff/board (issue #1289).",
+        "properties": {
+          "generated_at": {
+            "description": "ISO-8601 UTC timestamp",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "hub": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hub machine hostname when aggregated",
+            "title": "Hub"
+          },
+          "liveness": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Liveness",
+            "type": "array"
+          },
+          "liveness_alerts": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Liveness Alerts",
+            "type": "array"
+          },
+          "machine": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Local machine hostname",
+            "title": "Machine"
+          },
+          "machines": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Machines"
+          },
+          "offline": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Offline",
+            "type": "array"
+          },
+          "online": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Online",
+            "type": "array"
+          },
+          "providers": {
+            "additionalProperties": true,
+            "title": "Providers",
+            "type": "object"
+          },
+          "queued": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Queued",
+            "type": "array"
+          },
+          "recent": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Recent",
+            "type": "array"
+          },
+          "rm_source": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rm Source"
+          },
+          "running": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Running",
+            "type": "array"
+          },
+          "spend_today_usd": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "Per-provider spend in USD plus a 'total' key (issue #1289)",
+            "title": "Spend Today Usd",
+            "type": "object"
+          }
+        },
+        "required": ["generated_at"],
+        "title": "StaffBoardResponse",
+        "type": "object"
+      },
+      "StaffSummaryResponse": {
+        "additionalProperties": true,
+        "description": "Response model for /api/staff/summary (issue #1289).",
+        "properties": {
+          "attention": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Attention",
+            "type": "array"
+          },
+          "generated_at": {
+            "description": "ISO-8601 UTC timestamp",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "holds": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Holds",
+            "type": "array"
+          },
+          "hub": {
+            "description": "Hub machine hostname",
+            "title": "Hub",
+            "type": "string"
+          },
+          "in_flight": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "In Flight",
+            "type": "array"
+          },
+          "liveness_alerts": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Liveness Alerts",
+            "type": "array"
+          },
+          "machines_offline": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Machines Offline",
+            "type": "array"
+          },
+          "machines_online": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Machines Online",
+            "type": "array"
+          },
+          "providers": {
+            "additionalProperties": true,
+            "title": "Providers",
+            "type": "object"
+          },
+          "recent_24h": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Recent 24H",
+            "type": "object"
+          },
+          "roles": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "spend_today_usd": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "Per-provider spend in USD plus a 'total' key (issue #1289)",
+            "title": "Spend Today Usd",
+            "type": "object"
+          }
+        },
+        "required": ["generated_at", "hub"],
+        "title": "StaffSummaryResponse",
+        "type": "object"
+      },
       "StatusResponse": {
         "properties": {
           "agents": {
@@ -1479,13 +1704,6 @@
       },
       "ValidationError": {
         "properties": {
-          "ctx": {
-            "title": "Context",
-            "type": "object"
-          },
-          "input": {
-            "title": "Input"
-          },
           "loc": {
             "items": {
               "anyOf": [
@@ -8521,9 +8739,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Board Api Staff Board Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/StaffBoardResponse"
                 }
               }
             },
@@ -8969,9 +9185,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Summary Api Staff Summary Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/StaffSummaryResponse"
                 }
               }
             },
