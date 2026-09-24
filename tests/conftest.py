@@ -11,7 +11,7 @@ from pathlib import Path  # noqa: E402
 # root before any backend import can read or mutate operator-owned state.
 _test_config_root = Path.home() / ".config" / "runner-dashboard" / ".test-runs"
 _test_config_root.mkdir(parents=True, exist_ok=True)
-_test_config_dir = tempfile.TemporaryDirectory(prefix="pytest-", dir=_test_config_root)
+_test_config_dir = tempfile.TemporaryDirectory(prefix="pytest-", dir=_test_config_root, ignore_cleanup_errors=True)
 os.environ["RUNNER_DASHBOARD_CONFIG_DIR"] = _test_config_dir.name
 
 # C-extension thread safety. Many "xdist worker crashed" failures
@@ -170,3 +170,20 @@ def mock_auth():
     app.dependency_overrides[require_principal] = _mock_principal
     yield
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _cleanup_stores_session_teardown():
+    yield
+    try:
+        from staff.store import reset_store  # noqa: PLC0415
+
+        reset_store()
+    except Exception:
+        pass
+    try:
+        from staff.audit import reset_audit_store  # noqa: PLC0415
+
+        reset_audit_store()
+    except Exception:
+        pass
