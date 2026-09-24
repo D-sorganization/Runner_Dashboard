@@ -1,4 +1,30 @@
-# Current Handoff — Node LAN Duplicate-Address Prevention (#1270)
+# Current Handoff — Staff Node Acceptance False Failures (#1276)
+
+Last updated: 2026-09-23T18:30:00-07:00
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/fix-1276-acceptance`; branch `fix/1276-staff-node-acceptance`; commit `SELF`; PR opened after push. Issue #1276 (follow-up to #1273/#1274, epic #1192); DL-#1276.
+
+## Work
+
+- `deploy/staff-node-acceptance.sh`: parse API JSON with python3 instead of grep (the nested `deployment.status` broke the health check); read the live scheduler from `/api/staff/schedule` `enabled` (the board has no `scheduler` key); provider `cursor-agent`, not `cursor`; `rm_source` must be `updated`/`unchanged` and checked within an hour; accept the `timers.target.wants` link when `systemctl --user` has no D-Bus (OGLaptop over S4U); ad-hoc runs wait up to 15 minutes; new `--expect-sha`.
+- `tests/deploy/test_staff_node_acceptance.py`: 3 regression tests with a fake `curl` returning the real response shapes.
+- `docs/operations/controltower-staff-worker.md`: distro `ControlTower-Runner`, Python 3.12 artifact recipe, progress already made, exact Ollama rule names (disable, not delete), bridge script path in `_deploy`, sign-in commands, eero reservation step, correct `rm_source`/schedule expectations.
+- `docs/staff-hub.md`: fleet acceptance = all three nodes pass `--run-ad-hoc --expect-sha <main>`; health `healthy`; rm_source statuses.
+
+## Validation
+
+- WSL `~/.cache/rd-test-venv/bin/python -m pytest tests/deploy/test_staff_node_acceptance.py`: 6 passed (3 new tests RED first with the exact live false failures).
+- Live on DeskComputer: before 34 passed / 3 failed; after `--expect-sha 71500c9`: 38 passed / 0 failed. `shellcheck -S warning` clean; `ruff check`/`format --check` clean.
+
+## Next
+
+1. Merge; redeploy DeskComputer, OGLaptop and ControlTower to the merged main.
+2. ControlTower: owner + agent follow `docs/operations/controltower-staff-worker.md`.
+3. Run `staff-node-acceptance.sh --run-ad-hoc --expect-sha <main>` on all three nodes (`--role scheduler` on DeskComputer).
+
+## Previous Handoff — Node LAN Duplicate-Address Prevention (#1270)
 
 Last updated: 2026-09-23T16:40:00-07:00
 

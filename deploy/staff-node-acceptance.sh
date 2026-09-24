@@ -23,6 +23,7 @@ SKIP_SERVICE=0
 SKIP_NETWORK=0
 RUN_AD_HOC=0
 VERBOSE=0
+EXPECT_SHA=""
 
 usage() {
     cat <<EOF
@@ -38,6 +39,7 @@ Options:
   --skip-service        Skip systemctl service and user timer checks (useful in non-systemd test environments)
   --skip-network        Skip Ollama network reachability check
   --run-ad-hoc          Run live ad-hoc health runs for each configured provider
+  --expect-sha SHA      Fail unless the dashboard runs this commit (fleet acceptance: every node on one SHA)
   -v, --verbose         Verbose output
   -h, --help            Show this help message and exit
 EOF
@@ -53,6 +55,7 @@ while [[ $# -gt 0 ]]; do
         --skip-service) SKIP_SERVICE=1; shift ;;
         --skip-network) SKIP_NETWORK=1; shift ;;
         --run-ad-hoc) RUN_AD_HOC=1; shift ;;
+        --expect-sha) EXPECT_SHA="${2:?--expect-sha requires an argument}"; shift 2 ;;
         -v|--verbose) VERBOSE=1; shift ;;
         -h|--help) usage; exit 0 ;;
         *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
@@ -113,6 +116,18 @@ log_verbose() {
     fi
 }
 
+# Print one expression over the JSON on stdin (the dashboard API). grep cannot tell a top-level key from a
+# nested one of the same name (#1276), so parse it; python3 is on every node.
+json_get() {
+    python3 -c 'import json, sys
+try:
+    d = json.load(sys.stdin)
+except ValueError:
+    sys.exit(0)
+v = eval(sys.argv[1])
+print("" if v is None else v)' "$1" 2>/dev/null || true
+}
+
 printf "=== Staff Node Acceptance Check ===\n"
 printf "Node Hostname: %s\n" "$(hostname 2>/dev/null || echo 'unknown')"
 printf "Expected Role: %s (STAFF_SCHEDULER_ENABLED=%s)\n" "$ROLE" "$EXPECTED_SCHEDULER"
@@ -133,8 +148,8 @@ fi
 
 HEALTH_JSON=""
 if HEALTH_JSON="$(curl -fsS --max-time 5 "http://${HOST}:${PORT}/api/health" 2>/dev/null)"; then
-    GIT_SHA="$(printf '%s' "$HEALTH_JSON" | grep -o '"git_sha":"[^"]*' | cut -d'"' -f4 || echo "unknown")"
-    STATUS="$(printf '%s' "$HEALTH_JSON" | grep -o '"status":"[^"]*' | cut -d'"' -f4 || echo "unknown")"
+    GIT_SHA="$(printf '%s' "$HEALTH_JSON" | json_get '(d.get("deployment") or {}).get("git_sha", "")')"
+    STATUS="$(printf '%s' "$HEALTH_JSON" | json_get 'd.get("status", "")')"
     if [[ "$STATUS" == "ok" || "$STATUS" == "healthy" ]]; then
         report_pass "Dashboard API health check" "status=${STATUS}, git_sha=${GIT_SHA}"
     else
@@ -142,6 +157,14 @@ if HEALTH_JSON="$(curl -fsS --max-time 5 "http://${HOST}:${PORT}/api/health" 2>/
     fi
 else
     report_fail "Dashboard API health check unreachable" "http://${HOST}:${PORT}/api/health"
+fi
+
+if [[ -n "$EXPECT_SHA" ]]; then
+    if [[ -n "${GIT_SHA:-}" && "${GIT_SHA:0:7}" == "${EXPECT_SHA:0:7}" ]]; then
+        report_pass "Deployed commit matches" "${GIT_SHA:0:7}"
+    else
+        report_fail "Deployed commit mismatch" "have=${GIT_SHA:-unknown} want=${EXPECT_SHA:0:7}"
+    fi
 fi
 
 # -----------------------------------------------------------------------------
@@ -267,8 +290,11 @@ if [[ "$SKIP_SERVICE" != "1" ]]; then
     if systemctl --user is-active runner-dashboard-rm-sync.timer >/dev/null 2>&1; then
         report_pass "runner-dashboard-rm-sync.timer is active"
     else
-        # Fallback check system journal for timer
-        if journalctl --user -u runner-dashboard-rm-sync.timer -n 5 2>/dev/null | grep -qi "Started"; then
+        # `systemctl --user` fails without a user D-Bus socket (OGLaptop from S4U tasks) even while the
+        # timer runs; the enable link is the durable signal and rm_source freshness below proves it fires.
+        if [[ -L "${HOME}/.config/systemd/user/timers.target.wants/runner-dashboard-rm-sync.timer" ]]; then
+            report_pass "runner-dashboard-rm-sync.timer is enabled" "timers.target.wants link"
+        elif journalctl --user -u runner-dashboard-rm-sync.timer -n 5 2>/dev/null | grep -qi "Started"; then
             report_pass "runner-dashboard-rm-sync.timer recorded in journal"
         else
             report_fail "runner-dashboard-rm-sync.timer not active"
@@ -286,13 +312,13 @@ fi
 # Check rm_source from board API
 BOARD_JSON=""
 if BOARD_JSON="$(curl -fsS --max-time 5 "http://${HOST}:${PORT}/api/staff/board?local=1" 2>/dev/null)"; then
-    RM_STATUS="$(printf '%s' "$BOARD_JSON" | grep -o '"rm_source":{[^}]*' || echo "")"
-    if printf '%s' "$RM_STATUS" | grep -qi '"status":"ok"'; then
-        report_pass "Board rm_source reports status ok"
-    elif printf '%s' "$RM_STATUS" | grep -qi '"status"'; then
-        report_pass "Board rm_source present" "$RM_STATUS"
+    # Healthy statuses are `updated` and `unchanged`; `skipped`, `error` and `not_checked` are not.
+    RM_STATUS="$(printf '%s' "$BOARD_JSON" | json_get '(d.get("rm_source") or {}).get("status", "")')"
+    RM_AGE="$(printf '%s' "$BOARD_JSON" | json_get 'int((d.get("rm_source") or {}).get("check_age_seconds") or 999999)')"
+    if [[ ("$RM_STATUS" == "updated" || "$RM_STATUS" == "unchanged") && "${RM_AGE:-999999}" -lt 3600 ]]; then
+        report_pass "Board rm_source is live" "status=${RM_STATUS}, check_age=${RM_AGE}s"
     else
-        report_fail "Board rm_source missing or errored" "$RM_STATUS"
+        report_fail "Board rm_source not live" "status=${RM_STATUS:-missing}, check_age=${RM_AGE:-?}s"
     fi
 else
     report_fail "Board API unreachable" "http://${HOST}:${PORT}/api/staff/board?local=1"
@@ -332,8 +358,8 @@ else
     report_fail "Env STAFF_SCHEDULER_ENABLED mismatch" "expected=${EXPECTED_SCHEDULER}, got=${ENV_SCHEDULER}"
 fi
 
-if [[ -n "$BOARD_JSON" ]]; then
-    RUNNING_SCHEDULER="$(printf '%s' "$BOARD_JSON" | grep -o '"scheduler":[01]' | cut -d':' -f2 || echo "")"
+if [[ -n "$SCHEDULE_JSON" ]]; then
+    RUNNING_SCHEDULER="$(printf '%s' "$SCHEDULE_JSON" | json_get '"1" if d.get("enabled") else "0"')"
     if [[ "$RUNNING_SCHEDULER" == "$EXPECTED_SCHEDULER" ]]; then
         report_pass "Live board scheduler state matches expectation" "value=${RUNNING_SCHEDULER}"
     else
@@ -374,11 +400,11 @@ fi
 # -----------------------------------------------------------------------------
 printf "\n9. Provider Availability & Ad-hoc Verification\n"
 
-REQUIRED_PROVIDERS=("claude" "codex" "antigravity" "cursor" "ollama" "claude-ollama")
+REQUIRED_PROVIDERS=("claude" "codex" "antigravity" "cursor-agent" "ollama" "claude-ollama")
 
 if [[ -n "$BOARD_JSON" ]]; then
     for prov in "${REQUIRED_PROVIDERS[@]}"; do
-        if printf '%s' "$BOARD_JSON" | grep -qi "\"${prov}\":true"; then
+        if [[ "$(printf '%s' "$BOARD_JSON" | json_get "(d.get('providers') or {}).get('${prov}') is True")" == "True" ]]; then
             report_pass "Provider available on board: ${prov}"
         else
             report_fail "Provider not marked available on board: ${prov}"
@@ -389,11 +415,7 @@ fi
 if [[ "$RUN_AD_HOC" == "1" ]]; then
     printf "\nRunning live ad-hoc runs for providers (--run-ad-hoc):\n"
     for prov in "${REQUIRED_PROVIDERS[@]}"; do
-        # Mapping to actual dispatch provider names
         DISPATCH_PROV="$prov"
-        if [[ "$prov" == "cursor" ]]; then
-            DISPATCH_PROV="cursor-agent"
-        fi
 
         log_verbose "Dispatching ad-hoc run for provider ${DISPATCH_PROV}..."
         PAYLOAD="$(printf '{"provider":"%s","machine":"local","prompt":"Health check: do not change anything. Reply OK, then STAFF_RESULT: ok"}' "$DISPATCH_PROV")"
@@ -403,18 +425,18 @@ if [[ "$RUN_AD_HOC" == "1" ]]; then
             -H 'Content-Type: application/json' \
             -H 'X-Requested-With: XMLHttpRequest' \
             --data "$PAYLOAD" 2>/dev/null)"; then
-            RUN_ID="$(printf '%s' "$RUN_RESP" | grep -o '"id":"[^"]*' | cut -d'"' -f4 || echo "")"
+            RUN_ID="$(printf '%s' "$RUN_RESP" | json_get '(d.get("run") or d).get("id", "")')"
             if [[ -z "$RUN_ID" ]]; then
                 report_fail "Ad-hoc run for ${DISPATCH_PROV}" "No run ID returned in response: $RUN_RESP"
                 continue
             fi
 
-            # Poll for completion (up to 45 seconds)
+            # Poll for completion (up to 15 minutes; real provider runs take minutes, not seconds)
             STATUS=""
-            for ((i=0; i<45; i++)); do
-                sleep 1
+            for ((i=0; i<90; i++)); do
+                sleep 10
                 RUN_DETAIL="$(curl -fsS "http://${HOST}:${PORT}/api/staff/runs/${RUN_ID}" 2>/dev/null || echo "")"
-                STATUS="$(printf '%s' "$RUN_DETAIL" | grep -o '"status":"[^"]*' | cut -d'"' -f4 || echo "")"
+                STATUS="$(printf '%s' "$RUN_DETAIL" | json_get '(d.get("run") or d).get("status", "")')"
                 if [[ "$STATUS" == "succeeded" || "$STATUS" == "failed" || "$STATUS" == "cancelled" ]]; then
                     break
                 fi

@@ -408,8 +408,10 @@ The Staff Hub operates across three primary hardware nodes:
 All nodes must pass the single unified acceptance test:
 
 ```bash
-deploy/staff-node-acceptance.sh [--role worker|scheduler] [--run-ad-hoc]
+deploy/staff-node-acceptance.sh [--role worker|scheduler] [--run-ad-hoc] [--expect-sha SHA]
 ```
+
+The fleet is accepted when all three nodes pass `--run-ad-hoc --expect-sha <main SHA>` against the same commit. Redeploy every node to that commit first.
 
 ### Fleet Qualification Matrix
 
@@ -428,11 +430,11 @@ deploy/staff-node-acceptance.sh [--role worker|scheduler] [--run-ad-hoc]
 | **Worker Holds** | N/A (manages holds) | Zero blocking worker holds | Zero blocking worker holds |
 
 ### Acceptance Criteria Checklist
-1. **Deployment & API**: `curl -fsS http://127.0.0.1:8321/api/health` returns status `ok`.
+1. **Deployment & API**: `curl -fsS http://127.0.0.1:8321/api/health` returns top-level status `healthy`, at the expected commit.
 2. **Identity**: `gh auth status` confirms valid WSL GitHub authentication with no embedded tokens.
 3. **CLIs**: Node v24 LTS in PATH; `claude`, `codex`, `agy`, `cursor-agent` executable.
 4. **Service Drop-in**: `staff-hub.conf` has `MemoryDenyWriteExecute=false`, provider PATH, and all required `ReadWritePaths`.
-5. **Dynamic Role Sync**: `rm_source` in `/api/staff/board?local=1` reports status `ok`; active timer refreshes at most every 15 min.
+5. **Dynamic Role Sync**: `rm_source` in `/api/staff/board?local=1` reports status `updated` or `unchanged`, checked within the last hour; active timer refreshes at most every 15 min.
 6. **Holds**: `/api/staff/schedule` reports no worker roles blocked by active holds.
 7. **Scheduler Invariant**: Only DeskComputer runs with `STAFF_SCHEDULER_ENABLED=1`; worker nodes strictly enforce `0`.
 8. **Ollama Reachability**: Gateway `11434/api/version` returns HTTP 200 without exposing Ollama to the physical LAN or Tailscale.

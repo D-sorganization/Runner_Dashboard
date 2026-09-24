@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1276 · Staff Node Acceptance Reports Only Real Failures
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1276 (follow-up to #1273/#1274, epic #1192)
+- **Branch:** `fix/1276-staff-node-acceptance`
+- **PR:** opened after push
+- **Paths:** `deploy/staff-node-acceptance.sh`, `tests/deploy/test_staff_node_acceptance.py`, `docs/operations/controltower-staff-worker.md`, `docs/staff-hub.md`
+- **Started:** 2026-09-23
+- **Last verified:** 2026-09-23 (`08e6746` + this change; DeskComputer live 38/0 with `--expect-sha 71500c9`, was 34/3)
+- **Summary:** The unified acceptance script from #1274 reported three false failures on a fully working node and had latent false failures (OGLaptop timer, 45 s ad-hoc wait) and a false pass (any rm_source status). Fixed with JSON parsing and the real endpoint fields; adds `--expect-sha` for same-commit fleet acceptance; corrects ControlTower runbook facts.
+- **Next step:** Run `staff-node-acceptance.sh --run-ad-hoc --expect-sha <merged main>` on DeskComputer, OGLaptop and ControlTower.
+
 ### DL-#1270 · Node LAN Duplicate-Address Prevention
 
 - **State:** in_review
