@@ -492,7 +492,7 @@ outside that probe.
 - **Read:** Open PRs referencing the same issue via a closing keyword.
 - **Write:** Closes the lower-priority PRs with a deferral comment.
 - **Constraint:** Priority is `user > maxwell-daemon > claude > codex > jules >
-  local > gaai`; `user`-authored PRs are never closed by automation.
+local > gaai`; `user`-authored PRs are never closed by automation.
 
 ### 4. Agent Panel Review (The Convener)
 
@@ -690,9 +690,7 @@ Use repo-local context before broad exploration:
 - Do not commit `.codemap/` or `.codemap/index.db`. Codemap indexes are cache/artifact data and must stay ignored.
 - To audit local fleet posture, run `python -m scripts.codemap_context_inventory --root .. --format markdown` from `Repository_Management`. This is a local, network-free inventory; it is not a substitute for repo-specific validation.
 
-<!-- END FLEET-MANAGED: repo-context-codemap -->
----
-
+## <!-- END FLEET-MANAGED: repo-context-codemap -->
 
 ---
 
@@ -888,8 +886,6 @@ across four repositories. A pull request number cannot collide.
 
 <!-- END FLEET-MANAGED: spec-changelog-rows -->
 
-
-
 ---
 
 <!-- BEGIN FLEET-MANAGED: agent-lanes -->
@@ -921,8 +917,6 @@ Retired: the Codex desktop-app automations rendered from `config/codex_fleet_aut
 4. **Do not starve CI to jump the queue**: Never cancel another PR's workflow runs to free runners for your own; every fleet workflow already cancels superseded runs of the same ref via its `concurrency` group. Batch-rebasing many PRs at once has the same effect and is likewise out of policy.
 
 <!-- END FLEET-MANAGED: agent-lanes -->
-
-
 
 ---
 
@@ -966,8 +960,6 @@ python -m pytest -q <tests>
 ```
 
 <!-- END FLEET-MANAGED: headless-execution -->
-
-
 
 ---
 
@@ -1025,8 +1017,6 @@ tomorrow. `fleet-guard report` shows what has been caught.
   a fleet-guard verdict; fix the cause or ask the operator to change the mode.
 
 <!-- END FLEET-MANAGED: fleet-guard -->
-
-
 
 ---
 
@@ -1178,7 +1168,6 @@ The standard, the schema and the per-role instructions are in
 
 <!-- END FLEET-MANAGED: deferred-validation -->
 
-
 ## Specification
 
 This repository's specification is defined in `SPEC.md` at the repo root.
@@ -1193,7 +1182,6 @@ affect documented functionality, features, or architecture.
 - **BATCHING**: If extracting remote information is absolutely necessary, use a single, focused, and batched query.
 - **SILENT FAILURES**: If an API rate limit is hit, HALT NETWORK ACTIVITY IMMEDIATELY. Do not write retry-loops that further punish the API endpoint. Alert the user and pivot to local technical-debt resolution.
 
-
 ## Closing issues — non-negotiable rule
 
 NEVER close a feature or bug issue without one of:
@@ -1204,6 +1192,7 @@ NEVER close a feature or bug issue without one of:
 The **Verify-Issue-Closure** workflow will automatically reopen any issue closed without evidence. Do not work around it.
 
 When implementing an issue:
+
 - Write or update tests FIRST (TDD: red → green → refactor)
 - Add Design-by-Contract preconditions/postconditions where it clarifies invariants
 - Respect Law of Demeter — don’t reach through three layers
@@ -1213,11 +1202,11 @@ When implementing an issue:
 
 ### How to close issues properly
 
-| Method | Example |
-|--------|---------|
-| Closing keyword in PR body | `Closes #1234` or `Fixes #5678` |
-| Closing keyword in PR title | `fix: resolve login crash (#1234)` |
-| Exempt label | Apply `wontfix`, `roadmap`, `duplicate`, `invalid`, or `not-planned` |
-| Bot + auto-generated label | Only for auto-generated issues closed by bots |
+| Method                      | Example                                                              |
+| --------------------------- | -------------------------------------------------------------------- |
+| Closing keyword in PR body  | `Closes #1234` or `Fixes #5678`                                      |
+| Closing keyword in PR title | `fix: resolve login crash (#1234)`                                   |
+| Exempt label                | Apply `wontfix`, `roadmap`, `duplicate`, `invalid`, or `not-planned` |
+| Bot + auto-generated label  | Only for auto-generated issues closed by bots                        |
 
 The workflow checks the PR timeline for cross-referenced merged PRs with closing keywords. If none are found and no exempt label is present, the issue is reopened with an explanatory comment.
