@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Staff node acceptance (#1276): `deploy/staff-node-acceptance.sh` no longer reports false failures on working nodes (nested health status, missing board `scheduler` key, `cursor` vs `cursor-agent`, OGLaptop user timer, 45 s ad-hoc wait) and no longer passes a broken role source; adds `--expect-sha`. ControlTower runbook corrected (distro, Python 3.12 artifact, Ollama rule names, reservation step).
 - Projects configuration includes the six omitted owners of published deferred-validation plans (#1251 under #1248); existing repositories and configuration overrides are preserved. Cards expose feature details and sanitized owner links. Owner charter publication and live rollout remain separately required.
 
 - Staff Hub codex and antigravity runs (#1249): codex adapter drops `--full-auto` (removed in codex 0.156) for `--dangerously-bypass-approvals-and-sandbox --skip-git-repo-check`; agy runs are no longer marked failed when they print `STAFF_RESULT:` (the answer arrives as `result.response`), and agy token usage is recorded.
