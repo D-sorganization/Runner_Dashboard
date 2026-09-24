@@ -18,6 +18,9 @@ RUN OPENSSL_DEBIAN_SECURITY_VERSION='3.5.7-1~deb13u2' \
     && apt-get update && apt-get install -y --no-install-recommends \
     curl \
     git \
+    gzip \
+    libpcre2-8-0 \
+    libsqlite3-0 \
     libssl3t64="${OPENSSL_DEBIAN_SECURITY_VERSION}" \
     openssl="${OPENSSL_DEBIAN_SECURITY_VERSION}" \
     openssl-provider-legacy="${OPENSSL_DEBIAN_SECURITY_VERSION}" \
