@@ -78,9 +78,17 @@ class RunRecord:
     failure_class: str = ""
     # Process ID of executing CLI worker (issue #1293)
     pid: int | None = None
+    # Retryable indicator and remediation guidance (issue #1297, SC-A6)
+    retryable: bool = False
+    remediation: str = ""
+
+    def __post_init__(self) -> None:
+        self.retryable = bool(self.retryable)
 
     def to_dict(self) -> dict[str, Any]:
-        return dict(self.__dict__)
+        d = dict(self.__dict__)
+        d["retryable"] = bool(self.retryable)
+        return d
 
 
 _SCHEMA = """
@@ -134,6 +142,8 @@ _ADDED_COLUMNS: tuple[tuple[str, str], ...] = (
     ("outcome", "TEXT NOT NULL DEFAULT ''"),
     ("failure_class", "TEXT NOT NULL DEFAULT ''"),
     ("pid", "INTEGER"),
+    ("retryable", "INTEGER NOT NULL DEFAULT 0"),
+    ("remediation", "TEXT NOT NULL DEFAULT ''"),
 )
 
 USAGE_GROUPS = ("provider", "role", "day")

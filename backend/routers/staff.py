@@ -34,6 +34,7 @@ from staff import fleet as staff_fleet
 from staff import liveness as staff_liveness
 from staff.adapters import available_providers
 from staff.audit import export_audit_csv, export_audit_ndjson, get_audit_store, record_audit
+from staff.classifier import format_attention_items
 from staff.rm_sync import source_status
 from staff.runner import RunRequest, StaffRunner, get_runner
 from staff.store import ACTIVE_STATUSES, RUN_STATUSES
@@ -207,19 +208,7 @@ async def summary(
     counts: dict[str, int] = {}
     for run in recent:
         counts[run.status] = counts.get(run.status, 0) + 1
-    attention = [
-        {
-            "id": r.id,
-            "role": r.role,
-            "repo": r.repo,
-            "target_ref": r.target_ref,
-            "status": r.status,
-            "error": r.error,
-            "failure_class": getattr(r, "failure_class", ""),
-        }
-        for r in recent
-        if r.status in ("failed", "blocked")
-    ]
+    attention = format_attention_items(recent)
     keep = (
         "id",
         "role",

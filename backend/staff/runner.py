@@ -33,6 +33,7 @@ from staff import focus as focus_mod
 from staff import lease as lease_ritual
 from staff import usage as usage_mod
 from staff.adapters import ADAPTERS, ProviderAdapter
+from staff.classifier import classify_execution_result
 from staff.roles import RoleSpec, load_roles
 from staff.store import RunRecord, RunStore, _now, get_store
 from staff.watchdog import StaffWatchdog, terminate_process_group
@@ -407,25 +408,23 @@ class StaffRunner:
         with self._lock:
             self._procs.pop(rec.id, None)
         cancelled = rec.id in self._cancel_flags
-        failure_class = watchdog.failure_class or ""
-        if cancelled:
-            status = "cancelled"
-            error = ""
-        elif failure_class:
-            status = "failed"
-            error = watchdog.error_message or f"run terminated ({failure_class})"
-        elif rc == 0 and not result_line:
-            # An unattended agent that stops to ask a question exits 0 without finishing (DeskComputer 2026-09-22).
-            status, error = "failed", NO_RESULT_ERROR
-        elif rc == 0:
-            status, error = "succeeded", ""
-        else:
-            status, error = "failed", ""
+        status, failure_class, retryable, remediation, error = classify_execution_result(
+            cancelled=cancelled,
+            rc=rc,
+            result_line=result_line,
+            provider=plan.provider,
+            transcript_path=transcript,
+            watchdog_failure_class=watchdog.failure_class or "",
+            watchdog_error=watchdog.error_message or "",
+            machine=self.machine,
+        )
 
         store.update_run(
             rec.id,
             status=status,
             failure_class=failure_class,
+            retryable=retryable,
+            remediation=remediation,
             error=error,
             ended_at=_now(),
             exit_code=rc,

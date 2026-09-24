@@ -1,48 +1,53 @@
-# Current handoff — Durable append-only staff audit log and archival (#1298)
+# Current handoff — Classify staff run failures with remediation hints (#1297)
 
 Last updated: 2026-09-24
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; worktree `C:/Users/diete/Repositories/_worktrees/Runner_Dashboard-1298`; branch `feat/1298-staff-audit-log`; baseline `e4df09c`; commit `SELF`; PR not created at commit time. Issue #1298, epic #1347 / umbrella #1354; DL-#1298.
+- Repository `D-sorganization/Runner_Dashboard`; worktree `C:/Users/diete/Repositories/_worktrees/Runner_Dashboard-1297`; branch `feat/1297-classify-staff-run-failures`; commit `SELF`; PR not created at commit time. Issue #1297, epic #1347 / umbrella #1354; DL-#1297.
 
 ## Work
 
-- `backend/staff/audit.py`:
-  - Implemented `StaffAuditRecord` dataclass (flat schema: `id`, `ts`, `principal`, `on_behalf_of`, `surface`, `action`, `target`, `request_id`, `thread_id`, `run_id`, `outcome`, `detail`).
-  - Standardized vocabulary with `ALLOWED_SURFACES` (`ui`, `api`, `mcp`, `barb`, `scheduler`) and `ALLOWED_ACTIONS` (`dispatch`, `cancel`, `hold_set`, `hold_clear`, `schedule_toggle`, `proposal_create`, `proposal_approve`, `proposal_deny`, `proposal_execute`, `maintenance`, `routing`).
-  - Implemented `StaffAuditStore`: SQLite table `staff_audit` with WAL mode, indexation on `ts`, `principal`, `thread_id`, `action`, `run_id`.
-  - Enforced fail-closed policy: mutating staff actions raise `AuditError` on write failure, failing the request; read-only operations log loudly without failing.
-  - Implemented `archive_old_audit_entries()`: retains 180 days, writes expired entries to gzip (`staff_audit_archive_YYYYMM.jsonl.gz`), and verifies gzip integrity before deleting from database.
-  - Provided export helpers: `export_audit_csv()`, `export_audit_ndjson()`.
-  - Dynamically registered `staff.audit.read` scope on `operator` preset.
+- `backend/staff/store.py`:
+  - Added `retryable: bool = False` and `remediation: str = ""` to `RunRecord` dataclass.
+  - Added SQLite schema migration columns `("retryable", "INTEGER NOT NULL DEFAULT 0")` and `("remediation", "TEXT NOT NULL DEFAULT ''")` to `_ADDED_COLUMNS`.
+- `backend/staff/classifier.py`:
+  - Implemented `ALLOWED_FAILURE_CLASSES` enum (all 12 classes: `auth_expired`, `cli_missing`, `provider_error`, `rate_limited`, `needs_input`, `timeout`, `stalled`, `lease_blocked`, `orphaned`, `workspace_error`, `unkillable`, `unknown`).
+  - Mapped provider-specific sign-in commands (`LOGIN_COMMANDS`) matching runbook and documentation (`claude`: `CLAUDE_CONFIG_DIR=~/.config/runner-dashboard/claude claude auth login`, `codex`: `codex login --device-auth`, `cursor-agent`: `cursor-agent login`, `antigravity`: `agy auth login`, `gemini`: `gemini login`, `ollama`: `systemctl --user start ollama`).
+  - Implemented `classify_run_failure()` handling watchdog errors, `needs_input` (exit 0 without result ending in question mark, supporting both plain text and stream-json lines), CLI missing patterns, auth expiry patterns, 429 rate limits, provider errors, lease conflicts, workspace errors, and fallback unknown with last 20 lines.
+  - Implemented `format_attention_items()` which groups and deduplicates `auth_expired` failures per `(machine, provider)` into a single attention item with sign-in command and `affected_runs`.
+  - Implemented `classify_execution_result()` helper for runner run completion.
+- `backend/staff/runner.py`:
+  - Integrated `classify_execution_result()` into `_run_subprocess`, setting `failure_class`, `retryable`, `remediation`, and `error` in `store.update_run()`.
+- `backend/staff/reconcile.py`:
+  - Updated orphaned run updates to record `retryable=False` and node-specific remediation.
 - `backend/routers/staff.py`:
-  - Added `GET /api/staff/audit` protected by `staff.audit.read` scope with query filters (`principal`, `thread_id`, `run_id`, `action`, `surface`, `target`, `since`), offset/limit pagination, and CSV/NDJSON export formats.
-  - Added audit write points on `cancel_run` (`action="cancel"`) and `dispatch_role_run` (`action="dispatch"`).
-- `backend/routers/staff_schedule.py`:
-  - Added audit write points on `put_holds` (`action="hold_set"` / `action="hold_clear"`).
-  - Added `POST /api/staff/schedule/toggle` with audit write point (`action="schedule_toggle"`).
-- `tests/unit/test_staff_audit.py`:
-  - Added 7 unit tests covering table creation, schema verification, record persistence across restarts, fail-closed mutating enforcement, 180-day retention and gzip archival, filtering and pagination, CSV and NDJSON exports.
-- `tests/api/test_staff_audit_api.py`:
-  - Added 5 API integration tests covering 401 unauthenticated, 403 missing scope, 200 operator access, query filtering and CSV/NDJSON formats, and write point audit row generation on cancel and schedule hold mutations.
-- `SPEC.md`: Bumped to 2.5.216 with change log and specification updates.
-- `docs/development/DEVELOPMENT_LOG.md`: Marked DL-#1300 shipped, added active DL-#1298.
+  - Updated `get_summary()` to use `format_attention_items(recent)`.
+- `frontend/src/pages/Staff/staffApi.ts`:
+  - Added `failure_class?`, `retryable?`, `remediation?` to `RunRecord`.
+- `frontend/src/pages/Staff/RunDetail.tsx`:
+  - Rendered `failure_class` (with retryable indicator badge) and `remediation` in dl facts.
+- `tests/unit/test_staff_classifier.py`:
+  - Table-driven unit tests for all failure classes and providers, watchdog states, question extraction, fallback clipping, and auth deduplication.
+- `tests/api/test_staff_failure_classification.py`:
+  - API integration tests for schema migration, run detail exposure, and summary attention deduplication.
+- `SPEC.md`: Bumped to 2.5.217 with change log and specification updates.
+- `docs/development/DEVELOPMENT_LOG.md`: Updated DL-#1298 to shipped, added active DL-#1297.
 
 ## Validation
 
-- `pytest tests/unit/test_staff_audit.py`: 7 passed in 0.8s.
-- `pytest tests/api/test_staff_audit_api.py`: 5 passed in 2.2s.
-- `pytest tests/test_no_duplicate_top_level_functions.py`: 3 passed.
-- `ruff check`: passed with 0 errors.
-- `ruff format --check`: passed (all files formatted).
-- `mypy`: passed with 0 errors in 5 source files.
+- `pytest tests/unit/test_staff_classifier.py tests/api/test_staff_failure_classification.py`: 23 passed in 2.2s.
+- `pytest tests/unit/ tests/api/ -k staff`: 201 passed in 32.5s.
+- `ruff check`: 0 errors.
+- `ruff format --check`: 0 errors.
+- `mypy`: 0 errors in all 7 source files.
+- All modified and new files strictly <= 500 lines.
 
 ## Next
 
-1. Commit changes, push branch, open PR with `Fixes #1298`, and enable auto-merge.
+1. Commit changes, push branch, open PR with `Fixes #1297`, and enable auto-merge.
 2. Monitor CI to green and merge.
-3. Release lease on #1298 and clean up worktree.
+3. Release lease on #1297 and clean up worktree.
 
 ## Work
 

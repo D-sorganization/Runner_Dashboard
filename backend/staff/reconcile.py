@@ -150,6 +150,8 @@ def reconcile_orphaned_runs(
             rec.id,
             status="failed",
             failure_class="orphaned",
+            retryable=False,
+            remediation=f"Run was orphaned across dashboard restart on node {runner.machine}; inspect worktree.",
             ended_at=_now(),
             error=err_msg,
         )
