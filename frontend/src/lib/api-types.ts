@@ -1009,6 +1009,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/client-errors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Client Error */
+        post: operations["post_client_error_api_client_errors_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/cline/status": {
         parameters: {
             query?: never;
@@ -4767,6 +4784,37 @@ export interface components {
             restart_maxwell: boolean;
         };
         /**
+         * ClientErrorPayload
+         * @description Payload sent by TabErrorBoundary when an error is caught.
+         */
+        ClientErrorPayload: {
+            /**
+             * Build Sha
+             * @description Build ID or git SHA
+             */
+            build_sha?: string | null;
+            /**
+             * Component
+             * @description Component name
+             */
+            component?: string | null;
+            /**
+             * Message
+             * @description Error message
+             */
+            message: string;
+            /**
+             * Page
+             * @description Tab or page name
+             */
+            page: string;
+            /**
+             * Stack
+             * @description Error stack trace
+             */
+            stack?: string | null;
+        };
+        /**
          * DirectiveBody
          * @description One directive as sent by an operator or agent. DbC: the JSON shape of ``priorities.directives.Directive``.
          */
@@ -6781,6 +6829,39 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    post_client_error_api_client_errors_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClientErrorPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

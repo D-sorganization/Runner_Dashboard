@@ -1,6 +1,6 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.210
+**Spec Version:** 2.5.211
 **Application Version:** 4.10.0 (see `VERSION`)
 **Last Updated:** 2026-09-24T00:00:00-07:00
 **Status:** Active
@@ -9,6 +9,7 @@
 
 | Date       | PR / Issue             | Summary                                                                                                                                                                                                       |
 | ---------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-09-24 | #1292                  | SC-A3: Per-tab error boundaries and per-tab Suspense; report client errors to /api/client-errors; tab error panel with Retry, Copy details, and prefilled report link; reset on route change.                 |
 | 2026-09-24 | #1291                  | SC-A2b: Resolve local node identity and suppress runner pool offline duplicates; eliminate hub proxying on spoke /api/fleet/nodes; add GET /api/fleet/identity; update acceptance check.                      |
 | 2026-09-24 | #1290                  | SC-A2: Fleet page tri-state status (unknown/loading, degraded, ok); skeletons and Checking fleet… during initial load; fail-visible banner naming failed source; KPI em-dashes when unpopulated; stale badge. |
 | 2026-09-24 | #1289                  | Staff board spend defensive handling: type spend_today_usd as dict with total, show per-provider breakdown in tooltip, add Pydantic response models.                                                          |

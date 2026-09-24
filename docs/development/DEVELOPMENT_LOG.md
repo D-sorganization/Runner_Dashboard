@@ -18,18 +18,31 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1291 · SC-A2b: Fleet node list labels local node as registry hub
+### DL-#1292 · SC-A3: Per-tab error boundaries and per-tab Suspense
 
 - **State:** in_progress
 - **Owner:** antigravity
+- **Issue:** #1292 (epic #1347 / umbrella #1354)
+- **Branch:** `fix/1292-tab-error-boundaries`
+- **PR:** not created
+- **Paths:** `frontend/src/primitives/TabErrorBoundary.tsx`, `frontend/src/primitives/__tests__/TabErrorBoundary.test.tsx`, `frontend/src/shell/RoutedShell.tsx`, `frontend/src/shell/__tests__/RoutedShell.test.tsx`, `backend/routers/client_errors.py`, `tests/api/test_client_errors.py`, `backend/fleet_events.py`, `backend/middleware.py`, `backend/server.py`, `SPEC.md`
+- **Started:** 2026-09-24
+- **Last verified:** 2026-09-24 (`SELF`)
+- **Summary:** Wrapped routed pages in TabErrorBoundary and React.Suspense with tab-local skeletons inside shell content area; added Retry, Copy details, and prefilled Report issue link; auto-reset error state on navigation; added rate-limited POST /api/client-errors recording client crashes to FleetEvent store and GET /api/events.
+- **Next step:** Push branch, open PR, pass CI, land PR and release lease.
+
+### DL-#1291 · SC-A2b: Fleet node list labels local node as registry hub
+
+- **State:** shipped
+- **Owner:** antigravity
 - **Issue:** #1291 (epic #1347 / umbrella #1354)
 - **Branch:** `fix/1291-local-node-identity`
-- **PR:** not created
+- **PR:** #1360
 - **Paths:** `backend/machine_registry.py`, `backend/routers/orchestration_node_routes.py`, `deploy/staff-node-acceptance.sh`, `tests/api/test_fleet_identity.py`, `tests/deploy/test_staff_node_acceptance.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`
 - **Started:** 2026-09-24
-- **Last verified:** 2026-09-24 (7bd84ee)
+- **Last verified:** 2026-09-24 (`60860c1`)
 - **Summary:** Fix local node identity resolution against machine_registry.yml matching by name and alias, never by role. Eliminate hub proxying on spoke /api/fleet/nodes so each node reports itself as is_local. Suppress runner pool offline duplicate entries when parent machine is directly live. Add GET /api/fleet/identity endpoint and verify DISPLAY_NAME matching in staff-node-acceptance.sh.
-- **Next step:** Push branch, open PR, pass CI, land PR and release lease.
+- **Next step:** None (shipped in PR #1360).
 
 ### DL-#1290 · Fleet page reports "Fleet Operational · All systems nominal" before data loaded
 

@@ -69,6 +69,7 @@ EventKind = Literal[
     "saturation",
     "watchdog",
     "staff_role_dead",
+    "client_error",
 ]
 
 # Default ring-buffer capacity. Large enough to hold a meaningful operator
@@ -106,6 +107,7 @@ class FleetEvent:
             "saturation",
             "watchdog",
             "staff_role_dead",
+            "client_error",
         ):
             raise ValueError(f"FleetEvent.kind invalid: {self.kind!r}")
         if not self.title:
