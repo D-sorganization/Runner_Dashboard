@@ -9,6 +9,7 @@
 
 | Date       | PR / Issue | Summary                                                                                                                               |
 | ---------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-09-23 | #1257 / #1273 rollout | Record OGLaptop 31a9104 Python 3.11 redeployment, unified 44/0 worker acceptance, backups and portproxy cleanup status. |
 | 2026-09-23 | #1276      | Staff node acceptance: parse API JSON, real scheduler/provider/rm_source fields, OGLaptop timer link, 15 min ad-hoc wait, --expect-sha; ControlTower runbook facts. |
 | 2026-09-23 | #1273      | Add ControlTower staff worker runbook, deploy/staff-node-acceptance.sh unified test, three-node fleet acceptance docs, and fix machine registry LAN comment. |
 | 2026-09-23 | #1257 eGPU follow-up | Record Sonnet 750ex/RTX 5070 recovery after reboot and successful Windows/WSL detection; retain unattended-startup limitation. |

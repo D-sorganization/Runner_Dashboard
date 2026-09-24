@@ -1,4 +1,15 @@
-# Current Handoff — Staff Node Acceptance False Failures (#1276)
+# Current handoff — OGLaptop 31a9104 acceptance
+
+- PR: not created at commit time; owner authorized publication and merge to main.
+- Worktree `/home/dieterolson/staff-builds/oglaptop-31a9104-acceptance`; branch `docs/oglaptop-31a9104-acceptance`; commit `SELF`.
+- Owner-requested deployment completed at exact main commit 31a91047463695d8506495dcca674a7ae58fdd6b using uv Python 3.11.15 artifact. Previous deploy/env backed up with suffix 2026-09-23-194302.
+- Requested worker acceptance confirmed exit 0, 44 passed, 0 failed, including six successful provider runs. Staff scheduler remains off; CI runners and Windows keepalive remain active. Canonical node runbook records artifact and receipt.
+- Invalid pre-existing portproxy 0.0.0.0:8321 -> R:8321 removed by owner at 19:51 PT; local netsh confirms only Ollama port 11434 forward remains. Owner disabled legacy WSL-PortForward task at 19:56 PT after XML/script backups. Its script targets nonexistent Ubuntu-22.04 and must not be re-enabled. See canonical runbook for exact backup paths.
+- Owner reports eero reservations corrected for Xbox .202 / OGLaptop .203. Live laptop still .203; all firewall profiles enabled.
+
+---
+
+## Previous Handoff — Staff Node Acceptance False Failures (#1276)
 
 Last updated: 2026-09-23T18:30:00-07:00
 
