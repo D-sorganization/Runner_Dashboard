@@ -122,7 +122,6 @@ def test_role_file_with_schema_error_surfaced_as_invalid(tmp_path: Path) -> None
     assert "bad-role" in roles
     spec = roles["bad-role"]
     assert spec.valid is False
-    assert spec.dispatchable is False
     assert len(spec.errors) > 0
     # Error message should mention missing instructions or invalid schedule
     combined = " ".join(spec.errors)

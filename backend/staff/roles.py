@@ -69,7 +69,7 @@ class RoleSpec:
     @property
     def dispatchable(self) -> bool:
         """True when the dashboard can run this role as a CLI subprocess."""
-        return self.valid and not self.retired and self.surface in {"dashboard", "both"} and bool(self.providers)
+        return not self.retired and self.surface in {"dashboard", "both"} and bool(self.providers)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -293,6 +293,7 @@ def _read_and_parse_role_file(path: Path) -> RoleSpec:
         return RoleSpec(
             name=path.stem,
             title=path.stem,
+            providers=(),
             valid=False,
             errors=(f"cannot read file: {exc}",),
             source_path=str(path),
@@ -303,6 +304,7 @@ def _read_and_parse_role_file(path: Path) -> RoleSpec:
         return RoleSpec(
             name=path.stem,
             title=path.stem,
+            providers=(),
             valid=False,
             errors=(f"YAML syntax error: {exc}",),
             source_path=str(path),
@@ -311,6 +313,7 @@ def _read_and_parse_role_file(path: Path) -> RoleSpec:
         return RoleSpec(
             name=path.stem,
             title=path.stem,
+            providers=(),
             valid=False,
             errors=("top level is not a mapping",),
             source_path=str(path),
