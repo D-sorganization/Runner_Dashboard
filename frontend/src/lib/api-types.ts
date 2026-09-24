@@ -5235,6 +5235,131 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /**
+         * StaffBoardResponse
+         * @description Response model for /api/staff/board (issue #1289).
+         */
+        StaffBoardResponse: {
+            /**
+             * Generated At
+             * @description ISO-8601 UTC timestamp
+             */
+            generated_at: string;
+            /**
+             * Hub
+             * @description Hub machine hostname when aggregated
+             */
+            hub?: string | null;
+            /** Liveness */
+            liveness?: {
+                [key: string]: unknown;
+            }[];
+            /** Liveness Alerts */
+            liveness_alerts?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Machine
+             * @description Local machine hostname
+             */
+            machine?: string | null;
+            /** Machines */
+            machines?: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            } | null;
+            /** Offline */
+            offline?: string[];
+            /** Online */
+            online?: string[];
+            /** Providers */
+            providers?: {
+                [key: string]: unknown;
+            };
+            /** Queued */
+            queued?: {
+                [key: string]: unknown;
+            }[];
+            /** Recent */
+            recent?: {
+                [key: string]: unknown;
+            }[];
+            /** Rm Source */
+            rm_source?: {
+                [key: string]: unknown;
+            } | null;
+            /** Running */
+            running?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Spend Today Usd
+             * @description Per-provider spend in USD plus a 'total' key (issue #1289)
+             */
+            spend_today_usd?: {
+                [key: string]: number;
+            };
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * StaffSummaryResponse
+         * @description Response model for /api/staff/summary (issue #1289).
+         */
+        StaffSummaryResponse: {
+            /** Attention */
+            attention?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Generated At
+             * @description ISO-8601 UTC timestamp
+             */
+            generated_at: string;
+            /** Holds */
+            holds?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Hub
+             * @description Hub machine hostname
+             */
+            hub: string;
+            /** In Flight */
+            in_flight?: {
+                [key: string]: unknown;
+            }[];
+            /** Liveness Alerts */
+            liveness_alerts?: {
+                [key: string]: unknown;
+            }[];
+            /** Machines Offline */
+            machines_offline?: string[];
+            /** Machines Online */
+            machines_online?: string[];
+            /** Providers */
+            providers?: {
+                [key: string]: unknown;
+            };
+            /** Recent 24H */
+            recent_24h?: {
+                [key: string]: number;
+            };
+            /** Roles */
+            roles?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Spend Today Usd
+             * @description Per-provider spend in USD plus a 'total' key (issue #1289)
+             */
+            spend_today_usd?: {
+                [key: string]: number;
+            };
+        } & {
+            [key: string]: unknown;
+        };
         /** StatusResponse */
         StatusResponse: {
             /** Agents */
@@ -5257,10 +5382,6 @@ export interface components {
         };
         /** ValidationError */
         ValidationError: {
-            /** Context */
-            ctx?: Record<string, never>;
-            /** Input */
-            input?: unknown;
             /** Location */
             loc: (string | number)[];
             /** Message */
@@ -10358,9 +10479,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["StaffBoardResponse"];
                 };
             };
             /** @description Validation Error */
@@ -10649,9 +10768,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["StaffSummaryResponse"];
                 };
             };
         };
@@ -11201,6 +11318,7 @@ export interface operations {
         };
     };
 }
+
 
 // ── Client compatibility aliases ─────────────────────────────────────────────
 // These aliases keep the hand-written API client on stable names while the
