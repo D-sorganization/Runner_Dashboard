@@ -18,18 +18,31 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1300 · SC-B8: Load full role definitions and surface invalid roles
+### DL-#1298 · SC-A8: Durable append-only staff audit log and archival
 
 - **State:** in_progress
 - **Owner:** antigravity
-- **Issue:** #1300 (epic #1348 / umbrella #1354)
-- **Branch:** `fix/1300-role-definitions-cache-errors`
+- **Issue:** #1298 (epic #1347 / umbrella #1354)
+- **Branch:** `feat/1298-staff-audit-log`
 - **PR:** not created
-- **Paths:** `backend/staff/roles.py`, `backend/staff/schema.json`, `backend/staff/rm_sync.py`, `backend/staff/runner.py`, `tests/unit/test_staff_roles.py`, `tests/api/test_staff_runner.py`, `frontend/src/pages/Staff/staffApi.ts`, `frontend/src/pages/Staff/Roster.tsx`, `SPEC.md`
+- **Paths:** `backend/staff/audit.py`, `backend/routers/staff.py`, `backend/routers/staff_schedule.py`, `tests/unit/test_staff_audit.py`, `tests/api/test_staff_audit_api.py`, `SPEC.md`
 - **Started:** 2026-09-24
 - **Last verified:** 2026-09-24 (`SELF`)
-- **Summary:** Parse and retain full schema and chat role definitions (`scope`, `prompt_template`, `persona`, `chat`, `group`, `retired_reason`). Validate role files against `schema.json` using `jsonschema.Draft202012Validator`. Implement mtime-keyed cache in `load_roles()` so YAML is read once per file change. Surface schema-invalid and broken YAML role files as invalid roles (`valid=False`, `dispatchable=False`, `errors=[...]`) in the roster instead of skipping them. Expose validation errors per file in `rm_sync.source_status()`.
+- **Summary:** Implemented durable append-only SQLite audit log (`staff_audit` table) with WAL mode, indexation on timestamp/principal/thread_id/action/run_id, and fail-closed persistence on mutating staff actions (`dispatch`, `cancel`, `hold_set`, `hold_clear`, `schedule_toggle`, proposals, maintenance). Read-only audit failures log loudly. Added `GET /api/staff/audit` protected by `staff.audit.read` scope with filtering, offset/limit pagination, and CSV/NDJSON export. Added `archive_old_audit_entries()` with 180-day retention and gzip verification.
 - **Next step:** Push branch, open PR with gh, enable auto-merge, watch CI to merge.
+
+### DL-#1300 · SC-B8: Load full role definitions and surface invalid roles
+
+- **State:** shipped
+- **Owner:** antigravity
+- **Issue:** #1300 (epic #1348 / umbrella #1354)
+- **Branch:** `fix/1300-role-definitions-cache-errors`
+- **PR:** #1365
+- **Paths:** `backend/staff/roles.py`, `backend/staff/schema.json`, `backend/staff/rm_sync.py`, `backend/staff/runner.py`, `tests/unit/test_staff_roles.py`, `tests/api/test_staff_runner.py`, `frontend/src/pages/Staff/staffApi.ts`, `frontend/src/pages/Staff/Roster.tsx`, `SPEC.md`
+- **Started:** 2026-09-24
+- **Last verified:** 2026-09-24 (`afebb91`)
+- **Summary:** Parse and retain full schema and chat role definitions (`scope`, `prompt_template`, `persona`, `chat`, `group`, `retired_reason`). Validate role files against `schema.json` using `jsonschema.Draft202012Validator`. Implement mtime-keyed cache in `load_roles()` so YAML is read once per file change. Surface schema-invalid and broken YAML role files as invalid roles (`valid=False`, `dispatchable=False`, `errors=[...]`) in the roster instead of skipping them. Expose validation errors per file in `rm_sync.source_status()`.
+- **Next step:** None (shipped in PR #1365).
 
 ### DL-#1295 · SC-F1: Enforce scopes on staff mutations and reads
 

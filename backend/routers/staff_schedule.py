@@ -21,6 +21,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from identity import Principal, format_caller, require_scope
 from pydantic import BaseModel, Field
+from staff.audit import record_audit
 from staff.holds import MAX_TEXT
 from staff.scheduler import get_scheduler
 
@@ -89,8 +90,46 @@ async def put_holds(body: HoldsBody, caller: Principal = Depends(require_scope("
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     caller_str = format_caller(caller)
+    action = "hold_clear" if not body.holds else "hold_set"
+    record_audit(
+        action=action,
+        target="holds",
+        principal=caller_str,
+        surface="api",
+        outcome="success",
+        detail={"count": len(saved)},
+        fail_closed=True,
+    )
     log.info("staff: holds replaced by %s (%d holds)", caller_str, len(saved))
     return {"holds": [h.to_dict() for h in saved], "path": str(holds.path)}
+
+
+class ScheduleToggleBody(BaseModel):
+    enabled: bool
+
+
+@router.post("/schedule/toggle")
+async def toggle_scheduler(
+    body: ScheduleToggleBody,
+    caller: Principal = Depends(require_scope("staff.admin")),
+) -> dict[str, Any]:
+    """Toggle the background scheduler on or off (SC-A8, Issue #1298)."""
+    sched = get_scheduler()
+    if body.enabled:
+        sched.start()
+    else:
+        sched.stop()
+    caller_str = format_caller(caller)
+    record_audit(
+        action="schedule_toggle",
+        target="scheduler",
+        principal=caller_str,
+        surface="api",
+        outcome="success",
+        detail={"enabled": body.enabled},
+        fail_closed=True,
+    )
+    return {"enabled": body.enabled, "running": sched.running}
 
 
 @router.get("/schedule")

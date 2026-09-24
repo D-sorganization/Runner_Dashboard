@@ -25,7 +25,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
 from identity import Principal, format_caller, require_scope
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -33,6 +33,7 @@ from staff import consolidation
 from staff import fleet as staff_fleet
 from staff import liveness as staff_liveness
 from staff.adapters import available_providers
+from staff.audit import export_audit_csv, export_audit_ndjson, get_audit_store, record_audit
 from staff.rm_sync import source_status
 from staff.runner import RunRequest, StaffRunner, get_runner
 from staff.store import ACTIVE_STATUSES, RUN_STATUSES
@@ -257,6 +258,43 @@ async def summary(
     }
 
 
+@router.get("/audit")
+async def list_audit(
+    limit: int = Query(default=50, ge=1, le=MAX_LIMIT),
+    offset: int = Query(default=0, ge=0),
+    principal: str | None = Query(default=None, max_length=120),
+    thread_id: str | None = Query(default=None, max_length=120),
+    run_id: str | None = Query(default=None, max_length=120),
+    action: str | None = Query(default=None, max_length=60),
+    surface: str | None = Query(default=None, max_length=30),
+    target: str | None = Query(default=None, max_length=120),
+    since: str | None = Query(default=None, max_length=40),
+    format: str | None = Query(default=None),
+    _peer: Principal = Depends(require_scope("staff.audit.read")),
+) -> Any:
+    """Retrieve durable append-only staff audit rows (SC-A8, Issue #1298)."""
+    store = get_audit_store()
+    filt = {
+        k: v
+        for k, v in [
+            ("principal", principal),
+            ("thread_id", thread_id),
+            ("run_id", run_id),
+            ("action", action),
+            ("surface", surface),
+            ("target", target),
+            ("since", since),
+        ]
+    }
+    entries = store.list_entries(limit=limit, offset=offset, **filt)
+    if format == "csv":
+        headers = {"Content-Disposition": "attachment; filename=staff_audit.csv"}
+        return Response(content=export_audit_csv(entries), media_type="text/csv", headers=headers)
+    if format == "ndjson":
+        return Response(content=export_audit_ndjson(entries), media_type="application/x-ndjson")
+    return {"entries": [e.to_dict() for e in entries], "count": len(entries), "total": store.count_entries(**filt)}
+
+
 @router.get("/runs")
 async def list_runs(
     limit: int = Query(default=50, ge=1, le=MAX_LIMIT),
@@ -334,6 +372,16 @@ async def cancel_run(run_id: str, caller: Principal = Depends(require_scope("sta
         raise HTTPException(status_code=404, detail="run not found")
     ok = runner.cancel(run_id)
     caller_str = format_caller(caller)
+    record_audit(
+        action="cancel",
+        target=f"run:{run_id}",
+        principal=caller_str,
+        surface="api",
+        run_id=run_id,
+        outcome="success" if ok else "not_found",
+        detail={"cancelled": ok},
+        fail_closed=True,
+    )
     log.info("staff: cancel %s by %s → %s", run_id, caller_str, ok)
     rec = runner.store.get_run(run_id)
     return {"cancelled": ok, "run": rec.to_dict() if rec else None}
@@ -420,6 +468,22 @@ async def dispatch(
     if body.dry_run:
         return {"dry_run": True, "plan": plan.to_dict(), "machine": runner.machine}
     rec = runner.submit(req)
+    record_audit(
+        action="dispatch",
+        target=f"role:{rec.role}",
+        principal=caller_str,
+        surface="api",
+        request_id=rec.id,
+        run_id=rec.id,
+        outcome="success",
+        detail={
+            "repo": rec.repo,
+            "target_ref": rec.target_ref,
+            "provider": rec.provider,
+            "machine": rec.machine,
+        },
+        fail_closed=True,
+    )
     log.info(
         "staff: dispatched %s role=%s provider=%s repo=%s target=%s by %s",
         rec.id,

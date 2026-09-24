@@ -26,12 +26,13 @@ SCRIPTS = ("agent_communicate", "check_agent_claim", "post_agent_lease", "releas
 ROSTER = ("user", "orchestrator", "claude", "codex", "jules", "night-watch", "gemini")
 
 _FAKE = """
-import json, pathlib, sys
+import json, pathlib, sys, time, uuid
 root = pathlib.Path(__file__).resolve().parents[1]
 name = pathlib.Path(__file__).stem
 argv = sys.argv[1:]
-with open(root / "calls.log", "a", encoding="utf-8") as fh:
-    fh.write(json.dumps([name, argv]) + "\\n")
+calls_dir = root / "calls"
+calls_dir.mkdir(exist_ok=True)
+(calls_dir / f"{time.time_ns()}_{uuid.uuid4().hex[:8]}.json").write_text(json.dumps([name, argv]), encoding="utf-8")
 spec = json.loads((root / "responses.json").read_text(encoding="utf-8"))
 cmd = next((a for a in argv if a in ("register", "list", "inbox", "send", "ack", "release")), "")
 if cmd == "list" and "--all-repos" in argv and spec.get("no_all_repos"):
@@ -79,10 +80,11 @@ class FakeRM:
         self._save()
 
     def calls(self) -> list[tuple[str, list[str]]]:
-        log = self.root / "calls.log"
-        if not log.exists():
+        calls_dir = self.root / "calls"
+        if not calls_dir.exists():
             return []
-        return [tuple(json.loads(line)) for line in log.read_text(encoding="utf-8").splitlines() if line]
+        files = sorted(calls_dir.glob("*.json"))
+        return [tuple(json.loads(p.read_text(encoding="utf-8"))) for p in files]
 
 
 def install(
