@@ -9,7 +9,9 @@ source of truth for machine identity, aliases, roles, and maintenance hints.
 from __future__ import annotations
 
 import json
+import logging
 import os
+import platform
 import re
 from pathlib import Path
 from typing import Any
@@ -21,6 +23,7 @@ except ImportError:  # pragma: no cover - deployment installs PyYAML
 
 from security import safe_yaml_load, validate_config_path
 
+log = logging.getLogger("dashboard.machine_registry")
 DEFAULT_REGISTRY_PATH = Path(__file__).with_name("machine_registry.yml")
 
 
@@ -379,6 +382,103 @@ def load_machine_registry(path: str | Path | None = None) -> dict[str, Any]:
     return normalized
 
 
+def resolve_local_identity(
+    name: str | None,
+    role: str | None,
+    registry: dict[str, Any],
+) -> dict[str, Any]:
+    """Resolve local node name and role against the machine registry.
+
+    The local node is always matched to the registry by name or alias, NEVER by role.
+    If no entry matches, it logs a warning and marks registry_match as 'unregistered'
+    instead of borrowing another machine's identity.
+    """
+    local_name = (name or os.environ.get("DISPLAY_NAME") or platform.node() or "").strip()
+    local_role = (role or os.environ.get("MACHINE_ROLE") or "node").strip().lower()
+
+    if not local_name:
+        log.warning("Machine registry identity resolution: local node name is empty; marking as unregistered")
+        return {
+            "name": "",
+            "role": local_role,
+            "registry_match": "unregistered",
+            "matched_alias": None,
+        }
+
+    token = _normalize_token(local_name)
+
+    # Search machines first, then runner pools
+    for machine in registry.get("machines", []) or []:
+        if not isinstance(machine, dict) or machine.get("retired"):
+            continue
+        m_name = str(machine.get("name", "")).strip()
+        if _normalize_token(m_name) == token:
+            return {
+                "name": local_name,
+                "role": machine.get("role") or local_role,
+                "registry_match": m_name,
+                "matched_alias": _normalize_token(m_name),
+                "aliases": list(machine.get("aliases", []) or []),
+                "runner_labels": list(machine.get("runner_labels", []) or []),
+                "specs": dict(machine.get("hardware", {}) or {}),
+                "unregistered": False,
+            }
+        for alias in machine.get("aliases", []) or []:
+            if _normalize_token(str(alias)) == token:
+                return {
+                    "name": local_name,
+                    "role": machine.get("role") or local_role,
+                    "registry_match": m_name,
+                    "matched_alias": str(alias).strip().lower(),
+                    "aliases": list(machine.get("aliases", []) or []),
+                    "runner_labels": list(machine.get("runner_labels", []) or []),
+                    "specs": dict(machine.get("hardware", {}) or {}),
+                    "unregistered": False,
+                }
+        for pool in machine.get("runner_pools", []) or []:
+            if not isinstance(pool, dict) or pool.get("retired"):
+                continue
+            p_name = str(pool.get("name", "")).strip()
+            pool_aliases = list(pool.get("aliases", []) or [])
+            pool_labels = list(pool.get("runner_labels", []) or machine.get("runner_labels", []) or [])
+            pool_specs = dict(pool.get("hardware", {}) or machine.get("hardware", {}) or {})
+            if _normalize_token(p_name) == token:
+                return {
+                    "name": local_name,
+                    "role": pool.get("role") or "runner_pool",
+                    "registry_match": p_name,
+                    "matched_alias": _normalize_token(p_name),
+                    "aliases": pool_aliases,
+                    "runner_labels": pool_labels,
+                    "specs": pool_specs,
+                    "unregistered": False,
+                }
+            for alias in pool.get("aliases", []) or []:
+                if _normalize_token(str(alias)) == token:
+                    return {
+                        "name": local_name,
+                        "role": pool.get("role") or "runner_pool",
+                        "registry_match": p_name,
+                        "matched_alias": str(alias).strip().lower(),
+                        "aliases": pool_aliases,
+                        "runner_labels": pool_labels,
+                        "specs": pool_specs,
+                        "unregistered": False,
+                    }
+
+    log.warning("Machine registry has no matching entry for local node %r; marking as unregistered", local_name)
+    return {
+        "name": local_name,
+        "role": local_role,
+        "registry_match": "unregistered",
+        "matched_alias": None,
+        "aliases": [],
+        "runner_labels": [],
+        "specs": {},
+        "unregistered": True,
+    }
+
+
 def build_machine_registry_index(
     registry: dict[str, Any],
 ) -> dict[str, dict[str, Any]]:
@@ -396,11 +496,14 @@ def build_machine_registry_index(
         for pool in entry.get("runner_pools", []):
             if not isinstance(pool, dict):
                 continue
-            pool_keys = [pool.get("name", ""), *pool.get("aliases", [])]
+            pool_dict = dict(pool)
+            if not pool_dict.get("parent_machine") and entry.get("name"):
+                pool_dict["parent_machine"] = entry.get("name")
+            pool_keys = [pool_dict.get("name", ""), *pool_dict.get("aliases", [])]
             for key in pool_keys:
                 token = _normalize_token(str(key))
                 if token:
-                    index[token] = pool
+                    index[token] = pool_dict
     return index
 
 
@@ -412,7 +515,10 @@ def _iter_registry_entries(registry: dict[str, Any]) -> list[dict[str, Any]]:
         entries.append(machine)
         for pool in machine.get("runner_pools", []):
             if isinstance(pool, dict) and not pool.get("retired"):
-                entries.append(pool)
+                pool_dict = dict(pool)
+                if not pool_dict.get("parent_machine") and machine.get("name"):
+                    pool_dict["parent_machine"] = machine.get("name")
+                entries.append(pool_dict)
     return entries
 
 
@@ -425,16 +531,33 @@ def merge_registry_with_live_nodes(
     Live telemetry wins for status/metrics fields. Registry metadata is exposed
     under the ``registry`` key, and registry-only machines are included as
     offline placeholders so scheduled maintenance can still see them.
+    De-duplicates entries where a node appears as both local and remote, or where
+    a runner pool entry belongs to an already live parent machine or shares its URL.
     """
 
     index = build_machine_registry_index(registry)
     merged: list[dict[str, Any]] = []
     seen: set[str] = set()
+    seen_canonical: set[str] = set()
+    live_parent_machines: set[str] = set()
+    satisfied_parents: set[str] = set()
 
-    for node in live_nodes:
+    # Prioritize local nodes first so local state takes precedence over remote duplicates
+    sorted_live = sorted(live_nodes, key=lambda n: not bool(n.get("is_local")))
+
+    for node in sorted_live:
         merged_node = dict(node)
         token = _normalize_token(str(merged_node.get("name", "")))
         registry_entry = index.get(token)
+        canonical_name = registry_entry.get("name") if registry_entry else merged_node.get("name")
+        canonical_token = _normalize_token(str(canonical_name or ""))
+
+        if canonical_token and canonical_token in seen_canonical:
+            # Duplicate entry for this machine (e.g. remote duplicate of local node) -> drop it
+            continue
+        if canonical_token:
+            seen_canonical.add(canonical_token)
+
         if registry_entry is not None:
             merged_node["registry"] = registry_entry
             hardware_specs = _merge_known_specs(
@@ -443,10 +566,20 @@ def merge_registry_with_live_nodes(
             )
             merged_node["hardware_specs"] = hardware_specs
             merged_node["workload_capacity"] = _workload_capacity_from_hardware(hardware_specs)
-            seen.add(_normalize_token(str(registry_entry.get("name", ""))))
+
+            entry_name = _normalize_token(str(registry_entry.get("name", "")))
+            if entry_name:
+                seen.add(entry_name)
+            for alias in registry_entry.get("aliases", []) or []:
+                seen.add(_normalize_token(str(alias)))
+
             parent_machine = registry_entry.get("parent_machine")
             if parent_machine:
-                seen.add(_normalize_token(str(parent_machine)))
+                satisfied_parents.add(_normalize_token(str(parent_machine)))
+            else:
+                if entry_name:
+                    live_parent_machines.add(entry_name)
+
         host_vol = (
             merged_node.get("host_volume")
             or merged_node.get("system", {}).get("host_volume")
@@ -462,8 +595,16 @@ def merge_registry_with_live_nodes(
         token = _normalize_token(str(entry.get("name", "")))
         if not token or token in seen:
             continue
+        parent = entry.get("parent_machine")
+        if parent:
+            parent_token = _normalize_token(str(parent))
+            if parent_token in live_parent_machines:
+                continue
+        else:
+            if token in satisfied_parents:
+                continue
         role = entry.get("role", "node")
-        if entry.get("parent_machine") and role == "node":
+        if parent and role == "node":
             role = "runner_pool"
         merged.append(
             {
@@ -473,7 +614,7 @@ def merge_registry_with_live_nodes(
                 "dashboard_reachable": False,
                 "is_local": False,
                 "role": role,
-                "parent_machine": entry.get("parent_machine"),
+                "parent_machine": parent,
                 "system": {},
                 "health": {},
                 "hardware_specs": entry.get("hardware", {}),

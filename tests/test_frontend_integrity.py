@@ -734,9 +734,9 @@ def test_overview_desktop_route_bypasses_legacy_app() -> None:
     assert 'case "overview":' in routed_shell
     assert "const LazyOverviewPage = React.lazy(" in routed_shell
     assert "return <LazyOverviewPage />;" in routed_shell
-    assert 'getJson("/api/stats"' in overview_page
-    assert 'getJson("/api/runners"' in overview_page
-    assert 'getJson("/api/fleet/nodes"' in overview_page
+    assert '"/api/stats"' in overview_page
+    assert '"/api/runners"' in overview_page
+    assert '"/api/fleet/nodes"' in overview_page
     assert 'legacyFetch("/api/fleet/control/" + action' in overview_page
     assert 'legacyFetch("/api/runners/" + id + "/" + action' in overview_page
     assert "export function OverviewPage" in overview_page

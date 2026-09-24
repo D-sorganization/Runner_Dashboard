@@ -1808,6 +1808,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/fleet/identity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Fleet Identity
+         * @description Return local node identity resolved against the machine registry.
+         */
+        get: operations["get_fleet_identity_api_fleet_identity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/fleet/nodes": {
         parameters: {
             query?: never;
@@ -5382,6 +5402,10 @@ export interface components {
         };
         /** ValidationError */
         ValidationError: {
+            /** Context */
+            ctx?: Record<string, never>;
+            /** Input */
+            input?: unknown;
             /** Location */
             loc: (string | number)[];
             /** Message */
@@ -7815,6 +7839,28 @@ export interface operations {
         };
     };
     get_fleet_hardware_api_fleet_hardware_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    get_fleet_identity_api_fleet_identity_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -11318,7 +11364,6 @@ export interface operations {
         };
     };
 }
-
 
 // ── Client compatibility aliases ─────────────────────────────────────────────
 // These aliases keep the hand-written API client on stable names while the

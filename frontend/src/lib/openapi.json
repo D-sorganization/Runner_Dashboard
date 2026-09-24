@@ -1704,6 +1704,13 @@
       },
       "ValidationError": {
         "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
           "loc": {
             "items": {
               "anyOf": [
@@ -4961,6 +4968,33 @@
           }
         ],
         "summary": "Get Fleet Hardware",
+        "tags": ["orchestration", "orchestration"]
+      }
+    },
+    "/api/fleet/identity": {
+      "get": {
+        "description": "Return local node identity resolved against the machine registry.",
+        "operationId": "get_fleet_identity_api_fleet_identity_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Fleet Identity Api Fleet Identity Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Fleet Identity",
         "tags": ["orchestration", "orchestration"]
       }
     },

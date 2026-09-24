@@ -50,14 +50,20 @@ def orchestration_node_deps(request: Request) -> OrchestrationNodeDeps:
     return deps
 
 
+@router.get("/api/fleet/identity", dependencies=[Depends(require_fleet_peer)])
+async def get_fleet_identity() -> dict[str, Any]:
+    """Return local node identity resolved against the machine registry."""
+    from machine_registry import load_machine_registry, resolve_local_identity
+
+    registry = load_machine_registry()
+    return resolve_local_identity(None, None, registry)
+
+
 @router.get("/api/fleet/nodes", dependencies=[Depends(require_fleet_peer)])
 async def get_fleet_nodes(
-    request: Request,
     deps: OrchestrationNodeDeps = Depends(orchestration_node_deps),  # noqa: B008
 ) -> dict:
     """Aggregate system metrics + health from all fleet nodes."""
-    if proxy_utils.should_proxy_fleet_to_hub(request):
-        return await proxy_utils.proxy_to_hub(request)
     return await deps.get_fleet_nodes_impl()
 
 

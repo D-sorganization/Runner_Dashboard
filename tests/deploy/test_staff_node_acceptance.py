@@ -77,6 +77,7 @@ def _fake_node(tmp_path: Path, rm_status: str = "unchanged") -> tuple[Path, Path
         f"  */api/health) echo '{_HEALTH}' ;;\n"
         f"  */api/staff/board*) echo '{board}' ;;\n"
         f"  */api/staff/schedule) echo '{_SCHEDULE}' ;;\n"
+        '  */api/fleet/identity) echo \'{"name":"DeskComputer","role":"node","unregistered":false}\' ;;\n'
         "  *) exit 22 ;;\n"
         "esac\n",
         newline="\n",
@@ -129,3 +130,17 @@ def test_expect_sha_mismatch_fails(tmp_path: Path) -> None:
     assert "Deployed commit matches" in good.stdout, good.stdout + good.stderr
     bad = _run_fake(tmp_path / "b", "--expect-sha", "1234567")
     assert "[FAIL] Deployed commit" in bad.stderr, bad.stdout + bad.stderr
+
+
+def test_fleet_identity_mismatch_fails(tmp_path: Path) -> None:
+    assert BASH is not None
+    fake, env, dropin = _fake_node(tmp_path)
+    # Set DISPLAY_NAME to WrongMachine so it mismatches DeskComputer returned by mock curl
+    cmd = (
+        f'DISPLAY_NAME="WrongMachine" PATH="{as_bash_path(fake)}:$PATH" exec bash "{as_bash_path(SCRIPT)}" '
+        f'--role scheduler --env-file "{as_bash_path(env)}" --dropin-file "{as_bash_path(dropin)}" '
+        "--skip-service --skip-network"
+    )
+    res = subprocess.run([BASH, "-c", cmd], capture_output=True, text=True)
+    out = res.stdout + res.stderr
+    assert "[FAIL] Local fleet identity mismatch" in out, out
