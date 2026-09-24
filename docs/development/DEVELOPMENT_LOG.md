@@ -18,18 +18,31 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1298 · SC-A8: Durable append-only staff audit log and archival
+### DL-#1297 · SC-A6: Classify staff run failures with remediation hints
 
 - **State:** in_progress
 - **Owner:** antigravity
-- **Issue:** #1298 (epic #1347 / umbrella #1354)
-- **Branch:** `feat/1298-staff-audit-log`
+- **Issue:** #1297 (epic #1347 / umbrella #1354)
+- **Branch:** `feat/1297-classify-staff-run-failures`
 - **PR:** not created
-- **Paths:** `backend/staff/audit.py`, `backend/routers/staff.py`, `backend/routers/staff_schedule.py`, `tests/unit/test_staff_audit.py`, `tests/api/test_staff_audit_api.py`, `SPEC.md`
+- **Paths:** `backend/staff/classifier.py`, `backend/staff/runner.py`, `backend/staff/store.py`, `backend/staff/reconcile.py`, `backend/routers/staff.py`, `frontend/src/pages/Staff/RunDetail.tsx`, `frontend/src/pages/Staff/staffApi.ts`, `tests/unit/test_staff_classifier.py`, `tests/api/test_staff_failure_classification.py`, `SPEC.md`
 - **Started:** 2026-09-24
 - **Last verified:** 2026-09-24 (`SELF`)
-- **Summary:** Implemented durable append-only SQLite audit log (`staff_audit` table) with WAL mode, indexation on timestamp/principal/thread_id/action/run_id, and fail-closed persistence on mutating staff actions (`dispatch`, `cancel`, `hold_set`, `hold_clear`, `schedule_toggle`, proposals, maintenance). Read-only audit failures log loudly. Added `GET /api/staff/audit` protected by `staff.audit.read` scope with filtering, offset/limit pagination, and CSV/NDJSON export. Added `archive_old_audit_entries()` with 180-day retention and gzip verification.
+- **Summary:** Added `failure_class`, `retryable`, and `remediation` fields to `RunRecord` in SQLite schema. Created `backend/staff/classifier.py` mapping raw process exits, watchdog signals, and provider stderr/stdout patterns to classified failure classes (`auth_expired`, `cli_missing`, `provider_error`, `rate_limited`, `needs_input`, `timeout`, `stalled`, `lease_blocked`, `orphaned`, `workspace_error`, `unkillable`, `unknown`). Mapped provider login commands and deduplicated auth expiry attention items. Integrated into runner completion, orphan reconciliation, and UI detail views.
 - **Next step:** Push branch, open PR with gh, enable auto-merge, watch CI to merge.
+
+### DL-#1298 · SC-A8: Durable append-only staff audit log and archival
+
+- **State:** shipped
+- **Owner:** antigravity
+- **Issue:** #1298 (epic #1347 / umbrella #1354)
+- **Branch:** `feat/1298-staff-audit-log`
+- **PR:** #1366
+- **Paths:** `backend/staff/audit.py`, `backend/routers/staff.py`, `backend/routers/staff_schedule.py`, `tests/unit/test_staff_audit.py`, `tests/api/test_staff_audit_api.py`, `SPEC.md`
+- **Started:** 2026-09-24
+- **Last verified:** 2026-09-24 (`7763280`)
+- **Summary:** Implemented durable append-only SQLite audit log (`staff_audit` table) with WAL mode, indexation on timestamp/principal/thread_id/action/run_id, and fail-closed persistence on mutating staff actions (`dispatch`, `cancel`, `hold_set`, `hold_clear`, `schedule_toggle`, proposals, maintenance). Read-only audit failures log loudly. Added `GET /api/staff/audit` protected by `staff.audit.read` scope with filtering, offset/limit pagination, and CSV/NDJSON export. Added `archive_old_audit_entries()` with 180-day retention and gzip verification.
+- **Next step:** None (shipped in PR #1366).
 
 ### DL-#1300 · SC-B8: Load full role definitions and surface invalid roles
 

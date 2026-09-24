@@ -96,6 +96,7 @@ def staff(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[runner_mo
     monkeypatch.setenv("STAFF_RUNS_DB", str(tmp_path / "runs.sqlite3"))
     monkeypatch.setenv("STAFF_ROLES_DIR", str(tmp_path / "no-roles"))
     monkeypatch.setenv("STAFF_WORKTREES_ROOT", str(tmp_path / "wt"))
+    monkeypatch.setenv("STAFF_HOLDS_FILE", str(tmp_path / "holds.json"))
     script = tmp_path / "fake_cli.py"
     script.write_text('import sys; print(\'{"type": "result", "result": "ok"}\')\n', encoding="utf-8")
     fake = adapters_mod.ProviderAdapter(
@@ -322,4 +323,3 @@ def test_board_and_summary_satisfy_pydantic_response_models(
     ]["schema"]
     assert "StaffBoardResponse" in str(board_schema_ref)
     assert "StaffSummaryResponse" in str(summary_schema_ref)
-

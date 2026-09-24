@@ -214,6 +214,21 @@ export function RunDetail({ runId, onBack }: RunDetailProps) {
             <dd className="staff-error">{run.error}</dd>
           </>
         ) : null}
+        {run.failure_class ? (
+          <>
+            <dt>Failure Class</dt>
+            <dd data-testid="run-failure-class">
+              <code>{run.failure_class}</code>
+              {run.retryable ? " (retryable)" : ""}
+            </dd>
+          </>
+        ) : null}
+        {run.remediation ? (
+          <>
+            <dt>Remediation</dt>
+            <dd data-testid="run-remediation">{run.remediation}</dd>
+          </>
+        ) : null}
       </dl>
 
       <details className="staff-run__prompt">

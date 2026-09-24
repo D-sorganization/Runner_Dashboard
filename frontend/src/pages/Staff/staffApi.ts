@@ -126,6 +126,12 @@ export interface RunRecord {
   strategy_mode?: string;
   /** Normalised "consolidated N PRs into #M" from the final STAFF_RESULT line (#1213). */
   outcome?: string;
+  /** Failure classification (SC-A6, #1297). */
+  failure_class?: string;
+  /** Whether the failure is transient and eligible for retry. */
+  retryable?: boolean;
+  /** Actionable remediation instructions for the failure. */
+  remediation?: string;
 }
 
 export interface RunEvent {
