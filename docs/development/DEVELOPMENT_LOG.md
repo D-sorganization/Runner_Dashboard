@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1280 · Feature Request dispatch reports its real outcome
+
+- **State:** in_review
+- **Owner:** agent
+- **Issue:** #1280 (epic #1279)
+- **Branch:** `fix/1280-feature-request-dispatch-failure`
+- **PR:** not created
+- **Paths:** `backend/routers/feature_requests.py`, `tests/api/test_feature_request_dispatch.py`, `frontend/src/pages/FeatureRequests.tsx`, `frontend/src/pages/FeatureRequestsPage.tsx`, `frontend/src/pages/__tests__/FeatureRequests.test.tsx`, `SPEC.md`
+- **Started:** 2026-09-23
+- **Last verified:** 2026-09-23 (`9ab2caba` + uncommitted #1280 diff)
+- **Summary:** The dispatch target `Jules-Feature-Request.yml` 404s in Repository_Management, but the handler returned success and logged `dispatched`. It now returns 502, records `failed` with the error, caches target availability for `/api/feature-requests`, and the tab disables Dispatch with the reason.
+- **Next step:** Open the PR and merge once `quality-gate` passes.
+
 ### DL-#1276 · Staff Node Acceptance Reports Only Real Failures
 
 - **State:** in_review

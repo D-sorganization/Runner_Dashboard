@@ -9,6 +9,7 @@
 
 | Date       | PR / Issue | Summary                                                                                                                               |
 | ---------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-09-23 | #1280      | Feature Request dispatch reports the real outcome: 502 + `failed` history entry when the RM workflow is missing; list exposes cached `dispatchTarget`; UI disables dispatch and shows errors. |
 | 2026-09-23 | #1257 / #1273 rollout | Record OGLaptop 31a9104 Python 3.11 redeployment, unified 44/0 worker acceptance, backups and portproxy cleanup status. |
 | 2026-09-23 | #1276      | Staff node acceptance: parse API JSON, real scheduler/provider/rm_source fields, OGLaptop timer link, 15 min ad-hoc wait, --expect-sha; ControlTower runbook facts. |
 | 2026-09-23 | #1273      | Add ControlTower staff worker runbook, deploy/staff-node-acceptance.sh unified test, three-node fleet acceptance docs, and fix machine registry LAN comment. |
@@ -2490,6 +2491,11 @@ feature implementation workflows directly from the dashboard.
 On mobile, dispatched feature request history renders as compact read-mostly
 cards showing repository, status, vote-count metadata when present, provider,
 date, and prompt excerpt over the existing `/api/feature-requests` response.
+Dispatch reports its real outcome (#1280): a failed `gh api` dispatch returns
+HTTP 502 and records a `failed` history entry with an `error`, and the tab shows
+the error. `/api/feature-requests` includes `dispatchTarget {workflow, available,
+detail}`, probed at most every 10 minutes; while it is unavailable the tab shows
+why and disables Dispatch. Replacement by Code Requests is tracked in epic #1279.
 
 ### 3.17 Maxwell Tab
 
@@ -2958,10 +2964,10 @@ inline style objects.
 
 | Method | Path                              | Description                                |
 | ------ | --------------------------------- | ------------------------------------------ |
-| GET    | `/api/feature-requests`           | Feature request issues list                |
+| GET    | `/api/feature-requests`           | Feature request history plus `dispatchTarget` availability |
 | GET    | `/api/feature-requests/templates` | Available feature request templates        |
 | POST   | `/api/feature-requests/templates` | Create a new feature request template      |
-| POST   | `/api/feature-requests/dispatch`  | Dispatch a feature implementation workflow |
+| POST   | `/api/feature-requests/dispatch`  | Dispatch a feature implementation workflow; 502 when the dispatch fails |
 
 ### Local Apps
 

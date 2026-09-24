@@ -17,6 +17,7 @@ import datetime as _dt_mod
 import json
 import logging
 import tempfile
+import time
 from pathlib import Path
 
 import config_schema
@@ -38,6 +39,39 @@ router = APIRouter(tags=["feature_requests"])
 _FEATURE_REQUESTS_PATH = Path.home() / "actions-runners" / "dashboard" / "feature_requests.json"
 _PROMPT_TEMPLATES_PATH = Path.home() / "actions-runners" / "dashboard" / "prompt_templates.json"
 _PROMPT_NOTES_PATH = Path.home() / "actions-runners" / "dashboard" / "prompt_notes.json"
+
+# ─── Dispatch target ──────────────────────────────────────────────────────────
+
+_DISPATCH_WORKFLOW = "Jules-Feature-Request.yml"
+_DISPATCH_WORKFLOW_ENDPOINT = f"/repos/{ORG}/Repository_Management/actions/workflows/{_DISPATCH_WORKFLOW}"
+_DISPATCH_TARGET_TTL_S = 600.0
+
+# Cached result of probing the dispatch workflow (#1280). A failed dispatch
+# primes it too, so the UI can disable dispatch without another API call.
+_dispatch_target_state: dict[str, object] = {"checked_at": None, "available": None, "detail": ""}
+
+
+def _record_dispatch_target(available: bool, stderr: str = "") -> None:
+    detail = "" if available else f"dispatch target unavailable: {_DISPATCH_WORKFLOW} — {stderr.strip()[:200]}"
+    _dispatch_target_state.update(checked_at=time.monotonic(), available=available, detail=detail)
+
+
+async def _dispatch_target_status() -> dict[str, object]:
+    """Return whether the dispatch workflow exists, probing at most once per TTL."""
+    checked_at = _dispatch_target_state["checked_at"]
+    if not isinstance(checked_at, float) or time.monotonic() - checked_at > _DISPATCH_TARGET_TTL_S:
+        code, _, stderr = await run_cmd(
+            ["gh", "api", _DISPATCH_WORKFLOW_ENDPOINT, "--silent"],
+            timeout=15,
+            cwd=REPO_ROOT,
+        )
+        _record_dispatch_target(code == 0, stderr)
+    return {
+        "workflow": _DISPATCH_WORKFLOW,
+        "available": _dispatch_target_state["available"],
+        "detail": _dispatch_target_state["detail"],
+    }
+
 
 # ─── Async locks ──────────────────────────────────────────────────────────────
 
@@ -87,7 +121,11 @@ async def list_feature_requests() -> dict:
             data = []
     except (OSError, json.JSONDecodeError, UnicodeDecodeError):
         data = []
-    return {"requests": list(reversed(data[-100:])), "total": len(data)}
+    return {
+        "requests": list(reversed(data[-100:])),
+        "total": len(data),
+        "dispatchTarget": await _dispatch_target_status(),
+    }
 
 
 @router.get("/api/feature-requests/templates")
@@ -236,28 +274,6 @@ async def dispatch_feature_request(
     if injected_standards:
         full_prompt = f"{full_prompt}\n\n## Engineering Standards\n{injected_standards}"
 
-    # Save to history
-    entry: dict = {}
-    async with _feature_requests_lock:
-        try:
-            history: list[dict] = []
-            if _FEATURE_REQUESTS_PATH.exists():
-                history = json.loads(_FEATURE_REQUESTS_PATH.read_text(encoding="utf-8"))
-            entry = {
-                "id": str(int(datetime.now(UTC).timestamp())),
-                "repository": repo,
-                "branch": branch,
-                "provider": provider,
-                "prompt": prompt[:500],
-                "standards": list(standards),
-                "status": "dispatched",
-                "created_at": datetime.now(UTC).isoformat(),
-            }
-            history.append(entry)
-            config_schema.atomic_write_json(_FEATURE_REQUESTS_PATH, history[-200:])
-        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
-            pass
-
     # Dispatch via feature-request workflow. The constructed inputs are
     # re-validated to enforce the per-value length cap (#411) — full_prompt
     # may include injected standards which can push it past the cap.
@@ -269,7 +285,7 @@ async def dispatch_feature_request(
             "prompt": full_prompt[:MAX_INPUT_VALUE_LENGTH],
         }
     )
-    endpoint = f"/repos/{ORG}/Repository_Management/actions/workflows/Jules-Feature-Request.yml/dispatches"
+    endpoint = f"{_DISPATCH_WORKFLOW_ENDPOINT}/dispatches"
     payload = {
         "ref": "main",
         "inputs": dispatch_inputs,
@@ -286,9 +302,35 @@ async def dispatch_feature_request(
     finally:
         with contextlib.suppress(OSError):
             Path(pf).unlink()
+    _record_dispatch_target(code == 0, stderr)
     if code != 0:
-        log.warning("feature_request_dispatch failed: %s", stderr.strip()[:200])
-        # Don't raise - save history record and return success anyway (workflow may not exist yet)
+        log.warning("feature_request_dispatch failed: %s", sanitize_log_value(stderr.strip()[:200]))
+
+    # Save to history only once the real outcome is known (#1280).
+    entry: dict = {
+        "id": str(int(datetime.now(UTC).timestamp())),
+        "repository": repo,
+        "branch": branch,
+        "provider": provider,
+        "prompt": prompt[:500],
+        "standards": list(standards),
+        "status": "dispatched" if code == 0 else "failed",
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+    if code != 0:
+        entry["error"] = stderr.strip()[:300]
+    async with _feature_requests_lock:
+        try:
+            history: list[dict] = []
+            if _FEATURE_REQUESTS_PATH.exists():
+                history = json.loads(_FEATURE_REQUESTS_PATH.read_text(encoding="utf-8"))
+            history.append(entry)
+            config_schema.atomic_write_json(_FEATURE_REQUESTS_PATH, history[-200:])
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+            pass
+
+    if code != 0:
+        raise HTTPException(status_code=502, detail=str(_dispatch_target_state["detail"]))
     return {
         "status": "dispatched",
         "repository": repo,

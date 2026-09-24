@@ -32,6 +32,14 @@ export interface FeatureRequestRecord {
   dispatched_at?: string;
   votes?: number;
   vote_count?: number;
+  error?: string;
+}
+
+/** Whether the backend's dispatch workflow exists (#1280). */
+export interface DispatchTargetStatus {
+  workflow?: string;
+  available?: boolean | null;
+  detail?: string;
 }
 
 export interface PromptTemplate {
@@ -55,6 +63,7 @@ export interface FeatureDispatchPayload {
 export interface FeatureRequestsProps {
   repos?: FeatureRepo[];
   requests?: FeatureRequestRecord[];
+  dispatchTarget?: DispatchTargetStatus;
   templates?: PromptTemplate[];
   standards?: unknown;
   loading?: boolean;
@@ -91,6 +100,7 @@ function requestVoteCount(r: FeatureRequestRecord): number {
 export function FeatureRequestsTab({
   repos = [],
   requests = [],
+  dispatchTarget,
   templates = [],
   loading,
   promptNotes = { notes: "", enabled: true },
@@ -99,6 +109,7 @@ export function FeatureRequestsTab({
   onSavePromptNotes,
   onRefresh,
 }: FeatureRequestsProps): React.ReactElement {
+  const targetUnavailable = dispatchTarget?.available === false;
   const [selRepo, setSelRepo] = useState("");
   const [selBranch, setSelBranch] = useState("main");
   const [selProvider, setSelProvider] = useState("jules_api");
@@ -106,6 +117,7 @@ export function FeatureRequestsTab({
   const [selStds, setSelStds] = useState<Record<string, boolean>>({});
   const [templateName, setTemplateName] = useState("");
   const [dispatchStatus, setDispatchStatus] = useState<DispatchStatus>(null);
+  const [dispatchError, setDispatchError] = useState("");
   const [saveStatus, setSaveStatus] = useState<SaveStatus>(null);
   const [editingPromptNotes, setEditingPromptNotes] = useState(promptNotes.notes);
   const [promptNotesEnabled, setPromptNotesEnabled] = useState(promptNotes.enabled);
@@ -146,8 +158,10 @@ export function FeatureRequestsTab({
         setDispatchStatus("ok");
         onRefresh();
       })
-      .catch(() => {
+      .catch((err: unknown) => {
+        setDispatchError(err instanceof Error ? err.message : "");
         setDispatchStatus("error");
+        onRefresh();
       });
   }
 
@@ -187,6 +201,22 @@ export function FeatureRequestsTab({
         <IssueGlyph size={14} />
         Feature Requests
       </div>
+      {targetUnavailable ? (
+        <div
+          role="status"
+          style={{
+            border: "1px solid var(--accent-red)",
+            borderRadius: 6,
+            padding: 10,
+            marginBottom: 12,
+            fontSize: 13,
+            color: "var(--text-primary)",
+          }}
+        >
+          Dispatch is disabled: {dispatchTarget?.detail || "the dispatch workflow is unavailable"}.
+          Feature Request dispatch is being replaced by Code Requests (#1279).
+        </div>
+      ) : null}
       <div
         style={{
           background: "var(--bg-secondary)",
@@ -383,7 +413,7 @@ export function FeatureRequestsTab({
           <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
             <button
               className="action-btn"
-              disabled={!selRepo || !promptText.trim()}
+              disabled={targetUnavailable || !selRepo || !promptText.trim()}
               onClick={doDispatch}
             >
               <IssueGlyph size={14} /> Dispatch
@@ -420,8 +450,8 @@ export function FeatureRequestsTab({
             </div>
           ) : null}
           {dispatchStatus === "error" ? (
-            <div style={{ color: "var(--accent-red)", fontSize: 13, marginTop: 8 }}>
-              Dispatch failed.
+            <div role="alert" style={{ color: "var(--accent-red)", fontSize: 13, marginTop: 8 }}>
+              {dispatchError ? "Dispatch failed: " + dispatchError : "Dispatch failed."}
             </div>
           ) : null}
           {saveStatus === "ok" ? (
@@ -462,6 +492,16 @@ export function FeatureRequestsTab({
                         ((r.prompt || "").length > 100 ? "…" : "")}
                     </div>
                     <div style={{ marginTop: 4, display: "flex", gap: 8 }}>
+                      <span
+                        style={{
+                          color:
+                            requestStatus(r) === "failed"
+                              ? "var(--accent-red)"
+                              : "var(--text-muted)",
+                        }}
+                      >
+                        {requestStatus(r)}
+                      </span>
                       <span style={{ color: "var(--text-muted)" }}>{r.provider || ""}</span>
                       {(r.standards || []).map((s) => (
                         <span key={s} style={{ color: "var(--accent-purple)", fontSize: 11 }}>
@@ -469,6 +509,9 @@ export function FeatureRequestsTab({
                         </span>
                       ))}
                     </div>
+                    {r.error ? (
+                      <div style={{ color: "var(--accent-red)", marginTop: 2 }}>{r.error}</div>
+                    ) : null}
                   </div>
                 ))}
               </div>
@@ -490,6 +533,11 @@ export function FeatureRequestsTab({
                       {(r.prompt || "").slice(0, 180) +
                         ((r.prompt || "").length > 180 ? "…" : "")}
                     </div>
+                    {r.error ? (
+                      <div className="feature-request-mobile-prompt" style={{ color: "var(--accent-red)" }}>
+                        {r.error}
+                      </div>
+                    ) : null}
                     <div className="feature-request-mobile-meta">
                       <span className="feature-request-mobile-chip">
                         {requestVoteCount(r) + " votes"}
