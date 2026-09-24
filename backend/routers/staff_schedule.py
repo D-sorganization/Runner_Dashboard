@@ -19,7 +19,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from identity import Principal, require_scope
+from identity import Principal, format_caller, require_scope
 from pydantic import BaseModel, Field
 from staff.holds import MAX_TEXT
 from staff.scheduler import get_scheduler
@@ -29,18 +29,6 @@ router = APIRouter(prefix="/api/staff", tags=["staff"])
 
 SCHEDULER_ENABLED_ENV = "STAFF_SCHEDULER_ENABLED"
 MAX_HOLDS = 200
-
-
-def _caller_name(principal: Principal) -> str:
-    if principal.id in (
-        "fleet-peer",
-        "__loopback__",
-        "loopback-dev",
-        "test-orchestrator",
-        "test-peer",
-    ):
-        return principal.id
-    return f"principal:{principal.id}"
 
 
 class HoldBody(BaseModel):
@@ -100,7 +88,7 @@ async def put_holds(body: HoldsBody, caller: Principal = Depends(require_scope("
         saved = holds.replace([h.model_dump() for h in body.holds])
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    caller_str = _caller_name(caller)
+    caller_str = format_caller(caller)
     log.info("staff: holds replaced by %s (%d holds)", caller_str, len(saved))
     return {"holds": [h.to_dict() for h in saved], "path": str(holds.path)}
 

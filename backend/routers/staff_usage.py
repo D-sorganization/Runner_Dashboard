@@ -17,7 +17,7 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from identity import Principal, require_scope
+from identity import Principal, format_caller, require_scope
 from staff import usage
 from staff.pricing import price_table_rows
 from staff.runner import get_runner
@@ -25,18 +25,6 @@ from staff.store import USAGE_GROUPS
 
 log = logging.getLogger("dashboard.staff.usage")
 router = APIRouter(prefix="/api/staff", tags=["staff"])
-
-
-def _caller_name(principal: Principal) -> str:
-    if principal.id in (
-        "fleet-peer",
-        "__loopback__",
-        "loopback-dev",
-        "test-orchestrator",
-        "test-peer",
-    ):
-        return principal.id
-    return f"principal:{principal.id}"
 
 
 @router.get("/usage")
@@ -74,7 +62,7 @@ async def export_usage(
         result = usage.export_to_rm(get_runner().store)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
-    caller_str = _caller_name(caller)
+    caller_str = format_caller(caller)
     log.info(
         "staff: usage export by %s → %s",
         caller_str,

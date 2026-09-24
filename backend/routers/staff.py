@@ -27,7 +27,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from identity import Principal, require_scope
+from identity import Principal, format_caller, require_scope
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from staff import consolidation
 from staff import fleet as staff_fleet
@@ -327,25 +327,13 @@ async def stream_run(
     )
 
 
-def _caller_name(principal: Principal) -> str:
-    if principal.id in (
-        "fleet-peer",
-        "__loopback__",
-        "loopback-dev",
-        "test-orchestrator",
-        "test-peer",
-    ):
-        return principal.id
-    return f"principal:{principal.id}"
-
-
 @router.post("/runs/{run_id}/cancel")
 async def cancel_run(run_id: str, caller: Principal = Depends(require_scope("staff.cancel"))) -> dict[str, Any]:
     runner = get_runner()
     if runner.store.get_run(run_id) is None:
         raise HTTPException(status_code=404, detail="run not found")
     ok = runner.cancel(run_id)
-    caller_str = _caller_name(caller)
+    caller_str = format_caller(caller)
     log.info("staff: cancel %s by %s → %s", run_id, caller_str, ok)
     rec = runner.store.get_run(run_id)
     return {"cancelled": ok, "run": rec.to_dict() if rec else None}
@@ -409,7 +397,7 @@ async def dispatch(
     decision = None
     if spec is not None and body.repo and consolidation.threshold(spec) is not None:
         decision = await asyncio.to_thread(consolidation.decide, spec, body.repo)  # #1213: gh + capacity I/O
-    caller_str = _caller_name(caller)
+    caller_str = format_caller(caller)
     req = RunRequest(
         role=role,
         provider=body.provider,

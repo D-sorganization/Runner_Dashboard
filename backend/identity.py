@@ -560,3 +560,16 @@ def resolve_perimeter_principal(request: Request) -> Principal | None:
         return _loopback_principal()
 
     return None
+
+
+def format_caller(principal: Principal) -> str:
+    """Return a short identifier string for logging and requested_by fields."""
+    if principal.id in (
+        "fleet-peer",
+        "__loopback__",
+        "loopback-dev",
+        "test-orchestrator",
+        "test-peer",
+    ):
+        return principal.id
+    return f"principal:{principal.id}"

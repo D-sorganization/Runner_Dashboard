@@ -26,7 +26,7 @@ Last updated: 2026-09-24
   - Read routes (`/roster`, `/roles`, `/board`, `/summary`, `/runs`, `/runs/{id}`, `/runs/{id}/stream`) now require `staff.read`.
   - Dispatch route (`/{role}/run`) requires `staff.dispatch`.
   - Cancel route (`/runs/{id}/cancel`) requires `staff.cancel`.
-  - Preserved caller logging via `_caller_name` helper.
+  - Preserved caller logging via `format_caller` helper in `backend/identity.py`.
 - `backend/routers/staff_schedule.py`:
   - Read routes (`/holds`, `/schedule`) require `staff.read`.
   - Mutation route (`PUT /holds`) requires `staff.holds.write`.
