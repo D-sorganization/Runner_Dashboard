@@ -1,30 +1,31 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.208
+**Spec Version:** 2.5.209
 **Application Version:** 4.10.0 (see `VERSION`)
-**Last Updated:** 2026-09-22T00:00:00-07:00
+**Last Updated:** 2026-09-24T00:00:00-07:00
 **Status:** Active
 
 ## Change Log
 
-| Date       | PR / Issue | Summary                                                                                                                               |
-| ---------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-09-24 | #1289      | Staff board spend defensive handling: type spend_today_usd as dict with total, show per-provider breakdown in tooltip, add Pydantic response models. |
-| 2026-09-23 | #1280      | Feature Request dispatch reports the real outcome: 502 + `failed` history entry when the RM workflow is missing; list exposes cached `dispatchTarget`; UI disables dispatch and shows errors. |
-| 2026-09-23 | #1257 / #1273 rollout | Record OGLaptop 31a9104 Python 3.11 redeployment, unified 44/0 worker acceptance, backups and portproxy cleanup status. |
-| 2026-09-23 | #1276      | Staff node acceptance: parse API JSON, real scheduler/provider/rm_source fields, OGLaptop timer link, 15 min ad-hoc wait, --expect-sha; ControlTower runbook facts. |
-| 2026-09-23 | #1273      | Add ControlTower staff worker runbook, deploy/staff-node-acceptance.sh unified test, three-node fleet acceptance docs, and fix machine registry LAN comment. |
-| 2026-09-23 | #1257 eGPU follow-up | Record Sonnet 750ex/RTX 5070 recovery after reboot and successful Windows/WSL detection; retain unattended-startup limitation. |
-| 2026-09-23 | #1257 final firewall | Confirm all firewall profiles enabled with Windows/WSL connectivity intact and CI capacity restored. |
-| 2026-09-23 | #1257 Windows recovery | Record Windows reboot, six-provider recovery, duplicate-IP diagnosis, firewall checks and remaining acceptance steps. |
-| 2026-09-23 | #1257 restart | Record safe OGLaptop CI drain, verified WSL restart and six-provider recovery, RM user-bus observation and restoration procedure. |
-| 2026-09-23 | #1257 verification | Record successful SYSTEM task execution and automatic RM#1719 uptake; retain restart and external-isolation checks pending a safe CI window. |
-| 2026-09-23 | #1257 task policy | Explicitly use process-scoped RemoteSigned for the SYSTEM bridge task; preserve machine-wide execution policy. |
-| 2026-09-23 | #1258 rollout | Record OGLaptop deployment, live RM timer, empty holds, successful Ollama checks, backups and remaining owner bridge/reboot acceptance. |
-| 2026-09-23 | #1258 | Refresh the Linux RM clone with a safe throttled systemd user timer; expose source revision and age, and reread role definitions without restart. |
-| 2026-09-23 | #1257 | Add an owner-installed, reboot-safe WSL-only Ollama bridge with dry-run planning, ownership checks, backups and a hidden scheduled task. |
-| 2026-09-23 | #1192      | Record verified OGLaptop worker deployment, six-provider health checks, scoped WSL Ollama connectivity, and rollback paths. |
-| 2026-09-23 | #1251      | Expose all deferred-plan owners and feature IDs/statuses/safe links in Projects; retain owner authority and live rollout under #1248. |
+| Date       | PR / Issue             | Summary                                                                                                                                                                                                       |
+| ---------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-09-24 | #1290                  | SC-A2: Fleet page tri-state status (unknown/loading, degraded, ok); skeletons and Checking fleet… during initial load; fail-visible banner naming failed source; KPI em-dashes when unpopulated; stale badge. |
+| 2026-09-24 | #1289                  | Staff board spend defensive handling: type spend_today_usd as dict with total, show per-provider breakdown in tooltip, add Pydantic response models.                                                          |
+| 2026-09-23 | #1280                  | Feature Request dispatch reports the real outcome: 502 + `failed` history entry when the RM workflow is missing; list exposes cached `dispatchTarget`; UI disables dispatch and shows errors.                 |
+| 2026-09-23 | #1257 / #1273 rollout  | Record OGLaptop 31a9104 Python 3.11 redeployment, unified 44/0 worker acceptance, backups and portproxy cleanup status.                                                                                       |
+| 2026-09-23 | #1276                  | Staff node acceptance: parse API JSON, real scheduler/provider/rm_source fields, OGLaptop timer link, 15 min ad-hoc wait, --expect-sha; ControlTower runbook facts.                                           |
+| 2026-09-23 | #1273                  | Add ControlTower staff worker runbook, deploy/staff-node-acceptance.sh unified test, three-node fleet acceptance docs, and fix machine registry LAN comment.                                                  |
+| 2026-09-23 | #1257 eGPU follow-up   | Record Sonnet 750ex/RTX 5070 recovery after reboot and successful Windows/WSL detection; retain unattended-startup limitation.                                                                                |
+| 2026-09-23 | #1257 final firewall   | Confirm all firewall profiles enabled with Windows/WSL connectivity intact and CI capacity restored.                                                                                                          |
+| 2026-09-23 | #1257 Windows recovery | Record Windows reboot, six-provider recovery, duplicate-IP diagnosis, firewall checks and remaining acceptance steps.                                                                                         |
+| 2026-09-23 | #1257 restart          | Record safe OGLaptop CI drain, verified WSL restart and six-provider recovery, RM user-bus observation and restoration procedure.                                                                             |
+| 2026-09-23 | #1257 verification     | Record successful SYSTEM task execution and automatic RM#1719 uptake; retain restart and external-isolation checks pending a safe CI window.                                                                  |
+| 2026-09-23 | #1257 task policy      | Explicitly use process-scoped RemoteSigned for the SYSTEM bridge task; preserve machine-wide execution policy.                                                                                                |
+| 2026-09-23 | #1258 rollout          | Record OGLaptop deployment, live RM timer, empty holds, successful Ollama checks, backups and remaining owner bridge/reboot acceptance.                                                                       |
+| 2026-09-23 | #1258                  | Refresh the Linux RM clone with a safe throttled systemd user timer; expose source revision and age, and reread role definitions without restart.                                                             |
+| 2026-09-23 | #1257                  | Add an owner-installed, reboot-safe WSL-only Ollama bridge with dry-run planning, ownership checks, backups and a hidden scheduled task.                                                                      |
+| 2026-09-23 | #1192                  | Record verified OGLaptop worker deployment, six-provider health checks, scoped WSL Ollama connectivity, and rollback paths.                                                                                   |
+| 2026-09-23 | #1251                  | Expose all deferred-plan owners and feature IDs/statuses/safe links in Projects; retain owner authority and live rollout under #1248.                                                                         |
 
 - **2026-09-23:** ControlTower Staff Worker Runbook and Three-Node Fleet Acceptance (#1273, epic #1192).
   Delivered `docs/operations/controltower-staff-worker.md` with an ordered checklist (probe to acceptance,
@@ -2963,11 +2964,11 @@ inline style objects.
 
 ### Feature Requests
 
-| Method | Path                              | Description                                |
-| ------ | --------------------------------- | ------------------------------------------ |
-| GET    | `/api/feature-requests`           | Feature request history plus `dispatchTarget` availability |
-| GET    | `/api/feature-requests/templates` | Available feature request templates        |
-| POST   | `/api/feature-requests/templates` | Create a new feature request template      |
+| Method | Path                              | Description                                                             |
+| ------ | --------------------------------- | ----------------------------------------------------------------------- |
+| GET    | `/api/feature-requests`           | Feature request history plus `dispatchTarget` availability              |
+| GET    | `/api/feature-requests/templates` | Available feature request templates                                     |
+| POST   | `/api/feature-requests/templates` | Create a new feature request template                                   |
 | POST   | `/api/feature-requests/dispatch`  | Dispatch a feature implementation workflow; 502 when the dispatch fails |
 
 ### Local Apps

@@ -206,3 +206,47 @@ describe("FleetTab runner fleet controls", () => {
     ).not.toBeInTheDocument();
   });
 });
+
+describe("FleetTab tri-state and loading states (Issue #1290)", () => {
+  it("renders checking fleet and skeletons when loading initially with no data", () => {
+    renderFleet({
+      runners: [],
+      machinesData: { nodes: [] },
+      loading: true,
+      runnersLoaded: false,
+      nodesLoaded: false,
+    });
+    expect(screen.getByText("Fleet Unknown")).toBeInTheDocument();
+    expect(screen.getByText("Checking fleet…")).toBeInTheDocument();
+    expect(screen.queryByText("All systems nominal")).not.toBeInTheDocument();
+    expect(screen.queryByText("Fleet Operational")).not.toBeInTheDocument();
+    // KPI values should be "—" rather than "0 / 0"
+    const hero = screen.getByRole("region", { name: "Fleet status" });
+    const dashes = within(hero).getAllByText("—");
+    expect(dashes.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("names the failing source when /api/runners fails", () => {
+    renderFleet({
+      runners: [],
+      machinesData: { nodes: [{ name: "ControlTower", online: true }] },
+      loading: false,
+      runnersLoaded: false,
+      nodesLoaded: true,
+      failedSources: ["/api/runners HTTP 500"],
+    });
+    expect(screen.getByText("Fleet Unknown")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Fleet status unknown — \/api\/runners HTTP 500/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("All systems nominal")).not.toBeInTheDocument();
+  });
+
+  it("shows stale badge when data is stale", () => {
+    renderFleet({
+      isStale: true,
+    });
+    expect(screen.getByText("Stale data")).toBeInTheDocument();
+  });
+});
+

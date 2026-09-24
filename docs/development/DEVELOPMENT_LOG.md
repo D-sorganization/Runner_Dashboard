@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1290 · Fleet page reports "Fleet Operational · All systems nominal" before data loaded
+
+- **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1290 (epic #1347 / umbrella #1354)
+- **Branch:** `fix/1290-fleet-loading-status`
+- **PR:** not created
+- **Paths:** `frontend/src/lib/fleetAlerts.ts`, `frontend/src/pages/FleetTab.tsx`, `frontend/src/pages/OverviewPage.tsx`, `frontend/src/components/AlarmPanel.tsx`, `frontend/src/primitives/AlertsCenter.tsx`, `frontend/src/lib/__tests__/fleetAlerts.test.ts`, `frontend/src/pages/__tests__/FleetTab.test.tsx`, `frontend/src/pages/__tests__/OverviewPage.test.tsx`, `SPEC.md`
+- **Started:** 2026-09-24
+- **Last verified:** 2026-09-24 (`SELF`)
+- **Summary:** Introduced tri-state status (unknown, degraded, ok) requiring successful fetch of runners and nodes; rendered skeletons and "Checking fleet…" during initial load; fail-visible banner naming failed source on fetch error; KPI em-dashes when unpopulated; stale badge when data older than 2x poll interval.
+- **Next step:** Push branch, open PR, pass CI, land PR and release lease.
+
 ### DL-#1289 · Staff tab spend today dictionary support
 
 - **State:** in_progress

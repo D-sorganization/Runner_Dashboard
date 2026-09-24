@@ -243,7 +243,16 @@ export function FleetTab(p: any): React.ReactElement {
   // The rollup logic lives in frontend/src/lib/fleetAlerts.ts so it can be
   // unit-tested without the legacy h()-tree. The hero panel below is the
   // only consumer today; the new shell migration will reuse the same fn.
+  const runnersLoaded = p.runnersLoaded !== undefined ? p.runnersLoaded : (runners && runners.length > 0);
+  const nodesLoaded = p.nodesLoaded !== undefined ? p.nodesLoaded : (machinesData.nodes && machinesData.nodes.length > 0);
+
   const heroResult = fleetAlerts.computeFleetAlerts({
+    loading: p.loading,
+    runnersLoaded: runnersLoaded,
+    nodesLoaded: nodesLoaded,
+    failedSources: p.failedSources,
+    error: p.error,
+    isStale: p.isStale,
     machineCount: machineCount,
     machineOnline: machineOnline,
     machineNodes: machineNodes,
@@ -259,7 +268,23 @@ export function FleetTab(p: any): React.ReactElement {
     ? "var(--accent-green)"
     : heroLevel === "warning"
       ? "var(--accent-yellow)"
-      : "var(--accent-red)";
+      : heroLevel === "critical"
+        ? "var(--accent-red)"
+        : "var(--text-muted, #8b949e)";
+
+  let heroSubtitleText = "";
+  if (heroLevel === "unknown") {
+    if (p.loading && !runnersLoaded && !nodesLoaded && (!p.failedSources || p.failedSources.length === 0) && !p.error) {
+      heroSubtitleText = "Checking fleet…";
+    } else {
+      const reason = p.error || (p.failedSources && p.failedSources.join(", ")) || "data unavailable";
+      heroSubtitleText = "Fleet status unknown — " + reason;
+    }
+  } else if (heroAlerts.length === 0) {
+    heroSubtitleText = "All systems nominal";
+  } else {
+    heroSubtitleText = heroAlerts.length + " active alert" + (heroAlerts.length === 1 ? "" : "s");
+  }
 
   return h(
     "div",
@@ -282,11 +307,30 @@ export function FleetTab(p: any): React.ReactElement {
         h(
           "div",
           { className: "fleet-hero__status-text" },
-          h("div", { className: "fleet-hero__title" }, "Fleet ", heroLevelLabel),
-          h("div", { className: "fleet-hero__subtitle" },
-            heroAlerts.length === 0
-              ? "All systems nominal"
-              : heroAlerts.length + " active alert" + (heroAlerts.length === 1 ? "" : "s")),
+          h(
+            "div",
+            { className: "fleet-hero__title", style: { display: "flex", alignItems: "center", gap: "8px" } },
+            "Fleet ",
+            heroLevelLabel,
+            p.isStale ? h(Badge, { variant: "warning" }, "Stale data") : null,
+          ),
+          h(
+            "div",
+            { className: "fleet-hero__subtitle" },
+            heroSubtitleText,
+            p.onRetry && heroLevel === "unknown" && !p.loading
+              ? h(
+                  "button",
+                  {
+                    className: "btn btn--sm",
+                    type: "button",
+                    onClick: p.onRetry,
+                    style: { marginLeft: 8, padding: "2px 8px", fontSize: "0.75rem" },
+                  },
+                  "Retry",
+                )
+              : null,
+          ),
         ),
       ),
       h(
@@ -294,22 +338,22 @@ export function FleetTab(p: any): React.ReactElement {
         { className: "fleet-hero__kpis" },
         h("button", { className: "fleet-hero__kpi", onClick: function () { setTab("machines"); }, type: "button" },
           h("span", { className: "fleet-hero__kpi-label" }, "Machines"),
-          h("span", { className: "fleet-hero__kpi-value" }, machineOnline + " / " + machineCount),
+          h("span", { className: "fleet-hero__kpi-value" }, nodesLoaded ? machineOnline + " / " + machineCount : "—"),
         ),
         h("button", { className: "fleet-hero__kpi", onClick: function () { setTab("overview"); }, type: "button" },
           h("span", { className: "fleet-hero__kpi-label" }, "Open PRs"),
-          h("span", { className: "fleet-hero__kpi-value" }, String(openPrs)),
+          h("span", { className: "fleet-hero__kpi-value" }, stats.org_open_prs != null ? String(stats.org_open_prs) : "—"),
         ),
         h("button", { className: "fleet-hero__kpi", onClick: function () { setTab("queue"); }, type: "button" },
           h("span", { className: "fleet-hero__kpi-label" }, "Queue"),
-          h("span", { className: "fleet-hero__kpi-value" }, String(queued)),
+          h("span", { className: "fleet-hero__kpi-value" }, (stats.queued != null || queue.queued_count != null) ? String(queued) : "—"),
           queued > 0
             ? h("span", { className: "fleet-hero__kpi-sub" }, running + " running")
             : null,
         ),
         h("button", { className: "fleet-hero__kpi", onClick: function () { setTab("overview"); }, type: "button" },
           h("span", { className: "fleet-hero__kpi-label" }, "Runners"),
-          h("span", { className: "fleet-hero__kpi-value" }, on + " / " + runners.length),
+          h("span", { className: "fleet-hero__kpi-value" }, runnersLoaded ? on + " / " + runners.length : "—"),
           busy > 0
             ? h("span", { className: "fleet-hero__kpi-sub" }, busy + " busy")
             : null,
@@ -318,16 +362,18 @@ export function FleetTab(p: any): React.ReactElement {
       h(
         "div",
         { className: "fleet-hero__alerts", "aria-label": "Fleet alerts" },
-        heroAlerts.length === 0
-          ? h("span", { className: "fleet-hero__alert fleet-hero__alert--ok" }, "No active fleet alerts")
-          : heroAlerts.slice(0, 3).map(function (alert: any) {
-              return h(
-                "div",
-                { key: alert.id, className: "fleet-hero__alert fleet-hero__alert--" + alert.level },
-                h("span", { className: "fleet-hero__alert-title" }, alert.title),
-                h("span", { className: "fleet-hero__alert-detail" }, alert.detail),
-              );
-            }),
+        heroLevel === "unknown" && p.loading && !runnersLoaded && !nodesLoaded
+          ? h("div", { className: "skeleton-line", style: { width: "200px", height: "14px" } })
+          : heroAlerts.length === 0
+            ? h("span", { className: "fleet-hero__alert fleet-hero__alert--ok" }, "No active fleet alerts")
+            : heroAlerts.slice(0, 3).map(function (alert: any) {
+                return h(
+                  "div",
+                  { key: alert.id, className: "fleet-hero__alert fleet-hero__alert--" + alert.level },
+                  h("span", { className: "fleet-hero__alert-title" }, alert.title),
+                  h("span", { className: "fleet-hero__alert-detail" }, alert.detail),
+                );
+              }),
       ),
     ),
     h(
@@ -335,20 +381,24 @@ export function FleetTab(p: any): React.ReactElement {
       { className: "stat-row" },
       h(Stat, {
         label: "Runners Online",
-        value: on + "/" + runners.length,
+        value: runnersLoaded ? on + "/" + runners.length : "—",
         color:
-          on === runners.length
-            ? "var(--accent-green)"
-            : "var(--accent-yellow)",
-        sub: busy + " busy",
+          !runnersLoaded
+            ? "var(--text-muted)"
+            : on === runners.length
+              ? "var(--accent-green)"
+              : "var(--accent-yellow)",
+        sub: runnersLoaded ? busy + " busy" : "Checking…",
       }),
       h(Stat, {
         label: "Machines Online",
-        value: machineOnline + "/" + machineCount,
+        value: nodesLoaded ? machineOnline + "/" + machineCount : "—",
         color:
-          machineCount > 0 && machineOnline === machineCount
-            ? "var(--accent-green)"
-            : "var(--accent-yellow)",
+          !nodesLoaded
+            ? "var(--text-muted)"
+            : machineCount > 0 && machineOnline === machineCount
+              ? "var(--accent-green)"
+              : "var(--accent-yellow)",
         sub:
           machineNodes
             .filter(function (n: any) {

@@ -46,6 +46,7 @@ const LEVEL_COLOR: Record<FleetLevel, string> = {
   ok: "var(--accent-green)",
   warning: "var(--accent-yellow)",
   critical: "var(--accent-red)",
+  unknown: "var(--text-muted, #8b949e)",
 };
 
 const ALERT_LEVEL_RANK: Record<FleetAlert["level"], number> = {

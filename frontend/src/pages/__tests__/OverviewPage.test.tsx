@@ -184,4 +184,37 @@ describe("OverviewPage", () => {
       ),
     );
   });
+
+  it("never displays green or nominal state before data has been fetched successfully (delayed mock)", async () => {
+    // Hang fetch so it stays pending
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => new Promise(() => {}));
+
+    renderOverview();
+
+    expect(screen.getByRole("region", { name: "Fleet status" })).toBeInTheDocument();
+    expect(screen.getByText("Fleet Unknown")).toBeInTheDocument();
+    expect(screen.getByText("Checking fleet…")).toBeInTheDocument();
+    expect(screen.queryByText("All systems nominal")).not.toBeInTheDocument();
+    expect(screen.queryByText("Fleet Operational")).not.toBeInTheDocument();
+  });
+
+  it("names the failing source and reports unknown status when /api/runners fails", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url === "/api/runners") {
+        return Promise.resolve(new Response("Internal Server Error", { status: 500 }));
+      }
+      return Promise.resolve(jsonResponse(endpointPayload(url)));
+    });
+
+    renderOverview();
+
+    await waitFor(() => {
+      expect(screen.getByText("Fleet Unknown")).toBeInTheDocument();
+    });
+    expect(screen.getByText(/Fleet status unknown — \/api\/runners HTTP 500/)).toBeInTheDocument();
+    expect(screen.queryByText("All systems nominal")).not.toBeInTheDocument();
+    expect(screen.queryByText("Fleet Operational")).not.toBeInTheDocument();
+  });
 });
+

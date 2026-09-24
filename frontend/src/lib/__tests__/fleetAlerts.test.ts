@@ -342,4 +342,79 @@ describe("fleetLevelLabel", () => {
   it("maps critical → Critical", () => {
     expect(fleetLevelLabel("critical")).toBe("Critical");
   });
+
+  it("maps unknown → Unknown", () => {
+    expect(fleetLevelLabel("unknown")).toBe("Unknown");
+  });
 });
+
+describe("computeFleetAlerts — tri-state status (Issue #1290)", () => {
+  it("returns level=unknown when loading and core data is not yet loaded", () => {
+    const result = computeFleetAlerts({
+      machineCount: 0,
+      machineOnline: 0,
+      loading: true,
+      runnersLoaded: false,
+      nodesLoaded: false,
+    });
+    expect(result.level).toBe("unknown");
+  });
+
+  it("returns level=unknown when uninitialized (neither runners nor nodes loaded)", () => {
+    const result = computeFleetAlerts({
+      machineCount: 0,
+      machineOnline: 0,
+      runnersLoaded: false,
+      nodesLoaded: false,
+    });
+    expect(result.level).toBe("unknown");
+  });
+
+  it("returns level=unknown and names the failing source when /api/runners fails", () => {
+    const result = computeFleetAlerts({
+      machineCount: 1,
+      machineOnline: 1,
+      runnersLoaded: false,
+      nodesLoaded: true,
+      failedSources: ["/api/runners"],
+    });
+    expect(result.level).toBe("unknown");
+    const alert = result.alerts.find((a) => a.title.includes("/api/runners") || a.detail.includes("/api/runners"));
+    expect(alert).toBeDefined();
+    expect(alert?.detail).toContain("/api/runners");
+  });
+
+  it("returns level=warning (degraded) naming the failed source on partial non-core failure", () => {
+    const result = computeFleetAlerts({
+      ...baseState,
+      runnersLoaded: true,
+      nodesLoaded: true,
+      failedSources: ["/api/stats"],
+    });
+    expect(result.level).toBe("warning");
+    const alert = result.alerts.find((a) => a.detail.includes("/api/stats"));
+    expect(alert).toBeDefined();
+  });
+
+  it("flags warning with a stale alert when data is stale", () => {
+    const result = computeFleetAlerts({
+      ...baseState,
+      runnersLoaded: true,
+      nodesLoaded: true,
+      isStale: true,
+    });
+    expect(result.level).toBe("warning");
+    const alert = result.alerts.find((a) => a.id === "telemetry-degraded" && a.title.includes("Stale"));
+    expect(alert).toBeDefined();
+  });
+
+  it("returns level=ok only when both runnersLoaded and nodesLoaded are true and no alerts", () => {
+    const result = computeFleetAlerts({
+      ...baseState,
+      runnersLoaded: true,
+      nodesLoaded: true,
+    });
+    expect(result.level).toBe("ok");
+  });
+});
+

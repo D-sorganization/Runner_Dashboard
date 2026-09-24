@@ -26,6 +26,7 @@ const LEVEL_BADGE_TONE: Record<FleetLevel, BadgeTone> = {
   ok: "success",
   warning: "warning",
   critical: "danger",
+  unknown: "neutral",
 };
 
 export function AlarmPanel({ alerts, onNavigate }: AlarmPanelProps) {

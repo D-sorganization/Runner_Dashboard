@@ -76,6 +76,10 @@ function buildOverviewAlerts(
   state: OverviewState,
   githubStatus: Record<string, any>,
   telemetryError: string | null,
+  failedSources: string[] = [],
+  isStale: boolean = false,
+  runnersLoaded: boolean = false,
+  nodesLoaded: boolean = false,
 ): FleetAlert[] {
   const nodes = Array.isArray(state.machinesData.nodes)
     ? state.machinesData.nodes
@@ -88,18 +92,13 @@ function buildOverviewAlerts(
     stats: state.stats,
     completedRuns: state.stats.runs_completed || 0,
     runnerAudit: state.runnerAudit,
+    runnersLoaded,
+    nodesLoaded,
+    failedSources,
+    isStale,
+    error: telemetryError,
   }).alerts;
   const alerts = base.slice();
-  if (telemetryError) {
-    alerts.push(
-      telemetryAlert(
-        "telemetry-degraded",
-        "warning",
-        "Fleet telemetry degraded",
-        telemetryError,
-      ),
-    );
-  }
   if (
     githubStatus.status === "rate_limited" ||
     githubStatus.status === "auth_error"
@@ -135,49 +134,103 @@ export function OverviewPage(): React.ReactElement {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [runnersLoaded, setRunnersLoaded] = useState(false);
+  const [nodesLoaded, setNodesLoaded] = useState(false);
+  const [failedSources, setFailedSources] = useState<string[]>([]);
+  const [lastSuccessAt, setLastSuccessAt] = useState<number | null>(null);
+  const [isStale, setIsStale] = useState(false);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (lastSuccessAt && Date.now() - lastSuccessAt >= 60_000) {
+        setIsStale(true);
+      }
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [lastSuccessAt]);
 
   const refresh = useCallback((signal?: AbortSignal) => {
     setLoading(true);
     setError(null);
-    Promise.all([
-      getJson("/api/stats", signal),
-      getJson("/api/runners", signal),
-      getJson("/api/runs?per_page=30", signal),
-      getJson("/api/system", signal),
-      getJson("/api/queue", signal),
-      getJson("/api/fleet/nodes", signal),
-      getJson("/api/watchdog", signal),
-      getJson("/api/deployment", signal),
-      getJson("/api/runner-routing-audit", signal),
-      getJson("/api/github/status", signal),
-    ])
-      .then(
-        ([
-          stats,
-          runners,
-          runs,
-          system,
-          queue,
-          machinesData,
-          watchdog,
-          deployment,
-          runnerAudit,
-          github,
-        ]) => {
-          setState({
-            stats: normalizeObjectPayload(stats),
-            runners: normalizeArrayPayload(runners, "runners"),
-            runs: normalizeArrayPayload(runs, "runs"),
-            system: normalizeObjectPayload(system),
-            queue: normalizeObjectPayload(queue),
-            machinesData: normalizeNodesPayload(machinesData),
-            watchdog: normalizeObjectPayload(watchdog),
-            deployment: normalizeObjectPayload(deployment),
-            runnerAudit: normalizeObjectPayload(runnerAudit),
-          });
-          setGithubStatus(normalizeObjectPayload(github));
-        },
-      )
+    const endpoints: Array<{ key: keyof OverviewState | "github"; url: string }> = [
+      { key: "stats", url: "/api/stats" },
+      { key: "runners", url: "/api/runners" },
+      { key: "runs", url: "/api/runs?per_page=30" },
+      { key: "system", url: "/api/system" },
+      { key: "queue", url: "/api/queue" },
+      { key: "machinesData", url: "/api/fleet/nodes" },
+      { key: "watchdog", url: "/api/watchdog" },
+      { key: "deployment", url: "/api/deployment" },
+      { key: "runnerAudit", url: "/api/runner-routing-audit" },
+      { key: "github", url: "/api/github/status" },
+    ];
+
+    Promise.allSettled(
+      endpoints.map((ep) =>
+        getJson(ep.url, signal).then((data) => ({ key: ep.key, url: ep.url, data })),
+      ),
+    )
+      .then((results) => {
+        if (signal?.aborted) return;
+        const failed: string[] = [];
+        let rLoaded = false;
+        let nLoaded = false;
+        const updates: Partial<OverviewState> = {};
+        let githubPayload: Record<string, any> = {};
+
+        results.forEach((res, idx) => {
+          const ep = endpoints[idx];
+          if (res.status === "fulfilled") {
+            const data = res.value.data;
+            if (ep.key === "runners") {
+              updates.runners = normalizeArrayPayload(data, "runners");
+              rLoaded = true;
+            } else if (ep.key === "machinesData") {
+              updates.machinesData = normalizeNodesPayload(data);
+              nLoaded = true;
+            } else if (ep.key === "runs") {
+              updates.runs = normalizeArrayPayload(data, "runs");
+            } else if (ep.key === "stats") {
+              updates.stats = normalizeObjectPayload(data);
+            } else if (ep.key === "system") {
+              updates.system = normalizeObjectPayload(data);
+            } else if (ep.key === "queue") {
+              updates.queue = normalizeObjectPayload(data);
+            } else if (ep.key === "watchdog") {
+              updates.watchdog = normalizeObjectPayload(data);
+            } else if (ep.key === "deployment") {
+              updates.deployment = normalizeObjectPayload(data);
+            } else if (ep.key === "runnerAudit") {
+              updates.runnerAudit = normalizeObjectPayload(data);
+            } else if (ep.key === "github") {
+              githubPayload = normalizeObjectPayload(data);
+            }
+          } else {
+            const err = res.reason;
+            if (err instanceof DOMException && err.name === "AbortError") return;
+            const errMsg = err instanceof Error ? err.message : String(err);
+            failed.push(errMsg.includes(ep.url) ? errMsg : `${ep.url}: ${errMsg}`);
+          }
+        });
+
+        setState((prev) => ({
+          ...prev,
+          ...updates,
+        }));
+        setGithubStatus(githubPayload);
+        setRunnersLoaded((prev) => prev || rLoaded);
+        setNodesLoaded((prev) => prev || nLoaded);
+        setFailedSources(failed);
+        if (failed.length > 0) {
+          setError(failed.join("; "));
+        } else {
+          setError(null);
+        }
+        if (rLoaded && nLoaded) {
+          setLastSuccessAt(Date.now());
+          setIsStale(false);
+        }
+      })
       .catch((err: unknown) => {
         if (err instanceof DOMException && err.name === "AbortError") return;
         setError(
@@ -230,8 +283,17 @@ export function OverviewPage(): React.ReactElement {
   );
 
   const appAlerts = useMemo(
-    () => buildOverviewAlerts(state, githubStatus, error),
-    [state, githubStatus, error],
+    () =>
+      buildOverviewAlerts(
+        state,
+        githubStatus,
+        error,
+        failedSources,
+        isStale,
+        runnersLoaded,
+        nodesLoaded,
+      ),
+    [state, githubStatus, error, failedSources, isStale, runnersLoaded, nodesLoaded],
   );
 
   const onNavigate = useCallback(
@@ -286,6 +348,12 @@ export function OverviewPage(): React.ReactElement {
         stats={state.stats}
         queue={state.queue}
         machinesData={state.machinesData}
+        runnersLoaded={runnersLoaded}
+        nodesLoaded={nodesLoaded}
+        failedSources={failedSources}
+        isStale={isStale}
+        error={error}
+        onRetry={() => refresh()}
         onFleet={onFleet}
         onRunner={onRunner}
         loading={loading || actionLoading}
