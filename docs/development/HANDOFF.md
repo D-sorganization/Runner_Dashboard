@@ -1,4 +1,40 @@
-# Current handoff — Reconcile orphaned staff runs (#1293)
+# Current handoff — Staff run watchdog and idle timeout (#1294)
+
+Last updated: 2026-09-24
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `C:/Users/diete/Repositories/_worktrees/Runner_Dashboard-1294`; branch `fix/1294-staff-watchdog`; baseline `5a14930`; commit `SELF`; PR not created at commit time. Issue #1294, epic #1347 / umbrella #1354; DL-#1294.
+
+## Work
+
+- `backend/staff/watchdog.py`: Created independent watchdog module:
+  - `StaffWatchdog`: Runs on a dedicated daemon thread independent of stdout line streaming; enforces wall-clock deadline (`budget.max_minutes`, default 4h) and idle deadline (`idle_minutes`, default 20m); on expiry calls `terminate_process_group()`; marks run failed with `failure_class='timeout'`, `'stalled'`, or `'unkillable'`; emits periodic `heartbeat` events containing `elapsed` and `last_output_at`; emits critical `watchdog` `FleetEvent` when process group cannot be terminated.
+  - `terminate_process_group()`: Terminates parent and all descendants recursively using `psutil`, waits grace period, and kills any remaining processes; returns `False` if any process survives (unkillable).
+- `backend/staff/roles.py`: Added `budget_max_minutes` and `idle_minutes` to `RoleSpec` and `parse_role()` (with defaults 240.0 and 20.0).
+- `backend/staff/runner.py`: Integrated `StaffWatchdog` into `_execute` and `_pump_output`; updated `StaffRunner.cancel()` to use `terminate_process_group()`; removed stdout line-dependent deadline check.
+- `backend/staff/reconcile.py`: Delegated `terminate_pid()` to `terminate_process_group()` for unified process tree cleanup.
+- `tests/unit/test_staff_watchdog.py`: Added comprehensive unit and integration tests covering silent hang killing (`failure_class='stalled'`), chatty overrun killing (`failure_class='timeout'`), grandchild process tree termination, periodic heartbeat emission, unkillable failure mode handling, and RoleSpec budget parsing.
+- `SPEC.md`: Bumped to 2.5.213 and added change log entry.
+- `docs/development/DEVELOPMENT_LOG.md`: Added DL-#1294 and marked DL-#1293 shipped.
+
+## Validation
+
+- `pytest tests/unit/test_staff_watchdog.py`: 7 passed.
+- `pytest tests/unit/test_staff_reconcile.py`: 8 passed.
+- `pytest tests/api/test_staff_runner.py`: 17 passed.
+- `ruff check .`: passed with 0 errors.
+- `mypy backend/staff/`: passed with 0 errors in 4 source files.
+
+## Next
+
+1. Commit changes, push branch, open PR with `Fixes #1294`, and arm auto-merge.
+2. Monitor CI to green and merge.
+3. Release lease on #1294 and remove worktree.
+
+---
+
+# Previous handoff — Reconcile orphaned staff runs (#1293)
 
 Last updated: 2026-09-24
 
