@@ -9,6 +9,7 @@
 
 | Date       | PR / Issue | Summary                                                                                                                               |
 | ---------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-09-23 | #1273      | Add ControlTower staff worker runbook, deploy/staff-node-acceptance.sh unified test, three-node fleet acceptance docs, and fix machine registry LAN comment. |
 | 2026-09-23 | #1257 eGPU follow-up | Record Sonnet 750ex/RTX 5070 recovery after reboot and successful Windows/WSL detection; retain unattended-startup limitation. |
 | 2026-09-23 | #1257 final firewall | Confirm all firewall profiles enabled with Windows/WSL connectivity intact and CI capacity restored. |
 | 2026-09-23 | #1257 Windows recovery | Record Windows reboot, six-provider recovery, duplicate-IP diagnosis, firewall checks and remaining acceptance steps. |
@@ -21,6 +22,13 @@
 | 2026-09-23 | #1192      | Record verified OGLaptop worker deployment, six-provider health checks, scoped WSL Ollama connectivity, and rollback paths. |
 | 2026-09-23 | #1251      | Expose all deferred-plan owners and feature IDs/statuses/safe links in Projects; retain owner authority and live rollout under #1248. |
 
+- **2026-09-23:** ControlTower Staff Worker Runbook and Three-Node Fleet Acceptance (#1273, epic #1192).
+  Delivered `docs/operations/controltower-staff-worker.md` with an ordered checklist (probe to acceptance,
+  marked Owner/Agent); unified pass/fail test script `deploy/staff-node-acceptance.sh` covering deployment,
+  sign-ins, CLIs, drop-in permissions/directories, live role source/timer, holds, scheduler expectation,
+  Ollama reachability, and provider verification; three-node fleet qualification section in `docs/staff-hub.md`;
+  and corrected the out-of-date OGLaptop network caveat in `backend/machine_registry.yml` (same home LAN).
+  TDD: `tests/deploy/test_staff_node_acceptance.py`.
 - **2026-09-23:** Node LAN duplicate-address prevention (#1270, epic #1192). `docs/staff-hub.md` documents
   the OGLaptop 2026-09-23 outage cause (DHCP address held by a silent LAN device, Tcpip event 4199), router
   reservations for every node and the conflicting device, one active LAN interface per node, read-only diagnosis
