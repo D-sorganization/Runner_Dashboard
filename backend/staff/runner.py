@@ -22,7 +22,6 @@ import re
 import shutil
 import subprocess
 import threading
-import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -36,12 +35,14 @@ from staff import usage as usage_mod
 from staff.adapters import ADAPTERS, ProviderAdapter
 from staff.roles import RoleSpec, load_roles
 from staff.store import RunRecord, RunStore, _now, get_store
+from staff.watchdog import StaffWatchdog, terminate_process_group
 
 log = logging.getLogger("dashboard.staff.runner")
 
 MAX_CONCURRENT_RUNS = int(os.environ.get("STAFF_MAX_CONCURRENT_RUNS", "3"))
 NO_RESULT_ERROR = "agent exited 0 without a STAFF_RESULT line (it stopped before finishing, e.g. to ask a question)"
 RUN_TIMEOUT_SECONDS = int(os.environ.get("STAFF_RUN_TIMEOUT_SECONDS", str(4 * 3600)))
+IDLE_TIMEOUT_SECONDS = int(os.environ.get("STAFF_IDLE_TIMEOUT_SECONDS", str(20 * 60)))
 _SAFE_REF = re.compile(r"^[A-Za-z0-9._/-]{1,120}$")
 
 
@@ -256,7 +257,7 @@ class StaffRunner:
         if rec is None:
             return False
         if proc is not None and proc.poll() is None:
-            proc.terminate()
+            terminate_process_group(proc.pid, grace_period=1.0)
             self.store.append_event(run_id, "cancel", "terminate signal sent")
             return True
         if rec.status in ("queued", "preparing"):
@@ -368,23 +369,61 @@ class StaffRunner:
         )
         store.append_event(rec.id, "start", f"{adapter.executable} ({plan.provider}) in {workdir}")
         if cancelled:
-            proc.terminate()
+            terminate_process_group(proc.pid, grace_period=1.0)
         if adapter.prompt_via_stdin and proc.stdin is not None:
             proc.stdin.write(prompt + "\n")
             proc.stdin.close()
-        usage, result_line = self._pump_output(rec, adapter, proc, transcript)
-        rc = proc.wait()
+
+        wall_clock_timeout = (
+            float(os.environ["STAFF_RUN_TIMEOUT_SECONDS"])
+            if "STAFF_RUN_TIMEOUT_SECONDS" in os.environ
+            else role.budget_max_minutes * 60.0
+        )
+        idle_timeout = (
+            float(os.environ["STAFF_IDLE_TIMEOUT_SECONDS"])
+            if "STAFF_IDLE_TIMEOUT_SECONDS" in os.environ
+            else role.idle_minutes * 60.0
+        )
+
+        watchdog = StaffWatchdog(
+            run_id=rec.id,
+            proc=proc,
+            store=store,
+            max_seconds=wall_clock_timeout,
+            idle_seconds=idle_timeout,
+        )
+        watchdog.start()
+        try:
+            usage, result_line = self._pump_output(rec, adapter, proc, transcript, watchdog)
+            try:
+                rc = proc.wait(timeout=5.0)
+            except subprocess.TimeoutExpired:
+                rc = -1
+        finally:
+            watchdog.stop()
+
         with self._lock:
             self._procs.pop(rec.id, None)
         cancelled = rec.id in self._cancel_flags
-        status = "cancelled" if cancelled else ("succeeded" if rc == 0 else "failed")
-        error = ""
-        if status == "succeeded" and not result_line:
+        failure_class = watchdog.failure_class or ""
+        if cancelled:
+            status = "cancelled"
+            error = ""
+        elif failure_class:
+            status = "failed"
+            error = watchdog.error_message or f"run terminated ({failure_class})"
+        elif rc == 0 and not result_line:
             # An unattended agent that stops to ask a question exits 0 without finishing (DeskComputer 2026-09-22).
             status, error = "failed", NO_RESULT_ERROR
+        elif rc == 0:
+            status, error = "succeeded", ""
+        else:
+            status, error = "failed", ""
+
         store.update_run(
             rec.id,
             status=status,
+            failure_class=failure_class,
             error=error,
             ended_at=_now(),
             exit_code=rc,
@@ -402,6 +441,7 @@ class StaffRunner:
         adapter: ProviderAdapter,
         proc: subprocess.Popen[str],
         transcript: Path,
+        watchdog: StaffWatchdog | None = None,
     ) -> tuple[dict[str, Any], str]:
         """Stream stdout lines into the transcript file and the event store.
 
@@ -409,10 +449,11 @@ class StaffRunner:
         """
         usage: dict[str, Any] = {}
         result_line = ""
-        deadline = time.monotonic() + RUN_TIMEOUT_SECONDS
         assert proc.stdout is not None  # noqa: S101
         with transcript.open("a", encoding="utf-8") as tf:
             for line in proc.stdout:
+                if watchdog is not None:
+                    watchdog.record_output()
                 tf.write(line)
                 event = adapter.parse_line(line)
                 if event.get("usage"):
@@ -422,14 +463,6 @@ class StaffRunner:
                     self.store.append_event(rec.id, event.get("kind", "text"), text)
                     if "STAFF_RESULT:" in text:
                         result_line = text[text.index("STAFF_RESULT:") :]
-                if time.monotonic() > deadline:
-                    proc.terminate()
-                    self.store.append_event(
-                        rec.id,
-                        "timeout",
-                        f"run exceeded {RUN_TIMEOUT_SECONDS}s; terminated",
-                    )
-                    break
         return usage, result_line
 
 

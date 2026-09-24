@@ -18,18 +18,31 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1293 · SC-A4: Reconcile orphaned staff runs
+### DL-#1294 · SC-A5: Staff run watchdog and idle timeout
 
 - **State:** in_progress
 - **Owner:** antigravity
-- **Issue:** #1293 (epic #1347 / umbrella #1354)
-- **Branch:** `fix/1293-reconcile-orphaned-staff-runs`
+- **Issue:** #1294 (epic #1347 / umbrella #1354)
+- **Branch:** `fix/1294-staff-watchdog`
 - **PR:** not created
-- **Paths:** `backend/staff/reconcile.py`, `tests/unit/test_staff_reconcile.py`, `backend/staff/store.py`, `backend/staff/runner.py`, `backend/staff/workspace.py`, `backend/fleet_events.py`, `backend/routers/staff.py`, `backend/routers/staff_schedule.py`, `backend/server.py`, `SPEC.md`
+- **Paths:** `backend/staff/watchdog.py`, `tests/unit/test_staff_watchdog.py`, `backend/staff/runner.py`, `backend/staff/roles.py`, `backend/staff/reconcile.py`, `SPEC.md`
 - **Started:** 2026-09-24
 - **Last verified:** 2026-09-24 (`SELF`)
-- **Summary:** Reconcile orphaned staff runs across dashboard restart. On startup, active runs are marked failed with failure_class=orphaned; child PID is terminated; RM lease is released (with async background retry); clean worktrees are removed while unpushed worktrees are preserved with path recorded on run; staff_run_orphaned fleet event emitted and surfaced in summary.attention; unblocks role schedule gates.
+- **Summary:** Added independent staff process watchdog monitoring wall-clock deadline (`budget.max_minutes`, default 4h) and idle deadline (`idle_minutes`, default 20m) independent of stdout line pumping; on expiry terminates/kills child process group (recursively cleaning up child and grandchild processes); marks run failed with failure_class='timeout', 'stalled', or 'unkillable'; emits periodic heartbeats every minute; emits critical fleet event on unkillable processes.
 - **Next step:** Run linters, push branch, open PR, enable auto-merge.
+
+### DL-#1293 · SC-A4: Reconcile orphaned staff runs
+
+- **State:** shipped
+- **Owner:** antigravity
+- **Issue:** #1293 (epic #1347 / umbrella #1354)
+- **Branch:** `fix/1293-reconcile-orphaned-staff-runs`
+- **PR:** #1362
+- **Paths:** `backend/staff/reconcile.py`, `tests/unit/test_staff_reconcile.py`, `backend/staff/store.py`, `backend/staff/runner.py`, `backend/staff/workspace.py`, `backend/fleet_events.py`, `backend/routers/staff.py`, `backend/routers/staff_schedule.py`, `backend/server.py`, `SPEC.md`
+- **Started:** 2026-09-24
+- **Last verified:** 2026-09-24 (`5a14930`)
+- **Summary:** Reconcile orphaned staff runs across dashboard restart. On startup, active runs are marked failed with failure_class=orphaned; child PID is terminated; RM lease is released (with async background retry); clean worktrees are removed while unpushed worktrees are preserved with path recorded on run; staff_run_orphaned fleet event emitted and surfaced in summary.attention; unblocks role schedule gates.
+- **Next step:** None (shipped in PR #1362).
 
 ### DL-#1292 · SC-A3: Per-tab error boundaries and per-tab Suspense
 

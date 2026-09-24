@@ -1,6 +1,6 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.212
+**Spec Version:** 2.5.213
 **Application Version:** 4.10.0 (see `VERSION`)
 **Last Updated:** 2026-09-24T00:00:00-07:00
 **Status:** Active
@@ -9,6 +9,7 @@
 
 | Date       | PR / Issue             | Summary                                                                                                                                                                                                       |
 | ---------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-09-24 | #1294                  | SC-A5: Staff run watchdog: independent wall-clock deadline and idle timeout, process group termination (parent + descendants), periodic heartbeats, unkillable classification.                                |
 | 2026-09-24 | #1293                  | SC-A4: Reconcile orphaned staff runs on restart: terminate child PID, release RM lease, clean worktree or preserve if unpushed, mark failed/orphaned, and emit staff_run_orphaned fleet event.                |
 | 2026-09-24 | #1292                  | SC-A3: Per-tab error boundaries and per-tab Suspense; report client errors to /api/client-errors; tab error panel with Retry, Copy details, and prefilled report link; reset on route change.                 |
 | 2026-09-24 | #1291                  | SC-A2b: Resolve local node identity and suppress runner pool offline duplicates; eliminate hub proxying on spoke /api/fleet/nodes; add GET /api/fleet/identity; update acceptance check.                      |

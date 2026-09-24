@@ -41,6 +41,8 @@ class RoleSpec:
     repos: tuple[str, ...] = ()
     budget_usd_per_run: float = 0.0
     budget_usd_per_day: float = 0.0
+    budget_max_minutes: float = 240.0
+    idle_minutes: float = 20.0
     permissions: dict[str, bool] = field(default_factory=dict)
     reports_to: str = ""
     holds: tuple[str, ...] = ()
@@ -67,7 +69,13 @@ class RoleSpec:
             "schedule": self.schedule,
             "window": self.window,
             "repos": list(self.repos),
-            "budget": {"usd_per_run": self.budget_usd_per_run, "usd_per_day": self.budget_usd_per_day},
+            "budget": {
+                "usd_per_run": self.budget_usd_per_run,
+                "usd_per_day": self.budget_usd_per_day,
+                "max_minutes": self.budget_max_minutes,
+                "idle_minutes": self.idle_minutes,
+            },
+            "idle_minutes": self.idle_minutes,
             "permissions": dict(self.permissions),
             "reports_to": self.reports_to,
             "holds": list(self.holds),
@@ -120,6 +128,12 @@ def parse_role(data: dict[str, Any], source_path: str = "") -> RoleSpec:
     perms = data.get("permissions") or {}
     window = data.get("window") or None
     strategy = data.get("strategy")
+    max_minutes = budget.get("max_minutes")
+    if max_minutes is None:
+        max_minutes = data.get("max_minutes", 240.0)
+    idle_minutes = budget.get("idle_minutes")
+    if idle_minutes is None:
+        idle_minutes = data.get("idle_minutes", 20.0)
     return RoleSpec(
         name=name,
         title=str(data.get("title") or name),
@@ -137,7 +151,9 @@ def parse_role(data: dict[str, Any], source_path: str = "") -> RoleSpec:
         repos=_as_tuple(data.get("repos")),
         budget_usd_per_run=float(budget.get("usd_per_run") or 0.0),
         budget_usd_per_day=float(budget.get("usd_per_day") or 0.0),
-        permissions={str(k): bool(v) for k, v in perms.items()} if isinstance(perms, dict) else {},
+        budget_max_minutes=float(max_minutes),
+        idle_minutes=float(idle_minutes),
+        permissions=({str(k): bool(v) for k, v in perms.items()} if isinstance(perms, dict) else {}),
         reports_to=str(data.get("reports_to") or ""),
         holds=_as_tuple(data.get("holds")),
         surface=str(data.get("surface") or "dashboard"),
@@ -153,7 +169,13 @@ _FALLBACK_ROLES: tuple[dict[str, Any], ...] = (
         "title": "Ad-hoc task",
         "summary": "Free-form coding task dispatched by an operator.",
         "providers": ["claude", "codex", "antigravity"],
-        "permissions": {"lease": True, "push_branch": True, "open_pr": True, "merge": False, "host_shell": False},
+        "permissions": {
+            "lease": True,
+            "push_branch": True,
+            "open_pr": True,
+            "merge": False,
+            "host_shell": False,
+        },
         "surface": "dashboard",
     },
 )

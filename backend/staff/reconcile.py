@@ -16,8 +16,6 @@ This module reconciles those orphaned runs at startup:
 from __future__ import annotations
 
 import logging
-import os
-import signal
 import threading
 import time
 from pathlib import Path
@@ -32,39 +30,16 @@ from staff import lease as lease_mod
 from staff import workspace
 from staff.runner import StaffRunner
 from staff.store import RunRecord, RunStore, _now
+from staff.watchdog import terminate_process_group
 
 log = logging.getLogger("dashboard.staff.reconcile")
 
 
 def terminate_pid(pid: int | None) -> None:
-    """Check if process PID exists and terminate/kill it."""
+    """Check if process PID exists and terminate/kill it and all descendants."""
     if pid is None or pid <= 0:
         return
-    if psutil is not None:
-        try:
-            if psutil.pid_exists(pid):
-                p = psutil.Process(pid)
-                p.terminate()
-                try:
-                    p.wait(timeout=2.0)
-                except (psutil.TimeoutExpired, psutil.NoSuchProcess):
-                    pass
-                if p.is_running():
-                    p.kill()
-                return
-        except Exception:  # noqa: BLE001
-            log.warning(
-                "psutil termination failed for PID %d; trying fallback",
-                pid,
-                exc_info=True,
-            )
-
-    try:
-        os.kill(pid, signal.SIGTERM)
-    except (OSError, ProcessLookupError):
-        pass
-    except Exception:  # noqa: BLE001
-        log.warning("Failed to terminate child PID %d", pid, exc_info=True)
+    terminate_process_group(pid, grace_period=2.0)
 
 
 def _release_lease_with_retry(
