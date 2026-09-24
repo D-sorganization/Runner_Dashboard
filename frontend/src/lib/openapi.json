@@ -1426,6 +1426,17 @@
         "title": "RunOnceRequest",
         "type": "object"
       },
+      "ScheduleToggleBody": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": ["enabled"],
+        "title": "ScheduleToggleBody",
+        "type": "object"
+      },
       "SetKeyRequest": {
         "properties": {
           "key": {
@@ -8848,6 +8859,204 @@
         "tags": ["feature_requests"]
       }
     },
+    "/api/staff/audit": {
+      "get": {
+        "description": "Retrieve durable append-only staff audit rows (SC-A8, Issue #1298).",
+        "operationId": "list_audit_api_staff_audit_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "principal",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Principal"
+            }
+          },
+          {
+            "in": "query",
+            "name": "thread_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Thread Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "run_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "action",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 60,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Action"
+            }
+          },
+          {
+            "in": "query",
+            "name": "surface",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 30,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Surface"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Format"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response List Audit Api Staff Audit Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List Audit",
+        "tags": ["staff"]
+      }
+    },
     "/api/staff/board": {
       "get": {
         "description": "Status monitor. With peers configured this is the fleet-wide view (#1195).",
@@ -8891,6 +9100,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Board",
@@ -8917,6 +9129,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Holds",
@@ -8962,6 +9177,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Put Holds",
@@ -8988,6 +9206,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Roster",
@@ -9014,6 +9235,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Roster",
@@ -9115,6 +9339,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "List Runs",
@@ -9174,6 +9401,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Run",
@@ -9221,6 +9451,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Cancel Run",
@@ -9276,6 +9509,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Stream Run",
@@ -9302,9 +9538,62 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Schedule",
+        "tags": ["staff"]
+      }
+    },
+    "/api/staff/schedule/toggle": {
+      "post": {
+        "description": "Toggle the background scheduler on or off (SC-A8, Issue #1298).",
+        "operationId": "toggle_scheduler_api_staff_schedule_toggle_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScheduleToggleBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Toggle Scheduler Api Staff Schedule Toggle Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Toggle Scheduler",
         "tags": ["staff"]
       }
     },
@@ -9327,6 +9616,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Summary",
@@ -9394,6 +9686,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Usage",
@@ -9421,6 +9716,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Export Usage",
@@ -9447,6 +9745,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Get Pricing",
@@ -9505,6 +9806,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
           }
         ],
         "summary": "Dispatch",
