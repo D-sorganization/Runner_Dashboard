@@ -1,4 +1,36 @@
-# Current handoff — Feature Request dispatch failure reporting (#1280)
+# Current handoff — Staff tab spend today dictionary support (#1289)
+
+Last updated: 2026-09-24
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `C:/Users/diete/Repositories/Worktrees/Runner_Dashboard-1289`; branch `fix/1289-staff-spend-today-dict`; baseline `d77123b0`; commit `SELF`; PR not created at commit time. Issue #1289, epic #1354; DL-#1289.
+
+## Work
+
+- `frontend/src/pages/Staff/staffApi.ts`: typed `BoardResponse.spend_today_usd` as `Record<string, number>`, updated `formatUsd` to be defensive (handles non-numbers/non-finites like `null`, `undefined`, `NaN`, and objects gracefully returning em dash and warning once), and added `formatSpendSummary` helper.
+- `frontend/src/pages/Staff/Board.tsx`: integrated `formatSpendSummary` to show total spend in `board-spend` and formatted per-provider breakdown in accessible tooltip / title.
+- `backend/routers/staff.py`: added `StaffBoardResponse` and `StaffSummaryResponse` Pydantic response models, decorating `/board` and `/summary` routes.
+- `backend/staff/fleet.py`: ensured per-provider spend aggregation correctly computes and rounds the `total` key.
+- `SPEC.md`: updated change log with row for #1289.
+
+## Validation
+
+- `npx vitest run frontend/src/pages/__tests__/Staff.test.tsx`: 18 passed (RED first on dict spend throwing TypeError, then GREEN with dict spend, missing spend, and NaN spend).
+- `python -m pytest tests/api/test_staff_fleet.py`: 12 passed (RED first on missing response models, then GREEN validating models and OpenAPI schema).
+- `npm run typecheck` (`tsc -p tsconfig.app.json`): passed clean.
+- `npm run build`: passed clean in 2.13s.
+- `ruff check backend/` and `ruff format --check backend/`: passed clean.
+- `mypy backend/routers/staff.py backend/staff/fleet.py`: passed clean with 0 issues.
+
+## Next
+
+1. Open PR (`Fixes #1289`), arm auto-merge, and monitor quality-gate.
+2. Release lease once merged and clean up worktree.
+
+---
+
+## Previous handoff — Feature Request dispatch failure reporting (#1280)
 
 Last updated: 2026-09-23
 

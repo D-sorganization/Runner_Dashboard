@@ -146,7 +146,7 @@ export interface BoardResponse {
   running: RunRecord[];
   queued: RunRecord[];
   recent: RunRecord[];
-  spend_today_usd: number;
+  spend_today_usd: Record<string, number>;
   providers: Record<string, boolean>;
   /** Scheduled-role liveness on this node (#1209); absent on older nodes. */
   liveness?: RoleLiveness[];
@@ -296,8 +296,54 @@ export function statusTone(status: string): "success" | "warning" | "danger" | "
   }
 }
 
-export function formatUsd(value: number | null | undefined): string {
-  return `$${(value ?? 0).toFixed(2)}`;
+const warnedFormatUsdInputs = new Set<string>();
+
+export function formatUsd(value: unknown): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    const key = String(value);
+    if (!warnedFormatUsdInputs.has(key)) {
+      warnedFormatUsdInputs.add(key);
+      console.warn(`[formatUsd] Non-finite or non-number value: ${key}`);
+    }
+    return "—";
+  }
+  return `$${value.toFixed(2)}`;
+}
+
+export interface SpendSummary {
+  total: number | null;
+  breakdown: string;
+}
+
+/** Parse spend_today_usd into a total and per-provider breakdown (issue #1289). */
+export function formatSpendSummary(spend: unknown): SpendSummary {
+  if (typeof spend === "number") {
+    return {
+      total: Number.isFinite(spend) ? spend : null,
+      breakdown: "",
+    };
+  }
+  if (typeof spend === "object" && spend !== null) {
+    const rec = spend as Record<string, unknown>;
+    const providers: [string, number][] = [];
+    let total: number | null = null;
+    for (const [k, v] of Object.entries(rec)) {
+      if (typeof v === "number" && Number.isFinite(v)) {
+        if (k === "total") {
+          total = v;
+        } else {
+          providers.push([k, v]);
+        }
+      }
+    }
+    if (total === null && providers.length > 0) {
+      total = providers.reduce((sum, [, cost]) => sum + cost, 0);
+    }
+    providers.sort(([a], [b]) => a.localeCompare(b));
+    const breakdown = providers.map(([k, v]) => `${k}: ${formatUsd(v)}`).join(" · ");
+    return { total, breakdown };
+  }
+  return { total: null, breakdown: "" };
 }
 
 // ── Pure helpers shared by the Staff panels ─────────────────────────────────

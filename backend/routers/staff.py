@@ -27,7 +27,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from identity import require_fleet_peer, require_orchestrator_peer
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from staff import consolidation
 from staff import fleet as staff_fleet
 from staff import liveness as staff_liveness
@@ -42,6 +42,52 @@ router = APIRouter(prefix="/api/staff", tags=["staff"])
 MAX_LIMIT = 500
 STREAM_POLL_SECONDS = 0.5
 STREAM_IDLE_TIMEOUT_SECONDS = 6 * 3600
+
+
+class StaffBoardResponse(BaseModel):
+    """Response model for /api/staff/board (issue #1289)."""
+
+    generated_at: str = Field(description="ISO-8601 UTC timestamp")
+    machine: str | None = Field(default=None, description="Local machine hostname")
+    hub: str | None = Field(default=None, description="Hub machine hostname when aggregated")
+    running: list[dict[str, Any]] = Field(default_factory=list)
+    queued: list[dict[str, Any]] = Field(default_factory=list)
+    recent: list[dict[str, Any]] = Field(default_factory=list)
+    spend_today_usd: dict[str, float] = Field(
+        default_factory=dict,
+        description="Per-provider spend in USD plus a 'total' key (issue #1289)",
+    )
+    providers: dict[str, Any] = Field(default_factory=dict)
+    liveness: list[dict[str, Any]] = Field(default_factory=list)
+    liveness_alerts: list[dict[str, Any]] = Field(default_factory=list)
+    machines: dict[str, dict[str, Any]] | None = Field(default=None)
+    online: list[str] = Field(default_factory=list)
+    offline: list[str] = Field(default_factory=list)
+    rm_source: dict[str, Any] | None = Field(default=None)
+
+    model_config = ConfigDict(extra="allow")
+
+
+class StaffSummaryResponse(BaseModel):
+    """Response model for /api/staff/summary (issue #1289)."""
+
+    generated_at: str = Field(description="ISO-8601 UTC timestamp")
+    hub: str = Field(description="Hub machine hostname")
+    machines_online: list[str] = Field(default_factory=list)
+    machines_offline: list[str] = Field(default_factory=list)
+    in_flight: list[dict[str, Any]] = Field(default_factory=list)
+    recent_24h: dict[str, int] = Field(default_factory=dict)
+    attention: list[dict[str, Any]] = Field(default_factory=list)
+    spend_today_usd: dict[str, float] = Field(
+        default_factory=dict,
+        description="Per-provider spend in USD plus a 'total' key (issue #1289)",
+    )
+    providers: dict[str, Any] = Field(default_factory=dict)
+    holds: list[dict[str, Any]] = Field(default_factory=list)
+    liveness_alerts: list[dict[str, Any]] = Field(default_factory=list)
+    roles: list[dict[str, Any]] = Field(default_factory=list)
+
+    model_config = ConfigDict(extra="allow")
 
 
 class RunBody(BaseModel):
@@ -106,7 +152,7 @@ def _local_board(runner: StaffRunner) -> dict[str, Any]:
     }
 
 
-@router.get("/board")
+@router.get("/board", response_model=StaffBoardResponse, response_model_exclude_none=True)
 async def board(
     local: bool = Query(default=False, description="Return only this node's board (used by hub fan-out)."),
     _peer: str = Depends(require_fleet_peer),
@@ -136,7 +182,7 @@ def _holds_snapshot() -> list[dict[str, Any]]:
         return []
 
 
-@router.get("/summary")
+@router.get("/summary", response_model=StaffSummaryResponse, response_model_exclude_none=True)
 async def summary(_peer: str = Depends(require_fleet_peer)) -> dict[str, Any]:
     """The one-call brief for Barb and Orchestrator (#1195).
 

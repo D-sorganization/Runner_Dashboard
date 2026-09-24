@@ -258,3 +258,68 @@ def test_forward_errors_map_to_503_and_4xx(
     monkeypatch.setattr(fleet_mod, "post_json", rejecting_post)
     resp = client.post("/api/staff/ad-hoc/run", json={"prompt": "hi", "machine": "OGLaptop"}, headers=_XHR)
     assert resp.status_code == 422 and resp.json()["detail"] == "role scoped elsewhere"
+
+
+@pytest.mark.unit
+def test_board_and_summary_satisfy_pydantic_response_models(
+    client: TestClient, peers: dict[str, str], staff: runner_mod.StaffRunner
+) -> None:
+    from routers.staff import StaffBoardResponse, StaffSummaryResponse
+
+    run1 = store_mod.RunRecord(
+        id="run-spend-1",
+        role="ad-hoc",
+        provider="claude",
+        model=None,
+        machine="Desk",
+        repo="Tools",
+        target_kind="issue",
+        target_ref="#1",
+        prompt="x",
+        status="succeeded",
+        cost_usd=0.28,
+    )
+    run2 = store_mod.RunRecord(
+        id="run-spend-2",
+        role="ad-hoc",
+        provider="codex",
+        model=None,
+        machine="Desk",
+        repo="Tools",
+        target_kind="issue",
+        target_ref="#2",
+        prompt="y",
+        status="succeeded",
+        cost_usd=0.32,
+    )
+    staff.store.create_run(run1)
+    staff.store.create_run(run2)
+
+    # 1. Local board
+    board_local = client.get("/api/staff/board", params={"local": "true"}).json()
+    validated_board_local = StaffBoardResponse.model_validate(board_local)
+    assert validated_board_local.spend_today_usd["claude"] == 0.28
+    assert validated_board_local.spend_today_usd["codex"] == 0.32
+    assert validated_board_local.spend_today_usd["total"] == 0.60
+
+    # 2. Aggregated board
+    board_agg = client.get("/api/staff/board").json()
+    validated_board_agg = StaffBoardResponse.model_validate(board_agg)
+    assert "total" in validated_board_agg.spend_today_usd
+
+    # 3. Summary
+    summary = client.get("/api/staff/summary").json()
+    validated_summary = StaffSummaryResponse.model_validate(summary)
+    assert validated_summary.spend_today_usd["total"] == validated_board_agg.spend_today_usd["total"]
+
+    # 4. OpenAPI schema validation
+    openapi = client.app.openapi()
+    board_schema_ref = openapi["paths"]["/api/staff/board"]["get"]["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ]
+    summary_schema_ref = openapi["paths"]["/api/staff/summary"]["get"]["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"]
+    assert "StaffBoardResponse" in str(board_schema_ref)
+    assert "StaffSummaryResponse" in str(summary_schema_ref)
+
