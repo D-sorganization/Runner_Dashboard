@@ -854,6 +854,34 @@
         "title": "MintTokenRequest",
         "type": "object"
       },
+      "PageViewPayload": {
+        "description": "Payload sent by the frontend shell on tab navigation.",
+        "properties": {
+          "pathname": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Browser path",
+            "title": "Pathname"
+          },
+          "tab_id": {
+            "description": "Nav item identifier",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Tab Id",
+            "type": "string"
+          }
+        },
+        "required": ["tab_id"],
+        "title": "PageViewPayload",
+        "type": "object"
+      },
       "PoolConfigPatch": {
         "additionalProperties": false,
         "description": "Runtime override for a pool's min/max online counts.",
@@ -1776,13 +1804,6 @@
       },
       "ValidationError": {
         "properties": {
-          "ctx": {
-            "title": "Context",
-            "type": "object"
-          },
-          "input": {
-            "title": "Input"
-          },
           "loc": {
             "items": {
               "anyOf": [
@@ -9939,6 +9960,85 @@
         ],
         "summary": "Get Usage Monitoring",
         "tags": ["repos", "repos"]
+      }
+    },
+    "/api/usage/page-view": {
+      "post": {
+        "operationId": "post_page_view_api_usage_page_view_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PageViewPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Page View Api Usage Page View Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Page View",
+        "tags": ["usage-metrics"]
+      }
+    },
+    "/api/usage/summary": {
+      "get": {
+        "operationId": "get_usage_summary_api_usage_summary_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Usage Summary Api Usage Summary Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Usage Summary",
+        "tags": ["usage-metrics"]
+      }
+    },
+    "/api/usage/table": {
+      "get": {
+        "operationId": "get_usage_table_api_usage_table_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Usage Table",
+        "tags": ["usage-metrics"]
       }
     },
     "/api/version": {

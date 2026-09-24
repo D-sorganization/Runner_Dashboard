@@ -61,7 +61,11 @@ out.write_text(json.dumps(schema, indent=2, sort_keys=True) + "\n", encoding="ut
 PY
 
 npx prettier --parser json --write "$TMP_SNAPSHOT"
-npx openapi-typescript "$TMP_SNAPSHOT" --output "$TMP_TYPES"
+if [ -f "$ROOT_DIR/node_modules/openapi-typescript/bin/cli.js" ]; then
+  node "$ROOT_DIR/node_modules/openapi-typescript/bin/cli.js" "$TMP_SNAPSHOT" --output "$TMP_TYPES"
+else
+  npx openapi-typescript "$TMP_SNAPSHOT" --output "$TMP_TYPES"
+fi
 
 cat >> "$TMP_TYPES" <<'TS'
 
