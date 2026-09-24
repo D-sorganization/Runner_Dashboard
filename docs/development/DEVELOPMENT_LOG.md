@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1291 · SC-A2b: Fleet node list labels local node as registry hub
+
+- **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1291 (epic #1347 / umbrella #1354)
+- **Branch:** `fix/1291-local-node-identity`
+- **PR:** not created
+- **Paths:** `backend/machine_registry.py`, `backend/routers/orchestration_node_routes.py`, `deploy/staff-node-acceptance.sh`, `tests/api/test_fleet_identity.py`, `tests/deploy/test_staff_node_acceptance.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`
+- **Started:** 2026-09-24
+- **Last verified:** 2026-09-24 (7bd84ee)
+- **Summary:** Fix local node identity resolution against machine_registry.yml matching by name and alias, never by role. Eliminate hub proxying on spoke /api/fleet/nodes so each node reports itself as is_local. Suppress runner pool offline duplicate entries when parent machine is directly live. Add GET /api/fleet/identity endpoint and verify DISPLAY_NAME matching in staff-node-acceptance.sh.
+- **Next step:** Push branch, open PR, pass CI, land PR and release lease.
+
 ### DL-#1290 · Fleet page reports "Fleet Operational · All systems nominal" before data loaded
 
 - **State:** in_progress

@@ -1,36 +1,39 @@
-# Current handoff — Staff tab spend today dictionary support (#1289)
+# Current handoff — Fleet node local identity resolution and runner pool duplicate suppression (#1291)
 
 Last updated: 2026-09-24
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; worktree `C:/Users/diete/Repositories/Worktrees/Runner_Dashboard-1289`; branch `fix/1289-staff-spend-today-dict`; baseline `d77123b0`; commit `SELF`; PR not created at commit time. Issue #1289, epic #1354; DL-#1289.
+- Repository `D-sorganization/Runner_Dashboard`; worktree `C:/Users/diete/Repositories/_worktrees/Runner_Dashboard-1291`; branch `fix/1291-local-node-identity`; baseline `7bd84ee`; commit `SELF`; PR not created at commit time. Issue #1291, epic #1347 / umbrella #1354; DL-#1291.
 
 ## Work
 
-- `frontend/src/pages/Staff/staffApi.ts`: typed `BoardResponse.spend_today_usd` as `Record<string, number>`, updated `formatUsd` to be defensive (handles non-numbers/non-finites like `null`, `undefined`, `NaN`, and objects gracefully returning em dash and warning once), and added `formatSpendSummary` helper.
-- `frontend/src/pages/Staff/Board.tsx`: integrated `formatSpendSummary` to show total spend in `board-spend` and formatted per-provider breakdown in accessible tooltip / title.
-- `backend/routers/staff.py`: added `StaffBoardResponse` and `StaffSummaryResponse` Pydantic response models, decorating `/board` and `/summary` routes.
-- `backend/staff/fleet.py`: ensured per-provider spend aggregation correctly computes and rounds the `total` key.
-- `SPEC.md`: updated change log with row for #1289.
+- `backend/machine_registry.py`: Added `resolve_local_identity()` matching strictly by `name` or `aliases` (never by `role`), falling back to `unregistered: True` when not found. In `merge_registry_with_live_nodes()`, deduplicated local vs remote entries prioritizing `is_local: True`, and suppressed runner pool offline duplicate entries when the parent machine is already live.
+- `backend/routers/orchestration_node_routes.py`: Removed `should_proxy_fleet_to_hub` from `GET /api/fleet/nodes` to prevent identity hijacking where the hub's local node masqueraded as the spoke's local node. Added `GET /api/fleet/identity` route returning canonical local node identity.
+- `deploy/staff-node-acceptance.sh`: Added acceptance check in Section 2 validating `/api/fleet/identity` matches `DISPLAY_NAME`.
+- `tests/api/test_fleet_identity.py`: New unit and API test suite covering exact match, alias match, pool match, unregistered warning, never match by role, env fallbacks, `/api/fleet/identity` endpoint, `GET /api/fleet/nodes` non-proxying, runner pool duplicate suppression, and local/remote de-duplication.
+- `tests/deploy/test_staff_node_acceptance.py`: Updated mock curl to return `/api/fleet/identity` and added regression test for `DISPLAY_NAME` mismatch.
+- `SPEC.md`: Bumped spec version to 2.5.210 and logged change.
+- `docs/development/DEVELOPMENT_LOG.md`: Added DL-#1291 entry.
+- `frontend/src/lib/openapi.json` & `frontend/src/lib/api-types.ts`: Regenerated API client artifacts for `/api/fleet/identity`.
 
 ## Validation
 
-- `npx vitest run frontend/src/pages/__tests__/Staff.test.tsx`: 18 passed (RED first on dict spend throwing TypeError, then GREEN with dict spend, missing spend, and NaN spend).
-- `python -m pytest tests/api/test_staff_fleet.py`: 12 passed (RED first on missing response models, then GREEN validating models and OpenAPI schema).
-- `npm run typecheck` (`tsc -p tsconfig.app.json`): passed clean.
-- `npm run build`: passed clean in 2.13s.
-- `ruff check backend/` and `ruff format --check backend/`: passed clean.
-- `mypy backend/routers/staff.py backend/staff/fleet.py`: passed clean with 0 issues.
+- `uv run pytest tests/api/test_fleet_identity.py tests/test_machine_registry.py tests/deploy/test_staff_node_acceptance.py`: 65 passed.
+- `uv run pytest tests/api/test_route_uniqueness.py tests/api/test_structural_auth_perimeter.py`: 20 passed.
+- `uv run ruff check backend tests deploy`: passed with 0 errors.
+- `uv run ruff format --check tests/deploy/test_staff_node_acceptance.py tests/api/test_fleet_identity.py backend/routers/orchestration_node_routes.py backend/machine_registry.py`: passed clean.
+- `uv run mypy backend`: passed with 0 issues in 177 source files.
+- `& "C:\Program Files\Git\bin\bash.exe" scripts/gen-api-client.sh --check`: passed clean with 0 drift.
 
 ## Next
 
-1. Open PR (`Fixes #1289`), arm auto-merge, and monitor quality-gate.
+1. Open PR (`Fixes #1291`), arm auto-merge, and monitor CI checks.
 2. Release lease once merged and clean up worktree.
 
 ---
 
-## Previous handoff — Feature Request dispatch failure reporting (#1280)
+## Previous handoff — Staff tab spend today dictionary support (#1289)
 
 Last updated: 2026-09-23
 

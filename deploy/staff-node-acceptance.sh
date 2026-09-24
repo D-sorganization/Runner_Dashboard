@@ -172,6 +172,21 @@ fi
 # -----------------------------------------------------------------------------
 printf "\n2. Sign-ins & Identity\n"
 
+IDENTITY_JSON=""
+if IDENTITY_JSON="$(curl -fsS --max-time 5 "http://${HOST}:${PORT}/api/fleet/identity" 2>/dev/null)"; then
+    IDENTITY_NAME="$(printf '%s' "$IDENTITY_JSON" | json_get 'd.get("name", "")')"
+    EXPECTED_NAME="${DISPLAY_NAME:-$(hostname 2>/dev/null || echo "")}"
+    if [[ -n "$EXPECTED_NAME" && "$IDENTITY_NAME" == "$EXPECTED_NAME" ]]; then
+        report_pass "Local fleet identity matches DISPLAY_NAME" "name=${IDENTITY_NAME}"
+    elif [[ -z "$EXPECTED_NAME" && -n "$IDENTITY_NAME" ]]; then
+        report_pass "Local fleet identity reported" "name=${IDENTITY_NAME}"
+    else
+        report_fail "Local fleet identity mismatch" "got=${IDENTITY_NAME} expected=${EXPECTED_NAME}"
+    fi
+else
+    report_fail "Fleet identity endpoint unreachable" "http://${HOST}:${PORT}/api/fleet/identity"
+fi
+
 if command -v gh >/dev/null 2>&1; then
     GH_OUT=""
     if GH_OUT="$(env -u GH_TOKEN -u GITHUB_TOKEN gh auth status 2>&1)"; then
