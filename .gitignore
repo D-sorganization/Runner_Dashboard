@@ -43,6 +43,7 @@ config/principal_spend.yml
 # admin hole; ship principals.yml.example instead.
 config/principals.yml
 config/tokens.yml
+backend/data/
 
 # Reject root-level scratch/debug files matching *_<number>.py
 /*_[0-9]*.py

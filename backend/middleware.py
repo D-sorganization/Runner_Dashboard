@@ -143,6 +143,8 @@ _AUTH_EXEMPT_PATHS = {
     # Client error beacon (issue #1292): reports React/tab crashes so they appear in
     # the event log without operator intervention. Rate-limited by the handler.
     "/api/client-errors",
+    # Local anonymous page-view counter (issue #1302 / SC-G1)
+    "/api/usage/page-view",
 }
 
 # Routes that authenticate by a mechanism OTHER than a resolved operator
