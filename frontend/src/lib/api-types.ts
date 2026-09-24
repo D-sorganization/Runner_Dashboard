@@ -3928,6 +3928,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/staff/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Audit
+         * @description Retrieve durable append-only staff audit rows (SC-A8, Issue #1298).
+         */
+        get: operations["list_audit_api_staff_audit_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/staff/board": {
         parameters: {
             query?: never;
@@ -4085,6 +4105,26 @@ export interface paths {
         get: operations["get_schedule_api_staff_schedule_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/staff/schedule/toggle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Toggle Scheduler
+         * @description Toggle the background scheduler on or off (SC-A8, Issue #1298).
+         */
+        post: operations["toggle_scheduler_api_staff_schedule_toggle_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5273,6 +5313,11 @@ export interface components {
         RunOnceRequest: {
             /** Agent */
             agent: string;
+        };
+        /** ScheduleToggleBody */
+        ScheduleToggleBody: {
+            /** Enabled */
+            enabled: boolean;
         };
         /** SetKeyRequest */
         SetKeyRequest: {
@@ -10588,6 +10633,46 @@ export interface operations {
             };
         };
     };
+    list_audit_api_staff_audit_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                principal?: string | null;
+                thread_id?: string | null;
+                run_id?: string | null;
+                action?: string | null;
+                surface?: string | null;
+                target?: string | null;
+                since?: string | null;
+                format?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     board_api_staff_board_get: {
         parameters: {
             query?: {
@@ -10876,6 +10961,41 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    toggle_scheduler_api_staff_schedule_toggle_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScheduleToggleBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

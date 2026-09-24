@@ -4,7 +4,7 @@ Last updated: 2026-09-24
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; worktree `C:/Users/diete/Repositories/_worktrees/Runner_Dashboard-1297`; branch `feat/1297-classify-staff-run-failures`; commit `SELF`; PR not created at commit time. Issue #1297, epic #1347 / umbrella #1354; DL-#1297.
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1297-classify-staff-run-failures`; commit `ef40f89`; PR #1367 (merged). Issue #1297 (closed), epic #1347 / umbrella #1354; DL-#1297.
 
 ## Work
 
@@ -45,9 +45,9 @@ Last updated: 2026-09-24
 
 ## Next
 
-1. Commit changes, push branch, open PR with `Fixes #1297`, and enable auto-merge.
-2. Monitor CI to green and merge.
-3. Release lease on #1297 and clean up worktree.
+1. Shipped in PR #1367; auto-merged into `main` at `2026-09-24T22:43:22Z` (`ef40f89`). Issue #1297 closed.
+2. Lease released on #1297 (receipt: `https://github.com/D-sorganization/Runner_Dashboard/issues/1297#issuecomment-5823595206`).
+3. Worktree removed. Next task in queue.
 
 ## Work
 

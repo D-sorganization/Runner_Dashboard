@@ -20,16 +20,16 @@ reachable from any live state and `abandoned` from `parked`.
 
 ### DL-#1297 · SC-A6: Classify staff run failures with remediation hints
 
-- **State:** in_progress
+- **State:** shipped
 - **Owner:** antigravity
 - **Issue:** #1297 (epic #1347 / umbrella #1354)
 - **Branch:** `feat/1297-classify-staff-run-failures`
-- **PR:** not created
+- **PR:** #1367
 - **Paths:** `backend/staff/classifier.py`, `backend/staff/runner.py`, `backend/staff/store.py`, `backend/staff/reconcile.py`, `backend/routers/staff.py`, `frontend/src/pages/Staff/RunDetail.tsx`, `frontend/src/pages/Staff/staffApi.ts`, `tests/unit/test_staff_classifier.py`, `tests/api/test_staff_failure_classification.py`, `SPEC.md`
 - **Started:** 2026-09-24
-- **Last verified:** 2026-09-24 (`SELF`)
+- **Last verified:** 2026-09-24 (`ef40f89`)
 - **Summary:** Added `failure_class`, `retryable`, and `remediation` fields to `RunRecord` in SQLite schema. Created `backend/staff/classifier.py` mapping raw process exits, watchdog signals, and provider stderr/stdout patterns to classified failure classes (`auth_expired`, `cli_missing`, `provider_error`, `rate_limited`, `needs_input`, `timeout`, `stalled`, `lease_blocked`, `orphaned`, `workspace_error`, `unkillable`, `unknown`). Mapped provider login commands and deduplicated auth expiry attention items. Integrated into runner completion, orphan reconciliation, and UI detail views.
-- **Next step:** Push branch, open PR with gh, enable auto-merge, watch CI to merge.
+- **Next step:** None (shipped in PR #1367).
 
 ### DL-#1298 · SC-A8: Durable append-only staff audit log and archival
 
