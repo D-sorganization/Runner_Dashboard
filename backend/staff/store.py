@@ -15,7 +15,15 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-RUN_STATUSES = ("queued", "preparing", "running", "succeeded", "failed", "cancelled", "blocked")
+RUN_STATUSES = (
+    "queued",
+    "preparing",
+    "running",
+    "succeeded",
+    "failed",
+    "cancelled",
+    "blocked",
+)
 ACTIVE_STATUSES = ("queued", "preparing", "running")
 
 
@@ -66,6 +74,10 @@ class RunRecord:
     # ``outcome`` is the normalised "consolidated N PRs into #M" parsed from the final STAFF_RESULT: line.
     strategy_mode: str = ""
     outcome: str = ""
+    # Failure classification (issue #1293, SC-A4 / SC-A6): "orphaned" | "timeout" | "stalled" | ""
+    failure_class: str = ""
+    # Process ID of executing CLI worker (issue #1293)
+    pid: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return dict(self.__dict__)
@@ -120,10 +132,16 @@ _ADDED_COLUMNS: tuple[tuple[str, str], ...] = (
     ("cost_method", "TEXT NOT NULL DEFAULT ''"),
     ("strategy_mode", "TEXT NOT NULL DEFAULT ''"),
     ("outcome", "TEXT NOT NULL DEFAULT ''"),
+    ("failure_class", "TEXT NOT NULL DEFAULT ''"),
+    ("pid", "INTEGER"),
 )
 
 USAGE_GROUPS = ("provider", "role", "day")
-_USAGE_GROUP_SQL = {"provider": "provider", "role": "role", "day": "substr(created_at, 1, 10)"}
+_USAGE_GROUP_SQL = {
+    "provider": "provider",
+    "role": "role",
+    "day": "substr(created_at, 1, 10)",
+}
 
 
 class RunStore:
@@ -159,7 +177,10 @@ class RunStore:
         cols = ", ".join(_COLUMNS)
         marks = ", ".join("?" for _ in _COLUMNS)
         with self._lock:
-            self._conn.execute(f"INSERT INTO runs ({cols}) VALUES ({marks})", tuple(getattr(rec, c) for c in _COLUMNS))  # noqa: S608
+            self._conn.execute(
+                f"INSERT INTO runs ({cols}) VALUES ({marks})",
+                tuple(getattr(rec, c) for c in _COLUMNS),
+            )  # noqa: S608
         return rec
 
     def update_run(self, run_id: str, **fields: Any) -> None:
@@ -179,7 +200,11 @@ class RunStore:
         return RunRecord(**dict(row)) if row else None
 
     def list_runs(
-        self, limit: int = 50, role: str | None = None, status: str | None = None, since: str | None = None
+        self,
+        limit: int = 50,
+        role: str | None = None,
+        status: str | None = None,
+        since: str | None = None,
     ) -> list[RunRecord]:
         clauses: list[str] = []
         params: list[Any] = []
@@ -204,7 +229,8 @@ class RunStore:
         marks = ", ".join("?" for _ in ACTIVE_STATUSES)
         with self._lock:
             rows = self._conn.execute(
-                f"SELECT * FROM runs WHERE status IN ({marks}) ORDER BY created_at", ACTIVE_STATUSES
+                f"SELECT * FROM runs WHERE status IN ({marks}) ORDER BY created_at",
+                ACTIVE_STATUSES,
             ).fetchall()  # noqa: S608
         return [RunRecord(**dict(r)) for r in rows]
 
@@ -266,7 +292,8 @@ class RunStore:
             seq = self._seq.get(run_id)
             if seq is None:
                 row = self._conn.execute(
-                    "SELECT COALESCE(MAX(seq), 0) FROM events WHERE run_id = ?", (run_id,)
+                    "SELECT COALESCE(MAX(seq), 0) FROM events WHERE run_id = ?",
+                    (run_id,),
                 ).fetchone()
                 seq = int(row[0])
             seq += 1
@@ -276,7 +303,10 @@ class RunStore:
                 (run_id, seq, _now(), kind, text[:4000]),
             )
             if text.strip():
-                self._conn.execute("UPDATE runs SET last_line = ? WHERE id = ?", (text.strip()[:300], run_id))
+                self._conn.execute(
+                    "UPDATE runs SET last_line = ? WHERE id = ?",
+                    (text.strip()[:300], run_id),
+                )
         return seq
 
     def events_after(self, run_id: str, after_seq: int = 0, limit: int = 500) -> list[dict[str, Any]]:

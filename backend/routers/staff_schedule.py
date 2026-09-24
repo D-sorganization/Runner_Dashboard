@@ -46,11 +46,25 @@ class HoldsBody(BaseModel):
 
 
 def scheduler_enabled() -> bool:
-    return os.environ.get(SCHEDULER_ENABLED_ENV, "1").strip().lower() not in ("0", "false", "no", "off", "")
+    return os.environ.get(SCHEDULER_ENABLED_ENV, "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
+        "",
+    )
 
 
 def start_scheduler() -> None:
-    """Start the background ticker once. Called by ``server.py`` on startup."""
+    """Reconcile orphaned staff runs and start the background ticker once. Called by ``server.py`` on startup."""
+    try:
+        from staff.reconcile import reconcile_orphaned_runs
+        from staff.runner import get_runner
+
+        reconcile_orphaned_runs(get_runner())
+    except Exception as exc:  # noqa: BLE001
+        log.exception("Failed to reconcile orphaned staff runs on startup: %s", exc)
+
     if not scheduler_enabled():
         log.info("staff scheduler disabled by %s", SCHEDULER_ENABLED_ENV)
         return

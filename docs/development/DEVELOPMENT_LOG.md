@@ -18,18 +18,31 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1292 · SC-A3: Per-tab error boundaries and per-tab Suspense
+### DL-#1293 · SC-A4: Reconcile orphaned staff runs
 
 - **State:** in_progress
 - **Owner:** antigravity
+- **Issue:** #1293 (epic #1347 / umbrella #1354)
+- **Branch:** `fix/1293-reconcile-orphaned-staff-runs`
+- **PR:** not created
+- **Paths:** `backend/staff/reconcile.py`, `tests/unit/test_staff_reconcile.py`, `backend/staff/store.py`, `backend/staff/runner.py`, `backend/staff/workspace.py`, `backend/fleet_events.py`, `backend/routers/staff.py`, `backend/routers/staff_schedule.py`, `backend/server.py`, `SPEC.md`
+- **Started:** 2026-09-24
+- **Last verified:** 2026-09-24 (`SELF`)
+- **Summary:** Reconcile orphaned staff runs across dashboard restart. On startup, active runs are marked failed with failure_class=orphaned; child PID is terminated; RM lease is released (with async background retry); clean worktrees are removed while unpushed worktrees are preserved with path recorded on run; staff_run_orphaned fleet event emitted and surfaced in summary.attention; unblocks role schedule gates.
+- **Next step:** Run linters, push branch, open PR, enable auto-merge.
+
+### DL-#1292 · SC-A3: Per-tab error boundaries and per-tab Suspense
+
+- **State:** shipped
+- **Owner:** antigravity
 - **Issue:** #1292 (epic #1347 / umbrella #1354)
 - **Branch:** `fix/1292-tab-error-boundaries`
-- **PR:** not created
+- **PR:** #1361
 - **Paths:** `frontend/src/primitives/TabErrorBoundary.tsx`, `frontend/src/primitives/__tests__/TabErrorBoundary.test.tsx`, `frontend/src/shell/RoutedShell.tsx`, `frontend/src/shell/__tests__/RoutedShell.test.tsx`, `backend/routers/client_errors.py`, `tests/api/test_client_errors.py`, `backend/fleet_events.py`, `backend/middleware.py`, `backend/server.py`, `SPEC.md`
 - **Started:** 2026-09-24
 - **Last verified:** 2026-09-24 (`SELF`)
 - **Summary:** Wrapped routed pages in TabErrorBoundary and React.Suspense with tab-local skeletons inside shell content area; added Retry, Copy details, and prefilled Report issue link; auto-reset error state on navigation; added rate-limited POST /api/client-errors recording client crashes to FleetEvent store and GET /api/events.
-- **Next step:** Push branch, open PR, pass CI, land PR and release lease.
+- **Next step:** None (shipped)
 
 ### DL-#1291 · SC-A2b: Fleet node list labels local node as registry hub
 

@@ -2555,6 +2555,7 @@ async def _startup() -> None:
     if os.environ.get("DASHBOARD_LEADER") == "1":
         _runner_audit_router.start_audit_loop()
         _linear_sync_router.start_sync_loop()  # issue #236
+        _staff_schedule_router.start_scheduler()  # issue #1196, #1293
         return
 
     try:
