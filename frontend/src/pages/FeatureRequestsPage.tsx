@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { legacyFetch } from "../lib/api";
 import {
   FeatureRequestsTab,
+  type DispatchTargetStatus,
   type FeatureDispatchPayload,
   type FeatureRepo,
   type FeatureRequestRecord,
@@ -15,6 +16,7 @@ interface ReposPayload {
 
 interface RequestsPayload {
   requests?: FeatureRequestRecord[];
+  dispatchTarget?: DispatchTargetStatus;
 }
 
 interface TemplatesPayload {
@@ -40,6 +42,11 @@ function normalizeRequestsPayload(payload: unknown): FeatureRequestRecord[] {
     if (Array.isArray(requests)) return requests;
   }
   return [];
+}
+
+function normalizeDispatchTarget(payload: unknown): DispatchTargetStatus | undefined {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return undefined;
+  return (payload as RequestsPayload).dispatchTarget;
 }
 
 function normalizeTemplatesPayload(payload: unknown): {
@@ -72,6 +79,7 @@ function parseJsonOrThrow(response: Response, fallback: string): Promise<unknown
 export function FeatureRequestsPage(): React.ReactElement {
   const [repos, setRepos] = useState<FeatureRepo[]>([]);
   const [requests, setRequests] = useState<FeatureRequestRecord[]>([]);
+  const [dispatchTarget, setDispatchTarget] = useState<DispatchTargetStatus | undefined>();
   const [templates, setTemplates] = useState<PromptTemplate[]>([]);
   const [promptNotes, setPromptNotes] = useState<PromptNotes>(EMPTY_PROMPT_NOTES);
   const [loading, setLoading] = useState(true);
@@ -96,6 +104,7 @@ export function FeatureRequestsPage(): React.ReactElement {
         const normalizedTemplates = normalizeTemplatesPayload(templatesPayload);
         setRepos(normalizeReposPayload(reposPayload));
         setRequests(normalizeRequestsPayload(requestsPayload));
+        setDispatchTarget(normalizeDispatchTarget(requestsPayload));
         setTemplates(normalizedTemplates.templates);
         setPromptNotes(normalizedTemplates.promptNotes);
       })
@@ -155,6 +164,7 @@ export function FeatureRequestsPage(): React.ReactElement {
     <FeatureRequestsTab
       repos={repos}
       requests={requests}
+      dispatchTarget={dispatchTarget}
       templates={templates}
       loading={loading}
       promptNotes={promptNotes}

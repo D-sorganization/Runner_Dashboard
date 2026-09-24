@@ -1,4 +1,29 @@
-# Current handoff — OGLaptop 31a9104 acceptance
+# Current handoff — Feature Request dispatch failure reporting (#1280)
+
+Last updated: 2026-09-23
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `C:/Users/diete/Repositories/_wt_claude_rd_1280`; branch `fix/1280-feature-request-dispatch-failure`; baseline `9ab2caba`; commit `SELF`; PR not created at commit time. Issue #1280, epic #1279; DL-#1280.
+
+## Work
+
+- `backend/routers/feature_requests.py`: history entry written after `gh api` with the real status (`dispatched`/`failed` + `error`); failure raises HTTP 502; cached `_dispatch_target_state` (10 min TTL, also primed by dispatch) exposed as `dispatchTarget` on `GET /api/feature-requests`.
+- Frontend: tab shows `Dispatch failed: {backend detail}`, refreshes history after a failure, shows status and error per history row (desktop and mobile), and disables Dispatch with a banner when `dispatchTarget.available === false`. Legacy `App.tsx` untouched (prop is optional).
+- Decision: did **not** recreate `Jules-Feature-Request.yml` (workflow governance); replacement is CR-3 (#1283).
+
+## Validation
+
+- `python -m pytest tests/api/test_feature_request_dispatch.py tests/test_workflow_inputs_validation.py -o addopts=""`: 26 passed (4 new; RED first on the missing cache and swallowed 404).
+- `npx vitest run frontend/src/pages/__tests__/FeatureRequests.test.tsx frontend/src/pages/__tests__/FeatureRequestsPage.test.tsx`: 19 passed.
+- `ruff check` / `ruff format --check` clean; `tsc -p tsconfig.app.json` clean; `eslint --max-warnings 0` clean on changed files. Prettier is not enforced for TSX (originals were not Prettier-clean) and was not applied.
+
+## Next
+
+1. Open the PR (`Fixes #1280`), let `quality-gate` run, merge.
+2. Continue epic #1279 with CR-1 (#1281) rename, rebased on this fix.
+
+## Previous Handoff — OGLaptop 31a9104 acceptance
 
 - PR: not created at commit time; owner authorized publication and merge to main.
 - Worktree `/home/dieterolson/staff-builds/oglaptop-31a9104-acceptance`; branch `docs/oglaptop-31a9104-acceptance`; commit `SELF`.

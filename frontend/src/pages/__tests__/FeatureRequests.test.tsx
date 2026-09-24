@@ -115,16 +115,55 @@ describe("FeatureRequestsTab", () => {
     expect(onDispatch.mock.calls[0][0].prompt).toBe("Add a widget");
   });
 
-  it("surfaces a dispatch error", async () => {
+  it("surfaces a dispatch error with the backend detail and refreshes history (#1280)", async () => {
     const onDispatch = vi.fn().mockRejectedValue(new Error("boom"));
-    setup({ onDispatch });
+    const { onRefresh } = setup({ onDispatch });
     const selects = screen.getAllByRole("combobox");
     fireEvent.change(selects[0], { target: { value: "Runner_Dashboard" } });
     fireEvent.change(screen.getByPlaceholderText("Describe the feature to implement…"), {
       target: { value: "x" },
     });
     fireEvent.click(screen.getByRole("button", { name: /Dispatch/ }));
-    await waitFor(() => expect(screen.getByText("Dispatch failed.")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Dispatch failed: boom")).toBeInTheDocument());
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("disables dispatch and explains why when the dispatch target is unavailable (#1280)", () => {
+    setup({
+      dispatchTarget: {
+        available: false,
+        detail: "dispatch target unavailable: Jules-Feature-Request.yml — HTTP 404",
+      },
+    });
+    const selects = screen.getAllByRole("combobox");
+    fireEvent.change(selects[0], { target: { value: "Runner_Dashboard" } });
+    fireEvent.change(screen.getByPlaceholderText("Describe the feature to implement…"), {
+      target: { value: "x" },
+    });
+    expect(screen.getByRole("button", { name: /Dispatch/ })).toBeDisabled();
+    expect(screen.getByRole("status")).toHaveTextContent("Jules-Feature-Request.yml");
+  });
+
+  it("keeps dispatch enabled when the target is available or unknown", () => {
+    setup({ dispatchTarget: { available: true } });
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("shows failed history entries with their error (#1280)", () => {
+    setup({
+      requests: [
+        {
+          repository: "Runner_Dashboard",
+          prompt: "Do the thing",
+          provider: "jules_api",
+          status: "failed",
+          error: "HTTP 404",
+          created_at: "2026-06-01T10:00:00Z",
+        },
+      ],
+    });
+    expect(screen.getAllByText("failed").length).toBe(2);
+    expect(screen.getAllByText("HTTP 404").length).toBe(2);
   });
 
   it("toggles standard chips on and off", () => {
