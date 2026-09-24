@@ -174,8 +174,13 @@ vi.mock("../../pages/ScheduledJobs", () => ({
   default: () => <div data-testid="native-scheduled-jobs">Scheduled Jobs</div>,
 }));
 
+let testsPageShouldThrow = false;
+
 vi.mock("../../pages/TestsPage", () => ({
-  TestsPage: () => <div data-testid="native-tests">Tests</div>,
+  TestsPage: () => {
+    if (testsPageShouldThrow) throw new Error("Boom in TestsPage");
+    return <div data-testid="native-tests">Tests</div>;
+  },
 }));
 
 vi.mock("../../pages/WorkflowsPage", () => ({
@@ -368,5 +373,30 @@ describe("RoutedShell — URL is the source of truth", () => {
       "overview",
     );
     localStorage.removeItem("dashboard.layout");
+  });
+
+  it("catches tab errors in TabErrorBoundary without crashing the shell, and navigates away cleanly", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    testsPageShouldThrow = true;
+    renderAt("/t/tests");
+
+    // The shell chrome stays rendered
+    expect(screen.getByTestId("active-tab")).toHaveTextContent("tests");
+    // Tab error boundary renders the alert
+    const alert = screen.getByRole("alert");
+    expect(alert).toBeInTheDocument();
+    expect(alert.textContent).toContain("Tests");
+    expect(alert.textContent).toContain("Boom in TestsPage");
+
+    // Click navigation button in shell chrome to navigate to maxwell
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "go-maxwell" }));
+
+    // Navigation recovers without a reload
+    expect(screen.getByTestId("pathname")).toHaveTextContent("/t/maxwell");
+    expect(await screen.findByTestId("native-maxwell")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    testsPageShouldThrow = false;
+    errorSpy.mockRestore();
   });
 });

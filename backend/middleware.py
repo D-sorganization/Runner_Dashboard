@@ -140,6 +140,9 @@ _AUTH_EXEMPT_PATHS = {
     # Webhook receiver health probe — config status only, no sensitive data;
     # consumed by external uptime monitors that present no operator credential.
     "/api/linear/webhook/health",
+    # Client error beacon (issue #1292): reports React/tab crashes so they appear in
+    # the event log without operator intervention. Rate-limited by the handler.
+    "/api/client-errors",
 }
 
 # Routes that authenticate by a mechanism OTHER than a resolved operator
@@ -328,7 +331,11 @@ async def auth_perimeter_check(request: Request, call_next: Any) -> Any:
     app = request.scope.get("app")
     overrides = getattr(app, "dependency_overrides", {}) if app is not None else {}
     if overrides:
-        from identity import require_fleet_peer, require_orchestrator_peer, require_principal
+        from identity import (
+            require_fleet_peer,
+            require_orchestrator_peer,
+            require_principal,
+        )
 
         if require_principal in overrides or require_fleet_peer in overrides or require_orchestrator_peer in overrides:
             return await call_next(request)
@@ -427,7 +434,12 @@ def check_auth_rate_limit(request: Any) -> None:
     now = time.monotonic()
     window = [t for t in _auth_rate_store[ip] if now - t < _AUTH_RATE_WINDOW]
     if len(window) >= _AUTH_RATE_LIMIT:
-        log.warning("auth_rate_limit: IP %s exceeded %d attempts in %ds", ip, _AUTH_RATE_LIMIT, _AUTH_RATE_WINDOW)
+        log.warning(
+            "auth_rate_limit: IP %s exceeded %d attempts in %ds",
+            ip,
+            _AUTH_RATE_LIMIT,
+            _AUTH_RATE_WINDOW,
+        )
         raise HTTPException(
             status_code=429,
             detail="Too many authentication attempts. Please wait 5 minutes before retrying.",

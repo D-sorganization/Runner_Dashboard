@@ -396,6 +396,67 @@
         "title": "ClearKeyRequest",
         "type": "object"
       },
+      "ClientErrorPayload": {
+        "description": "Payload sent by TabErrorBoundary when an error is caught.",
+        "properties": {
+          "build_sha": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Build ID or git SHA",
+            "title": "Build Sha"
+          },
+          "component": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Component name",
+            "title": "Component"
+          },
+          "message": {
+            "description": "Error message",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          },
+          "page": {
+            "description": "Tab or page name",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Page",
+            "type": "string"
+          },
+          "stack": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Error stack trace",
+            "title": "Stack"
+          }
+        },
+        "required": ["page", "message"],
+        "title": "ClientErrorPayload",
+        "type": "object"
+      },
       "DirectiveBody": {
         "description": "One directive as sent by an operator or agent. DbC: the JSON shape of ``priorities.directives.Directive``.",
         "properties": {
@@ -3599,6 +3660,43 @@
         },
         "summary": "Get Cache Size",
         "tags": ["health", "diagnostics"]
+      }
+    },
+    "/api/client-errors": {
+      "post": {
+        "operationId": "post_client_error_api_client_errors_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClientErrorPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Client Error",
+        "tags": ["client-errors"]
       }
     },
     "/api/cline/status": {

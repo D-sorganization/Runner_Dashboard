@@ -131,6 +131,7 @@ from routers import assistant as _assistant_router  # noqa: E402
 from routers import (  # noqa: E402
     autoscaler_pools as _autoscaler_pools_router,
 )  # issue #755
+from routers import client_errors as _client_errors_router  # noqa: E402  # issue #1292
 from routers import credentials as _credentials_router  # noqa: E402
 from routers import deployment as _deployment_router  # noqa: E402
 from routers import diagnostics as _diagnostics_router  # noqa: E402
@@ -681,6 +682,7 @@ app.include_router(_agent_launcher_router.router)
 app.include_router(_system_router.router)
 app.include_router(_web_vitals_router.router)
 app.include_router(_events_router.router)  # issue #863 fleet event log
+app.include_router(_client_errors_router.router)  # issue #1292 client error beacon
 app.include_router(_fleet_router.router)
 app.include_router(_queue_router.router)
 app.include_router(_queue_diagnostics_router.router)
@@ -2480,7 +2482,10 @@ async def _startup() -> None:
     # dashboard port declared in machine_registry.yml — a silent mis-probe
     # otherwise misreports a sibling dashboard as the Maxwell daemon.
     from dashboard_config import MAXWELL_PORT
-    from fleet_autoconfig import assert_no_maxwell_port_collision, assert_valid_active_registry
+    from fleet_autoconfig import (
+        assert_no_maxwell_port_collision,
+        assert_valid_active_registry,
+    )
 
     _startup_reg = load_machine_registry()
     assert_no_maxwell_port_collision(

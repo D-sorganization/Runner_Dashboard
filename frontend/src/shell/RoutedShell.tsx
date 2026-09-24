@@ -72,6 +72,9 @@ import { WorkflowsPage } from "../pages/WorkflowsPage";
 import PushSettings from "../pages/PushSettings";
 import ScheduledJobs from "../pages/ScheduledJobs";
 import { ThemeSettings } from "../components/ThemeSettings";
+import { TabErrorBoundary } from "../primitives/TabErrorBoundary";
+import { SkeletonCard } from "../primitives/Skeleton";
+import { navItemById } from "./navRegistry";
 
 // The legacy App is isolated behind the explicit legacy layout flag and mobile
 // fallback while the modern desktop shell routes registered tabs natively.
@@ -298,11 +301,26 @@ export function AppShell({
 
   if (!useModernShell) {
     return (
-      <LazyLegacyApp
-        initialTab={activeTab}
-        activeTab={activeTab}
-        onTabChange={handleLegacyTabChange}
-      />
+      <TabErrorBoundary tabName="Legacy Dashboard" resetKey={activeTab}>
+        <React.Suspense
+          fallback={
+            <div
+              role="status"
+              aria-label="Loading legacy dashboard…"
+              className="tab-loading-skeleton"
+              style={{ padding: 24, maxWidth: 1440, margin: "0 auto" }}
+            >
+              <SkeletonCard lines={4} />
+            </div>
+          }
+        >
+          <LazyLegacyApp
+            initialTab={activeTab}
+            activeTab={activeTab}
+            onTabChange={handleLegacyTabChange}
+          />
+        </React.Suspense>
+      </TabErrorBoundary>
     );
   }
 
@@ -317,7 +335,27 @@ export function AppShell({
         }
       />
     ) : undefined;
+  const navItem = navItemById(activeTab);
+  const tabDisplayName = navItem ? navItem.label : activeTab;
   const nativeContent = nativeDesktopTabContent(activeTab);
+  const wrappedContent = (
+    <TabErrorBoundary tabName={tabDisplayName} resetKey={activeTab}>
+      <React.Suspense
+        fallback={
+          <div
+            role="status"
+            aria-label={`Loading ${tabDisplayName}…`}
+            className="tab-loading-skeleton"
+            style={{ padding: 24, maxWidth: 1440, margin: "0 auto" }}
+          >
+            <SkeletonCard lines={4} />
+          </div>
+        }
+      >
+        {nativeContent}
+      </React.Suspense>
+    </TabErrorBoundary>
+  );
 
   return (
     <DesktopShell
@@ -336,7 +374,7 @@ export function AppShell({
         </>
       }
     >
-      {nativeContent}
+      {wrappedContent}
     </DesktopShell>
   );
 }

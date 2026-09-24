@@ -1,4 +1,42 @@
-# Current handoff — Fleet node local identity resolution and runner pool duplicate suppression (#1291)
+# Current handoff — Per-tab error boundaries and Suspense (#1292)
+
+Last updated: 2026-09-24
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `C:/Users/diete/Repositories/_worktrees/Runner_Dashboard-1292`; branch `fix/1292-tab-error-boundaries`; baseline `60860c1`; commit `SELF`; PR not created at commit time. Issue #1292, epic #1347 / umbrella #1354; DL-#1292.
+
+## Work
+
+- `frontend/src/primitives/TabErrorBoundary.tsx`: Upgraded error boundary with tab-local alert panel including Reload tab ("Retry"), "Copy details" (copies page, error, build SHA, and stack trace to clipboard), and prefilled "Report issue" link targeting GitHub issues with prefilled body. Added automatic error state reset when `resetKey` changes. Added `reportClientError()` helper posting caught errors to `POST /api/client-errors` (rate-limited client-side to 10/min, fail-safe never throws).
+- `frontend/src/primitives/__tests__/TabErrorBoundary.test.tsx`: Extended unit test suite covering Retry, Copy details, GitHub report link, `resetKey` navigation reset, error report dispatch, rate limiting, and network failure resilience.
+- `frontend/src/shell/RoutedShell.tsx`: Wrapped desktop and mobile routed tab contents in `TabErrorBoundary` and `React.Suspense` with tab-local skeletons (`SkeletonCard lines={4}`) so an isolated page error or lazy tab load never blanks or crashes the shell chrome.
+- `frontend/src/shell/__tests__/RoutedShell.test.tsx`: Added integration test verifying tab render errors are caught by `TabErrorBoundary` while the shell navigation chrome remains mounted and allows smooth navigation recovery to another tab without full page reload.
+- `backend/routers/client_errors.py`: Implemented `POST /api/client-errors` with Pydantic payload validation (`page`, `message`, `stack`, `build_sha`, `component`) and sliding-window rate limiting (30 requests/minute). Records errors into `EventStore` as critical `FleetEvent(kind="client_error")`.
+- `backend/fleet_events.py`: Added `"client_error"` to `EventKind` literal and `FleetEvent.__post_init__` validation.
+- `backend/middleware.py`: Added `"/api/client-errors"` to `_AUTH_EXEMPT_PATHS` with explicit documentation for the structural auth perimeter.
+- `backend/server.py`: Registered `_client_errors_router` onto the main FastAPI application.
+- `tests/api/test_client_errors.py`: New unit and API test suite verifying event ingestion, appearance in `GET /api/events`, rate limiting (429), and 422 schema validation.
+- `frontend/src/lib/openapi.json` & `frontend/src/lib/api-types.ts`: Regenerated OpenAPI schema and TypeScript API types.
+- `SPEC.md`: Bumped version to 2.5.211 and logged change.
+- `docs/development/DEVELOPMENT_LOG.md`: Added DL-#1292 entry and updated DL-#1291 to shipped.
+
+## Validation
+
+- `uv run pytest tests/api/test_client_errors.py tests/test_fleet_events.py tests/api/test_structural_auth_perimeter.py tests/api/test_route_uniqueness.py`: 55 passed.
+- `npx vitest run frontend/src/primitives/__tests__/TabErrorBoundary.test.tsx frontend/src/shell/__tests__/RoutedShell.test.tsx`: 54 passed.
+- `npm run typecheck`: clean (0 errors).
+- `npm run lint`: clean (0 errors, 0 warnings).
+- `& "C:\Program Files\Git\bin\bash.exe" scripts/gen-api-client.sh --check`: clean (0 drift).
+
+## Next
+
+1. Open PR (`Fixes #1292`), arm auto-merge, and monitor CI checks.
+2. Release lease once merged and clean up worktree.
+
+---
+
+## Previous handoff — Fleet node local identity resolution and runner pool duplicate suppression (#1291)
 
 Last updated: 2026-09-24
 
