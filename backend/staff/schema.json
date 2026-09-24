@@ -1,0 +1,187 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/D-sorganization/Repository_Management/staff/schema.json",
+  "title": "Fleet staff role",
+  "description": "One staff role definition under staff/roles/<name>.yml. Published by Repository_Management and consumed by path by the Runner Dashboard Staff Hub (Runner_Dashboard#1192).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "name",
+    "title",
+    "summary",
+    "playbook",
+    "prompt_template",
+    "instructions",
+    "providers",
+    "model",
+    "schedule",
+    "window",
+    "repos",
+    "scope",
+    "budget",
+    "permissions",
+    "reports_to",
+    "holds",
+    "surface"
+  ],
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "Role id; must equal the file stem."
+    },
+    "title": { "type": "string", "minLength": 1 },
+    "summary": { "type": "string", "minLength": 1, "maxLength": 300 },
+    "playbook": {
+      "type": "string",
+      "pattern": "^docs/.+\\.md$",
+      "description": "Repo-relative path of the bot-optional playbook."
+    },
+    "prompt_template": {
+      "type": ["string", "null"],
+      "pattern": "^docs/templates/.+\\.md$",
+      "description": "Repo-relative report/prompt template, or null when none exists."
+    },
+    "instructions": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The role prompt, cleaned from the original Grok Bot description."
+    },
+    "providers": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": [
+          "claude",
+          "codex",
+          "antigravity",
+          "gemini",
+          "cursor-agent",
+          "ollama",
+          "grok-chat"
+        ]
+      },
+      "description": "Ordered preference list; the first available provider runs the role."
+    },
+    "model": { "type": "string", "minLength": 1 },
+    "schedule": {
+      "type": ["string", "null"],
+      "pattern": "^\\S+ \\S+ \\S+ \\S+ \\S+$",
+      "description": "5-field cron in America/Los_Angeles, or null for on-demand."
+    },
+    "window": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["start", "end"],
+      "properties": {
+        "start": { "type": "string", "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$" },
+        "end": { "type": "string", "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$" }
+      },
+      "description": "Local-time run window (America/Los_Angeles); may wrap midnight."
+    },
+    "repos": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+$" }
+    },
+    "scope": { "type": "object" },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["usd_per_run", "usd_per_day"],
+      "properties": {
+        "usd_per_run": { "type": "number", "minimum": 0 },
+        "usd_per_day": { "type": "number", "minimum": 0 }
+      }
+    },
+    "permissions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lease",
+        "push_branch",
+        "open_pr",
+        "merge",
+        "host_shell",
+        "notify_user"
+      ],
+      "properties": {
+        "lease": { "type": "boolean" },
+        "push_branch": { "type": "boolean" },
+        "open_pr": { "type": "boolean" },
+        "merge": { "type": "boolean" },
+        "host_shell": { "type": "boolean" },
+        "notify_user": { "type": "boolean" }
+      }
+    },
+    "reports_to": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "Another role name, or `user`."
+    },
+    "holds": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Standing policy holds the role must respect verbatim."
+    },
+    "surface": {
+      "type": "string",
+      "enum": ["grok-chat", "dashboard", "both"]
+    },
+    "strategy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "consolidate_when": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "open_prs": { "type": "integer", "minimum": 1 },
+            "utilisation_pct": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          "description": "Consolidate a repository's PR queue into one PR when open non-draft PRs >= open_prs or runner utilisation >= utilisation_pct (fleet-rules/pr-queue-consolidation.md). Consumed by Runner_Dashboard backend/staff/consolidation.py."
+        }
+      },
+      "description": "Optional per-role operating strategy (#1690)."
+    },
+    "persona": { "type": "string" },
+    "group": { "type": ["string", "null"] },
+    "chat": {
+      "type": "object",
+      "properties": {
+        "providers": { "type": "array", "items": { "type": "string" } },
+        "read_only_tools": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "retired": { "type": "boolean" },
+    "retired_reason": { "type": "string", "minLength": 1 }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "surface": { "const": "grok-chat" } } },
+      "then": {
+        "properties": {
+          "providers": { "const": ["grok-chat"] },
+          "permissions": {
+            "properties": { "host_shell": { "const": false } }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": ["retired"],
+        "properties": { "retired": { "const": true } }
+      },
+      "then": { "required": ["retired_reason"] }
+    }
+  ]
+}

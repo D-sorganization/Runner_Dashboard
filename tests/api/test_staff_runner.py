@@ -58,14 +58,21 @@ def role_dir(tmp_path: Path) -> Path:
             [
                 "name: night-watch",
                 "title: Night Watch",
+                "summary: Triage simple issues overnight.",
                 "playbook: docs/fleet-night-watch.md",
+                "prompt_template: null",
                 "instructions: Triage simple issues overnight.",
                 "providers: [fake, claude]",
+                "model: default",
                 "schedule: '0 22 * * *'",
                 "window: {start: '22:00', end: '06:00'}",
                 "repos: [UpstreamDrift, Tools]",
+                "scope: {}",
                 "budget: {usd_per_run: 3, usd_per_day: 15}",
-                "permissions: {lease: false, push_branch: true, open_pr: true, merge: false, host_shell: false}",
+                (
+                    "permissions: {lease: false, push_branch: true, open_pr: true, "
+                    "merge: false, host_shell: false, notify_user: false}"
+                ),
                 "reports_to: orchestrator",
                 "holds: ['no bulk stale-queue cancel']",
                 "surface: dashboard",
@@ -74,7 +81,31 @@ def role_dir(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     (d / "barb.yml").write_text(
-        "name: barb\ntitle: Barb\nproviders: [grok-chat]\nsurface: grok-chat\n", encoding="utf-8"
+        "\n".join(
+            [
+                "name: barb",
+                "title: Barb",
+                "summary: Personal secretary.",
+                "playbook: docs/fleet-barb.md",
+                "prompt_template: null",
+                "instructions: Secretary tasks.",
+                "providers: [grok-chat]",
+                "model: default",
+                "schedule: null",
+                "window: null",
+                "repos: [UpstreamDrift]",
+                "scope: {}",
+                "budget: {usd_per_run: 0.5, usd_per_day: 2}",
+                (
+                    "permissions: {lease: false, push_branch: false, open_pr: false, "
+                    "merge: false, host_shell: false, notify_user: true}"
+                ),
+                "reports_to: user",
+                "holds: []",
+                "surface: grok-chat",
+            ]
+        ),
+        encoding="utf-8",
     )
     (d / "broken.yml").write_text("- not\n- a\n- mapping\n", encoding="utf-8")
     return d
@@ -128,7 +159,9 @@ def staff(
     store_mod.reset_store()
     runner_mod.reset_runner()
     r = runner_mod.StaffRunner(
-        store=store_mod.RunStore(tmp_path / "runs.sqlite3"), adapters=adapters, machine="TestNode"
+        store=store_mod.RunStore(tmp_path / "runs.sqlite3"),
+        adapters=adapters,
+        machine="TestNode",
     )
     monkeypatch.setattr(runner_mod, "_runner", r)
     yield r
@@ -136,7 +169,12 @@ def staff(
     runner_mod.reset_runner()
 
 
-def _wait(store: store_mod.RunStore, run_id: str, until: tuple[str, ...], timeout: float = 20.0) -> store_mod.RunRecord:
+def _wait(
+    store: store_mod.RunStore,
+    run_id: str,
+    until: tuple[str, ...],
+    timeout: float = 20.0,
+) -> store_mod.RunRecord:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         rec = store.get_run(run_id)
@@ -151,13 +189,18 @@ def _wait(store: store_mod.RunStore, run_id: str, until: tuple[str, ...], timeou
 @pytest.mark.unit
 def test_load_roles_reads_yaml_skips_broken_and_adds_builtin(role_dir: Path) -> None:
     roles = roles_mod.load_roles(role_dir)
-    assert set(roles) == {"night-watch", "barb", "ad-hoc"}
+    assert set(roles) == {"night-watch", "barb", "broken", "ad-hoc"}
     nw = roles["night-watch"]
     assert nw.providers == ("fake", "claude")
     assert nw.window == {"start": "22:00", "end": "06:00"}
     assert nw.budget_usd_per_day == 15.0
     assert nw.dispatchable
+    assert nw.valid
     assert not roles["barb"].dispatchable  # grok-chat surface is never a CLI run
+    assert roles["barb"].valid
+    assert not roles["broken"].dispatchable  # invalid roles surfaced as not dispatchable (#1300)
+    assert not roles["broken"].valid
+    assert roles["broken"].errors
 
 
 @pytest.mark.unit
@@ -174,7 +217,10 @@ def test_build_command_substitutes_and_drops_empty_model_flag() -> None:
     claude = adapters_mod.ADAPTERS["claude"]
     argv = claude.build_command("do the thing", "/tmp/wt", model=None)
     assert argv[0] == "claude"
-    assert argv[-2:] == ["--model", "sonnet"]  # role model "default" never falls through to the CLI's own default
+    assert argv[-2:] == [
+        "--model",
+        "sonnet",
+    ]  # role model "default" never falls through to the CLI's own default
     assert argv[argv.index("--permission-mode") + 1] == "bypassPermissions"
     assert "do the thing" in argv
     codex = adapters_mod.ADAPTERS["codex"]
@@ -194,7 +240,12 @@ def test_parse_line_json_text_and_usage() -> None:
     claude = adapters_mod.ADAPTERS["claude"]
     ev = claude.parse_line(
         json.dumps(
-            {"type": "result", "result": "ok", "usage": {"input_tokens": 5, "output_tokens": 7}, "total_cost_usd": 0.5}
+            {
+                "type": "result",
+                "result": "ok",
+                "usage": {"input_tokens": 5, "output_tokens": 7},
+                "total_cost_usd": 0.5,
+            }
         )
     )
     assert ev["kind"] == "result" and ev["text"] == "ok"
@@ -263,9 +314,16 @@ def test_plan_validates_role_provider_and_target(staff: runner_mod.StaffRunner) 
 
 
 @pytest.mark.integration
-def test_submit_runs_fake_cli_to_success_with_events_and_cost(staff: runner_mod.StaffRunner) -> None:
+def test_submit_runs_fake_cli_to_success_with_events_and_cost(
+    staff: runner_mod.StaffRunner,
+) -> None:
     rec = staff.submit(
-        runner_mod.RunRequest(role="night-watch", provider="fake", prompt="sweep the backlog", requested_by="tester")
+        runner_mod.RunRequest(
+            role="night-watch",
+            provider="fake",
+            prompt="sweep the backlog",
+            requested_by="tester",
+        )
     )
     assert rec.status == "queued"
     done = _wait(staff.store, rec.id, ("succeeded", "failed"))
@@ -325,7 +383,9 @@ def test_roster_lists_roles_and_providers(client: TestClient) -> None:
 @pytest.mark.unit
 def test_dry_run_returns_plan_without_creating_a_run(client: TestClient, staff: runner_mod.StaffRunner) -> None:
     resp = client.post(
-        "/api/staff/night-watch/run", json={"provider": "fake", "prompt": "preview", "dry_run": True}, headers=_XHR
+        "/api/staff/night-watch/run",
+        json={"provider": "fake", "prompt": "preview", "dry_run": True},
+        headers=_XHR,
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()
@@ -339,12 +399,18 @@ def test_dry_run_returns_plan_without_creating_a_run(client: TestClient, staff: 
 def test_dispatch_rejects_bad_role_provider_and_repo(client: TestClient) -> None:
     assert client.post("/api/staff/nope/run", json={"prompt": "x"}, headers=_XHR).status_code == 422
     assert (
-        client.post("/api/staff/night-watch/run", json={"provider": "codex", "prompt": "x"}, headers=_XHR).status_code
+        client.post(
+            "/api/staff/night-watch/run",
+            json={"provider": "codex", "prompt": "x"},
+            headers=_XHR,
+        ).status_code
         == 422
     )
     assert (
         client.post(
-            "/api/staff/night-watch/run", json={"provider": "fake", "repo": "org/repo", "prompt": "x"}, headers=_XHR
+            "/api/staff/night-watch/run",
+            json={"provider": "fake", "repo": "org/repo", "prompt": "x"},
+            headers=_XHR,
         ).status_code
         == 422
     )
@@ -353,7 +419,11 @@ def test_dispatch_rejects_bad_role_provider_and_repo(client: TestClient) -> None
 
 @pytest.mark.integration
 def test_dispatch_then_get_list_board_and_stream(client: TestClient, staff: runner_mod.StaffRunner) -> None:
-    resp = client.post("/api/staff/ad-hoc/run", json={"provider": "fake", "prompt": "hello api"}, headers=_XHR)
+    resp = client.post(
+        "/api/staff/ad-hoc/run",
+        json={"provider": "fake", "prompt": "hello api"},
+        headers=_XHR,
+    )
     assert resp.status_code == 200, resp.text
     run_id = resp.json()["run"]["id"]
     _wait(staff.store, run_id, ("succeeded", "failed"))
@@ -384,9 +454,11 @@ def test_dispatch_then_get_list_board_and_stream(client: TestClient, staff: runn
 
 @pytest.mark.integration
 def test_cancel_route(client: TestClient, staff: runner_mod.StaffRunner) -> None:
-    run_id = client.post("/api/staff/ad-hoc/run", json={"provider": "fake-slow", "prompt": "zzz"}, headers=_XHR).json()[
-        "run"
-    ]["id"]
+    run_id = client.post(
+        "/api/staff/ad-hoc/run",
+        json={"provider": "fake-slow", "prompt": "zzz"},
+        headers=_XHR,
+    ).json()["run"]["id"]
     _wait(staff.store, run_id, ("running",))
     resp = client.post(f"/api/staff/runs/{run_id}/cancel", headers=_XHR)
     assert resp.status_code == 200 and resp.json()["cancelled"] is True
@@ -395,7 +467,9 @@ def test_cancel_route(client: TestClient, staff: runner_mod.StaffRunner) -> None
 
 
 @pytest.mark.integration
-def test_exit_zero_without_staff_result_is_failed(staff: runner_mod.StaffRunner) -> None:
+def test_exit_zero_without_staff_result_is_failed(
+    staff: runner_mod.StaffRunner,
+) -> None:
     rec = staff.submit(runner_mod.RunRequest(role="ad-hoc", provider="fake-ask", prompt="sweep"))
     done = _wait(staff.store, rec.id, ("succeeded", "failed"))
     assert done.status == "failed" and done.exit_code == 0

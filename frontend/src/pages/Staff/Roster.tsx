@@ -35,12 +35,26 @@ export function RoleCard({
   providers: Record<string, boolean>;
   onAssign?: (role: string) => void;
 }) {
-  const state = role.retired ? "retired" : role.dispatchable ? "dispatchable" : "not dispatchable";
-  const stateTone = role.retired ? "neutral" : role.dispatchable ? "success" : "warning";
+  const isInvalid = role.valid === false;
+  const state = isInvalid
+    ? "invalid"
+    : role.retired
+      ? "retired"
+      : role.dispatchable
+        ? "dispatchable"
+        : "not dispatchable";
+  const stateTone = isInvalid
+    ? "danger"
+    : role.retired
+      ? "neutral"
+      : role.dispatchable
+        ? "success"
+        : "warning";
   const strategy = strategyLabel(role);
+  const errorMessage = role.error || (role.errors && role.errors.length > 0 ? role.errors.join("; ") : null);
   return (
     <article
-      className={role.retired ? "staff-role staff-role--retired" : "staff-role"}
+      className={role.retired ? "staff-role staff-role--retired" : isInvalid ? "staff-role staff-role--invalid" : "staff-role"}
       data-testid={`role-card-${role.name}`}
       aria-label={`Role ${role.title}`}
     >
@@ -50,6 +64,11 @@ export function RoleCard({
           {state}
         </Badge>
       </div>
+      {errorMessage ? (
+        <p className="staff-role__error" style={{ color: "var(--danger, #dc2626)", fontSize: "0.85rem", marginTop: "0.25rem" }}>
+          ⚠️ {errorMessage}
+        </p>
+      ) : null}
       {role.summary ? <p className="staff-role__summary">{role.summary}</p> : null}
       <dl className="staff-role__facts">
         <dt>Providers</dt>
