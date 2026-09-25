@@ -203,7 +203,7 @@ def check_approval_policy(
 
 
 _MAINTENANCE_ACTIONS = frozenset(
-    [
+    {
         "runner.start",
         "runner.stop",
         "runner.restart",
@@ -216,7 +216,7 @@ _MAINTENANCE_ACTIONS = frozenset(
         "queue.diagnose",
         "host.vhdx_compact",
         "dashboard.restart",
-    ]
+    }
 )
 
 
@@ -231,6 +231,9 @@ def check_role_permission(
 
     act_name = action.name if action else ""
     if role_name == "maintenance" and (act_name.startswith("maintenance.") or act_name in _MAINTENANCE_ACTIONS):
+        return True
+
+    if role_name in ("board-secretary", "board_secretary") and act_name in ("board.propose", "staff.dispatch"):
         return True
 
     spec = role_spec or load_roles().get(role_name)
@@ -427,12 +430,7 @@ ACTION_REGISTRY.register(
     ActionDefinition(
         name="staff.review_pr",
         description="Request a PR review from a specialist staff role.",
-        params_schema={
-            "repo": "string",
-            "pr": "int",
-            "reviewer": "string?",
-            "focus": "string?",
-        },
+        params_schema={"repo": "string", "pr": "int", "reviewer": "string?", "focus": "string?"},
         required_scope="staff.dispatch",
         risk_class=ActionRiskClass.LOW,
         executor=execute_review_pr,
@@ -444,11 +442,7 @@ ACTION_REGISTRY.register(
     ActionDefinition(
         name="staff.hold",
         description="Set an operational hold locking a role or policy.",
-        params_schema={
-            "text": "string",
-            "applies_to": "list[string]?",
-            "lifted_when": "string?",
-        },
+        params_schema={"text": "string", "applies_to": "list[string]?", "lifted_when": "string?"},
         required_scope="staff.holds.write",
         risk_class=ActionRiskClass.HIGH,
         executor=execute_staff_hold,

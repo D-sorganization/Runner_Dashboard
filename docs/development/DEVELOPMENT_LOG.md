@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1339 · SC-B9: Group threads: talk to the Board (and other groups) with the Board-Secretary coordinating seat replies
+
+- **State:** in_review
+- **Owner:** antigravity
+- **Issue:** #1339 (epic #1348 / umbrella #1354)
+- **Branch:** `feat/1339-group-threads-board`
+- **PR:** #1480
+- **Paths:** `backend/routers/staff_groups.py`, `backend/staff/group_models.py`, `backend/staff/groups.py`, `backend/routers/staff_threads.py`, `backend/staff/action_executors.py`, `backend/staff/actions.py`, `backend/server.py`, `tests/unit/test_staff_groups.py`, `tests/api/test_staff_groups_api.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (pytest tests/unit/test_staff_groups.py tests/api/test_staff_groups_api.py 15/15 passing; regression test suite 42/42 passing; ruff check clean; ruff format clean; mypy 0 issues; all files strictly <= 500 lines)
+- **Summary:** Enabled group threads coordinating seat replies: (1) Added data models (`group_models.py`) and group coordination engine (`groups.py`) configuring Board group (seats Alpha, Bravo, Charlie, Delta + coordinator `board-secretary`); (2) Implemented concurrent fanout across seat chat turns with per-seat timeout and fault isolation; (3) Added consensus synthesis with quorum threshold (3/4), executive synthesis, collapsible `<details><summary>` seat disclosures, and automatic `board.propose` ActionProposal creation; (4) Added pre-send token/USD cost estimation and threshold guard (`STAFF_GROUP_COST_THRESHOLD_USD`, default $2.00) requiring `confirm_cost=True`; (5) Added REST endpoints `GET /api/v1/staff/groups`, `GET /api/v1/staff/groups/{id}`, `GET /api/v1/staff/groups/{id}/cost-estimate`, `POST /api/v1/staff/groups/{id}/threads`; (6) Integrated group threads in `staff_threads.py` with async background coordinator runner; (7) Authorized `board-secretary` for `board.propose` and `staff.dispatch` actions; (8) Fixed `create_work_item` parameter naming in `action_executors.py`.
+- **Next step:** Push rebased branch, monitor PR #1480 CI to squash merge, release lease, and clean up.
+
 ### DL-#1484 · SC-B1-G1: Enforce read-only chat turns per provider
 
 - **State:** shipped
@@ -33,7 +46,7 @@ reachable from any live state and `abandoned` from `parked`.
 
 ### DL-#1494 · Fix projects run steward missing Idempotency-Key
 
-- **State:** in_progress
+- **State:** shipped
 - **Owner:** antigravity
 - **Issue:** #1494
 - **Branch:** `fix/1494-projects-run-steward-idempotency`
@@ -119,7 +132,6 @@ reachable from any live state and `abandoned` from `parked`.
 - **Last verified:** 2026-09-25 (pytest 5/5 passed in test_action_executor_roles.py, 19/19 passed in tests/staff/ and test_staff_actions.py; ruff check and format clean; mypy backend clean with 0 issues in 247 files; all files <= 500 lines)
 - **Summary:** Replaced literal unresolvable staff role strings in `backend/staff/action_executors.py` with module constants: `DEFAULT_REVIEWER_ROLE = "fleet-critic"`, `CODE_REQUEST_OWNER_ROLE = "barb"`, `BOARD_PROPOSAL_ROLE = "board-secretary"`. Added `validate_action_default_roles` to validate default roles against `load_roles()`, logging warnings without crashing at runtime and failing loudly on error in tests. Added unit test suite in `tests/staff/routing_eval/test_action_executor_roles.py`.
 - **Next step:** None (shipped in PR #1481).
-
 
 ### DL-#1477 · Staff validator accepts RM tool/scope grants
 
@@ -220,11 +232,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Paths:** `frontend/src/pages/__tests__/FleetCommand.test.tsx`, `frontend/src/pages/__tests__/FleetCommandOps.test.tsx`, `frontend/src/pages/__tests__/fleetCommandTestHelpers.ts`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (Merged to main via PR #1460)
-- **Summary:** Extracted shared test fixtures/helpers into `fleetCommandTestHelpers.ts` (168 lines), kept core coordination panels in `FleetCommand.test.tsx` (232 lines), and operations tests in `FleetCommandOps.test.tsx` (198 lines), strictly satisfying the <= 500 line limit to restore green main.
-<<<<<<< HEAD
 - **Next step:** None (shipped in PR #1460).
-=======
->>>>>>> origin/main
 
 ### DL-#1284 · CR-7: Board Proposals suggestion box — API, Fleet Command tab, fleet tool
 

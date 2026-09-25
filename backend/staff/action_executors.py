@@ -232,7 +232,6 @@ def execute_code_request_create(params: dict[str, Any], ctx: ActionContext) -> A
 
     title = str(params.get("title") or "").strip()
     repo = str(params.get("repo") or "").strip()
-    desc = str(params.get("description") or "").strip()
     if not title or not repo:
         return ActionResult(success=False, error="Missing 'title' or 'repo'", failure_class="invalid_params")
     from staff.work_items import get_work_item_store
@@ -241,12 +240,9 @@ def execute_code_request_create(params: dict[str, Any], ctx: ActionContext) -> A
     role = str(params.get("role") or CODE_REQUEST_OWNER_ROLE)
     wi = wi_store.create_work_item(
         title=f"[Code Request] {title}",
-        role=role,
-        repo=repo,
+        owner_role=role,
         thread_id=ctx.thread_id,
-        summary=desc,
-        links={"code_requests": [{"title": title, "repo": repo, "priority": str(params.get("priority") or "P2")}]},
-        principal=format_caller(ctx.caller) if ctx.caller else "staff_action",
+        requested_by=format_caller(ctx.caller) if ctx.caller else "staff_action",
     )
     return ActionResult(success=True, result={"work_item_id": wi.id, "title": title, "repo": repo})
 
@@ -264,11 +260,9 @@ def execute_board_propose(params: dict[str, Any], ctx: ActionContext) -> ActionR
     role = str(params.get("role") or BOARD_PROPOSAL_ROLE)
     wi = wi_store.create_work_item(
         title=f"[Board Proposal] {title}",
-        role=role,
+        owner_role=role,
         thread_id=ctx.thread_id,
-        summary=prop_body,
-        links={"proposals": [{"title": title, "proposal": prop_body, "target": str(params.get("target") or "")}]},
-        principal=format_caller(ctx.caller) if ctx.caller else "staff_action",
+        requested_by=format_caller(ctx.caller) if ctx.caller else "staff_action",
     )
     return ActionResult(success=True, result={"proposal_id": wi.id, "title": title})
 

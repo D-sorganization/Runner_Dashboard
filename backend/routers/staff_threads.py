@@ -83,6 +83,10 @@ async def create_thread(
         role = "barb"
 
     participants = list(body.participants)
+    from staff.groups import resolve_group_thread_meta
+
+    kind, role, meta = resolve_group_thread_meta(kind, role, participants)
+
     if role and role not in participants:
         participants.append(role)
     if caller_id not in participants:
@@ -98,6 +102,7 @@ async def create_thread(
             kind=kind,
             participants=participants,
             created_by=caller_id,
+            meta=meta,
         )
         return rec.to_dict()
     except ConversationsUnavailableError as exc:
@@ -251,6 +256,11 @@ async def post_message(
                 "message": user_msg_dict,
                 "reply_placeholder": reply_placeholder,
             }
+
+        from staff.groups import dispatch_group_message, is_group_thread
+
+        if is_group_thread(thread):
+            return await dispatch_group_message(thread, body, caller, caller_id, idempotency_key, store)
 
         # Persist user message
         user_msg = store.add_message(
