@@ -36,6 +36,10 @@ class _Limits:
     max_directives: int = 100
     max_version: int = 64
     max_paths: int = 50
+    max_proposal_title: int = 200
+    max_proposal_text: int = 10000
+    max_proposal_source: int = 100
+    max_proposal_url: int = 500
 
 
 PATTERNS = _Patterns()
@@ -44,6 +48,10 @@ BROADCAST = "*"
 USAGE_GROUPS = ("provider", "role", "day")
 RUN_STATUSES = ("queued", "preparing", "running", "succeeded", "failed", "cancelled", "blocked")
 PROPOSAL_DECISIONS = ("approved", "denied")
+# Mirrors the board-proposal issue form's "Estimated Effort" and "Urgency"
+# dropdowns exactly (Repository_Management/.github/ISSUE_TEMPLATE/board-proposal.yml).
+PROPOSAL_ESTIMATED_EFFORTS = ("Low", "Medium", "High")
+PROPOSAL_URGENCIES = ("Routine", "Urgent", "Emergency")
 
 _TEXT_CONTROLS = "\n\t"
 _SESSION_UNSAFE = re.compile(r"[^A-Za-z0-9_.-]")

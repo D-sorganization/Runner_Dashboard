@@ -176,7 +176,7 @@ _AUTH_EXEMPT_PATHS = {
 #                              (priorities.write scope or loopback). The summary route is the
 #                              exact path /api/priorities (in _ALT_AUTH_EXEMPT_EXACT) and the rest the
 #                              /api/priorities/ prefix, so /api/prioritiesX is NOT exempt (#1243).
-_ALT_AUTH_EXEMPT_EXACT = frozenset({"/api/priorities"})
+_ALT_AUTH_EXEMPT_EXACT = frozenset({"/api/priorities", "/api/proposals"})
 _ALT_AUTH_EXEMPT_PREFIXES = (
     "/api/fleet/dispatch/",
     "/api/orchestrator/",
@@ -184,6 +184,7 @@ _ALT_AUTH_EXEMPT_PREFIXES = (
     "/api/staff/",
     "/api/coordination/",
     "/api/priorities/",
+    "/api/proposals/",
 )
 
 DEFAULT_MAX_BODY_SIZE = 1 * 1024 * 1024  # 1 MB

@@ -12,13 +12,27 @@ import { useState } from "react";
 import { Badge } from "../../primitives/Badge";
 import { EmptyState } from "../../primitives/EmptyState";
 import { TouchButton } from "../../primitives/TouchButton";
-import { fetchMeeting, fetchMeetings, fetchPriorities, trackingUrl, useResource } from "./fleetApi";
+import {
+  fetchMeeting,
+  fetchMeetings,
+  fetchPriorities,
+  fetchProposals,
+  trackingUrl,
+  useResource,
+} from "./fleetApi";
 import { PanelFrame } from "./PanelFrame";
-import type { Consensus } from "./types";
+import { OutcomeBadge } from "./ProposalLists";
+import type { Consensus, ProposalItem } from "./types";
 
 const LATEST = "";
 
-function ConsensusView({ consensus }: { consensus: Consensus }) {
+function ConsensusView({
+  consensus,
+  meetingProposals,
+}: {
+  consensus: Consensus;
+  meetingProposals?: ProposalItem[];
+}) {
   return (
     <>
       <h4 className="fleet-cmd__subtitle">Active priorities</h4>
@@ -91,6 +105,49 @@ function ConsensusView({ consensus }: { consensus: Consensus }) {
           </ul>
         </div>
       ) : null}
+      {meetingProposals && meetingProposals.length > 0 ? (
+        <div style={{ marginTop: 16 }}>
+          <h4 className="fleet-cmd__subtitle">
+            Proposals decided at this meeting ({meetingProposals.length})
+          </h4>
+          <div className="fleet-cmd__table-wrap">
+            <table className="fleet-cmd__table" data-testid="priorities-decided-proposals">
+              <thead>
+                <tr>
+                  <th scope="col">#</th>
+                  <th scope="col">Proposal</th>
+                  <th scope="col">Decision</th>
+                </tr>
+              </thead>
+              <tbody>
+                {meetingProposals.map((p) => (
+                  <tr key={p.number}>
+                    <td className="fleet-cmd__rank">
+                      <a
+                        href={p.html_url || "#"}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        style={{ fontWeight: 600 }}
+                      >
+                        #{p.number}
+                      </a>
+                    </td>
+                    <td>
+                      <strong>{p.title}</strong>
+                      <div className="staff-muted" style={{ fontSize: 12 }}>
+                        {p.target_repos.join(", ")}
+                      </div>
+                    </td>
+                    <td>
+                      <OutcomeBadge decision={p.decision} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }
@@ -100,6 +157,10 @@ export function PrioritiesPanel() {
   const latest = useResource(date === LATEST ? fetchPriorities : null, `latest:${date}`);
   const meetings = useResource(fetchMeetings, "meetings");
   const meeting = useResource(date === LATEST ? null : (signal) => fetchMeeting(date, signal), `meeting:${date}`);
+  const decidedRes = useResource(
+    (signal) => fetchProposals({ state: "decided" }, signal),
+    "priorities:proposals:decided",
+  );
 
   const current = date === LATEST ? latest : meeting;
   // A 404 (route absent) is "not available"; `available:false` is the no-meeting empty state.
@@ -107,6 +168,9 @@ export function PrioritiesPanel() {
   const consensus = date === LATEST ? (latest.data?.board ?? null) : (meeting.data?.consensus ?? null);
   const boardDate = date === LATEST ? latest.data?.board?.date : date;
   const history = meetings.data?.meetings ?? [];
+  const meetingProposals = (decidedRes.data?.proposals ?? []).filter(
+    (p) => boardDate && p.meeting_date === boardDate,
+  );
 
   return (
     <PanelFrame
@@ -116,7 +180,10 @@ export function PrioritiesPanel() {
       hasData={current.data !== null}
       error={current.error}
       unavailable={routeMissing}
-      onRetry={current.reload}
+      onRetry={() => {
+        current.reload();
+        decidedRes.reload();
+      }}
       actions={
         <>
           {history.length > 0 ? (
@@ -135,7 +202,14 @@ export function PrioritiesPanel() {
               ))}
             </select>
           ) : null}
-          <TouchButton onClick={current.reload}>Refresh</TouchButton>
+          <TouchButton
+            onClick={() => {
+              current.reload();
+              decidedRes.reload();
+            }}
+          >
+            Refresh
+          </TouchButton>
         </>
       }
     >
@@ -145,7 +219,7 @@ export function PrioritiesPanel() {
         </p>
       ) : null}
       {consensus ? (
-        <ConsensusView consensus={consensus} />
+        <ConsensusView consensus={consensus} meetingProposals={meetingProposals} />
       ) : (
         <EmptyState
           title={date === LATEST ? "No board meeting yet" : "No consensus for this meeting"}

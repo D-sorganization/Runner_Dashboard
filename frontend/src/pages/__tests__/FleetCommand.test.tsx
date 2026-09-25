@@ -247,7 +247,79 @@ describe("FleetCommandPage — priorities", () => {
     await waitFor(() => expect(screen.getByTestId("fleet-priorities-unavailable")).toBeInTheDocument());
     expect(screen.getByTestId("fleet-directives-unavailable")).toBeInTheDocument();
   });
+
+  it("renders decided proposals for the meeting date", async () => {
+    stubFetch((url) => {
+      if (url.includes("/api/proposals?state=decided")) {
+        return {
+          status: 200,
+          body: {
+            proposals: [
+              {
+                number: 42,
+                title: "Decided in this meeting",
+                target_repos: ["Runner_Dashboard"],
+                decision: "accepted",
+                meeting_date: "2026-09-21",
+                state: "decided",
+              },
+            ],
+          },
+        };
+      }
+      return undefined;
+    });
+    render(<FleetCommandPage />);
+    await waitFor(() => expect(screen.getByTestId("priorities-decided-proposals")).toBeInTheDocument());
+    expect(screen.getByText("Decided in this meeting")).toBeInTheDocument();
+    expect(screen.getByText("#42")).toBeInTheDocument();
+  });
 });
+
+describe("FleetCommandPage — proposals", () => {
+  it("switches to Proposals tab and renders proposal form and lists", async () => {
+    stubFetch((url) => {
+      if (url.includes("/api/proposals")) {
+        return {
+          status: 200,
+          body: { proposals: [] },
+        };
+      }
+      return undefined;
+    });
+    render(<FleetCommandPage />);
+    const proposalsTab = screen.getByRole("tab", { name: /proposals/i });
+    fireEvent.click(proposalsTab);
+    await waitFor(() => expect(screen.getByTestId("proposal-form-frame")).toBeInTheDocument());
+    expect(screen.getByTestId("open-proposals-frame")).toBeInTheDocument();
+    expect(screen.getByTestId("decided-proposals-frame")).toBeInTheDocument();
+  });
+
+  it("pre-fills proposal form from URL search params", async () => {
+    const origLocation = window.location;
+    delete (window as unknown as { location?: Location }).location;
+    window.location = {
+      ...origLocation,
+      search: "?section=proposals&title=Prefilled+Title&repo=Runner_Dashboard&problem=Big+problem",
+    };
+    try {
+      stubFetch((url) => {
+        if (url.includes("/api/proposals")) {
+          return { status: 200, body: { proposals: [] } };
+        }
+        return undefined;
+      });
+      render(<FleetCommandPage />);
+      await waitFor(() => expect(screen.getByTestId("proposal-form-frame")).toBeInTheDocument());
+      expect(screen.getByLabelText("Title")).toHaveValue("Prefilled Title");
+      expect(screen.getByLabelText("Target Repo(s)")).toHaveValue("Runner_Dashboard");
+      expect(screen.getByLabelText("Problem Statement")).toHaveValue("Big problem");
+    } finally {
+      window.location = origLocation;
+    }
+  });
+});
+
 
 describe("FleetCommandPage — directives", () => {
   it("edits, adds and expires directives, then PUTs the list with the CSRF header", async () => {

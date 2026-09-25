@@ -625,40 +625,6 @@
         "title": "ClientErrorPayload",
         "type": "object"
       },
-      "CreateProposalRequest": {
-        "properties": {
-          "action": {
-            "description": "Name of allowlisted action",
-            "title": "Action",
-            "type": "string"
-          },
-          "message_id": {
-            "description": "Originating message ID",
-            "title": "Message Id",
-            "type": "string"
-          },
-          "params": {
-            "additionalProperties": true,
-            "description": "Action parameters",
-            "title": "Params",
-            "type": "object"
-          },
-          "risk": {
-            "default": "low",
-            "description": "Risk class (read, low, medium, high, owner-only)",
-            "title": "Risk",
-            "type": "string"
-          },
-          "thread_id": {
-            "description": "Parent thread ID",
-            "title": "Thread Id",
-            "type": "string"
-          }
-        },
-        "required": ["message_id", "thread_id", "action"],
-        "title": "CreateProposalRequest",
-        "type": "object"
-      },
       "CreateThreadRequest": {
         "properties": {
           "kind": {
@@ -1560,6 +1526,352 @@
         },
         "required": ["session", "repo", "issue", "branch"],
         "title": "PresenceBody",
+        "type": "object"
+      },
+      "ProposalComment": {
+        "description": "A comment on a proposal issue, highlighting Board-Secretary notes.",
+        "properties": {
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "is_secretary": {
+            "default": false,
+            "title": "Is Secretary",
+            "type": "boolean"
+          },
+          "user": {
+            "additionalProperties": true,
+            "title": "User",
+            "type": "object"
+          }
+        },
+        "required": ["id", "user", "body", "created_at"],
+        "title": "ProposalComment",
+        "type": "object"
+      },
+      "ProposalDetail": {
+        "description": "Full detail of a single proposal, including discussion and Board-Secretary comments.",
+        "properties": {
+          "closed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "code_request_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code Request Url"
+          },
+          "comments": {
+            "items": {
+              "$ref": "#/components/schemas/ProposalComment"
+            },
+            "title": "Comments",
+            "type": "array"
+          },
+          "comments_count": {
+            "default": 0,
+            "title": "Comments Count",
+            "type": "integer"
+          },
+          "consensus_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consensus Url"
+          },
+          "created_at": {
+            "default": "",
+            "title": "Created At",
+            "type": "string"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision"
+          },
+          "decision_labels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Decision Labels",
+            "type": "array"
+          },
+          "estimated_cost": {
+            "default": "",
+            "title": "Estimated Cost",
+            "type": "string"
+          },
+          "evidence": {
+            "default": "",
+            "title": "Evidence",
+            "type": "string"
+          },
+          "html_url": {
+            "default": "",
+            "title": "Html Url",
+            "type": "string"
+          },
+          "lean": {
+            "default": "",
+            "title": "Lean",
+            "type": "string"
+          },
+          "meeting_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meeting Date"
+          },
+          "number": {
+            "title": "Number",
+            "type": "integer"
+          },
+          "options_considered": {
+            "default": "",
+            "title": "Options Considered",
+            "type": "string"
+          },
+          "problem": {
+            "default": "",
+            "title": "Problem",
+            "type": "string"
+          },
+          "source": {
+            "default": "human",
+            "title": "Source",
+            "type": "string"
+          },
+          "state": {
+            "default": "open",
+            "title": "State",
+            "type": "string"
+          },
+          "target_repos": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Target Repos",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "default": "",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "urgency": {
+            "default": "",
+            "title": "Urgency",
+            "type": "string"
+          }
+        },
+        "required": ["number", "title"],
+        "title": "ProposalDetail",
+        "type": "object"
+      },
+      "ProposalItem": {
+        "description": "Summary of a proposal returned in listings.",
+        "properties": {
+          "closed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "code_request_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code Request Url"
+          },
+          "comments_count": {
+            "default": 0,
+            "title": "Comments Count",
+            "type": "integer"
+          },
+          "consensus_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consensus Url"
+          },
+          "created_at": {
+            "default": "",
+            "title": "Created At",
+            "type": "string"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision"
+          },
+          "decision_labels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Decision Labels",
+            "type": "array"
+          },
+          "estimated_cost": {
+            "default": "",
+            "title": "Estimated Cost",
+            "type": "string"
+          },
+          "evidence": {
+            "default": "",
+            "title": "Evidence",
+            "type": "string"
+          },
+          "html_url": {
+            "default": "",
+            "title": "Html Url",
+            "type": "string"
+          },
+          "lean": {
+            "default": "",
+            "title": "Lean",
+            "type": "string"
+          },
+          "meeting_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meeting Date"
+          },
+          "number": {
+            "title": "Number",
+            "type": "integer"
+          },
+          "options_considered": {
+            "default": "",
+            "title": "Options Considered",
+            "type": "string"
+          },
+          "problem": {
+            "default": "",
+            "title": "Problem",
+            "type": "string"
+          },
+          "source": {
+            "default": "human",
+            "title": "Source",
+            "type": "string"
+          },
+          "state": {
+            "default": "open",
+            "title": "State",
+            "type": "string"
+          },
+          "target_repos": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Target Repos",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "default": "",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "urgency": {
+            "default": "",
+            "title": "Urgency",
+            "type": "string"
+          }
+        },
+        "required": ["number", "title"],
+        "title": "ProposalItem",
+        "type": "object"
+      },
+      "ProposalsListResponse": {
+        "description": "Response envelope for GET /api/proposals.",
+        "properties": {
+          "proposals": {
+            "items": {
+              "$ref": "#/components/schemas/ProposalItem"
+            },
+            "title": "Proposals",
+            "type": "array"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "title": "ProposalsListResponse",
         "type": "object"
       },
       "PushKeys": {
@@ -4041,6 +4353,135 @@
           }
         },
         "title": "WorkSummary",
+        "type": "object"
+      },
+      "proposals__models__CreateProposalRequest": {
+        "description": "Payload for submitting a suggestion to the Board (POST /api/proposals).",
+        "properties": {
+          "code_request_url": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code Request Url"
+          },
+          "confirm_not_duplicate": {
+            "default": false,
+            "title": "Confirm Not Duplicate",
+            "type": "boolean"
+          },
+          "estimated_cost": {
+            "enum": ["Low", "Medium", "High"],
+            "title": "Estimated Cost",
+            "type": "string"
+          },
+          "evidence": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Evidence",
+            "type": "string"
+          },
+          "lean": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Lean",
+            "type": "string"
+          },
+          "options_considered": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Options Considered",
+            "type": "string"
+          },
+          "problem": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Problem",
+            "type": "string"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "target_repos": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Target Repos",
+            "type": "array"
+          },
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "urgency": {
+            "enum": ["Routine", "Urgent", "Emergency"],
+            "title": "Urgency",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "target_repos",
+          "problem",
+          "evidence",
+          "options_considered",
+          "lean",
+          "estimated_cost",
+          "urgency"
+        ],
+        "title": "CreateProposalRequest",
+        "type": "object"
+      },
+      "routers__staff_proposals__CreateProposalRequest": {
+        "properties": {
+          "action": {
+            "description": "Name of allowlisted action",
+            "title": "Action",
+            "type": "string"
+          },
+          "message_id": {
+            "description": "Originating message ID",
+            "title": "Message Id",
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": true,
+            "description": "Action parameters",
+            "title": "Params",
+            "type": "object"
+          },
+          "risk": {
+            "default": "low",
+            "description": "Risk class (read, low, medium, high, owner-only)",
+            "title": "Risk",
+            "type": "string"
+          },
+          "thread_id": {
+            "description": "Parent thread ID",
+            "title": "Thread Id",
+            "type": "string"
+          }
+        },
+        "required": ["message_id", "thread_id", "action"],
+        "title": "CreateProposalRequest",
         "type": "object"
       }
     },
@@ -9577,6 +10018,171 @@
         "tags": ["projects"]
       }
     },
+    "/api/proposals": {
+      "get": {
+        "description": "List proposals with decision outcomes and meeting links.",
+        "operationId": "list_proposals_api_proposals_get",
+        "parameters": [
+          {
+            "description": "Filter by state: open, decided",
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by state: open, decided",
+              "title": "State"
+            }
+          },
+          {
+            "description": "Filter by target repo",
+            "in": "query",
+            "name": "repo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by target repo",
+              "title": "Repo"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalsListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "List board proposals",
+        "tags": ["proposals"]
+      },
+      "post": {
+        "description": "Submit a suggestion to the Board with duplicate check and rate limiting.",
+        "operationId": "create_proposal_api_proposals_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/proposals__models__CreateProposalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalItem"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Submit a proposal to the Board",
+        "tags": ["proposals"]
+      }
+    },
+    "/api/proposals/{number}": {
+      "get": {
+        "description": "Get single proposal details and comments from the Board-Secretary.",
+        "operationId": "get_proposal_api_proposals__number__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "number",
+            "required": true,
+            "schema": {
+              "title": "Number",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get proposal detail and Secretary comments",
+        "tags": ["proposals"]
+      }
+    },
     "/api/providers/registry": {
       "get": {
         "description": "Return the shared provider registry (dashboard + Conductor contract).",
@@ -13439,7 +14045,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CreateProposalRequest"
+                "$ref": "#/components/schemas/routers__staff_proposals__CreateProposalRequest"
               }
             }
           },

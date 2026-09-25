@@ -1,4 +1,59 @@
-# Current handoff — SC-G8 first cut: delete never-mounted frontend primitives (#1346)
+# Current handoff — CR-7: Board Proposals suggestion box — API, Fleet Command tab, fleet tool (#1284)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `agy/issue-1284`; Issue #1284; DL-#1284.
+
+## Objective and Status
+
+- CR-7: Board Proposals suggestion box — API, Fleet Command tab, fleet tool.
+- Scope implemented:
+  - Backend (`backend/proposals/`):
+    - `POST /api/proposals`: Gated on `proposals.write` scope (granted to operators and bot principals). Rate limits agent principals to 5 open proposals (configurable via `BOARD_PROPOSALS_AGENT_LIMIT`), humans unlimited. Duplicate candidate search (keyword/title overlap) returning 409 Conflict with candidate list unless `confirm_not_duplicate=true`. Creates issue in `D-sorganization/Repository_Management` with label `board:proposal` and formatted markdown body.
+    - `GET /api/proposals`: List proposals with optional `state` (open|decided) and `repo` filter. Extracts decision labels (`board:accepted`, `board:declined`, `board:deferred`) and links meeting date to `consensus.md` via `_find_meeting_for_issue`.
+    - `GET /api/proposals/{number}`: Detailed proposal view including comments filtered to Board-Secretary comments.
+  - Fleet Tooling (`clients/fleet/`):
+    - Added `submit_proposal` and `list_proposals` to `FleetClient` and registered CLI/MCP tools `submit_proposal` and `list_proposals` (27 contracted tools).
+  - Frontend (`frontend/src/pages/FleetCommand/`):
+    - `ProposalsPanel.tsx`: Full form for submitting proposals with validation, duplicate detection candidate banner with confirmation button, and open/decided proposal lists with outcome badges and meeting links.
+    - `FleetCommandPage.tsx`: Added "Proposals" tab and URL query parameter prefill support (`?section=proposals&title=...&repo=...&problem=...`).
+    - `PrioritiesPanel.tsx`: Added display for decided proposals matching the viewed board meeting's date.
+    - `CodeRequestsHistory.tsx`: Added "Propose to Board" deep links to escalate code requests to board proposals.
+  - Client & Contract:
+    - Generated OpenAPI schema and TypeScript types (`openapi.json`, `api-types.ts`) with `scripts/gen-api-client.sh`.
+
+## Review Defect Fixes (`review_1444.md`, PR #1444)
+
+All 11 numbered defects addressed in this pass, TDD (failing/new test first):
+
+1. **Rate-limit bypass** — the agent-principal rate limit now counts a hidden `<!-- proposal-submitter: <id> -->` marker appended to the issue body server-side from `caller.id`, never the caller-controlled `source` field. Test: `test_create_proposal_rate_limit_counted_by_submitter_marker_not_source`.
+2. **Store format vs. real form** — headings/order in `render_proposal_markdown`/`parse_proposal_markdown` and the `estimated_cost`/`urgency` `Literal` enums now mirror `board-proposal.yml` exactly; UI uses matching `<select>` dropdowns; fleet tool/validators updated. Tests: `tests/unit/test_proposals_store.py` round-trip + real-form-shaped body tests.
+3. **No silent failure** — `list_github_proposals`/`get_github_proposal_comments` raise `ProposalStoreError` instead of returning `[]`; `service.py` converts any GitHub read failure into a 503 for both `POST` and `GET`. Tests: `test_create_proposal_returns_503_when_github_read_fails`, `test_list_proposals_returns_503_when_github_read_fails`, `test_get_proposal_returns_503_when_comments_fetch_fails`.
+4. **Decision labels whitelist** — only `board:accepted`/`board:declined`/`board:deferred` count as a decision; `board:needs-info` is excluded and there is no `board:decided` label. Test: `test_needs_info_label_is_not_a_decision`.
+5. **Tests rebuilt on real shapes** — `tests/api/test_proposals_routes.py` fixtures now build bodies via `store.render_proposal_markdown` (no synthetic top-level `source`/`target_repos`/`meeting_date`); vacuous `call_kwargs.get(...)` assertion replaced with an exact submitter-marker check; `in (200, 201)`/`in (401, 403)` replaced with exact codes; dead consensus fixture removed.
+6. **Input validation** — `_HEADING_INJECTION_RE`, `_REPO_NAME_RE`, `_SOURCE_RE` in `models.py` reject heading injection, invalid repo names, and non-agent-id sources; `code_request_url` must start with `https://`. Test: `test_create_proposal_rejects_heading_injection_and_bad_repo_name`.
+7. **DRY** — `gh_api` uses `_map_gh_client_error` and proposal creation reuses main's `gh_api_write` (rebase onto #1443); `list_github_proposals` uses `gh_client.paginate` instead of `per_page=100`; `service.py` imports `rm_root` from `staff.workspace` instead of a bespoke resolver; `PrioritiesPanel.tsx` reuses `ProposalLists.tsx`'s `renderOutcomeBadge`.
+8. **Consensus link** — `_consensus_url` links to GitHub's `consensus.md`, and `_build_issue_meeting_index` scans every meeting once per listing instead of per-issue.
+9. **`is_secretary`** — reads a configured `BOARD_SECRETARY_LOGINS` env var (default `board-secretary`) instead of substring-matching on "board"/"secretary". Test: `test_get_proposal_detail_with_secretary_comments` (asserts a `board-observer` login is NOT flagged as secretary).
+10. **Frontend** — `CodeRequestsHistory.tsx` passes `code_request_url` in the "Propose to Board" link; removed unused `setProposalPrefill`; `FleetCommandPage.tsx` uses a lazy `useState(() => parseInitialState())` initializer; `ProposalForm.tsx` replaced `catch (err: any)` with a typed `ApiClientError` narrowing.
+11. **Docs** — added a "Board Proposals" SPEC.md API table; reverted an unrelated Code Requests table reformat and an unrelated DL-#1281 edit that had crept into commit `a993945`; this HANDOFF and DL-#1284 refreshed with accurate counts.
+
+- Verification:
+  - Backend tests (pytest): 29/29 passed on `tests/unit/test_proposals_store.py` + `tests/api/test_proposals_routes.py` + `tests/clients/test_fleet_client_proposals.py`.
+  - Frontend tests (vitest): 52/52 passed (`ProposalsPanel.test.tsx`, `CodeRequests.test.tsx`, `CodeRequestsPage.test.tsx`, `FleetCommand.test.tsx`, `FleetCommandHelpers.test.tsx`, `FleetCommandWrites.test.tsx`).
+  - TypeScript typecheck: `npx tsc -p tsconfig.app.json --noEmit` clean (0 errors).
+  - Linting & formatting: `ruff check` and `ruff format --check` passed cleanly on all touched python files.
+
+## Next Steps
+
+1. Address any PR #1444 review follow-up comments.
+2. Mark ready for review and enable auto-merge.
+
+---
+
+# Past handoff — SC-G8 first cut: delete never-mounted frontend primitives (#1346)
 
 Last updated: 2026-09-25
 
