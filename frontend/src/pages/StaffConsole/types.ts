@@ -14,6 +14,7 @@ export type RosterStatus =
 export type RosterGroupKey =
   | "pinned"
   | "leadership"
+  | "advisors"
   | "project_managers"
   | "specialists"
   | "operations";
@@ -29,6 +30,11 @@ export const ROSTER_GROUPS: readonly RosterGroupMeta[] = [
     key: "leadership",
     label: "Leadership",
     description: "Executive strategy, attention gate and governance",
+  },
+  {
+    key: "advisors",
+    label: "Advisors",
+    description: "Knowledge keeping, compiled findings, and frontier direction",
   },
   {
     key: "project_managers",

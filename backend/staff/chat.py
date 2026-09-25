@@ -12,7 +12,6 @@ Provides fast, read-only conversational replies with:
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 import shutil
@@ -22,7 +21,12 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from staff.adapters import ADAPTERS, ChatReadOnlyUnsupportedError, ProviderAdapter, get_adapter
+from staff.adapters import (
+    ADAPTERS,
+    ChatReadOnlyUnsupportedError,
+    ProviderAdapter,
+    get_adapter,
+)
 from staff.availability import (
     execute_degraded_turn,
     get_availability_metrics,
@@ -40,12 +44,18 @@ from staff.chat_history import (
     extract_session_id,
     format_history_replay,
 )
+from staff.chat_knowledge import build_knowledge_turn_block
 from staff.chat_pool import (
     DEFAULT_BARB_RESERVED_SLOTS,
     DEFAULT_CHAT_ACQUIRE_TIMEOUT,
     DEFAULT_MAX_CHAT_TURNS,
     ChatConcurrencyPool,
     get_chat_pool,
+)
+from staff.chat_streaming import (
+    LiveProcessReader,
+    spawn_cli_process,
+    stream_turn_output,
 )
 from staff.classifier import classify_run_failure
 from staff.conversations import ConversationStore, get_conversation_store
@@ -62,6 +72,7 @@ __all__ = [
     "ChatConcurrencyPool",
     "ChatTurnResult",
     "ChatTurnRunner",
+    "build_knowledge_turn_block",
     "extract_session_id",
     "format_history_replay",
     "get_chat_pool",
@@ -108,17 +119,7 @@ class ChatTurnRunner:
         env: dict[str, str],
     ) -> subprocess.Popen[str]:
         """Spawn the provider CLI subprocess in read-only scratch mode."""
-        return subprocess.Popen(
-            cmd,
-            cwd=cwd,
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            bufsize=1,
-        )
+        return spawn_cli_process(cmd=cmd, cwd=cwd, env=env)
 
     async def execute_turn(
         self,
@@ -141,11 +142,16 @@ class ChatTurnRunner:
             )
 
         user_msg = self.conv_store.get_message(user_message_id)
-        prompt_text = user_msg.body_md if user_msg else ""
+        raw_prompt = user_msg.body_md if user_msg else ""
+        knowledge_block = build_knowledge_turn_block(role, raw_prompt)
+        prompt_text = f"{knowledge_block}\n\n{raw_prompt}" if knowledge_block else raw_prompt
 
         acquired = await self.pool.acquire(role_name, timeout=self.acquire_timeout)
         if not acquired:
-            log.warning("Chat concurrency limit reached for role %s; rejecting turn with chat_capacity", role_name)
+            log.warning(
+                "Chat concurrency limit reached for role %s; rejecting turn with chat_capacity",
+                role_name,
+            )
             await record_chat_capacity_failure(
                 self.conv_store,
                 thread_id,
@@ -234,14 +240,21 @@ class ChatTurnRunner:
                     return result
 
                 last_failed = result
-                log.warning("Turn attempt failed on %s: %s; falling back", candidate, result.failure_class)
+                log.warning(
+                    "Turn attempt failed on %s: %s; falling back",
+                    candidate,
+                    result.failure_class,
+                )
                 fallback_steps += 1
                 metrics.record_fallback()
 
             if last_failed is not None:
                 return last_failed
 
-            log.warning("All providers unavailable for thread %s; triggering degraded mode", thread_id)
+            log.warning(
+                "All providers unavailable for thread %s; triggering degraded mode",
+                thread_id,
+            )
             return await execute_degraded_turn(
                 thread_id=thread_id,
                 user_message_id=user_message_id,
@@ -301,55 +314,31 @@ class ChatTurnRunner:
                         detail=remediation,
                         error=str(exc),
                     )
-                return ChatTurnResult(ok=False, failure_class=failure_class, retryable=False, remediation=remediation)
+                return ChatTurnResult(
+                    ok=False,
+                    failure_class=failure_class,
+                    retryable=False,
+                    remediation=remediation,
+                )
             env = {**os.environ, **adapter.runtime_env()}
 
             proc = self._spawn_cli_process(cmd=cmd, cwd=scratch_dir, env=env)
 
-            # Stream stdout lines
-            loop = asyncio.get_running_loop()
-
-            def _read_output() -> tuple[list[str], list[str], int]:
-                out_lines: list[str] = []
-                if proc.stdout:
-                    for line in proc.stdout:
-                        out_lines.append(line)
-                err_lines: list[str] = []
-                if proc.stderr:
-                    for eline in proc.stderr:
-                        err_lines.append(eline)
-                rc: Any = None
-                if callable(getattr(proc, "wait", None)):
-                    try:
-                        rc = proc.wait()
-                    except Exception:  # noqa: BLE001
-                        rc = None
-                if not isinstance(rc, int):
-                    rc = getattr(proc, "returncode", None)
-                if not isinstance(rc, int):
-                    rc = 0
-                return out_lines, err_lines, rc
-
-            lines, err_lines, returncode = await loop.run_in_executor(None, _read_output)
-            stderr_text = err_lines
-
-            deltas: list[str] = []
-            for line in lines:
-                stdout_text.append(line)
-                event = adapter.parse_line(line)
-
-                # Check session id extraction
-                detected_sid = extract_session_id(adapter.provider_id, event, raw_line=line)
-                if detected_sid:
-                    captured_session_id = detected_sid
-
-                delta = event.get("text", "")
-                if delta:
-                    deltas.append(delta)
-                    if t_first_token is None:
-                        t_first_token = time.monotonic()
-                    # Stream token delta immediately over SSE bus
-                    await bus.publish_token(thread_id, placeholder_id, delta)
+            # Stream stdout lines incrementally and publish tokens live (SC-B1-G10)
+            stream_out = await stream_turn_output(
+                reader=LiveProcessReader(proc),
+                adapter=adapter,
+                bus=bus,
+                thread_id=thread_id,
+                placeholder_id=placeholder_id,
+            )
+            stdout_text = stream_out.stdout_lines
+            stderr_text = stream_out.stderr_lines
+            returncode = stream_out.returncode
+            if stream_out.session_id:
+                captured_session_id = stream_out.session_id
+            t_first_token = stream_out.t_first_token
+            deltas = stream_out.deltas
 
             t_end = time.monotonic()
             ttft = (t_first_token - t_start) if t_first_token is not None else (t_end - t_start)

@@ -25,13 +25,121 @@ Last updated: 2026-09-25
 
 ---
 
-# Current handoff — Restore green main: synchronize generated OpenAPI schema and TypeScript definitions for SC-B9 group threads
+# Current handoff — Restore green main: regenerate API contract types and synchronize openapi schema after #1512 (#1522)
 
 Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; branch `fix/restore-green-main-openapi-contract-drift`; DL-#1513.
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1522-api-contract-drift`; DL-#1522; Issue #1522.
+
+## Objective and Status
+
+- Restore green main by aligning generated API contract types and openapi schema:
+  - Regenerated `frontend/src/lib/api-types.ts` via `scripts/gen-api-client.sh` to remove formatting and trailing whitespace drift introduced in #1512.
+  - Verified `scripts/gen-api-client.sh --check` passes cleanly with exit code 0.
+  - Bumped `SPEC.md` to `2.5.279` and updated `docs/development/DEVELOPMENT_LOG.md` (DL-#1522 active, DL-#1493 shipped).
+  - All files strictly $\le 500$ lines.
+
+## Next Steps
+
+1. Push branch `fix/1522-api-contract-drift`.
+2. Open PR referencing `Fixes #1522` and enable auto-merge.
+3. Monitor CI until merged to restore green main.
+4. Release agent lease for #1522 via `scripts.release_agent_lease`.
+
+---
+
+# Past handoff — SC-B1-G10: Stream chat tokens live instead of after the process exits (#1493)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1493-live-token-streaming`; DL-#1493; Issue #1493; PR #1520.
+
+## Objective and Status
+
+- Stream chat tokens live instead of post-hoc after process exit (SC-B1-G10, Issue #1493):
+  - In `backend/staff/chat_streaming.py`, implemented `LiveProcessReader` to incrementally read subprocess stdout lines via background thread into an `asyncio.Queue` and concurrently capture stderr and returncode.
+  - Implemented `stream_turn_output` in `backend/staff/chat_streaming.py` returning `TurnStreamOutput(stdout_lines, stderr_lines, returncode, session_id, t_first_token, deltas)`, publishing token deltas live on `ThreadEventBus` as each stdout line arrives while the process is still running.
+  - Updated `backend/staff/chat.py` `ChatTurnRunner._run_turn_attempt` to use `stream_turn_output` and delegated `_spawn_cli_process` to `spawn_cli_process` in `chat_streaming.py`.
+  - Terminate running subprocesses on async cancellation.
+  - Added dedicated unit tests in `tests/unit/test_staff_chat_streaming.py` (verifying token arrival before process exit with delayed chunk generator, non-zero exit code failure handling, process kill on task cancellation, and bytes decoding).
+  - All source and test files strictly $\le 500$ lines (`chat.py` 476 lines, `chat_streaming.py` 178 lines, `test_staff_chat_streaming.py` 243 lines).
+  - Verification:
+    - Pytest `tests/unit/test_staff_chat_streaming.py tests/unit/test_staff_chat.py tests/unit/test_staff_chat_capacity.py tests/unit/test_staff_chat_read_only.py tests/unit/test_staff_availability.py tests/api/test_staff_chat_turns.py`: 57/57 passed.
+    - `ruff check`: clean (0 errors).
+    - `ruff format`: clean.
+    - `mypy`: clean (0 errors).
+
+---
+
+# Past handoff — K2: knowledge packs in the Staff Console (#1479)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `agy/issue-1479`; Issue #1479; DL-#1479; PR #1512 (merged).
+
+## Objective and Status
+
+- Implement K2: knowledge packs in the Staff Console (issue #1479):
+  - Vendoring: Copied `src/shared/python/ai/knowledge/` from Tools repo pinned commit `09ff428af314969363f8908dcebafb84ddd7a3ef` into `backend/knowledge_pack/` (`pack.py`, `manifest.py`, `chunking.py`, `sources.py`, `cli.py`, `__main__.py`, `__init__.py`) with source SHA headers. Added drift test `tests/knowledge/test_knowledge_pack_drift.py`.
+  - Refresh timer & service: Added `deploy/systemd-user/runner-dashboard-knowledge.service` and `runner-dashboard-knowledge.timer` (hourly timer with 5m randomized delay, calling python -m staff.knowledge_refresh). Built `backend/staff/knowledge_refresh.py` with `refresh_pack`, `refresh_all_packs`, `find_knowledge_manifests`, and the shared `pack_is_stale` helper, rebuilding SQLite packs only when `is_stale()` is true and creating atomic replacements. Unit tests in `tests/unit/test_knowledge_refresh.py`.
+  - Retrieval-augmented chat turns: Implemented `build_knowledge_turn_block` in `backend/staff/chat_knowledge.py` (split out of `backend/staff/chat.py` to hold the 500-line cap) and integrated into `execute_turn`. For roles granting `search_knowledge` tool, searches top 8 passages from `scope.pack` using SQLite BM25, formatting a cited `## Knowledge` section inserted into the prompt. Missing or stale pack produces a graceful warning notice and never fails the turn. Unit tests in `tests/unit/test_staff_chat_knowledge.py`.
+  - Knowledge API: Added `GET /api/v1/staff/knowledge/{pack_id}` and `GET /api/v1/staff/knowledge/{pack_id}/search?q=&k=` in `backend/routers/staff_knowledge.py` (mounted into `staff_v1.router` via `include_router`, also split out to hold the line cap) with Pydantic response models in `backend/staff/models.py`. API tests in `tests/api/test_staff_knowledge_api.py`. Synchronized OpenAPI schema (`frontend/src/lib/openapi.json`) and TypeScript client types (`frontend/src/lib/api-types.ts`).
+  - Roster & Routing: Added `advisors` roster group in `frontend/src/pages/StaffConsole/types.ts`, `rosterUtils.ts`, and `Roster.tsx` categorizing `disciple` and `vision-quest`. Added routing keyword rules to `ROLE_KEYWORD_RULES` in `backend/staff/router_models.py`. Added 8 test cases in `tests/staff/routing_eval/dataset.py`.
+  - Verification:
+    - Pytest (WSL venv): `tests/api/test_staff_knowledge_api.py tests/knowledge tests/unit/test_knowledge_refresh.py tests/unit/test_staff_chat_knowledge.py tests/unit/test_staff_chat*.py tests/staff/routing_eval` — 63 passed, 2 skipped.
+    - `mypy backend/ --ignore-missing-imports`: clean (0 issues).
+    - `ruff check backend/ tests/` and `ruff format --check backend/ tests/`: clean.
+    - File line caps: all touched backend files <= 500 lines (`chat.py` 496, `chat_knowledge.py` 69, `staff_v1.py` 441, `staff_knowledge.py` 100, `knowledge_refresh.py` 192).
+
+---
+
+# Past handoff — Restore green main: synchronize generated OpenAPI schema and TypeScript definitions for SC-B9 group threads
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1493-live-token-streaming`; DL-#1493; Issue #1493.
+
+## Objective and Status
+
+- Stream chat tokens live instead of post-hoc after process exit (SC-B1-G10, Issue #1493):
+  - In `backend/staff/chat_streaming.py`, implemented `LiveProcessReader` to incrementally read subprocess stdout lines via background thread into an `asyncio.Queue` and concurrently capture stderr and returncode.
+  - Implemented `stream_turn_output` in `backend/staff/chat_streaming.py` returning `TurnStreamOutput(stdout_lines, stderr_lines, returncode, session_id, t_first_token, deltas)`, publishing token deltas live on `ThreadEventBus` as each stdout line arrives while the process is still running.
+  - Updated `backend/staff/chat.py` `ChatTurnRunner._run_turn_attempt` to use `stream_turn_output` and delegated `_spawn_cli_process` to `spawn_cli_process` in `chat_streaming.py`.
+  - Terminate running subprocesses on async cancellation.
+  - Added dedicated unit tests in `tests/unit/test_staff_chat_streaming.py` (verifying token arrival before process exit with delayed chunk generator, non-zero exit code failure handling, process kill on task cancellation, and bytes decoding).
+  - All source and test files strictly $\le 500$ lines (`chat.py` 492 lines, `chat_streaming.py` 182 lines, `test_staff_chat_streaming.py` 281 lines).
+  - Verification:
+    - Pytest `tests/unit/test_staff_chat_streaming.py tests/unit/test_staff_chat.py tests/unit/test_staff_chat_capacity.py tests/unit/test_staff_chat_read_only.py tests/unit/test_staff_availability.py tests/api/test_staff_chat_turns.py`: 57/57 passed.
+    - `ruff check`: clean (0 errors).
+    - `ruff format`: clean.
+    - `black --check`: clean.
+    - `mypy`: clean (0 errors).
+
+## Next Steps
+
+1. Push branch `feat/1493-live-token-streaming`.
+2. Open PR referencing `Fixes #1493` with label `agent:antigravity`.
+3. Enable auto-merge (`gh pr merge --auto --squash`).
+4. Monitor CI checks until PR merges.
+5. Release agent lease for #1493 via `scripts.release_agent_lease`.
+
+---
+
+# Past handoff — Restore green main: synchronize generated OpenAPI schema and TypeScript definitions for SC-B9 group threads
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/restore-green-main-openapi-contract-drift`; DL-#1513; PR #1515, #1519 (merged).
 
 ## Objective and Status
 
@@ -111,6 +219,8 @@ Last updated: 2026-09-25
 ---
 
 # Past handoff — SC-B9: Group threads: talk to the Board (and other groups) with the Board-Secretary coordinating seat replies (#1339)
+
+> > > > > > > 4ab9490 (fix(staff): reject turns with chat_capacity on pool saturation (#1492))
 
 Last updated: 2026-09-25
 

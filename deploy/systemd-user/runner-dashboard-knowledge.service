@@ -1,0 +1,11 @@
+[Unit]
+Description=Rebuild stale knowledge packs for the Staff Console
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/actions-runners/dashboard/backend
+EnvironmentFile=%h/.config/runner-dashboard/env
+Environment=GIT_TERMINAL_PROMPT=0
+ExecStart=%h/actions-runners/dashboard/.venv/bin/python -m staff.knowledge_refresh
+TimeoutStartSec=10min
+NoNewPrivileges=true
