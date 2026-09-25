@@ -50,12 +50,6 @@ vi.mock("../../pages/AssessmentsPage", () => ({
   ),
 }));
 
-vi.mock("../../pages/ClineLauncher", () => ({
-  ClineLauncherTab: () => (
-    <div data-testid="native-cline-launcher">Cline Launcher</div>
-  ),
-}));
-
 vi.mock("../../pages/Conductor", () => ({
   Conductor: () => <div data-testid="native-conductor">Conductor</div>,
 }));
@@ -314,7 +308,6 @@ describe("RoutedShell — URL is the source of truth", () => {
     ["agent-dispatch", "native-agent-dispatch"],
     ["insights", "native-analysis"],
     ["assessments", "native-assessments"],
-    ["cline-launcher", "native-cline-launcher"],
     ["credentials", "native-credentials"],
     ["code-requests", "native-code-requests"],
     ["linear-setup", "native-linear-setup"],

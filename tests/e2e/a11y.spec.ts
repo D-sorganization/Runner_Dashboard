@@ -154,6 +154,10 @@ test.describe("accessibility (axe-core)", () => {
     await expect(
       page.getByRole("tablist", { name: "Staff sections" }),
     ).toBeVisible({ timeout: 15000 });
+    // #1446: the three-pane Staff Console is the default section.
+    await expect(
+      page.getByRole("region", { name: "Staff conversation" }),
+    ).toBeVisible();
     await expectNoSeriousA11yViolations(page, testInfo, "staff");
   });
 

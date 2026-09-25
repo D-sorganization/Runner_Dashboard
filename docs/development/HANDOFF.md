@@ -1,3 +1,150 @@
+# Current handoff — SC-G6: Retire the Cline Launcher (#1338)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1338`; branch `chore/1338-retire-cline-launcher`; PR: see branch; Issue #1338 (Cline slice only); DL-#1338. Commit: SELF.
+
+## Objective and Status
+
+- Owner decision: retire the Cline Launcher. The rest of #1338 (other low-usage pages) stays `judgement:contested` and is not touched here.
+- Done:
+  - Removed `pages/ClineLauncher.tsx` (and its test), the nav entry, the intro override, the RoutedShell case and the legacy-App tab.
+  - Removed `backend/agent_launcher_router.py`, its `server.py` include, and its tests; dropped the six `/api/agent-launcher/*` paths and their six schemas from `openapi.json` / `api-types.ts`.
+  - `getTabRedirect` sends `/staff/cline-launcher`, `/cline-launcher` and `/t/cline-launcher` to the Staff Console (`/`).
+- Kept: the `cline-launcher` row in `usage_metrics.TAB_RECOMMENDATIONS`, so historical page views still report as `retire`.
+
+## Validation
+
+- `npx vitest run` → 154 files, 1309 passed; `npx tsc -p tsconfig.app.json --noEmit` → clean.
+- WSL venv: `pytest tests/test_retired_cline_launcher.py tests/test_async_hygiene.py tests/test_usage_metrics.py tests/api/test_structural_auth_perimeter.py tests/frontend/test_api_generation_contract.py` → 81 passed, 1 skipped.
+- `scripts/gen-api-client.sh` failed locally at its prettier step (the Windows `npx` cannot see WSL `/tmp`), so the snapshot was edited surgically; CI's `generate-api:check` is the authority.
+
+## Next Steps
+
+1. Merge once CI is green.
+2. File a Repository_Management issue to retire `launchers/cline_agent_launcher` (its only consumer is gone).
+
+---
+
+# Current handoff — Staff Console end to end: desktop console and real thread resolution (#1446)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1446`; branch `feat/1446-desktop-staff-console`; PR: see branch; Issue #1446; DL-#1446. Commit: SELF.
+
+## Objective and Status
+
+- Before: `/staff` had no desktop console, and the mobile console invented `thr_<role>` ids, so every send got a 404 and history came from a GET on the POST-only `/messages` route.
+- Now:
+  - `consoleThreads.resolveRoleThread` picks the role's latest non-archived thread (`GET /api/v1/staff/threads?role=`) or creates one (`POST /threads`; Barb = `auto`, others `direct`), and asserts the role is a participant.
+  - `useStaffConsole` holds roster, thread, history (`GET /threads/{id}`), SSE stream, send and approve/deny for both layouts; failures land in `error` with a kind and render through `ConsoleErrorBanner`.
+  - `StaffConsoleDesktop` (Roster | Thread + Composer | collapsible Context) is the default Staff section; the hub sections (Roster, Runs, Assign, Holds) stay as tabs.
+  - `Mobile.tsx` now uses the hook; deep links resolve through it.
+- Verification: `npx vitest run frontend/src/pages` 86 files/673 tests passed; `npx tsc -p tsconfig.app.json --noEmit` 0 errors.
+- CI's 500-line cap covers `frontend/src/` tests: the console-default test lives in `pages/__tests__/StaffPageConsole.test.tsx`, which keeps `Staff.test.tsx` at 500 lines.
+
+## Next Steps
+
+1. Land the PR through CI (auto-merge squash).
+2. #1341 (D10 e2e): drive a real send → reply on `/staff` now that threads resolve.
+
+# Current handoff — Projects: fleet-wide prioritised status and untracked-work report (#1434)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/fleet-project-tracking`; Issue #1434; DL-#1434.
+- Worktree `_wt_claude_rd_tracking` on OGLaptop; PR #1441 (auto-merge armed); companion Repository_Management#1761.
+
+## Objective and Status
+
+- One prioritised status view of every fleet project, plus the fleet-curator worklist of untracked work.
+- Implemented: `backend/projects/priorities.py`, `coverage.py`, `rollup.py`; `service.fleet_overview`,
+  `load_priorities`, `fetch_open_items`, `fetch_org_repos`; routes `/api/projects` (+summary),
+  `/api/projects/priorities`, `/api/projects/untracked`; `config/projects.json` now lists all active org repos;
+  frontend `PriorityBadge`, `CoverageDetails`, `FleetSummaryBar`; regenerated OpenAPI contract.
+- Decisions: priority lives centrally in Repository_Management (owner-set, fleet-wide), charters stay per repo;
+  coverage is deterministic so the curator role only judges, never discovers.
+
+## Validation
+
+- `python -m pytest tests/api/test_projects_router.py tests/api/test_projects_tracking.py` → 36 passed.
+- `npx vitest run frontend/src/pages/__tests__/Projects.test.tsx` → 7 passed; `npx tsc --noEmit -p tsconfig.app.json` clean.
+- `ruff check`, `ruff format --check`, `mypy backend/projects backend/routers/projects.py` clean.
+- `bash scripts/gen-api-client.sh` regenerated `openapi.json` / `api-types.ts` (adds the two new routes only).
+
+## Next Steps
+
+1. Land the PR through CI (auto-merge squash).
+2. Repository_Management: `fleet-curator` role + `config/project_priorities.yaml` from the owner interview.
+3. Charter PRs for the repositories that had none (fleet charter sweep drafts).
+
+---
+
+# Current handoff — SC-E7: Maintenance safety tests and gates (#1344)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1344`; branch `test/1344-maintenance-safety`; PR: see branch; Issue #1344; DL-#1344. Commit: SELF.
+
+## Objective and Status
+
+- Found: the SC-E3 catalogue's operations were stubs that reported success without acting, `_get_runner_state` always said "online, not busy", group actions ignored `max_count` at run time, and the stalled-job detector auto-executed by its own detection label, so any detection could downgrade a high-risk action.
+- Now:
+  - `MAINTENANCE_POLICY` (risk, scope, disruptive, target parameter, max targets) lives in `staff/maintenance_policy.py` and drives registration and `check_maintenance_policy`; `maintenance.py` stays under the 500-line cap.
+  - Stubs raise `MaintenanceNotWiredError` and fail as `not_wired`.
+  - `_run_group` refuses oversized groups and stops on token expiry, marking the rest as skipped.
+  - Every real invocation is audited with its `failure_class`; dry runs skip verification.
+  - `run_scan` gates auto-execution with `can_auto_execute` on the registered action.
+- Tests: `tests/staff/test_maintenance_safety.py` (pinned table, mutation check, limits, owner gate, replay, prompt injection, fault injection). Existing tests that asserted stub success now use a simulated backend, or expect `not_wired` for runner removal.
+- Verification: maintenance/actions/proposals/safety pytest 197 passed, 12 skipped (no-op mutations); ruff clean; `mypy backend/` clean.
+
+## Next Steps
+
+1. Land the PR through CI (auto-merge squash).
+2. #1448: wire the stub operations one at a time, removing each from `UNWIRED_ACTIONS` as it lands.
+
+# Current handoff — Projects: fleet-wide prioritised status and untracked-work report (#1434)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/fleet-project-tracking`; Issue #1434; DL-#1434.
+- Worktree `_wt_claude_rd_tracking` on OGLaptop; PR #1441 (auto-merge armed); companion Repository_Management#1761.
+
+## Objective and Status
+
+- One prioritised status view of every fleet project, plus the fleet-curator worklist of untracked work.
+- Implemented: `backend/projects/priorities.py`, `coverage.py`, `rollup.py`; `service.fleet_overview`,
+  `load_priorities`, `fetch_open_items`, `fetch_org_repos`; routes `/api/projects` (+summary),
+  `/api/projects/priorities`, `/api/projects/untracked`; `config/projects.json` now lists all active org repos;
+  frontend `PriorityBadge`, `CoverageDetails`, `FleetSummaryBar`; regenerated OpenAPI contract.
+- Decisions: priority lives centrally in Repository_Management (owner-set, fleet-wide), charters stay per repo;
+  coverage is deterministic so the curator role only judges, never discovers.
+
+## Validation
+
+- `python -m pytest tests/api/test_projects_router.py tests/api/test_projects_tracking.py` → 36 passed.
+- `npx vitest run frontend/src/pages/__tests__/Projects.test.tsx` → 7 passed; `npx tsc --noEmit -p tsconfig.app.json` clean.
+- `ruff check`, `ruff format --check`, `mypy backend/projects backend/routers/projects.py` clean.
+- `bash scripts/gen-api-client.sh` regenerated `openapi.json` / `api-types.ts` (adds the two new routes only).
+
+## Next Steps
+
+1. Land the PR through CI (auto-merge squash).
+2. Repository_Management: `fleet-curator` role + `config/project_priorities.yaml` from the owner interview.
+3. Charter PRs for the repositories that had none (fleet charter sweep drafts).
+
+---
+
 # Current handoff — WP-0.1: Resolve staff action role names against the loaded roster (#1474)
 
 Last updated: 2026-09-25

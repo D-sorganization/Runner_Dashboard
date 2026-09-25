@@ -18,6 +18,42 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1338 · SC-G6: Retire the Cline Launcher page and its agent-launcher API
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1338 (Cline Launcher slice only; the other pages in #1338 remain `judgement:contested` pending owner decisions)
+- **Branch:** `chore/1338-retire-cline-launcher`
+- **Paths:** `frontend/src/shell/routing.ts`, `frontend/src/shell/navRegistryData.ts`, `frontend/src/shell/RoutedShell.tsx`, `frontend/src/shell/intro.ts`, `frontend/src/legacy/App.tsx`, `backend/server.py`, `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `tests/test_retired_cline_launcher.py`, `frontend/src/shell/__tests__/retiredClineLauncher.test.ts`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (vitest 1309 passed; tsc clean; targeted pytest 81 passed, 1 skipped)
+- **Summary:** Owner decided to retire the Cline Launcher. Page, nav entry, intro override, legacy tab and `/api/agent-launcher` router removed; old addresses redirect to the Staff Console.
+- **Next step:** Merge the PR once CI is green, then retire `Repository_Management/launchers/cline_agent_launcher` in a Repository_Management issue.
+
+### DL-#1446 · Staff Console end to end: desktop three-pane console and real thread resolution
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1446 (epic #1350 / umbrella #1354)
+- **Branch:** `feat/1446-desktop-staff-console`
+- **Paths:** `frontend/src/pages/StaffConsole/useStaffConsole.ts`, `frontend/src/pages/StaffConsole/consoleThreads.ts`, `frontend/src/pages/StaffConsole/Desktop.tsx`, `frontend/src/pages/StaffConsole/desktop.css`, `frontend/src/pages/StaffConsole/ConsoleErrorBanner.tsx`, `frontend/src/pages/StaffConsole/Mobile.tsx`, `frontend/src/pages/StaffConsole/index.ts`, `frontend/src/pages/Staff/StaffPage.tsx`, `frontend/src/pages/Staff/staffApi.ts`, `tests/e2e/a11y.spec.ts`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (vitest frontend/src/pages 86 files/673 tests + StaffPageConsole; tsc -p tsconfig.app.json 0 errors; changed files within the 500-line cap)
+- **Summary:** Desktop console is the default Staff section; desktop and mobile share `useStaffConsole`; roles open server-resolved threads (no invented ids); every backend failure is a visible alert.
+- **Next step:** Merge the PR once CI is green, then send a message to Barb from the deployed Desk node's Staff Console and confirm the reply streams in.
+
+### DL-#1344 · SC-E7: Maintenance safety tests: approval gates, blast-radius limits and fault injection
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1344 (epic #1351 / umbrella #1354); follow-up #1448 wires the stub operations
+- **Branch:** `test/1344-maintenance-safety`
+- **Paths:** `backend/staff/maintenance.py`, `backend/staff/maintenance_policy.py`, `backend/staff/maintenance_detect.py`, `tests/staff/test_maintenance_safety.py`, `tests/unit/test_staff_maintenance_detect.py`, `tests/api/test_staff_maintenance_detect_api.py`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (maintenance/actions/proposals/safety pytest 197 passed, 12 skipped; ruff clean; mypy backend/ clean)
+- **Summary:** Pinned policy table with a mutation check; fleet-wide, single-target and batch-size gates read from it; detector risk comes from the registry; unwired operations fail as `not_wired`; timeouts, token expiry and partial failures are classified and audited.
+- **Next step:** Merge the PR once CI is green, then start #1448 by wiring `_cancel_run` / `_rerun_run` to `gh_client`.
+
 ### DL-#1474 · WP-0.1: Resolve staff action role names against the loaded roster
 
 - **State:** in_progress

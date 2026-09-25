@@ -29,3 +29,9 @@ export * from "../Staff/InboxPanel";
 
 // SC-D8: Mobile Staff Console
 export * from "./Mobile";
+
+// #1446: shared console state and the desktop layout
+export * from "./consoleThreads";
+export * from "./useStaffConsole";
+export * from "./ConsoleErrorBanner";
+export * from "./Desktop";
