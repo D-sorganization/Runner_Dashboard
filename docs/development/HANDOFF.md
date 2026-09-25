@@ -1,3 +1,34 @@
+# Current handoff — CR-4: Planner stage backend (#1285)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1285`; branch `feat/1285-planner-stage`; PR: not created; Issue #1285 (epic #1279); DL-#1285. Commit: SELF.
+
+## Objective and Status
+
+- Planner stage: a strong-tier planner turns a Code Request into a plan epic plus execution-ready child issues with turnover documents; output validated, never trusted.
+- Done (backend):
+  - `plan.py` (JSON contract models, fenced-JSON extraction, dependency waves), `plan_validator.py` (sections, tier/complexity/task-class vocabularies, cycles, turnover rules), `plan_render.py` (epic/child bodies, turnover doc), `handoff_rules.py` (vendored RM `handoff_validator.validate_handoff_content` @ f430564c).
+  - `planner.py` (prompt, `PlanningSession`, pure `receive_plan`: draft / file / reprompt / fail, `MAX_REPROMPTS = 2`), `plan_store.py`, `plan_filing.py` (dup search, epic, children in wave order, turnover comments, sub-issue links; resumable), `plan_service.py` (injected deps), `routers/code_request_plans.py`.
+  - Lifecycle gains `planning → failed` (issue-mandated).
+- Key decisions: RD renders turnover docs (Identity is facts RD knows; planner supplies decisions and next steps); task_class uses the plain labels the Conductor routes on; dispatch is fire-and-forget, so plans come back via POST or a `<!-- plan:v1 -->` comment.
+- Not done: frontend Plan panel (render, edit, approve).
+
+## Validation
+
+- WSL venv: `pytest tests/code_requests tests/api/test_code_requests.py tests/api/test_code_request_plans_api.py tests/api/test_structural_auth_perimeter.py -o addopts=''` → 93 passed (drift test ran against the local RM checkout).
+- `ruff check backend tests/code_requests` clean; `mypy backend/ --ignore-missing-imports --no-implicit-optional` → no issues (249 files).
+- `gen-api-client.sh --check` (hybrid) → no drift; delta = 5 plan paths, 2 schemas.
+
+## Next Steps
+
+1. Open the PR and arm auto-merge through `automerge_guard.py`.
+2. Delegate the Plan panel UI to a `tier:cli` agent (agy) with TDD instructions.
+
+---
+
 # Current handoff — SC-B1-G8: Reconcile chat messages stuck in pending/streaming after a backend restart (#1491)
 
 Last updated: 2026-09-25

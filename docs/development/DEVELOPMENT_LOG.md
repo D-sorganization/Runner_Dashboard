@@ -18,6 +18,18 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1285 · CR-4: Planner stage — high-tier agent authors execution-ready issues and turnover docs
+
+- **State:** in_progress
+- **Owner:** claude
+- **Issue:** #1285 (epic #1279)
+- **Branch:** `feat/1285-planner-stage`
+- **Paths:** `backend/code_requests/plan.py`, `backend/code_requests/plan_validator.py`, `backend/code_requests/plan_render.py`, `backend/code_requests/handoff_rules.py`, `backend/code_requests/planner.py`, `backend/code_requests/plan_store.py`, `backend/code_requests/plan_filing.py`, `backend/code_requests/plan_service.py`, `backend/code_requests/lifecycle.py`, `backend/routers/code_request_plans.py`, `backend/server.py`, `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `tests/code_requests/test_plan_validator.py`, `tests/code_requests/test_planner_stage.py`, `tests/code_requests/test_handoff_rules_drift.py`, `tests/api/test_code_request_plans_api.py`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (code_requests + code-request API + auth perimeter: 93 passed; ruff and mypy clean; API snapshot regenerated, no drift)
+- **Summary:** Backend of the planner stage: validated JSON plan contract, dashboard-rendered turnover docs checked against the vendored fleet handoff rules, re-prompt loop (2 retries) then `failed`, approval-gated resumable filing with sub-issue links. The draft view in the Code Request detail UI is the remaining slice.
+- **Next step:** Delegate the Code Request detail "Plan" panel (render, inline edit via `PUT .../plan/draft`, approve) to a `tier:cli` agent against the generated `api-types.ts`.
+
 ### DL-#1491 · SC-B1-G8: Reconcile chat messages stuck in pending/streaming after a backend restart
 
 - **State:** in_progress

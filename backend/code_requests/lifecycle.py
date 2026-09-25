@@ -21,7 +21,8 @@ LEGAL_TRANSITIONS: dict[CodeRequestState, frozenset[CodeRequestState]] = {
             CodeRequestState.DECLINED,
         }
     ),
-    CodeRequestState.PLANNING: frozenset({CodeRequestState.PLANNED}),
+    # PLANNING -> FAILED: the planner output was rejected after its retries (CR-4, #1285).
+    CodeRequestState.PLANNING: frozenset({CodeRequestState.PLANNED, CodeRequestState.FAILED}),
     CodeRequestState.PLANNED: frozenset({CodeRequestState.EXECUTING}),
     CodeRequestState.EXECUTING: frozenset({CodeRequestState.DONE, CodeRequestState.FAILED}),
     CodeRequestState.DONE: frozenset(),

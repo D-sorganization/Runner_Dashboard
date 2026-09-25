@@ -147,6 +147,127 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/agent-launcher/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Config
+         * @description Return the normalized v2 user config. Delegates to the launcher's
+         *     ``--validate-config`` so the response matches whatever the scheduler
+         *     will see.
+         */
+        get: operations["get_config_api_agent_launcher_config_get"];
+        /**
+         * Put Config
+         * @description Replace the user config. Validates by writing to a temp file and
+         *     invoking the launcher's ``--validate-config --config <tmp>``; only
+         *     promotes to the real config path if validation passes (atomic
+         *     rename).
+         */
+        put: operations["put_config_api_agent_launcher_config_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-launcher/repos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Repos */
+        get: operations["get_repos_api_agent_launcher_repos_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-launcher/run-once": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Once
+         * @description Spawn one window for one agent now (does not affect the scheduler).
+         */
+        post: operations["run_once_api_agent_launcher_run_once_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-launcher/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start Scheduler */
+        post: operations["start_scheduler_api_agent_launcher_start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-launcher/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Status
+         * @description Quick status read. Pure file I/O — no subprocess. Safe to poll
+         *     every few seconds from the dashboard.
+         */
+        get: operations["get_status_api_agent_launcher_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-launcher/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stop Scheduler */
+        post: operations["stop_scheduler_api_agent_launcher_stop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/agent-profiles": {
         parameters: {
             query?: never;
@@ -1064,7 +1185,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/code-requests/{id}/board-escalation": {
+    "/api/code-requests/{id}/plan": {
         parameters: {
             query?: never;
             header?: never;
@@ -1072,11 +1193,55 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Check Escalation
-         * @description Check if the Code Request proposal has passed its review escalation deadline.
+         * Get Plan
+         * @description The planning session: status, attempts, validator errors and the draft plan.
          */
-        get: operations["check_escalation_api_code_requests__id__board_escalation_get"];
+        get: operations["get_plan_api_code_requests__id__plan_get"];
         put?: never;
+        /**
+         * Post Plan
+         * @description Submit planner output; it is validated, then drafted, filed, re-prompted or failed.
+         */
+        post: operations["post_plan_api_code_requests__id__plan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/code-requests/{id}/plan/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve
+         * @description Approve the draft: file the epic and children on GitHub and mark the request ``planned``.
+         */
+        post: operations["approve_api_code_requests__id__plan_approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/code-requests/{id}/plan/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Draft
+         * @description Replace the draft with an operator's edits; the edited plan is re-validated.
+         */
+        put: operations["put_draft_api_code_requests__id__plan_draft_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1084,7 +1249,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/code-requests/{id}/evaluate-board": {
+    "/api/code-requests/{id}/plan/ingest": {
         parameters: {
             query?: never;
             header?: never;
@@ -1094,17 +1259,17 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Evaluate Board
-         * @description Evaluate whether a Code Request must go through Architecture Board review.
+         * Ingest Plan
+         * @description Submit the newest ``<!-- plan:v1 -->`` comment on the Code Request issue.
          */
-        post: operations["evaluate_board_api_code_requests__id__evaluate_board_post"];
+        post: operations["ingest_plan_api_code_requests__id__plan_ingest_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/code-requests/{id}/executor/dispatch": {
+    "/api/code-requests/{id}/plan/start": {
         parameters: {
             query?: never;
             header?: never;
@@ -1114,110 +1279,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Dispatch Executor
-         * @description Dispatch ready children in the current wave.
+         * Start Plan
+         * @description Dispatch the planner agent for a Code Request in the ``planning`` state.
          */
-        post: operations["dispatch_executor_api_code_requests__id__executor_dispatch_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/code-requests/{id}/executor/initialize": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Initialize Executor
-         * @description Initialize the executor pipeline with a list of planned child issues.
-         */
-        post: operations["initialize_executor_api_code_requests__id__executor_initialize_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/code-requests/{id}/executor/report-child": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Report Child Status
-         * @description Report progress, PR, CI or failure event on a child issue.
-         */
-        post: operations["report_child_status_api_code_requests__id__executor_report_child_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/code-requests/{id}/executor/rollup": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Executor Rollup
-         * @description Get the current aggregate status rollup for a Code Request plan.
-         */
-        get: operations["get_executor_rollup_api_code_requests__id__executor_rollup_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/code-requests/{id}/route-to-board": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Route To Board
-         * @description Execute the Board routing gate for a Code Request at triage.
-         */
-        post: operations["route_to_board_api_code_requests__id__route_to_board_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/code-requests/{id}/sync-board-decision": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Sync Board Decision
-         * @description Check decision on linked Board proposal and transition Code Request accordingly.
-         */
-        post: operations["sync_board_decision_api_code_requests__id__sync_board_decision_post"];
+        post: operations["start_plan_api_code_requests__id__plan_start_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6048,6 +6113,23 @@ export interface components {
          * @enum {string}
          */
         ActionRiskLevel: "low" | "medium" | "high" | "critical";
+        /** AgentStatus */
+        AgentStatus: {
+            /** Enabled */
+            enabled: boolean;
+            /** Interval Seconds */
+            interval_seconds: number;
+            /** Last Repo */
+            last_repo: string | null;
+            /** Last Run Iso */
+            last_run_iso: string | null;
+            /** Last Window Pid */
+            last_window_pid: number | null;
+            /** Lock Alive */
+            lock_alive: boolean;
+            /** Name */
+            name: string;
+        };
         /** AnswerNeedsInputRequest */
         AnswerNeedsInputRequest: {
             /** Answer */
@@ -6093,63 +6175,6 @@ export interface components {
             /** Total */
             total: number;
         };
-        /**
-         * BoardRoute
-         * @description Routing policy for Architecture Board review.
-         * @enum {string}
-         */
-        BoardRoute: "auto" | "force_board" | "skip_board";
-        /**
-         * BoardRoutingCriteria
-         * @description Explicit requester-declared or system-extracted routing flags.
-         */
-        BoardRoutingCriteria: {
-            /**
-             * Cross Repo Contract
-             * @default false
-             */
-            cross_repo_contract: boolean;
-            /**
-             * Estimated Child Issues
-             * @default 0
-             */
-            estimated_child_issues: number;
-            /**
-             * Inentec Data Egress
-             * @default false
-             */
-            inentec_data_egress: boolean;
-            /**
-             * New Dependency Or Egress
-             * @default false
-             */
-            new_dependency_or_egress: boolean;
-            /**
-             * New Service Or Repo
-             * @default false
-             */
-            new_service_or_repo: boolean;
-            /**
-             * New Surface
-             * @default false
-             */
-            new_surface: boolean;
-            /**
-             * Public Site Structure
-             * @default false
-             */
-            public_site_structure: boolean;
-            /**
-             * Tagged Board
-             * @default false
-             */
-            tagged_board: boolean;
-            /**
-             * Target Repos Count
-             * @default 1
-             */
-            target_repos_count: number;
-        };
         /** Body_get_issues_api_issues_get */
         Body_get_issues_api_issues_get: {
             /** Complexity */
@@ -6194,116 +6219,6 @@ export interface components {
              * @default 0
              */
             spent_usd: number;
-        };
-        /**
-         * ChildExecutionRecord
-         * @description Runtime tracking record for one planned child issue.
-         */
-        ChildExecutionRecord: {
-            /** Agent */
-            agent?: string | null;
-            /**
-             * Attempts
-             * @default 0
-             */
-            attempts: number;
-            /**
-             * Complexity
-             * @default routine
-             */
-            complexity: string;
-            /**
-             * Cost
-             * @default 0
-             */
-            cost: number;
-            /** Dependencies */
-            dependencies?: string[];
-            /** Error Reasons */
-            error_reasons?: string[];
-            /** Escalation History */
-            escalation_history?: string[];
-            /**
-             * Handoff
-             * @default
-             */
-            handoff: string;
-            /** Issue Number */
-            issue_number?: number | null;
-            /** Key */
-            key: string;
-            /** Lease Receipt */
-            lease_receipt?: string | null;
-            /** Pr Number */
-            pr_number?: number | null;
-            /** Pr Status */
-            pr_status?: string | null;
-            /** Repository */
-            repository: string;
-            /** @default queued */
-            state: components["schemas"]["ChildExecutionState"];
-            /**
-             * Task Class
-             * @default feature
-             */
-            task_class: string;
-            /** @default ollama */
-            tier: components["schemas"]["ExecutorTier"];
-            /** Title */
-            title: string;
-            /**
-             * Turnover Doc
-             * @default
-             */
-            turnover_doc: string;
-            /**
-             * Wave
-             * @default 0
-             */
-            wave: number;
-        };
-        /**
-         * ChildExecutionState
-         * @description Execution lifecycle state of a child issue in a plan.
-         * @enum {string}
-         */
-        ChildExecutionState: "queued" | "claimed" | "pr_open" | "ci" | "merged" | "failed" | "blocked" | "paused_for_human";
-        /**
-         * ChildIssuePayload
-         * @description Input payload to register or plan a child issue.
-         */
-        ChildIssuePayload: {
-            /** Acceptance Criteria */
-            acceptance_criteria?: string[];
-            /**
-             * Complexity
-             * @default routine
-             */
-            complexity: string;
-            /** Dependencies */
-            dependencies?: string[];
-            /** File Scope */
-            file_scope?: string[];
-            /** Issue Number */
-            issue_number?: number | null;
-            /** Key */
-            key: string;
-            /** Repository */
-            repository: string;
-            /**
-             * Task Class
-             * @default feature
-             */
-            task_class: string;
-            /** @default ollama */
-            tier: components["schemas"]["ExecutorTier"];
-            /** Title */
-            title: string;
-            /**
-             * Turnover Doc
-             * @default
-             */
-            turnover_doc: string;
         };
         /**
          * ClaimBody
@@ -6499,84 +6414,16 @@ export interface components {
              */
             version?: string | null;
         };
-        /** DispatchChildrenPayload */
-        DispatchChildrenPayload: {
-            /** Keys */
-            keys?: string[] | null;
-        };
-        /** EvaluateBoardPayload */
-        EvaluateBoardPayload: {
-            board_route?: components["schemas"]["BoardRoute"] | null;
-            criteria?: components["schemas"]["BoardRoutingCriteria"];
-        };
-        /**
-         * ExecutionConfig
-         * @description Tuning and constraints for executor pipeline execution.
-         */
-        ExecutionConfig: {
+        /** DraftEdit */
+        DraftEdit: {
             /**
-             * Auto Advance Waves
-             * @default true
+             * Plan
+             * @description The complete edited plan (same shape as the planner output)
              */
-            auto_advance_waves: boolean;
-            /**
-             * Lease Ttl Seconds
-             * @default 7200
-             */
-            lease_ttl_seconds: number;
-            /**
-             * Max Concurrent Per Repo
-             * @default 3
-             */
-            max_concurrent_per_repo: number;
-            /**
-             * Max Tier Attempts
-             * @default 2
-             */
-            max_tier_attempts: number;
-        };
-        /**
-         * ExecutorRollup
-         * @description Aggregate status rollup for a Code Request plan.
-         */
-        ExecutorRollup: {
-            /** Audit Log */
-            audit_log?: string[];
-            /** Blocked Children */
-            blocked_children?: string[];
-            /** Children */
-            children?: {
-                [key: string]: components["schemas"]["ChildExecutionRecord"];
+            plan: {
+                [key: string]: unknown;
             };
-            /** Code Request Id */
-            code_request_id: string;
-            /** Completed Children */
-            completed_children?: string[];
-            /**
-             * Current Wave
-             * @default 0
-             */
-            current_wave: number;
-            /** Failed Children */
-            failed_children?: string[];
-            /** Paused Branches */
-            paused_branches?: string[];
-            /** State */
-            state: string;
-            /**
-             * Total Cost
-             * @default 0
-             */
-            total_cost: number;
-            /** Waves */
-            waves?: string[][];
         };
-        /**
-         * ExecutorTier
-         * @description The standard executor tiers (CR-4 / BP-4).
-         * @enum {string}
-         */
-        ExecutorTier: "ollama" | "cli" | "strong";
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -6630,12 +6477,6 @@ export interface components {
         HoldsBody: {
             /** Holds */
             holds: components["schemas"]["HoldBody"][];
-        };
-        /** InitializeExecutorPayload */
-        InitializeExecutorPayload: {
-            /** Children */
-            children: components["schemas"]["ChildIssuePayload"][];
-            config?: components["schemas"]["ExecutionConfig"] | null;
         };
         /** LaunchAuthRequest */
         LaunchAuthRequest: {
@@ -6776,6 +6617,14 @@ export interface components {
             state?: string | null;
             /** Title */
             title?: string | null;
+        };
+        /** PlanSubmission */
+        PlanSubmission: {
+            /**
+             * Output
+             * @description Planner output containing the JSON plan
+             */
+            output: string;
         };
         /**
          * PoolConfigPatch
@@ -7203,41 +7052,29 @@ export interface components {
              */
             exclude_current: boolean;
         };
-        /** ReportChildPayload */
-        ReportChildPayload: {
-            /**
-             * Ci Status
-             * @default
-             */
-            ci_status: string;
-            /**
-             * Cost
-             * @default 0
-             */
-            cost: number;
-            /** Event */
-            event: string;
-            /** Key */
-            key: string;
-            /**
-             * Pr Body
-             * @default
-             */
-            pr_body: string;
-            /** Pr Labels */
-            pr_labels?: string[];
-            /** Pr Number */
-            pr_number?: number | null;
-            /**
-             * Reason
-             * @default
-             */
-            reason: string;
-            /**
-             * Updated Handoff
-             * @default
-             */
-            updated_handoff: string;
+        /** RepoEntry */
+        RepoEntry: {
+            /** Name */
+            name: string;
+            /** Org */
+            org: string;
+            /** Remote Url */
+            remote_url: string;
+            /** Wsl Path */
+            wsl_path: string;
+        };
+        /** ReposResponse */
+        ReposResponse: {
+            /** Count */
+            count: number;
+            /** Org Filter */
+            org_filter: string;
+            /** Repos */
+            repos: components["schemas"]["RepoEntry"][];
+            /** Repos Root */
+            repos_root: string;
+            /** Wsl Distro */
+            wsl_distro: string;
         };
         /** RoleScheduleOverrideBody */
         RoleScheduleOverrideBody: {
@@ -7248,21 +7085,6 @@ export interface components {
              * @default
              */
             reason: string;
-        };
-        /** RouteToBoardPayload */
-        RouteToBoardPayload: {
-            board_route?: components["schemas"]["BoardRoute"] | null;
-            criteria?: components["schemas"]["BoardRoutingCriteria"];
-            /**
-             * Is Operator Override
-             * @default false
-             */
-            is_operator_override: boolean;
-            /**
-             * Override Reason
-             * @default
-             */
-            override_reason: string;
         };
         /**
          * RoutingDecideRequest
@@ -7371,6 +7193,11 @@ export interface components {
             /** Work Item Id */
             work_item_id?: string | null;
         };
+        /** RunOnceRequest */
+        RunOnceRequest: {
+            /** Agent */
+            agent: string;
+        };
         /** ScheduleToggleBody */
         ScheduleToggleBody: {
             /** Enabled */
@@ -7394,6 +7221,16 @@ export interface components {
              * @default true
              */
             restart_maxwell: boolean;
+        };
+        /** SimpleResponse */
+        SimpleResponse: {
+            /**
+             * Detail
+             * @default
+             */
+            detail: string;
+            /** Ok */
+            ok: boolean;
         };
         /**
          * StaffAuditListResponse
@@ -8356,6 +8193,19 @@ export interface components {
                 [key: string]: unknown;
             }[];
         };
+        /** StatusResponse */
+        StatusResponse: {
+            /** Agents */
+            agents: components["schemas"]["AgentStatus"][];
+            /** Runtime Root */
+            runtime_root: string;
+            /** Scheduler Pid */
+            scheduler_pid: number | null;
+            /** Scheduler Running */
+            scheduler_running: boolean;
+            /** Scheduler Started Iso */
+            scheduler_started_iso: string | null;
+        };
         /** TokenCreateRequest */
         TokenCreateRequest: {
             /** Expires In Days */
@@ -8720,6 +8570,161 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_config_api_agent_launcher_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    put_config_api_agent_launcher_config_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimpleResponse"];
+                };
+            };
+        };
+    };
+    get_repos_api_agent_launcher_repos_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReposResponse"];
+                };
+            };
+        };
+    };
+    run_once_api_agent_launcher_run_once_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunOnceRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimpleResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_scheduler_api_agent_launcher_start_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimpleResponse"];
+                };
+            };
+        };
+    };
+    get_status_api_agent_launcher_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusResponse"];
+                };
+            };
+        };
+    };
+    stop_scheduler_api_agent_launcher_stop_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimpleResponse"];
                 };
             };
         };
@@ -10015,12 +10020,79 @@ export interface operations {
             };
         };
     };
-    check_escalation_api_code_requests__id__board_escalation_get: {
+    get_plan_api_code_requests__id__plan_get: {
         parameters: {
-            query?: {
-                meetings_elapsed?: number;
-                max_meetings?: number;
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
             };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_plan_api_code_requests__id__plan_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanSubmission"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_api_code_requests__id__plan_approve_post: {
+        parameters: {
+            query?: never;
             header?: never;
             path: {
                 id: string;
@@ -10051,7 +10123,7 @@ export interface operations {
             };
         };
     };
-    evaluate_board_api_code_requests__id__evaluate_board_post: {
+    put_draft_api_code_requests__id__plan_draft_put: {
         parameters: {
             query?: never;
             header?: never;
@@ -10062,7 +10134,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["EvaluateBoardPayload"];
+                "application/json": components["schemas"]["DraftEdit"];
             };
         };
         responses: {
@@ -10088,118 +10160,7 @@ export interface operations {
             };
         };
     };
-    dispatch_executor_api_code_requests__id__executor_dispatch_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DispatchChildrenPayload"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    initialize_executor_api_code_requests__id__executor_initialize_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["InitializeExecutorPayload"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    report_child_status_api_code_requests__id__executor_report_child_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ReportChildPayload"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_executor_rollup_api_code_requests__id__executor_rollup_get: {
+    ingest_plan_api_code_requests__id__plan_ingest_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -10216,41 +10177,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ExecutorRollup"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    route_to_board_api_code_requests__id__route_to_board_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RouteToBoardPayload"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
                     "application/json": {
                         [key: string]: unknown;
                     };
@@ -10267,7 +10193,7 @@ export interface operations {
             };
         };
     };
-    sync_board_decision_api_code_requests__id__sync_board_decision_post: {
+    start_plan_api_code_requests__id__plan_start_post: {
         parameters: {
             query?: never;
             header?: never;
