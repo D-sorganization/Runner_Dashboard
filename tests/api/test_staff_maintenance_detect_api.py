@@ -5,8 +5,10 @@ from __future__ import annotations
 import datetime as _dt
 from collections.abc import Iterator
 from pathlib import Path
-from unittest.mock import patch
+from typing import Any
+from unittest.mock import AsyncMock, patch
 
+import gh_client
 import pytest
 from fastapi.testclient import TestClient
 from identity import Principal, require_principal, require_scope
@@ -87,10 +89,23 @@ def test_api_detect_stalled_auto_remediate_low_risk(client: TestClient) -> None:
         "auto_remediate": True,
     }
 
-    # Simulated GitHub backend for the cancel and the rerun.
+    # Simulated GitHub: the run is cancelled at once and its attempt advances on rerun.
+    # The route runs the detector in a worker thread, which reaches gh_client on the
+    # event loop through staff.maintenance_github (#1448).
+    run = {"status": "completed", "conclusion": "cancelled", "run_attempt": 1}
+
+    async def fake_rerun(repo_full: str, run_id: int) -> None:
+        run["run_attempt"] = 2
+
+    async def fake_get(path: str) -> dict[str, Any]:
+        assert path.endswith("/UpstreamDrift/actions/runs/9901")
+        return dict(run)
+
+    cancel = AsyncMock(return_value=None)
     with (
-        patch("staff.maintenance._cancel_run", return_value={"status": "cancelled"}),
-        patch("staff.maintenance._rerun_run", return_value={"status": "rerun_requested"}),
+        patch.object(gh_client, "cancel_run", cancel),
+        patch.object(gh_client, "rerun", fake_rerun),
+        patch.object(gh_client, "get", fake_get),
     ):
         res = client.post(
             "/api/v1/staff/maintenance/detect-stalled",
@@ -108,7 +123,8 @@ def test_api_detect_stalled_auto_remediate_low_risk(client: TestClient) -> None:
     # Verified auto-executed
     assert len(data["auto_executed"]) == 1
     assert data["auto_executed"][0]["action"] == "maintenance.cancel_and_rerun"
-    assert data["auto_executed"][0]["success"] is True
+    assert data["auto_executed"][0]["success"] is True, data["auto_executed"][0]
+    cancel.assert_awaited_once()
 
     # Verified Maintenance thread message posted
     store = get_conversation_store()

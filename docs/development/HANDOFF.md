@@ -25,7 +25,93 @@ Last updated: 2026-09-25
 
 ---
 
-# Current handoff — SC-B9: Group threads: talk to the Board (and other groups) with the Board-Secretary coordinating seat replies (#1339)
+# Current handoff — Restore green main: synchronize generated OpenAPI schema and TypeScript definitions for SC-B9 group threads
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/restore-green-main-openapi-contract-drift`; DL-#1513.
+
+## Objective and Status
+
+- Restore green main by resolving OpenAPI contract drift:
+  - PR #1480 (SC-B9: group threads for Board Deliberation, commit `5f2ca47`) introduced `/api/v1/staff/groups/{group_id}/threads` in backend FastAPI router, but did not regenerate `frontend/src/lib/openapi.json` and `frontend/src/lib/api-types.ts`.
+  - On `push` to `main`, `Frontend Tests` runs `npm run generate-api:check` which failed due to uncommitted schema and type differences.
+  - Ran `scripts/gen-api-client.sh` to synchronize `frontend/src/lib/openapi.json` and `frontend/src/lib/api-types.ts`.
+  - Verification:
+    - `scripts/gen-api-client.sh --check`: passed cleanly.
+    - `npm run typecheck`: clean (0 errors).
+    - `npm run lint`: clean (0 errors, 0 warnings).
+    - All touched files strictly $\le 500$ lines.
+
+## Next Steps
+
+1. Push `fix/restore-green-main-openapi-contract-drift`.
+2. Open PR with label `agent:antigravity`.
+3. Enable auto-merge (`gh pr merge --auto --squash`).
+4. Monitor CI until merged to `main`.
+5. Verify remote `main` is 100% green.
+
+---
+
+# Past handoff — SC-B1-G9: Chat pool saturation rejects turns with chat_capacity (#1492)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1492-chat-pool-saturation-busy`; DL-#1492; Issue #1492; PR #1511 (merged).
+
+## Objective and Status
+
+- Chat pool saturation should answer busy, not run anyway (issue #1492):
+  - In `backend/staff/chat_pool.py`, implemented `ChatConcurrencyPool.acquire(role, timeout=DEFAULT_CHAT_ACQUIRE_TIMEOUT)` using `asyncio.Condition` to wait for an available slot without exceeding pool capacity, respecting Barb's reserved slot.
+  - In `backend/staff/chat_failures.py`, implemented `record_chat_capacity_failure(conv_store, thread_id, placeholder_id, user_message_id, role_name)` to set the placeholder message to `failed` with failure class `chat_capacity`, helpful retry remediation message, and publish SSE delta and message on event bus.
+  - In `backend/staff/chat.py`, updated `ChatTurnRunner.execute_turn` to acquire a slot before fallback dispatching. On saturation timeout, it records the capacity failure and returns `ChatTurnResult(ok=False, failure_class="chat_capacity", retryable=True, remediation="All chat slots are busy; please retry shortly.")` immediately, preventing attempt execution, never recording a successful turn in metrics, and never releasing an unheld slot.
+  - Created dedicated unit test suite in `tests/unit/test_staff_chat_capacity.py` testing pool size 1 saturation rejection with `chat_capacity` and Barb reservation retention under saturation.
+  - Verification:
+    - Pytest `tests/unit/test_staff_chat_capacity.py tests/unit/test_staff_chat.py tests/unit/test_staff_availability.py`: 25/25 passed.
+    - `ruff check`: clean (0 errors).
+    - `ruff format --check`: clean on modified files.
+    - `mypy`: clean (0 errors) on modified files.
+    - All touched files strictly $\le 500$ lines (`chat.py` 491 lines, `chat_pool.py` 81 lines, `chat_failures.py` 91 lines, `test_staff_chat_capacity.py` 123 lines).
+
+---
+
+# Past handoff — SC-E3: Wire maintenance run cancel/rerun to GitHub (#1448, slice 1)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1448`; branch `feat/1448-wire-maintenance` (stacked on `feat/rd-consolidated-2026-09-25`, PR #1458); PR: not created; Issue #1448; DL-#1448. Commit: SELF.
+
+## Objective and Status
+
+- Make the three GitHub-run maintenance actions real instead of `not_wired`, without blocking the event loop.
+- Done:
+  - `backend/staff/maintenance_github.py`: `call_github` bridges sync executors to the loop-bound `gh_client` via `anyio.from_thread.run`; outside a worker thread it raises `MaintenanceBridgeError` (`bridge_unavailable`). GhAuthError → `auth_expired`, timeout → `peer_timeout`, other GitHub refusals → `upstream_error`.
+  - Repos must be bare names or `D-sorganization/<name>` (validated with `security.validate_repo_slug`); anything else is a precondition refusal before GitHub is called.
+  - `cancel_and_rerun` cancels, polls until `completed` (30 s cap), then reruns. Verifiers check real state: conclusion `cancelled`; `run_attempt` advanced.
+  - Routes (`staff_proposals` decide/execute, detect-stalled; `assistant` execute) run the sync executor/scan with `anyio.to_thread.run_sync`.
+  - Added `gh_client.rerun` (full rerun).
+- Not in this slice: runner service start/stop/restart, drain, group ops, queue purge, fleet_control, runner_remove, diagnose (still `not_wired`).
+
+## Validation
+
+- WSL venv: `pytest tests/staff/ tests/api/ tests/test_gh_client.py tests/test_repo_slug_validation.py -o addopts=''` → 1249 passed, 19 skipped, 1 failed (`test_staff_runner::test_submit_runs_fake_cli_to_success_with_events_and_cost`, event-order timing under load; passes 3/3 alone).
+- `ruff check backend/ tests/staff/` clean; `mypy backend/ --ignore-missing-imports --no-implicit-optional` → no issues in 239 files.
+
+## Next Steps
+
+1. After #1458 merges, rebase onto `origin/main`, check doc heading counts, open the PR and arm via `automerge_guard.py`.
+2. Slice 2: wire runner service/drain actions through the fleet node API.
+
+---
+
+# Past handoff — SC-B9: Group threads: talk to the Board (and other groups) with the Board-Secretary coordinating seat replies (#1339)
+>>>>>>> 4ab9490 (fix(staff): reject turns with chat_capacity on pool saturation (#1492))
 
 Last updated: 2026-09-25
 
@@ -80,35 +166,6 @@ Last updated: 2026-09-25
     - `npm run typecheck`: clean (0 errors).
     - `npm run lint`: clean (0 errors, 0 warnings).
     - All touched files strictly $\le 500$ lines (`ProjectsPage.tsx` 136 lines, `Projects.test.tsx` 404 lines).
-
-## Next Steps
-
-1. None (merged in PR #1509).
-
----
-
-# Past handoff — SC-B1-G1: read-only chat turns on every provider (#1484)
-
-Last updated: 2026-09-25
-
-## Identity
-
-- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1484`; branch `fix/1484-read-only-chat`; commit SELF; PR #1506 (merged); Issue #1484; DL-#1484.
-
-## Objective and Status
-
-- Closed the hole where a resumed claude chat turn ran with no permission flag, and made read-only enforcement explicit and fail-closed for every provider (`backend/staff/adapters.py`: `_CHAT_READ_ONLY_FLAGS`, `CLAUDE_WRITE_TOOLS`, `CHAT_READ_ONLY_TOOLS`, `claude_allowed_tools`, `ChatReadOnlyUnsupportedError`).
-- `chat.py` passes `chat.read_only_tools` and turns an unsupported provider or bad tool name into a classified failed message (`staff/chat_failures.py`).
-- Role validator rejects `chat.read_only_tools` names outside the vocabulary.
-- Validation: `pytest tests/unit/test_staff_chat_read_only.py` 24 passed; staff selection 618 passed / 15 skipped (WSL venv); `ruff check` clean; `mypy backend/` clean.
-
-## Risks
-
-- `cursor-agent --mode ask` was not verifiable on DeskComputer (CLI absent). If the flag is wrong the turn fails visibly (`classify_run_failure`), never writable.
-
-## Next steps
-
-1. None (merged in PR #1506).
 
 ---
 
