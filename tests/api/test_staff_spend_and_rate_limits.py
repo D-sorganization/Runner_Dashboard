@@ -71,7 +71,10 @@ def clean_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]
     with open(roles_dir / "barb.yaml", "w", encoding="utf-8") as f:
         f.write("name: barb\ntitle: Barb\nsurface: interactive\nbudget_usd_per_day: 1.00\nbudget_usd_per_run: 0.10\n")
 
-    yield
+    from unittest.mock import AsyncMock, patch
+
+    with patch("routers.staff_threads.run_chat_turn_in_background", new_callable=AsyncMock):
+        yield
     app.dependency_overrides.clear()
     reset_store()
     reset_runner()
