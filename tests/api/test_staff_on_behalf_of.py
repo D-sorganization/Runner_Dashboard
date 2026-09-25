@@ -33,7 +33,7 @@ def tmp_audit_db(tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> store_mod.Ru
 
 @pytest.fixture
 def client(tmp_path: Any, monkeypatch: pytest.MonkeyPatch, tmp_audit_db: store_mod.RunStore) -> TestClient:
-    monkeypatch.setenv("HUB_FLEET_TOKEN", "test-fleet-secret-key")
+    monkeypatch.setenv("HUB_FLEET_TOKEN", "test-fleet-token")  # pragma: allowlist secret
     from routers import staff as staff_router
 
     store = tmp_audit_db
@@ -66,17 +66,17 @@ def client(tmp_path: Any, monkeypatch: pytest.MonkeyPatch, tmp_audit_db: store_m
 
 @pytest.mark.unit
 def test_sign_and_verify_on_behalf_of_roundtrip() -> None:
-    secret = "secret-123"
+    signing_key = "dummy-test-key"  # pragma: allowlist secret
     header = fleet_mod.sign_on_behalf_of(
         principal="user:dieter",
         surface="thread",
         thread_id="thr-123",
         request_id="req-abc",
-        secret=secret,
+        secret=signing_key,
     )
     assert "." in header
 
-    verified = fleet_mod.verify_on_behalf_of(header, secret=secret)
+    verified = fleet_mod.verify_on_behalf_of(header, secret=signing_key)
     assert verified is not None
     assert verified["principal"] == "user:dieter"
     assert verified["surface"] == "thread"
@@ -87,35 +87,35 @@ def test_sign_and_verify_on_behalf_of_roundtrip() -> None:
 
 @pytest.mark.unit
 def test_verify_on_behalf_of_tampered_signature_rejected() -> None:
-    secret = "secret-123"
+    signing_key = "dummy-test-key"  # pragma: allowlist secret
     header = fleet_mod.sign_on_behalf_of(
         principal="user:dieter",
         surface="thread",
         thread_id="thr-123",
-        secret=secret,
+        secret=signing_key,
     )
     payload_b64, _ = header.split(".", 1)
     tampered = f"{payload_b64}.deadbeefbadcafe"
-    assert fleet_mod.verify_on_behalf_of(tampered, secret=secret) is None
+    assert fleet_mod.verify_on_behalf_of(tampered, secret=signing_key) is None
 
 
 @pytest.mark.unit
 def test_verify_on_behalf_of_tampered_payload_rejected() -> None:
-    secret = "secret-123"
+    signing_key = "dummy-test-key"  # pragma: allowlist secret
     header = fleet_mod.sign_on_behalf_of(
         principal="user:dieter",
         surface="thread",
-        secret=secret,
+        secret=signing_key,
     )
     _, sig = header.split(".", 1)
     forged_payload = base64.urlsafe_b64encode(json.dumps({"principal": "user:root"}).encode()).decode()
     tampered = f"{forged_payload}.{sig}"
-    assert fleet_mod.verify_on_behalf_of(tampered, secret=secret) is None
+    assert fleet_mod.verify_on_behalf_of(tampered, secret=signing_key) is None
 
 
 @pytest.mark.unit
 def test_verify_on_behalf_of_expired_rejected() -> None:
-    secret = "secret-123"
+    signing_key = "dummy-test-key"  # pragma: allowlist secret
     old_time = int(time.time()) - 400  # 400 seconds ago (> default 300s TTL)
     payload = {
         "principal": "user:dieter",
@@ -128,22 +128,22 @@ def test_verify_on_behalf_of_expired_rejected() -> None:
     import hashlib
     import hmac
 
-    sig = hmac.new(secret.encode(), payload_b64.encode(), hashlib.sha256).hexdigest()
+    sig = hmac.new(signing_key.encode(), payload_b64.encode(), hashlib.sha256).hexdigest()
     header = f"{payload_b64}.{sig}"
-    assert fleet_mod.verify_on_behalf_of(header, secret=secret, ttl_seconds=300) is None
+    assert fleet_mod.verify_on_behalf_of(header, secret=signing_key, ttl_seconds=300) is None
 
 
 @pytest.mark.unit
 def test_verify_on_behalf_of_missing_principal_rejected() -> None:
-    secret = "secret-123"
+    signing_key = "dummy-test-key"  # pragma: allowlist secret
     payload = {"principal": "", "surface": "thread", "iat": int(time.time())}
     payload_b64 = base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()).decode()
     import hashlib
     import hmac
 
-    sig = hmac.new(secret.encode(), payload_b64.encode(), hashlib.sha256).hexdigest()
+    sig = hmac.new(signing_key.encode(), payload_b64.encode(), hashlib.sha256).hexdigest()
     header = f"{payload_b64}.{sig}"
-    assert fleet_mod.verify_on_behalf_of(header, secret=secret) is None
+    assert fleet_mod.verify_on_behalf_of(header, secret=signing_key) is None
 
 
 # ── 2. Forwarding caller identity from hub to peer ───────────────────────────
@@ -154,7 +154,7 @@ def test_forward_run_includes_signed_on_behalf_of_header(client: TestClient, mon
     from routers import staff as staff_router
 
     monkeypatch.setattr(fleet_mod, "peer_nodes", lambda: {"OGLaptop": "http://og:8321"})
-    monkeypatch.setenv("HUB_FLEET_TOKEN", "test-fleet-token")
+    monkeypatch.setenv("HUB_FLEET_TOKEN", "test-fleet-token")  # pragma: allowlist secret
 
     seen: dict[str, Any] = {}
 
@@ -180,7 +180,7 @@ def test_forward_run_includes_signed_on_behalf_of_header(client: TestClient, mon
     assert "X-Staff-On-Behalf-Of" in seen["headers"]
 
     obo_header = seen["headers"]["X-Staff-On-Behalf-Of"]
-    verified = fleet_mod.verify_on_behalf_of(obo_header, secret="test-fleet-token")
+    verified = fleet_mod.verify_on_behalf_of(obo_header, secret="test-fleet-token")  # pragma: allowlist secret
     assert verified is not None
     assert verified["principal"] == "user:dieter"
     assert verified["thread_id"] == "thread-99"
@@ -196,15 +196,15 @@ def test_peer_dispatch_with_valid_on_behalf_of_records_caller_and_audit(
 ) -> None:
     from routers import staff as staff_router
 
-    secret = "test-fleet-secret-key"
-    monkeypatch.setenv("HUB_FLEET_TOKEN", secret)
+    token_key = "test-fleet-token"  # pragma: allowlist secret
+    monkeypatch.setenv("HUB_FLEET_TOKEN", token_key)
 
     obo_header = fleet_mod.sign_on_behalf_of(
         principal="user:alice",
         surface="thread",
         thread_id="thr-777",
         request_id="req-abc",
-        secret=secret,
+        secret=token_key,
     )
 
     # Caller is authenticated peer
@@ -241,8 +241,8 @@ def test_peer_dispatch_with_tampered_header_falls_back_to_fleet_peer(
 ) -> None:
     from routers import staff as staff_router
 
-    secret = "test-fleet-secret-key"
-    monkeypatch.setenv("HUB_FLEET_TOKEN", secret)
+    token_key = "test-fleet-token"  # pragma: allowlist secret
+    monkeypatch.setenv("HUB_FLEET_TOKEN", token_key)
 
     # Tampered header
     tampered_header = "eyJhbGciOiJIUzI1NiJ9.invalid.signature"
@@ -277,13 +277,13 @@ def test_non_peer_cannot_spoof_on_behalf_of(
 ) -> None:
     from routers import staff as staff_router
 
-    secret = "test-fleet-secret-key"
-    monkeypatch.setenv("HUB_FLEET_TOKEN", secret)
+    token_key = "test-fleet-token"  # pragma: allowlist secret
+    monkeypatch.setenv("HUB_FLEET_TOKEN", token_key)
 
     obo_header = fleet_mod.sign_on_behalf_of(
         principal="user:admin",
         surface="thread",
-        secret=secret,
+        secret=token_key,
     )
 
     # Normal user caller (not fleet-peer)
