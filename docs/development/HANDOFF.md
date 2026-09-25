@@ -4,7 +4,7 @@ Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1328-waiting-on-you-inbox`; Issue #1328; DL-#1328.
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1328-waiting-on-you-inbox`; Issue #1328; DL-#1328; PR #1422.
 
 ## Objective and Status
 
@@ -15,6 +15,116 @@ Last updated: 2026-09-25
 - Web Push: Critical escalations trigger web push notifications (`staff.escalation`) with thread deep links.
 - Frontend: `InboxPanel` component with severity badges, category pills, degraded source alert banner, and briefing trigger, embedded at the top of `StaffPage`.
 - Status: Fully implemented with TDD; all pytest (`test_staff_inbox.py` and `test_staff_threads_api.py`) passing (14/14); Vitest `InboxPanel.test.tsx` and StaffConsole suite passing (63/63); `npm run typecheck` 0 errors; `npm run lint` 0 warnings; `ruff` and `mypy` clean; all files strictly <= 500 lines.
+
+## Files and Decisions
+
+- `backend/staff/inbox.py` (497 lines):
+  - Multi-source aggregator (`_collect_approvals`, `_collect_needs_input`, `_collect_escalations`, `_collect_project_decisions`, `_collect_board_proposals`, `_collect_auth_sign_ins`).
+  - Fault isolation returning per-source status (`"ok"`, `"empty"`, `"unavailable"`).
+  - Markdown briefing generator and poster to Barb thread with SC-A8 audit logging.
+  - Escalation Web Push dispatch (`staff.escalation`) with thread deep link.
+- `backend/routers/staff_inbox.py` (88 lines):
+  - Endpoints `GET /inbox` and `POST /briefing` mounted under `/api/staff` and `/api/v1/staff`.
+- `backend/routers/staff_threads.py`:
+  - Removed deprecated stub `/inbox` route to avoid collision.
+- `backend/server.py`:
+  - Mounted `staff_inbox` router and v1_router.
+- `backend/push.py`:
+  - Added `"staff.escalation"` to `PUSH_TOPICS`.
+- `frontend/src/pages/Staff/inboxTypes.ts` (55 lines):
+  - Type definitions for `InboxItem`, `InboxAggregate`, `SourceStatus`.
+- `frontend/src/pages/Staff/staffApi.ts`:
+  - Added `fetchStaffInbox()` and `requestStaffBriefing()`.
+- `frontend/src/pages/Staff/InboxPanel.tsx` (319 lines):
+  - Severity badges, category filter tabs, degraded sources banner, briefing trigger, and deep links.
+- `frontend/src/pages/Staff/StaffPage.tsx`:
+  - Embedded `<InboxPanel onOpenRun={openRun} />` above roster/thread layout.
+- `tests/api/test_staff_inbox.py` (190 lines):
+  - 4 integration tests covering aggregation, source failure isolation, briefing posting, and push notifications.
+- `frontend/src/pages/StaffConsole/__tests__/InboxPanel.test.tsx` (207 lines):
+  - 6 unit tests covering rendering, empty state, degraded sources alert, filtering, briefing trigger, and run click.
+
+## Validation
+
+- `pytest tests/api/test_staff_inbox.py tests/api/test_staff_threads_api.py`: 15 passed.
+- `npx vitest run frontend/src/pages/StaffConsole/__tests__/InboxPanel.test.tsx`: 6 passed.
+- `npm run typecheck`: clean (0 errors).
+- `npm run lint`: clean (0 warnings).
+- `ruff check .`: clean.
+- All files strictly <= 500 lines.
+
+## Next Steps
+
+1. Merge `origin/main` into `feat/1328-waiting-on-you-inbox` and resolve conflict markers.
+2. Push merge commit to `origin/feat/1328-waiting-on-you-inbox`.
+3. Wait for CI checks to pass and PR #1422 to auto-merge.
+4. Post completion receipt on Issue #1328 and release lease.
+5. Clean up worktree `Runner_Dashboard-1328`.
+
+---
+
+# Previous handoff — SC-G2: One Fleet page: merge Machines, Runner Audit and Event Log into Fleet (#1324)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1324-one-fleet-page`; Issue #1324; DL-#1324.
+
+## Objective and Status
+
+- SC-G2: One Fleet page: merge Machines, Runner Audit, and Event Log into Fleet.
+- Unified page components (`frontend/src/pages/Fleet/`):
+  - `FleetStatusBanner.tsx`: SC-A2 tri-state health honesty (green/amber/red), KPI summary strip (machines, active runners, alerts, event rate), deployment drift indicator & state button, and jump anchors (`#machines`, `#runners`, `#alerts`, `#events`).
+  - `FleetMachinesSection.tsx`: Single consolidated machines table with expandable telemetry (WSL distribution, CPU/RAM utilization, storage mounts, runner pool) and "Ask Maintenance" button for SC-E6.
+  - `FleetRunnersSection.tsx`: Status filter pills (`all`, `idle`, `active`, `offline`), bulk fleet controls (`Start All`, `Stop All`), runner table with status badges, labels, active run link, and maintenance menu actions.
+  - `FleetAlertsSection.tsx`: Active fleet alerts and hosted-runner billing violations audit table (`runnerAudit`) with refresh trigger, empty state, and severity styling.
+  - `FleetEventsSection.tsx`: Durable fleet event history with severity filters (`All`, `Info`, `Warning`, `Error`), timestamp formatting, node attribution, and independent error state.
+- Recomposed `OverviewPage.tsx`:
+  - 437 lines (strictly <= 500 lines).
+  - Composes `FleetStatusBanner`, `FleetMachinesSection`, `FleetRunnersSection`, `FleetAlertsSection`, `FleetEventsSection`, and `OverviewLeases`.
+  - Independent per-section error isolation (`machinesError`, `runnersError`, `auditError`, `eventsError`).
+  - Smooth hash scrolling (`#machines`, `#runners`, `#alerts`, `#events`).
+- Backward-compatible navigation & redirects:
+  - Pruned duplicate tabs (`machines`, `runner-audit`, `events`) from `navRegistryData.ts`.
+  - Redirects configured in `routing.ts`: `/fleet/machines`, `/machines`, `/t/machines` -> `/fleet#machines`; `/fleet/runner-audit`, `/runner-audit`, `/t/runner-audit` -> `/fleet#alerts`; `/fleet/events`, `/events`, `/t/events` -> `/fleet#events`.
+- Validation:
+  - 142 test files passed, 1,245 frontend tests passed (0 failures).
+  - TypeScript check: 0 errors (`npm run typecheck`).
+  - ESLint: 0 warnings, 0 errors (`npm run lint`).
+  - Color literal budget: 4/4 passed (`pytest tests/frontend/test_color_literal_budget.py`).
+  - Production build: Clean build (`npm run build`).
+  - Frontend perf budget: 0 errors (`python scripts/check_frontend_perf_budget.py --bundle --json`).
+  - File line limits: All modified/created files strictly <= 500 lines (`python scripts/check_lines.py`).
+
+## Next Steps
+
+1. Commit changes with conventional commit `feat(fleet): SC-G2 merge Machines, Runner Audit and Event Log into one Fleet page (#1324)`.
+2. Push branch `feat/1324-one-fleet-page`.
+3. Open PR with `gh pr create` referencing `Fixes #1324`, labels `agent:local` and `wave:3`.
+4. Enable auto-merge squash without `--admin`.
+5. Monitor CI to green merge.
+6. Proceed to Wave 3 issue #1325 (`SC-G3: Fleet -> Operations: merge Deployment, Fleet Orchestration, Diagnostics, Conductor, Runner Plan and Schedules`).
+
+---
+
+# Previous handoff — SC-D5: Action, run, hand-off, and review cards embedded in conversation threads (#1319)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1319-thread-cards`; Issue #1319; DL-#1319.
+
+## Objective and Status
+
+- SC-D5: Make the things staff do visible and controllable right in the conversation.
+- Action card: what will happen, target, risk badge (`read`/`low`/`medium`/`high`/`critical`/`owner-only`), Approve / Deny buttons, parameter inspection, decision history, double-click idempotency protection, and stale/expired (24h limit) action lock.
+- Run card: live status badge (`queued`/`running`/`completed`/`failed`/`cancelled`), node, provider, elapsed duration, expandable log tail with toggle, Cancel button, and deep links to run page and PR.
+- Hand-off card: "Barb → Specialist" with reason and "Send to someone else" alternative specialist re-route selection.
+- Review card: PR, verdict badge (`APPROVED`/`CHANGES_REQUESTED`/`COMMENTED`), summary, and key findings.
+- Error card: plain-language cause from `failure_class`, remediation instructions, node badge, and retry CTA.
+- Status: Fully implemented with strict TDD; all 55 StaffConsole unit tests passing; `npm run typecheck` 0 errors; `npm run lint` 0 warnings; `pytest tests/test_frontend_integrity.py` 72 passed; all files strictly <= 500 lines.
 
 ## Files and Decisions
 

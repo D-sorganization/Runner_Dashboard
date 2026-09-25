@@ -102,6 +102,9 @@ export const REDIRECT_TABLE: Record<string, RedirectTarget> = (() => {
   table["push-settings"] = { to: PUSH_SETTINGS_PATH, label: "Notifications" };
   table["reports"] = { to: "/fleet/insights", label: "Insights" };
   table["analysis"] = { to: "/fleet/insights", label: "Insights" };
+  table["machines"] = { to: "/fleet#machines", label: "Machines" };
+  table["runner-audit"] = { to: "/fleet#alerts", label: "Runner Audit" };
+  table["events"] = { to: "/fleet#events", label: "Event Log" };
   return table;
 })();
 
@@ -114,15 +117,24 @@ export function getTabRedirect(pathname: string): RedirectTarget | null {
   if (normalized === "/fleet/reports" || normalized === "/fleet/analysis") {
     return { to: "/fleet/insights", label: "Insights" };
   }
+  if (normalized === "/fleet/machines" || normalized === "/machines") {
+    return { to: "/fleet#machines", label: "Machines" };
+  }
+  if (normalized === "/fleet/runner-audit" || normalized === "/runner-audit") {
+    return { to: "/fleet#alerts", label: "Runner Audit" };
+  }
+  if (normalized === "/fleet/events" || normalized === "/events") {
+    return { to: "/fleet#events", label: "Event Log" };
+  }
   const match = normalized.match(/^\/t\/([^/]+)$/);
   if (!match) return null;
   const rawId = decodeURIComponent(match[1]);
+  if (REDIRECT_TABLE[rawId]) {
+    return REDIRECT_TABLE[rawId];
+  }
   const canonical = normalizeTabId(rawId);
   if (REDIRECT_TABLE[canonical]) {
     return REDIRECT_TABLE[canonical];
-  }
-  if (REDIRECT_TABLE[rawId]) {
-    return REDIRECT_TABLE[rawId];
   }
   const item = navItemById(canonical);
   if (item) {
@@ -161,6 +173,20 @@ export function pathnameToTabId(pathname: string): string | undefined {
   if (normalized === "/fleet") return "overview";
   if (normalized === "/settings") return "settings";
   if (normalized === PUSH_SETTINGS_PATH) return PUSH_SETTINGS_TAB_ID;
+
+  if (normalized === "/fleet/reports" || normalized === "/fleet/analysis") {
+    return "insights";
+  }
+  if (
+    normalized === "/fleet/machines" ||
+    normalized === "/machines" ||
+    normalized === "/fleet/runner-audit" ||
+    normalized === "/runner-audit" ||
+    normalized === "/fleet/events" ||
+    normalized === "/events"
+  ) {
+    return "overview";
+  }
 
   // Secondary area pages: /<group>/<tabId>
   const areaMatch = normalized.match(/^\/(fleet|work|staff|settings)\/([^/]+)$/);
