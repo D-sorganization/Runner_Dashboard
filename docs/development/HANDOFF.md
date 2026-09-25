@@ -1,4 +1,64 @@
-# Current handoff — SC-D1: UX spec: Staff Console as the landing page and a four-area information architecture (#1301)
+# Current handoff — SC-D3: Staff roster sidebar: grouped roles, Auto (Barb) entry, status, unread counts, search and pinning (#1317)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1317-staff-roster-sidebar`; Issue #1317; DL-#1317.
+
+## Objective and Status
+
+- SC-D3: Staff roster sidebar component in `frontend/src/pages/StaffConsole/Roster.tsx` with grouped roles, dedicated "Ask Barb (auto-route)" top entry, live status indicators, unread counts, search filtering, pinning with local storage persistence, and keyboard navigation.
+- Status: Fully implemented with TDD; 15 unit tests passing; TypeScript typecheck passing (0 errors); ESLint clean (0 warnings); all new files strictly <= 500 lines. Unblocks SC-D4 (#1318) and SC-D6 (#1320).
+
+## Files and Decisions
+
+- `frontend/src/pages/StaffConsole/types.ts`:
+  - Defined types for `RosterStatus` (`idle`, `working`, `needs_you`, `unavailable`, `invalid`), `RosterGroupKey`, `StaffRoleItem`, and component props.
+- `frontend/src/pages/StaffConsole/rosterUtils.ts`:
+  - `computeRoleStatus`: computes status and detailed tooltip reason (invalid role file, holds, budget reached, unauthenticated provider, needs attention, working, idle).
+  - `categorizeRole`: categorizes roles into the 4 SC-D1 tiers (Leadership, Project Managers, Specialists, Operations).
+  - `filterRoles`: real-time case-insensitive filtering against role name, title, and mandate summary.
+  - `formatRelativeTime`: formats message timestamps into relative age strings ("just now", "5m ago", "2h ago", "3d ago").
+- `frontend/src/pages/StaffConsole/RosterRow.tsx`:
+  - Renders individual role row with avatar initial/icon, name, title, status dot, unread badge, last message preview with relative age, and pin button.
+  - Keyboard accessible with `Enter` and `Space` selection.
+- `frontend/src/pages/StaffConsole/RosterGroup.tsx`:
+  - Collapsible section for role groups with expand/collapse chevron toggle, group title, and role count badge.
+- `frontend/src/pages/StaffConsole/Roster.tsx`:
+  - Staff roster sidebar featuring dedicated "Ask Barb (auto-route)" top entry.
+  - Pinned group section populated via local storage persistence.
+  - Real-time search with clear button and empty search state feedback.
+  - Retains last known roster with visible "Stale Data" badge on network fetch failures.
+  - Keyboard navigation (`ArrowUp`/`ArrowDown` cycling through visible entries, `Enter`/`Space` to select).
+- `frontend/src/pages/StaffConsole/__tests__/Roster.test.tsx`:
+  - 15 Vitest unit tests verifying Ask Barb selection, 4-tier grouping, 5 status states, tooltip explanations, unread badges, search filtering, pinning, group collapse/expand persistence, stale data fallback, and full keyboard navigation.
+
+## Validation
+
+- `npx vitest run frontend/src/pages/StaffConsole/__tests__/Roster.test.tsx`: 15 passed in 0.55s.
+- `npm run typecheck`: 0 errors.
+- `npm run lint`: 0 errors, 0 warnings.
+- Line limits: All new files strictly <= 500 lines:
+  - `index.ts`: 10 lines
+  - `Roster.tsx`: 427 lines
+  - `RosterGroup.tsx`: 128 lines
+  - `RosterRow.tsx`: 278 lines
+  - `rosterUtils.ts`: 167 lines
+  - `types.ts`: 115 lines
+  - `Roster.test.tsx`: 358 lines
+
+## Next Steps
+
+1. Commit and push branch `feat/1317-staff-roster-sidebar`.
+2. Open PR referencing `Fixes #1317`.
+3. Enable auto-merge squash without `--admin`.
+4. Monitor CI to green merge.
+5. Release lease on issue #1317 with receipt.
+
+---
+
+# Previous handoff — SC-D1: UX spec: Staff Console as the landing page and a four-area information architecture (#1301)
 
 Last updated: 2026-09-25
 
@@ -198,7 +258,7 @@ Last updated: 2026-09-25
   - `DetectionItem` and `StalledJobDetectionReport` dataclasses.
   - 5 anomaly detectors:
     - `detect_queued_too_long`: checks queued runs waiting >= 30m when matching idle online runners exist (recommends low-risk `maintenance.cancel_and_rerun`).
-    - `detect_running_past_p95`: checks active runs exceeding workflow p95 * 3 (recommends medium-risk `maintenance.run_cancel`).
+    - `detect_running_past_p95`: checks active runs exceeding workflow p95 \* 3 (recommends medium-risk `maintenance.run_cancel`).
     - `detect_wedged_listener`: checks online runners whose listener log mtime is older than 600s, bypassing deceptive systemctl status (recommends low-risk `maintenance.runner_restart`).
     - `detect_runner_offline_assigned_job`: checks offline runners that have active in-progress jobs assigned (recommends medium-risk `maintenance.run_cancel`).
     - `detect_ghost_runners`: checks unregistered host registrations or runners offline >= 7 days (recommends high-risk `maintenance.runner_remove`).
