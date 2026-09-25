@@ -17,6 +17,11 @@ import { Badge } from "../../primitives/Badge";
 import { EmptyState } from "../../primitives/EmptyState";
 import { TouchButton } from "../../primitives/TouchButton";
 import {
+  invalidateStaffQueries,
+  updateStaffRunFromEvent,
+  useResolvedQueryClient,
+} from "../../hooks/useStaffQueries";
+import {
   ACTIVE_STATUSES,
   cancelRun,
   errorMessage,
@@ -40,6 +45,7 @@ function mergeEvents(existing: RunEvent[], incoming: RunEvent): RunEvent[] {
 }
 
 export function RunDetail({ runId, onBack }: RunDetailProps) {
+  const client = useResolvedQueryClient();
   const [run, setRun] = useState<RunRecord | null>(null);
   const [events, setEvents] = useState<RunEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -83,6 +89,7 @@ export function RunDetail({ runId, onBack }: RunDetailProps) {
       try {
         const ev = JSON.parse(msg.data) as RunEvent;
         setEvents((prev) => mergeEvents(prev, ev));
+        updateStaffRunFromEvent(client, runId, ev);
       } catch {
         // Ignore malformed frames; the final refetch is authoritative.
       }
@@ -104,7 +111,7 @@ export function RunDetail({ runId, onBack }: RunDetailProps) {
     };
     // `events` is intentionally excluded: the cursor is read once per (re)open.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActive, runId, load]);
+  }, [client, isActive, runId, load]);
 
   useEffect(() => {
     const node = logRef.current;
@@ -117,13 +124,14 @@ export function RunDetail({ runId, onBack }: RunDetailProps) {
       .then((data) => {
         if (data.run) setRun(data.run);
         setBusy(false);
+        invalidateStaffQueries(client);
         load();
       })
       .catch((e: unknown) => {
         setError(errorMessage(e));
         setBusy(false);
       });
-  }, [runId, load]);
+  }, [client, runId, load]);
 
   if (error && !run) {
     return (

@@ -5,6 +5,7 @@
  * hidden, cutting idle bandwidth by ≥ 70 % (issue #377).
  */
 import { useQuery, QueryClient } from "@tanstack/react-query"
+import { ApiClientError, apiRequest } from "../lib/api"
 
 // ---------------------------------------------------------------------------
 // Shared QueryClient — exported so QueryClientProvider can consume it and
@@ -15,10 +16,34 @@ export const queryClient = new QueryClient({
     queries: {
       // Honour HTTP cache; skip network if data is fresh.
       staleTime: 10_000,
-      // Retry once on transient errors before surfacing.
-      retry: 1,
+      // Retry 2 with exponential backoff for idempotent GETs (issue #1304)
+      retry: (failureCount: number, error: unknown) => {
+        if (
+          error instanceof ApiClientError &&
+          (error.status === 401 || error.status === 403 || error.status === 404)
+        ) {
+          return false;
+        }
+        return failureCount < 2;
+      },
+      retryDelay: (attemptIndex: number) => Math.min(1000 * 2 ** attemptIndex, 30_000),
       // Pause background polling when tab is hidden.
       refetchIntervalInBackground: false,
+    },
+    mutations: {
+      // No retry for mutations unless idempotency key present (issue #1304)
+      retry: (failureCount: number, error: unknown) => {
+        if (
+          typeof error === "object" &&
+          error !== null &&
+          "hasIdempotencyKey" in error &&
+          Boolean((error as { hasIdempotencyKey?: boolean }).hasIdempotencyKey)
+        ) {
+          return failureCount < 2;
+        }
+        return false;
+      },
+      retryDelay: (attemptIndex: number) => Math.min(1000 * 2 ** attemptIndex, 30_000),
     },
   },
 })
@@ -26,10 +51,8 @@ export const queryClient = new QueryClient({
 // ---------------------------------------------------------------------------
 // Generic fetch helper — propagates HTTP errors so TanStack Query can retry.
 // ---------------------------------------------------------------------------
-async function apiFetch<T>(url: string): Promise<T> {
-  const resp = await fetch(url, { credentials: "same-origin" })
-  if (!resp.ok) throw new Error(`HTTP ${resp.status} from ${url}`)
-  return resp.json() as Promise<T>
+function apiFetch<T>(url: string): Promise<T> {
+  return apiRequest<T>(url)
 }
 
 // ---------------------------------------------------------------------------

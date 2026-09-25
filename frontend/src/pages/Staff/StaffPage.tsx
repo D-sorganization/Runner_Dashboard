@@ -10,15 +10,20 @@
  * for RunDetail; dispatching from Assign jumps straight to the new run, and a
  * `?run=<id>` query opens that run directly (deep link from Fleet Command).
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { SubTabs } from "../../components/SubTabs";
+import {
+  invalidateStaffQueries,
+  useResolvedQueryClient,
+  useStaffRoster,
+} from "../../hooks/useStaffQueries";
 import { Assign } from "./Assign";
 import { Board } from "./Board";
 import { Holds } from "./Holds";
 import { Roster } from "./Roster";
 import { RunDetail } from "./RunDetail";
 import { RunLog } from "./RunLog";
-import { errorMessage, fetchRoster, type RosterResponse } from "./staffApi";
+import { errorMessage } from "./staffApi";
 
 export type StaffSection = "roster" | "runs" | "assign" | "holds";
 
@@ -36,34 +41,18 @@ function runFromUrl(): string | null {
 }
 
 export function StaffPage() {
-  const [roster, setRoster] = useState<RosterResponse | null>(null);
-  const [rosterLoading, setRosterLoading] = useState(true);
-  const [rosterError, setRosterError] = useState<string | null>(null);
+  const client = useResolvedQueryClient();
+  const {
+    data: roster = null,
+    isLoading: rosterLoading,
+    error: rosterErr,
+    refetch: refetchRoster,
+  } = useStaffRoster();
+  const rosterError = rosterErr ? errorMessage(rosterErr) : null;
   const [selectedRun, setSelectedRun] = useState<string | null>(runFromUrl);
   const [section, setSection] = useState<StaffSection>(() => (selectedRun ? "runs" : "roster"));
   const [assignRole, setAssignRole] = useState<string | undefined>(undefined);
   const [runsRefresh, setRunsRefresh] = useState(0);
-
-  const loadRoster = useCallback((signal?: AbortSignal) => {
-    setRosterLoading(true);
-    setRosterError(null);
-    fetchRoster(signal)
-      .then((data) => {
-        setRoster(data);
-        setRosterLoading(false);
-      })
-      .catch((e: unknown) => {
-        if (signal?.aborted) return;
-        setRosterError(errorMessage(e));
-        setRosterLoading(false);
-      });
-  }, []);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    loadRoster(controller.signal);
-    return () => controller.abort();
-  }, [loadRoster]);
 
   const openRun = useCallback((id: string) => {
     setSelectedRun(id);
@@ -72,10 +61,11 @@ export function StaffPage() {
 
   const onDispatched = useCallback(
     (id: string) => {
+      invalidateStaffQueries(client);
       setRunsRefresh((n) => n + 1);
       openRun(id);
     },
-    [openRun],
+    [client, openRun],
   );
 
   const onAssign = useCallback((role: string) => {
@@ -100,7 +90,7 @@ export function StaffPage() {
           roster={roster}
           loading={rosterLoading}
           error={rosterError}
-          onRetry={() => loadRoster()}
+          onRetry={() => refetchRoster()}
           onAssign={onAssign}
         />
       ) : null}

@@ -18,20 +18,31 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1383 · Restore green main: OpenAPI ValidationError schema alignment
+### DL-#1304 · SC-A9: One frontend data layer for staff and conversation data (React Query)
 
 - **State:** in_progress
 - **Owner:** antigravity
+- **Issue:** #1304 (epic #1347 / umbrella #1354)
+- **Branch:** `feat/1304-react-query-datalayer`
+- **PR:** #1380
+- **Paths:** `frontend/src/lib/api.ts`, `frontend/src/hooks/usePollingQueries.ts`, `frontend/src/hooks/useStaffQueries.ts`, `frontend/src/primitives/ConnectionIndicator.tsx`, `frontend/src/hooks/useMutationQueue.ts`, `frontend/src/main.tsx`, `frontend/src/shell/RoutedShell.tsx`, `frontend/src/pages/Staff/StaffPage.tsx`, `frontend/src/pages/Staff/Board.tsx`, `frontend/src/pages/Staff/RunLog.tsx`, `frontend/src/pages/Staff/RunDetail.tsx`, `frontend/src/pages/Staff/Holds.tsx`, `frontend/src/hooks/__tests__/useStaffDataLayer.test.tsx`, `frontend/src/pages/__tests__/Staff.test.tsx`, `SPEC.md`
+- **Started:** 2026-09-24
+- **Last verified:** 2026-09-24 (vitest, typecheck, lint, perf budget pass)
+- **Summary:** Implemented unified TanStack Query v5 data layer for Staff Console. Mounted single QueryClient in main.tsx with retry 2 and exponential backoff for idempotent GET queries, no retry on mutations without idempotency key, and 10s staleTime. Intercepted 401 responses in lib/api.ts to coalesce concurrent requests into a single tryRefreshSession() flow with emitSessionExpired fallback. Implemented useStaffQueries.ts providing hooks for roster, board, summary, runs, detail, holds, threads, messages, and work items. Synchronized live SSE events to query cache via updateStaffRunFromEvent. Built global ConnectionIndicator displaying online, reconnecting, offline, and queued mutation replay states. Migrated StaffPage, Board, RunLog, RunDetail, and Holds to shared hooks and mounted RefreshBadge.
+- **Next step:** Land PR #1380 and release coordination lease on #1304.
+
+### DL-#1383 · Restore green main: OpenAPI ValidationError schema alignment
+
+- **State:** shipped
+- **Owner:** antigravity
 - **Issue:** #1383
 - **Branch:** `fix/1383-validation-error-contract`
-- **PR:** not created
+- **PR:** #1384
 - **Paths:** `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-24
-- **Last verified:** 2026-09-24 (`npm run typecheck` 0 errors; openapi snapshot aligned with Python 3.11 CI Pydantic schema)
+- **Last verified:** 2026-09-24 (shipped in PR #1384)
 - **Summary:** Preserved `ValidationError.ctx` and `ValidationError.input` properties in `frontend/src/lib/openapi.json` and `frontend/src/lib/api-types.ts` generated during Python 3.11 contract validation in CI, restoring clean CI on `main`.
-- **Next step:** Commit, push branch, open PR with `Fixes #1383`, auto-merge, and release coordination lease.
-
-### DL-#1381 · Restore green main: API contract types synchronization
+- **Next step:** None (shipped in PR #1384).
 
 - **State:** shipped
 - **Owner:** antigravity

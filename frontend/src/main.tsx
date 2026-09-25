@@ -8,6 +8,8 @@ import { RootErrorBoundary } from './primitives/RootErrorBoundary'
 import { BreakpointProvider } from './hooks/useBreakpoint'
 import { ThemeProvider } from './design/ThemeProvider'
 import { SkeletonCard } from './primitives/Skeleton'
+import { QueryClientProvider } from '@tanstack/react-query'
+import { queryClient } from './hooks/usePollingQueries'
 import './index.css'
 // Web Vitals — send metrics to backend (issue #385)
 import { onCLS, onINP, onFCP, onLCP } from 'web-vitals'
@@ -150,9 +152,11 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <ThemeProvider>
           <BreakpointProvider>
             <Toaster>
-              <BrowserRouter>
-                <AppRoutes />
-              </BrowserRouter>
+              <QueryClientProvider client={queryClient}>
+                <BrowserRouter>
+                  <AppRoutes />
+                </BrowserRouter>
+              </QueryClientProvider>
             </Toaster>
           </BreakpointProvider>
         </ThemeProvider>

@@ -6,20 +6,19 @@
  * are late or dead (#1209). Orthogonal to the other panels: a board failure
  * renders an inline notice and never blocks Roster/Runs/Assign.
  */
-import { useCallback, useEffect, useState } from "react";
 import { Badge } from "../../primitives/Badge";
+import { RefreshBadge } from "../../primitives/RefreshBadge";
 import { TimeAgo } from "../../primitives/TimeAgo";
 import { Tooltip } from "../../primitives/Tooltip";
+import { useStalenessWarning } from "../../hooks/useStalenessWarning";
+import { useStaffBoard } from "../../hooks/useStaffQueries";
 import {
-  BOARD_POLL_MS,
   errorMessage,
-  fetchBoard,
   formatSpendSummary,
   formatUsd,
   groupByMachine,
   livenessAlerts,
   statusTone,
-  type BoardResponse,
 } from "./staffApi";
 
 export interface BoardProps {
@@ -27,30 +26,26 @@ export interface BoardProps {
 }
 
 export function Board({ onOpenRun }: BoardProps) {
-  const [board, setBoard] = useState<BoardResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const {
+    data: board = null,
+    error: boardErr,
+    dataUpdatedAt,
+    errorUpdatedAt,
+    failureCount,
+    isFetching,
+    refetch,
+  } = useStaffBoard();
+  const error = boardErr ? errorMessage(boardErr) : null;
 
-  const load = useCallback((signal?: AbortSignal) => {
-    fetchBoard(signal)
-      .then((data) => {
-        setBoard(data);
-        setError(null);
-      })
-      .catch((e: unknown) => {
-        if (signal?.aborted) return;
-        setError(errorMessage(e));
-      });
-  }, []);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    load(controller.signal);
-    const timer = window.setInterval(() => load(controller.signal), BOARD_POLL_MS);
-    return () => {
-      controller.abort();
-      window.clearInterval(timer);
-    };
-  }, [load]);
+  const staleness = useStalenessWarning(
+    {
+      dataUpdatedAt,
+      errorUpdatedAt,
+      failureCount,
+      isFetching,
+    },
+    15_000,
+  );
 
   const spendSummary = board ? formatSpendSummary(board.spend_today_usd) : null;
 
@@ -58,6 +53,11 @@ export function Board({ onOpenRun }: BoardProps) {
     <section className="glass-card staff-board" aria-label="Staff board">
       <div className="staff-board__header">
         <h3 className="staff-board__title">Board</h3>
+        {board ? (
+          <span style={{ marginLeft: "auto", marginRight: 8 }}>
+            <RefreshBadge staleness={staleness} onRetry={() => refetch()} />
+          </span>
+        ) : null}
         {board && spendSummary ? (
           <span className="staff-board__meta">
             spend today{" "}
