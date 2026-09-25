@@ -4,7 +4,7 @@
  * DRY: the one-line orientation shown atop each page body is derived from the
  * SAME `navRegistry` tooltip that labels the nav item — there is no second
  * place to keep tab descriptions in sync. A small `INTRO_OVERRIDES` map lets us
- * (a) expand the jargon-heavy admin tooltips (Cline, principals) into operator
+ * (a) expand the jargon-heavy admin tooltips (e.g. principals) into operator
  * English, and (b) attach an optional deeper line where the tooltip is too
  * terse for a header.
  *
@@ -28,9 +28,6 @@ export interface TabIntro {
  * tooltip itself, which stays compact).
  */
 export const INTRO_OVERRIDES: Readonly<Record<string, string>> = {
-  // "Cline" is an AI coding agent; spell out what launching a session means.
-  "cline-launcher":
-    "Start a Cline AI coding-agent session against a fleet repo — Cline runs the agent that edits code and opens PRs on your behalf.",
   // "Principals" is auth jargon for the identities the dashboard can act as.
   principals:
     "The identities (users, bots, service accounts) the dashboard is authenticated as, and which one it is currently acting on behalf of.",
