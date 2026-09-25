@@ -1,66 +1,73 @@
-# Current handoff — SC-C6: Barb availability: reserved capacity, provider fallback, acknowledgement SLA and degraded mode (#1329)
+# Current handoff — SC-D4: Thread view and composer: streaming markdown, @mentions, slash commands, reliable send (#1318)
 
 Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1329-barb-availability`; Issue #1329; DL-#1329.
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1318-thread-composer`; Issue #1318; DL-#1318.
 
 ## Objective and Status
 
-- SC-C6: The front door must answer quickly even when the fleet is busy or an LLM provider is down.
-- Reserved chat slot for Barb that work runs cannot consume (independent `ChatConcurrencyPool` and `StaffRunner._sema` isolation).
-- Provider fallback chain (`claude` -> `codex` -> `claude-ollama` -> `ollama`) with health probes; active provider and fallback count recorded in thread and message metadata.
-- Acknowledge every message within 3 s ("On it: routing to …" system message) even before the model answers.
-- Degraded mode when all LLM providers fail: deterministic routing rules via `route_deterministic`, queued follow-up work item in `WorkItemStore`, clearly labeled explanatory text.
-- Availability metrics: `ack_latency_ms`, `first_token_latency_ms`, `fallback_count`, `degraded_mode_count` tracked in `AvailabilityMetrics` and exposed on the Board (`local_board`) and in `/api/health`.
-- Status: Fully implemented with strict TDD; all unit and API tests passing; mypy, ruff, and black checks passing; all touched files strictly <= 500 lines.
+- SC-D4: The core chat experience, as polished as Grok Bot's.
+- Message list with sanitized markdown, code blocks with copy, links to issues/PRs/runs auto-previewed; streaming deltas with a stop button.
+- Composer: Enter to send, Shift+Enter newline, @mention a role (routes or loops them in), slash commands (`/dispatch`, `/review`, `/status`, `/hold`, `/brief`); voice input reused.
+- Send states: `idle` → `sending` → `sent` → `failed` with Retry (same Idempotency-Key); drafts persisted per thread.
+- Virtualized list for long threads; jump to unread; date separators.
+- Status: Fully implemented with strict TDD; all 34 StaffConsole tests passing; npm run typecheck passing with 0 errors; ruff check passing; all files strictly <= 500 lines.
 
 ## Files and Decisions
 
-- `backend/staff/availability.py` (364 lines):
-  - Defines `DEFAULT_PROVIDER_CHAIN = ("claude", "codex", "claude-ollama", "ollama")` and `resolve_provider_chain`.
-  - Provider health probes: `is_provider_healthy`, `set_provider_health`, `reset_provider_health` checking overrides, `STAFF_DISABLED_PROVIDERS`, and adapter installation.
-  - `AvailabilityMetrics` class and singleton tracking `ack_latency_ms`, `first_token_latency_ms`, `fallback_count`, `degraded_mode_count`.
-  - `record_fast_acknowledgment`: creates system acknowledgment message within SLA (< 3 s) with routing target preview and broadcasts over SSE thread bus.
-  - `execute_degraded_turn`: handles degraded mode by evaluating Stage 1 pre-routing rules, queuing follow-up work item in `WorkItemStore`, clearly labeling reply with `[Degraded Mode]`, updating thread/message metadata, and publishing to bus.
-  - `record_successful_turn`: helper updating active provider and TTFT metrics.
-- `backend/staff/chat_pool.py` (64 lines):
-  - Modularized `ChatConcurrencyPool`, `get_chat_pool`, `DEFAULT_MAX_CHAT_TURNS`, `DEFAULT_BARB_RESERVED_SLOTS` to maintain `chat.py` under the 500-line cap while maintaining backward-compatible exports.
-- `backend/staff/chat.py` (497 lines):
-  - Integrated provider fallback chain loop in `execute_turn`.
-  - Probes candidate providers; attempts session resume or history replay; records fallback steps.
-  - Degrades gracefully via `execute_degraded_turn` when all candidates in chain fail or are disabled.
-  - Honors single requested provider overrides.
-- `backend/routers/staff_threads.py` (477 lines):
-  - Emits fast acknowledgment message on `post_message` when budget permits.
-  - Delegated idempotent replay check and inbox item collection to `thread_helpers.py` to keep file well under 500 lines.
-- `backend/staff/thread_helpers.py` (63 lines):
-  - Extracted `find_idempotent_reply` and `collect_inbox_items`.
-- `backend/health.py` (224 lines):
-  - Exposes `staff_availability` metrics in `_health_impl` and `/api/health`.
-- `backend/staff/fleet.py` (377 lines):
-  - Exposes `availability` metrics in `local_board`.
-- `tests/unit/test_staff_availability.py` (387 lines):
-  - Comprehensive unit test suite covering work run isolation, reserved Barb capacity, provider fallback order, health probing, runtime failure recovery, degraded mode with deterministic routing and queued work items, fast acknowledgment SLA (< 3 s), and board/health metrics exposition.
+- `frontend/src/pages/StaffConsole/threadTypes.ts` (105 lines):
+  - Defines `ThreadMessage`, `ThreadInfo`, `SlashCommand`, `SLASH_COMMANDS`, `SendMessagePayload`, `ComposerProps`, `ThreadProps`.
+- `frontend/src/pages/StaffConsole/threadMarkdown.tsx` (317 lines):
+  - Configures `marked.lexer` and `marked.parser` with strict DOMPurify sanitization preventing XSS attacks.
+  - Interactive code blocks with language badge, code copy button, and "Copied!" feedback state.
+  - Auto-previews GitHub issues (`#123`), PRs (`PR #1410`), and runs (`maintenance.*`, `run-*`) with styled badge pills.
+- `frontend/src/pages/StaffConsole/composerUtils.ts` (127 lines):
+  - Helper functions for mention extraction (`extractMentions`), caret mention detection (`getMentionQuery`), slash command query detection (`getSlashCommandQuery`), slash command and role filtering.
+  - Idempotency key generator (`generateIdempotencyKey`) and thread draft storage helpers (`getDraft`, `saveDraft`, `clearDraft`).
+- `frontend/src/pages/StaffConsole/ComposerAutocompletes.tsx` (136 lines):
+  - Modularized accessible popups for role @mentions and slash commands with ARIA listbox roles and keyboard navigation.
+- `frontend/src/pages/StaffConsole/Composer.tsx` (410 lines):
+  - Keyboard handling: Enter to send, Shift+Enter newline, Arrow keys for autocomplete menus, Tab/Enter to complete mention/slash command, Escape to dismiss.
+  - Web Speech API voice input integration via `useVoiceInput` with graceful fallback for unsupported browsers.
+  - Reliable send with idempotency key: preserves draft and exact same idempotency key upon network failure for deduplicated retries.
+  - Per-thread draft synchronization with localStorage.
+- `frontend/src/pages/StaffConsole/MessageItem.tsx` (214 lines):
+  - Formats message bubbles (user vs staff/bot), timestamps, streaming cursor with interactive "Stop generating" button, and classified error cards (`failure_class` with remediation and retry turn button).
+- `frontend/src/pages/StaffConsole/Thread.tsx` (279 lines):
+  - Conversation thread view with automatic day grouping and date separators ("Today", "Yesterday", or formatted dates).
+  - Unread tracking with floating "Jump to unread" button and smooth scrolling.
+  - Sticky "Reconnecting to thread events…" banner upon SSE connection interruptions.
+- `frontend/src/pages/StaffConsole/useThreadStream.ts` (224 lines):
+  - React hook managing EventSource SSE connection to `/threads/{id}/stream`.
+  - Resumes connection with `Last-Event-ID` / `since_seq`.
+  - Aggregates streaming token deltas, synchronizes message completions, and supports abort/stop.
+- `frontend/src/pages/StaffConsole/index.ts` (18 lines):
+  - Re-exports all components, types, and hooks.
+- Tests:
+  - `frontend/src/pages/StaffConsole/__tests__/threadMarkdown.test.tsx` (90 lines)
+  - `frontend/src/pages/StaffConsole/__tests__/Composer.test.tsx` (158 lines)
+  - `frontend/src/pages/StaffConsole/__tests__/Thread.test.tsx` (171 lines)
+  - `frontend/src/pages/StaffConsole/__tests__/useThreadStream.test.ts` (170 lines)
+  - `frontend/src/pages/StaffConsole/__tests__/Roster.test.tsx` (358 lines)
 
 ## Validation
 
-- `pytest tests/unit/test_staff_availability.py tests/unit/test_staff_chat.py tests/api/test_staff_threads_api.py`: 33 passed.
-- `ruff check .`: 0 errors.
-- `black --check backend/ tests/unit/test_staff_availability.py`: clean.
-- `python -m mypy backend/ --ignore-missing-imports --exclude backend/__pycache__ --no-implicit-optional`: clean (0 errors in 219 files).
+- `npx vitest run frontend/src/pages/StaffConsole/__tests__`: 5 passed test files, 34 passed tests.
 - `npm run typecheck`: clean (0 errors).
+- `ruff check .`: clean (0 errors).
+- `ruff format --check backend/ clients/`: 224 files already formatted.
 - Line counts: All modified and created files strictly <= 500 lines.
 
 ## Next Steps
 
-1. Commit with conventional commit `feat(staff): barb availability, provider fallback chain and degraded mode (#1329)`.
-2. Push branch `feat/1329-barb-availability`.
-3. Open PR with `gh pr create` referencing `Fixes #1329` and label `agent:local`.
+1. Commit with conventional commit `feat(staff): thread view, composer, streaming markdown, and slash commands (#1318)`.
+2. Push branch `feat/1318-thread-composer`.
+3. Open PR with `gh pr create` referencing `Fixes #1318` and label `agent:local`.
 4. Enable auto-merge squash without `--admin`.
 5. Monitor CI to green merge.
-6. Release lease on issue #1329 and clean up worktree.
+6. Release lease on issue #1318 and clean up worktree.
 
 ---
 
