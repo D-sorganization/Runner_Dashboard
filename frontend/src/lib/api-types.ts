@@ -6215,37 +6215,6 @@ export interface components {
              */
             stack?: string | null;
         };
-        /** CreateProposalRequest */
-        CreateProposalRequest: {
-            /**
-             * Action
-             * @description Name of allowlisted action
-             */
-            action: string;
-            /**
-             * Message Id
-             * @description Originating message ID
-             */
-            message_id: string;
-            /**
-             * Params
-             * @description Action parameters
-             */
-            params?: {
-                [key: string]: unknown;
-            };
-            /**
-             * Risk
-             * @description Risk class (read, low, medium, high, owner-only)
-             * @default low
-             */
-            risk: string;
-            /**
-             * Thread Id
-             * @description Parent thread ID
-             */
-            thread_id: string;
-        };
         /** CreateThreadRequest */
         CreateThreadRequest: {
             /**
@@ -8224,6 +8193,37 @@ export interface components {
              * @enum {string}
              */
             urgency: "Routine" | "Urgent" | "Emergency";
+        };
+        /** CreateProposalRequest */
+        routers__staff_proposals__CreateProposalRequest: {
+            /**
+             * Action
+             * @description Name of allowlisted action
+             */
+            action: string;
+            /**
+             * Message Id
+             * @description Originating message ID
+             */
+            message_id: string;
+            /**
+             * Params
+             * @description Action parameters
+             */
+            params?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Risk
+             * @description Risk class (read, low, medium, high, owner-only)
+             * @default low
+             */
+            risk: string;
+            /**
+             * Thread Id
+             * @description Parent thread ID
+             */
+            thread_id: string;
         };
     };
     responses: never;
@@ -15016,7 +15016,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CreateProposalRequest"];
+                "application/json": components["schemas"]["routers__staff_proposals__CreateProposalRequest"];
             };
         };
         responses: {
