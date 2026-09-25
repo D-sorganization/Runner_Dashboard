@@ -28,7 +28,17 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
 from identity import Principal, format_caller, require_scope
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, Field, field_validator
+from routers.staff_models import (
+    StaffAuditResponse,
+    StaffBoardResponse,
+    StaffCancelResponse,
+    StaffDispatchResponse,
+    StaffRosterResponse,
+    StaffRunDetailResponse,
+    StaffRunsResponse,
+    StaffSummaryResponse,
+)
 from staff import consolidation
 from staff import fleet as staff_fleet
 from staff import liveness as staff_liveness
@@ -45,52 +55,6 @@ router = APIRouter(prefix="/api/staff", tags=["staff"])
 MAX_LIMIT = 500
 STREAM_POLL_SECONDS = 0.5
 STREAM_IDLE_TIMEOUT_SECONDS = 6 * 3600
-
-
-class StaffBoardResponse(BaseModel):
-    """Response model for /api/staff/board (issue #1289)."""
-
-    generated_at: str = Field(description="ISO-8601 UTC timestamp")
-    machine: str | None = Field(default=None, description="Local machine hostname")
-    hub: str | None = Field(default=None, description="Hub machine hostname when aggregated")
-    running: list[dict[str, Any]] = Field(default_factory=list)
-    queued: list[dict[str, Any]] = Field(default_factory=list)
-    recent: list[dict[str, Any]] = Field(default_factory=list)
-    spend_today_usd: dict[str, float] = Field(
-        default_factory=dict,
-        description="Per-provider spend in USD plus a 'total' key (issue #1289)",
-    )
-    providers: dict[str, Any] = Field(default_factory=dict)
-    liveness: list[dict[str, Any]] = Field(default_factory=list)
-    liveness_alerts: list[dict[str, Any]] = Field(default_factory=list)
-    machines: dict[str, dict[str, Any]] | None = Field(default=None)
-    online: list[str] = Field(default_factory=list)
-    offline: list[str] = Field(default_factory=list)
-    rm_source: dict[str, Any] | None = Field(default=None)
-
-    model_config = ConfigDict(extra="allow")
-
-
-class StaffSummaryResponse(BaseModel):
-    """Response model for /api/staff/summary (issue #1289)."""
-
-    generated_at: str = Field(description="ISO-8601 UTC timestamp")
-    hub: str = Field(description="Hub machine hostname")
-    machines_online: list[str] = Field(default_factory=list)
-    machines_offline: list[str] = Field(default_factory=list)
-    in_flight: list[dict[str, Any]] = Field(default_factory=list)
-    recent_24h: dict[str, int] = Field(default_factory=dict)
-    attention: list[dict[str, Any]] = Field(default_factory=list)
-    spend_today_usd: dict[str, float] = Field(
-        default_factory=dict,
-        description="Per-provider spend in USD plus a 'total' key (issue #1289)",
-    )
-    providers: dict[str, Any] = Field(default_factory=dict)
-    holds: list[dict[str, Any]] = Field(default_factory=list)
-    liveness_alerts: list[dict[str, Any]] = Field(default_factory=list)
-    roles: list[dict[str, Any]] = Field(default_factory=list)
-
-    model_config = ConfigDict(extra="allow")
 
 
 class RunBody(BaseModel):
@@ -118,8 +82,8 @@ def _today_iso() -> str:
     return datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-@router.get("/roster")
-@router.get("/roles")
+@router.get("/roster", response_model=StaffRosterResponse)
+@router.get("/roles", response_model=StaffRosterResponse)
 async def roster(
     _peer: Principal = Depends(require_scope("staff.read")),
 ) -> dict[str, Any]:
@@ -247,7 +211,7 @@ async def summary(
     }
 
 
-@router.get("/audit")
+@router.get("/audit", response_model=StaffAuditResponse)
 async def list_audit(
     limit: int = Query(default=50, ge=1, le=MAX_LIMIT),
     offset: int = Query(default=0, ge=0),
@@ -284,7 +248,7 @@ async def list_audit(
     return {"entries": [e.to_dict() for e in entries], "count": len(entries), "total": store.count_entries(**filt)}
 
 
-@router.get("/runs")
+@router.get("/runs", response_model=StaffRunsResponse)
 async def list_runs(
     limit: int = Query(default=50, ge=1, le=MAX_LIMIT),
     role: str | None = Query(default=None, max_length=60),
@@ -298,7 +262,7 @@ async def list_runs(
     return {"runs": [r.to_dict() for r in runs], "count": len(runs)}
 
 
-@router.get("/runs/{run_id}")
+@router.get("/runs/{run_id}", response_model=StaffRunDetailResponse)
 async def get_run(
     run_id: str,
     events: int = Query(default=200, ge=0, le=MAX_LIMIT),
@@ -354,7 +318,7 @@ async def stream_run(
     )
 
 
-@router.post("/runs/{run_id}/cancel")
+@router.post("/runs/{run_id}/cancel", response_model=StaffCancelResponse)
 async def cancel_run(run_id: str, caller: Principal = Depends(require_scope("staff.cancel"))) -> dict[str, Any]:
     runner = get_runner()
     if runner.store.get_run(run_id) is None:
@@ -414,7 +378,7 @@ async def _forward(target: str, role: str, body: RunBody, caller: str) -> dict[s
     return {**data, "machine": data.get("machine", target), "forwarded_to": target}
 
 
-@router.post("/{role}/run")
+@router.post("/{role}/run", response_model=StaffDispatchResponse, response_model_exclude_unset=True)
 async def dispatch(
     role: str,
     body: RunBody,

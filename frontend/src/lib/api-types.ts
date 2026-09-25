@@ -4394,6 +4394,321 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Audit
+         * @description Retrieve durable append-only staff audit rows (SC-A8, Issue #1298).
+         */
+        get: operations["list_audit_api_v1_staff_audit_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/board": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Board
+         * @description Status monitor. With peers configured this is the fleet-wide view (#1195).
+         */
+        get: operations["board_api_v1_staff_board_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/holds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Holds */
+        get: operations["get_holds_api_v1_staff_holds_get"];
+        /**
+         * Put Holds
+         * @description Replace the holds list. Postcondition: the file on disk equals the response.
+         */
+        put: operations["put_holds_api_v1_staff_holds_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Roster */
+        get: operations["roster_api_v1_staff_roles_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/roster": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Roster */
+        get: operations["roster_api_v1_staff_roster_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Runs */
+        get: operations["list_runs_api_v1_staff_runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Run */
+        get: operations["get_run_api_v1_staff_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/runs/{run_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Run */
+        post: operations["cancel_run_api_v1_staff_runs__run_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/runs/{run_id}/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stream Run
+         * @description SSE feed of run events. Ends with an ``end`` event when the run finishes.
+         */
+        get: operations["stream_run_api_v1_staff_runs__run_id__stream_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/schedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Schedule */
+        get: operations["get_schedule_api_v1_staff_schedule_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/schedule/toggle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Toggle Scheduler
+         * @description Toggle the background scheduler on or off (SC-A8, Issue #1298).
+         */
+        post: operations["toggle_scheduler_api_v1_staff_schedule_toggle_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Summary
+         * @description The one-call brief for Barb and Orchestrator (#1195).
+         *
+         *     Flat payload: what is in flight fleet-wide, what needs attention (failed or
+         *     blocked in the last 24 h on this node), spend today, provider availability
+         *     per machine, active holds, late/dead scheduled roles (#1209) and the
+         *     roster with schedules.
+         */
+        get: operations["summary_api_v1_staff_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Usage
+         * @description Usage rows for this node. ``since`` defaults to the start of today (UTC).
+         */
+        get: operations["get_usage_api_v1_staff_usage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/usage/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Export Usage
+         * @description Append today's per-provider totals to RM ``data/credit_usage.json``.
+         *
+         *     503 when no Repository_Management checkout (``STAFF_RM_ROOT`` or sibling)
+         *     with ``scripts/append_credit_usage.py`` is available on this node.
+         */
+        post: operations["export_usage_api_v1_staff_usage_export_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/usage/pricing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Pricing */
+        get: operations["get_pricing_api_v1_staff_usage_pricing_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/{role}/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dispatch
+         * @description Dispatch a staff run on this node, or preview it with ``dry_run``.
+         *
+         *     Precondition: the role exists and is dispatchable; the provider is allowed
+         *     for the role; one of issue/pr/prompt is given. Postcondition: on a real
+         *     dispatch a ``queued`` run row exists before the response is returned. When
+         *     the role carries ``strategy.consolidate_when`` and a repo is given, the
+         *     PR-consolidation decision (#1213) is evaluated first and lands in
+         *     ``plan.consolidation`` and the run's ``strategy_mode``.
+         */
+        post: operations["dispatch_api_v1_staff__role__run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/version": {
         parameters: {
             query?: never;
@@ -5416,8 +5731,107 @@ export interface components {
             ok: boolean;
         };
         /**
+         * StaffAuditEntry
+         * @description Single row from the durable append-only staff audit log.
+         */
+        StaffAuditEntry: {
+            /**
+             * Action
+             * @description Action executed
+             */
+            action: string;
+            /**
+             * Detail
+             * @description Structured detail payload
+             */
+            detail?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Id
+             * @description Audit row ID
+             */
+            id: number | string;
+            /**
+             * On Behalf Of
+             * @description Delegated principal if any
+             * @default
+             */
+            on_behalf_of: string;
+            /**
+             * Outcome
+             * @description Outcome: success | failure | etc.
+             * @default success
+             */
+            outcome: string;
+            /**
+             * Principal
+             * @description Caller identity
+             */
+            principal: string;
+            /**
+             * Request Id
+             * @description HTTP request ID
+             * @default
+             */
+            request_id: string;
+            /**
+             * Run Id
+             * @description Associated run ID
+             * @default
+             */
+            run_id: string;
+            /**
+             * Surface
+             * @description Entry surface (api, scheduler, etc.)
+             * @default
+             */
+            surface: string;
+            /**
+             * Target
+             * @description Target entity
+             */
+            target: string;
+            /**
+             * Thread Id
+             * @description Conversation thread ID
+             * @default
+             */
+            thread_id: string;
+            /**
+             * Ts
+             * @description ISO-8601 UTC timestamp
+             */
+            ts: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * StaffAuditResponse
+         * @description Response model for GET /api/staff/audit.
+         */
+        StaffAuditResponse: {
+            /**
+             * Count
+             * @description Number of rows in this page
+             */
+            count: number;
+            /**
+             * Entries
+             * @description Matching audit rows
+             */
+            entries?: components["schemas"]["StaffAuditEntry"][];
+            /**
+             * Total
+             * @description Total count matching filter
+             */
+            total: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
          * StaffBoardResponse
-         * @description Response model for /api/staff/board (issue #1289).
+         * @description Response model for /api/staff/board.
          */
         StaffBoardResponse: {
             /**
@@ -5430,52 +5844,72 @@ export interface components {
              * @description Hub machine hostname when aggregated
              */
             hub?: string | null;
-            /** Liveness */
-            liveness?: {
-                [key: string]: unknown;
-            }[];
-            /** Liveness Alerts */
-            liveness_alerts?: {
-                [key: string]: unknown;
-            }[];
+            /**
+             * Liveness
+             * @description Local role liveness
+             */
+            liveness?: components["schemas"]["StaffRoleLiveness"][];
+            /**
+             * Liveness Alerts
+             * @description Fleet-wide alerts
+             */
+            liveness_alerts?: components["schemas"]["StaffRoleLiveness"][];
             /**
              * Machine
              * @description Local machine hostname
              */
             machine?: string | null;
-            /** Machines */
+            /**
+             * Machines
+             * @description Per-node board maps
+             */
             machines?: {
                 [key: string]: {
                     [key: string]: unknown;
                 };
             } | null;
-            /** Offline */
+            /**
+             * Offline
+             * @description Offline node hostnames
+             */
             offline?: string[];
-            /** Online */
+            /**
+             * Online
+             * @description Online node hostnames
+             */
             online?: string[];
-            /** Providers */
+            /**
+             * Providers
+             * @description Provider availability
+             */
             providers?: {
                 [key: string]: unknown;
             };
-            /** Queued */
-            queued?: {
-                [key: string]: unknown;
-            }[];
-            /** Recent */
-            recent?: {
-                [key: string]: unknown;
-            }[];
-            /** Rm Source */
+            /**
+             * Queued
+             * @description Queued jobs
+             */
+            queued?: components["schemas"]["StaffRunRecord"][];
+            /**
+             * Recent
+             * @description Recently completed jobs
+             */
+            recent?: components["schemas"]["StaffRunRecord"][];
+            /**
+             * Rm Source
+             * @description Repository Management sync status
+             */
             rm_source?: {
                 [key: string]: unknown;
             } | null;
-            /** Running */
-            running?: {
-                [key: string]: unknown;
-            }[];
+            /**
+             * Running
+             * @description Currently running jobs
+             */
+            running?: components["schemas"]["StaffRunRecord"][];
             /**
              * Spend Today Usd
-             * @description Per-provider spend in USD plus a 'total' key (issue #1289)
+             * @description Per-provider spend in USD plus a 'total' key
              */
             spend_today_usd?: {
                 [key: string]: number;
@@ -5484,8 +5918,836 @@ export interface components {
             [key: string]: unknown;
         };
         /**
+         * StaffCancelResponse
+         * @description Response model for /api/staff/runs/{run_id}/cancel.
+         */
+        StaffCancelResponse: {
+            /**
+             * Cancelled
+             * @description Whether the cancellation request succeeded
+             */
+            cancelled: boolean;
+            /** @description Updated run record */
+            run?: components["schemas"]["StaffRunRecord"] | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * StaffConsolidateWhen
+         * @description PR consolidation thresholds.
+         */
+        StaffConsolidateWhen: {
+            /**
+             * Open Prs
+             * @description Open PR count threshold
+             */
+            open_prs?: number | null;
+            /**
+             * Utilisation Pct
+             * @description Fleet utilisation percentage threshold
+             */
+            utilisation_pct?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * StaffConsolidationDecision
+         * @description Consolidation decision injected into runner prompt.
+         */
+        StaffConsolidationDecision: {
+            /**
+             * Mode
+             * @description Consolidation mode: consolidate | serial
+             * @default
+             */
+            mode: string;
+            /**
+             * Reason
+             * @description Rationale for the decision
+             * @default
+             */
+            reason: string;
+            /** @description Evaluated thresholds */
+            threshold?: components["schemas"]["StaffConsolidateWhen"];
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * StaffDispatchResponse
+         * @description Response model for POST /api/staff/{role}/run.
+         */
+        StaffDispatchResponse: {
+            /**
+             * Dry Run
+             * @description Whether dispatch was a dry-run preview
+             */
+            dry_run: boolean;
+            /**
+             * Forwarded To
+             * @description Peer hostname if forwarded
+             */
+            forwarded_to?: string | null;
+            /**
+             * Machine
+             * @description Executing machine hostname
+             */
+            machine: string;
+            /** @description Plan preview if dry_run=True */
+            plan?: components["schemas"]["StaffRunPlan"] | null;
+            /** @description Submitted run if dry_run=False */
+            run?: components["schemas"]["StaffRunRecord"] | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * StaffExportUsageResponse
+         * @description Response model for POST /api/staff/usage/export.
+         */
+        StaffExportUsageResponse: {
+            /**
+             * Date
+             * @description Export date
+             * @default
+             */
+            date: string;
+            /**
+             * Exported
+             * @description Export details per provider
+             */
+            exported?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Ok
+             * @description Export success status
+             */
+            ok: boolean;
+            /**
+             * Rm Root
+             * @description Repository Management path
+             * @default
+             */
+            rm_root: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * StaffHold
+         * @description Hold rule restricting role dispatch.
+         */
+        StaffHold: {
+            /**
+             * Active
+             * @description Whether hold is active
+             * @default true
+             */
+            active: boolean;
+            /**
+             * Applies To
+             * @description Roles or repos affected
+             */
+            applies_to?: string[];
+            /**
+             * Id
+             * @description Hold identifier
+             */
+            id: string;
+            /**
+             * Lifted When
+             * @description Condition or date to lift
+             * @default
+             */
+            lifted_when: string;
+            /**
+             * Set On
+             * @description Timestamp when set
+             * @default
+             */
+            set_on: string;
+            /**
+             * Text
+             * @description Reason for the hold
+             */
+            text: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * StaffHoldsResponse
+         * @description Response model for GET and PUT /api/staff/holds.
+         */
+        StaffHoldsResponse: {
+            /**
+             * Holds
+             * @description Current holds
+             */
+            holds?: components["schemas"]["StaffHold"][];
+            /**
+             * Path
+             * @description Storage path on disk
+             */
+            path?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * StaffPricingResponse
+         * @description Response model for GET /api/staff/usage/pricing.
+         */
+        StaffPricingResponse: {
+            /**
+             * Rows
+             * @description Pricing table rows
+             */
+            rows?: {
+                [key: string]: unknown;
+            }[];
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * StaffRoleBudget
+         * @description Budget constraints configured for a role.
+         */
+        StaffRoleBudget: {
+            /**
+             * Idle Minutes
+             * @description Idle timeout in minutes
+             */
+            idle_minutes?: number | null;
+            /**
+             * Max Minutes
+             * @description Execution timeout in minutes
+             */
+            max_minutes?: number | null;
+            /**
+             * Usd Per Day
+             * @description Max daily spend in USD
+             */
+            usd_per_day?: number | null;
+            /**
+             * Usd Per Run
+             * @description Max spend per run in USD
+             */
+            usd_per_run?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * StaffRoleLiveness
+         * @description Liveness status of a scheduled role.
+         */
+        StaffRoleLiveness: {
+            /**
+             * Age Seconds
+             * @description Seconds since last run
+             */
+            age_seconds?: number | null;
+            /**
+             * Expected Interval Seconds
+             * @description Expected interval
+             */
+            expected_interval_seconds?: number | null;
+            /**
+             * Last Attempt
+             * @description Last attempt timestamp
+             */
+            last_attempt?: string | null;
+            /**
+             * Last Fired
+             * @description Last fired timestamp
+             */
+            last_fired?: string | null;
+            /**
+             * Last Success
+             * @description Last successful run timestamp
+             */
+            last_success?: string | null;
+            /**
+             * Machine
+             * @description Machine reporting this status
+             */
+            machine?: string | null;
+            /**
+             * Next Fire
+             * @description Next scheduled run timestamp
+             */
+            next_fire?: string | null;
+            /**
+             * Role
+             * @description Role identifier
+             */
+            role: string;
+            /**
+             * Schedule
+             * @description Schedule expression
+             */
+            schedule: string;
+            /**
+             * Status
+             * @description Liveness status: ok | late | dead | never
+             */
+            status: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * StaffRoleSpec
+         * @description Full role specification returned by the roster.
+         */
+        StaffRoleSpec: {
+            /**
+             * Active Runs
+             * @description Count of currently active runs
+             * @default 0
+             */
+            active_runs: number;
+            /** @description Budget parameters */
+            budget: components["schemas"]["StaffRoleBudget"];
+            /**
+             * Chat
+             * @description Chat parameters
+             */
+            chat?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Dispatchable
+             * @description Whether role can be dispatched
+             * @default true
+             */
+            dispatchable: boolean;
+            /**
+             * Error
+             * @description Primary error message
+             */
+            error?: string | null;
+            /**
+             * Errors
+             * @description Validation errors if invalid
+             */
+            errors?: string[];
+            /**
+             * Group
+             * @description Group affiliation
+             */
+            group?: string | null;
+            /**
+             * Holds
+             * @description Active hold tags
+             */
+            holds: string[];
+            /**
+             * Idle Minutes
+             * @description Idle timeout
+             */
+            idle_minutes?: number | null;
+            /**
+             * Instructions
+             * @description System instructions
+             */
+            instructions?: string | null;
+            /**
+             * Model
+             * @description Default model override
+             */
+            model?: string | null;
+            /**
+             * Name
+             * @description Role identifier
+             */
+            name: string;
+            /**
+             * Permissions
+             * @description Permission definitions
+             */
+            permissions?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Persona
+             * @description Personality/tone guidelines
+             */
+            persona?: string | null;
+            /**
+             * Playbook
+             * @description Path or name of playbook
+             * @default
+             */
+            playbook: string;
+            /**
+             * Prompt Template
+             * @description Prompt template
+             */
+            prompt_template?: string | null;
+            /**
+             * Providers
+             * @description Supported provider IDs
+             */
+            providers: string[];
+            /**
+             * Reports To
+             * @description Supervising role identifier
+             */
+            reports_to?: string | null;
+            /**
+             * Repos
+             * @description Allowed or target repositories
+             */
+            repos: string[];
+            /**
+             * Retired
+             * @description Whether role is retired
+             * @default false
+             */
+            retired: boolean;
+            /**
+             * Retired Reason
+             * @description Reason for retirement
+             */
+            retired_reason?: string | null;
+            /**
+             * Schedule
+             * @description Cron or periodic schedule
+             */
+            schedule?: string | null;
+            /**
+             * Scope
+             * @description Execution scope
+             */
+            scope?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Source Path
+             * @description Path to role definition file
+             * @default
+             */
+            source_path: string;
+            /** @description Consolidation strategy */
+            strategy?: components["schemas"]["StaffRoleStrategy"];
+            /**
+             * Summary
+             * @description Role summary description
+             * @default
+             */
+            summary: string;
+            /**
+             * Surface
+             * @description Target execution surface
+             */
+            surface?: string | null;
+            /**
+             * Title
+             * @description Human-readable title
+             * @default
+             */
+            title: string;
+            /**
+             * Valid
+             * @description Whether role YAML is valid
+             * @default true
+             */
+            valid: boolean;
+            /**
+             * Window
+             * @description Execution window constraint
+             */
+            window?: unknown | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * StaffRoleStrategy
+         * @description Role consolidation strategy.
+         */
+        StaffRoleStrategy: {
+            /** @description Consolidation thresholds */
+            consolidate_when?: components["schemas"]["StaffConsolidateWhen"] | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * StaffRosterResponse
+         * @description Response for GET /roster.
+         */
+        StaffRosterResponse: {
+            /**
+             * Active Runs
+             * @description Total active runs across roles
+             */
+            active_runs: number;
+            /**
+             * Machine
+             * @description Local machine hostname
+             */
+            machine: string;
+            /**
+             * Providers
+             * @description Provider availability map
+             */
+            providers: {
+                [key: string]: boolean;
+            };
+            /**
+             * Roles
+             * @description Available roles
+             */
+            roles: components["schemas"]["StaffRoleSpec"][];
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * StaffRunDetailResponse
+         * @description Response model for /api/staff/runs/{run_id}.
+         */
+        StaffRunDetailResponse: {
+            /**
+             * Events
+             * @description Execution events
+             */
+            events?: components["schemas"]["StaffRunEvent"][];
+            /** @description Run details */
+            run: components["schemas"]["StaffRunRecord"];
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * StaffRunEvent
+         * @description Event emitted during run execution.
+         */
+        StaffRunEvent: {
+            /**
+             * Kind
+             * @description Event kind
+             */
+            kind: string;
+            /**
+             * Seq
+             * @description Sequence number
+             */
+            seq: number;
+            /**
+             * Text
+             * @description Event content
+             */
+            text: string;
+            /**
+             * Ts
+             * @description ISO-8601 timestamp
+             */
+            ts: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * StaffRunPlan
+         * @description Execution plan generated by StaffRunner.
+         */
+        StaffRunPlan: {
+            /**
+             * Argv
+             * @description CLI arguments
+             */
+            argv?: string[];
+            /**
+             * Branch
+             * @description Branch name
+             * @default
+             */
+            branch: string;
+            /** @description Consolidation plan */
+            consolidation?: components["schemas"]["StaffConsolidationDecision"] | null;
+            /**
+             * Lease Ritual
+             * @description Whether lease rituals are enforced
+             * @default false
+             */
+            lease_ritual: boolean;
+            /**
+             * Model
+             * @description Model override
+             */
+            model?: string | null;
+            /**
+             * Prompt
+             * @description Prepared prompt
+             * @default
+             */
+            prompt: string;
+            /**
+             * Provider
+             * @description Provider name
+             * @default
+             */
+            provider: string;
+            /**
+             * Repo
+             * @description Repository name
+             * @default
+             */
+            repo: string;
+            /**
+             * Role
+             * @description Role identifier
+             * @default
+             */
+            role: string;
+            /**
+             * Target Kind
+             * @description Target kind
+             * @default prompt
+             */
+            target_kind: string;
+            /**
+             * Target Ref
+             * @description Target reference
+             * @default
+             */
+            target_ref: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * StaffRunRecord
+         * @description Flat row for one staff run.
+         */
+        StaffRunRecord: {
+            /**
+             * Branch
+             * @description Git branch
+             * @default
+             */
+            branch: string;
+            /**
+             * Cost Method
+             * @description Method used to calculate cost
+             * @default
+             */
+            cost_method: string;
+            /**
+             * Cost Usd
+             * @description Recorded cost in USD
+             * @default 0
+             */
+            cost_usd: number;
+            /**
+             * Created At
+             * @description ISO-8601 creation timestamp
+             */
+            created_at: string;
+            /**
+             * Ended At
+             * @description ISO-8601 end timestamp
+             */
+            ended_at?: string | null;
+            /**
+             * Error
+             * @description Error message if failed
+             * @default
+             */
+            error: string;
+            /**
+             * Exit Code
+             * @description Process exit code
+             */
+            exit_code?: number | null;
+            /**
+             * Failure Class
+             * @description Failure classification
+             * @default
+             */
+            failure_class: string;
+            /**
+             * Id
+             * @description Unique run ID
+             */
+            id: string;
+            /**
+             * Input Tokens
+             * @description Input tokens consumed
+             * @default 0
+             */
+            input_tokens: number;
+            /**
+             * Last Line
+             * @description Last stdout line captured
+             * @default
+             */
+            last_line: string;
+            /**
+             * Lease Id
+             * @description Fleet lease identifier
+             * @default
+             */
+            lease_id: string;
+            /**
+             * Machine
+             * @description Machine hostname
+             */
+            machine: string;
+            /**
+             * Model
+             * @description Model used
+             */
+            model?: string | null;
+            /**
+             * Outcome
+             * @description Normalised outcome summary
+             * @default
+             */
+            outcome: string;
+            /**
+             * Output Tokens
+             * @description Output tokens consumed
+             * @default 0
+             */
+            output_tokens: number;
+            /**
+             * Pid
+             * @description Worker process PID
+             */
+            pid?: number | null;
+            /**
+             * Prompt
+             * @description Execution prompt
+             * @default
+             */
+            prompt: string;
+            /**
+             * Provider
+             * @description Provider name
+             */
+            provider: string;
+            /**
+             * Remediation
+             * @description Remediation instructions
+             * @default
+             */
+            remediation: string;
+            /**
+             * Repo
+             * @description Target repository
+             * @default
+             */
+            repo: string;
+            /**
+             * Requested By
+             * @description Principal or user who requested run
+             * @default
+             */
+            requested_by: string;
+            /**
+             * Retryable
+             * @description Whether failure is retryable
+             * @default false
+             */
+            retryable: boolean;
+            /**
+             * Role
+             * @description Role name
+             */
+            role: string;
+            /**
+             * Started At
+             * @description ISO-8601 start timestamp
+             */
+            started_at?: string | null;
+            /**
+             * Status
+             * @description Run status
+             * @default queued
+             */
+            status: string;
+            /**
+             * Strategy Mode
+             * @description Consolidation strategy mode
+             * @default
+             */
+            strategy_mode: string;
+            /**
+             * Target Kind
+             * @description Target kind: issue | pr | prompt
+             * @default prompt
+             */
+            target_kind: string;
+            /**
+             * Target Ref
+             * @description Target reference
+             * @default
+             */
+            target_ref: string;
+            /**
+             * Transcript Path
+             * @description Path to transcript log
+             * @default
+             */
+            transcript_path: string;
+            /**
+             * Workdir
+             * @description Working directory
+             * @default
+             */
+            workdir: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * StaffRunsResponse
+         * @description Response model for /api/staff/runs.
+         */
+        StaffRunsResponse: {
+            /**
+             * Count
+             * @description Number of runs returned
+             */
+            count: number;
+            /**
+             * Runs
+             * @description Matching run rows
+             */
+            runs?: components["schemas"]["StaffRunRecord"][];
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * StaffScheduleResponse
+         * @description Response model for GET /api/staff/schedule.
+         */
+        StaffScheduleResponse: {
+            /**
+             * Enabled
+             * @description Configured state
+             */
+            enabled: boolean;
+            /**
+             * Generated At
+             * @description ISO-8601 UTC timestamp
+             */
+            generated_at: string;
+            /**
+             * Machine
+             * @description Node hostname
+             */
+            machine: string;
+            /**
+             * Roles
+             * @description Scheduled roles
+             */
+            roles?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Running
+             * @description Runtime state
+             */
+            running: boolean;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
          * StaffSummaryResponse
-         * @description Response model for /api/staff/summary (issue #1289).
+         * @description Response model for /api/staff/summary.
          */
         StaffSummaryResponse: {
             /** Attention */
@@ -5506,23 +6768,28 @@ export interface components {
              * @description Hub machine hostname
              */
             hub: string;
-            /** In Flight */
-            in_flight?: {
-                [key: string]: unknown;
-            }[];
+            /**
+             * In Flight
+             * @description Runs currently in flight
+             */
+            in_flight?: components["schemas"]["StaffRunRecord"][];
             /** Liveness Alerts */
-            liveness_alerts?: {
-                [key: string]: unknown;
-            }[];
+            liveness_alerts?: components["schemas"]["StaffRoleLiveness"][];
             /** Machines Offline */
             machines_offline?: string[];
             /** Machines Online */
             machines_online?: string[];
-            /** Providers */
+            /**
+             * Providers
+             * @description Provider availability
+             */
             providers?: {
                 [key: string]: unknown;
             };
-            /** Recent 24H */
+            /**
+             * Recent 24H
+             * @description Run count summary in last 24h
+             */
             recent_24h?: {
                 [key: string]: number;
             };
@@ -5532,11 +6799,117 @@ export interface components {
             }[];
             /**
              * Spend Today Usd
-             * @description Per-provider spend in USD plus a 'total' key (issue #1289)
+             * @description Per-provider spend in USD plus a 'total' key
              */
             spend_today_usd?: {
                 [key: string]: number;
             };
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * StaffToggleScheduleResponse
+         * @description Response model for POST /api/staff/schedule/toggle.
+         */
+        StaffToggleScheduleResponse: {
+            /**
+             * Enabled
+             * @description Configured state
+             */
+            enabled: boolean;
+            /**
+             * Running
+             * @description Runtime execution state
+             */
+            running: boolean;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * StaffUsageBudget
+         * @description Daily budget tracking.
+         */
+        StaffUsageBudget: {
+            /** Percent Used */
+            percent_used?: number | null;
+            /**
+             * Spent Today Usd
+             * @default 0
+             */
+            spent_today_usd: number;
+            /**
+             * Usd Per Day
+             * @default 0
+             */
+            usd_per_day: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * StaffUsageResponse
+         * @description Response model for GET /api/staff/usage.
+         */
+        StaffUsageResponse: {
+            /** @description Budget status */
+            budget?: components["schemas"]["StaffUsageBudget"];
+            /**
+             * Group
+             * @description Grouping dimension
+             */
+            group: string;
+            /**
+             * Machine
+             * @description Node hostname
+             * @default
+             */
+            machine: string;
+            /**
+             * Rows
+             * @description Aggregated rows
+             */
+            rows?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Since
+             * @description Start timestamp filter
+             */
+            since?: string | null;
+            /** @description Totals across rows */
+            totals?: components["schemas"]["StaffUsageTotals"];
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * StaffUsageTotals
+         * @description Aggregated usage metrics.
+         */
+        StaffUsageTotals: {
+            /**
+             * Cost Usd
+             * @default 0
+             */
+            cost_usd: number;
+            /**
+             * Input Tokens
+             * @default 0
+             */
+            input_tokens: number;
+            /**
+             * Output Tokens
+             * @default 0
+             */
+            output_tokens: number;
+            /**
+             * Runs
+             * @default 0
+             */
+            runs: number;
+            /**
+             * Wall Seconds
+             * @default 0
+             */
+            wall_seconds: number;
         } & {
             [key: string]: unknown;
         };
@@ -10726,7 +12099,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["StaffAuditResponse"];
                 };
             };
             /** @description Validation Error */
@@ -10787,9 +12160,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["StaffHoldsResponse"];
                 };
             };
         };
@@ -10813,9 +12184,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["StaffHoldsResponse"];
                 };
             };
             /** @description Validation Error */
@@ -10844,9 +12213,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["StaffRosterResponse"];
                 };
             };
         };
@@ -10866,9 +12233,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["StaffRosterResponse"];
                 };
             };
         };
@@ -10893,9 +12258,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["StaffRunsResponse"];
                 };
             };
             /** @description Validation Error */
@@ -10928,9 +12291,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["StaffRunDetailResponse"];
                 };
             };
             /** @description Validation Error */
@@ -10961,9 +12322,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["StaffCancelResponse"];
                 };
             };
             /** @description Validation Error */
@@ -11025,9 +12384,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["StaffScheduleResponse"];
                 };
             };
         };
@@ -11051,9 +12408,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["StaffToggleScheduleResponse"];
                 };
             };
             /** @description Validation Error */
@@ -11105,9 +12460,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["StaffUsageResponse"];
                 };
             };
             /** @description Validation Error */
@@ -11136,9 +12489,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["StaffExportUsageResponse"];
                 };
             };
         };
@@ -11158,9 +12509,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["StaffPricingResponse"];
                 };
             };
         };
@@ -11186,9 +12535,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["StaffDispatchResponse"];
                 };
             };
             /** @description Validation Error */
@@ -11383,6 +12730,482 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    list_audit_api_v1_staff_audit_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                principal?: string | null;
+                thread_id?: string | null;
+                run_id?: string | null;
+                action?: string | null;
+                surface?: string | null;
+                target?: string | null;
+                since?: string | null;
+                format?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffAuditResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    board_api_v1_staff_board_get: {
+        parameters: {
+            query?: {
+                /** @description Return only this node's board (used by hub fan-out). */
+                local?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffBoardResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_holds_api_v1_staff_holds_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffHoldsResponse"];
+                };
+            };
+        };
+    };
+    put_holds_api_v1_staff_holds_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HoldsBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffHoldsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    roster_api_v1_staff_roles_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffRosterResponse"];
+                };
+            };
+        };
+    };
+    roster_api_v1_staff_roster_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffRosterResponse"];
+                };
+            };
+        };
+    };
+    list_runs_api_v1_staff_runs_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                role?: string | null;
+                status?: string | null;
+                since?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffRunsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_run_api_v1_staff_runs__run_id__get: {
+        parameters: {
+            query?: {
+                events?: number;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffRunDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_run_api_v1_staff_runs__run_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffCancelResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stream_run_api_v1_staff_runs__run_id__stream_get: {
+        parameters: {
+            query?: {
+                after?: number;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_schedule_api_v1_staff_schedule_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffScheduleResponse"];
+                };
+            };
+        };
+    };
+    toggle_scheduler_api_v1_staff_schedule_toggle_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScheduleToggleBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffToggleScheduleResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    summary_api_v1_staff_summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffSummaryResponse"];
+                };
+            };
+        };
+    };
+    get_usage_api_v1_staff_usage_get: {
+        parameters: {
+            query?: {
+                since?: string | null;
+                group?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffUsageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_usage_api_v1_staff_usage_export_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffExportUsageResponse"];
+                };
+            };
+        };
+    };
+    get_pricing_api_v1_staff_usage_pricing_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffPricingResponse"];
+                };
+            };
+        };
+    };
+    dispatch_api_v1_staff__role__run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffDispatchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

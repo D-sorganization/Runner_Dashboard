@@ -1505,9 +1505,119 @@
         "title": "SimpleResponse",
         "type": "object"
       },
+      "StaffAuditEntry": {
+        "additionalProperties": true,
+        "description": "Single row from the durable append-only staff audit log.",
+        "properties": {
+          "action": {
+            "description": "Action executed",
+            "title": "Action",
+            "type": "string"
+          },
+          "detail": {
+            "additionalProperties": true,
+            "description": "Structured detail payload",
+            "title": "Detail",
+            "type": "object"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "description": "Audit row ID",
+            "title": "Id"
+          },
+          "on_behalf_of": {
+            "default": "",
+            "description": "Delegated principal if any",
+            "title": "On Behalf Of",
+            "type": "string"
+          },
+          "outcome": {
+            "default": "success",
+            "description": "Outcome: success | failure | etc.",
+            "title": "Outcome",
+            "type": "string"
+          },
+          "principal": {
+            "description": "Caller identity",
+            "title": "Principal",
+            "type": "string"
+          },
+          "request_id": {
+            "default": "",
+            "description": "HTTP request ID",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "run_id": {
+            "default": "",
+            "description": "Associated run ID",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "surface": {
+            "default": "",
+            "description": "Entry surface (api, scheduler, etc.)",
+            "title": "Surface",
+            "type": "string"
+          },
+          "target": {
+            "description": "Target entity",
+            "title": "Target",
+            "type": "string"
+          },
+          "thread_id": {
+            "default": "",
+            "description": "Conversation thread ID",
+            "title": "Thread Id",
+            "type": "string"
+          },
+          "ts": {
+            "description": "ISO-8601 UTC timestamp",
+            "title": "Ts",
+            "type": "string"
+          }
+        },
+        "required": ["id", "ts", "principal", "action", "target"],
+        "title": "StaffAuditEntry",
+        "type": "object"
+      },
+      "StaffAuditResponse": {
+        "additionalProperties": true,
+        "description": "Response model for GET /api/staff/audit.",
+        "properties": {
+          "count": {
+            "description": "Number of rows in this page",
+            "title": "Count",
+            "type": "integer"
+          },
+          "entries": {
+            "description": "Matching audit rows",
+            "items": {
+              "$ref": "#/components/schemas/StaffAuditEntry"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "total": {
+            "description": "Total count matching filter",
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": ["count", "total"],
+        "title": "StaffAuditResponse",
+        "type": "object"
+      },
       "StaffBoardResponse": {
         "additionalProperties": true,
-        "description": "Response model for /api/staff/board (issue #1289).",
+        "description": "Response model for /api/staff/board.",
         "properties": {
           "generated_at": {
             "description": "ISO-8601 UTC timestamp",
@@ -1527,17 +1637,17 @@
             "title": "Hub"
           },
           "liveness": {
+            "description": "Local role liveness",
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/StaffRoleLiveness"
             },
             "title": "Liveness",
             "type": "array"
           },
           "liveness_alerts": {
+            "description": "Fleet-wide alerts",
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/StaffRoleLiveness"
             },
             "title": "Liveness Alerts",
             "type": "array"
@@ -1567,9 +1677,11 @@
                 "type": "null"
               }
             ],
+            "description": "Per-node board maps",
             "title": "Machines"
           },
           "offline": {
+            "description": "Offline node hostnames",
             "items": {
               "type": "string"
             },
@@ -1577,6 +1689,7 @@
             "type": "array"
           },
           "online": {
+            "description": "Online node hostnames",
             "items": {
               "type": "string"
             },
@@ -1585,21 +1698,22 @@
           },
           "providers": {
             "additionalProperties": true,
+            "description": "Provider availability",
             "title": "Providers",
             "type": "object"
           },
           "queued": {
+            "description": "Queued jobs",
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/StaffRunRecord"
             },
             "title": "Queued",
             "type": "array"
           },
           "recent": {
+            "description": "Recently completed jobs",
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/StaffRunRecord"
             },
             "title": "Recent",
             "type": "array"
@@ -1614,12 +1728,13 @@
                 "type": "null"
               }
             ],
+            "description": "Repository Management sync status",
             "title": "Rm Source"
           },
           "running": {
+            "description": "Currently running jobs",
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/StaffRunRecord"
             },
             "title": "Running",
             "type": "array"
@@ -1628,7 +1743,7 @@
             "additionalProperties": {
               "type": "number"
             },
-            "description": "Per-provider spend in USD plus a 'total' key (issue #1289)",
+            "description": "Per-provider spend in USD plus a 'total' key",
             "title": "Spend Today Usd",
             "type": "object"
           }
@@ -1637,9 +1752,1165 @@
         "title": "StaffBoardResponse",
         "type": "object"
       },
+      "StaffCancelResponse": {
+        "additionalProperties": true,
+        "description": "Response model for /api/staff/runs/{run_id}/cancel.",
+        "properties": {
+          "cancelled": {
+            "description": "Whether the cancellation request succeeded",
+            "title": "Cancelled",
+            "type": "boolean"
+          },
+          "run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StaffRunRecord"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Updated run record"
+          }
+        },
+        "required": ["cancelled"],
+        "title": "StaffCancelResponse",
+        "type": "object"
+      },
+      "StaffConsolidateWhen": {
+        "additionalProperties": true,
+        "description": "PR consolidation thresholds.",
+        "properties": {
+          "open_prs": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Open PR count threshold",
+            "title": "Open Prs"
+          },
+          "utilisation_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Fleet utilisation percentage threshold",
+            "title": "Utilisation Pct"
+          }
+        },
+        "title": "StaffConsolidateWhen",
+        "type": "object"
+      },
+      "StaffConsolidationDecision": {
+        "additionalProperties": true,
+        "description": "Consolidation decision injected into runner prompt.",
+        "properties": {
+          "mode": {
+            "default": "",
+            "description": "Consolidation mode: consolidate | serial",
+            "title": "Mode",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "description": "Rationale for the decision",
+            "title": "Reason",
+            "type": "string"
+          },
+          "threshold": {
+            "$ref": "#/components/schemas/StaffConsolidateWhen",
+            "description": "Evaluated thresholds"
+          }
+        },
+        "title": "StaffConsolidationDecision",
+        "type": "object"
+      },
+      "StaffDispatchResponse": {
+        "additionalProperties": true,
+        "description": "Response model for POST /api/staff/{role}/run.",
+        "properties": {
+          "dry_run": {
+            "description": "Whether dispatch was a dry-run preview",
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "forwarded_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Peer hostname if forwarded",
+            "title": "Forwarded To"
+          },
+          "machine": {
+            "description": "Executing machine hostname",
+            "title": "Machine",
+            "type": "string"
+          },
+          "plan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StaffRunPlan"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Plan preview if dry_run=True"
+          },
+          "run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StaffRunRecord"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Submitted run if dry_run=False"
+          }
+        },
+        "required": ["dry_run", "machine"],
+        "title": "StaffDispatchResponse",
+        "type": "object"
+      },
+      "StaffExportUsageResponse": {
+        "additionalProperties": true,
+        "description": "Response model for POST /api/staff/usage/export.",
+        "properties": {
+          "date": {
+            "default": "",
+            "description": "Export date",
+            "title": "Date",
+            "type": "string"
+          },
+          "exported": {
+            "description": "Export details per provider",
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Exported",
+            "type": "array"
+          },
+          "ok": {
+            "description": "Export success status",
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "rm_root": {
+            "default": "",
+            "description": "Repository Management path",
+            "title": "Rm Root",
+            "type": "string"
+          }
+        },
+        "required": ["ok"],
+        "title": "StaffExportUsageResponse",
+        "type": "object"
+      },
+      "StaffHold": {
+        "additionalProperties": true,
+        "description": "Hold rule restricting role dispatch.",
+        "properties": {
+          "active": {
+            "default": true,
+            "description": "Whether hold is active",
+            "title": "Active",
+            "type": "boolean"
+          },
+          "applies_to": {
+            "description": "Roles or repos affected",
+            "items": {
+              "type": "string"
+            },
+            "title": "Applies To",
+            "type": "array"
+          },
+          "id": {
+            "description": "Hold identifier",
+            "title": "Id",
+            "type": "string"
+          },
+          "lifted_when": {
+            "default": "",
+            "description": "Condition or date to lift",
+            "title": "Lifted When",
+            "type": "string"
+          },
+          "set_on": {
+            "default": "",
+            "description": "Timestamp when set",
+            "title": "Set On",
+            "type": "string"
+          },
+          "text": {
+            "description": "Reason for the hold",
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": ["id", "text"],
+        "title": "StaffHold",
+        "type": "object"
+      },
+      "StaffHoldsResponse": {
+        "additionalProperties": true,
+        "description": "Response model for GET and PUT /api/staff/holds.",
+        "properties": {
+          "holds": {
+            "description": "Current holds",
+            "items": {
+              "$ref": "#/components/schemas/StaffHold"
+            },
+            "title": "Holds",
+            "type": "array"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Storage path on disk",
+            "title": "Path"
+          }
+        },
+        "title": "StaffHoldsResponse",
+        "type": "object"
+      },
+      "StaffPricingResponse": {
+        "additionalProperties": true,
+        "description": "Response model for GET /api/staff/usage/pricing.",
+        "properties": {
+          "rows": {
+            "description": "Pricing table rows",
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "title": "StaffPricingResponse",
+        "type": "object"
+      },
+      "StaffRoleBudget": {
+        "additionalProperties": true,
+        "description": "Budget constraints configured for a role.",
+        "properties": {
+          "idle_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Idle timeout in minutes",
+            "title": "Idle Minutes"
+          },
+          "max_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Execution timeout in minutes",
+            "title": "Max Minutes"
+          },
+          "usd_per_day": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Max daily spend in USD",
+            "title": "Usd Per Day"
+          },
+          "usd_per_run": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Max spend per run in USD",
+            "title": "Usd Per Run"
+          }
+        },
+        "title": "StaffRoleBudget",
+        "type": "object"
+      },
+      "StaffRoleLiveness": {
+        "additionalProperties": true,
+        "description": "Liveness status of a scheduled role.",
+        "properties": {
+          "age_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Seconds since last run",
+            "title": "Age Seconds"
+          },
+          "expected_interval_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Expected interval",
+            "title": "Expected Interval Seconds"
+          },
+          "last_attempt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Last attempt timestamp",
+            "title": "Last Attempt"
+          },
+          "last_fired": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Last fired timestamp",
+            "title": "Last Fired"
+          },
+          "last_success": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Last successful run timestamp",
+            "title": "Last Success"
+          },
+          "machine": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Machine reporting this status",
+            "title": "Machine"
+          },
+          "next_fire": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Next scheduled run timestamp",
+            "title": "Next Fire"
+          },
+          "role": {
+            "description": "Role identifier",
+            "title": "Role",
+            "type": "string"
+          },
+          "schedule": {
+            "description": "Schedule expression",
+            "title": "Schedule",
+            "type": "string"
+          },
+          "status": {
+            "description": "Liveness status: ok | late | dead | never",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": ["role", "schedule", "status"],
+        "title": "StaffRoleLiveness",
+        "type": "object"
+      },
+      "StaffRoleSpec": {
+        "additionalProperties": true,
+        "description": "Full role specification returned by the roster.",
+        "properties": {
+          "active_runs": {
+            "default": 0,
+            "description": "Count of currently active runs",
+            "title": "Active Runs",
+            "type": "integer"
+          },
+          "budget": {
+            "$ref": "#/components/schemas/StaffRoleBudget",
+            "description": "Budget parameters"
+          },
+          "chat": {
+            "additionalProperties": true,
+            "description": "Chat parameters",
+            "title": "Chat",
+            "type": "object"
+          },
+          "dispatchable": {
+            "default": true,
+            "description": "Whether role can be dispatched",
+            "title": "Dispatchable",
+            "type": "boolean"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Primary error message",
+            "title": "Error"
+          },
+          "errors": {
+            "description": "Validation errors if invalid",
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Group affiliation",
+            "title": "Group"
+          },
+          "holds": {
+            "description": "Active hold tags",
+            "items": {
+              "type": "string"
+            },
+            "title": "Holds",
+            "type": "array"
+          },
+          "idle_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Idle timeout",
+            "title": "Idle Minutes"
+          },
+          "instructions": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "System instructions",
+            "title": "Instructions"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Default model override",
+            "title": "Model"
+          },
+          "name": {
+            "description": "Role identifier",
+            "title": "Name",
+            "type": "string"
+          },
+          "permissions": {
+            "additionalProperties": true,
+            "description": "Permission definitions",
+            "title": "Permissions",
+            "type": "object"
+          },
+          "persona": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Personality/tone guidelines",
+            "title": "Persona"
+          },
+          "playbook": {
+            "default": "",
+            "description": "Path or name of playbook",
+            "title": "Playbook",
+            "type": "string"
+          },
+          "prompt_template": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Prompt template",
+            "title": "Prompt Template"
+          },
+          "providers": {
+            "description": "Supported provider IDs",
+            "items": {
+              "type": "string"
+            },
+            "title": "Providers",
+            "type": "array"
+          },
+          "reports_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Supervising role identifier",
+            "title": "Reports To"
+          },
+          "repos": {
+            "description": "Allowed or target repositories",
+            "items": {
+              "type": "string"
+            },
+            "title": "Repos",
+            "type": "array"
+          },
+          "retired": {
+            "default": false,
+            "description": "Whether role is retired",
+            "title": "Retired",
+            "type": "boolean"
+          },
+          "retired_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Reason for retirement",
+            "title": "Retired Reason"
+          },
+          "schedule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cron or periodic schedule",
+            "title": "Schedule"
+          },
+          "scope": {
+            "additionalProperties": true,
+            "description": "Execution scope",
+            "title": "Scope",
+            "type": "object"
+          },
+          "source_path": {
+            "default": "",
+            "description": "Path to role definition file",
+            "title": "Source Path",
+            "type": "string"
+          },
+          "strategy": {
+            "$ref": "#/components/schemas/StaffRoleStrategy",
+            "description": "Consolidation strategy"
+          },
+          "summary": {
+            "default": "",
+            "description": "Role summary description",
+            "title": "Summary",
+            "type": "string"
+          },
+          "surface": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Target execution surface",
+            "title": "Surface"
+          },
+          "title": {
+            "default": "",
+            "description": "Human-readable title",
+            "title": "Title",
+            "type": "string"
+          },
+          "valid": {
+            "default": true,
+            "description": "Whether role YAML is valid",
+            "title": "Valid",
+            "type": "boolean"
+          },
+          "window": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Execution window constraint",
+            "title": "Window"
+          }
+        },
+        "required": ["name", "providers", "repos", "budget", "holds"],
+        "title": "StaffRoleSpec",
+        "type": "object"
+      },
+      "StaffRoleStrategy": {
+        "additionalProperties": true,
+        "description": "Role consolidation strategy.",
+        "properties": {
+          "consolidate_when": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StaffConsolidateWhen"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Consolidation thresholds"
+          }
+        },
+        "title": "StaffRoleStrategy",
+        "type": "object"
+      },
+      "StaffRosterResponse": {
+        "additionalProperties": true,
+        "description": "Response for GET /roster.",
+        "properties": {
+          "active_runs": {
+            "description": "Total active runs across roles",
+            "title": "Active Runs",
+            "type": "integer"
+          },
+          "machine": {
+            "description": "Local machine hostname",
+            "title": "Machine",
+            "type": "string"
+          },
+          "providers": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "description": "Provider availability map",
+            "title": "Providers",
+            "type": "object"
+          },
+          "roles": {
+            "description": "Available roles",
+            "items": {
+              "$ref": "#/components/schemas/StaffRoleSpec"
+            },
+            "title": "Roles",
+            "type": "array"
+          }
+        },
+        "required": ["machine", "roles", "providers", "active_runs"],
+        "title": "StaffRosterResponse",
+        "type": "object"
+      },
+      "StaffRunDetailResponse": {
+        "additionalProperties": true,
+        "description": "Response model for /api/staff/runs/{run_id}.",
+        "properties": {
+          "events": {
+            "description": "Execution events",
+            "items": {
+              "$ref": "#/components/schemas/StaffRunEvent"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "run": {
+            "$ref": "#/components/schemas/StaffRunRecord",
+            "description": "Run details"
+          }
+        },
+        "required": ["run"],
+        "title": "StaffRunDetailResponse",
+        "type": "object"
+      },
+      "StaffRunEvent": {
+        "additionalProperties": true,
+        "description": "Event emitted during run execution.",
+        "properties": {
+          "kind": {
+            "description": "Event kind",
+            "title": "Kind",
+            "type": "string"
+          },
+          "seq": {
+            "description": "Sequence number",
+            "title": "Seq",
+            "type": "integer"
+          },
+          "text": {
+            "description": "Event content",
+            "title": "Text",
+            "type": "string"
+          },
+          "ts": {
+            "description": "ISO-8601 timestamp",
+            "title": "Ts",
+            "type": "string"
+          }
+        },
+        "required": ["seq", "ts", "kind", "text"],
+        "title": "StaffRunEvent",
+        "type": "object"
+      },
+      "StaffRunPlan": {
+        "additionalProperties": true,
+        "description": "Execution plan generated by StaffRunner.",
+        "properties": {
+          "argv": {
+            "description": "CLI arguments",
+            "items": {
+              "type": "string"
+            },
+            "title": "Argv",
+            "type": "array"
+          },
+          "branch": {
+            "default": "",
+            "description": "Branch name",
+            "title": "Branch",
+            "type": "string"
+          },
+          "consolidation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StaffConsolidationDecision"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Consolidation plan"
+          },
+          "lease_ritual": {
+            "default": false,
+            "description": "Whether lease rituals are enforced",
+            "title": "Lease Ritual",
+            "type": "boolean"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Model override",
+            "title": "Model"
+          },
+          "prompt": {
+            "default": "",
+            "description": "Prepared prompt",
+            "title": "Prompt",
+            "type": "string"
+          },
+          "provider": {
+            "default": "",
+            "description": "Provider name",
+            "title": "Provider",
+            "type": "string"
+          },
+          "repo": {
+            "default": "",
+            "description": "Repository name",
+            "title": "Repo",
+            "type": "string"
+          },
+          "role": {
+            "default": "",
+            "description": "Role identifier",
+            "title": "Role",
+            "type": "string"
+          },
+          "target_kind": {
+            "default": "prompt",
+            "description": "Target kind",
+            "title": "Target Kind",
+            "type": "string"
+          },
+          "target_ref": {
+            "default": "",
+            "description": "Target reference",
+            "title": "Target Ref",
+            "type": "string"
+          }
+        },
+        "title": "StaffRunPlan",
+        "type": "object"
+      },
+      "StaffRunRecord": {
+        "additionalProperties": true,
+        "description": "Flat row for one staff run.",
+        "properties": {
+          "branch": {
+            "default": "",
+            "description": "Git branch",
+            "title": "Branch",
+            "type": "string"
+          },
+          "cost_method": {
+            "default": "",
+            "description": "Method used to calculate cost",
+            "title": "Cost Method",
+            "type": "string"
+          },
+          "cost_usd": {
+            "default": 0.0,
+            "description": "Recorded cost in USD",
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "created_at": {
+            "description": "ISO-8601 creation timestamp",
+            "title": "Created At",
+            "type": "string"
+          },
+          "ended_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "ISO-8601 end timestamp",
+            "title": "Ended At"
+          },
+          "error": {
+            "default": "",
+            "description": "Error message if failed",
+            "title": "Error",
+            "type": "string"
+          },
+          "exit_code": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Process exit code",
+            "title": "Exit Code"
+          },
+          "failure_class": {
+            "default": "",
+            "description": "Failure classification",
+            "title": "Failure Class",
+            "type": "string"
+          },
+          "id": {
+            "description": "Unique run ID",
+            "title": "Id",
+            "type": "string"
+          },
+          "input_tokens": {
+            "default": 0,
+            "description": "Input tokens consumed",
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "last_line": {
+            "default": "",
+            "description": "Last stdout line captured",
+            "title": "Last Line",
+            "type": "string"
+          },
+          "lease_id": {
+            "default": "",
+            "description": "Fleet lease identifier",
+            "title": "Lease Id",
+            "type": "string"
+          },
+          "machine": {
+            "description": "Machine hostname",
+            "title": "Machine",
+            "type": "string"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Model used",
+            "title": "Model"
+          },
+          "outcome": {
+            "default": "",
+            "description": "Normalised outcome summary",
+            "title": "Outcome",
+            "type": "string"
+          },
+          "output_tokens": {
+            "default": 0,
+            "description": "Output tokens consumed",
+            "title": "Output Tokens",
+            "type": "integer"
+          },
+          "pid": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Worker process PID",
+            "title": "Pid"
+          },
+          "prompt": {
+            "default": "",
+            "description": "Execution prompt",
+            "title": "Prompt",
+            "type": "string"
+          },
+          "provider": {
+            "description": "Provider name",
+            "title": "Provider",
+            "type": "string"
+          },
+          "remediation": {
+            "default": "",
+            "description": "Remediation instructions",
+            "title": "Remediation",
+            "type": "string"
+          },
+          "repo": {
+            "default": "",
+            "description": "Target repository",
+            "title": "Repo",
+            "type": "string"
+          },
+          "requested_by": {
+            "default": "",
+            "description": "Principal or user who requested run",
+            "title": "Requested By",
+            "type": "string"
+          },
+          "retryable": {
+            "default": false,
+            "description": "Whether failure is retryable",
+            "title": "Retryable",
+            "type": "boolean"
+          },
+          "role": {
+            "description": "Role name",
+            "title": "Role",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "ISO-8601 start timestamp",
+            "title": "Started At"
+          },
+          "status": {
+            "default": "queued",
+            "description": "Run status",
+            "title": "Status",
+            "type": "string"
+          },
+          "strategy_mode": {
+            "default": "",
+            "description": "Consolidation strategy mode",
+            "title": "Strategy Mode",
+            "type": "string"
+          },
+          "target_kind": {
+            "default": "prompt",
+            "description": "Target kind: issue | pr | prompt",
+            "title": "Target Kind",
+            "type": "string"
+          },
+          "target_ref": {
+            "default": "",
+            "description": "Target reference",
+            "title": "Target Ref",
+            "type": "string"
+          },
+          "transcript_path": {
+            "default": "",
+            "description": "Path to transcript log",
+            "title": "Transcript Path",
+            "type": "string"
+          },
+          "workdir": {
+            "default": "",
+            "description": "Working directory",
+            "title": "Workdir",
+            "type": "string"
+          }
+        },
+        "required": ["id", "role", "provider", "machine", "created_at"],
+        "title": "StaffRunRecord",
+        "type": "object"
+      },
+      "StaffRunsResponse": {
+        "additionalProperties": true,
+        "description": "Response model for /api/staff/runs.",
+        "properties": {
+          "count": {
+            "description": "Number of runs returned",
+            "title": "Count",
+            "type": "integer"
+          },
+          "runs": {
+            "description": "Matching run rows",
+            "items": {
+              "$ref": "#/components/schemas/StaffRunRecord"
+            },
+            "title": "Runs",
+            "type": "array"
+          }
+        },
+        "required": ["count"],
+        "title": "StaffRunsResponse",
+        "type": "object"
+      },
+      "StaffScheduleResponse": {
+        "additionalProperties": true,
+        "description": "Response model for GET /api/staff/schedule.",
+        "properties": {
+          "enabled": {
+            "description": "Configured state",
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "generated_at": {
+            "description": "ISO-8601 UTC timestamp",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "machine": {
+            "description": "Node hostname",
+            "title": "Machine",
+            "type": "string"
+          },
+          "roles": {
+            "description": "Scheduled roles",
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "running": {
+            "description": "Runtime state",
+            "title": "Running",
+            "type": "boolean"
+          }
+        },
+        "required": ["machine", "generated_at", "enabled", "running"],
+        "title": "StaffScheduleResponse",
+        "type": "object"
+      },
       "StaffSummaryResponse": {
         "additionalProperties": true,
-        "description": "Response model for /api/staff/summary (issue #1289).",
+        "description": "Response model for /api/staff/summary.",
         "properties": {
           "attention": {
             "items": {
@@ -1668,17 +2939,16 @@
             "type": "string"
           },
           "in_flight": {
+            "description": "Runs currently in flight",
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/StaffRunRecord"
             },
             "title": "In Flight",
             "type": "array"
           },
           "liveness_alerts": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/StaffRoleLiveness"
             },
             "title": "Liveness Alerts",
             "type": "array"
@@ -1699,6 +2969,7 @@
           },
           "providers": {
             "additionalProperties": true,
+            "description": "Provider availability",
             "title": "Providers",
             "type": "object"
           },
@@ -1706,6 +2977,7 @@
             "additionalProperties": {
               "type": "integer"
             },
+            "description": "Run count summary in last 24h",
             "title": "Recent 24H",
             "type": "object"
           },
@@ -1721,13 +2993,143 @@
             "additionalProperties": {
               "type": "number"
             },
-            "description": "Per-provider spend in USD plus a 'total' key (issue #1289)",
+            "description": "Per-provider spend in USD plus a 'total' key",
             "title": "Spend Today Usd",
             "type": "object"
           }
         },
         "required": ["generated_at", "hub"],
         "title": "StaffSummaryResponse",
+        "type": "object"
+      },
+      "StaffToggleScheduleResponse": {
+        "additionalProperties": true,
+        "description": "Response model for POST /api/staff/schedule/toggle.",
+        "properties": {
+          "enabled": {
+            "description": "Configured state",
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "running": {
+            "description": "Runtime execution state",
+            "title": "Running",
+            "type": "boolean"
+          }
+        },
+        "required": ["enabled", "running"],
+        "title": "StaffToggleScheduleResponse",
+        "type": "object"
+      },
+      "StaffUsageBudget": {
+        "additionalProperties": true,
+        "description": "Daily budget tracking.",
+        "properties": {
+          "percent_used": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percent Used"
+          },
+          "spent_today_usd": {
+            "default": 0.0,
+            "title": "Spent Today Usd",
+            "type": "number"
+          },
+          "usd_per_day": {
+            "default": 0.0,
+            "title": "Usd Per Day",
+            "type": "number"
+          }
+        },
+        "title": "StaffUsageBudget",
+        "type": "object"
+      },
+      "StaffUsageResponse": {
+        "additionalProperties": true,
+        "description": "Response model for GET /api/staff/usage.",
+        "properties": {
+          "budget": {
+            "$ref": "#/components/schemas/StaffUsageBudget",
+            "description": "Budget status"
+          },
+          "group": {
+            "description": "Grouping dimension",
+            "title": "Group",
+            "type": "string"
+          },
+          "machine": {
+            "default": "",
+            "description": "Node hostname",
+            "title": "Machine",
+            "type": "string"
+          },
+          "rows": {
+            "description": "Aggregated rows",
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "since": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Start timestamp filter",
+            "title": "Since"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/StaffUsageTotals",
+            "description": "Totals across rows"
+          }
+        },
+        "required": ["group"],
+        "title": "StaffUsageResponse",
+        "type": "object"
+      },
+      "StaffUsageTotals": {
+        "additionalProperties": true,
+        "description": "Aggregated usage metrics.",
+        "properties": {
+          "cost_usd": {
+            "default": 0.0,
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "input_tokens": {
+            "default": 0,
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "output_tokens": {
+            "default": 0,
+            "title": "Output Tokens",
+            "type": "integer"
+          },
+          "runs": {
+            "default": 0,
+            "title": "Runs",
+            "type": "integer"
+          },
+          "wall_seconds": {
+            "default": 0.0,
+            "title": "Wall Seconds",
+            "type": "number"
+          }
+        },
+        "title": "StaffUsageTotals",
         "type": "object"
       },
       "StatusResponse": {
@@ -9056,7 +10458,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "title": "Response List Audit Api Staff Audit Get"
+                  "$ref": "#/components/schemas/StaffAuditResponse"
                 }
               }
             },
@@ -9145,9 +10547,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Get Holds Api Staff Holds Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/StaffHoldsResponse"
                 }
               }
             },
@@ -9183,9 +10583,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Put Holds Api Staff Holds Put",
-                  "type": "object"
+                  "$ref": "#/components/schemas/StaffHoldsResponse"
                 }
               }
             },
@@ -9222,9 +10620,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Roster Api Staff Roles Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/StaffRosterResponse"
                 }
               }
             },
@@ -9251,9 +10647,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Roster Api Staff Roster Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/StaffRosterResponse"
                 }
               }
             },
@@ -9345,9 +10739,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response List Runs Api Staff Runs Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/StaffRunsResponse"
                 }
               }
             },
@@ -9407,9 +10799,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Get Run Api Staff Runs  Run Id  Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/StaffRunDetailResponse"
                 }
               }
             },
@@ -9457,9 +10847,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Cancel Run Api Staff Runs  Run Id  Cancel Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/StaffCancelResponse"
                 }
               }
             },
@@ -9554,9 +10942,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Get Schedule Api Staff Schedule Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/StaffScheduleResponse"
                 }
               }
             },
@@ -9594,9 +10980,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Toggle Scheduler Api Staff Schedule Toggle Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/StaffToggleScheduleResponse"
                 }
               }
             },
@@ -9692,9 +11076,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Get Usage Api Staff Usage Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/StaffUsageResponse"
                 }
               }
             },
@@ -9732,9 +11114,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Export Usage Api Staff Usage Export Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/StaffExportUsageResponse"
                 }
               }
             },
@@ -9761,9 +11141,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Get Pricing Api Staff Usage Pricing Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/StaffPricingResponse"
                 }
               }
             },
@@ -9812,9 +11190,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Dispatch Api Staff  Role  Run Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/StaffDispatchResponse"
                 }
               }
             },
@@ -10046,6 +11422,936 @@
         },
         "summary": "Get Usage Table",
         "tags": ["usage-metrics"]
+      }
+    },
+    "/api/v1/staff/audit": {
+      "get": {
+        "description": "Retrieve durable append-only staff audit rows (SC-A8, Issue #1298).",
+        "operationId": "list_audit_api_v1_staff_audit_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "principal",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Principal"
+            }
+          },
+          {
+            "in": "query",
+            "name": "thread_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Thread Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "run_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "action",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 60,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Action"
+            }
+          },
+          {
+            "in": "query",
+            "name": "surface",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 30,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Surface"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Format"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffAuditResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List Audit",
+        "tags": ["staff-v1"]
+      }
+    },
+    "/api/v1/staff/board": {
+      "get": {
+        "description": "Status monitor. With peers configured this is the fleet-wide view (#1195).",
+        "operationId": "board_api_v1_staff_board_get",
+        "parameters": [
+          {
+            "description": "Return only this node's board (used by hub fan-out).",
+            "in": "query",
+            "name": "local",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Return only this node's board (used by hub fan-out).",
+              "title": "Local",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffBoardResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Board",
+        "tags": ["staff-v1"]
+      }
+    },
+    "/api/v1/staff/holds": {
+      "get": {
+        "operationId": "get_holds_api_v1_staff_holds_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffHoldsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Holds",
+        "tags": ["staff-v1"]
+      },
+      "put": {
+        "description": "Replace the holds list. Postcondition: the file on disk equals the response.",
+        "operationId": "put_holds_api_v1_staff_holds_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HoldsBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffHoldsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Put Holds",
+        "tags": ["staff-v1"]
+      }
+    },
+    "/api/v1/staff/roles": {
+      "get": {
+        "operationId": "roster_api_v1_staff_roles_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffRosterResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Roster",
+        "tags": ["staff-v1"]
+      }
+    },
+    "/api/v1/staff/roster": {
+      "get": {
+        "operationId": "roster_api_v1_staff_roster_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffRosterResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Roster",
+        "tags": ["staff-v1"]
+      }
+    },
+    "/api/v1/staff/runs": {
+      "get": {
+        "operationId": "list_runs_api_v1_staff_runs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 60,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 20,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffRunsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List Runs",
+        "tags": ["staff-v1"]
+      }
+    },
+    "/api/v1/staff/runs/{run_id}": {
+      "get": {
+        "operationId": "get_run_api_v1_staff_runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "events",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 500,
+              "minimum": 0,
+              "title": "Events",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffRunDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Run",
+        "tags": ["staff-v1"]
+      }
+    },
+    "/api/v1/staff/runs/{run_id}/cancel": {
+      "post": {
+        "operationId": "cancel_run_api_v1_staff_runs__run_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffCancelResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Cancel Run",
+        "tags": ["staff-v1"]
+      }
+    },
+    "/api/v1/staff/runs/{run_id}/stream": {
+      "get": {
+        "description": "SSE feed of run events. Ends with an ``end`` event when the run finishes.",
+        "operationId": "stream_run_api_v1_staff_runs__run_id__stream_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "After",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Stream Run",
+        "tags": ["staff-v1"]
+      }
+    },
+    "/api/v1/staff/schedule": {
+      "get": {
+        "operationId": "get_schedule_api_v1_staff_schedule_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffScheduleResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Schedule",
+        "tags": ["staff-v1"]
+      }
+    },
+    "/api/v1/staff/schedule/toggle": {
+      "post": {
+        "description": "Toggle the background scheduler on or off (SC-A8, Issue #1298).",
+        "operationId": "toggle_scheduler_api_v1_staff_schedule_toggle_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScheduleToggleBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffToggleScheduleResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Toggle Scheduler",
+        "tags": ["staff-v1"]
+      }
+    },
+    "/api/v1/staff/summary": {
+      "get": {
+        "description": "The one-call brief for Barb and Orchestrator (#1195).\n\nFlat payload: what is in flight fleet-wide, what needs attention (failed or\nblocked in the last 24 h on this node), spend today, provider availability\nper machine, active holds, late/dead scheduled roles (#1209) and the\nroster with schedules.",
+        "operationId": "summary_api_v1_staff_summary_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffSummaryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Summary",
+        "tags": ["staff-v1"]
+      }
+    },
+    "/api/v1/staff/usage": {
+      "get": {
+        "description": "Usage rows for this node. ``since`` defaults to the start of today (UTC).",
+        "operationId": "get_usage_api_v1_staff_usage_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "group",
+            "required": false,
+            "schema": {
+              "default": "provider",
+              "maxLength": 10,
+              "title": "Group",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffUsageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Usage",
+        "tags": ["staff-v1"]
+      }
+    },
+    "/api/v1/staff/usage/export": {
+      "post": {
+        "description": "Append today's per-provider totals to RM ``data/credit_usage.json``.\n\n503 when no Repository_Management checkout (``STAFF_RM_ROOT`` or sibling)\nwith ``scripts/append_credit_usage.py`` is available on this node.",
+        "operationId": "export_usage_api_v1_staff_usage_export_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffExportUsageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Export Usage",
+        "tags": ["staff-v1"]
+      }
+    },
+    "/api/v1/staff/usage/pricing": {
+      "get": {
+        "operationId": "get_pricing_api_v1_staff_usage_pricing_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffPricingResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Pricing",
+        "tags": ["staff-v1"]
+      }
+    },
+    "/api/v1/staff/{role}/run": {
+      "post": {
+        "description": "Dispatch a staff run on this node, or preview it with ``dry_run``.\n\nPrecondition: the role exists and is dispatchable; the provider is allowed\nfor the role; one of issue/pr/prompt is given. Postcondition: on a real\ndispatch a ``queued`` run row exists before the response is returned. When\nthe role carries ``strategy.consolidate_when`` and a repo is given, the\nPR-consolidation decision (#1213) is evaluated first and lands in\n``plan.consolidation`` and the run's ``strategy_mode``.",
+        "operationId": "dispatch_api_v1_staff__role__run_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role",
+            "required": true,
+            "schema": {
+              "title": "Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffDispatchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Dispatch",
+        "tags": ["staff-v1"]
       }
     },
     "/api/version": {

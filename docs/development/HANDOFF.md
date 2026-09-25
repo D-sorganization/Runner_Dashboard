@@ -1,10 +1,52 @@
-# Current handoff — Page usage evidence before pruning (#1302)
+# Current handoff — Staff API response models & OpenAPI contract check (#1296)
 
 Last updated: 2026-09-24
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1302-page-usage-metrics`; PR pending. Issue #1302 (open), epic #1353 / umbrella #1354; DL-#1302.
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1296-staff-openapi-contract`; PR pending. Issue #1296 (open), epic #1347 / umbrella #1354; DL-#1296.
+
+## Work
+
+- `backend/routers/staff_models.py`:
+  - Created strongly typed Pydantic models for all staff endpoints: `StaffRoleSpec`, `StaffRosterResponse`, `StaffRunRecord`, `StaffBoardResponse`, `StaffSummaryResponse`, `StaffRunsResponse`, `StaffRunDetailResponse`, `StaffCancelResponse`, `StaffDispatchResponse`, `StaffAuditResponse`, `StaffHoldsResponse`, `StaffScheduleResponse`, `StaffUsageResponse`, `StaffPricingResponse`, and related subtypes.
+- `backend/routers/staff.py`, `backend/routers/staff_schedule.py`, `backend/routers/staff_usage.py`:
+  - Added explicit `response_model` annotations to every staff API route.
+- `backend/routers/staff_v1.py`:
+  - Created backwards-compatible `/api/v1/staff/*` router mirroring `/api/staff/*` for API version compatibility.
+- `backend/server.py`:
+  - Registered `staff_v1.router`.
+- `frontend/src/lib/openapi.json` & `frontend/src/lib/api-types.ts`:
+  - Regenerated using `scripts/gen-api-client.sh`.
+- `frontend/src/pages/Staff/staffApi.ts`:
+  - Derived all TypeScript types and interfaces directly from generated OpenAPI schemas (`components["schemas"]`).
+- `tests/frontend/test_api_generation_contract.py`:
+  - Added automated contract verification tests ensuring all `/api/staff/*` and `/api/v1/staff/*` routes declare explicit 200/201 response models and detecting deliberate drift.
+- `SPEC.md`: Updated change log and specification entries.
+- `docs/development/DEVELOPMENT_LOG.md`: Added DL-#1296 entry and updated DL-#1302 to shipped.
+
+## Validation
+
+- `pytest tests/frontend/test_api_generation_contract.py tests/api/test_staff*.py`: 51 passed.
+- `node node_modules\typescript\bin\tsc -p tsconfig.app.json`: 0 errors.
+- `npx vitest run`: 123 passed, 1130 passed tests.
+- `ruff check backend/ clients/`: 0 errors.
+- `ruff format --check backend/ clients/`: 0 errors.
+- `mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional`: 0 errors across 186 source files.
+
+## Next
+
+1. Open PR, monitor CI, and auto-squash merge.
+2. Confirm issue #1296 closes and release lease.
+3. Continue 48-hour fleet vigil.
+
+# Previous handoff — Page usage evidence before pruning (#1302)
+
+Last updated: 2026-09-24
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1302-page-usage-metrics`; commit `f28c15a`; PR #1369 (merged). Issue #1302 (closed), epic #1353 / umbrella #1354; DL-#1302.
 
 ## Work
 

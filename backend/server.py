@@ -712,10 +712,12 @@ app.include_router(_orchestrator_api.router)  # Conductor admission gate (issue 
 from routers import staff as _staff_router  # noqa: E402
 from routers import staff_schedule as _staff_schedule_router  # noqa: E402
 from routers import staff_usage as _staff_usage_router  # noqa: E402
+from routers import staff_v1 as _staff_v1_router  # noqa: E402
 
 app.include_router(_staff_router.router)
 app.include_router(_staff_schedule_router.router)  # scheduler, holds, budgets (issue #1196)
 app.include_router(_staff_usage_router.router)  # usage ledger (issue #1200)
+app.include_router(_staff_v1_router.router)  # staff v1 compatibility mount (issue #1296)
 
 # Fleet Coordination API (epic #1192, issue #1229): sessions, messages, claims, briefing.
 from routers import coordination as _coordination_router  # noqa: E402

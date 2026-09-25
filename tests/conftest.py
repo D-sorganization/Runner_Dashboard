@@ -32,6 +32,18 @@ os.environ.setdefault("MPLBACKEND", "Agg")
 # Qt headless backend, for repos that import PyQt/PySide indirectly.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+# Pre-push and pre-commit hooks run pytest with GIT_DIR/GIT_WORK_TREE set in the environment.
+# Strip git plumbing env vars so tests that spawn git in temporary repos don't mutate the parent repo.
+for _git_var in (
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_PREFIX",
+):
+    os.environ.pop(_git_var, None)
+
 import sys  # noqa: E402
 
 REPO_ROOT = Path(__file__).parent.parent.resolve()
