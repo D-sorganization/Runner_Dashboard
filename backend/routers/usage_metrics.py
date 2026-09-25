@@ -50,6 +50,7 @@ TAB_RECOMMENDATIONS: dict[str, tuple[str, str]] = {
     "runner-audit": ("merge", "Merge Runner Audit into Fleet Operations section"),
     "maxwell": ("merge", "SC-D11: Fold standalone Maxwell chat into Staff Console"),
     "agent-dispatch": ("merge", "Fold standalone agent launcher into Staff Console"),
+    "code-requests": ("merge", "Merge Code Requests into Remediation or Backlog"),
     "feature-requests": ("merge", "Merge Feature Requests into Remediation or Backlog"),
     "linear-setup": ("merge", "Merge Linear setup into Settings"),
     "push-settings": ("merge", "Merge Web Push settings into Settings"),

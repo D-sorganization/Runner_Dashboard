@@ -18,7 +18,17 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1327 · SC-C4: Barb follow-up engine: detect stalled, failed, blocked and waiting work; retry, re-route or escalate
+### DL-#1281 · CR-1: Rename Feature Requests → Code Requests with back-compat aliases
+
+- **State:** in_progress
+- **Owner:** local
+- **Issue:** #1281 (epic #1279)
+- **Branch:** `feat/1281-code-requests-rename`
+- **Paths:** `backend/identity.py`, `backend/routers/code_requests.py`, `backend/routers/feature_requests.py`, `backend/routers/usage_metrics.py`, `backend/server.py`, `frontend/src/pages/codeRequestsTypes.ts`, `frontend/src/pages/CodeRequests.tsx`, `frontend/src/pages/CodeRequestsHistory.tsx`, `frontend/src/pages/CodeRequestsPage.tsx`, `frontend/src/pages/FeatureRequests.tsx`, `frontend/src/pages/FeatureRequestsPage.tsx`, `frontend/src/legacy/App.tsx`, `frontend/src/shell/navRegistryData.ts`, `frontend/src/shell/routing.ts`, `frontend/src/shell/RoutedShell.tsx`, `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `tests/api/test_code_requests.py`, `frontend/src/pages/__tests__/CodeRequests.test.tsx`, `frontend/src/pages/__tests__/CodeRequestsPage.test.tsx`, `tests/test_frontend_integrity.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (pytest all passing; 153/153 frontend vitest test suites passing with 1302 tests; npm run typecheck clean; ruff check clean; ruff format clean; mypy clean; bash scripts/gen-api-client.sh --check clean; all files strictly <= 500 lines)
+- **Summary:** Renamed Feature Requests to Code Requests throughout backend and frontend while maintaining complete backward compatibility: (1) Added `/api/code-requests`, `/api/code-requests/templates`, `/api/code-requests/dispatch` routes and preserved `/api/feature-requests*` as thin deprecated aliases returning `Deprecation: true` and `Link: </api/code-requests...>; rel="successor-version"`; (2) Added `code-requests.manage` scope aliased bidirectionally with `feature-requests.manage` in `backend/identity.py`; (3) Idempotently migrated stored history from `feature_requests.json` to `code_requests.json` with `.migrated` marker without deleting original; (4) Added `frontend/src/pages/CodeRequests.tsx`, `CodeRequestsHistory.tsx`, `CodeRequestsPage.tsx`, `codeRequestsTypes.ts` with shims in `FeatureRequests*.tsx`, updated nav tab to `code-requests` ("Code Requests") with redirect from `feature-requests`; (5) Synchronized OpenAPI schema and generated TypeScript client types; (6) Updated docs and test integrity suites.
+- **Next step:** Push branch `feat/1281-code-requests-rename`, open PR with Closes #1281, enable auto-merge, monitor CI to green merge, release lease, and clean up.
 
 ### DL-#1333 · SC-E6: Maintenance in the UI: Maintenance thread plus "Ask Maintenance" row actions on the Fleet page
 

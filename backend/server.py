@@ -132,12 +132,12 @@ from routers import (  # noqa: E402
     autoscaler_pools as _autoscaler_pools_router,
 )  # issue #755
 from routers import client_errors as _client_errors_router  # noqa: E402  # issue #1292
+from routers import code_requests as _code_requests_router  # noqa: E402
 from routers import credentials as _credentials_router  # noqa: E402
 from routers import deployment as _deployment_router  # noqa: E402
 from routers import diagnostics as _diagnostics_router  # noqa: E402
 from routers import dispatch as _dispatch_router  # noqa: E402
 from routers import events as _events_router  # noqa: E402  # issue #863
-from routers import feature_requests as _feature_requests_router  # noqa: E402
 from routers import fleet as _fleet_router  # noqa: E402
 from routers import heavy_tests as _heavy_tests_router  # noqa: E402
 from routers import label_guidance as _label_guidance_router  # noqa: E402  # issue #757
@@ -282,7 +282,7 @@ CPU_HISTORY_MAXLEN = _CPU_HISTORY_MAXLEN
 # ─── Shared State Locks ───────────────────────────────────────────────────────
 _remediation_history_lock: asyncio.Lock = asyncio.Lock()
 # _orchestration_audit_lock moved to orchestration_audit.py (issue #359).
-# Feature-request locks moved to routers/feature_requests.py
+# Code-request locks moved to routers/code_requests.py
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 ORG = os.environ.get("GITHUB_ORG", "D-sorganization")
@@ -693,7 +693,7 @@ app.include_router(_runner_groups_router.router)
 app.include_router(_runner_diagnostics_router.router)
 app.include_router(_runs_workflows_router.router)
 app.include_router(_assistant_router.router)
-app.include_router(_feature_requests_router.router)
+app.include_router(_code_requests_router.router)
 app.include_router(_maxwell_router.router)
 app.include_router(_deployment_router.router)
 app.include_router(_reports_router.router)
@@ -2292,8 +2292,12 @@ DASHBOARD_FAQ: dict[str, str] = {
     "assessments": (
         "The Assessments tab lets you trigger code quality assessments for any repo and view score history."
     ),
+    "code-requests": (
+        "The Code Requests tab dispatches AI agents to plan and execute code requests"
+        " with standards injection (TDD, DbC, DRY, LoD)."
+    ),
     "feature-requests": (
-        "The Feature Requests tab dispatches AI agents to implement new features"
+        "The Feature Requests tab (now Code Requests) dispatches AI agents to plan and execute code requests"
         " with standards injection (TDD, DbC, DRY, LoD)."
     ),
     "maxwell": ("The Maxwell tab shows Maxwell-Daemon status and lets you start/stop the service with confirmation."),

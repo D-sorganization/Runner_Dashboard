@@ -8,6 +8,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { CodeRequestsPage } from "../CodeRequestsPage";
 import { FeatureRequestsPage } from "../FeatureRequestsPage";
 
 afterEach(() => {
@@ -23,7 +24,7 @@ function jsonResponse(body: unknown, init?: ResponseInit): Response {
   });
 }
 
-function mockFeatureRequestFetch() {
+function mockCodeRequestFetch() {
   return vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
     const url = String(input);
     if (url === "/api/repos") {
@@ -31,7 +32,7 @@ function mockFeatureRequestFetch() {
         jsonResponse({ repos: ["Runner_Dashboard", { name: "Tools" }] }),
       );
     }
-    if (url === "/api/feature-requests") {
+    if (url === "/api/code-requests") {
       return Promise.resolve(
         jsonResponse({
           requests: [
@@ -46,7 +47,7 @@ function mockFeatureRequestFetch() {
         }),
       );
     }
-    if (url === "/api/feature-requests/templates") {
+    if (url === "/api/code-requests/templates") {
       if (init?.method === "POST") {
         expect(JSON.parse(String(init.body))).toMatchObject({
           name: "Reusable",
@@ -61,7 +62,7 @@ function mockFeatureRequestFetch() {
         }),
       );
     }
-    if (url === "/api/feature-requests/dispatch") {
+    if (url === "/api/code-requests/dispatch") {
       expect(init?.method).toBe("POST");
       expect(JSON.parse(String(init.body))).toMatchObject({
         repository: "Runner_Dashboard",
@@ -83,11 +84,11 @@ function mockFeatureRequestFetch() {
   });
 }
 
-describe("FeatureRequestsPage", () => {
+describe("CodeRequestsPage", () => {
   it("loads repos, requests, templates, and prompt notes for the native route", async () => {
-    const fetchMock = mockFeatureRequestFetch();
+    const fetchMock = mockCodeRequestFetch();
 
-    render(<FeatureRequestsPage />);
+    render(<CodeRequestsPage />);
 
     await waitFor(() =>
       expect(screen.getAllByText("Runner_Dashboard").length).toBeGreaterThan(0),
@@ -106,46 +107,46 @@ describe("FeatureRequestsPage", () => {
       expect.objectContaining({ headers: expect.any(Headers) }),
     );
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/feature-requests",
+      "/api/code-requests",
       expect.objectContaining({ headers: expect.any(Headers) }),
     );
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/feature-requests/templates",
+      "/api/code-requests/templates",
       expect.objectContaining({ headers: expect.any(Headers) }),
     );
   });
 
-  it("dispatches feature requests through the native page", async () => {
-    const fetchMock = mockFeatureRequestFetch();
+  it("dispatches code requests through the native page", async () => {
+    const fetchMock = mockCodeRequestFetch();
 
-    render(<FeatureRequestsPage />);
+    render(<CodeRequestsPage />);
     await screen.findByText("Starter");
 
     const selects = screen.getAllByRole("combobox");
     fireEvent.change(selects[0], { target: { value: "Runner_Dashboard" } });
     fireEvent.change(selects[1], { target: { value: "codex" } });
     fireEvent.change(
-      screen.getByPlaceholderText("Describe the feature to implement…"),
+      screen.getByPlaceholderText("Describe the code request to plan and execute…"),
       { target: { value: "Make it native" } },
     );
     fireEvent.click(screen.getByRole("button", { name: /Dispatch/i }));
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/feature-requests/dispatch",
+        "/api/code-requests/dispatch",
         expect.anything(),
       ),
     );
   });
 
   it("saves templates and prompt notes through canonical native endpoints", async () => {
-    const fetchMock = mockFeatureRequestFetch();
+    const fetchMock = mockCodeRequestFetch();
 
-    render(<FeatureRequestsPage />);
+    render(<CodeRequestsPage />);
     await screen.findByText("Starter");
 
     fireEvent.change(
-      screen.getByPlaceholderText("Describe the feature to implement…"),
+      screen.getByPlaceholderText("Describe the code request to plan and execute…"),
       { target: { value: "Make it native" } },
     );
     fireEvent.change(screen.getByPlaceholderText("Template name…"), {
@@ -163,7 +164,7 @@ describe("FeatureRequestsPage", () => {
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/feature-requests/templates",
+        "/api/code-requests/templates",
         expect.objectContaining({ method: "POST" }),
       ),
     );
@@ -172,6 +173,21 @@ describe("FeatureRequestsPage", () => {
         "/api/settings/prompt-notes",
         expect.objectContaining({ method: "PUT" }),
       ),
+    );
+  });
+
+  it("FeatureRequestsPage alias mounts identically", async () => {
+    const fetchMock = mockCodeRequestFetch();
+
+    render(<FeatureRequestsPage />);
+
+    await waitFor(() =>
+      expect(screen.getAllByText("Runner_Dashboard").length).toBeGreaterThan(0),
+    );
+    expect(screen.getByRole("option", { name: "Tools" })).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/code-requests",
+      expect.objectContaining({ headers: expect.any(Headers) }),
     );
   });
 });

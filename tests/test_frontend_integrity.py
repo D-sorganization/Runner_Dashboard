@@ -82,6 +82,7 @@ _REQUIRED_FUNCTIONS = [
     "function WorkflowsTab",
     "function CredentialsTab",
     "function AssessmentsTab",
+    "function CodeRequestsTab",
     "function FeatureRequestsTab",
     "function MaxwellTab",
     "function FleetOrchestrationTab",
@@ -688,21 +689,22 @@ def test_credentials_desktop_route_bypasses_legacy_app() -> None:
 
 
 def test_feature_requests_desktop_route_bypasses_legacy_app() -> None:
-    """The Feature Requests desktop tab owns request/template data outside legacy/App.tsx."""
+    """The Code Requests desktop tab owns request/template data outside legacy/App.tsx (CR-1, #1281)."""
     routed_shell = (_FRONTEND_DIR / "src" / "shell" / "RoutedShell.tsx").read_text(
         encoding="utf-8",
     )
-    feature_requests_page = (_FRONTEND_DIR / "src" / "pages" / "FeatureRequestsPage.tsx").read_text(encoding="utf-8")
+    code_requests_page = (_FRONTEND_DIR / "src" / "pages" / "CodeRequestsPage.tsx").read_text(encoding="utf-8")
 
+    assert 'case "code-requests":' in routed_shell
     assert 'case "feature-requests":' in routed_shell
-    assert "return <FeatureRequestsPage />;" in routed_shell
-    assert 'legacyFetch("/api/repos"' in feature_requests_page
-    assert 'legacyFetch("/api/feature-requests"' in feature_requests_page
-    assert 'legacyFetch("/api/feature-requests/templates"' in feature_requests_page
-    assert 'legacyFetch("/api/feature-requests/dispatch"' in feature_requests_page
-    assert 'legacyFetch("/api/settings/prompt-notes"' in feature_requests_page
-    assert 'legacyFetch("/api/prompt-templates"' not in feature_requests_page
-    assert "export function FeatureRequestsPage" in feature_requests_page
+    assert "return <CodeRequestsPage />;" in routed_shell
+    assert 'legacyFetch("/api/repos"' in code_requests_page
+    assert 'legacyFetch("/api/code-requests"' in code_requests_page
+    assert 'legacyFetch("/api/code-requests/templates"' in code_requests_page
+    assert 'legacyFetch("/api/code-requests/dispatch"' in code_requests_page
+    assert 'legacyFetch("/api/settings/prompt-notes"' in code_requests_page
+    assert 'legacyFetch("/api/prompt-templates"' not in code_requests_page
+    assert "export function CodeRequestsPage" in code_requests_page
 
 
 def test_fleet_orchestration_desktop_route_bypasses_legacy_app() -> None:

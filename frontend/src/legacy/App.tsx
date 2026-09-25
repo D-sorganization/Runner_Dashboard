@@ -29,7 +29,7 @@ import { FleetOrchestrationTab } from "../pages/FleetOrchestration"
 import { CredentialsTab } from "../pages/CredentialsPage"
 import { MaxwellTab } from "../pages/MaxwellPage"
 import { RunnerScheduleTab } from "../pages/RunnerSchedule"
-import { FeatureRequestsTab } from "../pages/FeatureRequests"
+import { CodeRequestsTab } from "../pages/CodeRequests"
 import { AnalysisTab } from "../pages/Analysis"
 import { isAnalysisTabKey } from "../lib/analysisTabs"
 import { AlertsCenter } from "../primitives/AlertsCenter"
@@ -577,8 +577,8 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   var assessmentError = ace[0],
     setAssessmentError = ace[1];
   var frs2 = React.useState([]);
-  var featureRequests = frs2[0],
-    setFeatureRequests = frs2[1];
+  var codeRequests = frs2[0],
+    setCodeRequests = frs2[1];
   var frt = React.useState([]);
   var promptTemplates = frt[0],
     setPromptTemplates = frt[1];
@@ -586,8 +586,8 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
   var featureStandards = frstds[0],
     setFeatureStandards = frstds[1];
   var frl = React.useState(false);
-  var featureRequestsLoading = frl[0],
-    setFeatureRequestsLoading = frl[1];
+  var codeRequestsLoading = frl[0],
+    setCodeRequestsLoading = frl[1];
   var pns = React.useState({ notes: "", enabled: true });
   var promptNotes = pns[0],
     setPromptNotes = pns[1];
@@ -1290,17 +1290,17 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
     });
   }
 
-  function fetchFeatureRequests() {
-    setFeatureRequestsLoading(true);
+  function fetchCodeRequests() {
+    setCodeRequestsLoading(true);
     Promise.all([
-      legacyFetch("/api/feature-requests")
+      legacyFetch("/api/code-requests")
         .then(function (r) {
           return r.json();
         })
         .catch(function () {
           return { requests: [] };
         }),
-      legacyFetch("/api/feature-requests/templates")
+      legacyFetch("/api/code-requests/templates")
         .then(function (r) {
           return r.json();
         })
@@ -1308,17 +1308,17 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
           return { templates: [], promptNotes: { notes: "", enabled: true } };
         }),
     ]).then(function (results) {
-      setFeatureRequests(results[0].requests || []);
+      setCodeRequests(results[0].requests || []);
       setPromptTemplates(results[1].templates || []);
       if (results[1].promptNotes) {
         setPromptNotes(results[1].promptNotes);
       }
-      setFeatureRequestsLoading(false);
+      setCodeRequestsLoading(false);
     });
   }
 
-  function dispatchFeatureRequest(params) {
-    return legacyFetch("/api/feature-requests/dispatch", {
+  function dispatchCodeRequest(params) {
+    return legacyFetch("/api/code-requests/dispatch", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
       body: JSON.stringify(params),
@@ -1345,7 +1345,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
         return r.json();
       })
       .then(function (d) {
-        fetchFeatureRequests();
+        fetchCodeRequests();
         return d;
       });
   }
@@ -2405,23 +2405,23 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
           "button",
           {
             className:
-              "tab-btn" + (tab === "feature-requests" ? " active" : ""),
+              "tab-btn" + (tab === "code-requests" || tab === "feature-requests" ? " active" : ""),
             role: "tab",
-            "aria-selected": tab === "feature-requests",
+            "aria-selected": tab === "code-requests" || tab === "feature-requests",
             onClick: function () {
-              setTab("feature-requests");
-              fetchFeatureRequests();
+              setTab("code-requests");
+              fetchCodeRequests();
             },
           },
           I.issue(14),
-          "Feature Requests",
-          featureRequests.length > 0
+          "Code Requests",
+          codeRequests.length > 0
             ? h(
                 "span",
                 {
                   className: "section-badge section-badge--purple section-badge--offset",
                 },
-                featureRequests.length,
+                codeRequests.length,
               )
             : null,
         ),
@@ -2827,18 +2827,18 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
                                           onDispatch: dispatchAssessment,
                                           onRefresh: fetchAssessments,
                                         })
-                                      : tab === "feature-requests"
-                                        ? h(FeatureRequestsTab, {
+                                      : tab === "code-requests" || tab === "feature-requests"
+                                        ? h(CodeRequestsTab, {
                                             repos: repos,
-                                            requests: featureRequests,
+                                            requests: codeRequests,
                                             templates: promptTemplates,
                                             standards: featureStandards,
-                                            loading: featureRequestsLoading,
+                                            loading: codeRequestsLoading,
                                             promptNotes: promptNotes,
-                                            onDispatch: dispatchFeatureRequest,
+                                            onDispatch: dispatchCodeRequest,
                                             onSaveTemplate: savePromptTemplate,
                                             onSavePromptNotes: updatePromptNotes,
-                                            onRefresh: fetchFeatureRequests,
+                                            onRefresh: fetchCodeRequests,
                                           })
                                         : tab === "maxwell"
                                           ? h(MaxwellTab, {
