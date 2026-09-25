@@ -36,15 +36,9 @@ async def test_live_token_streaming_before_process_exit(
     conv_store: ConversationStore,
 ) -> None:
     """Acceptance criterion: first token event is published before process exits."""
-    thread = conv_store.create_thread(
-        title="Live Streaming", role="barb", created_by="alice"
-    )
-    user_msg = conv_store.add_message(
-        thread.id, author_kind="user", author="alice", body_md="Stream test"
-    )
-    placeholder = conv_store.add_message(
-        thread.id, author_kind="role", author="barb", delivery="pending"
-    )
+    thread = conv_store.create_thread(title="Live Streaming", role="barb", created_by="alice")
+    user_msg = conv_store.add_message(thread.id, author_kind="user", author="alice", body_md="Stream test")
+    placeholder = conv_store.add_message(thread.id, author_kind="role", author="barb", delivery="pending")
 
     bus = get_thread_bus()
     event_queue = await bus.subscribe(thread.id)
@@ -56,17 +50,13 @@ async def test_live_token_streaming_before_process_exit(
         # Initial init event
         yield json.dumps({"type": "init", "session_id": "stream_sess_123"}) + "\n"
         # Chunk 1
-        yield json.dumps(
-            {"type": "content_block_delta", "delta": {"text": "Live "}}
-        ) + "\n"
+        yield json.dumps({"type": "content_block_delta", "delta": {"text": "Live "}}) + "\n"
         chunk1_sent.set()
         # Block process exit until test observes first token live on bus
         if not allow_process_exit.wait(timeout=3.0):
             raise TimeoutError("allow_process_exit was not set in time")
         # Chunk 2
-        yield json.dumps(
-            {"type": "content_block_delta", "delta": {"text": "streaming reply."}}
-        ) + "\n"
+        yield json.dumps({"type": "content_block_delta", "delta": {"text": "streaming reply."}}) + "\n"
 
     mock_proc = MagicMock()
     mock_proc.returncode = 0
@@ -107,9 +97,7 @@ async def test_live_token_streaming_before_process_exit(
         assert first_token == "Live "
 
         # CRITICAL ASSERTION: The process must still be running (poll is None, task not done)
-        assert (
-            mock_proc.poll() is None
-        ), "Process must not have exited when first token is published"
+        assert mock_proc.poll() is None, "Process must not have exited when first token is published"
         assert not turn_task.done(), "Turn task must still be in-flight while streaming"
 
         # Now unblock the process to finish emitting chunk 2 and exit
@@ -135,21 +123,13 @@ async def test_live_streaming_non_zero_exit_code_records_failure(
     conv_store: ConversationStore,
 ) -> None:
     """Verifies that non-zero exit code classifies error and records failure properly."""
-    thread = conv_store.create_thread(
-        title="Exit Failure", role="barb", created_by="alice"
-    )
-    user_msg = conv_store.add_message(
-        thread.id, author_kind="user", author="alice", body_md="Fail test"
-    )
-    placeholder = conv_store.add_message(
-        thread.id, author_kind="role", author="barb", delivery="pending"
-    )
+    thread = conv_store.create_thread(title="Exit Failure", role="barb", created_by="alice")
+    user_msg = conv_store.add_message(thread.id, author_kind="user", author="alice", body_md="Fail test")
+    placeholder = conv_store.add_message(thread.id, author_kind="role", author="barb", delivery="pending")
 
     mock_proc = MagicMock()
     mock_proc.returncode = 1
-    mock_proc.stdout = iter(
-        [json.dumps({"type": "content_block_delta", "delta": {"text": "Partial "}})]
-    )
+    mock_proc.stdout = iter([json.dumps({"type": "content_block_delta", "delta": {"text": "Partial "}})])
     mock_proc.stderr = iter(["Fatal error: out of memory"])
     mock_proc.poll.return_value = 1
     mock_proc.wait.return_value = 1
@@ -179,15 +159,9 @@ async def test_live_streaming_cancellation_kills_process(
     conv_store: ConversationStore,
 ) -> None:
     """Verifies that cancelling the in-flight chat turn kills the live subprocess."""
-    thread = conv_store.create_thread(
-        title="Cancel Test", role="barb", created_by="alice"
-    )
-    user_msg = conv_store.add_message(
-        thread.id, author_kind="user", author="alice", body_md="Cancel test"
-    )
-    placeholder = conv_store.add_message(
-        thread.id, author_kind="role", author="barb", delivery="pending"
-    )
+    thread = conv_store.create_thread(title="Cancel Test", role="barb", created_by="alice")
+    user_msg = conv_store.add_message(thread.id, author_kind="user", author="alice", body_md="Cancel test")
+    placeholder = conv_store.add_message(thread.id, author_kind="role", author="barb", delivery="pending")
 
     bus = get_thread_bus()
     event_queue = await bus.subscribe(thread.id)
@@ -196,14 +170,10 @@ async def test_live_streaming_cancellation_kills_process(
     hang_event = threading.Event()
 
     def hanging_stdout() -> Any:
-        yield json.dumps(
-            {"type": "content_block_delta", "delta": {"text": "Start"}}
-        ) + "\n"
+        yield json.dumps({"type": "content_block_delta", "delta": {"text": "Start"}}) + "\n"
         stream_started.set()
         hang_event.wait(timeout=5.0)
-        yield json.dumps(
-            {"type": "content_block_delta", "delta": {"text": "Never reached"}}
-        ) + "\n"
+        yield json.dumps({"type": "content_block_delta", "delta": {"text": "Never reached"}}) + "\n"
 
     mock_proc = MagicMock()
     mock_proc.returncode = None
@@ -247,21 +217,13 @@ async def test_live_streaming_handles_bytes_stdout(
     conv_store: ConversationStore,
 ) -> None:
     """Verifies that bytes emitted on stdout are safely decoded without crashing."""
-    thread = conv_store.create_thread(
-        title="Bytes Test", role="barb", created_by="alice"
-    )
-    user_msg = conv_store.add_message(
-        thread.id, author_kind="user", author="alice", body_md="Bytes test"
-    )
-    placeholder = conv_store.add_message(
-        thread.id, author_kind="role", author="barb", delivery="pending"
-    )
+    thread = conv_store.create_thread(title="Bytes Test", role="barb", created_by="alice")
+    user_msg = conv_store.add_message(thread.id, author_kind="user", author="alice", body_md="Bytes test")
+    placeholder = conv_store.add_message(thread.id, author_kind="role", author="barb", delivery="pending")
 
     mock_proc = MagicMock()
     mock_proc.returncode = 0
-    mock_proc.stdout = iter(
-        [b'{"type": "content_block_delta", "delta": {"text": "Bytes OK"}}\n']
-    )
+    mock_proc.stdout = iter([b'{"type": "content_block_delta", "delta": {"text": "Bytes OK"}}\n'])
     mock_proc.stderr = iter([b"some warning\n"])
     mock_proc.poll.return_value = 0
     mock_proc.wait.return_value = 0

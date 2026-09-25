@@ -110,11 +110,7 @@ class ChatTurnRunner:
         self.conv_store = conv_store or get_conversation_store()
         self.adapters = adapters if adapters is not None else ADAPTERS
         self.pool = pool or get_chat_pool()
-        self.acquire_timeout = (
-            acquire_timeout
-            if acquire_timeout is not None
-            else DEFAULT_CHAT_ACQUIRE_TIMEOUT
-        )
+        self.acquire_timeout = acquire_timeout if acquire_timeout is not None else DEFAULT_CHAT_ACQUIRE_TIMEOUT
 
     def _spawn_cli_process(
         self,
@@ -186,9 +182,7 @@ class ChatTurnRunner:
                     continue
 
                 adapter = self.adapters.get(candidate) or get_adapter(candidate)
-                existing_session = thread.meta.get("provider_sessions", {}).get(
-                    candidate
-                )
+                existing_session = thread.meta.get("provider_sessions", {}).get(candidate)
 
                 if existing_session:
                     result = await self._run_turn_attempt(
@@ -306,9 +300,7 @@ class ChatTurnRunner:
             except (ChatReadOnlyUnsupportedError, ValueError) as exc:
                 # Fail closed and visibly: never fall back to a writable argv (#1484).
                 failure_class = (
-                    "provider_not_read_only"
-                    if isinstance(exc, ChatReadOnlyUnsupportedError)
-                    else "invalid_chat_tools"
+                    "provider_not_read_only" if isinstance(exc, ChatReadOnlyUnsupportedError) else "invalid_chat_tools"
                 )
                 remediation = "Chat with a provider that has a read-only mode, or fix the role's chat.read_only_tools."
                 if update_on_failure:
@@ -349,11 +341,7 @@ class ChatTurnRunner:
             deltas = stream_out.deltas
 
             t_end = time.monotonic()
-            ttft = (
-                (t_first_token - t_start)
-                if t_first_token is not None
-                else (t_end - t_start)
-            )
+            ttft = (t_first_token - t_start) if t_first_token is not None else (t_end - t_start)
             turn_duration = t_end - t_start
 
             raw_combined = "".join(stdout_text)
@@ -373,9 +361,7 @@ class ChatTurnRunner:
                         actor=role.name if role else adapter.provider_id,
                         failure_class=classified.failure_class,
                         retryable=classified.retryable,
-                        detail=classified.remediation
-                        or classified.error
-                        or "Failed to complete reply",
+                        detail=classified.remediation or classified.error or "Failed to complete reply",
                         error=classified.error,
                     )
 
@@ -439,9 +425,7 @@ class ChatTurnRunner:
                         },
                     )
                 except Exception as exc:  # noqa: BLE001
-                    log.warning(
-                        "Failed to persist action proposal %s: %s", action.action, exc
-                    )
+                    log.warning("Failed to persist action proposal %s: %s", action.action, exc)
 
             # Persist provider session id on thread metadata
             if captured_session_id:

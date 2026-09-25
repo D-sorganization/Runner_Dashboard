@@ -83,9 +83,7 @@ class LiveProcessReader:
         """Yield lines from stdout as they arrive until EOF, then await completion."""
         loop = asyncio.get_running_loop()
 
-        self._stderr_thread = threading.Thread(
-            target=self._read_stderr_worker, daemon=True
-        )
+        self._stderr_thread = threading.Thread(target=self._read_stderr_worker, daemon=True)
         self._stderr_thread.start()
 
         self._stdout_thread = threading.Thread(
@@ -108,9 +106,7 @@ class LiveProcessReader:
                     break
         finally:
             if callable(getattr(self.proc, "poll", None)):
-                if self.proc.poll() is None and callable(
-                    getattr(self.proc, "kill", None)
-                ):
+                if self.proc.poll() is None and callable(getattr(self.proc, "kill", None)):
                     try:
                         self.proc.kill()
                     except Exception:  # noqa: BLE001
