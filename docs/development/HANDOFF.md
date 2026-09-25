@@ -1,3 +1,61 @@
+# Current handoff — Staff Console end to end: desktop console and real thread resolution (#1446)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1446`; branch `feat/1446-desktop-staff-console`; PR: see branch; Issue #1446; DL-#1446. Commit: SELF.
+
+## Objective and Status
+
+- Before: `/staff` had no desktop console, and the mobile console invented `thr_<role>` ids, so every send got a 404 and history came from a GET on the POST-only `/messages` route.
+- Now:
+  - `consoleThreads.resolveRoleThread` picks the role's latest non-archived thread (`GET /api/v1/staff/threads?role=`) or creates one (`POST /threads`; Barb = `auto`, others `direct`), and asserts the role is a participant.
+  - `useStaffConsole` holds roster, thread, history (`GET /threads/{id}`), SSE stream, send and approve/deny for both layouts; failures land in `error` with a kind and render through `ConsoleErrorBanner`.
+  - `StaffConsoleDesktop` (Roster | Thread + Composer | collapsible Context) is the default Staff section; the hub sections (Roster, Runs, Assign, Holds) stay as tabs.
+  - `Mobile.tsx` now uses the hook; deep links resolve through it.
+- Verification: `npx vitest run frontend/src/pages` 86 files/673 tests passed; `npx tsc -p tsconfig.app.json --noEmit` 0 errors.
+- CI's 500-line cap covers `frontend/src/` tests: the console-default test lives in `pages/__tests__/StaffPageConsole.test.tsx`, which keeps `Staff.test.tsx` at 500 lines.
+
+## Next Steps
+
+1. Land the PR through CI (auto-merge squash).
+2. #1341 (D10 e2e): drive a real send → reply on `/staff` now that threads resolve.
+
+# Current handoff — Projects: fleet-wide prioritised status and untracked-work report (#1434)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/fleet-project-tracking`; Issue #1434; DL-#1434.
+- Worktree `_wt_claude_rd_tracking` on OGLaptop; PR #1441 (auto-merge armed); companion Repository_Management#1761.
+
+## Objective and Status
+
+- One prioritised status view of every fleet project, plus the fleet-curator worklist of untracked work.
+- Implemented: `backend/projects/priorities.py`, `coverage.py`, `rollup.py`; `service.fleet_overview`,
+  `load_priorities`, `fetch_open_items`, `fetch_org_repos`; routes `/api/projects` (+summary),
+  `/api/projects/priorities`, `/api/projects/untracked`; `config/projects.json` now lists all active org repos;
+  frontend `PriorityBadge`, `CoverageDetails`, `FleetSummaryBar`; regenerated OpenAPI contract.
+- Decisions: priority lives centrally in Repository_Management (owner-set, fleet-wide), charters stay per repo;
+  coverage is deterministic so the curator role only judges, never discovers.
+
+## Validation
+
+- `python -m pytest tests/api/test_projects_router.py tests/api/test_projects_tracking.py` → 36 passed.
+- `npx vitest run frontend/src/pages/__tests__/Projects.test.tsx` → 7 passed; `npx tsc --noEmit -p tsconfig.app.json` clean.
+- `ruff check`, `ruff format --check`, `mypy backend/projects backend/routers/projects.py` clean.
+- `bash scripts/gen-api-client.sh` regenerated `openapi.json` / `api-types.ts` (adds the two new routes only).
+
+## Next Steps
+
+1. Land the PR through CI (auto-merge squash).
+2. Repository_Management: `fleet-curator` role + `config/project_priorities.yaml` from the owner interview.
+3. Charter PRs for the repositories that had none (fleet charter sweep drafts).
+
+---
+
 # Current handoff — SC-E7: Maintenance safety tests and gates (#1344)
 
 Last updated: 2026-09-25

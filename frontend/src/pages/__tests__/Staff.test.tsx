@@ -229,8 +229,8 @@ describe("StaffPage", () => {
   it("renders roster cards with installed-provider badges and state", async () => {
     stubFetch();
     render(<StaffPage />);
-    await waitFor(() => expect(screen.getByTestId("role-card-night-watch")).toBeInTheDocument());
-    const card = screen.getByTestId("role-card-night-watch");
+    fireEvent.click(await screen.findByRole("tab", { name: "Roster" })); // Console is the default (#1446)
+    const card = await screen.findByTestId("role-card-night-watch");
     expect(within(card).getByText("Night Watch")).toBeInTheDocument();
     expect(within(card).getByText("claude · installed")).toBeInTheDocument();
     expect(within(card).getByText("codex")).toBeInTheDocument();
@@ -246,6 +246,7 @@ describe("StaffPage", () => {
   it("roster shows the consolidation threshold only for roles with a strategy", async () => {
     stubFetch();
     render(<StaffPage />);
+    fireEvent.click(await screen.findByRole("tab", { name: "Roster" }));
     await waitFor(() => expect(screen.getByTestId("role-card-pr-remediator")).toBeInTheDocument());
     expect(screen.getByTestId("role-strategy-pr-remediator")).toHaveTextContent(
       "consolidate when open PRs ≥ 6 and utilisation ≥ 70%",

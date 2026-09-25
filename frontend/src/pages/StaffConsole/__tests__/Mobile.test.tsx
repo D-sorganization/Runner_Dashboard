@@ -15,6 +15,17 @@ import "@testing-library/jest-dom/vitest";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+// Thread resolution hits the backend (#1446); keep it hermetic.
+const threadApi = vi.hoisted(() => ({
+  fetchThreads: vi.fn(),
+  fetchThreadMessages: vi.fn(),
+  fetchRoster: vi.fn(),
+}));
+vi.mock("../../Staff/staffApi", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../Staff/staffApi")>()),
+  ...threadApi,
+}));
+
 import { StaffConsoleMobile } from "../Mobile";
 import type { StaffRoleItem } from "../types";
 import type { ThreadInfo, ThreadMessage } from "../threadTypes";
@@ -118,6 +129,9 @@ describe("StaffConsoleMobile (SC-D8)", () => {
     } as Location;
 
     vi.spyOn(window.history, "pushState").mockImplementation(() => {});
+    threadApi.fetchThreads.mockResolvedValue({ threads: [MOCK_BARB_THREAD] });
+    threadApi.fetchThreadMessages.mockResolvedValue({ messages: [] });
+    threadApi.fetchRoster.mockResolvedValue({ roles: MOCK_ROLES });
   });
 
   afterEach(() => {
@@ -165,6 +179,27 @@ describe("StaffConsoleMobile (SC-D8)", () => {
 
     expect(screen.getByText("Conversation with Barb")).toBeInTheDocument();
     expect(screen.getByText("Hello! I am Barb. How can I help you today?")).toBeInTheDocument();
+  });
+
+  it("opens the role's real backend thread, not an invented id", async () => {
+    const onOpenThread = vi.fn();
+    render(<StaffConsoleMobile roles={MOCK_ROLES} onOpenThread={onOpenThread} />);
+
+    fireEvent.click(screen.getByTestId("staff-mobile-ask-barb"));
+
+    await waitFor(() => expect(onOpenThread).toHaveBeenCalledWith("thread-barb-auto"));
+    expect(threadApi.fetchThreads).toHaveBeenCalledWith({ role: "barb" });
+  });
+
+  it("stays on the roster and shows an alert when the thread cannot be opened", async () => {
+    threadApi.fetchThreads.mockRejectedValue(new Error("conversations unavailable"));
+    render(<StaffConsoleMobile roles={MOCK_ROLES} />);
+
+    fireEvent.click(screen.getByTestId("staff-mobile-role-architect"));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("conversations unavailable");
+    expect(screen.getByTestId("staff-mobile-roster")).toBeInTheDocument();
+    expect(screen.queryByTestId("staff-mobile-thread")).not.toBeInTheDocument();
   });
 
   it("navigates back to the roster view when the back button is clicked", async () => {
