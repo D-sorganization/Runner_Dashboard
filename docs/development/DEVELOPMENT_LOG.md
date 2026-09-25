@@ -18,18 +18,31 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1307 · SC-B4: Chat-turn execution path: fast replies with per-provider session resume, no worktree
+### DL-#1322 · SC-E5: Stalled-job detection and remediation playbooks for the Maintenance role
 
 - **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1322 (epic #1351 / umbrella #1354)
+- **Branch:** `feat/1322-stalled-job-playbooks`
+- **PR:** (will be updated)
+- **Paths:** `backend/staff/maintenance_detect.py`, `backend/staff/maintenance_playbooks.py`, `backend/routers/staff_maintenance.py`, `backend/server.py`, `tests/unit/test_staff_maintenance_detect.py`, `tests/api/test_staff_maintenance_api.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (`pytest tests/unit/test_staff_maintenance_detect.py tests/api/test_staff_maintenance_api.py` 19 passed; ruff clean; mypy 0 errors; all files <= 500 lines)
+- **Summary:** Implemented 5 diagnostic detectors (`detect_queued_too_long`, `detect_running_past_p95`, `detect_wedged_listener`, `detect_offline_with_job`, `detect_ghost_runners`) with fault isolation in `backend/staff/maintenance_detect.py`. Implemented automated remediation engine in `backend/staff/maintenance_playbooks.py` adhering to owner decision policy: autonomous execution for low-risk issues (restart listener, cancel+rerun stale queue, clean worktrees) capped at 3/host/hour via `SelfHealThrottleTracker`; repeat failures escalate through Barb; medium/high-risk issues generate `ActionProposalRecord` and `WorkItemStore` entries awaiting operator approval. Self-heal execution and proposals post to dedicated Maintenance conversation thread and log to `staff_audit`. Mounted REST endpoints `POST /api/v1/staff/maintenance/scan` and `POST /api/v1/staff/maintenance/remediate` in `backend/routers/staff_maintenance.py`.
+- **Next step:** Run pre-commit checks, open PR, dispatch CI, auto-merge, and close issue #1322.
+
+### DL-#1307 · SC-B4: Chat-turn execution path: fast replies with per-provider session resume, no worktree
+
+- **State:** shipped
 - **Owner:** antigravity
 - **Issue:** #1307 (epic #1346 / umbrella #1354)
 - **Branch:** `feat/1307-chat-turn-execution-path`
 - **PR:** #1398
 - **Paths:** `backend/staff/chat.py`, `backend/staff/adapters.py`, `backend/staff/conversations.py`, `backend/staff/conversation_models.py`, `backend/staff/conversation_migrations.py`, `backend/routers/staff_threads.py`, `tests/unit/test_staff_chat.py`, `tests/api/test_staff_chat_turns.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
-- **Last verified:** 2026-09-25 (`pytest tests/unit/test_staff_chat.py` 13 passed; `pytest tests/api/test_staff_chat_turns.py` 4 passed; full staff test suite 358 passed; ruff clean; mypy 0 errors; all files <= 500 lines)
+- **Last verified:** 2026-09-25 (shipped in PR #1398)
 - **Summary:** Implemented conversational chat turn execution engine (`backend/staff/chat.py`) in read-only scratch directories without git worktree checkout. Added provider session extraction and persistence (`meta.provider_sessions`), multi-turn session resumption (`--resume`), fallback to history replay under 4000-token budget, chat concurrency pool with reserved slots for Barb (SC-C6), reply contract parsing with action proposal creation, and background turn execution on message post.
-- **Next step:** Merge origin/main, verify CI quality gates, auto-merge, and close issue #1307.
+- **Next step:** None (shipped in PR #1398).
 
 ### DL-#1336 · SC-F7: Rate limits and spend guards on staff conversation and dispatch APIs
 

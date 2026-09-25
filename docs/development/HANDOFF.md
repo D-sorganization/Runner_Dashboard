@@ -1,4 +1,64 @@
-# Current handoff — SC-B4: Chat-turn execution path: fast replies with per-provider session resume, no worktree (#1307)
+# Current handoff — SC-E5: Stalled-Job Detection and Remediation Playbooks for the Maintenance Role (#1322)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1322-stalled-job-playbooks`; Issue #1322; DL-#1322; PR (to be opened).
+
+## Objective and Status
+
+- SC-E5: Stalled-job detection and remediation playbooks for the Maintenance role.
+- Status: Fully implemented with TDD; 19 tests passing across unit and API suites; pre-commit checks passing.
+
+## Files and Decisions
+
+- `backend/staff/maintenance_detect.py`:
+  - Defined `DetectionIssue` and `DetectorScanResult` models.
+  - Implemented 5 diagnostic detectors:
+    1. `detect_queued_too_long`: queued > 30m with matching idle runners.
+    2. `detect_running_past_p95`: in-progress runs exceeding historical p95 × 3 or 120m fallback (medium risk).
+    3. `detect_wedged_listener`: online & busy runners whose local listener log mtime has not updated for > 300s (low risk, self-heal eligible).
+    4. `detect_offline_with_job`: runners offline in GitHub with assigned unresolved jobs (medium risk).
+    5. `detect_ghost_runners`: runner registrations missing from local fleet inventory or offline > 7 days (high risk).
+  - Implemented `run_maintenance_detectors`: fault-isolated diagnostic runner executing detectors in isolated try/except blocks and recording partial detector errors without failing the overall scan.
+- `backend/staff/maintenance_playbooks.py`:
+  - `SelfHealThrottleTracker`: thread-safe rate-limiter enforcing owner decision policy (max 3 self-heal actions per host per hour, repeat failure tracking on the same target within 1 hour).
+  - `get_or_create_maintenance_thread`: retrieves or initializes the dedicated "Fleet Maintenance" direct conversation thread.
+  - `remediate_issue`:
+    - Low-risk eligible issues (restart wedged listener, cancel + rerun stale queued job, clean orphaned worktrees) execute autonomously via `execute_action`, post system notifications to the Maintenance conversation thread, advance work item state (`open` -> `in_progress` -> `done`), and audit in `staff_audit`.
+    - Repeat failure on the same target or throttle trips escalate through Barb: posts escalation message, creates an `ActionProposalRecord` with `risk=medium`, advances work item to `escalated`, and audits.
+    - Medium and high-risk issues create `ActionProposalRecord` in `proposed` state, post proposal card to the Maintenance thread, and track in `WorkItemStore` in `open` state awaiting operator approval.
+- `backend/routers/staff_maintenance.py`:
+  - Mounted `POST /api/v1/staff/maintenance/scan` (scoped `staff.read`).
+  - Mounted `POST /api/v1/staff/maintenance/remediate` (scoped `fleet.maintain`).
+- `backend/server.py`:
+  - Registered and mounted `_staff_maintenance_router` under prefix `/api/v1/staff`.
+- `tests/unit/test_staff_maintenance_detect.py`:
+  - 13 unit tests verifying all 5 detectors, fault isolation, self-heal execution, 3/host/hour throttling, repeat failure escalation, and proposal generation.
+- `tests/api/test_staff_maintenance_api.py`:
+  - 6 integration tests verifying scan endpoint, self-heal remediation endpoint, proposal remediation endpoint, permissions, and invalid payload handling.
+
+## Validation
+
+- `pytest tests/unit/test_staff_maintenance_detect.py tests/api/test_staff_maintenance_api.py`: 19 passed in 2.40s.
+- Full staff test suite: 410 passed in 96.07s.
+- `ruff check .`: 100% clean.
+- `ruff format --check .`: Clean.
+- `mypy`: 0 errors across all touched modules.
+- Line limits: All new and modified files strictly <= 500 lines (`backend/staff/maintenance_detect.py`: 351, `backend/staff/maintenance_playbooks.py`: 323, `backend/routers/staff_maintenance.py`: 78, `tests/unit/test_staff_maintenance_detect.py`: 410, `tests/api/test_staff_maintenance_api.py`: 229).
+
+## Next Steps
+
+1. Commit changes to `feat/1322-stalled-job-playbooks`.
+2. Push branch to `origin`.
+3. Open pull request targeting `main`.
+4. Dispatch CI workflow and enable auto-merge.
+5. Post completion receipt on #1322 and release lease.
+
+---
+
+## Prior handoff — SC-B4: Chat-Turn Execution Path: Fast Replies with Per-Provider Session Resume, No Worktree (#1307)
 
 Last updated: 2026-09-25
 
@@ -184,7 +244,6 @@ Last updated: 2026-09-25
 1. Verify CI passes on PR #1396.
 2. Ensure auto-merge merges branch into main.
 3. Release lease on issue #1313.
->>>>>>> origin/main
 
 ---
 

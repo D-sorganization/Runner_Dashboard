@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -147,3 +148,86 @@ def test_maintenance_blast_radius_rejection_api(client: TestClient) -> None:
     assert decide_data["state"] == "failed"
     assert decide_data["execution_result"]["success"] is False
     assert "blast-radius" in decide_data["execution_result"]["error"]
+
+
+def test_maintenance_scan_api(client: TestClient) -> None:
+    now = 1770000000.0
+    runs = [
+        {
+            "id": 801,
+            "repo": "Runner_Dashboard",
+            "status": "queued",
+            "created_at_ts": now - 3600,
+            "labels": ["self-hosted", "linux"],
+        }
+    ]
+    runners = [
+        {
+            "name": "idle-runner-1",
+            "status": "online",
+            "busy": False,
+            "labels": ["self-hosted", "linux"],
+            "host": "local-node",
+        }
+    ]
+
+    headers = {"X-Requested-With": "XMLHttpRequest"}
+    with patch("time.time", return_value=now):
+        res = client.post(
+            "/api/v1/staff/maintenance/scan",
+            json={"runs": runs, "runners": runners, "known_inventory": ["idle-runner-1"]},
+            headers=headers,
+        )
+        assert res.status_code == 200, res.text
+        data = res.json()
+        assert "issues" in data
+        assert len(data["issues"]) >= 1
+        assert data["issues"][0]["detector"] == "queued_too_long"
+
+
+def test_maintenance_remediate_self_heal_api(client: TestClient) -> None:
+    headers = {"X-Requested-With": "XMLHttpRequest"}
+    with patch("staff.maintenance_playbooks.execute_maintenance") as mock_exec:
+        from staff.actions import ActionResult
+
+        mock_exec.return_value = ActionResult(success=True, result={"status": "restarted"})
+        res = client.post(
+            "/api/v1/staff/maintenance/remediate",
+            json={
+                "issue_id": "wedged_listener:runner-99",
+                "detector": "wedged_listener",
+                "severity": "low",
+                "target": "runner-99",
+                "host": "local-node",
+                "suggested_action": "maintenance.runner_restart",
+                "risk_class": "low",
+                "self_heal_eligible": True,
+            },
+            headers=headers,
+        )
+        assert res.status_code == 200, res.text
+        data = res.json()
+        assert data["status"] == "self_healed"
+        assert data["action"] == "maintenance.runner_restart"
+
+
+def test_maintenance_remediate_proposal_api(client: TestClient) -> None:
+    headers = {"X-Requested-With": "XMLHttpRequest"}
+    res = client.post(
+        "/api/v1/staff/maintenance/remediate",
+        json={
+            "issue_id": "ghost_runners:runner-ghost",
+            "detector": "ghost_runners",
+            "severity": "high",
+            "target": "runner-ghost",
+            "host": "unknown-node",
+            "suggested_action": "maintenance.fleet_control",
+            "risk_class": "high",
+            "self_heal_eligible": False,
+        },
+        headers=headers,
+    )
+    assert res.status_code == 200, res.text
+    data = res.json()
+    assert data["status"] == "proposed"
+    assert data["proposal_id"] is not None
