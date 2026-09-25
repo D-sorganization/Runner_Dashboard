@@ -24,25 +24,77 @@ reachable from any live state and `abandoned` from `parked`.
 - **Owner:** antigravity
 - **Issue:** #1307 (epic #1346 / umbrella #1354)
 - **Branch:** `feat/1307-chat-turn-execution-path`
-- **PR:** (pending)
+- **PR:** #1398
 - **Paths:** `backend/staff/chat.py`, `backend/staff/adapters.py`, `backend/staff/conversations.py`, `backend/staff/conversation_models.py`, `backend/staff/conversation_migrations.py`, `backend/routers/staff_threads.py`, `tests/unit/test_staff_chat.py`, `tests/api/test_staff_chat_turns.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (`pytest tests/unit/test_staff_chat.py` 13 passed; `pytest tests/api/test_staff_chat_turns.py` 4 passed; full staff test suite 358 passed; ruff clean; mypy 0 errors; all files <= 500 lines)
 - **Summary:** Implemented conversational chat turn execution engine (`backend/staff/chat.py`) in read-only scratch directories without git worktree checkout. Added provider session extraction and persistence (`meta.provider_sessions`), multi-turn session resumption (`--resume`), fallback to history replay under 4000-token budget, chat concurrency pool with reserved slots for Barb (SC-C6), reply contract parsing with action proposal creation, and background turn execution on message post.
-- **Next step:** Open PR, verify CI quality gates, auto-merge, and close issue #1307.
+- **Next step:** Merge origin/main, verify CI quality gates, auto-merge, and close issue #1307.
+
+### DL-#1336 · SC-F7: Rate limits and spend guards on staff conversation and dispatch APIs
+
+- **State:** shipped
+- **Owner:** antigravity
+- **Issue:** #1336 (epic #1352 / umbrella #1354)
+- **Branch:** `feat/1336-rate-limits-spend-guards`
+- **PR:** #1399
+- **Paths:** `backend/staff/rate_limit.py`, `backend/staff/budget.py`, `backend/staff/loop_guard.py`, `backend/staff/conversation_models.py`, `backend/routers/staff_threads.py`, `backend/routers/staff.py`, `SPEC.md`, `tests/api/test_staff_spend_and_rate_limits.py`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (shipped in PR #1399)
+- **Summary:** Implemented per-principal token-bucket limits on message send (30/min) and dispatch (10/hour) returning 429 with Retry-After and fail-open/fail-closed storage error handling. Extended BudgetGuard to track chat turn spend against usd_per_day, producing fixed system messages upon exhaustion and notifying Barb. Added LoopGuard detecting > N consecutive agent turns without user messages to pause threads and request owner input.
+- **Next step:** None (shipped in PR #1399).
+
+### DL-#1321 · SC-E3: Maintenance action catalogue: typed, allowlisted fleet operations with preflight, dry-run and verification
+
+- **State:** shipped
+- **Owner:** antigravity
+- **Issue:** #1321 (epic #1351 / umbrella #1354)
+- **Branch:** `feat/1321-maintenance-catalogue`
+- **PR:** #1400
+- **Paths:** `backend/staff/maintenance.py`, `backend/staff/actions.py`, `backend/staff/action_executors.py`, `tests/unit/test_staff_maintenance.py`, `tests/api/test_staff_maintenance_api.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (shipped in PR #1400)
+- **Summary:** Implemented typed maintenance operations with safety rails (`backend/staff/maintenance.py`) integrated into `ActionRegistry` (`backend/staff/actions.py`, `backend/staff/action_executors.py`). Registered 13 maintenance actions: `maintenance.runner_start`, `maintenance.runner_stop`, `maintenance.runner_restart`, `maintenance.runner_drain`, `maintenance.group_start`, `maintenance.group_stop`, `maintenance.fleet_control`, `maintenance.queue_purge_stale`, `maintenance.run_cancel`, `maintenance.run_rerun`, `maintenance.trim_worktrees`, `maintenance.vacuum_sqlite`, and `maintenance.diagnose`. Enforced preflight checks (busy runners require drain before stop/restart unless `force=True`), blast-radius bounds (`max_count <= 10`), single-host restriction on disruptive operations (`fleet_control` disallows `host="all"`), cooldown tracker preventing rapid consecutive operations per action and target, dry-run planning returning detailed action plans without side effects, per-target partial failure aggregation, and SC-A8 SQLite audit logging. Verification handlers check real runner status (`stopped`, `online`, `active`) and raise `MaintenanceVerificationError` on mismatch.
+- **Next step:** None (shipped in PR #1400).
+
+### DL-#1313 · SC-B6: Action proposals from conversations with risk-based approval gates
+
+- **State:** shipped
+- **Owner:** antigravity
+- **Issue:** #1313 (epic #1348 / umbrella #1354)
+- **Branch:** `feat/1313-action-proposals`
+- **PR:** #1396
+- **Paths:** `backend/staff/actions.py`, `backend/staff/action_executors.py`, `backend/staff/conversation_models.py`, `backend/staff/conversations.py`, `backend/routers/staff_proposals.py`, `backend/routers/assistant.py`, `tests/unit/test_staff_actions.py`, `tests/api/test_staff_proposals_api.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-24
+- **Last verified:** 2026-09-24 (shipped in PR #1396)
+- **Summary:** Replaced legacy stubs with unified `ActionRegistry` (`staff/actions.py`, `staff/action_executors.py`); approval policies (`read`/`low` auto-execute, `medium` operator approve with `staff.approve` scope, `high`/`owner-only` owner approve); 24h proposal expiry and terminal replay protection; role permission gating (unauthorized roles rejected with 403 Forbidden); post-execution verifiers validating actual state changes; dispatched runs and action outcomes post `action_result` and `run_card` messages back to conversation threads (SC-B7), fully audited in `staff_audit` (SC-A8). Mounted REST endpoints in `backend/routers/staff_proposals.py` under `/api/v1/staff`: `GET /api/v1/staff/actions`, `GET /api/v1/staff/actions/{name}`, `POST /api/v1/staff/proposals`, `POST /api/v1/staff/proposals/{id}/decide` (with immediate execution option), and `POST /api/v1/staff/proposals/{id}/execute`.
+- **Next step:** None (shipped in PR #1396).
+
+### DL-#1334 · SC-F5: External Agent Connection Guides & Troubleshooting
+
+- **State:** shipped
+- **Owner:** antigravity
+- **Issue:** #1334 (epic #1352 / umbrella #1354)
+- **Branch:** `docs/1334-agent-connection-guides`
+- **PR:** #1397
+- **Paths:** `docs/agents/claude.md`, `docs/agents/codex.md`, `docs/agents/grok.md`, `docs/agents/connect.md`, `docs/staff-hub.md`, `SPEC.md`, `tests/test_agent_connection_docs.py`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (shipped in PR #1397)
+- **Summary:** Authored external client connection guides for Claude Code / Claude Cowork (`docs/agents/claude.md`), Codex CLI (`docs/agents/codex.md`), and Grok Bot (`docs/agents/grok.md`). Updated `docs/agents/connect.md` with client guide navigation index, complete 25-tool fleet MCP reference table, and SC-F3 classified error troubleshooting guide. Added cross-references in `docs/staff-hub.md` and updated `SPEC.md` SC-F5 specification. Added automated documentation validation tests.
+- **Next step:** None (shipped in PR #1397).
 
 ### DL-#1323 · SC-F4: Fleet MCP tools for staff conversations, work items, approvals and cancel
 
-- **State:** in_progress
+- **State:** shipped
 - **Owner:** antigravity
 - **Issue:** #1323 (epic #1352 / umbrella #1354)
 - **Branch:** `feat/1323-fleet-mcp-staff`
-- **PR:** (pending)
+- **PR:** #1395
 - **Paths:** `clients/fleet/fleet_client.py`, `clients/fleet/fleet_validators.py`, `clients/fleet/fleet_tools.py`, `clients/fleet/fleet_mcp.py`, `backend/routers/staff_proposals.py`, `backend/routers/staff_threads.py`, `backend/server.py`, `tests/api/test_staff_proposals_api.py`, `tests/clients/test_fleet_client.py`, `tests/clients/test_fleet_mcp.py`, `tests/clients/test_fleet_cli.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-24
-- **Last verified:** 2026-09-24 (`pytest tests/clients` 121 passed; `pytest tests/api/test_staff_proposals_api.py` 2 passed; ruff clean; mypy 0 errors; all modules <= 500 lines)
+- **Last verified:** 2026-09-24 (shipped in PR #1395)
 - **Summary:** Exposed 9 staff tools in `fleet_mcp` and `fleetctl`: `staff_threads_list`, `staff_thread_open`, `staff_message_send`, `staff_thread_read`, `staff_thread_wait`, `staff_run_cancel`, `staff_work_items`, `staff_approvals_list`, `staff_approval_decide`. Standardized SC-F3 error envelope for tool errors and implemented idempotent request retries for network/5xx errors on idempotent calls. Added action proposal review and decision endpoints `GET/POST /api/v1/staff/proposals`.
-- **Next step:** Open PR, verify CI, auto-merge, and release lease on #1323.
+- **Next step:** None (shipped in PR #1395).
 
 ### DL-#1316 · SC-C3: Work-item ledger: every request Barb (or anyone) dispatches is tracked to a terminal state
 

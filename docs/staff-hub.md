@@ -399,6 +399,7 @@ does not repeat it.
 ## Three-node fleet acceptance (#1273)
 
 The Staff Hub operates across three primary hardware nodes:
+
 1. **DeskComputer** — The dedicated fleet scheduler (`STAFF_SCHEDULER_ENABLED=1`).
 2. **OGLaptop** — Worker node (`STAFF_SCHEDULER_ENABLED=0`). Runbook: [OGLaptop worker runbook](operations/oglaptop-staff-worker.md).
 3. **ControlTower** — Worker node (`STAFF_SCHEDULER_ENABLED=0`). Runbook: [ControlTower worker runbook](operations/controltower-staff-worker.md).
@@ -415,21 +416,22 @@ The fleet is accepted when all three nodes pass `--run-ad-hoc --expect-sha <main
 
 ### Fleet Qualification Matrix
 
-| Dimension | DeskComputer | OGLaptop | ControlTower |
-| --- | --- | --- | --- |
-| **Role** | Scheduler | Worker | Worker |
-| **`STAFF_SCHEDULER_ENABLED`** | `1` | `0` | `0` |
-| **Deployment** | 4.10.0+ on loopback `:8321` | 4.10.0+ on loopback `:8321` | 4.10.0+ on loopback `:8321` |
-| **Live RM Source** | `~/staff-repos/Repository_Management` | `~/staff-repos/Repository_Management` | `~/staff-repos/Repository_Management` |
-| **Sync Timer** | `runner-dashboard-rm-sync.timer` | `runner-dashboard-rm-sync.timer` | `runner-dashboard-rm-sync.timer` |
-| **User Lingering** | Enabled (`Linger=yes`) | Enabled (`Linger=yes`) | Enabled (`Linger=yes`) |
-| **Git Config** | `staff.gitconfig` (gh auth helper) | `staff.gitconfig` (gh auth helper) | `staff.gitconfig` (gh auth helper) |
-| **Windows Ollama** | Bound `127.0.0.1:11434` | Bound `127.0.0.1:11434` | Bound `127.0.0.1:11434` |
-| **Ollama WSL Bridge** | `StaffHub-Ollama-WSL-Bridge` SYSTEM task | `StaffHub-Ollama-WSL-Bridge` SYSTEM task | `StaffHub-Ollama-WSL-Bridge` SYSTEM task |
-| **Provider Suite** | Claude, Codex, Antigravity, Cursor, Ollama | Claude, Codex, Antigravity, Cursor, Ollama | Claude, Codex, Antigravity, Cursor, Ollama |
-| **Worker Holds** | N/A (manages holds) | Zero blocking worker holds | Zero blocking worker holds |
+| Dimension                     | DeskComputer                               | OGLaptop                                   | ControlTower                               |
+| ----------------------------- | ------------------------------------------ | ------------------------------------------ | ------------------------------------------ |
+| **Role**                      | Scheduler                                  | Worker                                     | Worker                                     |
+| **`STAFF_SCHEDULER_ENABLED`** | `1`                                        | `0`                                        | `0`                                        |
+| **Deployment**                | 4.10.0+ on loopback `:8321`                | 4.10.0+ on loopback `:8321`                | 4.10.0+ on loopback `:8321`                |
+| **Live RM Source**            | `~/staff-repos/Repository_Management`      | `~/staff-repos/Repository_Management`      | `~/staff-repos/Repository_Management`      |
+| **Sync Timer**                | `runner-dashboard-rm-sync.timer`           | `runner-dashboard-rm-sync.timer`           | `runner-dashboard-rm-sync.timer`           |
+| **User Lingering**            | Enabled (`Linger=yes`)                     | Enabled (`Linger=yes`)                     | Enabled (`Linger=yes`)                     |
+| **Git Config**                | `staff.gitconfig` (gh auth helper)         | `staff.gitconfig` (gh auth helper)         | `staff.gitconfig` (gh auth helper)         |
+| **Windows Ollama**            | Bound `127.0.0.1:11434`                    | Bound `127.0.0.1:11434`                    | Bound `127.0.0.1:11434`                    |
+| **Ollama WSL Bridge**         | `StaffHub-Ollama-WSL-Bridge` SYSTEM task   | `StaffHub-Ollama-WSL-Bridge` SYSTEM task   | `StaffHub-Ollama-WSL-Bridge` SYSTEM task   |
+| **Provider Suite**            | Claude, Codex, Antigravity, Cursor, Ollama | Claude, Codex, Antigravity, Cursor, Ollama | Claude, Codex, Antigravity, Cursor, Ollama |
+| **Worker Holds**              | N/A (manages holds)                        | Zero blocking worker holds                 | Zero blocking worker holds                 |
 
 ### Acceptance Criteria Checklist
+
 1. **Deployment & API**: `curl -fsS http://127.0.0.1:8321/api/health` returns top-level status `healthy`, at the expected commit.
 2. **Identity**: `gh auth status` confirms valid WSL GitHub authentication with no embedded tokens.
 3. **CLIs**: Node v24 LTS in PATH; `claude`, `codex`, `agy`, `cursor-agent` executable.
@@ -469,6 +471,15 @@ when only tokens are known, `wall_time` from `STAFF_WALL_USD_PER_MIN`, else
 `GET /api/staff/usage` aggregates the store by provider, role or day and reports
 the `STAFF_BUDGET_USD_PER_DAY` ceiling; `POST /api/staff/usage/export` appends
 today's totals to the Repository_Management credit ledger.
+
+## External Agent Clients (SC-F5, #1334)
+
+External AI agents (Claude Code, Claude Cowork, Codex CLI, Grok Bot, Gemini) interact with the Staff Hub via the Fleet Coordination and Staff v1 API or the fleet MCP server.
+
+- [**Connecting Agents to Fleet API**](agents/connect.md) — Comprehensive guide covering MCP tool registration, least-privilege token minting, and the SC-F3 troubleshooting table.
+- [**Claude Code & Cowork Guide**](agents/claude.md) — Claude MCP setup, `staff.chat` token scopes, and conversing with Barb.
+- [**Codex CLI Guide**](agents/codex.md) — `config.toml` MCP configuration, bot principals, and work-item tracking.
+- [**Grok Bot Guide**](agents/grok.md) — Local-exec `curl` recipes, active Barb/Orchestrator roles, and remote connector notes.
 
 ## Not yet here (tracked in the epic)
 

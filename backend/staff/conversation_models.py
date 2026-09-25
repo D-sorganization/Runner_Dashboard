@@ -7,6 +7,7 @@ import sqlite3
 from dataclasses import dataclass, field
 from typing import Any
 
+from pydantic import BaseModel, Field
 from staff.store import _now
 
 THREAD_KINDS = ("direct", "group", "auto")
@@ -31,15 +32,15 @@ PROPOSAL_STATES = (
     "failed",
     "expired",
 )
-PROPOSAL_RISKS = ("low", "medium", "high", "critical")
+PROPOSAL_RISKS = ("read", "low", "medium", "high", "critical", "owner-only")
 
 _VALID_PROPOSAL_TRANSITIONS: dict[str, set[str]] = {
-    "proposed": {"approved", "denied", "expired"},
+    "proposed": {"approved", "denied", "expired", "executing", "failed"},
     "approved": {"executing", "failed", "expired"},
     "denied": set(),
     "executing": {"done", "failed"},
     "done": set(),
-    "failed": set(),
+    "failed": {"executing"},
     "expired": set(),
 }
 
@@ -216,3 +217,25 @@ class ActionProposalRecord:
             reason=str(d.get("reason") or ""),
             created_at=str(d["created_at"]),
         )
+
+
+class CreateThreadRequest(BaseModel):
+    title: str | None = None
+    kind: str = "direct"
+    role: str | None = None
+    participants: list[str] = Field(default_factory=list)
+
+
+class UpdateThreadRequest(BaseModel):
+    title: str | None = None
+    status: str | None = None
+
+
+class PostMessageRequest(BaseModel):
+    body: str
+    kind: str = "text"
+    meta: dict[str, Any] = Field(default_factory=dict)
+
+
+class AnswerNeedsInputRequest(BaseModel):
+    answer: str

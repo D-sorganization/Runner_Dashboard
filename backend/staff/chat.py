@@ -168,7 +168,8 @@ class ChatTurnRunner:
         roles = load_roles()
         role = roles.get(role_name)
 
-        target_provider = provider or (role.provider if role and role.provider else "claude")
+        role_provider = role.providers[0] if (role and role.providers) else "claude"
+        target_provider = provider or role_provider
         adapter = self.adapters.get(target_provider) or get_adapter(target_provider)
 
         thread = self.conv_store.get_thread(thread_id)

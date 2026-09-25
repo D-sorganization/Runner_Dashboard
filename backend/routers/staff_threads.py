@@ -1,15 +1,4 @@
-"""FastAPI router for Staff Conversation & Thread API v1 (SC-B3, Issue #1306).
-
-Endpoints:
-- POST /api/v1/staff/threads: create conversation thread (direct, group, auto to Barb)
-- GET /api/v1/staff/threads: list threads with filters (role, unread, status) and pagination
-- GET /api/v1/staff/threads/{id}: thread details with messages
-- PATCH /api/v1/staff/threads/{id}: rename or archive thread
-- POST /api/v1/staff/threads/{id}/messages: send message with Idempotency-Key (202 Accepted)
-- GET /api/v1/staff/threads/{id}/stream: SSE event stream with Last-Event-ID resume & heartbeats
-- POST /api/v1/staff/threads/{id}/read: mark thread read for caller
-- GET /api/v1/staff/inbox: list threads requiring user attention
-"""
+"""FastAPI router for Staff Conversation & Thread API v1 (SC-B3 #1306, SC-F7 #1336)."""
 
 # ruff: noqa: B008
 from __future__ import annotations
@@ -22,14 +11,23 @@ from typing import Any
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from fastapi.responses import StreamingResponse
 from identity import Principal, format_caller, require_scope
-from pydantic import BaseModel, Field
+from staff.audit import record_audit
+from staff.budget import get_global_budget_guard
 from staff.chat import run_chat_turn_in_background
+from staff.conversation_models import (
+    AnswerNeedsInputRequest,
+    CreateThreadRequest,
+    PostMessageRequest,
+    UpdateThreadRequest,
+)
 from staff.conversations import (
     ConversationsUnavailableError,
     MessageRecord,
     get_conversation_store,
 )
+from staff.loop_guard import enforce_loop_guard_or_raise
 from staff.pagination import paginate_items
+from staff.rate_limit import check_rate_limit
 from staff.thread_bus import get_thread_bus
 
 log = logging.getLogger("dashboard.staff.threads")
@@ -52,31 +50,6 @@ def _get_store_or_503() -> Any:
             },
         )
     return store
-
-
-# ── REQUEST & RESPONSE MODELS ────────────────────────────────────────────────
-
-
-class CreateThreadRequest(BaseModel):
-    title: str | None = None
-    kind: str = "direct"
-    role: str | None = None
-    participants: list[str] = Field(default_factory=list)
-
-
-class UpdateThreadRequest(BaseModel):
-    title: str | None = None
-    status: str | None = None
-
-
-class PostMessageRequest(BaseModel):
-    body: str
-    kind: str = "text"
-    meta: dict[str, Any] = Field(default_factory=dict)
-
-
-class AnswerNeedsInputRequest(BaseModel):
-    answer: str
 
 
 # ── THREAD MANAGEMENT ────────────────────────────────────────────────────────
@@ -253,8 +226,10 @@ async def post_message(
             },
         )
 
+    check_rate_limit("messages", caller)
     store = _get_store_or_503()
     caller_id = format_caller(caller)
+    enforce_loop_guard_or_raise(thread_id, store, getattr(caller, "type", "bot"))
 
     try:
         thread = store.get_thread(thread_id)
@@ -269,7 +244,6 @@ async def post_message(
 
         if existing:
             user_msg = MessageRecord.from_row(existing)
-            # Find reply placeholder or message in reply to this
             reply_row = store._conn.execute(
                 "SELECT * FROM messages WHERE thread_id = ? AND seq = ?",
                 (thread_id, user_msg.seq + 1),
@@ -308,20 +282,41 @@ async def post_message(
         # Resolve target role for reply placeholder
         target_role = "barb"
         for p in thread.participants:
-            if p != caller_id and p:
+            if p not in (caller_id, caller.id) and p:
                 target_role = p
                 break
 
-        # Persist pending reply placeholder
-        reply_placeholder_rec = store.add_message(
-            thread_id=thread_id,
-            author_kind="role",
-            author=target_role,
-            kind="text",
-            body_md="",
-            meta={"in_reply_to": user_msg.id},
-            delivery="pending",
-        )
+        budget_guard = get_global_budget_guard()
+        can_chat, _ = budget_guard.can_chat(target_role)
+        if not can_chat:
+            reply_placeholder_rec = store.add_message(
+                thread_id=thread_id,
+                author_kind="system",
+                author="system",
+                kind="text",
+                body_md=f"Daily budget reached for role '{target_role}'. Further turns are paused until tomorrow.",
+                meta={"in_reply_to": user_msg.id, "budget_exhausted": True},
+                delivery="complete",
+            )
+            record_audit(
+                action="budget_exhausted",
+                target=f"role:{target_role}",
+                principal="system",
+                surface="api",
+                outcome="budget_reached",
+                detail={"role": target_role, "thread_id": thread_id},
+                fail_closed=False,
+            )
+        else:
+            reply_placeholder_rec = store.add_message(
+                thread_id=thread_id,
+                author_kind="role",
+                author=target_role,
+                kind="text",
+                body_md="",
+                meta={"in_reply_to": user_msg.id},
+                delivery="pending",
+            )
 
         # Broadcast live events on thread bus
         bus = get_thread_bus()
