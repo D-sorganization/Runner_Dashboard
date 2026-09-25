@@ -168,9 +168,20 @@ class ChatTurnRunner:
         roles = load_roles()
         role = roles.get(role_name)
 
-        role_provider = role.providers[0] if (role and role.providers) else "claude"
-        target_provider = provider or role_provider
-        adapter = self.adapters.get(target_provider) or get_adapter(target_provider)
+        target_provider = provider
+        if not target_provider and role and role.providers:
+            for p in role.providers:
+                if p in self.adapters or p in ADAPTERS:
+                    target_provider = p
+                    break
+        if not target_provider:
+            target_provider = "claude"
+
+        try:
+            adapter = self.adapters.get(target_provider) or get_adapter(target_provider)
+        except KeyError:
+            target_provider = "claude"
+            adapter = self.adapters.get("claude") or get_adapter("claude")
 
         thread = self.conv_store.get_thread(thread_id)
         if not thread:
