@@ -142,3 +142,40 @@ def test_api_routing_override_and_feedback(client: TestClient) -> None:
     assert len(fb_list) >= 1
     assert fb_list[0]["original_role"] == "librarian"
     assert fb_list[0]["override_role"] == "pragmatic-programmer"
+
+
+def test_api_routing_eval(client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """GET /api/v1/staff/routing/eval returns eval results when recorded."""
+    eval_file = tmp_path / "routing_eval.json"
+    monkeypatch.setenv("STAFF_ROUTING_EVAL_FILE", str(eval_file))
+
+    # Before evaluation
+    resp = client.get(
+        "/api/v1/staff/routing/eval",
+        headers={"X-Requested-With": "XMLHttpRequest"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "none"
+
+    # After saving evaluation
+    from staff.routing_eval import RoutingEvalResult, save_eval_result
+
+    res = RoutingEvalResult(
+        evaluated_at="2026-09-25T12:00:00Z",
+        total=60,
+        passed=60,
+        accuracy=1.0,
+        mode="deterministic",
+        categories={"maintenance": {"total": 8, "passed": 8, "accuracy": 1.0}},
+    )
+    save_eval_result(res, path=eval_file)
+
+    resp2 = client.get(
+        "/api/v1/staff/routing/eval",
+        headers={"X-Requested-With": "XMLHttpRequest"},
+    )
+    assert resp2.status_code == 200
+    data = resp2.json()
+    assert data["status"] == "ok"
+    assert data["result"]["accuracy"] == 1.0
+    assert data["result"]["total"] == 60

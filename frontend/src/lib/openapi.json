@@ -2407,6 +2407,19 @@
             ],
             "title": "Rm Source"
           },
+          "routing_eval": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Latest routing eval result (SC-C7)",
+            "title": "Routing Eval"
+          },
           "running": {
             "items": {
               "$ref": "#/components/schemas/StaffRunRecord"
@@ -13477,6 +13490,36 @@
           }
         ],
         "summary": "Decide Routing",
+        "tags": ["staff-routing"]
+      }
+    },
+    "/api/v1/staff/routing/eval": {
+      "get": {
+        "description": "Retrieve the latest Barb routing evaluation result (SC-C7).",
+        "operationId": "get_routing_evaluation_api_v1_staff_routing_eval_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Routing Evaluation Api V1 Staff Routing Eval Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Routing Evaluation",
         "tags": ["staff-routing"]
       }
     },

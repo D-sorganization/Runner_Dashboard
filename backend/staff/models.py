@@ -246,6 +246,7 @@ class StaffBoardResponse(BaseModel):
     online: list[str] = Field(default_factory=list)
     offline: list[str] = Field(default_factory=list)
     rm_source: dict[str, Any] | None = Field(default=None)
+    routing_eval: dict[str, Any] | None = Field(default=None, description="Latest routing eval result (SC-C7)")
 
     model_config = ConfigDict(extra="allow")
 

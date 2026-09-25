@@ -4932,6 +4932,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/routing/eval": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Routing Evaluation
+         * @description Retrieve the latest Barb routing evaluation result (SC-C7).
+         */
+        get: operations["get_routing_evaluation_api_v1_staff_routing_eval_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/routing/feedback": {
         parameters: {
             query?: never;
@@ -6785,6 +6805,13 @@ export interface components {
             recent: components["schemas"]["StaffRunRecord"][];
             /** Rm Source */
             rm_source?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Routing Eval
+             * @description Latest routing eval result (SC-C7)
+             */
+            routing_eval?: {
                 [key: string]: unknown;
             } | null;
             /** Running */
@@ -14266,6 +14293,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_routing_evaluation_api_v1_staff_routing_eval_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };

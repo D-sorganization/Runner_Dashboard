@@ -58,27 +58,49 @@ export function Board({ onOpenRun }: BoardProps) {
             <RefreshBadge staleness={staleness} onRetry={() => refetch()} />
           </span>
         ) : null}
-        {board && spendSummary ? (
+        {board ? (
           <span className="staff-board__meta">
-            spend today{" "}
-            {spendSummary.breakdown ? (
-              <Tooltip content={spendSummary.breakdown} placement="bottom">
-                <strong
-                  data-testid="board-spend"
-                  title={spendSummary.breakdown}
-                  tabIndex={0}
-                  style={{ cursor: "help" }}
-                >
-                  {formatUsd(spendSummary.total)}
-                </strong>
-              </Tooltip>
-            ) : (
-              <strong data-testid="board-spend">
-                {formatUsd(spendSummary.total)}
-              </strong>
-            )}
-            {" · "}
+            {spendSummary ? (
+              <>
+                spend today{" "}
+                {spendSummary.breakdown ? (
+                  <Tooltip content={spendSummary.breakdown} placement="bottom">
+                    <strong
+                      data-testid="board-spend"
+                      title={spendSummary.breakdown}
+                      tabIndex={0}
+                      style={{ cursor: "help" }}
+                    >
+                      {formatUsd(spendSummary.total)}
+                    </strong>
+                  </Tooltip>
+                ) : (
+                  <strong data-testid="board-spend">
+                    {formatUsd(spendSummary.total)}
+                  </strong>
+                )}
+                {" · "}
+              </>
+            ) : null}
             <TimeAgo iso={board.generated_at} live />
+            {board.routing_eval ? (
+              <>
+                {" · "}
+                <Tooltip
+                  content={`Routing eval: ${String(board.routing_eval.passed ?? "")}/${String(board.routing_eval.total ?? "")} passed (${(Number(board.routing_eval.accuracy ?? 0) * 100).toFixed(1)}%)`}
+                  placement="bottom"
+                >
+                  <span data-testid="board-routing-eval" tabIndex={0} style={{ cursor: "help" }}>
+                    <Badge
+                      tone={Number(board.routing_eval.accuracy ?? 0) >= 0.9 ? "success" : "warning"}
+                      size="sm"
+                    >
+                      routing {Math.round(Number(board.routing_eval.accuracy ?? 0) * 100)}%
+                    </Badge>
+                  </span>
+                </Tooltip>
+              </>
+            ) : null}
           </span>
         ) : null}
       </div>

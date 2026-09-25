@@ -151,3 +151,19 @@ async def list_routing_feedback(
     barb_router = BarbRouter()
     items = barb_router.list_routing_feedback(store=store, limit=limit)
     return {"items": [fb.to_dict() for fb in items], "count": len(items)}
+
+
+@router.get(
+    "/routing/eval",
+    response_model_exclude_none=True,
+)
+async def get_routing_evaluation(
+    caller: Principal = Depends(require_scope("staff.read")),
+) -> dict[str, Any]:
+    """Retrieve the latest Barb routing evaluation result (SC-C7)."""
+    from staff.routing_eval import get_latest_routing_eval  # noqa: PLC0415
+
+    eval_data = get_latest_routing_eval()
+    if eval_data is None:
+        return {"status": "none", "message": "No evaluation has been recorded yet", "result": None}
+    return {"status": "ok", "result": eval_data}
