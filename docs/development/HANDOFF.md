@@ -1,14 +1,18 @@
-# Current handoff — CR-7: Board Proposals suggestion box — API, Fleet Command tab, fleet tool (#1284)
+# Current handoff — Restore green main: split FleetCommand tests <= 500 lines (#1459)
 
 Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; branch `agy/issue-1284`; Issue #1284; DL-#1284.
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/issue-1459-split-fleetcommand-tests`; Issue #1459; DL-#1459.
 
 ## Objective and Status
 
-- CR-7: Board Proposals suggestion box — API, Fleet Command tab, fleet tool.
+- Restore green main: CI Standard failed because `frontend/src/pages/__tests__/FleetCommand.test.tsx` reached 566 lines (exceeding the strict 500-line limit).
+- Extracted shared test fixtures and helpers into `frontend/src/pages/__tests__/fleetCommandTestHelpers.ts` (168 lines).
+- Trimmed `FleetCommand.test.tsx` to 232 lines (Priorities, Directives, Active work, Messages).
+- Extracted operations tests to `FleetCommandOps.test.tsx` (198 lines: Proposals, Claims, Dispatch).
+- All files strictly <= 500 lines. All frontend tests, lints, and typechecks passing locally.
 - Scope implemented:
   - Backend (`backend/proposals/`):
     - `POST /api/proposals`: Gated on `proposals.write` scope (granted to operators and bot principals). Rate limits agent principals to 5 open proposals (configurable via `BOARD_PROPOSALS_AGENT_LIMIT`), humans unlimited. Duplicate candidate search (keyword/title overlap) returning 409 Conflict with candidate list unless `confirm_not_duplicate=true`. Creates issue in `D-sorganization/Repository_Management` with label `board:proposal` and formatted markdown body.
