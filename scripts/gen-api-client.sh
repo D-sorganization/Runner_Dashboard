@@ -19,6 +19,10 @@ TMP_TYPES="$TMP_DIR/api-types.ts"
 
 if [ -n "${PYTHON:-}" ]; then
   PYTHON_CMD=("$PYTHON")
+elif [ -f "$ROOT_DIR/.venv/bin/python" ]; then
+  PYTHON_CMD=("$ROOT_DIR/.venv/bin/python")
+elif [ -f "$ROOT_DIR/.venv/Scripts/python.exe" ]; then
+  PYTHON_CMD=("$ROOT_DIR/.venv/Scripts/python.exe")
 elif command -v python3 >/dev/null 2>&1; then
   PYTHON_CMD=(python3)
 elif command -v python >/dev/null 2>&1; then
