@@ -1,61 +1,66 @@
-# Current handoff — SC-G4: Merge the duplicate Reports and Analysis tabs into one Insights section (#1326)
+# Current handoff — SC-C6: Barb availability: reserved capacity, provider fallback, acknowledgement SLA and degraded mode (#1329)
 
 Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1326-merge-reports-analysis`; Issue #1326; DL-#1326.
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1329-barb-availability`; Issue #1329; DL-#1329.
 
 ## Objective and Status
 
-- SC-G4: Merge duplicate Reports and Analysis sidebar entries into a single "Insights" section (`tabId: "insights"`) under Fleet navigation (`/fleet/insights`).
-- Provide backward-compatible redirects from `/t/reports`, `/t/analysis`, `/fleet/reports`, and `/fleet/analysis` to `/fleet/insights` with toast notifications.
-- Relocate Web Vitals metric inspection from `AnalysisTab` to `DiagnosticsTab` as a dedicated card.
-- Status: Fully implemented with TDD; full test suite running; TypeScript typecheck clean (0 errors); ESLint clean (0 warnings); all touched files strictly <= 500 lines.
+- SC-C6: The front door must answer quickly even when the fleet is busy or an LLM provider is down.
+- Reserved chat slot for Barb that work runs cannot consume (independent `ChatConcurrencyPool` and `StaffRunner._sema` isolation).
+- Provider fallback chain (`claude` -> `codex` -> `claude-ollama` -> `ollama`) with health probes; active provider and fallback count recorded in thread and message metadata.
+- Acknowledge every message within 3 s ("On it: routing to …" system message) even before the model answers.
+- Degraded mode when all LLM providers fail: deterministic routing rules via `route_deterministic`, queued follow-up work item in `WorkItemStore`, clearly labeled explanatory text.
+- Availability metrics: `ack_latency_ms`, `first_token_latency_ms`, `fallback_count`, `degraded_mode_count` tracked in `AvailabilityMetrics` and exposed on the Board (`local_board`) and in `/api/health`.
+- Status: Fully implemented with strict TDD; all unit and API tests passing; mypy, ruff, and black checks passing; all touched files strictly <= 500 lines.
 
 ## Files and Decisions
 
-- `frontend/src/shell/navRegistryData.ts` (412 lines):
-  - Merged separate `reports` and `analysis` items into one `insights` entry with label "Insights", group "fleet", icon `ChartIcon`, and tooltip "Fleet reports, run analysis, and historical trends."
-  - Removed unused `FileTextIcon` import.
-- `frontend/src/shell/routing.ts` (190 lines):
-  - Added `reports: "insights"` and `analysis: "insights"` to `TAB_ID_ALIASES`.
-  - Added `reports` and `analysis` redirect mappings to `REDIRECT_TABLE`.
-  - Updated `getTabRedirect` to handle `/fleet/reports` and `/fleet/analysis` redirects to `/fleet/insights`.
-- `frontend/src/shell/RoutedShell.tsx` (464 lines):
-  - Mapped `case "insights":` in `nativeDesktopTabContent` to `AnalysisTab`.
-  - Added `insights: <ReportsMobile />` to `mobileTabContent`.
-- `frontend/src/pages/Analysis.tsx`:
-  - Removed `performance` (Web Vitals) subtab from `AnalysisTab` `SubTabs` strip; kept `outcomes`, `stats`, `history`, `reports`.
-  - Added `insights` recognition to `legacyKey` resolution so `/fleet/insights` keeps clean subtab routing.
-- `frontend/src/pages/Diagnostics.tsx` (449 lines):
-  - Imported and rendered `<PerformanceTab />` as a dedicated Web Vitals card.
-- `frontend/src/lib/analysisTabs.ts`:
-  - Added `"insights"` to `ANALYSIS_TAB_KEYS`.
-- `frontend/src/shell/__tests__/RedirectTable.test.ts`:
-  - Added test suite for SC-G4 verifying path mapping, `/t/reports`, `/t/analysis`, `/fleet/reports`, and `/fleet/analysis` redirects and resolution.
-- `frontend/src/shell/__tests__/navRegistry.test.ts`:
-  - Updated test to assert `insights` is exposed under `fleet` and `reports`/`analysis` are no longer in `NAV_ITEMS`.
-- `frontend/src/shell/__tests__/RoutedShell.test.tsx`:
-  - Updated desktop and mobile routing test cases for `insights` and added redirect verification.
-- `frontend/src/pages/__tests__/Diagnostics.test.tsx`:
-  - Added test asserting the Web Vitals section is rendered inside `DiagnosticsTab`.
+- `backend/staff/availability.py` (364 lines):
+  - Defines `DEFAULT_PROVIDER_CHAIN = ("claude", "codex", "claude-ollama", "ollama")` and `resolve_provider_chain`.
+  - Provider health probes: `is_provider_healthy`, `set_provider_health`, `reset_provider_health` checking overrides, `STAFF_DISABLED_PROVIDERS`, and adapter installation.
+  - `AvailabilityMetrics` class and singleton tracking `ack_latency_ms`, `first_token_latency_ms`, `fallback_count`, `degraded_mode_count`.
+  - `record_fast_acknowledgment`: creates system acknowledgment message within SLA (< 3 s) with routing target preview and broadcasts over SSE thread bus.
+  - `execute_degraded_turn`: handles degraded mode by evaluating Stage 1 pre-routing rules, queuing follow-up work item in `WorkItemStore`, clearly labeling reply with `[Degraded Mode]`, updating thread/message metadata, and publishing to bus.
+  - `record_successful_turn`: helper updating active provider and TTFT metrics.
+- `backend/staff/chat_pool.py` (64 lines):
+  - Modularized `ChatConcurrencyPool`, `get_chat_pool`, `DEFAULT_MAX_CHAT_TURNS`, `DEFAULT_BARB_RESERVED_SLOTS` to maintain `chat.py` under the 500-line cap while maintaining backward-compatible exports.
+- `backend/staff/chat.py` (497 lines):
+  - Integrated provider fallback chain loop in `execute_turn`.
+  - Probes candidate providers; attempts session resume or history replay; records fallback steps.
+  - Degrades gracefully via `execute_degraded_turn` when all candidates in chain fail or are disabled.
+  - Honors single requested provider overrides.
+- `backend/routers/staff_threads.py` (477 lines):
+  - Emits fast acknowledgment message on `post_message` when budget permits.
+  - Delegated idempotent replay check and inbox item collection to `thread_helpers.py` to keep file well under 500 lines.
+- `backend/staff/thread_helpers.py` (63 lines):
+  - Extracted `find_idempotent_reply` and `collect_inbox_items`.
+- `backend/health.py` (224 lines):
+  - Exposes `staff_availability` metrics in `_health_impl` and `/api/health`.
+- `backend/staff/fleet.py` (377 lines):
+  - Exposes `availability` metrics in `local_board`.
+- `tests/unit/test_staff_availability.py` (387 lines):
+  - Comprehensive unit test suite covering work run isolation, reserved Barb capacity, provider fallback order, health probing, runtime failure recovery, degraded mode with deterministic routing and queued work items, fast acknowledgment SLA (< 3 s), and board/health metrics exposition.
 
 ## Validation
 
-- `npx vitest run frontend/src/shell/__tests__/RedirectTable.test.ts frontend/src/shell/__tests__/navRegistry.test.ts frontend/src/shell/__tests__/RoutedShell.test.tsx frontend/src/pages/__tests__/Diagnostics.test.tsx`: All passed.
-- `pytest tests/test_frontend_integrity.py`: 72 passed, 1 xfailed.
-- `npm run typecheck`: 0 errors.
-- `npm run lint`: 0 warnings.
-- Line caps: All modified files strictly <= 500 lines.
+- `pytest tests/unit/test_staff_availability.py tests/unit/test_staff_chat.py tests/api/test_staff_threads_api.py`: 33 passed.
+- `ruff check .`: 0 errors.
+- `black --check backend/ tests/unit/test_staff_availability.py`: clean.
+- `python -m mypy backend/ --ignore-missing-imports --exclude backend/__pycache__ --no-implicit-optional`: clean (0 errors in 219 files).
+- `npm run typecheck`: clean (0 errors).
+- Line counts: All modified and created files strictly <= 500 lines.
 
 ## Next Steps
 
-1. Commit and push branch `feat/1326-merge-reports-analysis`.
-2. Open PR referencing `Fixes #1326` with label `agent:local`.
-3. Enable auto-merge squash without `--admin`.
-4. Monitor CI checks until green and merged into `main`.
-5. Release lease on issue #1326 and clean up worktree.
+1. Commit with conventional commit `feat(staff): barb availability, provider fallback chain and degraded mode (#1329)`.
+2. Push branch `feat/1329-barb-availability`.
+3. Open PR with `gh pr create` referencing `Fixes #1329` and label `agent:local`.
+4. Enable auto-merge squash without `--admin`.
+5. Monitor CI to green merge.
+6. Release lease on issue #1329 and clean up worktree.
 
 ---
 

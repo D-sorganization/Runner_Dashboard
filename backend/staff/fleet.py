@@ -43,7 +43,9 @@ PEER_TIMEOUT_SECONDS = float(os.environ.get("STAFF_PEER_TIMEOUT_SECONDS", "6"))
 LOCAL_MACHINE_ALIASES = frozenset({"local", "", "self", "here"})
 
 GetJson = Callable[[str, dict[str, str]], Awaitable[dict[str, Any]]]
-PostJson = Callable[[str, dict[str, Any], dict[str, str]], Awaitable[tuple[int, dict[str, Any]]]]
+PostJson = Callable[
+    [str, dict[str, Any], dict[str, str]], Awaitable[tuple[int, dict[str, Any]]]
+]
 
 
 async def _get_json(url: str, headers: dict[str, str]) -> dict[str, Any]:
@@ -54,7 +56,9 @@ async def _get_json(url: str, headers: dict[str, str]) -> dict[str, Any]:
         return data if isinstance(data, dict) else {"value": data}
 
 
-async def _post_json(url: str, body: dict[str, Any], headers: dict[str, str]) -> tuple[int, dict[str, Any]]:
+async def _post_json(
+    url: str, body: dict[str, Any], headers: dict[str, str]
+) -> tuple[int, dict[str, Any]]:
     async with httpx.AsyncClient(timeout=PEER_TIMEOUT_SECONDS * 5) as client:
         resp = await client.post(url, json=body, headers=headers)
         try:
@@ -123,7 +127,9 @@ async def fetch_peer_board(name: str, url: str) -> tuple[str, dict[str, Any]]:
         return name, {"machine": name, "status": "offline", "error": str(exc)[:200]}
 
 
-async def aggregate_board(local_board: dict[str, Any], peers: dict[str, str] | None = None) -> dict[str, Any]:
+async def aggregate_board(
+    local_board: dict[str, Any], peers: dict[str, str] | None = None
+) -> dict[str, Any]:
     """Merge this node's board with every peer's board into one fleet view.
 
     Post: ``machines`` has one entry per known node (online or offline);
@@ -133,9 +139,13 @@ async def aggregate_board(local_board: dict[str, Any], peers: dict[str, str] | N
     """
     peers = peer_nodes() if peers is None else peers
     local_name = str(local_board.get("machine") or HOSTNAME)
-    machines: dict[str, dict[str, Any]] = {local_name: {**local_board, "status": "online"}}
+    machines: dict[str, dict[str, Any]] = {
+        local_name: {**local_board, "status": "online"}
+    }
     if peers:
-        results = await asyncio.gather(*[fetch_peer_board(n, u) for n, u in peers.items()])
+        results = await asyncio.gather(
+            *[fetch_peer_board(n, u) for n, u in peers.items()]
+        )
         for name, board in results:
             machines[name] = board
     running: list[dict[str, Any]] = []
@@ -160,7 +170,9 @@ async def aggregate_board(local_board: dict[str, Any], peers: dict[str, str] | N
         "machine": local_name,
         "machines": machines,
         "online": sorted(n for n, b in machines.items() if b.get("status") == "online"),
-        "offline": sorted(n for n, b in machines.items() if b.get("status") != "online"),
+        "offline": sorted(
+            n for n, b in machines.items() if b.get("status") != "online"
+        ),
         "running": running,
         "queued": queued,
         "recent": [],
@@ -201,7 +213,11 @@ def sign_on_behalf_of(
 
     Format: base64url(json_payload).hmac_signature_hex
     """
-    key = secret if secret is not None else os.environ.get("HUB_FLEET_TOKEN") or os.environ.get("SESSION_SECRET") or ""
+    key = (
+        secret
+        if secret is not None
+        else os.environ.get("HUB_FLEET_TOKEN") or os.environ.get("SESSION_SECRET") or ""
+    )
     payload = {
         "principal": principal,
         "surface": surface,
@@ -209,9 +225,13 @@ def sign_on_behalf_of(
         "request_id": request_id,
         "iat": int(time.time()),
     }
-    payload_json = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    payload_json = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode(
+        "utf-8"
+    )
     payload_b64 = base64.urlsafe_b64encode(payload_json).decode("ascii")
-    sig = hmac.new(key.encode("utf-8"), payload_b64.encode("ascii"), hashlib.sha256).hexdigest()
+    sig = hmac.new(
+        key.encode("utf-8"), payload_b64.encode("ascii"), hashlib.sha256
+    ).hexdigest()
     return f"{payload_b64}.{sig}"
 
 
@@ -224,15 +244,23 @@ def verify_on_behalf_of(
 
     Returns payload dict if valid, unexpired, and non-empty principal, else None.
     """
-    key = secret if secret is not None else os.environ.get("HUB_FLEET_TOKEN") or os.environ.get("SESSION_SECRET") or ""
+    key = (
+        secret
+        if secret is not None
+        else os.environ.get("HUB_FLEET_TOKEN") or os.environ.get("SESSION_SECRET") or ""
+    )
     if not header or "." not in header:
         return None
     try:
         payload_b64, sig = header.split(".", 1)
-        expected_sig = hmac.new(key.encode("utf-8"), payload_b64.encode("ascii"), hashlib.sha256).hexdigest()
+        expected_sig = hmac.new(
+            key.encode("utf-8"), payload_b64.encode("ascii"), hashlib.sha256
+        ).hexdigest()
         if not hmac.compare_digest(sig, expected_sig):
             return None
-        payload_json = base64.urlsafe_b64decode(payload_b64.encode("ascii")).decode("utf-8")
+        payload_json = base64.urlsafe_b64decode(payload_b64.encode("ascii")).decode(
+            "utf-8"
+        )
         payload = json.loads(payload_json)
         if not isinstance(payload, dict):
             return None
@@ -261,7 +289,13 @@ def is_fleet_peer(principal: Any) -> bool:
 def caller_identity(principal: Any) -> str:
     """Format principal identity for run records (issue #1311)."""
     pid = getattr(principal, "id", str(principal))
-    if pid in ("fleet-peer", "__loopback__", "loopback-dev", "test-orchestrator", "test-peer"):
+    if pid in (
+        "fleet-peer",
+        "__loopback__",
+        "loopback-dev",
+        "test-orchestrator",
+        "test-peer",
+    ):
         return pid
     if pid.startswith("user:") or pid.startswith("principal:"):
         return pid
@@ -301,8 +335,16 @@ def local_board(runner: Any) -> dict[str, Any]:
     active = store.active_runs()
     recent = store.list_runs(limit=20)
     now = datetime.now(UTC)
-    liveness = staff_liveness.compute_liveness(runner.roles(), store, staff_liveness.load_scheduler_state(), now)
-    staff_liveness.notify_dead(liveness, runner.machine)
+    liveness = staff_liveness.compute_liveness(
+        runner.roles(), store, staff_liveness.load_scheduler_state(), now
+    )
+    try:
+        from staff.availability import get_availability_metrics  # noqa: PLC0415
+
+        avail_stats = get_availability_metrics().to_dict()
+    except Exception:  # noqa: BLE001
+        avail_stats = {}
+
     return {
         "machine": runner.machine,
         "generated_at": now.isoformat().replace("+00:00", "Z"),
@@ -311,8 +353,11 @@ def local_board(runner: Any) -> dict[str, Any]:
         "recent": [r.to_dict() for r in recent if r.status not in ACTIVE_STATUSES],
         "spend_today_usd": store.spend_since(today_iso()),
         "providers": available_providers(),
+        "availability": avail_stats,
         "liveness": liveness,
-        "rm_source": getattr(sys.modules.get("routers.staff"), "source_status", source_status)(),
+        "rm_source": getattr(
+            sys.modules.get("routers.staff"), "source_status", source_status
+        )(),
     }
 
 

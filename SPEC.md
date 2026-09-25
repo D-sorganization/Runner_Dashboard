@@ -1,6 +1,6 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.241
+**Spec Version:** 2.5.242
 **Application Version:** 4.10.0 (see `VERSION`)
 **Last Updated:** 2026-09-25T00:00:00-07:00
 **Status:** Active
@@ -9,6 +9,7 @@
 
 | Date       | PR / Issue             | Summary                                                                                                                                                                                                                                                                                                                         |
 | ---------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-09-25 | #1329                  | SC-C6: Barb availability: reserved chat capacity for Barb independent of work runs (ChatConcurrencyPool isolation); provider fallback chain (`claude` -> `codex` -> `claude-ollama` -> `ollama`) with health probes; active provider recorded in thread and message metadata; fast acknowledgment SLA (< 3 s) system messages ("On it: routing to ..."); degraded mode when all LLM providers fail with rule-based routing, queued follow-up work item, and explanatory text; availability metrics (`ack_latency_ms`, `first_token_latency_ms`, `fallback_count`, `degraded_mode_count`) exposed on Board and `/api/health`. |
 | 2026-09-25 | #1326                  | SC-G4: Merge Reports and Analysis tabs into one Insights section under Fleet; canonical route `/fleet/insights`; redirect old routes (`/t/reports`, `/t/analysis`, `/fleet/reports`, `/fleet/analysis`) to `/fleet/insights`; relocate Web Vitals from AnalysisTab to Diagnostics.                                             |
 | 2026-09-25 | #1407                  | Restore green main: sync generated OpenAPI schema and TypeScript types (`openapi.json`, `api-types.ts`) following SC-C2 Barb routing endpoints; update `tests/test_frontend_integrity.py` to recognize modular navigation data files (`navRegistryData.ts`); retain `PushSettings` reference marker in `main.tsx`.            |
 | 2026-09-25 | #1309                  | SC-D2: Shell restructure: Staff Console as default route (`/`), four-area navigation in Sidebar and Registry (Staff, Work, Fleet, Settings), canonical secondary routes (`/fleet/:tabId`, `/work/:tabId`, `/staff/:tabId`, `/settings/:tabId`), old tab route `/t/:tabId` redirects with one-time moved-to toast, top toolstrip replaced by CommandPalette trigger (Ctrl/Cmd+K), mobile bottom bar updated to Staff/Work/Fleet/More, and unknown routes rendered via fail-visible NotFoundPanel. |
