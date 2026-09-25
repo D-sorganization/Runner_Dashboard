@@ -124,6 +124,7 @@ from middleware import (  # noqa: E402
 )
 from models.requests import HelpChatRequest  # noqa: E402
 from request_context import RequestIdMiddleware, configure_json_logging  # noqa: E402
+from routers import agent_profiles as _agent_profiles_router  # noqa: E402
 from routers import assessments as _assessments_router  # noqa: E402
 
 # parse_report_metrics and sanitize_report_date moved to routers/reports.py (issue #358)
@@ -694,6 +695,7 @@ app.include_router(_runner_diagnostics_router.router)
 app.include_router(_runs_workflows_router.router)
 app.include_router(_assistant_router.router)
 app.include_router(_code_requests_router.router)
+app.include_router(_agent_profiles_router.router)
 app.include_router(_maxwell_router.router)
 app.include_router(_deployment_router.router)
 app.include_router(_reports_router.router)

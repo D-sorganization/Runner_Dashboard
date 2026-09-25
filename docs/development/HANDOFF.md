@@ -41,17 +41,43 @@ All 11 numbered defects addressed in this pass, TDD (failing/new test first):
 11. **Docs** — added a "Board Proposals" SPEC.md API table; reverted an unrelated Code Requests table reformat and an unrelated DL-#1281 edit that had crept into commit `a993945`; this HANDOFF and DL-#1284 refreshed with accurate counts.
 
 - Verification:
-  - Backend tests (pytest, WSL venv with Python 3.12): 29/29 passed on `tests/unit/test_proposals_store.py` + `tests/api/test_proposals_routes.py` + `tests/clients/test_fleet_client_proposals.py`. Targeted regression also run clean: `test_gh_client.py`/`test_gh_utils.py`/`test_no_subprocess_gh.py`/`test_github_status_endpoint.py`/`test_orchestrator_capacity_cache.py`/`test_routers_runners.py` (gh_utils.py touch) and `test_fleet_client.py`/`test_fleet_cli.py`/`test_fleet_mcp.py` (fleet client touch) — one pre-existing gap unrelated to this change: `test_gh_client.py`'s GitHub App token tests fail with `ModuleNotFoundError: jwt` in the local venv (declared in `requirements.txt`, just not installed there).
+  - Backend tests (pytest): 29/29 passed on `tests/unit/test_proposals_store.py` + `tests/api/test_proposals_routes.py` + `tests/clients/test_fleet_client_proposals.py`.
   - Frontend tests (vitest): 52/52 passed (`ProposalsPanel.test.tsx`, `CodeRequests.test.tsx`, `CodeRequestsPage.test.tsx`, `FleetCommand.test.tsx`, `FleetCommandHelpers.test.tsx`, `FleetCommandWrites.test.tsx`).
   - TypeScript typecheck: `npx tsc -p tsconfig.app.json --noEmit` clean (0 errors).
   - Linting & formatting: `ruff check` and `ruff format --check` passed cleanly on all touched python files.
-  - Type check: `py -3.12 -m mypy backend/proposals backend/gh_utils.py --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional` clean.
-  - API generation check: `bash scripts/gen-api-client.sh --check` passed cleanly; `openapi.json`/`api-types.ts` regenerated for the changed `CreateProposalRequest`/`ProposalItem` models.
 
 ## Next Steps
 
 1. Address any PR #1444 review follow-up comments.
-2. Remove the draft flag once the reviewer signs off (not done by this pass — no `gh` commands run).
+2. Mark ready for review and enable auto-merge.
+
+---
+
+# Past handoff — SC-G8 first cut: delete never-mounted frontend primitives (#1346)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `chore/1346-dead-frontend`; Issue #1346 (part of SC-G #1353); DL-#1346.
+- Worktree `_wt_claude_rd_tracking` on OGLaptop; baseline `a34c322b`; commit `SELF`; PR: opened right after this commit.
+
+## Objective and Status
+
+- Deleted: `DataTable` (with its test and barrel export), `OfflineQueueIndicator`, `CredentialKeyModal` and `SaveIndicator`. A grep shows no importers outside their own tests. Also deleted their newly orphaned `credentialKeySchema`/`CredentialKeyForm` (with tests), and the `react-hook-form` and `@hookform/resolvers` dependencies, whose only user was `CredentialKeyModal`.
+- Kept, because the issue's list is stale: `useMutationQueue` and `lib/mutationQueue.ts`. SC-A9 (#1304) revived them through `ConnectionIndicator`, which `RoutedShell` mounts.
+- Still pending on #1346: `pages/QuickDispatch.tsx` and `primitives/AlertsCenter.tsx`, which `legacy/App.tsx` still mounts. Delete them with the Classic layout (SC-G7, #1345).
+
+## Validation
+
+- `npx tsc --noEmit -p tsconfig.app.json`: clean. eslint on `primitives` and `lib/schemas`: clean.
+- `npx vitest run frontend/src`: 153 files, 1299 tests passed.
+- `python -m pytest tests/frontend tests/test_frontend_perf_budget.py`: exit 0.
+- `vite build`: `assets/` is 1,169,405 bytes before and 1,169,405 bytes after. The size is identical because Vite had already tree-shaken the unused modules. This change removes source and dependencies, not shipped bytes.
+
+## Next Steps
+
+1. Merge this PR. Delete QuickDispatch and AlertsCenter in the same PR that removes `legacy/App.tsx` (#1345).
 
 ---
 

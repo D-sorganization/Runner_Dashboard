@@ -1,17 +1,4 @@
-"""Code requests and prompt-settings routes (CR-1, issue #1281).
-
-Covers:
-  - GET  /api/code-requests           – list saved code requests
-  - GET  /api/code-requests/templates – list prompt templates + notes
-  - POST /api/code-requests/templates – save a prompt template
-  - POST /api/code-requests/dispatch  – dispatch a code request via Jules / runner
-  - GET  /api/settings/prompt-notes   – get global prompt notes
-  - PUT  /api/settings/prompt-notes   – update global prompt notes
-
-Backward compatibility:
-  - /api/feature-requests* endpoints are preserved as deprecated aliases with
-    Deprecation: true and Link: </api/code-requests*>; rel="successor-version".
-"""
+"""Code requests and prompt-settings routes (CR-1, CR-3, issues #1281, #1283)."""
 
 from __future__ import annotations
 
@@ -24,10 +11,7 @@ import time
 from pathlib import Path
 
 import config_schema
-from code_requests.dispatch import (
-    build_full_prompt,
-    trigger_workflow_dispatch,
-)
+from code_requests.dispatch import build_full_prompt, trigger_workflow_dispatch
 from code_requests.lifecycle import InvalidTransitionError
 from code_requests.model import (
     STANDARDS_INJECTION,
@@ -37,6 +21,7 @@ from code_requests.model import (
     Requester,
     RequesterKind,
 )
+from code_requests.profiles import AgentProfileStore
 from code_requests.store import CodeRequestStore
 from dashboard_config import ORG, REPO_ROOT
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -113,16 +98,14 @@ _prompt_notes_lock: asyncio.Lock = asyncio.Lock()
 
 
 def _migrate_storage_if_needed() -> None:
-    """Migrate legacy feature_requests.json to code_requests.json on first read."""
     if _MIGRATED_MARKER_PATH.exists():
         return
     try:
-        source_path = _FEATURE_REQUESTS_PATH if _FEATURE_REQUESTS_PATH is not None else _LEGACY_FEATURE_REQUESTS_PATH
-        target_path = _CODE_REQUESTS_PATH
-        if source_path.exists() and not target_path.exists():
-            target_path.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source_path, target_path)
-        if source_path.exists():
+        src = _FEATURE_REQUESTS_PATH if _FEATURE_REQUESTS_PATH is not None else _LEGACY_FEATURE_REQUESTS_PATH
+        if src.exists() and not _CODE_REQUESTS_PATH.exists():
+            _CODE_REQUESTS_PATH.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, _CODE_REQUESTS_PATH)
+        if src.exists():
             _MIGRATED_MARKER_PATH.write_text(datetime.now(UTC).isoformat(), encoding="utf-8")
     except OSError as e:
         log.warning("Storage migration error: %s", e)
@@ -139,6 +122,13 @@ def _get_store() -> CodeRequestStore:
     if _store is None or _store.cache_path != storage_path:
         _store = CodeRequestStore(cache_path=storage_path)
     return _store
+
+
+_profile_store: AgentProfileStore = AgentProfileStore()
+
+
+def _get_profile_store() -> AgentProfileStore:
+    return _profile_store
 
 
 # ─── Routes ───────────────────────────────────────────────────────────────────
@@ -161,25 +151,21 @@ async def list_code_requests(_peer: str = Depends(require_fleet_peer)) -> dict: 
 @router.get("/api/code-requests/templates")
 async def list_prompt_templates() -> dict:
     """List saved prompt templates and global prompt notes."""
-    templates_data = []
     try:
-        if _PROMPT_TEMPLATES_PATH.exists():
-            templates_data = json.loads(_PROMPT_TEMPLATES_PATH.read_text(encoding="utf-8"))
+        t_data = (
+            json.loads(_PROMPT_TEMPLATES_PATH.read_text(encoding="utf-8")) if _PROMPT_TEMPLATES_PATH.exists() else []
+        )
     except (OSError, json.JSONDecodeError, UnicodeDecodeError):
-        pass
-
-    prompt_notes_data = {"notes": "", "enabled": True}
+        t_data = []
     try:
-        if _PROMPT_NOTES_PATH.exists():
-            prompt_notes_data = json.loads(_PROMPT_NOTES_PATH.read_text(encoding="utf-8"))
+        pn_data = (
+            json.loads(_PROMPT_NOTES_PATH.read_text(encoding="utf-8"))
+            if _PROMPT_NOTES_PATH.exists()
+            else {"notes": "", "enabled": True}
+        )
     except (OSError, json.JSONDecodeError, UnicodeDecodeError):
-        pass
-
-    return {
-        "templates": templates_data,
-        "standards": STANDARDS_INJECTION,
-        "promptNotes": prompt_notes_data,
-    }
+        pn_data = {"notes": "", "enabled": True}
+    return {"templates": t_data, "standards": STANDARDS_INJECTION, "promptNotes": pn_data}
 
 
 @router.post("/api/code-requests/templates")
@@ -190,25 +176,18 @@ async def save_prompt_template(
 ) -> dict:
     """Save a prompt template."""
     body = await request.json()
-    name = str(body.get("name", "")).strip()
-    content = str(body.get("content", "")).strip()
+    name, content = str(body.get("name", "")).strip(), str(body.get("content", "")).strip()
     if not name or not content:
         raise HTTPException(status_code=422, detail="name and content required")
     async with _prompt_templates_lock:
         try:
-            templates: list[dict] = []
-            if _PROMPT_TEMPLATES_PATH.exists():
-                templates = json.loads(_PROMPT_TEMPLATES_PATH.read_text(encoding="utf-8"))
-            existing_idx = next((i for i, t in enumerate(templates) if t.get("name") == name), None)
-            template = {
-                "name": name,
-                "content": content,
-                "updated_at": datetime.now(UTC).isoformat(),
-            }
-            if existing_idx is not None:
-                templates[existing_idx] = template
-            else:
-                templates.append(template)
+            templates = (
+                json.loads(_PROMPT_TEMPLATES_PATH.read_text(encoding="utf-8"))
+                if _PROMPT_TEMPLATES_PATH.exists()
+                else []
+            )
+            templates = [t for t in templates if t.get("name") != name]
+            templates.append({"name": name, "content": content, "updated_at": datetime.now(UTC).isoformat()})
             config_schema.atomic_write_json(_PROMPT_TEMPLATES_PATH, templates)
         except Exception as e:  # noqa: BLE001
             raise HTTPException(status_code=500, detail=str(e)) from e
@@ -267,6 +246,10 @@ async def create_code_request(
     req_id = str(body.get("id") or f"cr-unknown-{int(datetime.now(UTC).timestamp())}")
     title = str(body.get("title") or f"Code Request: {prompt[:40]}")
 
+    planner_profile_id = body.get("planner_profile_id")
+    p_obj = _get_profile_store().get(planner_profile_id) if planner_profile_id else None
+    profile_snapshot = p_obj.model_dump(mode="json") if p_obj else None
+
     code_req = CodeRequest(
         id=req_id,
         repository=repo,
@@ -274,8 +257,9 @@ async def create_code_request(
         state=initial_state,
         prompt=prompt,
         requester=requester,
-        planner_profile_id=body.get("planner_profile_id"),
+        planner_profile_id=planner_profile_id,
         executor_profile_id=body.get("executor_profile_id"),
+        profile_snapshot=profile_snapshot,
         board_route=board_route,
         board_proposal=body.get("board_proposal"),
         plan_epic=body.get("plan_epic"),
@@ -306,10 +290,8 @@ async def transition_code_request(
     reason = str(body.get("reason", "")).strip()
     is_override = bool(body.get("is_operator_override", False) or body.get("override", False))
 
-    if not to_state:
-        raise HTTPException(status_code=422, detail="to_state required")
-    if not reason:
-        raise HTTPException(status_code=422, detail="reason required")
+    if not to_state or not reason:
+        raise HTTPException(status_code=422, detail="to_state and reason required")
 
     store = _get_store()
     try:
@@ -334,12 +316,10 @@ async def get_prompt_notes() -> dict:
     """Get the global prompt notes that are automatically injected into every prompt."""
     try:
         if _PROMPT_NOTES_PATH.exists():
-            data = json.loads(_PROMPT_NOTES_PATH.read_text(encoding="utf-8"))
-        else:
-            data = {"notes": "", "enabled": True}
+            return json.loads(_PROMPT_NOTES_PATH.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError, UnicodeDecodeError):
-        data = {"notes": "", "enabled": True}
-    return data
+        pass
+    return {"notes": "", "enabled": True}
 
 
 @router.put("/api/settings/prompt-notes")
@@ -352,14 +332,10 @@ async def update_prompt_notes(
     body = await request.json()
     if not isinstance(body, dict):
         raise HTTPException(status_code=422, detail="expected object body")
-
-    notes = str(body.get("notes", "")).strip()
-    enabled = bool(body.get("enabled", True))
-
+    notes, enabled = str(body.get("notes", "")).strip(), bool(body.get("enabled", True))
     async with _prompt_notes_lock:
         try:
-            data = {"notes": notes, "enabled": enabled}
-            config_schema.atomic_write_json(_PROMPT_NOTES_PATH, data)
+            config_schema.atomic_write_json(_PROMPT_NOTES_PATH, {"notes": notes, "enabled": enabled})
         except Exception as e:  # noqa: BLE001
             raise HTTPException(status_code=500, detail=str(e)) from e
     return {"status": "saved", "notes_length": len(notes), "enabled": enabled}
@@ -379,14 +355,24 @@ async def dispatch_code_request(
     validate_workflow_inputs(body.get("inputs"))
     repo = str(body.get("repository", "")).strip()
     branch = str(body.get("branch", "main")).strip()
-    provider = str(body.get("provider", "jules_api")).strip()
     prompt = str(body.get("prompt", "")).strip()
-    standards = body.get("standards", []) or []
     template_id = str(body.get("template_id", "")).strip()
     if not repo:
         raise HTTPException(status_code=422, detail="repository required")
     if not prompt and not template_id:
         raise HTTPException(status_code=422, detail="prompt or template_id required")
+
+    profile_id = str(body.get("profile_id", "")).strip() or None
+    p_store = _get_profile_store()
+    profile = p_store.get(profile_id) if profile_id else p_store.get_default_or_fallback()
+    profile_snapshot = profile.model_dump(mode="json") if profile else None
+
+    provider = str(body.get("provider", "")).strip() or (profile.provider if profile else "codex_cli")
+    model = str(body.get("model", "")).strip() or (profile.model if profile else "")
+    effort = body.get("effort") or (profile.effort if profile else None)
+    raw_st = body.get("standards")
+    standards_list = raw_st if raw_st is not None else (profile.standards if profile else [])
+    budget = body.get("budget") or (profile.budget if profile else {})
 
     log.info(
         "audit: code_request_dispatch repo=%s provider=%s branch=%s",
@@ -403,9 +389,23 @@ async def dispatch_code_request(
     except (OSError, json.JSONDecodeError, UnicodeDecodeError):
         pass
 
-    full_prompt = build_full_prompt(prompt, list(standards), prompt_notes_data)
-    code, stderr = await trigger_workflow_dispatch(repo, branch, provider, full_prompt, run_cmd_fn=run_cmd)
+    full_prompt = build_full_prompt(prompt, list(standards_list), prompt_notes_data)
+    code, stderr = await trigger_workflow_dispatch(
+        repo,
+        branch,
+        provider,
+        full_prompt,
+        model=model,
+        effort=effort,
+        principal=principal.id,
+        budget=budget,
+        profile_id=profile.id if profile else None,
+        standards=list(standards_list),
+        run_cmd_fn=run_cmd,
+    )
     _record_dispatch_target(code == 0, stderr)
+    if code in (422, 429):
+        raise HTTPException(status_code=code, detail=stderr)
     if code != 0:
         log.warning("code_request_dispatch failed: %s", sanitize_log_value(stderr.strip()[:200]))
 
@@ -415,8 +415,11 @@ async def dispatch_code_request(
         "repository": repo,
         "branch": branch,
         "provider": provider,
+        "model": model,
+        "profile_id": profile.id if profile else None,
+        "profile_snapshot": profile_snapshot,
         "prompt": prompt[:500],
-        "standards": list(standards),
+        "standards": list(standards_list),
         "status": "dispatched" if code == 0 else "failed",
         "created_at": datetime.now(UTC).isoformat(),
     }
@@ -435,11 +438,14 @@ async def dispatch_code_request(
             pass
 
     if code != 0:
-        raise HTTPException(status_code=502, detail=str(_dispatch_target_state["detail"]))
+        detail_msg = str(_dispatch_target_state["detail"] or stderr)
+        raise HTTPException(status_code=502, detail=detail_msg)
     return {
         "status": "dispatched",
         "repository": repo,
         "provider": provider,
+        "model": model,
+        "profile_id": profile.id if profile else None,
         "entry_id": entry.get("id", ""),
     }
 
@@ -454,14 +460,12 @@ def _add_deprecation_headers(response: Response, successor: str) -> None:
 
 @router.get("/api/feature-requests", deprecated=True)
 async def list_feature_requests_deprecated(response: Response) -> dict:
-    """Deprecated alias for GET /api/code-requests."""
     _add_deprecation_headers(response, "/api/code-requests")
     return await list_code_requests()
 
 
 @router.get("/api/feature-requests/templates", deprecated=True)
 async def list_prompt_templates_deprecated(response: Response) -> dict:
-    """Deprecated alias for GET /api/code-requests/templates."""
     _add_deprecation_headers(response, "/api/code-requests/templates")
     return await list_prompt_templates()
 
@@ -473,7 +477,6 @@ async def save_prompt_template_deprecated(
     *,
     principal: Principal = Depends(require_scope("code-requests.manage")),  # noqa: B008
 ) -> dict:
-    """Deprecated alias for POST /api/code-requests/templates."""
     _add_deprecation_headers(response, "/api/code-requests/templates")
     return await save_prompt_template(request, principal=principal)
 
@@ -485,6 +488,5 @@ async def dispatch_feature_request_deprecated(
     *,
     principal: Principal = Depends(require_scope("code-requests.manage")),  # noqa: B008
 ) -> dict:
-    """Deprecated alias for POST /api/code-requests/dispatch."""
     _add_deprecation_headers(response, "/api/code-requests/dispatch")
     return await dispatch_code_request(request, principal=principal)

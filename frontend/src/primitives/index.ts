@@ -55,10 +55,6 @@ export type { BottomSheetProps } from "./BottomSheet";
 export { TabErrorBoundary } from "./TabErrorBoundary";
 export type { TabErrorBoundaryProps } from "./TabErrorBoundary";
 
-// D2 / issue #721: Virtualized data table
-export { DataTable } from "./DataTable";
-export type { DataTableProps, Column } from "./DataTable";
-
 // D3 / issue #722: Refresh badge
 export { RefreshBadge } from "./RefreshBadge";
 export type { RefreshBadgeProps } from "./RefreshBadge";

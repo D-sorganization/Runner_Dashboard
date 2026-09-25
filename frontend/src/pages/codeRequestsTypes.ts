@@ -12,6 +12,8 @@ export interface CodeRequestRecord {
   branch?: string;
   prompt?: string;
   provider?: string;
+  profile_id?: string;
+  profile_snapshot?: Record<string, unknown>;
   standards?: string[];
   status?: string;
   created_at?: string;
@@ -45,6 +47,8 @@ export interface CodeDispatchPayload {
   provider: string;
   prompt: string;
   standards: string[];
+  profile_id?: string;
+  model?: string;
 }
 export type FeatureDispatchPayload = CodeDispatchPayload;
 

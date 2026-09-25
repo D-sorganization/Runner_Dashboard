@@ -30,6 +30,19 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** Implemented suggestion box for humans and agents submitting proposals to the Board stored as GitHub issues in `D-sorganization/Repository_Management` with label `board:proposal` and `needs-decision`, then fixed 11 numbered review defects from `review_1444.md`: rate limit now counted by a hidden `<!-- proposal-submitter: <id> -->` marker instead of the caller-controlled `source` field; store format (headings, `Estimated Effort`/`Urgency` enums) matches the real `board-proposal.yml` form; GitHub read failures propagate as 503 instead of silently degrading to an empty list; decision-label whitelist excludes `board:needs-info`; input validation rejects markdown heading injection, invalid repo names, and non-https `code_request_url`; `gh_api` uses one error-mapping helper and issue creation reuses `gh_api_write`, `list_github_proposals` paginates via `gh_client`, and `rm_root()` is reused from `staff.workspace` instead of a bespoke resolver; consensus links point at GitHub's `consensus.md`, resolved in one pass over meetings instead of per-issue; `is_secretary` now checks a configured `BOARD_SECRETARY_LOGINS` list instead of substring matching; frontend passes `code_request_url` through "Propose to Board" links, uses a lazy `useState` initializer, and drops the unused `err: any`/`setProposalPrefill`.
 - **Next step:** Address any PR #1444 review follow-up comments, then remove the draft flag once the reviewer signs off.
 
+### DL-#1346 · SC-G8: Delete dead frontend code
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1346 (epic #1353)
+- **Branch:** `chore/1346-dead-frontend`
+- **PR:** not created
+- **Paths:** `frontend/src/primitives/`, `frontend/src/lib/schemas/dispatch.ts`, `package.json`, `package-lock.json`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 at `a34c322b` baseline (vitest 1299 passed; tsc clean; bundle 1,169,405 B before and after)
+- **Summary:** Removes the never-mounted primitives and the dependencies only they used. QuickDispatch and AlertsCenter remain until the legacy App is removed.
+- **Next step:** Merge the PR, then delete QuickDispatch and AlertsCenter together with `legacy/App.tsx` under #1345.
+
 ### DL-#1282 · CR-2: Code Request data model, lifecycle state machine and durable GitHub-backed record
 
 - **State:** in_review

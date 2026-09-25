@@ -108,6 +108,7 @@ class CodeRequest(BaseModel):
     requester: Requester
     planner_profile_id: str | None = None
     executor_profile_id: str | None = None
+    profile_snapshot: dict[str, Any] | None = None
     board_route: BoardRoute = BoardRoute.AUTO
     board_proposal: str | None = None
     plan_epic: str | None = None
@@ -138,6 +139,8 @@ def serialize_front_matter(request: CodeRequest) -> str:
         "created_at": request.created_at,
         "updated_at": request.updated_at,
     }
+    if request.profile_snapshot is not None:
+        payload["profile_snapshot"] = request.profile_snapshot
     yaml_text = yaml.safe_dump(payload, sort_keys=False, default_flow_style=False).strip()
     return f"```yaml\n{yaml_text}\n```"
 
@@ -265,6 +268,7 @@ def code_request_from_issue(
         requester=requester,
         planner_profile_id=parsed.get("planner_profile_id"),
         executor_profile_id=parsed.get("executor_profile_id"),
+        profile_snapshot=parsed.get("profile_snapshot"),
         board_route=board_route,
         board_proposal=parsed.get("board_proposal"),
         plan_epic=parsed.get("plan_epic"),

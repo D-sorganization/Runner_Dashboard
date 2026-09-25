@@ -268,6 +268,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/agent-profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Agent Profiles
+         * @description List all saved agent profiles and live provider availability.
+         */
+        get: operations["list_agent_profiles_api_agent_profiles_get"];
+        put?: never;
+        /**
+         * Create Agent Profile
+         * @description Create a new agent profile.
+         */
+        post: operations["create_agent_profile_api_agent_profiles_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-profiles/{profile_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Agent Profile
+         * @description Get a single agent profile by id.
+         */
+        get: operations["get_agent_profile_api_agent_profiles__profile_id__get"];
+        /**
+         * Update Agent Profile
+         * @description Update an existing agent profile.
+         */
+        put: operations["update_agent_profile_api_agent_profiles__profile_id__put"];
+        post?: never;
+        /**
+         * Delete Agent Profile
+         * @description Delete an agent profile by id.
+         */
+        delete: operations["delete_agent_profile_api_agent_profiles__profile_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/agent-remediation/config": {
         parameters: {
             query?: never;
@@ -1728,7 +1780,6 @@ export interface paths {
         /**
          * List Feature Requests Deprecated
          * @deprecated
-         * @description Deprecated alias for GET /api/code-requests.
          */
         get: operations["list_feature_requests_deprecated_api_feature_requests_get"];
         put?: never;
@@ -1751,7 +1802,6 @@ export interface paths {
         /**
          * Dispatch Feature Request Deprecated
          * @deprecated
-         * @description Deprecated alias for POST /api/code-requests/dispatch.
          */
         post: operations["dispatch_feature_request_deprecated_api_feature_requests_dispatch_post"];
         delete?: never;
@@ -1770,14 +1820,12 @@ export interface paths {
         /**
          * List Prompt Templates Deprecated
          * @deprecated
-         * @description Deprecated alias for GET /api/code-requests/templates.
          */
         get: operations["list_prompt_templates_deprecated_api_feature_requests_templates_get"];
         put?: never;
         /**
          * Save Prompt Template Deprecated
          * @deprecated
-         * @description Deprecated alias for POST /api/code-requests/templates.
          */
         post: operations["save_prompt_template_deprecated_api_feature_requests_templates_post"];
         delete?: never;
@@ -8382,6 +8430,149 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SimpleResponse"];
+                };
+            };
+        };
+    };
+    list_agent_profiles_api_agent_profiles_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    create_agent_profile_api_agent_profiles_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    get_agent_profile_api_agent_profiles__profile_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_agent_profile_api_agent_profiles__profile_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_agent_profile_api_agent_profiles__profile_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -42,6 +42,12 @@ def history_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr(
         feature_requests, "_dispatch_target_state", {"checked_at": None, "available": None, "detail": ""}
     )
+    monkeypatch.setattr(
+        "agent_remediation.probe_provider_availability",
+        lambda *a, **k: {
+            "jules_api": type("_Avail", (), {"available": True, "detail": "ready"})(),
+        },
+    )
     return path
 
 
