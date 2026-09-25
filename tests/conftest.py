@@ -178,6 +178,48 @@ def mock_auth():
     app.dependency_overrides.clear()
 
 
+@pytest.fixture(autouse=True)
+def _hermetic_staff_workspace(tmp_path, monkeypatch):
+    """Isolate staff.workspace so tests never touch a real checkout (#1521).
+
+    ``staff.workspace.repos_roots()`` used to always append the developer's
+    real ``~/Repositories`` (and friends) after any configured
+    ``STAFF_REPOS_ROOT``, so a staff test that submitted a run could
+    discover a real checkout and run real ``git worktree add`` / ``gh``
+    against it. This fixture neutralizes discovery for every test: no root
+    is ever resolved, and worktree/RM-root paths live under this test's own
+    ``tmp_path``.
+
+    A test that genuinely needs a checkout must build a fake one under
+    ``tmp_path`` and monkeypatch the relevant ``staff.workspace`` function
+    itself (several already do this, e.g. ``find_repo_checkout`` /
+    ``add_worktree`` in ``tests/api/test_staff_consolidation.py``) — that
+    per-test monkeypatch simply overrides the default set up here.
+    """
+    from staff import workspace as workspace_mod  # noqa: PLC0415
+
+    monkeypatch.setattr(workspace_mod, "repos_roots", lambda: [])
+    monkeypatch.setenv("STAFF_WORKTREES_ROOT", str(tmp_path / "staff-worktrees"))
+    monkeypatch.setenv("STAFF_RM_ROOT", str(tmp_path / "staff-rm-root"))
+
+    real_add_worktree = workspace_mod.add_worktree
+
+    def _guarded_add_worktree(checkout, worktree, branch):
+        # DbC guard: fail loudly instead of silently shelling out to real
+        # git if a test-created run ever resolves a worktree path outside
+        # this test's own tmp_path.
+        try:
+            Path(worktree).resolve().relative_to(tmp_path.resolve())
+        except ValueError:
+            raise AssertionError(
+                f"add_worktree() target {worktree!r} is outside the pytest tmp_path "
+                f"{tmp_path!r}; staff tests must never create real git worktrees (#1521)."
+            ) from None
+        return real_add_worktree(checkout, worktree, branch)
+
+    monkeypatch.setattr(workspace_mod, "add_worktree", _guarded_add_worktree)
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _cleanup_stores_session_teardown():
     yield

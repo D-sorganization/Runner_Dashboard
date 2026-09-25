@@ -1,4 +1,29 @@
-# Current handoff — SC-G5-2: One Advanced dispatch form (#1498)
+# Current handoff — Make staff tests hermetic: no real worktrees or gh (#1521)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1521-hermetic-staff-tests`; DL-#1521; Issue #1521.
+
+## Objective and Status
+
+- Fix `backend/staff/workspace.py::repos_roots()` leaking real developer checkouts into the staff test suite (Issue #1521):
+  - `repos_roots()` always appended `~/Repositories`, `~/actions-runners/repos` and `/mnt/c/Users/$USERNAME/Repositories` after any configured `STAFF_REPOS_ROOT`, so staff tests that submitted a run did real `git worktree add` and spawned real `gh` against a developer's real checkouts.
+  - Added `tests/unit/test_staff_test_isolation.py` (RED first) asserting `staff.workspace.repos_roots()` returns `[]` and `staff_worktrees_root()` resolves under `tmp_path` inside the test session, plus a DbC regression test that `add_worktree()` raises `AssertionError` for a target outside `tmp_path`.
+  - Added one new autouse fixture `_hermetic_staff_workspace` in `tests/conftest.py`: monkeypatches `staff.workspace.repos_roots` to return `[]`, sets `STAFF_WORKTREES_ROOT`/`STAFF_RM_ROOT` to `tmp_path` subdirectories, and wraps `staff.workspace.add_worktree` with a guard that raises `AssertionError` if the target worktree path resolves outside `tmp_path` — unless a test replaces `add_worktree` itself (several already do).
+  - Did **not** change `repos_roots()` production semantics (the prepend-vs-replace question for `STAFF_REPOS_ROOT` is called out as the owner's call in the PR body, per the issue's "Optional, owner's call" note).
+  - Verification: `tests/staff`, `tests/api/test_staff*.py`, `tests/unit/test_staff*.py` all pass under WSL with `HOME`/`USERNAME` isolated; no new `_staff_worktrees/*` or `staff/*` branches created in any real checkout.
+
+## Next Steps
+
+1. Owner review: decide whether `STAFF_REPOS_ROOT` should *replace* the default roots instead of prepending to them in production.
+2. Address any CI feedback on the draft PR.
+3. Mark the PR ready for review and arm auto-merge once approved.
+
+---
+
+# Past handoff — SC-G5-2: One Advanced dispatch form (#1498)
 
 Last updated: 2026-09-25
 
