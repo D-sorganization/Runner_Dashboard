@@ -90,6 +90,13 @@ export const ActionCard: React.FC<ActionCardProps> = ({
         </span>
       </div>
 
+      {/* Routed By / Barb Handoff Notice */}
+      {proposal.routed_role && (
+        <div style={{ fontSize: 11, color: "var(--accent-purple, #bc8cff)", marginBottom: 6 }}>
+          🔄 Routed via {proposal.routed_role} to Maintenance
+        </div>
+      )}
+
       {/* Target and Description */}
       {proposal.target && (
         <div style={{ fontSize: 12, color: "var(--text-muted, #8b949e)", marginBottom: 4 }}>
@@ -100,6 +107,44 @@ export const ActionCard: React.FC<ActionCardProps> = ({
       {proposal.description && (
         <div style={{ fontSize: 12, color: "var(--text-secondary, #c9d1d9)", marginBottom: 8, lineHeight: 1.4 }}>
           {proposal.description}
+        </div>
+      )}
+
+      {/* Dry Run Preview Banner & Planned Steps */}
+      {proposal.dry_run && (
+        <div
+          data-testid="dry-run-preview"
+          style={{
+            fontSize: 11,
+            color: "var(--accent-blue, #58a6ff)",
+            background: "rgba(56, 139, 253, 0.1)",
+            border: "1px solid var(--border-blue, #1f6feb)",
+            padding: "6px 10px",
+            borderRadius: 6,
+            marginBottom: 8,
+          }}
+        >
+          <div style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+            <span>🔍 Dry-run preview</span>
+            {typeof proposal.dry_run === "object" &&
+              Array.isArray(proposal.dry_run.planned_steps) &&
+              proposal.dry_run.planned_steps.length > 0 && (
+                <span style={{ opacity: 0.8, fontSize: 10 }}>
+                  ({proposal.dry_run.planned_steps.length} steps)
+                </span>
+              )}
+          </div>
+          {typeof proposal.dry_run === "object" &&
+            Array.isArray(proposal.dry_run.planned_steps) &&
+            proposal.dry_run.planned_steps.length > 0 && (
+              <ol style={{ margin: "4px 0 0 16px", padding: 0 }}>
+                {proposal.dry_run.planned_steps.map((step, idx) => (
+                  <li key={idx} style={{ color: "var(--text-secondary, #c9d1d9)", margin: "2px 0" }}>
+                    {step}
+                  </li>
+                ))}
+              </ol>
+            )}
         </div>
       )}
 
@@ -130,10 +175,18 @@ export const ActionCard: React.FC<ActionCardProps> = ({
             marginBottom: 8,
           }}
         >
-          ✓ {proposal.status.charAt(0).toUpperCase() + proposal.status.slice(1)} by {proposal.decided_by || "user"}
-          {proposal.decided_at ? ` at ${new Date(proposal.decided_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}
+          <div>
+            ✓ {proposal.status.charAt(0).toUpperCase() + proposal.status.slice(1)} by {proposal.decided_by || "user"}
+            {proposal.decided_at ? ` at ${new Date(proposal.decided_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}
+          </div>
+          {proposal.verification_message && (
+            <div style={{ marginTop: 4, fontWeight: 600, color: "var(--accent-green, #3fb950)" }}>
+              ✓ Verified: {proposal.verification_message}
+            </div>
+          )}
         </div>
       )}
+
 
       {/* Params toggle and inspection */}
       {proposal.params && Object.keys(proposal.params).length > 0 && (

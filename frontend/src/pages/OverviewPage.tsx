@@ -7,6 +7,10 @@ import {
   FleetRunnersSection,
   FleetAlertsSection,
   FleetEventsSection,
+  MaintenanceActionModal,
+  executeFleetAction,
+  FLEET_ACTIONS,
+  type FleetRowActionKey,
 } from "./Fleet";
 import { OverviewLeases } from "./OverviewLeases";
 import { legacyFetch } from "../lib/api";
@@ -54,14 +58,12 @@ function normalizeArrayPayload(payload: unknown, key: string): any[] {
 }
 
 function normalizeObjectPayload(payload: unknown): Record<string, any> {
-  return payload && typeof payload === "object"
-    ? (payload as Record<string, any>)
-    : {};
+  return payload && typeof payload === "object" ? (payload as Record<string, any>) : {};
 }
 
 function normalizeNodesPayload(payload: unknown): { nodes: any[] } {
-  const objectPayload = normalizeObjectPayload(payload);
-  return Array.isArray(objectPayload.nodes) ? { nodes: objectPayload.nodes } : { nodes: [] };
+  const obj = normalizeObjectPayload(payload);
+  return Array.isArray(obj.nodes) ? { nodes: obj.nodes } : { nodes: [] };
 }
 
 function telemetryAlert(
@@ -70,14 +72,9 @@ function telemetryAlert(
   title: string,
   detail: string,
 ): FleetAlert {
-  return {
-    id,
-    level,
-    title,
-    detail,
-    contentHash: alertContentHash({ id, level, title, detail }),
-  };
+  return { id, level, title, detail, contentHash: alertContentHash({ id, level, title, detail }) };
 }
+
 
 function buildOverviewAlerts(
   state: OverviewState,
@@ -347,6 +344,41 @@ export function OverviewPage(): React.ReactElement {
       });
   }, []);
 
+  const [modalState, setModalState] = useState<{
+    isOpen: boolean;
+    target: string;
+    actionKey: FleetRowActionKey;
+    isMachine: boolean;
+  }>({ isOpen: false, target: "", actionKey: "diagnose", isMachine: false });
+
+  const onMaintenanceAction = useCallback(
+    (target: string, actionKey: FleetRowActionKey, isMachine: boolean) => {
+      setModalState({ isOpen: true, target, actionKey, isMachine });
+    },
+    [],
+  );
+
+
+  const handleExecuteModalAction = useCallback(
+    async (target: string, actionKey: FleetRowActionKey, isMachine: boolean) => {
+      const res = await executeFleetAction(target, actionKey, isMachine, legacyFetch);
+      if (res.success) {
+        refresh();
+      }
+      return res;
+    },
+    [refresh],
+  );
+
+  const handleOpenStaffConsole = useCallback(
+    (target: string, actionKey: FleetRowActionKey, role: string) => {
+      setModalState((prev) => ({ ...prev, isOpen: false }));
+      const label = FLEET_ACTIONS[actionKey]?.label || actionKey;
+      navigate(`/?role=${encodeURIComponent(role)}&prompt=${encodeURIComponent(`[${target}] ${label}`)}`);
+    },
+    [navigate],
+  );
+
   const onAskMaintenance = useCallback(
     (target: string, prompt: string) => {
       // SC-E6: Route fleet maintenance questions to Staff Console Maintenance role
@@ -394,6 +426,7 @@ export function OverviewPage(): React.ReactElement {
         error={machinesError}
         onRetry={() => refresh()}
         onAskMaintenance={onAskMaintenance}
+        onMaintenanceAction={onMaintenanceAction}
       />
 
       {/* 3. Runners Section: filter pills, fleet controls, runner list with maintenance */}
@@ -406,6 +439,7 @@ export function OverviewPage(): React.ReactElement {
         onFleet={onFleet}
         onRunner={onRunner}
         onAskMaintenance={onAskMaintenance}
+        onMaintenanceAction={onMaintenanceAction}
       />
 
       {/* 4. Alerts & Hosted-Runner Billing Section: active alarms + routing audit */}
@@ -430,8 +464,21 @@ export function OverviewPage(): React.ReactElement {
 
       {/* 6. Active Leases Strip */}
       <OverviewLeases />
+
+      {/* 7. SC-E6: Maintenance Action Modal with dry-run */}
+      <MaintenanceActionModal
+        isOpen={modalState.isOpen}
+        target={modalState.target}
+        actionKey={modalState.actionKey}
+        isMachine={modalState.isMachine}
+        onClose={() => setModalState((prev) => ({ ...prev, isOpen: false }))}
+        onExecuteAction={handleExecuteModalAction}
+        onSuccess={() => refresh()}
+        onOpenStaffConsole={handleOpenStaffConsole}
+      />
     </div>
   );
+
 }
 
 export default OverviewPage;

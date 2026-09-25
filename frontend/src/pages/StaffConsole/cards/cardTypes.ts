@@ -33,6 +33,9 @@ export interface ActionProposalData {
   expires_at?: string | null;
   description?: string;
   execution_result?: Record<string, unknown> | null;
+  dry_run?: boolean | { planned_steps?: string[]; [key: string]: unknown } | null;
+  verification_message?: string | null;
+  routed_role?: string | null;
 }
 
 export type RunStatus =

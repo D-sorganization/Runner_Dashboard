@@ -1,4 +1,6 @@
 import React, { useState } from "react";
+import { FLEET_ACTIONS, type FleetRowActionKey } from "./fleetActions";
+import { FleetRowActions } from "./FleetRowActions";
 
 export interface RunnerLabel {
   name?: string;
@@ -31,6 +33,7 @@ export interface FleetRunnersSectionProps {
   onFleet?: (action: string) => void;
   onRunner?: (id: number | string, action: string) => void;
   onAskMaintenance?: (runnerName: string, actionPrompt: string) => void;
+  onMaintenanceAction?: (target: string, actionKey: FleetRowActionKey, isMachine: boolean) => void;
 }
 
 export const FleetRunnersSection: React.FC<FleetRunnersSectionProps> = ({
@@ -42,6 +45,7 @@ export const FleetRunnersSection: React.FC<FleetRunnersSectionProps> = ({
   onFleet,
   onRunner,
   onAskMaintenance,
+  onMaintenanceAction,
 }) => {
   const [filter, setFilter] = useState<"all" | "online" | "busy" | "offline">("all");
 
@@ -327,7 +331,18 @@ export const FleetRunnersSection: React.FC<FleetRunnersSectionProps> = ({
                       )}
                     </td>
                     <td style={{ padding: "8px 10px", textAlign: "right" }}>
-                      <div style={{ display: "inline-flex", gap: 6 }}>
+                      <div style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                        <FleetRowActions
+                          target={r.name}
+                          isMachine={false}
+                          onSelectAction={(actionKey) => {
+                            if (onMaintenanceAction) {
+                              onMaintenanceAction(r.name, actionKey, false);
+                            } else {
+                              onAskMaintenance?.(r.name, `${FLEET_ACTIONS[actionKey]?.label || actionKey} runner ${r.name}`);
+                            }
+                          }}
+                        />
                         <button
                           type="button"
                           onClick={() => onAskMaintenance?.(r.name, `Maintain runner ${r.name}`)}

@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import { formatBytes } from "../../components/formatters";
+import { FLEET_ACTIONS, type FleetRowActionKey } from "./fleetActions";
+import { FleetRowActions } from "./FleetRowActions";
 
 export interface StorageDevice {
   device?: string;
@@ -52,6 +54,7 @@ export interface FleetMachinesSectionProps {
   onRetry?: () => void;
   onAskMaintenance?: (machineName: string, actionPrompt: string) => void;
   onControlAction?: (action: string) => void;
+  onMaintenanceAction?: (target: string, actionKey: FleetRowActionKey, isMachine: boolean) => void;
 }
 
 export const FleetMachinesSection: React.FC<FleetMachinesSectionProps> = ({
@@ -63,6 +66,7 @@ export const FleetMachinesSection: React.FC<FleetMachinesSectionProps> = ({
   onRetry,
   onAskMaintenance,
   onControlAction: _onControlAction,
+  onMaintenanceAction,
 }) => {
   const machineList = machines || nodes || [];
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -230,6 +234,17 @@ export const FleetMachinesSection: React.FC<FleetMachinesSectionProps> = ({
                       </td>
                       <td style={{ padding: "8px 10px", textAlign: "right" }}>
                         <div style={{ display: "inline-flex", gap: 6 }}>
+                          <FleetRowActions
+                            target={m.name}
+                            isMachine={true}
+                            onSelectAction={(actionKey) => {
+                              if (onMaintenanceAction) {
+                                onMaintenanceAction(m.name, actionKey, true);
+                              } else {
+                                onAskMaintenance?.(m.name, `${FLEET_ACTIONS[actionKey]?.label || actionKey} machine ${m.name}`);
+                              }
+                            }}
+                          />
                           <button
                             type="button"
                             onClick={() => onAskMaintenance?.(m.name, `Inspect and maintain machine ${m.name}`)}

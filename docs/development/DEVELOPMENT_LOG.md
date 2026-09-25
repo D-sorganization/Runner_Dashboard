@@ -18,9 +18,21 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1325 · SC-G3: Fleet -> Operations: merge Deployment, Fleet Orchestration, Diagnostics, Conductor, Runner Plan and Schedules
+### DL-#1333 · SC-E6: Maintenance in the UI: Maintenance thread plus "Ask Maintenance" row actions on the Fleet page
 
 - **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1333 (epic #1351 / umbrella #1354)
+- **Branch:** `feat/1333-maintenance-ui`
+- **Paths:** `frontend/src/pages/Fleet/fleetActions.ts`, `frontend/src/pages/Fleet/FleetRowActions.tsx`, `frontend/src/pages/Fleet/MaintenanceActionModal.tsx`, `frontend/src/pages/Fleet/FleetMachinesSection.tsx`, `frontend/src/pages/Fleet/FleetRunnersSection.tsx`, `frontend/src/pages/Fleet/index.ts`, `frontend/src/pages/OverviewPage.tsx`, `frontend/src/pages/StaffConsole/cards/ActionCard.tsx`, `frontend/src/pages/StaffConsole/cards/cardTypes.ts`, `backend/staff/router_models.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (vitest 72/72 tests passing across Fleet and cards; npm run typecheck 0 errors; npm run lint 0 warnings; ruff check clean; pytest router & maintenance 12/12 passing; test_color_literal_budget passing; all files <= 500 lines)
+- **Summary:** Implemented SC-E6 Maintenance row actions on the Fleet page: (1) Added accessible `FleetRowActions` dropdown menu for machines and runners covering 5 actions ("Bring online", "Take offline", "Restart", "Compact disk", "Diagnose"); (2) Followed Owner decision (2026-09-23) routing mutating actions through Barb to Maintenance, and read-only actions (Diagnose) directly to Maintenance; (3) Added dry-run display with planned steps, verification confirmations, and Barb routing badges to `ActionCard`; (4) Built `MaintenanceActionModal` presenting pre-filled action card with dry-run shown, executing upon approval, verifying postcondition state cleanly, and refreshing fleet data; (5) Added maintenance action keyword rules to `router_models.py`.
+- **Next step:** Push branch `feat/1333-maintenance-ui`, open PR with Fixes #1333, enable auto-merge, monitor CI to green merge, release lease, and clean up.
+
+### DL-#1325 · SC-G3: Fleet -> Operations: merge Deployment, Fleet Orchestration, Diagnostics, Conductor, Runner Plan and Schedules
+
+- **State:** shipped
 - **Owner:** local
 - **Issue:** #1325 (epic #1353 / umbrella #1354)
 - **Branch:** `feat/1325-operations-merge`
@@ -28,7 +40,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (all 149 test files passed, 1,269 frontend tests passed; npm run typecheck passed with 0 errors; npm run lint passed with 0 warnings; color literal budget passed; npm run build passed; bundle budget passed; all files strictly <= 500 lines)
 - **Summary:** Implemented SC-G3 Operations page merging Deployment, Fleet Orchestration, Diagnostics, Conductor, Runner Plan, and Schedules into `/fleet/operations`: (1) `OperationsStatusBanner` with quick KPI badges and 5 jump anchors (`#deploy`, `#admission`, `#runner-hours`, `#scheduled-workflows`, `#diagnostics`); (2) `OperationsDeploySection` with expected version, rollout summary, machine drift table, multi-node deploy action form, and audit log; (3) `OperationsAdmissionSection` with admission gate status (running/paused/draining), queue control buttons, capacity and work queue statistics, provider mix, budget burn, and 404 empty state; (4) `OperationsRunnerHoursSection` with desired/online/busy/offline runner metrics, schedule windows table, save/apply buttons, timer status, and config path footer; (5) `OperationsScheduledWorkflowsSection` with cron workflows table, repository badges, cron expressions, run link, search filter, and trigger CTA; (6) `OperationsDiagnosticsSection` with PID, memory MB, port, WSL status, git drift, service recovery restart with confirmation, Windows launcher generator, and API links; (7) Backwards-compatible redirects configured for `/fleet/deployment`, `/deployment`, `/t/deployment`, `/fleet/fleet-orchestration`, `/t/fleet-orchestration`, `/fleet/conductor`, `/conductor`, `/t/conductor`, `/fleet/runner-schedule`, `/runner-schedule`, `/fleet/runner-plan`, `/runner-plan`, `/t/runner-schedule`, `/work/scheduled-jobs`, `/scheduled-jobs`, `/schedules`, `/work/schedules`, `/t/scheduled-jobs`, `/settings/diagnostics`, `/diagnostics`, `/t/diagnostics` to `/fleet/operations#...` with user toast notices; (8) Recomposed shell navigation and overview deployment navigation to point to `/fleet/operations#deploy`.
-- **Next step:** Push branch `feat/1325-operations-merge`, open PR with Fixes #1325, enable auto-merge, monitor CI to green merge, release lease, and clean up.
+- **Next step:** Shipped in PR #1426 (commit `1ce7324`).
 
 ### DL-#1428 · Restore green main: trim Mobile.tsx <= 500 lines and format api-types.ts
 
@@ -53,6 +65,18 @@ reachable from any live state and `abandoned` from `parked`.
 - **Last verified:** 2026-09-25 (all 75 StaffConsole unit tests passed; npm run typecheck passed 0 errors; npm run lint passed 0 warnings; pytest test_frontend_integrity passed 72/72; all files strictly <= 500 lines)
 - **Summary:** Implemented SC-D8 Mobile Staff Console: (1) Full-screen mobile roster with Ask Barb top entry, role groupings, status badges, and search filtering; (2) Full-screen transition to conversation thread with `< Back to Roster` button, role header, and details sheet; (3) Safe-area aware bottom composer (`env(safe-area-inset-bottom)`) with Send and Voice input touch targets; (4) Cards adapted to narrow viewports with $\ge 44\text{px}$ touch targets on Approve/Deny buttons; (5) Push notification deep links (`?thread=<id>` and `?role=<role>`); (6) Role context bottom sheet drawer for inspecting schedule and budget; (7) Seamless mobile tab integration in `RoutedShell.tsx`.
 - **Next step:** Shipped in PR #1427 (commit `94b7090`).
+
+### DL-#1424 · Restore green main: synchronize generated API contract for SC-C5
+
+- **State:** shipped
+- **Owner:** antigravity
+- **Issue:** #1333 (epic #1351 / umbrella #1354)
+- **Branch:** `feat/1333-maintenance-ui`
+- **Paths:** `frontend/src/pages/Fleet/fleetActions.ts`, `frontend/src/pages/Fleet/FleetRowActions.tsx`, `frontend/src/pages/Fleet/MaintenanceActionModal.tsx`, `frontend/src/pages/Fleet/FleetMachinesSection.tsx`, `frontend/src/pages/Fleet/FleetRunnersSection.tsx`, `frontend/src/pages/Fleet/index.ts`, `frontend/src/pages/OverviewPage.tsx`, `frontend/src/pages/StaffConsole/cards/ActionCard.tsx`, `frontend/src/pages/StaffConsole/cards/cardTypes.ts`, `backend/staff/router_models.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (vitest 72/72 tests passing across Fleet and cards; npm run typecheck 0 errors; npm run lint 0 warnings; ruff check clean; pytest router & maintenance 12/12 passing; test_color_literal_budget passing; all files <= 500 lines)
+- **Summary:** Implemented SC-E6 Maintenance row actions on the Fleet page: (1) Added accessible `FleetRowActions` dropdown menu for machines and runners covering 5 actions ("Bring online", "Take offline", "Restart", "Compact disk", "Diagnose"); (2) Followed Owner decision (2026-09-23) routing mutating actions through Barb to Maintenance, and read-only actions (Diagnose) directly to Maintenance; (3) Added dry-run display with planned steps, verification confirmations, and Barb routing badges to `ActionCard`; (4) Built `MaintenanceActionModal` presenting pre-filled action card with dry-run shown, executing upon approval, verifying postcondition state cleanly, and refreshing fleet data; (5) Added maintenance action keyword rules to `router_models.py`.
+- **Next step:** Push branch, open PR with Fixes #1333, enable auto-merge, monitor CI until merged, release lease, and clean up.
 
 ### DL-#1424 · Restore green main: synchronize generated API contract for SC-C5
 

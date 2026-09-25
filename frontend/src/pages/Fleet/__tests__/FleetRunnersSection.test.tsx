@@ -125,4 +125,32 @@ describe("FleetRunnersSection", () => {
     fireEvent.click(screen.getByRole("button", { name: /Retry/i }));
     expect(onRetry).toHaveBeenCalled();
   });
+
+  it("triggers onMaintenanceAction when row action menu item is selected for a runner", () => {
+    const onMaintenanceAction = vi.fn();
+    render(
+      <FleetRunnersSection
+        runners={mockRunners}
+        runs={mockRuns}
+        loading={false}
+        error={null}
+        onRetry={vi.fn()}
+        onMaintenanceAction={onMaintenanceAction}
+      />
+    );
+
+    const actionTriggers = screen.getAllByRole("button", { name: /Actions for runner/i });
+    expect(actionTriggers.length).toBeGreaterThan(0);
+    fireEvent.click(actionTriggers[0]);
+
+    const takeOfflineItem = screen.getByRole("menuitem", { name: "Take offline" });
+    fireEvent.click(takeOfflineItem);
+
+    expect(onMaintenanceAction).toHaveBeenCalledWith(
+      "d-sorg-local-ControlTower-1",
+      "take_offline",
+      false
+    );
+  });
 });
+

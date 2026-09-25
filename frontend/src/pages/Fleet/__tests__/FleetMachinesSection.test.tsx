@@ -113,4 +113,28 @@ describe("FleetMachinesSection", () => {
     fireEvent.click(retryBtn);
     expect(onRetry).toHaveBeenCalled();
   });
+
+  it("triggers onMaintenanceAction when row action menu item is selected", () => {
+    const onMaintenanceAction = vi.fn();
+    render(
+      <FleetMachinesSection
+        machines={mockMachines}
+        runners={mockRunners}
+        loading={false}
+        error={null}
+        onRetry={vi.fn()}
+        onMaintenanceAction={onMaintenanceAction}
+      />
+    );
+
+    const actionTriggers = screen.getAllByRole("button", { name: /Actions/i });
+    expect(actionTriggers.length).toBeGreaterThan(0);
+    fireEvent.click(actionTriggers[0]);
+
+    const compactDiskItem = screen.getByRole("menuitem", { name: "Compact disk" });
+    fireEvent.click(compactDiskItem);
+
+    expect(onMaintenanceAction).toHaveBeenCalledWith("ControlTower", "compact_disk", true);
+  });
 });
+

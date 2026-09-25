@@ -14,6 +14,9 @@ export type { StatusPillProps } from "./StatusPill";
 export type { FleetStatusBannerProps } from "./FleetStatusBanner";
 export type { FleetMachinesSectionProps } from "./FleetMachinesSection";
 export type { FleetRunnersSectionProps } from "./FleetRunnersSection";
-export type { FleetAlertsSectionProps } from "./FleetAlertsSection";
-export type { FleetEventsSectionProps } from "./FleetEventsSection";
+export { FleetRowActions } from "./FleetRowActions";
+export { MaintenanceActionModal } from "./MaintenanceActionModal";
+export * from "./fleetActions";
+export type { FleetRowActionsProps } from "./FleetRowActions";
+export type { MaintenanceActionModalProps, MaintenanceActionResult } from "./MaintenanceActionModal";
 

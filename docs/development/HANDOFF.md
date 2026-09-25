@@ -1,4 +1,43 @@
-# Current handoff — SC-G3: Fleet -> Operations: merge Deployment, Fleet Orchestration, Diagnostics, Conductor, Runner Plan and Schedules (#1325)
+# Current handoff — SC-E6: Maintenance in the UI: Maintenance thread plus "Ask Maintenance" row actions on the Fleet page (#1333)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1333-maintenance-ui`; Issue #1333; DL-#1333.
+
+## Objective and Status
+
+- SC-E6: Maintenance in the UI: Maintenance thread plus "Ask Maintenance" row actions on the Fleet page.
+- Scope implemented per Owner decision (2026-09-23):
+  - Row action menus on machines and runners: "Bring online", "Take offline", "Restart", "Compact disk", "Diagnose".
+  - Mutating actions ("Take offline", "Compact disk", "Bring online", "Restart") route to Barb, who routes to Maintenance and presents an approval card with dry-run shown.
+  - Read-only actions ("Diagnose") route directly to Maintenance.
+  - Emergency direct controls remain isolated under Operations (`/fleet/operations`), audited.
+- Created components:
+  - `frontend/src/pages/Fleet/fleetActions.ts`: Action definitions, Barb routing, proposal creation with dry-run steps, execution and postcondition verification.
+  - `frontend/src/pages/Fleet/FleetRowActions.tsx`: Accessible dropdown action menu with keyboard navigation.
+  - `frontend/src/pages/Fleet/MaintenanceActionModal.tsx`: Modal presenting ActionCard proposal with dry-run steps, Barb handoff banner, execution and verification.
+  - `frontend/src/pages/StaffConsole/cards/ActionCard.tsx` + `cardTypes.ts`: Dry-run planned steps, verification badges, Barb routed indicator.
+  - `frontend/src/pages/Fleet/FleetMachinesSection.tsx` & `FleetRunnersSection.tsx`: Row actions integration.
+  - `frontend/src/pages/OverviewPage.tsx`: Fleet overview modal mounting and maintenance callback.
+  - `backend/staff/router_models.py`: Router keywords for maintenance actions.
+- Tests passing:
+  - All frontend unit tests passing cleanly.
+  - Python tests: router models & maintenance tests passing.
+  - All files strictly <= 500 lines.
+
+## Next Steps
+
+1. Push branch `feat/1333-maintenance-ui`.
+2. Open PR with `gh pr create` referencing `Fixes #1333`.
+3. Enable auto-merge squash without `--admin`.
+4. Monitor CI to green merge.
+5. Release lease and clean up worktree.
+
+---
+
+# Previous handoff — SC-G3: Fleet -> Operations: merge Deployment, Fleet Orchestration, Diagnostics, Conductor, Runner Plan and Schedules (#1325)
 
 Last updated: 2026-09-25
 
@@ -87,7 +126,6 @@ Last updated: 2026-09-25
 - `npx vitest run frontend/src/shell/__tests__/RoutedShell.test.tsx`: 42 tests passed.
 - `npm run typecheck`: clean (0 errors).
 - `npm run lint`: clean (0 warnings).
-- `uv run ruff check .`: passed cleanly.
 - `uv run pytest tests/test_frontend_integrity.py`: 72 passed, 1 xfailed.
 
 ---
@@ -161,7 +199,6 @@ Last updated: 2026-09-25
 3. Wait for CI checks to pass and PR #1422 to auto-merge.
 4. Post completion receipt on Issue #1328 and release lease.
 5. Clean up worktree `Runner_Dashboard-1328`.
->>>>>>> origin/main
 
 ---
 
