@@ -84,7 +84,12 @@ PINNED_POLICY: dict[str, tuple[str, str, bool, str | None, int | None]] = {
 }
 
 # Operations with no real backend yet. They must fail as `not_wired`, never report success.
-UNWIRED_ACTIONS = frozenset(PINNED_POLICY) - {"maintenance.vacuum_sqlite"}
+# Wired to a real backend: vacuum (#1344) and the GitHub run operations (#1448,
+# covered in tests/staff/test_maintenance_github.py).
+WIRED_ACTIONS = frozenset(
+    {"maintenance.vacuum_sqlite", "maintenance.run_cancel", "maintenance.run_rerun", "maintenance.cancel_and_rerun"}
+)
+UNWIRED_ACTIONS = frozenset(PINNED_POLICY) - WIRED_ACTIONS
 
 # One safe, fully targeted parameter set per action.
 VALID_PARAMS: dict[str, dict[str, Any]] = {

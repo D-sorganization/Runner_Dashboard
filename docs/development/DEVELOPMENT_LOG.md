@@ -18,6 +18,18 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1448 · SC-E3: Wire maintenance operations to real backends (slice 1: GitHub run cancel/rerun)
+
+- **State:** in_progress
+- **Owner:** claude
+- **Issue:** #1448
+- **Branch:** `feat/1448-wire-maintenance`
+- **Paths:** `backend/staff/maintenance_github.py`, `backend/staff/maintenance.py`, `backend/gh_client.py`, `backend/routers/staff_proposals.py`, `backend/routers/assistant.py`, `tests/staff/test_maintenance_github.py`, `tests/staff/test_maintenance_safety.py`, `tests/api/test_staff_maintenance_detect_api.py`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (tests/staff + tests/api + gh_client/slug tests: 1249 passed, 1 timing-flaky test_staff_runner case that passes 3/3 alone; mypy clean)
+- **Summary:** Run cancel/rerun/cancel_and_rerun call GitHub via an anyio worker-thread bridge with classified faults and state-based verification; runner service, drain, group, purge, fleet_control, runner_remove and diagnose remain `not_wired` for later slices.
+- **Next step:** Open the slice-1 PR after #1458 merges (rebase onto main), then wire runner service/drain through the fleet node API in slice 2.
+
 ### DL-#1339 · SC-B9: Group threads: talk to the Board (and other groups) with the Board-Secretary coordinating seat replies
 
 - **State:** in_review
