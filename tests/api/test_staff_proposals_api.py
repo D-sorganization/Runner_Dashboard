@@ -148,7 +148,7 @@ def test_create_and_execute_staff_dispatch_flow(client: TestClient) -> None:
         thread_id=th.id,
         author_kind="role",
         author="barb",
-        body_md="I suggest dispatching librarian to check catalog",
+        body_md="I suggest dispatching ad-hoc to check catalog",
     )
 
     headers = {"X-Requested-With": "XMLHttpRequest"}
@@ -159,7 +159,7 @@ def test_create_and_execute_staff_dispatch_flow(client: TestClient) -> None:
             "message_id": msg.id,
             "thread_id": th.id,
             "action": "staff.dispatch",
-            "params": {"role": "librarian", "repo": "Repository_Management", "prompt": "verify issues"},
+            "params": {"role": "ad-hoc", "repo": "Repository_Management", "prompt": "verify issues"},
             "risk": "medium",
         },
         headers=headers,

@@ -241,7 +241,7 @@ def test_execute_staff_dispatch_success_and_thread_messages() -> None:
         message_id="msg_disp",
         thread_id=th.id,
         action="staff.dispatch",
-        params={"role": "librarian", "repo": "Repository_Management", "prompt": "check catalog"},
+        params={"role": "ad-hoc", "repo": "Repository_Management", "prompt": "check catalog"},
         risk="medium",
         principal="barb",
     )
