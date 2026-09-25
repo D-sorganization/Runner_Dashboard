@@ -6,12 +6,12 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query
 from identity import Principal, format_caller, require_scope
 from pydantic import BaseModel, Field
+from routers.staff_threads import _get_store_or_503
 from staff.conversations import (
     ConversationsUnavailableError,
-    get_conversation_store,
 )
 from staff.router import (
     BarbRouter,
@@ -21,21 +21,6 @@ from staff.router import (
 log = logging.getLogger("dashboard.staff.routing")
 
 router = APIRouter(tags=["staff-routing"])
-
-
-def _get_store_or_503() -> Any:
-    """Retrieve ConversationStore, failing closed with 503 if unavailable."""
-    store = get_conversation_store()
-    if not store.status.available:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail={
-                "code": "conversations_unavailable",
-                "message": store.status.banner_message or "Conversations unavailable",
-                "retryable": True,
-            },
-        )
-    return store
 
 
 # ── REQUEST MODELS ───────────────────────────────────────────────────────────
