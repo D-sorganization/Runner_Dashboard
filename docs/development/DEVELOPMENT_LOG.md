@@ -18,17 +18,30 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1286 · CR-6: Board routing gate for new/significant Code Requests
+### DL-#1471 · CI: Synchronize generated OpenAPI contract types for Staff and Board proposal requests
 
 - **State:** in_progress
 - **Owner:** antigravity
+- **Issue:** #1471
+- **Branch:** `fix/sync-openapi-proposal-schemas-1471`
+- **Paths:** `frontend/src/lib/api-types.ts`, `frontend/src/lib/openapi.json`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (`npm run generate-api:check` exit 0, `npm run typecheck` 0 errors, `npm run lint` 0 warnings, vitest 1313/1313 passed, pytest 61/61 code requests passed, ruff clean)
+- **Summary:** Synchronized generated OpenAPI schema and TypeScript definitions for Staff proposals and Board proposals (`CreateProposalRequest` schema naming mapping in `frontend/src/lib/openapi.json` and `frontend/src/lib/api-types.ts`), ensuring `scripts/gen-api-client.sh --check` passes cleanly in CI.
+- **Next step:** Commit, open PR, pass CI, auto-merge, release lease.
+
+### DL-#1286 · CR-6: Board routing gate for new/significant Code Requests
+
+- **State:** shipped
+- **Owner:** antigravity
 - **Issue:** #1286
 - **Branch:** `feat/issue-1286-board-routing-gate`
+- **PR:** #1469
 - **Paths:** `backend/code_requests/board_gate.py`, `backend/routers/code_requests_board.py`, `backend/server.py`, `tests/code_requests/test_board_gate.py`, `tests/code_requests/test_board_gate_routes.py`, `frontend/src/lib/api-types.ts`, `frontend/src/lib/openapi.json`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (pytest 33/33 passed across test_board_gate and test_board_gate_routes; 61/61 passed across tests/code_requests/; vitest 1309/1309 passed; ruff check and format clean; mypy clean; line cap check <= 500 lines passed)
 - **Summary:** Implemented Board routing gate for Code Requests evaluating 7 architectural criteria, confidential InEnTec data egress user sign-off check, operator overrides (`force_board` / `skip_board`) requiring `operator` role and reason, automatic proposal creation via CR-7 proposal API, decision syncing (`board:accepted`, `board:declined`, `board:deferred`), and escalation deadline checks. Mounted endpoints in `backend/routers/code_requests_board.py` and `backend/server.py`.
-- **Next step:** Commit, open PR, pass CI, auto-merge, release lease.
+- **Next step:** None (shipped in PR #1469).
 
 ### DL-#1330 · SC-D11: Fold the three stray chat surfaces (Maxwell chat, Codebase chat, legacy assistant sidebar) into the Staff Console
 

@@ -1,12 +1,13 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.263
+**Spec Version:** 2.5.264
 **Application Version:** 4.10.0 (see `VERSION`)
 **Last Updated:** 2026-09-25T00:00:00-07:00
 **Status:** Active
 
 ## Change Log
 
+| 2026-09-25 | #1471                  | CI: Synchronize generated OpenAPI contract types and TypeScript definitions for Staff proposals and Board proposals (`CreateProposalRequest` schema mapping in `frontend/src/lib/openapi.json` and `frontend/src/lib/api-types.ts`) ensuring `scripts/gen-api-client.sh --check` passes cleanly in CI. |
 | 2026-09-25 | #1286                  | CR-6: Board routing gate for new/significant Code Requests. Implemented evaluation of architectural triggers (new surface, new service/repo, external dependencies/data egress, cross-repo contract, public site structure, >8 child issues, >1 target repos, or explicit board tag) and InEnTec data egress user sign-off check (`backend/code_requests/board_gate.py`). Implemented operator overrides (`force_board` / `skip_board`) requiring `operator` role and audit reason. Added automated proposal creation via CR-7 proposal API, transition to `BOARD_REVIEW`, decision syncing from linked Board proposal (`board:accepted` moving to `PLANNING` with Board notes appended, `board:declined` moving to `DECLINED`, `board:deferred` moving to `DEFERRED`), and escalation deadline checks. Mounted endpoints in `backend/routers/code_requests_board.py` and `backend/server.py` (`POST /api/code-requests/{id}/evaluate-board`, `POST /api/code-requests/{id}/route-to-board`, `POST /api/code-requests/{id}/sync-board-decision`, `GET /api/code-requests/{id}/board-escalation`). Updated OpenAPI schema and TypeScript bindings. Added comprehensive unit and route integration test coverage. |
 | 2026-09-25 | #1330                  | SC-D11: Fold stray chat surfaces (Maxwell chat, Codebase chat, legacy assistant sidebar) into the Staff Console. Retired legacy mock endpoint `POST /api/assistant/chat` with HTTP 410 Gone and successor Link header pointing to `/api/v1/staff/threads`; folded codebase Q&A into Cartographer (architecture & code navigation) and Librarian (documentation & endpoint specs) with role handoff cards and `onNavigate` in `HelpAbout.tsx` and `CodebaseChat.tsx`; added codebase Q&A routing keywords to `cartographer` and `librarian` and registered `maxwell` in `ROLE_KEYWORD_RULES` and provider `ADAPTERS`; added Staff Console integration link and multi-agent context to Maxwell Chat panel (`MaxwellPanels.tsx`); added retirement notice banner and 410 redirect handling in `AssistantSidebar.tsx`. |
 | 2026-09-25 | #1345                  | SC-G7 first step: mobile Projects renders the native Projects page. The legacy App has no projects case, so the mobile fallback was blank. |
