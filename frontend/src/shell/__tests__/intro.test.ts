@@ -22,14 +22,6 @@ describe("introForTab", () => {
     expect(introForTab(undefined)).toBeUndefined();
   });
 
-  it("expands the jargon-heavy Cline tab beyond its terse tooltip", () => {
-    const intro = introForTab("cline-launcher");
-    expect(intro!.body).toBe(INTRO_OVERRIDES["cline-launcher"]);
-    // The expanded copy de-jargons "Cline".
-    expect(intro!.body).toMatch(/AI coding-agent/i);
-    expect(intro!.body).not.toBe(navItemById("cline-launcher")!.tooltip);
-  });
-
   it("expands the 'principals' admin tab into operator English", () => {
     const intro = introForTab("principals");
     expect(intro!.body).toMatch(/identities/i);

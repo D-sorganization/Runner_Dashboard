@@ -13,7 +13,6 @@ import { Conductor } from "../pages/Conductor"
 import { QueueTab } from "../pages/Queue"
 import { LinearSetup } from "../pages/LinearSetup"
 import PushSettings from "../pages/PushSettings"
-import { ClineLauncherTab } from "../pages/ClineLauncher"
 import { DiagnosticsTab } from "../pages/Diagnostics"
 import { PrincipalsTab } from "../pages/Principals"
 import RunnerAudit from "../pages/RunnerAudit"
@@ -2428,20 +2427,6 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
         h(
           "button",
           {
-            className:
-              "tab-btn" + (tab === "cline-launcher" ? " active" : ""),
-            role: "tab",
-            "aria-selected": tab === "cline-launcher",
-            onClick: function () {
-              setTab("cline-launcher");
-            },
-          },
-          I.terminal ? I.terminal(14) : I.server(14),
-          "Cline Launcher",
-        ),
-        h(
-          "button",
-          {
             className: "tab-btn" + (tab === "maxwell" ? " active" : ""),
             role: "tab",
             "aria-selected": tab === "maxwell",
@@ -2849,9 +2834,7 @@ function App({ initialTab, onTabChange, activeTab, chromeless }: { initialTab?: 
                                                 fetchMaxwellStatus,
                                               onControl: maxwellControl,
                                             })
-                                          : tab === "cline-launcher"
-                                            ? h(ClineLauncherTab, null)
-                                            : tab === "diagnostics"
+                                          : tab === "diagnostics"
                                               ? h(DiagnosticsTab, null)
                                               : tab === "runner-audit"
                                                 ? h(RunnerAudit, {

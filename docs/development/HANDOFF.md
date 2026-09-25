@@ -49,6 +49,60 @@ Last updated: 2026-09-25
 
 ---
 
+# Past handoff — SC-G6: Retire the Cline Launcher (#1338)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `chore/1338-retire-cline-launcher`; PR #1467 (merged); Issue #1338 (Cline slice only); DL-#1338.
+
+## Objective and Status
+
+- Owner decision: retire the Cline Launcher. Page, nav entry, intro override, legacy tab and `/api/agent-launcher` router removed; old addresses redirect to Staff Console.
+
+## Next Steps
+
+1. None (shipped in PR #1467).
+
+---
+
+# Past handoff — Staff Console end to end: desktop console and real thread resolution (#1446)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1446-desktop-staff-console`; PR #1467 (merged); Issue #1446; DL-#1446.
+
+## Objective and Status
+
+- Desktop console is default Staff section; desktop and mobile share `useStaffConsole`; roles open server-resolved threads; backend failures are visible alerts.
+
+## Next Steps
+
+1. None (shipped in PR #1467).
+
+---
+
+# Past handoff — SC-E7: Maintenance safety tests and gates (#1344)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `test/1344-maintenance-safety`; PR #1467 (merged); Issue #1344; DL-#1344.
+
+## Objective and Status
+
+- Pinned policy table with mutation check; fleet-wide, single-target and batch-size gates; detector risk from registry; unwired operations fail as not_wired; timeouts, token expiry, partial failures audited.
+
+## Next Steps
+
+1. None (shipped in PR #1467).
+
+---
+
 # Past handoff — WP-0.1: Resolve staff action role names against the loaded roster (#1474)
 
 Last updated: 2026-09-25

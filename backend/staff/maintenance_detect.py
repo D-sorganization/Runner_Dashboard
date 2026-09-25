@@ -18,8 +18,10 @@ from typing import Any
 
 from identity import Principal
 from staff.actions import (
+    ACTION_REGISTRY,
     ActionContext,
     ActionRiskClass,
+    can_auto_execute,
 )
 from staff.audit import record_audit
 from staff.conversations import get_conversation_store
@@ -412,10 +414,11 @@ class StalledJobDetector:
             if not action_name:
                 continue
 
-            if auto_remediate and det.risk_class in (
-                ActionRiskClass.READ,
-                ActionRiskClass.LOW,
-            ):
+            # Risk comes from the registered action, never from the detection: detections are
+            # built from runner and job data, which must not be able to downgrade a gate (#1344).
+            action_def = ACTION_REGISTRY.get(action_name)
+            risk = action_def.risk_class if action_def else ActionRiskClass.HIGH
+            if auto_remediate and action_def and can_auto_execute(action_def, "maintenance", caller_prin):
                 # Auto-execute low-risk remediation
                 ctx = ActionContext(thread_id=thread_id, caller=caller_prin)
                 try:
@@ -456,7 +459,7 @@ class StalledJobDetector:
                         thread_id=thread_id,
                         action=action_name,
                         params=det.action_params,
-                        risk=det.risk_class,
+                        risk=risk,
                         principal="maintenance",
                     )
                     proposals_created.append(prop.to_dict())

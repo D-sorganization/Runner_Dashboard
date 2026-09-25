@@ -2,7 +2,9 @@
  * StaffPage.tsx — the "Staff" tab (issue #1198, epic #1192).
  *
  * Composition: the Board status monitor on top (polled), then a SubTabs strip
- * with Roster, Runs, Assign and Holds. The roster is fetched once here and
+ * with Console, Roster, Runs, Assign and Holds. Console is the default
+ * section (#1446): the three-pane Staff Console where the operator talks to a
+ * role. It loads its own `/api/v1/staff` roster and threads. The roster is fetched once here and
  * shared with Roster, Assign (role/provider options), RunLog and Holds
  * (role filter / applies-to) — one source of truth per page (DRY).
  *
@@ -12,6 +14,7 @@
  */
 import { useCallback, useState } from "react";
 import { SubTabs } from "../../components/SubTabs";
+import { StaffConsoleDesktop } from "../StaffConsole/Desktop";
 import {
   invalidateStaffQueries,
   useResolvedQueryClient,
@@ -26,9 +29,10 @@ import { RunDetail } from "./RunDetail";
 import { RunLog } from "./RunLog";
 import { errorMessage } from "./staffApi";
 
-export type StaffSection = "roster" | "runs" | "assign" | "holds";
+export type StaffSection = "console" | "roster" | "runs" | "assign" | "holds";
 
 const SECTION_TABS: { key: StaffSection; label: string }[] = [
+  { key: "console", label: "Console" },
   { key: "roster", label: "Roster" },
   { key: "runs", label: "Runs" },
   { key: "assign", label: "Assign" },
@@ -51,7 +55,7 @@ export function StaffPage() {
   } = useStaffRoster();
   const rosterError = rosterErr ? errorMessage(rosterErr) : null;
   const [selectedRun, setSelectedRun] = useState<string | null>(runFromUrl);
-  const [section, setSection] = useState<StaffSection>(() => (selectedRun ? "runs" : "roster"));
+  const [section, setSection] = useState<StaffSection>(() => (selectedRun ? "runs" : "console"));
   const [assignRole, setAssignRole] = useState<string | undefined>(undefined);
   const [runsRefresh, setRunsRefresh] = useState(0);
 
@@ -87,6 +91,7 @@ export function StaffPage() {
         ariaLabel="Staff sections"
         className="staff__tabs"
       />
+      {section === "console" ? <StaffConsoleDesktop /> : null}
       {section === "roster" ? (
         <Roster
           roster={roster}

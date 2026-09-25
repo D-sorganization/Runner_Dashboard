@@ -1,0 +1,88 @@
+/**
+ * desktop.css — three-pane desktop Staff Console (#1446).
+ * Colours come from design tokens only.
+ */
+
+.staff-console {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr) minmax(240px, 320px);
+  gap: 12px;
+  min-height: 70vh;
+  margin-bottom: 16px;
+}
+
+.staff-console--no-context {
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+}
+
+.staff-console__main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+}
+
+.staff-console__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.staff-console__title {
+  margin: 0;
+  font-size: 15px;
+}
+
+.staff-console__context-toggle {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 8px;
+}
+
+.staff-console__thread {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.staff-console__empty {
+  margin: auto;
+  padding: 24px;
+  color: var(--text-muted);
+}
+
+.staff-console__context {
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.staff-console__error {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 8px 12px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--badge-danger-bg);
+  color: var(--badge-danger-fg);
+  font-size: 12px;
+}
+
+.staff-console__error button {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+}

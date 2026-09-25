@@ -10,6 +10,7 @@
  */
 import { ApiClientError, apiRequest } from "../../lib/api";
 import type { components } from "../../lib/api-types";
+import type { ThreadInfo, ThreadMessage } from "../StaffConsole/threadTypes";
 import type { BriefingResponse, InboxAggregate } from "./inboxTypes";
 
 export { ApiClientError };
@@ -315,22 +316,35 @@ export const STREAM_EVENT_KINDS: readonly string[] = [
 
 // ── Thread & Conversation APIs (SC-B3 #1306, SC-D8 #1331) ───────────────────
 
-export function fetchThreads(signal?: AbortSignal): Promise<{ threads: unknown[] }> {
-  return apiRequest<{ threads: unknown[] }>(`${STAFF_BASE}/threads`, { signal });
+/** Threads visible to the caller; `role` keeps those the role participates in. */
+export function fetchThreads(
+  filter: { role?: string } = {},
+  signal?: AbortSignal,
+): Promise<{ threads: ThreadInfo[] }> {
+  const query = filter.role ? `?role=${encodeURIComponent(filter.role)}` : "";
+  return apiRequest<{ threads: ThreadInfo[] }>(`${STAFF_BASE}/threads${query}`, { signal });
 }
 
-export function fetchThread(threadId: string, signal?: AbortSignal): Promise<unknown> {
-  return apiRequest<unknown>(`${STAFF_BASE}/threads/${encodeURIComponent(threadId)}`, { signal });
+/** `GET /threads/{id}`: the thread record plus its message history. */
+export function fetchThread(
+  threadId: string,
+  signal?: AbortSignal,
+): Promise<{ thread: ThreadInfo; messages: ThreadMessage[] }> {
+  return apiRequest<{ thread: ThreadInfo; messages: ThreadMessage[] }>(
+    `${STAFF_BASE}/threads/${encodeURIComponent(threadId)}`,
+    { signal },
+  );
 }
 
+/**
+ * Message history of a thread. The backend serves history on
+ * `GET /threads/{id}`; `/threads/{id}/messages` only accepts POST (#1446).
+ */
 export function fetchThreadMessages(
   threadId: string,
   signal?: AbortSignal,
-): Promise<{ messages: import("../StaffConsole/threadTypes").ThreadMessage[] }> {
-  return apiRequest<{ messages: import("../StaffConsole/threadTypes").ThreadMessage[] }>(
-    `${STAFF_BASE}/threads/${encodeURIComponent(threadId)}/messages`,
-    { signal },
-  );
+): Promise<{ messages: ThreadMessage[] }> {
+  return fetchThread(threadId, signal).then(({ messages }) => ({ messages }));
 }
 
 export function postThreadMessage(
@@ -354,8 +368,8 @@ export function postThreadMessage(
 export function createThread(
   body: { title?: string; kind?: string; participants?: string[]; role?: string },
   signal?: AbortSignal,
-): Promise<unknown> {
-  return apiRequest<unknown>(`${STAFF_BASE}/threads`, {
+): Promise<ThreadInfo> {
+  return apiRequest<ThreadInfo>(`${STAFF_BASE}/threads`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
