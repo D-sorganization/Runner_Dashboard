@@ -18,15 +18,15 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1483 · Restore green main: remove nested interactive controls in staff RosterRow
+### DL-#1483 · Restore green main: resolve a11y violations in staff RosterRow and ContextPane
 
 - **State:** in_progress
 - **Owner:** antigravity
-- **Branch:** `fix/restore-green-main-roster-a11y`
-- **Paths:** `frontend/src/pages/StaffConsole/RosterRow.tsx`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Branch:** `fix/restore-green-main-contextpane-contrast`
+- **Paths:** `frontend/src/pages/StaffConsole/ContextPane.tsx`, `frontend/src/pages/StaffConsole/RosterRow.tsx`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
-- **Last verified:** 2026-09-25 (StaffConsole vitest 17/17 files 113/113 passed; npm run typecheck clean; npm run lint clean; RosterRow 296 lines <= 500 lines)
-- **Summary:** Wrapped role avatar and details in an accessible button and removed `role="button"` and `tabIndex={0}` from the outer roster row container, resolving WCAG 4.1.2 nested-interactive violation in axe-core.
+- **Last verified:** 2026-09-25 (StaffConsole vitest 17/17 files 113/113 passed; npm run typecheck clean; npm run lint clean; ContextPane 354 lines <= 500 lines; RosterRow 296 lines <= 500 lines)
+- **Summary:** Wrapped role avatar and details in an accessible button and removed `role="button"` and `tabIndex={0}` from outer roster row container (resolving WCAG 4.1.2 nested-interactive). Replaced unconfigured `--color-*` variables and low-contrast light fallback values in `ContextPane.tsx` with standard theme tokens (`var(--bg-card, #1c2128)`, `var(--text-secondary, #8b949e)`, `var(--border, #30363d)`, `var(--accent-blue, #58a6ff)`), resolving WCAG 1.4.3 color-contrast violation in axe-core.
 - **Next step:** Push branch, open PR, enable auto-merge, verify CI passes.
 
 ### DL-#1475 · WP-0.2: Show Board proposals in the owner inbox (wire inbox to the CR-7 store)
