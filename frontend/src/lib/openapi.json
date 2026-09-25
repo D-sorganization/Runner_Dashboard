@@ -1859,6 +1859,23 @@
         "title": "ReposResponse",
         "type": "object"
       },
+      "RoleScheduleOverrideBody": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "reason": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": ["enabled"],
+        "title": "RoleScheduleOverrideBody",
+        "type": "object"
+      },
       "RoutingDecideRequest": {
         "description": "Request payload to evaluate routing for a prompt.",
         "properties": {
@@ -3890,13 +3907,6 @@
       },
       "ValidationError": {
         "properties": {
-          "ctx": {
-            "title": "Context",
-            "type": "object"
-          },
-          "input": {
-            "title": "Input"
-          },
           "loc": {
             "items": {
               "anyOf": [
@@ -11321,6 +11331,67 @@
         "tags": ["staff"]
       }
     },
+    "/api/staff/roles/{role}/schedule": {
+      "put": {
+        "description": "Enable or disable scheduling for a specific role (SC-D6, Issue #1320).",
+        "operationId": "put_role_schedule_api_staff_roles__role__schedule_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role",
+            "required": true,
+            "schema": {
+              "title": "Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleScheduleOverrideBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Put Role Schedule Api Staff Roles  Role  Schedule Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Put Role Schedule",
+        "tags": ["staff"]
+      }
+    },
     "/api/staff/roster": {
       "get": {
         "operationId": "roster_api_staff_roster_get",
@@ -12867,6 +12938,67 @@
           }
         ],
         "summary": "Roster V1",
+        "tags": ["staff-v1"]
+      }
+    },
+    "/api/v1/staff/roles/{role}/schedule": {
+      "put": {
+        "description": "Enable or disable scheduling for a specific role (SC-D6, Issue #1320).",
+        "operationId": "put_role_schedule_api_v1_staff_roles__role__schedule_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role",
+            "required": true,
+            "schema": {
+              "title": "Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleScheduleOverrideBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Put Role Schedule Api V1 Staff Roles  Role  Schedule Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Put Role Schedule",
         "tags": ["staff-v1"]
       }
     },
