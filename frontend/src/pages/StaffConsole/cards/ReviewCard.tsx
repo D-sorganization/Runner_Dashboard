@@ -9,12 +9,12 @@ export interface ReviewCardProps {
 function getVerdictBadgeStyle(verdict: ReviewVerdict): { bg: string; text: string; border: string } {
   switch (verdict) {
     case "approved":
-      return { bg: "rgba(46, 160, 67, 0.15)", text: "#3fb950", border: "#2ea043" };
+      return { bg: "rgba(46, 160, 67, 0.15)", text: "var(--accent-green, #3fb950)", border: "var(--border-green, #2ea043)" };
     case "changes_requested":
-      return { bg: "rgba(248, 81, 73, 0.15)", text: "#f85149", border: "#da3633" };
+      return { bg: "rgba(248, 81, 73, 0.15)", text: "var(--accent-red, #f85149)", border: "var(--border-red, #da3633)" };
     case "commented":
     default:
-      return { bg: "rgba(210, 153, 34, 0.15)", text: "#d29922", border: "#bb8009" };
+      return { bg: "rgba(210, 153, 34, 0.15)", text: "var(--accent-yellow, #d29922)", border: "var(--border-yellow, #bb8009)" };
   }
 }
 
