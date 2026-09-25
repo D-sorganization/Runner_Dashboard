@@ -1,3 +1,30 @@
+# Current handoff — SC-G7 first step: mobile Projects renders natively (#1345)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1345-mobile-projects`; Issue #1345 (part of SC-G #1353); DL-#1345.
+- Worktree `_wt_claude_rd_tracking` on OGLaptop; baseline `10cd0136`; commit `SELF`; PR: opened right after this commit.
+
+## Objective and Status
+
+- The issue's "verify and fix the mobile Projects case immediately (small PR)". Verified blank: `RoutedShell`'s mobile map had no `projects` entry, and `legacy/App.tsx` has no projects case either.
+- Fixed: `projects: <LazyProjectsPage />` is in the native mobile map. The legacy-fallback test now uses `assessments`, a drawer tab that still has no native page.
+- Not in this PR: removing the Classic layout and `legacy/App.tsx`, which waits for SC-D8/G2/G3 per the issue.
+
+## Validation
+
+- `npx vitest run frontend/src/shell/__tests__/RoutedShell.test.tsx frontend/src/shell/__tests__/MobileShell.test.tsx frontend/src/pages/__tests__/Projects.test.tsx`: 69 passed (RED first: the `/t/projects` native case failed).
+- `npx tsc --noEmit -p tsconfig.app.json` and eslint are clean.
+- Browser at 375×812 via Vite: `/t/projects` redirects to `/work/projects` and shows the Projects page. It is no longer blank; the local API proxy was down, and the page showed its classified error.
+
+## Next Steps
+
+1. Merge; #1345 stays open for the Classic-layout removal.
+
+---
+
 # Current handoff — SC-C7: Routing evaluation set and regression check for Barb (#1340)
 
 Last updated: 2026-09-25

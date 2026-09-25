@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1345 · SC-G7: Mobile Projects renders natively (first step of Classic-layout removal)
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1345 (epic #1353)
+- **Branch:** `fix/1345-mobile-projects`
+- **PR:** not created
+- **Paths:** `frontend/src/shell/RoutedShell.tsx`, `frontend/src/shell/__tests__/RoutedShell.test.tsx`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 at `10cd0136` baseline (RoutedShell/MobileShell/Projects vitest 69 passed; tsc clean)
+- **Summary:** The mobile drawer's Projects entry fell back to the legacy App, which has no projects case, so the page was blank. It now renders the native Projects page.
+- **Next step:** Merge the PR, then remove the Classic layout once SC-D8/G2/G3 land.
+
 ### DL-#1340 · SC-C7: Routing evaluation set and regression check for Barb
 
 - **State:** in_review
@@ -79,7 +92,7 @@ reachable from any live state and `abandoned` from `parked`.
 
 ### DL-#1434 · Projects: fleet-wide prioritised status, charter coverage and untracked-work report
 
-- **State:** in_review
+- **State:** shipped
 - **Owner:** claude
 - **Issue:** #1434 (epic #1192)
 - **Branch:** `feat/fleet-project-tracking`
@@ -88,7 +101,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 at 8baa2bf (pytest projects suites 36 passed; vitest Projects 7 passed; tsc clean; ruff/mypy clean; gen-api-client regenerated)
 - **Summary:** Owner priority tiers from Repository_Management `config/project_priorities.yaml`, P0-first ordering and a fleet summary on `GET /api/projects`, per-repo coverage of open issues/PRs by charter features, and `GET /api/projects/untracked` as the fleet-curator worklist; Projects tab shows tier, coverage and the summary.
-- **Next step:** Merge the PR, then publish `config/project_priorities.yaml` in Repository_Management from the owner's priority interview.
+- **Next step:** None: merged as `b2a8aaed`; the owner tiers land with Repository_Management#1761.
 
 ### DL-#1343 · SC-D9: Accessibility and keyboard pass on the Staff Console
 
