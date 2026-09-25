@@ -9,6 +9,7 @@ import time
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from hashlib import sha256
+from typing import Any
 
 from cache_utils import cache_get, cache_set
 from dashboard_config import DEPLOYMENT_FILE, HOSTNAME, VERSION
@@ -204,6 +205,62 @@ async def gh_api(endpoint: str) -> dict:
 
 # gh_api_admin is an alias kept for call-site clarity; all calls use GH_TOKEN.
 gh_api_admin = gh_api
+
+
+async def gh_api_write(endpoint: str, method: str = "POST", json_body: Any = None) -> dict:
+    """Send a mutating request (POST/PATCH/PUT/DELETE) to GitHub API with pooled client or gh fallback."""
+    _raise_if_circuit_open(endpoint)
+
+    try:
+        import gh_client as _gc
+
+        resp = await _gc._request(method.upper(), endpoint, json=json_body)
+        if resp.status_code in (201, 204) and not resp.text.strip():
+            return {}
+        return resp.json()
+    except ImportError:
+        pass
+    except _gc.GhAuthError:
+        pass
+    except _gc.GhRateLimited as exc:
+        raise _record_rate_limit(endpoint, exc.retry_after_seconds) from exc
+    except _gc.GhNotFound as exc:
+        raise HTTPException(status_code=404, detail=f"GitHub resource not found: {endpoint}") from exc
+    except _gc.GhServerError as exc:
+        if exc.status_code == 429:
+            raise _record_rate_limit(endpoint, DEFAULT_RATE_LIMIT_RETRY_AFTER_SECONDS) from exc
+        raise HTTPException(status_code=502, detail=f"GitHub API error ({exc.status_code}): {exc}") from exc
+
+    # Fallback: subprocess gh CLI
+    args = ["gh", "api", endpoint, "--method", method.upper()]
+    pf = None
+    if json_body is not None:
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".json", delete=False) as f:
+            json.dump(json_body, f)
+            pf = f.name
+        args.extend(["--input", pf])
+
+    try:
+        code, stdout, stderr = await run_cmd(args)
+    finally:
+        if pf is not None:
+            import contextlib
+            from pathlib import Path
+
+            with contextlib.suppress(OSError):
+                Path(pf).unlink()
+
+    if code != 0:
+        output = "\n".join(part for part in (stderr, stdout) if part)
+        if _looks_rate_limited(output):
+            raise _record_rate_limit(endpoint, _parse_retry_after_seconds(output))
+        raise HTTPException(status_code=502, detail=f"GitHub API error: {stderr}")
+    try:
+        return json.loads(stdout) if stdout.strip() else {}
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=502, detail=f"Invalid JSON from GitHub API: {stdout}") from exc
 
 
 async def get_cached_org_runners(org: str) -> dict:
