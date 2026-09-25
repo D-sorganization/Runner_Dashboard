@@ -287,6 +287,7 @@ def execute_proposal(
     nothing runs.
     """
     s = store or get_conversation_store()
+    a_store = audit_store or getattr(s, "_audit_store", None)
     prop = s.get_proposal(proposal_id)
     if not prop:
         raise ProposalReplayError(f"Proposal {proposal_id} not found")
@@ -297,7 +298,7 @@ def execute_proposal(
                 proposal_id,
                 "expired",
                 reason="Expired after 24h",
-                audit_store=audit_store,
+                audit_store=a_store,
             )
         raise ProposalExpiredError(f"Proposal {proposal_id} has expired (exceeded 24h TTL)")
 
@@ -315,7 +316,7 @@ def execute_proposal(
             proposal_id,
             "failed",
             reason=f"Unknown action '{prop.action}'",
-            audit_store=audit_store,
+            audit_store=a_store,
         )
         return ActionResult(
             success=False,
@@ -333,7 +334,7 @@ def execute_proposal(
             proposal_id,
             "failed",
             reason=f"Role '{proposing_role}' not permitted for action '{prop.action}'",
-            audit_store=audit_store,
+            audit_store=a_store,
         )
         raise RolePermissionDeniedError(f"Role '{proposing_role}' is not permitted to invoke '{prop.action}'")
 
@@ -345,7 +346,7 @@ def execute_proposal(
         proposal_id,
         "executing",
         decided_by=format_caller(approver),
-        audit_store=audit_store,
+        audit_store=a_store,
     )
 
     ctx = ActionContext(
@@ -355,7 +356,7 @@ def execute_proposal(
         proposing_role=proposing_role,
         caller=approver,
         store=s,
-        audit_store=audit_store,
+        audit_store=a_store,
     )
 
     try:
@@ -381,7 +382,7 @@ def execute_proposal(
 
     thread_id = _result_thread(s, prop)
     if res.success:
-        s.transition_proposal_state(proposal_id, "done", audit_store=audit_store)
+        s.transition_proposal_state(proposal_id, "done", audit_store=a_store)
         if thread_id:
             formatted_res = json.dumps(res.result) if isinstance(res.result, dict) else str(res.result)
             s.add_message(
@@ -412,7 +413,7 @@ def execute_proposal(
             proposal_id,
             "failed",
             reason=res.error or "Action failed",
-            audit_store=audit_store,
+            audit_store=a_store,
         )
         if thread_id:
             s.add_message(

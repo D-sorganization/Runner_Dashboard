@@ -1,4 +1,33 @@
-# Current handoff — SC-G5-1 slice A: one work-request API (#1497)
+# Current handoff — Fix flaky test test_staff_hold_and_unhold_lifecycle hits 'database is locked' (#1465)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\antigravity-1465`; branch `fix/1465-staff-actions-db-lock`; PR #1470; Issue #1465; DL-#1465.
+
+## Objective and Status
+
+- Eliminate SQLite database lock contention and test flakes across staff actions and stores:
+  1. Root cause 1: Staff stores (`StaffAuditStore`, `ConversationStore`, `RunStore`, `IdempotencyStore`, `WorkItemStore`, and maintenance `_vacuum_db`) opened SQLite connections to `STAFF_RUNS_DB` without `timeout=30.0` or `PRAGMA busy_timeout = 30000;`. Concurrent writes or transactions failed immediately with `sqlite3.OperationalError: database is locked`.
+  2. Root cause 2: `execute_proposal` passed `audit_store=None`, causing transitions and action executors (`execute_staff_hold`, `execute_staff_unhold`) to instantiate separate stores rather than reusing the conversation store's existing `_audit_store`.
+  3. Root cause 3: In `tests/unit/test_staff_actions.py`, `test_execute_staff_dispatch_success_and_thread_messages` invoked `staff.dispatch`, spawning an unjoined daemon worker thread (`StaffRunner._worker`) that executed in the background and competed for SQLite locks during subsequent tests.
+  4. Fix: Added `timeout=30.0` and `PRAGMA busy_timeout = 30000;` across all staff SQLite stores; wired existing audit store instance into `execute_proposal`; mocked `StaffRunner._worker` in `test_staff_actions.py` `clean_env` fixture alongside store/runner resets.
+- Quality gates:
+  - 30 consecutive stress-test runs of `test_staff_actions.py` passed with 0 failures or database lock errors.
+  - Ruff check & format passing.
+  - All modified files strictly $\le 500$ lines.
+
+## Next Steps
+
+1. Push rebased branch `fix/1465-staff-actions-db-lock` to origin with lease.
+2. Enable auto-merge on PR #1470 (`gh pr merge 1470 --squash --auto`).
+3. Monitor CI checks until merged.
+4. Release lease for #1465 via `scripts.release_agent_lease`.
+
+---
+
+# Past handoff — SC-G5-1 slice A: one work-request API (#1497)
 
 Last updated: 2026-09-25
 

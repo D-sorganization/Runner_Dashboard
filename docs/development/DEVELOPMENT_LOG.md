@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1465 · Fix flaky test test_staff_hold_and_unhold_lifecycle hits 'database is locked'
+
+- **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1465
+- **Branch:** `fix/1465-staff-actions-db-lock`
+- **PR:** #1470
+- **Paths:** `backend/staff/actions.py`, `backend/staff/audit.py`, `backend/staff/conversations.py`, `backend/staff/idempotency.py`, `backend/staff/maintenance.py`, `backend/staff/store.py`, `backend/staff/work_items.py`, `tests/unit/test_staff_actions.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (pytest test_staff_actions 30/30 stress-test runs passed with 0 lock errors; ruff check clean; ruff format clean; all files <= 500 lines)
+- **Summary:** Eliminated SQLite database lock contention and test flakes across staff actions and stores: (1) Added `timeout=30.0` and `PRAGMA busy_timeout = 30000;` on all staff SQLite connections (`StaffAuditStore`, `ConversationStore`, `RunStore`, `IdempotencyStore`, `WorkItemStore`, maintenance `_vacuum_db`); (2) Reused conversation store's existing audit store instance across proposal state transitions and action context in `execute_proposal`; (3) Isolated `tests/unit/test_staff_actions.py` by resetting stores and runner and mocking background runner worker thread in `clean_env`.
+- **Next step:** Push branch `fix/1465-staff-actions-db-lock`, verify CI completion on PR #1470, and auto-merge.
+
 ### DL-#1497 · SC-G5-1 slice A: one work-request API (`staff.dispatch`)
 
 - **State:** in_review
@@ -367,7 +380,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **PR:** #1435
 - **Paths:** `backend/routers/assistant.py`, `backend/staff/adapters.py`, `backend/staff/router_models.py`, `frontend/src/pages/AssistantSidebar.tsx`, `frontend/src/pages/Maxwell/CodebaseChat.tsx`, `frontend/src/pages/MaxwellPanels.tsx`, `frontend/src/pages/__tests__/AssistantSidebar.test.tsx`, `frontend/src/shell/HelpAbout.tsx`, `frontend/src/shell/__tests__/HelpAbout.test.tsx`, `tests/test_assistant_retirement.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
-- **Last verified:** 2026-09-25 (pytest test_assistant_retirement 5/5 passing, all affected pytest suites 37/37 passing; vitest 1303/1303 passing; npm run typecheck 0 errors; npm run lint 0 warnings; ruff check clean; all files <= 500 lines)
+- **Last verified:** 2026-09-25 (Merged to main via PR #1435, all 22 CI checks passed)
 - **Summary:** Folded stray chat surfaces into the Staff Console: (1) Updated `POST /api/assistant/chat` to return HTTP 410 Gone with successor Link header pointing to `/api/v1/staff/threads` and Sunset header; (2) Folded codebase Q&A into Cartographer and Librarian with role handoff cards and `onNavigate` in `HelpAbout.tsx` and `CodebaseChat.tsx`; (3) Added codebase Q&A routing keywords to `cartographer` and `librarian` and registered `maxwell` in `ROLE_KEYWORD_RULES` and provider `ADAPTERS`; (4) Added Staff Console integration link and multi-agent context to Maxwell Chat panel (`MaxwellPanels.tsx`); (5) Added retirement notice banner and 410 redirect handling in `AssistantSidebar.tsx`.
 - **Next step:** None (shipped in PR #1435).
 

@@ -119,7 +119,8 @@ def _vacuum_db(db_name: str) -> dict[str, Any]:
     if os.path.exists(path):
         try:
             initial = os.path.getsize(path)
-            conn = sqlite3.connect(path)
+            conn = sqlite3.connect(path, timeout=30.0)
+            conn.execute("PRAGMA busy_timeout = 30000")
             conn.execute("VACUUM")
             conn.close()
             freed = max(0, initial - os.path.getsize(path))
