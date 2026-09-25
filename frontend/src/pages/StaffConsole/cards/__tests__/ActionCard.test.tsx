@@ -107,4 +107,51 @@ describe("ActionCard", () => {
 
     expect(screen.getByText(/"timeout_seconds": 30/i)).toBeInTheDocument();
   });
+
+  it("renders dry-run preview and planned steps when dry_run is provided", () => {
+    const dryRunProposal: ActionProposalData = {
+      ...MOCK_PROPOSAL,
+      dry_run: {
+        planned_steps: [
+          "Validate host reachability",
+          "Apply maintenance.runner_stop",
+          "Verify runner is stopped",
+        ],
+      },
+    };
+
+    render(<ActionCard proposal={dryRunProposal} />);
+
+    expect(screen.getByTestId("dry-run-preview")).toBeInTheDocument();
+    expect(screen.getByText(/dry-run preview/i)).toBeInTheDocument();
+    expect(screen.getByText(/Validate host reachability/i)).toBeInTheDocument();
+    expect(screen.getByText(/Apply maintenance\.runner_stop/i)).toBeInTheDocument();
+    expect(screen.getByText(/Verify runner is stopped/i)).toBeInTheDocument();
+  });
+
+  it("renders verification confirmation when verification_message is present", () => {
+    const verifiedProposal: ActionProposalData = {
+      ...MOCK_PROPOSAL,
+      status: "approved",
+      decided_by: "operator",
+      decided_at: "2026-09-25T11:00:00.000Z",
+      verification_message: "Runner 'runner-worker-4' verified stopped",
+    };
+
+    render(<ActionCard proposal={verifiedProposal} />);
+
+    expect(screen.getByText(/verified: Runner 'runner-worker-4' verified stopped/i)).toBeInTheDocument();
+  });
+
+  it("renders routed-by indicator when routed_role is provided", () => {
+    const routedProposal: ActionProposalData = {
+      ...MOCK_PROPOSAL,
+      routed_role: "barb",
+    };
+
+    render(<ActionCard proposal={routedProposal} />);
+
+    expect(screen.getByText(/routed via barb to maintenance/i)).toBeInTheDocument();
+  });
 });
+

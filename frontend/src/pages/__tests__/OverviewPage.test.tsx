@@ -107,13 +107,14 @@ function mockOverviewFetch() {
       expect(init?.method).toBe("POST");
       return Promise.resolve(jsonResponse({ ok: true }));
     }
-    if (url === "/api/runners/1/stop") {
+    if (url.includes("/api/runners/") && url.endsWith("/stop")) {
       expect(init?.method).toBe("POST");
       return Promise.resolve(jsonResponse({ ok: true }));
     }
     return Promise.resolve(jsonResponse(endpointPayload(url)));
   });
 }
+
 
 function LocationProbe() {
   const loc = useLocation();
@@ -225,5 +226,48 @@ describe("OverviewPage", () => {
     expect(screen.queryByText("All systems nominal")).not.toBeInTheDocument();
     expect(screen.queryByText("Fleet Operational")).not.toBeInTheDocument();
   });
+
+  it("opens Maintenance action modal with dry-run on 'Take offline', executes upon approval, and verifies (SC-E6)", async () => {
+    const fetchMock = mockOverviewFetch();
+
+    renderOverview();
+
+    await screen.findByRole("region", { name: "Fleet status" });
+
+    // Open row actions menu for runner
+    const runnerActionsBtn = screen.getByRole("button", {
+      name: "Actions for runner d-sorg-local-ControlTower-1",
+    });
+    fireEvent.click(runnerActionsBtn);
+
+    // Click "Take offline"
+    const takeOfflineItem = screen.getByRole("menuitem", { name: "Take offline" });
+    fireEvent.click(takeOfflineItem);
+
+    // Modal opens showing Maintenance action and dry-run preview
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByText(/maintenance action: take offline/i)).toBeInTheDocument();
+    expect(screen.getByTestId("dry-run-preview")).toBeInTheDocument();
+    expect(screen.getByText(/routed via barb to maintenance/i)).toBeInTheDocument();
+
+    // Click Approve
+    const approveBtn = screen.getByRole("button", { name: /approve/i });
+    fireEvent.click(approveBtn);
+
+    // Verifies execution
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("/api/runners/d-sorg-local-ControlTower-1/stop"),
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/verified: Runner 'd-sorg-local-ControlTower-1' verified stopped/i),
+      ).toBeInTheDocument();
+    });
+  });
 });
+
 
