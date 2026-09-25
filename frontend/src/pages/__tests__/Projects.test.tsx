@@ -176,11 +176,40 @@ describe("ProjectsPage", () => {
     expect((init.headers as Record<string, string>)["X-Requested-With"]).toBe(
       "XMLHttpRequest",
     );
+    expect(
+      (init.headers as Record<string, string>)["Idempotency-Key"],
+    ).toBeTruthy();
     expect(JSON.parse(String(init.body))).toEqual({
       repo: "Beta",
       prompt: "Scheduled steward pass",
       machine: "auto",
+      dry_run: false,
     });
+  });
+
+  it("surfaces a 400 Bad Request dispatch error to the user", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url === "/api/projects")
+        return Promise.resolve(jsonResponse(RESPONSE));
+      return Promise.resolve(
+        jsonResponse({ detail: "Idempotency-Key header is required" }, 400),
+      );
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    render(<ProjectsPage />);
+    await waitFor(() =>
+      expect(screen.getByTestId("project-card-Alpha")).toBeInTheDocument(),
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Run steward now for Alpha" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "Steward run failed — Idempotency-Key header is required",
+      ),
+    );
   });
 
   it("shows the dispatch error on the card when the POST is rejected", async () => {

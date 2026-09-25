@@ -31,16 +31,29 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** Every chat argv carries the provider's explicit read-only flag on fresh and resumed turns (the resumed claude turn had none); claude additionally denies the write tools; providers without a read-only mode fail closed with `provider_not_read_only`; `chat.read_only_tools` is a validated provider-neutral vocabulary mapped to the claude `--allowedTools` allowlist. `cursor-agent --mode ask` could not be verified locally (CLI not installed on DeskComputer); an unknown flag fails the turn visibly, never writable.
 - **Next step:** None (shipped in PR #1506). Verify a live cursor-agent chat turn on a node that has the CLI.
 
-### DL-#1483 · Restore green main: resolve a11y violations in staff RosterRow, ContextPane, and theme danger badges
+### DL-#1494 · Fix projects run steward missing Idempotency-Key
 
 - **State:** in_progress
 - **Owner:** antigravity
+- **Issue:** #1494
+- **Branch:** `fix/1494-projects-run-steward-idempotency`
+- **Paths:** `frontend/src/pages/ProjectsPage.tsx`, `frontend/src/pages/__tests__/Projects.test.tsx`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (Projects.test.tsx 8/8 passed, tsc 0 errors, eslint 0 errors, all files <= 500 lines)
+- **Summary:** Replaced raw `apiRequest` in `ProjectsPage.tsx` with shared `dispatchRun("project-steward", ...)` and `errorMessage` from `frontend/src/pages/Staff/staffApi.ts`. `dispatchRun` automatically generates and sets the required `Idempotency-Key` header and CSRF sentinel header, satisfying `require_idempotency_header` on `/api/v1/staff/project-steward/run`. Formatted error messages via `errorMessage` to present user-friendly error details. Added Vitest assertions in `Projects.test.tsx` verifying `Idempotency-Key` presence and surfacing of 400 Bad Request error details.
+- **Next step:** Push branch, open PR, enable auto-merge, verify CI passes.
+
+### DL-#1483 · Restore green main: resolve a11y violations in staff RosterRow, ContextPane, and theme danger badges
+
+- **State:** shipped
+- **Owner:** antigravity
 - **Branch:** `fix/restore-green-main-danger-badge-contrast`
+- **PR:** #1507
 - **Paths:** `frontend/src/pages/StaffConsole/ContextPane.tsx`, `frontend/src/pages/StaffConsole/RosterRow.tsx`, `frontend/src/design/fleetThemes.ts`, `frontend/src/design/tokens.ts`, `frontend/src/design/__tests__/fleetThemes.contrast.test.ts`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (StaffConsole vitest 17/17 passed; fleetThemes vitest 24/24 passed; npm run typecheck clean; npm run lint clean; all files <= 500 lines)
 - **Summary:** Wrapped role avatar and details in an accessible button and removed `role="button"` and `tabIndex={0}` from outer roster row container (resolving WCAG 4.1.2 nested-interactive). Replaced unconfigured `--color-*` variables in `ContextPane.tsx` with standard design system tokens. Adjusted `light.semantic.error` in `fleetThemes.ts` and `lightBadgeTokens` in `tokens.ts` from `#bf2130` to `#b81d2c`, raising contrast on tinted backgrounds (`--badge-danger-bg` over `var(--bg-secondary)`) from 4.49:1 to 4.84:1 to strictly satisfy WCAG AA 4.5:1 minimums, resolving axe-core `color-contrast` failures in Playwright E2E smoke tests.
-- **Next step:** Push branch, open PR, enable auto-merge, verify CI passes.
+- **Next step:** None (shipped in PR #1507).
 
 ### DL-#1475 · WP-0.2: Show Board proposals in the owner inbox (wire inbox to the CR-7 store)
 
