@@ -18,17 +18,30 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1493 · SC-B1-G10: Stream chat tokens live instead of after the process exits
+### DL-#1522 · Restore green main: regenerate API contract types and synchronize openapi schema after #1512
 
 - **State:** in_progress
 - **Owner:** antigravity
+- **Issue:** #1522
+- **Branch:** `fix/1522-api-contract-drift`
+- **Paths:** `frontend/src/lib/api-types.ts`, `frontend/src/lib/openapi.json`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (`scripts/gen-api-client.sh --check` passed cleanly with code 0 under Python 3.11, all files <= 500 lines)
+- **Summary:** Regenerated `frontend/src/lib/api-types.ts` via `scripts/gen-api-client.sh` to remove formatting and trailing whitespace drift introduced in #1512, ensuring `generate-api:check` passes cleanly in `Frontend Tests` CI on `main`.
+- **Next step:** Push branch, open PR with Fixes #1522, enable auto-merge, verify CI passes.
+
+### DL-#1493 · SC-B1-G10: Stream chat tokens live instead of after the process exits
+
+- **State:** shipped
+- **Owner:** antigravity
 - **Issue:** #1493
 - **Branch:** `feat/1493-live-token-streaming`
+- **PR:** #1520
 - **Paths:** `backend/staff/chat_streaming.py`, `backend/staff/chat.py`, `tests/unit/test_staff_chat_streaming.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (pytest tests/unit/test_staff_chat_streaming.py clean, all chat suites 57 passed, ruff clean, mypy clean, black clean, all files <= 500 lines)
 - **Summary:** Incrementally read provider CLI stdout via background thread `LiveProcessReader` in `backend/staff/chat_streaming.py`, publishing token events on the ThreadEventBus as they arrive while the process is still running, recording accurate time-to-first-token (TTFT), terminating orphaned processes on cancellation, and maintaining identical reply contract semantics.
-- **Next step:** Push branch, open PR with Fixes #1493, enable auto-merge, verify CI passes.
+- **Next step:** None (shipped in PR #1520).
 
 ### DL-#1479 · K2: knowledge packs in the Staff Console
 
@@ -1581,9 +1594,11 @@ Entries stay here for 90 days after merge, then move to the archive.
 
 - **State:** shipped
 - **Owner:** antigravity
+- **Issue:** #1513
 - **PR:** #1515, #1519
 - **Paths:** `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
+- **Last verified:** 2026-09-25
 - **Shipped:** 2026-09-25
 - **Summary:** Aligned `frontend/src/lib/openapi.json` and `frontend/src/lib/api-types.ts` via `scripts/gen-api-client.sh` under Python 3.11 to capture `/api/v1/staff/groups/{group_id}/threads` and disambiguate `proposals__models__CreateProposalRequest`, restoring green main across all CI workflows.
 

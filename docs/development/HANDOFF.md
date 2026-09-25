@@ -1,4 +1,29 @@
-# Current handoff — SC-B1-G10: Stream chat tokens live instead of after the process exits (#1493)
+# Current handoff — Restore green main: regenerate API contract types and synchronize openapi schema after #1512 (#1522)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1522-api-contract-drift`; DL-#1522; Issue #1522.
+
+## Objective and Status
+
+- Restore green main by aligning generated API contract types and openapi schema:
+  - Regenerated `frontend/src/lib/api-types.ts` via `scripts/gen-api-client.sh` to remove formatting and trailing whitespace drift introduced in #1512.
+  - Verified `scripts/gen-api-client.sh --check` passes cleanly with exit code 0.
+  - Bumped `SPEC.md` to `2.5.279` and updated `docs/development/DEVELOPMENT_LOG.md` (DL-#1522 active, DL-#1493 shipped).
+  - All files strictly $\le 500$ lines.
+
+## Next Steps
+
+1. Push branch `fix/1522-api-contract-drift`.
+2. Open PR referencing `Fixes #1522` and enable auto-merge.
+3. Monitor CI until merged to restore green main.
+4. Release agent lease for #1522 via `scripts.release_agent_lease`.
+
+---
+
+# Past handoff — SC-B1-G10: Stream chat tokens live instead of after the process exits (#1493)
 
 Last updated: 2026-09-25
 
@@ -20,12 +45,6 @@ Last updated: 2026-09-25
     - `ruff check`: clean (0 errors).
     - `ruff format`: clean.
     - `mypy`: clean (0 errors).
-
-## Next Steps
-
-1. Push rebased branch `feat/1493-live-token-streaming`.
-2. Monitor PR #1520 CI checks until merged.
-3. Release agent lease for #1493 via `scripts.release_agent_lease`.
 
 ---
 
