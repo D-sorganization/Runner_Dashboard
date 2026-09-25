@@ -111,8 +111,8 @@ List endpoints (`/api/v1/staff/runs`, `/api/v1/staff/audit`) support cursor pagi
 ```json
 {
   "items": [ ... ],
-  "next_cursor": "eyJ0cyI6ICIyMDI2LTA5LTI0VDEwOjAwOjAwWiIsICJpZCI6ICJydW4tMSJ9",
-  "prev_cursor": "eyJ0cyI6ICIyMDI2LTA5LTI0VDEwOjEwOjAwWiIsICJpZCI6ICJydW4tNSJ9",
+  "next_cursor": "cursor_token_next_page",
+  "prev_cursor": "cursor_token_prev_page",
   "has_more": true
 }
 ```
