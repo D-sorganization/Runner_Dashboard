@@ -819,6 +819,101 @@
         "title": "ClientErrorPayload",
         "type": "object"
       },
+      "CreateProposalRequest": {
+        "description": "Payload for submitting a suggestion to the Board (POST /api/proposals).",
+        "properties": {
+          "code_request_url": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code Request Url"
+          },
+          "confirm_not_duplicate": {
+            "default": false,
+            "title": "Confirm Not Duplicate",
+            "type": "boolean"
+          },
+          "estimated_cost": {
+            "enum": ["Low", "Medium", "High"],
+            "title": "Estimated Cost",
+            "type": "string"
+          },
+          "evidence": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Evidence",
+            "type": "string"
+          },
+          "lean": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Lean",
+            "type": "string"
+          },
+          "options_considered": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Options Considered",
+            "type": "string"
+          },
+          "problem": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Problem",
+            "type": "string"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "target_repos": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Target Repos",
+            "type": "array"
+          },
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "urgency": {
+            "enum": ["Routine", "Urgent", "Emergency"],
+            "title": "Urgency",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "target_repos",
+          "problem",
+          "evidence",
+          "options_considered",
+          "lean",
+          "estimated_cost",
+          "urgency"
+        ],
+        "title": "CreateProposalRequest",
+        "type": "object"
+      },
       "CreateThreadRequest": {
         "properties": {
           "kind": {
@@ -4653,101 +4748,6 @@
           }
         },
         "title": "WorkSummary",
-        "type": "object"
-      },
-      "proposals__models__CreateProposalRequest": {
-        "description": "Payload for submitting a suggestion to the Board (POST /api/proposals).",
-        "properties": {
-          "code_request_url": {
-            "anyOf": [
-              {
-                "maxLength": 500,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Code Request Url"
-          },
-          "confirm_not_duplicate": {
-            "default": false,
-            "title": "Confirm Not Duplicate",
-            "type": "boolean"
-          },
-          "estimated_cost": {
-            "enum": ["Low", "Medium", "High"],
-            "title": "Estimated Cost",
-            "type": "string"
-          },
-          "evidence": {
-            "maxLength": 10000,
-            "minLength": 1,
-            "title": "Evidence",
-            "type": "string"
-          },
-          "lean": {
-            "maxLength": 10000,
-            "minLength": 1,
-            "title": "Lean",
-            "type": "string"
-          },
-          "options_considered": {
-            "maxLength": 10000,
-            "minLength": 1,
-            "title": "Options Considered",
-            "type": "string"
-          },
-          "problem": {
-            "maxLength": 10000,
-            "minLength": 1,
-            "title": "Problem",
-            "type": "string"
-          },
-          "source": {
-            "anyOf": [
-              {
-                "maxLength": 100,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Source"
-          },
-          "target_repos": {
-            "items": {
-              "type": "string"
-            },
-            "maxItems": 10,
-            "minItems": 1,
-            "title": "Target Repos",
-            "type": "array"
-          },
-          "title": {
-            "maxLength": 200,
-            "minLength": 1,
-            "title": "Title",
-            "type": "string"
-          },
-          "urgency": {
-            "enum": ["Routine", "Urgent", "Emergency"],
-            "title": "Urgency",
-            "type": "string"
-          }
-        },
-        "required": [
-          "title",
-          "target_repos",
-          "problem",
-          "evidence",
-          "options_considered",
-          "lean",
-          "estimated_cost",
-          "urgency"
-        ],
-        "title": "CreateProposalRequest",
         "type": "object"
       },
       "routers__staff_proposals__CreateProposalRequest": {
@@ -10652,7 +10652,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/proposals__models__CreateProposalRequest"
+                "$ref": "#/components/schemas/CreateProposalRequest"
               }
             }
           },
@@ -14297,6 +14297,217 @@
         ],
         "summary": "Trigger Sweep",
         "tags": ["staff-followup"]
+      }
+    },
+    "/api/v1/staff/groups": {
+      "get": {
+        "description": "List all registered multi-seat staff groups (e.g. Board of Directors).",
+        "operationId": "get_groups_api_v1_staff_groups_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Groups Api V1 Staff Groups Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List available staff groups",
+        "tags": ["staff-groups"]
+      }
+    },
+    "/api/v1/staff/groups/{group_id}": {
+      "get": {
+        "description": "Get group specification, coordinator role, and seat definitions.",
+        "operationId": "get_group_detail_api_v1_staff_groups__group_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "group_id",
+            "required": true,
+            "schema": {
+              "title": "Group Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Group Detail Api V1 Staff Groups  Group Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get group details",
+        "tags": ["staff-groups"]
+      }
+    },
+    "/api/v1/staff/groups/{group_id}/cost-estimate": {
+      "get": {
+        "description": "Estimate token spend and USD cost across all seats for a prompt.",
+        "operationId": "get_group_cost_estimate_api_v1_staff_groups__group_id__cost_estimate_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "group_id",
+            "required": true,
+            "schema": {
+              "title": "Group Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Proposed question or prompt for the group",
+            "in": "query",
+            "name": "prompt",
+            "required": false,
+            "schema": {
+              "default": "",
+              "description": "Proposed question or prompt for the group",
+              "title": "Prompt",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Group Cost Estimate Api V1 Staff Groups  Group Id  Cost Estimate Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Estimate group turn cost",
+        "tags": ["staff-groups"]
+      }
+    },
+    "/api/v1/staff/groups/{group_id}/threads": {
+      "post": {
+        "description": "Convenience helper to create a group thread populated with coordinator and seats.",
+        "operationId": "create_group_thread_endpoint_api_v1_staff_groups__group_id__threads_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "group_id",
+            "required": true,
+            "schema": {
+              "title": "Group Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "title",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Group Thread Endpoint Api V1 Staff Groups  Group Id  Threads Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Create a new group conversation thread",
+        "tags": ["staff-groups"]
       }
     },
     "/api/v1/staff/holds": {

@@ -18,6 +18,17 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1513 · Restore green main: synchronize generated OpenAPI schema and TypeScript definitions for SC-B9 group threads
+
+- **State:** in_progress
+- **Owner:** antigravity
+- **Branch:** `fix/restore-green-main-openapi-contract-drift`
+- **Paths:** `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (generate-api:check clean, tsc clean, eslint clean, all files <= 500 lines)
+- **Summary:** Regenerated `frontend/src/lib/openapi.json` and `frontend/src/lib/api-types.ts` via `scripts/gen-api-client.sh` to capture `/api/v1/staff/groups/{group_id}/threads` added in SC-B9 (PR #1480), resolving the failure in `Frontend Tests` on `main` push.
+- **Next step:** Push branch, open PR, enable auto-merge, verify CI passes.
+
 ### DL-#1448 · SC-E3: Wire maintenance operations to real backends (slice 1: GitHub run cancel/rerun)
 
 - **State:** in_progress
