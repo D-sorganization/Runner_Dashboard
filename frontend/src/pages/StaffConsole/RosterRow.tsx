@@ -78,14 +78,10 @@ export const RosterRow: React.FC<RosterRowProps> = ({
 
   return (
     <div
-      role="button"
-      tabIndex={0}
       data-testid={`roster-row-${role.name}`}
       data-selected={isSelected}
       data-focused={isFocused}
       data-status={status}
-      aria-selected={isSelected}
-      aria-label={`${role.title}, ${statusTooltip}`}
       onClick={handleClick}
       onKeyDown={handleKeyDown}
       className={`staff-roster-row ${isSelected ? "staff-roster-row--selected" : ""}`}
@@ -113,8 +109,28 @@ export const RosterRow: React.FC<RosterRowProps> = ({
         outlineOffset: isFocused ? "2px" : undefined,
       }}
     >
-      {/* Left section: Avatar + Role Info */}
-      <div style={{ display: "flex", alignItems: "center", minWidth: 0, flex: 1, gap: "10px" }}>
+      {/* Left section: Avatar + Role Info (Clickable button) */}
+      <button
+        type="button"
+        data-testid={`roster-row-btn-${role.name}`}
+        aria-label={`${role.title}, ${statusTooltip}`}
+        onClick={handleClick}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          minWidth: 0,
+          flex: 1,
+          gap: "10px",
+          background: "none",
+          border: "none",
+          padding: 0,
+          margin: 0,
+          cursor: "pointer",
+          textAlign: "left",
+          color: "inherit",
+          font: "inherit",
+        }}
+      >
         {/* Avatar with status indicator */}
         <div style={{ position: "relative", flexShrink: 0 }}>
           <div
@@ -197,7 +213,7 @@ export const RosterRow: React.FC<RosterRowProps> = ({
             )}
           </div>
         </div>
-      </div>
+      </button>
 
       {/* Right section: Unread badge + Pin toggle */}
       <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
