@@ -18,6 +18,18 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1282 · CR-2: Code Request data model, lifecycle state machine and durable GitHub-backed record
+
+- **State:** in_review
+- **Owner:** local
+- **Issue:** #1282 (epic #1279)
+- **Branch:** `feat/1282-code-request-model-store`
+- **Paths:** `backend/code_requests/model.py`, `backend/code_requests/lifecycle.py`, `backend/code_requests/store.py`, `backend/code_requests/dispatch.py`, `backend/code_requests/schema.md`, `backend/routers/code_requests.py`, `backend/dispatch/audit.py`, `backend/gh_utils.py`, `docs/code-requests.md`, `scripts/ensure_code_request_labels.py`, `tests/code_requests/test_lifecycle.py`, `tests/code_requests/test_store.py`, `tests/api/test_code_requests.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (pytest all 18 passing; mypy 0 errors in 8 files; ruff check clean; ruff format clean; npm run typecheck clean; npm run lint clean; all files strictly <= 500 lines)
+- **Summary:** Implemented CR-2: (1) Pydantic models for CodeRequest, CodeRequestState, BoardRoute, Requester, CodeRequestAuditEvent with lossless YAML front-matter serialization & parsing; (2) Pure-function lifecycle state machine with legal transitions and operator overrides; (3) GitHub issue-backed durable CodeRequestStore with local JSON cache fallback and automatic cache rebuilds; (4) Dispatch helpers with standards prompt injection (TDD, DbC, DRY, LoD, security, docs); (5) REST API endpoints GET/POST /api/code-requests, GET /api/code-requests/{id}, and POST /api/code-requests/{id}/transition with dual-scope authorization (code-requests.manage and feature-requests.manage); (6) ensure_code_request_labels.py script; (7) Complete documentation and test suites.
+- **Next step:** Merge PR #1443 to main via auto-merge, release lease, and mark shipped.
+
 ### DL-#1434 · Projects: fleet-wide prioritised status, charter coverage and untracked-work report
 
 - **State:** in_review

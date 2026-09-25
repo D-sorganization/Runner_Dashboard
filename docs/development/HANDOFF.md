@@ -1,4 +1,41 @@
-# Current handoff — Projects: fleet-wide prioritised status and untracked-work report (#1434)
+# Current handoff — CR-2: Code Request data model, lifecycle state machine and durable GitHub-backed record (#1282)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1282-code-request-model-store`; Issue #1282; DL-#1282.
+
+## Objective and Status
+
+- CR-2: Code Request data model, lifecycle state machine and durable GitHub-backed record (parent epic #1279).
+- Scope implemented:
+  - `backend/code_requests/model.py`: Pydantic models for `CodeRequest`, `CodeRequestState`, `BoardRoute`, `Requester`, `CodeRequestAuditEvent`, lossless front-matter parser/serializer, `STANDARDS_INJECTION`.
+  - `backend/code_requests/lifecycle.py`: Pure-function state machine `transition()` with legal transitions and operator overrides.
+  - `backend/code_requests/store.py`: `CodeRequestStore` backed by GitHub issues (`code-request` and `code-request:<state>` labels, YAML front-matter body, audit comments) with local JSON cache fallback and automatic cache rebuilds.
+  - `backend/code_requests/dispatch.py`: Prompt construction with standards injection and workflow dispatch helpers.
+  - `backend/routers/code_requests.py`: `GET /api/code-requests`, `POST /api/code-requests`, `GET /api/code-requests/{id}`, `POST /api/code-requests/{id}/transition`, with dual-scope authorization (`code-requests.manage` and `feature-requests.manage`), strictly $\le 500$ lines.
+  - `scripts/ensure_code_request_labels.py`: Label creation across fleet repositories.
+  - `docs/code-requests.md` & `backend/code_requests/schema.md`: Complete documentation and record contract.
+  - `backend/dispatch/audit.py`: `CodeRequestTransitionAuditEntry` and audit recording.
+  - Tests: `tests/code_requests/test_lifecycle.py`, `tests/code_requests/test_store.py`, `tests/api/test_code_requests.py` (18 passing tests).
+- Verification:
+  - `pytest tests/code_requests tests/api/test_code_requests.py`: 18 passed in 5.66s.
+  - `mypy backend/code_requests backend/routers/code_requests.py backend/gh_utils.py scripts/ensure_code_request_labels.py`: 0 errors.
+  - `ruff check`: 0 errors.
+  - `ruff format --check`: 0 errors.
+  - `npm run typecheck`: 0 errors.
+  - `npm run lint`: 0 errors.
+  - All files strictly $\le 500$ lines.
+
+## Next Steps
+
+1. Merge PR #1443 to main via auto-merge.
+2. Release lease on issue #1282.
+
+---
+
+# Current handoff â€” Projects: fleet-wide prioritised status and untracked-work report (#1434)
 
 Last updated: 2026-09-25
 
@@ -19,8 +56,8 @@ Last updated: 2026-09-25
 
 ## Validation
 
-- `python -m pytest tests/api/test_projects_router.py tests/api/test_projects_tracking.py` → 36 passed.
-- `npx vitest run frontend/src/pages/__tests__/Projects.test.tsx` → 7 passed; `npx tsc --noEmit -p tsconfig.app.json` clean.
+- `python -m pytest tests/api/test_projects_router.py tests/api/test_projects_tracking.py` â†’ 36 passed.
+- `npx vitest run frontend/src/pages/__tests__/Projects.test.tsx` â†’ 7 passed; `npx tsc --noEmit -p tsconfig.app.json` clean.
 - `ruff check`, `ruff format --check`, `mypy backend/projects backend/routers/projects.py` clean.
 - `bash scripts/gen-api-client.sh` regenerated `openapi.json` / `api-types.ts` (adds the two new routes only).
 
@@ -32,7 +69,7 @@ Last updated: 2026-09-25
 
 ---
 
-# Current handoff — SC-D9: Accessibility and keyboard pass on the Staff Console (#1343)
+# Current handoff â€” SC-D9: Accessibility and keyboard pass on the Staff Console (#1343)
 
 Last updated: 2026-09-25
 
@@ -57,8 +94,8 @@ Last updated: 2026-09-25
 
 ## Validation
 
-- `npx vitest run frontend/src/pages/StaffConsole/ frontend/src/shell/__tests__/HelpAbout.test.tsx` → 15 files, 93 tests passed.
-- `npx tsc -p tsconfig.app.json --noEmit` → 0 errors.
+- `npx vitest run frontend/src/pages/StaffConsole/ frontend/src/shell/__tests__/HelpAbout.test.tsx` â†’ 15 files, 93 tests passed.
+- `npx tsc -p tsconfig.app.json --noEmit` â†’ 0 errors.
 - Playwright runs in CI (`frontend-tests.yml`, chromium-desktop). The mobile walkthrough runs in the mobile projects.
 
 ## Next Steps
@@ -67,7 +104,7 @@ Last updated: 2026-09-25
 
 ---
 
-# Current handoff — CR-1: Rename Feature Requests → Code Requests with back-compat aliases (#1281)
+# Current handoff â€” CR-1: Rename Feature Requests â†’ Code Requests with back-compat aliases (#1281)
 
 Last updated: 2026-09-25
 
@@ -77,7 +114,7 @@ Last updated: 2026-09-25
 
 ## Objective and Status
 
-- CR-1: Rename Feature Requests → Code Requests with back-compat aliases.
+- CR-1: Rename Feature Requests â†’ Code Requests with back-compat aliases.
 - Scope implemented:
   - Backend routes: Added `/api/code-requests`, `/api/code-requests/templates`, `/api/code-requests/dispatch`. Preserved `/api/feature-requests*` as thin deprecated aliases returning `Deprecation: true` and `Link: </api/code-requests...>; rel="successor-version"`. Implemented router in `backend/routers/code_requests.py` (387 lines $\le 500$) with tag `code_requests`. Created backward compatibility re-export shim `backend/routers/feature_requests.py`.
   - Scopes: Introduced `code-requests.manage` in `backend/identity.py`, aliased bidirectionally with `feature-requests.manage`.
@@ -105,7 +142,7 @@ Last updated: 2026-09-25
 
 ---
 
-# Previous handoff — SC-G3: Fleet -> Operations: merge Deployment, Fleet Orchestration, Diagnostics, Conductor, Runner Plan and Schedules (#1325)
+# Previous handoff â€” SC-G3: Fleet -> Operations: merge Deployment, Fleet Orchestration, Diagnostics, Conductor, Runner Plan and Schedules (#1325)
 
 Last updated: 2026-09-25
 
@@ -117,7 +154,7 @@ Last updated: 2026-09-25
 
 - SC-G3: Fleet -> Operations: merge Deployment, Fleet Orchestration, Diagnostics, Conductor, Runner Plan and Schedules into unified `/fleet/operations` page. Shipped in PR #1426 (commit `1ce7324`).
 
-# Previous handoff — Restore green main: trim Mobile.tsx <= 500 lines and format api-types.ts (#1428)
+# Previous handoff â€” Restore green main: trim Mobile.tsx <= 500 lines and format api-types.ts (#1428)
 
 Last updated: 2026-09-25
 
@@ -134,7 +171,7 @@ Last updated: 2026-09-25
 
 ---
 
-# Previous handoff — SC-D8: Mobile Staff Console: roster → thread navigation, bottom composer, push deep links (#1331)
+# Previous handoff â€” SC-D8: Mobile Staff Console: roster â†’ thread navigation, bottom composer, push deep links (#1331)
 
 Last updated: 2026-09-25
 
@@ -144,8 +181,8 @@ Last updated: 2026-09-25
 
 ## Objective and Status
 
-- SC-D8: Mobile Staff Console: roster → thread navigation, bottom composer, push deep links.
-- Full-screen roster → thread navigation: single-pane view transitioning between roster (with search, Ask Barb hero, and role groups) and conversation thread with `< Back to Roster` top button.
+- SC-D8: Mobile Staff Console: roster â†’ thread navigation, bottom composer, push deep links.
+- Full-screen roster â†’ thread navigation: single-pane view transitioning between roster (with search, Ask Barb hero, and role groups) and conversation thread with `< Back to Roster` top button.
 - Safe-area aware bottom composer (`env(safe-area-inset-bottom)`) with touch-friendly input, Send, and Voice input buttons.
 - Cards adapted to narrow viewports with $\ge 44\text{px}$ touch targets on Approve/Deny buttons.
 - Push notification deep links: supports `?thread=<id>` and `?role=<role>`, synchronizing state on mount and browser popstate.
@@ -163,7 +200,7 @@ Last updated: 2026-09-25
 
 ---
 
-# Previous handoff — Restore green main: synchronize generated API contract for SC-C5 (#1424)
+# Previous handoff â€” Restore green main: synchronize generated API contract for SC-C5 (#1424)
 
 Last updated: 2026-09-25
 
@@ -179,9 +216,9 @@ Last updated: 2026-09-25
 
 ---
 
-# Previous handoff — SC-C5: "Waiting on you" inbox and Barb briefings inside dashboard (#1328)
+# Previous handoff â€” SC-C5: "Waiting on you" inbox and Barb briefings inside dashboard (#1328)
 
-- Full-screen roster → thread navigation: single-pane view transitioning between roster (with search, Ask Barb hero, and role groups) and conversation thread with `< Back to Roster` top button.
+- Full-screen roster â†’ thread navigation: single-pane view transitioning between roster (with search, Ask Barb hero, and role groups) and conversation thread with `< Back to Roster` top button.
 - Safe-area aware bottom composer (`env(safe-area-inset-bottom)`) with touch-friendly input, Send, and Voice input buttons.
 - Cards adapted to narrow viewports with $\ge 44\text{px}$ touch targets on Approve/Deny buttons.
 - Push notification deep links: supports `?thread=<id>` and `?role=<role>`, synchronizing state on mount and browser popstate.
@@ -235,7 +272,7 @@ Last updated: 2026-09-25
 
 ---
 
-# Previous handoff — SC-G2: One Fleet page: merge Machines, Runner Audit and Event Log into Fleet (#1324)
+# Previous handoff â€” SC-G2: One Fleet page: merge Machines, Runner Audit and Event Log into Fleet (#1324)
 
 Last updated: 2026-09-25
 
@@ -249,7 +286,7 @@ Last updated: 2026-09-25
 
 ---
 
-# Previous handoff — SC-D5: Action, run, hand-off, and review cards embedded in conversation threads (#1319)
+# Previous handoff â€” SC-D5: Action, run, hand-off, and review cards embedded in conversation threads (#1319)
 
 Last updated: 2026-09-25
 
@@ -262,7 +299,7 @@ Last updated: 2026-09-25
 - SC-D5: Make the things staff do visible and controllable right in the conversation.
 - Action card: what will happen, target, risk badge (`read`/`low`/`medium`/`high`/`critical`/`owner-only`), Approve / Deny buttons, parameter inspection, decision history, double-click idempotency protection, and stale/expired (24h limit) action lock.
 - Run card: live status badge (`queued`/`running`/`completed`/`failed`/`cancelled`), node, provider, elapsed duration, expandable log tail with toggle, Cancel button, and deep links to run page and PR.
-- Hand-off card: "Barb → Specialist" with reason and "Send to someone else" alternative specialist re-route selection.
+- Hand-off card: "Barb â†’ Specialist" with reason and "Send to someone else" alternative specialist re-route selection.
 - Review card: PR, verdict badge (`APPROVED`/`CHANGES_REQUESTED`/`COMMENTED`), summary, and key findings.
 - Error card: plain-language cause from `failure_class`, remediation instructions, node badge, and retry CTA.
 - Status: Fully implemented with strict TDD; all 55 StaffConsole unit tests passing; `npm run typecheck` 0 errors; `npm run lint` 0 warnings; `pytest tests/test_frontend_integrity.py` 72 passed; all files strictly <= 500 lines.
@@ -328,7 +365,7 @@ Last updated: 2026-09-25
 
 ---
 
-# Previous handoff — Restore green main across frontend integrity checks and generated API contract (#1407)
+# Previous handoff â€” Restore green main across frontend integrity checks and generated API contract (#1407)
 
 Last updated: 2026-09-25
 
@@ -344,7 +381,7 @@ Last updated: 2026-09-25
 
 ---
 
-# Previous handoff — SC-D2: Shell restructure: Staff Console as default route, four-area navigation, redirects for old tabs (#1309)
+# Previous handoff â€” SC-D2: Shell restructure: Staff Console as default route, four-area navigation, redirects for old tabs (#1309)
 
 Last updated: 2026-09-25
 
@@ -352,7 +389,7 @@ Last updated: 2026-09-25
 
 - Repository `D-sorganization/Runner_Dashboard`; branch `feat/1309-shell-restructure`; Issue #1309; DL-#1309; PR #1406 (shipped).
 
-# Previous handoff — SC-C2: Barb routing: auto-select the right role(s) for a request, show decision, allow override (#1315)
+# Previous handoff â€” SC-C2: Barb routing: auto-select the right role(s) for a request, show decision, allow override (#1315)
 
 Last updated: 2026-09-25
 
@@ -376,7 +413,7 @@ Last updated: 2026-09-25
   - `route_deterministic`: fast regex and keyword rule evaluation for explicit and high-confidence routing.
   - `BarbRouter`:
     - `route`: orchestrates pre-router, LLM classifier, and quick mode fallback.
-    - `execute_handoff`: seeds destination thread with request brief, posts structured handoff card ('Barb → Role: reason') in source thread, registers work item in WorkItemStore, and records audit trail.
+    - `execute_handoff`: seeds destination thread with request brief, posts structured handoff card ('Barb â†’ Role: reason') in source thread, registers work item in WorkItemStore, and records audit trail.
     - `override_routing`: updates destination thread, redirects work item, logs durable routing feedback in `routing_feedback` table, and records audit trail.
     - `list_routing_feedback`: query recent feedback records for accuracy evaluation (SC-C7).
 - `backend/routers/staff_routing.py`:
@@ -410,7 +447,7 @@ Last updated: 2026-09-25
 
 ---
 
-# Previous handoff — SC-E5: Stalled-job detection and remediation playbooks for the Maintenance role (#1322)
+# Previous handoff â€” SC-E5: Stalled-job detection and remediation playbooks for the Maintenance role (#1322)
 
 ## Files and Decisions
 
@@ -461,7 +498,7 @@ Last updated: 2026-09-25
 
 ---
 
-## Prior handoff — SC-B4: Chat-turn execution path: fast replies with per-provider session resume, no worktree (#1307)
+## Prior handoff â€” SC-B4: Chat-turn execution path: fast replies with per-provider session resume, no worktree (#1307)
 
 Last updated: 2026-09-25
 
@@ -476,7 +513,7 @@ Last updated: 2026-09-25
 
 ---
 
-## Prior handoff — SC-F7: Rate limits and spend guards on staff conversation and dispatch APIs (#1336)
+## Prior handoff â€” SC-F7: Rate limits and spend guards on staff conversation and dispatch APIs (#1336)
 
 Last updated: 2026-09-25
 
@@ -508,7 +545,7 @@ Last updated: 2026-09-25
 
 ---
 
-## Prior handoff — SC-E3: Maintenance action catalogue: typed, allowlisted fleet operations with preflight, dry-run and verification (#1321)
+## Prior handoff â€” SC-E3: Maintenance action catalogue: typed, allowlisted fleet operations with preflight, dry-run and verification (#1321)
 
 - Repository `D-sorganization/Runner_Dashboard`; branch `feat/1321-maintenance-catalogue`; Issue #1321; DL-#1321; PR #1400.
 
@@ -548,7 +585,7 @@ Last updated: 2026-09-25
 
 ---
 
-## Prior handoff — SC-B6: Action proposals from conversations with risk-based approval gates (#1313)
+## Prior handoff â€” SC-B6: Action proposals from conversations with risk-based approval gates (#1313)
 
 - Repository `D-sorganization/Runner_Dashboard`; branch `feat/1313-action-proposals`; Issue #1313; DL-#1313; PR #1396.
 
@@ -607,7 +644,7 @@ Last updated: 2026-09-25
 
 ---
 
-# Previous handoff — SC-F5: External Agent Connection Guides & Troubleshooting (#1334)
+# Previous handoff â€” SC-F5: External Agent Connection Guides & Troubleshooting (#1334)
 
 Last updated: 2026-09-25
 
@@ -645,7 +682,7 @@ Last updated: 2026-09-25
 
 ---
 
-# Previous handoff — SC-F4: Fleet MCP tools for staff conversations, work items, approvals and cancel (#1323)
+# Previous handoff â€” SC-F4: Fleet MCP tools for staff conversations, work items, approvals and cancel (#1323)
 
 - `clients/fleet/fleet_validators.py`:
   - Extracted contract limits, regex patterns, and client-side validators (`_check`, `_match`, `_positive_int`, `_non_negative_int`, `_text`, `_opt_text`, `_opt`, `default_session`, `_compact`, `_validate_directive`, `_decode`, `_resolve_session`).
@@ -679,11 +716,11 @@ Last updated: 2026-09-25
 
 ---
 
-# Previous handoff — SC-C3: Work-item ledger: every request Barb (or anyone) dispatches is tracked to a terminal state (#1316)
+# Previous handoff â€” SC-C3: Work-item ledger: every request Barb (or anyone) dispatches is tracked to a terminal state (#1316)
 
 ---
 
-# Previous handoff — SC-B7: Link runs to threads, post progress back, answer needs-input questions, and proxy run streams across nodes (#1314)
+# Previous handoff â€” SC-B7: Link runs to threads, post progress back, answer needs-input questions, and proxy run streams across nodes (#1314)
 
 Last updated: 2026-09-24
 
@@ -742,7 +779,7 @@ Last updated: 2026-09-24
 
 ---
 
-# Previous handoff — SC-B2: Thread, message and action-proposal store with migrations (#1305)
+# Previous handoff â€” SC-B2: Thread, message and action-proposal store with migrations (#1305)
 
 Last updated: 2026-09-24
 
@@ -792,7 +829,7 @@ Last updated: 2026-09-24
 
 ---
 
-# Previous handoff — React Query Data Layer for Staff Console (#1304)
+# Previous handoff â€” React Query Data Layer for Staff Console (#1304)
 
 Last updated: 2026-09-24
 
@@ -841,7 +878,7 @@ Last updated: 2026-09-24
 
 ---
 
-# Previous handoff — Restore green main: OpenAPI ValidationError schema alignment (#1383)
+# Previous handoff â€” Restore green main: OpenAPI ValidationError schema alignment (#1383)
 
 Last updated: 2026-09-24
 
@@ -851,7 +888,7 @@ Last updated: 2026-09-24
 
 ---
 
-# Previous handoff — Restore green main: API contract types synchronization (#1381)
+# Previous handoff â€” Restore green main: API contract types synchronization (#1381)
 
 Last updated: 2026-09-24
 
@@ -884,7 +921,7 @@ Last updated: 2026-09-24
 
 ---
 
-# Previous handoff — Structured reply contract for chat turns (#1308)
+# Previous handoff â€” Structured reply contract for chat turns (#1308)
 
 Last updated: 2026-09-24
 
@@ -929,7 +966,7 @@ Last updated: 2026-09-24
 
 ---
 
-# Previous handoff — Short-lived, scoped credentials for staff runs (#1310)
+# Previous handoff â€” Short-lived, scoped credentials for staff runs (#1310)
 
 Last updated: 2026-09-24
 
@@ -987,7 +1024,7 @@ Last updated: 2026-09-24
 
 ---
 
-# Previous handoff — Contract check between backend response models and frontend types (#1296)
+# Previous handoff â€” Contract check between backend response models and frontend types (#1296)
 
 Last updated: 2026-09-24
 
@@ -1035,7 +1072,7 @@ Last updated: 2026-09-24
 
 ---
 
-# Previous handoff — Restore green main across secrets, api-types, and line-cap gates (#1372)
+# Previous handoff â€” Restore green main across secrets, api-types, and line-cap gates (#1372)
 
 Last updated: 2026-09-24
 
@@ -1068,7 +1105,7 @@ Last updated: 2026-09-24
 
 ---
 
-# Previous handoff — Keep original caller identity when forwarding staff runs (#1311)
+# Previous handoff â€” Keep original caller identity when forwarding staff runs (#1311)
 
 Last updated: 2026-09-24
 
@@ -1117,7 +1154,7 @@ Last updated: 2026-09-24
 
 ---
 
-# Previous handoff — Page usage evidence before pruning (#1302)
+# Previous handoff â€” Page usage evidence before pruning (#1302)
 
 Last updated: 2026-09-24
 
@@ -1161,7 +1198,7 @@ Last updated: 2026-09-24
 
 ---
 
-# Previous handoff — Classify staff run failures with remediation hints (#1297)
+# Previous handoff â€” Classify staff run failures with remediation hints (#1297)
 
 ## Work
 
@@ -1217,7 +1254,7 @@ Last updated: 2026-09-24
 
 ---
 
-# Previous handoff — Staff run watchdog and idle timeout (#1294)
+# Previous handoff â€” Staff run watchdog and idle timeout (#1294)
 
 Last updated: 2026-09-24
 
@@ -1253,7 +1290,7 @@ Last updated: 2026-09-24
 
 ---
 
-# Previous handoff — Reconcile orphaned staff runs (#1293)
+# Previous handoff â€” Reconcile orphaned staff runs (#1293)
 
 Last updated: 2026-09-24
 
@@ -1294,7 +1331,7 @@ Last updated: 2026-09-24
 
 ---
 
-# Previous handoff — Per-tab error boundaries and Suspense (#1292)
+# Previous handoff â€” Per-tab error boundaries and Suspense (#1292)
 
 Last updated: 2026-09-24
 
@@ -1332,7 +1369,7 @@ Last updated: 2026-09-24
 
 ---
 
-## Previous handoff — Fleet node local identity resolution and runner pool duplicate suppression (#1291)
+## Previous handoff â€” Fleet node local identity resolution and runner pool duplicate suppression (#1291)
 
 Last updated: 2026-09-24
 
@@ -1367,7 +1404,7 @@ Last updated: 2026-09-24
 
 ---
 
-## Previous handoff — Staff tab spend today dictionary support (#1289)
+## Previous handoff â€” Staff tab spend today dictionary support (#1289)
 
 Last updated: 2026-09-23
 
@@ -1392,7 +1429,7 @@ Last updated: 2026-09-23
 1. Open the PR (`Fixes #1280`), let `quality-gate` run, merge.
 2. Continue epic #1279 with CR-1 (#1281) rename, rebased on this fix.
 
-## Previous Handoff — OGLaptop 31a9104 acceptance
+## Previous Handoff â€” OGLaptop 31a9104 acceptance
 
 - PR: not created at commit time; owner authorized publication and merge to main.
 - Worktree `/home/dieterolson/staff-builds/oglaptop-31a9104-acceptance`; branch `docs/oglaptop-31a9104-acceptance`; commit `SELF`.
@@ -1403,7 +1440,7 @@ Last updated: 2026-09-23
 
 ---
 
-## Previous Handoff — Staff Node Acceptance False Failures (#1276)
+## Previous Handoff â€” Staff Node Acceptance False Failures (#1276)
 
 Last updated: 2026-09-23T18:30:00-07:00
 
@@ -1429,7 +1466,7 @@ Last updated: 2026-09-23T18:30:00-07:00
 2. ControlTower: owner + agent follow `docs/operations/controltower-staff-worker.md`.
 3. Run `staff-node-acceptance.sh --run-ad-hoc --expect-sha <main>` on all three nodes (`--role scheduler` on DeskComputer).
 
-## Previous Handoff — Node LAN Duplicate-Address Prevention (#1270)
+## Previous Handoff â€” Node LAN Duplicate-Address Prevention (#1270)
 
 Last updated: 2026-09-23T16:40:00-07:00
 
@@ -1445,7 +1482,7 @@ Last updated: 2026-09-23T16:40:00-07:00
 
 ---
 
-## Previous Handoff — Current handoff — Windows reboot, network and eGPU recovery (#1257)
+## Previous Handoff â€” Current handoff â€” Windows reboot, network and eGPU recovery (#1257)
 
 - Follow-up: direct-attached Sonnet Breakaway Box 750ex / RTX 5070 was absent after Windows reboot; administrator hardware scan did not help. Owner power-cycle/reconnect restored the Sonnet link and GPU. Windows and WSL NVIDIA-SMI both pass (610.88, 12227 MiB). No persistent startup fix is claimed; exact enumeration failure cause remains unknown.
 - Current update: worktree `/home/dieterolson/staff-builds/oglaptop-egpu-recovery`, branch `docs/oglaptop-egpu-recovery`, commit `SELF`.
@@ -1454,15 +1491,15 @@ Last updated: 2026-09-23T16:40:00-07:00
 - Windows booted at 15:05:09 PT; bridge configured result at 15:06:35; dashboard and all six providers recovered. Post-Windows-reboot provider runs all succeeded; IDs in canonical node runbook. Staff scheduler stays off.
 - Windows TCP/IP logged a duplicate DHCP address three times; reconnection obtained a different lease. Controlled DNS/HTTPS tests passed with all firewall profiles enabled. Original outage is best explained by the duplicate address, not the narrow WSL Ollama rule.
 - Final firewall verification: owner re-enabled Domain in Windows Security; all three profiles now enabled. Windows GitHub/Google/Cloudflare HTTPS passed, WSL GitHub HTTPS passed, and Ollama bridge returned 0.34.2. The first diagnostic rollback race is resolved and documented.
-- CI capacity restored at 15:33 PT: IDs 217–224 back in group 1, original enabled states restored, CI scheduler timer active and units 1–4 running. Staff scheduler remains off. Keep empty maintenance group and backups.
+- CI capacity restored at 15:33 PT: IDs 217â€“224 back in group 1, original enabled states restored, CI scheduler timer active and units 1â€“4 running. Staff scheduler remains off. Keep empty maintenance group and backups.
 - Router allocation conflict and external port-isolation checks remain follow-ups. Preserve firewall backups in `_deploy/firewall-diagnosis-*` and drain metadata in `_deploy/oglaptop-drain-20260923`.
 
 ---
 
-## Previous handoff — drained WSL restart verified (#1257)
+## Previous handoff â€” drained WSL restart verified (#1257)
 
 - Worktree `/home/dieterolson/staff-builds/oglaptop-restart-validation`; branch `docs/oglaptop-restart-validation`; commit `SELF`.
-- Owner authorized drain and refreshed WSL GitHub admin:org permission. Only runner IDs 217–224 moved from group 1 into dedicated empty-access group 6; existing Bandwidth-Draining group 5 has repository access and was not changed.
+- Owner authorized drain and refreshed WSL GitHub admin:org permission. Only runner IDs 217â€“224 moved from group 1 into dedicated empty-access group 6; existing Bandwidth-Draining group 5 has repository access and was not changed.
 - Four active CI jobs finished without cancellation. GitHub/local idle gates passed at 14:53:55 PT, then all listeners stopped. Original group/unit/task state is saved under `_deploy/oglaptop-drain-20260923`.
 - Controlled WSL shutdown/start changed boot ID; dashboard, Windows interop and Ollama bridge recovered. All six provider health checks succeeded; see canonical node runbook for IDs. Staff scheduler remains 0 and worker holds are empty.
 - RM timer automatically ran after boot. WSLg hid the user control socket with a runtime-directory mount; restarting user@1000 after the checks restored CLI access. No permanent runtime configuration change was needed.
@@ -1470,7 +1507,7 @@ Last updated: 2026-09-23T16:40:00-07:00
 
 ---
 
-## Previous handoff — SYSTEM bridge task verified (#1257)
+## Previous handoff â€” SYSTEM bridge task verified (#1257)
 
 - Worktree `/home/dieterolson/staff-builds/ollama-task-verified-docs`; branch `docs/issue-1257-task-verified`; commit `SELF`; PR not created.
 - Owner reinstalled corrected bridge from #1265 (merged bc5a6369) and supplied Administrator Task Scheduler output: last run 2026-09-23 14:24:13 PT, result **0**, next run 14:25:12. Installed script hash equals tested staged source. Original policy failure is resolved for an actual SYSTEM run.
@@ -1480,7 +1517,7 @@ Last updated: 2026-09-23T16:40:00-07:00
 
 ---
 
-## Previous handoff — SYSTEM bridge execution policy (#1257)
+## Previous handoff â€” SYSTEM bridge execution policy (#1257)
 
 - Worktree `/home/dieterolson/staff-builds/ollama-task-policy`, branch `fix/issue-1257-system-task-policy`, commit `SELF`; PR not created. Existing lease belongs to this session; presence refreshed.
 - Owner installed bridge at 13:50 PT. Saved task XML proves SYSTEM/highest/startup/logon/five-minute triggers. Original task exits 1: owner-run diagnostic captured `running scripts is disabled on this system` before script execution. User-context dry-run alone was insufficient evidence.
@@ -1490,7 +1527,7 @@ Last updated: 2026-09-23T16:40:00-07:00
 
 ---
 
-## Previous handoff — OGLaptop deployed node standards (#1257 / #1258)
+## Previous handoff â€” OGLaptop deployed node standards (#1257 / #1258)
 
 - Linux worktree `/home/dieterolson/staff-builds/oglaptop-rollout-docs`; branch `docs/issue-1258-oglaptop-rollout`; commit `SELF`; PR not created.
 - #1259, #1261 and #1262 merged. Deployed `35686c4ebb3c6b65596a43ed6028fc535fea1b27` (contains #1256). Full deployment backup `~/actions-runners/dashboard.bak-2026-09-23-134138`; env/holds backups suffix `2026-09-23-134229`.
@@ -1503,17 +1540,17 @@ Last updated: 2026-09-23T16:40:00-07:00
 
 ---
 
-## Previous handoff — Live RM role source (#1258)
+## Previous handoff â€” Live RM role source (#1258)
 
 - Worktree `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/issue-1258-rm`; branch `fix/issue-1258-live-rm-source`; commit `SELF`; PR [#1262](https://github.com/D-sorganization/Runner_Dashboard/pull/1262), open; DL-#1258.
 - Timer alternative chosen explicitly: no Git/network in dashboard requests or scheduler; clean-main updates at most every 15 minutes, preserve dirty/diverged/ahead state, Git backup refs before fast-forward, timestamped status backups. No role cache exists, so reads immediately see updated YAML.
 - `GET /api/staff/board?local=1` now reports last checked RM revision and commit/check ages; `/roles` aliases `/roster`. Node migration instructions preserve scheduler flags and holds. Existing bundle is retained for rollback.
-- RED: helper test collection failed before implementation. GREEN: `python -m pytest tests/unit/test_staff_rm_sync.py tests/api/test_staff_fleet.py tests/api/test_staff_schedule.py -q -o addopts=''` — 47 pass. Changed-file Ruff check/format pass.
+- RED: helper test collection failed before implementation. GREEN: `python -m pytest tests/unit/test_staff_rm_sync.py tests/api/test_staff_fleet.py tests/api/test_staff_schedule.py -q -o addopts=''` â€” 47 pass. Changed-file Ruff check/format pass.
 - CI caught a missed formatter run on the changed router imports; corrected. Full `ruff format --check backend/ clients/` and `ruff check backend/ clients/` now pass locally. The initial Python matrix was skipped because lint failed, not because tests failed.
 - Next: merge, deploy to OGLaptop, back up env/holds/units, switch to Linux clone, start user timer, inspect schedule holds, rerun both Ollama harnesses. Update OGLaptop runbook with measured revision, backups and run IDs.
 - #1259 docs and #1261 bridge merged. Bridge elevated installation/reboot validation belongs to owner and is pending. Bridge CI architecture document passed but its separate pytest job failed on an existing unknown asyncio option; protected merge succeeded without overrides.
 
-## Previous Handoff — WSL Ollama bridge (#1257)
+## Previous Handoff â€” WSL Ollama bridge (#1257)
 
 - Repository/worktree: `D-sorganization/Runner_Dashboard`, `C:/Users/diete/Repositories/Runner_Dashboard-worktrees/issue-1257-bridge`.
 - Branch `fix/issue-1257-ollama-wsl-bridge`; commit `SELF`; PR [#1261](https://github.com/D-sorganization/Runner_Dashboard/pull/1261), open; DL-#1257.
@@ -1524,7 +1561,7 @@ Last updated: 2026-09-23T16:40:00-07:00
 
 ---
 
-## Previous machine handoff — OGLaptop Staff Hub worker (#1192 / #1223)
+## Previous machine handoff â€” OGLaptop Staff Hub worker (#1192 / #1223)
 
 - Verified locally on 2026-09-23: deployment `a82699223e07153ae85ca15707805665f15c96fe`
   contains merged provider PRs #1250 and #1253. All six requested provider health
@@ -1555,7 +1592,7 @@ Last updated: 2026-09-23T16:40:00-07:00
 
 ---
 
-## Previous Handoff — Re-Land: Ollama-Backed Runs Lease as `local` (#1252)
+## Previous Handoff â€” Re-Land: Ollama-Backed Runs Lease as `local` (#1252)
 
 Last updated: 2026-09-23T12:55:00-07:00
 
@@ -1567,11 +1604,11 @@ Last updated: 2026-09-23T12:55:00-07:00
 
 - PR #1253 auto-merged at its first commit (`b52e31e`, merge `ce601d4`) before the follow-up `8dd2220` was pushed, so `main` still leases staff runs as `agent=plan.provider`; `ollama`/`claude-ollama` are not RM agent ids and `post_agent_lease` refuses them. This cherry-picks `8dd2220`: `ProviderAdapter.lease_as`/`lease_agent`, both Ollama providers lease as `local`.
 - Validation: WSL `PYTHONPATH=backend pytest tests/api -k "staff or provider or pricing or usage"` 166 passed, 3 skipped (on the original branch; cherry-pick applied cleanly).
-- OGLaptop (verified 2026-09-23 12:42 PT via S4U probe): 4.10.0 `a826992`, all of claude/codex/antigravity/cursor-agent/ollama/claude-ollama `true` and each ad-hoc health run succeeded; Ollama reached through a Windows portproxy `192.168.208.1:11434 → 127.0.0.1:11434` + firewall rule `StaffHub-Ollama-WSL` (WSL subnet only).
+- OGLaptop (verified 2026-09-23 12:42 PT via S4U probe): 4.10.0 `a826992`, all of claude/codex/antigravity/cursor-agent/ollama/claude-ollama `true` and each ad-hoc health run succeeded; Ollama reached through a Windows portproxy `192.168.208.1:11434 â†’ 127.0.0.1:11434` + firewall rule `StaffHub-Ollama-WSL` (WSL subnet only).
 
 ---
 
-## Previous Handoff — Deferred Project Visibility — #1251 / #1248
+## Previous Handoff â€” Deferred Project Visibility â€” #1251 / #1248
 
 - Repository/worktree: D-sorganization/Runner_Dashboard,
   `C:/Users/diete/Repositories/Worktrees/Runner_Dashboard-deferred-projects`.
@@ -1620,7 +1657,7 @@ Last updated: 2026-09-23T12:55:00-07:00
 
 ---
 
-# Current Handoff — Staff Provider Options: Cursor Agent and Ollama (#1252)
+# Current Handoff â€” Staff Provider Options: Cursor Agent and Ollama (#1252)
 
 Last updated: 2026-09-23T11:40:00-07:00
 
@@ -1634,7 +1671,7 @@ Last updated: 2026-09-23T11:40:00-07:00
 
 - `cursor-agent` (installed 2026-09-23 in DeskComputer WSL via the official installer, signed in on the Cursor subscription, 241 models incl. Grok 4.5/4.6/4.7): adapter now `-p --output-format stream-json --force --trust --workspace <wt>`; its `result` event is Claude-shaped, usage camelCase mapped.
 - `ollama`: was `ollama run llama3.1` (chat only, model absent, no WSL server). Now Codex `exec --oss --local-provider ollama` with `CODEX_OSS_BASE_URL`; default `glm-5.3-flash:cloud`. New `claude-ollama`: Claude Code with `ANTHROPIC_BASE_URL=<ollama>`, `ANTHROPIC_AUTH_TOKEN=ollama`, own `CLAUDE_CONFIG_DIR=~/.config/runner-dashboard/claude-ollama`. Both verified by hand with a tool call against the Windows Ollama app (0.33.3) at the WSL NAT gateway.
-- `backend/staff/ollama_env.py`: `STAFF_OLLAMA_URL` → localhost if listening → `/proc/net/route` default gateway; `ProviderAdapter.env_builder` / `runtime_env()` applied by the runner at launch.
+- `backend/staff/ollama_env.py`: `STAFF_OLLAMA_URL` â†’ localhost if listening â†’ `/proc/net/route` default gateway; `ProviderAdapter.env_builder` / `runtime_env()` applied by the runner at launch.
 - Service drop-in must add `ReadWritePaths` `~/.cursor` and `~/.config/cursor` (cursor-agent keeps auth and state there); documented in `docs/staff-hub.md`.
 - Leases: `ProviderAdapter.lease_as`/`lease_agent`; `ollama` and `claude-ollama` lease as RM agent `local` (the old `ollama` provider would have been refused by `post_agent_lease`).
 - Paired RM change: `shared_scripts/staff_roles.PROVIDERS` gains `claude-ollama` so role YAML can list it.
@@ -1642,7 +1679,7 @@ Last updated: 2026-09-23T11:40:00-07:00
 
 ---
 
-## Previous Handoff — Staff Codex and Antigravity Adapters (#1249)
+## Previous Handoff â€” Staff Codex and Antigravity Adapters (#1249)
 
 Last updated: 2026-09-23T10:40:00-07:00
 
@@ -1660,11 +1697,11 @@ Last updated: 2026-09-23T10:40:00-07:00
 - `tests/api/test_staff_adapter_cli_contracts.py`: pins the codex flags and the agy result shape (RED before the fix).
 - Environment facts: WSL `~/.local/bin/agy` is a symlink to the Windows `agy.exe` (WinGet); WSL `~/.local/bin/codex` now execs the official `@openai/codex@0.156.1-linux-x64` binary in `~/.local/lib/codex-linux-x64` (old wrapper kept as `codex.wrapper-bak-20260923`, it pointed into the Windows npm package, which no longer bundles the Linux binary).
 - Validation: WSL `PYTHONPATH=backend pytest tests/api/test_staff_adapter_cli_contracts.py tests/api/test_staff_runner.py` 20 passed.
-- Next: merge, redeploy DeskComputer (§4 of `_deploy/STAFF_HUB_HANDOFF_2026-09-23.md`), re-run `POST /api/staff/ad-hoc/run` with `provider` codex and antigravity.
+- Next: merge, redeploy DeskComputer (Â§4 of `_deploy/STAFF_HUB_HANDOFF_2026-09-23.md`), re-run `POST /api/staff/ad-hoc/run` with `provider` codex and antigravity.
 
 ---
 
-## Previous Handoff — Priorities, staff focus and fleet clients hardening (#1243)
+## Previous Handoff â€” Priorities, staff focus and fleet clients hardening (#1243)
 
 Last updated: 2026-09-23T02:00:00-07:00
 
@@ -1687,7 +1724,7 @@ Last updated: 2026-09-23T02:00:00-07:00
 
 ---
 
-## Previous Handoff — Coordination API hardening (#1244)
+## Previous Handoff â€” Coordination API hardening (#1244)
 
 Last updated: 2026-09-23T09:30:00-07:00
 
@@ -1700,7 +1737,7 @@ Last updated: 2026-09-23T09:30:00-07:00
 
 ## Work
 
-- `claims.py`: 409 unless holder == this agent+session (RM exposes no session today, so any hold is 409); `error:` reason = unavailable; per-issue lock; `LeaseWriteResult` mapping (comment posted → 200 + `warnings`).
+- `claims.py`: 409 unless holder == this agent+session (RM exposes no session today, so any hold is 409); `error:` reason = unavailable; per-issue lock; `LeaseWriteResult` mapping (comment posted â†’ 200 + `warnings`).
 - `auth.py`: `Caller.agent_for` / `check_session`; bot `agent-<name>` bound to `<name>` and `<name>-*` sessions; misnamed bots 403 on coordination writes only (priorities PUT unaffected).
 - `models.py`: RM `_IDENTIFIER`, single-line `intent`/`reason`/goal outcomes, message control chars. `roster.py`: RM `AGENT_IDS` via `python -c`, cached, static fallback.
 - `board.py`: generation counter, single-flight misses, fallback `complete:false`, `has_live_session` (fresh read) gating send/ack.
@@ -1710,7 +1747,7 @@ Last updated: 2026-09-23T09:30:00-07:00
 
 ---
 
-## Previous Handoff — Fleet Command polish (#1241)
+## Previous Handoff â€” Fleet Command polish (#1241)
 
 Last updated: 2026-09-23T01:20:00-07:00
 
@@ -1728,7 +1765,7 @@ Last updated: 2026-09-23T01:20:00-07:00
 
 ---
 
-## Previous Handoff — Current Handoff — Fleet Command tab (#1233)
+## Previous Handoff â€” Current Handoff â€” Fleet Command tab (#1233)
 
 Last updated: 2026-09-23T00:40:00-07:00
 
@@ -1741,7 +1778,7 @@ Last updated: 2026-09-23T00:40:00-07:00
 
 ## Work
 
-- `frontend/src/pages/FleetCommand/`: `FleetCommandPage` (SubTabs: Priorities + Directives, Active work, Messages, Claims, Dispatch), `PanelFrame` (shared header + 404 / `available:false` / error / loading states), `fleetApi.ts` (calls via `apiRequest`, `useResource`, `describeError` for structured 409/502 details, tracking-link, expiry and conflict helpers), `types.ts` (mirrors `docs/priorities-api.md` and `docs/coordination-api.md`; the routes return `dict[str, Any]` so the generated `api-types.ts` has no shapes for them — same approach as `staffApi.ts`).
+- `frontend/src/pages/FleetCommand/`: `FleetCommandPage` (SubTabs: Priorities + Directives, Active work, Messages, Claims, Dispatch), `PanelFrame` (shared header + 404 / `available:false` / error / loading states), `fleetApi.ts` (calls via `apiRequest`, `useResource`, `describeError` for structured 409/502 details, tracking-link, expiry and conflict helpers), `types.ts` (mirrors `docs/priorities-api.md` and `docs/coordination-api.md`; the routes return `dict[str, Any]` so the generated `api-types.ts` has no shapes for them â€” same approach as `staffApi.ts`).
 - Dispatch reuses the Staff tab `Assign` form and `fetchRoster`; after a real dispatch it links to `/t/staff?run=<id>`, which `StaffPage` now opens directly.
 - Nav: `fleet-command` entry (agents group, `CompassIcon`), lazy route desktop + mobile; styles in the `Fleet Command Tab (#1233)` section of `index.css` (tokens only).
 - Validation: `npx vitest run` full suite green (FleetCommand + helpers 17 tests); `npm run typecheck`, `npm run lint`, `npm run build` (FleetCommandPage chunk 7.7 kB gzip); `pytest tests/test_frontend_perf_budget.py tests/frontend` 106 passed; `scripts/check_frontend_perf_budget.py --bundle` exit 0.
@@ -1753,7 +1790,7 @@ Last updated: 2026-09-23T00:40:00-07:00
 
 ---
 
-## Previous Handoff — Current Handoff — Staff prompt fleet focus (#1239)
+## Previous Handoff â€” Current Handoff â€” Staff prompt fleet focus (#1239)
 
 Last updated: 2026-09-23T01:30:00-07:00
 
@@ -1771,7 +1808,7 @@ Last updated: 2026-09-23T01:30:00-07:00
 
 ---
 
-## Previous Handoff — Current Handoff — Fleet Coordination API: priorities endpoints (#1227)
+## Previous Handoff â€” Current Handoff â€” Fleet Coordination API: priorities endpoints (#1227)
 
 Last updated: 2026-09-22T23:59:00-07:00
 
@@ -1793,7 +1830,7 @@ Last updated: 2026-09-22T23:59:00-07:00
 
 ## Validation
 
-- WSL: `PYTHONPATH=backend pytest tests/api -k "priorities or coordination or auth" -o addopts="" -p no:cacheprovider` → 169 passed, 2 skipped (on `afb414d`, which contains #1232).
+- WSL: `PYTHONPATH=backend pytest tests/api -k "priorities or coordination or auth" -o addopts="" -p no:cacheprovider` â†’ 169 passed, 2 skipped (on `afb414d`, which contains #1232).
 - Also green: `tests/test_identity.py`, `test_no_duplicate_top_level_functions.py`, `test_module_coverage_invariant.py`, `test_backend_routers.py`, `test_middleware.py`, `tests/api/test_staff_schedule.py`, `test_fleet_peer_auth.py`.
 - `ruff check` / `ruff format --check` clean on changed Python.
 
@@ -1804,7 +1841,7 @@ Last updated: 2026-09-22T23:59:00-07:00
 
 ---
 
-## Previous Handoff — Current Handoff — Coordination read latency and path normalisation (#1237)
+## Previous Handoff â€” Current Handoff â€” Coordination read latency and path normalisation (#1237)
 
 Last updated: 2026-09-23T01:10:00-07:00
 
@@ -1817,13 +1854,13 @@ Last updated: 2026-09-23T01:10:00-07:00
 ## Work
 
 - Evidence (DeskComputer, afb414d): a cold `fleet_briefing` MCP call timed out in headless Claude, and a stdio harness measured 23.8 s. `fleetctl` took 2 s once the cache was warm.
-- `board._cached`: fresh hit → value; stale hit → value now plus one background refresh thread (keyed, de-duplicated); miss → inline load.
+- `board._cached`: fresh hit â†’ value; stale hit â†’ value now plus one background refresh thread (keyed, de-duplicated); miss â†’ inline load.
 - Per-repo fallback reads run in a 4-worker pool; RM#1704 (`list --all-repos`) reduces this to one read.
 - `models.normalize_scope_path`: strips `./` and trailing `/`, and rejects globs, `..`, absolute paths and empty parts with 422.
 
 ---
 
-## Previous Handoff — Current Handoff — Fleet API follow-ups (#1234)
+## Previous Handoff â€” Current Handoff â€” Fleet API follow-ups (#1234)
 
 Last updated: 2026-09-23T00:40:00-07:00
 
@@ -1836,13 +1873,13 @@ Last updated: 2026-09-23T00:40:00-07:00
 ## Work
 
 - `staff.holds.active_holds()` added, so `/api/staff/summary` shows active holds.
-- `clients/fleet`: `register_presence(repo, issue, branch, ...)`, TTL ≤ 8 h; the tool schema requires `repo`, `issue` and `branch`.
-- `tests/clients/conftest.py` → `fleet_fixtures.py`, imported explicitly; `clients/fleet` goes on `sys.path` in `tests/conftest.py`; ruff per-file ignore F401/F811 for `tests/clients`.
-- Validation (WSL 3.12): `pytest tests/api tests/clients -o addopts=""` → 733 passed.
+- `clients/fleet`: `register_presence(repo, issue, branch, ...)`, TTL â‰¤ 8 h; the tool schema requires `repo`, `issue` and `branch`.
+- `tests/clients/conftest.py` â†’ `fleet_fixtures.py`, imported explicitly; `clients/fleet` goes on `sys.path` in `tests/conftest.py`; ruff per-file ignore F401/F811 for `tests/clients`.
+- Validation (WSL 3.12): `pytest tests/api tests/clients -o addopts=""` â†’ 733 passed.
 
 ---
 
-## Previous Handoff — Current Handoff — Fleet Coordination API (#1229)
+## Previous Handoff â€” Current Handoff â€” Fleet Coordination API (#1229)
 
 Last updated: 2026-09-22T23:59:00-07:00
 
@@ -1863,18 +1900,18 @@ Last updated: 2026-09-22T23:59:00-07:00
 
 ## Validation
 
-- WSL venv: `PYTHONPATH=backend pytest tests/api -k "coordination or staff or auth" -o addopts=""` → 220 passed, 2 skipped (tests/clients 66 passed); full `tests/api` 702 passed with one timing flake (`test_staff_runner::test_submit_runs_fake_cli_to_success_with_events_and_cost`) that passes 3/3 on rerun.
-- `python -m mypy backend/ --ignore-missing-imports --no-implicit-optional --python-version 3.12` → no issues (166 files).
+- WSL venv: `PYTHONPATH=backend pytest tests/api -k "coordination or staff or auth" -o addopts=""` â†’ 220 passed, 2 skipped (tests/clients 66 passed); full `tests/api` 702 passed with one timing flake (`test_staff_runner::test_submit_runs_fake_cli_to_success_with_events_and_cost`) that passes 3/3 on rerun.
+- `python -m mypy backend/ --ignore-missing-imports --no-implicit-optional --python-version 3.12` â†’ no issues (166 files).
 - `ruff check` / `ruff format --check` clean on changed files.
 
 ## Next
 
 1. Merge; redeploy nodes so agents can call `/api/coordination/briefing`.
-2. When RM ships `agent_communicate list --all-repos`, nothing changes here — the probe picks it up.
+2. When RM ships `agent_communicate list --all-repos`, nothing changes here â€” the probe picks it up.
 
 ---
 
-## Previous Handoff — Current Handoff — Fleet API agent clients (#1228)
+## Previous Handoff â€” Current Handoff â€” Fleet API agent clients (#1228)
 
 Last updated: 2026-09-22T23:55:00-07:00
 
@@ -1891,7 +1928,7 @@ Last updated: 2026-09-22T23:55:00-07:00
 - `tests/clients/`: fake `http.server` fixture; client, CLI and subprocess MCP tests (66 passed).
 - `docs/agents/connect.md`: Claude Code / Codex / Gemini / Grok setup, bot token minting, agent loop.
 - CI: `ci-standard.yml` lint, format, mypy and bandit include `clients/`; the python-scope detector and `SCOPE_PREFIX_NOUNS` gain `clients/`.
-- Validation: WSL venv `pytest tests/clients -o addopts="" -p no:cacheprovider` → 66 passed; `ruff@0.14.10 check/format --check clients/ tests/clients/` clean; `mypy clients/fleet/` clean.
+- Validation: WSL venv `pytest tests/clients -o addopts="" -p no:cacheprovider` â†’ 66 passed; `ruff@0.14.10 check/format --check clients/ tests/clients/` clean; `mypy clients/fleet/` clean.
 - The coordination/priorities endpoints are being built in a parallel PR; until it merges, those client calls return 404 from a live node.
 
 ## Next
@@ -1900,7 +1937,7 @@ Last updated: 2026-09-22T23:55:00-07:00
 
 ---
 
-## Previous Handoff — Current Handoff — Staff runs skip issues with an open linked PR (#1225)
+## Previous Handoff â€” Current Handoff â€” Staff runs skip issues with an open linked PR (#1225)
 
 Last updated: 2026-09-22T23:30:00-07:00
 
@@ -1921,7 +1958,7 @@ Last updated: 2026-09-22T23:30:00-07:00
 
 ---
 
-## Previous Handoff — Current Handoff — Staff Hub node setup docs (#1223)
+## Previous Handoff â€” Current Handoff â€” Staff Hub node setup docs (#1223)
 
 Last updated: 2026-09-22T23:20:00-07:00
 
@@ -1944,7 +1981,7 @@ Last updated: 2026-09-22T23:20:00-07:00
 
 ---
 
-## Previous Handoff — Current Handoff — Artifact wheelhouse ABI contract and fail-closed install (#1212)
+## Previous Handoff â€” Current Handoff â€” Artifact wheelhouse ABI contract and fail-closed install (#1212)
 
 Last updated: 2026-09-23T05:30:00+00:00
 
@@ -1962,8 +1999,8 @@ Last updated: 2026-09-23T05:30:00+00:00
 
 - Objective: a release artifact must never take the live dashboard down because the host interpreter or the wheelhouse ABI is wrong.
 - Status: ready for review (rebased; merge conflicts in SPEC, DEVELOPMENT_LOG, HANDOFF resolved keep-both).
-- Completed: `deploy/check-wheelhouse-abi.py` (PEP 425 tag check: exact `cpXY`, `abi3` at or below the declared minor, pure wheels, Linux or `any` platform); packaging `--python-minor` / `ARTIFACT_PYTHON_MINOR` plus the check on the staged wheelhouse (release.yml pins 3.12); `select_dashboard_python MINOR venv` accepts an interpreter that can build a venv with ensurepip (host pip not required; `pip` capability unchanged for packaging); installer runs ABI check → interpreter selection → full offline install into a throwaway venv before touching the deploy dir, then moves `.venv` to `.venv.previous-install`, builds the new venv (restoring on failure), and `rsync --delete` excludes `/.venv`.
-- Finding: the v4.10.0 release log shows the wheelhouse was built by `/usr/bin/python3.12` and holds `cp312` wheels (plus `cryptography-…-cp311-abi3`, which is valid on 3.12). The failure on DeskComputer came from the host-pip requirement and the delete-before-validate order; the cp311 observation most likely came from a stale/backup wheelhouse, or from reading the abi3 wheel name. The ABI check guards against a real mismatch either way.
+- Completed: `deploy/check-wheelhouse-abi.py` (PEP 425 tag check: exact `cpXY`, `abi3` at or below the declared minor, pure wheels, Linux or `any` platform); packaging `--python-minor` / `ARTIFACT_PYTHON_MINOR` plus the check on the staged wheelhouse (release.yml pins 3.12); `select_dashboard_python MINOR venv` accepts an interpreter that can build a venv with ensurepip (host pip not required; `pip` capability unchanged for packaging); installer runs ABI check â†’ interpreter selection â†’ full offline install into a throwaway venv before touching the deploy dir, then moves `.venv` to `.venv.previous-install`, builds the new venv (restoring on failure), and `rsync --delete` excludes `/.venv`.
+- Finding: the v4.10.0 release log shows the wheelhouse was built by `/usr/bin/python3.12` and holds `cp312` wheels (plus `cryptography-â€¦-cp311-abi3`, which is valid on 3.12). The failure on DeskComputer came from the host-pip requirement and the delete-before-validate order; the cp311 observation most likely came from a stale/backup wheelhouse, or from reading the abi3 wheel name. The ABI check guards against a real mismatch either way.
 - Remaining: none in code. DeskComputer's live install was not touched.
 
 ## Files and Decisions
@@ -1974,7 +2011,7 @@ Last updated: 2026-09-23T05:30:00+00:00
 
 ## Validation
 
-- WSL Ubuntu-22.04, Python 3.12 venv: `pytest tests/deploy/test_artifact_install_fail_closed.py tests/deploy/test_artifact_deployment.py tests/test_today_deploy_hardening.py tests/test_release_workflow_yaml.py tests/test_qualified_release_deploy_workflow.py -p no:pytest-qt -o addopts=""` gives 100 passed, 2 skipped (the skips need `python3` to be 3.11–3.13; with `python3` → 3.12 on PATH the new file gives 25 passed).
+- WSL Ubuntu-22.04, Python 3.12 venv: `pytest tests/deploy/test_artifact_install_fail_closed.py tests/deploy/test_artifact_deployment.py tests/test_today_deploy_hardening.py tests/test_release_workflow_yaml.py tests/test_qualified_release_deploy_workflow.py -p no:pytest-qt -o addopts=""` gives 100 passed, 2 skipped (the skips need `python3` to be 3.11â€“3.13; with `python3` â†’ 3.12 on PATH the new file gives 25 passed).
 - End to end in WSL: `package-dashboard-artifact.sh --skip-build --python-minor 3.12` built 37 wheels, the ABI check passed and the installer self-test passed. Installing that artifact into a dir with an existing `.venv` and `.env`, where the only 3.12 was `/usr/bin/python3.12` **without pip** (the DeskComputer scenario), succeeded: `.env` was kept, `.venv` was replaced and `import fastapi` worked.
 - `ruff check` / `ruff format --check` (line length 120) clean; `shellcheck` clean on the three shell scripts; Windows host: 32 passed, 4 skipped (behavioural tests are Linux-only).
 - Rebase conflict resolution: no deploy logic changed; #1219 gitconfig prune scripts retained from main.
@@ -1990,7 +2027,7 @@ Last updated: 2026-09-23T05:30:00+00:00
 
 ---
 
-## Previous Handoff — Current Handoff — Prune credential-bearing url.insteadOf entries from runner ~/.gitconfig (#1216)
+## Previous Handoff â€” Current Handoff â€” Prune credential-bearing url.insteadOf entries from runner ~/.gitconfig (#1216)
 
 Last updated: 2026-09-22T21:50:00-07:00
 
@@ -2020,8 +2057,8 @@ Last updated: 2026-09-22T21:50:00-07:00
 
 ## Validation
 
-- WSL Ubuntu-22.04 scratch venv: `python -m pytest tests/deploy/test_clean_gitconfig_token_rewrites.py tests/deploy/test_clean_stale_shell_profiles.py -p no:pytest-qt -o addopts=""` — 7 passed.
-- `ruff check`/`ruff format --check` (line length 120) on the new test — clean; `shellcheck deploy/clean-gitconfig-token-rewrites.sh` — clean; `bash -n` on both deploy scripts — ok.
+- WSL Ubuntu-22.04 scratch venv: `python -m pytest tests/deploy/test_clean_gitconfig_token_rewrites.py tests/deploy/test_clean_stale_shell_profiles.py -p no:pytest-qt -o addopts=""` â€” 7 passed.
+- `ruff check`/`ruff format --check` (line length 120) on the new test â€” clean; `shellcheck deploy/clean-gitconfig-token-rewrites.sh` â€” clean; `bash -n` on both deploy scripts â€” ok.
 - Scale check: a synthetic 639-section config (fake values) cleaned in ~4 s to an empty file, one backup written.
 
 ## Blockers and Risks
@@ -2035,7 +2072,7 @@ Last updated: 2026-09-22T21:50:00-07:00
 
 ---
 
-## Previous Handoff — Current Handoff — Staff Hub unattended runs (#1221)
+## Previous Handoff â€” Current Handoff â€” Staff Hub unattended runs (#1221)
 
 Last updated: 2026-09-22T22:30:00-07:00
 
@@ -2051,8 +2088,8 @@ Last updated: 2026-09-22T22:30:00-07:00
 - `adapters.py`: claude `--permission-mode bypassPermissions`, `default_model="sonnet"`.
 - `workspace.py`: `playbook_text()` inlines `STAFF_RM_ROOT/<playbook>` into the prompt (16k cap, rejects absolute/`..`).
 - `scheduler.py`: `SCHEDULED_PROMPT` names role and repo; `scheduled_repo()` rotates one repo per day; the repo hold is re-checked for the rotated repo.
-- `runner.py`: exit 0 without `STAFF_RESULT` → `failed`, `error=NO_RESULT_ERROR`.
-- Tests: WSL `PYTHONPATH=backend pytest tests/api -k staff -o addopts=""` → 100 passed (twice). On Windows, `test_cancel_*` flakes on timing; the same flake happens on main.
+- `runner.py`: exit 0 without `STAFF_RESULT` â†’ `failed`, `error=NO_RESULT_ERROR`.
+- Tests: WSL `PYTHONPATH=backend pytest tests/api -k staff -o addopts=""` â†’ 100 passed (twice). On Windows, `test_cancel_*` flakes on timing; the same flake happens on main.
 
 ## Next
 
@@ -2061,7 +2098,7 @@ Last updated: 2026-09-22T22:30:00-07:00
 
 ---
 
-## Previous Handoff — Current Handoff — Staff Hub fleet-rule guardrails (#1217)
+## Previous Handoff â€” Current Handoff â€” Staff Hub fleet-rule guardrails (#1217)
 
 Last updated: 2026-09-22T22:00:00-07:00
 
@@ -2079,7 +2116,7 @@ Last updated: 2026-09-22T22:00:00-07:00
 
 ---
 
-## Previous Handoff — Current Handoff — De-duplicate SPEC.md and CHANGELOG.md after stacked-PR conflict resolution (#1192)
+## Previous Handoff â€” Current Handoff â€” De-duplicate SPEC.md and CHANGELOG.md after stacked-PR conflict resolution (#1192)
 
 Last updated: 2026-09-22T23:30:00-07:00
 
@@ -2095,9 +2132,9 @@ Last updated: 2026-09-22T23:30:00-07:00
 
 ## Objective and Status
 
-- Objective: restore one clean copy of `SPEC.md` (was 6 concatenated copies, 28,061 lines, 234 NUL bytes) and `CHANGELOG.md` (4 copies, 1,111 lines) left by keep-both whole-file conflict resolution while stacking #1202–#1214; also drop the duplicated #1199 handoff and the second `DEVELOPMENT_LOG.md` copy.
+- Objective: restore one clean copy of `SPEC.md` (was 6 concatenated copies, 28,061 lines, 234 NUL bytes) and `CHANGELOG.md` (4 copies, 1,111 lines) left by keep-both whole-file conflict resolution while stacking #1202â€“#1214; also drop the duplicated #1199 handoff and the second `DEVELOPMENT_LOG.md` copy.
 - Status: ready for review.
-- Completed: rebuilt from the 2026-09-22 baseline `f8a3b85` plus the union of every addition any copy carried (SPEC change-log bullets for #1193–#1201, #1209, #1213 and the release; section 4 provider-registry v2 text; CHANGELOG `[Unreleased]` = #1209/#1213, `[4.10.0]` = the Staff Hub bullets once). No content removed.
+- Completed: rebuilt from the 2026-09-22 baseline `f8a3b85` plus the union of every addition any copy carried (SPEC change-log bullets for #1193â€“#1201, #1209, #1213 and the release; section 4 provider-registry v2 text; CHANGELOG `[Unreleased]` = #1209/#1213, `[4.10.0]` = the Staff Hub bullets once). No content removed.
 - Remaining: none.
 
 ## Files and Decisions
@@ -2108,7 +2145,7 @@ Last updated: 2026-09-22T23:30:00-07:00
 
 ## Validation
 
-- `PYTHONPATH=backend python -m pytest tests/test_documentation_freshness.py tests/test_version_single_source.py tests/api/test_route_uniqueness.py tests/test_architecture_map_contract.py -p no:pytest-qt -o addopts=""` — 20 passed.
+- `PYTHONPATH=backend python -m pytest tests/test_documentation_freshness.py tests/test_version_single_source.py tests/api/test_route_uniqueness.py tests/test_architecture_map_contract.py -p no:pytest-qt -o addopts=""` â€” 20 passed.
 - `SPEC.md`: 0 NUL bytes, each `## N.` heading exactly once, each 2026-09-22 bullet exactly once; `CHANGELOG.md` tail from `[4.9.34]` byte-identical to `f8a3b85`.
 
 ## Blockers and Risks
@@ -2122,7 +2159,7 @@ Last updated: 2026-09-22T23:30:00-07:00
 
 ---
 
-## Previous Handoff — Staff Hub PR-consolidation strategy (#1213)
+## Previous Handoff â€” Staff Hub PR-consolidation strategy (#1213)
 
 Last updated: 2026-09-22T18:30:00-07:00
 
@@ -2146,14 +2183,14 @@ Last updated: 2026-09-22T18:30:00-07:00
 ## Files and Decisions
 
 - Files changed: `backend/staff/consolidation.py` (new), `backend/staff/roles.py`, `backend/staff/store.py`, `backend/staff/workspace.py`, `backend/staff/runner.py`, `backend/staff/scheduler.py`, `backend/routers/staff.py`, `frontend/src/pages/Staff/{staffApi.ts,Roster.tsx,Assign.tsx,RunLog.tsx,RunDetail.tsx}`, `frontend/src/pages/__tests__/Staff.test.tsx`, `frontend/src/lib/{openapi.json,api-types.ts}`, `tests/api/test_staff_consolidation.py`, `docs/staff-hub.md`, `SPEC.md`, `CHANGELOG.md`, this file, `docs/development/DEVELOPMENT_LOG.md`.
-- Key decisions: `consolidate` requires every configured threshold to be met (a key left out is always met) — many PRs on an idle fleet stay serial, few PRs on a busy fleet stay serial; any fetch error → `serial` with reason `inputs unavailable` (fail-safe, never blocks a slot); the PR counter shells out to `gh api --paginate` (the same query `routers/repos.py` runs) because the scheduler thread has no event loop for the pooled client; utilisation comes from `orchestrator_api._capacity_provider` (async providers are driven on a private loop in the worker thread); the decision is passed as `RunRequest.consolidation` so `plan()` stays side-effect free; `outcome` is parsed for every run, not only strategy runs.
+- Key decisions: `consolidate` requires every configured threshold to be met (a key left out is always met) â€” many PRs on an idle fleet stay serial, few PRs on a busy fleet stay serial; any fetch error â†’ `serial` with reason `inputs unavailable` (fail-safe, never blocks a slot); the PR counter shells out to `gh api --paginate` (the same query `routers/repos.py` runs) because the scheduler thread has no event loop for the pooled client; utilisation comes from `orchestrator_api._capacity_provider` (async providers are driven on a private loop in the worker thread); the decision is passed as `RunRequest.consolidation` so `plan()` stays side-effect free; `outcome` is parsed for every run, not only strategy runs.
 - User-owned or unrelated worktree changes: none observed.
 
 ## Validation
 
-- `PYTHONPATH=backend python -m pytest tests/api/test_staff_consolidation.py tests/api/test_staff_runner.py tests/api/test_staff_schedule.py tests/api/test_staff_fleet.py tests/api/test_structural_auth_perimeter.py tests/api/test_route_uniqueness.py tests/test_no_duplicate_top_level_functions.py -p no:pytest-qt -o addopts="" -q` — 92 passed.
-- `ruff check` / `ruff format --check` on `backend/staff`, `backend/routers/staff.py`, the new test — clean; `mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional` — clean (156 files).
-- `npx tsc --noEmit -p tsconfig.app.json` clean; `npx vitest run frontend/src/pages/__tests__/Staff.test.tsx` — 12 passed; `npx eslint` on the touched pages clean; `npm run build` ok; `scripts/gen-api-client.sh` regenerated (route description only).
+- `PYTHONPATH=backend python -m pytest tests/api/test_staff_consolidation.py tests/api/test_staff_runner.py tests/api/test_staff_schedule.py tests/api/test_staff_fleet.py tests/api/test_structural_auth_perimeter.py tests/api/test_route_uniqueness.py tests/test_no_duplicate_top_level_functions.py -p no:pytest-qt -o addopts="" -q` â€” 92 passed.
+- `ruff check` / `ruff format --check` on `backend/staff`, `backend/routers/staff.py`, the new test â€” clean; `mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional` â€” clean (156 files).
+- `npx tsc --noEmit -p tsconfig.app.json` clean; `npx vitest run frontend/src/pages/__tests__/Staff.test.tsx` â€” 12 passed; `npx eslint` on the touched pages clean; `npm run build` ok; `scripts/gen-api-client.sh` regenerated (route description only).
 
 ## Blockers and Risks
 
@@ -2163,14 +2200,14 @@ Last updated: 2026-09-22T18:30:00-07:00
 ## Next Steps
 
 1. Mark the draft PR ready once CI Standard, Spec Check and frontend tests are green; auto-merge is armed.
-2. After RM#1690 lands, verify the pr-remediator roster card shows `consolidate when open PRs ≥ 6 and utilisation ≥ 70%` on a node with the RM checkout.
+2. After RM#1690 lands, verify the pr-remediator roster card shows `consolidate when open PRs â‰¥ 6 and utilisation â‰¥ 70%` on a node with the RM checkout.
 3. Follow-up under #1192: a structured `STAFF_RESULT` event (JSON) so the outcome parser does not depend on prose.
 
 ---
 
 ---
 
-## Previous Handoff — Staff board scheduled-role liveness (#1209)
+## Previous Handoff â€” Staff board scheduled-role liveness (#1209)
 
 Last updated: 2026-09-22T22:30:00-07:00
 
@@ -2189,19 +2226,19 @@ Last updated: 2026-09-22T22:30:00-07:00
 - Objective: alarm on a scheduled staff role whose last success is stale so the 2026-05-27 silent-stop failure mode cannot repeat.
 - Status: ready for review.
 - Completed: `backend/staff/liveness.py` (pure `compute_liveness`, `staff_role_dead` fleet event with 6 h debounce), `liveness` on the local board, `liveness_alerts` on the hub board and summary, new `staff_role_dead` `EventKind` (backend + frontend union), Board panel warning list + vitest cases, docs (staff-hub Liveness section, SPEC, CHANGELOG), regenerated API contract.
-- Remaining: none in scope. The health monitor (#1201) does not yet alarm on `dead` roles — it can read `liveness_alerts` from `/api/staff/summary`; the Roster per-role badge from the issue text is a follow-up.
+- Remaining: none in scope. The health monitor (#1201) does not yet alarm on `dead` roles â€” it can read `liveness_alerts` from `/api/staff/summary`; the Roster per-role badge from the issue text is a follow-up.
 
 ## Files and Decisions
 
 - Files changed: `backend/staff/liveness.py`, `backend/staff/fleet.py`, `backend/routers/staff.py`, `backend/fleet_events.py`, `frontend/src/lib/fleetEvents.ts`, `frontend/src/pages/Staff/staffApi.ts`, `frontend/src/pages/Staff/Board.tsx`, `frontend/src/pages/__tests__/Staff.test.tsx`, `frontend/src/index.css`, `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `tests/api/test_staff_liveness.py`, `docs/staff-hub.md`, `SPEC.md`, `CHANGELOG.md`, this file, `docs/development/DEVELOPMENT_LOG.md`.
-- Key decisions: thresholds are fixed factors (1.5x / 3x the schedule interval) rather than per-role YAML thresholds — the RM schema does not carry them yet; liveness reads the scheduler state file directly (no scheduler singleton needed to build a board); a fired-but-never-succeeded role is `dead` unless its latest attempt is still active (`late`), so a first run in progress does not alarm; every key is additive.
+- Key decisions: thresholds are fixed factors (1.5x / 3x the schedule interval) rather than per-role YAML thresholds â€” the RM schema does not carry them yet; liveness reads the scheduler state file directly (no scheduler singleton needed to build a board); a fired-but-never-succeeded role is `dead` unless its latest attempt is still active (`late`), so a first run in progress does not alarm; every key is additive.
 - User-owned or unrelated worktree changes: none observed.
 
 ## Validation
 
-- `PYTHONPATH=backend python -m pytest tests/api/test_staff_liveness.py tests/api/test_staff_fleet.py tests/api/test_staff_schedule.py tests/api/test_staff_runner.py tests/api/test_structural_auth_perimeter.py tests/api/test_route_uniqueness.py tests/test_no_duplicate_top_level_functions.py tests/test_fleet_events.py -p no:pytest-qt -o addopts="" -q` — 125 passed.
-- `ruff check` / `ruff format --check` on the touched files — clean; `mypy backend/ --ignore-missing-imports --no-implicit-optional` — clean.
-- `npx vitest run frontend/src/pages/__tests__/Staff.test.tsx frontend/src/lib/__tests__/fleetEvents.test.ts` and `npm run typecheck` — see PR body for counts.
+- `PYTHONPATH=backend python -m pytest tests/api/test_staff_liveness.py tests/api/test_staff_fleet.py tests/api/test_staff_schedule.py tests/api/test_staff_runner.py tests/api/test_structural_auth_perimeter.py tests/api/test_route_uniqueness.py tests/test_no_duplicate_top_level_functions.py tests/test_fleet_events.py -p no:pytest-qt -o addopts="" -q` â€” 125 passed.
+- `ruff check` / `ruff format --check` on the touched files â€” clean; `mypy backend/ --ignore-missing-imports --no-implicit-optional` â€” clean.
+- `npx vitest run frontend/src/pages/__tests__/Staff.test.tsx frontend/src/lib/__tests__/fleetEvents.test.ts` and `npm run typecheck` â€” see PR body for counts.
 
 ## Blockers and Risks
 
@@ -2218,7 +2255,7 @@ Last updated: 2026-09-22T22:30:00-07:00
 
 ---
 
-## Previous Handoff — Release 4.10.0 and Staff Hub health probe (#1201)
+## Previous Handoff â€” Release 4.10.0 and Staff Hub health probe (#1201)
 
 Last updated: 2026-09-22T20:30:00-07:00
 
@@ -2237,7 +2274,7 @@ Last updated: 2026-09-22T20:30:00-07:00
 - Objective: cut release 4.10.0 (first with the Fleet Staff Hub) and alarm on a dead Staff Hub board from the fleet health monitor.
 - Status: ready for review.
 - Completed: version bumped in VERSION, pyproject, package.json, package-lock.json, uv.lock, openapi snapshot, SPEC header; CHANGELOG 4.10.0 section; monitor probe + test.
-- Remaining: merge → `release.yml` builds `dashboard-4.10.0.tar.gz` → install on DeskComputer via `deploy/update-deployed.sh --artifact <url>`; ControlTower and OGLaptop need the operator (no SSH keys from DeskComputer; OGLaptop uses `deploy-qualified-release.yml`). Set `STAFF_SCHEDULER_ENABLED=0` on all nodes but one.
+- Remaining: merge â†’ `release.yml` builds `dashboard-4.10.0.tar.gz` â†’ install on DeskComputer via `deploy/update-deployed.sh --artifact <url>`; ControlTower and OGLaptop need the operator (no SSH keys from DeskComputer; OGLaptop uses `deploy-qualified-release.yml`). Set `STAFF_SCHEDULER_ENABLED=0` on all nodes but one.
 
 ## Files and Decisions
 
@@ -2247,7 +2284,7 @@ Last updated: 2026-09-22T20:30:00-07:00
 
 ## Validation
 
-- `PYTHONPATH=backend python -m pytest tests/test_version_single_source.py tests/deploy/test_fleet_health_monitor.py -p no:pytest-qt -o addopts="" -q` — 25 passed.
+- `PYTHONPATH=backend python -m pytest tests/test_version_single_source.py tests/deploy/test_fleet_health_monitor.py -p no:pytest-qt -o addopts="" -q` â€” 25 passed.
 
 ## Blockers and Risks
 
@@ -2264,7 +2301,7 @@ Last updated: 2026-09-22T20:30:00-07:00
 
 ---
 
-## Previous Handoff — Provider registry v2: antigravity, cursor-agent, maxwell; Jules disabled; per-node CLI probe (#1193)
+## Previous Handoff â€” Provider registry v2: antigravity, cursor-agent, maxwell; Jules disabled; per-node CLI probe (#1193)
 
 Last updated: 2026-09-22T00:00:00-07:00
 
@@ -2287,19 +2324,19 @@ Last updated: 2026-09-22T00:00:00-07:00
 ## Implemented
 
 - `backend/agent_remediation/provider_registry.py`: `ProviderEntry.enabled` (default `True`), three new rows, Jules rows `enabled=False` with a retirement note, `validate_registry` now also asserts `enabled` is bool and every `local_exec` row has an `availability_probe`.
-- `backend/agent_remediation/provider_probe.py` (new): `probe_provider_availability()` — `shutil.which` for `installed`; `authenticated` from the credentials-router probes (lazy import, injectable mapping, never raises); `auth_mode: local` CLIs without a probe report `authenticated == installed`.
+- `backend/agent_remediation/provider_probe.py` (new): `probe_provider_availability()` â€” `shutil.which` for `installed`; `authenticated` from the credentials-router probes (lazy import, injectable mapping, never raises); `auth_mode: local` CLIs without a probe report `authenticated == installed`.
 - `backend/routers/providers.py`: `enabled` in each provider payload; `hostname` + `node_availability` top-level; `cached_node_availability()` (60 s via `cache_utils`); `build_registry(node_availability=...)` injection seam. `schema_version` stays `1.0.0` (additive change).
 - `backend/agent_remediation/providers.py`: `AgentProvider.enabled` projected from the table. `planner.py`: `plan_dispatch` skips registry-disabled providers even when a saved policy lists them. `policy.py`: `DEFAULT_PROVIDER_ORDER` without Jules, with the new providers.
-- `config/agent_remediation.json`: Jules removed from `provider_order` / `enabled_providers`; `antigravity`, `cursor_agent` added to both; `maxwell` in order only (dormant). Workflow-type rules still name `jules_api` / `jules_cli` as preferred provider — the planner now falls through to the enabled order; retargeting those rules was left out of scope.
-- `backend/conductor_constants.py`: unchanged — the vendored enums already match `Repository_Management/conductor/provider.py` (verified by reading the source); the new rows use existing values and `tests/api/test_conductor_constants.py` gained a registry-side drift test.
+- `config/agent_remediation.json`: Jules removed from `provider_order` / `enabled_providers`; `antigravity`, `cursor_agent` added to both; `maxwell` in order only (dormant). Workflow-type rules still name `jules_api` / `jules_cli` as preferred provider â€” the planner now falls through to the enabled order; retargeting those rules was left out of scope.
+- `backend/conductor_constants.py`: unchanged â€” the vendored enums already match `Repository_Management/conductor/provider.py` (verified by reading the source); the new rows use existing values and `tests/api/test_conductor_constants.py` gained a registry-side drift test.
 - Docs: `SPEC.md` (change-log bullet + section 4 registry contract), `CHANGELOG.md` (Unreleased), this handoff, `DEVELOPMENT_LOG.md` (`DL-#1193`).
 
 ## Validation
 
-- `python -m pytest tests/api/test_providers_registry.py tests/api/test_conductor_constants.py tests/test_agent_remediation.py -q` → 54 passed, 7 skipped (skips = conductor source not checked out from this worktree path).
-- `ruff check backend tests` → clean. `ruff format --check backend` → clean (4 pre-existing `tests/` files differ under local ruff 0.15.11; CI pins 0.14.10 and checks `backend/` only).
-- `mypy backend/ --ignore-missing-imports --no-implicit-optional` → Success (133 files).
-- Endpoint timing: node probe 0.36 s (cached 60 s); the pre-existing live Ollama fetch is the 4.7 s cost when Ollama is down — outside scope.
+- `python -m pytest tests/api/test_providers_registry.py tests/api/test_conductor_constants.py tests/test_agent_remediation.py -q` â†’ 54 passed, 7 skipped (skips = conductor source not checked out from this worktree path).
+- `ruff check backend tests` â†’ clean. `ruff format --check backend` â†’ clean (4 pre-existing `tests/` files differ under local ruff 0.15.11; CI pins 0.14.10 and checks `backend/` only).
+- `mypy backend/ --ignore-missing-imports --no-implicit-optional` â†’ Success (133 files).
+- Endpoint timing: node probe 0.36 s (cached 60 s); the pre-existing live Ollama fetch is the 4.7 s cost when Ollama is down â€” outside scope.
 
 ## Next Steps
 
@@ -2309,7 +2346,7 @@ Last updated: 2026-09-22T00:00:00-07:00
 
 ---
 
-## Previous Handoff — Projects tab: per-repo charter, status and steward runs (#1199)
+## Previous Handoff â€” Projects tab: per-repo charter, status and steward runs (#1199)
 
 Last updated: 2026-09-22T10:30:00-07:00
 
@@ -2338,17 +2375,17 @@ Last updated: 2026-09-22T10:30:00-07:00
 
 ## Validation
 
-- `PYTHONPATH=backend python -m pytest tests/api/test_projects_router.py tests/api/test_structural_auth_perimeter.py tests/api/test_route_uniqueness.py tests/test_architecture_map_contract.py -p no:pytest-qt -o addopts="" -q` — 37 passed.
-- `ruff check backend/projects backend/routers/projects.py tests/api/test_projects_router.py backend/server.py` — clean; `ruff format --check` — clean.
-- `mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional` — Success (144 files).
-- `npm ci`; `npx vitest run` — 118 files, 1066 passed; `npm run typecheck`, `npm run lint`, `npm run build` — clean.
-- `PYTHON=<scratch venv> bash scripts/gen-api-client.sh` — regenerated snapshot.
+- `PYTHONPATH=backend python -m pytest tests/api/test_projects_router.py tests/api/test_structural_auth_perimeter.py tests/api/test_route_uniqueness.py tests/test_architecture_map_contract.py -p no:pytest-qt -o addopts="" -q` â€” 37 passed.
+- `ruff check backend/projects backend/routers/projects.py tests/api/test_projects_router.py backend/server.py` â€” clean; `ruff format --check` â€” clean.
+- `mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional` â€” Success (144 files).
+- `npm ci`; `npx vitest run` â€” 118 files, 1066 passed; `npm run typecheck`, `npm run lint`, `npm run build` â€” clean.
+- `PYTHON=<scratch venv> bash scripts/gen-api-client.sh` â€” regenerated snapshot.
 - Not run locally: the full pytest suite and pre-push hook (its uv venv is absent on this Windows box; pushed with `--no-verify`, CI runs the full gate).
 
 ## Blockers and Risks
 
 - Blockers: none.
-- Risks/assumptions: live behaviour depends on `GH_TOKEN`/`gh` access to private repos through `gh_api`; the fallback `gh api` subprocess reports a missing file as 502 (not 404), which the card shows as `error` rather than `charter_present: false` — acceptable until #1194's client fallback is revisited.
+- Risks/assumptions: live behaviour depends on `GH_TOKEN`/`gh` access to private repos through `gh_api`; the fallback `gh api` subprocess reports a missing file as 502 (not 404), which the card shows as `error` rather than `charter_present: false` â€” acceptable until #1194's client fallback is revisited.
 
 ## Next Steps
 
@@ -2358,7 +2395,7 @@ Last updated: 2026-09-22T10:30:00-07:00
 
 ---
 
-## Previous Handoff — Staff Hub usage ledger: pricing, /api/staff/usage, RM export (#1200)
+## Previous Handoff â€” Staff Hub usage ledger: pricing, /api/staff/usage, RM export (#1200)
 
 Last updated: 2026-09-22T19:30:00-07:00
 
@@ -2387,10 +2424,10 @@ Last updated: 2026-09-22T19:30:00-07:00
 
 ## Validation
 
-- `PYTHONPATH=backend python -m pytest tests/api/test_staff_usage.py tests/api/test_staff_runner.py tests/api/test_structural_auth_perimeter.py tests/api/test_route_uniqueness.py -p no:pytest-qt -o addopts="" -q` — 46 passed (11 new).
-- `ruff check backend/ tests/api/test_staff_usage.py` — clean; `ruff format --check backend/ tests/api/test_staff_usage.py` — clean.
-- `mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional` — Success (143 files).
-- RM: `pytest tests/test_append_credit_usage.py -q` — 12 passed; `ruff check`/`ruff format --check` clean.
+- `PYTHONPATH=backend python -m pytest tests/api/test_staff_usage.py tests/api/test_staff_runner.py tests/api/test_structural_auth_perimeter.py tests/api/test_route_uniqueness.py -p no:pytest-qt -o addopts="" -q` â€” 46 passed (11 new).
+- `ruff check backend/ tests/api/test_staff_usage.py` â€” clean; `ruff format --check backend/ tests/api/test_staff_usage.py` â€” clean.
+- `mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional` â€” Success (143 files).
+- RM: `pytest tests/test_append_credit_usage.py -q` â€” 12 passed; `ruff check`/`ruff format --check` clean.
 - Not run locally: the full pytest suite (scratch venv on Windows; CI runs it); pre-push hook skipped (`--no-verify`, uv venv absent on this box).
 
 ## Blockers and Risks
@@ -2406,7 +2443,7 @@ Last updated: 2026-09-22T19:30:00-07:00
 
 ---
 
-## Previous Handoff — Staff tab: roster, run log with live tail, Assign, Holds (#1198)
+## Previous Handoff â€” Staff tab: roster, run log with live tail, Assign, Holds (#1198)
 
 Last updated: 2026-09-22T10:03:57-07:00
 
@@ -2422,7 +2459,7 @@ Last updated: 2026-09-22T10:03:57-07:00
 
 ## Objective and Status
 
-- Objective: the Staff tab — Board, Roster, Runs (RunDetail with SSE tail + cancel), Assign (dry-run preview + dispatch), Holds — over the `/api/staff/*` contract from #1194.
+- Objective: the Staff tab â€” Board, Roster, Runs (RunDetail with SSE tail + cancel), Assign (dry-run preview + dispatch), Holds â€” over the `/api/staff/*` contract from #1194.
 - Status: ready for review (draft PR).
 - Completed: `frontend/src/pages/Staff/` (`staffApi.ts` typed client + pure helpers, `Board.tsx`, `Roster.tsx`, `RunLog.tsx`, `RunDetail.tsx`, `Assign.tsx`, `Holds.tsx`, `StaffPage.tsx`, `index.ts`), nav entry `staff` in group `agents` with new `BriefcaseIcon`, lazy route in `RoutedShell` (desktop switch + mobile `tabContent`), `.staff*` styles in `index.css` (design tokens only), 8 behaviour tests, SPEC/CHANGELOG/DL entries.
 - Remaining: Holds is wired to `GET|PUT /api/staff/holds` (#1196, parallel PR) and shows "holds unavailable" until that lands; hub fan-out board (#1195) will populate more machines automatically.
@@ -2430,15 +2467,15 @@ Last updated: 2026-09-22T10:03:57-07:00
 ## Files and Decisions
 
 - Files changed: `frontend/src/pages/Staff/*`, `frontend/src/pages/__tests__/Staff.test.tsx`, `frontend/src/shell/navRegistry.ts`, `frontend/src/shell/navIcons.tsx`, `frontend/src/shell/RoutedShell.tsx`, `frontend/src/index.css`, `SPEC.md`, `CHANGELOG.md`, `docs/development/HANDOFF.md`, `docs/development/DEVELOPMENT_LOG.md`.
-- Key decisions: roster fetched once in `StaffPage` and shared with Roster/Assign/RunLog/Holds (DRY); all requests through `lib/api.apiRequest` so the CSRF header and `ApiClientError` are uniform; SSE event names equal the store `kind`, so `RunDetail` registers listeners for the known runner + adapter kinds and refetches the full record on `end`/error (authoritative for any unlisted kind); styles are global BEM classes in `index.css` because the repo has no CSS-module files (matches Conductor/Events); `MobileShell` itself has no per-tab routing — the mobile route is the `tabContent` map in `RoutedShell`.
+- Key decisions: roster fetched once in `StaffPage` and shared with Roster/Assign/RunLog/Holds (DRY); all requests through `lib/api.apiRequest` so the CSRF header and `ApiClientError` are uniform; SSE event names equal the store `kind`, so `RunDetail` registers listeners for the known runner + adapter kinds and refetches the full record on `end`/error (authoritative for any unlisted kind); styles are global BEM classes in `index.css` because the repo has no CSS-module files (matches Conductor/Events); `MobileShell` itself has no per-tab routing â€” the mobile route is the `tabContent` map in `RoutedShell`.
 - User-owned or unrelated worktree changes: none.
 
 ## Validation
 
-- `npm run typecheck` — clean. `npx eslint frontend/src/pages/Staff frontend/src/pages/__tests__/Staff.test.tsx frontend/src/shell --max-warnings 0` — clean.
-- `npx vitest run` — 118 files, 1070 tests passed (8 new in `Staff.test.tsx`).
-- `npm run build` — ok; `StaffPage-*.js` is its own lazy chunk (6.7 kB gzip, under the 100 kB tab budget).
-- `PYTHONPATH=backend python -m pytest tests/test_frontend_perf_budget.py tests/test_frontend_typecheck_gate.py tests/frontend/ tests/test_documentation_freshness.py -p no:pytest-qt -o addopts="" -q` — 116 passed.
+- `npm run typecheck` â€” clean. `npx eslint frontend/src/pages/Staff frontend/src/pages/__tests__/Staff.test.tsx frontend/src/shell --max-warnings 0` â€” clean.
+- `npx vitest run` â€” 118 files, 1070 tests passed (8 new in `Staff.test.tsx`).
+- `npm run build` â€” ok; `StaffPage-*.js` is its own lazy chunk (6.7 kB gzip, under the 100 kB tab budget).
+- `PYTHONPATH=backend python -m pytest tests/test_frontend_perf_budget.py tests/test_frontend_typecheck_gate.py tests/frontend/ tests/test_documentation_freshness.py -p no:pytest-qt -o addopts="" -q` â€” 116 passed.
 - Not run locally: the pre-push hook (needs a uv venv absent on this box; pushed with `--no-verify`).
 
 ## Blockers and Risks
@@ -2454,7 +2491,7 @@ Last updated: 2026-09-22T10:03:57-07:00
 
 ---
 
-## Previous Handoff — Staff Hub scheduler, run windows, holds, per-role budgets (#1196)
+## Previous Handoff â€” Staff Hub scheduler, run windows, holds, per-role budgets (#1196)
 
 Last updated: 2026-09-22T21:30:00-07:00
 
@@ -2478,20 +2515,20 @@ Last updated: 2026-09-22T21:30:00-07:00
 ## Files and Decisions
 
 - Files changed: `backend/staff/{schedule,holds,budget,scheduler,store}.py`, `backend/routers/staff_schedule.py`, `backend/server.py`, `tests/api/test_staff_schedule.py`, `docs/staff-hub.md`, `SPEC.md`, `CHANGELOG.md`, `pyproject.toml`, `requirements.txt`, `uv.lock`.
-- Key decisions: no third-party cron; slots are consumed (cursor → now) whether fired or skipped so a sleeping node fires at most once on wake and a held slot is not retried; budget alerts go to an injectable sink defaulting to the log because `FleetEvent.kind` has no staff kind (extending it belongs to the fleet-events owner); `runner.py` and `routers/staff.py` untouched so #1195/#1197 merge cleanly; `tzdata` added because Windows nodes have no system zone database (`ZoneInfoNotFoundError`); `requirements.lock.txt` not regenerated (needs `pip-compile --generate-hashes`; Linux images have system tzdata).
+- Key decisions: no third-party cron; slots are consumed (cursor â†’ now) whether fired or skipped so a sleeping node fires at most once on wake and a held slot is not retried; budget alerts go to an injectable sink defaulting to the log because `FleetEvent.kind` has no staff kind (extending it belongs to the fleet-events owner); `runner.py` and `routers/staff.py` untouched so #1195/#1197 merge cleanly; `tzdata` added because Windows nodes have no system zone database (`ZoneInfoNotFoundError`); `requirements.lock.txt` not regenerated (needs `pip-compile --generate-hashes`; Linux images have system tzdata).
 - User-owned or unrelated worktree changes: none observed.
 
 ## Validation
 
-- `PYTHONPATH=backend python -m pytest tests/api/test_staff_schedule.py tests/api/test_staff_runner.py tests/api/test_staff_auth_perimeter.py tests/api/test_structural_auth_perimeter.py tests/api/test_route_uniqueness.py tests/api/test_router_dependency_contracts.py tests/test_architecture_map_contract.py tests/test_documentation_freshness.py -p no:pytest-qt -o addopts="" -q` — 78 passed (26 new).
-- `ruff check backend/ tests/api/test_staff_schedule.py` — clean; `ruff format --check` — clean.
-- `mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional` — Success.
+- `PYTHONPATH=backend python -m pytest tests/api/test_staff_schedule.py tests/api/test_staff_runner.py tests/api/test_staff_auth_perimeter.py tests/api/test_structural_auth_perimeter.py tests/api/test_route_uniqueness.py tests/api/test_router_dependency_contracts.py tests/test_architecture_map_contract.py tests/test_documentation_freshness.py -p no:pytest-qt -o addopts="" -q` â€” 78 passed (26 new).
+- `ruff check backend/ tests/api/test_staff_schedule.py` â€” clean; `ruff format --check` â€” clean.
+- `mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional` â€” Success.
 - Not run locally: the full pytest suite; the pre-push hook (needs a uv venv that does not exist on this box, pushed with `--no-verify`).
 
 ## Blockers and Risks
 
 - Blockers: none.
-- Risks/assumptions: the scheduler starts on every node that runs the dashboard, so two nodes with the same role file would both fire it — machine targeting (#1197) is where a role gets pinned; until then set `STAFF_SCHEDULER_ENABLED=0` on all but one node. Spend comes from `cost_usd` on run rows, which only the JSON-streaming providers fill in (#1200 for the rest).
+- Risks/assumptions: the scheduler starts on every node that runs the dashboard, so two nodes with the same role file would both fire it â€” machine targeting (#1197) is where a role gets pinned; until then set `STAFF_SCHEDULER_ENABLED=0` on all but one node. Spend comes from `cost_usd` on run rows, which only the JSON-streaming providers fill in (#1200 for the rest).
 
 ## Next Steps
 
@@ -2501,7 +2538,7 @@ Last updated: 2026-09-22T21:30:00-07:00
 
 ---
 
-## Previous Handoff — Staff Hub fleet board, summary and machine targeting (#1195, #1197)
+## Previous Handoff â€” Staff Hub fleet board, summary and machine targeting (#1195, #1197)
 
 Last updated: 2026-09-22T18:10:00-07:00
 
@@ -2530,9 +2567,9 @@ Last updated: 2026-09-22T18:10:00-07:00
 
 ## Validation
 
-- `PYTHONPATH=backend python -m pytest tests/api/test_staff_fleet.py tests/api/test_staff_runner.py tests/api/test_staff_auth_perimeter.py tests/api/test_structural_auth_perimeter.py tests/api/test_route_uniqueness.py -p no:pytest-qt -o addopts="" -q` — 50 passed.
-- `ruff check` / `ruff format --check` on the changed files — clean.
-- `mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional` — Success (141 files).
+- `PYTHONPATH=backend python -m pytest tests/api/test_staff_fleet.py tests/api/test_staff_runner.py tests/api/test_staff_auth_perimeter.py tests/api/test_structural_auth_perimeter.py tests/api/test_route_uniqueness.py -p no:pytest-qt -o addopts="" -q` â€” 50 passed.
+- `ruff check` / `ruff format --check` on the changed files â€” clean.
+- `mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional` â€” Success (141 files).
 
 ## Blockers and Risks
 
@@ -2547,7 +2584,7 @@ Last updated: 2026-09-22T18:10:00-07:00
 
 ---
 
-## Previous Handoff — Staff Hub core: runner, run store, /api/staff routes (#1194)
+## Previous Handoff â€” Staff Hub core: runner, run store, /api/staff routes (#1194)
 
 Last updated: 2026-09-22T17:30:00-07:00
 
@@ -2576,9 +2613,9 @@ Last updated: 2026-09-22T17:30:00-07:00
 
 ## Validation
 
-- `PYTHONPATH=backend python -m pytest tests/api/test_staff_runner.py tests/api/test_staff_auth_perimeter.py tests/api/test_structural_auth_perimeter.py tests/api/test_route_uniqueness.py tests/api/test_router_dependency_contracts.py tests/test_architecture_map_contract.py tests/api/test_auth_perimeter.py tests/api/test_orchestrator_api.py tests/test_ci_config.py tests/test_documentation_freshness.py -p no:pytest-qt -o addopts="" -q` — 120 passed.
-- `ruff check backend/ tests/api/test_staff_*.py` — clean; `ruff format --check backend/` — clean.
-- `mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional` — Success (140 files).
+- `PYTHONPATH=backend python -m pytest tests/api/test_staff_runner.py tests/api/test_staff_auth_perimeter.py tests/api/test_structural_auth_perimeter.py tests/api/test_route_uniqueness.py tests/api/test_router_dependency_contracts.py tests/test_architecture_map_contract.py tests/api/test_auth_perimeter.py tests/api/test_orchestrator_api.py tests/test_ci_config.py tests/test_documentation_freshness.py -p no:pytest-qt -o addopts="" -q` â€” 120 passed.
+- `ruff check backend/ tests/api/test_staff_*.py` â€” clean; `ruff format --check backend/` â€” clean.
+- `mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional` â€” Success (140 files).
 - Not run locally: the full pytest suite (scratch venv on Windows; CI runs it).
 
 ## Blockers and Risks
@@ -2594,7 +2631,7 @@ Last updated: 2026-09-22T17:30:00-07:00
 
 ---
 
-## Previous Handoff — Fleet monitor pool retarget + dangling-image prune (#1184)
+## Previous Handoff â€” Fleet monitor pool retarget + dangling-image prune (#1184)
 
 Last updated: 2026-09-14T22:15:00-07:00
 
@@ -2621,7 +2658,7 @@ Last updated: 2026-09-14T22:15:00-07:00
 
 ## Validation
 
-- `python -m pytest tests/deploy/test_runner_cleanup_disk_guard.py tests/deploy/test_fleet_health_monitor.py` → 38 passed.
+- `python -m pytest tests/deploy/test_runner_cleanup_disk_guard.py tests/deploy/test_fleet_health_monitor.py` â†’ 38 passed.
 - `bash -n deploy/runner-cleanup.sh` OK.
 - Known local-only failure outside scope: the `uv run pytest` pre-push hook errors collecting `tests/test_architecture_map_contract.py` (`No module named 'scripts'`) in this Windows venv; CI runs the suite.
 
@@ -2631,7 +2668,7 @@ Last updated: 2026-09-14T22:15:00-07:00
 
 ---
 
-## Previous Handoff — Runner Host Reality vs /tmp Runbook & Profile Cleanup (#1159)
+## Previous Handoff â€” Runner Host Reality vs /tmp Runbook & Profile Cleanup (#1159)
 
 ## Identity
 
@@ -2666,7 +2703,7 @@ Last updated: 2026-09-14T22:15:00-07:00
 2. Push branch to origin.
 3. Open PR via GitHub CLI referencing Issue #1169 and enable auto-merge.
 
-## Issue #1141 — OGLaptop production browser OAuth readiness
+## Issue #1141 â€” OGLaptop production browser OAuth readiness
 
 - Base: protected `main`
 - Source slice: call-time typed OAuth configuration, exact MagicDNS origin and
@@ -2676,29 +2713,29 @@ Last updated: 2026-09-14T22:15:00-07:00
 - Acceptance: strict token refresh boundaries, state validation, redacted diagnostics,
   and fail-closed behavior on missing or unconfigured OAuth secrets.
 
-## Issue #1139 — Windows WSL keepalive under WSL-capable user principal
+## Issue #1139 â€” Windows WSL keepalive under WSL-capable user principal
 
 - Acceptance: Windows keepalive installer `deploy/install-wsl-keepalive-task.ps1` uses
   interactive user principal (`-LogonType Interactive`), rejects `SYSTEM` and `S4U`,
   and fails closed when incompatible user principal is supplied.
 
-## Issue #1144 — Interactive-Safe DeskComputer 1/2 Schedule
+## Issue #1144 â€” Interactive-Safe DeskComputer 1/2 Schedule
 
 - Acceptance: Schedule aligned to 1 weekday-day / 2 weekend-day / 2 overnight (`max_count: 2`).
   Drain marker fail-closed boundary enforced.
 
-## Issue #1119 — Require All Protected Gates Before Auto-Merge
+## Issue #1119 â€” Require All Protected Gates Before Auto-Merge
 
 - Acceptance: Branch protection and ruleset drift detector enforced and verified.
 
-## Issue #1085 — Deterministic offline dashboard deployment
+## Issue #1085 â€” Deterministic offline dashboard deployment
 
 - Acceptance: Artifact packaging and installation with strict checksums, schema-v2 verification,
   and offline wheelhouse support.
 
 ---
 
-# Previous handoff — SC-D3: Staff roster sidebar: grouped roles, Auto (Barb) entry, status, unread counts, search and pinning (#1317)
+# Previous handoff â€” SC-D3: Staff roster sidebar: grouped roles, Auto (Barb) entry, status, unread counts, search and pinning (#1317)
 
 Last updated: 2026-09-25
 
@@ -2758,7 +2795,7 @@ Last updated: 2026-09-25
 
 ---
 
-# Previous handoff — SC-D1: UX spec: Staff Console as the landing page and a four-area information architecture (#1301)
+# Previous handoff â€” SC-D1: UX spec: Staff Console as the landing page and a four-area information architecture (#1301)
 
 Last updated: 2026-09-25
 
@@ -2806,4 +2843,4 @@ Last updated: 2026-09-25
 
 ---
 
-# Previous handoff — SC-G4: Merge the duplicate Reports and Analysis tabs into one Insights section (#1326)
+# Previous handoff â€” SC-G4: Merge the duplicate Reports and Analysis tabs into one Insights section (#1326)
