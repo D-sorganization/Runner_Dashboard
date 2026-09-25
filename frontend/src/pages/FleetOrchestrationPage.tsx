@@ -37,6 +37,9 @@ function normalizeDeployResponse(payload: unknown): { message?: string } {
   return typeof message === "string" ? { message } : {};
 }
 
+/**
+ * @deprecated Merged into unified Operations page (`/fleet/operations#deploy`) in SC-G3 (#1325).
+ */
 export function FleetOrchestrationPage(): React.ReactElement {
   const [data, setData] = useState<FleetOrchestrationData>({});
   const [loading, setLoading] = useState(true);

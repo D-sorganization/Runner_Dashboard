@@ -127,6 +127,11 @@ vi.mock("../../pages/OverviewPage", () => ({
   default: () => <div data-testid="native-overview">Overview</div>,
 }));
 
+vi.mock("../../pages/Operations/OperationsPage", () => ({
+  default: () => <div data-testid="native-operations">Operations</div>,
+  OperationsPage: () => <div data-testid="native-operations">Operations</div>,
+}));
+
 vi.mock("../../pages/Staff/StaffPage", () => ({
   default: () => <div data-testid="native-staff">Staff</div>,
 }));
@@ -302,16 +307,13 @@ describe("RoutedShell — URL is the source of truth", () => {
   it.each([
     ["staff", "native-staff"],
     ["overview", "native-overview"],
+    ["operations", "native-operations"],
     ["agent-dispatch", "native-agent-dispatch"],
     ["insights", "native-analysis"],
     ["assessments", "native-assessments"],
     ["cline-launcher", "native-cline-launcher"],
-    ["conductor", "native-conductor"],
     ["credentials", "native-credentials"],
-    ["deployment", "native-deployment"],
-    ["diagnostics", "native-diagnostics"],
     ["feature-requests", "native-feature-requests"],
-    ["fleet-orchestration", "native-fleet-orchestration"],
     ["linear-setup", "native-linear-setup"],
     ["local-apps", "native-local-apps"],
     ["maxwell", "native-maxwell"],
@@ -320,8 +322,6 @@ describe("RoutedShell — URL is the source of truth", () => {
     ["push-settings", "native-push-settings"],
     ["queue", "native-queue"],
     ["remediation", "native-remediation"],
-    ["runner-schedule", "native-runner-schedule"],
-    ["scheduled-jobs", "native-scheduled-jobs"],
     ["settings", "native-settings"],
     ["tests", "native-tests"],
     ["workflows", "native-workflows"],
@@ -348,6 +348,12 @@ describe("RoutedShell — URL is the source of truth", () => {
     expect(await screen.findByTestId("native-overview")).toBeInTheDocument();
   });
 
+  it("redirects legacy operational tabs to /fleet/operations (SC-G3)", async () => {
+    renderAt("/t/deployment");
+    expect(await screen.findByTestId("active-tab")).toHaveTextContent("operations");
+    expect(await screen.findByTestId("native-operations")).toBeInTheDocument();
+  });
+
   it.each([
     ["/fleet", "mobile-overview"],
     ["/t/queue", "mobile-queue"],
@@ -370,11 +376,11 @@ describe("RoutedShell — URL is the source of truth", () => {
 
   it("keeps the mobile legacy fallback for drawer tabs without native content", async () => {
     breakpointMock.mockReturnValue("md");
-    renderAt("/t/conductor");
+    renderAt("/t/projects");
 
     expect(await screen.findByTestId("legacy-app")).toHaveAttribute(
       "data-active-tab",
-      "conductor",
+      "projects",
     );
     expect(legacyAppImport).toHaveBeenCalledTimes(1);
   });

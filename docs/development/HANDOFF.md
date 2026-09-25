@@ -1,4 +1,51 @@
-# Current handoff — Restore green main: trim Mobile.tsx <= 500 lines and format api-types.ts (#1428)
+# Current handoff — SC-G3: Fleet -> Operations: merge Deployment, Fleet Orchestration, Diagnostics, Conductor, Runner Plan and Schedules (#1325)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1325-operations-merge`; Issue #1325; DL-#1325.
+
+## Objective and Status
+
+- SC-G3: Fleet -> Operations: merge Deployment, Fleet Orchestration, Diagnostics, Conductor, Runner Plan and Schedules into unified `/fleet/operations` page.
+- Operations page components (`frontend/src/pages/Operations/`):
+  - `OperationsStatusBanner.tsx` (381 lines): KPI summary metrics row, title/subtitle orientation, and 5 jump anchors (`#deploy`, `#admission`, `#runner-hours`, `#scheduled-workflows`, `#diagnostics`).
+  - `OperationsDeploySection.tsx` (453 lines) + `OperationsDeployAuditLog.tsx` (67 lines) + `deployTypes.ts` (69 lines): Expected version, rollout summary, machine drift table, multi-node deploy action form (`/api/fleet/orchestration/deploy`), and orchestration audit log.
+  - `OperationsAdmissionSection.tsx` (444 lines): Admission gate status (`running`/`paused`/`draining`), queue control actions (Pause/Resume/Drain), capacity and work queue statistics, provider mix, budget burn, 404 disabled empty state, and retry CTA.
+  - `OperationsRunnerHoursSection.tsx` (409 lines): Desired/online/busy/offline runner metrics, schedule windows table, Save Schedule & Apply Now buttons (`/api/fleet/schedule`), timer status, and config path footer.
+  - `OperationsScheduledWorkflowsSection.tsx` (428 lines): Cron workflows table, repository badges, cron expressions, run link, plan search filter, and trigger CTA.
+  - `OperationsDiagnosticsSection.tsx` (476 lines) + `diagnosticsTypes.ts` (33 lines): PID, memory MB, port, WSL status, git drift, Service Recovery restart with confirmation step, Windows launcher generator, and API links.
+  - `OperationsPage.tsx` (121 lines): Coordinator page mounting all sections with independent failure isolation, individual retry buttons, and smooth hash scrolling on mount and `hashchange`.
+- Shell & Navigation:
+  - `navRegistryData.ts`: Replaced 6 separate tabs (`runner-schedule`, `fleet-orchestration`, `conductor`, `deployment`, `scheduled-jobs`, `diagnostics`) with unified `operations` under `fleet` group (`frequent: true`, `Icon: NetworkIcon`).
+  - `routing.ts`: Configured backwards-compatible redirects for `/fleet/deployment`, `/deployment`, `/t/deployment`, `/fleet/fleet-orchestration`, `/t/fleet-orchestration`, `/fleet/conductor`, `/conductor`, `/t/conductor`, `/fleet/runner-schedule`, `/runner-schedule`, `/fleet/runner-plan`, `/runner-plan`, `/t/runner-schedule`, `/work/scheduled-jobs`, `/scheduled-jobs`, `/schedules`, `/work/schedules`, `/t/scheduled-jobs`, `/settings/diagnostics`, `/diagnostics`, `/t/diagnostics` to their respective anchors on `/fleet/operations` with user toast notices.
+  - `RoutedShell.tsx`: Added lazy-loaded `LazyOperationsPage`, routed `operations` and legacy aliases.
+  - `HelpAbout.tsx`: Updated quick links from `diagnostics` to `operations`.
+  - `intro.ts`: Added `operations` override, pruned removed `conductor`.
+  - `OverviewPage.tsx`: Updated "Deployment state" button navigation to `/fleet/operations#deploy`.
+  - `backend/routers/usage_metrics.py`: Added `operations` to `TAB_RECOMMENDATIONS`.
+- Validation:
+  - 149 test files passed, 1,269 frontend tests passed (0 failures).
+  - TypeScript check: 0 errors (`npm run typecheck`).
+  - ESLint: 0 warnings, 0 errors (`npm run lint`).
+  - Color literal budget: 4/4 passed (`pytest tests/frontend/test_color_literal_budget.py`).
+  - Production build: Clean build (`npm run build`).
+  - Frontend bundle budget: 0 errors (`python scripts/check_frontend_perf_budget.py --bundle --json`).
+  - File line limits: All modified/created files strictly <= 500 lines.
+
+## Next Steps
+
+1. Commit changes with conventional commit `feat(operations): SC-G3 merge Deployment, Orchestration, Conductor, Runner Plan, Schedules, Diagnostics (#1325)`.
+2. Push branch `feat/1325-operations-merge`.
+3. Open PR with `gh pr create` referencing `Fixes #1325`, labels `agent:local` and `wave:3`.
+4. Enable auto-merge squash without `--admin`.
+5. Monitor CI to green merge.
+6. Proceed to next issue in program.
+
+---
+
+# Previous handoff — Restore green main: trim Mobile.tsx <= 500 lines and format api-types.ts (#1428)
 
 Last updated: 2026-09-25
 
@@ -11,21 +58,7 @@ Last updated: 2026-09-25
 - Restore green main:
   - Trim `frontend/src/pages/StaffConsole/Mobile.tsx` from 516 lines to 463 lines (comfortably below 500-line soft cap).
   - Remove redundant newline before `Client compatibility aliases` in `frontend/src/lib/api-types.ts` to satisfy `generate-api:check`.
-- Status: All tests and checks passing cleanly locally.
-
-## Validation
-
-- `npx vitest run frontend/src/pages/StaffConsole/`: 13 test files passed, 75 tests passed.
-- `npm run typecheck`: clean (0 errors).
-- `npm run lint`: clean (0 warnings).
-- `(Get-Content frontend/src/pages/StaffConsole/Mobile.tsx).Count`: 463 lines (<= 500).
-
-## Next Steps
-
-1. Commit and push branch `fix/1428-green-main`.
-2. Open PR with `Fixes #1428`, enable auto-merge.
-3. Monitor CI until green merge into `main`.
-4. Release lease on issue #1428 and clean up worktree.
+- Status: Shipped in PR #1429 (commit `6a1f576`).
 
 ---
 
@@ -40,7 +73,22 @@ Last updated: 2026-09-25
 ## Objective and Status
 
 - SC-D8: Mobile Staff Console: roster → thread navigation, bottom composer, push deep links.
-- Status: Shipped in PR #1427 (commit `94b7090`).
+- Full-screen roster → thread navigation: single-pane view transitioning between roster (with search, Ask Barb hero, and role groups) and conversation thread with `< Back to Roster` top button.
+- Safe-area aware bottom composer (`env(safe-area-inset-bottom)`) with touch-friendly input, Send, and Voice input buttons.
+- Cards adapted to narrow viewports with $\ge 44\text{px}$ touch targets on Approve/Deny buttons.
+- Push notification deep links: supports `?thread=<id>` and `?role=<role>`, synchronizing state on mount and browser popstate.
+- Role context drawer: slide-up bottom sheet drawer with role mandate, provider info, and schedule/budget summary.
+- Inbox tab: "Waiting on you" tab in mobile roster showing items requiring human intervention.
+- Status: Completed all implementation, unit tests, and e2e specs. Shipped in PR #1427 (commit `94b7090`).
+
+## Validation
+
+- `npx vitest run frontend/src/pages/StaffConsole/`: 13 test files passed, 75 tests passed.
+- `npx vitest run frontend/src/shell/__tests__/RoutedShell.test.tsx`: 42 tests passed.
+- `npm run typecheck`: clean (0 errors).
+- `npm run lint`: clean (0 warnings).
+- `uv run ruff check .`: passed cleanly.
+- `uv run pytest tests/test_frontend_integrity.py`: 72 passed, 1 xfailed.
 
 ---
 
@@ -113,6 +161,7 @@ Last updated: 2026-09-25
 3. Wait for CI checks to pass and PR #1422 to auto-merge.
 4. Post completion receipt on Issue #1328 and release lease.
 5. Clean up worktree `Runner_Dashboard-1328`.
+>>>>>>> origin/main
 
 ---
 
@@ -126,38 +175,7 @@ Last updated: 2026-09-25
 
 ## Objective and Status
 
-- SC-G2: One Fleet page: merge Machines, Runner Audit, and Event Log into Fleet.
-- Unified page components (`frontend/src/pages/Fleet/`):
-  - `FleetStatusBanner.tsx`: SC-A2 tri-state health honesty (green/amber/red), KPI summary strip (machines, active runners, alerts, event rate), deployment drift indicator & state button, and jump anchors (`#machines`, `#runners`, `#alerts`, `#events`).
-  - `FleetMachinesSection.tsx`: Single consolidated machines table with expandable telemetry (WSL distribution, CPU/RAM utilization, storage mounts, runner pool) and "Ask Maintenance" button for SC-E6.
-  - `FleetRunnersSection.tsx`: Status filter pills (`all`, `idle`, `active`, `offline`), bulk fleet controls (`Start All`, `Stop All`), runner table with status badges, labels, active run link, and maintenance menu actions.
-  - `FleetAlertsSection.tsx`: Active fleet alerts and hosted-runner billing violations audit table (`runnerAudit`) with refresh trigger, empty state, and severity styling.
-  - `FleetEventsSection.tsx`: Durable fleet event history with severity filters (`All`, `Info`, `Warning`, `Error`), timestamp formatting, node attribution, and independent error state.
-- Recomposed `OverviewPage.tsx`:
-  - 437 lines (strictly <= 500 lines).
-  - Composes `FleetStatusBanner`, `FleetMachinesSection`, `FleetRunnersSection`, `FleetAlertsSection`, `FleetEventsSection`, and `OverviewLeases`.
-  - Independent per-section error isolation (`machinesError`, `runnersError`, `auditError`, `eventsError`).
-  - Smooth hash scrolling (`#machines`, `#runners`, `#alerts`, `#events`).
-- Backward-compatible navigation & redirects:
-  - Pruned duplicate tabs (`machines`, `runner-audit`, `events`) from `navRegistryData.ts`.
-  - Redirects configured in `routing.ts`: `/fleet/machines`, `/machines`, `/t/machines` -> `/fleet#machines`; `/fleet/runner-audit`, `/runner-audit`, `/t/runner-audit` -> `/fleet#alerts`; `/fleet/events`, `/events`, `/t/events` -> `/fleet#events`.
-- Validation:
-  - 142 test files passed, 1,245 frontend tests passed (0 failures).
-  - TypeScript check: 0 errors (`npm run typecheck`).
-  - ESLint: 0 warnings, 0 errors (`npm run lint`).
-  - Color literal budget: 4/4 passed (`pytest tests/frontend/test_color_literal_budget.py`).
-  - Production build: Clean build (`npm run build`).
-  - Frontend perf budget: 0 errors (`python scripts/check_frontend_perf_budget.py --bundle --json`).
-  - File line limits: All modified/created files strictly <= 500 lines (`python scripts/check_lines.py`).
-
-## Next Steps
-
-1. Commit changes with conventional commit `feat(fleet): SC-G2 merge Machines, Runner Audit and Event Log into one Fleet page (#1324)`.
-2. Push branch `feat/1324-one-fleet-page`.
-3. Open PR with `gh pr create` referencing `Fixes #1324`, labels `agent:local` and `wave:3`.
-4. Enable auto-merge squash without `--admin`.
-5. Monitor CI to green merge.
-6. Proceed to Wave 3 issue #1325 (`SC-G3: Fleet -> Operations: merge Deployment, Fleet Orchestration, Diagnostics, Conductor, Runner Plan and Schedules`).
+- SC-G2: One Fleet page: merge Machines, Runner Audit, and Event Log into Fleet. Shipped in PR #1421.
 
 ---
 

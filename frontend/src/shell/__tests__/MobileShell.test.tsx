@@ -248,7 +248,7 @@ describe('MobileShell', () => {
     })
   })
 
-  it('surfaces Conductor and Dispatch operator controls in the mobile drawer (issue #821)', async () => {
+  it('surfaces Operations and Dispatch operator controls in the mobile drawer (issue #821)', async () => {
     render(
       <MobileShell currentTab={FIRST.tabId} onTabChange={vi.fn()}>
         <div>Test Content</div>
@@ -259,7 +259,7 @@ describe('MobileShell', () => {
 
     await waitFor(() => {
       const drawer = screen.getByRole('dialog', { name: /more options/i })
-      expect(within(drawer).getByText('Conductor')).toBeInTheDocument()
+      expect(within(drawer).getByText('Operations')).toBeInTheDocument()
       expect(within(drawer).getByText('Dispatch')).toBeInTheDocument()
     })
   })

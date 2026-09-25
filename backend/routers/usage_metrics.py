@@ -28,6 +28,10 @@ TAB_RECOMMENDATIONS: dict[str, tuple[str, str]] = {
     "queue": ("keep", "Active queue management and workflow runs"),
     "staff": ("keep", "Staff Console: AI agent team interaction (SC-D default route)"),
     "remediation": ("keep", "Failed runs triage and remediation actions"),
+    "operations": (
+        "keep",
+        "Fleet operations: deployment, admission, runner hours, scheduled workflows, and diagnostics",
+    ),
     "workflows": ("keep", "Workflow catalog and run inspection"),
     "machines": ("keep", "Multi-node runner machine inventory and capacity"),
     "events": ("keep", "Durable fleet event history and alarm center"),

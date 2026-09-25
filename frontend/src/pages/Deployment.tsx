@@ -11,6 +11,8 @@
  * callbacks, while native shell routes omit those props and let this page fetch
  * `/api/deployment/state` itself. The dry-run preview is local state. Loading,
  * empty states, and a11y semantics mirror the original legacy render.
+ *
+ * @deprecated Merged into unified Operations page (`/fleet/operations#deploy`) in SC-G3 (#1325).
  */
 import React, { useCallback, useEffect, useState } from "react";
 import { Stat } from "../components/Stat";

@@ -91,8 +91,8 @@ describe("SC-D2: Secondary pages live under their area prefix", () => {
   it("maps secondary fleet pages under /fleet/*", () => {
     expect(tabIdToPath("insights")).toBe("/fleet/insights");
     expect(pathnameToTabId("/fleet/insights")).toBe("insights");
-    expect(tabIdToPath("deployment")).toBe("/fleet/deployment");
-    expect(pathnameToTabId("/fleet/deployment")).toBe("deployment");
+    expect(tabIdToPath("operations")).toBe("/fleet/operations");
+    expect(pathnameToTabId("/fleet/operations")).toBe("operations");
   });
 
   it("maps secondary work pages under /work/*", () => {
@@ -182,5 +182,44 @@ describe("SC-G2: One Fleet page: merge Machines, Runner Audit and Event Log into
     expect(pathnameToTabId("/fleet/events")).toBe("overview");
   });
 });
+
+describe("SC-G3: Fleet -> Operations: merge Deployment, Fleet Orchestration, Diagnostics, Conductor, Runner Plan and Schedules (issue #1325)", () => {
+  it("maps operations to /fleet/operations and resolves back to operations", () => {
+    expect(tabIdToPath("operations")).toBe("/fleet/operations");
+    expect(pathnameToTabId("/fleet/operations")).toBe("operations");
+  });
+
+  it("redirects old tab routes /t/deployment, /t/fleet-orchestration, /t/conductor, /t/runner-schedule, /t/scheduled-jobs, /t/diagnostics to /fleet/operations sections", () => {
+    expect(getTabRedirect("/t/deployment")?.to).toBe("/fleet/operations#deploy");
+    expect(getTabRedirect("/t/fleet-orchestration")?.to).toBe("/fleet/operations#deploy");
+    expect(getTabRedirect("/t/conductor")?.to).toBe("/fleet/operations#admission");
+    expect(getTabRedirect("/t/runner-schedule")?.to).toBe("/fleet/operations#runner-hours");
+    expect(getTabRedirect("/t/scheduled-jobs")?.to).toBe("/fleet/operations#scheduled-workflows");
+    expect(getTabRedirect("/t/diagnostics")?.to).toBe("/fleet/operations#diagnostics");
+  });
+
+  it("redirects pathnames /fleet/deployment, /fleet/conductor, /settings/diagnostics, etc. to /fleet/operations sections", () => {
+    expect(getTabRedirect("/fleet/deployment")?.to).toBe("/fleet/operations#deploy");
+    expect(getTabRedirect("/deployment")?.to).toBe("/fleet/operations#deploy");
+    expect(getTabRedirect("/fleet/fleet-orchestration")?.to).toBe("/fleet/operations#deploy");
+    expect(getTabRedirect("/fleet/conductor")?.to).toBe("/fleet/operations#admission");
+    expect(getTabRedirect("/conductor")?.to).toBe("/fleet/operations#admission");
+    expect(getTabRedirect("/fleet/runner-schedule")?.to).toBe("/fleet/operations#runner-hours");
+    expect(getTabRedirect("/runner-plan")?.to).toBe("/fleet/operations#runner-hours");
+    expect(getTabRedirect("/work/scheduled-jobs")?.to).toBe("/fleet/operations#scheduled-workflows");
+    expect(getTabRedirect("/schedules")?.to).toBe("/fleet/operations#scheduled-workflows");
+    expect(getTabRedirect("/settings/diagnostics")?.to).toBe("/fleet/operations#diagnostics");
+    expect(getTabRedirect("/diagnostics")?.to).toBe("/fleet/operations#diagnostics");
+  });
+
+  it("resolves legacy operational routes to operations tabId", () => {
+    expect(pathnameToTabId("/fleet/deployment")).toBe("operations");
+    expect(pathnameToTabId("/fleet/conductor")).toBe("operations");
+    expect(pathnameToTabId("/fleet/runner-schedule")).toBe("operations");
+    expect(pathnameToTabId("/work/scheduled-jobs")).toBe("operations");
+    expect(pathnameToTabId("/settings/diagnostics")).toBe("operations");
+  });
+});
+
 
 

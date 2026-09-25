@@ -57,10 +57,7 @@ import { AgentDispatchPage } from "../pages/AgentDispatch";
 import { AnalysisTab } from "../pages/Analysis";
 import { AssessmentsPage } from "../pages/AssessmentsPage";
 import { ClineLauncherTab } from "../pages/ClineLauncher";
-import { Conductor } from "../pages/Conductor";
 import { CredentialsPage } from "../pages/CredentialsPage";
-import { DeploymentTab } from "../pages/Deployment";
-import { DiagnosticsTab } from "../pages/Diagnostics";
 import { EventsTab } from "../pages/Events";
 import { FeatureRequestsPage } from "../pages/FeatureRequestsPage";
 import { LinearSetup } from "../pages/LinearSetup";
@@ -74,7 +71,6 @@ import { RunnerSchedulePage } from "../pages/RunnerSchedule";
 import { TestsPage } from "../pages/TestsPage";
 import { WorkflowsPage } from "../pages/WorkflowsPage";
 import PushSettings from "../pages/PushSettings";
-import ScheduledJobs from "../pages/ScheduledJobs";
 import { ThemeSettings } from "../components/ThemeSettings";
 import { TabErrorBoundary } from "../primitives/TabErrorBoundary";
 import { SkeletonCard } from "../primitives/Skeleton";
@@ -83,9 +79,6 @@ import { navItemById } from "./navRegistry";
 // The legacy App is isolated behind the explicit legacy layout flag and mobile
 // fallback while the modern desktop shell routes registered tabs natively.
 const LazyLegacyApp = React.lazy(() => import("../legacy/App"));
-const LazyFleetOrchestrationPage = React.lazy(
-  () => import("../pages/FleetOrchestrationPage"),
-);
 const LazyOverviewPage = React.lazy(() => import("../pages/OverviewPage"));
 const LazyRemediationPage = React.lazy(
   () => import("../pages/RemediationPage"),
@@ -97,6 +90,12 @@ const LazyStaffMobile = React.lazy(
 const LazyProjectsPage = React.lazy(() => import("../pages/ProjectsPage"));
 const LazyFleetCommandPage = React.lazy(
   () => import("../pages/FleetCommand/FleetCommandPage"),
+);
+const LazyOperationsPage = React.lazy(
+  () => import("../pages/Operations/OperationsPage"),
+);
+const LazyFleetOrchestrationPage = React.lazy(
+  () => import("../pages/FleetOrchestrationPage"),
 );
 
 /**
@@ -144,22 +143,24 @@ function nativeDesktopTabContent(tabId: string): React.ReactNode | null {
       return <AssessmentsPage />;
     case "cline-launcher":
       return <ClineLauncherTab />;
+    case "operations":
     case "conductor":
-      return <Conductor />;
+    case "deployment":
+    case "diagnostics":
+    case "scheduled-jobs":
+      return <LazyOperationsPage />;
+    case "fleet-orchestration":
+      return <LazyFleetOrchestrationPage />;
+    case "runner-schedule":
+      return <RunnerSchedulePage />;
     case "credentials":
       return <CredentialsPage />;
-    case "deployment":
-      return <DeploymentTab />;
-    case "diagnostics":
-      return <DiagnosticsTab />;
     case "events":
       return <EventsTab />;
     case "feature-requests":
       return <FeatureRequestsPage />;
     case "fleet-command":
       return <LazyFleetCommandPage />;
-    case "fleet-orchestration":
-      return <LazyFleetOrchestrationPage />;
     case "linear-setup":
       return <LinearSetup />;
     case "local-apps":
@@ -182,10 +183,6 @@ function nativeDesktopTabContent(tabId: string): React.ReactNode | null {
       return <LazyRemediationPage />;
     case "runner-audit":
       return <RunnerAuditPage />;
-    case "runner-schedule":
-      return <RunnerSchedulePage />;
-    case "scheduled-jobs":
-      return <ScheduledJobs />;
     case "settings":
       return <ThemeSettings />;
     case "staff":
