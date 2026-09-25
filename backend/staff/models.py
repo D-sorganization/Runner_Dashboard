@@ -227,6 +227,29 @@ class StaffRoleLiveness(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 
+class RoutingEvalSummary(BaseModel):
+    """Board summary of the latest Barb routing eval (SC-C7, #1340).
+
+    Only counts reach the Board; the failure list stays in the result file and
+    ``GET /api/v1/staff/routing/eval``.
+    """
+
+    evaluated_at: str
+    mode: str
+    total: int = Field(ge=1)
+    passed: int = Field(ge=0)
+    accuracy: float = Field(ge=0.0, le=1.0)
+
+    @classmethod
+    def from_result(cls, result: dict[str, Any] | None) -> RoutingEvalSummary | None:
+        """Build the summary from a persisted result dict (``None`` passes through)."""
+        if result is None:
+            return None
+        summary = cls.model_validate({k: result.get(k) for k in cls.model_fields})
+        assert summary.passed <= summary.total
+        return summary
+
+
 class StaffBoardResponse(BaseModel):
     """Response model for GET /api/staff/board (issue #1289)."""
 
@@ -246,6 +269,7 @@ class StaffBoardResponse(BaseModel):
     online: list[str] = Field(default_factory=list)
     offline: list[str] = Field(default_factory=list)
     rm_source: dict[str, Any] | None = Field(default=None)
+    routing_eval: RoutingEvalSummary | None = Field(default=None, description="Latest routing eval summary (SC-C7)")
 
     model_config = ConfigDict(extra="allow")
 

@@ -167,6 +167,7 @@ async def aggregate_board(local_board: dict[str, Any], peers: dict[str, str] | N
         "spend_today_usd": spend,
         "providers": providers,
         "liveness_alerts": liveness_alerts,
+        "routing_eval": local_board.get("routing_eval"),
     }
 
 
@@ -316,6 +317,15 @@ def local_board(runner: Any) -> dict[str, Any]:
     except Exception:  # noqa: BLE001
         avail_stats = {}
 
+    try:
+        from staff.models import RoutingEvalSummary  # noqa: PLC0415
+        from staff.routing_eval import get_latest_routing_eval  # noqa: PLC0415
+
+        routing_eval_data = RoutingEvalSummary.from_result(get_latest_routing_eval())
+    except Exception:  # noqa: BLE001 - the Board must render without the eval
+        log.exception("local_board: routing eval summary unavailable")
+        routing_eval_data = None
+
     return {
         "machine": runner.machine,
         "generated_at": now.isoformat().replace("+00:00", "Z"),
@@ -327,6 +337,7 @@ def local_board(runner: Any) -> dict[str, Any]:
         "availability": avail_stats,
         "liveness": liveness,
         "rm_source": getattr(sys.modules.get("routers.staff"), "source_status", source_status)(),
+        "routing_eval": routing_eval_data.model_dump() if routing_eval_data else None,
     }
 
 

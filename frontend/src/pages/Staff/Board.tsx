@@ -19,6 +19,7 @@ import {
   groupByMachine,
   livenessAlerts,
   statusTone,
+  type RoutingEvalSummary,
 } from "./staffApi";
 
 export interface BoardProps {
@@ -58,27 +59,37 @@ export function Board({ onOpenRun }: BoardProps) {
             <RefreshBadge staleness={staleness} onRetry={() => refetch()} />
           </span>
         ) : null}
-        {board && spendSummary ? (
+        {board ? (
           <span className="staff-board__meta">
-            spend today{" "}
-            {spendSummary.breakdown ? (
-              <Tooltip content={spendSummary.breakdown} placement="bottom">
-                <strong
-                  data-testid="board-spend"
-                  title={spendSummary.breakdown}
-                  tabIndex={0}
-                  style={{ cursor: "help" }}
-                >
-                  {formatUsd(spendSummary.total)}
-                </strong>
-              </Tooltip>
-            ) : (
-              <strong data-testid="board-spend">
-                {formatUsd(spendSummary.total)}
-              </strong>
-            )}
-            {" · "}
+            {spendSummary ? (
+              <>
+                spend today{" "}
+                {spendSummary.breakdown ? (
+                  <Tooltip content={spendSummary.breakdown} placement="bottom">
+                    <strong
+                      data-testid="board-spend"
+                      title={spendSummary.breakdown}
+                      tabIndex={0}
+                      style={{ cursor: "help" }}
+                    >
+                      {formatUsd(spendSummary.total)}
+                    </strong>
+                  </Tooltip>
+                ) : (
+                  <strong data-testid="board-spend">
+                    {formatUsd(spendSummary.total)}
+                  </strong>
+                )}
+                {" · "}
+              </>
+            ) : null}
             <TimeAgo iso={board.generated_at} live />
+            {board.routing_eval ? (
+              <>
+                {" · "}
+                <RoutingEvalBadge summary={board.routing_eval} />
+              </>
+            ) : null}
           </span>
         ) : null}
       </div>
@@ -133,3 +144,24 @@ export function Board({ onOpenRun }: BoardProps) {
 }
 
 export default Board;
+
+/**
+ * SC-C7 (#1340): latest Barb routing eval, refreshed daily by the backend.
+ * Green only when every case passed; the eval set is an exact regression gate.
+ */
+function RoutingEvalBadge({ summary }: { summary: RoutingEvalSummary }) {
+  const pct = Math.round(summary.accuracy * 100);
+  const allPassed = summary.passed === summary.total;
+  return (
+    <Tooltip
+      content={`Routing eval (${summary.mode}): ${summary.passed}/${summary.total} passed, run ${summary.evaluated_at}`}
+      placement="bottom"
+    >
+      <span data-testid="board-routing-eval" tabIndex={0} style={{ cursor: "help" }}>
+        <Badge tone={allPassed ? "success" : "warning"} size="sm">
+          routing {pct}%
+        </Badge>
+      </span>
+    </Tooltip>
+  );
+}

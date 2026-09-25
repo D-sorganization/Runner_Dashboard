@@ -171,7 +171,7 @@ class BarbRouter:
             )
 
         # Ambiguous check: when multiple broad roles could apply with low certainty
-        if "look at something" in low or "weird" in low:
+        if "look at something" in low or "weird" in low or "check something" in low:
             return RoutingDecision(
                 chosen_role=None,
                 confidence=0.4,
