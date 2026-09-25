@@ -18,17 +18,28 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1340 · SC-C7: Routing evaluation set and regression check for Barb
+
+- **State:** in_review
+- **Owner:** antigravity
+- **Issue:** #1340 (epic #1349 / umbrella #1354)
+- **Branch:** `feat/1340-barb-routing-eval`
+- **Paths:** `tests/staff/routing_eval/models.py`, `tests/staff/routing_eval/dataset.py`, `tests/staff/routing_eval/engine.py`, `tests/staff/routing_eval/test_barb_routing_eval.py`, `scripts/eval_barb_routing.py`, `backend/routers/staff_routing.py`, `tests/api/test_staff_routing_api.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (pytest routing eval 6/6 passing; pytest staff routing api 5/5 passing; scripts/eval_barb_routing.py 100% accuracy; gen-api-client freshness passed; all files <= 500 lines)
+- **Summary:** Implemented SC-C7 routing evaluation set and regression check for Barb: (1) Curated 80-case evaluation dataset across 10 categories with expected targets and clarify/answer outcomes; (2) Created CI regression test suite running deterministic pre-router; (3) Built `scripts/eval_barb_routing.py` CLI runner for evaluating full router accuracy, supporting `--post-board` proposal creation; (4) Added candidate feedback ingestion from routing overrides (`load_candidate_cases_from_feedback()`); (5) Exposed `GET /api/v1/staff/routing/eval` REST endpoint.
+- **Next step:** Push branch `feat/1340-barb-routing-eval`, open PR with Fixes #1340, enable auto-merge, verify CI passes, monitor merge.
+
 ### DL-#1459 · Restore green main: split frontend FleetCommand test suite strictly <= 500 lines
 
-- **State:** in_progress
+- **State:** shipped
 - **Owner:** antigravity
 - **Issue:** #1459
 - **Branch:** `fix/issue-1459-split-fleetcommand-tests`
 - **Paths:** `frontend/src/pages/__tests__/FleetCommand.test.tsx`, `frontend/src/pages/__tests__/FleetCommandOps.test.tsx`, `frontend/src/pages/__tests__/fleetCommandTestHelpers.ts`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
-- **Last verified:** 2026-09-25 (vitest 15/15 passed across FleetCommand and FleetCommandOps; npm run lint and typecheck passed; line check verified all files <= 500 lines)
+- **Last verified:** 2026-09-25 (Merged to main via PR #1460)
 - **Summary:** Extracted shared test fixtures/helpers into `fleetCommandTestHelpers.ts` (168 lines), kept core coordination panels in `FleetCommand.test.tsx` (232 lines), and operations tests in `FleetCommandOps.test.tsx` (198 lines), strictly satisfying the <= 500 line limit to restore green main.
-- **Next step:** Commit, open PR, pass CI, auto-merge, release lease.
 
 ### DL-#1284 · CR-7: Board Proposals suggestion box — API, Fleet Command tab, fleet tool
 
@@ -47,16 +58,16 @@ reachable from any live state and `abandoned` from `parked`.
 - **Owner:** claude
 - **Issue:** #1346 (epic #1353)
 - **Branch:** `chore/1346-dead-frontend`
-- **PR:** not created
+- **PR:** #1451
 - **Paths:** `frontend/src/primitives/`, `frontend/src/lib/schemas/dispatch.ts`, `package.json`, `package-lock.json`
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 at `a34c322b` baseline (vitest 1299 passed; tsc clean; bundle 1,169,405 B before and after)
 - **Summary:** Removes the never-mounted primitives and the dependencies only they used. QuickDispatch and AlertsCenter remain until the legacy App is removed.
-- **Next step:** Merge the PR, then delete QuickDispatch and AlertsCenter together with `legacy/App.tsx` under #1345.
+- **Next step:** Merged PR #1451, delete QuickDispatch and AlertsCenter together with `legacy/App.tsx` under #1345.
 
 ### DL-#1282 · CR-2: Code Request data model, lifecycle state machine and durable GitHub-backed record
 
-- **State:** in_review
+- **State:** shipped
 - **Owner:** local
 - **Issue:** #1282 (epic #1279)
 - **Branch:** `feat/1282-code-request-model-store`
@@ -64,7 +75,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (pytest all 18 passing; mypy 0 errors in 8 files; ruff check clean; ruff format clean; npm run typecheck clean; npm run lint clean; all files strictly <= 500 lines)
 - **Summary:** Implemented CR-2: (1) Pydantic models for CodeRequest, CodeRequestState, BoardRoute, Requester, CodeRequestAuditEvent with lossless YAML front-matter serialization & parsing; (2) Pure-function lifecycle state machine with legal transitions and operator overrides; (3) GitHub issue-backed durable CodeRequestStore with local JSON cache fallback and automatic cache rebuilds; (4) Dispatch helpers with standards prompt injection (TDD, DbC, DRY, LoD, security, docs); (5) REST API endpoints GET/POST /api/code-requests, GET /api/code-requests/{id}, and POST /api/code-requests/{id}/transition with dual-scope authorization (code-requests.manage and feature-requests.manage); (6) ensure_code_request_labels.py script; (7) Complete documentation and test suites.
-- **Next step:** Merge PR #1443 to main via auto-merge, release lease, and mark shipped.
+- **Next step:** Merged PR #1443 to main via auto-merge.
 
 ### DL-#1434 · Projects: fleet-wide prioritised status, charter coverage and untracked-work report
 
@@ -103,6 +114,8 @@ reachable from any live state and `abandoned` from `parked`.
 - **Last verified:** 2026-09-25 (pytest all passing; 153/153 frontend vitest test suites passing with 1302 tests; npm run typecheck clean; ruff check clean; ruff format clean; mypy clean; bash scripts/gen-api-client.sh --check clean; all files strictly <= 500 lines)
 - **Summary:** Renamed Feature Requests to Code Requests throughout backend and frontend while maintaining complete backward compatibility: (1) Added `/api/code-requests`, `/api/code-requests/templates`, `/api/code-requests/dispatch` routes and preserved `/api/feature-requests*` as thin deprecated aliases returning `Deprecation: true` and `Link: </api/code-requests...>; rel="successor-version"`; (2) Added `code-requests.manage` scope aliased bidirectionally with `feature-requests.manage` in `backend/identity.py`; (3) Idempotently migrated stored history from `feature_requests.json` to `code_requests.json` with `.migrated` marker without deleting original; (4) Added `frontend/src/pages/CodeRequests.tsx`, `CodeRequestsHistory.tsx`, `CodeRequestsPage.tsx`, `codeRequestsTypes.ts` with shims in `FeatureRequests*.tsx`, updated nav tab to `code-requests` ("Code Requests") with redirect from `feature-requests`; (5) Synchronized OpenAPI schema and generated TypeScript client types; (6) Updated docs and test integrity suites.
 - **Next step:** Push branch `feat/1281-code-requests-rename`, open PR with Closes #1281, enable auto-merge, monitor CI to green merge, release lease, and clean up.
+
+### DL-#1327 · SC-C4: Barb follow-up engine: detect stalled, failed, blocked and waiting work; retry, re-route or escalate
 
 ### DL-#1333 · SC-E6: Maintenance in the UI: Maintenance thread plus "Ask Maintenance" row actions on the Fleet page
 
