@@ -110,7 +110,7 @@ See [Grok Bot Guide](grok.md) for `curl` recipes for threads, messages, and work
 
 ## MCP Tools Reference
 
-The fleet MCP server provides 25 tools covering coordination, priorities, staff dispatch, conversations, work items, and approvals:
+The fleet MCP server provides 27 tools covering coordination, priorities, staff dispatch, conversations, work items, approvals, and board proposals:
 
 ### Coordination & Priorities
 
@@ -151,6 +151,13 @@ The fleet MCP server provides 25 tools covering coordination, priorities, staff 
 | `staff_work_items`      | `GET /api/v1/staff/work-items`                      | Query tracked work items (`mine`, `waiting_on_me`, etc.)    |
 | `staff_approvals_list`  | `GET /api/v1/staff/proposals`                       | Inspect pending and decided action proposals                |
 | `staff_approval_decide` | `POST /api/v1/staff/proposals/{proposal_id}/decide` | Approve or deny a proposal with rationale                   |
+
+### Board Proposals (CR-7)
+
+| Tool              | Endpoint              | Purpose                                             |
+| ----------------- | --------------------- | --------------------------------------------------- |
+| `submit_proposal` | `POST /api/proposals` | Submit a suggestion to the Board (issue in RM)      |
+| `list_proposals`  | `GET /api/proposals`  | Query open or decided board proposals and decisions |
 
 `fleetctl --help` lists every CLI subcommand. The CLI and the MCP server are generated from one table in `clients/fleet/fleet_tools.py`.
 

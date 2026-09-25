@@ -211,3 +211,71 @@ export interface WriteReceipt {
   claimed?: boolean;
   generated_at?: string;
 }
+
+// ── Proposals (/api/proposals) ───────────────────────────────────────────────
+
+export interface ProposalItem {
+  number: number;
+  title: string;
+  target_repos: string[];
+  problem: string;
+  evidence: string;
+  options_considered: string;
+  lean: string;
+  estimated_cost: string;
+  urgency: string;
+  source: string;
+  code_request_url?: string | null;
+  state: "open" | "decided" | "closed";
+  decision?: "accepted" | "declined" | "deferred" | "decided" | null;
+  decision_labels: string[];
+  meeting_date?: string | null;
+  consensus_url?: string | null;
+  html_url?: string;
+  created_at: string;
+  updated_at: string;
+  closed_at?: string | null;
+  comments_count?: number;
+}
+
+export interface ProposalComment {
+  id: number;
+  user: { login: string; avatar_url?: string };
+  body: string;
+  created_at: string;
+  is_secretary: boolean;
+}
+
+export interface ProposalDetail extends ProposalItem {
+  comments: ProposalComment[];
+}
+
+export interface ProposalsResponse extends Availability {
+  proposals: ProposalItem[];
+  total: number;
+}
+
+/** Mirrors the board-proposal issue form's "Estimated Effort" dropdown exactly. */
+export type ProposalEstimatedEffort = "Low" | "Medium" | "High";
+/** Mirrors the board-proposal issue form's "Urgency" dropdown exactly. */
+export type ProposalUrgency = "Routine" | "Urgent" | "Emergency";
+
+export interface CreateProposalPayload {
+  title: string;
+  target_repos: string[] | string;
+  problem: string;
+  evidence: string;
+  options_considered: string | string[];
+  lean: string;
+  estimated_cost: ProposalEstimatedEffort;
+  urgency: ProposalUrgency;
+  source?: string;
+  code_request_url?: string;
+  confirm_not_duplicate?: boolean;
+}
+
+export interface DuplicateCandidate {
+  number: number;
+  title: string;
+  url: string;
+}

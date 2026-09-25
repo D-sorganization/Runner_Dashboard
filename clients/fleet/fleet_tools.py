@@ -446,6 +446,67 @@ COMMANDS: tuple[Command, ...] = (
         tool="staff_approval_decide",
         positional=("proposal_id", "decision"),
     ),
+    Command(
+        "submit-proposal",
+        "submit_proposal",
+        "Submit a proposal to the Board (stored in Repository_Management labelled board:proposal).",
+        {
+            "title": {"type": "string", "description": "Proposal title (e.g. 'Adopt WebGPU for Visualization')."},
+            "target_repos": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Target repo(s), e.g. ['Runner_Dashboard'].",
+            },
+            "problem": {"type": "string", "description": "Problem statement explaining why this is needed."},
+            "evidence": {"type": "string", "description": "Evidence, benchmarks, or incident links supporting this."},
+            "options_considered": {
+                "type": "string",
+                "description": "Options considered and pros/cons evaluated.",
+            },
+            "lean": {"type": "string", "description": "The submitter's recommended option / lean."},
+            "estimated_cost": {
+                "type": "string",
+                "enum": ["Low", "Medium", "High"],
+                "description": "Estimated effort if accepted.",
+            },
+            "urgency": {
+                "type": "string",
+                "enum": ["Routine", "Urgent", "Emergency"],
+                "description": "When a Board decision is needed.",
+            },
+            "source": {"type": "string", "description": "Submitter identifier (defaults to agent name)."},
+            "code_request_url": {"type": "string", "description": "Optional link to an originating Code Request."},
+            "confirm_not_duplicate": {
+                "type": "boolean",
+                "description": "Confirm submission even if potential duplicate proposals exist.",
+            },
+        },
+        required=(
+            "title",
+            "target_repos",
+            "problem",
+            "evidence",
+            "options_considered",
+            "lean",
+            "estimated_cost",
+            "urgency",
+        ),
+        tool="submit_proposal",
+    ),
+    Command(
+        "list-proposals",
+        "list_proposals",
+        "List board proposals with decision labels, meeting consensus links, and outcome badges.",
+        {
+            "state": {
+                "type": "string",
+                "enum": ["open", "decided"],
+                "description": "Filter proposals by state (open or decided).",
+            },
+            "repo": REPO,
+        },
+        tool="list_proposals",
+    ),
 )
 
 BY_CLI: dict[str, Command] = {c.cli: c for c in COMMANDS}

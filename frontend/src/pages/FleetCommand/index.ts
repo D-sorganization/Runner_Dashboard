@@ -5,3 +5,4 @@ export { ActiveWorkPanel } from "./ActiveWorkPanel";
 export { MessagesPanel } from "./MessagesPanel";
 export { ClaimsPanel } from "./ClaimsPanel";
 export { DispatchPanel } from "./DispatchPanel";
+export { ProposalsPanel } from "./ProposalsPanel";

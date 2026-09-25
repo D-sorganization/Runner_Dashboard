@@ -3015,6 +3015,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List board proposals
+         * @description List proposals with decision outcomes and meeting links.
+         */
+        get: operations["list_proposals_api_proposals_get"];
+        put?: never;
+        /**
+         * Submit a proposal to the Board
+         * @description Submit a suggestion to the Board with duplicate check and rate limiting.
+         */
+        post: operations["create_proposal_api_proposals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/proposals/{number}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get proposal detail and Secretary comments
+         * @description Get single proposal details and comments from the Board-Secretary.
+         */
+        get: operations["get_proposal_api_proposals__number__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/providers/registry": {
         parameters: {
             query?: never;
@@ -5989,37 +6033,6 @@ export interface components {
              */
             stack?: string | null;
         };
-        /** CreateProposalRequest */
-        CreateProposalRequest: {
-            /**
-             * Action
-             * @description Name of allowlisted action
-             */
-            action: string;
-            /**
-             * Message Id
-             * @description Originating message ID
-             */
-            message_id: string;
-            /**
-             * Params
-             * @description Action parameters
-             */
-            params?: {
-                [key: string]: unknown;
-            };
-            /**
-             * Risk
-             * @description Risk class (read, low, medium, high, owner-only)
-             * @default low
-             */
-            risk: string;
-            /**
-             * Thread Id
-             * @description Parent thread ID
-             */
-            thread_id: string;
-        };
         /** CreateThreadRequest */
         CreateThreadRequest: {
             /**
@@ -6433,6 +6446,210 @@ export interface components {
              * @default 2
              */
             ttl_hours: number;
+        };
+        /**
+         * ProposalComment
+         * @description A comment on a proposal issue, highlighting Board-Secretary notes.
+         */
+        ProposalComment: {
+            /** Body */
+            body: string;
+            /** Created At */
+            created_at: string;
+            /** Id */
+            id: number;
+            /**
+             * Is Secretary
+             * @default false
+             */
+            is_secretary: boolean;
+            /** User */
+            user: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * ProposalDetail
+         * @description Full detail of a single proposal, including discussion and Board-Secretary comments.
+         */
+        ProposalDetail: {
+            /** Closed At */
+            closed_at?: string | null;
+            /** Code Request Url */
+            code_request_url?: string | null;
+            /** Comments */
+            comments?: components["schemas"]["ProposalComment"][];
+            /**
+             * Comments Count
+             * @default 0
+             */
+            comments_count: number;
+            /** Consensus Url */
+            consensus_url?: string | null;
+            /**
+             * Created At
+             * @default
+             */
+            created_at: string;
+            /** Decision */
+            decision?: string | null;
+            /** Decision Labels */
+            decision_labels?: string[];
+            /**
+             * Estimated Cost
+             * @default
+             */
+            estimated_cost: string;
+            /**
+             * Evidence
+             * @default
+             */
+            evidence: string;
+            /**
+             * Html Url
+             * @default
+             */
+            html_url: string;
+            /**
+             * Lean
+             * @default
+             */
+            lean: string;
+            /** Meeting Date */
+            meeting_date?: string | null;
+            /** Number */
+            number: number;
+            /**
+             * Options Considered
+             * @default
+             */
+            options_considered: string;
+            /**
+             * Problem
+             * @default
+             */
+            problem: string;
+            /**
+             * Source
+             * @default human
+             */
+            source: string;
+            /**
+             * State
+             * @default open
+             */
+            state: string;
+            /** Target Repos */
+            target_repos?: string[];
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * @default
+             */
+            updated_at: string;
+            /**
+             * Urgency
+             * @default
+             */
+            urgency: string;
+        };
+        /**
+         * ProposalItem
+         * @description Summary of a proposal returned in listings.
+         */
+        ProposalItem: {
+            /** Closed At */
+            closed_at?: string | null;
+            /** Code Request Url */
+            code_request_url?: string | null;
+            /**
+             * Comments Count
+             * @default 0
+             */
+            comments_count: number;
+            /** Consensus Url */
+            consensus_url?: string | null;
+            /**
+             * Created At
+             * @default
+             */
+            created_at: string;
+            /** Decision */
+            decision?: string | null;
+            /** Decision Labels */
+            decision_labels?: string[];
+            /**
+             * Estimated Cost
+             * @default
+             */
+            estimated_cost: string;
+            /**
+             * Evidence
+             * @default
+             */
+            evidence: string;
+            /**
+             * Html Url
+             * @default
+             */
+            html_url: string;
+            /**
+             * Lean
+             * @default
+             */
+            lean: string;
+            /** Meeting Date */
+            meeting_date?: string | null;
+            /** Number */
+            number: number;
+            /**
+             * Options Considered
+             * @default
+             */
+            options_considered: string;
+            /**
+             * Problem
+             * @default
+             */
+            problem: string;
+            /**
+             * Source
+             * @default human
+             */
+            source: string;
+            /**
+             * State
+             * @default open
+             */
+            state: string;
+            /** Target Repos */
+            target_repos?: string[];
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * @default
+             */
+            updated_at: string;
+            /**
+             * Urgency
+             * @default
+             */
+            urgency: string;
+        };
+        /**
+         * ProposalsListResponse
+         * @description Response envelope for GET /api/proposals.
+         */
+        ProposalsListResponse: {
+            /** Proposals */
+            proposals?: components["schemas"]["ProposalItem"][];
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
         };
         /** PushKeys */
         PushKeys: {
@@ -7753,6 +7970,74 @@ export interface components {
              * @default 0
              */
             planned: number;
+        };
+        /**
+         * CreateProposalRequest
+         * @description Payload for submitting a suggestion to the Board (POST /api/proposals).
+         */
+        proposals__models__CreateProposalRequest: {
+            /** Code Request Url */
+            code_request_url?: string | null;
+            /**
+             * Confirm Not Duplicate
+             * @default false
+             */
+            confirm_not_duplicate: boolean;
+            /**
+             * Estimated Cost
+             * @enum {string}
+             */
+            estimated_cost: "Low" | "Medium" | "High";
+            /** Evidence */
+            evidence: string;
+            /** Lean */
+            lean: string;
+            /** Options Considered */
+            options_considered: string;
+            /** Problem */
+            problem: string;
+            /** Source */
+            source?: string | null;
+            /** Target Repos */
+            target_repos: string[];
+            /** Title */
+            title: string;
+            /**
+             * Urgency
+             * @enum {string}
+             */
+            urgency: "Routine" | "Urgent" | "Emergency";
+        };
+        /** CreateProposalRequest */
+        routers__staff_proposals__CreateProposalRequest: {
+            /**
+             * Action
+             * @description Name of allowlisted action
+             */
+            action: string;
+            /**
+             * Message Id
+             * @description Originating message ID
+             */
+            message_id: string;
+            /**
+             * Params
+             * @description Action parameters
+             */
+            params?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Risk
+             * @description Risk class (read, low, medium, high, owner-only)
+             * @default low
+             */
+            risk: string;
+            /**
+             * Thread Id
+             * @description Parent thread ID
+             */
+            thread_id: string;
         };
     };
     responses: never;
@@ -11783,6 +12068,104 @@ export interface operations {
             };
         };
     };
+    list_proposals_api_proposals_get: {
+        parameters: {
+            query?: {
+                /** @description Filter by state: open, decided */
+                state?: string | null;
+                /** @description Filter by target repo */
+                repo?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalsListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_proposal_api_proposals_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["proposals__models__CreateProposalRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_proposal_api_proposals__number__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                number: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_provider_registry_api_providers_registry_get: {
         parameters: {
             query?: never;
@@ -14161,7 +14544,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CreateProposalRequest"];
+                "application/json": components["schemas"]["routers__staff_proposals__CreateProposalRequest"];
             };
         };
         responses: {

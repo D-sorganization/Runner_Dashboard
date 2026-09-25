@@ -23,6 +23,10 @@ import type {
   MessageBody,
   PresenceBody,
   PrioritiesResponse,
+  ProposalDetail,
+  ProposalItem,
+  ProposalsResponse,
+  CreateProposalPayload,
   SessionsResponse,
   StaffRunSummary,
   WriteReceipt,
@@ -30,6 +34,7 @@ import type {
 
 export const PRIORITIES_BASE = "/api/priorities";
 export const COORDINATION_BASE = "/api/coordination";
+export const PROPOSALS_BASE = "/api/proposals";
 export const GITHUB_ORG = "D-sorganization";
 export const NOT_AVAILABLE = "Not available on this node.";
 
@@ -41,6 +46,20 @@ function qs(params: Record<string, string | number | undefined | null>): string 
   const text = search.toString();
   return text ? `?${text}` : "";
 }
+
+// ── Proposals ────────────────────────────────────────────────────────────────
+
+export const fetchProposals = (params?: { state?: string; repo?: string }, signal?: AbortSignal) =>
+  apiRequest<ProposalsResponse>(`${PROPOSALS_BASE}${qs(params ?? {})}`, { signal });
+
+export const fetchProposal = (number: number, signal?: AbortSignal) =>
+  apiRequest<ProposalDetail>(`${PROPOSALS_BASE}/${number}`, { signal });
+
+export const createProposal = (payload: CreateProposalPayload) =>
+  apiRequest<ProposalItem>(PROPOSALS_BASE, {
+    method: "POST",
+    body: payload,
+  });
 
 // ── Calls ────────────────────────────────────────────────────────────────────
 
