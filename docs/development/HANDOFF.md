@@ -1,40 +1,61 @@
-# Current handoff — WP-0.1: Resolve staff action role names against the loaded roster (#1474)
+# Current handoff — WP-0.2: Show Board proposals in the owner inbox (#1475)
 
 Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; branch `fix/wp-0.1-resolve-staff-action-roles-1474`; Issue #1474; DL-#1474.
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/wp-0.2-inbox-board-proposals-1475`; Issue #1475; DL-#1475.
 
 ## Objective and Status
 
-- Fix staff role names in `backend/staff/action_executors.py` resolving against loaded roster (WP-0.1, issue #1474):
-  - Defined module constants:
-    - `DEFAULT_REVIEWER_ROLE = "fleet-critic"`
-    - `CODE_REQUEST_OWNER_ROLE = "barb"`
-    - `BOARD_PROPOSAL_ROLE = "board-secretary"`
-  - Updated `execute_review_pr` to use `DEFAULT_REVIEWER_ROLE`.
-  - Updated `execute_code_request_create` to use `CODE_REQUEST_OWNER_ROLE`.
-  - Updated `execute_board_propose` to use `BOARD_PROPOSAL_ROLE`.
-  - Implemented `validate_action_default_roles` checking `load_roles()`: logs a warning without crashing at runtime; raises `ValueError` when `raise_on_error=True` for test failure.
-  - Added unit test suite in `tests/staff/routing_eval/test_action_executor_roles.py`:
-    - Asserts every default role resolves to a dispatchable, non-retired role on dashboard surface.
-    - Asserts `staff.review_pr` with no `reviewer` starts a `fleet-critic` run.
-    - Asserts validation fails loudly on unresolvable roles and logs runtime warnings.
+- Wire Board proposals into the owner inbox (WP-0.2, issue #1475):
+  - Replaced the stub in `backend/staff/inbox.py` with `_collect_board_proposals()` querying `proposals.store.list_github_proposals(state="open")`.
+  - Cached the read with `DEFAULT_CACHE_TTL` (30s) to avoid duplicate GitHub reads.
+  - Filtered out closed proposals and decided proposals (`decision is not None` via `extract_decision_info`).
+  - Mapped each open proposal waiting on a decision to `InboxItem`:
+    - `id`: `board_proposal_{number}`
+    - `source`: `board_proposal`
+    - `title`: proposal issue title
+    - `summary`: problem statement from proposal markdown body
+    - `severity`: mapped from urgency (`Emergency` -> `critical`, `Urgent` -> `high`, `Routine` -> `medium`)
+    - `created_at`: proposal created timestamp
+    - `link`: `/staff/fleet-command?section=proposals`
+    - `metadata`: `kind`, `proposal_number`, `target_repos`, `urgency`, `estimated_cost`, `html_url`.
+  - Maintained fault-tolerant `try/except` setting `sources["board_proposals"]` to `status="unavailable"` on store error without crashing the inbox.
+  - Extracted briefing generation and posting to `backend/staff/briefings.py` to maintain strict $\le 500$-line limit across all files (`inbox.py`: 468 lines, `briefings.py`: 128 lines).
+  - Added Proposals filter pill to frontend `InboxPanel.tsx`.
+  - Added unit test suite in `tests/unit/test_staff_inbox_proposals.py` (RED -> GREEN):
+    - (a) open proposals appear as inbox items and are counted
+    - (b) decided or closed proposals are excluded
+    - (c) store exceptions yield `unavailable` while other sources render cleanly
+    - (d) cached proposals reused within TTL without duplicate calls
   - Verification:
-    - `pytest tests/staff/routing_eval/test_action_executor_roles.py`: 5/5 passed.
-    - `pytest tests/staff/ tests/unit/test_staff_actions.py -q`: 19/19 passed.
-    - `ruff check backend/ clients/` and `ruff format --check backend/ clients/`: clean.
-    - `mypy backend/ --ignore-missing-imports --exclude backend/__pycache__ --no-implicit-optional`: clean (0 issues in 247 source files).
-    - File line counts: `backend/staff/action_executors.py` (279 lines), `tests/staff/routing_eval/test_action_executor_roles.py` (95 lines), both strictly $\le 500$ lines.
+    - `pytest tests/unit/test_staff_inbox_proposals.py`: 4/4 passed.
+    - `pytest tests/unit/ -m "not integration"`: 100% passed (zero failures).
+    - `npm test -- --run` (vitest): 155/155 test files passed (1313 tests passed).
+    - `npm run typecheck`: clean (0 errors).
+    - `ruff check backend/ clients/`: clean.
+    - `ruff format --check backend/ clients/`: clean.
+    - `mypy backend/`: clean (0 issues in 248 source files).
+    - File line counts: `backend/staff/inbox.py` (468), `backend/staff/briefings.py` (128), `tests/unit/test_staff_inbox_proposals.py` (190), `frontend/src/pages/Staff/InboxPanel.tsx` (331) — all strictly $\le 500$ lines.
 
 ## Next Steps
 
-1. Commit and push `fix/wp-0.1-resolve-staff-action-roles-1474`.
-2. Open PR referencing `Fixes #1474` with label `agent:local`.
+1. Commit and push `fix/wp-0.2-inbox-board-proposals-1475`.
+2. Open PR referencing `Fixes #1475` with label `agent:local`.
 3. Enable auto-merge (`gh pr merge --auto --squash`).
 4. Verify CI passes and PR merges to `main`.
-5. Release lease on #1474 and fast-forward local `main`.
+5. Release lease on #1475 and fast-forward local `main`.
+
+---
+
+# Past handoff — WP-0.1: Resolve staff action role names against the loaded roster (#1474)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/wp-0.1-resolve-staff-action-roles-1474`; Issue #1474; DL-#1474; PR #1481 (merged).
 
 ---
 
