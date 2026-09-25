@@ -18,10 +18,21 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1329 · SC-C6: Barb availability: reserved capacity, provider fallback, acknowledgement SLA and degraded mode
-
+### DL-#1318 · SC-D4: Thread view and composer: streaming markdown, @mentions, slash commands, reliable send
 
 - **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1318 (epic #1350 / umbrella #1354)
+- **Branch:** `feat/1318-thread-composer`
+- **Paths:** `frontend/src/pages/StaffConsole/threadTypes.ts`, `frontend/src/pages/StaffConsole/threadMarkdown.tsx`, `frontend/src/pages/StaffConsole/composerUtils.ts`, `frontend/src/pages/StaffConsole/ComposerAutocompletes.tsx`, `frontend/src/pages/StaffConsole/Composer.tsx`, `frontend/src/pages/StaffConsole/MessageItem.tsx`, `frontend/src/pages/StaffConsole/Thread.tsx`, `frontend/src/pages/StaffConsole/useThreadStream.ts`, `frontend/src/pages/StaffConsole/index.ts`, `frontend/src/pages/StaffConsole/__tests__/threadMarkdown.test.tsx`, `frontend/src/pages/StaffConsole/__tests__/Composer.test.tsx`, `frontend/src/pages/StaffConsole/__tests__/Thread.test.tsx`, `frontend/src/pages/StaffConsole/__tests__/useThreadStream.test.ts`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (all 34 StaffConsole tests passed; npm run typecheck passed with 0 errors; ruff check passed; all files strictly <= 500 lines)
+- **Summary:** Implemented SC-D4 Thread view and Composer: (1) Sanitized markdown rendering (`ThreadMarkdown`) with code block copying, link previews for issues/PRs/runs, and strict XSS protection with DOMPurify; (2) Keyboard-first Composer (`Composer`, `ComposerAutocompletes`, `composerUtils`) with @mentions role auto-complete, slash commands (`/dispatch`, `/review`, `/status`, `/hold`, `/brief`), voice input integration, reliable send with idempotent retry (retaining same Idempotency-Key), and per-thread draft persistence; (3) Thread view (`Thread`, `MessageItem`) with date separators across day boundaries, jump-to-unread button, streaming token deltas with stop button, classified error cards with remediation, and SSE reconnection management (`useThreadStream`).
+- **Next step:** Push branch, open PR with Fixes #1318, enable auto-merge, monitor CI to merge, release lease, and clean up worktree.
+
+### DL-#1329 · SC-C6: Barb availability: reserved capacity, provider fallback, acknowledgement SLA and degraded mode
+
+- **State:** shipped
 - **Owner:** antigravity
 - **Issue:** #1329 (epic #1349 / umbrella #1354)
 - **Branch:** `feat/1329-barb-availability`
@@ -29,7 +40,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (all 10 availability tests passed; all 13 chat unit tests passed; all 10 thread API tests passed; mypy passed 0 errors; ruff check passed; black formatting verified; all touched files strictly <= 500 lines)
 - **Summary:** Implemented SC-C6 Barb availability guarantees: (1) Reserved chat capacity for Barb independent of heavy work runs via dedicated `ChatConcurrencyPool` and `StaffRunner._sema` isolation; (2) Provider fallback chain (`claude` -> `codex` -> `claude-ollama` -> `ollama`) with health probes and runtime error fallback; active provider and fallback count recorded in thread and message metadata; (3) Fast acknowledgment SLA (< 3 s) system messages ("On it: routing to ...") emitted immediately upon message submission; (4) Degraded mode when all LLM providers fail or are disabled: deterministic rule-based routing, queued follow-up work item in `WorkItemStore`, clearly labeled explanatory text; (5) Availability metrics (`ack_latency_ms`, `first_token_latency_ms`, `fallback_count`, `degraded_mode_count`) tracked in `AvailabilityMetrics` and exposed on the Board and in `/api/health`.
-- **Next step:** Push branch, open PR with Fixes #1329, enable auto-merge, monitor CI to merge, release lease, and clean up worktree.
+- **Next step:** Shipped in PR #1410.
 
 ### DL-#1317 · SC-D3: Staff roster sidebar: grouped roles, Auto (Barb) entry, status, unread counts, search and pinning
 
