@@ -6215,42 +6215,36 @@ export interface components {
              */
             stack?: string | null;
         };
-        /**
-         * CreateProposalRequest
-         * @description Payload for submitting a suggestion to the Board (POST /api/proposals).
-         */
+        /** CreateProposalRequest */
         CreateProposalRequest: {
-            /** Code Request Url */
-            code_request_url?: string | null;
             /**
-             * Confirm Not Duplicate
-             * @default false
+             * Action
+             * @description Name of allowlisted action
              */
-            confirm_not_duplicate: boolean;
+            action: string;
             /**
-             * Estimated Cost
-             * @enum {string}
+             * Message Id
+             * @description Originating message ID
              */
-            estimated_cost: "Low" | "Medium" | "High";
-            /** Evidence */
-            evidence: string;
-            /** Lean */
-            lean: string;
-            /** Options Considered */
-            options_considered: string;
-            /** Problem */
-            problem: string;
-            /** Source */
-            source?: string | null;
-            /** Target Repos */
-            target_repos: string[];
-            /** Title */
-            title: string;
+            message_id: string;
             /**
-             * Urgency
-             * @enum {string}
+             * Params
+             * @description Action parameters
              */
-            urgency: "Routine" | "Urgent" | "Emergency";
+            params?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Risk
+             * @description Risk class (read, low, medium, high, owner-only)
+             * @default low
+             */
+            risk: string;
+            /**
+             * Thread Id
+             * @description Parent thread ID
+             */
+            thread_id: string;
         };
         /** CreateThreadRequest */
         CreateThreadRequest: {
@@ -8194,36 +8188,42 @@ export interface components {
              */
             planned: number;
         };
-        /** CreateProposalRequest */
-        routers__staff_proposals__CreateProposalRequest: {
+        /**
+         * CreateProposalRequest
+         * @description Payload for submitting a suggestion to the Board (POST /api/proposals).
+         */
+        proposals__models__CreateProposalRequest: {
+            /** Code Request Url */
+            code_request_url?: string | null;
             /**
-             * Action
-             * @description Name of allowlisted action
+             * Confirm Not Duplicate
+             * @default false
              */
-            action: string;
+            confirm_not_duplicate: boolean;
             /**
-             * Message Id
-             * @description Originating message ID
+             * Estimated Cost
+             * @enum {string}
              */
-            message_id: string;
+            estimated_cost: "Low" | "Medium" | "High";
+            /** Evidence */
+            evidence: string;
+            /** Lean */
+            lean: string;
+            /** Options Considered */
+            options_considered: string;
+            /** Problem */
+            problem: string;
+            /** Source */
+            source?: string | null;
+            /** Target Repos */
+            target_repos: string[];
+            /** Title */
+            title: string;
             /**
-             * Params
-             * @description Action parameters
+             * Urgency
+             * @enum {string}
              */
-            params?: {
-                [key: string]: unknown;
-            };
-            /**
-             * Risk
-             * @description Risk class (read, low, medium, high, owner-only)
-             * @default low
-             */
-            risk: string;
-            /**
-             * Thread Id
-             * @description Parent thread ID
-             */
-            thread_id: string;
+            urgency: "Routine" | "Urgent" | "Emergency";
         };
     };
     responses: never;
@@ -12583,7 +12583,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CreateProposalRequest"];
+                "application/json": components["schemas"]["proposals__models__CreateProposalRequest"];
             };
         };
         responses: {
@@ -15016,7 +15016,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["routers__staff_proposals__CreateProposalRequest"];
+                "application/json": components["schemas"]["CreateProposalRequest"];
             };
         };
         responses: {

@@ -1,10 +1,38 @@
-# Current handoff — CR-6: Board routing gate for new/significant Code Requests (#1286)
+# Current handoff — CI: Synchronize generated OpenAPI contract types for Staff and Board proposal requests (#1471)
 
 Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; branch `feat/issue-1286-board-routing-gate`; Issue #1286; DL-#1286.
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/sync-openapi-proposal-schemas-1471`; Issue #1471; DL-#1471.
+
+## Objective and Status
+
+- Restore green CI on `main` following merge of #1286:
+  - Frontend Tests failed at `Verify generated API contract types` (`npm run generate-api:check`) due to schema naming resolution between Staff proposal requests (`CreateProposalRequest`) and Board proposal requests (`proposals__models__CreateProposalRequest`).
+  - Executed `scripts/gen-api-client.sh` using the repository's `.venv` / Python 3.11 environment to align schema keys in `frontend/src/lib/openapi.json` and `frontend/src/lib/api-types.ts`.
+  - Verified `scripts/gen-api-client.sh --check` passes with zero exit code.
+  - Verified `npm run typecheck` passes with 0 errors.
+  - Verified `npm run lint` passes with 0 warnings.
+  - Verified `npm test -- --run` passes (155/155 test files, 1313/1313 tests passed).
+  - Verified `pytest tests/code_requests/` passes (61/61 tests passed).
+  - Verified `ruff check .` passes with 0 errors.
+
+## Next Steps
+
+1. Commit and push `fix/sync-openapi-proposal-schemas-1471`.
+2. Open PR referencing `Closes #1471`.
+3. Enable auto-merge, verify CI passes, and release lease on #1471.
+
+---
+
+# Past handoff — CR-6: Board routing gate for new/significant Code Requests (#1286)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/issue-1286-board-routing-gate`; Issue #1286; DL-#1286; PR #1469 (merged).
 
 ## Objective and Status
 

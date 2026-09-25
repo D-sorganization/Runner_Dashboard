@@ -652,97 +652,36 @@
         "type": "object"
       },
       "CreateProposalRequest": {
-        "description": "Payload for submitting a suggestion to the Board (POST /api/proposals).",
         "properties": {
-          "code_request_url": {
-            "anyOf": [
-              {
-                "maxLength": 500,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Code Request Url"
-          },
-          "confirm_not_duplicate": {
-            "default": false,
-            "title": "Confirm Not Duplicate",
-            "type": "boolean"
-          },
-          "estimated_cost": {
-            "enum": ["Low", "Medium", "High"],
-            "title": "Estimated Cost",
+          "action": {
+            "description": "Name of allowlisted action",
+            "title": "Action",
             "type": "string"
           },
-          "evidence": {
-            "maxLength": 10000,
-            "minLength": 1,
-            "title": "Evidence",
+          "message_id": {
+            "description": "Originating message ID",
+            "title": "Message Id",
             "type": "string"
           },
-          "lean": {
-            "maxLength": 10000,
-            "minLength": 1,
-            "title": "Lean",
+          "params": {
+            "additionalProperties": true,
+            "description": "Action parameters",
+            "title": "Params",
+            "type": "object"
+          },
+          "risk": {
+            "default": "low",
+            "description": "Risk class (read, low, medium, high, owner-only)",
+            "title": "Risk",
             "type": "string"
           },
-          "options_considered": {
-            "maxLength": 10000,
-            "minLength": 1,
-            "title": "Options Considered",
-            "type": "string"
-          },
-          "problem": {
-            "maxLength": 10000,
-            "minLength": 1,
-            "title": "Problem",
-            "type": "string"
-          },
-          "source": {
-            "anyOf": [
-              {
-                "maxLength": 100,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Source"
-          },
-          "target_repos": {
-            "items": {
-              "type": "string"
-            },
-            "maxItems": 10,
-            "minItems": 1,
-            "title": "Target Repos",
-            "type": "array"
-          },
-          "title": {
-            "maxLength": 200,
-            "minLength": 1,
-            "title": "Title",
-            "type": "string"
-          },
-          "urgency": {
-            "enum": ["Routine", "Urgent", "Emergency"],
-            "title": "Urgency",
+          "thread_id": {
+            "description": "Parent thread ID",
+            "title": "Thread Id",
             "type": "string"
           }
         },
-        "required": [
-          "title",
-          "target_repos",
-          "problem",
-          "evidence",
-          "options_considered",
-          "lean",
-          "estimated_cost",
-          "urgency"
-        ],
+        "required": ["message_id", "thread_id", "action"],
         "title": "CreateProposalRequest",
         "type": "object"
       },
@@ -4499,37 +4438,98 @@
         "title": "WorkSummary",
         "type": "object"
       },
-      "routers__staff_proposals__CreateProposalRequest": {
+      "proposals__models__CreateProposalRequest": {
+        "description": "Payload for submitting a suggestion to the Board (POST /api/proposals).",
         "properties": {
-          "action": {
-            "description": "Name of allowlisted action",
-            "title": "Action",
+          "code_request_url": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code Request Url"
+          },
+          "confirm_not_duplicate": {
+            "default": false,
+            "title": "Confirm Not Duplicate",
+            "type": "boolean"
+          },
+          "estimated_cost": {
+            "enum": ["Low", "Medium", "High"],
+            "title": "Estimated Cost",
             "type": "string"
           },
-          "message_id": {
-            "description": "Originating message ID",
-            "title": "Message Id",
+          "evidence": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Evidence",
             "type": "string"
           },
-          "params": {
-            "additionalProperties": true,
-            "description": "Action parameters",
-            "title": "Params",
-            "type": "object"
-          },
-          "risk": {
-            "default": "low",
-            "description": "Risk class (read, low, medium, high, owner-only)",
-            "title": "Risk",
+          "lean": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Lean",
             "type": "string"
           },
-          "thread_id": {
-            "description": "Parent thread ID",
-            "title": "Thread Id",
+          "options_considered": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Options Considered",
+            "type": "string"
+          },
+          "problem": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Problem",
+            "type": "string"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "target_repos": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Target Repos",
+            "type": "array"
+          },
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "urgency": {
+            "enum": ["Routine", "Urgent", "Emergency"],
+            "title": "Urgency",
             "type": "string"
           }
         },
-        "required": ["message_id", "thread_id", "action"],
+        "required": [
+          "title",
+          "target_repos",
+          "problem",
+          "evidence",
+          "options_considered",
+          "lean",
+          "estimated_cost",
+          "urgency"
+        ],
         "title": "CreateProposalRequest",
         "type": "object"
       }
@@ -10382,7 +10382,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CreateProposalRequest"
+                "$ref": "#/components/schemas/proposals__models__CreateProposalRequest"
               }
             }
           },
@@ -14330,7 +14330,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/routers__staff_proposals__CreateProposalRequest"
+                "$ref": "#/components/schemas/CreateProposalRequest"
               }
             }
           },
