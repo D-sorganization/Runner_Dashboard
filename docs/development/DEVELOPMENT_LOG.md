@@ -20,6 +20,7 @@ reachable from any live state and `abandoned` from `parked`.
 
 ### DL-#1329 · SC-C6: Barb availability: reserved capacity, provider fallback, acknowledgement SLA and degraded mode
 
+
 - **State:** in_progress
 - **Owner:** antigravity
 - **Issue:** #1329 (epic #1349 / umbrella #1354)
@@ -29,6 +30,33 @@ reachable from any live state and `abandoned` from `parked`.
 - **Last verified:** 2026-09-25 (all 10 availability tests passed; all 13 chat unit tests passed; all 10 thread API tests passed; mypy passed 0 errors; ruff check passed; black formatting verified; all touched files strictly <= 500 lines)
 - **Summary:** Implemented SC-C6 Barb availability guarantees: (1) Reserved chat capacity for Barb independent of heavy work runs via dedicated `ChatConcurrencyPool` and `StaffRunner._sema` isolation; (2) Provider fallback chain (`claude` -> `codex` -> `claude-ollama` -> `ollama`) with health probes and runtime error fallback; active provider and fallback count recorded in thread and message metadata; (3) Fast acknowledgment SLA (< 3 s) system messages ("On it: routing to ...") emitted immediately upon message submission; (4) Degraded mode when all LLM providers fail or are disabled: deterministic rule-based routing, queued follow-up work item in `WorkItemStore`, clearly labeled explanatory text; (5) Availability metrics (`ack_latency_ms`, `first_token_latency_ms`, `fallback_count`, `degraded_mode_count`) tracked in `AvailabilityMetrics` and exposed on the Board and in `/api/health`.
 - **Next step:** Push branch, open PR with Fixes #1329, enable auto-merge, monitor CI to merge, release lease, and clean up worktree.
+
+### DL-#1317 · SC-D3: Staff roster sidebar: grouped roles, Auto (Barb) entry, status, unread counts, search and pinning
+
+- **State:** shipped
+- **Owner:** antigravity
+- **Issue:** #1317 (epic #1350 / umbrella #1354)
+- **Branch:** `feat/1317-staff-roster-sidebar`
+- **Paths:** `frontend/src/pages/StaffConsole/types.ts`, `frontend/src/pages/StaffConsole/rosterUtils.ts`, `frontend/src/pages/StaffConsole/RosterRow.tsx`, `frontend/src/pages/StaffConsole/RosterGroup.tsx`, `frontend/src/pages/StaffConsole/Roster.tsx`, `frontend/src/pages/StaffConsole/index.ts`, `frontend/src/pages/StaffConsole/__tests__/Roster.test.tsx`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (`npx vitest run frontend/src/pages/StaffConsole/__tests__/Roster.test.tsx` 15 passed; `npm run typecheck` 0 errors; `npm run lint` 0 warnings; all files strictly <= 500 lines)
+- **Summary:** Implemented the Staff Console roster sidebar component (`frontend/src/pages/StaffConsole/Roster.tsx` and modular primitives). Features dedicated top entry for 'Ask Barb (auto-route)'; 4-tier categorical role grouping per SC-D1 (Leadership, Project Managers, Specialists, Operations); live operational status indicators (`idle`, `working`, `needs_you`, `unavailable`, `invalid`) with tooltip explanations for operational blocks (holds, budget limits, unauthenticated provider) and invalid role definitions; real-time search filtering across name, title, and mandate summary; role pinning with local storage persistence and dedicated Pinned section; collapsible group sections; unread count badge and relative-age message preview; network failure fallback retaining previous roster with visible 'Stale Data' badge; and full keyboard navigation (`ArrowUp`/`ArrowDown`, `Enter`/`Space`). Covered by TDD unit tests in `Roster.test.tsx`.
+- **Next step:** Shipped in PR #1411.
+
+### DL-#1301 · SC-D1: UX spec: Staff Console as the landing page and a four-area information architecture
+
+- **State:** shipped
+- **Owner:** antigravity
+- **Issue:** #1301 (epic #1348 / umbrella #1354)
+- **Branch:** `feat/1301-staff-console-ux-spec`
+- **PR:** #1405
+- **Paths:** `docs/design/staff-console.md`, `tests/test_staff_console_design_spec.py`, `backend/staff/chat.py`, `tests/api/test_staff_spend_and_rate_limits.py`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (shipped in PR #1405 via commit 508f4c5; CI green on main)
+- **Summary:** Authored comprehensive UX specification and interaction contract for Staff Console (`docs/design/staff-console.md`) establishing Staff Console as the primary landing page across a four-area information architecture (Staff, Work, Fleet, Settings). Defines 6 core design principles, ASCII wireframes for desktop (three-pane), tablet (collapsible drawer), mobile (single-pane bottom navigation), and first-run empty states. Details structured inline card interactions for action approvals, run records, and error remediation with standardized action verbs and complete failure/lifecycle state catalogue. Covered by TDD test suite `tests/test_staff_console_design_spec.py`.
+- **Next step:** Shipped in PR #1405.
+
+
 
 ### DL-#1326 · SC-G4: Merge the duplicate Reports and Analysis tabs into one Insights section
 
@@ -92,7 +120,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Paths:** `backend/staff/maintenance_detect.py`, `backend/staff/maintenance.py`, `backend/staff/actions.py`, `backend/routers/staff_proposals.py`, `tests/unit/test_staff_maintenance_detect.py`, `tests/api/test_staff_maintenance_detect_api.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (`pytest tests/unit/test_staff_maintenance_detect.py` 9 passed; `pytest tests/api/test_staff_maintenance_detect_api.py` 2 passed; full maintenance suite 39 passed; ruff clean; mypy 0 errors; all files <= 500 lines; CI passed green)
-- **Summary:** Implemented autonomous stalled-job detection and remediation playbooks (`backend/staff/maintenance_detect.py`) for the Fleet Maintenance role. Detectors include queued too long with idle matching runners, running past p95 * 3, runner online but listener log stale, runner offline with assigned job, and ghost runner registrations. Automatically executes low-risk remediations (cancel and rerun, restart wedged listener) and generates action proposals in the Maintenance thread for medium/high-risk actions (run cancel, runner remove) awaiting operator approval. Isolates exceptions per detector, logs SC-A8 audit records, and exposes `POST /api/v1/staff/maintenance/detect-stalled`.
+- **Summary:** Implemented autonomous stalled-job detection and remediation playbooks (`backend/staff/maintenance_detect.py`) for the Fleet Maintenance role. Detectors include queued too long with idle matching runners, running past p95 \* 3, runner online but listener log stale, runner offline with assigned job, and ghost runner registrations. Automatically executes low-risk remediations (cancel and rerun, restart wedged listener) and generates action proposals in the Maintenance thread for medium/high-risk actions (run cancel, runner remove) awaiting operator approval. Isolates exceptions per detector, logs SC-A8 audit records, and exposes `POST /api/v1/staff/maintenance/detect-stalled`.
 - **Next step:** Shipped in PR #1402.
 
 ### DL-#1307 · SC-B4: Chat-turn execution path: fast replies with per-provider session resume, no worktree
