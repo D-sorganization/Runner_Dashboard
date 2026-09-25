@@ -18,17 +18,30 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1493 · SC-B1-G10: Stream chat tokens live instead of after the process exits
+
+- **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1493
+- **Branch:** `feat/1493-live-token-streaming`
+- **Paths:** `backend/staff/chat_streaming.py`, `backend/staff/chat.py`, `tests/unit/test_staff_chat_streaming.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (pytest tests/unit/test_staff_chat_streaming.py clean, all chat suites 57 passed, ruff clean, mypy clean, black clean, all files <= 500 lines)
+- **Summary:** Incrementally read provider CLI stdout via background thread `LiveProcessReader` in `backend/staff/chat_streaming.py`, publishing token events on the ThreadEventBus as they arrive while the process is still running, recording accurate time-to-first-token (TTFT), terminating orphaned processes on cancellation, and maintaining identical reply contract semantics.
+- **Next step:** Push branch, open PR with Fixes #1493, enable auto-merge, verify CI passes.
+
 ### DL-#1479 · K2: knowledge packs in the Staff Console
 
-- **State:** in_review
+- **State:** shipped
 - **Owner:** claude
 - **Issue:** #1479
 - **Branch:** `agy/issue-1479`
+- **PR:** #1512
 - **Paths:** `backend/knowledge_pack/`, `backend/staff/knowledge_refresh.py`, `backend/staff/chat.py`, `backend/staff/chat_knowledge.py`, `backend/routers/staff_v1.py`, `backend/routers/staff_knowledge.py`, `backend/staff/models.py`, `backend/staff/router_models.py`, `deploy/systemd-user/runner-dashboard-knowledge.service`, `deploy/systemd-user/runner-dashboard-knowledge.timer`, `frontend/src/lib/api-types.ts`, `frontend/src/lib/openapi.json`, `frontend/src/pages/StaffConsole/Roster.tsx`, `frontend/src/pages/StaffConsole/rosterUtils.ts`, `frontend/src/pages/StaffConsole/types.ts`, `tests/api/test_staff_knowledge_api.py`, `tests/knowledge/test_knowledge_pack_drift.py`, `tests/staff/routing_eval/dataset.py`, `tests/unit/test_knowledge_refresh.py`, `tests/unit/test_staff_chat_knowledge.py`
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (review cleanup: reverted ruff-exclude weakening, rebuilt SPEC.md diff to a single change-log row, split knowledge injection out of `chat.py` into `chat_knowledge.py` and the two knowledge endpoints out of `staff_v1.py` into `staff_knowledge.py` to clear the 500-line cap, deduplicated pack-staleness logic into `knowledge_refresh.pack_is_stale`; `pytest tests/api/test_staff_knowledge_api.py tests/knowledge tests/unit/test_knowledge_refresh.py tests/unit/test_staff_chat_knowledge.py tests/unit/test_staff_chat*.py tests/staff/routing_eval` 63 passed/2 skipped; `mypy backend/` clean; `ruff check`/`ruff format --check` clean on backend/ and tests/; all touched backend files <= 500 lines)
 - **Summary:** Vendored knowledge engine from Tools at pinned commit 09ff428af314969363f8908dcebafb84ddd7a3ef with drift test; added user systemd service and timer for pack refresh along with backend/staff/knowledge_refresh.py module; integrated retrieval-augmented chat turns for roles with search_knowledge tool injecting cited ## Knowledge block (now in `staff/chat_knowledge.py`); added GET /api/v1/staff/knowledge/{pack_id} and GET /api/v1/staff/knowledge/{pack_id}/search Pydantic endpoints (now in `routers/staff_knowledge.py`, mounted into `staff_v1.router`) and updated OpenAPI contract; added advisors roster group for disciple and vision-quest with routing keyword rules and eval dataset test cases.
-- **Next step:** Push branch; PR stays draft pending owner review.
+- **Next step:** None (shipped in PR #1512).
 
 ### DL-#1513 · Restore green main: synchronize generated OpenAPI schema and TypeScript definitions for SC-B9 group threads
 
@@ -1563,6 +1576,17 @@ reachable from any live state and `abandoned` from `parked`.
 ## Shipped (Last 90 Days)
 
 Entries stay here for 90 days after merge, then move to the archive.
+
+### DL-#1513 · Restore green main: synchronize generated OpenAPI schema and TypeScript definitions for SC-B9 group threads
+
+- **State:** shipped
+- **Owner:** antigravity
+- **PR:** #1515, #1519
+- **Paths:** `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Shipped:** 2026-09-25
+- **Summary:** Aligned `frontend/src/lib/openapi.json` and `frontend/src/lib/api-types.ts` via `scripts/gen-api-client.sh` under Python 3.11 to capture `/api/v1/staff/groups/{group_id}/threads` and disambiguate `proposals__models__CreateProposalRequest`, restoring green main across all CI workflows.
+
 
 ## Archive
 

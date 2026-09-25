@@ -1,10 +1,41 @@
-# Current handoff — K2: knowledge packs in the Staff Console (#1479)
+# Current handoff — SC-B1-G10: Stream chat tokens live instead of after the process exits (#1493)
 
 Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; branch `agy/issue-1479`; Issue #1479; DL-#1479.
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1493-live-token-streaming`; DL-#1493; Issue #1493; PR #1520.
+
+## Objective and Status
+
+- Stream chat tokens live instead of post-hoc after process exit (SC-B1-G10, Issue #1493):
+  - In `backend/staff/chat_streaming.py`, implemented `LiveProcessReader` to incrementally read subprocess stdout lines via background thread into an `asyncio.Queue` and concurrently capture stderr and returncode.
+  - Implemented `stream_turn_output` in `backend/staff/chat_streaming.py` returning `TurnStreamOutput(stdout_lines, stderr_lines, returncode, session_id, t_first_token, deltas)`, publishing token deltas live on `ThreadEventBus` as each stdout line arrives while the process is still running.
+  - Updated `backend/staff/chat.py` `ChatTurnRunner._run_turn_attempt` to use `stream_turn_output` and delegated `_spawn_cli_process` to `spawn_cli_process` in `chat_streaming.py`.
+  - Terminate running subprocesses on async cancellation.
+  - Added dedicated unit tests in `tests/unit/test_staff_chat_streaming.py` (verifying token arrival before process exit with delayed chunk generator, non-zero exit code failure handling, process kill on task cancellation, and bytes decoding).
+  - All source and test files strictly $\le 500$ lines (`chat.py` 476 lines, `chat_streaming.py` 178 lines, `test_staff_chat_streaming.py` 243 lines).
+  - Verification:
+    - Pytest `tests/unit/test_staff_chat_streaming.py tests/unit/test_staff_chat.py tests/unit/test_staff_chat_capacity.py tests/unit/test_staff_chat_read_only.py tests/unit/test_staff_availability.py tests/api/test_staff_chat_turns.py`: 57/57 passed.
+    - `ruff check`: clean (0 errors).
+    - `ruff format`: clean.
+    - `mypy`: clean (0 errors).
+
+## Next Steps
+
+1. Push rebased branch `feat/1493-live-token-streaming`.
+2. Monitor PR #1520 CI checks until merged.
+3. Release agent lease for #1493 via `scripts.release_agent_lease`.
+
+---
+
+# Past handoff — K2: knowledge packs in the Staff Console (#1479)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `agy/issue-1479`; Issue #1479; DL-#1479; PR #1512 (merged).
 
 ## Objective and Status
 
@@ -20,11 +51,39 @@ Last updated: 2026-09-25
     - `ruff check backend/ tests/` and `ruff format --check backend/ tests/`: clean.
     - File line caps: all touched backend files <= 500 lines (`chat.py` 496, `chat_knowledge.py` 69, `staff_v1.py` 441, `staff_knowledge.py` 100, `knowledge_refresh.py` 192).
 
+---
+
+# Past handoff — Restore green main: synchronize generated OpenAPI schema and TypeScript definitions for SC-B9 group threads
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1493-live-token-streaming`; DL-#1493; Issue #1493.
+
+## Objective and Status
+
+- Stream chat tokens live instead of post-hoc after process exit (SC-B1-G10, Issue #1493):
+  - In `backend/staff/chat_streaming.py`, implemented `LiveProcessReader` to incrementally read subprocess stdout lines via background thread into an `asyncio.Queue` and concurrently capture stderr and returncode.
+  - Implemented `stream_turn_output` in `backend/staff/chat_streaming.py` returning `TurnStreamOutput(stdout_lines, stderr_lines, returncode, session_id, t_first_token, deltas)`, publishing token deltas live on `ThreadEventBus` as each stdout line arrives while the process is still running.
+  - Updated `backend/staff/chat.py` `ChatTurnRunner._run_turn_attempt` to use `stream_turn_output` and delegated `_spawn_cli_process` to `spawn_cli_process` in `chat_streaming.py`.
+  - Terminate running subprocesses on async cancellation.
+  - Added dedicated unit tests in `tests/unit/test_staff_chat_streaming.py` (verifying token arrival before process exit with delayed chunk generator, non-zero exit code failure handling, process kill on task cancellation, and bytes decoding).
+  - All source and test files strictly $\le 500$ lines (`chat.py` 492 lines, `chat_streaming.py` 182 lines, `test_staff_chat_streaming.py` 281 lines).
+  - Verification:
+    - Pytest `tests/unit/test_staff_chat_streaming.py tests/unit/test_staff_chat.py tests/unit/test_staff_chat_capacity.py tests/unit/test_staff_chat_read_only.py tests/unit/test_staff_availability.py tests/api/test_staff_chat_turns.py`: 57/57 passed.
+    - `ruff check`: clean (0 errors).
+    - `ruff format`: clean.
+    - `black --check`: clean.
+    - `mypy`: clean (0 errors).
+
 ## Next Steps
 
-1. Push branch `agy/issue-1479`.
-2. Ensure PR #1512 CI checks pass.
-3. Squash-merge to main, release lease, and clean up.
+1. Push branch `feat/1493-live-token-streaming`.
+2. Open PR referencing `Fixes #1493` with label `agent:antigravity`.
+3. Enable auto-merge (`gh pr merge --auto --squash`).
+4. Monitor CI checks until PR merges.
+5. Release agent lease for #1493 via `scripts.release_agent_lease`.
 
 ---
 
@@ -34,7 +93,7 @@ Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; branch `fix/restore-green-main-openapi-contract-drift`; DL-#1513.
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/restore-green-main-openapi-contract-drift`; DL-#1513; PR #1515, #1519 (merged).
 
 ## Objective and Status
 
