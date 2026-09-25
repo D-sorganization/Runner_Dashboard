@@ -26,6 +26,7 @@ PUSH_TOPICS = frozenset(
         "ci.failed",
         "runner.offline",
         "queue.stale",
+        "staff.escalation",
     }
 )
 MAX_PUSH_PAYLOAD_BYTES = 4096

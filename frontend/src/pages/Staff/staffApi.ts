@@ -295,3 +295,40 @@ export const STREAM_EVENT_KINDS: readonly string[] = [
   "status",
   "log",
 ];
+
+// ── SC-C5: Waiting on you inbox & Barb briefings ────────────────────────────
+
+export interface WaitingOnYouInboxPayload {
+  count: number;
+  counts: Record<string, number>;
+  items: Array<{
+    id: string;
+    category: string;
+    title: string;
+    summary: string;
+    source: string;
+    severity: "critical" | "high" | "medium" | "low";
+    action_url?: string | null;
+    thread_id?: string | null;
+    created_at: string;
+    metadata?: Record<string, unknown>;
+  }>;
+  sources: Record<string, { status: "ok" | "unavailable"; count: number; error?: string }>;
+}
+
+export async function fetchWaitingOnYouInbox(): Promise<WaitingOnYouInboxPayload> {
+  return apiRequest<WaitingOnYouInboxPayload>("/api/v1/staff/inbox");
+}
+
+export async function requestBarbBriefing(period: string = "on_demand"): Promise<{
+  ok: boolean;
+  message_id: string;
+  thread_id: string;
+  briefing_md: string;
+}> {
+  return apiRequest("/api/v1/staff/briefing", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ period }),
+  });
+}

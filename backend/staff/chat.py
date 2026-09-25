@@ -140,6 +140,23 @@ class ChatTurnRunner:
         user_msg = self.conv_store.get_message(user_message_id)
         prompt_text = user_msg.body_md if user_msg else ""
 
+        if prompt_text.strip().lower() == "/brief":
+            from staff.inbox import collect_waiting_on_you_inbox, generate_barb_briefing
+
+            inbox_data = await collect_waiting_on_you_inbox()
+            brief_text = generate_barb_briefing(period="on_demand", inbox_data=inbox_data)
+            self.conv_store.update_message(
+                placeholder_id,
+                body_md=brief_text,
+                kind="text",
+                delivery="complete",
+                meta={"kind": "briefing", "command": "/brief"},
+            )
+            bus = get_thread_bus()
+            await bus.publish(thread_id, "token", {"token": brief_text, "message_id": placeholder_id})
+            await bus.publish(thread_id, "complete", {"message_id": placeholder_id})
+            return ChatTurnResult(ok=True, reply=brief_text)
+
         acquired = self.pool.try_acquire(role_name)
         if not acquired:
             log.warning(

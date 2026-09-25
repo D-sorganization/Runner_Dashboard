@@ -18,9 +18,33 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1319 · SC-D5: Action, run, hand-off, and review cards embedded in conversation threads
+### DL-#1328 · SC-C5: "Waiting on you" inbox and Barb briefings inside the dashboard
 
 - **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1328 (epic #1349 / umbrella #1354)
+- **Branch:** `feat/1328-waiting-on-you-inbox-briefings`
+- **Paths:** `backend/staff/inbox.py`, `backend/staff/push_notifications.py`, `backend/push.py`, `backend/routers/staff_threads.py`, `backend/staff/chat.py`, `frontend/src/pages/StaffConsole/inboxTypes.ts`, `frontend/src/pages/StaffConsole/inboxPanel.css`, `frontend/src/pages/StaffConsole/InboxPanel.tsx`, `frontend/src/pages/StaffConsole/index.ts`, `frontend/src/pages/Staff/staffApi.ts`, `tests/api/test_staff_inbox.py`, `frontend/src/pages/StaffConsole/__tests__/InboxPanel.test.tsx`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (all 17 pytest inbox/threads tests passed; all 66 Vitest StaffConsole tests passed; npm run typecheck passed 0 errors; npm run lint passed 0 warnings; ruff check passed; mypy passed 0 errors; all touched files strictly <= 500 lines)
+- **Summary:** Implemented SC-C5 "Waiting on you" inbox and Barb briefings: (1) Aggregated 6 distinct waiting sources (`approvals`, `questions`, `escalations`, `project_decisions`, `board_proposals`, `auth_signins`) in `backend/staff/inbox.py` with source error isolation and 5s TTL caching; (2) Scheduled Barb briefing generator with configurable periods and `/brief` slash command execution creating thread messages; (3) Web push notification pipeline for `staff.escalation` with deep links to affected threads; (4) Frontend `InboxPanel` with category tabs, total count badge, /brief trigger, unavailable source banner, copyable login commands, and theme token styling.
+- **Next step:** Push branch, open PR with Fixes #1328, enable auto-merge, monitor CI to merge, release lease, and clean up worktree.
+
+### DL-#1320 · SC-D6: Context pane: role details, schedule on/off and holds, budget, active work, and thread links
+
+- **State:** shipped
+- **Owner:** antigravity
+- **Issue:** #1320 (epic #1350 / umbrella #1354)
+- **Branch:** `feat/1320-context-pane`
+- **Paths:** `frontend/src/pages/StaffConsole/ContextPane.tsx`, `frontend/src/pages/StaffConsole/contextPane.css`, `frontend/src/pages/StaffConsole/index.ts`, `frontend/src/pages/Staff/staffApi.ts`, `frontend/src/pages/StaffConsole/__tests__/ContextPane.test.tsx`, `backend/routers/staff.py`, `backend/routers/staff_roles.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (all 59 StaffConsole unit tests passed; npm run typecheck passed with 0 errors; npm run lint passed with 0 warnings; pytest tests passed; all files strictly <= 500 lines)
+- **Summary:** Implemented SC-D6 Context pane in Staff Console: role details, provider login status, budget/spend, active runs, recent work items, and schedule enable/disable toggle with `PUT /api/v1/staff/roles/{role}/schedule`.
+- **Next step:** Shipped in PR #1420.
+
+### DL-#1319 · SC-D5: Action, run, hand-off, and review cards embedded in conversation threads
+
+- **State:** shipped
 - **Owner:** antigravity
 - **Issue:** #1319 (epic #1350 / umbrella #1354)
 - **Branch:** `feat/1319-thread-cards`
@@ -28,7 +52,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (all 55 StaffConsole unit tests passed; npm run typecheck passed with 0 errors; npm run lint passed with 0 warnings; pytest test_frontend_integrity passed 72 tests; all touched files strictly <= 500 lines)
 - **Summary:** Implemented SC-D5 Action, run, hand-off, and review cards embedded in conversation threads: (1) `ActionCard`: action target, risk badge (`read`/`low`/`medium`/`high`/`critical`/`owner-only`), expandable parameters view, double-click idempotency protection executing once, decision history display, and stale proposal expiration guard (24h limit) disabling actions; (2) `RunCard`: live status indicator (`queued`/`running`/`completed`/`failed`/`cancelled`), node host, provider model, elapsed duration, expandable log tail with toggle, Cancel CTA, and deep links to run page and GitHub PR; (3) `HandoffCard`: routing transition ("Barb → Specialist"), rationale, and interactive specialist re-route selection; (4) `ReviewCard`: PR reference, verdict badge (`APPROVED`/`CHANGES_REQUESTED`/`COMMENTED`), review summary, and key findings list; (5) `ErrorCard`: classified failure display mapping `failure_class` to plain-language cause, highlighted remediation instructions, node badge, and retry CTA; (6) `MessageItem` & `Thread` routing: dynamic card dispatch based on message kind with full callback forwarding.
-- **Next step:** Push branch, open PR with Fixes #1319, enable auto-merge, monitor CI to merge, release lease, and clean up worktree.
+- **Next step:** Shipped in PR #1417.
 
 ### DL-#1318 · SC-D4: Thread view and composer: streaming markdown, @mentions, slash commands, reliable send
 

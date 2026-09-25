@@ -1,43 +1,51 @@
-# Current handoff — SC-D5: Action, run, hand-off, and review cards embedded in conversation threads (#1319)
+# Current handoff — SC-C5: "Waiting on you" inbox and Barb briefings inside dashboard (#1328)
 
 Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1319-thread-cards`; Issue #1319; DL-#1319.
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1328-waiting-on-you-inbox-briefings`; Issue #1328; DL-#1328.
 
 ## Objective and Status
 
-- SC-D5: Make the things staff do visible and controllable right in the conversation.
-- Action card: what will happen, target, risk badge (`read`/`low`/`medium`/`high`/`critical`/`owner-only`), Approve / Deny buttons, parameter inspection, decision history, double-click idempotency protection, and stale/expired (24h limit) action lock.
-- Run card: live status badge (`queued`/`running`/`completed`/`failed`/`cancelled`), node, provider, elapsed duration, expandable log tail with toggle, Cancel button, and deep links to run page and PR.
-- Hand-off card: "Barb → Specialist" with reason and "Send to someone else" alternative specialist re-route selection.
-- Review card: PR, verdict badge (`APPROVED`/`CHANGES_REQUESTED`/`COMMENTED`), summary, and key findings.
-- Error card: plain-language cause from `failure_class`, remediation instructions, node badge, and retry CTA.
-- Status: Fully implemented with strict TDD; all 55 StaffConsole unit tests passing; `npm run typecheck` 0 errors; `npm run lint` 0 warnings; `pytest tests/test_frontend_integrity.py` 72 passed; all files strictly <= 500 lines.
+- SC-C5: "Waiting on you" inbox and Barb briefings inside the dashboard.
+- Aggregated waiting items across 6 sources:
+  1. Approvals awaiting operator decision (`ActionProposalStore`).
+  2. Needs-input questions (`RunStore` runs with `status="needs_input"` or questions).
+  3. Escalated work items (`WorkItemStore` items with `state="escalated"`).
+  4. Pending project decisions (`backend/priorities/`).
+  5. Unvoted board proposals (`backend/coordination/`).
+  6. Missing CLI provider logins (`backend/staff/models.py`).
+- Barb briefings scheduled for morning (09:00), midday (13:00), evening (17:00), on-demand via `/brief` slash command, and via `POST /api/v1/staff/briefing`.
+- Push notifications strictly for critical escalations with deep links (`backend/staff/push_notifications.py`).
+- Frontend `InboxPanel` with category filters, badge counts, copyable auth sign-in commands, and `/brief` trigger.
+- Status: Fully implemented with strict TDD; 17 pytest tests passing; 66 Vitest unit tests passing; `npm run typecheck` 0 errors; `npm run lint` 0 warnings; ruff & mypy 0 errors; all files strictly <= 500 lines.
 
 ## Files and Decisions
 
-- `frontend/src/pages/StaffConsole/cards/cardTypes.ts` (86 lines):
-  - Defines `ActionProposalData`, `ActionRiskLevel`, `ProposalStatus`, `RunCardData`, `RunStatus`, `HandoffCardData`, `ReviewCardData`, `ReviewVerdict`, `ErrorCardData`.
-- `frontend/src/pages/StaffConsole/cards/ActionCard.tsx` (217 lines):
-  - Action card rendering with risk color coding, target, description, parameters toggle viewer, double-click protection executing once, decision status banner, and 24h expiration lock.
-- `frontend/src/pages/StaffConsole/cards/RunCard.tsx` (181 lines):
-  - Run card rendering live status badge, node, provider, formatted elapsed duration, expandable log tail with toggle, cancel CTA, and deep links.
-- `frontend/src/pages/StaffConsole/cards/HandoffCard.tsx` (91 lines):
-  - Handoff card rendering routing transition, rationale, and alternative specialist selection.
-- `frontend/src/pages/StaffConsole/cards/ReviewCard.tsx` (102 lines):
-  - Review findings card with PR reference, verdict badge, summary, and key findings list.
-- `frontend/src/pages/StaffConsole/cards/ErrorCard.tsx` (122 lines):
-  - Classified failure card mapping `failure_class` to human titles with remediation block, node badge, and retry CTA.
-- `frontend/src/pages/StaffConsole/cards/cards.css` (23 lines):
-  - CSS styling for card hover states and box sizing.
-- `frontend/src/pages/StaffConsole/cards/index.ts` (12 lines):
-  - Re-exports card components and types.
-- `frontend/src/pages/StaffConsole/MessageItem.tsx` (255 lines):
-  - Dispatches message rendering based on `message.kind`: `"proposal"` -> `ActionCard`, `"run"` -> `RunCard`, `"handoff"` -> `HandoffCard`, `"review"` -> `ReviewCard`, `"error"` / failed -> `ErrorCard`, default -> `ThreadMarkdown`.
-- `frontend/src/pages/StaffConsole/Thread.tsx` (254 lines):
-  - Forwards `onApproveProposal`, `onDenyProposal`, `onCancelRun`, `onRerouteHandoff` callbacks through to `MessageItem`.
+- `backend/staff/inbox.py` (396 lines):
+  - 6-source waiting collector with graceful degradation and TTL caching (`collect_waiting_on_you_inbox`).
+  - Barb briefing generation (`generate_barb_briefing`) and message posting (`post_barb_briefing`).
+- `backend/staff/push_notifications.py` (43 lines):
+  - Sends web push notifications for `staff.escalation` events only with deep links.
+- `backend/push.py` (72 lines):
+  - Added `staff.escalation` to `PUSH_TOPICS`.
+- `backend/routers/staff_threads.py` (488 lines):
+  - Integrated `collect_waiting_on_you_inbox` in `get_inbox` endpoint and added `POST /api/v1/staff/briefing`.
+- `backend/staff/chat.py` (495 lines):
+  - Added `/brief` slash command interceptor generating live on-demand briefings.
+- `frontend/src/pages/StaffConsole/inboxTypes.ts` (34 lines):
+  - Typed contracts for waiting items, categories, and source statuses.
+- `frontend/src/pages/StaffConsole/inboxPanel.css` (88 lines):
+  - Themed styles using CSS tokens without hardcoded hex colors.
+- `frontend/src/pages/StaffConsole/InboxPanel.tsx` (268 lines):
+  - Filterable waiting-on-you inbox panel with `/brief` action and login copy helpers.
+- `frontend/src/pages/Staff/staffApi.ts` (335 lines):
+  - `fetchWaitingOnYouInbox` and `requestBarbBriefing` API clients.
+- `tests/api/test_staff_inbox.py` (377 lines):
+  - 7 unit tests covering all 6 sources, degradation, briefing generation, push notifications, and `/brief` slash command.
+- `frontend/src/pages/StaffConsole/__tests__/InboxPanel.test.tsx` (186 lines):
+  - 7 Vitest tests covering rendering, category tabs, filter counts, error handling, copy login command, and /brief trigger.
 - `frontend/src/pages/StaffConsole/threadTypes.ts` (110 lines):
   - Added optional card interaction callbacks to `ThreadProps`.
 - `frontend/src/pages/StaffConsole/threadMarkdown.tsx` (143 lines):
