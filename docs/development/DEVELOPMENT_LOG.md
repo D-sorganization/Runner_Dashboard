@@ -31,17 +31,43 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** Runner_Dashboard half of the agent-org gap analysis: work packages for role-name resolution, board proposals in the inbox, a post-run verification step, `/api/staff/outcomes`, and code-reviewer runtime support, then CR-4..CR-8 role bindings.
 - **Next step:** Dispatch #1474 and #1475 (approved Phase 0) to CLI-tier agents.
 
-### DL-#1286 · CR-6: Board routing gate for new/significant Code Requests
+### DL-#1287 · CR-5: Executor stage — route planned issues to cheaper agents with claims, escalation and rollup
 
 - **State:** in_progress
 - **Owner:** antigravity
+- **Issue:** #1287
+- **Branch:** `feat/cr-5-executor-stage-1287`
+- **Paths:** `backend/code_requests/executor_models.py`, `backend/code_requests/executor_router.py`, `backend/code_requests/executor_coordination.py`, `backend/code_requests/executor_stage.py`, `backend/routers/code_requests_executor.py`, `backend/server.py`, `tests/code_requests/test_executor_stage.py`, `tests/code_requests/test_executor_routes.py`, `frontend/src/lib/api-types.ts`, `frontend/src/lib/openapi.json`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (pytest 83/83 passed in tests/code_requests/ across test_executor_stage and test_executor_routes; vitest 1313/1313 passed; npm run generate-api:check exit 0; npm run typecheck 0 errors; npm run lint 0 warnings; ruff check clean; all files <= 500 lines)
+- **Summary:** Implemented CR-5 Executor stage: (1) Execution models and tier classification (`ollama`, `cli`, `strong`) with task class mappings and profile routing; (2) Multi-agent coordination with roster priority (`user > maxwell-daemon > claude > codex > conductor > jules > local > gaai`), claim checking, lease acquisition with 2h TTL, and PR metadata generation; (3) Wave-based dependency scheduler with topological acyclic ordering and per-repo concurrency caps; (4) Retries, failure tier escalation after 2 failures, human triage pausing (`needs-human-triage`) upon strong exhaustion, downstream dependency blocking; (5) Endpoints for initialization, dispatch, child reporting, and rollup mounted in `backend/routers/code_requests_executor.py`.
+- **Next step:** Commit, push, open PR, enable auto-merge, verify CI passes, and release lease.
+
+### DL-#1471 · CI: Synchronize generated OpenAPI contract types for Staff and Board proposal requests
+
+- **State:** shipped
+- **Owner:** antigravity
+- **Issue:** #1471
+- **Branch:** `fix/sync-openapi-proposal-schemas-1471`
+- **PR:** #1473
+- **Paths:** `scripts/gen-api-client.sh`, `frontend/src/lib/api-types.ts`, `frontend/src/lib/openapi.json`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (`npm run generate-api:check` exit 0, `npm run typecheck` 0 errors, `npm run lint` 0 warnings, vitest 1313/1313 passed, pytest 61/61 code requests passed, ruff clean)
+- **Summary:** Synchronized generated OpenAPI schema and TypeScript definitions for Staff proposals and Board proposals (`CreateProposalRequest` schema naming mapping in `frontend/src/lib/openapi.json` and `frontend/src/lib/api-types.ts`), ensuring `scripts/gen-api-client.sh --check` passes cleanly in CI.
+- **Next step:** None (shipped in PR #1473).
+
+### DL-#1286 · CR-6: Board routing gate for new/significant Code Requests
+
+- **State:** shipped
+- **Owner:** antigravity
 - **Issue:** #1286
 - **Branch:** `feat/issue-1286-board-routing-gate`
+- **PR:** #1469
 - **Paths:** `backend/code_requests/board_gate.py`, `backend/routers/code_requests_board.py`, `backend/server.py`, `tests/code_requests/test_board_gate.py`, `tests/code_requests/test_board_gate_routes.py`, `frontend/src/lib/api-types.ts`, `frontend/src/lib/openapi.json`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (pytest 33/33 passed across test_board_gate and test_board_gate_routes; 61/61 passed across tests/code_requests/; vitest 1309/1309 passed; ruff check and format clean; mypy clean; line cap check <= 500 lines passed)
 - **Summary:** Implemented Board routing gate for Code Requests evaluating 7 architectural criteria, confidential InEnTec data egress user sign-off check, operator overrides (`force_board` / `skip_board`) requiring `operator` role and reason, automatic proposal creation via CR-7 proposal API, decision syncing (`board:accepted`, `board:declined`, `board:deferred`), and escalation deadline checks. Mounted endpoints in `backend/routers/code_requests_board.py` and `backend/server.py`.
-- **Next step:** Commit, open PR, pass CI, auto-merge, release lease.
+- **Next step:** None (shipped in PR #1469).
 
 ### DL-#1330 · SC-D11: Fold the three stray chat surfaces (Maxwell chat, Codebase chat, legacy assistant sidebar) into the Staff Console
 

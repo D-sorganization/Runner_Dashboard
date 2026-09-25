@@ -1225,6 +1225,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/code-requests/{id}/executor/dispatch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dispatch Executor
+         * @description Dispatch ready children in the current wave.
+         */
+        post: operations["dispatch_executor_api_code_requests__id__executor_dispatch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/code-requests/{id}/executor/initialize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Initialize Executor
+         * @description Initialize the executor pipeline with a list of planned child issues.
+         */
+        post: operations["initialize_executor_api_code_requests__id__executor_initialize_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/code-requests/{id}/executor/report-child": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report Child Status
+         * @description Report progress, PR, CI or failure event on a child issue.
+         */
+        post: operations["report_child_status_api_code_requests__id__executor_report_child_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/code-requests/{id}/executor/rollup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Executor Rollup
+         * @description Get the current aggregate status rollup for a Code Request plan.
+         */
+        get: operations["get_executor_rollup_api_code_requests__id__executor_rollup_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/code-requests/{id}/route-to-board": {
         parameters: {
             query?: never;
@@ -6134,6 +6214,116 @@ export interface components {
             spent_usd: number;
         };
         /**
+         * ChildExecutionRecord
+         * @description Runtime tracking record for one planned child issue.
+         */
+        ChildExecutionRecord: {
+            /** Agent */
+            agent?: string | null;
+            /**
+             * Attempts
+             * @default 0
+             */
+            attempts: number;
+            /**
+             * Complexity
+             * @default routine
+             */
+            complexity: string;
+            /**
+             * Cost
+             * @default 0
+             */
+            cost: number;
+            /** Dependencies */
+            dependencies?: string[];
+            /** Error Reasons */
+            error_reasons?: string[];
+            /** Escalation History */
+            escalation_history?: string[];
+            /**
+             * Handoff
+             * @default
+             */
+            handoff: string;
+            /** Issue Number */
+            issue_number?: number | null;
+            /** Key */
+            key: string;
+            /** Lease Receipt */
+            lease_receipt?: string | null;
+            /** Pr Number */
+            pr_number?: number | null;
+            /** Pr Status */
+            pr_status?: string | null;
+            /** Repository */
+            repository: string;
+            /** @default queued */
+            state: components["schemas"]["ChildExecutionState"];
+            /**
+             * Task Class
+             * @default feature
+             */
+            task_class: string;
+            /** @default ollama */
+            tier: components["schemas"]["ExecutorTier"];
+            /** Title */
+            title: string;
+            /**
+             * Turnover Doc
+             * @default
+             */
+            turnover_doc: string;
+            /**
+             * Wave
+             * @default 0
+             */
+            wave: number;
+        };
+        /**
+         * ChildExecutionState
+         * @description Execution lifecycle state of a child issue in a plan.
+         * @enum {string}
+         */
+        ChildExecutionState: "queued" | "claimed" | "pr_open" | "ci" | "merged" | "failed" | "blocked" | "paused_for_human";
+        /**
+         * ChildIssuePayload
+         * @description Input payload to register or plan a child issue.
+         */
+        ChildIssuePayload: {
+            /** Acceptance Criteria */
+            acceptance_criteria?: string[];
+            /**
+             * Complexity
+             * @default routine
+             */
+            complexity: string;
+            /** Dependencies */
+            dependencies?: string[];
+            /** File Scope */
+            file_scope?: string[];
+            /** Issue Number */
+            issue_number?: number | null;
+            /** Key */
+            key: string;
+            /** Repository */
+            repository: string;
+            /**
+             * Task Class
+             * @default feature
+             */
+            task_class: string;
+            /** @default ollama */
+            tier: components["schemas"]["ExecutorTier"];
+            /** Title */
+            title: string;
+            /**
+             * Turnover Doc
+             * @default
+             */
+            turnover_doc: string;
+        };
+        /**
          * ClaimBody
          * @description Lease ``repo#issue`` for ``agent``; 409 when another agent holds it.
          */
@@ -6214,43 +6404,6 @@ export interface components {
              * @description Error stack trace
              */
             stack?: string | null;
-        };
-        /**
-         * CreateProposalRequest
-         * @description Payload for submitting a suggestion to the Board (POST /api/proposals).
-         */
-        CreateProposalRequest: {
-            /** Code Request Url */
-            code_request_url?: string | null;
-            /**
-             * Confirm Not Duplicate
-             * @default false
-             */
-            confirm_not_duplicate: boolean;
-            /**
-             * Estimated Cost
-             * @enum {string}
-             */
-            estimated_cost: "Low" | "Medium" | "High";
-            /** Evidence */
-            evidence: string;
-            /** Lean */
-            lean: string;
-            /** Options Considered */
-            options_considered: string;
-            /** Problem */
-            problem: string;
-            /** Source */
-            source?: string | null;
-            /** Target Repos */
-            target_repos: string[];
-            /** Title */
-            title: string;
-            /**
-             * Urgency
-             * @enum {string}
-             */
-            urgency: "Routine" | "Urgent" | "Emergency";
         };
         /** CreateThreadRequest */
         CreateThreadRequest: {
@@ -6364,11 +6517,84 @@ export interface components {
              */
             version?: string | null;
         };
+        /** DispatchChildrenPayload */
+        DispatchChildrenPayload: {
+            /** Keys */
+            keys?: string[] | null;
+        };
         /** EvaluateBoardPayload */
         EvaluateBoardPayload: {
             board_route?: components["schemas"]["BoardRoute"] | null;
             criteria?: components["schemas"]["BoardRoutingCriteria"];
         };
+        /**
+         * ExecutionConfig
+         * @description Tuning and constraints for executor pipeline execution.
+         */
+        ExecutionConfig: {
+            /**
+             * Auto Advance Waves
+             * @default true
+             */
+            auto_advance_waves: boolean;
+            /**
+             * Lease Ttl Seconds
+             * @default 7200
+             */
+            lease_ttl_seconds: number;
+            /**
+             * Max Concurrent Per Repo
+             * @default 3
+             */
+            max_concurrent_per_repo: number;
+            /**
+             * Max Tier Attempts
+             * @default 2
+             */
+            max_tier_attempts: number;
+        };
+        /**
+         * ExecutorRollup
+         * @description Aggregate status rollup for a Code Request plan.
+         */
+        ExecutorRollup: {
+            /** Audit Log */
+            audit_log?: string[];
+            /** Blocked Children */
+            blocked_children?: string[];
+            /** Children */
+            children?: {
+                [key: string]: components["schemas"]["ChildExecutionRecord"];
+            };
+            /** Code Request Id */
+            code_request_id: string;
+            /** Completed Children */
+            completed_children?: string[];
+            /**
+             * Current Wave
+             * @default 0
+             */
+            current_wave: number;
+            /** Failed Children */
+            failed_children?: string[];
+            /** Paused Branches */
+            paused_branches?: string[];
+            /** State */
+            state: string;
+            /**
+             * Total Cost
+             * @default 0
+             */
+            total_cost: number;
+            /** Waves */
+            waves?: string[][];
+        };
+        /**
+         * ExecutorTier
+         * @description The standard executor tiers (CR-4 / BP-4).
+         * @enum {string}
+         */
+        ExecutorTier: "ollama" | "cli" | "strong";
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -6422,6 +6648,12 @@ export interface components {
         HoldsBody: {
             /** Holds */
             holds: components["schemas"]["HoldBody"][];
+        };
+        /** InitializeExecutorPayload */
+        InitializeExecutorPayload: {
+            /** Children */
+            children: components["schemas"]["ChildIssuePayload"][];
+            config?: components["schemas"]["ExecutionConfig"] | null;
         };
         /** LaunchAuthRequest */
         LaunchAuthRequest: {
@@ -6999,6 +7231,42 @@ export interface components {
             remote_url: string;
             /** Wsl Path */
             wsl_path: string;
+        };
+        /** ReportChildPayload */
+        ReportChildPayload: {
+            /**
+             * Ci Status
+             * @default
+             */
+            ci_status: string;
+            /**
+             * Cost
+             * @default 0
+             */
+            cost: number;
+            /** Event */
+            event: string;
+            /** Key */
+            key: string;
+            /**
+             * Pr Body
+             * @default
+             */
+            pr_body: string;
+            /** Pr Labels */
+            pr_labels?: string[];
+            /** Pr Number */
+            pr_number?: number | null;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /**
+             * Updated Handoff
+             * @default
+             */
+            updated_handoff: string;
         };
         /** ReposResponse */
         ReposResponse: {
@@ -8193,6 +8461,43 @@ export interface components {
              * @default 0
              */
             planned: number;
+        };
+        /**
+         * CreateProposalRequest
+         * @description Payload for submitting a suggestion to the Board (POST /api/proposals).
+         */
+        proposals__models__CreateProposalRequest: {
+            /** Code Request Url */
+            code_request_url?: string | null;
+            /**
+             * Confirm Not Duplicate
+             * @default false
+             */
+            confirm_not_duplicate: boolean;
+            /**
+             * Estimated Cost
+             * @enum {string}
+             */
+            estimated_cost: "Low" | "Medium" | "High";
+            /** Evidence */
+            evidence: string;
+            /** Lean */
+            lean: string;
+            /** Options Considered */
+            options_considered: string;
+            /** Problem */
+            problem: string;
+            /** Source */
+            source?: string | null;
+            /** Target Repos */
+            target_repos: string[];
+            /** Title */
+            title: string;
+            /**
+             * Urgency
+             * @enum {string}
+             */
+            urgency: "Routine" | "Urgent" | "Emergency";
         };
         /** CreateProposalRequest */
         routers__staff_proposals__CreateProposalRequest: {
@@ -9923,6 +10228,148 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dispatch_executor_api_code_requests__id__executor_dispatch_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DispatchChildrenPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    initialize_executor_api_code_requests__id__executor_initialize_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InitializeExecutorPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    report_child_status_api_code_requests__id__executor_report_child_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportChildPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_executor_rollup_api_code_requests__id__executor_rollup_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExecutorRollup"];
                 };
             };
             /** @description Validation Error */
@@ -12583,7 +13030,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CreateProposalRequest"];
+                "application/json": components["schemas"]["proposals__models__CreateProposalRequest"];
             };
         };
         responses: {
