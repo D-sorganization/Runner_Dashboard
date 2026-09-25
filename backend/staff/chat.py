@@ -37,9 +37,11 @@ from staff.chat_history import (
 )
 from staff.chat_pool import (
     DEFAULT_BARB_RESERVED_SLOTS,
+    DEFAULT_CHAT_ACQUIRE_TIMEOUT_SECONDS,
     DEFAULT_MAX_CHAT_TURNS,
     ChatConcurrencyPool,
     get_chat_pool,
+    handle_capacity_exhausted,
 )
 from staff.classifier import classify_run_failure
 from staff.conversations import (
@@ -57,6 +59,7 @@ log = logging.getLogger("dashboard.staff.chat")
 
 __all__ = [
     "DEFAULT_BARB_RESERVED_SLOTS",
+    "DEFAULT_CHAT_ACQUIRE_TIMEOUT_SECONDS",
     "DEFAULT_MAX_CHAT_TURNS",
     "DEFAULT_TOKEN_BUDGET",
     "ChatConcurrencyPool",
@@ -94,10 +97,12 @@ class ChatTurnRunner:
         conv_store: ConversationStore | None = None,
         adapters: dict[str, ProviderAdapter] | None = None,
         pool: ChatConcurrencyPool | None = None,
+        acquire_timeout: float | None = None,
     ) -> None:
         self.conv_store = conv_store or get_conversation_store()
         self.adapters = adapters if adapters is not None else ADAPTERS
         self.pool = pool or get_chat_pool()
+        self.acquire_timeout = acquire_timeout if acquire_timeout is not None else DEFAULT_CHAT_ACQUIRE_TIMEOUT_SECONDS
 
     def _spawn_cli_process(
         self,
@@ -125,6 +130,7 @@ class ChatTurnRunner:
         placeholder_id: str,
         role_name: str,
         provider: str | None = None,
+        acquire_timeout: float | None = None,
     ) -> ChatTurnResult:
         """Execute a conversational chat turn with fallback chain and degraded mode."""
         roles = load_roles()
@@ -141,11 +147,10 @@ class ChatTurnRunner:
         user_msg = self.conv_store.get_message(user_message_id)
         prompt_text = user_msg.body_md if user_msg else ""
 
-        acquired = self.pool.try_acquire(role_name)
-        if not acquired:
-            log.warning(
-                "Chat concurrency limit reached for role %s; executing in fallback queue",
-                role_name,
+        timeout = self.acquire_timeout if acquire_timeout is None else acquire_timeout
+        if not await self.pool.acquire(role_name, timeout=timeout):
+            return await handle_capacity_exhausted(
+                self.conv_store, thread_id, user_message_id, placeholder_id, role_name
             )
 
         metrics = get_availability_metrics()
@@ -245,8 +250,7 @@ class ChatTurnRunner:
                 conv_store=self.conv_store,
             )
         finally:
-            if acquired:
-                self.pool.release(role_name)
+            self.pool.release(role_name)
 
     async def _run_turn_attempt(
         self,

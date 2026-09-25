@@ -48,6 +48,7 @@ ALLOWED_ACTIONS = frozenset(
         "thread_archive",
         "work_item_create",
         "work_item_transition",
+        "chat_capacity",
     }
 )
 

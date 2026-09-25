@@ -18,6 +18,18 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1492 · SC-B1-G9: Chat pool saturation answers busy, not run anyway
+
+- **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1492
+- **Branch:** `agy/issue-1492`
+- **Paths:** `backend/staff/chat.py`, `backend/staff/chat_pool.py`, `backend/staff/audit.py`, `tests/unit/test_staff_chat_capacity.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (pytest tests/unit/test_staff_chat_capacity.py tests/unit/test_staff_chat.py tests/unit/test_staff_chat_read_only.py tests/unit/test_staff_audit.py 51/51 passed; tests/unit/ 193 passed, 16 skipped; ruff check & format clean; mypy clean in 4 source files; all touched files <= 500 lines)
+- **Summary:** Enforced chat pool bounded concurrency by having ChatConcurrencyPool support async slot acquisition with configurable timeout and fixing Barb slot reservation calculation for pool size 1 (min with max_concurrency rather than max_concurrency - 1). When pool capacity is saturated, ChatTurnRunner marks reply placeholder failed with failure_class="chat_capacity", posts a system busy notice ("All chat slots are busy. Please retry shortly."), publishes live events to ThreadEventBus, records an audit event (action="chat_capacity", outcome="busy"), and returns a classified ChatTurnResult without exceeding the pool or running the turn.
+- **Next step:** Push branch, open draft PR, link to issue #1492.
+
 ### DL-#1339 · SC-B9: Group threads: talk to the Board (and other groups) with the Board-Secretary coordinating seat replies
 
 - **State:** in_review

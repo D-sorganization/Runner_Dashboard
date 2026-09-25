@@ -1,4 +1,65 @@
-# Current handoff — SC-B9: Group threads: talk to the Board (and other groups) with the Board-Secretary coordinating seat replies (#1339)
+# Current handoff — SC-B1-G9: Chat pool saturation should answer busy, not run anyway (#1492)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository: `D-sorganization/Runner_Dashboard`
+- Working directory: `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\agy-1492`
+- Branch: `agy/issue-1492`
+- Commit: `SELF`
+- Pull Request: not created (draft PR to be opened upon push)
+- Governing issue: #1492 (SC-B1-G9)
+- Entry: `DL-#1492`
+
+## Objective and Status
+
+- Enforce bounded concurrency on staff conversational chat turns (SC-B1-G9, #1492):
+  - When every chat slot is taken, `ChatConcurrencyPool` was previously logged and the turn was run anyway.
+  - Implemented async slot acquisition in `ChatConcurrencyPool.acquire(role, timeout)` with configurable timeout (`STAFF_CHAT_ACQUIRE_TIMEOUT_SECONDS`, default 1.0 s).
+  - Fixed Barb reservation calculation in `ChatConcurrencyPool.__init__`: changed `min(max(0, barb_reserved), self.max_concurrency - 1)` to `min(max(0, barb_reserved), self.max_concurrency)` so that when pool size is 1 (`max_concurrency=1, barb_reserved=1`), Barb's reserved slot is not zeroed out.
+  - When all slots are busy and acquire times out:
+    - Reply placeholder message is marked `failed` (`delivery="failed"`, `kind="error"`, `meta={"failure_class": "chat_capacity", "retryable": True}`).
+    - A system message is posted to the thread: `All chat slots are busy. Please retry shortly.` (`author_kind="system"`, `delivery="complete"`).
+    - Both message events are published over `ThreadEventBus` for live SSE streaming.
+    - An audit row is recorded in `staff_audit` table (`action="chat_capacity"`, `outcome="busy"`, `detail={"failure_class": "chat_capacity"}`).
+    - Returns `ChatTurnResult(ok=False, failure_class="chat_capacity", retryable=True)` without spawning the provider CLI process or exceeding pool bounds.
+  - Files modified/added:
+    - `backend/staff/chat_pool.py`: 208 lines ($\le 500$).
+    - `backend/staff/chat.py`: 496 lines ($\le 500$).
+    - `backend/staff/audit.py`: 448 lines ($\le 500$).
+    - `tests/unit/test_staff_chat_capacity.py`: 324 lines ($\le 500$).
+    - `SPEC.md`: added 1 row for #1492 in Change Log table.
+    - `docs/development/DEVELOPMENT_LOG.md`: added `DL-#1492` in Active section.
+
+## Exact Validation Commands and Outcomes
+
+- Backend unit tests (WSL Ubuntu-22.04):
+  - `wsl.exe -d Ubuntu-22.04 -- bash -lc "cd '/mnt/c/Users/diete/Repositories/Runner_Dashboard-worktrees/agy-1492' && ~/.cache/rd-test-venv/bin/python -m pytest tests/unit/test_staff_chat_capacity.py tests/unit/test_staff_chat.py tests/frontend/test_api_generation_contract.py -q"`: 24/24 passed (100%).
+  - `wsl.exe -d Ubuntu-22.04 -- bash -lc "cd '/mnt/c/Users/diete/Repositories/Runner_Dashboard-worktrees/agy-1492' && ~/.cache/rd-test-venv/bin/python -m pytest tests/unit/ -q"`: 193 passed, 16 skipped, 0 failed.
+  - `wsl.exe -d Ubuntu-22.04 -- bash -lc "cd '/mnt/c/Users/diete/Repositories/Runner_Dashboard-worktrees/agy-1492' && ~/.cache/rd-test-venv/bin/python -m pytest tests/frontend/test_api_generation_contract.py -q"`: 4/4 passed.
+- Lint and typecheck:
+  - `ruff check backend/staff/chat.py backend/staff/chat_pool.py backend/staff/audit.py tests/unit/test_staff_chat_capacity.py`: clean (0 errors).
+  - `ruff format --check backend/staff/chat.py backend/staff/chat_pool.py backend/staff/audit.py tests/unit/test_staff_chat_capacity.py`: clean (0 errors).
+  - `mypy backend/staff/chat.py backend/staff/chat_pool.py backend/staff/audit.py tests/unit/test_staff_chat_capacity.py --ignore-missing-imports`: clean (Success: no issues found in 4 source files).
+- Line caps:
+  - All touched source and test files verified strictly $\le 500$ lines.
+
+## Blockers, Dirty-Worktree, Risks
+
+- Blockers: None.
+- Dirty worktree: Clean, only scoped files touched.
+- Risks / Assumptions: Zero. Existing synchronous `pool.try_acquire(role)` contract is preserved for backward compatibility.
+
+## Next Steps
+
+1. Commit changes with Conventional Commit message: `feat(staff): SC-B1-G9 chat pool saturation answers busy not run anyway (#1492)`.
+2. Push branch `agy/issue-1492` to origin.
+3. Open draft PR using `gh pr create --draft -R D-sorganization/Runner_Dashboard --base main --head agy/issue-1492` with `Fixes #1492`, test commands, pass counts, and label `agent:antigravity`.
+
+---
+
+# Past handoff — SC-B9: Group threads: talk to the Board (and other groups) with the Board-Secretary coordinating seat replies (#1339)
 
 Last updated: 2026-09-25
 
