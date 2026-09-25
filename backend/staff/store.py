@@ -15,6 +15,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from staff.redaction import redact_sensitive_content, redact_value
+
 RUN_STATUSES = (
     "queued",
     "preparing",
@@ -147,6 +149,14 @@ CREATE INDEX IF NOT EXISTS events_run_idx ON events(run_id, seq);
 
 _COLUMNS = tuple(RunRecord.__dataclass_fields__.keys())
 
+# Free-text run columns that can carry a pasted secret; redacted on every write (#1489).
+_REDACTED_COLUMNS = frozenset({"prompt", "target_ref", "error", "last_line", "remediation"})
+
+
+def _redacted(column: str, value: Any) -> Any:
+    return redact_value(value) if column in _REDACTED_COLUMNS else value
+
+
 # Columns added after the first schema shipped. Applied with a guarded
 # ``ALTER TABLE ... ADD COLUMN`` so an existing store upgrades in place and a
 # rollback to the previous code keeps working (extra columns are ignored).
@@ -212,7 +222,7 @@ class RunStore:
         with self._lock:
             self._conn.execute(
                 f"INSERT INTO runs ({cols}) VALUES ({marks})",
-                tuple(getattr(rec, c) for c in _COLUMNS),
+                tuple(_redacted(c, getattr(rec, c)) for c in _COLUMNS),
             )  # noqa: S608
         return rec
 
@@ -225,7 +235,8 @@ class RunStore:
             assert fields["status"] in RUN_STATUSES, fields["status"]  # noqa: S101
         sets = ", ".join(f"{k} = ?" for k in fields)
         with self._lock:
-            self._conn.execute(f"UPDATE runs SET {sets} WHERE id = ?", (*fields.values(), run_id))  # noqa: S608
+            values = tuple(_redacted(k, v) for k, v in fields.items())
+            self._conn.execute(f"UPDATE runs SET {sets} WHERE id = ?", (*values, run_id))  # noqa: S608
 
     def get_run(self, run_id: str) -> RunRecord | None:
         with self._lock:
@@ -366,6 +377,7 @@ class RunStore:
 
     # ── events ───────────────────────────────────────────────────────────
     def append_event(self, run_id: str, kind: str, text: str) -> int:
+        text = redact_sensitive_content(text)
         with self._lock:
             seq = self._seq.get(run_id)
             if seq is None:

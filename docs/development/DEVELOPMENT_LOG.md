@@ -18,6 +18,66 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1489 · SC-B1-G6: Redact secrets everywhere conversations and runs persist
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1489
+- **Branch:** `fix/1489-redact-everywhere`
+- **Paths:** `backend/staff/redaction.py`, `backend/staff/conversations.py`, `backend/staff/conversation_proposals.py`, `backend/staff/store.py`, `backend/staff/runner.py`, `tests/unit/test_staff_redaction_everywhere.py`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (new table test 15 passed, RED on all 14 boundaries before; ruff clean; `mypy backend/` clean in 253 files)
+- **Summary:** `redact_value` (shape-preserving) is applied at every write of thread title/meta, message meta, proposal params/reasons, run text columns, run events and transcript lines.
+- **Next step:** Merge the PR, then file a follow-up for audit-log `detail` redaction and multi-line PEM keys in transcripts.
+
+### DL-#1485 · SC-B1-G2: Harden the action-proposal API
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1485
+- **Branch:** `fix/1485-proposal-hardening`
+- **Paths:** `backend/staff/actions.py`, `backend/staff/action_executors.py`, `backend/routers/staff_proposals.py`, `backend/staff/conversation_proposals.py`, `backend/staff/conversation_models.py`, `backend/staff/conversations.py`, `backend/staff/chat.py`, `backend/staff/maintenance_detect.py`, `backend/routers/assistant.py`, `backend/staff/groups.py`, `tests/api/test_staff_proposal_hardening.py`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (hardening suite 11 passed; proposal/maintenance/chat/assistant/client selection 406 passed; ruff clean; `mypy backend/` clean in 250 files)
+- **Summary:** Proposal creation needs `staff.chat`, a registered action and a real thread/message; risk comes only from the registry; only approved proposals execute (one-step `approve=True` records the decision after policy checks), failed ones need a retry decision; `required_scope` enforced at execute; no results posted to missing threads.
+- **Next step:** After #1483 merges, rebase onto main, retarget the PR to main, mark it ready and arm it.
+
+### DL-#1487 · SC-B1-G4: Shared staff dispatch service
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1487
+- **Branch:** `fix/1487-shared-dispatch` (stacked on `feat/1448-wire-maintenance`, PR #1483)
+- **Paths:** `backend/staff/dispatch_service.py`, `backend/staff/loop_bridge.py`, `backend/staff/action_executors.py`, `backend/staff/maintenance_github.py`, `backend/routers/staff.py`, `tests/api/test_staff_dispatch_service.py`, `tests/staff/routing_eval/test_action_executor_roles.py`, `tests/unit/test_staff_actions.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (new suite 14 passed; staff/dispatch/proposal/action/maintenance/fleet selection green in WSL venv; ruff clean; `mypy backend/` clean in 252 files)
+- **Summary:** `/run` and the `staff.dispatch` action share `dispatch_staff_run`: forwarding, rate limit, dry-run and audit apply to approved proposals. Executor runs in the proposal routes' worker thread and reaches the loop via `loop_bridge.run_on_loop`; outside a worker thread it fails as `bridge_unavailable`.
+- **Next step:** Merge PR #1510 (on main, armed), then route the #1497 requests API through `dispatch_staff_run`.
+
+### DL-#1285 · CR-4: Planner stage — high-tier agent authors execution-ready issues and turnover docs
+
+- **State:** in_progress
+- **Owner:** claude
+- **Issue:** #1285 (epic #1279)
+- **Branch:** `feat/1285-planner-stage`
+- **Paths:** `backend/code_requests/plan.py`, `backend/code_requests/plan_validator.py`, `backend/code_requests/plan_render.py`, `backend/code_requests/handoff_rules.py`, `backend/code_requests/planner.py`, `backend/code_requests/plan_store.py`, `backend/code_requests/plan_filing.py`, `backend/code_requests/plan_service.py`, `backend/code_requests/lifecycle.py`, `backend/routers/code_request_plans.py`, `backend/server.py`, `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `tests/code_requests/test_plan_validator.py`, `tests/code_requests/test_planner_stage.py`, `tests/code_requests/test_handoff_rules_drift.py`, `tests/api/test_code_request_plans_api.py`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (complexity vocabulary aligned to docs/issue-taxonomy.md; code_requests + code-request API + auth perimeter: 93 passed; ruff and mypy clean; API snapshot regenerated, no drift)
+- **Summary:** Backend of the planner stage: validated JSON plan contract, dashboard-rendered turnover docs checked against the vendored fleet handoff rules, re-prompt loop (2 retries) then `failed`, approval-gated resumable filing with sub-issue links. The draft view in the Code Request detail UI is the remaining slice.
+- **Next step:** Delegate the Code Request detail "Plan" panel (render, inline edit via `PUT .../plan/draft`, approve) to a `tier:cli` agent against the generated `api-types.ts`.
+
+### DL-#1491 · SC-B1-G8: Reconcile chat messages stuck in pending/streaming after a backend restart
+
+- **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1491
+- **Branch:** `agy/issue-1491`
+- **Paths:** `backend/staff/reconcile.py`, `backend/staff/conversations.py`, `backend/staff/conversation_models.py`, `backend/staff/audit.py`, `tests/unit/test_staff_reconcile.py`, `tests/unit/test_conversations_store.py`, `tests/api/test_staff_threads_api.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (pytest unit & api tests passed 33/33; ruff check & format clean; mypy clean in 4 files)
+- **Summary:** Reconcile chat messages stuck in non-terminal delivery states (pending/streaming) across backend restarts. On startup, mark non-terminal reply messages as failed with meta.failure_class='interrupted_by_restart', post a system message offering a retry, and audit every state change under SC-A8 while leaving user messages and complete messages untouched.
+- **Next step:** Push branch agy/issue-1491 and open draft PR.
+
 ### DL-#1502 · Fix Fleet Orchestration false successes for dispatch and deploy
 
 - **State:** in_progress

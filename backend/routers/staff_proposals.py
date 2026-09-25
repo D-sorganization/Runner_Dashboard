@@ -14,9 +14,11 @@ from routers.staff_threads import _get_store_or_503
 from staff.actions import (
     ACTION_REGISTRY,
     ProposalExpiredError,
+    ProposalNotApprovedError,
     ProposalReplayError,
     RolePermissionDeniedError,
     execute_proposal,
+    registered_risk,
 )
 from staff.conversations import ConversationsUnavailableError
 from staff.pagination import paginate_items
@@ -31,7 +33,9 @@ class CreateProposalRequest(BaseModel):
     thread_id: str = Field(description="Parent thread ID")
     action: str = Field(description="Name of allowlisted action")
     params: dict[str, Any] = Field(default_factory=dict, description="Action parameters")
-    risk: str = Field(default="low", description="Risk class (read, low, medium, high, owner-only)")
+    risk: str | None = Field(
+        default=None, description="Ignored: the risk always comes from the action registry (#1485)"
+    )
 
 
 class DecideProposalRequest(BaseModel):
@@ -125,17 +129,30 @@ async def list_proposals(
 )
 async def create_proposal(
     body: CreateProposalRequest,
-    caller: Principal = Depends(require_scope("staff.read")),  # noqa: B008
+    caller: Principal = Depends(require_scope("staff.chat")),  # noqa: B008
 ) -> dict[str, Any]:
-    """Create a new action proposal within a conversation thread."""
+    """Create a new action proposal within a conversation thread.
+
+    Pre: ``action`` is registered; ``thread_id`` exists and ``message_id`` is a message in it.
+    Post: the proposal is ``proposed`` with the registry's risk class (any caller risk is ignored).
+    """
+    if ACTION_REGISTRY.get(body.action) is None:
+        raise HTTPException(status_code=422, detail=f"Action '{body.action}' is not registered")
     store = _get_store_or_503()
     try:
+        if store.get_thread(body.thread_id) is None:
+            raise HTTPException(status_code=422, detail=f"Thread '{body.thread_id}' does not exist")
+        msg = store.get_message(body.message_id)
+        if msg is None or msg.thread_id != body.thread_id:
+            raise HTTPException(
+                status_code=422, detail=f"Message '{body.message_id}' is not in thread '{body.thread_id}'"
+            )
         prop = store.create_proposal(
             message_id=body.message_id,
             thread_id=body.thread_id,
             action=body.action,
             params=body.params,
-            risk=body.risk,
+            risk=registered_risk(body.action),
             principal=format_caller(caller),
         )
         return prop.to_dict()
@@ -173,7 +190,10 @@ async def decide_proposal(
     body: DecideProposalRequest,
     caller: Principal = Depends(require_scope("staff.approve")),  # noqa: B008
 ) -> dict[str, Any]:
-    """Decide (approve or deny) an action proposal, optionally executing immediately."""
+    """Decide (approve or deny) an action proposal, optionally executing immediately.
+
+    A ``failed`` proposal may be decided again: ``approved`` is the explicit retry (#1485).
+    """
     if body.decision not in ("approved", "denied"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -186,10 +206,10 @@ async def decide_proposal(
         prop = store.get_proposal(proposal_id)
         if not prop:
             raise HTTPException(status_code=404, detail=f"Proposal {proposal_id} not found")
-        if prop.state != "proposed":
+        if prop.state not in ("proposed", "failed"):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Cannot decide proposal in state '{prop.state}' (must be 'proposed')",
+                detail=f"Cannot decide proposal in state '{prop.state}' (must be 'proposed' or 'failed')",
             )
         updated = store.decide_proposal(
             proposal_id=proposal_id,
@@ -226,7 +246,7 @@ async def execute_approved_proposal(
     proposal_id: str,
     caller: Principal = Depends(require_scope("staff.approve")),  # noqa: B008
 ) -> dict[str, Any]:
-    """Execute an approved proposal through the action registry."""
+    """Execute an ``approved`` proposal through the action registry (409 for any other live state)."""
     store = _get_store_or_503()
     prop = store.get_proposal(proposal_id)
     if not prop:
@@ -250,6 +270,8 @@ async def execute_approved_proposal(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ProposalNotApprovedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ProposalReplayError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001

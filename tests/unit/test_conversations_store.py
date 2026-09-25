@@ -471,3 +471,39 @@ def test_concurrent_writers_under_wal(clean_db: Path) -> None:
     assert len(all_msgs) == 50
     seqs = [m.seq for m in all_msgs]
     assert seqs == list(range(1, 51))
+
+
+def test_list_non_terminal_reply_messages(clean_db: Path) -> None:
+    """list_non_terminal_reply_messages returns pending and streaming reply messages, excluding user messages."""
+    store = ConversationStore(clean_db)
+    thread = store.create_thread(title="Test Non-terminal", kind="direct", participants=["user", "barb"])
+
+    # 1. User message in complete state
+    store.add_message(thread.id, author_kind="user", author="user", body_md="Hello", delivery="complete")
+    # 2. User message in pending state (must be excluded)
+    store.add_message(thread.id, author_kind="user", author="user", body_md="Pending user msg", delivery="pending")
+    # 3. Role message in pending state (must be included)
+    m_pending = store.add_message(thread.id, author_kind="role", author="barb", body_md="", delivery="pending")
+    # 4. Role message in streaming state (must be included)
+    m_streaming = store.add_message(
+        thread.id, author_kind="role", author="barb", body_md="tokens...", delivery="streaming"
+    )
+    # 5. Role message in complete state (must be excluded)
+    store.add_message(thread.id, author_kind="role", author="barb", body_md="Done", delivery="complete")
+    # 6. Role message in failed state (must be excluded)
+    store.add_message(
+        thread.id,
+        author_kind="role",
+        author="barb",
+        body_md="Failed",
+        delivery="failed",
+        meta={"failure_class": "rate_limited"},
+    )
+
+    non_terminal = store.list_non_terminal_reply_messages()
+    assert [m.id for m in non_terminal] == [m_pending.id, m_streaming.id]
+
+    # Verify failure_class property and to_dict
+    m_failed = store.list_messages(thread.id)[-1]
+    assert m_failed.failure_class == "rate_limited"
+    assert m_failed.to_dict()["failure_class"] == "rate_limited"

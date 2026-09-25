@@ -2,7 +2,9 @@
 
 Provides:
 - ActionRegistry and standard action catalogue
-- Risk-based approval policy checks (read/low auto-execute, medium user approve, high/owner-only owner approve)
+- Risk-based approval policy checks (medium: staff.approve; high/critical/owner-only: owner) and the
+  action's ``required_scope``; only an ``approved`` proposal executes (#1485). Read/low actions are
+  auto-executed only by the maintenance detector (``can_auto_execute``), never through a proposal.
 - Replay and 24-hour expiry protection
 - Role permission gates (proposing role must be authorized)
 - Post-execution verification and audit logging (SC-A8, SC-B7)
@@ -17,18 +19,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from identity import Principal, format_caller
-from staff.action_executors import (
-    execute_board_propose,
-    execute_code_request_create,
-    execute_review_pr,
-    execute_staff_dispatch,
-    execute_staff_hold,
-    execute_staff_unhold,
-    verify_staff_dispatch,
-    verify_staff_hold,
-    verify_staff_unhold,
-)
+from identity import Principal, format_caller, principal_has_scope
+from staff.action_executors import register_standard_actions
 from staff.conversation_models import ActionProposalRecord
 from staff.conversations import get_conversation_store
 from staff.maintenance import register_maintenance_actions
@@ -64,6 +56,10 @@ class ProposalExpiredError(ActionError):
 
 class ProposalReplayError(ActionError):
     """Raised when an action proposal cannot be executed due to terminal/invalid state."""
+
+
+class ProposalNotApprovedError(ProposalReplayError):
+    """Raised when execution is requested for a proposal that has no approved decision."""
 
 
 class RolePermissionDeniedError(ActionError):
@@ -151,6 +147,15 @@ class ActionRegistry:
 ACTION_REGISTRY = ActionRegistry()
 
 
+def registered_risk(action_name: str) -> str:
+    """The registry's risk class for ``action_name``; ``high`` when it is not registered.
+
+    Risk is never taken from a caller, a model reply or a detection (#1344, #1485).
+    """
+    action = ACTION_REGISTRY.get(action_name)
+    return action.risk_class if action else ActionRiskClass.HIGH
+
+
 def is_proposal_expired(prop: ActionProposalRecord, ttl_seconds: int = PROPOSAL_TTL_SECONDS) -> bool:
     """Return True if the proposal is older than ttl_seconds."""
     try:
@@ -200,6 +205,8 @@ def check_approval_policy(
     scopes = set(approver.scopes or [])
     if "staff.approve" not in scopes and not is_owner(approver):
         raise PermissionError(f"Principal '{approver.id}' lacks 'staff.approve' scope")
+    if action and not is_owner(approver) and not principal_has_scope(approver, action.required_scope):
+        raise PermissionError(f"Principal '{approver.id}' lacks '{action.required_scope}' required by '{action.name}'")
 
 
 _MAINTENANCE_ACTIONS = frozenset(
@@ -257,14 +264,28 @@ def check_role_permission(
     return False
 
 
+def _result_thread(s: ConversationStore, prop: ActionProposalRecord) -> str:
+    """The thread to post the result to, or ``""`` when the proposal has none or it is gone."""
+    if prop.thread_id and s.get_thread(prop.thread_id) is None:
+        log.warning("proposal %s: origin thread %s does not exist; result not posted", prop.id, prop.thread_id)
+        return ""
+    return prop.thread_id
+
+
 def execute_proposal(
     proposal_id: str,
     approver: Principal,
     store: ConversationStore | None = None,
     audit_store: StaffAuditStore | None = None,
-    auto_execute: bool = False,
+    approve: bool = False,
 ) -> ActionResult:
-    """Approve and execute a proposal with policy checks, verifier, and audit trails."""
+    """Execute a proposal with policy checks, verifier, and audit trails.
+
+    Pre: the proposal is ``approved`` — or ``proposed`` with ``approve=True``, which records
+    ``approver``'s decision once every policy check has passed. A ``failed`` proposal needs an
+    explicit retry decision first. Otherwise :class:`ProposalNotApprovedError` is raised and
+    nothing runs.
+    """
     s = store or get_conversation_store()
     prop = s.get_proposal(proposal_id)
     if not prop:
@@ -282,6 +303,11 @@ def execute_proposal(
 
     if prop.state in ("denied", "expired", "done"):
         raise ProposalReplayError(f"Proposal {proposal_id} is in terminal state '{prop.state}' and cannot be executed")
+    if not (prop.state == "approved" or (approve and prop.state == "proposed")):
+        raise ProposalNotApprovedError(
+            f"Proposal {proposal_id} is '{prop.state}'; only an approved proposal executes "
+            "(decide first; a failed proposal needs a retry decision)"
+        )
 
     action_def = ACTION_REGISTRY.get(prop.action)
     if not action_def:
@@ -311,8 +337,9 @@ def execute_proposal(
         )
         raise RolePermissionDeniedError(f"Role '{proposing_role}' is not permitted to invoke '{prop.action}'")
 
-    if not auto_execute:
-        check_approval_policy(action_def, prop, approver)
+    check_approval_policy(action_def, prop, approver)
+    if prop.state == "proposed":
+        s.decide_proposal(proposal_id, "approved", decided_by=format_caller(approver), audit_store=audit_store)
 
     s.transition_proposal_state(
         proposal_id,
@@ -352,12 +379,13 @@ def execute_proposal(
             res.error = f"Verification error: {vexc}"
             res.failure_class = "verification_error"
 
+    thread_id = _result_thread(s, prop)
     if res.success:
         s.transition_proposal_state(proposal_id, "done", audit_store=audit_store)
-        if prop.thread_id:
+        if thread_id:
             formatted_res = json.dumps(res.result) if isinstance(res.result, dict) else str(res.result)
             s.add_message(
-                thread_id=prop.thread_id,
+                thread_id=thread_id,
                 author_kind="system",
                 author="system",
                 kind="action_result",
@@ -371,7 +399,7 @@ def execute_proposal(
             )
             if res.run_id:
                 s.add_message(
-                    thread_id=prop.thread_id,
+                    thread_id=thread_id,
                     author_kind="system",
                     author="system",
                     kind="run_card",
@@ -386,9 +414,9 @@ def execute_proposal(
             reason=res.error or "Action failed",
             audit_store=audit_store,
         )
-        if prop.thread_id:
+        if thread_id:
             s.add_message(
-                thread_id=prop.thread_id,
+                thread_id=thread_id,
                 author_kind="system",
                 author="system",
                 kind="action_result",
@@ -408,85 +436,5 @@ def execute_proposal(
 
 # ─── Register Standard Catalogue ─────────────────────────────────────────────
 
-ACTION_REGISTRY.register(
-    ActionDefinition(
-        name="staff.dispatch",
-        description="Dispatch an AI staff role to work on an issue, PR, or prompt.",
-        params_schema={
-            "role": "string",
-            "repo": "string?",
-            "prompt": "string?",
-            "issue": "int?",
-            "pr": "int?",
-        },
-        required_scope="staff.dispatch",
-        risk_class=ActionRiskClass.MEDIUM,
-        executor=execute_staff_dispatch,
-        verifier=verify_staff_dispatch,
-    )
-)
-
-ACTION_REGISTRY.register(
-    ActionDefinition(
-        name="staff.review_pr",
-        description="Request a PR review from a specialist staff role.",
-        params_schema={"repo": "string", "pr": "int", "reviewer": "string?", "focus": "string?"},
-        required_scope="staff.dispatch",
-        risk_class=ActionRiskClass.LOW,
-        executor=execute_review_pr,
-        verifier=verify_staff_dispatch,
-    )
-)
-
-ACTION_REGISTRY.register(
-    ActionDefinition(
-        name="staff.hold",
-        description="Set an operational hold locking a role or policy.",
-        params_schema={"text": "string", "applies_to": "list[string]?", "lifted_when": "string?"},
-        required_scope="staff.holds.write",
-        risk_class=ActionRiskClass.HIGH,
-        executor=execute_staff_hold,
-        verifier=verify_staff_hold,
-    )
-)
-
-ACTION_REGISTRY.register(
-    ActionDefinition(
-        name="staff.unhold",
-        description="Lift an operational hold.",
-        params_schema={"hold_id": "string?", "text": "string?"},
-        required_scope="staff.holds.write",
-        risk_class=ActionRiskClass.HIGH,
-        executor=execute_staff_unhold,
-        verifier=verify_staff_unhold,
-    )
-)
-
-ACTION_REGISTRY.register(
-    ActionDefinition(
-        name="code_request.create",
-        description="Create a tracked Code Request work item.",
-        params_schema={
-            "title": "string",
-            "repo": "string",
-            "description": "string?",
-            "priority": "string?",
-        },
-        required_scope="code_requests.write",
-        risk_class=ActionRiskClass.MEDIUM,
-        executor=execute_code_request_create,
-    )
-)
-
-ACTION_REGISTRY.register(
-    ActionDefinition(
-        name="board.propose",
-        description="Submit a proposal to the Board of Directors.",
-        params_schema={"title": "string", "proposal": "string", "target": "string?"},
-        required_scope="board.proposals.write",
-        risk_class=ActionRiskClass.MEDIUM,
-        executor=execute_board_propose,
-    )
-)
-
+register_standard_actions(ACTION_REGISTRY)
 register_maintenance_actions(ACTION_REGISTRY)

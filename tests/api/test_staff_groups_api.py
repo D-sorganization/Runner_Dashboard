@@ -240,6 +240,7 @@ async def test_group_turn_e2e_and_proposal_creation(client: TestClient) -> None:
     board_prop = next((p for p in proposals if p.action == "board.propose"), None)
     assert board_prop is not None
     assert board_prop.state == "proposed"
+    assert board_prop.risk == "medium"  # from the action registry, never the store default (#1485)
     assert "WebGPU" in board_prop.params.get("title", "")
 
     # 4. Approve and execute proposal ("make this a proposal")

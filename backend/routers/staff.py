@@ -29,7 +29,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import StreamingResponse
 from identity import Principal, format_caller, require_scope
 from pydantic import BaseModel, Field, field_validator
-from staff import consolidation
 from staff import fleet as staff_fleet
 from staff.adapters import available_providers
 from staff.audit import (
@@ -39,6 +38,7 @@ from staff.audit import (
     record_audit,
 )
 from staff.classifier import format_attention_items
+from staff.dispatch_service import DispatchCommand, dispatch_staff_run
 from staff.models import (
     StaffAuditListResponse,
     StaffBoardResponse,
@@ -49,9 +49,8 @@ from staff.models import (
     StaffRunsResponse,
     StaffSummaryResponse,
 )
-from staff.rate_limit import check_rate_limit
 from staff.rm_sync import source_status as source_status  # noqa: F401
-from staff.runner import RunRequest, StaffRunner, get_runner
+from staff.runner import get_runner
 from staff.store import ACTIVE_STATUSES, RUN_STATUSES
 
 log = logging.getLogger("dashboard.staff")
@@ -346,46 +345,6 @@ async def cancel_run(run_id: str, caller: Principal = Depends(require_scope("sta
     return {"cancelled": ok, "run": rec.to_dict() if rec else None}
 
 
-async def _resolve_target(runner: StaffRunner, machine: str, provider: str) -> str:
-    """Machine targeting (#1197): ``local`` / this host → local; ``auto`` → least loaded
-    online node with the provider installed; a peer name → that peer; unknown → 422."""
-    peers = staff_fleet.peer_nodes()
-    if machine.strip().lower() == "auto":
-        board_view = await staff_fleet.aggregate_board(staff_fleet.local_board(runner), peers)
-        chosen = staff_fleet.choose_machine(board_view, provider, runner.machine)
-        return "local" if chosen == runner.machine else chosen
-    resolved = staff_fleet.resolve_machine(machine, runner.machine, peers)
-    if resolved is None:
-        known = ", ".join([runner.machine, *sorted(peers)]) or runner.machine
-        raise HTTPException(
-            status_code=422,
-            detail=f"unknown machine '{machine}' (known: {known}, or 'auto')",
-        )
-    return resolved
-
-
-async def _forward(
-    target: str, role: str, body: RunBody, caller: str, on_behalf_of: str | None = None
-) -> dict[str, Any]:
-    url = staff_fleet.peer_nodes().get(target)
-    if url is None:
-        raise HTTPException(status_code=422, detail=f"unknown machine '{target}'")
-    try:
-        status, data = await staff_fleet.forward_run(url, role, body.model_dump(), on_behalf_of=on_behalf_of)
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=503, detail=f"machine '{target}' unreachable: {exc}") from exc
-    if status >= 400:
-        raise HTTPException(status_code=status if status < 500 else 502, detail=data.get("detail", data))
-    log.info(
-        "staff: forwarded %s run for role=%s to %s by %s",
-        "dry-run" if body.dry_run else "dispatch",
-        role,
-        target,
-        caller,
-    )
-    return {**data, "machine": data.get("machine", target), "forwarded_to": target}
-
-
 @router.post(
     "/{role}/run",
     response_model=StaffDispatchResponse,
@@ -406,12 +365,6 @@ async def dispatch(
     PR-consolidation decision (#1213) is evaluated first and lands in
     ``plan.consolidation`` and the run's ``strategy_mode``.
     """
-    runner = get_runner()
-    spec = runner.roles().get(role)
-    decision = None
-    if spec is not None and body.repo and consolidation.threshold(spec) is not None:
-        decision = await asyncio.to_thread(consolidation.decide, spec, body.repo)  # #1213: gh + capacity I/O
-
     caller_id = staff_fleet.caller_identity(caller)
     is_peer = staff_fleet.is_fleet_peer(caller)
     surface = body.surface or "api"
@@ -424,8 +377,9 @@ async def dispatch(
         surface = obo.get("surface") or surface
         thread_id = obo.get("thread_id") or thread_id
 
-    req = RunRequest(
+    cmd = DispatchCommand(
         role=role,
+        requested_by=caller_id,
         provider=body.provider,
         model=body.model,
         repo=body.repo,
@@ -433,50 +387,10 @@ async def dispatch(
         pr=body.pr,
         prompt=body.prompt,
         machine=body.machine,
-        requested_by=caller_id,
-        on_behalf_of=on_behalf_of,
-        thread_id=thread_id,
+        dry_run=body.dry_run,
         work_item_id=body.work_item_id or "",
-        consolidation=decision,
-    )
-    try:
-        plan = runner.plan(req)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    check_rate_limit("dispatches", caller)
-    target = await _resolve_target(runner, body.machine, plan.provider)
-    if target != "local":
-        obo_hdr = staff_fleet.sign_on_behalf_of(caller_id, surface, thread_id)
-        return await _forward(target, role, body, caller_id, on_behalf_of=obo_hdr)
-    if body.dry_run:
-        return {"dry_run": True, "plan": plan.to_dict(), "machine": runner.machine}
-    rec = runner.submit(req)
-    detail = {
-        "repo": rec.repo,
-        "target_ref": rec.target_ref,
-        "provider": rec.provider,
-        "machine": rec.machine,
-    }
-    record_audit(
-        action="dispatch",
-        target=f"role:{rec.role}",
-        principal=format_caller(caller),
         on_behalf_of=on_behalf_of,
         surface=surface,
         thread_id=thread_id,
-        request_id=rec.id,
-        run_id=rec.id,
-        outcome="success",
-        detail=detail,
-        fail_closed=True,
     )
-    log.info(
-        "staff: dispatched %s role=%s provider=%s repo=%s target=%s by %s",
-        rec.id,
-        rec.role,
-        rec.provider,
-        rec.repo,
-        rec.target_ref,
-        caller_id,
-    )
-    return {"dry_run": False, "run": rec.to_dict(), "machine": runner.machine}
+    return await dispatch_staff_run(cmd, caller)

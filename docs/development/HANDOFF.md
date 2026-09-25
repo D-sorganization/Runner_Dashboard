@@ -1,4 +1,157 @@
-# Current handoff — Fix Fleet Orchestration false successes for dispatch and deploy (#1502)
+# Current handoff — SC-B1-G6: Redact secrets everywhere conversations persist (#1489)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1489`; branch `fix/1489-redact-everywhere` (from `origin/main`); PR: see DL-#1489; Issue #1489. Commit: SELF.
+
+## Objective and Status
+
+- Apply the existing redactor at every persistence boundary, not only `messages.body_md`.
+- Done: `redaction.redact_value` walks dicts/lists/tuples and keeps their shape. Applied to thread title (create/update) and meta, message meta (add/update), proposal params and reasons (decide and transition), run `prompt`/`target_ref`/`error`/`last_line`/`remediation` (create/update), run event text, and each transcript line the runner writes.
+- The runner now appends the `exit` event before writing the terminal status, so a reader that sees `succeeded`/`failed` always sees the exit event. The old order raced and the added redaction work widened the window: `test_submit_runs_fake_cli_to_success_with_events_and_cost` failed 1 in 4.
+- `conversations.py` stays at 497 lines (edits are line-neutral); `store.py` keeps its CRLF line endings.
+- Known limits (follow-up): audit-log `detail` fields are not redacted; a PEM key split across transcript lines is redacted per line only, so its body lines are not caught.
+
+## Validation
+
+- WSL venv: `tests/unit/test_staff_redaction_everywhere.py` 15 passed (14 boundary cases were RED first). Staff/conversation/client regression selection run with `HOME`/`USERNAME` isolated (#1521): 795 passed, 15 skipped; the only failure was the exit-event race above, since fixed and passing 6 of 6 reruns.
+- `ruff check`/`ruff format --check` clean on touched files; `py -3.12 -m mypy backend/ --ignore-missing-imports` clean in 253 files.
+
+## Next Steps
+
+1. Merge the PR (arm via `automerge_guard.py`); file the audit-detail and multi-line-PEM follow-up.
+
+---
+
+# Past handoff — SC-B1-G2: Harden the action-proposal API (#1485)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1485`; branch `fix/1485-proposal-hardening` (stacked on `feat/1448-wire-maintenance`, PR #1483); PR: see DL-#1485; Issue #1485. Commit: SELF.
+
+## Objective and Status
+
+- Make the proposal API enforce its documented design.
+- Done:
+  - `POST /proposals` needs `staff.chat`; it refuses (422) an unregistered action, a missing thread, or a message that is missing or in another thread. The caller's `risk` is ignored: `registered_risk(action)` (unknown = high) is the only source, also used by chat replies, Board group-turn proposals, the maintenance detector and the assistant.
+  - `execute_proposal(..., approve=False)`: only `approved` runs; `approve=True` also accepts `proposed` and records the approval after the role and approval-policy checks. Anything else raises `ProposalNotApprovedError` (route → 409). The unused `auto_execute` flag is gone.
+  - `failed` proposals can be decided again (`failed → approved|denied`): approving is the explicit retry.
+  - `check_approval_policy` enforces the action's `required_scope` for non-owners.
+  - Results post only to an existing thread; the assistant path is thread-less (`thread_id=""`) and uses `approve=True`.
+  - The standard action catalogue moved to `action_executors.register_standard_actions` (keeps `actions.py` under the 500-line cap).
+
+## Validation
+
+- WSL venv: `tests/api/test_staff_proposal_hardening.py` 11 passed (RED before). Proposal, maintenance, chat, assistant and client tests: 192 + 214 passed.
+- `ruff check`/`ruff format --check` clean; `py -3.12 -m mypy backend/ --ignore-missing-imports` clean in 250 files.
+
+## Next Steps
+
+1. After #1483 merges, rebase onto `origin/main`, check the doc heading counts, retarget the PR to main, mark it ready and arm it via `automerge_guard.py`.
+
+---
+
+# Past handoff — SC-B1-G4: one staff dispatch policy for /run and staff.dispatch (#1487)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1487`; branch `fix/1487-shared-dispatch`, stacked on `feat/1448-wire-maintenance` (PR #1483); commit SELF; PR: see DL-#1487; Issue #1487; DL-#1487.
+
+## Objective and Status
+
+- Approved `staff.dispatch` proposals called `runner.submit` directly, so they skipped peer forwarding, the rate limit, dry-run and the dispatch audit. Now there is one `dispatch_staff_run` (`backend/staff/dispatch_service.py`), and both the `/run` route (now a thin adapter) and the executor call it.
+- `backend/staff/loop_bridge.py` holds the worker-thread → event-loop bridge. `maintenance_github.call_github` (#1448) now uses it, so the pattern is no longer duplicated.
+- Validation:
+  - `pytest tests/api/test_staff_dispatch_service.py`: 14 passed.
+  - The staff/dispatch/proposal/action/maintenance/fleet selection is green (WSL venv).
+  - `ruff check`/`format` are clean, and `mypy backend/` is clean.
+
+## Risks
+
+- `ActionContext.caller=None`, which only happens on internal auto-execute paths, is charged to a synthetic `staff_action` bot principal for the rate limit and audit.
+- A forwarded proposal's `run_id` is the peer's id. The verifier accepts it without looking it up in the local store.
+
+## Next steps
+
+1. Merge PR #1510 (rebased onto main after #1483 landed; armed).
+2. #1497 (SC-G5 requests API) routes every dispatch surface through `dispatch_staff_run`.
+
+---
+
+# Past handoff — CR-4: Planner stage backend (#1285)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1285`; branch `feat/1285-planner-stage`; PR #1466 (open, auto-merge armed); Issue #1285 (epic #1279); DL-#1285. Commit: SELF.
+
+## Objective and Status
+
+- Planner stage: a strong-tier planner turns a Code Request into a plan epic plus execution-ready child issues with turnover documents; output validated, never trusted.
+- Done (backend):
+  - `plan.py` (JSON contract models, fenced-JSON extraction, dependency waves), `plan_validator.py` (sections, tier/complexity/task-class vocabularies, cycles, turnover rules), `plan_render.py` (epic/child bodies, turnover doc), `handoff_rules.py` (vendored RM `handoff_validator.validate_handoff_content` @ f430564c).
+  - `planner.py` (prompt, `PlanningSession`, pure `receive_plan`: draft / file / reprompt / fail, `MAX_REPROMPTS = 2`), `plan_store.py`, `plan_filing.py` (dup search, epic, children in wave order, turnover comments, sub-issue links; resumable), `plan_service.py` (injected deps), `routers/code_request_plans.py`.
+  - Lifecycle gains `planning → failed` (issue-mandated).
+- Key decisions: complexity uses the fleet taxonomy `trivial/routine/complex/deep` (docs/issue-taxonomy.md gates agent tiers on it), not the issue's older `small/medium/large`; RD renders turnover docs (Identity is facts RD knows; planner supplies decisions and next steps); task_class uses the plain labels the Conductor routes on; dispatch is fire-and-forget, so plans come back via POST or a `<!-- plan:v1 -->` comment.
+- Not done: frontend Plan panel (render, edit, approve).
+
+## Validation
+
+- WSL venv: `pytest tests/code_requests tests/api/test_code_requests.py tests/api/test_code_request_plans_api.py tests/api/test_structural_auth_perimeter.py -o addopts=''` → 93 passed (drift test ran against the local RM checkout).
+- `ruff check backend tests/code_requests` clean; `mypy backend/ --ignore-missing-imports --no-implicit-optional` → no issues (249 files).
+- `gen-api-client.sh --check` (hybrid) → no drift; delta = 5 plan paths, 2 schemas.
+
+## Next Steps
+
+1. PR #1466 is open and armed; watch CI.
+2. Delegate the Plan panel UI to a `tier:cli` agent (agy) with TDD instructions.
+
+---
+
+# Past handoff — SC-B1-G8: Reconcile chat messages stuck in pending/streaming after a backend restart (#1491)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\agy-1491`; branch `agy/issue-1491`; commit `SELF`; PR not created; Issue #1491; DL-#1491.
+
+## Objective and Status
+
+- Reconcile chat messages stuck in non-terminal delivery states (pending/streaming) across backend restarts (SC-B1-G8, issue #1491):
+  - In `backend/staff/reconcile.py`, implemented `reconcile_interrupted_chat_messages(conv_store)` to find all non-terminal reply messages (excluding user messages) across threads.
+  - Marked non-terminal reply messages as `delivery="failed"`, `kind="error"` with `meta.failure_class="interrupted_by_restart"` and `retryable=True`.
+  - Appended a system message (`author_kind="system"`, `delivery="complete"`) offering a retry to each affected thread.
+  - Audited every state change under SC-A8 (`action="message_reconcile"`, `surface="scheduler"`).
+  - Hooked `reconcile_interrupted_chat_messages` into `reconcile_orphaned_runs(runner, conv_store=conv_store)` so restart reconciliation triggered by `start_scheduler()` automatically covers chat messages.
+  - Added `list_non_terminal_reply_messages` to `ConversationStore` in `backend/staff/conversations.py`.
+  - Added `failure_class` property and `to_dict()` exposure on `MessageRecord` in `backend/staff/conversation_models.py`.
+  - Registered `message_reconcile` in `ALLOWED_ACTIONS` and `MUTATING_ACTIONS` in `backend/staff/audit.py`.
+  - Verification:
+    - Unit test in `tests/unit/test_staff_reconcile.py::test_interrupted_chat_messages_reconciled_to_failed_with_retry` (9/9 passed).
+    - ConversationStore unit test in `tests/unit/test_conversations_store.py::test_list_non_terminal_reply_messages` (14/14 passed).
+    - API test in `tests/api/test_staff_threads_api.py::test_reconcile_shows_system_retry_message_in_thread` (1/1 passed).
+    - Audit store unit tests in `tests/unit/test_staff_audit.py` (7/7 passed).
+    - `ruff check`: clean across all files.
+    - `ruff format --check`: clean across all files.
+    - `mypy`: clean across all files.
+
+## Next Steps
+
+1. Push `agy/issue-1491` to origin.
+2. Open draft PR using `gh pr create --draft -R D-sorganization/Runner_Dashboard --base main --head agy/issue-1491`.
+3. Report result.
+
+---
+
+# Past handoff — Fix Fleet Orchestration false successes for dispatch and deploy (#1502)
 
 Last updated: 2026-09-25
 
