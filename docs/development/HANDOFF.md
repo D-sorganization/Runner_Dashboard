@@ -1,10 +1,40 @@
-# Current handoff — SC-B1-G9: Chat pool saturation rejects turns with chat_capacity (#1492)
+# Current handoff — Restore green main: synchronize generated OpenAPI schema and TypeScript definitions for SC-B9 group threads
 
 Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1492-chat-pool-saturation-busy`; DL-#1492; Issue #1492.
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/restore-green-main-openapi-contract-drift`; DL-#1513.
+
+## Objective and Status
+
+- Restore green main by resolving OpenAPI contract drift:
+  - PR #1480 (SC-B9: group threads for Board Deliberation, commit `5f2ca47`) introduced `/api/v1/staff/groups/{group_id}/threads` in backend FastAPI router, but did not regenerate `frontend/src/lib/openapi.json` and `frontend/src/lib/api-types.ts`.
+  - On `push` to `main`, `Frontend Tests` runs `npm run generate-api:check` which failed due to uncommitted schema and type differences.
+  - Ran `scripts/gen-api-client.sh` to synchronize `frontend/src/lib/openapi.json` and `frontend/src/lib/api-types.ts`.
+  - Verification:
+    - `scripts/gen-api-client.sh --check`: passed cleanly.
+    - `npm run typecheck`: clean (0 errors).
+    - `npm run lint`: clean (0 errors, 0 warnings).
+    - All touched files strictly $\le 500$ lines.
+
+## Next Steps
+
+1. Push `fix/restore-green-main-openapi-contract-drift`.
+2. Open PR with label `agent:antigravity`.
+3. Enable auto-merge (`gh pr merge --auto --squash`).
+4. Monitor CI until merged to `main`.
+5. Verify remote `main` is 100% green.
+
+---
+
+# Past handoff — SC-B1-G9: Chat pool saturation rejects turns with chat_capacity (#1492)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1492-chat-pool-saturation-busy`; DL-#1492; Issue #1492; PR #1511 (merged).
 
 ## Objective and Status
 
@@ -19,14 +49,6 @@ Last updated: 2026-09-25
     - `ruff format --check`: clean on modified files.
     - `mypy`: clean (0 errors) on modified files.
     - All touched files strictly $\le 500$ lines (`chat.py` 491 lines, `chat_pool.py` 81 lines, `chat_failures.py` 91 lines, `test_staff_chat_capacity.py` 123 lines).
-
-## Next Steps
-
-1. Push `fix/1492-chat-pool-saturation-busy`.
-2. Open PR with `Fixes #1492`, label `agent:antigravity`.
-3. Enable auto-merge (`gh pr merge --auto --squash`).
-4. Monitor CI until merged to `main`.
-5. Release lease for #1492.
 
 ---
 

@@ -4890,6 +4890,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List available staff groups
+         * @description List all registered multi-seat staff groups (e.g. Board of Directors).
+         */
+        get: operations["get_groups_api_v1_staff_groups_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/groups/{group_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get group details
+         * @description Get group specification, coordinator role, and seat definitions.
+         */
+        get: operations["get_group_detail_api_v1_staff_groups__group_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/groups/{group_id}/cost-estimate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Estimate group turn cost
+         * @description Estimate token spend and USD cost across all seats for a prompt.
+         */
+        get: operations["get_group_cost_estimate_api_v1_staff_groups__group_id__cost_estimate_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/groups/{group_id}/threads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a new group conversation thread
+         * @description Convenience helper to create a group thread populated with coordinator and seats.
+         */
+        post: operations["create_group_thread_endpoint_api_v1_staff_groups__group_id__threads_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/holds": {
         parameters: {
             query?: never;
@@ -6266,6 +6346,43 @@ export interface components {
              * @description Error stack trace
              */
             stack?: string | null;
+        };
+        /**
+         * CreateProposalRequest
+         * @description Payload for submitting a suggestion to the Board (POST /api/proposals).
+         */
+        CreateProposalRequest: {
+            /** Code Request Url */
+            code_request_url?: string | null;
+            /**
+             * Confirm Not Duplicate
+             * @default false
+             */
+            confirm_not_duplicate: boolean;
+            /**
+             * Estimated Cost
+             * @enum {string}
+             */
+            estimated_cost: "Low" | "Medium" | "High";
+            /** Evidence */
+            evidence: string;
+            /** Lean */
+            lean: string;
+            /** Options Considered */
+            options_considered: string;
+            /** Problem */
+            problem: string;
+            /** Source */
+            source?: string | null;
+            /** Target Repos */
+            target_repos: string[];
+            /** Title */
+            title: string;
+            /**
+             * Urgency
+             * @enum {string}
+             */
+            urgency: "Routine" | "Urgent" | "Emergency";
         };
         /** CreateThreadRequest */
         CreateThreadRequest: {
@@ -8271,43 +8388,6 @@ export interface components {
              * @default 0
              */
             planned: number;
-        };
-        /**
-         * CreateProposalRequest
-         * @description Payload for submitting a suggestion to the Board (POST /api/proposals).
-         */
-        proposals__models__CreateProposalRequest: {
-            /** Code Request Url */
-            code_request_url?: string | null;
-            /**
-             * Confirm Not Duplicate
-             * @default false
-             */
-            confirm_not_duplicate: boolean;
-            /**
-             * Estimated Cost
-             * @enum {string}
-             */
-            estimated_cost: "Low" | "Medium" | "High";
-            /** Evidence */
-            evidence: string;
-            /** Lean */
-            lean: string;
-            /** Options Considered */
-            options_considered: string;
-            /** Problem */
-            problem: string;
-            /** Source */
-            source?: string | null;
-            /** Target Repos */
-            target_repos: string[];
-            /** Title */
-            title: string;
-            /**
-             * Urgency
-             * @enum {string}
-             */
-            urgency: "Routine" | "Urgent" | "Emergency";
         };
         /** CreateProposalRequest */
         routers__staff_proposals__CreateProposalRequest: {
@@ -12685,7 +12765,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["proposals__models__CreateProposalRequest"];
+                "application/json": components["schemas"]["CreateProposalRequest"];
             };
         };
         responses: {
@@ -14956,6 +15036,132 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    get_groups_api_v1_staff_groups_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    get_group_detail_api_v1_staff_groups__group_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_group_cost_estimate_api_v1_staff_groups__group_id__cost_estimate_get: {
+        parameters: {
+            query?: {
+                /** @description Proposed question or prompt for the group */
+                prompt?: string;
+            };
+            header?: never;
+            path: {
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_group_thread_endpoint_api_v1_staff_groups__group_id__threads_post: {
+        parameters: {
+            query?: {
+                title?: string | null;
+            };
+            header?: never;
+            path: {
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
