@@ -1,7 +1,7 @@
 /**
  * StaffConsole module exports.
  *
- * Implements SC-D3 (Issue #1317) & SC-D4 (Issue #1318) under Epic SC-D (#1350).
+ * Implements SC-D3 (#1317), SC-D4 (#1318), & SC-D6 (#1320) under Epic SC-D (#1350).
  */
 export * from "./types";
 export * from "./threadTypes";
@@ -18,3 +18,8 @@ export * from "./MessageItem";
 export * from "./Thread";
 export * from "./useThreadStream";
 export * from "./cards";
+
+// SC-D6: Context pane
+export * from "./contextTypes";
+export * from "./ContextPane";
+

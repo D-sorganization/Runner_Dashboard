@@ -155,3 +155,46 @@ async def get_schedule(
         "tick_seconds": sched.tick_seconds,
         "roles": sched.status(now),
     }
+
+
+v1_router = APIRouter(prefix="/api/v1/staff", tags=["staff-v1"])
+
+
+class RoleScheduleOverrideBody(BaseModel):
+    enabled: bool
+    reason: str = Field(default="", max_length=500)
+
+
+@v1_router.put("/roles/{role}/schedule")
+@router.put("/roles/{role}/schedule")
+async def put_role_schedule(
+    role: str,
+    body: RoleScheduleOverrideBody,
+    caller: Principal = Depends(require_scope("staff.holds.write")),
+) -> dict[str, Any]:
+    """Enable or disable scheduling for a specific role (SC-D6, Issue #1320)."""
+    sched = get_scheduler()
+    roles = sched.runner.roles()
+    if role not in roles:
+        raise HTTPException(status_code=404, detail=f"role '{role}' not found")
+
+    report = sched.set_role_schedule_enabled(role, body.enabled)
+    caller_str = format_caller(caller)
+    record_audit(
+        action="role_schedule_override",
+        target=role,
+        principal=caller_str,
+        surface="api_v1",
+        outcome="success",
+        detail={"role": role, "enabled": body.enabled, "reason": body.reason},
+        fail_closed=True,
+    )
+    role_spec = roles[role]
+    return {
+        "role": role,
+        "enabled": body.enabled,
+        "schedule": role_spec.schedule,
+        "next_fire": report.get("next_fire"),
+        "reason": body.reason,
+        "status": "enabled" if body.enabled else "disabled",
+    }
