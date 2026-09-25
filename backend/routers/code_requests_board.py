@@ -22,8 +22,6 @@ from code_requests.board_gate import (
 from code_requests.model import BoardRoute, CodeRequestState
 from fastapi import APIRouter, Depends, HTTPException
 from identity import Principal, principal_has_scope, require_scope
-from proposals.models import CreateProposalRequest
-from proposals.service import create_proposal, get_proposal
 from pydantic import BaseModel, Field
 from routers.code_requests import _get_store
 
@@ -102,6 +100,9 @@ async def route_to_board(
     actor = principal.id or principal.name or "operator"
 
     if decision.routes_to_board:
+        from proposals.models import CreateProposalRequest  # noqa: PLC0415
+        from proposals.service import create_proposal  # noqa: PLC0415
+
         req_model = CreateProposalRequest(
             title=eval_request.title,
             target_repos=[eval_request.repository],
@@ -167,6 +168,8 @@ async def sync_board_decision(
         }
 
     try:
+        from proposals.service import get_proposal  # noqa: PLC0415
+
         prop_num = int(request.board_proposal)
         prop_detail = await get_proposal(prop_num)
         prop_dict = prop_detail.model_dump(mode="json")

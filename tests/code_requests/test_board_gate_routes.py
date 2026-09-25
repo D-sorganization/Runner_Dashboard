@@ -154,7 +154,7 @@ class TestRouteToBoardEndpoint:
             updated_at="2026-09-25T12:00:00Z",
         )
 
-        with patch("routers.code_requests_board.create_proposal", AsyncMock(return_value=mock_proposal)):
+        with patch("proposals.service.create_proposal", AsyncMock(return_value=mock_proposal)):
             resp = client_admin.post(
                 "/api/code-requests/cr-100/route-to-board",
                 json={"criteria": {"cross_repo_contract": True}},
@@ -235,7 +235,7 @@ class TestSyncBoardDecisionEndpoint:
             comments=[],
         )
 
-        with patch("routers.code_requests_board.get_proposal", AsyncMock(return_value=detail)):
+        with patch("proposals.service.get_proposal", AsyncMock(return_value=detail)):
             resp = client_admin.post("/api/code-requests/cr-100/sync-board-decision")
             assert resp.status_code == 200
             data = resp.json()
