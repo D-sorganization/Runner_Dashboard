@@ -12,6 +12,7 @@
  * 7. Board lists late/dead scheduled roles as liveness alerts (#1209).
  * 8. PR consolidation (#1213): roster shows the threshold, the plan shows the decision,
  *    run log and run detail show the outcome.
+ * 9. The Staff Console is the default section (#1446); the hub sections are tabs.
  */
 import "@testing-library/jest-dom/vitest";
 import React from "react";
@@ -218,6 +219,11 @@ class FakeEventSource {
   }
 }
 
+async function openSection(name: string) {
+  await waitFor(() => expect(screen.getByRole("tab", { name })).toBeInTheDocument());
+  fireEvent.click(screen.getByRole("tab", { name }));
+}
+
 function postCalls(fetchMock: ReturnType<typeof vi.fn>) {
   return fetchMock.mock.calls.filter(([, opts]) => (opts as RequestInit | undefined)?.method === "POST") as [
     string,
@@ -226,9 +232,19 @@ function postCalls(fetchMock: ReturnType<typeof vi.fn>) {
 }
 
 describe("StaffPage", () => {
+  it("opens on the Staff Console with the roster in its sidebar", async () => {
+    stubFetch();
+    render(<StaffPage />);
+    expect(screen.getByRole("tab", { name: "Console" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByTestId("staff-console-desktop")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId("roster-row-night-watch")).toBeInTheDocument());
+    expect(screen.queryByTestId("role-card-night-watch")).not.toBeInTheDocument();
+  });
+
   it("renders roster cards with installed-provider badges and state", async () => {
     stubFetch();
     render(<StaffPage />);
+    await openSection("Roster");
     await waitFor(() => expect(screen.getByTestId("role-card-night-watch")).toBeInTheDocument());
     const card = screen.getByTestId("role-card-night-watch");
     expect(within(card).getByText("Night Watch")).toBeInTheDocument();
@@ -246,6 +262,7 @@ describe("StaffPage", () => {
   it("roster shows the consolidation threshold only for roles with a strategy", async () => {
     stubFetch();
     render(<StaffPage />);
+    await openSection("Roster");
     await waitFor(() => expect(screen.getByTestId("role-card-pr-remediator")).toBeInTheDocument());
     expect(screen.getByTestId("role-strategy-pr-remediator")).toHaveTextContent(
       "consolidate when open PRs ≥ 6 and utilisation ≥ 70%",

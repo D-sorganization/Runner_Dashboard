@@ -17,6 +17,16 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { Thread } from "../Thread";
 import { RosterRow } from "../RosterRow";
 import { StaffConsoleMobile } from "../Mobile";
+
+vi.mock("../../Staff/staffApi", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../Staff/staffApi")>()),
+  fetchThreads: vi.fn().mockResolvedValue({
+    threads: [
+      { id: "thr-barb", title: "Conversation with Barb", kind: "auto", participants: ["user", "barb"], status: "active" },
+    ],
+  }),
+  fetchThreadMessages: vi.fn().mockResolvedValue({ messages: [] }),
+}));
 import { HelpAbout } from "../../../shell/HelpAbout";
 import type { ThreadInfo, ThreadMessage } from "../threadTypes";
 import type { StaffRoleItem } from "../types";

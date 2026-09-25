@@ -1,3 +1,26 @@
+# Current handoff — Staff Console end to end: desktop console and real thread resolution (#1446)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1446`; branch `feat/1446-desktop-staff-console`; PR: see branch; Issue #1446; DL-#1446. Commit: SELF.
+
+## Objective and Status
+
+- Before: `/staff` had no desktop console, and the mobile console invented `thr_<role>` ids, so every send got a 404 and history came from a GET on the POST-only `/messages` route.
+- Now:
+  - `consoleThreads.resolveRoleThread` picks the role's latest non-archived thread (`GET /api/v1/staff/threads?role=`) or creates one (`POST /threads`; Barb = `auto`, others `direct`), and asserts the role is a participant.
+  - `useStaffConsole` holds roster, thread, history (`GET /threads/{id}`), SSE stream, send and approve/deny for both layouts; failures land in `error` with a kind and render through `ConsoleErrorBanner`.
+  - `StaffConsoleDesktop` (Roster | Thread + Composer | collapsible Context) is the default Staff section; the hub sections (Roster, Runs, Assign, Holds) stay as tabs.
+  - `Mobile.tsx` now uses the hook; deep links resolve through it.
+- Verification: `npx vitest run frontend/src/pages` 86 files/673 tests passed; `npx tsc -p tsconfig.app.json --noEmit` 0 errors.
+
+## Next Steps
+
+1. Land the PR through CI (auto-merge squash).
+2. #1341 (D10 e2e): drive a real send → reply on `/staff` now that threads resolve.
+
 # Current handoff — Projects: fleet-wide prioritised status and untracked-work report (#1434)
 
 Last updated: 2026-09-25
