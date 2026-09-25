@@ -168,4 +168,136 @@ describe("Thread Component", () => {
     expect(screen.getByText(/Authentication Expired|auth_expired/i)).toBeInTheDocument();
     expect(screen.getByText(/Run claude login on host DeskComputer./i)).toBeInTheDocument();
   });
+
+  it("renders embedded action proposal card and handles approval", () => {
+    const handleApprove = vi.fn();
+    const proposalMessages: ThreadMessage[] = [
+      ...MOCK_MESSAGES,
+      {
+        id: "msg-prop",
+        thread_id: "thread-123",
+        author: "maintenance",
+        author_kind: "staff",
+        kind: "proposal",
+        body_md: "Proposed action: maintenance.runner_restart",
+        delivery: "complete",
+        created_at: "2026-09-25T08:15:00Z",
+        seq: 4,
+        meta: {
+          proposal: {
+            id: "prop-456",
+            action_name: "maintenance.runner_restart",
+            target: "DeskComp",
+            risk_level: "medium",
+            status: "pending",
+            description: "Restart stalled listener",
+          },
+        },
+      },
+    ];
+
+    render(
+      <Thread
+        thread={MOCK_THREAD}
+        messages={proposalMessages}
+        onApproveProposal={handleApprove}
+      />
+    );
+
+    expect(screen.getByText("maintenance.runner_restart")).toBeInTheDocument();
+    const approveBtn = screen.getByRole("button", { name: /approve/i });
+    fireEvent.click(approveBtn);
+
+    expect(handleApprove).toHaveBeenCalledWith("prop-456", undefined);
+  });
+
+  it("renders embedded run card and handles cancellation", () => {
+    const handleCancel = vi.fn();
+    const runMessages: ThreadMessage[] = [
+      ...MOCK_MESSAGES,
+      {
+        id: "msg-run",
+        thread_id: "thread-123",
+        author: "barb",
+        author_kind: "staff",
+        kind: "run",
+        body_md: "Dispatching run 999",
+        delivery: "complete",
+        created_at: "2026-09-25T08:20:00Z",
+        seq: 4,
+        meta: {
+          run: {
+            id: "run-999",
+            status: "running",
+            node: "DeskComp",
+            provider: "claude-3-7-sonnet",
+            elapsed_seconds: 15,
+          },
+        },
+      },
+    ];
+
+    render(
+      <Thread
+        thread={MOCK_THREAD}
+        messages={runMessages}
+        onCancelRun={handleCancel}
+      />
+    );
+
+    expect(screen.getByText("Run run-999")).toBeInTheDocument();
+    const cancelBtn = screen.getByRole("button", { name: /cancel run/i });
+    fireEvent.click(cancelBtn);
+
+    expect(handleCancel).toHaveBeenCalledWith("run-999");
+  });
+
+  it("renders embedded handoff and review cards", () => {
+    const cardMessages: ThreadMessage[] = [
+      ...MOCK_MESSAGES,
+      {
+        id: "msg-handoff",
+        thread_id: "thread-123",
+        author: "barb",
+        author_kind: "staff",
+        kind: "handoff",
+        body_md: "Routing to Librarian",
+        delivery: "complete",
+        created_at: "2026-09-25T08:25:00Z",
+        seq: 4,
+        meta: {
+          handoff: {
+            from_role: "barb",
+            to_role: "librarian",
+            reason: "Documentation review needed",
+          },
+        },
+      },
+      {
+        id: "msg-review",
+        thread_id: "thread-123",
+        author: "fleet-critic",
+        author_kind: "staff",
+        kind: "review",
+        body_md: "Review of PR #1413",
+        delivery: "complete",
+        created_at: "2026-09-25T08:30:00Z",
+        seq: 5,
+        meta: {
+          review: {
+            pr_number: 1413,
+            verdict: "approved",
+            summary: "Looks great",
+            findings: ["Clean tests"],
+          },
+        },
+      },
+    ];
+
+    render(<Thread thread={MOCK_THREAD} messages={cardMessages} />);
+
+    expect(screen.getByText(/Documentation review needed/i)).toBeInTheDocument();
+    expect(screen.getByText(/PR #1413/i)).toBeInTheDocument();
+    expect(screen.getByText(/Clean tests/i)).toBeInTheDocument();
+  });
 });

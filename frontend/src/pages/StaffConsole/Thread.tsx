@@ -43,6 +43,10 @@ export const Thread: React.FC<ThreadProps> = ({
   onSendMessage,
   roles = [],
   className = "",
+  onApproveProposal,
+  onDenyProposal,
+  onCancelRun,
+  onRerouteHandoff,
 }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const unreadTargetRef = useRef<HTMLDivElement>(null);
@@ -192,6 +196,10 @@ export const Thread: React.FC<ThreadProps> = ({
                   isStreaming={item.message.streaming}
                   onStopStreaming={onStopStreaming}
                   onRetry={onRetryMessage}
+                  onApproveProposal={onApproveProposal}
+                  onDenyProposal={onDenyProposal}
+                  onCancelRun={onCancelRun}
+                  onRerouteHandoff={onRerouteHandoff}
                 />
               </div>
             );
