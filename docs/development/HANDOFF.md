@@ -1,10 +1,42 @@
-# Current handoff — Restore green main: resolve a11y violations in staff RosterRow, ContextPane, and theme danger badges (#1483)
+# Current handoff — Fix projects run steward missing Idempotency-Key (#1494)
 
 Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; branch `fix/restore-green-main-danger-badge-contrast`; DL-#1483; PR #1507.
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1494-projects-run-steward-idempotency`; DL-#1494; Issue #1494.
+
+## Objective and Status
+
+- Fix Projects "Run steward" failing with 400 Bad Request due to missing `Idempotency-Key` header (issue #1494):
+  - In `frontend/src/pages/ProjectsPage.tsx`, replaced raw `apiRequest` with shared `dispatchRun("project-steward", ...)` and `errorMessage` from `frontend/src/pages/Staff/staffApi.ts`.
+  - `dispatchRun` automatically sets the required `Idempotency-Key` header and CSRF sentinel header, satisfying `require_idempotency_header` on `/api/v1/staff/project-steward/run`.
+  - Formatted error handling via `errorMessage` to present clean, user-facing error details.
+  - Added Vitest assertions in `frontend/src/pages/__tests__/Projects.test.tsx` verifying:
+    - `Idempotency-Key` header is present on dispatch requests.
+    - 400 Bad Request error detail is surfaced directly to the user on failure.
+  - Verification:
+    - Vitest `frontend/src/pages/__tests__/Projects.test.tsx`: 8/8 passed.
+    - `npm run typecheck`: clean (0 errors).
+    - `npm run lint`: clean (0 errors, 0 warnings).
+    - All touched files strictly $\le 500$ lines (`ProjectsPage.tsx` 136 lines, `Projects.test.tsx` 404 lines).
+
+## Next Steps
+
+1. Push `fix/1494-projects-run-steward-idempotency`.
+2. Open PR with `Fixes #1494`, label `agent:antigravity`.
+3. Enable auto-merge (`gh pr merge --auto --squash`).
+4. Monitor CI until merged to `main`.
+
+---
+
+# Past handoff — Restore green main: resolve a11y violations in staff RosterRow, ContextPane, and theme danger badges (#1483)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/restore-green-main-danger-badge-contrast`; DL-#1483; PR #1507 (merged).
 
 ## Objective and Status
 
@@ -25,12 +57,6 @@ Last updated: 2026-09-25
     - `npm run typecheck`: clean (0 errors).
     - `npm run lint`: clean (0 errors, 0 warnings).
     - All touched files strictly $\le 500$ lines.
-
-## Next Steps
-
-1. Push `fix/restore-green-main-danger-badge-contrast` (PR #1507).
-2. Enable auto-merge (`gh pr merge 1507 --auto --squash`).
-3. Verify all CI checks pass and PR merges cleanly to `main`.
 
 ---
 

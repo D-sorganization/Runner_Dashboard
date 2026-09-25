@@ -1,12 +1,13 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.270
+**Spec Version:** 2.5.271
 **Application Version:** 4.10.0 (see `VERSION`)
 **Last Updated:** 2026-09-25T00:00:00-07:00
 **Status:** Active
 
 ## Change Log
 
+| 2026-09-25 | #1494                  | Projects run steward sends Idempotency-Key via shared dispatchRun helper. Replaced raw fetch in `frontend/src/pages/ProjectsPage.tsx` with shared `dispatchRun("project-steward", ...)` and `errorMessage` from `frontend/src/pages/Staff/staffApi.ts`, ensuring the required `Idempotency-Key` header and CSRF sentinel are sent and API errors are formatted cleanly. Added Vitest assertions in `frontend/src/pages/__tests__/Projects.test.tsx` verifying the `Idempotency-Key` header is present and 400 Bad Request error details surface to the user. |
 | 2026-09-25 | #1483                  | Restore green main: resolve a11y violations in `ContextPane.tsx` and theme danger badges (`fleetThemes.ts`, `tokens.ts`). Replaced unconfigured `--color-*` variables in `ContextPane.tsx` with standard design system tokens. Adjusted `light.semantic.error` in `fleetThemes.ts` and `lightBadgeTokens` in `tokens.ts` from `#bf2130` to `#b81d2c`, raising contrast on tinted backgrounds (`--badge-danger-bg` over `var(--bg-secondary)` `#f8f9fa`) from 4.49:1 to 4.84:1 to strictly satisfy WCAG AA 4.5:1 minimums, resolving axe-core `color-contrast` failures in Playwright E2E smoke tests. |
 | 2026-09-25 | #1483                  | Restore green main: remove nested interactive controls in `RosterRow.tsx`. Wrapped the role avatar and details in an accessible button and removed `role="button"` and `tabIndex={0}` from the outer roster row container, ensuring the pin toggle button is a sibling rather than a focusable descendant inside an interactive element. Resolves WCAG 4.1.2 `nested-interactive` violation detected by axe-core in Playwright E2E smoke tests. |
 | 2026-09-25 | #1475                  | WP-0.2: Show Board proposals in the owner inbox (wire inbox to the CR-7 store). Replaced the stub in `backend/staff/inbox.py` with `_collect_board_proposals()` querying `proposals.store.list_github_proposals(state="open")` cached with `DEFAULT_CACHE_TTL`. Filtered out decided/closed proposals, mapped open proposals waiting on decisions to `InboxItem` with `source="board_proposal"`, urgency-based severity, age from `created_at`, link to `/staff/fleet-command?section=proposals`, and structured metadata. Extracted briefing generation to `backend/staff/briefings.py` to maintain $\le 500$ line cap compliance. Added Proposals filter pill to frontend `InboxPanel.tsx`. Added unit test suite in `tests/unit/test_staff_inbox_proposals.py`. |
