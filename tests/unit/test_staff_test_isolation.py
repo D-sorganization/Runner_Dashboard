@@ -15,7 +15,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
-from staff import workspace
+from staff import knowledge_refresh, workspace
 
 
 @pytest.mark.unit
@@ -26,6 +26,12 @@ def test_repos_roots_is_empty_inside_the_test_session() -> None:
     they exist on the host, which is exactly the leak reported in #1521.
     """
     assert workspace.repos_roots() == []
+
+
+@pytest.mark.unit
+def test_import_time_bindings_of_repos_roots_are_isolated_too() -> None:
+    """``knowledge_refresh`` imports ``repos_roots`` by name; that binding must not leak."""
+    assert knowledge_refresh.repos_roots() == []
 
 
 @pytest.mark.unit

@@ -196,9 +196,12 @@ def _hermetic_staff_workspace(tmp_path, monkeypatch):
     ``add_worktree`` in ``tests/api/test_staff_consolidation.py``) — that
     per-test monkeypatch simply overrides the default set up here.
     """
+    from staff import knowledge_refresh as knowledge_refresh_mod  # noqa: PLC0415
     from staff import workspace as workspace_mod  # noqa: PLC0415
 
     monkeypatch.setattr(workspace_mod, "repos_roots", lambda: [])
+    # knowledge_refresh binds repos_roots at import time; patch that name too.
+    monkeypatch.setattr(knowledge_refresh_mod, "repos_roots", lambda: [])
     monkeypatch.setenv("STAFF_WORKTREES_ROOT", str(tmp_path / "staff-worktrees"))
     monkeypatch.setenv("STAFF_RM_ROOT", str(tmp_path / "staff-rm-root"))
 
