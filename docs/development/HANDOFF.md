@@ -1,4 +1,4 @@
-# Current handoff — Restore green main: resolve a11y violations in staff RosterRow and ContextPane (#1483)
+# Current handoff — Restore green main: resolve a11y violations in staff RosterRow, ContextPane, and theme danger badges (#1483)
 
 Last updated: 2026-09-25
 
@@ -15,12 +15,16 @@ Last updated: 2026-09-25
   - `frontend/src/pages/StaffConsole/ContextPane.tsx`:
     - Replaced unconfigured `--color-*` variables and low-contrast light fallback values (`#94a3b8`, `#f1f5f9`, `#f8fafc`, etc.) with standard design system tokens (`var(--bg-card, #1c2128)`, `var(--text-secondary, #8b949e)`, `var(--border, #30363d)`, `var(--accent-blue, #58a6ff)`).
     - Resolves WCAG 1.4.3 `color-contrast` violation in axe-core Playwright E2E smoke tests.
+  - `frontend/src/design/fleetThemes.ts` & `frontend/src/design/tokens.ts`:
+    - Adjusted `light.semantic.error` and `lightBadgeTokens.dangerFg` / `dangerBg` from `#bf2130` to `#b81d2c`.
+    - Resolves WCAG 1.4.3 `color-contrast` violation on tinted danger error banners (`--badge-danger-bg` on `var(--bg-secondary)`), raising contrast from 4.49:1 to 4.84:1 (>= 4.5:1).
+    - Added regression unit tests in `frontend/src/design/__tests__/fleetThemes.contrast.test.ts`.
   - Verification:
     - StaffConsole vitest: 17/17 test files passed (113/113 tests passed).
+    - fleetThemes contrast vitest: 24/24 tests passed.
     - `npm run typecheck`: clean (0 errors).
     - `npm run lint`: clean (0 errors, 0 warnings).
-    - `ContextPane.tsx`: 354 lines ($\le 500$).
-    - `RosterRow.tsx`: 296 lines ($\le 500$).
+    - All touched files strictly $\le 500$ lines.
 
 ## Next Steps
 

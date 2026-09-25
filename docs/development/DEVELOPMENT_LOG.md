@@ -18,15 +18,15 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1483 · Restore green main: resolve a11y violations in staff RosterRow and ContextPane
+### DL-#1483 · Restore green main: resolve a11y violations in staff RosterRow, ContextPane, and theme danger badges
 
 - **State:** in_progress
 - **Owner:** antigravity
 - **Branch:** `fix/restore-green-main-contextpane-contrast`
-- **Paths:** `frontend/src/pages/StaffConsole/ContextPane.tsx`, `frontend/src/pages/StaffConsole/RosterRow.tsx`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Paths:** `frontend/src/pages/StaffConsole/ContextPane.tsx`, `frontend/src/pages/StaffConsole/RosterRow.tsx`, `frontend/src/design/fleetThemes.ts`, `frontend/src/design/tokens.ts`, `frontend/src/design/__tests__/fleetThemes.contrast.test.ts`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
-- **Last verified:** 2026-09-25 (StaffConsole vitest 17/17 files 113/113 passed; npm run typecheck clean; npm run lint clean; ContextPane 354 lines <= 500 lines; RosterRow 296 lines <= 500 lines)
-- **Summary:** Wrapped role avatar and details in an accessible button and removed `role="button"` and `tabIndex={0}` from outer roster row container (resolving WCAG 4.1.2 nested-interactive). Replaced unconfigured `--color-*` variables and low-contrast light fallback values in `ContextPane.tsx` with standard theme tokens (`var(--bg-card, #1c2128)`, `var(--text-secondary, #8b949e)`, `var(--border, #30363d)`, `var(--accent-blue, #58a6ff)`), resolving WCAG 1.4.3 color-contrast violation in axe-core.
+- **Last verified:** 2026-09-25 (StaffConsole vitest 17/17 passed; fleetThemes vitest 24/24 passed; npm run typecheck clean; npm run lint clean; all files <= 500 lines)
+- **Summary:** Wrapped role avatar and details in an accessible button and removed `role="button"` and `tabIndex={0}` from outer roster row container (resolving WCAG 4.1.2 nested-interactive). Replaced unconfigured `--color-*` variables in `ContextPane.tsx` with standard design system tokens. Adjusted `light.semantic.error` in `fleetThemes.ts` and `lightBadgeTokens` in `tokens.ts` from `#bf2130` to `#b81d2c`, raising contrast on tinted backgrounds (`--badge-danger-bg` over `var(--bg-secondary)`) from 4.49:1 to 4.84:1 to strictly satisfy WCAG AA 4.5:1 minimums, resolving axe-core `color-contrast` failures in Playwright E2E smoke tests.
 - **Next step:** Push branch, open PR, enable auto-merge, verify CI passes.
 
 ### DL-#1475 · WP-0.2: Show Board proposals in the owner inbox (wire inbox to the CR-7 store)
