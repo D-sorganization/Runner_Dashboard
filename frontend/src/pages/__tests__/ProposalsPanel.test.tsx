@@ -153,10 +153,16 @@ describe("ProposalsPanel", () => {
   });
 
   it("submits proposal when all required fields are filled", async () => {
-    let postedPayload: any = null;
+    interface ProposalPayload {
+      title?: string;
+      problem?: string;
+      urgency?: string;
+      [key: string]: unknown;
+    }
+    let postedPayload: ProposalPayload | null = null;
     stubFetch((url, opts) => {
       if (url === "/api/proposals" && opts?.method === "POST") {
-        postedPayload = JSON.parse(opts.body as string);
+        postedPayload = JSON.parse(opts.body as string) as ProposalPayload;
         return {
           status: 201,
           body: {

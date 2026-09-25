@@ -20,7 +20,11 @@ interface DecidedProposalsProps {
   onRetry: () => void;
 }
 
-export function renderOutcomeBadge(decision: string | null | undefined): React.ReactElement {
+export function OutcomeBadge({
+  decision,
+}: {
+  decision: string | null | undefined;
+}): React.ReactElement {
   const d = (decision || "decided").toLowerCase();
   if (d === "accepted") return <Badge tone="success">accepted</Badge>;
   if (d === "declined") return <Badge tone="danger">declined</Badge>;
@@ -168,7 +172,9 @@ export function DecidedProposalsSection({
                       {(p.target_repos || []).join(", ")}
                     </div>
                   </td>
-                  <td>{renderOutcomeBadge(p.decision)}</td>
+                  <td>
+                    <OutcomeBadge decision={p.decision} />
+                  </td>
                   <td>
                     {p.meeting_date ? (
                       p.consensus_url ? (

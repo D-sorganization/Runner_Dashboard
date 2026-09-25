@@ -21,7 +21,7 @@ import {
   useResource,
 } from "./fleetApi";
 import { PanelFrame } from "./PanelFrame";
-import { renderOutcomeBadge } from "./ProposalLists";
+import { OutcomeBadge } from "./ProposalLists";
 import type { Consensus, ProposalItem } from "./types";
 
 const LATEST = "";
@@ -138,7 +138,9 @@ function ConsensusView({
                         {p.target_repos.join(", ")}
                       </div>
                     </td>
-                    <td>{renderOutcomeBadge(p.decision)}</td>
+                    <td>
+                      <OutcomeBadge decision={p.decision} />
+                    </td>
                   </tr>
                 ))}
               </tbody>
