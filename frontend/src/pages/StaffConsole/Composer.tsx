@@ -28,6 +28,7 @@ export const Composer: React.FC<ComposerProps> = ({
   disabled = false,
   placeholder,
   className = "",
+  focusOnThreadChange = false,
 }) => {
   const [text, setText] = useState<string>(() => getDraft(threadId));
   const [sendState, setSendState] = useState<"idle" | "sending" | "sent" | "failed">("idle");
@@ -51,6 +52,15 @@ export const Composer: React.FC<ComposerProps> = ({
     setIdempotencyKey(null);
     setActiveMenu(null);
   }, [threadId]);
+
+  // SC-D9: after a thread switch, keyboard focus follows the conversation.
+  // The first render is skipped so opening the page never steals focus.
+  const focusedThreadRef = useRef(threadId);
+  useEffect(() => {
+    if (!focusOnThreadChange || focusedThreadRef.current === threadId) return;
+    focusedThreadRef.current = threadId;
+    textareaRef.current?.focus();
+  }, [focusOnThreadChange, threadId]);
 
   // Voice Input integration
   const voice = useVoiceInput({

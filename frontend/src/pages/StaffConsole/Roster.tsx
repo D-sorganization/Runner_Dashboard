@@ -225,7 +225,6 @@ export const Roster: React.FC<RosterProps> = ({
         padding: "12px",
         boxSizing: "border-box",
         overflowY: "auto",
-        outline: "none",
       }}
     >
       {/* Sidebar Header */}
@@ -303,7 +302,6 @@ export const Roster: React.FC<RosterProps> = ({
             border: "1px solid var(--border, #30363d)",
             borderRadius: "6px",
             color: "var(--text-primary, #e6edf3)",
-            outline: "none",
           }}
         />
         {searchQuery && (

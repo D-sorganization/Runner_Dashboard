@@ -1,3 +1,38 @@
+# Current handoff — SC-D9: Accessibility and keyboard pass on the Staff Console (#1343)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/agy-1343`; branch `agy/issue-1343`; baseline `f9333a9c`; commit `SELF`; PR #1433; Issue #1343; DL-#1343.
+- Delegated to agy with Gemini 3.8 Flash under the tier:cli pilot (RM#1751). A frontier agent (Claude Opus 5.5) reviewed and reworked the result before merge.
+
+## Objective and Status
+
+- Make the Staff Console usable by keyboard and screen reader: polite live log, focus on thread switch, visible focus, reduced motion, contrast, and `?` shortcut help.
+- Review rework:
+  - Removed the second `?` dialog (`StaffShortcutsModal`). The global Help & About panel already binds `?`, and it now lists the Staff shortcuts, so there is one registry (DRY).
+  - Focus on thread switch: `Composer` now takes `focusOnThreadChange` and focuses its own textarea, skipping the first render. This replaces the document-wide `querySelector('textarea')` (LoD).
+  - Mobile moves focus to the thread heading, not the composer, so the soft keyboard doesn't pop up, and back returns focus to the search box. Both use refs.
+  - Removed the nested `aria-live` on streaming bubbles; the `role="log"` container is the only live region.
+  - Removed `outline: none` from the new focusable log, and dropped per-component `:focus-visible` lists that duplicate the global rule in `index.css`.
+  - Reverted the single-line squashing of `Mobile.tsx`.
+  - The e2e tests now assert for real (no `if (visible)` fallthrough): desktop `/staff` axe, the `?` dialog axe, and a mobile keyboard walkthrough using the shared `mockStaffApi`.
+  - Reverted the Spec Version bump, which is release-derived.
+- Finding: desktop `/staff` still renders the Staff Hub (`pages/Staff`). The Staff Console Roster/Thread components are only mounted on mobile so far.
+
+## Validation
+
+- `npx vitest run frontend/src/pages/StaffConsole/ frontend/src/shell/__tests__/HelpAbout.test.tsx` → 15 files, 93 tests passed.
+- `npx tsc -p tsconfig.app.json --noEmit` → 0 errors.
+- Playwright runs in CI (`frontend-tests.yml`, chromium-desktop). The mobile walkthrough runs in the mobile projects.
+
+## Next Steps
+
+1. Let CI run the Playwright a11y suite on this PR, then merge.
+
+---
+
 # Current handoff — CR-1: Rename Feature Requests → Code Requests with back-compat aliases (#1281)
 
 Last updated: 2026-09-25
@@ -47,7 +82,6 @@ Last updated: 2026-09-25
 ## Objective and Status
 
 - SC-G3: Fleet -> Operations: merge Deployment, Fleet Orchestration, Diagnostics, Conductor, Runner Plan and Schedules into unified `/fleet/operations` page. Shipped in PR #1426 (commit `1ce7324`).
-
 
 # Previous handoff — Restore green main: trim Mobile.tsx <= 500 lines and format api-types.ts (#1428)
 

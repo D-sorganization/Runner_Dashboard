@@ -48,9 +48,10 @@ async function expectNoSeriousA11yViolations(
   page: import("@playwright/test").Page,
   testInfo: import("@playwright/test").TestInfo,
   context: string,
+  include: string = CONTENT_SELECTOR,
 ): Promise<void> {
   let builder = new AxeBuilder({ page })
-    .include(CONTENT_SELECTOR)
+    .include(include)
     .withTags(["wcag2a", "wcag2aa"]);
   for (const rule of DISABLED_RULES) {
     builder = builder.disableRules(rule);
@@ -91,8 +92,9 @@ async function expectNoSeriousA11yViolations(
  */
 async function gotoApp(
   page: import("@playwright/test").Page,
+  path: string = "/",
 ): Promise<void> {
-  await page.goto("/");
+  await page.goto(path);
   await page.waitForSelector(CONTENT_SELECTOR, {
     state: "attached",
     timeout: 15000,
@@ -140,6 +142,37 @@ test.describe("accessibility (axe-core)", () => {
       await page.waitForTimeout(500);
     }
     await expectNoSeriousA11yViolations(page, testInfo, "queue");
+  });
+
+  // SC-D9 (#1343): the Staff tab and the '?' shortcut help. Both navigate
+  // deterministically and assert the surface is present, so a missing page
+  // fails instead of passing an empty scan.
+  test("Staff tab has no serious a11y violations", async ({
+    page,
+  }, testInfo) => {
+    await gotoApp(page, "/staff");
+    await expect(
+      page.getByRole("tablist", { name: "Staff sections" }),
+    ).toBeVisible({ timeout: 15000 });
+    await expectNoSeriousA11yViolations(page, testInfo, "staff");
+  });
+
+  test("'?' shortcut help dialog has no serious a11y violations", async ({
+    page,
+  }, testInfo) => {
+    await gotoApp(page);
+    await page.locator("body").press("?");
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible({ timeout: 5000 });
+    await expect(dialog).toContainText("Navigate staff roster roles");
+    await expectNoSeriousA11yViolations(
+      page,
+      testInfo,
+      "shortcut-help",
+      '[role="dialog"]',
+    );
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
   });
 
   test("primary sections are reachable via an ARIA landmark or tablist", async ({

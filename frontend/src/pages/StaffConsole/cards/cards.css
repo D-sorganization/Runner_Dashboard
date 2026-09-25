@@ -45,3 +45,16 @@
     touch-action: manipulation;
   }
 }
+
+/* Reduced-Motion Support (SC-D9) */
+@media (prefers-reduced-motion: reduce) {
+  .staff-action-card,
+  .staff-run-card,
+  .staff-handoff-card,
+  .staff-review-card,
+  .staff-error-card,
+  .staff-action-card__btn {
+    transition: none !important;
+    animation: none !important;
+  }
+}

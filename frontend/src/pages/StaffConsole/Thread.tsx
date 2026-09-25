@@ -9,6 +9,10 @@ import type { ThreadMessage, ThreadProps } from "./threadTypes";
 import { MessageItem } from "./MessageItem";
 import { Composer } from "./Composer";
 import { formatSeparatorDate, getDateKey } from "./threadUtils";
+import { prefersReducedMotion } from "../../design/motion";
+
+/** Scroll instantly when the user asks for reduced motion (SC-D9). */
+const scrollBehavior = (): ScrollBehavior => (prefersReducedMotion() ? "auto" : "smooth");
 
 export const DateSeparator: React.FC<{ label: string }> = ({ label }) => {
   return (
@@ -115,16 +119,30 @@ export const Thread: React.FC<ThreadProps> = ({
 
   const handleJumpToUnread = () => {
     setShowJumpToUnread(false);
+    const behavior = scrollBehavior();
     if (unreadTargetRef.current && typeof unreadTargetRef.current.scrollIntoView === "function") {
-      unreadTargetRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+      unreadTargetRef.current.scrollIntoView({ behavior, block: "start" });
     } else if (scrollContainerRef.current) {
       scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+    }
+  };
+
+  const handleLogKeyDown = (e: React.KeyboardEvent) => {
+    const behavior = scrollBehavior();
+    if (e.key === "j") {
+      e.preventDefault();
+      scrollContainerRef.current?.scrollBy({ top: 80, behavior });
+    } else if (e.key === "k") {
+      e.preventDefault();
+      scrollContainerRef.current?.scrollBy({ top: -80, behavior });
     }
   };
 
   return (
     <div
       className={`staff-thread-view ${className}`}
+      role="region"
+      aria-label={`Conversation thread with ${thread.title || thread.id}`}
       style={{
         display: "flex",
         flexDirection: "column",
@@ -166,7 +184,14 @@ export const Thread: React.FC<ThreadProps> = ({
       {/* Messages Scroll Area */}
       <div
         ref={scrollContainerRef}
+        role="log"
+        aria-label="Conversation messages"
+        aria-live="polite"
+        aria-relevant="additions text"
+        aria-atomic="false"
+        tabIndex={0}
         onScroll={handleScroll}
+        onKeyDown={handleLogKeyDown}
         className="thread-messages-scroll"
         style={{
           flex: 1,
@@ -246,6 +271,7 @@ export const Thread: React.FC<ThreadProps> = ({
           threadId={thread.id}
           roles={roles}
           onSendMessage={onSendMessage}
+          focusOnThreadChange
         />
       )}
     </div>

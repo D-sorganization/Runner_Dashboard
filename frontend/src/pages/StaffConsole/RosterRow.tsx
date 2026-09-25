@@ -47,7 +47,7 @@ export const RosterRow: React.FC<RosterRowProps> = ({
 }) => {
   const { status, reason } = computeRoleStatus(role, availableProviders);
   const statusMeta = STATUS_COLORS[status];
-  const statusTooltip = reason ? `${statusMeta.label}: ${reason}` : statusMeta.label;
+  const statusTooltip = reason ? `Status: ${statusMeta.label} (${reason})` : `Status: ${statusMeta.label}`;
 
   const totalUnread = (role.caller_unread_count ?? 0) + (role.pending_proposals_count ?? 0);
   const relativeAge = formatRelativeTime(role.last_message_at);
@@ -85,9 +85,10 @@ export const RosterRow: React.FC<RosterRowProps> = ({
       data-focused={isFocused}
       data-status={status}
       aria-selected={isSelected}
-      aria-label={`${role.title}, status: ${statusTooltip}`}
+      aria-label={`${role.title}, ${statusTooltip}`}
       onClick={handleClick}
       onKeyDown={handleKeyDown}
+      className={`staff-roster-row ${isSelected ? "staff-roster-row--selected" : ""}`}
       style={{
         display: "flex",
         alignItems: "center",
@@ -108,7 +109,8 @@ export const RosterRow: React.FC<RosterRowProps> = ({
           : "1px solid transparent",
         transition: "background-color 0.15s ease, border-color 0.15s ease",
         userSelect: "none",
-        outline: "none",
+        outline: isFocused ? "2px solid var(--accent-blue, #58a6ff)" : undefined,
+        outlineOffset: isFocused ? "2px" : undefined,
       }}
     >
       {/* Left section: Avatar + Role Info */}

@@ -90,6 +90,8 @@ export interface ComposerProps {
   disabled?: boolean;
   placeholder?: string;
   className?: string;
+  /** Focus the textarea when the user switches to another thread (SC-D9). */
+  focusOnThreadChange?: boolean;
 }
 
 export interface ThreadProps {

@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1343 · SC-D9: Accessibility and keyboard pass on the Staff Console
+
+- **State:** in_review
+- **Owner:** antigravity (implementation), claude (review and rework)
+- **Issue:** #1343 (epic #1350 / umbrella #1354)
+- **Branch:** `agy/issue-1343`
+- **PR:** #1433
+- **Paths:** `frontend/src/pages/StaffConsole/`, `frontend/src/shell/HelpAbout.tsx`, `tests/e2e/a11y.spec.ts`, `tests/e2e/mobile.spec.ts`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (`f9333a9c` baseline; vitest 93/93, tsc 0 errors)
+- **Summary:** The thread is a polite `role="log"` and the only live region. Focus follows a thread switch through the Composer (`focusOnThreadChange`); on mobile it goes to the heading and back to search. Focus rings are visible, scrolling respects reduced motion, status labels are clearer, and the Staff shortcuts are listed in the global `?` Help panel. The axe and keyboard-walkthrough e2e tests assert for real.
+- **Next step:** Merge PR #1433 once CI's Playwright a11y run is green.
+
 ### DL-#1281 · CR-1: Rename Feature Requests → Code Requests with back-compat aliases
 
 - **State:** in_progress
@@ -31,7 +44,6 @@ reachable from any live state and `abandoned` from `parked`.
 - **Next step:** Push branch `feat/1281-code-requests-rename`, open PR with Closes #1281, enable auto-merge, monitor CI to green merge, release lease, and clean up.
 
 ### DL-#1333 · SC-E6: Maintenance in the UI: Maintenance thread plus "Ask Maintenance" row actions on the Fleet page
-
 
 - **State:** in_progress
 - **Owner:** antigravity
