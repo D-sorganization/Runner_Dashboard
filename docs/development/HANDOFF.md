@@ -1,3 +1,30 @@
+# Current handoff — main is red: FleetCommand test split (#1461)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/main-red-fleetcommand-test`; Issue #1461; DL-#1461.
+- Worktree `_wt_claude_rd_tracking` on OGLaptop; baseline `f9b87a09`; commit `SELF`; PR: opened right after this commit.
+
+## Objective and Status
+
+- `main` CI Standard failed at `f9b87a0`: ci-health-check's 500-line cap flagged `frontend/src/pages/__tests__/FleetCommand.test.tsx` (566 lines) after CR-7 (#1444).
+- Fix: the fixtures and helpers move to `fleetCommandFixtures.ts` (170 lines), and the messages, claims and dispatch suites move to `FleetCommandCoordination.test.tsx` (182 lines). `FleetCommand.test.tsx` keeps priorities, proposals, directives and active work (243 lines). Test bodies are unchanged.
+- Consolidated PR #1458 (peer) also adds tests to this file. It must put them in the split files on rebase; the peer has been messaged.
+
+## Validation
+
+- 15 `it(` cases before and 15 after; `npx vitest run` on both files: 15 passed.
+- `npx tsc --noEmit -p tsconfig.app.json` and eslint: clean.
+- Push-mode line cap (the same `find ... | awk '$1 > 500'` with the workflow's EXEMPT list): no files over.
+
+## Next Steps
+
+1. Merge; confirm CI Standard on main is green, then close #1461.
+
+---
+
 # Current handoff — CR-7: Board Proposals suggestion box — API, Fleet Command tab, fleet tool (#1284)
 
 Last updated: 2026-09-25

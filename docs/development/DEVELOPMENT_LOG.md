@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1461 · Main is red: FleetCommand test file over the 500-line cap
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1461
+- **Branch:** `fix/main-red-fleetcommand-test`
+- **PR:** not created
+- **Paths:** `frontend/src/pages/__tests__/FleetCommand.test.tsx`, `frontend/src/pages/__tests__/FleetCommandCoordination.test.tsx`, `frontend/src/pages/__tests__/fleetCommandFixtures.ts`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 at `f9b87a09` baseline (15/15 tests pass; tsc clean; no file over 500 lines)
+- **Summary:** Splits the Fleet Command page tests and shares their fixtures to restore green main.
+- **Next step:** Merge the PR and confirm CI Standard is green on main.
+
 ### DL-#1284 · CR-7: Board Proposals suggestion box — API, Fleet Command tab, fleet tool
 
 - **State:** in_progress
