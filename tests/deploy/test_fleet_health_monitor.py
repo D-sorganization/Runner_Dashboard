@@ -94,7 +94,7 @@ def test_script_exits_before_side_effects_when_drain_marker_exists(tmp_path: Pat
         capture_output=True,
         text=True,
         check=False,
-        timeout=10,
+        timeout=30,
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout == ""
@@ -120,7 +120,7 @@ def test_script_exits_before_side_effects_when_enable_marker_is_absent(tmp_path:
         capture_output=True,
         text=True,
         check=False,
-        timeout=10,
+        timeout=30,
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout == ""

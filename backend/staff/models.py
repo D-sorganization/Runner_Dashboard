@@ -61,7 +61,8 @@ class StaffRoleSpec(BaseModel):
     retired: bool = False
     retired_reason: str = ""
     strategy: StaffRoleStrategy = Field(default_factory=StaffRoleStrategy)
-    persona: str = ""
+    persona: dict[str, Any] | str = ""
+    defers_to: list[str] = Field(default_factory=list)
     chat: dict[str, Any] = Field(default_factory=dict)
     group: str | None = None
     valid: bool = True
