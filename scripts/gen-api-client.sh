@@ -57,6 +57,12 @@ from fastapi.testclient import TestClient  # noqa: E402
 from server import app  # noqa: E402
 
 schema = TestClient(app, raise_server_exceptions=False).get("/openapi.json").json()
+val_props = schema.get("components", {}).get("schemas", {}).get("ValidationError", {}).get("properties")
+if isinstance(val_props, dict):
+    if "ctx" not in val_props:
+        val_props["ctx"] = {"title": "Context", "type": "object"}
+    if "input" not in val_props:
+        val_props["input"] = {"title": "Input"}
 out.write_text(json.dumps(schema, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 PY
 
