@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1307 · SC-B4: Chat-turn execution path: fast replies with per-provider session resume, no worktree
+
+- **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1307 (epic #1346 / umbrella #1354)
+- **Branch:** `feat/1307-chat-turn-execution-path`
+- **PR:** (pending)
+- **Paths:** `backend/staff/chat.py`, `backend/staff/adapters.py`, `backend/staff/conversations.py`, `backend/staff/conversation_models.py`, `backend/staff/conversation_migrations.py`, `backend/routers/staff_threads.py`, `tests/unit/test_staff_chat.py`, `tests/api/test_staff_chat_turns.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (`pytest tests/unit/test_staff_chat.py` 13 passed; `pytest tests/api/test_staff_chat_turns.py` 4 passed; full staff test suite 358 passed; ruff clean; mypy 0 errors; all files <= 500 lines)
+- **Summary:** Implemented conversational chat turn execution engine (`backend/staff/chat.py`) in read-only scratch directories without git worktree checkout. Added provider session extraction and persistence (`meta.provider_sessions`), multi-turn session resumption (`--resume`), fallback to history replay under 4000-token budget, chat concurrency pool with reserved slots for Barb (SC-C6), reply contract parsing with action proposal creation, and background turn execution on message post.
+- **Next step:** Open PR, verify CI quality gates, auto-merge, and close issue #1307.
+
 ### DL-#1323 · SC-F4: Fleet MCP tools for staff conversations, work items, approvals and cancel
 
 - **State:** in_progress

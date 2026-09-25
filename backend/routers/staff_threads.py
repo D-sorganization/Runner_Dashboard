@@ -19,19 +19,11 @@ import json
 import logging
 from typing import Any
 
-from fastapi import (
-    APIRouter,
-    Depends,
-    Header,
-    HTTPException,
-    Query,
-    Request,
-    Response,
-    status,
-)
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from fastapi.responses import StreamingResponse
 from identity import Principal, format_caller, require_scope
 from pydantic import BaseModel, Field
+from staff.chat import run_chat_turn_in_background
 from staff.conversations import (
     ConversationsUnavailableError,
     MessageRecord,
@@ -335,6 +327,11 @@ async def post_message(
         bus = get_thread_bus()
         asyncio.create_task(bus.publish_message(thread_id, user_msg.to_dict()))
         asyncio.create_task(bus.publish_message(thread_id, reply_placeholder_rec.to_dict()))
+
+        # Spawn background chat turn execution (SC-B4, #1307)
+        asyncio.create_task(
+            run_chat_turn_in_background(thread_id, user_msg.id, reply_placeholder_rec.id, target_role, caller_id)
+        )
 
         return {
             "message": user_msg.to_dict(),

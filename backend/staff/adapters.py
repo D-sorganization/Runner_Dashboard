@@ -83,6 +83,91 @@ class ProviderAdapter:
         assert not any("{prompt}" in p or "{model}" in p or "{workdir}" in p for p in out)  # noqa: S101
         return out
 
+    def chat_argv(
+        self,
+        prompt: str,
+        workdir: str,
+        model: str | None = None,
+        session_id: str | None = None,
+    ) -> list[str]:
+        """Return argv for a read-only chat turn (SC-B4, Issue #1307).
+
+        Pre: ``prompt`` is non-empty.
+        Post: runs in read-only / plan mode, without bypass-permissions or write tools,
+        resuming session_id if provided.
+        """
+        assert prompt.strip(), "prompt must be non-empty"  # noqa: S101
+        chosen_model = model or self.default_model or ""
+
+        if self.provider_id in ("claude", "claude-ollama"):
+            cmd = [self.executable, "-p", prompt, "--output-format", "stream-json", "--verbose"]
+            if session_id:
+                cmd.extend(["--resume", session_id])
+            else:
+                cmd.extend(["--permission-mode", "default"])
+            if chosen_model:
+                cmd.extend(["--model", chosen_model])
+            return cmd
+
+        if self.provider_id in ("codex", "ollama"):
+            cmd = [self.executable, "exec"]
+            if self.provider_id == "ollama":
+                cmd.extend(["--oss", "--local-provider", "ollama"])
+            cmd.extend(["--sandbox", "read-only", "--skip-git-repo-check"])
+            if session_id:
+                cmd.extend(["--session", session_id])
+            if chosen_model:
+                cmd.extend(["--model", chosen_model])
+            cmd.append(prompt)
+            return cmd
+
+        if self.provider_id == "antigravity":
+            cmd = [self.executable, "--print", prompt, "--output-format", "stream-json", "--add-dir", workdir]
+            if session_id:
+                cmd.extend(["--resume", session_id])
+            if chosen_model:
+                cmd.extend(["--model", chosen_model])
+            return cmd
+
+        if self.provider_id == "cursor-agent":
+            cmd = [self.executable, "-p", prompt, "--output-format", "stream-json", "--workspace", workdir]
+            if session_id:
+                cmd.extend(["--resume", session_id])
+            if chosen_model:
+                cmd.extend(["--model", chosen_model])
+            return cmd
+
+        if self.provider_id == "gemini":
+            cmd = [self.executable, "-p", prompt]
+            if session_id:
+                cmd.extend(["--resume", session_id])
+            if chosen_model:
+                cmd.extend(["--model", chosen_model])
+            return cmd
+
+        raw = self.build_command(prompt, workdir, model=chosen_model)
+        banned = {
+            "--dangerously-bypass-approvals-and-sandbox",
+            "--dangerously-skip-permissions",
+            "bypassPermissions",
+            "--force",
+            "--trust",
+        }
+        filtered: list[str] = []
+        skip_next = False
+        for i, token in enumerate(raw):
+            if skip_next:
+                skip_next = False
+                continue
+            if token == "--permission-mode" and i + 1 < len(raw) and raw[i + 1] == "bypassPermissions":
+                skip_next = True
+                continue
+            if token not in banned:
+                filtered.append(token)
+        if session_id and "--resume" not in filtered:
+            filtered.extend(["--resume", session_id])
+        return filtered
+
     def parse_line(self, line: str) -> dict[str, Any]:
         """Turn one stdout line into a flat event.
 
@@ -113,7 +198,15 @@ class ProviderAdapter:
 
 def _extract_text(raw: dict[str, Any]) -> str:
     """Best-effort human text from a stream-json event (claude/agy/codex shapes)."""
-    for key in ("result", "text", "message", "content", "output", "response"):  # agy: result.response
+    for key in (
+        "result",
+        "text",
+        "message",
+        "content",
+        "output",
+        "response",
+        "delta",
+    ):  # agy: result.response, claude: delta
         val = raw.get(key)
         if isinstance(val, str) and val.strip():
             return val
