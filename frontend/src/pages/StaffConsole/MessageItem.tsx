@@ -6,43 +6,13 @@
 import React from "react";
 import type { ThreadMessage } from "./threadTypes";
 import { ThreadMarkdown } from "./threadMarkdown";
+import { formatFailureTitle, formatMessageTime } from "./threadUtils";
 
 export interface MessageItemProps {
   message: ThreadMessage;
   isStreaming?: boolean;
   onStopStreaming?: (messageId: string) => void;
   onRetry?: (message: ThreadMessage) => void;
-}
-
-export function formatMessageTime(isoString?: string): string {
-  if (!isoString) return "";
-  try {
-    const d = new Date(isoString);
-    if (isNaN(d.getTime())) return "";
-    return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  } catch {
-    return "";
-  }
-}
-
-export function formatFailureTitle(failureClass?: string | null): string {
-  if (!failureClass) return "Action Failed";
-  switch (failureClass) {
-    case "auth_expired":
-      return "Authentication Expired";
-    case "rate_limit_exceeded":
-      return "Rate Limit Exceeded";
-    case "token_budget_exceeded":
-      return "Token Budget Exceeded";
-    case "timeout":
-      return "Turn Execution Timed Out";
-    case "provider_unavailable":
-      return "Provider Unavailable";
-    case "permission_denied":
-      return "Permission Denied";
-    default:
-      return failureClass.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-  }
 }
 
 export const MessageItem: React.FC<MessageItemProps> = ({

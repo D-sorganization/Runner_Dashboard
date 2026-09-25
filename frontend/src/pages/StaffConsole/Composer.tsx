@@ -4,7 +4,7 @@
  *
  * Implements SC-D4 (Issue #1318) under Epic SC-D (#1350).
  */
-import React, { useEffect, useId, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVoiceInput } from "../../hooks/useVoiceInput";
 import type { ComposerProps, SlashCommand } from "./threadTypes";
 import type { StaffRoleItem } from "./types";
@@ -65,7 +65,7 @@ export const Composer: React.FC<ComposerProps> = ({
     onError: (err) => setVoiceError(err),
   });
 
-  const getCaretPos = () => {
+  const getCaretPos = useCallback(() => {
     if (!textareaRef.current) return text.length;
     const pos = textareaRef.current.selectionStart;
     // In test runners or before focus, selectionStart can be 0 while text has content
@@ -73,13 +73,13 @@ export const Composer: React.FC<ComposerProps> = ({
       return text.length;
     }
     return pos ?? text.length;
-  };
+  }, [text.length]);
 
   // Autocomplete Queries
   const mentionQuery = useMemo(() => {
     const caret = getCaretPos();
     return getMentionQuery(text, caret);
-  }, [text]);
+  }, [text, getCaretPos]);
 
   const slashQuery = useMemo(() => {
     return getSlashCommandQuery(text);
