@@ -1,4 +1,56 @@
-# Current handoff — SC-F3: Versioned public staff API (/api/v1/staff) with error envelope, idempotency keys and pagination (#1312)
+# Current handoff — SC-B3: Conversation API: threads, messages, streaming replies (SSE with resume) and unread state (#1306)
+
+Last updated: 2026-09-24
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1306-conversation-api`; Issue #1306; DL-#1306.
+
+## Work
+
+- `backend/routers/staff_threads.py`:
+  - Mounted conversation endpoints under `/api/v1/staff`:
+    - `POST /api/v1/staff/threads`: Create conversation thread (direct, group, or auto-routed to Barb).
+    - `GET /api/v1/staff/threads`: Keyset cursor paginated list of threads with filters for `role`, `status`, and `unread`.
+    - `GET /api/v1/staff/threads/{id}`: Thread details with full sequential message history.
+    - `PATCH /api/v1/staff/threads/{id}`: Update thread title or archive status.
+    - `POST /api/v1/staff/threads/{id}/messages`: Requires `Idempotency-Key` header, returns 202 Accepted immediately with user message and pending reply placeholder record. Duplicate submissions replay identically with `Idempotent-Replay: true`.
+    - `GET /api/v1/staff/threads/{id}/stream`: SSE event stream delivering `message`, `token`, `proposal`, `run_card` events, supporting `Last-Event-ID` sequential message replay from SQLite upon reconnection, 15-second heartbeats (`: keep-alive`), and client disconnection detection.
+    - `POST /api/v1/staff/threads/{id}/read`: Mark thread read for caller principal and update unread tracking.
+    - `GET /api/v1/staff/inbox`: Aggregated list of open threads requiring caller attention (unread messages or pending action proposals).
+- `backend/staff/thread_bus.py`:
+  - In-memory event bus with per-thread subscription queues and subscriber lifecycle management.
+- `backend/server.py`:
+  - Mounted `staff_threads.router` with prefix `/api/v1/staff`.
+- `docs/api/staff-v1.md`:
+  - Added full section 7 documenting thread, message, SSE streaming resume, and inbox endpoints.
+- `frontend/src/lib/openapi.json` & `frontend/src/lib/api-types.ts`:
+  - Regenerated OpenAPI snapshot and client TypeScript types via canonical `gen-api-client.sh`.
+- `tests/api/test_staff_threads_api.py`:
+  - 10 comprehensive tests covering thread creation, auto-route to Barb, role/status/unread filtering, patch, message idempotency, SSE stream resume, unread state, error messages with retry actions, and 503 degraded fail-closed behavior.
+
+## Validation
+
+- `pytest tests/api/test_staff_threads_api.py`: 10 passed in 1.87s.
+- `pytest tests/api/test_staff_threads_api.py tests/api/test_staff_v1_api.py tests/unit/test_staff_v1_primitives.py tests/unit/test_conversations_store.py tests/api/test_staff_contracts.py`: 42 passed in 4.00s.
+- `npm test`: 124 test files passed (1139 passed tests) in 24.9s.
+- `npm run typecheck`: 0 errors.
+- `npm run lint`: 0 errors, 0 warnings.
+- `mypy backend/ --ignore-missing-imports --exclude 'backend/__pycache__' --no-implicit-optional`: 0 issues in 200 source files.
+- `ruff check`: All checks passed.
+- `black --check`: All clean.
+- Line limits: All new and modified files strictly <= 500 lines (`staff_threads.py`: 467, `thread_bus.py`: 127, `conversations.py`: 488, `test_staff_threads_api.py`: 294).
+
+## Next
+
+1. Open PR with `gh pr create` referencing `Fixes #1306`.
+2. Monitor CI checks to completion.
+3. Enable auto-merge and verify PR merges cleanly.
+4. Release coordination lease on Issue #1306.
+
+---
+
+# Previous handoff — SC-F3: Versioned public staff API (/api/v1/staff) with error envelope, idempotency keys and pagination (#1312)
 
 Last updated: 2026-09-24
 

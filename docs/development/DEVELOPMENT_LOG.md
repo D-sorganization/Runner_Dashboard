@@ -18,18 +18,31 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1312 · SC-F3: Versioned public staff API (/api/v1/staff) with error envelope, idempotency and pagination
+### DL-#1306 · SC-B3: Conversation API: threads, messages, streaming replies (SSE with resume) and unread state
 
 - **State:** in_progress
 - **Owner:** antigravity
+- **Issue:** #1306 (epic #1348 / umbrella #1354)
+- **Branch:** `feat/1306-conversation-api`
+- **PR:** (pending)
+- **Paths:** `backend/routers/staff_threads.py`, `backend/staff/thread_bus.py`, `backend/staff/conversations.py`, `backend/server.py`, `docs/api/staff-v1.md`, `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `tests/api/test_staff_threads_api.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-24
+- **Last verified:** 2026-09-24 (`pytest tests/api/test_staff_threads_api.py` 10 passed; all 42 staff tests passed; 124 vitest test files / 1139 tests passed; mypy, ruff, black clean)
+- **Summary:** REST and SSE conversation endpoints mounted under `/api/v1/staff/threads` and `/api/v1/staff/inbox`. Creates direct, group, or auto-routed threads (kind `auto` routes target role to Barb). Keyset cursor pagination and filtering by participant role, status, and unread. Message submission requires `Idempotency-Key` and returns 202 Accepted with user message record and pending reply placeholder record. Duplicate submissions replay with `Idempotent-Replay: true`. In-memory `ThreadEventBus` (`backend/staff/thread_bus.py`) publishes live token/message/proposal/run_card events over SSE (`/api/v1/staff/threads/{id}/stream`) with `Last-Event-ID` sequential replay from SQLite message log, 15s heartbeats, and client disconnect handling. Unread state tracking via `/threads/{id}/read` and inbox rollup. Fail-closed 503 on degraded conversation store. All modules strictly <= 500 lines.
+- **Next step:** Open PR, verify CI, land via auto-merge, and release lease on #1306.
+
+### DL-#1312 · SC-F3: Versioned public staff API (/api/v1/staff) with error envelope, idempotency and pagination
+
+- **State:** shipped
+- **Owner:** antigravity
 - **Issue:** #1312 (epic #1352 / umbrella #1354)
 - **Branch:** `feat/1312-versioned-staff-api`
-- **PR:** (pending)
+- **PR:** #1387
 - **Paths:** `backend/routers/staff_v1.py`, `backend/staff/v1_envelope.py`, `backend/staff/idempotency.py`, `backend/staff/pagination.py`, `backend/server.py`, `docs/api/staff-v1.md`, `frontend/src/pages/Staff/staffApi.ts`, `frontend/src/lib/api.ts`, `frontend/src/pages/Projects/types.ts`, `frontend/src/pages/Projects/ProjectCard.tsx`, `tests/api/test_staff_v1_api.py`, `tests/unit/test_staff_v1_primitives.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-24
-- **Last verified:** 2026-09-24 (`pytest tests/api/test_staff_v1_api.py tests/unit/test_staff_v1_primitives.py` 13 passed; vitest Staff/FleetCommand/Projects 34 passed; ruff, ruff format, and mypy clean)
+- **Last verified:** 2026-09-24 (shipped in PR #1387)
 - **Summary:** Versioned public staff API mounted under `/api/v1/staff` with standard error envelopes `{error: {code, message, retryable, hint, request_id}}` on all 4xx/5xx responses. Legacy `/api/staff` aliases carry RFC 8594 `Deprecation`, `Sunset`, and `Link` headers. 24h SQLite WAL idempotency ledger (`backend/staff/idempotency.py`) requiring `Idempotency-Key` on mutating routes with replay headers and fail-closed 503 behavior on persistence failures. Keyset cursor pagination (`backend/staff/pagination.py`) for runs and audit. Published `docs/api/staff-v1.md`. Migrated UI to `/api/v1/staff` exclusively.
-- **Next step:** Open PR, verify CI, land via auto-merge, and release lease on #1312.
+- **Next step:** None (shipped in PR #1387).
 
 ### DL-#1305 · SC-B2: Thread, message and action-proposal store with migrations
 

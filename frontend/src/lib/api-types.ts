@@ -4446,6 +4446,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/inbox": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Inbox
+         * @description List threads requiring caller attention (unread messages or pending proposals).
+         */
+        get: operations["get_inbox_api_v1_staff_inbox_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/roles": {
         parameters: {
             query?: never;
@@ -4574,6 +4594,114 @@ export interface paths {
         };
         /** Summary V1 */
         get: operations["summary_v1_api_v1_staff_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/threads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Threads
+         * @description List conversation threads with optional filtering by role, status, unread.
+         */
+        get: operations["list_threads_api_v1_staff_threads_get"];
+        put?: never;
+        /**
+         * Create Thread
+         * @description Create a new conversation thread.
+         */
+        post: operations["create_thread_api_v1_staff_threads_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/threads/{thread_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Thread Detail
+         * @description Get thread metadata along with its historical messages.
+         */
+        get: operations["get_thread_detail_api_v1_staff_threads__thread_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Thread
+         * @description Update thread metadata (rename or archive).
+         */
+        patch: operations["update_thread_api_v1_staff_threads__thread_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/staff/threads/{thread_id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Message
+         * @description Post a user message to a thread; returns 202 with message and reply placeholder.
+         */
+        post: operations["post_message_api_v1_staff_threads__thread_id__messages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/threads/{thread_id}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark Thread Read
+         * @description Mark a thread as read for the calling principal.
+         */
+        post: operations["mark_thread_read_api_v1_staff_threads__thread_id__read_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/threads/{thread_id}/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stream Thread
+         * @description SSE feed for thread updates (token deltas, message completions, proposals).
+         */
+        get: operations["stream_thread_api_v1_staff_threads__thread_id__stream_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5252,6 +5380,20 @@ export interface components {
              */
             stack?: string | null;
         };
+        /** CreateThreadRequest */
+        CreateThreadRequest: {
+            /**
+             * Kind
+             * @default direct
+             */
+            kind: string;
+            /** Participants */
+            participants?: string[];
+            /** Role */
+            role?: string | null;
+            /** Title */
+            title?: string | null;
+        };
         /**
          * DirectiveBody
          * @description One directive as sent by an operator or agent. DbC: the JSON shape of ``priorities.directives.Directive``.
@@ -5523,6 +5665,20 @@ export interface components {
             dry_run: boolean;
             /** Pools */
             pools: components["schemas"]["PoolScalingState"][];
+        };
+        /** PostMessageRequest */
+        PostMessageRequest: {
+            /** Body */
+            body: string;
+            /**
+             * Kind
+             * @default text
+             */
+            kind: string;
+            /** Meta */
+            meta?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * PresenceBody
@@ -6706,6 +6862,13 @@ export interface components {
             success: boolean;
             /** Tool Call Id */
             tool_call_id: string;
+        };
+        /** UpdateThreadRequest */
+        UpdateThreadRequest: {
+            /** Status */
+            status?: string | null;
+            /** Title */
+            title?: string | null;
         };
         /** ValidationError */
         ValidationError: {
@@ -12619,6 +12782,28 @@ export interface operations {
             };
         };
     };
+    get_inbox_api_v1_staff_inbox_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
     roster_v1_api_v1_staff_roles_get: {
         parameters: {
             query?: never;
@@ -12829,6 +13014,258 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffSummaryResponse"];
+                };
+            };
+        };
+    };
+    list_threads_api_v1_staff_threads_get: {
+        parameters: {
+            query?: {
+                role?: string | null;
+                unread?: boolean | null;
+                status?: string | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_thread_api_v1_staff_threads_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateThreadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_thread_detail_api_v1_staff_threads__thread_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                thread_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_thread_api_v1_staff_threads__thread_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                thread_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateThreadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_message_api_v1_staff_threads__thread_id__messages_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                thread_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PostMessageRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_thread_read_api_v1_staff_threads__thread_id__read_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                thread_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stream_thread_api_v1_staff_threads__thread_id__stream_get: {
+        parameters: {
+            query?: {
+                since_seq?: number | null;
+                limit?: number;
+                /** @description Keep stream open for live updates */
+                follow?: boolean;
+            };
+            header?: {
+                "Last-Event-ID"?: string | null;
+            };
+            path: {
+                thread_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
