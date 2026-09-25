@@ -1,15 +1,24 @@
-"""Barb routing evaluation framework and regression checking (SC-C7, Issue #1340).
+"""Barb routing evaluation set and regression check (SC-C7, Issue #1340).
 
-Evaluates routing accuracy against representative benchmark cases, tracks
-accuracy metrics per category, records nightly eval results for Board display,
-and extracts candidate evaluation cases from operator overrides.
+The benchmark cases live beside this module (``routing_eval_cases.json``) so
+every deployed node can run them. Two judges share one scorer:
+
+* ``evaluate_deterministic`` checks the Stage 1 pre-router only. CI runs it on
+  every change (``tests/staff/routing_eval``) and requires every case to pass.
+* ``evaluate_full`` checks the two-stage ``BarbRouter``. The backend refreshes
+  it daily (``routing_eval_loop``) and the Board shows the latest summary.
+
+Routing overrides recorded by SC-C2 become candidate cases through
+``extract_candidate_cases_from_feedback``.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -17,10 +26,14 @@ from typing import Any
 
 from staff.conversations import ConversationStore, get_conversation_store
 from staff.router import BarbRouter, route_deterministic
+from staff.router_models import RoutingDecision
 
 log = logging.getLogger("dashboard.staff.routing_eval")
 
-DEFAULT_CASES_PATH = Path(__file__).resolve().parents[2] / "tests" / "staff" / "routing_eval" / "cases.json"
+DEFAULT_CASES_PATH = Path(__file__).resolve().with_name("routing_eval_cases.json")
+
+#: Seconds between background refreshes of the full-router eval (daily).
+ROUTING_EVAL_INTERVAL_S = 24 * 60 * 60
 
 
 def _config_dir() -> Path:
@@ -57,6 +70,8 @@ class RoutingEvalCase:
             raise ValueError("RoutingEvalCase.id must be a non-empty string")
         if not self.prompt or not isinstance(self.prompt, str):
             raise ValueError(f"RoutingEvalCase({self.id}).prompt must be a non-empty string")
+        if self.expected_clarify == bool(self.expected_roles):
+            raise ValueError(f"RoutingEvalCase({self.id}) must expect either clarification or a role, not both")
 
 
 @dataclass(frozen=True)
@@ -130,185 +145,143 @@ def load_eval_cases(path: Path | None = None) -> list[RoutingEvalCase]:
     return cases
 
 
-def evaluate_deterministic(cases: list[RoutingEvalCase]) -> RoutingEvalResult:
-    """Evaluate deterministic pre-router (Stage 1) against test cases."""
-    now_iso = datetime.now(UTC).isoformat().replace("+00:00", "Z")
-    passed = 0
-    failures: list[dict[str, Any]] = []
-    cat_stats: dict[str, dict[str, int]] = {}
+#: A judge returns ``None`` when the case passes, else the failure reason.
+Judge = Callable[[RoutingEvalCase], str | None]
 
-    for case in cases:
-        cat = cat_stats.setdefault(case.category, {"total": 0, "passed": 0})
-        cat["total"] += 1
 
-        decision = route_deterministic(case.prompt)
+def _judge_decision(case: RoutingEvalCase, decision: RoutingDecision) -> str | None:
+    """Compare one routed (non-clarify) decision with the case's expectations."""
+    diffs: list[str] = []
+    if decision.chosen_role not in case.expected_roles:
+        diffs.append(f"role '{decision.chosen_role}' not in {case.expected_roles}")
+    if case.is_code_change and not decision.is_code_change:
+        diffs.append("is_code_change False, expected True")
+    if case.expected_answer_myself and decision.chosen_role != "barb":
+        diffs.append("expected barb self-handling")
+    return "; ".join(diffs) or None
 
-        # Ambiguous cases: pre-router must return None (defer to Stage 2)
-        if case.expected_clarify:
-            if decision is None:
-                passed += 1
-                cat["passed"] += 1
-            else:
-                failures.append(
-                    {
-                        "id": case.id,
-                        "prompt": case.prompt,
-                        "reason": f"Expected deferral (None) for ambiguous prompt, got role '{decision.chosen_role}'",
-                    }
-                )
-            continue
 
-        # Regular deterministic cases
+def _judge_deterministic(case: RoutingEvalCase) -> str | None:
+    """Stage 1 must defer ambiguous prompts (``None``) and route the rest."""
+    decision = route_deterministic(case.prompt)
+    if case.expected_clarify:
         if decision is None:
-            failures.append(
-                {
-                    "id": case.id,
-                    "prompt": case.prompt,
-                    "reason": f"Pre-router returned None, expected '{case.expected_role}'",
-                }
-            )
-            continue
-
-        role_match = decision.chosen_role in case.expected_roles
-        code_match = not case.is_code_change or decision.is_code_change
-        answer_match = not case.expected_answer_myself or decision.chosen_role == "barb"
-
-        if role_match and code_match and answer_match:
-            passed += 1
-            cat["passed"] += 1
-        else:
-            diffs: list[str] = []
-            if not role_match:
-                diffs.append(f"role '{decision.chosen_role}' not in {case.expected_roles}")
-            if not code_match:
-                diffs.append("is_code_change False, expected True")
-            if not answer_match:
-                diffs.append("expected barb self-handling")
-            failures.append(
-                {
-                    "id": case.id,
-                    "prompt": case.prompt,
-                    "reason": "; ".join(diffs),
-                }
-            )
-
-    total = len(cases)
-    accuracy = (passed / total) if total > 0 else 0.0
-
-    categories_out = {
-        k: {
-            "total": v["total"],
-            "passed": v["passed"],
-            "accuracy": round(v["passed"] / v["total"], 4) if v["total"] > 0 else 0.0,
-        }
-        for k, v in cat_stats.items()
-    }
-
-    return RoutingEvalResult(
-        evaluated_at=now_iso,
-        total=total,
-        passed=passed,
-        accuracy=accuracy,
-        mode="deterministic",
-        categories=categories_out,
-        failures=failures,
-    )
+            return None
+        return f"Expected deferral (None) for ambiguous prompt, got role '{decision.chosen_role}'"
+    if decision is None:
+        return f"Pre-router returned None, expected '{case.expected_role}'"
+    return _judge_decision(case, decision)
 
 
-def evaluate_full(
-    cases: list[RoutingEvalCase],
-    router: BarbRouter | None = None,
-) -> RoutingEvalResult:
-    """Evaluate full two-stage router against test cases."""
-    r = router or BarbRouter()
-    now_iso = datetime.now(UTC).isoformat().replace("+00:00", "Z")
-    passed = 0
-    failures: list[dict[str, Any]] = []
-    cat_stats: dict[str, dict[str, int]] = {}
+def _full_judge(router: BarbRouter) -> Judge:
+    """The two-stage router must ask for clarification on ambiguous prompts."""
 
-    for case in cases:
-        cat = cat_stats.setdefault(case.category, {"total": 0, "passed": 0})
-        cat["total"] += 1
-
-        decision = r.route(case.prompt)
-
+    def judge(case: RoutingEvalCase) -> str | None:
+        decision = router.route(case.prompt)
         if case.expected_clarify:
             if decision.needs_clarification or decision.chosen_role is None:
-                passed += 1
-                cat["passed"] += 1
-            else:
-                failures.append(
-                    {
-                        "id": case.id,
-                        "prompt": case.prompt,
-                        "reason": f"Expected clarification, got role '{decision.chosen_role}'",
-                    }
-                )
-            continue
+                return None
+            return f"Expected clarification, got role '{decision.chosen_role}'"
+        return _judge_decision(case, decision)
 
-        role_match = decision.chosen_role in case.expected_roles
-        code_match = not case.is_code_change or decision.is_code_change
+    return judge
 
-        if role_match and code_match:
-            passed += 1
-            cat["passed"] += 1
+
+def _score(cases: list[RoutingEvalCase], judge: Judge, mode: str) -> RoutingEvalResult:
+    """Run ``judge`` over ``cases`` and tally accuracy overall and per category.
+
+    Postcondition: ``passed + len(failures) == total``.
+    """
+    if not cases:
+        raise ValueError("routing eval needs at least one case")
+    failures: list[dict[str, Any]] = []
+    tallies: dict[str, dict[str, int]] = {}
+    for case in cases:
+        tally = tallies.setdefault(case.category, {"total": 0, "passed": 0})
+        tally["total"] += 1
+        reason = judge(case)
+        if reason is None:
+            tally["passed"] += 1
         else:
-            diffs: list[str] = []
-            if not role_match:
-                diffs.append(f"role '{decision.chosen_role}' not in {case.expected_roles}")
-            if not code_match:
-                diffs.append("is_code_change False, expected True")
-            failures.append(
-                {
-                    "id": case.id,
-                    "prompt": case.prompt,
-                    "reason": "; ".join(diffs),
-                }
-            )
+            failures.append({"id": case.id, "prompt": case.prompt, "reason": reason})
 
     total = len(cases)
-    accuracy = (passed / total) if total > 0 else 0.0
-
-    categories_out = {
-        k: {
-            "total": v["total"],
-            "passed": v["passed"],
-            "accuracy": round(v["passed"] / v["total"], 4) if v["total"] > 0 else 0.0,
-        }
-        for k, v in cat_stats.items()
-    }
-
+    passed = total - len(failures)
+    assert passed == sum(t["passed"] for t in tallies.values())
     return RoutingEvalResult(
-        evaluated_at=now_iso,
+        evaluated_at=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         total=total,
         passed=passed,
-        accuracy=accuracy,
-        mode="full",
-        categories=categories_out,
+        accuracy=passed / total,
+        mode=mode,
+        categories={name: {**t, "accuracy": round(t["passed"] / t["total"], 4)} for name, t in tallies.items()},
         failures=failures,
     )
+
+
+def evaluate_deterministic(cases: list[RoutingEvalCase]) -> RoutingEvalResult:
+    """Evaluate the deterministic pre-router (Stage 1) against ``cases``."""
+    return _score(cases, _judge_deterministic, "deterministic")
+
+
+def evaluate_full(cases: list[RoutingEvalCase], router: BarbRouter | None = None) -> RoutingEvalResult:
+    """Evaluate the full two-stage router against ``cases``."""
+    return _score(cases, _full_judge(router or BarbRouter()), "full")
 
 
 def save_eval_result(result: RoutingEvalResult, path: Path | None = None) -> Path:
     """Persist evaluation result as JSON for Board display and trend tracking."""
     target_path = path or default_eval_result_path()
     target_path.parent.mkdir(parents=True, exist_ok=True)
-    payload = json.dumps(result.to_dict(), indent=2)
-    target_path.write_text(payload, encoding="utf-8")
+    target_path.write_text(json.dumps(result.to_dict(), indent=2), encoding="utf-8")
     return target_path
 
 
 def get_latest_routing_eval(path: Path | None = None) -> dict[str, Any] | None:
-    """Read the latest persisted routing evaluation result if available."""
+    """Read the latest persisted routing evaluation result, or ``None`` if absent.
+
+    An unreadable or malformed file is logged and treated as absent so the
+    Board keeps rendering; the next refresh overwrites it.
+    """
     target_path = path or default_eval_result_path()
     if not target_path.exists():
         return None
     try:
         data = json.loads(target_path.read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else None
-    except Exception as exc:  # noqa: BLE001
-        log.warning("Failed to load latest routing eval result: %s", exc)
+    except (OSError, json.JSONDecodeError) as exc:
+        log.warning("routing eval: cannot read %s: %s", target_path, exc)
         return None
+    if not isinstance(data, dict):
+        log.warning("routing eval: %s does not hold a JSON object", target_path)
+        return None
+    return data
+
+
+def refresh_routing_eval(path: Path | None = None, cases_path: Path | None = None) -> RoutingEvalResult:
+    """Run the full-router eval once and persist it for the Board.
+
+    Postcondition: the result file exists and holds this run.
+    """
+    result = evaluate_full(load_eval_cases(cases_path))
+    saved = save_eval_result(result, path=path)
+    assert saved.exists()
+    log.info("routing eval: %d/%d passed (%.1f%%)", result.passed, result.total, result.accuracy * 100)
+    return result
+
+
+async def routing_eval_loop(interval_s: int = ROUTING_EVAL_INTERVAL_S) -> None:
+    """Background task: refresh the routing eval at startup, then every ``interval_s``.
+
+    Precondition: ``interval_s >= 60``. A failed run is logged and retried on
+    the next tick; it never stops the loop or the server.
+    """
+    assert interval_s >= 60, "routing eval interval must be >= 60 s"
+    while True:
+        try:
+            await asyncio.to_thread(refresh_routing_eval)
+        except Exception:  # noqa: BLE001 - a bad run must not kill the loop
+            log.exception("routing eval: refresh failed")
+        await asyncio.sleep(interval_s)
 
 
 def extract_candidate_cases_from_feedback(
@@ -317,21 +290,17 @@ def extract_candidate_cases_from_feedback(
 ) -> list[dict[str, Any]]:
     """Extract candidate evaluation cases from SC-C2 routing override feedback."""
     s = store or get_conversation_store()
-    router = BarbRouter()
-    feedbacks = router.list_routing_feedback(store=s, limit=limit)
-
-    candidates: list[dict[str, Any]] = []
-    for fb in feedbacks:
-        candidates.append(
-            {
-                "prompt": fb.prompt,
-                "category": "override_feedback",
-                "expected_role": fb.override_role,
-                "expected_roles": [fb.override_role],
-                "original_role": fb.original_role,
-                "reason": fb.reason,
-                "overridden_by": fb.overridden_by,
-                "created_at": fb.created_at,
-            }
-        )
-    return candidates
+    feedbacks = BarbRouter().list_routing_feedback(store=s, limit=limit)
+    return [
+        {
+            "prompt": fb.prompt,
+            "category": "override_feedback",
+            "expected_role": fb.override_role,
+            "expected_roles": [fb.override_role],
+            "original_role": fb.original_role,
+            "reason": fb.reason,
+            "overridden_by": fb.overridden_by,
+            "created_at": fb.created_at,
+        }
+        for fb in feedbacks
+    ]

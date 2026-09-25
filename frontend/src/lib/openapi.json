@@ -1916,6 +1916,38 @@
         "title": "RoutingDecideRequest",
         "type": "object"
       },
+      "RoutingEvalSummary": {
+        "description": "Board summary of the latest Barb routing eval (SC-C7, #1340).\n\nOnly counts reach the Board; the failure list stays in the result file and\n``GET /api/v1/staff/routing/eval``.",
+        "properties": {
+          "accuracy": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Accuracy",
+            "type": "number"
+          },
+          "evaluated_at": {
+            "title": "Evaluated At",
+            "type": "string"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "passed": {
+            "minimum": 0.0,
+            "title": "Passed",
+            "type": "integer"
+          },
+          "total": {
+            "minimum": 1.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": ["evaluated_at", "mode", "total", "passed", "accuracy"],
+        "title": "RoutingEvalSummary",
+        "type": "object"
+      },
       "RoutingHandoffRequest": {
         "description": "Request payload to execute a handoff to a destination role.",
         "properties": {
@@ -2410,15 +2442,13 @@
           "routing_eval": {
             "anyOf": [
               {
-                "additionalProperties": true,
-                "type": "object"
+                "$ref": "#/components/schemas/RoutingEvalSummary"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "Latest routing eval result (SC-C7)",
-            "title": "Routing Eval"
+            "description": "Latest routing eval summary (SC-C7)"
           },
           "running": {
             "items": {

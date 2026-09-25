@@ -2576,6 +2576,12 @@ async def _startup() -> None:
     # Replay-store purge runs on every node regardless of leader status.
     asyncio.create_task(_periodic_replay_purge())
 
+    # SC-C7 (#1340): refresh the Barb routing eval at startup and daily so the
+    # Board always shows a current result on every node.
+    from staff.routing_eval import routing_eval_loop  # noqa: PLC0415
+
+    asyncio.create_task(routing_eval_loop())
+
     # A1: periodic systemd watchdog heartbeat. No-op outside systemd
     # (when _sd_notify is None or WATCHDOG_USEC is unset).
     asyncio.create_task(_systemd_watchdog_loop())

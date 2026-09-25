@@ -18,6 +18,18 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1340 · SC-C7: Barb routing evaluation set and regression check
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1340 (epic #1349 / umbrella #1354)
+- **Branch:** `agy/issue-1340` (PR #1436)
+- **Paths:** `backend/staff/routing_eval.py`, `backend/staff/routing_eval_cases.json`, `backend/staff/models.py`, `backend/staff/fleet.py`, `backend/staff/router.py`, `backend/routers/staff_routing.py`, `backend/server.py`, `scripts/eval_barb_routing.py`, `tests/staff/routing_eval/test_routing_eval.py`, `frontend/src/pages/Staff/Board.tsx`, `frontend/src/pages/Staff/staffApi.ts`, `frontend/src/pages/__tests__/BoardRoutingEval.test.tsx`, `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (routing/board pytest 42 passed; tests/staff 25 passed; vitest 14 files/80 tests; tsc 0; ruff clean; mypy backend/ clean)
+- **Summary:** Labelled routing cases ship with the backend; one `_score` over pluggable judges evaluates the deterministic pre-router (CI gate, exact) and the full router (daily background refresh); typed `RoutingEvalSummary` surfaces the latest run on the Board.
+- **Next step:** Merge PR #1436 once CI is green, then confirm the Board badge on the deployed Desk node after the next rollout.
+
 ### DL-#1434 · Projects: fleet-wide prioritised status, charter coverage and untracked-work report
 
 - **State:** in_review

@@ -66,8 +66,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--threshold",
         type=float,
-        default=0.90,
-        help="Minimum required accuracy threshold (0.0 to 1.0, default: 0.90)",
+        default=1.0,
+        help="Minimum required accuracy (0.0 to 1.0, default 1.0: every case must pass)",
     )
     parser.add_argument(
         "--json",

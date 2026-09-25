@@ -2,18 +2,26 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 from staff.conversations import ConversationStore
+from staff.models import RoutingEvalSummary
 from staff.router import BarbRouter, route_deterministic
 from staff.routing_eval import (
+    DEFAULT_CASES_PATH,
+    RoutingEvalCase,
     evaluate_deterministic,
+    evaluate_full,
     extract_candidate_cases_from_feedback,
     get_latest_routing_eval,
     load_eval_cases,
+    refresh_routing_eval,
+    routing_eval_loop,
     save_eval_result,
 )
 
@@ -49,17 +57,15 @@ def test_eval_dataset_integrity() -> None:
 
 
 def test_deterministic_pre_router_cases() -> None:
-    """Pre-router evaluates deterministic cases with high accuracy."""
+    """Every deterministic case routes as expected (CI regression gate)."""
     cases = load_eval_cases()
     det_cases = [c for c in cases if c.deterministic]
     assert len(det_cases) >= 50
 
     result = evaluate_deterministic(det_cases)
     assert result.total == len(det_cases)
-    assert result.accuracy >= 0.95, (
-        f"Deterministic accuracy too low: {result.accuracy:.2%}, failures: {result.failures}"
-    )
-    assert len(result.failures) == 0, f"Unexpected failures in deterministic pre-router: {result.failures}"
+    # Exact regression gate: every case passes today, so any failure is a regression.
+    assert result.failures == [], f"Deterministic pre-router regressed: {result.failures}"
 
 
 def test_deterministic_pre_router_ignores_ambiguous() -> None:
@@ -179,5 +185,73 @@ def test_scripts_eval_barb_routing_cli(tmp_path: Path) -> None:
 
     payload = json.loads(proc.stdout)
     assert payload["total"] >= 50
-    assert payload["accuracy"] >= 0.95
+    assert payload["failures"] == []
     assert result_file.exists()
+
+
+def test_cases_ship_with_the_backend() -> None:
+    """Deployed nodes run the eval, so the cases must live under backend/, not tests/."""
+    assert DEFAULT_CASES_PATH.parent.name == "staff"
+    assert "tests" not in DEFAULT_CASES_PATH.parts
+
+
+def test_full_router_passes_every_case() -> None:
+    """The two-stage router handles every case, including clarification on ambiguous ones."""
+    result = evaluate_full(load_eval_cases())
+    assert result.failures == [], f"Full router regressed: {result.failures}"
+    assert result.passed == result.total
+
+
+def test_score_counts_failures_and_rejects_empty_input() -> None:
+    wrong = RoutingEvalCase(
+        id="w1",
+        prompt="show me the fleet status",
+        category="t",
+        expected_role="librarian",
+        expected_roles=("librarian",),
+    )
+    result = evaluate_deterministic([wrong])
+    assert (result.total, result.passed, len(result.failures)) == (1, 0, 1)
+    assert result.categories["t"] == {"total": 1, "passed": 0, "accuracy": 0.0}
+    with pytest.raises(ValueError):
+        evaluate_deterministic([])
+
+
+def test_case_must_expect_either_clarification_or_a_role() -> None:
+    with pytest.raises(ValueError):
+        RoutingEvalCase(id="x", prompt="p", category="c", expected_role=None)
+    with pytest.raises(ValueError):
+        RoutingEvalCase(
+            id="y", prompt="p", category="c", expected_role="barb", expected_roles=("barb",), expected_clarify=True
+        )
+
+
+def test_refresh_persists_the_full_eval_for_the_board(tmp_path: Path) -> None:
+    target = tmp_path / "latest.json"
+    result = refresh_routing_eval(path=target)
+    loaded = get_latest_routing_eval(path=target)
+    assert loaded is not None and loaded["mode"] == "full"
+    summary = RoutingEvalSummary.from_result(loaded)
+    assert summary is not None
+    assert (summary.total, summary.passed) == (result.total, result.passed)
+
+
+def test_malformed_result_file_reads_as_absent(tmp_path: Path) -> None:
+    bad = tmp_path / "latest.json"
+    bad.write_text("{not json", encoding="utf-8")
+    assert get_latest_routing_eval(path=bad) is None
+    bad.write_text("[1, 2]", encoding="utf-8")
+    assert get_latest_routing_eval(path=bad) is None
+
+
+def test_summary_passes_none_through_and_rejects_inconsistent_counts() -> None:
+    assert RoutingEvalSummary.from_result(None) is None
+    with pytest.raises(AssertionError):
+        RoutingEvalSummary.from_result(
+            {"evaluated_at": "2026-09-25T00:00:00Z", "mode": "full", "total": 1, "passed": 2, "accuracy": 1.0}
+        )
+
+
+def test_loop_rejects_a_too_short_interval() -> None:
+    with pytest.raises(AssertionError):
+        asyncio.run(routing_eval_loop(interval_s=1))

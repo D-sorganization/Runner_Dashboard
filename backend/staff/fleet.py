@@ -318,10 +318,12 @@ def local_board(runner: Any) -> dict[str, Any]:
         avail_stats = {}
 
     try:
+        from staff.models import RoutingEvalSummary  # noqa: PLC0415
         from staff.routing_eval import get_latest_routing_eval  # noqa: PLC0415
 
-        routing_eval_data = get_latest_routing_eval()
-    except Exception:  # noqa: BLE001
+        routing_eval_data = RoutingEvalSummary.from_result(get_latest_routing_eval())
+    except Exception:  # noqa: BLE001 - the Board must render without the eval
+        log.exception("local_board: routing eval summary unavailable")
         routing_eval_data = None
 
     return {
@@ -335,7 +337,7 @@ def local_board(runner: Any) -> dict[str, Any]:
         "availability": avail_stats,
         "liveness": liveness,
         "rm_source": getattr(sys.modules.get("routers.staff"), "source_status", source_status)(),
-        "routing_eval": routing_eval_data,
+        "routing_eval": routing_eval_data.model_dump() if routing_eval_data else None,
     }
 
 

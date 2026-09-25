@@ -53,6 +53,7 @@ export type RunRecord = components["schemas"]["StaffRunRecord"];
 export type RunEvent = components["schemas"]["StaffRunEvent"];
 export type RoleLiveness = components["schemas"]["StaffRoleLiveness"];
 export type BoardResponse = components["schemas"]["StaffBoardResponse"];
+export type RoutingEvalSummary = components["schemas"]["RoutingEvalSummary"];
 export type RunsResponse = components["schemas"]["StaffRunsResponse"];
 export type RunDetailResponse = components["schemas"]["StaffRunDetailResponse"];
 export type RunPlan = components["schemas"]["StaffRunPlan"];

@@ -54,6 +54,7 @@ describe("Board routing evaluation display", () => {
         passed: 59,
         total: 60,
         evaluated_at: "2026-09-25T12:00:00Z",
+        mode: "full",
       },
     };
 

@@ -19,6 +19,7 @@ import {
   groupByMachine,
   livenessAlerts,
   statusTone,
+  type RoutingEvalSummary,
 } from "./staffApi";
 
 export interface BoardProps {
@@ -86,19 +87,7 @@ export function Board({ onOpenRun }: BoardProps) {
             {board.routing_eval ? (
               <>
                 {" · "}
-                <Tooltip
-                  content={`Routing eval: ${String(board.routing_eval.passed ?? "")}/${String(board.routing_eval.total ?? "")} passed (${(Number(board.routing_eval.accuracy ?? 0) * 100).toFixed(1)}%)`}
-                  placement="bottom"
-                >
-                  <span data-testid="board-routing-eval" tabIndex={0} style={{ cursor: "help" }}>
-                    <Badge
-                      tone={Number(board.routing_eval.accuracy ?? 0) >= 0.9 ? "success" : "warning"}
-                      size="sm"
-                    >
-                      routing {Math.round(Number(board.routing_eval.accuracy ?? 0) * 100)}%
-                    </Badge>
-                  </span>
-                </Tooltip>
+                <RoutingEvalBadge summary={board.routing_eval} />
               </>
             ) : null}
           </span>
@@ -155,3 +144,24 @@ export function Board({ onOpenRun }: BoardProps) {
 }
 
 export default Board;
+
+/**
+ * SC-C7 (#1340): latest Barb routing eval, refreshed daily by the backend.
+ * Green only when every case passed; the eval set is an exact regression gate.
+ */
+function RoutingEvalBadge({ summary }: { summary: RoutingEvalSummary }) {
+  const pct = Math.round(summary.accuracy * 100);
+  const allPassed = summary.passed === summary.total;
+  return (
+    <Tooltip
+      content={`Routing eval (${summary.mode}): ${summary.passed}/${summary.total} passed, run ${summary.evaluated_at}`}
+      placement="bottom"
+    >
+      <span data-testid="board-routing-eval" tabIndex={0} style={{ cursor: "help" }}>
+        <Badge tone={allPassed ? "success" : "warning"} size="sm">
+          routing {pct}%
+        </Badge>
+      </span>
+    </Tooltip>
+  );
+}

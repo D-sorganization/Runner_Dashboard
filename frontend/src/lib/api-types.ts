@@ -6575,6 +6575,25 @@ export interface components {
             thread_id?: string | null;
         };
         /**
+         * RoutingEvalSummary
+         * @description Board summary of the latest Barb routing eval (SC-C7, #1340).
+         *
+         *     Only counts reach the Board; the failure list stays in the result file and
+         *     ``GET /api/v1/staff/routing/eval``.
+         */
+        RoutingEvalSummary: {
+            /** Accuracy */
+            accuracy: number;
+            /** Evaluated At */
+            evaluated_at: string;
+            /** Mode */
+            mode: string;
+            /** Passed */
+            passed: number;
+            /** Total */
+            total: number;
+        };
+        /**
          * RoutingHandoffRequest
          * @description Request payload to execute a handoff to a destination role.
          */
@@ -6807,13 +6826,8 @@ export interface components {
             rm_source?: {
                 [key: string]: unknown;
             } | null;
-            /**
-             * Routing Eval
-             * @description Latest routing eval result (SC-C7)
-             */
-            routing_eval?: {
-                [key: string]: unknown;
-            } | null;
+            /** @description Latest routing eval summary (SC-C7) */
+            routing_eval?: components["schemas"]["RoutingEvalSummary"] | null;
             /** Running */
             running: components["schemas"]["StaffRunRecord"][];
             /**

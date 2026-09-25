@@ -1,3 +1,29 @@
+# Current handoff — SC-C7: Barb routing evaluation set and regression check (#1340)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/agy-1340`; branch `agy/issue-1340`; PR #1436; Issue #1340; DL-#1340. Commit: SELF.
+
+## Objective and Status
+
+- agy (Gemini 3.8 Flash) drafted the PR; Claude Opus reworked it after review:
+  - Cases moved from `tests/` to `backend/staff/routing_eval_cases.json` so deployed nodes never read the test tree.
+  - One `_score(cases, judge, mode)` replaces two copied loops; `_judge_deterministic` and `_full_judge(router)` are the only difference (DRY). `_score` raises on empty input and asserts its tally.
+  - `RoutingEvalCase` enforces "clarify XOR roles".
+  - CI gate is exact (`failures == []`), not a 95% threshold; CLI default threshold 1.0.
+  - `routing_eval_loop` (daily, started in `server.py` startup) keeps the full-router summary fresh; failures are logged, never swallowed.
+  - `StaffBoardResponse.routing_eval` is a typed `RoutingEvalSummary` (was an untyped dict); API client regenerated; Board badge is green only when every case passed.
+- Verification: routing/board pytest 42 passed; tests/staff 25 passed; vitest 14 files/80 tests; `tsc -p tsconfig.app.json` 0 errors; ruff clean; `mypy backend/` clean.
+
+## Next Steps
+
+1. Merge PR #1436 when CI is green.
+2. After the next rollout, check the Board badge on Desk.
+
+---
+
 # Current handoff — Projects: fleet-wide prioritised status and untracked-work report (#1434)
 
 Last updated: 2026-09-25
