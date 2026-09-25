@@ -808,6 +808,9 @@ def test_modern_desktop_shell_has_no_legacy_fallback() -> None:
 def test_every_registered_desktop_tab_has_native_route_content() -> None:
     """Adding a nav tab must add native desktop content, not revive legacy fallback."""
     nav_registry = _NAV_REGISTRY.read_text(encoding="utf-8")
+    nav_data = _SRC_DIR / "shell" / "navRegistryData.ts"
+    if nav_data.exists():
+        nav_registry += "\n" + nav_data.read_text(encoding="utf-8")
     routed_shell = _ROUTED_SHELL.read_text(encoding="utf-8")
 
     registered_tabs = set(re.findall(r'tabId:\s*"([^"]+)"', nav_registry))
