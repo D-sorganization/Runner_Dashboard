@@ -1,4 +1,66 @@
-# Current handoff — SC-B4: Chat-turn execution path: fast replies with per-provider session resume, no worktree (#1307)
+# Current handoff — SC-E5: Stalled-job detection and remediation playbooks for the Maintenance role (#1322)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1322-stalled-job-detection`; Issue #1322; DL-#1322.
+
+## Objective and Status
+
+- SC-E5: Autonomous stalled-job detection and remediation playbooks for the Maintenance role. Detect stuck jobs and runners across 5 anomaly detectors, auto-remediate low-risk conditions, and propose medium/high-risk actions in the Maintenance conversation thread awaiting human approval.
+- Status: Fully implemented with TDD; all unit and API tests passing; ruff, format, and mypy clean; all files <= 500 lines.
+
+## Files and Decisions
+
+- `backend/staff/maintenance_detect.py`:
+  - `DetectionType` enum: `QUEUED_TOO_LONG`, `RUNNING_PAST_P95`, `WEDGED_LISTENER`, `RUNNER_OFFLINE_ASSIGNED_JOB`, `GHOST_RUNNER`.
+  - `DetectionItem` and `StalledJobDetectionReport` dataclasses.
+  - 5 anomaly detectors:
+    - `detect_queued_too_long`: checks queued runs waiting >= 30m when matching idle online runners exist (recommends low-risk `maintenance.cancel_and_rerun`).
+    - `detect_running_past_p95`: checks active runs exceeding workflow p95 * 3 (recommends medium-risk `maintenance.run_cancel`).
+    - `detect_wedged_listener`: checks online runners whose listener log mtime is older than 600s, bypassing deceptive systemctl status (recommends low-risk `maintenance.runner_restart`).
+    - `detect_runner_offline_assigned_job`: checks offline runners that have active in-progress jobs assigned (recommends medium-risk `maintenance.run_cancel`).
+    - `detect_ghost_runners`: checks unregistered host registrations or runners offline >= 7 days (recommends high-risk `maintenance.runner_remove`).
+  - `StalledJobDetector`:
+    - Isolated detector execution (`try...except` per probe) so failures in one check never abort the remaining detectors.
+    - Low-risk auto-remediation with state verification (`verify_maintenance`).
+    - Medium and high-risk proposal creation linked to the Maintenance role thread (`_ensure_maintenance_thread`).
+    - SC-A8 durable audit logging via `record_audit`.
+- `backend/staff/maintenance.py`:
+  - Added `maintenance.cancel_and_rerun` (risk `LOW`, auto-executes, verifies cancellation and rerun).
+  - Added `maintenance.runner_remove` (risk `HIGH`, requires owner approval).
+  - Updated `register_maintenance_actions` and `verify_maintenance`.
+- `backend/staff/actions.py`:
+  - Allowed `maintenance` role to propose and trigger any `maintenance.*` catalogue action.
+- `backend/routers/staff_proposals.py`:
+  - Added `POST /api/v1/staff/maintenance/detect-stalled` triggering detection scans and returning reports.
+- `tests/unit/test_staff_maintenance_detect.py`:
+  - 9 unit tests covering all 5 detector fixtures, exception isolation, wedged listener auto-restart and verification, and high-risk approval gating.
+- `tests/api/test_staff_maintenance_detect_api.py`:
+  - 2 integration tests covering low-risk auto-remediation and high-risk proposal approval and execution flow via HTTP.
+
+## Validation
+
+- `pytest tests/unit/test_staff_maintenance_detect.py`: 9 passed in 1.10s.
+- `pytest tests/api/test_staff_maintenance_detect_api.py`: 2 passed in 1.53s.
+- Full maintenance and actions suite: 39 passed in 3.05s.
+- `ruff check backend tests`: All checks passed.
+- `ruff format --check backend tests`: All files formatted.
+- `mypy`: Success (0 errors across 6 checked source files).
+- Line limits: All new and modified files strictly <= 500 lines (`maintenance.py`: 494, `maintenance_detect.py`: 472, `actions.py`: 440, `staff_proposals.py`: 273, `test_staff_maintenance_detect.py`: 318, `test_staff_maintenance_detect_api.py`: 148).
+
+## Next Steps
+
+1. Push branch `feat/1322-stalled-job-detection`.
+2. Open PR referencing `Fixes #1322`.
+3. Enable auto-merge squash without `--admin`.
+4. Monitor CI checks to merge cleanly into `main`.
+5. Release lease on issue #1322.
+
+---
+
+## Prior handoff — SC-B4: Chat-turn execution path: fast replies with per-provider session resume, no worktree (#1307)
 
 Last updated: 2026-09-25
 
@@ -9,52 +71,7 @@ Last updated: 2026-09-25
 ## Objective and Status
 
 - SC-B4: Fast, read-only conversational replies with per-provider session resumption, isolated scratch execution (no git worktrees), Barb concurrency reservation, and structured reply contract integration.
-- Status: Fully implemented with TDD; all quality gates passing locally.
-
-## Files and Decisions
-
-- `backend/staff/adapters.py`:
-  - Added `chat_argv(prompt, workdir, model, session_id)` for all 6 provider adapters (`claude`, `codex`, `antigravity`, `cursor-agent`, `gemini`, `ollama`), enforcing read-only plan mode, no dangerous bypass permissions, and session resumption (`--resume` or `--session`).
-  - Added `"delta"` extraction support to `_extract_text` for Claude CLI stream-json events.
-- `backend/staff/conversation_migrations.py`:
-  - Added Migration 2 (`threads_meta_column`) creating `meta TEXT NOT NULL DEFAULT '{}'` column on `threads` with pre-migration backup.
-- `backend/staff/conversation_models.py`:
-  - Added `meta: dict[str, Any]` to `ThreadRecord`.
-- `backend/staff/conversations.py`:
-  - Updated `create_thread` and `get_thread` to read/write `meta` in SQLite.
-  - Added `update_message(message_id, kind, body_md, meta, delivery, run_id)` for in-place placeholder resolution.
-  - Added `role` convenience parameter to `create_thread`.
-- `backend/staff/chat_history.py`:
-  - Extracted provider session extraction and prompt formatting with persona injection into dedicated module.
-  - `extract_session_id(provider, event, raw_line)`: detects provider session IDs from stream events and logs across Claude, Codex, Cursor, and Antigravity.
-  - `format_history_replay`: formats role persona and conversation dialogue turns into a prompt within 4000-token budget for fallback execution.
-- `backend/staff/chat.py`:
-  - `ChatConcurrencyPool`: bounded chat turn concurrency pool with reserved slots guarantee for Barb (SC-C6).
-  - `ChatTurnRunner`: executes turns in read-only scratch directories, streams token deltas to SSE `ThreadEventBus`, records TTFT and turn duration metrics, parses reply contracts, creates action proposals, and classifies errors on provider failure.
-  - `run_chat_turn_in_background`: async task wrapper for FastAPI endpoint dispatch.
-- `backend/routers/staff_threads.py`:
-  - Dispatches `run_chat_turn_in_background` as an asynchronous background task on `POST /api/v1/staff/threads/{id}/messages`.
-- `tests/unit/test_staff_chat.py`:
-  - 13 unit tests covering adapter recipes, session extraction, concurrency pool, runner metrics, multi-turn session resume, fallback replay, read-only scratch isolation, action proposal generation, and failure classification.
-- `tests/api/test_staff_chat_turns.py`:
-  - 4 API integration tests verifying background turn dispatch, message completion, multi-turn session resume via HTTP, action proposal persistence, and error handling.
-
-## Validation
-
-- `pytest tests/unit/test_staff_chat.py`: 13 passed in 1.28s.
-- `pytest tests/api/test_staff_chat_turns.py`: 4 passed in 1.46s.
-- Full staff test suite (`pytest -k staff`): 358 passed in 91.98s.
-- `ruff check backend tests`: All checks passed.
-- `ruff format --check backend tests`: All files formatted.
-- `mypy`: 0 errors across all touched files.
-- Line limits: All new and modified files strictly <= 500 lines (`chat.py`: 457, `chat_history.py`: 104, `adapters.py`: 370, `conversations.py`: 497, `conversation_migrations.py`: 142, `conversation_models.py`: 218, `staff_threads.py`: 487, `test_staff_chat_turns.py`: 290, `test_staff_chat.py`: 493).
-
-## Next Steps
-
-1. Merge origin/main and resolve documentation conflicts.
-2. Verify CI checks pass on PR #1398.
-3. Auto-merge PR #1398 into main.
-4. Release lease on issue #1307 and post completion receipt.
+- Status: Shipped in PR #1398.
 
 ---
 

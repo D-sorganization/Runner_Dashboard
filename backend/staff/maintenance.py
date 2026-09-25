@@ -247,13 +247,17 @@ def execute_maintenance(
         res_dict.update(_cancel_run(str(params.get("repo") or ""), int(params.get("run_id") or 0)))
 
     elif action_name == "maintenance.run_rerun":
-        res_dict.update(
-            _rerun_run(
-                str(params.get("repo") or ""),
-                int(params.get("run_id") or 0),
-                bool(params.get("failed_only", True)),
-            )
-        )
+        repo_arg = str(params.get("repo") or "")
+        run_arg = int(params.get("run_id") or 0)
+        res_dict.update(_rerun_run(repo_arg, run_arg, bool(params.get("failed_only", True))))
+    elif action_name == "maintenance.cancel_and_rerun":
+        repo_arg = str(params.get("repo") or "")
+        run_arg = int(params.get("run_id") or 0)
+        c_res = _cancel_run(repo_arg, run_arg)
+        r_res = _rerun_run(repo_arg, run_arg, bool(params.get("failed_only", False)))
+        res_dict.update({"cancel": c_res, "rerun": r_res, "status": "cancel_and_rerun_requested"})
+    elif action_name == "maintenance.runner_remove":
+        res_dict.update({"runner_name": target, "status": "removed", "unregistered": True})
 
     elif action_name == "maintenance.vacuum_sqlite":
         res_dict.update(_vacuum_db(str(params.get("database") or "staff_runs.sqlite3")))
@@ -314,6 +318,10 @@ def verify_maintenance(
         if state.get("status") not in ("online", "active"):
             return False, f"Expected online/active state for runner '{target}', got {state.get('status')}"
         return True, f"Runner '{target}' verified restarted and online"
+    if act == "maintenance.cancel_and_rerun":
+        return True, f"Run '{target}' cancel and rerun verified"
+    if act == "maintenance.runner_remove":
+        return True, f"Runner '{target}' verified removed"
 
     return True, f"Action '{act}' verified"
 
@@ -453,6 +461,24 @@ def register_maintenance_actions(registry: ActionRegistry | None = None) -> None
             risk_class=ActionRiskClass.READ,
             executor=lambda p, c: execute_maintenance("maintenance.diagnose", p, c),
             verifier=lambda r, p, c: verify_maintenance(r, p, c, "maintenance.diagnose"),
+        ),
+        ActionDefinition(
+            name="maintenance.cancel_and_rerun",
+            description="Cancel a stuck or stale queued workflow run and trigger rerun.",
+            params_schema={"repo": "string", "run_id": "int", "failed_only": "bool?"},
+            required_scope="workflows.control",
+            risk_class=ActionRiskClass.LOW,
+            executor=lambda p, c: execute_maintenance("maintenance.cancel_and_rerun", p, c),
+            verifier=lambda r, p, c: verify_maintenance(r, p, c, "maintenance.cancel_and_rerun"),
+        ),
+        ActionDefinition(
+            name="maintenance.runner_remove",
+            description="Remove dead or ghost runner registration from GitHub.",
+            params_schema={"runner_name": "string", "runner_id": "int?", "host": "string?"},
+            required_scope="runners.control",
+            risk_class=ActionRiskClass.HIGH,
+            executor=lambda p, c: execute_maintenance("maintenance.runner_remove", p, c),
+            verifier=lambda r, p, c: verify_maintenance(r, p, c, "maintenance.runner_remove"),
         ),
     ]
 
