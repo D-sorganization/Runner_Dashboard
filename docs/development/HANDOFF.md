@@ -111,7 +111,6 @@ Last updated: 2026-09-25
 ---
 
 # Past handoff — SC-B9: Group threads: talk to the Board (and other groups) with the Board-Secretary coordinating seat replies (#1339)
->>>>>>> 4ab9490 (fix(staff): reject turns with chat_capacity on pool saturation (#1492))
 
 Last updated: 2026-09-25
 
