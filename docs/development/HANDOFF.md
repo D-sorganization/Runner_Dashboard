@@ -1,4 +1,31 @@
-# Current handoff — SC-B1-G2: Harden the action-proposal API (#1485)
+# Current handoff — SC-B1-G6: Redact secrets everywhere conversations persist (#1489)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1489`; branch `fix/1489-redact-everywhere` (from `origin/main`); PR: see DL-#1489; Issue #1489. Commit: SELF.
+
+## Objective and Status
+
+- Apply the existing redactor at every persistence boundary, not only `messages.body_md`.
+- Done: `redaction.redact_value` walks dicts/lists/tuples and keeps their shape. Applied to thread title (create/update) and meta, message meta (add/update), proposal params and reasons (decide and transition), run `prompt`/`target_ref`/`error`/`last_line`/`remediation` (create/update), run event text, and each transcript line the runner writes.
+- The runner now appends the `exit` event before writing the terminal status, so a reader that sees `succeeded`/`failed` always sees the exit event. The old order raced and the added redaction work widened the window: `test_submit_runs_fake_cli_to_success_with_events_and_cost` failed 1 in 4.
+- `conversations.py` stays at 497 lines (edits are line-neutral); `store.py` keeps its CRLF line endings.
+- Known limits (follow-up): audit-log `detail` fields are not redacted; a PEM key split across transcript lines is redacted per line only, so its body lines are not caught.
+
+## Validation
+
+- WSL venv: `tests/unit/test_staff_redaction_everywhere.py` 15 passed (14 boundary cases were RED first). Staff/conversation/client regression selection run with `HOME`/`USERNAME` isolated (#1521): 795 passed, 15 skipped; the only failure was the exit-event race above, since fixed and passing 6 of 6 reruns.
+- `ruff check`/`ruff format --check` clean on touched files; `py -3.12 -m mypy backend/ --ignore-missing-imports` clean in 253 files.
+
+## Next Steps
+
+1. Merge the PR (arm via `automerge_guard.py`); file the audit-detail and multi-line-PEM follow-up.
+
+---
+
+# Past handoff — SC-B1-G2: Harden the action-proposal API (#1485)
 
 Last updated: 2026-09-25
 

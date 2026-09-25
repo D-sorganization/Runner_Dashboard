@@ -18,6 +18,18 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1489 · SC-B1-G6: Redact secrets everywhere conversations and runs persist
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1489
+- **Branch:** `fix/1489-redact-everywhere`
+- **Paths:** `backend/staff/redaction.py`, `backend/staff/conversations.py`, `backend/staff/conversation_proposals.py`, `backend/staff/store.py`, `backend/staff/runner.py`, `tests/unit/test_staff_redaction_everywhere.py`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (new table test 15 passed, RED on all 14 boundaries before; ruff clean; `mypy backend/` clean in 253 files)
+- **Summary:** `redact_value` (shape-preserving) is applied at every write of thread title/meta, message meta, proposal params/reasons, run text columns, run events and transcript lines.
+- **Next step:** Merge the PR, then file a follow-up for audit-log `detail` redaction and multi-line PEM keys in transcripts.
+
 ### DL-#1485 · SC-B1-G2: Harden the action-proposal API
 
 - **State:** in_review

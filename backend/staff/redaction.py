@@ -7,6 +7,7 @@ persisted message history, transcripts, or logs.
 from __future__ import annotations
 
 import re
+from typing import Any
 
 # GitHub personal access tokens, OAuth tokens, and fine-grained tokens
 _GITHUB_TOKEN_RE = re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9_]{35,254}|github_pat_[A-Za-z0-9_]{22,254})\b")
@@ -91,3 +92,19 @@ def redact_sensitive_content(text: str) -> str:
     s = _PRIVATE_IP_RE.sub("[REDACTED_IP]", s)
 
     return s
+
+
+def redact_value(value: Any) -> Any:
+    """Redact every string inside ``value``, keeping its shape (SC-B1-G6, #1489).
+
+    Dicts keep their keys, lists and tuples keep their type and order, and non-string
+    scalars pass through unchanged. This is the one redactor for structured fields
+    (thread and message meta, proposal params) at every persistence boundary.
+    """
+    if isinstance(value, str):
+        return redact_sensitive_content(value)
+    if isinstance(value, dict):
+        return {k: redact_value(v) for k, v in value.items()}
+    if isinstance(value, list | tuple):
+        return type(value)(redact_value(v) for v in value)
+    return value

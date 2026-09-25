@@ -35,7 +35,7 @@ from staff.conversation_models import (
     ThreadRecord,
     _now,
 )
-from staff.redaction import redact_sensitive_content
+from staff.redaction import redact_sensitive_content, redact_value
 from staff.store import default_db_path
 
 __all__ = [
@@ -102,11 +102,11 @@ class ConversationStore:
         if role and role not in parts:
             parts.append(role)
         unread = {p: 0 for p in parts}
-        meta_dict = dict(meta or {})
+        meta_dict = redact_value(dict(meta or {}))
         now = _now()
         rec = ThreadRecord(
             id=tid,
-            title=title,
+            title=redact_sensitive_content(title),
             kind=kind,
             participants=parts,
             created_by=created_by,
@@ -191,7 +191,7 @@ class ConversationStore:
             updates: dict[str, Any] = {}
             for k, v in fields.items():
                 if k in allowed:
-                    updates[k] = json.dumps(v) if k in {"participants", "unread_counters", "meta"} else v
+                    updates[k] = redact_value(json.dumps(v) if k in {"participants", "unread_counters", "meta"} else v)
             if not updates:
                 return cur
             updates["updated_at"] = _now()
@@ -254,7 +254,7 @@ class ConversationStore:
 
         sanitized_body = redact_sensitive_content(body_md)
         mid = message_id or f"msg_{uuid.uuid4().hex[:12]}"
-        meta_dict = dict(meta or {})
+        meta_dict = redact_value(dict(meta or {}))
 
         with self._lock:
             for attempt in range(10):
@@ -350,7 +350,7 @@ class ConversationStore:
                 return None
             allowed = {"body_md", "kind", "meta", "delivery", "run_id"}
             updates = {
-                k: redact_sensitive_content(v or "") if k == "body_md" else json.dumps(v or {}) if k == "meta" else v
+                k: redact_value(json.dumps(v or {}) if k == "meta" else (v or "") if k == "body_md" else v)
                 for k, v in fields.items()
                 if k in allowed
             }
