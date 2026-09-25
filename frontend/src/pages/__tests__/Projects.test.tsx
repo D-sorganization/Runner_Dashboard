@@ -267,6 +267,82 @@ describe("ProjectsPage", () => {
     ).toBeVisible();
   });
 
+  it("shows priority tiers, the fleet summary and untracked open work", async () => {
+    const ranked: ProjectOverview = {
+      ...ALPHA,
+      priority: {
+        tier: "P0",
+        focus: "Finish the rollup",
+        rationale: "",
+        decided: "2026-09-25",
+      },
+      coverage: {
+        open_items: 4,
+        tracked: 3,
+        percent_tracked: 75,
+        untracked_count: 1,
+        untracked: [
+          {
+            number: 77,
+            title: "Orphaned cleanup",
+            kind: "pr",
+            url: "https://github.com/o/Alpha/pull/77",
+            updated_at: "2026-09-20T00:00:00Z",
+            labels: [],
+          },
+        ],
+      },
+    };
+    const unranked: ProjectOverview = {
+      ...BETA,
+      priority: { tier: "unranked", focus: "", rationale: "", decided: "" },
+      coverage: null,
+      coverage_error: "github: rate limited",
+    };
+    const payload: ProjectsResponse = {
+      projects: [ranked, unranked],
+      count: 2,
+      cache_ttl_seconds: 600,
+      summary: {
+        repos: 2,
+        with_charter: 1,
+        without_charter: ["Beta"],
+        features: { planned: 1, in_progress: 1, shipped: 1, parked: 1 },
+        by_tier: { P0: 1, P1: 0, P2: 0, P3: 0, P4: 0, unranked: 1 },
+        decisions_needed: 1,
+        untracked_items: 1,
+      },
+      priorities_error: "priority file not found",
+    };
+    global.fetch = vi.fn(() =>
+      Promise.resolve(jsonResponse(payload)),
+    ) as unknown as typeof fetch;
+    render(<ProjectsPage />);
+
+    const summary = within(await screen.findByTestId("fleet-summary"));
+    expect(summary.getByText("1 / 2 repos chartered")).toBeInTheDocument();
+    expect(summary.getByText("P0: 1")).toBeInTheDocument();
+    expect(summary.getByText("1 untracked open items")).toBeInTheDocument();
+    expect(summary.getByText(/priority file not found/)).toBeInTheDocument();
+
+    const alpha = within(screen.getByTestId("project-card-Alpha"));
+    expect(alpha.getByLabelText("Priority P0")).toHaveAttribute(
+      "title",
+      "Finish the rollup",
+    );
+    expect(alpha.getByText("75% of 4 open items tracked")).toBeInTheDocument();
+    fireEvent.click(alpha.getByText("Untracked work (1)"));
+    expect(
+      alpha.getByRole("link", { name: /#77 Orphaned cleanup/ }),
+    ).toHaveAttribute("href", "https://github.com/o/Alpha/pull/77");
+
+    const beta = within(screen.getByTestId("project-card-Beta"));
+    expect(beta.getByLabelText("Priority unranked")).toBeInTheDocument();
+    expect(beta.getByText(/Open-work coverage unavailable/)).toHaveTextContent(
+      "rate limited",
+    );
+  });
+
   it("renders untrusted feature notes without executable links or HTML", async () => {
     const project: ProjectOverview = {
       ...ALPHA,

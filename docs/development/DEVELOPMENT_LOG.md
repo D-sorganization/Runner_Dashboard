@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1434 · Projects: fleet-wide prioritised status, charter coverage and untracked-work report
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1434 (epic #1192)
+- **Branch:** `feat/fleet-project-tracking`
+- **PR:** #1441
+- **Paths:** `backend/projects/priorities.py`, `backend/projects/coverage.py`, `backend/projects/rollup.py`, `backend/projects/service.py`, `backend/routers/projects.py`, `config/projects.json`, `frontend/src/pages/Projects/`, `frontend/src/pages/ProjectsPage.tsx`, `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `tests/api/test_projects_tracking.py`, `tests/api/test_projects_router.py`, `frontend/src/pages/__tests__/Projects.test.tsx`, `docs/projects.md`, `SPEC.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 at 8baa2bf (pytest projects suites 36 passed; vitest Projects 7 passed; tsc clean; ruff/mypy clean; gen-api-client regenerated)
+- **Summary:** Owner priority tiers from Repository_Management `config/project_priorities.yaml`, P0-first ordering and a fleet summary on `GET /api/projects`, per-repo coverage of open issues/PRs by charter features, and `GET /api/projects/untracked` as the fleet-curator worklist; Projects tab shows tier, coverage and the summary.
+- **Next step:** Merge the PR, then publish `config/project_priorities.yaml` in Repository_Management from the owner's priority interview.
+
 ### DL-#1343 · SC-D9: Accessibility and keyboard pass on the Staff Console
 
 - **State:** in_review

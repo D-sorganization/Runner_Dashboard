@@ -1,13 +1,15 @@
 /**
  * ProjectCard — one repository on the Projects tab (issue #1199): feature
- * progress, decisions needed, last project-steward run and a "Run steward now"
- * action. Presentational; the POST is owned by the page so the card stays pure.
+ * progress, owner priority tier, open-work coverage (untracked issues/PRs),
+ * decisions needed, last project-steward run and a "Run steward now" action. Presentational; the POST is owned by the page so the card stays pure.
  */
 import React from "react";
 import { Badge } from "../../primitives/Badge";
 import { TimeAgo } from "../../primitives/TimeAgo";
 import { FeatureProgressBar } from "./FeatureProgressBar";
 import { FeatureDetails } from "./FeatureDetails";
+import { CoverageDetails } from "./CoverageDetails";
+import { PriorityBadge } from "./PriorityBadge";
 import type { ProjectOverview, StewardRun } from "./types";
 
 export interface ProjectCardProps {
@@ -75,6 +77,9 @@ export function ProjectCard({
     decisions_needed,
     last_steward_run,
     error,
+    priority,
+    coverage,
+    coverage_error,
   } = project;
   return (
     <article
@@ -90,7 +95,9 @@ export function ProjectCard({
           alignItems: "center",
         }}
       >
-        <h3 style={{ margin: 0 }}>{repo}</h3>
+        <h3 style={{ margin: 0 }}>
+          {repo} <PriorityBadge priority={priority} />
+        </h3>
         <button
           type="button"
           className="btn btn-blue"
@@ -115,6 +122,7 @@ export function ProjectCard({
         </p>
       )}
       <FeatureDetails features={features} />
+      <CoverageDetails coverage={coverage} error={coverage_error} />
       <div style={{ marginTop: 8, fontSize: 13 }}>
         <strong>Decisions needed</strong>
         {decisions_needed.length === 0 ? (

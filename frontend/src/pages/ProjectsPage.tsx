@@ -1,7 +1,8 @@
 /**
  * ProjectsPage.tsx — the "Projects" tab (issue #1199, epic #1192).
  *
- * One card per fleet repository from `GET /api/projects`: charter feature
+ * One card per fleet repository from `GET /api/projects`, ordered by the
+ * owner's priority tier (P0 first) under a fleet summary bar: charter feature
  * progress (shipped / in-progress / planned / parked), the open "Decisions
  * needed" from the generated STATUS.md, and the latest project-steward run on
  * this node. "Run steward now" posts to the existing Staff Hub dispatch route
@@ -11,7 +12,12 @@
  */
 import React from "react";
 import { apiRequest, ApiClientError } from "../lib/api";
-import { ProjectCard, STEWARD_RUN_BODY, STEWARD_RUN_URL } from "./Projects";
+import {
+  FleetSummaryBar,
+  ProjectCard,
+  STEWARD_RUN_BODY,
+  STEWARD_RUN_URL,
+} from "./Projects";
 import type { ProjectsResponse } from "./Projects";
 
 interface DispatchResponse {
@@ -94,6 +100,12 @@ export function ProjectsPage(): React.ReactElement {
         <p role="alert" style={{ color: "var(--accent-red)" }}>
           Could not load projects — {loadError}
         </p>
+      )}
+      {!loadError && data?.summary && (
+        <FleetSummaryBar
+          summary={data.summary}
+          prioritiesError={data.priorities_error}
+        />
       )}
       {!loadError && data && data.projects.length === 0 && (
         <p style={{ color: "var(--text-secondary)" }}>

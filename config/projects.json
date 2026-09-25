@@ -1,5 +1,5 @@
 {
-  "_comment": "Repositories shown on the Projects tab (issue #1199). Bare names under GITHUB_ORG; each is read at docs/project/CHARTER.md and docs/project/STATUS.md on its default branch. Override the path with RUNNER_DASHBOARD_PROJECTS_CONFIG.",
+  "_comment": "Repositories shown on the Projects tab (issues #1199, #1434): every active repository in GITHUB_ORG. Bare names; each is read at docs/project/CHARTER.md and docs/project/STATUS.md on its default branch. GET /api/projects/untracked lists org repositories missing from here. Override the path with RUNNER_DASHBOARD_PROJECTS_CONFIG.",
   "repos": [
     "UpstreamDrift",
     "AffineDrift",
@@ -13,6 +13,34 @@
     "Launch-Monitor-Data",
     "Launch-Monitor-Flight-Model-Campaign",
     "Operations_Manual_and_Training",
-    "REE-Recovery"
+    "REE-Recovery",
+    "al-hcl-hydrogen-kinetics",
+    "Bitnet_Launcher",
+    "Controls",
+    "Copyright-and-Legal-Review",
+    "DC-Bus-Testing",
+    "Drake_Models",
+    "Facility-Reporting",
+    "Florida-Compressor",
+    "Florida-Controls",
+    "Florida-Superheater",
+    "Forgejo_Client_Bootstrap",
+    "Games",
+    "half-ton-controls",
+    "Hardware_Management",
+    "Maxwell_Daemon",
+    "MEB_Conversion",
+    "MuJoCo_Models",
+    "openflight_development",
+    "OpenSim_Models",
+    "Pinocchio_Models",
+    "Playground",
+    "Programmatic_PID",
+    "public-web-management",
+    "Quat_Engine",
+    "rate-of-closure-explorer",
+    "Reporting-Templates",
+    "Worksheet_Workshop",
+    "Zeus-Gas-Bottling-Proposal"
   ]
 }

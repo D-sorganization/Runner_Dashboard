@@ -2900,9 +2900,49 @@ export interface paths {
         };
         /**
          * List Projects
-         * @description All configured repositories, in config order. A bad repo reports ``error``; never 5xx.
+         * @description All configured repositories, P0 first (config order within a tier). Never 5xx for one repo.
          */
         get: operations["list_projects_api_projects_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/priorities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Priorities
+         * @description The tier vocabulary and the owner's current ranking.
+         */
+        get: operations["get_priorities_api_projects_priorities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/untracked": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Untracked
+         * @description Fleet-curator worklist. An org-listing failure leaves ``unregistered_repos`` empty with ``org_error``.
+         */
+        get: operations["get_untracked_api_projects_untracked_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -11513,6 +11553,50 @@ export interface operations {
         };
     };
     list_projects_api_projects_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    get_priorities_api_projects_priorities_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    get_untracked_api_projects_untracked_get: {
         parameters: {
             query?: never;
             header?: never;
