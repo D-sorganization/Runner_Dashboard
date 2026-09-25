@@ -33,6 +33,8 @@ const TAB_ID_ALIASES: Record<string, string> = {
   fleet: "overview",
   health: "queue",
   work: "queue",
+  reports: "insights",
+  analysis: "insights",
 };
 
 /** Normalize a possibly-aliased tabId to its canonical registry tabId. */
@@ -98,6 +100,8 @@ export const REDIRECT_TABLE: Record<string, RedirectTarget> = (() => {
   table["health"] = { to: "/work", label: "Queue" };
   table["work"] = { to: "/work", label: "Work" };
   table["push-settings"] = { to: PUSH_SETTINGS_PATH, label: "Notifications" };
+  table["reports"] = { to: "/fleet/insights", label: "Insights" };
+  table["analysis"] = { to: "/fleet/insights", label: "Insights" };
   return table;
 })();
 
@@ -107,6 +111,9 @@ export const REDIRECT_TABLE: Record<string, RedirectTarget> = (() => {
  */
 export function getTabRedirect(pathname: string): RedirectTarget | null {
   const normalized = stripTrailingSlash(pathname);
+  if (normalized === "/fleet/reports" || normalized === "/fleet/analysis") {
+    return { to: "/fleet/insights", label: "Insights" };
+  }
   const match = normalized.match(/^\/t\/([^/]+)$/);
   if (!match) return null;
   const rawId = decodeURIComponent(match[1]);

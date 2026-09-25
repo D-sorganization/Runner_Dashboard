@@ -9,6 +9,7 @@
 
 /** The tab keys that route into the Analysis surface. */
 export const ANALYSIS_TAB_KEYS = [
+  "insights",
   "analysis",
   "stats",
   "performance",

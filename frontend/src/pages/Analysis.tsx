@@ -848,11 +848,14 @@ export function AnalysisTab(p: AnalysisTabProps): React.ReactElement {
   const [ownedReports, setOwnedReports] = useState<ReportSummary[]>([]);
   const [ownedReportsLoading, setOwnedReportsLoading] = useState(false);
   const legacyKey =
-    isAnalysisTabKey(p.activeTab) && p.activeTab !== "analysis"
+    isAnalysisTabKey(p.activeTab) &&
+    p.activeTab !== "analysis" &&
+    p.activeTab !== "insights"
       ? p.activeTab
       : null;
-  const initial =
+  const rawInitial =
     legacyKey || localStorage.getItem("analysis-subtab") || "outcomes";
+  const initial = rawInitial === "performance" ? "outcomes" : rawInitial;
   const ss = useState(initial);
   const subTab = ss[0],
     setSubTab = ss[1];
@@ -893,7 +896,6 @@ export function AnalysisTab(p: AnalysisTabProps): React.ReactElement {
         { key: "outcomes", label: "Outcomes" },
         { key: "stats", label: "Durations" },
         { key: "history", label: "History", badge: (p.runs || []).length || null },
-        { key: "performance", label: "Performance" },
         { key: "reports", label: "Reports", badge: reports.length || null },
       ],
       activeKey: subTab,
@@ -906,8 +908,6 @@ export function AnalysisTab(p: AnalysisTabProps): React.ReactElement {
         ? h(StatsTab, null)
         : subTab === "history"
           ? h(HistoryTab, { runs: p.runs, runners: p.runners })
-          : subTab === "performance"
-            ? h(PerformanceTab, null)
-            : h(ReportsTab, { reports, loading: reportsLoading }),
+          : h(ReportsTab, { reports, loading: reportsLoading }),
   );
 }

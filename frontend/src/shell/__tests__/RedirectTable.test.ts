@@ -116,3 +116,33 @@ describe("SC-D2: Secondary pages live under their area prefix", () => {
     expect(pathnameToTabId("/settings/linear-setup")).toBe("linear-setup");
   });
 });
+
+describe("SC-G4: Merge Reports and Analysis into Insights with redirects (issue #1326)", () => {
+  it("maps insights to /fleet/insights and resolves back to insights", () => {
+    expect(tabIdToPath("insights")).toBe("/fleet/insights");
+    expect(pathnameToTabId("/fleet/insights")).toBe("insights");
+  });
+
+  it("redirects old tab routes /t/reports and /t/analysis to /fleet/insights", () => {
+    const reportsRedirect = getTabRedirect("/t/reports");
+    expect(reportsRedirect).toBeDefined();
+    expect(reportsRedirect?.to).toBe("/fleet/insights");
+    expect(reportsRedirect?.label).toBe("Insights");
+
+    const analysisRedirect = getTabRedirect("/t/analysis");
+    expect(analysisRedirect).toBeDefined();
+    expect(analysisRedirect?.to).toBe("/fleet/insights");
+    expect(analysisRedirect?.label).toBe("Insights");
+  });
+
+  it("redirects /fleet/reports and /fleet/analysis to /fleet/insights", () => {
+    expect(getTabRedirect("/fleet/reports")?.to).toBe("/fleet/insights");
+    expect(getTabRedirect("/fleet/analysis")?.to).toBe("/fleet/insights");
+  });
+
+  it("resolves /fleet/reports and /fleet/analysis to insights tabId", () => {
+    expect(pathnameToTabId("/fleet/reports")).toBe("insights");
+    expect(pathnameToTabId("/fleet/analysis")).toBe("insights");
+  });
+});
+
