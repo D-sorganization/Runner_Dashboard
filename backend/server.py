@@ -135,6 +135,7 @@ from routers import (  # noqa: E402
 from routers import client_errors as _client_errors_router  # noqa: E402  # issue #1292
 from routers import code_requests as _code_requests_router  # noqa: E402
 from routers import code_requests_board as _code_requests_board_router  # noqa: E402
+from routers import code_requests_executor as _code_requests_executor_router  # noqa: E402
 from routers import credentials as _credentials_router  # noqa: E402
 from routers import deployment as _deployment_router  # noqa: E402
 from routers import diagnostics as _diagnostics_router  # noqa: E402
@@ -697,6 +698,7 @@ app.include_router(_runs_workflows_router.router)
 app.include_router(_assistant_router.router)
 app.include_router(_code_requests_router.router)
 app.include_router(_code_requests_board_router.router)
+app.include_router(_code_requests_executor_router.router)
 app.include_router(_agent_profiles_router.router)
 app.include_router(_maxwell_router.router)
 app.include_router(_deployment_router.router)
