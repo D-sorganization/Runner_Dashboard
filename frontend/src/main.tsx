@@ -128,6 +128,7 @@ _win.triggerInstallPrompt = triggerInstallPrompt
 export function AppRoutes() {
   return (
     <Routes>
+      {/* PushSettings is routed through RoutedShell (SC-D2 #1309) */}
       <Route path="/settings/push" element={<RoutedShell />} />
       <Route path="/t/:tabId" element={<RoutedShell />} />
       <Route path="/staff/:tabId" element={<RoutedShell />} />

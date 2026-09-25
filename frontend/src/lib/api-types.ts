@@ -4394,6 +4394,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Actions
+         * @description List all allowlisted staff actions, schemas, risk classes, and required scopes.
+         */
+        get: operations["list_actions_api_v1_staff_actions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/actions/{action_name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Action
+         * @description Get specification for a single allowlisted staff action.
+         */
+        get: operations["get_action_api_v1_staff_actions__action_name__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/audit": {
         parameters: {
             query?: never;
@@ -4466,6 +4506,110 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/maintenance/detect-stalled": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Detect Stalled Jobs
+         * @description Execute stalled-job detection scan with optional auto-remediation (SC-E5).
+         */
+        post: operations["detect_stalled_jobs_api_v1_staff_maintenance_detect_stalled_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Proposals
+         * @description List action proposals with optional filtering by thread, message, state.
+         */
+        get: operations["list_proposals_api_v1_staff_proposals_get"];
+        put?: never;
+        /**
+         * Create Proposal
+         * @description Create a new action proposal within a conversation thread.
+         */
+        post: operations["create_proposal_api_v1_staff_proposals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/proposals/{proposal_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Proposal
+         * @description Get single action proposal by ID.
+         */
+        get: operations["get_proposal_api_v1_staff_proposals__proposal_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/proposals/{proposal_id}/decide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decide Proposal
+         * @description Decide (approve or deny) an action proposal, optionally executing immediately.
+         */
+        post: operations["decide_proposal_api_v1_staff_proposals__proposal_id__decide_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/proposals/{proposal_id}/execute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute Approved Proposal
+         * @description Execute an approved proposal through the action registry.
+         */
+        post: operations["execute_approved_proposal_api_v1_staff_proposals__proposal_id__execute_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/roles": {
         parameters: {
             query?: never;
@@ -4494,6 +4638,86 @@ export interface paths {
         get: operations["roster_v1_api_v1_staff_roster_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/routing/decide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decide Routing
+         * @description Evaluate two-stage routing decision for a prompt without executing handoff.
+         */
+        post: operations["decide_routing_api_v1_staff_routing_decide_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/routing/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Routing Feedback
+         * @description List recent routing feedback records captured from overrides (SC-C7).
+         */
+        get: operations["list_routing_feedback_api_v1_staff_routing_feedback_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/routing/handoff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute Handoff
+         * @description Execute a handoff to a destination role, creating target thread and work item.
+         */
+        post: operations["execute_handoff_api_v1_staff_routing_handoff_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/routing/override": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Override Routing
+         * @description Apply an owner override to a handoff message and log routing feedback.
+         */
+        post: operations["override_routing_api_v1_staff_routing_override_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4690,6 +4914,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/threads/{thread_id}/runs/{run_id}/answer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Answer Thread Run
+         * @description Provide an answer to a needs_input question and trigger a continuation run.
+         */
+        post: operations["answer_thread_run_api_v1_staff_threads__thread_id__runs__run_id__answer_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/threads/{thread_id}/stream": {
         parameters: {
             query?: never;
@@ -4759,6 +5003,54 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/work-items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Work Items
+         * @description List work items matching optional filters and cursor pagination.
+         */
+        get: operations["list_work_items_api_v1_staff_work_items_get"];
+        put?: never;
+        /**
+         * Create Work Item
+         * @description Create and persist a new tracked work item.
+         */
+        post: operations["create_work_item_api_v1_staff_work_items_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/work-items/{work_item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Work Item
+         * @description Retrieve details for a single work item.
+         */
+        get: operations["get_work_item_api_v1_staff_work_items__work_item_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch Work Item
+         * @description Update work item metadata or advance its lifecycle state.
+         */
+        patch: operations["patch_work_item_api_v1_staff_work_items__work_item_id__patch"];
         trace?: never;
     };
     "/api/v1/staff/{role}/run": {
@@ -5191,6 +5483,11 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** AnswerNeedsInputRequest */
+        AnswerNeedsInputRequest: {
+            /** Answer */
+            answer: string;
+        };
         /** AssertBeginRequest */
         AssertBeginRequest: {
             /** Credential Id */
@@ -5380,6 +5677,37 @@ export interface components {
              */
             stack?: string | null;
         };
+        /** CreateProposalRequest */
+        CreateProposalRequest: {
+            /**
+             * Action
+             * @description Name of allowlisted action
+             */
+            action: string;
+            /**
+             * Message Id
+             * @description Originating message ID
+             */
+            message_id: string;
+            /**
+             * Params
+             * @description Action parameters
+             */
+            params?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Risk
+             * @description Risk class (read, low, medium, high, owner-only)
+             * @default low
+             */
+            risk: string;
+            /**
+             * Thread Id
+             * @description Parent thread ID
+             */
+            thread_id: string;
+        };
         /** CreateThreadRequest */
         CreateThreadRequest: {
             /**
@@ -5393,6 +5721,65 @@ export interface components {
             role?: string | null;
             /** Title */
             title?: string | null;
+        };
+        /** CreateWorkItemRequest */
+        CreateWorkItemRequest: {
+            /** Expected By */
+            expected_by?: string | null;
+            /** Links */
+            links?: {
+                [key: string]: string[];
+            };
+            /** Next Check At */
+            next_check_at?: string | null;
+            /** Owner Role */
+            owner_role?: string | null;
+            /** Thread Id */
+            thread_id?: string | null;
+            /** Title */
+            title: string;
+        };
+        /** DecideProposalRequest */
+        DecideProposalRequest: {
+            /**
+             * Decision
+             * @description Must be 'approved' or 'denied'
+             */
+            decision: string;
+            /**
+             * Execute
+             * @description Whether to execute the action immediately upon approval
+             * @default false
+             */
+            execute: boolean;
+            /**
+             * Reason
+             * @description Reason for the decision
+             * @default
+             */
+            reason: string;
+        };
+        /** DetectStalledRequest */
+        DetectStalledRequest: {
+            /**
+             * Auto Remediate
+             * @default true
+             */
+            auto_remediate: boolean;
+            /** In Progress Runs */
+            in_progress_runs?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Known Hosts */
+            known_hosts?: string[] | null;
+            /** Queued Runs */
+            queued_runs?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Runners */
+            runners?: {
+                [key: string]: unknown;
+            }[] | null;
         };
         /**
          * DirectiveBody
@@ -5611,6 +5998,21 @@ export interface components {
              * @description Nav item identifier
              */
             tab_id: string;
+        };
+        /** PatchWorkItemRequest */
+        PatchWorkItemRequest: {
+            /** Expected By */
+            expected_by?: string | null;
+            /** Next Check At */
+            next_check_at?: string | null;
+            /** Owner Role */
+            owner_role?: string | null;
+            /** Reason */
+            reason?: string | null;
+            /** State */
+            state?: string | null;
+            /** Title */
+            title?: string | null;
         };
         /**
          * PoolConfigPatch
@@ -5846,6 +6248,73 @@ export interface components {
             wsl_distro: string;
         };
         /**
+         * RoutingDecideRequest
+         * @description Request payload to evaluate routing for a prompt.
+         */
+        RoutingDecideRequest: {
+            /**
+             * Text
+             * @description Prompt or message content to route
+             */
+            text: string;
+            /**
+             * Thread Id
+             * @description Optional thread context ID
+             */
+            thread_id?: string | null;
+        };
+        /**
+         * RoutingHandoffRequest
+         * @description Request payload to execute a handoff to a destination role.
+         */
+        RoutingHandoffRequest: {
+            /** Confidence */
+            confidence?: number | null;
+            /** Mode */
+            mode?: string | null;
+            /**
+             * Reason
+             * @description Handoff rationale
+             */
+            reason?: string | null;
+            /**
+             * Source Thread Id
+             * @description Originating thread ID
+             */
+            source_thread_id?: string | null;
+            /**
+             * Target Role
+             * @description Destination role name
+             */
+            target_role: string;
+            /**
+             * Text
+             * @description Original request content
+             */
+            text: string;
+        };
+        /**
+         * RoutingOverrideRequest
+         * @description Request payload to override an existing handoff decision.
+         */
+        RoutingOverrideRequest: {
+            /**
+             * Handoff Message Id
+             * @description ID of the handoff message
+             */
+            handoff_message_id: string;
+            /**
+             * Reason
+             * @description Reason for the routing override
+             */
+            reason: string;
+            /**
+             * Target Role
+             * @description New target role name
+             */
+            target_role: string;
+        };
+        /**
          * RunBody
          * @description POST body for a dispatch. DbC: exactly the fields the runner understands.
          */
@@ -5882,6 +6351,8 @@ export interface components {
             surface?: string | null;
             /** Thread Id */
             thread_id?: string | null;
+            /** Work Item Id */
+            work_item_id?: string | null;
         };
         /** RunOnceRequest */
         RunOnceRequest: {
@@ -6872,10 +7343,6 @@ export interface components {
         };
         /** ValidationError */
         ValidationError: {
-            /** Context */
-            ctx?: Record<string, never>;
-            /** Input */
-            input?: unknown;
             /** Location */
             loc: (string | number)[];
             /** Message */
@@ -12661,6 +13128,61 @@ export interface operations {
             };
         };
     };
+    list_actions_api_v1_staff_actions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    get_action_api_v1_staff_actions__action_name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                action_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_audit_v1_api_v1_staff_audit_get: {
         parameters: {
             query?: {
@@ -12804,6 +13326,216 @@ export interface operations {
             };
         };
     };
+    detect_stalled_jobs_api_v1_staff_maintenance_detect_stalled_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["DetectStalledRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_proposals_api_v1_staff_proposals_get: {
+        parameters: {
+            query?: {
+                thread_id?: string | null;
+                message_id?: string | null;
+                state?: string | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_proposal_api_v1_staff_proposals_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateProposalRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_proposal_api_v1_staff_proposals__proposal_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decide_proposal_api_v1_staff_proposals__proposal_id__decide_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecideProposalRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    execute_approved_proposal_api_v1_staff_proposals__proposal_id__execute_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     roster_v1_api_v1_staff_roles_get: {
         parameters: {
             query?: never;
@@ -12840,6 +13572,144 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffRosterResponse"];
+                };
+            };
+        };
+    };
+    decide_routing_api_v1_staff_routing_decide_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoutingDecideRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_routing_feedback_api_v1_staff_routing_feedback_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    execute_handoff_api_v1_staff_routing_handoff_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoutingHandoffRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    override_routing_api_v1_staff_routing_override_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoutingOverrideRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -13092,7 +13962,9 @@ export interface operations {
     };
     get_thread_detail_api_v1_staff_threads__thread_id__get: {
         parameters: {
-            query?: never;
+            query?: {
+                since_seq?: number;
+            };
             header?: never;
             path: {
                 thread_id: string;
@@ -13209,6 +14081,44 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    answer_thread_run_api_v1_staff_threads__thread_id__runs__run_id__answer_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                thread_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnswerNeedsInputRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -13349,6 +14259,152 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffPricingResponse"];
+                };
+            };
+        };
+    };
+    list_work_items_api_v1_staff_work_items_get: {
+        parameters: {
+            query?: {
+                thread_id?: string | null;
+                state?: string | null;
+                owner_role?: string | null;
+                requested_by?: string | null;
+                mine?: boolean | null;
+                waiting_on_me?: boolean | null;
+                overdue?: boolean | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_work_item_api_v1_staff_work_items_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateWorkItemRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_work_item_api_v1_staff_work_items__work_item_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                work_item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_work_item_api_v1_staff_work_items__work_item_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                work_item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchWorkItemRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

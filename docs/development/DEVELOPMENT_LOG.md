@@ -18,17 +18,30 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1309 · SC-D2: Shell restructure: Staff Console as default route, four-area navigation, redirects for old tabs
+### DL-#1407 · CI: Restore green main across frontend integrity checks and generated API contract
 
 - **State:** in_progress
 - **Owner:** antigravity
+- **Issue:** #1407
+- **Branch:** `fix/1407-green-main`
+- **Paths:** `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `frontend/src/main.tsx`, `tests/test_frontend_integrity.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (openapi.json and api-types.ts regenerated via gen-api-client.sh; 72 frontend integrity pytest tests passed; mypy backend/ 216 files passed; ruff check passed; typecheck and eslint 0 errors/warnings)
+- **Summary:** Restores green main across frontend integrity checks and API contract tests. Synchronized OpenAPI schema (`openapi.json`) and TypeScript client types (`api-types.ts`) with newly added SC-C2 Barb routing endpoints. Updated `tests/test_frontend_integrity.py` to also inspect `navRegistryData.ts` when auditing native desktop route content, accommodating modular navigation registry files under line-length caps. Maintained `PushSettings` reference in `frontend/src/main.tsx` for integrity assertion.
+- **Next step:** Push branch, open PR referencing Fixes #1407, enable auto-merge, and monitor CI to green merge.
+
+### DL-#1309 · SC-D2: Shell restructure: Staff Console as default route, four-area navigation, redirects for old tabs
+
+- **State:** shipped
+- **Owner:** antigravity
 - **Issue:** #1309 (epic #1348 / umbrella #1354)
 - **Branch:** `feat/1309-shell-restructure`
+- **PR:** #1406
 - **Paths:** `frontend/src/main.tsx`, `frontend/src/shell/NotFoundPanel.tsx`, `frontend/src/shell/navRegistryData.ts`, `frontend/src/shell/navRegistry.ts`, `frontend/src/shell/routing.ts`, `frontend/src/shell/DesktopShell.tsx`, `frontend/src/shell/MobileShell.tsx`, `frontend/src/shell/RoutedShell.tsx`, `frontend/src/primitives/CommandPalette.tsx`, `frontend/src/shell/__tests__/RedirectTable.test.ts`, `frontend/src/shell/__tests__/NotFoundPanel.test.tsx`, `frontend/src/shell/__tests__/navRegistry.test.ts`, `frontend/src/shell/__tests__/routing.test.ts`, `frontend/src/shell/__tests__/DesktopShell.test.tsx`, `frontend/src/shell/__tests__/MobileShell.test.tsx`, `frontend/src/shell/__tests__/RoutedShell.test.tsx`, `frontend/src/shell/__tests__/TopToolstrip.test.tsx`, `frontend/src/pages/__tests__/FleetCommand.test.tsx`, `frontend/src/pages/__tests__/OverviewPage.test.tsx`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
-- **Last verified:** 2026-09-25 (all 126 Vitest test suites, 1,158 tests passed; TypeScript check 0 errors; ESLint 0 warnings; all touched files strictly <= 500 lines)
+- **Last verified:** 2026-09-25 (shipped in PR #1406; all 126 Vitest test suites, 1,158 tests passed; TypeScript check 0 errors; ESLint 0 warnings; all touched files strictly <= 500 lines)
 - **Summary:** Restructured frontend shell navigation for SC-D2: default route `/` maps to Staff Console (`staff`); four-area navigation in Sidebar and Registry (`staff`, `work`, `fleet`, `settings`) with canonical secondary routes (`/fleet/:tabId`, `/work/:tabId`, `/staff/:tabId`, `/settings/:tabId`); old tab routes `/t/:tabId` redirect via `getTabRedirect` with one-time 'moved to' toast notification; top toolstrip replaced by CommandPalette trigger (Ctrl/Cmd+K); mobile bottom bar updated to Staff/Work/Fleet/More; unknown routes render visibly via `NotFoundPanel` without dropping shell chrome; split `navRegistry.ts` into `navRegistryData.ts` and `navRegistry.ts` to respect <= 500 lines soft-cap.
-- **Next step:** Push branch, open PR referencing Fixes #1309, enable auto-merge, and monitor CI to green merge.
+- **Next step:** Shipped in PR #1406.
 
 ### DL-#1315 · SC-C2: Barb routing: auto-select the right role(s) for a request, show decision, allow override
 

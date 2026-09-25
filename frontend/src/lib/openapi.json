@@ -169,6 +169,17 @@
         "title": "AgentStatus",
         "type": "object"
       },
+      "AnswerNeedsInputRequest": {
+        "properties": {
+          "answer": {
+            "title": "Answer",
+            "type": "string"
+          }
+        },
+        "required": ["answer"],
+        "title": "AnswerNeedsInputRequest",
+        "type": "object"
+      },
       "AssertBeginRequest": {
         "properties": {
           "credential_id": {
@@ -614,6 +625,40 @@
         "title": "ClientErrorPayload",
         "type": "object"
       },
+      "CreateProposalRequest": {
+        "properties": {
+          "action": {
+            "description": "Name of allowlisted action",
+            "title": "Action",
+            "type": "string"
+          },
+          "message_id": {
+            "description": "Originating message ID",
+            "title": "Message Id",
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": true,
+            "description": "Action parameters",
+            "title": "Params",
+            "type": "object"
+          },
+          "risk": {
+            "default": "low",
+            "description": "Risk class (read, low, medium, high, owner-only)",
+            "title": "Risk",
+            "type": "string"
+          },
+          "thread_id": {
+            "description": "Parent thread ID",
+            "title": "Thread Id",
+            "type": "string"
+          }
+        },
+        "required": ["message_id", "thread_id", "action"],
+        "title": "CreateProposalRequest",
+        "type": "object"
+      },
       "CreateThreadRequest": {
         "properties": {
           "kind": {
@@ -652,6 +697,167 @@
           }
         },
         "title": "CreateThreadRequest",
+        "type": "object"
+      },
+      "CreateWorkItemRequest": {
+        "properties": {
+          "expected_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected By"
+          },
+          "links": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Links",
+            "type": "object"
+          },
+          "next_check_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Check At"
+          },
+          "owner_role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Role"
+          },
+          "thread_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thread Id"
+          },
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": ["title"],
+        "title": "CreateWorkItemRequest",
+        "type": "object"
+      },
+      "DecideProposalRequest": {
+        "properties": {
+          "decision": {
+            "description": "Must be 'approved' or 'denied'",
+            "title": "Decision",
+            "type": "string"
+          },
+          "execute": {
+            "default": false,
+            "description": "Whether to execute the action immediately upon approval",
+            "title": "Execute",
+            "type": "boolean"
+          },
+          "reason": {
+            "default": "",
+            "description": "Reason for the decision",
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": ["decision"],
+        "title": "DecideProposalRequest",
+        "type": "object"
+      },
+      "DetectStalledRequest": {
+        "properties": {
+          "auto_remediate": {
+            "default": true,
+            "title": "Auto Remediate",
+            "type": "boolean"
+          },
+          "in_progress_runs": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "In Progress Runs"
+          },
+          "known_hosts": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Known Hosts"
+          },
+          "queued_runs": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queued Runs"
+          },
+          "runners": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runners"
+          }
+        },
+        "title": "DetectStalledRequest",
         "type": "object"
       },
       "DirectiveBody": {
@@ -1077,6 +1283,78 @@
         },
         "required": ["tab_id"],
         "title": "PageViewPayload",
+        "type": "object"
+      },
+      "PatchWorkItemRequest": {
+        "properties": {
+          "expected_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected By"
+          },
+          "next_check_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Check At"
+          },
+          "owner_role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Role"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "title": "PatchWorkItemRequest",
         "type": "object"
       },
       "PoolConfigPatch": {
@@ -1581,6 +1859,126 @@
         "title": "ReposResponse",
         "type": "object"
       },
+      "RoutingDecideRequest": {
+        "description": "Request payload to evaluate routing for a prompt.",
+        "properties": {
+          "text": {
+            "description": "Prompt or message content to route",
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          },
+          "thread_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional thread context ID",
+            "title": "Thread Id"
+          }
+        },
+        "required": ["text"],
+        "title": "RoutingDecideRequest",
+        "type": "object"
+      },
+      "RoutingHandoffRequest": {
+        "description": "Request payload to execute a handoff to a destination role.",
+        "properties": {
+          "confidence": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mode"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Handoff rationale",
+            "title": "Reason"
+          },
+          "source_thread_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Originating thread ID",
+            "title": "Source Thread Id"
+          },
+          "target_role": {
+            "description": "Destination role name",
+            "minLength": 1,
+            "title": "Target Role",
+            "type": "string"
+          },
+          "text": {
+            "description": "Original request content",
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": ["text", "target_role"],
+        "title": "RoutingHandoffRequest",
+        "type": "object"
+      },
+      "RoutingOverrideRequest": {
+        "description": "Request payload to override an existing handoff decision.",
+        "properties": {
+          "handoff_message_id": {
+            "description": "ID of the handoff message",
+            "minLength": 1,
+            "title": "Handoff Message Id",
+            "type": "string"
+          },
+          "reason": {
+            "description": "Reason for the routing override",
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "target_role": {
+            "description": "New target role name",
+            "minLength": 1,
+            "title": "Target Role",
+            "type": "string"
+          }
+        },
+        "required": ["handoff_message_id", "target_role", "reason"],
+        "title": "RoutingOverrideRequest",
+        "type": "object"
+      },
       "RunBody": {
         "description": "POST body for a dispatch. DbC: exactly the fields the runner understands.",
         "properties": {
@@ -1678,6 +2076,18 @@
               }
             ],
             "title": "Thread Id"
+          },
+          "work_item_id": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Item Id"
           }
         },
         "title": "RunBody",
@@ -3480,13 +3890,6 @@
       },
       "ValidationError": {
         "properties": {
-          "ctx": {
-            "title": "Context",
-            "type": "object"
-          },
-          "input": {
-            "title": "Input"
-          },
           "loc": {
             "items": {
               "anyOf": [
@@ -11696,6 +12099,87 @@
         "tags": ["usage-metrics"]
       }
     },
+    "/api/v1/staff/actions": {
+      "get": {
+        "description": "List all allowlisted staff actions, schemas, risk classes, and required scopes.",
+        "operationId": "list_actions_api_v1_staff_actions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Actions Api V1 Staff Actions Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List Actions",
+        "tags": ["staff-proposals"]
+      }
+    },
+    "/api/v1/staff/actions/{action_name}": {
+      "get": {
+        "description": "Get specification for a single allowlisted staff action.",
+        "operationId": "get_action_api_v1_staff_actions__action_name__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "action_name",
+            "required": true,
+            "schema": {
+              "title": "Action Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Action Api V1 Staff Actions  Action Name  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Action",
+        "tags": ["staff-proposals"]
+      }
+    },
     "/api/v1/staff/audit": {
       "get": {
         "operationId": "list_audit_v1_api_v1_staff_audit_get",
@@ -11966,6 +12450,392 @@
         "tags": ["staff-threads"]
       }
     },
+    "/api/v1/staff/maintenance/detect-stalled": {
+      "post": {
+        "description": "Execute stalled-job detection scan with optional auto-remediation (SC-E5).",
+        "operationId": "detect_stalled_jobs_api_v1_staff_maintenance_detect_stalled_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/DetectStalledRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Detect Stalled Jobs Api V1 Staff Maintenance Detect Stalled Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Detect Stalled Jobs",
+        "tags": ["staff-proposals"]
+      }
+    },
+    "/api/v1/staff/proposals": {
+      "get": {
+        "description": "List action proposals with optional filtering by thread, message, state.",
+        "operationId": "list_proposals_api_v1_staff_proposals_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "thread_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Thread Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "message_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Message Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Proposals Api V1 Staff Proposals Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List Proposals",
+        "tags": ["staff-proposals"]
+      },
+      "post": {
+        "description": "Create a new action proposal within a conversation thread.",
+        "operationId": "create_proposal_api_v1_staff_proposals_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProposalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Proposal Api V1 Staff Proposals Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Create Proposal",
+        "tags": ["staff-proposals"]
+      }
+    },
+    "/api/v1/staff/proposals/{proposal_id}": {
+      "get": {
+        "description": "Get single action proposal by ID.",
+        "operationId": "get_proposal_api_v1_staff_proposals__proposal_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Proposal Api V1 Staff Proposals  Proposal Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Proposal",
+        "tags": ["staff-proposals"]
+      }
+    },
+    "/api/v1/staff/proposals/{proposal_id}/decide": {
+      "post": {
+        "description": "Decide (approve or deny) an action proposal, optionally executing immediately.",
+        "operationId": "decide_proposal_api_v1_staff_proposals__proposal_id__decide_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecideProposalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Decide Proposal Api V1 Staff Proposals  Proposal Id  Decide Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Decide Proposal",
+        "tags": ["staff-proposals"]
+      }
+    },
+    "/api/v1/staff/proposals/{proposal_id}/execute": {
+      "post": {
+        "description": "Execute an approved proposal through the action registry.",
+        "operationId": "execute_approved_proposal_api_v1_staff_proposals__proposal_id__execute_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Execute Approved Proposal Api V1 Staff Proposals  Proposal Id  Execute Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Execute Approved Proposal",
+        "tags": ["staff-proposals"]
+      }
+    },
     "/api/v1/staff/roles": {
       "get": {
         "operationId": "roster_v1_api_v1_staff_roles_get",
@@ -12018,6 +12888,210 @@
         ],
         "summary": "Roster V1",
         "tags": ["staff-v1"]
+      }
+    },
+    "/api/v1/staff/routing/decide": {
+      "post": {
+        "description": "Evaluate two-stage routing decision for a prompt without executing handoff.",
+        "operationId": "decide_routing_api_v1_staff_routing_decide_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoutingDecideRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Decide Routing Api V1 Staff Routing Decide Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Decide Routing",
+        "tags": ["staff-routing"]
+      }
+    },
+    "/api/v1/staff/routing/feedback": {
+      "get": {
+        "description": "List recent routing feedback records captured from overrides (SC-C7).",
+        "operationId": "list_routing_feedback_api_v1_staff_routing_feedback_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Routing Feedback Api V1 Staff Routing Feedback Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List Routing Feedback",
+        "tags": ["staff-routing"]
+      }
+    },
+    "/api/v1/staff/routing/handoff": {
+      "post": {
+        "description": "Execute a handoff to a destination role, creating target thread and work item.",
+        "operationId": "execute_handoff_api_v1_staff_routing_handoff_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoutingHandoffRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Execute Handoff Api V1 Staff Routing Handoff Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Execute Handoff",
+        "tags": ["staff-routing"]
+      }
+    },
+    "/api/v1/staff/routing/override": {
+      "post": {
+        "description": "Apply an owner override to a handoff message and log routing feedback.",
+        "operationId": "override_routing_api_v1_staff_routing_override_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoutingOverrideRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Override Routing Api V1 Staff Routing Override Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Override Routing",
+        "tags": ["staff-routing"]
       }
     },
     "/api/v1/staff/runs": {
@@ -12549,6 +13623,17 @@
               "title": "Thread Id",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "since_seq",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Since Seq",
+              "type": "integer"
+            }
           }
         ],
         "responses": {
@@ -12771,6 +13856,76 @@
           }
         ],
         "summary": "Mark Thread Read",
+        "tags": ["staff-threads"]
+      }
+    },
+    "/api/v1/staff/threads/{thread_id}/runs/{run_id}/answer": {
+      "post": {
+        "description": "Provide an answer to a needs_input question and trigger a continuation run.",
+        "operationId": "answer_thread_run_api_v1_staff_threads__thread_id__runs__run_id__answer_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "title": "Thread Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnswerNeedsInputRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Answer Thread Run Api V1 Staff Threads  Thread Id  Runs  Run Id  Answer Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Answer Thread Run",
         "tags": ["staff-threads"]
       }
     },
@@ -13024,6 +14179,346 @@
         ],
         "summary": "Get Pricing V1",
         "tags": ["staff-v1"]
+      }
+    },
+    "/api/v1/staff/work-items": {
+      "get": {
+        "description": "List work items matching optional filters and cursor pagination.",
+        "operationId": "list_work_items_api_v1_staff_work_items_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "thread_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Thread Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "owner_role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Owner Role"
+            }
+          },
+          {
+            "in": "query",
+            "name": "requested_by",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Requested By"
+            }
+          },
+          {
+            "in": "query",
+            "name": "mine",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mine"
+            }
+          },
+          {
+            "in": "query",
+            "name": "waiting_on_me",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Waiting On Me"
+            }
+          },
+          {
+            "in": "query",
+            "name": "overdue",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Overdue"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Work Items Api V1 Staff Work Items Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List Work Items",
+        "tags": ["staff-work-items"]
+      },
+      "post": {
+        "description": "Create and persist a new tracked work item.",
+        "operationId": "create_work_item_api_v1_staff_work_items_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWorkItemRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Work Item Api V1 Staff Work Items Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Create Work Item",
+        "tags": ["staff-work-items"]
+      }
+    },
+    "/api/v1/staff/work-items/{work_item_id}": {
+      "get": {
+        "description": "Retrieve details for a single work item.",
+        "operationId": "get_work_item_api_v1_staff_work_items__work_item_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "work_item_id",
+            "required": true,
+            "schema": {
+              "title": "Work Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Work Item Api V1 Staff Work Items  Work Item Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Work Item",
+        "tags": ["staff-work-items"]
+      },
+      "patch": {
+        "description": "Update work item metadata or advance its lifecycle state.",
+        "operationId": "patch_work_item_api_v1_staff_work_items__work_item_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "work_item_id",
+            "required": true,
+            "schema": {
+              "title": "Work Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchWorkItemRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Patch Work Item Api V1 Staff Work Items  Work Item Id  Patch",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Patch Work Item",
+        "tags": ["staff-work-items"]
       }
     },
     "/api/v1/staff/{role}/run": {
