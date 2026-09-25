@@ -1,15 +1,62 @@
-# Current handoff — SC-E5: Stalled-job detection and remediation playbooks for the Maintenance role (#1322)
+# Current handoff — SC-C2: Barb routing: auto-select the right role(s) for a request, show decision, allow override (#1315)
 
 Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1322-stalled-job-detection`; Issue #1322; DL-#1322.
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1315-barb-routing`; Issue #1315; DL-#1315.
 
 ## Objective and Status
 
-- SC-E5: Autonomous stalled-job detection and remediation playbooks for the Maintenance role. Detect stuck jobs and runners across 5 anomaly detectors, auto-remediate low-risk conditions, and propose medium/high-risk actions in the Maintenance conversation thread awaiting human approval.
-- Status: Fully implemented with TDD; all unit and API tests passing; ruff, format, and mypy clean; all files <= 500 lines.
+- SC-C2: Two-stage request router where Barb auto-selects the right role(s) when the user does not specify a recipient. Stage 1 uses deterministic pre-routing (explicit @mentions, /role commands, Barb self-handling keywords, and specialist role capability rules). Stage 2 uses roster metadata with quick fallback mode when the LLM is unavailable. Prompts below confidence threshold ask a single clarifying question rather than guessing. Handoff execution creates target role threads, seeds context briefs, links WorkItemStore tracked work items (SC-C3), routes code modifications to Code Request pipeline (#1279), and records owner overrides with auditable routing feedback (SC-C7).
+- Status: Fully implemented with TDD; 9 unit tests and 4 API tests passing (13 total); ruff, format, and mypy clean; all files strictly <= 500 lines.
+
+## Files and Decisions
+
+- `backend/staff/router_models.py`:
+  - `RoutingDecision`: chosen role, confidence, rationale, alternatives, mode, clarification flags, code change flag, and formatted handoff text.
+  - `HandoffResult`: target role, destination thread ID, handoff message ID, work item ID.
+  - `RoutingFeedbackRecord` and `RoutingOverrideRecord`: auditable records for tracking user overrides and evaluation accuracy.
+  - Constants: `RE_AT_MENTION`, `RE_ROLE_COMMAND`, `BARB_DIRECT_KEYWORDS`, `ROLE_KEYWORD_RULES`, `CODE_CHANGE_KEYWORDS`, `detect_code_change`.
+- `backend/staff/router.py`:
+  - `route_deterministic`: fast regex and keyword rule evaluation for explicit and high-confidence routing.
+  - `BarbRouter`:
+    - `route`: orchestrates pre-router, LLM classifier, and quick mode fallback.
+    - `execute_handoff`: seeds destination thread with request brief, posts structured handoff card ('Barb → Role: reason') in source thread, registers work item in WorkItemStore, and records audit trail.
+    - `override_routing`: updates destination thread, redirects work item, logs durable routing feedback in `routing_feedback` table, and records audit trail.
+    - `list_routing_feedback`: query recent feedback records for accuracy evaluation (SC-C7).
+- `backend/routers/staff_routing.py`:
+  - FastAPI router mounted under `/api/v1/staff`.
+  - `POST /api/v1/staff/routing/decide`: evaluates routing decision without executing handoff.
+  - `POST /api/v1/staff/routing/handoff`: dispatches handoff to target role.
+  - `POST /api/v1/staff/routing/override`: applies owner override and logs feedback.
+  - `GET /api/v1/staff/routing/feedback`: lists feedback records for evaluation.
+- `backend/server.py`:
+  - Included `_staff_routing_router` with prefix `/api/v1/staff`.
+- `tests/unit/test_staff_router.py`:
+  - 9 unit tests covering @mention, /role, Barb self-handling, specialist keywords, code change detection, ambiguity clarification, LLM fallback, handoff execution, and overrides.
+- `tests/api/test_staff_routing_api.py`:
+  - 4 integration tests covering decide, clarification, handoff, override, and feedback listing via HTTP.
+
+## Validation
+
+- `pytest tests/unit/test_staff_router.py tests/api/test_staff_routing_api.py`: 13 passed in 2.21s.
+- `ruff check`: All checks passed.
+- `ruff format --check`: 6 files already formatted.
+- `mypy`: Success (0 errors across 6 checked files).
+- Line caps: All files strictly <= 500 lines (`router.py`: 493, `router_models.py`: 252, `staff_routing.py`: 168, `test_staff_router.py`: 206, `test_staff_routing_api.py`: 144).
+
+## Next Steps
+
+1. Commit and push branch `feat/1315-barb-routing`.
+2. Open PR referencing `Fixes #1315`.
+3. Enable auto-merge squash without `--admin`.
+4. Monitor CI checks to green merge into `main`.
+5. Release lease on issue #1315.
+
+---
+
+# Previous handoff — SC-E5: Stalled-job detection and remediation playbooks for the Maintenance role (#1322)
 
 ## Files and Decisions
 
