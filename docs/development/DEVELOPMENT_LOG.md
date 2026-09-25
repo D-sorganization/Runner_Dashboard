@@ -18,17 +18,30 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1502 · Fix Fleet Orchestration false successes for dispatch and deploy
+### DL-#1491 · SC-B1-G8: Reconcile chat messages stuck in pending/streaming after a backend restart
 
 - **State:** in_progress
 - **Owner:** antigravity
+- **Issue:** #1491
+- **Branch:** `agy/issue-1491`
+- **Paths:** `backend/staff/reconcile.py`, `backend/staff/conversations.py`, `backend/staff/conversation_models.py`, `backend/staff/audit.py`, `tests/unit/test_staff_reconcile.py`, `tests/unit/test_conversations_store.py`, `tests/api/test_staff_threads_api.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (pytest unit & api tests passed 33/33; ruff check & format clean; mypy clean in 4 files)
+- **Summary:** Reconcile chat messages stuck in non-terminal delivery states (pending/streaming) across backend restarts. On startup, mark non-terminal reply messages as failed with meta.failure_class='interrupted_by_restart', post a system message offering a retry, and audit every state change under SC-A8 while leaving user messages and complete messages untouched.
+- **Next step:** Push branch agy/issue-1491, mark PR #1508 ready for review, and enable auto-merge.
+
+### DL-#1502 · Fix Fleet Orchestration false successes for dispatch and deploy
+
+- **State:** shipped
+- **Owner:** antigravity
 - **Issue:** #1502
 - **Branch:** `fix/1502-orchestration-false-success`
+- **PR:** #1525
 - **Paths:** `backend/routers/orchestration.py`, `frontend/src/pages/FleetOrchestrationPage.tsx`, `frontend/src/lib/api-types.ts`, `frontend/src/lib/openapi.json`, `tests/api/test_orchestration_dispatch.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (pytest tests/api/test_orchestration_dispatch.py 5/5 passed, ruff clean, mypy clean, scripts/gen-api-client.sh --check clean, all files <= 500 lines)
 - **Summary:** Fix false successes in Fleet Orchestration: `/api/fleet/orchestration/dispatch` returns classified 502 `upstream_error` with `dispatched: false` and gh stderr detail when gh fails, injects `machine_target` into workflow dispatch inputs, and `/api/fleet/orchestration/deploy` returns 501 `not_wired` while still recording the audit attempt. Added dedicated API test suite in `tests/api/test_orchestration_dispatch.py`.
-- **Next step:** Push branch, open PR with Fixes #1502, enable auto-merge, verify CI passes.
+- **Next step:** None (shipped in PR #1525).
 
 ### DL-#1522 · Restore green main: regenerate API contract types and synchronize openapi schema after #1512
 

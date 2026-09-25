@@ -458,16 +458,36 @@ def test_concurrent_writers_under_wal(clean_db: Path) -> None:
         return created_ids
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-        f1 = executor.submit(worker, "A", 25)
-        f2 = executor.submit(worker, "B", 25)
-        ids_a = f1.result()
-        ids_b = f2.result()
+        f1, f2 = executor.submit(worker, "A", 25), executor.submit(worker, "B", 25)
+        ids_a, ids_b = f1.result(), f2.result()
 
-    assert len(ids_a) == 25
-    assert len(ids_b) == 25
-
-    # Check total messages and strict monotonic sequencing
+    assert len(ids_a) == 25 and len(ids_b) == 25
     all_msgs = store.list_messages(thread.id, limit=100)
     assert len(all_msgs) == 50
-    seqs = [m.seq for m in all_msgs]
-    assert seqs == list(range(1, 51))
+    assert [m.seq for m in all_msgs] == list(range(1, 51))
+
+
+def test_list_non_terminal_reply_messages(clean_db: Path) -> None:
+    """list_non_terminal_reply_messages returns pending and streaming reply messages, excluding user messages."""
+    store = ConversationStore(clean_db)
+    thread = store.create_thread(title="Test Non-terminal", kind="direct", participants=["user", "barb"])
+
+    store.add_message(thread.id, author_kind="user", author="user", body_md="Hello", delivery="complete")
+    store.add_message(thread.id, author_kind="user", author="user", body_md="Pending user msg", delivery="pending")
+    m_pending = store.add_message(thread.id, author_kind="role", author="barb", body_md="", delivery="pending")
+    m_streaming = store.add_message(thread.id, author_kind="role", author="barb", body_md="tok", delivery="streaming")
+    store.add_message(thread.id, author_kind="role", author="barb", body_md="Done", delivery="complete")
+    store.add_message(
+        thread.id,
+        author_kind="role",
+        author="barb",
+        body_md="Fail",
+        delivery="failed",
+        meta={"failure_class": "rate_limited"},
+    )
+
+    non_terminal = store.list_non_terminal_reply_messages()
+    assert [m.id for m in non_terminal] == [m_pending.id, m_streaming.id]
+    m_failed = store.list_messages(thread.id)[-1]
+    assert m_failed.failure_class == "rate_limited"
+    assert m_failed.to_dict()["failure_class"] == "rate_limited"

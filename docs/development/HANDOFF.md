@@ -1,10 +1,48 @@
-# Current handoff — Fix Fleet Orchestration false successes for dispatch and deploy (#1502)
+# Current handoff — SC-B1-G8: Reconcile chat messages stuck in pending/streaming after a backend restart (#1491)
 
 Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1502-orchestration-false-success`; DL-#1502; Issue #1502.
+- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\antigravity-1491`; branch `agy/issue-1491`; commit `SELF`; PR #1508; Issue #1491; DL-#1491.
+
+## Objective and Status
+
+- Reconcile chat messages stuck in non-terminal delivery states (pending/streaming) across backend restarts (SC-B1-G8, issue #1491):
+  - In `backend/staff/reconcile.py`, implemented `reconcile_interrupted_chat_messages(conv_store)` to find all non-terminal reply messages (excluding user messages) across threads.
+  - Marked non-terminal reply messages as `delivery="failed"`, `kind="error"` with `meta.failure_class="interrupted_by_restart"` and `retryable=True`.
+  - Appended a system message (`author_kind="system"`, `delivery="complete"`) offering a retry to each affected thread.
+  - Audited every state change under SC-A8 (`action="message_reconcile"`, `surface="scheduler"`).
+  - Hooked `reconcile_interrupted_chat_messages` into `reconcile_orphaned_runs(runner, conv_store=conv_store)` so restart reconciliation triggered by `start_scheduler()` automatically covers chat messages.
+  - Added `list_non_terminal_reply_messages` to `ConversationStore` in `backend/staff/conversations.py`.
+  - Added `failure_class` property and `to_dict()` exposure on `MessageRecord` in `backend/staff/conversation_models.py`.
+  - Registered `message_reconcile` in `ALLOWED_ACTIONS` and `MUTATING_ACTIONS` in `backend/staff/audit.py`.
+  - Verification:
+    - Unit test in `tests/unit/test_staff_reconcile.py::test_interrupted_chat_messages_reconciled_to_failed_with_retry` (9/9 passed).
+    - ConversationStore unit test in `tests/unit/test_conversations_store.py::test_list_non_terminal_reply_messages` (14/14 passed).
+    - API test in `tests/api/test_staff_threads_api.py::test_reconcile_shows_system_retry_message_in_thread` (1/1 passed).
+    - Audit store unit tests in `tests/unit/test_staff_audit.py` (7/7 passed).
+    - `ruff check`: clean across all files.
+    - `ruff format --check`: clean across all files.
+    - `mypy`: clean across all files.
+
+## Next Steps
+
+1. Push rebased `agy/issue-1491` to origin with lease.
+2. Mark PR #1508 ready for review (`gh pr ready 1508`).
+3. Enable auto-merge (`gh pr merge 1508 --squash --auto`).
+4. Monitor CI until merged to main.
+5. Release agent lease for #1491 via `scripts.release_agent_lease`.
+
+---
+
+# Past handoff — Fix Fleet Orchestration false successes for dispatch and deploy (#1502)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1502-orchestration-false-success`; DL-#1502; Issue #1502; PR #1525 (merged).
 
 ## Objective and Status
 

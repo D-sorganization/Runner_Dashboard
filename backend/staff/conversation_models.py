@@ -131,8 +131,12 @@ class MessageRecord:
     created_at: str = field(default_factory=_now)
     delivery: str = "complete"
 
+    @property
+    def failure_class(self) -> str | None:
+        return self.meta.get("failure_class")
+
     def to_dict(self) -> dict[str, Any]:
-        return {
+        d = {
             "id": self.id,
             "thread_id": self.thread_id,
             "seq": self.seq,
@@ -146,6 +150,9 @@ class MessageRecord:
             "created_at": self.created_at,
             "delivery": self.delivery,
         }
+        if "failure_class" in self.meta:
+            d["failure_class"] = self.meta["failure_class"]
+        return d
 
     @classmethod
     def from_row(cls, row: sqlite3.Row | dict[str, Any]) -> MessageRecord:
