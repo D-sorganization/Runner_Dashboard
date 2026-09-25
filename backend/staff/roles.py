@@ -59,8 +59,9 @@ class RoleSpec:
     # Optional ``strategy:`` block (RM#1690 / #1213), e.g.
     # ``{"consolidate_when": {"open_prs": 6, "utilisation_pct": 70}}``. Kept as-is; unknown keys ignored downstream.
     strategy: dict[str, Any] = field(default_factory=dict)
-    persona: str = ""
+    persona: dict[str, Any] | str = ""
     chat: dict[str, Any] = field(default_factory=dict)
+    tools: tuple[str, ...] = ()
     group: str | None = None
     max_attempts: int = 2
     fallback_providers: tuple[str, ...] = ()
@@ -83,6 +84,15 @@ class RoleSpec:
         if isinstance(appr, dict):
             return {str(k): str(v) for k, v in appr.items()}
         return {}
+
+    @property
+    def defers_to(self) -> tuple[str, ...]:
+        """Roles this persona delegates to (RM#1735, RD#1308)."""
+        if isinstance(self.persona, dict):
+            targets = self.persona.get("defers_to")
+            if isinstance(targets, (list, tuple)):
+                return tuple(str(t) for t in targets)
+        return ()
 
     @property
     def dispatchable(self) -> bool:
@@ -121,6 +131,7 @@ class RoleSpec:
             "strategy": dict(self.strategy),
             "persona": self.persona,
             "chat": dict(self.chat),
+            "tools": list(self.tools),
             "group": self.group,
             "max_attempts": self.max_attempts,
             "fallback_providers": list(self.fallback_providers),
@@ -248,9 +259,14 @@ def parse_role(
 
     prompt_template = str(data["prompt_template"]) if data.get("prompt_template") not in (None, "") else None
     scope = dict(data["scope"]) if isinstance(data.get("scope"), dict) else {}
-    persona = str(data.get("persona") or "")
+    raw_persona = data.get("persona")
+    if isinstance(raw_persona, dict):
+        persona: dict[str, Any] | str = dict(raw_persona)
+    else:
+        persona = str(raw_persona or "")
     group = str(data["group"]) if data.get("group") is not None else None
     chat = dict(data["chat"]) if isinstance(data.get("chat"), dict) else {}
+    tools = _as_tuple(data.get("tools"))
     retired_reason = str(data.get("retired_reason") or "")
     raw_retry = data.get("retry")
     retry_cfg: dict[str, Any] = raw_retry if isinstance(raw_retry, dict) else {}
@@ -290,6 +306,7 @@ def parse_role(
         strategy=dict(strategy) if isinstance(strategy, dict) else {},
         persona=persona,
         chat=chat,
+        tools=tools,
         group=group,
         max_attempts=max_att,
         fallback_providers=fallback_provs,

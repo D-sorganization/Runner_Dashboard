@@ -229,14 +229,39 @@
       },
       "description": "Optional per-role operating strategy (#1690)."
     },
-    "persona": { "type": "string" },
+    "persona": {
+      "oneOf": [
+        { "type": "string" },
+        {
+          "type": "object",
+          "properties": {
+            "voice": { "type": "string" },
+            "greeting": { "type": "string" },
+            "answers": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "defers_to": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        }
+      ]
+    },
     "group": { "type": ["string", "null"] },
     "chat": {
       "type": "object",
       "properties": {
+        "contract": { "type": "string" },
         "providers": { "type": "array", "items": { "type": "string" } },
+        "tools": { "type": "array", "items": { "type": "string" } },
         "read_only_tools": { "type": "array", "items": { "type": "string" } }
       }
+    },
+    "tools": {
+      "type": "array",
+      "items": { "type": "string" }
     },
     "retired": { "type": "boolean" },
     "retired_reason": { "type": "string", "minLength": 1 }

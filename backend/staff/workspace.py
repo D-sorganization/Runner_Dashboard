@@ -50,9 +50,10 @@ def rm_root() -> Path | None:
         p = Path(override).expanduser()
         return p if (p / "scripts" / "check_agent_claim.py").is_file() else None
     for root in repos_roots():
-        cand = root / "Repository_Management"
-        if (cand / "scripts" / "check_agent_claim.py").is_file():
-            return cand
+        for name in ("Repository_Management-main", "Repository_Management"):
+            cand = root / name
+            if (cand / "scripts" / "check_agent_claim.py").is_file():
+                return cand
     return None
 
 
@@ -197,17 +198,23 @@ def compose_prompt(
     lease_note: str = "",
     consolidation: str = "",
     focus: str = "",
+    chat_turn: bool = False,
 ) -> str:
-    """Assemble the agent prompt from the role, the target and the fleet rules.
+    """Assemble the agent prompt from the role, the target and the fleet rules or reply contract.
 
     Kept deliberately plain: role instructions (from RM), the playbook path,
     the target, the PR-consolidation decision when the role has one (#1213),
-    and the non-negotiable fleet rules for an unattended run.
+    and the non-negotiable fleet rules for an unattended run (or reply contract for chat).
     """
     target = target_ref or "free-form task"
-    parts = [
-        f"You are the fleet staff role '{role.title}' ({role.name}) running unattended from the Runner Dashboard.",
-    ]
+    if chat_turn:
+        parts = [
+            f"You are the fleet staff role '{role.title}' ({role.name}) in a conversation on the Runner Dashboard.",
+        ]
+    else:
+        parts = [
+            f"You are the fleet staff role '{role.title}' ({role.name}) running unattended from the Runner Dashboard.",
+        ]
     if role.playbook:
         text = playbook_text(role.playbook)
         if text:
@@ -220,18 +227,33 @@ def compose_prompt(
     if role.instructions:
         parts.append("Role instructions:\n" + role.instructions.strip())
     if repo:
-        parts.append(
-            f"Repository: {ORG}/{repo}. Target: {target}. You are in an isolated git worktree on branch {branch}."
-        )
+        if chat_turn:
+            parts.append(f"Repository context: {ORG}/{repo}. Target: {target}.")
+        else:
+            parts.append(
+                f"Repository: {ORG}/{repo}. Target: {target}. You are in an isolated git worktree on branch {branch}."
+            )
     else:
         parts.append(f"Target: {target}.")
     if operator_prompt:
         parts.append("Task from the operator:\n" + operator_prompt.strip())
     if lease_note:
         parts.append(lease_note)
-    if consolidation:
+    if consolidation and not chat_turn:
         parts.append(consolidation)
-    if focus:
+    if focus and not chat_turn:
         parts.append(focus)
-    parts.append(FLEET_RULES)
+
+    if chat_turn:
+        from staff.reply_contract import get_chat_contract_text
+
+        contract_rel = (
+            str(role.chat.get("contract") or "staff/prompts/_chat_contract.md")
+            if role.chat
+            else "staff/prompts/_chat_contract.md"
+        )
+        parts.append(get_chat_contract_text(contract_rel))
+    else:
+        parts.append(FLEET_RULES)
+
     return "\n\n".join(parts)
