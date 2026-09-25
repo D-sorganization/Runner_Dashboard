@@ -46,6 +46,8 @@ ALLOWED_ACTIONS = frozenset(
         "routing",
         "thread_create",
         "thread_archive",
+        "work_item_create",
+        "work_item_transition",
     }
 )
 
@@ -63,6 +65,8 @@ MUTATING_ACTIONS = frozenset(
         "maintenance",
         "thread_create",
         "thread_archive",
+        "work_item_create",
+        "work_item_transition",
     }
 )
 

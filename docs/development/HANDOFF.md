@@ -1,55 +1,59 @@
-# Current handoff — SC-B7: Link runs to threads, post progress back, answer needs-input questions, and proxy run streams across nodes (#1314)
+# Current handoff — SC-C3: Work-item ledger: every request Barb (or anyone) dispatches is tracked to a terminal state (#1316)
 
 Last updated: 2026-09-24
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1314-link-runs-to-threads`; Issue #1314; DL-#1314.
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1316-work-item-ledger`; Issue #1316; DL-#1316.
 
 ## Work
 
-- `backend/staff/plan.py`:
-  - Added `thread_id: str = ""` and `work_item_id: str = ""` to `RunRequest` and `RunPlan`.
-- `backend/staff/store.py`:
-  - Added `thread_id` and `work_item_id` columns to `RunRecord` and `_ADDED_COLUMNS` with automatic SQLite schema migration and index creation (`runs_thread_idx`).
-  - Added `list_runs_for_thread(thread_id: str) -> list[RunRecord]`.
-  - Added `"needs_input"` to valid `RUN_STATUSES`.
+- `backend/staff/work_items.py`:
+  - Implemented `WorkItemRecord` dataclass and valid state machine transitions: `open`, `in_progress`, `waiting_on_user`, `waiting_on_ci`, `blocked`, `done`, `cancelled`, `escalated`.
+  - Implemented `WorkItemStore` with SQLite WAL persistence in `staff_runs.sqlite3`, forward migrations, and indexes.
+  - Added SLA tracking with `compute_sla`, `expected_by`, `is_overdue`, and `next_check_at`.
+  - Added links management (`runs`, `issues`, `prs`, `code_requests`) and failure status handling (`unknown` link state on GitHub API failures).
+  - Integrated SC-A8 durable audit logging on creation and state transitions (`work_item_create`, `work_item_transition`).
+- `backend/routers/staff_work_items.py`:
+  - Mounted public REST endpoints under `/api/v1/staff`:
+    - `POST /api/v1/staff/work-items`: Create work item with audit record.
+    - `GET /api/v1/staff/work-items`: List work items with filters (`mine`, `overdue`, `waiting_on_me`, `state`, `thread_id`) and keyset cursor pagination.
+    - `GET /api/v1/staff/work-items/{id}`: Work item detail.
+    - `PATCH /api/v1/staff/work-items/{id}`: State transitions, owner reassignment, link updates, and progress notes.
+- `backend/server.py`:
+  - Mounted `staff_work_items_router` under prefix `/api/v1/staff`.
+- `backend/staff/audit.py`:
+  - Registered `work_item_create` and `work_item_transition` in `ALLOWED_ACTIONS` and `MUTATING_ACTIONS`.
 - `backend/staff/run_link.py`:
-  - Implemented `format_run_card_body`, `post_run_card`, `handle_run_status_change`, and `answer_needs_input`.
-  - Generates markdown `run_card` messages reporting status transitions (`queued`, `preparing`, `running`, `needs_input`, `succeeded`, `failed`, `cancelled`) into linked threads and publishes across `ThreadEventBus`.
-  - `answer_needs_input`: Spawns continuation runs with preserved prompt context and work item linkage.
-- `backend/staff/remote_runs.py`:
-  - Implemented `find_remote_run`, `proxy_remote_run`, `stream_remote_run`, and `proxy_remote_cancel` to discover and proxy runs across nodes using signed on-behalf-of identity (SC-F2) and fail-visible `node_unreachable` SSE events.
-- `backend/staff/thread_bus.py`:
-  - Added `publish_sync(thread_id, event, data)` to safely publish live events from worker threads without event loop dependencies.
-- `backend/staff/classifier.py` & `backend/staff/runner.py`:
-  - Updated `classify_execution_result` to accept `has_thread: bool = False`, transitioning to `needs_input` when associated with a thread while preserving `failed` exit 0 semantics for unattended CLI runs.
-- `backend/routers/staff.py`:
-  - Updated `get_run`, `stream_run`, and `cancel_run` to proxy to peer nodes when a run is not found on the local hub.
-- `backend/routers/staff_threads.py`:
-  - Added `POST /api/v1/staff/threads/{thread_id}/runs/{run_id}/answer` endpoint to answer needs-input questions from within conversation threads.
-- `tests/api/test_staff_thread_runs.py`:
-  - 9 comprehensive unit and integration tests covering record metadata, card posting, terminal summaries, question cards, answer flow, remote run discovery, proxying, remote cancel, and remote SSE streaming.
+  - Added `update_linked_work_item(run, status, summary)` syncing run lifecycle transitions into linked work items.
+- `tests/api/test_staff_work_items.py`:
+  - 9 comprehensive tests covering creation, valid transitions, invalid transition rejections, SLA overdue calculation, link tracking, list filtering, and run event synchronization.
 
 ## Validation
 
-- `pytest tests/api/test_staff_thread_runs.py`: 9 passed in 1.84s.
-- `pytest tests/api/test_staff_threads_api.py tests/api/test_staff_runner.py tests/unit/test_staff_classifier.py`: 47 passed in 9.84s.
-- `mypy backend/staff/run_link.py backend/staff/remote_runs.py backend/staff/runner.py backend/staff/store.py backend/staff/plan.py backend/routers/staff.py backend/routers/staff_threads.py tests/api/test_staff_thread_runs.py`: 0 errors across 8 source files.
+- `pytest tests/api/test_staff_work_items.py`: 9 passed in 1.52s.
+- `pytest tests/api/test_staff_thread_runs.py tests/api/test_staff_threads_api.py tests/api/test_staff_runner.py`: 36 passed in 13.49s.
+- `mypy backend/staff/work_items.py backend/routers/staff_work_items.py backend/staff/run_link.py backend/staff/audit.py tests/api/test_staff_work_items.py backend/server.py`: 0 errors.
 - `ruff check`: All checks passed.
 - `ruff format --check`: All checks passed.
-- Line limits: All new and modified files strictly <= 500 lines (`backend/routers/staff.py`: 480, `backend/routers/staff_threads.py`: 494, `backend/staff/runner.py`: 464, `backend/staff/store.py`: 421, `backend/staff/classifier.py`: 390, `tests/api/test_staff_thread_runs.py`: 367, `backend/staff/run_link.py`: 173, `backend/staff/remote_runs.py`: 145, `backend/staff/thread_bus.py`: 140, `backend/staff/plan.py`: 90).
+- Line limits: All new and modified files strictly <= 500 lines (`backend/staff/work_items.py`: 433, `backend/routers/staff_work_items.py`: 202, `backend/staff/run_link.py`: 207, `backend/staff/audit.py`: 447, `tests/api/test_staff_work_items.py`: 317).
 
 ## Next
 
-1. Open PR with `gh pr create` referencing `Fixes #1314`.
-2. Monitor CI checks to completion.
-3. Enable auto-merge and verify PR merges cleanly.
-4. Release coordination lease on Issue #1314.
+1. Open PR with `gh pr create` referencing `Fixes #1316`.
+2. Enable auto-merge and verify CI passes cleanly.
+3. Release coordination lease on Issue #1316.
+4. Survey next unblocked issue in wave order.
 
 ---
 
-# Previous handoff — SC-F3: Versioned public staff API (/api/v1/staff) with error envelope, idempotency keys and pagination (#1312)
+# Previous handoff — SC-B7: Link runs to threads, post progress back, answer needs-input questions, and proxy run streams across nodes (#1314)
+
+Last updated: 2026-09-24
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1314-link-runs-to-threads`; Issue #1314; DL-#1314; PR #1393.
 
 Last updated: 2026-09-24
 

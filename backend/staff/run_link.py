@@ -109,6 +109,39 @@ def post_run_card(
         return None
 
 
+def update_linked_work_item(run: RunRecord, status: str, summary: str | None = None) -> None:
+    """Update linked work item state and links from run status change."""
+    work_item_id = getattr(run, "work_item_id", "") or ""
+    if not work_item_id:
+        return
+    try:
+        from staff.work_items import get_work_item_store  # noqa: PLC0415
+
+        wi_store = get_work_item_store()
+        wi = wi_store.get_work_item(work_item_id)
+        if not wi:
+            return
+        wi_store.add_link(work_item_id, "runs", run.id)
+        if status in ("preparing", "running") and wi.state in ("open", "waiting_on_user"):
+            wi_store.transition_state(work_item_id, "in_progress", actor=run.role, reason=f"Run {run.id} started")
+        elif status == "needs_input" and wi.state in ("open", "in_progress"):
+            wi_store.transition_state(
+                work_item_id, "waiting_on_user", actor=run.role, reason=f"Run {run.id} needs input"
+            )
+        elif status == "succeeded" and wi.state in ("open", "in_progress", "waiting_on_ci"):
+            outcome = summary or getattr(run, "outcome", "") or ""
+            if "PR #" in outcome or "pull/" in outcome:
+                wi_store.transition_state(
+                    work_item_id, "waiting_on_ci", actor=run.role, reason=f"Run {run.id} opened PR"
+                )
+            else:
+                wi_store.transition_state(
+                    work_item_id, "done", actor=run.role, reason=f"Run {run.id} completed successfully"
+                )
+    except Exception as exc:  # noqa: BLE001
+        log.warning("staff.run_link: failed to update work item %s for run %s: %s", work_item_id, run.id, exc)
+
+
 def handle_run_status_change(
     run: RunRecord,
     status: str,
@@ -118,6 +151,7 @@ def handle_run_status_change(
     bus: Any = None,
 ) -> MessageRecord | None:
     """Handler called on run transition (queued, running, needs_input, succeeded, failed)."""
+    update_linked_work_item(run, status, summary=summary)
     return post_run_card(
         run,
         status=status,
