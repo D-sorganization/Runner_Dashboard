@@ -220,7 +220,7 @@ export const ContextPane: React.FC<ContextPaneProps> = ({
                 Providers
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                {role.providers.map((p) => (
+                {role.providers?.map((p) => (
                   <span
                     key={p.name}
                     style={{

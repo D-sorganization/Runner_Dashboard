@@ -172,9 +172,10 @@ export const ActionCard: React.FC<ActionCardProps> = ({
 
       {/* Actions (Approve / Deny) */}
       {!isDecided && !isExpired && (
-        <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+        <div className="staff-action-card__actions" style={{ display: "flex", gap: 8, marginTop: 4 }}>
           <button
             type="button"
+            className="staff-action-card__btn staff-action-card__btn--approve"
             onClick={handleApproveClick}
             disabled={hasSubmitted}
             style={{
@@ -193,6 +194,7 @@ export const ActionCard: React.FC<ActionCardProps> = ({
           </button>
           <button
             type="button"
+            className="staff-action-card__btn staff-action-card__btn--deny"
             onClick={handleDenyClick}
             disabled={hasSubmitted}
             style={{

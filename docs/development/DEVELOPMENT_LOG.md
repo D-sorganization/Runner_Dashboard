@@ -18,9 +18,21 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1424 · Restore green main: synchronize generated API contract for SC-C5
+### DL-#1331 · SC-D8: Mobile Staff Console: roster → thread navigation, bottom composer, push deep links
 
 - **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1331 (epic #1350 / umbrella #1354)
+- **Branch:** `feat/1331-mobile-staff-console`
+- **Paths:** `frontend/src/pages/StaffConsole/Mobile.tsx`, `frontend/src/pages/StaffConsole/mobile.css`, `frontend/src/pages/StaffConsole/index.ts`, `frontend/src/pages/StaffConsole/__tests__/Mobile.test.tsx`, `frontend/src/pages/StaffConsole/cards/cards.css`, `frontend/src/pages/StaffConsole/cards/ActionCard.tsx`, `frontend/src/pages/Staff/staffApi.ts`, `frontend/src/shell/RoutedShell.tsx`, `tests/e2e/mobile.spec.ts`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (all 75 StaffConsole unit tests passed; npm run typecheck passed 0 errors; npm run lint passed 0 warnings; pytest test_frontend_integrity passed 72/72; all files strictly <= 500 lines)
+- **Summary:** Implemented SC-D8 Mobile Staff Console: (1) Full-screen mobile roster with Ask Barb top entry, role groupings, status badges, and search filtering; (2) Full-screen transition to conversation thread with `< Back to Roster` button, role header, and details sheet; (3) Safe-area aware bottom composer (`env(safe-area-inset-bottom)`) with Send and Voice input touch targets; (4) Cards adapted to narrow viewports with $\ge 44\text{px}$ touch targets on Approve/Deny buttons; (5) Push notification deep links (`?thread=<id>` and `?role=<role>`); (6) Role context bottom sheet drawer for inspecting schedule and budget; (7) Seamless mobile tab integration in `RoutedShell.tsx`.
+- **Next step:** Push branch, open PR with Fixes #1331, enable auto-merge, monitor CI to merge, release lease, and clean up worktree.
+
+### DL-#1424 · Restore green main: synchronize generated API contract for SC-C5
+
+- **State:** shipped
 - **Owner:** antigravity
 - **Issue:** #1424
 - **Branch:** `fix/1424-green-main`
@@ -28,7 +40,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (pytest tests/frontend/test_api_generation_contract.py and test_staff_contracts.py passed 10/10; npm run typecheck 0 errors; npm run lint 0 warnings)
 - **Summary:** Synchronized generated OpenAPI schema (`openapi.json`) and TypeScript client types (`api-types.ts`) following SC-C5 merge (`/api/v1/staff/briefing` and updated `/api/v1/staff/inbox`), resolving the failing `Verify generated API contract types` step in `Frontend Tests` on `main`.
-- **Next step:** Push branch, open PR with Fixes #1424, enable auto-merge, monitor CI to merge, release lease, and clean up.
+- **Next step:** Shipped in PR #1425 (commit `c2292e3`).
 
 ### DL-#1328 · SC-C5: "Waiting on you" inbox and Barb briefings inside dashboard
 
@@ -44,7 +56,7 @@ reachable from any live state and `abandoned` from `parked`.
 
 ### DL-#1324 · SC-G2: One Fleet page: merge Machines, Runner Audit and Event Log into Fleet
 
-- **State:** in_progress
+- **State:** shipped
 - **Owner:** local
 - **Issue:** #1324 (epic #1353 / umbrella #1354)
 - **Branch:** `feat/1324-one-fleet-page`
@@ -52,7 +64,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (all 142 test files passed, 1,245 frontend tests passed; npm run typecheck passed with 0 errors; npm run lint passed with 0 warnings; color literal budget passed; npm run build passed; perf budget passed; all files strictly <= 500 lines)
 - **Summary:** Implemented SC-G2 One Fleet page merging Machines, Runner Audit, and Event Log into Fleet: (1) `FleetStatusBanner` complying with SC-A2 status honesty, tri-state health, KPI summary strip, and jump anchors (`#machines`, `#runners`, `#alerts`, `#events`); (2) `FleetMachinesSection` providing single unified machines table with expandable telemetry (WSL, CPU, RAM, storage devices, runner pool) and "Ask Maintenance" button for SC-E6; (3) `FleetRunnersSection` providing status filter pills, fleet control buttons (Start All, Stop All), runner table with labels, current task links, and Maintenance actions; (4) `FleetAlertsSection` surfacing active fleet alerts and hosted-runner billing violations audit table from `runnerAudit` with refresh button and empty state; (5) `FleetEventsSection` displaying recent durable fleet events with level filters and independent error state; (6) `OverviewPage.tsx` recomposed with section-level failure isolation and smooth hash scrolling; (7) Backwards-compatible redirects configured for `/fleet/machines`, `/machines`, `/t/machines` to `/fleet#machines`, `/fleet/runner-audit`, `/runner-audit`, `/t/runner-audit` to `/fleet#alerts`, and `/fleet/events`, `/events`, `/t/events` to `/fleet#events` with user toast notices.
-- **Next step:** Push branch, open PR with Fixes #1324, enable auto-merge, monitor CI to merge, release lease, and clean up worktree.
+- **Next step:** Shipped in PR #1421.
 
 ### DL-#1319 · SC-D5: Action, run, hand-off, and review cards embedded in conversation threads
 

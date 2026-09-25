@@ -67,7 +67,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
     }
 
     // 2. Action Proposal Card
-    if (message.kind === "proposal") {
+    if (message.kind === "proposal" || message.kind === "action_proposal") {
       const proposal: ActionProposalData =
         (message.meta?.proposal as ActionProposalData) || {
           id: (message.meta?.proposal_id as string) || message.id,
@@ -93,7 +93,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
     }
 
     // 3. Run Card
-    if (message.kind === "run") {
+    if (message.kind === "run" || message.kind === "run_card") {
       const run: RunCardData =
         (message.meta?.run as RunCardData) || {
           id: (message.meta?.run_id as string) || message.id,
