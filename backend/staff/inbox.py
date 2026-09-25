@@ -14,11 +14,10 @@ while surviving sources continue to aggregate cleanly.
 
 import logging
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime
 from typing import Any, Literal
 
 from push import send_push
-from staff.audit import record_audit
+from staff.briefings import generate_briefing, post_briefing_to_barb
 from staff.conversations import (
     ConversationStore,
     get_conversation_store,
@@ -27,6 +26,17 @@ from staff.store import RunStore
 from staff.store import get_store as get_run_store
 from staff.work_items import WorkItemStore, get_work_item_store
 from time_utils import utc_now_iso
+
+__all__ = [
+    "InboxAggregate",
+    "InboxItem",
+    "InboxSource",
+    "SourceStatus",
+    "collect_inbox",
+    "generate_briefing",
+    "post_briefing_to_barb",
+    "send_escalation_push",
+]
 
 log = logging.getLogger("dashboard.staff.inbox")
 
@@ -249,6 +259,67 @@ async def _collect_project_decisions() -> list[InboxItem]:
     return items
 
 
+async def _collect_board_proposals() -> list[InboxItem]:
+    """Collect open Board proposals awaiting decision from CR-7 store (WP-0.2, #1475)."""
+    from cache_utils import cache_get, cache_set
+    from dashboard_config import DEFAULT_CACHE_TTL
+    from proposals import store as prop_store
+
+    cache_key = "inbox:board_proposals:open"
+    issues = cache_get(cache_key, DEFAULT_CACHE_TTL)
+    if issues is None:
+        issues = await prop_store.list_github_proposals(state="open")
+        cache_set(cache_key, issues)
+
+    items: list[InboxItem] = []
+    for issue in issues:
+        state = issue.get("state", "open")
+        if state == "closed":
+            continue
+        decision, _ = prop_store.extract_decision_info(issue)
+        if decision is not None:
+            continue
+
+        number = int(issue.get("number", 0))
+        title = issue.get("title", f"Board Proposal #{number}")
+        body = issue.get("body") or ""
+        parsed = prop_store.parse_proposal_markdown(body)
+
+        urgency = (parsed.get("urgency") or "").lower()
+        if urgency == "emergency":
+            sev: Literal["low", "medium", "high", "critical"] = "critical"
+        elif urgency == "urgent":
+            sev = "high"
+        elif urgency == "routine":
+            sev = "medium"
+        else:
+            sev = "medium"
+
+        summary = parsed.get("problem") or f"Board proposal #{number} awaiting decision"
+        created_at = issue.get("created_at") or utc_now_iso()
+
+        items.append(
+            InboxItem(
+                id=f"board_proposal_{number}",
+                source="board_proposal",
+                title=title,
+                summary=summary,
+                severity=sev,
+                created_at=created_at,
+                link="/staff/fleet-command?section=proposals",
+                metadata={
+                    "kind": "board_proposal",
+                    "proposal_number": number,
+                    "target_repos": parsed.get("target_repos", []),
+                    "urgency": parsed.get("urgency", ""),
+                    "estimated_cost": parsed.get("estimated_cost", ""),
+                    "html_url": issue.get("html_url", ""),
+                },
+            )
+        )
+    return items
+
+
 def _collect_auth_sign_ins() -> list[InboxItem]:
     """Collect providers requiring authentication sign-in."""
     items: list[InboxItem] = []
@@ -344,9 +415,9 @@ async def collect_inbox(
         log.warning("Inbox failed collecting project_decisions: %s", exc)
         sources["project_decisions"] = SourceStatus(status="unavailable", count=0, error=str(exc))
 
-    # 5. Board Proposals (graceful stub until board proposal backend lands)
+    # 5. Board Proposals (CR-7 store, issue #1475)
     try:
-        bp_items: list[InboxItem] = []
+        bp_items = await _collect_board_proposals()
         all_items.extend(bp_items)
         counts["board_proposals"] = len(bp_items)
         sources["board_proposals"] = SourceStatus(status="ok", count=len(bp_items))
@@ -376,106 +447,6 @@ async def collect_inbox(
         sources=sources,
         generated_at=utc_now_iso(),
     )
-
-
-def generate_briefing(
-    inbox: InboxAggregate,
-    r_store: RunStore | None = None,
-    kind: str = "morning",
-) -> str:
-    """Generate structured Markdown briefing for Barb's thread."""
-    r_store = r_store or get_run_store()
-    now_str = datetime.now(UTC).strftime("%A, %B %d, %Y %H:%M UTC")
-    kind_title = "Morning" if kind.lower() == "morning" else ("Evening" if kind.lower() == "evening" else "On-Demand")
-
-    # In-flight runs
-    active_runs = r_store.list_runs(status="running", limit=10)
-    queued_runs = r_store.list_runs(status="queued", limit=10)
-
-    lines: list[str] = [
-        f"# Barb's {kind_title} Briefing",
-        f"*{now_str}*",
-        "",
-        f"## 🚨 Waiting on You ({inbox.counts['total']})",
-    ]
-
-    if not inbox.items:
-        lines.append("All clear! No pending approvals, escalations, or questions awaiting you.")
-    else:
-        for item in inbox.items[:15]:
-            sev_badge = f"**[{item.severity.upper()}]**" if item.severity in ("critical", "high") else ""
-            lines.append(f"- {sev_badge} [{item.title}]({item.link}): {item.summary}")
-        if len(inbox.items) > 15:
-            lines.append(f"- *...and {len(inbox.items) - 15} more items in your inbox.*")
-
-    active_desc = ", ".join(f"`{r.role}` ({r.repo})" for r in active_runs) if active_runs else "None"
-    queued_desc = ", ".join(f"`{r.role}` ({r.repo})" for r in queued_runs) if queued_runs else "None"
-    lines.extend(
-        [
-            "",
-            "## 🚀 In-Flight & Queued Work",
-            f"- **Running ({len(active_runs)})**: {active_desc}",
-            f"- **Queued ({len(queued_runs)})**: {queued_desc}",
-        ]
-    )
-
-    unavailable = [k for k, v in inbox.sources.items() if v.status == "unavailable"]
-    if unavailable:
-        lines.extend(
-            [
-                "",
-                "## ⚠️ Degraded Sources",
-                f"The following inbox sources are temporarily unavailable: {', '.join(unavailable)}.",
-            ]
-        )
-
-    return "\n".join(lines)
-
-
-async def post_briefing_to_barb(
-    kind: str = "morning",
-    c_store: ConversationStore | None = None,
-    r_store: RunStore | None = None,
-    w_store: WorkItemStore | None = None,
-) -> dict[str, Any]:
-    """Compile briefing, post to Barb's thread, and record audit log."""
-    c_store = c_store or get_conversation_store()
-    r_store = r_store or get_run_store()
-    w_store = w_store or get_work_item_store()
-
-    inbox = await collect_inbox(c_store=c_store, r_store=r_store, w_store=w_store)
-    body_md = generate_briefing(inbox, r_store=r_store, kind=kind)
-
-    # Find or create Barb's thread
-    open_threads = c_store.list_threads(status="open", limit=50)
-    barb_thread = next((th for th in open_threads if "barb" in [p.lower() for p in th.participants]), None)
-    if not barb_thread:
-        barb_thread = c_store.create_thread(title="Barb", kind="direct", participants=["barb", "user"])
-
-    msg = c_store.add_message(
-        thread_id=barb_thread.id,
-        author_kind="role",
-        author="barb",
-        body_md=body_md,
-        kind="text",
-        meta={"briefing_kind": kind, "waiting_count": inbox.counts["total"]},
-    )
-
-    record_audit(
-        action="staff_briefing_posted",
-        principal="barb",
-        target=f"thread:{barb_thread.id}",
-        detail={"briefing_id": msg.id, "kind": kind, "waiting_count": inbox.counts["total"]},
-    )
-
-    return {
-        "ok": True,
-        "briefing_id": msg.id,
-        "thread_id": barb_thread.id,
-        "kind": kind,
-        "waiting_count": inbox.counts["total"],
-        "body_md": body_md,
-    }
 
 
 async def send_escalation_push(item: InboxItem) -> int:

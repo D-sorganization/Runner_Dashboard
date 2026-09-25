@@ -1,187 +1,115 @@
-# Current handoff — SC-G6: Retire the Cline Launcher (#1338)
+# Current handoff — WP-0.2: Show Board proposals in the owner inbox (#1475)
 
 Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1338`; branch `chore/1338-retire-cline-launcher`; PR: see branch; Issue #1338 (Cline slice only); DL-#1338. Commit: SELF.
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/wp-0.2-inbox-board-proposals-1475`; Issue #1475; DL-#1475.
 
 ## Objective and Status
 
-- Owner decision: retire the Cline Launcher. The rest of #1338 (other low-usage pages) stays `judgement:contested` and is not touched here.
-- Done:
-  - Removed `pages/ClineLauncher.tsx` (and its test), the nav entry, the intro override, the RoutedShell case and the legacy-App tab.
-  - Removed `backend/agent_launcher_router.py`, its `server.py` include, and its tests; dropped the six `/api/agent-launcher/*` paths and their six schemas from `openapi.json` / `api-types.ts`.
-  - `getTabRedirect` sends `/staff/cline-launcher`, `/cline-launcher` and `/t/cline-launcher` to the Staff Console (`/`).
-- Kept: the `cline-launcher` row in `usage_metrics.TAB_RECOMMENDATIONS`, so historical page views still report as `retire`.
-
-## Validation
-
-- `npx vitest run` → 154 files, 1309 passed; `npx tsc -p tsconfig.app.json --noEmit` → clean.
-- WSL venv: `pytest tests/test_retired_cline_launcher.py tests/test_async_hygiene.py tests/test_usage_metrics.py tests/api/test_structural_auth_perimeter.py tests/frontend/test_api_generation_contract.py` → 81 passed, 1 skipped.
-- `scripts/gen-api-client.sh` failed locally at its prettier step (the Windows `npx` cannot see WSL `/tmp`), so the snapshot was edited surgically; CI's `generate-api:check` is the authority.
-
-## Next Steps
-
-1. Merge once CI is green.
-2. File a Repository_Management issue to retire `launchers/cline_agent_launcher` (its only consumer is gone).
-
----
-
-# Current handoff — Staff Console end to end: desktop console and real thread resolution (#1446)
-
-Last updated: 2026-09-25
-
-## Identity
-
-- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1446`; branch `feat/1446-desktop-staff-console`; PR: see branch; Issue #1446; DL-#1446. Commit: SELF.
-
-## Objective and Status
-
-- Before: `/staff` had no desktop console, and the mobile console invented `thr_<role>` ids, so every send got a 404 and history came from a GET on the POST-only `/messages` route.
-- Now:
-  - `consoleThreads.resolveRoleThread` picks the role's latest non-archived thread (`GET /api/v1/staff/threads?role=`) or creates one (`POST /threads`; Barb = `auto`, others `direct`), and asserts the role is a participant.
-  - `useStaffConsole` holds roster, thread, history (`GET /threads/{id}`), SSE stream, send and approve/deny for both layouts; failures land in `error` with a kind and render through `ConsoleErrorBanner`.
-  - `StaffConsoleDesktop` (Roster | Thread + Composer | collapsible Context) is the default Staff section; the hub sections (Roster, Runs, Assign, Holds) stay as tabs.
-  - `Mobile.tsx` now uses the hook; deep links resolve through it.
-- Verification: `npx vitest run frontend/src/pages` 86 files/673 tests passed; `npx tsc -p tsconfig.app.json --noEmit` 0 errors.
-- CI's 500-line cap covers `frontend/src/` tests: the console-default test lives in `pages/__tests__/StaffPageConsole.test.tsx`, which keeps `Staff.test.tsx` at 500 lines.
-
-## Next Steps
-
-1. Land the PR through CI (auto-merge squash).
-2. #1341 (D10 e2e): drive a real send → reply on `/staff` now that threads resolve.
-
-# Current handoff — Projects: fleet-wide prioritised status and untracked-work report (#1434)
-
-Last updated: 2026-09-25
-
-## Identity
-
-- Repository `D-sorganization/Runner_Dashboard`; branch `feat/fleet-project-tracking`; Issue #1434; DL-#1434.
-- Worktree `_wt_claude_rd_tracking` on OGLaptop; PR #1441 (auto-merge armed); companion Repository_Management#1761.
-
-## Objective and Status
-
-- One prioritised status view of every fleet project, plus the fleet-curator worklist of untracked work.
-- Implemented: `backend/projects/priorities.py`, `coverage.py`, `rollup.py`; `service.fleet_overview`,
-  `load_priorities`, `fetch_open_items`, `fetch_org_repos`; routes `/api/projects` (+summary),
-  `/api/projects/priorities`, `/api/projects/untracked`; `config/projects.json` now lists all active org repos;
-  frontend `PriorityBadge`, `CoverageDetails`, `FleetSummaryBar`; regenerated OpenAPI contract.
-- Decisions: priority lives centrally in Repository_Management (owner-set, fleet-wide), charters stay per repo;
-  coverage is deterministic so the curator role only judges, never discovers.
-
-## Validation
-
-- `python -m pytest tests/api/test_projects_router.py tests/api/test_projects_tracking.py` → 36 passed.
-- `npx vitest run frontend/src/pages/__tests__/Projects.test.tsx` → 7 passed; `npx tsc --noEmit -p tsconfig.app.json` clean.
-- `ruff check`, `ruff format --check`, `mypy backend/projects backend/routers/projects.py` clean.
-- `bash scripts/gen-api-client.sh` regenerated `openapi.json` / `api-types.ts` (adds the two new routes only).
-
-## Next Steps
-
-1. Land the PR through CI (auto-merge squash).
-2. Repository_Management: `fleet-curator` role + `config/project_priorities.yaml` from the owner interview.
-3. Charter PRs for the repositories that had none (fleet charter sweep drafts).
-
----
-
-# Current handoff — SC-E7: Maintenance safety tests and gates (#1344)
-
-Last updated: 2026-09-25
-
-## Identity
-
-- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1344`; branch `test/1344-maintenance-safety`; PR: see branch; Issue #1344; DL-#1344. Commit: SELF.
-
-## Objective and Status
-
-- Found: the SC-E3 catalogue's operations were stubs that reported success without acting, `_get_runner_state` always said "online, not busy", group actions ignored `max_count` at run time, and the stalled-job detector auto-executed by its own detection label, so any detection could downgrade a high-risk action.
-- Now:
-  - `MAINTENANCE_POLICY` (risk, scope, disruptive, target parameter, max targets) lives in `staff/maintenance_policy.py` and drives registration and `check_maintenance_policy`; `maintenance.py` stays under the 500-line cap.
-  - Stubs raise `MaintenanceNotWiredError` and fail as `not_wired`.
-  - `_run_group` refuses oversized groups and stops on token expiry, marking the rest as skipped.
-  - Every real invocation is audited with its `failure_class`; dry runs skip verification.
-  - `run_scan` gates auto-execution with `can_auto_execute` on the registered action.
-- Tests: `tests/staff/test_maintenance_safety.py` (pinned table, mutation check, limits, owner gate, replay, prompt injection, fault injection). Existing tests that asserted stub success now use a simulated backend, or expect `not_wired` for runner removal.
-- Verification: maintenance/actions/proposals/safety pytest 197 passed, 12 skipped (no-op mutations); ruff clean; `mypy backend/` clean.
-
-## Next Steps
-
-1. Land the PR through CI (auto-merge squash).
-2. #1448: wire the stub operations one at a time, removing each from `UNWIRED_ACTIONS` as it lands.
-
-# Current handoff — Projects: fleet-wide prioritised status and untracked-work report (#1434)
-
-Last updated: 2026-09-25
-
-## Identity
-
-- Repository `D-sorganization/Runner_Dashboard`; branch `feat/fleet-project-tracking`; Issue #1434; DL-#1434.
-- Worktree `_wt_claude_rd_tracking` on OGLaptop; PR #1441 (auto-merge armed); companion Repository_Management#1761.
-
-## Objective and Status
-
-- One prioritised status view of every fleet project, plus the fleet-curator worklist of untracked work.
-- Implemented: `backend/projects/priorities.py`, `coverage.py`, `rollup.py`; `service.fleet_overview`,
-  `load_priorities`, `fetch_open_items`, `fetch_org_repos`; routes `/api/projects` (+summary),
-  `/api/projects/priorities`, `/api/projects/untracked`; `config/projects.json` now lists all active org repos;
-  frontend `PriorityBadge`, `CoverageDetails`, `FleetSummaryBar`; regenerated OpenAPI contract.
-- Decisions: priority lives centrally in Repository_Management (owner-set, fleet-wide), charters stay per repo;
-  coverage is deterministic so the curator role only judges, never discovers.
-
-## Validation
-
-- `python -m pytest tests/api/test_projects_router.py tests/api/test_projects_tracking.py` → 36 passed.
-- `npx vitest run frontend/src/pages/__tests__/Projects.test.tsx` → 7 passed; `npx tsc --noEmit -p tsconfig.app.json` clean.
-- `ruff check`, `ruff format --check`, `mypy backend/projects backend/routers/projects.py` clean.
-- `bash scripts/gen-api-client.sh` regenerated `openapi.json` / `api-types.ts` (adds the two new routes only).
-
-## Next Steps
-
-1. Land the PR through CI (auto-merge squash).
-2. Repository_Management: `fleet-curator` role + `config/project_priorities.yaml` from the owner interview.
-3. Charter PRs for the repositories that had none (fleet charter sweep drafts).
-
----
-
-# Current handoff — WP-0.1: Resolve staff action role names against the loaded roster (#1474)
-
-Last updated: 2026-09-25
-
-## Identity
-
-- Repository `D-sorganization/Runner_Dashboard`; branch `fix/wp-0.1-resolve-staff-action-roles-1474`; Issue #1474; DL-#1474.
-
-## Objective and Status
-
-- Fix staff role names in `backend/staff/action_executors.py` resolving against loaded roster (WP-0.1, issue #1474):
-  - Defined module constants:
-    - `DEFAULT_REVIEWER_ROLE = "fleet-critic"`
-    - `CODE_REQUEST_OWNER_ROLE = "barb"`
-    - `BOARD_PROPOSAL_ROLE = "board-secretary"`
-  - Updated `execute_review_pr` to use `DEFAULT_REVIEWER_ROLE`.
-  - Updated `execute_code_request_create` to use `CODE_REQUEST_OWNER_ROLE`.
-  - Updated `execute_board_propose` to use `BOARD_PROPOSAL_ROLE`.
-  - Implemented `validate_action_default_roles` checking `load_roles()`: logs a warning without crashing at runtime; raises `ValueError` when `raise_on_error=True` for test failure.
-  - Added unit test suite in `tests/staff/routing_eval/test_action_executor_roles.py`:
-    - Asserts every default role resolves to a dispatchable, non-retired role on dashboard surface.
-    - Asserts `staff.review_pr` with no `reviewer` starts a `fleet-critic` run.
-    - Asserts validation fails loudly on unresolvable roles and logs runtime warnings.
+- Wire Board proposals into the owner inbox (WP-0.2, issue #1475):
+  - Replaced the stub in `backend/staff/inbox.py` with `_collect_board_proposals()` querying `proposals.store.list_github_proposals(state="open")`.
+  - Cached the read with `DEFAULT_CACHE_TTL` (30s) to avoid duplicate GitHub reads.
+  - Filtered out closed proposals and decided proposals (`decision is not None` via `extract_decision_info`).
+  - Mapped each open proposal waiting on a decision to `InboxItem`:
+    - `id`: `board_proposal_{number}`
+    - `source`: `board_proposal`
+    - `title`: proposal issue title
+    - `summary`: problem statement from proposal markdown body
+    - `severity`: mapped from urgency (`Emergency` -> `critical`, `Urgent` -> `high`, `Routine` -> `medium`)
+    - `created_at`: proposal created timestamp
+    - `link`: `/staff/fleet-command?section=proposals`
+    - `metadata`: `kind`, `proposal_number`, `target_repos`, `urgency`, `estimated_cost`, `html_url`.
+  - Maintained fault-tolerant `try/except` setting `sources["board_proposals"]` to `status="unavailable"` on store error without crashing the inbox.
+  - Extracted briefing generation and posting to `backend/staff/briefings.py` to maintain strict $\le 500$-line limit across all files (`inbox.py`: 468 lines, `briefings.py`: 128 lines).
+  - Added Proposals filter pill to frontend `InboxPanel.tsx`.
+  - Added unit test suite in `tests/unit/test_staff_inbox_proposals.py` (RED -> GREEN):
+    - (a) open proposals appear as inbox items and are counted
+    - (b) decided or closed proposals are excluded
+    - (c) store exceptions yield `unavailable` while other sources render cleanly
+    - (d) cached proposals reused within TTL without duplicate calls
   - Verification:
-    - `pytest tests/staff/routing_eval/test_action_executor_roles.py`: 5/5 passed.
-    - `pytest tests/staff/ tests/unit/test_staff_actions.py -q`: 19/19 passed.
-    - `ruff check backend/ clients/` and `ruff format --check backend/ clients/`: clean.
-    - `mypy backend/ --ignore-missing-imports --exclude backend/__pycache__ --no-implicit-optional`: clean (0 issues in 247 source files).
-    - File line counts: `backend/staff/action_executors.py` (279 lines), `tests/staff/routing_eval/test_action_executor_roles.py` (95 lines), both strictly $\le 500$ lines.
+    - `pytest tests/unit/test_staff_inbox_proposals.py`: 4/4 passed.
+    - `pytest tests/unit/ -m "not integration"`: 100% passed (zero failures).
+    - `npm test -- --run` (vitest): 155/155 test files passed (1313 tests passed).
+    - `npm run typecheck`: clean (0 errors).
+    - `ruff check backend/ clients/`: clean.
+    - `ruff format --check backend/ clients/`: clean.
+    - `mypy backend/`: clean (0 issues in 248 source files).
+    - File line counts: `backend/staff/inbox.py` (468), `backend/staff/briefings.py` (128), `tests/unit/test_staff_inbox_proposals.py` (190), `frontend/src/pages/Staff/InboxPanel.tsx` (331) — all strictly $\le 500$ lines.
 
 ## Next Steps
 
-1. Commit and push `fix/wp-0.1-resolve-staff-action-roles-1474`.
-2. Open PR referencing `Fixes #1474` with label `agent:local`.
+1. Commit and push `fix/wp-0.2-inbox-board-proposals-1475`.
+2. Open PR referencing `Fixes #1475` with label `agent:local`.
 3. Enable auto-merge (`gh pr merge --auto --squash`).
 4. Verify CI passes and PR merges to `main`.
-5. Release lease on #1474 and fast-forward local `main`.
+5. Release lease on #1475 and fast-forward local `main`.
+
+---
+
+# Past handoff — SC-G6: Retire the Cline Launcher (#1338)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `chore/1338-retire-cline-launcher`; PR #1467 (merged); Issue #1338 (Cline slice only); DL-#1338.
+
+## Objective and Status
+
+- Owner decision: retire the Cline Launcher. Page, nav entry, intro override, legacy tab and `/api/agent-launcher` router removed; old addresses redirect to Staff Console.
+
+## Next Steps
+
+1. None (shipped in PR #1467).
+
+---
+
+# Past handoff — Staff Console end to end: desktop console and real thread resolution (#1446)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1446-desktop-staff-console`; PR #1467 (merged); Issue #1446; DL-#1446.
+
+## Objective and Status
+
+- Desktop console is default Staff section; desktop and mobile share `useStaffConsole`; roles open server-resolved threads; backend failures are visible alerts.
+
+## Next Steps
+
+1. None (shipped in PR #1467).
+
+---
+
+# Past handoff — SC-E7: Maintenance safety tests and gates (#1344)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `test/1344-maintenance-safety`; PR #1467 (merged); Issue #1344; DL-#1344.
+
+## Objective and Status
+
+- Pinned policy table with mutation check; fleet-wide, single-target and batch-size gates; detector risk from registry; unwired operations fail as not_wired; timeouts, token expiry, partial failures audited.
+
+## Next Steps
+
+1. None (shipped in PR #1467).
+
+---
+
+# Past handoff — WP-0.1: Resolve staff action role names against the loaded roster (#1474)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/wp-0.1-resolve-staff-action-roles-1474`; Issue #1474; DL-#1474; PR #1481 (merged).
 
 ---
 

@@ -263,6 +263,18 @@ export function InboxPanel({
                   Decisions ({data.counts.project_decisions})
                 </button>
               ) : null}
+              {data.counts.board_proposals > 0 ? (
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTab === "board_proposal"}
+                  className={`filter-pill ${activeTab === "board_proposal" ? "filter-pill--active" : ""}`}
+                  onClick={() => setActiveTab("board_proposal")}
+                  data-testid="filter-tab-board-proposal"
+                >
+                  Proposals ({data.counts.board_proposals})
+                </button>
+              ) : null}
             </div>
           ) : null}
 

@@ -18,53 +18,70 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1475 · WP-0.2: Show Board proposals in the owner inbox (wire inbox to the CR-7 store)
+
+- **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1475
+- **Branch:** `fix/wp-0.2-inbox-board-proposals-1475`
+- **Paths:** `backend/staff/inbox.py`, `backend/staff/briefings.py`, `tests/unit/test_staff_inbox_proposals.py`, `frontend/src/pages/Staff/InboxPanel.tsx`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (pytest tests/unit/ 100% passed; vitest 1313/1313 passed; npm run typecheck 0 errors; ruff check & format clean; mypy clean in 248 source files; all files <= 500 lines)
+- **Summary:** Replaced the stub in `backend/staff/inbox.py` with `_collect_board_proposals()` reading open proposals from CR-7 store `proposals.store.list_github_proposals(state="open")` with `DEFAULT_CACHE_TTL` caching. Excluded decided and closed proposals, mapped open proposals waiting on decisions to `InboxItem` with `source="board_proposal"`, severity mapped from urgency, age from `created_at`, link `/staff/fleet-command?section=proposals`, and structured metadata. Extracted briefing generation to `backend/staff/briefings.py` to keep all files strictly <= 500 lines. Added Proposals filter pill to frontend `InboxPanel.tsx`. Added unit test suite in `tests/unit/test_staff_inbox_proposals.py`.
+- **Next step:** Commit, push, open PR, enable auto-merge, verify CI passes, and release lease.
+
 ### DL-#1338 · SC-G6: Retire the Cline Launcher page and its agent-launcher API
 
-- **State:** in_review
+- **State:** shipped
 - **Owner:** claude
 - **Issue:** #1338 (Cline Launcher slice only; the other pages in #1338 remain `judgement:contested` pending owner decisions)
 - **Branch:** `chore/1338-retire-cline-launcher`
+- **PR:** #1467
 - **Paths:** `frontend/src/shell/routing.ts`, `frontend/src/shell/navRegistryData.ts`, `frontend/src/shell/RoutedShell.tsx`, `frontend/src/shell/intro.ts`, `frontend/src/legacy/App.tsx`, `backend/server.py`, `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `tests/test_retired_cline_launcher.py`, `frontend/src/shell/__tests__/retiredClineLauncher.test.ts`
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (vitest 1309 passed; tsc clean; targeted pytest 81 passed, 1 skipped)
 - **Summary:** Owner decided to retire the Cline Launcher. Page, nav entry, intro override, legacy tab and `/api/agent-launcher` router removed; old addresses redirect to the Staff Console.
-- **Next step:** Merge the PR once CI is green, then retire `Repository_Management/launchers/cline_agent_launcher` in a Repository_Management issue.
+- **Next step:** None (shipped in PR #1467).
 
 ### DL-#1446 · Staff Console end to end: desktop three-pane console and real thread resolution
 
-- **State:** in_review
+- **State:** shipped
 - **Owner:** claude
 - **Issue:** #1446 (epic #1350 / umbrella #1354)
 - **Branch:** `feat/1446-desktop-staff-console`
+- **PR:** #1467
 - **Paths:** `frontend/src/pages/StaffConsole/useStaffConsole.ts`, `frontend/src/pages/StaffConsole/consoleThreads.ts`, `frontend/src/pages/StaffConsole/Desktop.tsx`, `frontend/src/pages/StaffConsole/desktop.css`, `frontend/src/pages/StaffConsole/ConsoleErrorBanner.tsx`, `frontend/src/pages/StaffConsole/Mobile.tsx`, `frontend/src/pages/StaffConsole/index.ts`, `frontend/src/pages/Staff/StaffPage.tsx`, `frontend/src/pages/Staff/staffApi.ts`, `tests/e2e/a11y.spec.ts`
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (vitest frontend/src/pages 86 files/673 tests + StaffPageConsole; tsc -p tsconfig.app.json 0 errors; changed files within the 500-line cap)
 - **Summary:** Desktop console is the default Staff section; desktop and mobile share `useStaffConsole`; roles open server-resolved threads (no invented ids); every backend failure is a visible alert.
-- **Next step:** Merge the PR once CI is green, then send a message to Barb from the deployed Desk node's Staff Console and confirm the reply streams in.
+- **Next step:** None (shipped in PR #1467).
 
 ### DL-#1344 · SC-E7: Maintenance safety tests: approval gates, blast-radius limits and fault injection
 
-- **State:** in_review
+- **State:** shipped
 - **Owner:** claude
 - **Issue:** #1344 (epic #1351 / umbrella #1354); follow-up #1448 wires the stub operations
 - **Branch:** `test/1344-maintenance-safety`
+- **PR:** #1467
 - **Paths:** `backend/staff/maintenance.py`, `backend/staff/maintenance_policy.py`, `backend/staff/maintenance_detect.py`, `tests/staff/test_maintenance_safety.py`, `tests/unit/test_staff_maintenance_detect.py`, `tests/api/test_staff_maintenance_detect_api.py`
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (maintenance/actions/proposals/safety pytest 197 passed, 12 skipped; ruff clean; mypy backend/ clean)
 - **Summary:** Pinned policy table with a mutation check; fleet-wide, single-target and batch-size gates read from it; detector risk comes from the registry; unwired operations fail as `not_wired`; timeouts, token expiry and partial failures are classified and audited.
-- **Next step:** Merge the PR once CI is green, then start #1448 by wiring `_cancel_run` / `_rerun_run` to `gh_client`.
+- **Next step:** None (shipped in PR #1467).
 
 ### DL-#1474 · WP-0.1: Resolve staff action role names against the loaded roster
 
-- **State:** in_progress
+- **State:** shipped
 - **Owner:** antigravity
 - **Issue:** #1474
 - **Branch:** `fix/wp-0.1-resolve-staff-action-roles-1474`
+- **PR:** #1481
 - **Paths:** `backend/staff/action_executors.py`, `tests/staff/routing_eval/test_action_executor_roles.py`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (pytest 5/5 passed in test_action_executor_roles.py, 19/19 passed in tests/staff/ and test_staff_actions.py; ruff check and format clean; mypy backend clean with 0 issues in 247 files; all files <= 500 lines)
 - **Summary:** Replaced literal unresolvable staff role strings in `backend/staff/action_executors.py` with module constants: `DEFAULT_REVIEWER_ROLE = "fleet-critic"`, `CODE_REQUEST_OWNER_ROLE = "barb"`, `BOARD_PROPOSAL_ROLE = "board-secretary"`. Added `validate_action_default_roles` to validate default roles against `load_roles()`, logging warnings without crashing at runtime and failing loudly on error in tests. Added unit test suite in `tests/staff/routing_eval/test_action_executor_roles.py`.
-- **Next step:** Commit, push, open PR, enable auto-merge, verify CI passes, and release lease.
+- **Next step:** None (shipped in PR #1481).
+
 
 ### DL-#1477 · Staff validator accepts RM tool/scope grants
 
