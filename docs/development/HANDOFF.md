@@ -1,4 +1,45 @@
-# Current handoff — SC-C5: "Waiting on you" inbox and Barb briefings inside dashboard (#1328)
+# Current handoff — Restore green main: synchronize generated API contract for SC-C5 (#1424)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1424-green-main`; Issue #1424; DL-#1424.
+
+## Objective and Status
+
+- Restore green main: synchronize `frontend/src/lib/openapi.json` and `frontend/src/lib/api-types.ts` following the merge of SC-C5 (#1328 / PR #1422).
+- Resolves failing step `Verify generated API contract types` in `Frontend Tests` on `main`.
+- Status: Fully synchronized via FastAPI TestClient generator; all tests passing (contract tests 10/10, typecheck 0 errors, lint 0 warnings); all files formatted.
+
+## Files and Decisions
+
+- `frontend/src/lib/openapi.json`:
+  - Added OpenAPI specs for `POST /api/staff/briefing`, `GET /api/staff/inbox`, `POST /api/v1/staff/briefing`, and updated `GET /api/v1/staff/inbox`.
+  - Added schema `PostBriefingBody`.
+- `frontend/src/lib/api-types.ts`:
+  - Regenerated TypeScript operations and paths matching the updated OpenAPI contract.
+- `SPEC.md`:
+  - Bumped version to 2.5.249 and added change log entry for #1424.
+- `docs/development/DEVELOPMENT_LOG.md`:
+  - Added DL-#1424 and marked DL-#1328 as shipped.
+
+## Validation
+
+- `pytest tests/frontend/test_api_generation_contract.py tests/api/test_staff_contracts.py`: 10 passed.
+- `npm run typecheck`: clean (0 errors).
+- `npm run lint`: clean (0 warnings).
+
+## Next Steps
+
+1. Push branch `fix/1424-green-main`.
+2. Open PR with `Fixes #1424`, enable auto-merge.
+3. Monitor CI until green merge into `main`.
+4. Release lease on issue #1424 and clean up worktree.
+
+---
+
+# Previous handoff — SC-C5: "Waiting on you" inbox and Barb briefings inside dashboard (#1328)
 
 Last updated: 2026-09-25
 
