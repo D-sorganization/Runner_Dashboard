@@ -72,7 +72,16 @@ export function FleetOrchestrationPage(): React.ReactElement {
       body: JSON.stringify(payload),
     })
       .then((r) => parseJsonOrThrow(r, "Dispatch failed"))
-      .then(normalizeDispatchResponse);
+      .then((data: unknown) => {
+        if (data && typeof data === "object" && (data as { dispatched?: boolean }).dispatched === false) {
+          const detail =
+            "detail" in data && typeof (data as { detail?: unknown }).detail === "string"
+              ? (data as { detail: string }).detail
+              : "Dispatch failed";
+          throw new Error(detail);
+        }
+        return normalizeDispatchResponse(data);
+      });
   }, []);
 
   const deployAction = useCallback((payload: OrchestrationDeployPayload) => {

@@ -1,10 +1,39 @@
-# Current handoff — Restore green main: regenerate API contract types and synchronize openapi schema after #1512 (#1522)
+# Current handoff — Fix Fleet Orchestration false successes for dispatch and deploy (#1502)
 
 Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1522-api-contract-drift`; DL-#1522; Issue #1522.
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1502-orchestration-false-success`; DL-#1502; Issue #1502.
+
+## Objective and Status
+
+- Fix false successes in Fleet Orchestration dispatch and deploy (Issue #1502):
+  - In `backend/routers/orchestration.py`, updated `fleet_orchestration_dispatch` to return a classified error (`upstream_error` with status code 502) and `dispatched: false` including the `gh` stderr summary whenever `gh` CLI returns non-zero or throws an execution exception.
+  - In `fleet_orchestration_dispatch`, injected `machine_target` into `dispatch_payload["inputs"]["machine_target"]` (if not already present), ensuring the target machine reaches the dispatched GitHub Actions workflow.
+  - In `fleet_orchestration_deploy`, returned 501 `not_wired` with classified error message while preserving the audit attempt logging (`append_orchestration_audit`), replacing the false success message until SC-E maintenance actions are wired.
+  - In `frontend/src/pages/FleetOrchestrationPage.tsx`, added defense-in-depth handling to reject any payload where `dispatched === false` with the API error detail.
+  - Added dedicated API test suite in `tests/api/test_orchestration_dispatch.py` verifying all failure and success branches, input forwarding, 501 responses, and audit logging.
+  - Verified `scripts/gen-api-client.sh --check` passes cleanly with exit code 0.
+  - Bumped `SPEC.md` to `2.5.280`, updated `docs/development/DEVELOPMENT_LOG.md` (DL-#1502 active, DL-#1522 shipped).
+  - All touched source files strictly $\le 500$ lines (`backend/routers/orchestration.py`: 492 lines, `tests/api/test_orchestration_dispatch.py`: 186 lines, `frontend/src/pages/FleetOrchestrationPage.tsx`: 118 lines).
+
+## Next Steps
+
+1. Push branch `fix/1502-orchestration-false-success`.
+2. Open PR referencing `Fixes #1502` and enable auto-merge.
+3. Monitor CI until merged.
+4. Release agent lease for #1502 via `scripts.release_agent_lease`.
+
+---
+
+# Past handoff — Restore green main: regenerate API contract types and synchronize openapi schema after #1512 (#1522)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1522-api-contract-drift`; DL-#1522; Issue #1522; PR #1523 (merged).
 
 ## Objective and Status
 
@@ -13,13 +42,6 @@ Last updated: 2026-09-25
   - Verified `scripts/gen-api-client.sh --check` passes cleanly with exit code 0.
   - Bumped `SPEC.md` to `2.5.279` and updated `docs/development/DEVELOPMENT_LOG.md` (DL-#1522 active, DL-#1493 shipped).
   - All files strictly $\le 500$ lines.
-
-## Next Steps
-
-1. Push branch `fix/1522-api-contract-drift`.
-2. Open PR referencing `Fixes #1522` and enable auto-merge.
-3. Monitor CI until merged to restore green main.
-4. Release agent lease for #1522 via `scripts.release_agent_lease`.
 
 ---
 

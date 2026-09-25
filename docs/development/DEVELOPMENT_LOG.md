@@ -18,17 +18,30 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1522 · Restore green main: regenerate API contract types and synchronize openapi schema after #1512
+### DL-#1502 · Fix Fleet Orchestration false successes for dispatch and deploy
 
 - **State:** in_progress
 - **Owner:** antigravity
+- **Issue:** #1502
+- **Branch:** `fix/1502-orchestration-false-success`
+- **Paths:** `backend/routers/orchestration.py`, `frontend/src/pages/FleetOrchestrationPage.tsx`, `frontend/src/lib/api-types.ts`, `frontend/src/lib/openapi.json`, `tests/api/test_orchestration_dispatch.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (pytest tests/api/test_orchestration_dispatch.py 5/5 passed, ruff clean, mypy clean, scripts/gen-api-client.sh --check clean, all files <= 500 lines)
+- **Summary:** Fix false successes in Fleet Orchestration: `/api/fleet/orchestration/dispatch` returns classified 502 `upstream_error` with `dispatched: false` and gh stderr detail when gh fails, injects `machine_target` into workflow dispatch inputs, and `/api/fleet/orchestration/deploy` returns 501 `not_wired` while still recording the audit attempt. Added dedicated API test suite in `tests/api/test_orchestration_dispatch.py`.
+- **Next step:** Push branch, open PR with Fixes #1502, enable auto-merge, verify CI passes.
+
+### DL-#1522 · Restore green main: regenerate API contract types and synchronize openapi schema after #1512
+
+- **State:** shipped
+- **Owner:** antigravity
 - **Issue:** #1522
 - **Branch:** `fix/1522-api-contract-drift`
+- **PR:** #1523
 - **Paths:** `frontend/src/lib/api-types.ts`, `frontend/src/lib/openapi.json`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (`scripts/gen-api-client.sh --check` passed cleanly with code 0 under Python 3.11, all files <= 500 lines)
 - **Summary:** Regenerated `frontend/src/lib/api-types.ts` via `scripts/gen-api-client.sh` to remove formatting and trailing whitespace drift introduced in #1512, ensuring `generate-api:check` passes cleanly in `Frontend Tests` CI on `main`.
-- **Next step:** Push branch, open PR with Fixes #1522, enable auto-merge, verify CI passes.
+- **Next step:** None (shipped in PR #1523).
 
 ### DL-#1493 · SC-B1-G10: Stream chat tokens live instead of after the process exits
 
