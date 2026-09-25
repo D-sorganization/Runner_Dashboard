@@ -27,7 +27,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **PR:** opened right after this commit
 - **Paths:** `docs/plans/2026-09-25-agent-org-implementation-plan.md`
 - **Started:** 2026-09-25
-- **Last verified:** 2026-09-25 (docs-only plan at `7f73b08` baseline)
+- **Last verified:** 2026-09-25 (docs-only plan; rechecked against `main` `9bbeec6`)
 - **Summary:** Runner_Dashboard half of the agent-org gap analysis: work packages for role-name resolution, board proposals in the inbox, a post-run verification step, `/api/staff/outcomes`, and code-reviewer runtime support, then CR-4..CR-8 role bindings.
 - **Next step:** Fold replies from the active Runner_Dashboard sessions into the plan and get the owner's decision on Phase 0.
 

@@ -11,7 +11,8 @@ Last updated: 2026-09-25
 
 - Owner asked for the agent-org gap analysis (RM PR #1767) to be committed to both repositories and agreed with the agents developing Runner_Dashboard.
 - Added `docs/plans/2026-09-25-agent-org-implementation-plan.md` (docs only; no code). It is a proposal until the owner decides.
-- Review questions were sent through the fleet mailbox (RM#1576) to `claude-deskcomputer-20260925` (#1340) and `claude-oglaptop-20260925-tracking` (#1345); replies are pending.
+- Review questions were sent through the fleet mailbox (RM#1576) to `claude-deskcomputer-20260925` and `claude-oglaptop-20260925-tracking`. They were **not delivered**: the cloud GitHub proxy appends a footer to every comment it posts, and `agent_messages.parse` rejects that as a malformed envelope. The questions were re-posted on #1463 (comment 5838018676).
+- The plan was rechecked against `main` at `9bbeec6`: CR-6 (#1469), CR-7 (#1444) and #1340 (#1442) have merged. WP-0.2 now reads the CR-7 store, and WP-2.3 and WP-2.4 are marked merged.
 
 ## Validation
 
@@ -19,7 +20,7 @@ Last updated: 2026-09-25
 
 ## Next Steps
 
-1. Fold peer replies into §5–§6 of the plan.
+1. Fold peer replies from #1463 into §5–§6 of the plan.
 2. After the owner decides, file WP-0.1 and WP-0.2 as `tier:cli` sub-issues of #1463.
 
 ---
