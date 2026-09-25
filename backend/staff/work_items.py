@@ -13,11 +13,11 @@ import sqlite3
 import threading
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from staff.audit import record_audit
+from staff.store import _now as _now_iso
 from staff.store import default_db_path
 
 log = logging.getLogger("dashboard.staff.work_items")
@@ -55,10 +55,6 @@ class InvalidStateTransitionError(ValueError):
         super().__init__(msg)
         self.current = current
         self.target = target
-
-
-def _now_iso() -> str:
-    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 @dataclass(frozen=True)
