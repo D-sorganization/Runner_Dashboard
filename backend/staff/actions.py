@@ -173,10 +173,7 @@ def is_owner(principal: Principal | None) -> bool:
         return True
     if "owner" in scopes or "admin" in scopes:
         return True
-    if principal.id.lower() in ("owner", "operator") or principal.name.lower() in (
-        "owner",
-        "operator",
-    ):
+    if principal.id.lower() in ("owner", "operator") or principal.name.lower() in ("owner", "operator"):
         return True
     return False
 
@@ -196,17 +193,31 @@ def check_approval_policy(
         raise ProposalExpiredError(f"Proposal {prop.id} has expired (exceeded 24h TTL)")
 
     risk = action.risk_class if action else prop.risk
-    if risk in (
-        ActionRiskClass.HIGH,
-        ActionRiskClass.CRITICAL,
-        ActionRiskClass.OWNER_ONLY,
-    ):
+    if risk in (ActionRiskClass.HIGH, ActionRiskClass.CRITICAL, ActionRiskClass.OWNER_ONLY):
         if not is_owner(approver):
             raise PermissionError(f"Action '{prop.action}' has risk '{risk}' and requires owner approval")
 
     scopes = set(approver.scopes or [])
     if "staff.approve" not in scopes and not is_owner(approver):
         raise PermissionError(f"Principal '{approver.id}' lacks 'staff.approve' scope")
+
+
+_MAINTENANCE_ACTIONS = frozenset(
+    [
+        "runner.start",
+        "runner.stop",
+        "runner.restart",
+        "runner.scale",
+        "fleet.node_up",
+        "fleet.node_down",
+        "queue.purge_stale",
+        "run.cancel",
+        "run.rerun",
+        "queue.diagnose",
+        "host.vhdx_compact",
+        "dashboard.restart",
+    ]
+)
 
 
 def check_role_permission(
@@ -219,6 +230,9 @@ def check_role_permission(
         return True
 
     act_name = action.name if action else ""
+    if role_name == "maintenance" and (act_name.startswith("maintenance.") or act_name in _MAINTENANCE_ACTIONS):
+        return True
+
     spec = role_spec or load_roles().get(role_name)
     if not spec:
         return False
@@ -228,9 +242,6 @@ def check_role_permission(
     fleet_acts = set(spec.fleet_actions)
 
     if "*" in allowed or "*" in fleet_acts or act_name in allowed or act_name in fleet_acts:
-        return True
-
-    if role_name == "maintenance" and act_name.startswith("maintenance."):
         return True
 
     for pat in allowed | fleet_acts:
