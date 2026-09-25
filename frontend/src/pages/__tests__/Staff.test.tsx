@@ -180,15 +180,16 @@ function jsonResponse(status: number, body: unknown) {
 /** fetch stub routed by URL; unknown routes 404 so orthogonal panels degrade. */
 function stubFetch(extra: Handler = () => undefined) {
   const fetchMock = vi.fn((url: string, opts?: RequestInit) => {
-    const custom = extra(url, opts);
+    const norm = url.replace(/^\/api\/v1\/staff/, "/api/staff");
+    const custom = extra(norm, opts) ?? extra(url, opts);
     if (custom) return jsonResponse(custom.status, custom.body);
-    if (url === "/api/staff/roster") return jsonResponse(200, ROSTER);
-    if (url === "/api/staff/board") return jsonResponse(200, BOARD);
-    if (url.startsWith("/api/staff/runs?")) {
+    if (norm === "/api/staff/roster") return jsonResponse(200, ROSTER);
+    if (norm === "/api/staff/board") return jsonResponse(200, BOARD);
+    if (norm.startsWith("/api/staff/runs?")) {
       return jsonResponse(200, { runs: [RUN, CONSOLIDATED_RUN], count: 2 });
     }
-    if (url === "/api/staff/runs/run-1") return jsonResponse(200, { run: RUN, events: EVENTS });
-    if (url === "/api/staff/runs/run-9") return jsonResponse(200, { run: CONSOLIDATED_RUN, events: [] });
+    if (norm === "/api/staff/runs/run-1") return jsonResponse(200, { run: RUN, events: EVENTS });
+    if (norm === "/api/staff/runs/run-9") return jsonResponse(200, { run: CONSOLIDATED_RUN, events: [] });
     return jsonResponse(404, { detail: "Not Found" });
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -356,7 +357,7 @@ describe("StaffPage", () => {
 
   it("assign preview posts dry_run with CSRF header and shows the plan", async () => {
     const fetchMock = stubFetch((url, opts) => {
-      if (url === "/api/staff/night-watch/run" && opts?.method === "POST") {
+      if ((url === "/api/staff/night-watch/run" || url === "/api/v1/staff/night-watch/run") && opts?.method === "POST") {
         return { status: 200, body: { dry_run: true, plan: PLAN, machine: "DeskComputer" } };
       }
       return undefined;
@@ -380,7 +381,7 @@ describe("StaffPage", () => {
     expect(screen.getByTestId("plan-branch")).toHaveTextContent("staff/night-watch-10622-preview");
 
     const [url, opts] = postCalls(fetchMock)[0];
-    expect(url).toBe("/api/staff/night-watch/run");
+    expect(url).toBe("/api/v1/staff/night-watch/run");
     expect((opts.headers as Record<string, string>)["X-Requested-With"]).toBe("XMLHttpRequest");
     expect(JSON.parse(opts.body as string)).toMatchObject({
       dry_run: true,
@@ -394,7 +395,7 @@ describe("StaffPage", () => {
 
   it("dispatch posts for real and navigates to the new run", async () => {
     stubFetch((url, opts) => {
-      if (url === "/api/staff/night-watch/run" && opts?.method === "POST") {
+      if ((url === "/api/staff/night-watch/run" || url === "/api/v1/staff/night-watch/run") && opts?.method === "POST") {
         return { status: 200, body: { dry_run: false, run: RUN, machine: "DeskComputer" } };
       }
       return undefined;
@@ -423,7 +424,7 @@ describe("StaffPage", () => {
 
     await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
     const source = FakeEventSource.instances[0];
-    expect(source.url).toBe("/api/staff/runs/run-1/stream?after=2");
+    expect(source.url).toBe("/api/v1/staff/runs/run-1/stream?after=2");
     source.emit("text", { seq: 3, ts: "2026-09-22T10:00:10Z", kind: "text", text: "hello from claude" });
     await waitFor(() => expect(screen.getByTestId("run-events")).toHaveTextContent("[text] hello from claude"));
   });
@@ -431,11 +432,11 @@ describe("StaffPage", () => {
   it("cancel posts to the cancel route with the CSRF header", async () => {
     let cancelled = false;
     const fetchMock = stubFetch((url, opts) => {
-      if (url === "/api/staff/runs/run-1/cancel" && opts?.method === "POST") {
+      if ((url === "/api/staff/runs/run-1/cancel" || url === "/api/v1/staff/runs/run-1/cancel") && opts?.method === "POST") {
         cancelled = true;
         return { status: 200, body: { cancelled: true, run: { ...RUN, status: "cancelled" } } };
       }
-      if (url === "/api/staff/runs/run-1" && cancelled) {
+      if ((url === "/api/staff/runs/run-1" || url === "/api/v1/staff/runs/run-1") && cancelled) {
         return { status: 200, body: { run: { ...RUN, status: "cancelled" }, events: EVENTS } };
       }
       return undefined;
@@ -449,7 +450,7 @@ describe("StaffPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
 
     await waitFor(() => {
-      const call = postCalls(fetchMock).find(([url]) => url === "/api/staff/runs/run-1/cancel");
+      const call = postCalls(fetchMock).find(([url]) => url === "/api/v1/staff/runs/run-1/cancel");
       expect(call).toBeTruthy();
       expect((call![1].headers as Record<string, string>)["X-Requested-With"]).toBe("XMLHttpRequest");
     });
@@ -476,8 +477,8 @@ describe("StaffPage", () => {
       active: true,
     };
     const fetchMock = stubFetch((url, opts) => {
-      if (url === "/api/staff/holds" && (opts?.method ?? "GET") === "GET") return { status: 200, body: { holds: [HOLD] } };
-      if (url === "/api/staff/holds" && opts?.method === "PUT") return { status: 200, body: JSON.parse(opts.body as string) };
+      if ((url === "/api/staff/holds" || url === "/api/v1/staff/holds") && (opts?.method ?? "GET") === "GET") return { status: 200, body: { holds: [HOLD] } };
+      if ((url === "/api/staff/holds" || url === "/api/v1/staff/holds") && opts?.method === "PUT") return { status: 200, body: JSON.parse(opts.body as string) };
       return undefined;
     });
     render(<StaffPage />);

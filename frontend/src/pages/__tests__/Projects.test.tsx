@@ -128,7 +128,7 @@ describe("ProjectsPage", () => {
     expect(alpha.getByText("succeeded")).toBeInTheDocument();
     expect(alpha.getByRole("link", { name: /run steward-/ })).toHaveAttribute(
       "href",
-      "/api/staff/runs/steward-run-alpha-01",
+      "/api/v1/staff/runs/steward-run-alpha-01",
     );
 
     const beta = within(screen.getByTestId("project-card-Beta"));
@@ -171,7 +171,7 @@ describe("ProjectsPage", () => {
       string,
       RequestInit,
     ];
-    expect(url).toBe("/api/staff/project-steward/run");
+    expect(url).toBe("/api/v1/staff/project-steward/run");
     expect(init.method).toBe("POST");
     expect((init.headers as Record<string, string>)["X-Requested-With"]).toBe(
       "XMLHttpRequest",

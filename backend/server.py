@@ -712,7 +712,9 @@ app.include_router(_orchestrator_api.router)  # Conductor admission gate (issue 
 from routers import staff as _staff_router  # noqa: E402
 from routers import staff_schedule as _staff_schedule_router  # noqa: E402
 from routers import staff_usage as _staff_usage_router  # noqa: E402
+from routers import staff_v1 as _staff_v1_router  # noqa: E402
 
+app.include_router(_staff_v1_router.router)  # Versioned public staff API (issue #1312)
 app.include_router(_staff_router.router)
 app.include_router(_staff_schedule_router.router)  # scheduler, holds, budgets (issue #1196)
 app.include_router(_staff_usage_router.router)  # usage ledger (issue #1200)
@@ -778,6 +780,11 @@ async def _csrf_check(request, call_next):
 @app.middleware("http")
 async def _add_security_headers(request, call_next):
     return await add_security_headers(request, call_next)
+
+
+from staff.v1_envelope import StaffV1Middleware  # noqa: E402
+
+app.add_middleware(StaffV1Middleware)
 
 
 # ─── Startup timestamp ───────────────────────────────────────────────────────

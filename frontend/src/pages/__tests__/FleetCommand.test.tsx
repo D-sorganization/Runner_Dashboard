@@ -169,7 +169,7 @@ function stubFetch(extra: Handler = () => undefined) {
     if (url === "/api/priorities/meetings/2026-09-14") return jsonResponse(200, OLD_MEETING);
     if (url === "/api/priorities/directives") return jsonResponse(200, { directives: [DIRECTIVE] });
     if (url === "/api/coordination/sessions") return jsonResponse(200, SESSIONS);
-    if (url === "/api/staff/roster") return jsonResponse(200, ROSTER);
+    if (url === "/api/staff/roster" || url === "/api/v1/staff/roster") return jsonResponse(200, ROSTER);
     return jsonResponse(404, { detail: "Not Found" });
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -446,7 +446,7 @@ describe("FleetCommandPage — claims", () => {
 describe("FleetCommandPage — dispatch", () => {
   it("previews with dry_run then dispatches and links to the Staff tab run", async () => {
     const fetchMock = stubFetch((url, opts) => {
-      if (url !== "/api/staff/night-watch/run") return undefined;
+      if (url !== "/api/staff/night-watch/run" && url !== "/api/v1/staff/night-watch/run") return undefined;
       const body = JSON.parse(String(opts?.body));
       return body.dry_run
         ? {
@@ -486,7 +486,7 @@ describe("FleetCommandPage — dispatch", () => {
   });
 
   it("shows 'not available' when the Staff Hub is absent", async () => {
-    stubFetch((url) => (url === "/api/staff/roster" ? { status: 404, body: { detail: "Not Found" } } : undefined));
+    stubFetch((url) => (url === "/api/staff/roster" || url === "/api/v1/staff/roster" ? { status: 404, body: { detail: "Not Found" } } : undefined));
     render(<FleetCommandPage />);
     openSection("Dispatch");
     await waitFor(() => expect(screen.getByTestId("fleet-dispatch-unavailable")).toBeInTheDocument());

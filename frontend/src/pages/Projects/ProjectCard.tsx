@@ -49,7 +49,7 @@ function StewardRunLine({
         {run.status}
       </Badge>{" "}
       <a
-        href={`/api/staff/runs/${encodeURIComponent(run.id)}`}
+        href={`/api/v1/staff/runs/${encodeURIComponent(run.id)}`}
         target="_blank"
         rel="noreferrer"
       >

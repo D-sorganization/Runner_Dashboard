@@ -18,18 +18,31 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1312 · SC-F3: Versioned public staff API (/api/v1/staff) with error envelope, idempotency and pagination
+
+- **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1312 (epic #1352 / umbrella #1354)
+- **Branch:** `feat/1312-versioned-staff-api`
+- **PR:** (pending)
+- **Paths:** `backend/routers/staff_v1.py`, `backend/staff/v1_envelope.py`, `backend/staff/idempotency.py`, `backend/staff/pagination.py`, `backend/server.py`, `docs/api/staff-v1.md`, `frontend/src/pages/Staff/staffApi.ts`, `frontend/src/lib/api.ts`, `frontend/src/pages/Projects/types.ts`, `frontend/src/pages/Projects/ProjectCard.tsx`, `tests/api/test_staff_v1_api.py`, `tests/unit/test_staff_v1_primitives.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-24
+- **Last verified:** 2026-09-24 (`pytest tests/api/test_staff_v1_api.py tests/unit/test_staff_v1_primitives.py` 13 passed; vitest Staff/FleetCommand/Projects 34 passed; ruff, ruff format, and mypy clean)
+- **Summary:** Versioned public staff API mounted under `/api/v1/staff` with standard error envelopes `{error: {code, message, retryable, hint, request_id}}` on all 4xx/5xx responses. Legacy `/api/staff` aliases carry RFC 8594 `Deprecation`, `Sunset`, and `Link` headers. 24h SQLite WAL idempotency ledger (`backend/staff/idempotency.py`) requiring `Idempotency-Key` on mutating routes with replay headers and fail-closed 503 behavior on persistence failures. Keyset cursor pagination (`backend/staff/pagination.py`) for runs and audit. Published `docs/api/staff-v1.md`. Migrated UI to `/api/v1/staff` exclusively.
+- **Next step:** Open PR, verify CI, land via auto-merge, and release lease on #1312.
+
 ### DL-#1305 · SC-B2: Thread, message and action-proposal store with migrations
 
-- **State:** in_review
+- **State:** shipped
 - **Owner:** antigravity
 - **Issue:** #1305 (epic #1348 / umbrella #1354)
 - **Branch:** `feat/1305-conversations-store`
 - **PR:** #1385
 - **Paths:** `backend/staff/conversations.py`, `backend/staff/conversation_models.py`, `backend/staff/conversation_migrations.py`, `backend/staff/conversation_proposals.py`, `backend/staff/redaction.py`, `backend/staff/audit.py`, `tests/unit/test_conversations_store.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-24
-- **Last verified:** 2026-09-24 (`pytest tests/unit/test_conversations_store.py` 13 passed, full test suite clean; ruff, ruff format, and mypy clean)
+- **Last verified:** 2026-09-24 (shipped in PR #1385)
 - **Summary:** Persist conversations on conversation hub in `staff_runs.sqlite3` with SQLite WAL mode and `threading.RLock()`. Tables `threads`, `messages`, `action_proposals`, and `schema_migrations`. Forward-only migrations at startup with automatic timestamped pre-migration backups. Fail-safe degraded status and banner on migration error. Pre-write redaction hook for secret tokens and RFC 1918 / RFC 6598 private LAN IPv4 addresses. Monotonic message sequencing with idempotency deduplication. Action proposal state machine with SC-A8 auditing. All modules strictly <= 500 lines.
-- **Next step:** Land PR #1385 and release coordination lease on #1305.
+- **Next step:** None (shipped in PR #1385).
 
 ### DL-#1304 · SC-A9: One frontend data layer for staff and conversation data (React Query)
 

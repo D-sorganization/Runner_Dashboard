@@ -1,4 +1,57 @@
-# Current handoff — SC-B2: Thread, message and action-proposal store with migrations (#1305)
+# Current handoff — SC-F3: Versioned public staff API (/api/v1/staff) with error envelope, idempotency keys and pagination (#1312)
+
+Last updated: 2026-09-24
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1312-versioned-staff-api`; Issue #1312; DL-#1312.
+
+## Work
+
+- `backend/routers/staff_v1.py`:
+  - Mounted public stable staff API under `/api/v1/staff`.
+  - Scoped endpoints with `identity.require_scope`: roster, board, summary, runs (cursor-paginated), run detail, stream, dispatch (idempotent), cancel (idempotent), audit (cursor-paginated), schedule, holds (idempotent PUT), usage, and pricing.
+  - DRY delegation to existing core logic for dispatch and cancel.
+- `backend/staff/v1_envelope.py`:
+  - `StaffErrorEnvelope` and `StaffErrorDetail` standard models.
+  - `StaffV1Middleware` enforcing envelope on all 4xx/5xx responses under `/api/v1/staff/*` and appending RFC 8594 `Deprecation`, `Sunset`, and `Link` headers to legacy `/api/staff/*` aliases.
+- `backend/staff/idempotency.py`:
+  - `IdempotencyStore` with SQLite WAL mode and 24h key expiration.
+  - Fail-closed 503 behavior on store error to ensure duplicate runs are never dispatched.
+  - `require_idempotency_header` dependency enforcing header presence on mutating endpoints.
+- `backend/staff/pagination.py`:
+  - Keyset cursor pagination helpers (`encode_cursor`, `decode_cursor`, `paginate_items`, `CursorPage`).
+  - Opaque URL-safe base64 tokens with 400 Bad Request and code `invalid_cursor` on malformed inputs.
+- `backend/server.py`:
+  - Registered `StaffV1Middleware` and mounted `staff_v1.router`.
+- `docs/api/staff-v1.md`:
+  - Comprehensive documentation covering authentication, scopes, error envelopes, idempotency replay semantics, cursor pagination, and route catalog.
+- `frontend/src/pages/Staff/staffApi.ts`, `frontend/src/lib/api.ts`, `frontend/src/pages/Projects/types.ts`, `frontend/src/pages/Projects/ProjectCard.tsx`:
+  - Migrated frontend client to use `/api/v1/staff` exclusively.
+  - Auto-generated `Idempotency-Key` headers for mutating requests (`cancelRun`, `dispatchRun`, `putHolds`).
+  - Adapted `ApiClientError` to extract error messages from v1 error envelopes.
+- `tests/api/test_staff_v1_api.py`, `tests/unit/test_staff_v1_primitives.py`:
+  - 13 comprehensive tests covering deprecation headers, 401/403/404/422 error envelopes, idempotency key requirement and 24h replay, keyset cursor pagination, and store TTL pruning.
+
+## Validation
+
+- `pytest tests/api/test_staff_v1_api.py tests/unit/test_staff_v1_primitives.py`: 13 passed in 2.41s.
+- `vitest Staff.test.tsx FleetCommand.test.tsx Projects.test.tsx`: 34 passed in 1.86s.
+- `ruff check backend/ tests/`: 0 errors.
+- `ruff format --check backend/ tests/`: All clean.
+- `mypy backend/routers/staff_v1.py backend/staff/idempotency.py backend/staff/pagination.py backend/staff/v1_envelope.py`: 0 errors.
+- Line limits: All new and modified files strictly <= 500 lines (`staff_v1.py`: 438, `v1_envelope.py`: 197, `idempotency.py`: 183, `pagination.py`: 116, `test_staff_v1_api.py`: 240, `test_staff_v1_primitives.py`: 194).
+
+## Next
+
+1. Push branch `feat/1312-versioned-staff-api` and create PR with `gh pr create`.
+2. Monitor CI checks to completion.
+3. Enable auto-merge and verify PR merges cleanly.
+4. Release coordination lease on Issue #1312.
+
+---
+
+# Previous handoff — SC-B2: Thread, message and action-proposal store with migrations (#1305)
 
 Last updated: 2026-09-24
 
