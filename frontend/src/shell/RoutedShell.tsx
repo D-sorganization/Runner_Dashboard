@@ -67,6 +67,7 @@ import { MaxwellPage } from "../pages/MaxwellPage";
 import { OrgPage } from "../pages/Org";
 import { PrincipalsTab } from "../pages/Principals";
 import { RunnerAuditPage } from "../pages/RunnerAudit";
+import { RunnerSchedulePage } from "../pages/RunnerSchedule";
 import { TestsPage } from "../pages/TestsPage";
 import { WorkflowsPage } from "../pages/WorkflowsPage";
 import PushSettings from "../pages/PushSettings";
@@ -89,6 +90,9 @@ const LazyFleetCommandPage = React.lazy(
 );
 const LazyOperationsPage = React.lazy(
   () => import("../pages/Operations/OperationsPage"),
+);
+const LazyFleetOrchestrationPage = React.lazy(
+  () => import("../pages/FleetOrchestrationPage"),
 );
 
 /**
@@ -140,10 +144,12 @@ function nativeDesktopTabContent(tabId: string): React.ReactNode | null {
     case "conductor":
     case "deployment":
     case "diagnostics":
-    case "fleet-orchestration":
-    case "runner-schedule":
     case "scheduled-jobs":
       return <LazyOperationsPage />;
+    case "fleet-orchestration":
+      return <LazyFleetOrchestrationPage />;
+    case "runner-schedule":
+      return <RunnerSchedulePage />;
     case "credentials":
       return <CredentialsPage />;
     case "events":
