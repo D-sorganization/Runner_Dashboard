@@ -27,9 +27,9 @@ reachable from any live state and `abandoned` from `parked`.
 - **PR:** opened right after this commit
 - **Paths:** `docs/plans/2026-09-25-agent-org-implementation-plan.md`
 - **Started:** 2026-09-25
-- **Last verified:** 2026-09-25 (docs-only plan; rechecked against `main` `9bbeec6`)
+- **Last verified:** 2026-09-25 (docs-only plan; rechecked against `main` `4018454`, where WP-0.1/0.2 have landed)
 - **Summary:** Runner_Dashboard half of the agent-org gap analysis: work packages for role-name resolution, board proposals in the inbox, a post-run verification step, `/api/staff/outcomes`, and code-reviewer runtime support, then CR-4..CR-8 role bindings.
-- **Next step:** Dispatch #1474 and #1475 (approved Phase 0) to CLI-tier agents.
+- **Next step:** Get the owner's decision on Phase 1 (WP-1.1 verification step) now that Phase 0 (#1481, #1482) has merged.
 
 ### DL-#1483 · Restore green main: remove nested interactive controls in staff RosterRow
 

@@ -21,7 +21,7 @@ Last updated: 2026-09-25
 ## Next Steps
 
 1. Fold peer replies from #1463 into §5–§6 of the plan.
-2. Phase 0 is approved: WP-0.1 is #1474 and WP-0.2 is #1475, both `tier:cli` sub-issues of #1463. Dispatch them from a local host.
+2. Phase 0 is done: WP-0.1 #1474 merged as #1481 and WP-0.2 #1475 merged as #1482; both were verified against `main` `4018454`. Next is the owner's decision on Phase 1.
 
 ---
 

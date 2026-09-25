@@ -1,7 +1,7 @@
 # Agent Organization: Runner Dashboard Implementation Plan
 
 - **Date:** 2026-09-25
-- **Status:** Phase 0 approved by the owner on 2026-09-25 and filed as #1474 (WP-0.1) and #1475 (WP-0.2). Phases 1–2 are still proposals, waiting on answers from the active Runner_Dashboard sessions (see §6).
+- **Status:** Phase 0 was approved by the owner on 2026-09-25 and is **done**. WP-0.1 (#1474) merged as #1481 and WP-0.2 (#1475) merged as #1482. Phases 1 and 2 are still proposed, waiting on answers from the active Runner_Dashboard sessions (see §6).
 - **Governing issue:** #1463 (Runner_Dashboard half of [Repository_Management#1766](https://github.com/D-sorganization/Repository_Management/issues/1766))
 - **Canonical analysis:** `Repository_Management/docs/plans/2026-09-25_AGENT_ORG_GAP_ANALYSIS.md` ([RM PR #1767](https://github.com/D-sorganization/Repository_Management/pull/1767)). This file does not repeat the analysis. It is the Runner_Dashboard half: the specific seams, work packages and acceptance criteria that implement the analysis's path forward in this repository.
 - **Evidence baseline:** Runner_Dashboard `7f73b08`, rechecked against `main` at `9bbeec6` (2026-09-25 19:05 UTC). Since the baseline, CR-7 Board Proposals (#1444), CR-6 board routing gate (#1469) and SC-C7 routing evaluation (#1442, issue #1340) have merged. The three dangling role names and the inbox stub are still present on `main`.
