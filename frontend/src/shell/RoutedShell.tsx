@@ -133,6 +133,7 @@ function nativeDesktopTabContent(tabId: string): React.ReactNode | null {
       return <LazyOverviewPage />;
     case "agent-dispatch":
       return <AgentDispatchPage />;
+    case "insights":
     case "analysis":
     case "reports":
       return <AnalysisTab activeTab={tabId} />;
@@ -343,6 +344,7 @@ export function AppShell({
         />
       ),
       reports: <ReportsMobile />,
+      insights: <ReportsMobile />,
       credentials: <CredentialsMobile />,
       staff: <LazyStaffPage />,
       "fleet-command": <LazyFleetCommandPage />,

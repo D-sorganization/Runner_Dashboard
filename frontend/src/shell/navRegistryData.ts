@@ -4,7 +4,7 @@
  * Defines the 4-area information architecture:
  *   - Staff (Staff Console, Fleet Command, Maxwell, Cline Launcher)
  *   - Work (Queue, Remediation, Workflows, Agent Dispatch, Code Requests, Scheduled, Projects)
- *   - Fleet (Fleet Overview, Machines, Runner Plan, Runner Audit, Event Log, Conductor, Orchestration, Deployment, Reports, Analysis, Assessments, Org)
+ *   - Fleet (Fleet Overview, Machines, Runner Plan, Runner Audit, Event Log, Conductor, Orchestration, Deployment, Insights, Assessments, Org)
  *   - Settings (Settings, Credentials, Notifications, Linear Setup, Local Tools, Tests, Diagnostics, Principals)
  */
 import type { NavIcon } from "./navIcons";
@@ -32,7 +32,6 @@ import {
   NetworkIcon,
   PackageIcon,
   FlagIcon,
-  FileTextIcon,
   LinearIcon,
   BellIcon,
   ClipboardCheckIcon,
@@ -288,23 +287,12 @@ export const NAV_ITEMS: readonly NavItem[] = [
     mobileDrawer: true,
   },
   {
-    id: "reports",
-    label: "Reports",
-    group: "fleet",
-    Icon: FileTextIcon,
-    tooltip: "Saved report files: open, browse, and download fleet reports.",
-    tabId: "reports",
-    frequent: false,
-    mobilePrimary: false,
-    mobileDrawer: true,
-  },
-  {
-    id: "analysis",
-    label: "Analysis",
+    id: "insights",
+    label: "Insights",
     group: "fleet",
     Icon: ChartIcon,
-    tooltip: "Enriched run analysis and historical trends.",
-    tabId: "analysis",
+    tooltip: "Fleet reports, run analysis, and historical trends.",
+    tabId: "insights",
     frequent: false,
     mobilePrimary: false,
     mobileDrawer: true,

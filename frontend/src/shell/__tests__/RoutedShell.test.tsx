@@ -303,7 +303,7 @@ describe("RoutedShell — URL is the source of truth", () => {
     ["staff", "native-staff"],
     ["overview", "native-overview"],
     ["agent-dispatch", "native-agent-dispatch"],
-    ["analysis", "native-analysis"],
+    ["insights", "native-analysis"],
     ["assessments", "native-assessments"],
     ["cline-launcher", "native-cline-launcher"],
     ["conductor", "native-conductor"],
@@ -322,7 +322,6 @@ describe("RoutedShell — URL is the source of truth", () => {
     ["push-settings", "native-push-settings"],
     ["queue", "native-queue"],
     ["remediation", "native-remediation"],
-    ["reports", "native-analysis"],
     ["runner-audit", "native-runner-audit"],
     ["runner-schedule", "native-runner-schedule"],
     ["scheduled-jobs", "native-scheduled-jobs"],
@@ -340,12 +339,19 @@ describe("RoutedShell — URL is the source of truth", () => {
     },
   );
 
+  it("redirects legacy /t/reports and /t/analysis to /fleet/insights (SC-G4)", async () => {
+    renderAt("/t/reports");
+    expect(await screen.findByTestId("active-tab")).toHaveTextContent("insights");
+    expect(await screen.findByTestId("native-analysis")).toBeInTheDocument();
+  });
+
   it.each([
     ["/fleet", "mobile-overview"],
     ["/t/queue", "mobile-queue"],
     ["/t/maxwell", "mobile-maxwell"],
     ["/t/remediation", "mobile-remediation"],
     ["/t/reports", "mobile-reports"],
+    ["/fleet/insights", "mobile-reports"],
     ["/t/credentials", "mobile-credentials"],
   ])(
     "routes native mobile tab %s without importing the legacy App",

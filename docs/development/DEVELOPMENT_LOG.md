@@ -18,17 +18,30 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1407 · CI: Restore green main across frontend integrity checks and generated API contract
+### DL-#1326 · SC-G4: Merge the duplicate Reports and Analysis tabs into one Insights section
 
 - **State:** in_progress
 - **Owner:** antigravity
+- **Issue:** #1326 (epic #1353 / umbrella #1354)
+- **Branch:** `feat/1326-merge-reports-analysis`
+- **Paths:** `frontend/src/shell/navRegistryData.ts`, `frontend/src/shell/routing.ts`, `frontend/src/shell/RoutedShell.tsx`, `frontend/src/pages/Analysis.tsx`, `frontend/src/pages/Diagnostics.tsx`, `frontend/src/lib/analysisTabs.ts`, `frontend/src/shell/__tests__/RedirectTable.test.ts`, `frontend/src/shell/__tests__/navRegistry.test.ts`, `frontend/src/pages/__tests__/Diagnostics.test.tsx`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (all redirect tests passing; navRegistry tests passing; Diagnostics Web Vitals test passing; typecheck 0 errors; eslint 0 warnings; all touched files strictly <= 500 lines)
+- **Summary:** Merged duplicate Reports and Analysis navigation tabs into a unified "Insights" section (`tabId: "insights"`) under Fleet navigation (`/fleet/insights`). Configured backward-compatible redirects from `/t/reports`, `/t/analysis`, `/fleet/reports`, and `/fleet/analysis` to `/fleet/insights` with toast notifications. Relocated Web Vitals metric inspection from AnalysisTab to DiagnosticsTab as a dedicated card.
+- **Next step:** Run full test suite, commit, push branch, open PR with Fixes #1326, enable auto-merge, and monitor CI to green merge.
+
+### DL-#1407 · CI: Restore green main across frontend integrity checks and generated API contract
+
+- **State:** shipped
+- **Owner:** antigravity
 - **Issue:** #1407
 - **Branch:** `fix/1407-green-main`
+- **PR:** #1408
 - **Paths:** `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `frontend/src/main.tsx`, `tests/test_frontend_integrity.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
-- **Last verified:** 2026-09-25 (openapi.json and api-types.ts regenerated via gen-api-client.sh with ValidationError ctx/input preserved for Python 3.11 CI; 72 frontend integrity pytest tests passed; mypy backend/ 216 files passed; ruff check passed; typecheck and eslint 0 errors/warnings)
+- **Last verified:** 2026-09-25 (shipped in PR #1408; CI green on main)
 - **Summary:** Restores green main across frontend integrity checks and API contract tests. Synchronized OpenAPI schema (`openapi.json`) and TypeScript client types (`api-types.ts`) with newly added SC-C2 Barb routing endpoints, preserving `ValidationError.ctx` and `ValidationError.input` for Python 3.11 CI compatibility. Updated `tests/test_frontend_integrity.py` to also inspect `navRegistryData.ts` when auditing native desktop route content, accommodating modular navigation registry files under line-length caps. Maintained `PushSettings` reference in `frontend/src/main.tsx` for integrity assertion.
-- **Next step:** Push branch, open PR referencing Fixes #1407, enable auto-merge, and monitor CI to green merge.
+- **Next step:** Shipped in PR #1408.
 
 ### DL-#1309 · SC-D2: Shell restructure: Staff Console as default route, four-area navigation, redirects for old tabs
 

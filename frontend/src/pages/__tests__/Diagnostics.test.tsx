@@ -145,4 +145,13 @@ describe("DiagnosticsTab", () => {
       expect(screen.getByText(/error:/i)).toBeInTheDocument(),
     );
   });
+
+  it("renders the Web Vitals section inside Diagnostics", async () => {
+    mockFetchByUrl({ summary: SUMMARY, drift: DRIFT_CLEAN });
+    render(<DiagnosticsTab />);
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Web Vitals" })).toBeInTheDocument(),
+    );
+  });
 });
+

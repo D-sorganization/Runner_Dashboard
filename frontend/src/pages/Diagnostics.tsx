@@ -18,6 +18,7 @@ import React from "react";
 import { useCallback, useEffect, useState } from "react";
 import { legacyFetch } from "../lib/api";
 import { RefreshGlyph } from "./decompIcons";
+import { PerformanceTab } from "./Analysis";
 
 interface DiagnosticsSummary {
   dashboard_pid?: number | string;
@@ -438,6 +439,10 @@ export function DiagnosticsTab(): React.ReactElement {
             </a>
           ))}
         </div>
+      </div>
+
+      <div style={cardStyle}>
+        <PerformanceTab />
       </div>
     </div>
   );

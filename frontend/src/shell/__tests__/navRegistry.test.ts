@@ -107,11 +107,15 @@ describe("nav registry — DbC invariants", () => {
     expect(byTab("push-settings")?.group).toBe("settings");
   });
 
-  it("exposes a literal Reports item under the fleet group (issue #840 / SC-D2)", () => {
-    const reports = NAV_ITEMS.find((i) => i.tabId === "reports");
-    expect(reports).toBeDefined();
-    expect(reports?.label).toBe("Reports");
-    expect(reports?.group).toBe("fleet");
+  it("exposes an Insights item under the fleet group (SC-G4 / issue #1326)", () => {
+    const insights = NAV_ITEMS.find((i) => i.tabId === "insights");
+    expect(insights).toBeDefined();
+    expect(insights?.label).toBe("Insights");
+    expect(insights?.group).toBe("fleet");
+
+    // Old duplicate items are no longer present in NAV_ITEMS
+    expect(NAV_ITEMS.find((i) => i.tabId === "reports")).toBeUndefined();
+    expect(NAV_ITEMS.find((i) => i.tabId === "analysis")).toBeUndefined();
   });
 
   it("marks at least one frequent item and not all of them", () => {
