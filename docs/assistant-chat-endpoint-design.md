@@ -1,6 +1,6 @@
 # Assistant Chat Endpoint Design — Issue #88
 
-**Status:** Design Phase (awaiting maintainer relabel from `judgement:design`)  
+**Status:** Superseded by [ADR 0006 — Staff conversation model](adr/0006-staff-conversation-model.md) (#1299). Kept for history; do not implement from this document.  
 **Date:** 2026-04-25
 
 ---

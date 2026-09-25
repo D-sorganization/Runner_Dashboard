@@ -29,6 +29,7 @@ it.
 3. [0003 — Plain-text lease comments for agent coordination](./0003-agent-coordination-lease-comment-format.md) — why agent coordination uses single-line `lease: <agent> expires <ts>` comments rather than YAML, JSON, or a side-channel database.
 4. [0004 — FastAPI as the backend framework (chosen over Flask)](./0004-fastapi-over-flask.md) — async I/O, Pydantic-typed boundaries, and free OpenAPI motivated FastAPI over Flask for `backend/server.py`.
 5. [0005 — Single-port architecture: FastAPI serves both API and frontend bundle](./0005-single-port-frontend-and-backend.md) — production runs on port 8321 only; FastAPI serves `/api/*` and the built Vite bundle from `dist/`.
+6. [0006 — Staff conversation model](./0006-staff-conversation-model.md) — retroactive, as-built record of threads, chat turns vs work runs, session resume and node-local state; gaps tracked in #1484–#1494.
 
 ## Template
 

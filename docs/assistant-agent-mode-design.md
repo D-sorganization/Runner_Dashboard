@@ -1,6 +1,6 @@
 # Assistant Agent Mode Design — Issue #89
 
-**Status:** Design Phase (awaiting maintainer resolution of `judgement:contested`)  
+**Status:** Superseded by [ADR 0006 — Staff conversation model](adr/0006-staff-conversation-model.md) (#1299). Kept for history; do not implement from this document.  
 **Date:** 2026-04-25
 
 ---

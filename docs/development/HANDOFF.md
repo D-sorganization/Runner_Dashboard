@@ -1,4 +1,25 @@
-# Current handoff — WP-0.2: Show Board proposals in the owner inbox (#1475)
+# Current handoff — SC-B1: ADR 0006 staff conversation model (#1299)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1299`; branch `docs/1299-staff-conversation-adr`; commit SELF; PR: see DL-#1299 (opened unarmed for panel review); Issue #1299; DL-#1299.
+
+## Objective and Status
+
+- SC-B2, B4, B5, B6 and B7 all shipped without the SC-B1 ADR, so `docs/adr/0006-staff-conversation-model.md` is a retroactive record of the model as built: entities and storage, chat turn vs work run, per-provider session resume, node-local state, privacy and retention, read-only enforcement, reply contract, failure-mode table and HTTP surface.
+- The old assistant design docs (#88, #89) are marked superseded; the ADR index lists 0006.
+- Gaps between the code and the model are filed as #1484–#1494 with tier labels (strong: #1484–#1490; cli: #1491–#1494).
+- Validation: docs only; every cited path checked with `git ls-files`.
+
+## Next steps
+
+1. Panel review on #1299 (the issue carries `panel-review` and `judgement:design`); do not auto-merge.
+2. The owner decides #1488 (conversation authority across nodes) and #1490 (retention windows); amend ADR 0006 accordingly.
+3. Dispatch the tier:cli follow-ups #1491–#1494 to agy.
+
+# Past handoff — WP-0.2: Show Board proposals in the owner inbox (#1475)
 
 Last updated: 2026-09-25
 
