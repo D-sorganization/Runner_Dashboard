@@ -106,6 +106,7 @@ def execute_staff_dispatch(params: dict[str, Any], ctx: ActionContext) -> Action
             prompt=str(params.get("prompt") or ""),
             machine=str(params.get("machine") or "local"),
             dry_run=ctx.dry_run,
+            work_item_id=str(params.get("work_item_id") or ""),
             surface="thread",
             thread_id=ctx.thread_id,
         )
@@ -128,6 +129,7 @@ def execute_staff_dispatch(params: dict[str, Any], ctx: ActionContext) -> Action
             "machine": out.get("machine"),
             "forwarded_to": out.get("forwarded_to"),
             "dry_run": bool(out.get("dry_run")),
+            "plan": out.get("plan"),
         },
         run_id=run.get("id"),
     )

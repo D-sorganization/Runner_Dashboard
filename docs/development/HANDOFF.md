@@ -1,4 +1,26 @@
-# Current handoff — SC-B1-G6: Redact secrets everywhere conversations persist (#1489)
+# Current handoff — SC-G5-1 slice A: one work-request API (#1497)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1497-work-requests` (stacked on the consolidated staff batch #1526); DL-#1497; Issue #1497.
+
+## Objective and Status
+
+- `backend/staff/work_requests.py`: `WorkRequest`/`RequestTarget` (pydantic, `extra=forbid`), `REQUEST_KINDS` (kind → registered action + param builder), `validate_request` (422/403 before anything is recorded), `requests_thread` (one direct thread per principal with `barb`, race-safe), `submit_request` (message → work item → proposal → approval policy → `execute_proposal(approve=True)`).
+- `backend/routers/staff_requests.py`: `POST /api/v1/staff/requests`; 200 plan, 201 executed, 202 approval required; a failed backend returns the v1 error envelope with `error.request` carrying thread, message, work item and proposal ids (the SC-F3 middleware keeps a pre-built envelope and rewrites everything else).
+- `execute_staff_dispatch` forwards `work_item_id` into the `DispatchCommand` and returns the dry-run `plan`.
+- Only kind `staff.dispatch` ships here.
+
+## Next Steps
+
+1. Slice B+: add kinds `ci.remediate`, `issue.act`/`pr.act`, `code_request.dispatch` and `assessment.run`. Each first needs its route logic lifted into a service the registered action can call (then the old endpoint delegates to it, per the acceptance criteria).
+2. SC-G5-2 (the one request form) consumes this endpoint.
+
+---
+
+# Past handoff — SC-B1-G6: Redact secrets everywhere conversations persist (#1489)
 
 Last updated: 2026-09-25
 
