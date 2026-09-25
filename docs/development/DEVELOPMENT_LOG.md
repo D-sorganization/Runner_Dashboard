@@ -18,6 +18,18 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1338 · SC-G6: Retire the Cline Launcher page and its agent-launcher API
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1338 (Cline Launcher slice only; the other pages in #1338 remain `judgement:contested` pending owner decisions)
+- **Branch:** `chore/1338-retire-cline-launcher`
+- **Paths:** `frontend/src/shell/routing.ts`, `frontend/src/shell/navRegistryData.ts`, `frontend/src/shell/RoutedShell.tsx`, `frontend/src/shell/intro.ts`, `frontend/src/legacy/App.tsx`, `backend/server.py`, `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `tests/test_retired_cline_launcher.py`, `frontend/src/shell/__tests__/retiredClineLauncher.test.ts`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (vitest 1309 passed; tsc clean; targeted pytest 81 passed, 1 skipped)
+- **Summary:** Owner decided to retire the Cline Launcher. Page, nav entry, intro override, legacy tab and `/api/agent-launcher` router removed; old addresses redirect to the Staff Console.
+- **Next step:** Merge the PR once CI is green, then retire `Repository_Management/launchers/cline_agent_launcher` in a Repository_Management issue.
+
 ### DL-#1446 · Staff Console end to end: desktop three-pane console and real thread resolution
 
 - **State:** in_review
