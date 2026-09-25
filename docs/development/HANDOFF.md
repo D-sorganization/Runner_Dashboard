@@ -1,85 +1,38 @@
-# Current handoff — SC-C4: Barb follow-up engine: detect stalled, failed, blocked and waiting work; retry, re-route or escalate (#1327)
-
----
-
-# Current handoff — SC-E6: Maintenance in the UI: Maintenance thread plus "Ask Maintenance" row actions on the Fleet page (#1333)
-
+# Current handoff — CR-1: Rename Feature Requests → Code Requests with back-compat aliases (#1281)
 
 Last updated: 2026-09-25
 
 ## Identity
 
-<<<<<<< HEAD
-- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1333-maintenance-ui`; Issue #1333; DL-#1333.
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1281-code-requests-rename`; Issue #1281; DL-#1281.
 
 ## Objective and Status
 
-- SC-E6: Maintenance in the UI: Maintenance thread plus "Ask Maintenance" row actions on the Fleet page.
-- Scope implemented per Owner decision (2026-09-23):
-  - Row action menus on machines and runners: "Bring online", "Take offline", "Restart", "Compact disk", "Diagnose".
-  - Mutating actions ("Take offline", "Compact disk", "Bring online", "Restart") route to Barb, who routes to Maintenance and presents an approval card with dry-run shown.
-  - Read-only actions ("Diagnose") route directly to Maintenance.
-  - Emergency direct controls remain isolated under Operations (`/fleet/operations`), audited.
-- Created components:
-  - `frontend/src/pages/Fleet/fleetActions.ts`: Action definitions, Barb routing, proposal creation with dry-run steps, execution and postcondition verification.
-  - `frontend/src/pages/Fleet/FleetRowActions.tsx`: Accessible dropdown action menu with keyboard navigation.
-  - `frontend/src/pages/Fleet/MaintenanceActionModal.tsx`: Modal presenting ActionCard proposal with dry-run steps, Barb handoff banner, execution and verification.
-  - `frontend/src/pages/StaffConsole/cards/ActionCard.tsx` + `cardTypes.ts`: Dry-run planned steps, verification badges, Barb routed indicator.
-  - `frontend/src/pages/Fleet/FleetMachinesSection.tsx` & `FleetRunnersSection.tsx`: Row actions integration.
-  - `frontend/src/pages/OverviewPage.tsx`: Fleet overview modal mounting and maintenance callback.
-  - `backend/staff/router_models.py`: Router keywords for maintenance actions.
-- Tests passing:
-  - All frontend unit tests passing cleanly.
-  - Python tests: router models & maintenance tests passing.
-  - All files strictly <= 500 lines.
-
-## Next Steps
-
-1. Push branch `feat/1333-maintenance-ui`.
-2. Open PR with `gh pr create` referencing `Fixes #1333`.
-3. Enable auto-merge squash without `--admin`.
-4. Monitor CI to green merge.
-5. Release lease and clean up worktree.
-=======
-- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1327-barb-followup`; Issue #1327; DL-#1327.
-
-## Objective and Status
-
-- SC-C4: Barb follow-up engine: detect stalled, failed, blocked, and waiting work; retry, re-route or escalate.
-- Components implemented:
-  - `backend/staff/followup.py` (434 lines):
-    - `FollowupEngine` periodic idempotent sweep (default 300s / 5m).
-    - Playbooks:
-      - Retryable/stalled runs: retry once if `attempt < max_attempts`; second failure transitions item to `escalated`, posts alert to Barb's thread, and sends Web Push `staff.escalation`.
-      - Auth expired runs: posts action item alert to Barb's thread with link to Settings.
-      - Waiting-on-user / needs-input: prompts the owner role in Barb's thread.
-      - Wrong/unrecognized owner: re-routes to default role with SC-A8 audit log record.
-      - Overdue items: records overdue ping follow-up.
-    - Debounce & Idempotency: at most one follow-up per item per sweep interval; records follow-up history per item.
-    - Watchdog detector: verifies engine liveness; if $\ge 2$ intervals are missed, emits critical `FleetEvent(kind="barb_followup_watchdog")` and fires Web Push `staff.escalation`.
-    - Daily digest counts: `closed`, `retried`, `rerouted`, `escalated`, `still_open`.
-  - `backend/routers/staff_followup.py` (76 lines):
-    - `POST /api/v1/staff/followup/sweep`: trigger manual sweep.
-    - `GET /api/v1/staff/followup/status`: returns engine liveness and watchdog check.
-    - `GET /api/v1/staff/followup/digest`: returns today's follow-up digest.
-  - `backend/server.py`: Mounted `staff_followup_router.router` at `/api/v1/staff`.
-  - `backend/staff/store.py`: Added `get_run_store` alias to `get_store` supporting optional path parameter.
-  - `backend/fleet_events.py`: Added `barb_followup_watchdog` event kind to `EventKind` and `FleetEvent` validation.
-  - `tests/api/test_staff_followup.py` (461 lines): 9 comprehensive tests covering all acceptance criteria and property tests.
-- Validation:
-  - `pytest tests/api/test_staff_followup.py`: 9/9 passed.
-  - Full staff backend test suite: 261 passed, 0 failures.
-  - Lint and formatting: `ruff check`, `black`, and `mypy` all passed with 0 errors.
+- CR-1: Rename Feature Requests → Code Requests with back-compat aliases.
+- Scope implemented:
+  - Backend routes: Added `/api/code-requests`, `/api/code-requests/templates`, `/api/code-requests/dispatch`. Preserved `/api/feature-requests*` as thin deprecated aliases returning `Deprecation: true` and `Link: </api/code-requests...>; rel="successor-version"`. Implemented router in `backend/routers/code_requests.py` (387 lines $\le 500$) with tag `code_requests`. Created backward compatibility re-export shim `backend/routers/feature_requests.py`.
+  - Scopes: Introduced `code-requests.manage` in `backend/identity.py`, aliased bidirectionally with `feature-requests.manage`.
+  - Storage: Idempotent migration from `~/actions-runners/dashboard/feature_requests.json` to `code_requests.json` on first read, leaving `.migrated` marker without deleting original.
+  - Frontend: Renamed `FeatureRequests*.tsx` to `CodeRequests*.tsx`, separated history component into `CodeRequestsHistory.tsx` (111 lines $\le 500$), updated page container `CodeRequestsPage.tsx` (183 lines $\le 500$), updated nav tab to `code-requests` with label "Code Requests", configured redirects from old route and hash (`feature-requests`), updated legacy `frontend/src/legacy/App.tsx`.
+  - Copy: Neutral plan/execute copy for Code Requests.
+  - Specs & Docs: Updated `SPEC.md`, `DEVELOPMENT_LOG.md`, `HANDOFF.md`.
+  - OpenAPI & Client: Synchronized OpenAPI schema (`openapi.json`) and TypeScript client types (`api-types.ts`).
+- Verification:
+  - Backend tests: `pytest tests/api/test_code_requests.py tests/api/test_feature_request_dispatch.py tests/test_workflow_inputs_validation.py tests/test_frontend_integrity.py` -> 103 passed.
+  - Frontend unit tests: `npm run test` -> 153 test files passed, 1,302 tests passed.
+  - Typecheck: `npm run typecheck` passed with 0 errors.
+  - Python lint: `ruff check` and `ruff format` passed with 0 errors.
+  - Python typing: `mypy` passed with 0 errors.
+  - API generation check: `bash scripts/gen-api-client.sh --check` passed cleanly.
   - Line limits: All touched files strictly $\le 500$ lines.
 
 ## Next Steps
 
-1. Push branch `feat/1327-barb-followup`.
-2. Open PR with `gh pr create` referencing `Fixes #1327`, labels `agent:local` and `wave:4`.
+1. Push branch `feat/1281-code-requests-rename`.
+2. Open PR with `gh pr create` referencing `Closes #1281`, labels `agent:local` and `wave:1`.
 3. Enable auto-merge squash without `--admin`.
 4. Monitor CI to green merge.
 5. Release agent lease and clean up.
->>>>>>> 0cff4d4 (feat(staff): SC-C4 Barb follow-up engine: detect stalled, failed, blocked and waiting work (#1327))
 
 ---
 

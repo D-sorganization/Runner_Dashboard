@@ -1046,6 +1046,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/code-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Code Requests
+         * @description List saved code implementation requests.
+         */
+        get: operations["list_code_requests_api_code_requests_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/code-requests/dispatch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dispatch Code Request
+         * @description Dispatch a code implementation request via CI remediation workflow.
+         */
+        post: operations["dispatch_code_request_api_code_requests_dispatch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/code-requests/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Prompt Templates
+         * @description List saved prompt templates and global prompt notes.
+         */
+        get: operations["list_prompt_templates_api_code_requests_templates_get"];
+        put?: never;
+        /**
+         * Save Prompt Template
+         * @description Save a prompt template.
+         */
+        post: operations["save_prompt_template_api_code_requests_templates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/coordination/briefing": {
         parameters: {
             query?: never;
@@ -1618,10 +1682,11 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List Feature Requests
-         * @description List saved feature implementation requests.
+         * List Feature Requests Deprecated
+         * @deprecated
+         * @description Deprecated alias for GET /api/code-requests.
          */
-        get: operations["list_feature_requests_api_feature_requests_get"];
+        get: operations["list_feature_requests_deprecated_api_feature_requests_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1640,10 +1705,11 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Dispatch Feature Request
-         * @description Dispatch a feature implementation request via CI remediation workflow.
+         * Dispatch Feature Request Deprecated
+         * @deprecated
+         * @description Deprecated alias for POST /api/code-requests/dispatch.
          */
-        post: operations["dispatch_feature_request_api_feature_requests_dispatch_post"];
+        post: operations["dispatch_feature_request_deprecated_api_feature_requests_dispatch_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1658,16 +1724,18 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List Prompt Templates
-         * @description List saved prompt templates and global prompt notes.
+         * List Prompt Templates Deprecated
+         * @deprecated
+         * @description Deprecated alias for GET /api/code-requests/templates.
          */
-        get: operations["list_prompt_templates_api_feature_requests_templates_get"];
+        get: operations["list_prompt_templates_deprecated_api_feature_requests_templates_get"];
         put?: never;
         /**
-         * Save Prompt Template
-         * @description Save a prompt template.
+         * Save Prompt Template Deprecated
+         * @deprecated
+         * @description Deprecated alias for POST /api/code-requests/templates.
          */
-        post: operations["save_prompt_template_api_feature_requests_templates_post"];
+        post: operations["save_prompt_template_deprecated_api_feature_requests_templates_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -8954,6 +9022,94 @@ export interface operations {
             };
         };
     };
+    list_code_requests_api_code_requests_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    dispatch_code_request_api_code_requests_dispatch_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    list_prompt_templates_api_code_requests_templates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    save_prompt_template_api_code_requests_templates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
     get_briefing_api_coordination_briefing_get: {
         parameters: {
             query?: {
@@ -9742,7 +9898,7 @@ export interface operations {
             };
         };
     };
-    list_feature_requests_api_feature_requests_get: {
+    list_feature_requests_deprecated_api_feature_requests_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -9764,7 +9920,7 @@ export interface operations {
             };
         };
     };
-    dispatch_feature_request_api_feature_requests_dispatch_post: {
+    dispatch_feature_request_deprecated_api_feature_requests_dispatch_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -9786,7 +9942,7 @@ export interface operations {
             };
         };
     };
-    list_prompt_templates_api_feature_requests_templates_get: {
+    list_prompt_templates_deprecated_api_feature_requests_templates_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -9808,7 +9964,7 @@ export interface operations {
             };
         };
     };
-    save_prompt_template_api_feature_requests_templates_post: {
+    save_prompt_template_deprecated_api_feature_requests_templates_post: {
         parameters: {
             query?: never;
             header?: never;

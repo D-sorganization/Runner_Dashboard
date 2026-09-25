@@ -35,6 +35,7 @@ const TAB_ID_ALIASES: Record<string, string> = {
   work: "queue",
   reports: "insights",
   analysis: "insights",
+  "feature-requests": "code-requests",
 };
 
 /** Normalize a possibly-aliased tabId to its canonical registry tabId. */
@@ -98,6 +99,7 @@ export const REDIRECT_TABLE: Record<string, RedirectTarget> = (() => {
   // Explicit aliases
   table["fleet"] = { to: "/fleet", label: "Fleet" };
   table["health"] = { to: "/work", label: "Queue" };
+  table["feature-requests"] = { to: tabIdToPath("code-requests"), label: "Code Requests" };
   table["work"] = { to: "/work", label: "Work" };
   table["push-settings"] = { to: PUSH_SETTINGS_PATH, label: "Notifications" };
   table["reports"] = { to: "/fleet/insights", label: "Insights" };

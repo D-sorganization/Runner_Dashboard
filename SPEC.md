@@ -1,6 +1,6 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.254
+**Spec Version:** 2.5.255
 **Application Version:** 4.10.0 (see `VERSION`)
 **Last Updated:** 2026-09-25T00:00:00-07:00
 **Status:** Active
@@ -9,6 +9,7 @@
 
 | Date       | PR / Issue             | Summary                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | ---------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-09-25 | #1281                  | CR-1: Rename Feature Requests → Code Requests with back-compat aliases. Added `/api/code-requests*` endpoints (`/api/code-requests`, `/api/code-requests/templates`, `/api/code-requests/dispatch`) and preserved `/api/feature-requests*` as thin deprecated aliases returning `Deprecation: true` and `Link: </api/code-requests...>; rel="successor-version"`. Added `code-requests.manage` scope aliased bidirectionally with `feature-requests.manage`. Idempotently migrated stored history from `feature_requests.json` to `code_requests.json` with `.migrated` marker. Updated frontend routes and nav to `code-requests` with back-compat redirects and shims.                                                                                    |
 | 2026-09-25 | #1327                  | SC-C4: Barb follow-up engine: detect stalled, failed, blocked and waiting work; retry, re-route or escalate. Implemented `FollowupEngine` (`backend/staff/followup.py`), REST API endpoints `POST /api/v1/staff/followup/sweep`, `GET /api/v1/staff/followup/status`, `GET /api/v1/staff/followup/digest` (`backend/routers/staff_followup.py`), mounted in `backend/server.py`. Added playbooks for retryable/stalled runs (retry once under max_attempts, escalate to Barb's thread and send `staff.escalation` Web Push on repeated failure), auth expiration alerts with action items, input-needed prompting in Barb's thread, and wrong-owner re-routing with SC-A8 audit logging. Added debounce and idempotency guarantees, daily digest counts (`closed`, `retried`, `rerouted`, `escalated`, `still_open`), and a watchdog detector raising critical fleet event `barb_followup_watchdog` if $\ge 2$ sweep intervals are missed. |
 | Date       | PR / Issue             | Summary                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | ---------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -2562,18 +2563,18 @@ On mobile, assessment score history renders as per-repo cards showing score,
 provider, date, and summary while preserving the existing dispatch controls and
 read endpoint.
 
-### 3.16 Feature Requests Tab
+### 3.16 Code Requests Tab
 
-Browse and submit feature request issues via templates. Allows dispatching
-feature implementation workflows directly from the dashboard.
-On mobile, dispatched feature request history renders as compact read-mostly
-cards showing repository, status, vote-count metadata when present, provider,
-date, and prompt excerpt over the existing `/api/feature-requests` response.
-Dispatch reports its real outcome (#1280): a failed `gh api` dispatch returns
-HTTP 502 and records a `failed` history entry with an `error`, and the tab shows
-the error. `/api/feature-requests` includes `dispatchTarget {workflow, available,
-detail}`, probed at most every 10 minutes; while it is unavailable the tab shows
-why and disables Dispatch. Replacement by Code Requests is tracked in epic #1279.
+Browse and submit code requests to plan and execute engineering work across fleet repositories
+via templates (formerly Feature Requests; CR-1, #1281). Allows dispatching code implementation
+workflows directly from the dashboard.
+On mobile, dispatched code request history renders as compact read-mostly cards showing
+repository, status, vote-count metadata when present, provider, date, and prompt excerpt
+over the `/api/code-requests` response (and legacy `/api/feature-requests` alias).
+Dispatch reports its real outcome (#1280): a failed `gh api` dispatch returns HTTP 502 and
+records a `failed` history entry with an `error`, and the tab shows the error. `/api/code-requests`
+includes `dispatchTarget {workflow, available, detail}`, probed at most every 10 minutes; while it
+is unavailable the tab shows why and disables Dispatch. Replacement by Code Requests is tracked in epic #1279.
 
 ### 3.17 Maxwell Tab
 
@@ -3038,14 +3039,15 @@ inline style objects.
 }
 ```
 
-### Feature Requests
-
-| Method | Path                              | Description                                                             |
-| ------ | --------------------------------- | ----------------------------------------------------------------------- |
-| GET    | `/api/feature-requests`           | Feature request history plus `dispatchTarget` availability              |
-| GET    | `/api/feature-requests/templates` | Available feature request templates                                     |
-| POST   | `/api/feature-requests/templates` | Create a new feature request template                                   |
-| POST   | `/api/feature-requests/dispatch`  | Dispatch a feature implementation workflow; 502 when the dispatch fails |
+### Code Requests
+ 
+| Method | Path                              | Description                                                                                     |
+| ------ | --------------------------------- | ----------------------------------------------------------------------------------------------- |
+| GET    | `/api/code-requests`              | Code request history plus `dispatchTarget` availability                                         |
+| GET    | `/api/code-requests/templates`    | Available code request templates                                                                |
+| POST   | `/api/code-requests/templates`    | Create a new code request template                                                              |
+| POST   | `/api/code-requests/dispatch`     | Dispatch a code request workflow; 502 when dispatch fails                                       |
+| *      | `/api/feature-requests*`          | Deprecated aliases returning `Deprecation: true` and `Link: </api/code-requests...>` (CR-1)     |
 
 ### Local Apps
 

@@ -59,7 +59,7 @@ import { AssessmentsPage } from "../pages/AssessmentsPage";
 import { ClineLauncherTab } from "../pages/ClineLauncher";
 import { CredentialsPage } from "../pages/CredentialsPage";
 import { EventsTab } from "../pages/Events";
-import { FeatureRequestsPage } from "../pages/FeatureRequestsPage";
+import { CodeRequestsPage } from "../pages/CodeRequestsPage";
 import { LinearSetup } from "../pages/LinearSetup";
 import { LocalAppsPage } from "../pages/LocalApps";
 import { MachinesPage } from "../pages/Machines";
@@ -157,8 +157,9 @@ function nativeDesktopTabContent(tabId: string): React.ReactNode | null {
       return <CredentialsPage />;
     case "events":
       return <EventsTab />;
+    case "code-requests":
     case "feature-requests":
-      return <FeatureRequestsPage />;
+      return <CodeRequestsPage />;
     case "fleet-command":
       return <LazyFleetCommandPage />;
     case "linear-setup":

@@ -1,10 +1,9 @@
 // @vitest-environment jsdom
 /**
- * Behaviour tests for pages/FeatureRequests.tsx — extracted from the legacy
- * App.tsx monolith (decomposition #836, pass 7).
+ * Behaviour tests for pages/CodeRequests.tsx (CR-1, #1281).
  *
  * Covers:
- * 1. Smoke render.
+ * 1. Smoke render ("Code Requests" header).
  * 2. Repo <select> is populated from string + object repo entries.
  * 3. Dispatch button is gated on repo + prompt, and the dispatch payload
  *    carries the selected repo/branch/provider/standards.
@@ -14,14 +13,16 @@
  * 7. Clicking a saved template loads its prompt into the editor.
  * 8. Save-notes invokes onSavePromptNotes and surfaces the saved flag.
  * 9. Dispatch history renders rows; loading + empty states surface.
+ * 10. Backward-compatible FeatureRequestsTab re-export works identically.
  */
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  CodeRequestsTab,
   FeatureRequestsTab,
-  type FeatureRequestsProps,
-} from "../FeatureRequests";
+  type CodeRequestsProps,
+} from "../CodeRequests";
 
 afterEach(cleanup);
 beforeEach(() => {
@@ -31,12 +32,12 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function setup(overrides: Partial<FeatureRequestsProps> = {}) {
+function setup(overrides: Partial<CodeRequestsProps> = {}) {
   const onDispatch = vi.fn().mockResolvedValue(undefined);
   const onSaveTemplate = vi.fn().mockResolvedValue(undefined);
   const onSavePromptNotes = vi.fn().mockResolvedValue(undefined);
   const onRefresh = vi.fn();
-  const props: FeatureRequestsProps = {
+  const props: CodeRequestsProps = {
     repos: ["Runner_Dashboard", { name: "Maxwell-Daemon" }],
     requests: [],
     templates: [],
@@ -48,14 +49,14 @@ function setup(overrides: Partial<FeatureRequestsProps> = {}) {
     onRefresh,
     ...overrides,
   };
-  const view = render(<FeatureRequestsTab {...props} />);
+  const view = render(<CodeRequestsTab {...props} />);
   return { view, onDispatch, onSaveTemplate, onSavePromptNotes, onRefresh };
 }
 
-describe("FeatureRequestsTab", () => {
+describe("CodeRequestsTab", () => {
   it("renders without throwing (smoke test)", () => {
     expect(() => setup()).not.toThrow();
-    expect(screen.getByText("Feature Requests")).toBeInTheDocument();
+    expect(screen.getByText("Code Requests")).toBeInTheDocument();
   });
 
   it("populates the repo select from string and object entries", () => {
@@ -72,14 +73,13 @@ describe("FeatureRequestsTab", () => {
 
   it("dispatches with the selected repo, branch, provider, and standards", async () => {
     const { onDispatch, onRefresh } = setup();
-    // Repository select is the first combobox; provider is the second.
     const selects = screen.getAllByRole("combobox");
     fireEvent.change(selects[0], { target: { value: "Runner_Dashboard" } });
     fireEvent.change(selects[1], { target: { value: "codex" } });
-    fireEvent.change(screen.getByPlaceholderText("Describe the feature to implement…"), {
-      target: { value: "Add a widget" },
-    });
-    // Turn off prompt-notes injection (notes empty anyway) to keep prompt clean.
+    fireEvent.change(
+      screen.getByPlaceholderText("Describe the code request to plan and execute…"),
+      { target: { value: "Add a widget" } },
+    );
     fireEvent.click(screen.getByRole("button", { name: "TDD" }));
     fireEvent.click(screen.getByRole("button", { name: /Dispatch/ }));
     expect(onDispatch).toHaveBeenCalledTimes(1);
@@ -90,16 +90,17 @@ describe("FeatureRequestsTab", () => {
     expect(payload.prompt).toBe("Add a widget");
     expect(payload.standards).toEqual(["tdd"]);
     await waitFor(() => expect(onRefresh).toHaveBeenCalledTimes(1));
-    expect(screen.getByText("Feature request dispatched.")).toBeInTheDocument();
+    expect(screen.getByText("Code request dispatched.")).toBeInTheDocument();
   });
 
   it("prepends enabled prompt notes to the dispatched prompt", () => {
     const { onDispatch } = setup({ promptNotes: { notes: "Be terse.", enabled: true } });
     const selects = screen.getAllByRole("combobox");
     fireEvent.change(selects[0], { target: { value: "Runner_Dashboard" } });
-    fireEvent.change(screen.getByPlaceholderText("Describe the feature to implement…"), {
-      target: { value: "Add a widget" },
-    });
+    fireEvent.change(
+      screen.getByPlaceholderText("Describe the code request to plan and execute…"),
+      { target: { value: "Add a widget" } },
+    );
     fireEvent.click(screen.getByRole("button", { name: /Dispatch/ }));
     expect(onDispatch.mock.calls[0][0].prompt).toBe("Be terse.\n\nAdd a widget");
   });
@@ -108,9 +109,10 @@ describe("FeatureRequestsTab", () => {
     const { onDispatch } = setup({ promptNotes: { notes: "Be terse.", enabled: false } });
     const selects = screen.getAllByRole("combobox");
     fireEvent.change(selects[0], { target: { value: "Runner_Dashboard" } });
-    fireEvent.change(screen.getByPlaceholderText("Describe the feature to implement…"), {
-      target: { value: "Add a widget" },
-    });
+    fireEvent.change(
+      screen.getByPlaceholderText("Describe the code request to plan and execute…"),
+      { target: { value: "Add a widget" } },
+    );
     fireEvent.click(screen.getByRole("button", { name: /Dispatch/ }));
     expect(onDispatch.mock.calls[0][0].prompt).toBe("Add a widget");
   });
@@ -120,9 +122,10 @@ describe("FeatureRequestsTab", () => {
     const { onRefresh } = setup({ onDispatch });
     const selects = screen.getAllByRole("combobox");
     fireEvent.change(selects[0], { target: { value: "Runner_Dashboard" } });
-    fireEvent.change(screen.getByPlaceholderText("Describe the feature to implement…"), {
-      target: { value: "x" },
-    });
+    fireEvent.change(
+      screen.getByPlaceholderText("Describe the code request to plan and execute…"),
+      { target: { value: "x" } },
+    );
     fireEvent.click(screen.getByRole("button", { name: /Dispatch/ }));
     await waitFor(() => expect(screen.getByText("Dispatch failed: boom")).toBeInTheDocument());
     expect(onRefresh).toHaveBeenCalledTimes(1);
@@ -137,9 +140,10 @@ describe("FeatureRequestsTab", () => {
     });
     const selects = screen.getAllByRole("combobox");
     fireEvent.change(selects[0], { target: { value: "Runner_Dashboard" } });
-    fireEvent.change(screen.getByPlaceholderText("Describe the feature to implement…"), {
-      target: { value: "x" },
-    });
+    fireEvent.change(
+      screen.getByPlaceholderText("Describe the code request to plan and execute…"),
+      { target: { value: "x" } },
+    );
     expect(screen.getByRole("button", { name: /Dispatch/ })).toBeDisabled();
     expect(screen.getByRole("status")).toHaveTextContent("Jules-Feature-Request.yml");
   });
@@ -170,9 +174,10 @@ describe("FeatureRequestsTab", () => {
     const { onDispatch } = setup();
     const selects = screen.getAllByRole("combobox");
     fireEvent.change(selects[0], { target: { value: "Runner_Dashboard" } });
-    fireEvent.change(screen.getByPlaceholderText("Describe the feature to implement…"), {
-      target: { value: "x" },
-    });
+    fireEvent.change(
+      screen.getByPlaceholderText("Describe the code request to plan and execute…"),
+      { target: { value: "x" } },
+    );
     fireEvent.click(screen.getByRole("button", { name: "DRY" }));
     fireEvent.click(screen.getByRole("button", { name: "SECURITY" }));
     fireEvent.click(screen.getByRole("button", { name: "DRY" })); // toggle off
@@ -182,9 +187,10 @@ describe("FeatureRequestsTab", () => {
 
   it("saves a template with name + prompt", () => {
     const { onSaveTemplate } = setup();
-    fireEvent.change(screen.getByPlaceholderText("Describe the feature to implement…"), {
-      target: { value: "Reusable body" },
-    });
+    fireEvent.change(
+      screen.getByPlaceholderText("Describe the code request to plan and execute…"),
+      { target: { value: "Reusable body" } },
+    );
     fireEvent.change(screen.getByPlaceholderText("Template name…"), {
       target: { value: "My Template" },
     });
@@ -195,15 +201,17 @@ describe("FeatureRequestsTab", () => {
   it("loads a saved template into the prompt editor", () => {
     setup({ templates: [{ name: "Tmpl", prompt: "Loaded prompt body" }] });
     fireEvent.click(screen.getByText("Tmpl"));
-    expect(screen.getByPlaceholderText("Describe the feature to implement…")).toHaveValue(
-      "Loaded prompt body",
-    );
+    expect(
+      screen.getByPlaceholderText("Describe the code request to plan and execute…"),
+    ).toHaveValue("Loaded prompt body");
   });
 
   it("saves prompt notes and surfaces the saved flag", async () => {
     const { onSavePromptNotes } = setup();
     fireEvent.change(
-      screen.getByPlaceholderText("Enter global prompt notes that will be auto-added to every dispatch…"),
+      screen.getByPlaceholderText(
+        "Enter global prompt notes that will be auto-added to every dispatch…",
+      ),
       { target: { value: "New notes" } },
     );
     fireEvent.click(screen.getByRole("button", { name: "Save Notes" }));
@@ -224,7 +232,6 @@ describe("FeatureRequestsTab", () => {
         },
       ],
     });
-    // Repository appears in both desktop + mobile renders.
     expect(screen.getAllByText("Runner_Dashboard").length).toBeGreaterThan(0);
     expect(screen.getAllByText("2026-06-01").length).toBeGreaterThan(0);
     expect(screen.getByText("3 votes")).toBeInTheDocument();
@@ -234,7 +241,7 @@ describe("FeatureRequestsTab", () => {
     const { view } = setup({ loading: true });
     expect(screen.getByText("Loading…")).toBeInTheDocument();
     view.rerender(
-      <FeatureRequestsTab
+      <CodeRequestsTab
         repos={[]}
         requests={[]}
         templates={[]}
@@ -248,5 +255,24 @@ describe("FeatureRequestsTab", () => {
     );
     expect(screen.getByText("No dispatched requests yet.")).toBeInTheDocument();
     expect(screen.getByText("No saved templates.")).toBeInTheDocument();
+  });
+
+  it("FeatureRequestsTab alias renders identically", () => {
+    const onDispatch = vi.fn().mockResolvedValue(undefined);
+    render(
+      <FeatureRequestsTab
+        repos={["Runner_Dashboard"]}
+        requests={[]}
+        templates={[]}
+        loading={false}
+        promptNotes={{ notes: "", enabled: true }}
+        onDispatch={onDispatch}
+        onSaveTemplate={vi.fn().mockResolvedValue(undefined)}
+        onSavePromptNotes={vi.fn().mockResolvedValue(undefined)}
+        onRefresh={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Code Requests")).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Runner_Dashboard" })).toBeInTheDocument();
   });
 });

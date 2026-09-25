@@ -379,7 +379,8 @@ SCOPE_PRESETS = {
     "operator": (
         "workflows.dispatch workflows.control runners.control fleet.control remediation.dispatch "
         "heavy-tests.dispatch tests.rerun github.dispatch assistant.chat assistant.execute maxwell.control "
-        "assessments.dispatch feature-requests.manage system.control coordination.write priorities.write "
+        "assessments.dispatch code-requests.manage feature-requests.manage system.control "
+        "coordination.write priorities.write "
         "staff.read staff.chat staff.dispatch staff.cancel staff.holds.write staff.approve staff.admin fleet.maintain"
     ).split(),
     "viewer": ["assistant.chat", "staff.read"],
@@ -392,6 +393,11 @@ SCOPE_PRESETS = {
     "loopback": sorted(LOOPBACK_SCOPES),
 }
 
+SCOPE_ALIASES: dict[str, str] = {
+    "feature-requests.manage": "code-requests.manage",
+    "code-requests.manage": "feature-requests.manage",
+}
+
 
 def principal_has_scope(principal: Principal, required_scope: str) -> bool:
     """True when any of the principal's role presets grants ``required_scope`` (``*`` and ``x.*`` wildcards)."""
@@ -400,7 +406,13 @@ def principal_has_scope(principal: Principal, required_scope: str) -> bool:
         principal_scopes.update(SCOPE_PRESETS.get(role, []))
     if "*" in principal_scopes:
         return True
-    return any(s == required_scope or (s.endswith("*") and required_scope.startswith(s[:-1])) for s in principal_scopes)
+    alias = SCOPE_ALIASES.get(required_scope)
+    return any(
+        s == required_scope
+        or (alias is not None and s == alias)
+        or (s.endswith("*") and (required_scope.startswith(s[:-1]) or (alias is not None and alias.startswith(s[:-1]))))
+        for s in principal_scopes
+    )
 
 
 def _resolve_principal_optional(request: Request, header_token: str | None) -> Principal | None:

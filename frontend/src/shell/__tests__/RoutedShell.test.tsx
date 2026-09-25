@@ -84,9 +84,9 @@ vi.mock("../../pages/Events", () => ({
   EventsTab: () => <div data-testid="native-events">Events</div>,
 }));
 
-vi.mock("../../pages/FeatureRequestsPage", () => ({
-  FeatureRequestsPage: () => (
-    <div data-testid="native-feature-requests">Feature Requests</div>
+vi.mock("../../pages/CodeRequestsPage", () => ({
+  CodeRequestsPage: () => (
+    <div data-testid="native-code-requests">Code Requests</div>
   ),
 }));
 
@@ -313,7 +313,7 @@ describe("RoutedShell — URL is the source of truth", () => {
     ["assessments", "native-assessments"],
     ["cline-launcher", "native-cline-launcher"],
     ["credentials", "native-credentials"],
-    ["feature-requests", "native-feature-requests"],
+    ["code-requests", "native-code-requests"],
     ["linear-setup", "native-linear-setup"],
     ["local-apps", "native-local-apps"],
     ["maxwell", "native-maxwell"],

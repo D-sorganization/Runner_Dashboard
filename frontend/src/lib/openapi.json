@@ -5875,6 +5875,108 @@
         "tags": ["credentials"]
       }
     },
+    "/api/code-requests": {
+      "get": {
+        "description": "List saved code implementation requests.",
+        "operationId": "list_code_requests_api_code_requests_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Code Requests Api Code Requests Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Code Requests",
+        "tags": ["code_requests"]
+      }
+    },
+    "/api/code-requests/dispatch": {
+      "post": {
+        "description": "Dispatch a code implementation request via CI remediation workflow.",
+        "operationId": "dispatch_code_request_api_code_requests_dispatch_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Dispatch Code Request Api Code Requests Dispatch Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Dispatch Code Request",
+        "tags": ["code_requests"]
+      }
+    },
+    "/api/code-requests/templates": {
+      "get": {
+        "description": "List saved prompt templates and global prompt notes.",
+        "operationId": "list_prompt_templates_api_code_requests_templates_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Prompt Templates Api Code Requests Templates Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Prompt Templates",
+        "tags": ["code_requests"]
+      },
+      "post": {
+        "description": "Save a prompt template.",
+        "operationId": "save_prompt_template_api_code_requests_templates_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Save Prompt Template Api Code Requests Templates Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Save Prompt Template",
+        "tags": ["code_requests"]
+      }
+    },
     "/api/coordination/briefing": {
       "get": {
         "operationId": "get_briefing_api_coordination_briefing_get",
@@ -6889,15 +6991,16 @@
     },
     "/api/feature-requests": {
       "get": {
-        "description": "List saved feature implementation requests.",
-        "operationId": "list_feature_requests_api_feature_requests_get",
+        "deprecated": true,
+        "description": "Deprecated alias for GET /api/code-requests.",
+        "operationId": "list_feature_requests_deprecated_api_feature_requests_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
                   "additionalProperties": true,
-                  "title": "Response List Feature Requests Api Feature Requests Get",
+                  "title": "Response List Feature Requests Deprecated Api Feature Requests Get",
                   "type": "object"
                 }
               }
@@ -6905,21 +7008,22 @@
             "description": "Successful Response"
           }
         },
-        "summary": "List Feature Requests",
-        "tags": ["feature_requests"]
+        "summary": "List Feature Requests Deprecated",
+        "tags": ["code_requests"]
       }
     },
     "/api/feature-requests/dispatch": {
       "post": {
-        "description": "Dispatch a feature implementation request via CI remediation workflow.",
-        "operationId": "dispatch_feature_request_api_feature_requests_dispatch_post",
+        "deprecated": true,
+        "description": "Deprecated alias for POST /api/code-requests/dispatch.",
+        "operationId": "dispatch_feature_request_deprecated_api_feature_requests_dispatch_post",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
                   "additionalProperties": true,
-                  "title": "Response Dispatch Feature Request Api Feature Requests Dispatch Post",
+                  "title": "Response Dispatch Feature Request Deprecated Api Feature Requests Dispatch Post",
                   "type": "object"
                 }
               }
@@ -6935,21 +7039,22 @@
             "APIKeyCookie": []
           }
         ],
-        "summary": "Dispatch Feature Request",
-        "tags": ["feature_requests"]
+        "summary": "Dispatch Feature Request Deprecated",
+        "tags": ["code_requests"]
       }
     },
     "/api/feature-requests/templates": {
       "get": {
-        "description": "List saved prompt templates and global prompt notes.",
-        "operationId": "list_prompt_templates_api_feature_requests_templates_get",
+        "deprecated": true,
+        "description": "Deprecated alias for GET /api/code-requests/templates.",
+        "operationId": "list_prompt_templates_deprecated_api_feature_requests_templates_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
                   "additionalProperties": true,
-                  "title": "Response List Prompt Templates Api Feature Requests Templates Get",
+                  "title": "Response List Prompt Templates Deprecated Api Feature Requests Templates Get",
                   "type": "object"
                 }
               }
@@ -6957,19 +7062,20 @@
             "description": "Successful Response"
           }
         },
-        "summary": "List Prompt Templates",
-        "tags": ["feature_requests"]
+        "summary": "List Prompt Templates Deprecated",
+        "tags": ["code_requests"]
       },
       "post": {
-        "description": "Save a prompt template.",
-        "operationId": "save_prompt_template_api_feature_requests_templates_post",
+        "deprecated": true,
+        "description": "Deprecated alias for POST /api/code-requests/templates.",
+        "operationId": "save_prompt_template_deprecated_api_feature_requests_templates_post",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
                   "additionalProperties": true,
-                  "title": "Response Save Prompt Template Api Feature Requests Templates Post",
+                  "title": "Response Save Prompt Template Deprecated Api Feature Requests Templates Post",
                   "type": "object"
                 }
               }
@@ -6985,8 +7091,8 @@
             "APIKeyCookie": []
           }
         ],
-        "summary": "Save Prompt Template",
-        "tags": ["feature_requests"]
+        "summary": "Save Prompt Template Deprecated",
+        "tags": ["code_requests"]
       }
     },
     "/api/fleet/audit": {
@@ -10971,7 +11077,7 @@
           }
         },
         "summary": "Get Prompt Notes",
-        "tags": ["feature_requests"]
+        "tags": ["code_requests"]
       },
       "put": {
         "description": "Update the global prompt notes.",
@@ -10999,7 +11105,7 @@
           }
         ],
         "summary": "Update Prompt Notes",
-        "tags": ["feature_requests"]
+        "tags": ["code_requests"]
       }
     },
     "/api/staff/audit": {
