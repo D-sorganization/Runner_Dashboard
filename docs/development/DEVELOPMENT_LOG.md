@@ -18,9 +18,21 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1318 · SC-D4: Thread view and composer: streaming markdown, @mentions, slash commands, reliable send
+### DL-#1319 · SC-D5: Action, run, hand-off, and review cards embedded in conversation threads
 
 - **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1319 (epic #1350 / umbrella #1354)
+- **Branch:** `feat/1319-thread-cards`
+- **Paths:** `frontend/src/pages/StaffConsole/cards/cardTypes.ts`, `frontend/src/pages/StaffConsole/cards/ActionCard.tsx`, `frontend/src/pages/StaffConsole/cards/RunCard.tsx`, `frontend/src/pages/StaffConsole/cards/HandoffCard.tsx`, `frontend/src/pages/StaffConsole/cards/ReviewCard.tsx`, `frontend/src/pages/StaffConsole/cards/ErrorCard.tsx`, `frontend/src/pages/StaffConsole/cards/cards.css`, `frontend/src/pages/StaffConsole/cards/index.ts`, `frontend/src/pages/StaffConsole/cards/__tests__/ActionCard.test.tsx`, `frontend/src/pages/StaffConsole/cards/__tests__/RunCard.test.tsx`, `frontend/src/pages/StaffConsole/cards/__tests__/HandoffCard.test.tsx`, `frontend/src/pages/StaffConsole/cards/__tests__/ReviewCard.test.tsx`, `frontend/src/pages/StaffConsole/cards/__tests__/ErrorCard.test.tsx`, `frontend/src/pages/StaffConsole/MessageItem.tsx`, `frontend/src/pages/StaffConsole/Thread.tsx`, `frontend/src/pages/StaffConsole/threadTypes.ts`, `frontend/src/pages/StaffConsole/threadMarkdown.tsx`, `frontend/src/pages/StaffConsole/index.ts`, `frontend/src/pages/StaffConsole/__tests__/Thread.test.tsx`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (all 55 StaffConsole unit tests passed; npm run typecheck passed with 0 errors; npm run lint passed with 0 warnings; pytest test_frontend_integrity passed 72 tests; all touched files strictly <= 500 lines)
+- **Summary:** Implemented SC-D5 Action, run, hand-off, and review cards embedded in conversation threads: (1) `ActionCard`: action target, risk badge (`read`/`low`/`medium`/`high`/`critical`/`owner-only`), expandable parameters view, double-click idempotency protection executing once, decision history display, and stale proposal expiration guard (24h limit) disabling actions; (2) `RunCard`: live status indicator (`queued`/`running`/`completed`/`failed`/`cancelled`), node host, provider model, elapsed duration, expandable log tail with toggle, Cancel CTA, and deep links to run page and GitHub PR; (3) `HandoffCard`: routing transition ("Barb → Specialist"), rationale, and interactive specialist re-route selection; (4) `ReviewCard`: PR reference, verdict badge (`APPROVED`/`CHANGES_REQUESTED`/`COMMENTED`), review summary, and key findings list; (5) `ErrorCard`: classified failure display mapping `failure_class` to plain-language cause, highlighted remediation instructions, node badge, and retry CTA; (6) `MessageItem` & `Thread` routing: dynamic card dispatch based on message kind with full callback forwarding.
+- **Next step:** Push branch, open PR with Fixes #1319, enable auto-merge, monitor CI to merge, release lease, and clean up worktree.
+
+### DL-#1318 · SC-D4: Thread view and composer: streaming markdown, @mentions, slash commands, reliable send
+
+- **State:** shipped
 - **Owner:** antigravity
 - **Issue:** #1318 (epic #1350 / umbrella #1354)
 - **Branch:** `feat/1318-thread-composer`
@@ -28,7 +40,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (all 34 StaffConsole tests passed; npm run typecheck passed with 0 errors; ruff check passed; all files strictly <= 500 lines)
 - **Summary:** Implemented SC-D4 Thread view and Composer: (1) Sanitized markdown rendering (`ThreadMarkdown`) with code block copying, link previews for issues/PRs/runs, and strict XSS protection with DOMPurify; (2) Keyboard-first Composer (`Composer`, `ComposerAutocompletes`, `composerUtils`) with @mentions role auto-complete, slash commands (`/dispatch`, `/review`, `/status`, `/hold`, `/brief`), voice input integration, reliable send with idempotent retry (retaining same Idempotency-Key), and per-thread draft persistence; (3) Thread view (`Thread`, `MessageItem`) with date separators across day boundaries, jump-to-unread button, streaming token deltas with stop button, classified error cards with remediation, and SSE reconnection management (`useThreadStream`).
-- **Next step:** Push branch, open PR with Fixes #1318, enable auto-merge, monitor CI to merge, release lease, and clean up worktree.
+- **Next step:** Shipped in PR #1413 / #1414.
 
 ### DL-#1329 · SC-C6: Barb availability: reserved capacity, provider fallback, acknowledgement SLA and degraded mode
 
@@ -66,8 +78,6 @@ reachable from any live state and `abandoned` from `parked`.
 - **Last verified:** 2026-09-25 (shipped in PR #1405 via commit 508f4c5; CI green on main)
 - **Summary:** Authored comprehensive UX specification and interaction contract for Staff Console (`docs/design/staff-console.md`) establishing Staff Console as the primary landing page across a four-area information architecture (Staff, Work, Fleet, Settings). Defines 6 core design principles, ASCII wireframes for desktop (three-pane), tablet (collapsible drawer), mobile (single-pane bottom navigation), and first-run empty states. Details structured inline card interactions for action approvals, run records, and error remediation with standardized action verbs and complete failure/lifecycle state catalogue. Covered by TDD test suite `tests/test_staff_console_design_spec.py`.
 - **Next step:** Shipped in PR #1405.
-
-
 
 ### DL-#1326 · SC-G4: Merge the duplicate Reports and Analysis tabs into one Insights section
 

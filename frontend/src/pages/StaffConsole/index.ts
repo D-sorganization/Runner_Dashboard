@@ -17,7 +17,9 @@ export * from "./ComposerAutocompletes";
 export * from "./MessageItem";
 export * from "./Thread";
 export * from "./useThreadStream";
+export * from "./cards";
 
 // SC-D6: Context pane
 export * from "./contextTypes";
 export * from "./ContextPane";
+

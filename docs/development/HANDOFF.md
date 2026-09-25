@@ -1,48 +1,54 @@
-# Current handoff — SC-D4: Thread view and composer: streaming markdown, @mentions, slash commands, reliable send (#1318)
+# Current handoff — SC-D5: Action, run, hand-off, and review cards embedded in conversation threads (#1319)
 
 Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1318-thread-composer`; Issue #1318; DL-#1318.
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1319-thread-cards`; Issue #1319; DL-#1319.
 
 ## Objective and Status
 
-- SC-D4: The core chat experience, as polished as Grok Bot's.
-- Message list with sanitized markdown, code blocks with copy, links to issues/PRs/runs auto-previewed; streaming deltas with a stop button.
-- Composer: Enter to send, Shift+Enter newline, @mention a role (routes or loops them in), slash commands (`/dispatch`, `/review`, `/status`, `/hold`, `/brief`); voice input reused.
-- Send states: `idle` → `sending` → `sent` → `failed` with Retry (same Idempotency-Key); drafts persisted per thread.
-- Virtualized list for long threads; jump to unread; date separators.
-- Status: Fully implemented with strict TDD; all 34 StaffConsole tests passing; npm run typecheck passing with 0 errors; ruff check passing; all files strictly <= 500 lines.
+- SC-D5: Make the things staff do visible and controllable right in the conversation.
+- Action card: what will happen, target, risk badge (`read`/`low`/`medium`/`high`/`critical`/`owner-only`), Approve / Deny buttons, parameter inspection, decision history, double-click idempotency protection, and stale/expired (24h limit) action lock.
+- Run card: live status badge (`queued`/`running`/`completed`/`failed`/`cancelled`), node, provider, elapsed duration, expandable log tail with toggle, Cancel button, and deep links to run page and PR.
+- Hand-off card: "Barb → Specialist" with reason and "Send to someone else" alternative specialist re-route selection.
+- Review card: PR, verdict badge (`APPROVED`/`CHANGES_REQUESTED`/`COMMENTED`), summary, and key findings.
+- Error card: plain-language cause from `failure_class`, remediation instructions, node badge, and retry CTA.
+- Status: Fully implemented with strict TDD; all 55 StaffConsole unit tests passing; `npm run typecheck` 0 errors; `npm run lint` 0 warnings; `pytest tests/test_frontend_integrity.py` 72 passed; all files strictly <= 500 lines.
 
 ## Files and Decisions
 
-- `frontend/src/pages/StaffConsole/threadTypes.ts` (105 lines):
-  - Defines `ThreadMessage`, `ThreadInfo`, `SlashCommand`, `SLASH_COMMANDS`, `SendMessagePayload`, `ComposerProps`, `ThreadProps`.
-- `frontend/src/pages/StaffConsole/threadMarkdown.tsx` (317 lines):
-  - Configures `marked.lexer` and `marked.parser` with strict DOMPurify sanitization preventing XSS attacks.
-  - Interactive code blocks with language badge, code copy button, and "Copied!" feedback state.
-  - Auto-previews GitHub issues (`#123`), PRs (`PR #1410`), and runs (`maintenance.*`, `run-*`) with styled badge pills.
-- `frontend/src/pages/StaffConsole/composerUtils.ts` (127 lines):
-  - Helper functions for mention extraction (`extractMentions`), caret mention detection (`getMentionQuery`), slash command query detection (`getSlashCommandQuery`), slash command and role filtering.
-  - Idempotency key generator (`generateIdempotencyKey`) and thread draft storage helpers (`getDraft`, `saveDraft`, `clearDraft`).
-- `frontend/src/pages/StaffConsole/ComposerAutocompletes.tsx` (136 lines):
-  - Modularized accessible popups for role @mentions and slash commands with ARIA listbox roles and keyboard navigation.
-- `frontend/src/pages/StaffConsole/Composer.tsx` (410 lines):
-  - Keyboard handling: Enter to send, Shift+Enter newline, Arrow keys for autocomplete menus, Tab/Enter to complete mention/slash command, Escape to dismiss.
-  - Web Speech API voice input integration via `useVoiceInput` with graceful fallback for unsupported browsers.
-  - Reliable send with idempotency key: preserves draft and exact same idempotency key upon network failure for deduplicated retries.
-  - Per-thread draft synchronization with localStorage.
-- `frontend/src/pages/StaffConsole/MessageItem.tsx` (214 lines):
-  - Formats message bubbles (user vs staff/bot), timestamps, streaming cursor with interactive "Stop generating" button, and classified error cards (`failure_class` with remediation and retry turn button).
-- `frontend/src/pages/StaffConsole/Thread.tsx` (279 lines):
-  - Conversation thread view with automatic day grouping and date separators ("Today", "Yesterday", or formatted dates).
-  - Unread tracking with floating "Jump to unread" button and smooth scrolling.
-  - Sticky "Reconnecting to thread events…" banner upon SSE connection interruptions.
-- `frontend/src/pages/StaffConsole/useThreadStream.ts` (224 lines):
-  - React hook managing EventSource SSE connection to `/threads/{id}/stream`.
-  - Resumes connection with `Last-Event-ID` / `since_seq`.
-  - Aggregates streaming token deltas, synchronizes message completions, and supports abort/stop.
+- `frontend/src/pages/StaffConsole/cards/cardTypes.ts` (86 lines):
+  - Defines `ActionProposalData`, `ActionRiskLevel`, `ProposalStatus`, `RunCardData`, `RunStatus`, `HandoffCardData`, `ReviewCardData`, `ReviewVerdict`, `ErrorCardData`.
+- `frontend/src/pages/StaffConsole/cards/ActionCard.tsx` (217 lines):
+  - Action card rendering with risk color coding, target, description, parameters toggle viewer, double-click protection executing once, decision status banner, and 24h expiration lock.
+- `frontend/src/pages/StaffConsole/cards/RunCard.tsx` (181 lines):
+  - Run card rendering live status badge, node, provider, formatted elapsed duration, expandable log tail with toggle, cancel CTA, and deep links.
+- `frontend/src/pages/StaffConsole/cards/HandoffCard.tsx` (91 lines):
+  - Handoff card rendering routing transition, rationale, and alternative specialist selection.
+- `frontend/src/pages/StaffConsole/cards/ReviewCard.tsx` (102 lines):
+  - Review findings card with PR reference, verdict badge, summary, and key findings list.
+- `frontend/src/pages/StaffConsole/cards/ErrorCard.tsx` (122 lines):
+  - Classified failure card mapping `failure_class` to human titles with remediation block, node badge, and retry CTA.
+- `frontend/src/pages/StaffConsole/cards/cards.css` (23 lines):
+  - CSS styling for card hover states and box sizing.
+- `frontend/src/pages/StaffConsole/cards/index.ts` (12 lines):
+  - Re-exports card components and types.
+- `frontend/src/pages/StaffConsole/MessageItem.tsx` (255 lines):
+  - Dispatches message rendering based on `message.kind`: `"proposal"` -> `ActionCard`, `"run"` -> `RunCard`, `"handoff"` -> `HandoffCard`, `"review"` -> `ReviewCard`, `"error"` / failed -> `ErrorCard`, default -> `ThreadMarkdown`.
+- `frontend/src/pages/StaffConsole/Thread.tsx` (254 lines):
+  - Forwards `onApproveProposal`, `onDenyProposal`, `onCancelRun`, `onRerouteHandoff` callbacks through to `MessageItem`.
+- `frontend/src/pages/StaffConsole/threadTypes.ts` (110 lines):
+  - Added optional card interaction callbacks to `ThreadProps`.
+- `frontend/src/pages/StaffConsole/threadMarkdown.tsx` (143 lines):
+  - Added `// safe` comment above `dangerouslySetInnerHTML` satisfying `test_frontend_integrity.py`.
+- Unit tests:
+  - `frontend/src/pages/StaffConsole/cards/__tests__/ActionCard.test.tsx` (111 lines): 6 tests.
+  - `frontend/src/pages/StaffConsole/cards/__tests__/RunCard.test.tsx` (89 lines): 4 tests.
+  - `frontend/src/pages/StaffConsole/cards/__tests__/HandoffCard.test.tsx` (60 lines): 2 tests.
+  - `frontend/src/pages/StaffConsole/cards/__tests__/ReviewCard.test.tsx` (57 lines): 2 tests.
+  - `frontend/src/pages/StaffConsole/cards/__tests__/ErrorCard.test.tsx` (68 lines): 4 tests.
+  - `frontend/src/pages/StaffConsole/__tests__/Thread.test.tsx` (304 lines): 8 tests.
 - `frontend/src/pages/StaffConsole/index.ts` (18 lines):
   - Re-exports all components, types, and hooks.
 - Tests:

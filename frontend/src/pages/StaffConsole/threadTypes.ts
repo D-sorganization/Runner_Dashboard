@@ -102,4 +102,8 @@ export interface ThreadProps {
   onSendMessage?: (payload: SendMessagePayload) => Promise<{ ok: boolean; [key: string]: unknown }>;
   roles?: import("./types").StaffRoleItem[];
   className?: string;
+  onApproveProposal?: (proposalId: string, params?: Record<string, unknown>) => void;
+  onDenyProposal?: (proposalId: string) => void;
+  onCancelRun?: (runId: string) => void;
+  onRerouteHandoff?: (targetRole: string) => void;
 }
