@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1301 · SC-D1: UX spec: Staff Console as the landing page and a four-area information architecture
+
+- **State:** in_review
+- **Owner:** antigravity
+- **Issue:** #1301 (epic #1348 / umbrella #1354)
+- **Branch:** `feat/1301-staff-console-ux-spec`
+- **PR:** #1405
+- **Paths:** `docs/design/staff-console.md`, `tests/test_staff_console_design_spec.py`, `backend/staff/chat.py`, `tests/api/test_staff_spend_and_rate_limits.py`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (`pytest tests/test_staff_console_design_spec.py` 8 passed; ruff clean; docs/design/staff-console.md 274 lines <= 500 lines)
+- **Summary:** Authored comprehensive UX specification and interaction contract for Staff Console (`docs/design/staff-console.md`) establishing Staff Console as the primary landing page across a four-area information architecture (Staff, Work, Fleet, Settings). Defines 6 core design principles, ASCII wireframes for desktop (three-pane), tablet (collapsible drawer), mobile (single-pane bottom navigation), and first-run empty states. Details structured inline card interactions for action approvals, run records, and error remediation with standardized action verbs and complete failure/lifecycle state catalogue. Covered by TDD test suite `tests/test_staff_console_design_spec.py`.
+- **Next step:** Push branch, open PR referencing Fixes #1301, enable auto-merge, and monitor CI to green merge.
+
 ### DL-#1326 · SC-G4: Merge the duplicate Reports and Analysis tabs into one Insights section
 
 - **State:** in_progress

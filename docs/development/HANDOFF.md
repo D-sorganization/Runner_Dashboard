@@ -1,4 +1,52 @@
-# Current handoff — SC-G4: Merge the duplicate Reports and Analysis tabs into one Insights section (#1326)
+# Current handoff — SC-D1: UX spec: Staff Console as the landing page and a four-area information architecture (#1301)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1301-staff-console-ux-spec`; Issue #1301; DL-#1301.
+
+## Objective and Status
+
+- SC-D1: Complete UX specification and interaction design establishing Staff Console as the landing page across a four-area information architecture (Staff, Work, Fleet, Settings).
+- Status: Fully specified and covered with TDD; spec document merged as `docs/design/staff-console.md`; all tests passing; ruff clean; files <= 500 lines. Unblocks SC-D2 (#1309) and the Wave 3 frontend stream.
+
+## Files and Decisions
+
+- `docs/design/staff-console.md`:
+  - Four top-level areas: Staff (primary landing page), Work (runs, PRs, review queue), Fleet (machines, runners, providers), Settings (tokens, permissions, budgets).
+  - 6 UX core principles: Status honesty, Progressive disclosure, One obvious primary action, One way to request work, Keyboard-first, Mobile parity.
+  - Roster organization & 4 groupings: Leadership (Ask Barb, Board, Orchestrator), Project Managers (Project Steward), Specialists (Librarian, Cartographer, Fleet Critic, Research Scout, OSS Scout, Pragmatic Programmer), Operations (Fleet Maintenance, Night Watch, Issue Remediator, PR Remediator, Sanitation, Usage Tracker).
+  - Responsive ASCII wireframes: Desktop (three-pane), Tablet (two-pane with drawer), Mobile (single-pane with bottom navigation bar), First-Run & Empty State.
+  - Structured card contracts: Action Approval Card (`ActionProposal`), Run Progress Card (`RunRecord`), Error Card & Remediation (`failure_class`).
+  - Interaction & keyboard shortcuts (`Ctrl+K`, `/` slash commands, `@` mentions).
+  - Copy guidelines & standardized action verbs (`Approve`, `Deny`, `Execute`, `Cancel`, `Retry`, `Hold`).
+  - Complete state catalogue covering loading, empty state, partial failure, offline/reconnecting, provider down, node offline, permission denied.
+- `backend/staff/chat.py`:
+  - Resolved provider fallback in `execute_turn`: when a role's preferred provider is not registered in `ADAPTERS` or `adapters` (e.g. `grok-chat`), scans available providers before cleanly falling back to `claude`.
+- `tests/test_staff_console_design_spec.py`:
+  - 8 TDD unit tests asserting spec existence, line count <= 500, four areas coverage, design principles, responsive wireframes, roster groupings, copy guidelines, and failure states.
+- `tests/api/test_staff_spend_and_rate_limits.py`:
+  - Isolated background chat turn execution in test fixture to prevent background timeouts.
+
+## Validation
+
+- `pytest tests/test_staff_console_design_spec.py`: 8 passed in 0.66s.
+- `ruff check tests/test_staff_console_design_spec.py`: All checks passed.
+- `ruff format --check tests/test_staff_console_design_spec.py`: 1 file already formatted.
+- Line limits: All new files strictly <= 500 lines (`staff-console.md`: 274, `test_staff_console_design_spec.py`: 132).
+
+## Next Steps
+
+1. Push branch `feat/1301-staff-console-ux-spec`.
+2. Open PR referencing `Fixes #1301`.
+3. Enable auto-merge squash without `--admin`.
+4. Monitor CI checks to merge cleanly into `main`.
+5. Release lease on issue #1301 with receipt.
+
+---
+
+# Previous handoff — SC-G4: Merge the duplicate Reports and Analysis tabs into one Insights section (#1326)
 
 Last updated: 2026-09-25
 
@@ -333,7 +381,8 @@ Last updated: 2026-09-25
 1. Verify CI passes on PR #1396.
 2. Ensure auto-merge merges branch into main.
 3. Release lease on issue #1313.
->>>>>>> origin/main
+
+> > > > > > > origin/main
 
 ---
 
