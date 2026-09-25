@@ -4,7 +4,7 @@ Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1322-stalled-job-playbooks`; Issue #1322; DL-#1322; PR (to be opened).
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1322-stalled-job-playbooks`; Issue #1322; DL-#1322; PR #1404.
 
 ## Objective and Status
 

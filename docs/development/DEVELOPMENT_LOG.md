@@ -24,7 +24,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Owner:** antigravity
 - **Issue:** #1322 (epic #1351 / umbrella #1354)
 - **Branch:** `feat/1322-stalled-job-playbooks`
-- **PR:** (will be updated)
+- **PR:** #1404
 - **Paths:** `backend/staff/maintenance_detect.py`, `backend/staff/maintenance_playbooks.py`, `backend/routers/staff_maintenance.py`, `backend/server.py`, `tests/unit/test_staff_maintenance_detect.py`, `tests/api/test_staff_maintenance_api.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (`pytest tests/unit/test_staff_maintenance_detect.py tests/api/test_staff_maintenance_api.py` 19 passed; ruff clean; mypy 0 errors; all files <= 500 lines)
