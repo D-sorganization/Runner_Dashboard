@@ -28,6 +28,8 @@ except ImportError:  # pragma: no cover
 from fleet_events import EventStore, FleetEvent, get_event_store
 from staff import lease as lease_mod
 from staff import workspace
+from staff.audit import record_audit
+from staff.conversations import ConversationStore, get_conversation_store
 from staff.runner import StaffRunner
 from staff.store import RunRecord, RunStore, _now
 from staff.tokens import revoke_run_token
@@ -92,18 +94,110 @@ def _release_lease_with_retry(
     t.start()
 
 
+def reconcile_interrupted_chat_messages(
+    conv_store: ConversationStore | None = None,
+) -> list[str]:
+    """Reconcile chat messages stuck in pending or streaming states across a restart (issue #1491, SC-B1-G8).
+
+    Pre: conv_store is available or default store is reachable.
+    Post: All non-terminal reply messages are marked failed with meta.failure_class='interrupted_by_restart',
+          a system message offering a retry is posted to each affected thread,
+          every state change is audited (SC-A8),
+          and user messages are left untouched.
+    """
+    store = conv_store or get_conversation_store()
+    if not store.status.available:
+        log.warning("Conversation store is unavailable; skipping chat message reconciliation")
+        return []
+
+    try:
+        non_terminal = store.list_non_terminal_reply_messages()
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Failed to query non-terminal chat messages: %s", exc)
+        return []
+
+    reconciled_ids: list[str] = []
+    for msg in non_terminal:
+        if msg.author_kind == "user":
+            continue
+
+        new_meta = dict(msg.meta)
+        new_meta["failure_class"] = "interrupted_by_restart"
+        new_meta["retryable"] = True
+
+        err_body = msg.body_md if msg.body_md else "Reply interrupted by backend restart."
+        store.update_message(
+            msg.id,
+            delivery="failed",
+            kind="error",
+            body_md=err_body,
+            meta=new_meta,
+        )
+
+        retry_meta = {
+            "in_reply_to": msg.id,
+            "interrupted_message_id": msg.id,
+            "failure_class": "interrupted_by_restart",
+            "actions": [{"name": "retry", "label": "Retry"}],
+            "retryable": True,
+            "system_action": "retry_offer",
+        }
+        retry_body = "The previous reply was interrupted by a backend restart. You can retry your message."
+        store.add_message(
+            thread_id=msg.thread_id,
+            author_kind="system",
+            author="system",
+            kind="text",
+            body_md=retry_body,
+            meta=retry_meta,
+            delivery="complete",
+        )
+
+        try:
+            record_audit(
+                action="message_reconcile",
+                target=f"message:{msg.id}",
+                principal="system",
+                surface="scheduler",
+                thread_id=msg.thread_id,
+                outcome="failed",
+                detail={
+                    "message_id": msg.id,
+                    "thread_id": msg.thread_id,
+                    "previous_delivery": msg.delivery,
+                    "failure_class": "interrupted_by_restart",
+                },
+                fail_closed=False,
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.warning("Failed to record audit for reconciled message %s: %s", msg.id, exc)
+
+        reconciled_ids.append(msg.id)
+
+    if reconciled_ids:
+        log.info("Reconciled %d interrupted chat messages: %s", len(reconciled_ids), reconciled_ids)
+    return reconciled_ids
+
+
 def reconcile_orphaned_runs(
     runner: StaffRunner,
     *,
     event_store: EventStore | None = None,
     requeue_queued: bool = False,
+    conv_store: ConversationStore | None = None,
 ) -> list[str]:
     """Reconcile runs left active across a dashboard restart.
 
     Pre: runner is initialized with a store.
     Post: active runs owned by this machine are marked failed/orphaned,
-          leases are released, clean worktrees removed, and fleet events emitted.
+          leases are released, clean worktrees removed, fleet events emitted,
+          and interrupted chat messages reconciled.
     """
+    try:
+        reconcile_interrupted_chat_messages(conv_store=conv_store)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Failed to reconcile interrupted chat messages: %s", exc, exc_info=True)
+
     store = runner.store
     active = store.active_runs()
     reconciled_ids: list[str] = []

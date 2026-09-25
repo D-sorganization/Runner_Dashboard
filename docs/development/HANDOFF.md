@@ -1,3 +1,39 @@
+# Current handoff — SC-B1-G8: Reconcile chat messages stuck in pending/streaming after a backend restart (#1491)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; working directory `C:\Users\diete\Repositories\Runner_Dashboard-worktrees\agy-1491`; branch `agy/issue-1491`; commit `SELF`; PR not created; Issue #1491; DL-#1491.
+
+## Objective and Status
+
+- Reconcile chat messages stuck in non-terminal delivery states (pending/streaming) across backend restarts (SC-B1-G8, issue #1491):
+  - In `backend/staff/reconcile.py`, implemented `reconcile_interrupted_chat_messages(conv_store)` to find all non-terminal reply messages (excluding user messages) across threads.
+  - Marked non-terminal reply messages as `delivery="failed"`, `kind="error"` with `meta.failure_class="interrupted_by_restart"` and `retryable=True`.
+  - Appended a system message (`author_kind="system"`, `delivery="complete"`) offering a retry to each affected thread.
+  - Audited every state change under SC-A8 (`action="message_reconcile"`, `surface="scheduler"`).
+  - Hooked `reconcile_interrupted_chat_messages` into `reconcile_orphaned_runs(runner, conv_store=conv_store)` so restart reconciliation triggered by `start_scheduler()` automatically covers chat messages.
+  - Added `list_non_terminal_reply_messages` to `ConversationStore` in `backend/staff/conversations.py`.
+  - Added `failure_class` property and `to_dict()` exposure on `MessageRecord` in `backend/staff/conversation_models.py`.
+  - Registered `message_reconcile` in `ALLOWED_ACTIONS` and `MUTATING_ACTIONS` in `backend/staff/audit.py`.
+  - Verification:
+    - Unit test in `tests/unit/test_staff_reconcile.py::test_interrupted_chat_messages_reconciled_to_failed_with_retry` (9/9 passed).
+    - ConversationStore unit test in `tests/unit/test_conversations_store.py::test_list_non_terminal_reply_messages` (14/14 passed).
+    - API test in `tests/api/test_staff_threads_api.py::test_reconcile_shows_system_retry_message_in_thread` (1/1 passed).
+    - Audit store unit tests in `tests/unit/test_staff_audit.py` (7/7 passed).
+    - `ruff check`: clean across all files.
+    - `ruff format --check`: clean across all files.
+    - `mypy`: clean across all files.
+
+## Next Steps
+
+1. Push `agy/issue-1491` to origin.
+2. Open draft PR using `gh pr create --draft -R D-sorganization/Runner_Dashboard --base main --head agy/issue-1491`.
+3. Report result.
+
+---
+
 # Current handoff — Fix Fleet Orchestration false successes for dispatch and deploy (#1502)
 
 Last updated: 2026-09-25

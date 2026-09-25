@@ -17,6 +17,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from staff import conversation_proposals as _proposals
 from staff.audit import StaffAuditStore, record_audit
 from staff.conversation_migrations import CORE_MIGRATIONS, run_migrations
 from staff.conversation_models import (
@@ -33,21 +34,6 @@ from staff.conversation_models import (
     MessageRecord,
     ThreadRecord,
     _now,
-)
-from staff.conversation_proposals import (
-    create_proposal as _create_proposal,
-)
-from staff.conversation_proposals import (
-    decide_proposal as _decide_proposal,
-)
-from staff.conversation_proposals import (
-    get_proposal as _get_proposal,
-)
-from staff.conversation_proposals import (
-    list_proposals as _list_proposals,
-)
-from staff.conversation_proposals import (
-    transition_proposal_state as _transition_proposal_state,
 )
 from staff.redaction import redact_sensitive_content
 from staff.store import default_db_path
@@ -375,6 +361,18 @@ class ConversationStore:
             row = self._conn.execute("SELECT * FROM messages WHERE id = ?", (message_id,)).fetchone()
             return MessageRecord.from_row(row) if row else None
 
+    def list_non_terminal_reply_messages(self) -> list[MessageRecord]:
+        """Post: every non-user message still pending/streaming, by thread then seq (#1491)."""
+        self._ensure_available()
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM messages "
+                "WHERE delivery IN ('pending', 'streaming') "
+                "AND author_kind != 'user' "
+                "ORDER BY thread_id, seq ASC"
+            ).fetchall()
+        return [MessageRecord.from_row(r) for r in rows]
+
     # ── ACTION PROPOSALS ─────────────────────────────────────────────────────
 
     def create_proposal(
@@ -388,7 +386,7 @@ class ConversationStore:
         principal: str = "",
     ) -> ActionProposalRecord:
         self._ensure_available()
-        return _create_proposal(
+        return _proposals.create_proposal(
             self._conn,
             self._lock,
             message_id=message_id,
@@ -403,7 +401,7 @@ class ConversationStore:
 
     def get_proposal(self, proposal_id: str) -> ActionProposalRecord | None:
         self._ensure_available()
-        return _get_proposal(self._conn, self._lock, proposal_id)
+        return _proposals.get_proposal(self._conn, self._lock, proposal_id)
 
     def list_proposals(
         self,
@@ -413,7 +411,7 @@ class ConversationStore:
         limit: int = 100,
     ) -> list[ActionProposalRecord]:
         self._ensure_available()
-        return _list_proposals(
+        return _proposals.list_proposals(
             self._conn,
             self._lock,
             thread_id=thread_id,
@@ -430,7 +428,7 @@ class ConversationStore:
         reason: str = "",
     ) -> ActionProposalRecord:
         self._ensure_available()
-        return _decide_proposal(
+        return _proposals.decide_proposal(
             self._conn,
             self._lock,
             proposal_id=proposal_id,
@@ -449,7 +447,7 @@ class ConversationStore:
         audit_store: StaffAuditStore | None = None,
     ) -> ActionProposalRecord:
         self._ensure_available()
-        return _transition_proposal_state(
+        return _proposals.transition_proposal_state(
             self._conn,
             self._lock,
             proposal_id=proposal_id,
