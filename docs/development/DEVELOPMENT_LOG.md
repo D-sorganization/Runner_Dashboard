@@ -18,17 +18,29 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1475 · WP-0.2: Show Board proposals in the owner inbox (wire inbox to the CR-7 store)
+### DL-#1483 · Restore green main: remove nested interactive controls in staff RosterRow
 
 - **State:** in_progress
 - **Owner:** antigravity
+- **Branch:** `fix/restore-green-main-roster-a11y`
+- **Paths:** `frontend/src/pages/StaffConsole/RosterRow.tsx`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (StaffConsole vitest 17/17 files 113/113 passed; npm run typecheck clean; npm run lint clean; RosterRow 296 lines <= 500 lines)
+- **Summary:** Wrapped role avatar and details in an accessible button and removed `role="button"` and `tabIndex={0}` from the outer roster row container, resolving WCAG 4.1.2 nested-interactive violation in axe-core.
+- **Next step:** Push branch, open PR, enable auto-merge, verify CI passes.
+
+### DL-#1475 · WP-0.2: Show Board proposals in the owner inbox (wire inbox to the CR-7 store)
+
+- **State:** shipped
+- **Owner:** antigravity
 - **Issue:** #1475
 - **Branch:** `fix/wp-0.2-inbox-board-proposals-1475`
+- **PR:** #1482
 - **Paths:** `backend/staff/inbox.py`, `backend/staff/briefings.py`, `tests/unit/test_staff_inbox_proposals.py`, `frontend/src/pages/Staff/InboxPanel.tsx`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
-- **Last verified:** 2026-09-25 (pytest tests/unit/ 100% passed; vitest 1313/1313 passed; npm run typecheck 0 errors; ruff check & format clean; mypy clean in 248 source files; all files <= 500 lines)
+- **Last verified:** 2026-09-25 (pytest tests/unit/ 100% passed; vitest 1337/1337 passed; npm run typecheck 0 errors; ruff check & format clean; mypy clean in 248 source files; all files <= 500 lines)
 - **Summary:** Replaced the stub in `backend/staff/inbox.py` with `_collect_board_proposals()` reading open proposals from CR-7 store `proposals.store.list_github_proposals(state="open")` with `DEFAULT_CACHE_TTL` caching. Excluded decided and closed proposals, mapped open proposals waiting on decisions to `InboxItem` with `source="board_proposal"`, severity mapped from urgency, age from `created_at`, link `/staff/fleet-command?section=proposals`, and structured metadata. Extracted briefing generation to `backend/staff/briefings.py` to keep all files strictly <= 500 lines. Added Proposals filter pill to frontend `InboxPanel.tsx`. Added unit test suite in `tests/unit/test_staff_inbox_proposals.py`.
-- **Next step:** Commit, push, open PR, enable auto-merge, verify CI passes, and release lease.
+- **Next step:** None (shipped in PR #1482).
 
 ### DL-#1338 · SC-G6: Retire the Cline Launcher page and its agent-launcher API
 

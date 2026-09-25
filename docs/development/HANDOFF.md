@@ -1,51 +1,53 @@
-# Current handoff — WP-0.2: Show Board proposals in the owner inbox (#1475)
+# Current handoff — Restore green main: remove nested interactive controls in staff RosterRow (#1483)
 
 Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; branch `fix/wp-0.2-inbox-board-proposals-1475`; Issue #1475; DL-#1475.
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/restore-green-main-roster-a11y`; DL-#1483.
+
+## Objective and Status
+
+- Restore green main by removing nested interactive controls in `frontend/src/pages/StaffConsole/RosterRow.tsx`:
+  - Wrapped the role avatar and details in an accessible button and removed `role="button"` and `tabIndex={0}` from the outer roster row container.
+  - The pin toggle button is now an adjacent sibling rather than a focusable descendant inside an interactive element.
+  - Resolves WCAG 4.1.2 `nested-interactive` violation in axe-core that broke Playwright E2E smoke tests.
+  - Verification:
+    - StaffConsole vitest: 17/17 test files passed (113/113 tests passed).
+    - `npm run typecheck`: clean (0 errors).
+    - `npm run lint`: clean (0 errors, 0 warnings).
+    - `RosterRow.tsx`: 296 lines ($\le 500$).
+
+## Next Steps
+
+1. Push `fix/restore-green-main-roster-a11y`.
+2. Open PR with label `agent:local`.
+3. Enable auto-merge (`gh pr merge --auto --squash`).
+4. Verify all CI checks pass and PR merges cleanly to `main`.
+
+---
+
+# Past handoff — WP-0.2: Show Board proposals in the owner inbox (#1475)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/wp-0.2-inbox-board-proposals-1475`; Issue #1475; DL-#1475; PR #1482 (merged).
 
 ## Objective and Status
 
 - Wire Board proposals into the owner inbox (WP-0.2, issue #1475):
-  - Replaced the stub in `backend/staff/inbox.py` with `_collect_board_proposals()` querying `proposals.store.list_github_proposals(state="open")`.
-  - Cached the read with `DEFAULT_CACHE_TTL` (30s) to avoid duplicate GitHub reads.
-  - Filtered out closed proposals and decided proposals (`decision is not None` via `extract_decision_info`).
-  - Mapped each open proposal waiting on a decision to `InboxItem`:
-    - `id`: `board_proposal_{number}`
-    - `source`: `board_proposal`
-    - `title`: proposal issue title
-    - `summary`: problem statement from proposal markdown body
-    - `severity`: mapped from urgency (`Emergency` -> `critical`, `Urgent` -> `high`, `Routine` -> `medium`)
-    - `created_at`: proposal created timestamp
-    - `link`: `/staff/fleet-command?section=proposals`
-    - `metadata`: `kind`, `proposal_number`, `target_repos`, `urgency`, `estimated_cost`, `html_url`.
-  - Maintained fault-tolerant `try/except` setting `sources["board_proposals"]` to `status="unavailable"` on store error without crashing the inbox.
-  - Extracted briefing generation and posting to `backend/staff/briefings.py` to maintain strict $\le 500$-line limit across all files (`inbox.py`: 468 lines, `briefings.py`: 128 lines).
+  - Replaced stub in `backend/staff/inbox.py` with `_collect_board_proposals()` querying `proposals.store.list_github_proposals(state="open")` with `DEFAULT_CACHE_TTL` caching.
+  - Filtered out closed proposals and decided proposals (`extract_decision_info`).
+  - Mapped each open proposal waiting on a decision to `InboxItem` with `source="board_proposal"`.
+  - Extracted briefing generation to `backend/staff/briefings.py` (128 lines) keeping all files $\le 500$ lines.
   - Added Proposals filter pill to frontend `InboxPanel.tsx`.
-  - Added unit test suite in `tests/unit/test_staff_inbox_proposals.py` (RED -> GREEN):
-    - (a) open proposals appear as inbox items and are counted
-    - (b) decided or closed proposals are excluded
-    - (c) store exceptions yield `unavailable` while other sources render cleanly
-    - (d) cached proposals reused within TTL without duplicate calls
-  - Verification:
-    - `pytest tests/unit/test_staff_inbox_proposals.py`: 4/4 passed.
-    - `pytest tests/unit/ -m "not integration"`: 100% passed (zero failures).
-    - `npm test -- --run` (vitest): 155/155 test files passed (1313 tests passed).
-    - `npm run typecheck`: clean (0 errors).
-    - `ruff check backend/ clients/`: clean.
-    - `ruff format --check backend/ clients/`: clean.
-    - `mypy backend/`: clean (0 issues in 248 source files).
-    - File line counts: `backend/staff/inbox.py` (468), `backend/staff/briefings.py` (128), `tests/unit/test_staff_inbox_proposals.py` (190), `frontend/src/pages/Staff/InboxPanel.tsx` (331) — all strictly $\le 500$ lines.
+  - Added unit test suite in `tests/unit/test_staff_inbox_proposals.py`.
 
 ## Next Steps
 
-1. Commit and push `fix/wp-0.2-inbox-board-proposals-1475`.
-2. Open PR referencing `Fixes #1475` with label `agent:local`.
-3. Enable auto-merge (`gh pr merge --auto --squash`).
-4. Verify CI passes and PR merges to `main`.
-5. Release lease on #1475 and fast-forward local `main`.
+1. None (shipped in PR #1482).
 
 ---
 
