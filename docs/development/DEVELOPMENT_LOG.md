@@ -18,18 +18,31 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1323 · SC-F4: Fleet MCP tools for staff conversations, work items, approvals and cancel
+### DL-#1334 · SC-F5: External Agent Connection Guides & Troubleshooting
 
 - **State:** in_progress
 - **Owner:** antigravity
+- **Issue:** #1334 (epic #1352 / umbrella #1354)
+- **Branch:** `docs/1334-agent-connection-guides`
+- **PR:** (pending)
+- **Paths:** `docs/agents/claude.md`, `docs/agents/codex.md`, `docs/agents/grok.md`, `docs/agents/connect.md`, `docs/staff-hub.md`, `SPEC.md`, `tests/test_agent_connection_docs.py`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (`pytest tests/test_agent_connection_docs.py` 9 passed; ruff clean; all documents and tests <= 500 lines)
+- **Summary:** Authored external client connection guides for Claude Code / Claude Cowork (`docs/agents/claude.md`), Codex CLI (`docs/agents/codex.md`), and Grok Bot (`docs/agents/grok.md`). Updated `docs/agents/connect.md` with client guide navigation index, complete 25-tool fleet MCP reference table, and SC-F3 classified error troubleshooting guide. Added cross-references in `docs/staff-hub.md` and updated `SPEC.md` SC-F5 specification. Added automated documentation validation tests.
+- **Next step:** Push branch, open PR with auto-merge, verify CI passes, merge, and release lease on #1334.
+
+### DL-#1323 · SC-F4: Fleet MCP tools for staff conversations, work items, approvals and cancel
+
+- **State:** shipped
+- **Owner:** antigravity
 - **Issue:** #1323 (epic #1352 / umbrella #1354)
 - **Branch:** `feat/1323-fleet-mcp-staff`
-- **PR:** (pending)
+- **PR:** #1395
 - **Paths:** `clients/fleet/fleet_client.py`, `clients/fleet/fleet_validators.py`, `clients/fleet/fleet_tools.py`, `clients/fleet/fleet_mcp.py`, `backend/routers/staff_proposals.py`, `backend/routers/staff_threads.py`, `backend/server.py`, `tests/api/test_staff_proposals_api.py`, `tests/clients/test_fleet_client.py`, `tests/clients/test_fleet_mcp.py`, `tests/clients/test_fleet_cli.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-24
-- **Last verified:** 2026-09-24 (`pytest tests/clients` 121 passed; `pytest tests/api/test_staff_proposals_api.py` 2 passed; ruff clean; mypy 0 errors; all modules <= 500 lines)
+- **Last verified:** 2026-09-24 (shipped in PR #1395)
 - **Summary:** Exposed 9 staff tools in `fleet_mcp` and `fleetctl`: `staff_threads_list`, `staff_thread_open`, `staff_message_send`, `staff_thread_read`, `staff_thread_wait`, `staff_run_cancel`, `staff_work_items`, `staff_approvals_list`, `staff_approval_decide`. Standardized SC-F3 error envelope for tool errors and implemented idempotent request retries for network/5xx errors on idempotent calls. Added action proposal review and decision endpoints `GET/POST /api/v1/staff/proposals`.
-- **Next step:** Open PR, verify CI, auto-merge, and release lease on #1323.
+- **Next step:** None (shipped in PR #1395).
 
 ### DL-#1316 · SC-C3: Work-item ledger: every request Barb (or anyone) dispatches is tracked to a terminal state
 
