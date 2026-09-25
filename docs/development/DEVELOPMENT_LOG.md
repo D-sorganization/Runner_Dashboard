@@ -18,9 +18,21 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1459 · Restore green main: split frontend FleetCommand test suite strictly <= 500 lines
+### DL-#1286 · CR-6: Board routing gate for new/significant Code Requests
 
 - **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1286
+- **Branch:** `feat/issue-1286-board-routing-gate`
+- **Paths:** `backend/code_requests/board_gate.py`, `backend/routers/code_requests_board.py`, `backend/server.py`, `tests/code_requests/test_board_gate.py`, `tests/code_requests/test_board_gate_routes.py`, `frontend/src/lib/api-types.ts`, `frontend/src/lib/openapi.json`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (pytest 33/33 passed across test_board_gate and test_board_gate_routes; 61/61 passed across tests/code_requests/; vitest 1309/1309 passed; ruff check and format clean; mypy clean; line cap check <= 500 lines passed)
+- **Summary:** Implemented Board routing gate for Code Requests evaluating 7 architectural criteria, confidential InEnTec data egress user sign-off check, operator overrides (`force_board` / `skip_board`) requiring `operator` role and reason, automatic proposal creation via CR-7 proposal API, decision syncing (`board:accepted`, `board:declined`, `board:deferred`), and escalation deadline checks. Mounted endpoints in `backend/routers/code_requests_board.py` and `backend/server.py`.
+- **Next step:** Commit, open PR, pass CI, auto-merge, release lease.
+
+### DL-#1459 · Restore green main: split frontend FleetCommand test suite strictly <= 500 lines
+
+- **State:** shipped
 - **Owner:** antigravity
 - **Issue:** #1459
 - **Branch:** `fix/issue-1459-split-fleetcommand-tests`
@@ -28,7 +40,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (vitest 15/15 passed across FleetCommand and FleetCommandOps; npm run lint and typecheck passed; line check verified all files <= 500 lines)
 - **Summary:** Extracted shared test fixtures/helpers into `fleetCommandTestHelpers.ts` (168 lines), kept core coordination panels in `FleetCommand.test.tsx` (232 lines), and operations tests in `FleetCommandOps.test.tsx` (198 lines), strictly satisfying the <= 500 line limit to restore green main.
-- **Next step:** Commit, open PR, pass CI, auto-merge, release lease.
+- **Next step:** None (shipped in PR #1460).
 
 ### DL-#1284 · CR-7: Board Proposals suggestion box — API, Fleet Command tab, fleet tool
 

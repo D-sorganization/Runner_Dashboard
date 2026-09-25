@@ -286,6 +286,64 @@
         "title": "AuditHistoryResponse",
         "type": "object"
       },
+      "BoardRoute": {
+        "description": "Routing policy for Architecture Board review.",
+        "enum": ["auto", "force_board", "skip_board"],
+        "title": "BoardRoute",
+        "type": "string"
+      },
+      "BoardRoutingCriteria": {
+        "description": "Explicit requester-declared or system-extracted routing flags.",
+        "properties": {
+          "cross_repo_contract": {
+            "default": false,
+            "title": "Cross Repo Contract",
+            "type": "boolean"
+          },
+          "estimated_child_issues": {
+            "default": 0,
+            "title": "Estimated Child Issues",
+            "type": "integer"
+          },
+          "inentec_data_egress": {
+            "default": false,
+            "title": "Inentec Data Egress",
+            "type": "boolean"
+          },
+          "new_dependency_or_egress": {
+            "default": false,
+            "title": "New Dependency Or Egress",
+            "type": "boolean"
+          },
+          "new_service_or_repo": {
+            "default": false,
+            "title": "New Service Or Repo",
+            "type": "boolean"
+          },
+          "new_surface": {
+            "default": false,
+            "title": "New Surface",
+            "type": "boolean"
+          },
+          "public_site_structure": {
+            "default": false,
+            "title": "Public Site Structure",
+            "type": "boolean"
+          },
+          "tagged_board": {
+            "default": false,
+            "title": "Tagged Board",
+            "type": "boolean"
+          },
+          "target_repos_count": {
+            "default": 1,
+            "title": "Target Repos Count",
+            "type": "integer"
+          }
+        },
+        "title": "BoardRoutingCriteria",
+        "type": "object"
+      },
       "Body_get_issues_api_issues_get": {
         "properties": {
           "complexity": {
@@ -625,6 +683,101 @@
         "title": "ClientErrorPayload",
         "type": "object"
       },
+      "CreateProposalRequest": {
+        "description": "Payload for submitting a suggestion to the Board (POST /api/proposals).",
+        "properties": {
+          "code_request_url": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code Request Url"
+          },
+          "confirm_not_duplicate": {
+            "default": false,
+            "title": "Confirm Not Duplicate",
+            "type": "boolean"
+          },
+          "estimated_cost": {
+            "enum": ["Low", "Medium", "High"],
+            "title": "Estimated Cost",
+            "type": "string"
+          },
+          "evidence": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Evidence",
+            "type": "string"
+          },
+          "lean": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Lean",
+            "type": "string"
+          },
+          "options_considered": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Options Considered",
+            "type": "string"
+          },
+          "problem": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Problem",
+            "type": "string"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "target_repos": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Target Repos",
+            "type": "array"
+          },
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "urgency": {
+            "enum": ["Routine", "Urgent", "Emergency"],
+            "title": "Urgency",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "target_repos",
+          "problem",
+          "evidence",
+          "options_considered",
+          "lean",
+          "estimated_cost",
+          "urgency"
+        ],
+        "title": "CreateProposalRequest",
+        "type": "object"
+      },
       "CreateThreadRequest": {
         "properties": {
           "kind": {
@@ -928,6 +1081,25 @@
         },
         "required": ["directives"],
         "title": "DirectivesBody",
+        "type": "object"
+      },
+      "EvaluateBoardPayload": {
+        "properties": {
+          "board_route": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BoardRoute"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "criteria": {
+            "$ref": "#/components/schemas/BoardRoutingCriteria"
+          }
+        },
+        "title": "EvaluateBoardPayload",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -2200,6 +2372,35 @@
         },
         "required": ["enabled"],
         "title": "RoleScheduleOverrideBody",
+        "type": "object"
+      },
+      "RouteToBoardPayload": {
+        "properties": {
+          "board_route": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BoardRoute"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "criteria": {
+            "$ref": "#/components/schemas/BoardRoutingCriteria"
+          },
+          "is_operator_override": {
+            "default": false,
+            "title": "Is Operator Override",
+            "type": "boolean"
+          },
+          "override_reason": {
+            "default": "",
+            "title": "Override Reason",
+            "type": "string"
+          }
+        },
+        "title": "RouteToBoardPayload",
         "type": "object"
       },
       "RoutingDecideRequest": {
@@ -4353,101 +4554,6 @@
           }
         },
         "title": "WorkSummary",
-        "type": "object"
-      },
-      "proposals__models__CreateProposalRequest": {
-        "description": "Payload for submitting a suggestion to the Board (POST /api/proposals).",
-        "properties": {
-          "code_request_url": {
-            "anyOf": [
-              {
-                "maxLength": 500,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Code Request Url"
-          },
-          "confirm_not_duplicate": {
-            "default": false,
-            "title": "Confirm Not Duplicate",
-            "type": "boolean"
-          },
-          "estimated_cost": {
-            "enum": ["Low", "Medium", "High"],
-            "title": "Estimated Cost",
-            "type": "string"
-          },
-          "evidence": {
-            "maxLength": 10000,
-            "minLength": 1,
-            "title": "Evidence",
-            "type": "string"
-          },
-          "lean": {
-            "maxLength": 10000,
-            "minLength": 1,
-            "title": "Lean",
-            "type": "string"
-          },
-          "options_considered": {
-            "maxLength": 10000,
-            "minLength": 1,
-            "title": "Options Considered",
-            "type": "string"
-          },
-          "problem": {
-            "maxLength": 10000,
-            "minLength": 1,
-            "title": "Problem",
-            "type": "string"
-          },
-          "source": {
-            "anyOf": [
-              {
-                "maxLength": 100,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Source"
-          },
-          "target_repos": {
-            "items": {
-              "type": "string"
-            },
-            "maxItems": 10,
-            "minItems": 1,
-            "title": "Target Repos",
-            "type": "array"
-          },
-          "title": {
-            "maxLength": 200,
-            "minLength": 1,
-            "title": "Title",
-            "type": "string"
-          },
-          "urgency": {
-            "enum": ["Routine", "Urgent", "Emergency"],
-            "title": "Urgency",
-            "type": "string"
-          }
-        },
-        "required": [
-          "title",
-          "target_repos",
-          "problem",
-          "evidence",
-          "options_considered",
-          "lean",
-          "estimated_cost",
-          "urgency"
-        ],
-        "title": "CreateProposalRequest",
         "type": "object"
       },
       "routers__staff_proposals__CreateProposalRequest": {
@@ -6698,6 +6804,250 @@
         ],
         "summary": "Get Code Request",
         "tags": ["code_requests"]
+      }
+    },
+    "/api/code-requests/{id}/board-escalation": {
+      "get": {
+        "description": "Check if the Code Request proposal has passed its review escalation deadline.",
+        "operationId": "check_escalation_api_code_requests__id__board_escalation_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "meetings_elapsed",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "title": "Meetings Elapsed",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "max_meetings",
+            "required": false,
+            "schema": {
+              "default": 2,
+              "title": "Max Meetings",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Check Escalation Api Code Requests  Id  Board Escalation Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Check Escalation",
+        "tags": ["code-requests-board"]
+      }
+    },
+    "/api/code-requests/{id}/evaluate-board": {
+      "post": {
+        "description": "Evaluate whether a Code Request must go through Architecture Board review.",
+        "operationId": "evaluate_board_api_code_requests__id__evaluate_board_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluateBoardPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Evaluate Board Api Code Requests  Id  Evaluate Board Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Evaluate Board",
+        "tags": ["code-requests-board"]
+      }
+    },
+    "/api/code-requests/{id}/route-to-board": {
+      "post": {
+        "description": "Execute the Board routing gate for a Code Request at triage.",
+        "operationId": "route_to_board_api_code_requests__id__route_to_board_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RouteToBoardPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Route To Board Api Code Requests  Id  Route To Board Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Route To Board",
+        "tags": ["code-requests-board"]
+      }
+    },
+    "/api/code-requests/{id}/sync-board-decision": {
+      "post": {
+        "description": "Check decision on linked Board proposal and transition Code Request accordingly.",
+        "operationId": "sync_board_decision_api_code_requests__id__sync_board_decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Sync Board Decision Api Code Requests  Id  Sync Board Decision Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Sync Board Decision",
+        "tags": ["code-requests-board"]
       }
     },
     "/api/code-requests/{id}/transition": {
@@ -10097,7 +10447,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/proposals__models__CreateProposalRequest"
+                "$ref": "#/components/schemas/CreateProposalRequest"
               }
             }
           },
