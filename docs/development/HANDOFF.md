@@ -1,3 +1,31 @@
+# Current handoff — SC-G8 first cut: delete never-mounted frontend primitives (#1346)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `chore/1346-dead-frontend`; Issue #1346 (part of SC-G #1353); DL-#1346.
+- Worktree `_wt_claude_rd_tracking` on OGLaptop; baseline `a34c322b`; commit `SELF`; PR: opened right after this commit.
+
+## Objective and Status
+
+- Deleted: `DataTable` (with its test and barrel export), `OfflineQueueIndicator`, `CredentialKeyModal` and `SaveIndicator`. A grep shows no importers outside their own tests. Also deleted their newly orphaned `credentialKeySchema`/`CredentialKeyForm` (with tests), and the `react-hook-form` and `@hookform/resolvers` dependencies, whose only user was `CredentialKeyModal`.
+- Kept, because the issue's list is stale: `useMutationQueue` and `lib/mutationQueue.ts`. SC-A9 (#1304) revived them through `ConnectionIndicator`, which `RoutedShell` mounts.
+- Still pending on #1346: `pages/QuickDispatch.tsx` and `primitives/AlertsCenter.tsx`, which `legacy/App.tsx` still mounts. Delete them with the Classic layout (SC-G7, #1345).
+
+## Validation
+
+- `npx tsc --noEmit -p tsconfig.app.json`: clean. eslint on `primitives` and `lib/schemas`: clean.
+- `npx vitest run frontend/src`: 153 files, 1299 tests passed.
+- `python -m pytest tests/frontend tests/test_frontend_perf_budget.py`: exit 0.
+- `vite build`: `assets/` is 1,169,405 bytes before and 1,169,405 bytes after. The size is identical because Vite had already tree-shaken the unused modules. This change removes source and dependencies, not shipped bytes.
+
+## Next Steps
+
+1. Merge this PR. Delete QuickDispatch and AlertsCenter in the same PR that removes `legacy/App.tsx` (#1345).
+
+---
+
 # Current handoff — CR-2: Code Request data model, lifecycle state machine and durable GitHub-backed record (#1282)
 
 Last updated: 2026-09-25

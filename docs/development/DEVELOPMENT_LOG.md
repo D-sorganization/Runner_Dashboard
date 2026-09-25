@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1346 · SC-G8: Delete dead frontend code
+
+- **State:** in_review
+- **Owner:** claude
+- **Issue:** #1346 (epic #1353)
+- **Branch:** `chore/1346-dead-frontend`
+- **PR:** not created
+- **Paths:** `frontend/src/primitives/`, `frontend/src/lib/schemas/dispatch.ts`, `package.json`, `package-lock.json`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 at `a34c322b` baseline (vitest 1299 passed; tsc clean; bundle 1,169,405 B before and after)
+- **Summary:** Removes the never-mounted primitives and the dependencies only they used. QuickDispatch and AlertsCenter remain until the legacy App is removed.
+- **Next step:** Merge the PR, then delete QuickDispatch and AlertsCenter together with `legacy/App.tsx` under #1345.
+
 ### DL-#1282 · CR-2: Code Request data model, lifecycle state machine and durable GitHub-backed record
 
 - **State:** in_review
