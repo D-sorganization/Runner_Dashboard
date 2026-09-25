@@ -1,6 +1,6 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.228
+**Spec Version:** 2.5.229
 **Application Version:** 4.10.0 (see `VERSION`)
 **Last Updated:** 2026-09-24T00:00:00-07:00
 **Status:** Active
@@ -9,6 +9,7 @@
 
 | Date       | PR / Issue             | Summary                                                                                                                                                                                                                                                                                                                         |
 | ---------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-09-24 | #1392                  | Restore green main: resolve relative import in `conversation_models.py` (`from staff.store import _now`) to restore server startup under `cd backend && python server.py`.                                                                                                                                                   |
 | 2026-09-24 | #1306                  | SC-B3: Conversation API: threads, messages, streaming replies (SSE with resume) and unread state. Endpoints `/api/v1/staff/threads`, `/api/v1/staff/threads/{id}/messages` (Idempotency-Key required, 202 Accepted), `/api/v1/staff/threads/{id}/stream` (SSE, Last-Event-ID resume, heartbeats), `/api/v1/staff/inbox`.  |
 | 2026-09-24 | #1312                  | SC-F3: Versioned public staff API (`/api/v1/staff`) with stable error envelope, 24h idempotency keys, and keyset cursor pagination. Legacy `/api/staff` maintained as aliases with RFC 8594 deprecation/sunset headers; published `docs/api/staff-v1.md`; migrated frontend UI to `/api/v1/staff`.                           |
 | 2026-09-24 | #1305                  | SC-B2: Thread, message and action-proposal store with migrations on staff_runs.sqlite3; WAL mode, forward-only schema migrations with pre-migration backups, secrets/LAN-IP redaction hook, fail-safe degraded status, action proposal state machine with SC-A8 auditing.                                                     |
