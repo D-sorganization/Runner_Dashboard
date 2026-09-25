@@ -14,9 +14,9 @@ Last updated: 2026-09-25
 ## Files and Decisions
 
 - `frontend/src/lib/openapi.json`:
-  - Regenerated to include Barb routing endpoints (`/api/v1/staff/routing/decide`, `/api/v1/staff/routing/handoff`, `/api/v1/staff/routing/override`, `/api/v1/staff/routing/feedback`) added in PR #1403.
+  - Regenerated to include Barb routing endpoints (`/api/v1/staff/routing/decide`, `/api/v1/staff/routing/handoff`, `/api/v1/staff/routing/override`, `/api/v1/staff/routing/feedback`) added in PR #1403, and preserved `ValidationError.ctx` and `ValidationError.input` for Python 3.11 CI compatibility.
 - `frontend/src/lib/api-types.ts`:
-  - Synchronized via `scripts/gen-api-client.sh` to match `openapi.json`. Exempt from line limit in `.github/workflows/ci-standard.yml`.
+  - Synchronized via `scripts/gen-api-client.sh` to match `openapi.json`, with `ValidationError` `ctx` and `input` fields preserved. Exempt from line limit in `.github/workflows/ci-standard.yml`.
 - `tests/test_frontend_integrity.py`:
   - Updated `test_every_registered_desktop_tab_has_native_route_content` to read both `navRegistry.ts` and `navRegistryData.ts` if present, ensuring modular split-file registries under line-length caps are audited correctly.
 - `frontend/src/main.tsx`:
