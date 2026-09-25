@@ -18,7 +18,8 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 TIER_LABELS = frozenset({"tier:ollama", "tier:cli", "tier:strong"})
-COMPLEXITIES = frozenset({"trivial", "small", "medium", "large"})
+# The complexity labels agents pick work by (docs/issue-taxonomy.md); `research` is not executable work.
+COMPLEXITIES = frozenset({"trivial", "routine", "complex", "deep"})
 TASK_CLASS_LABELS = frozenset(
     {"feature", "bug", "test", "refactor", "security", "docs", "ci", "design", "lint", "format"}
 )

@@ -78,7 +78,7 @@ def _output_contract() -> str:
                 "dependencies": ["another-key", "#123"],
                 "out_of_scope": ["..."],
                 "tier": "tier:cli",
-                "complexity": "small",
+                "complexity": "routine",
                 "task_class": "feature",
                 "key_decisions": ["decision or constraint the executor must keep"],
                 "next_steps": ["first executable step"],

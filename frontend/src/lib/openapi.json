@@ -254,6 +254,64 @@
         "title": "AuditHistoryResponse",
         "type": "object"
       },
+      "BoardRoute": {
+        "description": "Routing policy for Architecture Board review.",
+        "enum": ["auto", "force_board", "skip_board"],
+        "title": "BoardRoute",
+        "type": "string"
+      },
+      "BoardRoutingCriteria": {
+        "description": "Explicit requester-declared or system-extracted routing flags.",
+        "properties": {
+          "cross_repo_contract": {
+            "default": false,
+            "title": "Cross Repo Contract",
+            "type": "boolean"
+          },
+          "estimated_child_issues": {
+            "default": 0,
+            "title": "Estimated Child Issues",
+            "type": "integer"
+          },
+          "inentec_data_egress": {
+            "default": false,
+            "title": "Inentec Data Egress",
+            "type": "boolean"
+          },
+          "new_dependency_or_egress": {
+            "default": false,
+            "title": "New Dependency Or Egress",
+            "type": "boolean"
+          },
+          "new_service_or_repo": {
+            "default": false,
+            "title": "New Service Or Repo",
+            "type": "boolean"
+          },
+          "new_surface": {
+            "default": false,
+            "title": "New Surface",
+            "type": "boolean"
+          },
+          "public_site_structure": {
+            "default": false,
+            "title": "Public Site Structure",
+            "type": "boolean"
+          },
+          "tagged_board": {
+            "default": false,
+            "title": "Tagged Board",
+            "type": "boolean"
+          },
+          "target_repos_count": {
+            "default": 1,
+            "title": "Target Repos Count",
+            "type": "integer"
+          }
+        },
+        "title": "BoardRoutingCriteria",
+        "type": "object"
+      },
       "Body_get_issues_api_issues_get": {
         "properties": {
           "complexity": {
@@ -427,6 +485,238 @@
           }
         },
         "title": "BudgetSummary",
+        "type": "object"
+      },
+      "ChildExecutionRecord": {
+        "description": "Runtime tracking record for one planned child issue.",
+        "properties": {
+          "agent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent"
+          },
+          "attempts": {
+            "default": 0,
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "complexity": {
+            "default": "routine",
+            "title": "Complexity",
+            "type": "string"
+          },
+          "cost": {
+            "default": 0.0,
+            "title": "Cost",
+            "type": "number"
+          },
+          "dependencies": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Dependencies",
+            "type": "array"
+          },
+          "error_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Error Reasons",
+            "type": "array"
+          },
+          "escalation_history": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Escalation History",
+            "type": "array"
+          },
+          "handoff": {
+            "default": "",
+            "title": "Handoff",
+            "type": "string"
+          },
+          "issue_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issue Number"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "lease_receipt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lease Receipt"
+          },
+          "pr_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pr Number"
+          },
+          "pr_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pr Status"
+          },
+          "repository": {
+            "title": "Repository",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ChildExecutionState",
+            "default": "queued"
+          },
+          "task_class": {
+            "default": "feature",
+            "title": "Task Class",
+            "type": "string"
+          },
+          "tier": {
+            "$ref": "#/components/schemas/ExecutorTier",
+            "default": "ollama"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "turnover_doc": {
+            "default": "",
+            "title": "Turnover Doc",
+            "type": "string"
+          },
+          "wave": {
+            "default": 0,
+            "title": "Wave",
+            "type": "integer"
+          }
+        },
+        "required": ["key", "repository", "title"],
+        "title": "ChildExecutionRecord",
+        "type": "object"
+      },
+      "ChildExecutionState": {
+        "description": "Execution lifecycle state of a child issue in a plan.",
+        "enum": [
+          "queued",
+          "claimed",
+          "pr_open",
+          "ci",
+          "merged",
+          "failed",
+          "blocked",
+          "paused_for_human"
+        ],
+        "title": "ChildExecutionState",
+        "type": "string"
+      },
+      "ChildIssuePayload": {
+        "additionalProperties": false,
+        "description": "Input payload to register or plan a child issue.",
+        "properties": {
+          "acceptance_criteria": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Acceptance Criteria",
+            "type": "array"
+          },
+          "complexity": {
+            "default": "routine",
+            "title": "Complexity",
+            "type": "string"
+          },
+          "dependencies": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Dependencies",
+            "type": "array"
+          },
+          "file_scope": {
+            "items": {
+              "type": "string"
+            },
+            "title": "File Scope",
+            "type": "array"
+          },
+          "issue_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issue Number"
+          },
+          "key": {
+            "maxLength": 40,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "Key",
+            "type": "string"
+          },
+          "repository": {
+            "minLength": 1,
+            "title": "Repository",
+            "type": "string"
+          },
+          "task_class": {
+            "default": "feature",
+            "title": "Task Class",
+            "type": "string"
+          },
+          "tier": {
+            "$ref": "#/components/schemas/ExecutorTier",
+            "default": "ollama"
+          },
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "turnover_doc": {
+            "default": "",
+            "title": "Turnover Doc",
+            "type": "string"
+          }
+        },
+        "required": ["key", "title", "repository"],
+        "title": "ChildIssuePayload",
         "type": "object"
       },
       "ClaimBody": {
@@ -898,6 +1188,26 @@
         "title": "DirectivesBody",
         "type": "object"
       },
+      "DispatchChildrenPayload": {
+        "properties": {
+          "keys": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keys"
+          }
+        },
+        "title": "DispatchChildrenPayload",
+        "type": "object"
+      },
       "DraftEdit": {
         "properties": {
           "plan": {
@@ -910,6 +1220,143 @@
         "required": ["plan"],
         "title": "DraftEdit",
         "type": "object"
+      },
+      "EvaluateBoardPayload": {
+        "properties": {
+          "board_route": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BoardRoute"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "criteria": {
+            "$ref": "#/components/schemas/BoardRoutingCriteria"
+          }
+        },
+        "title": "EvaluateBoardPayload",
+        "type": "object"
+      },
+      "ExecutionConfig": {
+        "additionalProperties": false,
+        "description": "Tuning and constraints for executor pipeline execution.",
+        "properties": {
+          "auto_advance_waves": {
+            "default": true,
+            "title": "Auto Advance Waves",
+            "type": "boolean"
+          },
+          "lease_ttl_seconds": {
+            "default": 7200,
+            "maximum": 28800.0,
+            "minimum": 300.0,
+            "title": "Lease Ttl Seconds",
+            "type": "integer"
+          },
+          "max_concurrent_per_repo": {
+            "default": 3,
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Max Concurrent Per Repo",
+            "type": "integer"
+          },
+          "max_tier_attempts": {
+            "default": 2,
+            "maximum": 5.0,
+            "minimum": 1.0,
+            "title": "Max Tier Attempts",
+            "type": "integer"
+          }
+        },
+        "title": "ExecutionConfig",
+        "type": "object"
+      },
+      "ExecutorRollup": {
+        "description": "Aggregate status rollup for a Code Request plan.",
+        "properties": {
+          "audit_log": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Audit Log",
+            "type": "array"
+          },
+          "blocked_children": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Blocked Children",
+            "type": "array"
+          },
+          "children": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ChildExecutionRecord"
+            },
+            "title": "Children",
+            "type": "object"
+          },
+          "code_request_id": {
+            "title": "Code Request Id",
+            "type": "string"
+          },
+          "completed_children": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Completed Children",
+            "type": "array"
+          },
+          "current_wave": {
+            "default": 0,
+            "title": "Current Wave",
+            "type": "integer"
+          },
+          "failed_children": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Failed Children",
+            "type": "array"
+          },
+          "paused_branches": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Paused Branches",
+            "type": "array"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "total_cost": {
+            "default": 0.0,
+            "title": "Total Cost",
+            "type": "number"
+          },
+          "waves": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Waves",
+            "type": "array"
+          }
+        },
+        "required": ["code_request_id", "state"],
+        "title": "ExecutorRollup",
+        "type": "object"
+      },
+      "ExecutorTier": {
+        "description": "The standard executor tiers (CR-4 / BP-4).",
+        "enum": ["ollama", "cli", "strong"],
+        "title": "ExecutorTier",
+        "type": "string"
       },
       "HTTPValidationError": {
         "properties": {
@@ -1011,6 +1458,31 @@
         },
         "required": ["holds"],
         "title": "HoldsBody",
+        "type": "object"
+      },
+      "InitializeExecutorPayload": {
+        "properties": {
+          "children": {
+            "items": {
+              "$ref": "#/components/schemas/ChildIssuePayload"
+            },
+            "minItems": 1,
+            "title": "Children",
+            "type": "array"
+          },
+          "config": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExecutionConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": ["children"],
+        "title": "InitializeExecutorPayload",
         "type": "object"
       },
       "LaunchAuthRequest": {
@@ -2144,6 +2616,64 @@
         "title": "RepoEntry",
         "type": "object"
       },
+      "ReportChildPayload": {
+        "properties": {
+          "ci_status": {
+            "default": "",
+            "title": "Ci Status",
+            "type": "string"
+          },
+          "cost": {
+            "default": 0.0,
+            "title": "Cost",
+            "type": "number"
+          },
+          "event": {
+            "title": "Event",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "pr_body": {
+            "default": "",
+            "title": "Pr Body",
+            "type": "string"
+          },
+          "pr_labels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Pr Labels",
+            "type": "array"
+          },
+          "pr_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pr Number"
+          },
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
+          },
+          "updated_handoff": {
+            "default": "",
+            "title": "Updated Handoff",
+            "type": "string"
+          }
+        },
+        "required": ["key", "event"],
+        "title": "ReportChildPayload",
+        "type": "object"
+      },
       "ReposResponse": {
         "properties": {
           "count": {
@@ -2195,6 +2725,35 @@
         },
         "required": ["enabled"],
         "title": "RoleScheduleOverrideBody",
+        "type": "object"
+      },
+      "RouteToBoardPayload": {
+        "properties": {
+          "board_route": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BoardRoute"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "criteria": {
+            "$ref": "#/components/schemas/BoardRoutingCriteria"
+          },
+          "is_operator_override": {
+            "default": false,
+            "title": "Is Operator Override",
+            "type": "boolean"
+          },
+          "override_reason": {
+            "default": "",
+            "title": "Override Reason",
+            "type": "string"
+          }
+        },
+        "title": "RouteToBoardPayload",
         "type": "object"
       },
       "RoutingDecideRequest": {
@@ -6662,6 +7221,370 @@
         "tags": ["code_requests"]
       }
     },
+    "/api/code-requests/{id}/board-escalation": {
+      "get": {
+        "description": "Check if the Code Request proposal has passed its review escalation deadline.",
+        "operationId": "check_escalation_api_code_requests__id__board_escalation_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "meetings_elapsed",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "title": "Meetings Elapsed",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "max_meetings",
+            "required": false,
+            "schema": {
+              "default": 2,
+              "title": "Max Meetings",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Check Escalation Api Code Requests  Id  Board Escalation Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Check Escalation",
+        "tags": ["code-requests-board"]
+      }
+    },
+    "/api/code-requests/{id}/evaluate-board": {
+      "post": {
+        "description": "Evaluate whether a Code Request must go through Architecture Board review.",
+        "operationId": "evaluate_board_api_code_requests__id__evaluate_board_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluateBoardPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Evaluate Board Api Code Requests  Id  Evaluate Board Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Evaluate Board",
+        "tags": ["code-requests-board"]
+      }
+    },
+    "/api/code-requests/{id}/executor/dispatch": {
+      "post": {
+        "description": "Dispatch ready children in the current wave.",
+        "operationId": "dispatch_executor_api_code_requests__id__executor_dispatch_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DispatchChildrenPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Dispatch Executor Api Code Requests  Id  Executor Dispatch Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Dispatch Executor",
+        "tags": ["code-requests-executor"]
+      }
+    },
+    "/api/code-requests/{id}/executor/initialize": {
+      "post": {
+        "description": "Initialize the executor pipeline with a list of planned child issues.",
+        "operationId": "initialize_executor_api_code_requests__id__executor_initialize_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InitializeExecutorPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Initialize Executor Api Code Requests  Id  Executor Initialize Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Initialize Executor",
+        "tags": ["code-requests-executor"]
+      }
+    },
+    "/api/code-requests/{id}/executor/report-child": {
+      "post": {
+        "description": "Report progress, PR, CI or failure event on a child issue.",
+        "operationId": "report_child_status_api_code_requests__id__executor_report_child_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportChildPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Report Child Status Api Code Requests  Id  Executor Report Child Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Report Child Status",
+        "tags": ["code-requests-executor"]
+      }
+    },
+    "/api/code-requests/{id}/executor/rollup": {
+      "get": {
+        "description": "Get the current aggregate status rollup for a Code Request plan.",
+        "operationId": "get_executor_rollup_api_code_requests__id__executor_rollup_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutorRollup"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Executor Rollup",
+        "tags": ["code-requests-executor"]
+      }
+    },
     "/api/code-requests/{id}/plan": {
       "get": {
         "description": "The planning session: status, attempts, validator errors and the draft plan.",
@@ -6984,6 +7907,118 @@
         ],
         "summary": "Start Plan",
         "tags": ["code_requests"]
+      }
+    },
+    "/api/code-requests/{id}/route-to-board": {
+      "post": {
+        "description": "Execute the Board routing gate for a Code Request at triage.",
+        "operationId": "route_to_board_api_code_requests__id__route_to_board_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RouteToBoardPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Route To Board Api Code Requests  Id  Route To Board Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Route To Board",
+        "tags": ["code-requests-board"]
+      }
+    },
+    "/api/code-requests/{id}/sync-board-decision": {
+      "post": {
+        "description": "Check decision on linked Board proposal and transition Code Request accordingly.",
+        "operationId": "sync_board_decision_api_code_requests__id__sync_board_decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Sync Board Decision Api Code Requests  Id  Sync Board Decision Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Sync Board Decision",
+        "tags": ["code-requests-board"]
       }
     },
     "/api/code-requests/{id}/transition": {

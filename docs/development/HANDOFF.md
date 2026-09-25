@@ -4,7 +4,7 @@ Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1285`; branch `feat/1285-planner-stage`; PR: not created; Issue #1285 (epic #1279); DL-#1285. Commit: SELF.
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1285`; branch `feat/1285-planner-stage`; PR #1466 (open, auto-merge armed); Issue #1285 (epic #1279); DL-#1285. Commit: SELF.
 
 ## Objective and Status
 
@@ -13,7 +13,7 @@ Last updated: 2026-09-25
   - `plan.py` (JSON contract models, fenced-JSON extraction, dependency waves), `plan_validator.py` (sections, tier/complexity/task-class vocabularies, cycles, turnover rules), `plan_render.py` (epic/child bodies, turnover doc), `handoff_rules.py` (vendored RM `handoff_validator.validate_handoff_content` @ f430564c).
   - `planner.py` (prompt, `PlanningSession`, pure `receive_plan`: draft / file / reprompt / fail, `MAX_REPROMPTS = 2`), `plan_store.py`, `plan_filing.py` (dup search, epic, children in wave order, turnover comments, sub-issue links; resumable), `plan_service.py` (injected deps), `routers/code_request_plans.py`.
   - Lifecycle gains `planning → failed` (issue-mandated).
-- Key decisions: RD renders turnover docs (Identity is facts RD knows; planner supplies decisions and next steps); task_class uses the plain labels the Conductor routes on; dispatch is fire-and-forget, so plans come back via POST or a `<!-- plan:v1 -->` comment.
+- Key decisions: complexity uses the fleet taxonomy `trivial/routine/complex/deep` (docs/issue-taxonomy.md gates agent tiers on it), not the issue's older `small/medium/large`; RD renders turnover docs (Identity is facts RD knows; planner supplies decisions and next steps); task_class uses the plain labels the Conductor routes on; dispatch is fire-and-forget, so plans come back via POST or a `<!-- plan:v1 -->` comment.
 - Not done: frontend Plan panel (render, edit, approve).
 
 ## Validation
@@ -24,7 +24,7 @@ Last updated: 2026-09-25
 
 ## Next Steps
 
-1. Open the PR and arm auto-merge through `automerge_guard.py`.
+1. PR #1466 is open and armed; watch CI.
 2. Delegate the Plan panel UI to a `tier:cli` agent (agy) with TDD instructions.
 
 ---
