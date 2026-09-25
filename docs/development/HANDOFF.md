@@ -1,4 +1,35 @@
-# Current handoff — Restore green main: API contract types synchronization (#1381)
+# Current handoff — Restore green main: OpenAPI ValidationError schema alignment (#1383)
+
+Last updated: 2026-09-24
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1383-validation-error-contract`; Issue #1383; DL-#1383.
+
+## Work
+
+- `frontend/src/lib/openapi.json`:
+  - Preserved `ValidationError.ctx` and `ValidationError.input` properties matching Python 3.11 Pydantic schema used in CI.
+- `frontend/src/lib/api-types.ts`:
+  - Preserved `ValidationError` fields with matching TypeScript types.
+- `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`:
+  - Updated specification changelog and development log entries for #1383.
+
+## Validation
+
+- `npm run typecheck`: Passed with 0 errors.
+- `pytest tests/test_ci_config.py`: 29 passed.
+
+## Next
+
+1. Commit and push branch `fix/1383-validation-error-contract`.
+2. Open PR via `gh pr create` with `Fixes #1383`.
+3. Enable squash auto-merge and wait for CI to merge cleanly.
+4. Release coordination lease on Issue #1383.
+
+---
+
+# Previous handoff — Restore green main: API contract types synchronization (#1381)
 
 Last updated: 2026-09-24
 
