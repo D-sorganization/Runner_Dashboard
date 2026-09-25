@@ -1,4 +1,34 @@
-# Current handoff — Restore green main: synchronize generated OpenAPI schema and TypeScript definitions for SC-B9 group threads
+# Current handoff — K2: knowledge packs in the Staff Console (#1479)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `agy/issue-1479`; Issue #1479; DL-#1479.
+
+## Objective and Status
+
+- Implement K2: knowledge packs in the Staff Console (issue #1479):
+  - Vendoring: Copied `src/shared/python/ai/knowledge/` from Tools repo pinned commit `09ff428af314969363f8908dcebafb84ddd7a3ef` into `backend/knowledge_pack/` (`pack.py`, `manifest.py`, `chunking.py`, `sources.py`, `cli.py`, `__main__.py`, `__init__.py`) with source SHA headers. Added drift test `tests/knowledge/test_knowledge_pack_drift.py`.
+  - Refresh timer & service: Added `deploy/systemd-user/runner-dashboard-knowledge.service` and `runner-dashboard-knowledge.timer` (hourly timer with 5m randomized delay, calling python -m staff.knowledge_refresh). Built `backend/staff/knowledge_refresh.py` with `refresh_pack`, `refresh_all_packs`, `find_knowledge_manifests`, and the shared `pack_is_stale` helper, rebuilding SQLite packs only when `is_stale()` is true and creating atomic replacements. Unit tests in `tests/unit/test_knowledge_refresh.py`.
+  - Retrieval-augmented chat turns: Implemented `build_knowledge_turn_block` in `backend/staff/chat_knowledge.py` (split out of `backend/staff/chat.py` to hold the 500-line cap) and integrated into `execute_turn`. For roles granting `search_knowledge` tool, searches top 8 passages from `scope.pack` using SQLite BM25, formatting a cited `## Knowledge` section inserted into the prompt. Missing or stale pack produces a graceful warning notice and never fails the turn. Unit tests in `tests/unit/test_staff_chat_knowledge.py`.
+  - Knowledge API: Added `GET /api/v1/staff/knowledge/{pack_id}` and `GET /api/v1/staff/knowledge/{pack_id}/search?q=&k=` in `backend/routers/staff_knowledge.py` (mounted into `staff_v1.router` via `include_router`, also split out to hold the line cap) with Pydantic response models in `backend/staff/models.py`. API tests in `tests/api/test_staff_knowledge_api.py`. Synchronized OpenAPI schema (`frontend/src/lib/openapi.json`) and TypeScript client types (`frontend/src/lib/api-types.ts`).
+  - Roster & Routing: Added `advisors` roster group in `frontend/src/pages/StaffConsole/types.ts`, `rosterUtils.ts`, and `Roster.tsx` categorizing `disciple` and `vision-quest`. Added routing keyword rules to `ROLE_KEYWORD_RULES` in `backend/staff/router_models.py`. Added 8 test cases in `tests/staff/routing_eval/dataset.py`.
+  - Verification:
+    - Pytest (WSL venv): `tests/api/test_staff_knowledge_api.py tests/knowledge tests/unit/test_knowledge_refresh.py tests/unit/test_staff_chat_knowledge.py tests/unit/test_staff_chat*.py tests/staff/routing_eval` — 63 passed, 2 skipped.
+    - `mypy backend/ --ignore-missing-imports`: clean (0 issues).
+    - `ruff check backend/ tests/` and `ruff format --check backend/ tests/`: clean.
+    - File line caps: all touched backend files <= 500 lines (`chat.py` 496, `chat_knowledge.py` 69, `staff_v1.py` 441, `staff_knowledge.py` 100, `knowledge_refresh.py` 192).
+
+## Next Steps
+
+1. Push branch `agy/issue-1479`.
+2. Ensure PR #1512 CI checks pass.
+3. Squash-merge to main, release lease, and clean up.
+
+---
+
+# Past handoff — Restore green main: synchronize generated OpenAPI schema and TypeScript definitions for SC-B9 group threads
 
 Last updated: 2026-09-25
 
@@ -84,7 +114,8 @@ Last updated: 2026-09-25
 ---
 
 # Past handoff — SC-B9: Group threads: talk to the Board (and other groups) with the Board-Secretary coordinating seat replies (#1339)
->>>>>>> 4ab9490 (fix(staff): reject turns with chat_capacity on pool saturation (#1492))
+
+> > > > > > > 4ab9490 (fix(staff): reject turns with chat_capacity on pool saturation (#1492))
 
 Last updated: 2026-09-25
 

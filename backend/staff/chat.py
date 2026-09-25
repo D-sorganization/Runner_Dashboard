@@ -40,6 +40,7 @@ from staff.chat_history import (
     extract_session_id,
     format_history_replay,
 )
+from staff.chat_knowledge import build_knowledge_turn_block
 from staff.chat_pool import (
     DEFAULT_BARB_RESERVED_SLOTS,
     DEFAULT_CHAT_ACQUIRE_TIMEOUT,
@@ -62,6 +63,7 @@ __all__ = [
     "ChatConcurrencyPool",
     "ChatTurnResult",
     "ChatTurnRunner",
+    "build_knowledge_turn_block",
     "extract_session_id",
     "format_history_replay",
     "get_chat_pool",
@@ -141,7 +143,9 @@ class ChatTurnRunner:
             )
 
         user_msg = self.conv_store.get_message(user_message_id)
-        prompt_text = user_msg.body_md if user_msg else ""
+        raw_prompt = user_msg.body_md if user_msg else ""
+        knowledge_block = build_knowledge_turn_block(role, raw_prompt)
+        prompt_text = f"{knowledge_block}\n\n{raw_prompt}" if knowledge_block else raw_prompt
 
         acquired = await self.pool.acquire(role_name, timeout=self.acquire_timeout)
         if not acquired:

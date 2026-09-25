@@ -1,0 +1,10 @@
+[Unit]
+Description=Refresh knowledge packs hourly
+
+[Timer]
+OnStartupSec=5min
+OnUnitInactiveSec=1h
+Unit=runner-dashboard-knowledge.service
+
+[Install]
+WantedBy=timers.target
