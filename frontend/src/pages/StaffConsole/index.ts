@@ -1,7 +1,7 @@
 /**
  * StaffConsole module exports.
  *
- * Implements SC-D3 (#1317), SC-D4 (#1318), & SC-D6 (#1320) under Epic SC-D (#1350).
+ * Implements SC-D3 (#1317), SC-D4 (#1318), SC-D6 (#1320), & SC-D8 (#1331) under Epic SC-D (#1350).
  */
 export * from "./types";
 export * from "./threadTypes";
@@ -27,4 +27,5 @@ export * from "./ContextPane";
 export * from "../Staff/inboxTypes";
 export * from "../Staff/InboxPanel";
 
-
+// SC-D8: Mobile Staff Console
+export * from "./Mobile";

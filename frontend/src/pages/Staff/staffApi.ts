@@ -312,3 +312,68 @@ export const STREAM_EVENT_KINDS: readonly string[] = [
   "status",
   "log",
 ];
+
+// ── Thread & Conversation APIs (SC-B3 #1306, SC-D8 #1331) ───────────────────
+
+export function fetchThreads(signal?: AbortSignal): Promise<{ threads: unknown[] }> {
+  return apiRequest<{ threads: unknown[] }>(`${STAFF_BASE}/threads`, { signal });
+}
+
+export function fetchThread(threadId: string, signal?: AbortSignal): Promise<unknown> {
+  return apiRequest<unknown>(`${STAFF_BASE}/threads/${encodeURIComponent(threadId)}`, { signal });
+}
+
+export function fetchThreadMessages(
+  threadId: string,
+  signal?: AbortSignal,
+): Promise<{ messages: import("../StaffConsole/threadTypes").ThreadMessage[] }> {
+  return apiRequest<{ messages: import("../StaffConsole/threadTypes").ThreadMessage[] }>(
+    `${STAFF_BASE}/threads/${encodeURIComponent(threadId)}/messages`,
+    { signal },
+  );
+}
+
+export function postThreadMessage(
+  threadId: string,
+  body: { body_md: string; author?: string; author_kind?: string; meta?: Record<string, unknown> },
+  idempotencyKey?: string,
+  signal?: AbortSignal,
+): Promise<unknown> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (idempotencyKey) {
+    headers["Idempotency-Key"] = idempotencyKey;
+  }
+  return apiRequest<unknown>(`${STAFF_BASE}/threads/${encodeURIComponent(threadId)}/messages`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+    signal,
+  });
+}
+
+export function createThread(
+  body: { title?: string; kind?: string; participants?: string[]; role?: string },
+  signal?: AbortSignal,
+): Promise<unknown> {
+  return apiRequest<unknown>(`${STAFF_BASE}/threads`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  });
+}
+
+export function decideActionProposal(
+  proposalId: string,
+  decision: "approved" | "denied",
+  reason?: string,
+  execute: boolean = true,
+  signal?: AbortSignal,
+): Promise<unknown> {
+  return apiRequest<unknown>(`${STAFF_BASE}/proposals/${encodeURIComponent(proposalId)}/decide`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ decision, reason, execute }),
+    signal,
+  });
+}

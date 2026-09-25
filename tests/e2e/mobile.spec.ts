@@ -92,3 +92,125 @@ test.describe("Mobile accessibility", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Mobile Staff Console (SC-D8)
+// ---------------------------------------------------------------------------
+
+test.describe("Mobile Staff Console (SC-D8)", () => {
+  test.skip(({ isMobile }) => !isMobile, "Mobile viewport only");
+
+  test("open Barb, send message, approve an action, and open from push deep link", async ({
+    page,
+  }) => {
+    // 1. Mock staff endpoints
+    await page.route("**/api/v1/staff/roster", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          roles: [
+            {
+              name: "barb",
+              title: "Barb",
+              summary: "Fleet Orchestrator",
+              group: "leadership",
+              valid: true,
+            },
+          ],
+        }),
+      });
+    });
+
+    await page.route("**/api/v1/staff/threads/thread-barb-auto/messages", async (route) => {
+      if (route.request().method() === "POST") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ id: "msg-user-1", body_md: "Please run disk hygiene" }),
+        });
+      } else {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            messages: [
+              {
+                id: "msg-1",
+                thread_id: "thread-barb-auto",
+                author: "barb",
+                author_kind: "staff",
+                kind: "text",
+                body_md: "Hello! I am Barb.",
+                created_at: new Date().toISOString(),
+              },
+              {
+                id: "msg-prop-1",
+                thread_id: "thread-barb-auto",
+                author: "barb",
+                author_kind: "staff",
+                kind: "action_proposal",
+                body_md: "Trim stale worktrees",
+                meta: {
+                  proposal: {
+                    id: "prop-123",
+                    thread_id: "thread-barb-auto",
+                    action_name: "maintenance.trim_worktrees",
+                    description: "Trim stale worktrees",
+                    risk_level: "medium",
+                    status: "proposed",
+                  },
+                },
+                created_at: new Date().toISOString(),
+              },
+            ],
+          }),
+        });
+      }
+    });
+
+    await page.route("**/api/v1/staff/proposals/prop-123/decide", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, status: "approved" }),
+      });
+    });
+
+    // 2. Open mobile dashboard and navigate to Staff Console
+    await page.goto("/");
+    const staffTab = page.locator('[role="tab"]', { hasText: /staff/i });
+    if (await staffTab.isVisible()) {
+      await staffTab.click();
+    }
+
+    // Verify roster view with Ask Barb
+    const askBarb = page.locator('[data-testid="staff-mobile-ask-barb"]');
+    await expect(askBarb).toBeVisible();
+
+    // 3. Open Barb (transitions full-screen to thread view)
+    await askBarb.click();
+    const threadView = page.locator('[data-testid="staff-mobile-thread"]');
+    await expect(threadView).toBeVisible();
+    await expect(page.locator('[data-testid="staff-mobile-back-btn"]')).toBeVisible();
+
+    // 4. Send a message in the safe-area composer
+    const composer = page.locator('[data-testid="staff-mobile-composer-container"] textarea');
+    await expect(composer).toBeVisible();
+    await composer.fill("Please run disk hygiene");
+    const sendBtn = page.locator('[data-testid="staff-mobile-composer-container"] button', {
+      hasText: /send/i,
+    });
+    await sendBtn.click();
+
+    // 5. Approve an action proposal
+    const approveBtn = page.locator('button:has-text("Approve")').first();
+    await expect(approveBtn).toBeVisible();
+    await approveBtn.click();
+
+    // 6. Open from push deep link directly to thread
+    await page.goto("/staff?thread=thread-barb-auto");
+    await expect(page.locator('[data-testid="staff-mobile-thread"]')).toBeVisible();
+    await expect(page.locator("text=Conversation with Barb")).toBeVisible();
+  });
+});
