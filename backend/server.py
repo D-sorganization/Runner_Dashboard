@@ -715,10 +715,12 @@ from routers import staff_threads as _staff_threads_router  # noqa: E402
 from routers import staff_usage as _staff_usage_router  # noqa: E402
 from routers import staff_v1 as _staff_v1_router  # noqa: E402
 from routers import staff_work_items as _staff_work_items_router  # noqa: E402
+from routers import staff_proposals as _staff_proposals_router  # noqa: E402
 
 app.include_router(_staff_v1_router.router)  # Versioned public staff API (issue #1312)
 app.include_router(_staff_threads_router.router, prefix="/api/v1/staff")  # Conversation & threads API (issue #1306)
 app.include_router(_staff_work_items_router.router, prefix="/api/v1/staff")  # Work-item ledger (issue #1316)
+app.include_router(_staff_proposals_router.router, prefix="/api/v1/staff")  # Action proposals API (issue #1323)
 app.include_router(_staff_router.router)
 app.include_router(_staff_schedule_router.router)  # scheduler, holds, budgets (issue #1196)
 app.include_router(_staff_usage_router.router)  # usage ledger (issue #1200)

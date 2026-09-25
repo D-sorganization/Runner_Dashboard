@@ -81,9 +81,15 @@ class FleetMCPServer:
                 raise FleetArgumentError("arguments must be an object")
             return _tool_result(command.invoke(self.client, arguments), False)
         except FleetArgumentError as exc:
-            return _tool_result({"error": "invalid_arguments", "message": str(exc)}, True)
+            payload = {
+                "error": "invalid_arguments",
+                "code": "invalid_arguments",
+                "message": str(exc),
+                "retryable": False,
+            }
+            return _tool_result(payload, True)
         except FleetAPIError as exc:
-            return _tool_result(exc.to_dict(), True)
+            return _tool_result(exc.to_envelope(), True)
 
     def handle(self, message: Any) -> dict[str, Any] | None:
         """Return the response for one message, or ``None`` for notifications."""

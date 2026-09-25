@@ -139,4 +139,13 @@ def test_mcp_tool_set_is_the_contracted_list() -> None:
         "fleet_dispatch_role",
         "fleet_run_status",
         "fleet_directives",
+        "staff_run_cancel",
+        "staff_threads_list",
+        "staff_thread_open",
+        "staff_message_send",
+        "staff_thread_read",
+        "staff_thread_wait",
+        "staff_work_items",
+        "staff_approvals_list",
+        "staff_approval_decide",
     }

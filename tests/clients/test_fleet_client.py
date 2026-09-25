@@ -118,6 +118,63 @@ ENDPOINTS: list[tuple[str, dict[str, Any], str, str, dict[str, str], Any]] = [
     ("meetings", {}, "GET", "/api/priorities/meetings", {}, None),
     ("meeting", {"date": "2026-09-22"}, "GET", "/api/priorities/meetings/2026-09-22", {}, None),
     ("directives", {}, "GET", "/api/priorities/directives", {}, None),
+    ("staff_run_cancel", {"run_id": "run-1"}, "POST", "/api/staff/runs/run-1/cancel", {}, {}),
+    (
+        "staff_threads_list",
+        {"status": "open", "limit": 10},
+        "GET",
+        "/api/v1/staff/threads",
+        {"status": "open", "limit": "10"},
+        None,
+    ),
+    (
+        "staff_thread_open",
+        {"role": "Barb", "title": "Help"},
+        "POST",
+        "/api/v1/staff/threads",
+        {},
+        {"role": "Barb", "title": "Help", "kind": "direct"},
+    ),
+    (
+        "staff_message_send",
+        {"thread_id": "th_1", "body": "Hello"},
+        "POST",
+        "/api/v1/staff/threads/th_1/messages",
+        {},
+        {"body": "Hello", "kind": "text"},
+    ),
+    (
+        "staff_thread_read",
+        {"thread_id": "th_1", "since_seq": 2},
+        "GET",
+        "/api/v1/staff/threads/th_1",
+        {"since_seq": "2", "limit": "100"},
+        None,
+    ),
+    (
+        "staff_work_items",
+        {"limit": 10, "overdue": True},
+        "GET",
+        "/api/v1/staff/work-items",
+        {"limit": "10", "overdue": "true"},
+        None,
+    ),
+    (
+        "staff_approvals_list",
+        {"limit": 10},
+        "GET",
+        "/api/v1/staff/proposals",
+        {"limit": "10", "state": "proposed"},
+        None,
+    ),
+    (
+        "staff_approval_decide",
+        {"proposal_id": "prop_1", "decision": "approved"},
+        "POST",
+        "/api/v1/staff/proposals/prop_1/decide",
+        {},
+        {"decision": "approved", "reason": ""},
+    ),
 ]
 
 
@@ -295,6 +352,10 @@ BAD_CALLS: list[tuple[str, dict[str, Any]]] = [
     ("set_directives", {"directives": [{"text": "Finish:\n- [ ] A"}]}),
     ("set_directives", {"directives": [{"text": "x", "set_by": "dieter"}]}),
     ("set_directives", {"directives": [], "version": ""}),
+    ("staff_run_cancel", {"run_id": "../bad"}),
+    ("staff_thread_read", {"thread_id": "../bad"}),
+    ("staff_work_items", {"limit": 0}),
+    ("staff_approval_decide", {"proposal_id": "p-1", "decision": "maybe"}),
 ]
 
 
@@ -371,3 +432,29 @@ def test_explicit_session_must_carry_the_agent_prefix(fake_api: Any, kwargs: dic
 def test_without_an_agent_any_valid_session_is_accepted(fake_api: Any) -> None:
     FleetClient(fake_api.url, session="anything-1").inbox()
     assert fake_api.last.query == {"session": "anything-1"}
+
+
+def test_staff_thread_wait_success(client: FleetClient, fake_api: Any) -> None:
+    fake_api.respond(
+        "GET", "/api/v1/staff/threads/th_123", 200, {"messages": [{"seq": 3, "id": "msg_3", "body": "ok"}]}
+    )
+    res = client.staff_thread_wait("th_123", since_seq=2, timeout=2.0)
+    assert res["timeout"] is False
+    assert len(res["messages"]) == 1
+    assert res["messages"][0]["seq"] == 3
+
+
+def test_staff_thread_wait_timeout(client: FleetClient, fake_api: Any) -> None:
+    fake_api.respond(
+        "GET", "/api/v1/staff/threads/th_123", 200, {"messages": [{"seq": 2, "id": "msg_2", "body": "old"}]}
+    )
+    res = client.staff_thread_wait("th_123", since_seq=2, timeout=1.0)
+    assert res["timeout"] is True
+    assert res["messages"] == []
+
+
+def test_idempotent_retry(client: FleetClient, fake_api: Any) -> None:
+    fake_api.respond("POST", "/api/staff/runs/run-1/cancel", 503, {"error": "unavailable"})
+    with pytest.raises(FleetAPIError):
+        client.cancel("run-1")
+    assert len(fake_api.requests) == 1
