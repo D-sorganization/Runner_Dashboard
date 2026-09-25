@@ -1,4 +1,35 @@
-# Current handoff — SC-D8: Mobile Staff Console: roster → thread navigation, bottom composer, push deep links (#1331)
+# Current handoff — Restore green main: trim Mobile.tsx <= 500 lines and format api-types.ts (#1428)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `fix/1428-green-main`; Issue #1428; DL-#1428.
+
+## Objective and Status
+
+- Restore green main:
+  - Trim `frontend/src/pages/StaffConsole/Mobile.tsx` from 516 lines to 463 lines (comfortably below 500-line soft cap).
+  - Remove redundant newline before `Client compatibility aliases` in `frontend/src/lib/api-types.ts` to satisfy `generate-api:check`.
+- Status: All tests and checks passing cleanly locally.
+
+## Validation
+
+- `npx vitest run frontend/src/pages/StaffConsole/`: 13 test files passed, 75 tests passed.
+- `npm run typecheck`: clean (0 errors).
+- `npm run lint`: clean (0 warnings).
+- `(Get-Content frontend/src/pages/StaffConsole/Mobile.tsx).Count`: 463 lines (<= 500).
+
+## Next Steps
+
+1. Commit and push branch `fix/1428-green-main`.
+2. Open PR with `Fixes #1428`, enable auto-merge.
+3. Monitor CI until green merge into `main`.
+4. Release lease on issue #1428 and clean up worktree.
+
+---
+
+# Previous handoff — SC-D8: Mobile Staff Console: roster → thread navigation, bottom composer, push deep links (#1331)
 
 Last updated: 2026-09-25
 
@@ -9,29 +40,7 @@ Last updated: 2026-09-25
 ## Objective and Status
 
 - SC-D8: Mobile Staff Console: roster → thread navigation, bottom composer, push deep links.
-- Full-screen roster → thread navigation: single-pane view transitioning between roster (with search, Ask Barb hero, and role groups) and conversation thread with `< Back to Roster` top button.
-- Safe-area aware bottom composer (`env(safe-area-inset-bottom)`) with touch-friendly input, Send, and Voice input buttons.
-- Cards adapted to narrow viewports with $\ge 44\text{px}$ touch targets on Approve/Deny buttons.
-- Push notification deep links: supports `?thread=<id>` and `?role=<role>`, synchronizing state on mount and browser popstate.
-- Role context drawer: slide-up bottom sheet drawer with role mandate, provider info, and schedule/budget summary.
-- Inbox tab: "Waiting on you" tab in mobile roster showing items requiring human intervention.
-- Status: Completed all implementation, unit tests, and e2e specs. Branch ready for PR and merge.
-
-## Validation
-
-- `npx vitest run frontend/src/pages/StaffConsole/`: 13 test files passed, 75 tests passed.
-- `npx vitest run frontend/src/shell/__tests__/RoutedShell.test.tsx`: 42 tests passed.
-- `npm run typecheck`: clean (0 errors).
-- `npm run lint`: clean (0 warnings).
-- `uv run ruff check .`: passed cleanly.
-- `uv run pytest tests/test_frontend_integrity.py`: 72 passed, 1 xfailed.
-
-## Next Steps
-
-1. Push branch `feat/1331-mobile-staff-console`.
-2. Enable auto-merge on PR #1427.
-3. Monitor CI until green merge into `main`.
-4. Release lease on issue #1331 and clean up worktree.
+- Status: Shipped in PR #1427 (commit `94b7090`).
 
 ---
 

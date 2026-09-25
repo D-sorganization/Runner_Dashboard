@@ -18,9 +18,21 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1331 · SC-D8: Mobile Staff Console: roster → thread navigation, bottom composer, push deep links
+### DL-#1428 · Restore green main: trim Mobile.tsx <= 500 lines and format api-types.ts
 
 - **State:** in_progress
+- **Owner:** antigravity
+- **Issue:** #1428
+- **Branch:** `fix/1428-green-main`
+- **Paths:** `frontend/src/pages/StaffConsole/Mobile.tsx`, `frontend/src/lib/api-types.ts`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 (Mobile.tsx trimmed to 463 lines; api-types.ts formatted without duplicate blank line; vitest StaffConsole 75/75 passed; typecheck 0 errors; lint 0 warnings)
+- **Summary:** Trimmed `frontend/src/pages/StaffConsole/Mobile.tsx` to 463 lines (resolving the soft-cap failure in `ci-health-check` on main) and removed duplicate newline in `frontend/src/lib/api-types.ts` before Client compatibility aliases (satisfying `generate-api:check`).
+- **Next step:** Push branch, open PR with Fixes #1428, enable auto-merge, monitor CI to merge, release lease, and clean up.
+
+### DL-#1331 · SC-D8: Mobile Staff Console: roster → thread navigation, bottom composer, push deep links
+
+- **State:** shipped
 - **Owner:** antigravity
 - **Issue:** #1331 (epic #1350 / umbrella #1354)
 - **Branch:** `feat/1331-mobile-staff-console`
@@ -28,7 +40,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (all 75 StaffConsole unit tests passed; npm run typecheck passed 0 errors; npm run lint passed 0 warnings; pytest test_frontend_integrity passed 72/72; all files strictly <= 500 lines)
 - **Summary:** Implemented SC-D8 Mobile Staff Console: (1) Full-screen mobile roster with Ask Barb top entry, role groupings, status badges, and search filtering; (2) Full-screen transition to conversation thread with `< Back to Roster` button, role header, and details sheet; (3) Safe-area aware bottom composer (`env(safe-area-inset-bottom)`) with Send and Voice input touch targets; (4) Cards adapted to narrow viewports with $\ge 44\text{px}$ touch targets on Approve/Deny buttons; (5) Push notification deep links (`?thread=<id>` and `?role=<role>`); (6) Role context bottom sheet drawer for inspecting schedule and budget; (7) Seamless mobile tab integration in `RoutedShell.tsx`.
-- **Next step:** Push branch, open PR with Fixes #1331, enable auto-merge, monitor CI to merge, release lease, and clean up worktree.
+- **Next step:** Shipped in PR #1427 (commit `94b7090`).
 
 ### DL-#1424 · Restore green main: synchronize generated API contract for SC-C5
 

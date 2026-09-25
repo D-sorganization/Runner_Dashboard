@@ -39,14 +39,12 @@ export interface StaffConsoleMobileProps {
 }
 
 function parseUrlParams(): { threadId: string | null; roleName: string | null; tab: string | null } {
-  if (typeof window === "undefined") {
-    return { threadId: null, roleName: null, tab: null };
-  }
-  const params = new URLSearchParams(window.location.search);
+  if (typeof window === "undefined") return { threadId: null, roleName: null, tab: null };
+  const p = new URLSearchParams(window.location.search);
   return {
-    threadId: params.get("thread"),
-    roleName: params.get("role"),
-    tab: params.get("tab") || (params.get("inbox") ? "inbox" : null),
+    threadId: p.get("thread"),
+    roleName: p.get("role"),
+    tab: p.get("tab") || (p.get("inbox") ? "inbox" : null),
   };
 }
 
@@ -75,55 +73,40 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
     if (initialRoles && initialRoles.length > 0) {
       setRoles(initialRoles);
     } else {
-      fetchRoster()
-        .then((res) => {
-          if (res?.roles) setRoles(res.roles as StaffRoleItem[]);
-        })
-        .catch(() => {});
+      fetchRoster().then((res) => {
+        if (res?.roles) setRoles(res.roles as StaffRoleItem[]);
+      }).catch(() => {});
     }
   }, [initialRoles]);
 
   // Deep Link Handling (?thread=, ?role=, ?tab=)
   const syncWithUrl = useCallback(() => {
     const { threadId, roleName, tab } = parseUrlParams();
-
     if (threadId) {
       setView("thread");
-      setActiveThread((prev) =>
-        prev && prev.id === threadId
-          ? prev
-          : {
-              id: threadId,
-              title: roleName ? `Conversation with ${roleName}` : "Conversation",
-              kind: "direct",
-              participants: ["user", roleName || "staff"],
-              status: "active",
-            },
-      );
+      setActiveThread((prev) => prev?.id === threadId ? prev : {
+        id: threadId,
+        title: roleName ? `Conversation with ${roleName}` : "Conversation",
+        kind: "direct",
+        participants: ["user", roleName || "staff"],
+        status: "active",
+      });
       if (roleName) setSelectedRole(roleName);
       return;
     }
-
     if (roleName) {
       setView("thread");
       setSelectedRole(roleName);
-      setActiveThread((prev) =>
-        prev && prev.participants.includes(roleName)
-          ? prev
-          : {
-              id: `thread-${roleName}-direct`,
-              title: roleName === "barb" ? "Conversation with Barb" : roleName,
-              kind: roleName === "barb" ? "auto" : "direct",
-              participants: ["user", roleName],
-              status: "active",
-            },
-      );
+      setActiveThread((prev) => prev?.participants.includes(roleName) ? prev : {
+        id: `thread-${roleName}-direct`,
+        title: roleName === "barb" ? "Conversation with Barb" : roleName,
+        kind: roleName === "barb" ? "auto" : "direct",
+        participants: ["user", roleName],
+        status: "active",
+      });
       return;
     }
-
-    if (tab === "inbox") {
-      setView("inbox");
-    }
+    if (tab === "inbox") setView("inbox");
   }, []);
 
   useEffect(() => {
@@ -135,11 +118,9 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
   // Load thread messages if needed
   useEffect(() => {
     if (activeThread?.id && initialMessages.length === 0) {
-      fetchThreadMessages(activeThread.id)
-        .then((res) => {
-          if (res?.messages) setMessages(res.messages);
-        })
-        .catch(() => {});
+      fetchThreadMessages(activeThread.id).then((res) => {
+        if (res?.messages) setMessages(res.messages);
+      }).catch(() => {});
     }
   }, [activeThread?.id, initialMessages.length]);
 
@@ -188,27 +169,17 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
   // Send message handler
   const handleSendMessage = useCallback(
     async (payload: SendMessagePayload) => {
-      if (externalSendMessage) {
-        return externalSendMessage(payload);
-      }
-      if (!activeThread?.id) {
-        return { ok: false, error: "No active thread" };
-      }
+      if (externalSendMessage) return externalSendMessage(payload);
+      if (!activeThread?.id) return { ok: false, error: "No active thread" };
       try {
         const res = await postThreadMessage(
           activeThread.id,
-          {
-            body_md: payload.body,
-            author: "user",
-            author_kind: "user",
-            meta: payload.meta,
-          },
+          { body_md: payload.body, author: "user", author_kind: "user", meta: payload.meta },
           payload.idempotencyKey,
         );
         return { ok: true, message: res };
       } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        return { ok: false, error: msg };
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
       }
     },
     [activeThread?.id, externalSendMessage],
@@ -241,26 +212,18 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
   const filteredRoles = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return roles;
-    return roles.filter(
-      (r) =>
-        r.name.toLowerCase().includes(q) ||
-        r.title.toLowerCase().includes(q) ||
-        (r.summary && r.summary.toLowerCase().includes(q)),
+    return roles.filter((r) =>
+      r.name.toLowerCase().includes(q) ||
+      r.title.toLowerCase().includes(q) ||
+      (r.summary && r.summary.toLowerCase().includes(q)),
     );
   }, [roles, searchQuery]);
 
   // Find Barb role
-  const barbRole = useMemo(
-    () =>
-      roles.find((r) => r.name === "barb") || {
-        name: "barb",
-        title: "Barb",
-        summary: "Fleet Orchestrator and conversational concierge",
-        group: "leadership",
-        valid: true,
-      },
-    [roles],
-  );
+  const barbRole = useMemo(() => roles.find((r) => r.name === "barb") || {
+    name: "barb", title: "Barb", summary: "Fleet Orchestrator and conversational concierge",
+    group: "leadership", valid: true,
+  }, [roles]);
 
   // Current active role object
   const currentRoleObj = useMemo(
@@ -269,27 +232,20 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
   );
 
   // Formatted RoleDetail for ContextPane
-  const roleDetail: RoleDetail = useMemo(
-    () => ({
-      name: currentRoleObj.name,
-      title: currentRoleObj.title,
-      mandate: currentRoleObj.summary || "",
-      providers: Array.isArray(currentRoleObj.providers)
-        ? currentRoleObj.providers.map((p) =>
-            typeof p === "string" ? { name: p, signed_in: true } : p,
-          )
-        : [],
-      budget: currentRoleObj.budget
-        ? {
-            usd_per_day: currentRoleObj.budget.daily_limit ?? 50,
-            usd_today: currentRoleObj.budget.spend_today ?? 0,
-          }
-        : undefined,
-      active_runs: [],
-      recent_work_items: [],
-    }),
-    [currentRoleObj],
-  );
+  const roleDetail: RoleDetail = useMemo(() => ({
+    name: currentRoleObj.name,
+    title: currentRoleObj.title,
+    mandate: currentRoleObj.summary || "",
+    providers: Array.isArray(currentRoleObj.providers)
+      ? currentRoleObj.providers.map((p) => typeof p === "string" ? { name: p, signed_in: true } : p)
+      : [],
+    budget: currentRoleObj.budget ? {
+      usd_per_day: currentRoleObj.budget.daily_limit ?? 50,
+      usd_today: currentRoleObj.budget.spend_today ?? 0,
+    } : undefined,
+    active_runs: [],
+    recent_work_items: [],
+  }), [currentRoleObj]);
 
   return (
     <div className={`staff-mobile ${className}`} data-testid="staff-mobile-root">
@@ -301,7 +257,6 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
           role="region"
           aria-label="Staff Conversation"
         >
-          {/* Thread Header */}
           <header className="staff-mobile__header">
             <div className="staff-mobile__header-left">
               <button
@@ -328,7 +283,6 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
             </div>
           </header>
 
-          {/* Message List */}
           <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column" }}>
             <Thread
               thread={activeThread}
@@ -339,7 +293,6 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
             />
           </div>
 
-          {/* Safe-Area Aware Bottom Composer */}
           <div
             className="staff-mobile__composer-container"
             data-testid="staff-mobile-composer-container"
@@ -353,7 +306,6 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
             />
           </div>
 
-          {/* Role Context Bottom Drawer */}
           {showContext && (
             <div
               className="staff-mobile__drawer-overlay"
@@ -391,12 +343,10 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
           role="region"
           aria-label="Staff Roster"
         >
-          {/* Header */}
           <header className="staff-mobile__header">
             <h1 className="staff-mobile__title">Staff Console</h1>
           </header>
 
-          {/* Tab Strip */}
           <div className="staff-mobile__tabs" role="tablist" aria-label="Staff views">
             <button
               type="button"
@@ -426,7 +376,6 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
             </div>
           ) : (
             <div className="staff-mobile__content">
-              {/* Search input */}
               <div className="staff-mobile__search-container">
                 <input
                   type="search"
@@ -438,7 +387,6 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
                 />
               </div>
 
-              {/* Ask Barb Hero Row */}
               <div
                 className="staff-mobile__ask-barb"
                 data-testid="staff-mobile-ask-barb"
@@ -461,7 +409,6 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
                 </div>
               </div>
 
-              {/* Role Groups */}
               <div className="staff-mobile__roles-list">
                 {ROSTER_GROUPS.map((group) => {
                   const groupRoles = filteredRoles.filter((r) => r.group === group.key);
