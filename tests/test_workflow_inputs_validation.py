@@ -220,7 +220,14 @@ def test_feature_request_clean_inputs_ok(client: TestClient) -> None:
         "prompt": "implement feature X",
         "inputs": {"extra": "value"},
     }
-    with patch("routers.feature_requests.run_cmd", new=AsyncMock(side_effect=_ok_run)):
+    with (
+        patch("routers.feature_requests.run_cmd", new=AsyncMock(side_effect=_ok_run)),
+        patch(
+            "agent_remediation.probe_provider_availability",
+            return_value={"jules_api": type("_A", (), {"available": True, "detail": "ready"})()},
+        ),
+    ):
         resp = client.post("/api/feature-requests/dispatch", json=body)
     assert resp.status_code in (200, 202)
     assert resp.json().get("status") == "dispatched"
+
