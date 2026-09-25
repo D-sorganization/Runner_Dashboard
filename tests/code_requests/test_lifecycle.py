@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
+import itertools
 import sys
 from pathlib import Path
 
 import pytest
-from hypothesis import given
-from hypothesis import strategies as st
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "backend"))
 
@@ -38,48 +37,40 @@ def _sample_request(state: CodeRequestState) -> CodeRequest:
     )
 
 
-@given(
-    from_state=st.sampled_from(list(CodeRequestState)),
-    to_state=st.sampled_from(list(CodeRequestState)),
-    override=st.booleans(),
-)
-def test_lifecycle_property_all_transitions(
-    from_state: CodeRequestState,
-    to_state: CodeRequestState,
-    override: bool,
-) -> None:
-    """Property test: transition() succeeds iff is_legal_transition() is True."""
-    req = _sample_request(from_state)
-    expected_legal = is_legal_transition(from_state, to_state, is_operator_override=override)
+def test_lifecycle_property_all_transitions() -> None:
+    """Exhaustive transition test: transition() succeeds iff is_legal_transition() is True."""
+    for from_state, to_state, override in itertools.product(CodeRequestState, CodeRequestState, [False, True]):
+        req = _sample_request(from_state)
+        expected_legal = is_legal_transition(from_state, to_state, is_operator_override=override)
 
-    if expected_legal:
-        updated = transition(
-            req,
-            to_state,
-            actor="operator-1",
-            reason="testing transition",
-            is_operator_override=override,
-            now="2026-09-25T13:00:00Z",
-        )
-        assert updated.state == to_state
-        assert updated.updated_at == "2026-09-25T13:00:00Z"
-        assert len(updated.audit_trail) == len(req.audit_trail) + 1
-        event = updated.audit_trail[-1]
-        assert event.actor == "operator-1"
-        assert event.from_state == from_state
-        assert event.to_state == to_state
-        assert event.reason == "testing transition"
-        assert event.override == override
-        assert event.timestamp == "2026-09-25T13:00:00Z"
-    else:
-        with pytest.raises(InvalidTransitionError):
-            transition(
+        if expected_legal:
+            updated = transition(
                 req,
                 to_state,
                 actor="operator-1",
-                reason="testing illegal transition",
+                reason="testing transition",
                 is_operator_override=override,
+                now="2026-09-25T13:00:00Z",
             )
+            assert updated.state == to_state
+            assert updated.updated_at == "2026-09-25T13:00:00Z"
+            assert len(updated.audit_trail) == len(req.audit_trail) + 1
+            event = updated.audit_trail[-1]
+            assert event.actor == "operator-1"
+            assert event.from_state == from_state
+            assert event.to_state == to_state
+            assert event.reason == "testing transition"
+            assert event.override == override
+            assert event.timestamp == "2026-09-25T13:00:00Z"
+        else:
+            with pytest.raises(InvalidTransitionError):
+                transition(
+                    req,
+                    to_state,
+                    actor="operator-1",
+                    reason="testing illegal transition",
+                    is_operator_override=override,
+                )
 
 
 def test_standard_happy_path() -> None:
