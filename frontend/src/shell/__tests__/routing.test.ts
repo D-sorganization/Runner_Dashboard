@@ -23,6 +23,7 @@ import {
   pathnameToTabId,
   tabIdToPath,
   allTabPaths,
+  getTabRedirect,
 } from "../routing";
 import { NAV_ITEMS, navItemById } from "../navRegistry";
 
@@ -120,4 +121,18 @@ describe("routing — aliases and push detection", () => {
     expect(isPushSettingsRoute("/")).toBe(false);
     expect(isPushSettingsRoute("/t/queue")).toBe(false);
   });
+});
+
+describe("retired Cline Launcher (SC-G6, #1338)", () => {
+  it("has no nav entry", () => {
+    expect(navItemById("cline-launcher")).toBeUndefined();
+    expect(NAV_ITEMS.some((item) => item.tabId === "cline-launcher")).toBe(false);
+  });
+
+  it.each(["/t/cline-launcher", "/staff/cline-launcher", "/cline-launcher"])(
+    "redirects %s to the Staff Console",
+    (path) => {
+      expect(getTabRedirect(path)).toEqual({ to: "/staff", label: "Staff Console" });
+    },
+  );
 });

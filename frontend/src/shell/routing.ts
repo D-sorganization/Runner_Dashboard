@@ -88,6 +88,8 @@ export interface RedirectTarget {
  * Static redirect table mapping old tabIds and legacy aliases to their
  * new canonical routes and labels.
  */
+const RETIRED_CLINE_LAUNCHER: RedirectTarget = { to: "/staff", label: "Staff Console" };
+
 export const REDIRECT_TABLE: Record<string, RedirectTarget> = (() => {
   const table: Record<string, RedirectTarget> = {};
   for (const item of NAV_ITEMS) {
@@ -115,6 +117,8 @@ export const REDIRECT_TABLE: Record<string, RedirectTarget> = (() => {
   table["scheduled-jobs"] = { to: "/fleet/operations#scheduled-workflows", label: "Scheduled workflows" };
   table["schedules"] = { to: "/fleet/operations#scheduled-workflows", label: "Scheduled workflows" };
   table["diagnostics"] = { to: "/fleet/operations#diagnostics", label: "Diagnostics" };
+  // Retired pages (SC-G6, #1338): the Staff Console replaces the Cline Launcher.
+  table["cline-launcher"] = RETIRED_CLINE_LAUNCHER;
   return table;
 })();
 
@@ -163,6 +167,9 @@ export function getTabRedirect(pathname: string): RedirectTarget | null {
   }
   if (normalized === "/settings/diagnostics" || normalized === "/diagnostics") {
     return { to: "/fleet/operations#diagnostics", label: "Diagnostics" };
+  }
+  if (normalized === "/staff/cline-launcher" || normalized === "/cline-launcher") {
+    return RETIRED_CLINE_LAUNCHER;
   }
   if (normalized === "/operations") {
     return { to: "/fleet/operations", label: "Operations" };

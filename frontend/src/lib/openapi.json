@@ -105,70 +105,6 @@
         "title": "ActionRiskLevel",
         "type": "string"
       },
-      "AgentStatus": {
-        "properties": {
-          "enabled": {
-            "title": "Enabled",
-            "type": "boolean"
-          },
-          "interval_seconds": {
-            "title": "Interval Seconds",
-            "type": "integer"
-          },
-          "last_repo": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Repo"
-          },
-          "last_run_iso": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Run Iso"
-          },
-          "last_window_pid": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Window Pid"
-          },
-          "lock_alive": {
-            "title": "Lock Alive",
-            "type": "boolean"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          }
-        },
-        "required": [
-          "name",
-          "enabled",
-          "interval_seconds",
-          "last_run_iso",
-          "last_repo",
-          "last_window_pid",
-          "lock_alive"
-        ],
-        "title": "AgentStatus",
-        "type": "object"
-      },
       "AnswerNeedsInputRequest": {
         "properties": {
           "answer": {
@@ -591,6 +527,101 @@
         },
         "required": ["page", "message"],
         "title": "ClientErrorPayload",
+        "type": "object"
+      },
+      "CreateProposalRequest": {
+        "description": "Payload for submitting a suggestion to the Board (POST /api/proposals).",
+        "properties": {
+          "code_request_url": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code Request Url"
+          },
+          "confirm_not_duplicate": {
+            "default": false,
+            "title": "Confirm Not Duplicate",
+            "type": "boolean"
+          },
+          "estimated_cost": {
+            "enum": ["Low", "Medium", "High"],
+            "title": "Estimated Cost",
+            "type": "string"
+          },
+          "evidence": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Evidence",
+            "type": "string"
+          },
+          "lean": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Lean",
+            "type": "string"
+          },
+          "options_considered": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Options Considered",
+            "type": "string"
+          },
+          "problem": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Problem",
+            "type": "string"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "target_repos": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Target Repos",
+            "type": "array"
+          },
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "urgency": {
+            "enum": ["Routine", "Urgent", "Emergency"],
+            "title": "Urgency",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "target_repos",
+          "problem",
+          "evidence",
+          "options_considered",
+          "lean",
+          "estimated_cost",
+          "urgency"
+        ],
+        "title": "CreateProposalRequest",
         "type": "object"
       },
       "CreateThreadRequest": {
@@ -2094,65 +2125,6 @@
         "title": "RemoteLogoutRequest",
         "type": "object"
       },
-      "RepoEntry": {
-        "properties": {
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "org": {
-            "title": "Org",
-            "type": "string"
-          },
-          "remote_url": {
-            "title": "Remote Url",
-            "type": "string"
-          },
-          "wsl_path": {
-            "title": "Wsl Path",
-            "type": "string"
-          }
-        },
-        "required": ["name", "wsl_path", "org", "remote_url"],
-        "title": "RepoEntry",
-        "type": "object"
-      },
-      "ReposResponse": {
-        "properties": {
-          "count": {
-            "title": "Count",
-            "type": "integer"
-          },
-          "org_filter": {
-            "title": "Org Filter",
-            "type": "string"
-          },
-          "repos": {
-            "items": {
-              "$ref": "#/components/schemas/RepoEntry"
-            },
-            "title": "Repos",
-            "type": "array"
-          },
-          "repos_root": {
-            "title": "Repos Root",
-            "type": "string"
-          },
-          "wsl_distro": {
-            "title": "Wsl Distro",
-            "type": "string"
-          }
-        },
-        "required": [
-          "wsl_distro",
-          "repos_root",
-          "org_filter",
-          "count",
-          "repos"
-        ],
-        "title": "ReposResponse",
-        "type": "object"
-      },
       "RoleScheduleOverrideBody": {
         "properties": {
           "enabled": {
@@ -2404,19 +2376,6 @@
         "title": "RunBody",
         "type": "object"
       },
-      "RunOnceRequest": {
-        "properties": {
-          "agent": {
-            "maxLength": 64,
-            "minLength": 1,
-            "title": "Agent",
-            "type": "string"
-          }
-        },
-        "required": ["agent"],
-        "title": "RunOnceRequest",
-        "type": "object"
-      },
       "ScheduleToggleBody": {
         "properties": {
           "enabled": {
@@ -2450,22 +2409,6 @@
         },
         "required": ["provider", "key"],
         "title": "SetKeyRequest",
-        "type": "object"
-      },
-      "SimpleResponse": {
-        "properties": {
-          "detail": {
-            "default": "",
-            "title": "Detail",
-            "type": "string"
-          },
-          "ok": {
-            "title": "Ok",
-            "type": "boolean"
-          }
-        },
-        "required": ["ok"],
-        "title": "SimpleResponse",
         "type": "object"
       },
       "StaffAuditListResponse": {
@@ -4047,56 +3990,6 @@
         "title": "StaffV1RunsPage",
         "type": "object"
       },
-      "StatusResponse": {
-        "properties": {
-          "agents": {
-            "items": {
-              "$ref": "#/components/schemas/AgentStatus"
-            },
-            "title": "Agents",
-            "type": "array"
-          },
-          "runtime_root": {
-            "title": "Runtime Root",
-            "type": "string"
-          },
-          "scheduler_pid": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Scheduler Pid"
-          },
-          "scheduler_running": {
-            "title": "Scheduler Running",
-            "type": "boolean"
-          },
-          "scheduler_started_iso": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Scheduler Started Iso"
-          }
-        },
-        "required": [
-          "runtime_root",
-          "scheduler_running",
-          "scheduler_pid",
-          "scheduler_started_iso",
-          "agents"
-        ],
-        "title": "StatusResponse",
-        "type": "object"
-      },
       "TokenCreateRequest": {
         "properties": {
           "expires_in_days": {
@@ -4296,101 +4189,6 @@
           }
         },
         "title": "WorkSummary",
-        "type": "object"
-      },
-      "proposals__models__CreateProposalRequest": {
-        "description": "Payload for submitting a suggestion to the Board (POST /api/proposals).",
-        "properties": {
-          "code_request_url": {
-            "anyOf": [
-              {
-                "maxLength": 500,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Code Request Url"
-          },
-          "confirm_not_duplicate": {
-            "default": false,
-            "title": "Confirm Not Duplicate",
-            "type": "boolean"
-          },
-          "estimated_cost": {
-            "enum": ["Low", "Medium", "High"],
-            "title": "Estimated Cost",
-            "type": "string"
-          },
-          "evidence": {
-            "maxLength": 10000,
-            "minLength": 1,
-            "title": "Evidence",
-            "type": "string"
-          },
-          "lean": {
-            "maxLength": 10000,
-            "minLength": 1,
-            "title": "Lean",
-            "type": "string"
-          },
-          "options_considered": {
-            "maxLength": 10000,
-            "minLength": 1,
-            "title": "Options Considered",
-            "type": "string"
-          },
-          "problem": {
-            "maxLength": 10000,
-            "minLength": 1,
-            "title": "Problem",
-            "type": "string"
-          },
-          "source": {
-            "anyOf": [
-              {
-                "maxLength": 100,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Source"
-          },
-          "target_repos": {
-            "items": {
-              "type": "string"
-            },
-            "maxItems": 10,
-            "minItems": 1,
-            "title": "Target Repos",
-            "type": "array"
-          },
-          "title": {
-            "maxLength": 200,
-            "minLength": 1,
-            "title": "Title",
-            "type": "string"
-          },
-          "urgency": {
-            "enum": ["Routine", "Urgent", "Emergency"],
-            "title": "Urgency",
-            "type": "string"
-          }
-        },
-        "required": [
-          "title",
-          "target_repos",
-          "problem",
-          "evidence",
-          "options_considered",
-          "lean",
-          "estimated_cost",
-          "urgency"
-        ],
-        "title": "CreateProposalRequest",
         "type": "object"
       },
       "routers__staff_proposals__CreateProposalRequest": {
@@ -4697,219 +4495,6 @@
         ],
         "summary": "Revoke Service Token",
         "tags": ["admin"]
-      }
-    },
-    "/api/agent-launcher/config": {
-      "get": {
-        "description": "Return the normalized v2 user config. Delegates to the launcher's\n``--validate-config`` so the response matches whatever the scheduler\nwill see.",
-        "operationId": "get_config_api_agent_launcher_config_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Get Config Api Agent Launcher Config Get",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "APIKeyCookie": []
-          }
-        ],
-        "summary": "Get Config",
-        "tags": ["agent-launcher"]
-      },
-      "put": {
-        "description": "Replace the user config. Validates by writing to a temp file and\ninvoking the launcher's ``--validate-config --config <tmp>``; only\npromotes to the real config path if validation passes (atomic\nrename).",
-        "operationId": "put_config_api_agent_launcher_config_put",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SimpleResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "APIKeyCookie": []
-          }
-        ],
-        "summary": "Put Config",
-        "tags": ["agent-launcher"]
-      }
-    },
-    "/api/agent-launcher/repos": {
-      "get": {
-        "operationId": "get_repos_api_agent_launcher_repos_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ReposResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "APIKeyCookie": []
-          }
-        ],
-        "summary": "Get Repos",
-        "tags": ["agent-launcher"]
-      }
-    },
-    "/api/agent-launcher/run-once": {
-      "post": {
-        "description": "Spawn one window for one agent now (does not affect the scheduler).",
-        "operationId": "run_once_api_agent_launcher_run_once_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RunOnceRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SimpleResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "APIKeyCookie": []
-          }
-        ],
-        "summary": "Run Once",
-        "tags": ["agent-launcher"]
-      }
-    },
-    "/api/agent-launcher/start": {
-      "post": {
-        "operationId": "start_scheduler_api_agent_launcher_start_post",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SimpleResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "APIKeyCookie": []
-          }
-        ],
-        "summary": "Start Scheduler",
-        "tags": ["agent-launcher"]
-      }
-    },
-    "/api/agent-launcher/status": {
-      "get": {
-        "description": "Quick status read. Pure file I/O \u2014 no subprocess. Safe to poll\nevery few seconds from the dashboard.",
-        "operationId": "get_status_api_agent_launcher_status_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/StatusResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "APIKeyCookie": []
-          }
-        ],
-        "summary": "Get Status",
-        "tags": ["agent-launcher"]
-      }
-    },
-    "/api/agent-launcher/stop": {
-      "post": {
-        "operationId": "stop_scheduler_api_agent_launcher_stop_post",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SimpleResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "APIKeyCookie": []
-          }
-        ],
-        "summary": "Stop Scheduler",
-        "tags": ["agent-launcher"]
       }
     },
     "/api/agent-profiles": {
@@ -10032,7 +9617,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/proposals__models__CreateProposalRequest"
+                "$ref": "#/components/schemas/CreateProposalRequest"
               }
             }
           },

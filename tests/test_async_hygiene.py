@@ -9,8 +9,6 @@ Module-import-time calls (server.py PowerShell memory probe) and sync helper
 functions are exempt by design — the rule is about *async def* bodies only.
 
 Excluded paths (noqa-equivalent):
-  - ``agent_launcher_router.py`` — all subprocess calls are in sync functions
-    or ``Popen`` (fire-and-forget), not blocking ``run`` in async context.
   - ``routers/system.py`` — ``get_gpu_info`` is a sync function used inside
     async routes via ``asyncio.to_thread``; pattern already correct.
   - ``local_app_monitoring.py`` — has ``# noqa: S603`` call in sync context.
@@ -38,7 +36,6 @@ AUDIT_FILES = _TOP_LEVEL + _ROUTER_FILES
 
 # Files that are explicitly exempted (sync-only subprocess usage).
 _EXEMPT = {
-    "agent_launcher_router.py",  # all calls are in sync helpers / Popen
     "system.py",  # get_gpu_info is sync; called via to_thread
     "local_app_monitoring.py",  # has noqa:S603, sync context
 }

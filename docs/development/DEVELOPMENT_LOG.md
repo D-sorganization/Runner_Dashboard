@@ -18,6 +18,19 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
+### DL-#1338 · SC-G6: Owner decisions and follow-through on off-theme pages
+
+- **State:** in_progress
+- **Owner:** claude
+- **Issue:** #1338 (epic #1353)
+- **Branch:** `feat/1338-retire-cline-launcher`
+- **PR:** not created
+- **Paths:** `frontend/src/shell/`, `frontend/src/legacy/App.tsx`, `frontend/src/pages/`, `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `backend/server.py`, `tests/api/test_retired_cline_launcher.py`
+- **Started:** 2026-09-25
+- **Last verified:** 2026-09-25 at `14e7299b` baseline (vitest 1305 passed; tsc clean; retired-route tests green)
+- **Summary:** Carries out the owner's per-page decisions (table on #1353). Row 1: retire the Cline Launcher. Remaining: Tests → Diagnostics, Organization → Projects, Assessments split, Settings consolidation, Maxwell provider view.
+- **Next step:** Merge the Cline Launcher PR, then move Tests under Operations → Diagnostics.
+
 ### DL-#1330 · SC-D11: Fold the three stray chat surfaces (Maxwell chat, Codebase chat, legacy assistant sidebar) into the Staff Console
 
 - **State:** in_review

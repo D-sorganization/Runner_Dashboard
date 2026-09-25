@@ -28,9 +28,6 @@ export interface TabIntro {
  * tooltip itself, which stays compact).
  */
 export const INTRO_OVERRIDES: Readonly<Record<string, string>> = {
-  // "Cline" is an AI coding agent; spell out what launching a session means.
-  "cline-launcher":
-    "Start a Cline AI coding-agent session against a fleet repo — Cline runs the agent that edits code and opens PRs on your behalf.",
   // "Principals" is auth jargon for the identities the dashboard can act as.
   principals:
     "The identities (users, bots, service accounts) the dashboard is authenticated as, and which one it is currently acting on behalf of.",

@@ -56,7 +56,6 @@ import {
 import { AgentDispatchPage } from "../pages/AgentDispatch";
 import { AnalysisTab } from "../pages/Analysis";
 import { AssessmentsPage } from "../pages/AssessmentsPage";
-import { ClineLauncherTab } from "../pages/ClineLauncher";
 import { CredentialsPage } from "../pages/CredentialsPage";
 import { EventsTab } from "../pages/Events";
 import { CodeRequestsPage } from "../pages/CodeRequestsPage";
@@ -141,8 +140,6 @@ function nativeDesktopTabContent(tabId: string): React.ReactNode | null {
       return <AnalysisTab activeTab={tabId} />;
     case "assessments":
       return <AssessmentsPage />;
-    case "cline-launcher":
-      return <ClineLauncherTab />;
     case "operations":
     case "conductor":
     case "deployment":

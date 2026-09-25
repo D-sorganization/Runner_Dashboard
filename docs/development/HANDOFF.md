@@ -1,3 +1,32 @@
+# Current handoff — SC-G6: retire the Cline Launcher (#1338)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1338-retire-cline-launcher`; Issue #1338 (SC-G #1353); DL-#1338.
+- Worktree `_wt_claude_rd_tracking` on OGLaptop; baseline `14e7299b`; commit `SELF`; PR: opened right after this commit.
+
+## Objective and Status
+
+- The owner decided every off-theme page on 2026-09-25. The decision table is on #1353 and #1338; each row ships as its own PR. This PR covers the **Cline Launcher** row: retire it.
+- Removed: nav item (`navRegistryData.ts`), `RoutedShell` case, legacy `App.tsx` tab, intro copy, `pages/ClineLauncher.tsx` (+ test), `backend/agent_launcher_router.py` (+ its router and auth-perimeter tests), and the async-hygiene exemption.
+- Redirects: `/t/cline-launcher`, `/staff/cline-launcher` and `/cline-launcher` go to `/staff` ("Staff Console").
+- OpenAPI snapshot and `api-types.ts` regenerated: the six `/api/agent-launcher/*` paths and their schemas are gone. Without the name clash, `proposals__models__CreateProposalRequest` is now plain `CreateProposalRequest`; nothing in the frontend referenced the old name.
+- Not touched: the launcher itself lives in Repository_Management (`launchers/cline_agent_launcher`); retiring it there is a separate RM decision. `usage_metrics` keeps the `cline-launcher` id, so historical page views still report.
+
+## Validation
+
+- RED first: `tests/api/test_retired_cline_launcher.py` (no mounted routes, no OpenAPI paths) and the `routing.test.ts` retired-page cases failed before the change.
+- `npx vitest run frontend/src`: 154 files, 1305 tests passed. tsc clean; eslint clean (one pre-existing warning).
+- pytest: see the PR body. `test_conductor_constants` fails identically on clean main locally because it reads the sibling RM checkout, so it's environmental.
+
+## Next Steps
+
+1. Merge. Next SC-G6 rows: Tests → Diagnostics, Organization → Projects (CI badge), Assessments split, Settings consolidation, Maxwell provider view.
+
+---
+
 # Current handoff — SC-D11: Fold the three stray chat surfaces (Maxwell chat, Codebase chat, legacy assistant sidebar) into the Staff Console (#1330)
 
 Last updated: 2026-09-25
