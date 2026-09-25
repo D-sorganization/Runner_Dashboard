@@ -18,18 +18,31 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1303 · SC-A7: Bounded retry policy for transient staff-run failures and enforce per-provider concurrency
+### DL-#1310 · SC-E2: Short-lived, scoped credentials for staff runs so roles can call fleet APIs they are allowed to
 
 - **State:** in_progress
 - **Owner:** antigravity
+- **Issue:** #1310 (epic #1347 / umbrella #1354)
+- **Branch:** `feat/1310-scoped-staff-credentials`
+- **PR:** (pending)
+- **Paths:** `backend/staff/schema.json`, `backend/identity.py`, `backend/staff/roles.py`, `backend/staff/credential.py`, `backend/staff/runner.py`, `backend/staff/reconcile.py`, `tests/api/test_staff_credentials.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`
+- **Started:** 2026-09-24
+- **Last verified:** 2026-09-24 (local pytest, mypy, ruff pass)
+- **Summary:** Implemented short-lived, scoped staff credentials in backend/staff/credential.py. Mints ephemeral tokens bound to principal staff:<role>:<run_id> with scopes computed from role fleet_actions and action policy. Injects FLEET_API_TOKEN into process env, revokes at run end and restart reconcile. Fails fast as workspace_error if minting fails.
+- **Next step:** Land PR, release lease on #1310.
+
+### DL-#1303 · SC-A7: Bounded retry policy for transient staff-run failures and enforce per-provider concurrency
+
+- **State:** shipped
+- **Owner:** antigravity
 - **Issue:** #1303 (epic #1347 / umbrella #1354)
 - **Branch:** `feat/1303-bounded-retry-provider-concurrency`
-- **PR:** (pending)
+- **PR:** #1375
 - **Paths:** `backend/staff/plan.py`, `backend/staff/retry.py`, `backend/staff/roles.py`, `backend/staff/store.py`, `backend/staff/models.py`, `backend/routers/staff.py`, `backend/staff/runner.py`, `backend/staff/reconcile.py`, `frontend/src/lib/openapi.json`, `frontend/src/lib/api-types.ts`, `tests/api/test_staff_retry.py`, `SPEC.md`
 - **Started:** 2026-09-24
-- **Last verified:** 2026-09-24 (local pytest, typecheck, drift check pass)
+- **Last verified:** 2026-09-24 (shipped in PR #1375)
 - **Summary:** Implemented bounded retry policy for transient staff run failures in backend/staff/retry.py with exponential backoff and jitter. Enforced per-provider concurrency with BoundedSemaphore in runner.py. Added retry tracking columns and queries in store.py. Linked attempt history in API responses.
-- **Next step:** Land PR, release lease on #1303.
+- **Next step:** None (shipped in PR #1375).
 
 ### DL-#1296 · SC-A10: Contract check between backend response models and frontend types
 

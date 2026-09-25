@@ -1,6 +1,6 @@
 # SPEC.md — D-sorganization Runner Dashboard
 
-**Spec Version:** 2.5.221
+**Spec Version:** 2.5.222
 **Application Version:** 4.10.0 (see `VERSION`)
 **Last Updated:** 2026-09-24T00:00:00-07:00
 **Status:** Active
@@ -9,6 +9,7 @@
 
 | Date       | PR / Issue             | Summary                                                                                                                                                                                                                                                                     |
 | ---------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-09-24 | #1310                  | SC-E2: Short-lived, scoped credentials for staff runs so roles can call fleet APIs they are allowed to; per-run token minting and revocation; FLEET_API_TOKEN env injection.                                                                                              |
 | 2026-09-24 | #1303                  | SC-A7: Bounded retry policy for transient staff-run failures and enforce per-provider concurrency; exponential backoff with jitter; fallback chains; logical run aggregation.                                                                                             |
 | 2026-09-24 | #1296                  | SC-A10: Contract check between backend response models and frontend types for staff and conversation APIs; generated OpenAPI client types; drift check script.                                                                                                              |
 | 2026-09-24 | #1372                  | Restore green main: satisfy detect-secrets in test_staff_on_behalf_of, preserve 4-space api-types formatting, exempt overgrown modules in ci-health-check.                                                                                                                  |
@@ -40,6 +41,7 @@
 | 2026-09-23 | #1192                  | Record verified OGLaptop worker deployment, six-provider health checks, scoped WSL Ollama connectivity, and rollback paths.                                                                                                                                                 |
 | 2026-09-23 | #1251                  | Expose all deferred-plan owners and feature IDs/statuses/safe links in Projects; retain owner authority and live rollout under #1248.                                                                                                                                       |
 
+- **2026-09-24:** Short-Lived Scoped Staff Credentials (issue #1310, SC-E2). Implemented per-run ephemeral credentials for staff executions in `backend/staff/credential.py`. When a staff run begins, `mint_staff_credentials()` generates a short-lived token (`stf_...`) bound to ephemeral principal `staff:<role>:<run_id>`, scoped to the intersection of the role's declared `fleet_actions` (SC-E1) and the fleet action policy. Token is injected into the runner subprocess environment as `FLEET_API_TOKEN` and revoked automatically at run end (succeeded, failed, cancelled) or during restart orphan reconciliation (`backend/staff/reconcile.py`). Minting failures fail fast before CLI launch with `failure_class="workspace_error"`. Calling allowed actions passes auth, disallowed actions fail with 403, and terminated runs fail with 401. TDD: `tests/api/test_staff_credentials.py`.
 - **2026-09-24:** Bounded Retry Policy & Per-Provider Concurrency (issue #1303, SC-A7). Implemented bounded retry policy for transient staff run failures in `backend/staff/retry.py`. Automatically retries retryable failure classes (`rate_limited`, `provider_error`, `workspace_error`) with exponential backoff and jitter (`compute_backoff`), while never retrying non-retryable classes (`needs_input`, `auth_expired`, `lease_blocked`, `cli_missing`, `stalled`, `unkillable`, `orphaned`). Configured `max_attempts` (default 2) and optional fallback provider chain per role (`fallback_providers`). Each retry attempt creates a new run linked by `retry_of` and bounded by role budget guards. Added `retry_of`, `attempt`, `max_attempts`, `next_attempt_at`, and `fallback_provider` to `RunRecord` in SQLite with auto-migration. Enforced per-provider concurrency limits with `threading.BoundedSemaphore` (`_get_provider_sema`) in `backend/staff/runner.py` acquired ahead of the node concurrency semaphore. Aggregated attempt chains in `StaffRunDetailResponse` (`attempts` array) and defaulted run listings to root logical runs (`logical_only=True`). TDD: `tests/api/test_staff_retry.py`.
 - **2026-09-24:** Contract Check Between Backend Response Models and Frontend Types (issue #1296, SC-A10). Defined Pydantic response models for staff and conversation routes (`backend/staff/models.py`), including roster, board, summary, runs, detail, cancel, dispatch, holds, schedule, usage, and assistant endpoints. Exported OpenAPI schema in `frontend/src/lib/openapi.json` and generated TypeScript definitions in `frontend/src/lib/api-types.ts` using `openapi-typescript`. Replaced duplicate hand-written type interfaces in `frontend/src/pages/Staff/staffApi.ts` with direct aliases to generated `components["schemas"]`. Added contract check and drift detection via `scripts/gen-api-client.sh --check` and `tests/api/test_staff_contracts.py`.
 - **2026-09-24:** CI & Quality Gate Resilience (issue #1372). Satisfied detect-secrets audit in `tests/api/test_staff_on_behalf_of.py` using `token_key`/`signing_key` and inline `# pragma: allowlist secret` annotations. Preserved canonical 4-space indentation for `frontend/src/lib/api-types.ts` generated by `openapi-typescript` to prevent client check drift. Appended overgrown legacy modules `identity.py` and `machine_registry.py` to the `$EXEMPT` regex in `.github/workflows/ci-standard.yml` line-cap verification step, ensuring post-merge CI health gates pass.
@@ -4778,6 +4780,25 @@ Log aggregation sidecar configuration for the runner-dashboard fleet.
 | error/critical logs        | Loki             | 30 days            |
 | Journald on-host           | systemd-journald | 1 GB max / 30 days |
 | Docker json-file           | local            | 7 × 100 MB         |
+
+### 18.10 Short-Lived Scoped Staff Credentials (issue #1310, SC-E2)
+
+Staff runs execute under least-privilege principles without persistent admin credentials:
+
+- **Per-Run Ephemeral Token:** When a staff run begins execution, `mint_staff_credentials()` creates an ephemeral token prefixed with `stf_` bound to a unique principal `staff:<role>:<run_id>` of type `bot`.
+- **Scope Intersection:** Granted scopes are the strict intersection of the role's declared `fleet_actions` (SC-E1) from `staff/schema.json` and the dashboard action policy mapping:
+  - `runner.start`, `runner.stop`, `runner.restart` → `runners.control`
+  - `runner.scale` → `runners.control`, `fleet.control`
+  - `fleet.node_up`, `fleet.node_down` → `fleet.control`
+  - `queue.purge_stale` → `workflows.control`, `remediation.dispatch`
+  - `run.cancel` → `workflows.control`, `staff.cancel`
+  - `run.rerun` → `workflows.dispatch`, `tests.rerun`
+  - `queue.diagnose` → `runners.control`, `staff.read`
+  - `host.vhdx_compact` → `fleet.control`, `fleet.maintain`
+  - `dashboard.restart` → `fleet.control`, `system.control`
+- **Bounded Lifetime & Injection:** Token TTL is bounded by the role's `budget_max_minutes` (or `STAFF_RUN_TIMEOUT_SECONDS`). The token is injected into the runner subprocess environment as `FLEET_API_TOKEN` for use by the fleet CLI or MCP tools.
+- **Fail-Fast Error Handling:** If token minting fails, the run is immediately failed before any CLI or worktree process is started, recorded as `failure_class="workspace_error"`.
+- **Automatic Revocation:** Tokens and ephemeral principals are revoked immediately in the execution `finally` block across all termination states (`succeeded`, `failed`, `cancelled`), and orphaned tokens are pruned during restart reconciliation (`reconcile_orphaned_runs()`, SC-A4).
 
 ## Security Fixes (issues #315, #317, #318)
 

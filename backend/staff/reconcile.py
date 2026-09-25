@@ -26,6 +26,7 @@ except ImportError:  # pragma: no cover
     psutil = None  # type: ignore[assignment]
 
 from fleet_events import EventStore, FleetEvent, get_event_store
+from staff import credential as credential_mod
 from staff import lease as lease_mod
 from staff import workspace
 from staff.runner import StaffRunner
@@ -160,6 +161,10 @@ def reconcile_orphaned_runs(
             error=err_msg,
         )
         store.append_event(rec.id, "reconcile", err_msg)
+        try:
+            credential_mod.revoke_staff_credentials(rec.role, rec.id)
+        except Exception:  # noqa: BLE001
+            log.warning("Failed to revoke credentials for orphaned run %s", rec.id)
 
         # 5. Emit fleet event
         try:

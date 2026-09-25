@@ -1,4 +1,52 @@
-# Current handoff — Bounded retry policy for transient staff-run failures and per-provider concurrency (#1303)
+# Current handoff — Short-lived, scoped credentials for staff runs (#1310)
+
+Last updated: 2026-09-24
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1310-scoped-staff-credentials`; Issue #1310, epic #1347 / umbrella #1354; DL-#1310.
+
+## Work
+
+- `backend/staff/schema.json`:
+  - Added `fleet_actions` (12-item enum) and `approvals` object to `permissions` property, synced from `Repository_Management/staff/schema.json`.
+- `backend/identity.py`:
+  - Added `scopes: list[str] = []` to `Principal` model.
+  - Added `mint_ephemeral_token()` and `revoke_principal_tokens()` to `IdentityManager`.
+  - Updated `principal_has_scope()` to evaluate `principal.scopes` and direct non-preset roles in addition to `SCOPE_PRESETS`.
+- `backend/staff/roles.py`:
+  - Added `fleet_actions: tuple[str, ...]` and `approvals: dict[str, str]` to `RoleSpec`, `to_dict()`, and `parse_role()`.
+- `backend/staff/credential.py`:
+  - Created standalone module (190 lines) defining `FLEET_ACTIONS`, `ACTION_POLICY_SCOPES`, `compute_staff_scopes()`, `staff_principal_id()`, `mint_staff_credentials()`, `revoke_staff_credentials()`, and `revoke_orphan_staff_credentials()`.
+- `backend/staff/reconcile.py`:
+  - Added orphan credential revocation: calls `credential_mod.revoke_staff_credentials(rec.role, rec.id)` during restart reconcile.
+- `backend/staff/runner.py`:
+  - Updated `_worker()` to mint credentials before execution, fail fast with `failure_class="workspace_error"` if minting fails, pass `fleet_token` to `_execute()`, and revoke credentials in `finally`.
+  - Injected `FLEET_API_TOKEN` into the child process environment.
+  - Supported custom/monkeypatched `_execute()` signatures gracefully.
+- `tests/api/test_staff_credentials.py`:
+  - Added 8 unit and integration tests covering scope computation, minting/revocation, TTL expiration, orphan reconciliation, process environment token injection, minting failure classification as `workspace_error`, and acceptance criteria (allowed endpoint succeeds, disallowed returns 403, and ended token returns 401).
+- `SPEC.md`: Bumped to 2.5.222, added change log entry and Section 18.10.
+- `docs/development/DEVELOPMENT_LOG.md`: Added DL-#1310 entry.
+
+## Validation
+
+- `pytest tests/api/test_staff_credentials.py`: 8 passed.
+- `pytest -k staff`: 262 passed, 0 failed.
+- `ruff check backend/ tests/api/test_staff_credentials.py`: Passed with 0 errors.
+- `ruff format --check backend/ tests/api/test_staff_credentials.py`: Passed with 0 errors.
+- `mypy backend/staff/credential.py backend/staff/runner.py backend/staff/roles.py backend/staff/reconcile.py tests/api/test_staff_credentials.py`: Passed with 0 errors.
+- All files strictly <= 500 lines.
+
+## Next
+
+1. Commit and push branch `feat/1310-scoped-staff-credentials`.
+2. Open PR linking `Fixes #1310` and enable auto-merge.
+3. Once merged, release agent lease on #1310 and clean up worktree.
+
+---
+
+# Previous handoff — Bounded retry policy for transient staff-run failures and per-provider concurrency (#1303)
 
 Last updated: 2026-09-24
 

@@ -265,14 +265,21 @@ def test_provider_concurrency_enforced_serially(
 
     orig_execute = runner._execute
 
-    def tracked_execute(rec: RunRecord, plan: runner_mod.RunPlan, workdir: Path, lease_note: str) -> None:
+    def tracked_execute(
+        rec: RunRecord,
+        plan: runner_mod.RunPlan,
+        workdir: Path,
+        lease_note: str,
+        *args: object,
+        **kwargs: object,
+    ) -> None:
         nonlocal active_count, max_active
         with lock:
             active_count += 1
             if active_count > max_active:
                 max_active = active_count
         try:
-            orig_execute(rec, plan, workdir, lease_note)
+            orig_execute(rec, plan, workdir, lease_note, *args, **kwargs)
         finally:
             with lock:
                 active_count -= 1

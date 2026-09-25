@@ -64,6 +64,8 @@ class RoleSpec:
     group: str | None = None
     max_attempts: int = 2
     fallback_providers: tuple[str, ...] = ()
+    fleet_actions: tuple[str, ...] = ()
+    approvals: dict[str, str] = field(default_factory=dict)
     valid: bool = True
     errors: tuple[str, ...] = ()
     source_path: str = ""
@@ -106,6 +108,8 @@ class RoleSpec:
             "group": self.group,
             "max_attempts": self.max_attempts,
             "fallback_providers": list(self.fallback_providers),
+            "fleet_actions": list(self.fleet_actions),
+            "approvals": dict(self.approvals),
             "valid": self.valid,
             "errors": list(self.errors),
             "error": self.errors[0] if self.errors else None,
@@ -225,6 +229,15 @@ def parse_role(
     except (TypeError, ValueError):
         max_att = 2
     fallback_provs = _as_tuple(retry_cfg.get("fallback_providers") or data.get("fallback_providers"))
+    raw_fa = perms.get("fleet_actions") if isinstance(perms, dict) else None
+    if raw_fa is None:
+        raw_fa = data.get("fleet_actions")
+    fleet_actions = _as_tuple(raw_fa)
+
+    raw_app = perms.get("approvals") if isinstance(perms, dict) else None
+    if raw_app is None:
+        raw_app = data.get("approvals")
+    approvals = {str(k): str(v) for k, v in raw_app.items()} if isinstance(raw_app, dict) else {}
 
     return RoleSpec(
         name=name,
@@ -247,7 +260,11 @@ def parse_role(
         budget_usd_per_day=usd_day,
         budget_max_minutes=max_m,
         idle_minutes=idle_m,
-        permissions=({str(k): bool(v) for k, v in perms.items()} if isinstance(perms, dict) else {}),
+        permissions=(
+            {str(k): bool(v) for k, v in perms.items() if k not in ("fleet_actions", "approvals")}
+            if isinstance(perms, dict)
+            else {}
+        ),
         reports_to=str(data.get("reports_to") or ""),
         holds=_as_tuple(data.get("holds")),
         surface=str(data.get("surface") or "dashboard"),
@@ -259,6 +276,8 @@ def parse_role(
         group=group,
         max_attempts=max_att,
         fallback_providers=fallback_provs,
+        fleet_actions=fleet_actions,
+        approvals=approvals,
         valid=len(errors) == 0,
         errors=errors,
         source_path=source_path,

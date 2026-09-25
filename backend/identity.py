@@ -32,6 +32,7 @@ class Principal(BaseModel):
     type: str  # 'human' or 'bot'
     name: str
     roles: list[str] = []
+    scopes: list[str] = []
     github_username: str | None = None
     email: str | None = None
     quotas: Quota = Field(default_factory=Quota)
@@ -186,9 +187,50 @@ class IdentityManager:
         self.save_tokens()
         return raw_token
 
+    def mint_ephemeral_token(
+        self,
+        principal_id: str,
+        name: str,
+        expires_in_seconds: float,
+        prefix: str = "stf_",
+    ) -> str:
+        if principal_id not in self.principals:
+            raise ValueError(f"Principal {principal_id} not found")
+
+        prin = self.principals[principal_id]
+        if prin.type != "bot":
+            raise ValueError("Ephemeral tokens can only be minted for bot principals")
+
+        raw_token = prefix + secrets.token_urlsafe(32)
+        import hashlib
+
+        token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+        expires_at = time.time() + float(expires_in_seconds)
+
+        record = TokenRecord(
+            token_hash=token_hash,
+            principal_id=principal_id,
+            created_at=time.time(),
+            expires_at=expires_at,
+            name=name,
+        )
+        self.tokens.append(record)
+        self.save_tokens()
+        return raw_token
+
     def revoke_token(self, token_hash: str):
         self.tokens = [t for t in self.tokens if t.token_hash != token_hash]
         self.save_tokens()
+
+    def revoke_principal_tokens(self, principal_id: str, delete_principal: bool = False) -> int:
+        before = len(self.tokens)
+        self.tokens = [t for t in self.tokens if t.principal_id != principal_id]
+        if delete_principal and principal_id in self.principals:
+            del self.principals[principal_id]
+            self.save_principals()
+        if len(self.tokens) != before:
+            self.save_tokens()
+        return before - len(self.tokens)
 
     def verify_token(self, raw_token: str) -> Principal | None:
         import hashlib
@@ -363,9 +405,11 @@ SCOPE_PRESETS = {
 
 def principal_has_scope(principal: Principal, required_scope: str) -> bool:
     """True when any of the principal's role presets grants ``required_scope`` (``*`` and ``x.*`` wildcards)."""
-    principal_scopes: set[str] = set()
+    principal_scopes: set[str] = set(getattr(principal, "scopes", []))
     for role in principal.roles:
         principal_scopes.update(SCOPE_PRESETS.get(role, []))
+        if role not in SCOPE_PRESETS:
+            principal_scopes.add(role)
     if "*" in principal_scopes:
         return True
     return any(s == required_scope or (s.endswith("*") and required_scope.startswith(s[:-1])) for s in principal_scopes)

@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from staff import consolidation, workspace
+from staff import credential as credential_mod
 from staff import focus as focus_mod
 from staff import lease as lease_ritual
 from staff import retry as retry_mod
@@ -209,8 +210,32 @@ class StaffRunner:
         with provider_sema, self._sema:
             if rec.id in self._cancel_flags:
                 return
+            fleet_token: str | None = None
             try:
                 store.update_run(rec.id, status="preparing", started_at=_now())
+                role_spec = self.roles().get(plan.role)
+                fleet_actions = getattr(role_spec, "fleet_actions", ()) if role_spec else ()
+                ttl_seconds = max(60.0, float(getattr(role_spec, "budget_max_minutes", 240.0)) * 60.0)
+                try:
+                    fleet_token, _ = credential_mod.mint_staff_credentials(
+                        role=plan.role,
+                        run_id=rec.id,
+                        fleet_actions=fleet_actions,
+                        ttl_seconds=ttl_seconds,
+                    )
+                except Exception as mint_exc:  # noqa: BLE001
+                    log.exception("staff run %s failed to mint credentials", rec.id)
+                    store.update_run(
+                        rec.id,
+                        status="failed",
+                        failure_class="workspace_error",
+                        retryable=True,
+                        ended_at=_now(),
+                        error=f"Credential minting failed: {mint_exc}",
+                    )
+                    store.append_event(rec.id, "error", f"Credential minting failed: {mint_exc}")
+                    return
+
                 workdir = self._prepare_workdir(rec, plan)
                 lease_note = ""
                 agent = self._adapters[plan.provider].lease_agent
@@ -226,12 +251,25 @@ class StaffRunner:
                     if note is None:
                         return  # blocked; status already recorded
                     lease_note = note
-                self._execute(rec, plan, workdir, lease_note)
+                import inspect
+
+                sig = inspect.signature(self._execute)
+                if "fleet_token" in sig.parameters or any(
+                    p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+                ):
+                    self._execute(rec, plan, workdir, lease_note, fleet_token=fleet_token)
+                else:
+                    self._execute(rec, plan, workdir, lease_note)
             except Exception as exc:  # noqa: BLE001
                 log.exception("staff run %s crashed", rec.id)
                 store.update_run(rec.id, status="failed", ended_at=_now(), error=str(exc)[:1000])
                 store.append_event(rec.id, "error", str(exc)[:1000])
             finally:
+                if fleet_token:
+                    try:
+                        credential_mod.revoke_staff_credentials(plan.role, rec.id)
+                    except Exception:  # noqa: BLE001
+                        log.warning("Failed to revoke credentials for run %s", rec.id)
                 if plan.lease_ritual:
                     lease_ritual.release(
                         store,
@@ -259,7 +297,14 @@ class StaffRunner:
         store.append_event(rec.id, "worktree", f"{worktree} on {plan.branch}")
         return worktree
 
-    def _execute(self, rec: RunRecord, plan: RunPlan, workdir: Path, lease_note: str) -> None:
+    def _execute(
+        self,
+        rec: RunRecord,
+        plan: RunPlan,
+        workdir: Path,
+        lease_note: str,
+        fleet_token: str | None = None,
+    ) -> None:
         store = self.store
         adapter = self._adapters[plan.provider]
         role = self.roles()[plan.role]
@@ -282,6 +327,8 @@ class StaffRunner:
             "STAFF_RUN_ID": rec.id,
             "STAFF_ROLE": plan.role,
         }
+        if fleet_token:
+            env["FLEET_API_TOKEN"] = fleet_token
         exe = shutil.which(adapter.executable) or adapter.executable
         proc = subprocess.Popen(  # noqa: S603
             [exe, *argv[1:]],
