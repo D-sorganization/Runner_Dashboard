@@ -6,7 +6,7 @@
  * DbC invariant that overrides reference real nav ids.
  */
 import { describe, it, expect } from "vitest";
-import { introForTab, INTRO_OVERRIDES, INTRO_OVERRIDE_IDS } from "../intro";
+import { introForTab, INTRO_OVERRIDE_IDS } from "../intro";
 import { navItemById, NAV_ITEMS } from "../navRegistry";
 
 describe("introForTab", () => {
