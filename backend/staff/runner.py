@@ -60,6 +60,7 @@ class RunRequest:
     prompt: str = ""
     machine: str = "local"
     requested_by: str = ""
+    on_behalf_of: str = ""
     # PR-consolidation decision from ``staff.consolidation.decide`` (#1213); None when not applicable.
     consolidation: dict[str, Any] | None = None
 
@@ -243,6 +244,7 @@ class StaffRunner:
             target_ref=plan.target_ref,
             prompt=plan.prompt,
             requested_by=req.requested_by,
+            on_behalf_of=req.on_behalf_of,
             branch=plan.branch,
             strategy_mode=plan.strategy_mode,
         )

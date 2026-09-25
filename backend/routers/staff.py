@@ -25,7 +25,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import StreamingResponse
 from identity import Principal, format_caller, require_scope
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -103,6 +103,8 @@ class RunBody(BaseModel):
     pr: int | None = Field(default=None, ge=1)
     prompt: str = Field(default="", max_length=20000)
     machine: str = Field(default="local", max_length=60)
+    surface: str | None = Field(default=None, max_length=40)
+    thread_id: str | None = Field(default=None, max_length=120)
     dry_run: bool = False
 
     @field_validator("repo")
@@ -124,11 +126,8 @@ async def roster(
     _peer: Principal = Depends(require_scope("staff.read")),
 ) -> dict[str, Any]:
     runner = get_runner()
-    roles = runner.roles()
-    active = runner.store.active_runs()
-    per_role: dict[str, int] = {}
-    for run in active:
-        per_role[run.role] = per_role.get(run.role, 0) + 1
+    roles, active = runner.roles(), runner.store.active_runs()
+    per_role = {s: sum(1 for a in active if a.role == s) for s in roles}
     return {
         "machine": runner.machine,
         "roles": [{**spec.to_dict(), "active_runs": per_role.get(name, 0)} for name, spec in sorted(roles.items())],
@@ -387,19 +386,18 @@ async def _resolve_target(runner: StaffRunner, machine: str, provider: str) -> s
     resolved = staff_fleet.resolve_machine(machine, runner.machine, peers)
     if resolved is None:
         known = ", ".join([runner.machine, *sorted(peers)]) or runner.machine
-        raise HTTPException(
-            status_code=422,
-            detail=f"unknown machine '{machine}' (known: {known}, or 'auto')",
-        )
+        raise HTTPException(status_code=422, detail=f"unknown machine '{machine}' (known: {known}, or 'auto')")
     return resolved
 
 
-async def _forward(target: str, role: str, body: RunBody, caller: str) -> dict[str, Any]:
+async def _forward(
+    target: str, role: str, body: RunBody, caller: str, on_behalf_of: str | None = None
+) -> dict[str, Any]:
     url = staff_fleet.peer_nodes().get(target)
     if url is None:
         raise HTTPException(status_code=422, detail=f"unknown machine '{target}'")
     try:
-        status, data = await staff_fleet.forward_run(url, role, body.model_dump())
+        status, data = await staff_fleet.forward_run(url, role, body.model_dump(), on_behalf_of=on_behalf_of)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=503, detail=f"machine '{target}' unreachable: {exc}") from exc
     if status >= 400:
@@ -418,6 +416,7 @@ async def _forward(target: str, role: str, body: RunBody, caller: str) -> dict[s
 async def dispatch(
     role: str,
     body: RunBody,
+    request: Request,
     caller: Principal = Depends(require_scope("staff.dispatch")),
 ) -> dict[str, Any]:
     """Dispatch a staff run on this node, or preview it with ``dry_run``.
@@ -434,7 +433,19 @@ async def dispatch(
     decision = None
     if spec is not None and body.repo and consolidation.threshold(spec) is not None:
         decision = await asyncio.to_thread(consolidation.decide, spec, body.repo)  # #1213: gh + capacity I/O
-    caller_str = format_caller(caller)
+
+    caller_id = staff_fleet.caller_identity(caller)
+    is_peer = staff_fleet.is_fleet_peer(caller)
+    surface = body.surface or "api"
+    thread_id = body.thread_id or ""
+    on_behalf_of = ""
+    obo = staff_fleet.extract_on_behalf_of(request.headers.get("x-staff-on-behalf-of"), is_peer)
+    if obo:
+        caller_id = obo["principal"]
+        on_behalf_of = obo["principal"]
+        surface = obo.get("surface") or surface
+        thread_id = obo.get("thread_id") or thread_id
+
     req = RunRequest(
         role=role,
         provider=body.provider,
@@ -444,7 +455,8 @@ async def dispatch(
         pr=body.pr,
         prompt=body.prompt,
         machine=body.machine,
-        requested_by=caller_str,
+        requested_by=caller_id,
+        on_behalf_of=on_behalf_of,
         consolidation=decision,
     )
     try:
@@ -453,24 +465,23 @@ async def dispatch(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     target = await _resolve_target(runner, body.machine, plan.provider)
     if target != "local":
-        return await _forward(target, role, body, caller_str)
+        obo_hdr = staff_fleet.sign_on_behalf_of(caller_id, surface, thread_id)
+        return await _forward(target, role, body, caller_id, on_behalf_of=obo_hdr)
     if body.dry_run:
         return {"dry_run": True, "plan": plan.to_dict(), "machine": runner.machine}
     rec = runner.submit(req)
+    detail = {"repo": rec.repo, "target_ref": rec.target_ref, "provider": rec.provider, "machine": rec.machine}
     record_audit(
         action="dispatch",
         target=f"role:{rec.role}",
-        principal=caller_str,
-        surface="api",
+        principal=format_caller(caller),
+        on_behalf_of=on_behalf_of,
+        surface=surface,
+        thread_id=thread_id,
         request_id=rec.id,
         run_id=rec.id,
         outcome="success",
-        detail={
-            "repo": rec.repo,
-            "target_ref": rec.target_ref,
-            "provider": rec.provider,
-            "machine": rec.machine,
-        },
+        detail=detail,
         fail_closed=True,
     )
     log.info(
@@ -480,6 +491,6 @@ async def dispatch(
         rec.provider,
         rec.repo,
         rec.target_ref,
-        caller_str,
+        caller_id,
     )
     return {"dry_run": False, "run": rec.to_dict(), "machine": runner.machine}

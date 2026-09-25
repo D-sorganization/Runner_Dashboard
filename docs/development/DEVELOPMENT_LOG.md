@@ -18,18 +18,31 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#1302 · SC-G1: Page usage evidence before pruning
+### DL-#1311 · SC-F2: Preserve original caller's identity when forwarding staff runs
 
 - **State:** in_progress
 - **Owner:** antigravity
-- **Issue:** #1302 (epic #1353 / umbrella #1354)
-- **Branch:** `feat/1302-page-usage-metrics`
+- **Issue:** #1311 (epic #1352 / umbrella #1354)
+- **Branch:** `feat/1311-staff-on-behalf-of`
 - **PR:**
-- **Paths:** `backend/routers/usage_metrics.py`, `backend/middleware.py`, `backend/server.py`, `frontend/src/shell/RoutedShell.tsx`, `tests/test_usage_metrics.py`, `SPEC.md`
+- **Paths:** `backend/staff/fleet.py`, `backend/routers/staff.py`, `backend/staff/runner.py`, `backend/staff/store.py`, `backend/staff/audit.py`, `tests/api/test_staff_on_behalf_of.py`, `SPEC.md`
 - **Started:** 2026-09-24
 - **Last verified:** 2026-09-24
+- **Summary:** Implemented cryptographic signing and verification for caller identity across node forwarding (`staff.fleet.sign_on_behalf_of`, `verify_on_behalf_of`, `extract_on_behalf_of`). Hub attaches signed `X-Staff-On-Behalf-Of` header when forwarding dispatches to peers. Peer verifies signature and caller identity as fleet-peer, preserving caller in `RunRecord` (`requested_by` and `on_behalf_of`) and logging audit entries with `principal="fleet-peer"` and `on_behalf_of=<caller>`. Added `on_behalf_of` column with SQLite migration.
+- **Next step:** Land PR, unblock SC-B7 (#1314).
+
+### DL-#1302 · SC-G1: Page usage evidence before pruning
+
+- **State:** shipped
+- **Owner:** antigravity
+- **Issue:** #1302 (epic #1353 / umbrella #1354)
+- **Branch:** `feat/1302-page-usage-metrics`
+- **PR:** #1369
+- **Paths:** `backend/routers/usage_metrics.py`, `backend/middleware.py`, `backend/server.py`, `frontend/src/shell/RoutedShell.tsx`, `tests/test_usage_metrics.py`, `SPEC.md`
+- **Started:** 2026-09-24
+- **Last verified:** 2026-09-24 (`f28c15af`)
 - **Summary:** Record page view beacons and API endpoint invocations in a rolling 14-day window. Expose GET /api/usage/summary with tab recommendations (keep, merge, retire, owner-decision) aligned with Staff Console pruning waves (SC-G2 through SC-G6). Added /api/usage/page-view exempt endpoint and client beacon in RoutedShell.
-- **Next step:** Land PR, post evidence table to #1302, unblock SC-G2 (#1324) and SC-G3 (#1325).
+- **Next step:** None (shipped in PR #1369; evidence table posted to #1302 and #1353).
 
 ### DL-#1297 · SC-A6: Classify staff run failures with remediation hints
 
