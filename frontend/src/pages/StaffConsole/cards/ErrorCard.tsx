@@ -103,7 +103,7 @@ export const ErrorCard: React.FC<ErrorCardProps> = ({
             onClick={onRetry}
             style={{
               background: "var(--accent-red, #f85149)",
-              color: "#fff",
+              color: "var(--color-fg-on-emphasis, #ffffff)",
               border: "none",
               borderRadius: 6,
               padding: "4px 12px",

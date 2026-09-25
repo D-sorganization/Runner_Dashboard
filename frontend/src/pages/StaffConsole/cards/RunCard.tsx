@@ -10,16 +10,16 @@ export interface RunCardProps {
 function getStatusBadgeStyle(status: RunStatus): { bg: string; text: string; border: string } {
   switch (status) {
     case "running":
-      return { bg: "rgba(31, 111, 235, 0.15)", text: "#58a6ff", border: "#1f6feb" };
+      return { bg: "rgba(31, 111, 235, 0.15)", text: "var(--accent-blue, #58a6ff)", border: "var(--border-blue, #1f6feb)" };
     case "completed":
-      return { bg: "rgba(46, 160, 67, 0.15)", text: "#3fb950", border: "#2ea043" };
+      return { bg: "rgba(46, 160, 67, 0.15)", text: "var(--accent-green, #3fb950)", border: "var(--border-green, #2ea043)" };
     case "failed":
-      return { bg: "rgba(248, 81, 73, 0.15)", text: "#f85149", border: "#da3633" };
+      return { bg: "rgba(248, 81, 73, 0.15)", text: "var(--accent-red, #f85149)", border: "var(--border-red, #da3633)" };
     case "cancelled":
-      return { bg: "rgba(110, 118, 129, 0.15)", text: "#8b949e", border: "#6e7681" };
+      return { bg: "rgba(110, 118, 129, 0.15)", text: "var(--text-muted, #8b949e)", border: "var(--border-muted, #6e7681)" };
     case "queued":
     default:
-      return { bg: "rgba(210, 153, 34, 0.15)", text: "#d29922", border: "#bb8009" };
+      return { bg: "rgba(210, 153, 34, 0.15)", text: "var(--accent-yellow, #d29922)", border: "var(--border-yellow, #bb8009)" };
   }
 }
 
@@ -116,8 +116,8 @@ export const RunCard: React.FC<RunCardProps> = ({
               style={{
                 fontSize: 11,
                 fontFamily: "monospace",
-                background: "#0d1117",
-                color: "#c9d1d9",
+                background: "var(--bg-primary, #0d1117)",
+                color: "var(--text-primary, #c9d1d9)",
                 padding: "8px 10px",
                 borderRadius: 4,
                 marginTop: 6,
@@ -162,8 +162,8 @@ export const RunCard: React.FC<RunCardProps> = ({
             onClick={() => onCancel(run.id)}
             style={{
               background: "transparent",
-              color: "#f85149",
-              border: "1px solid #da3633",
+              color: "var(--accent-red, #f85149)",
+              border: "1px solid var(--border-red, #da3633)",
               borderRadius: 6,
               padding: "2px 8px",
               fontSize: 11,

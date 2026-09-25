@@ -12,15 +12,15 @@ function getRiskBadgeColor(risk: ActionRiskLevel): { bg: string; text: string; b
   switch (risk) {
     case "read":
     case "low":
-      return { bg: "rgba(46, 160, 67, 0.15)", text: "#3fb950", border: "#2ea043" };
+      return { bg: "rgba(46, 160, 67, 0.15)", text: "var(--accent-green, #3fb950)", border: "var(--border-green, #2ea043)" };
     case "medium":
-      return { bg: "rgba(210, 153, 34, 0.15)", text: "#d29922", border: "#bb8009" };
+      return { bg: "rgba(210, 153, 34, 0.15)", text: "var(--accent-yellow, #d29922)", border: "var(--border-yellow, #bb8009)" };
     case "high":
     case "critical":
     case "owner-only":
-      return { bg: "rgba(248, 81, 73, 0.15)", text: "#f85149", border: "#da3633" };
+      return { bg: "rgba(248, 81, 73, 0.15)", text: "var(--accent-red, #f85149)", border: "var(--border-red, #da3633)" };
     default:
-      return { bg: "rgba(110, 118, 129, 0.15)", text: "#8b949e", border: "#6e7681" };
+      return { bg: "rgba(110, 118, 129, 0.15)", text: "var(--text-muted, #8b949e)", border: "var(--border-muted, #6e7681)" };
   }
 }
 
@@ -108,7 +108,7 @@ export const ActionCard: React.FC<ActionCardProps> = ({
         <div
           style={{
             fontSize: 11,
-            color: "#f85149",
+            color: "var(--accent-red, #f85149)",
             background: "rgba(248, 81, 73, 0.1)",
             padding: "4px 8px",
             borderRadius: 4,
@@ -123,7 +123,7 @@ export const ActionCard: React.FC<ActionCardProps> = ({
         <div
           style={{
             fontSize: 11,
-            color: proposal.status === "denied" ? "#f85149" : "#3fb950",
+            color: proposal.status === "denied" ? "var(--accent-red, #f85149)" : "var(--accent-green, #3fb950)",
             background: "rgba(255, 255, 255, 0.05)",
             padding: "4px 8px",
             borderRadius: 4,
@@ -178,8 +178,8 @@ export const ActionCard: React.FC<ActionCardProps> = ({
             onClick={handleApproveClick}
             disabled={hasSubmitted}
             style={{
-              background: "#238636",
-              color: "#fff",
+              background: "var(--accent-green, #238636)",
+              color: "var(--color-fg-on-emphasis, #ffffff)",
               border: "1px solid rgba(240, 246, 252, 0.1)",
               borderRadius: 6,
               padding: "4px 12px",
@@ -197,8 +197,8 @@ export const ActionCard: React.FC<ActionCardProps> = ({
             disabled={hasSubmitted}
             style={{
               background: "transparent",
-              color: "#f85149",
-              border: "1px solid #da3633",
+              color: "var(--accent-red, #f85149)",
+              border: "1px solid var(--border-red, #da3633)",
               borderRadius: 6,
               padding: "4px 12px",
               fontSize: 12,

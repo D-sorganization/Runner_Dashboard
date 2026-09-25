@@ -70,8 +70,8 @@ export const HandoffCard: React.FC<HandoffCardProps> = ({
                   onClick={() => onReroute(alt.name)}
                   style={{
                     background: "rgba(56, 139, 253, 0.15)",
-                    border: "1px solid #1f6feb",
-                    color: "#58a6ff",
+                    border: "1px solid var(--border-blue, #1f6feb)",
+                    color: "var(--accent-blue, #58a6ff)",
                     fontSize: 11,
                     padding: "3px 8px",
                     borderRadius: 4,
