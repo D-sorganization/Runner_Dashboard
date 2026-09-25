@@ -1,10 +1,38 @@
-# Current handoff — SC-E3: Maintenance action catalogue: typed, allowlisted fleet operations with preflight, dry-run and verification (#1321)
+# Current handoff — SC-F7: Rate limits and spend guards on staff conversation and dispatch APIs (#1336)
 
 Last updated: 2026-09-25
 
 ## Identity
 
-- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1321-maintenance-catalogue`; Issue #1321; DL-#1321.
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1336-rate-limits-spend-guards`; Issue #1336; DL-#1336; PR #1399.
+
+## Work
+
+- Implementing per-principal token-bucket limits on message send (30/min) and dispatch (10/hour).
+- Extending `BudgetGuard` to count chat turns against role `usd_per_day` budget, generating system message and notifying Barb upon exhaustion.
+- Implementing `LoopGuard` to detect > N consecutive agent turns without user input, pausing threads and requesting owner input.
+- All files strictly <= 500 lines.
+
+## Validation
+
+- Ran `pytest tests/api/test_staff_spend_and_rate_limits.py` (8 passed).
+- Ran related staff test suites: `test_staff_threads_api.py`, `test_staff_v1_api.py`, `test_staff_scopes.py`, `test_staff_proposals_api.py` (28 passed).
+- Verified `ruff check` and `ruff format` are clean.
+- Verified `mypy` passes with no issues in all modified backend staff modules.
+- Line cap verified: all modified/created files are strictly <= 500 lines.
+
+## Next
+
+1. Merge origin/main to resolve documentation conflict.
+2. Verify all CI checks pass on PR #1399.
+3. Auto-merge PR #1399 into main.
+4. Release lease on issue #1336.
+
+---
+
+## Prior handoff — SC-E3: Maintenance action catalogue: typed, allowlisted fleet operations with preflight, dry-run and verification (#1321)
+
+- Repository `D-sorganization/Runner_Dashboard`; branch `feat/1321-maintenance-catalogue`; Issue #1321; DL-#1321; PR #1400.
 
 ## Work
 
@@ -39,13 +67,6 @@ Last updated: 2026-09-25
 - `ruff format --check`: 210 files already formatted.
 - `mypy backend/`: Success: no issues found in 208 source files.
 - Line limits: All new and modified files strictly <= 500 lines (`maintenance.py`: 460, `actions.py`: 439, `action_executors.py`: 219, `test_staff_maintenance.py`: 196, `test_staff_maintenance_api.py`: 151).
-
-## Next
-
-1. Push branch `feat/1321-maintenance-catalogue`.
-2. Open PR with GitHub CLI and enable auto-merge squash.
-3. Verify CI passes and PR auto-merges into main.
-4. Release lease on issue #1321.
 
 ---
 
@@ -103,6 +124,7 @@ Last updated: 2026-09-25
 1. Verify CI passes on PR #1396.
 2. Ensure auto-merge merges branch into main.
 3. Release lease on issue #1313.
+>>>>>>> origin/main
 
 ---
 
