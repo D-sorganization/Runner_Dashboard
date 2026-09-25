@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import logging
+from functools import partial
 from typing import Any
 
+import anyio.to_thread
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from identity import Principal, format_caller, require_scope
 from pydantic import BaseModel, Field
@@ -38,6 +40,14 @@ class DecideProposalRequest(BaseModel):
     execute: bool = Field(
         default=False,
         description="Whether to execute the action immediately upon approval",
+    )
+
+
+async def _execute_off_loop(proposal_id: str, caller: Principal, store: Any) -> Any:
+    """Run the synchronous executor in a worker thread so it never blocks the event loop
+    and can reach loop-bound clients through anyio.from_thread (#1448)."""
+    return await anyio.to_thread.run_sync(
+        partial(execute_proposal, proposal_id=proposal_id, approver=caller, store=store)
     )
 
 
@@ -189,7 +199,7 @@ async def decide_proposal(
         )
 
         if body.decision == "approved" and body.execute:
-            res = execute_proposal(proposal_id=proposal_id, approver=caller, store=store)
+            res = await _execute_off_loop(proposal_id, caller, store)
             refreshed = store.get_proposal(proposal_id)
             d = refreshed.to_dict() if refreshed else updated.to_dict()
             d["execution_result"] = res.to_dict()
@@ -229,7 +239,7 @@ async def execute_approved_proposal(
         )
 
     try:
-        res = execute_proposal(proposal_id=proposal_id, approver=caller, store=store)
+        res = await _execute_off_loop(proposal_id, caller, store)
         refreshed = store.get_proposal(proposal_id)
         d = refreshed.to_dict() if refreshed else prop.to_dict()
         d["execution_result"] = res.to_dict()
@@ -265,12 +275,15 @@ async def detect_stalled_jobs(
 
     req = body or DetectStalledRequest()
     detector = StalledJobDetector()
-    report = detector.run_scan(
-        queued_runs=req.queued_runs,
-        in_progress_runs=req.in_progress_runs,
-        runners=req.runners,
-        known_hosts=set(req.known_hosts) if req.known_hosts else None,
-        auto_remediate=req.auto_remediate,
-        caller=caller,
+    report = await anyio.to_thread.run_sync(
+        partial(
+            detector.run_scan,
+            queued_runs=req.queued_runs,
+            in_progress_runs=req.in_progress_runs,
+            runners=req.runners,
+            known_hosts=set(req.known_hosts) if req.known_hosts else None,
+            auto_remediate=req.auto_remediate,
+            caller=caller,
+        )
     )
     return report.to_dict()

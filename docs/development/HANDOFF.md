@@ -1,3 +1,34 @@
+# Current handoff — SC-E3: Wire maintenance run cancel/rerun to GitHub (#1448, slice 1)
+
+Last updated: 2026-09-25
+
+## Identity
+
+- Repository `D-sorganization/Runner_Dashboard`; worktree `Runner_Dashboard-worktrees/claude-1448`; branch `feat/1448-wire-maintenance` (stacked on `feat/rd-consolidated-2026-09-25`, PR #1458); PR: not created; Issue #1448; DL-#1448. Commit: SELF.
+
+## Objective and Status
+
+- Make the three GitHub-run maintenance actions real instead of `not_wired`, without blocking the event loop.
+- Done:
+  - `backend/staff/maintenance_github.py`: `call_github` bridges sync executors to the loop-bound `gh_client` via `anyio.from_thread.run`; outside a worker thread it raises `MaintenanceBridgeError` (`bridge_unavailable`). GhAuthError → `auth_expired`, timeout → `peer_timeout`, other GitHub refusals → `upstream_error`.
+  - Repos must be bare names or `D-sorganization/<name>` (validated with `security.validate_repo_slug`); anything else is a precondition refusal before GitHub is called.
+  - `cancel_and_rerun` cancels, polls until `completed` (30 s cap), then reruns. Verifiers check real state: conclusion `cancelled`; `run_attempt` advanced.
+  - Routes (`staff_proposals` decide/execute, detect-stalled; `assistant` execute) run the sync executor/scan with `anyio.to_thread.run_sync`.
+  - Added `gh_client.rerun` (full rerun).
+- Not in this slice: runner service start/stop/restart, drain, group ops, queue purge, fleet_control, runner_remove, diagnose (still `not_wired`).
+
+## Validation
+
+- WSL venv: `pytest tests/staff/ tests/api/ tests/test_gh_client.py tests/test_repo_slug_validation.py -o addopts=''` → 1249 passed, 19 skipped, 1 failed (`test_staff_runner::test_submit_runs_fake_cli_to_success_with_events_and_cost`, event-order timing under load; passes 3/3 alone).
+- `ruff check backend/ tests/staff/` clean; `mypy backend/ --ignore-missing-imports --no-implicit-optional` → no issues in 239 files.
+
+## Next Steps
+
+1. After #1458 merges, rebase onto `origin/main`, check doc heading counts, open the PR and arm via `automerge_guard.py`.
+2. Slice 2: wire runner service/drain actions through the fleet node API.
+
+---
+
 # Current handoff — SC-B9: Group threads: talk to the Board (and other groups) with the Board-Secretary coordinating seat replies (#1339)
 
 Last updated: 2026-09-25
